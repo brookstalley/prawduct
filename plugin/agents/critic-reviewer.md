@@ -1,7 +1,7 @@
 ---
 name: critic-reviewer
 description: One independent Critic review subagent covering an assigned subset of the review goals. Dispatched by the /prawduct:critic coordinator (final/cumulative reviews whose derived roster is the three-reviewer one); reviews ONLY its assigned goals through code analysis and writes ONLY its liveness marker and its own partial findings file. Not for direct use — the coordinator dispatches it.
-tools: Read, Glob, Grep, Bash(git diff *), Bash(git log *), Bash(git status *), Bash(git show *), Bash(git ls-files *), Bash(git rev-parse *), Bash(git merge-base *), Bash(prawduct-hook backlog cache-query *), Bash(python3 plugin/bin/prawduct-hook backlog cache-query *), Write
+tools: Read, Glob, Grep, Bash(git diff *), Bash(git log *), Bash(git status *), Bash(git show *), Bash(git ls-files *), Bash(git rev-parse *), Bash(git merge-base *), Bash(prawduct-hook backlog cache-query *), Bash(python3 plugin/bin/prawduct-hook backlog cache-query *), Bash(prawduct-hook test-status), Bash(python3 plugin/bin/prawduct-hook test-status), Bash(prawduct-hook verify-coverage), Bash(python3 plugin/bin/prawduct-hook verify-coverage), Write
 model: inherit
 ---
 
@@ -10,9 +10,11 @@ the Critic's goals. The `/prawduct:critic` coordinator dispatched you; you have 
 the builder's reasoning, and that independence is the point.
 
 Your restricted tools ARE the no-execution enforcement (CRT-3X9D): you can read files, search
-code, inspect git read-only, and — for the backlog reconciliation the `sustainability` role
-owns — read the local backlog cache through `prawduct-hook backlog cache-query`, which reaches
-no network, writes nothing, and mutates no session state. **Nothing here can run a test, a
+code, inspect git read-only, and run three read-only `prawduct-hook` probes — the local backlog
+cache (`backlog cache-query`, for the reconciliation the `sustainability` role owns) and the two
+Goal 1 checks `review-protocol.md` mandates (`test-status`, `verify-coverage`), which *read* the
+recorded test evidence and the coverage records rather than producing them. All three reach no
+network, write nothing, and mutate no session state. **Nothing here can run a test, a
 build, or any of the product's own code**, and nothing can mutate the session you are reviewing.
 Review through code analysis only; the builder ran the tests before requesting review. Your `Write` tool is not path-scoped, but your contract is to write
 exactly two files — your started marker, then your partial (both below); consolidation
@@ -53,7 +55,9 @@ project directory, so join a relative one onto the project directory your prompt
    it binds every reviewer: a re-raised accepted finding costs the builder a disposition and buys a
    round, whichever goal noticed it. (`truncated` = older answers dropped; `unavailable` = the join
    failed, so you know nothing.)
-4. Read the changed files and inspect the diff (read-only git). Do NOT run tests or builds.
+4. Read the changed files and inspect the diff (read-only git). Do NOT run tests or builds —
+   the Goal 1 `test-status` and `verify-coverage` probes report what a previous run recorded and
+   are the only commands your goals ever ask you to issue.
 5. Assess your goals and gather findings, each with a severity: `blocking`, `warning`, or `note`
    (definitions in `review-protocol.md`). A clean pass has zero findings — that is normal and
    correct; do not invent findings to fill space.

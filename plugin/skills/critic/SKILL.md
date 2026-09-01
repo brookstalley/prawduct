@@ -3,7 +3,7 @@ description: Independent Critic review — quality governance for product and fr
 user-invocable: true
 disable-model-invocation: false
 context: fork
-allowed-tools: Read, Glob, Grep, Bash(git diff *), Bash(git log *), Bash(git status *), Bash(git show *), Bash(git ls-files *), Bash(git rev-parse *), Bash(git merge-base *), Bash(git branch --show-current), Bash(git for-each-ref *), Bash(wc *), Bash(prawduct-hook test-status), Bash(prawduct-hook infer-critic-mode *), Bash(prawduct-hook resolve-base), Bash(prawduct-hook classify-diff-risk), Bash(prawduct-hook classify-diff-risk *), Bash(prawduct-hook critic-begin *), Bash(prawduct-hook critic-consolidate), Bash(prawduct-hook critic-end), Bash(prawduct-hook evidence *), Bash(prawduct-hook backlog cache-query *), Bash(python3 plugin/bin/prawduct-hook backlog cache-query *), Bash(python3 plugin/bin/prawduct-hook critic-begin *), Bash(python3 plugin/bin/prawduct-hook critic-consolidate), Bash(python3 plugin/bin/prawduct-hook critic-end), Bash(python3 plugin/bin/prawduct-hook evidence *), Bash(python3 plugin/bin/prawduct-hook test-status), Bash(python3 plugin/bin/prawduct-hook infer-critic-mode *), Bash(python3 plugin/bin/prawduct-hook classify-diff-risk *), Write, Agent, !Bash(pytest*), !Bash(python -m pytest*), !Bash(python3 -m pytest*), !Bash(* python -m pytest*)
+allowed-tools: Read, Glob, Grep, Bash(git diff *), Bash(git log *), Bash(git status *), Bash(git show *), Bash(git ls-files *), Bash(git rev-parse *), Bash(git merge-base *), Bash(git branch --show-current), Bash(git for-each-ref *), Bash(wc *), Bash(prawduct-hook test-status), Bash(prawduct-hook verify-coverage), Bash(prawduct-hook infer-critic-mode *), Bash(prawduct-hook resolve-base), Bash(prawduct-hook classify-diff-risk), Bash(prawduct-hook classify-diff-risk *), Bash(prawduct-hook critic-begin *), Bash(prawduct-hook critic-consolidate), Bash(prawduct-hook critic-end), Bash(prawduct-hook evidence *), Bash(prawduct-hook backlog cache-query *), Bash(python3 plugin/bin/prawduct-hook backlog cache-query *), Bash(python3 plugin/bin/prawduct-hook critic-begin *), Bash(python3 plugin/bin/prawduct-hook critic-consolidate), Bash(python3 plugin/bin/prawduct-hook critic-end), Bash(python3 plugin/bin/prawduct-hook evidence *), Bash(python3 plugin/bin/prawduct-hook test-status), Bash(python3 plugin/bin/prawduct-hook verify-coverage), Bash(python3 plugin/bin/prawduct-hook infer-critic-mode *), Bash(python3 plugin/bin/prawduct-hook classify-diff-risk *), Write, Agent, !Bash(pytest*), !Bash(python -m pytest*), !Bash(python3 -m pytest*), !Bash(* python -m pytest*)
 argument-hint: (omit for inference) | chunk | final | cumulative | verify-resolutions — plus optional --force (any mode)
 ---
 
@@ -13,10 +13,8 @@ argument-hint: (omit for inference) | chunk | final | cumulative | verify-resolu
      deny is not reliably enforced; the prose rule below is authoritative). This
      allow-list governs the single-pass fork; the coordinator's reviewers are the
      `critic-reviewer` agent type, whose OWN tools allow-list binds them (no pytest,
-     Write only). The critic-active marker (critic-begin at step 4) is the
-     session-mutation backstop: while set, a *bare* `prawduct-hook clear` refuses to run; it is
-     cleared by critic-consolidate when it persists the review (every mode ends there),
-     or by critic-end when a dispatched review must be abandoned. -->
+     Write only). The critic-active marker is the session-mutation backstop; the
+     "data plane is deterministic" paragraph below states its full lifecycle. -->
 
 You are the Critic — an independent quality reviewer. You have NOT seen the builder's reasoning or decision-making. That independence is the point.
 
