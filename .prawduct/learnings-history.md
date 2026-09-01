@@ -2124,3 +2124,180 @@ report going quiet is evidence about the report's key, not about the sites.
 **What to do.** Read the scan, not the summary — here, iterate `_direction_lines` and filter on
 `_IN_TRANSITION_RE` directly, which returns five. Where a report aggregates, its row count and your
 edit count are different quantities and should be reconciled explicitly.
+
+## Init leaves CLAUDE.md unmerged when onboarding existing repos (RESOLVED)
+
+*Orphaned 2026-09-01 — no `learnings.md` entry begins with this heading, so no active rule pointed at this narrative and nothing but a grep could reach it, while every lookup paid to read it. Moved here rather than deleted. If the rule was reworded rather than dropped, realign this heading to its index entry and move the block back.*
+
+**Pattern**: `prawduct-init.py`'s `write_template` skips existing files to avoid overwriting user edits. When onboarding an existing repo that already has a CLAUDE.md, init created all other Prawduct files but left CLAUDE.md untouched — no framework block markers, no Prawduct content.
+
+**Resolution**: Added three-way CLAUDE.md handling in `run_init()`: new file → write template; existing without markers → prepend framework template, preserving user content below END marker; existing with markers → skip (sync handles). The merge action is reported in output. Manifest hash is correctly computed from the merged result.
+
+**Principle**: Relates to Complete Delivery (#2) and Honest Confidence (#5).
+
+## Mock scripts break with embedded newlines in f-strings
+
+*Orphaned 2026-09-01 — no `learnings.md` entry begins with this heading, so no active rule pointed at this narrative and nothing but a grep could reach it, while every lookup paid to read it. Moved here rather than deleted. If the rule was reworded rather than dropped, realign this heading to its index entry and move the block back.*
+
+**Pattern**: The test mock git script is built via an f-string with `textwrap.dedent`. When `git_output` contains literal newlines (e.g., `" M file.py\n"`), the newline breaks `textwrap.dedent` — the injected line has no leading whitespace, so dedent finds no common prefix and leaves the shebang indented, making the script non-functional.
+
+**Lesson**: When building mock scripts via f-string interpolation, avoid injecting values that contain newlines into the template. Test the mock's boundaries, not just the logic it simulates. Single-line mock outputs test the same comparison logic without fighting the test harness.
+
+**Principle**: Relates to Tests Are Contracts (#1) — tests should be robust to incidental complexity.
+
+## Shared modules via importlib work well for hyphenated Python scripts
+
+*Orphaned 2026-09-01 — no `learnings.md` entry begins with this heading, so no active rule pointed at this narrative and nothing but a grep could reach it, while every lookup paid to read it. Moved here rather than deleted. If the rule was reworded rather than dropped, realign this heading to its index entry and move the block back.*
+
+**Pattern**: The sync/init/migrate scripts need to share helpers (`compute_hash`, `render_template`, `merge_settings`, `create_manifest`) but have hyphenated filenames that prevent normal Python imports. Using `importlib.util.spec_from_file_location` for cross-script imports works cleanly — already used in test files, now used in production code too.
+
+**Lesson**: When multiple scripts need shared logic, extract it to one canonical module and import via importlib rather than duplicating. This prevented three copies of `merge_settings` from drifting apart. The pattern is: one module owns the function, others import it.
+
+**Principle**: Relates to Coherent Artifacts (#13) — one source of truth for shared logic.
+
+## Judgment alone won't interrupt momentum
+
+*Orphaned 2026-09-01 — no `learnings.md` entry begins with this heading, so no active rule pointed at this narrative and nothing but a grep could reach it, while every lookup paid to read it. Moved here rather than deleted. If the rule was reworded rather than dropped, realign this heading to its index entry and move the block back.*
+
+**Pattern**: The v2 experiment replaced structural Critic gates with principles saying "invoke the Critic after each chunk." In the first real product build (Hum, chunk 1), Claude didn't read `methodology/building.md`, never invoked the Critic, and self-declared the chunk complete with 15 findings that any independent review would have caught. Discovery and planning methodology guides were read correctly — building was skipped because "start coding" doesn't naturally trigger "read the process guide first."
+
+**Lesson**: There's an asymmetry between behaviors Claude will self-regulate and behaviors it won't. Claude follows principles about *how* to do work (test quality, scope discipline, spec fidelity). It does *not* self-impose process interruptions that halt momentum (invoke a reviewer, pause to read methodology). The first category can be governed by principles. The second needs structural gates. The minimum structural enforcement is: force independent review before declaring work complete.
+
+**Principle**: Relates to Governance Is Structural (#22) and Independent Review (#14).
+
+## Products must be self-contained for parallel agent work
+
+*Orphaned 2026-09-01 — no `learnings.md` entry begins with this heading, so no active rule pointed at this narrative and nothing but a grep could reach it, while every lookup paid to read it. Moved here rather than deleted. If the rule was reworded rather than dropped, realign this heading to its index entry and move the block back.*
+
+**Pattern**: The v1 system required `framework-path` pointing to a local clone, runtime hook resolution, and shared session state files (`.session-governance.json`, `.active-products/`). This made it impossible for multiple agents to work on different products simultaneously — shared mutable state created race conditions and clobbering.
+
+**Lesson**: Product repos must carry everything they need: their own CLAUDE.md with principles, their own hooks, their own Critic instructions. No runtime dependency on a framework clone. No shared state between agents. The framework is a *generator* that produces self-contained product repos, not a *runtime* that products depend on. This is also the distribution story — if products are self-contained, they work anywhere Claude Code runs.
+
+**Principle**: Relates to Clean Deployment (#10) and structural independence.
+
+## Independent review catches what self-review misses
+
+*Orphaned 2026-09-01 — no `learnings.md` entry begins with this heading, so no active rule pointed at this narrative and nothing but a grep could reach it, while every lookup paid to read it. Moved here rather than deleted. If the rule was reworded rather than dropped, realign this heading to its index entry and move the block back.*
+
+**Pattern**: Moving the Critic from in-context (same LLM reviews its own work) to a separate agent improved review quality measurably. The independent agent caught 2 surviving reference errors that in-context review missed, on its very first invocation.
+
+**Lesson**: Independence is a feature for review functions. The reviewer should NOT see the builder's conversation context — that's what creates blind spots. Invoke the Critic as a separate agent via the Task tool. This likely applies to any review function.
+
+**Principle**: Relates to Independent Review (#14).
+
+## Filed-away observations don't change behavior
+
+*Orphaned 2026-09-01 — no `learnings.md` entry begins with this heading, so no active rule pointed at this narrative and nothing but a grep could reach it, while every lookup paid to read it. Moved here rather than deleted. If the rule was reworded rather than dropped, realign this heading to its index entry and move the block back.*
+
+**Pattern**: The YAML observation system captured detailed findings with severity, RCA categories, and status tracking. But observations accumulated without systematically influencing future decisions. The learning loop was write-only — observations were filed but nothing read them before making new decisions.
+
+**Lesson**: Learnings must live where they're read, not where they're filed. This file exists because YAML archives don't change behavior. Keep learnings here, in natural language, where they're loaded at session start and directly influence decisions. When a learning has been incorporated into a principle or methodology update, it can be condensed here.
+
+**Principle**: Relates to Close the Learning Loop (#18).
+
+## Phase-based implementation enables independent testing and rollback
+
+*Orphaned 2026-09-01 — no `learnings.md` entry begins with this heading, so no active rule pointed at this narrative and nothing but a grep could reach it, while every lookup paid to read it. Moved here rather than deleted. If the rule was reworded rather than dropped, realign this heading to its index entry and move the block back.*
+
+**Pattern**: Large changes (17+ files) that follow phased plans (infrastructure → validation → consumption → documentation) succeed more reliably than monolithic changes. Each phase preserves system functionality and enables confidence to build incrementally.
+
+**Lesson**: For significant changes, plan phases so each one is independently testable and the system remains functional at every boundary. The opposite pattern — monolithic changes with deferred integration — creates fragility and makes rollback difficult.
+
+**Principle**: Relates to Validate Before Propagating (#15).
+
+## RETIRED — A new build plan with `scope: null` and low chunk numbers inherits another scope's shipped checkbox flips — set `scope:` from the start
+
+*Orphaned 2026-09-01 — no `learnings.md` entry begins with this heading, so no active rule pointed at this narrative and nothing but a grep could reach it, while every lookup paid to read it. Moved here rather than deleted. If the rule was reworded rather than dropped, realign this heading to its index entry and move the block back.*
+
+**RETIRED 2026-08-08 — this rule's mechanism no longer exists.** It was a format rule for the derived-views tag schema (`chunks=`, `status=`, `regen-views`), all of which went with the views. Kept as a record of the incident, not as live guidance; the sorting rule that governs retirements like this one is [[the-derived-views-retirement]].
+
+When creating a build plan, set the frontmatter `scope:` to a unique slug immediately (matching the change-log entry's `scope=` tag) — do NOT leave it `scope: null`. With `views_enabled: true`, `regen-views` derives each plan's `## Status` checkboxes from `status=shipped` change-log entries; `collect_shipped_chunks` filters by the plan's detected scope, but a `scope: null` plan falls into "legacy unfiltered" mode where EVERY shipped entry contributes its chunk IDs. So a brand-new single-chunk plan whose chunk is "Chunk 1" gets flipped to `[x]` by an unrelated shipped entry like `chunks=1,2,3 | status=shipped | scope=work-model` — a spurious "shipped" on work that's only on a feature branch. (Discovered building CRT-3X9D: my `scope: null` plan's Chunk 1 flipped from the work-model v2.0.13 entry.) The build-plan template's `scope:` comment warns about this, but the warning lives in a template comment that from-scratch plan authors don't see, so it keeps recurring. Fix-shape: every build plan declares a unique `scope:` slug up front; verify by running `regen-views` after adding the change-log entry and reading the plan back (a statusless branch entry must leave the chunk `[ ]`) — `--check` is gone, views always regenerate. Discovered CRT-3X9D (2026-06-07, branch). Relates to Coherent Artifacts (#13), [[new change-log entries on a feature branch are statusless]] (the sibling regen-views trap), and Validate Before Propagating (#15).
+
+## RETIRED — New change-log entries on a feature branch are statusless — `status=in-progress` is deprecated and trips the regen-views typo-guard
+
+*Orphaned 2026-09-01 — no `learnings.md` entry begins with this heading, so no active rule pointed at this narrative and nothing but a grep could reach it, while every lookup paid to read it. Moved here rather than deleted. If the rule was reworded rather than dropped, realign this heading to its index entry and move the block back.*
+
+**RETIRED 2026-08-08 — this rule's mechanism no longer exists.** It was a format rule for the derived-views tag schema (`chunks=`, `status=`, `regen-views`), all of which went with the views. Kept as a record of the incident, not as live guidance; the sorting rule that governs retirements like this one is [[the-derived-views-retirement]].
+
+When adding a `.prawduct/change-log.md` entry for work on a feature branch (before it reaches develop), leave the `status=` tag OFF entirely — do NOT use `status=in-progress`. `lib/views.py` recognizes only `{shipped, merged}` (`VALID_STATUS_VALUES`), and `warn_unrecognized_status_tags` flags any *present-but-unrecognized* `status=` as "Likely a typo" on every `regen-views` run; `in-progress` is a deprecated legacy value (`docs/release-process.md` "Change-log `status=` values" documents the current model). The documented lifecycle (updated by single-pr-bookkeeping, 2026-07-10): the entry stays **statusless** through the feature→develop merge — a statusless tagged entry IS the release-pending state, and the old post-merge `status=merged` stamp step was retired because it required a commit on the integration branch, forcing protected-branch consumers into bookkeeping-only PRs (`merged` in older logs is an accepted legacy synonym, treated as statusless). Flip to `status=shipped` + `release=vX.Y.Z` at the develop→main release (gitflow), or write `status=shipped` (+ `release=` when the product versions) in the closing PR when its base is the release surface (trunk). A statusless entry triggers no warning (the guard only fires when `status=` is *present*) and flips no checkbox (that needs `status=shipped` + `chunks=`), which is exactly correct for branch-state and release-pending work. The work-model entry (v2.0.13, the immediately prior session) used `status=in-progress` on its branch and it slipped through only because `regen-views` wasn't run during that window — REL-8K3M's cumulative Critic caught the same value as a WARNING. Fix-shape: branch entries carry only `type=`/`scope=`; statuses change only inside a PR (release-prep or a trunk closing PR), never as a post-merge commit. Discovered REL-8K3M (2026-06-06, develop). Relates to Coherent Artifacts (#13), Escape hatches create silent failures (#22), Honest Confidence (#5), and Living Documentation (#3).
+
+## RETIRED — A change-log `chunks=` tag must match the build plan's chunk-heading numbering *exactly* (zero-padding included) or `regen-views` flips only the matching chunks
+
+*Orphaned 2026-09-01 — no `learnings.md` entry begins with this heading, so no active rule pointed at this narrative and nothing but a grep could reach it, while every lookup paid to read it. Moved here rather than deleted. If the rule was reworded rather than dropped, realign this heading to its index entry and move the block back.*
+
+**RETIRED 2026-08-08 — this rule's mechanism no longer exists.** It was a format rule for the derived-views tag schema (`chunks=`, `status=`, `regen-views`), all of which went with the views. Kept as a record of the incident, not as live guidance; the sorting rule that governs retirements like this one is [[the-derived-views-retirement]].
+
+When tagging a multi-chunk change-log entry, the `chunks=` list must use the **same numbering format** as the plan's `## Status` headings — if the plan reads `Chunk 01 … Chunk 10`, the tag must be `chunks=01,02,…,10`, not `chunks=1,2,…,10`. `lib/views.py`'s `regenerate_status_section` matches chunk IDs as **literal strings** (`CHUNK_LINE_RE` captures `01` from `Chunk 01:`), so `chunks=1` does not match `Chunk 01` — and the failure is *partial and silent*: at v2.0.15 release-prep, `chunks=1,2,…,10` against `Chunk 01..10` headings flipped **only chunk 10** (the one token that happened to match), leaving 01–09 stuck `[ ]` with no error. The tell is `regen-views`' own output — `"1 chunk(s) flipped — shipped [10]"` when you expected 10. The work-model release (v2.0.13) dodged this by using single-digit `Chunk 1/2/3` headings to match `chunks=1,2,3` (noted inline in its prep commit), but a plan written with zero-padded headings needs zero-padded tags. Fix-shape: after `regen-views` at release, read its flipped-count and confirm it equals the chunk count; if fewer flipped, the `chunks=` numbering doesn't match the headings — align the tag to the headings (don't renumber the plan). Discovered v2.0.15 backlog-rework release (2026-06-08, release). Relates to Coherent Artifacts (#13), Validate Before Propagating (#15), and [[At release, flip statusless unreleased change-log entries]].
+
+## RETIRED — At release, flip *statusless* unreleased change-log entries to `status=shipped` too — not just `status=merged`
+
+*Orphaned 2026-09-01 — no `learnings.md` entry begins with this heading, so no active rule pointed at this narrative and nothing but a grep could reach it, while every lookup paid to read it. Moved here rather than deleted. If the rule was reworded rather than dropped, realign this heading to its index entry and move the block back.*
+
+**RETIRED 2026-08-08 — this rule's mechanism no longer exists.** It was a format rule for the derived-views tag schema (`chunks=`, `status=`, `regen-views`), all of which went with the views. Kept as a record of the incident, not as live guidance; the sorting rule that governs retirements like this one is [[the-derived-views-retirement]].
+
+`docs/release-process.md` step 3 says to flip entries "from `status=merged` to `status=shipped`," but in practice most unreleased entries reach release-prep **statusless**, not `status=merged`. The documented two-state lifecycle (add `status=merged` at the feature→develop merge — see [[new change-log entries on a feature branch are statusless]]) is manual, and the `/prawduct:pr` merge flow does NOT apply it, so a branch entry stays statusless from branch through develop into release-prep. A release author who follows step 3 literally flips only the `status=merged` entries and **silently drops every statusless one** — and because `regen-views` acts only on entries with `status ∈ {shipped, merged}`, a dropped statusless entry's build-plan `## Status` checkboxes never flip, and it never appears in `release-notes.md` or `scope_rollups`. The omission is invisible (no warning — a statusless entry trips no typo-guard), so the release ships looking complete while quietly missing scopes. At v2.0.14 (batched: hook-decomp ch.1–7 + critic-session-guard) **8 of 10** unreleased entries were statusless; only the two bugfixes carried `status=merged`. Fix-shape: at release-prep, enumerate ALL change-log entries above the prior `release=vX` boundary and flip each (statusless OR `status=merged`) to `status=shipped` + `release=vX.Y.Z`; then run `regen-views` (exit 0, not 3 — a 3 means some scope's `## Status` was suppressed) and confirm every shipped scope's plan flipped to `[x]` and appears in `scope_rollups`. Deeper fix is filed ([[backlog]] REL-2N8K): either make the feature→develop merge reliably set `status=merged`, or reword release-process.md step 3 to say "statusless or `status=merged`." Discovered v2.0.14 release (2026-06-08, release). Relates to Complete Delivery (#2), Living Documentation (#3), [[new change-log entries on a feature branch are statusless]], and Validate Before Propagating (#15).
+
+## Relocating a source file: sweep every READER of the old path, not just the data-key references
+
+*Orphaned 2026-09-01 — no `learnings.md` entry begins with this heading, so no active rule pointed at this narrative and nothing but a grep could reach it, while every lookup paid to read it. Moved here rather than deleted. If the rule was reworded rather than dropped, realign this heading to its index entry and move the block back.*
+
+**Superseded by** *A fix lands at the instance a review named; the defect lives in the class* (`learnings.md`, Family A). Retired 2026-08-18 by the `instance-vs-class` consolidation — the narrative below is kept because it is the evidence, not the rule.
+
+When you move a source file (`git mv A → B`) and repoint the engine that reads it, the migration is not done until **every reader of the old path** is swept — including test content-assertions that `read_text()` the old path and fixtures that write/read it, not only the structural/manifest references that name the path as a data key. v2.0.0 Chunk 14 relocated 6 file-sync skill sources `.claude/skills/<n>/SKILL.md → templates/skill-<n>.md`; validating the hardcoded template-*value* assertions and existence checks all passed, but **5 failures + 8 errors** surfaced on the first full-suite run from tests that read the framework skill *content* by path (and a fake-framework fixture that *wrote* the old source path). Grep the old path for `read_text` / `open` / fixture writes, not just for the path string used as a dict key. The content was byte-identical at the new home, so every repoint was a one-line path swap — but they had to be found. Relates to Validate Before Propagating (#15) and Living Documentation (#3).
+
+When moving a source file, sweep EVERY reader of the old path — grep it for `read_text` / `open` / fixture writes, not just the path string used as a data key; content-assertions and fixtures that touch the old path surface only on the full-suite run. **The sweep re-triggers at every MERGE, not just at move time:** merging an integration branch into a feature branch that renamed/packaged a module can import NEW readers of the old path that didn't exist when the move was done (here: `lib/norm_probes.py` arrived from develop importing the pre-move `from .backlog import …` API after Chunk 01 moved the parser to `.backlog.legacy`; the full-suite collection error caught it). After such a merge, grep the merged-in tree for the old import/path before trusting green.
+
+**Readers are not only code — and the non-code readers are the ones the suite cannot see (recurrence 3, 2026-07-21, escalated).** The `plugin/` relocation merge left `bin/prawduct-hook` in five skills' *instruction prose* and, worse, in their `allowed-tools:` **permission grants** — so the documented command could not run and the grant did not cover the one that would. A green full suite proved nothing, because no test executes a skill's front-matter. Same merge, same class, third occurrence. The sweep surfaces, in the order they fail silently: `allowed-tools:` grants → skill/methodology prose → durable planning artifacts (`.prawduct/artifacts/**` — release plans and build plans a future session reads as current instruction, which is DOC-2R7M) → docstrings (lowest stakes; often correct to leave). The packaging boundary test verifies file *location* and is blind to path *references*; closing that asymmetry is the structural enforcement this recurrence earns (BLD-6P8T). Relates to Validate Before Propagating (#15) and Living Documentation (#3).
+
+## A "renders-but-doesn't-resolve" leak is a SURFACE, not a line — sweep the whole renderer and assert the bad form is ABSENT
+
+*Orphaned 2026-09-01 — no `learnings.md` entry begins with this heading, so no active rule pointed at this narrative and nothing but a grep could reach it, while every lookup paid to read it. Moved here rather than deleted. If the rule was reworded rather than dropped, realign this heading to its index entry and move the block back.*
+
+**Superseded by** *Bound a class by the PROPERTY that justifies it, never by the container it sits in* (`learnings.md`, Family C). Retired 2026-08-18 by the `instance-vs-class` consolidation — the narrative below is kept because it is the evidence, not the rule.
+
+When user-facing output names something that won't resolve in the current context — a bare `/backlog` skill in a plugin repo that namespaces it `/prawduct:backlog`, a stale command form, a renamed token — fix every command-bearing line in the SAME renderer in one pass, not just the one you noticed, and add a test that asserts the WRONG form is ABSENT, not merely that the right form is present. A presence-only assertion (`assert "/prawduct:backlog" in out`) passes happily while a sibling line still emits the bare `/backlog`. In the ADV-3K7Q fix the Critic caught the same leak class in two successive rounds — first the advisory dismiss hint left bare after the migrate action was fixed, then `/backlog to triage` left bare after both advisory lines were fixed — because each patch targeted the flagged line, not `assemble_session_briefing` as a surface. Root cause upstream: v2.0.0 Chunk 13's namespace divergence was driven module-by-module (it diverged `operator_verification`) instead of by enumerating every command-bearing OUTPUT, so `backlog_probes` and three briefing status lines were silently missed and only surfaced when v2.0.2 re-enabled the advisory. Fix-shape: when you touch one occurrence of a context-dependent leak, immediately `grep` the enclosing renderer (and its frozen twin) for the whole leak class, fix all live-context occurrences together, leave the frozen-context twin (the file-sync `tools/` copy) untouched, and pin it with assert-present + assert-absent. Extends the copy-port doc-sweep rule (a copied renderer inherits the source's command vocabulary) and the deprecation name-sweep rule. Discovered 2026-06-03 (ADV-3K7Q). Relates to Coherent Artifacts (#13), Validate Before Propagating (#15), and Complete Delivery (#2).
+
+## An "assert the bad form is ABSENT" sweep is only as good as the pattern that defines the bad form — enumerate the whole FORM-FAMILY, not one spelling
+
+*Orphaned 2026-09-01 — no `learnings.md` entry begins with this heading, so no active rule pointed at this narrative and nothing but a grep could reach it, while every lookup paid to read it. Moved here rather than deleted. If the rule was reworded rather than dropped, realign this heading to its index entry and move the block back.*
+
+**Superseded by** *A clean sweep usually indicts your QUERY, not the tree* (`learnings.md`, Family B). Retired 2026-08-18 by the `instance-vs-class` consolidation — the narrative below is kept because it is the evidence, not the rule.
+
+The renderer-surface rule above says grep "the whole leak class." The trap: a frozen-vs-namespaced vocabulary has MULTIPLE spellings of the SAME leak, and a grep that encodes one spelling silently passes over the siblings. Completing ADV-3K7Q's gate-message sweep, I grepped `/(critic|pr|backlog|learnings|...)\b` and cleared every BARE slash-command form from `bin/prawduct-hook` — but that pattern can't match the **hyphenated frozen skill name** `/prawduct-advisory` (the v1 file-sync skill; the plugin form is `/prawduct:advisory`), so a `cmd_advisory` docstring kept emitting it. The Critic caught it — the exact leak class I thought I'd swept, in a spelling my pattern didn't cover. Widening to `/prawduct-[a-z]+` then surfaced a THIRD spelling, the legacy CLI tool `prawduct-setup` (correctly left as a factual historical reference, not a command-resolution leak). Fix-shape: before declaring a namespace/rename sweep done, list every SPELLING the frozen vocabulary uses for the thing — bare `/cmd`, hyphenated `/prawduct-cmd`, legacy CLI `prawduct-setup` — and run one grep per spelling (or a union pattern), because each spelling is a distinct regex the others won't match; then bake the full spelling-set into the absent-assertion's `FORBIDDEN` list, not just the spelling you happened to fix. Discovered 2026-06-03 (gate-message sweep). Extends the renderer-surface rule above; relates to Validate Before Propagating (#15) and Complete Delivery (#2).
+
+## An untested governance bound rots silently across a migration — sweep the guards (with tests), not just the prose
+
+*Orphaned 2026-09-01 — no `learnings.md` entry begins with this heading, so no active rule pointed at this narrative and nothing but a grep could reach it, while every lookup paid to read it. Moved here rather than deleted. If the rule was reworded rather than dropped, realign this heading to its index entry and move the block back.*
+
+**Superseded by** *A fix lands at the instance a review named; the defect lives in the class* (`learnings.md`, Family A). Retired 2026-08-18 by the `instance-vs-class` consolidation — the narrative below is kept because it is the evidence, not the rule.
+
+The name-sweep rule above ("Removing a mechanism requires removing its name too") covers prose; its sharper corollary is about *guards*. When a migration removes or relocates a mechanism, the code that **enforces a bound by naming the old shape** rots silently if no test pins it. Two instances surfaced together in the 2.0-rock-solid pass (2026-06-03), both rooted in M4's `agents/`→`skills/` plugin cutover: (1) the trivial/doc-only file-set gate (`_classify_trivial_change`) still bounded `agents/` (deleted) and was **missing `skills/`** — so a `Type: trivial` chunk could edit `skills/critic/SKILL.md` (the Critic's own protocol) without tripping the catastrophic-blast-radius guard; the literal survived precisely because the bound had **zero test coverage**. (2) M4 deleted `tests/test_coverage_gaps.py`, which carried the only `_SESSION_GITIGNORED_PATHS`↔`GITIGNORE_ENTRIES` parity test, while leaving comments that still cited it as live — so the two mirrored lists could drift undetected. Fix-shape: when a migration removes/relocates a mechanism, enumerate the **guards** that referenced the old shape (path bounds, allowlists, parity tests, prefix tables) and (a) repoint them to the new shape, (b) add the regression test if it was missing, or (c) **restore** a deleted guard rather than deleting its now-dangling references — deleting a reference to a guard that *should* exist hides the gap instead of closing it. A guard with no test is the thing most likely to carry a stale literal through a cutover. Discovered 2026-06-03 (waiver-pragma / 2.0-rock-solid pass; gate fixed test-first, 12 new tests; parity test restored). Relates to Tests Are Contracts (#1), Root Cause Discipline (#16), and "Removing a mechanism requires removing its name too" (the prose sibling of this rule).
+
+## A falsifying grep queries a PHRASING; only a reader queries a concept — the same stale state written in words your query does not contain is invisible, so the sites that survive a sweep are exactly the ones that paraphrase
+
+*Orphaned 2026-09-01 — no `learnings.md` entry begins with this heading, so no active rule pointed at this narrative and nothing but a grep could reach it, while every lookup paid to read it. Moved here rather than deleted. If the rule was reworded rather than dropped, realign this heading to its index entry and move the block back.*
+
+`fix/drift-burndown` Chunk 02 (#179), 2026-08-02. VRF-010 had verified three foreign-API readers
+live, and the closure had to be propagated to every record still encoding the pre-verification state.
+The falsifying query was the claim's own vocabulary — `fake-verified`, `shape-verified`, `fake only`
+— and it found the two golive-plan sites the item named plus the `project-state.yaml` claim. The
+Critic then found a **third** golive site the query could not reach: Chunk 05b's `Covers:` line,
+reading *"its foreign-API verification half **stays open**"*. Same state, same file, same release —
+zero shared vocabulary with the query.
+
+This is the limit of the standing *query the CONCEPT, not the phrasing* rule, and the limit is
+structural rather than a lapse: **a grep can only ever match a phrasing.** "Query the concept" is
+achievable only by (a) naming the *state* being asserted and then searching two or three vocabularies
+that share no word with each other — here, the claim's own words, the *consequence* words
+(`stays open`, `still open`, `unverified`), and the *entity* words (the item id, the reader names) —
+or (b) handing the concept to a reader, which is what independent review is and why it caught this.
+
+The cheap discipline: after a sweep, ask *what would this record say if it never used my search
+terms?* If you cannot answer, the sweep covered a phrasing and reported it as coverage. Relates to
+[[A completeness claim asserts the falsifying COMMAND now returns nothing]] and Independent Review (#14).
+
+## Single-repo plugin+marketplace: the marketplace entry's plugin `source` must be `"./"`, not `{source:github,ref}`
+
+*Orphaned 2026-09-01 — no `learnings.md` entry begins with this heading, so no active rule pointed at this narrative and nothing but a grep could reach it, while every lookup paid to read it. Moved here rather than deleted. If the rule was reworded rather than dropped, realign this heading to its index entry and move the block back.*
+
+When a plugin and its `.claude-plugin/marketplace.json` live in the SAME repo (prawduct's topology), the marketplace entry's plugin `source` must be the relative `"./"`, NOT a `{ "source": "github", "repo": …, "ref": … }` object. The github-source form makes Claude Code **re-clone the repo over SSH** (`git@github.com:…`) to fetch the plugin — which fails with "Permission denied (publickey)" on any machine without SSH keys (most HTTPS/`gh`-auth users), **even for a public repo**. The `"./"` form reuses the marketplace's own HTTPS checkout (one clone, no SSH) and inherits the marketplace's pinned `ref`. Don't confuse the two source surfaces: the *consumer's* `extraKnownMarketplaces` source IS `{source:github,repo,ref:main}` (that's the marketplace clone — HTTPS, fine); the *plugin* source inside `marketplace.json` is `"./"`. Empirically proven in the v2.0.0 Chunk-2 spike (throwaway public repo) and confirmed on prawduct's real marketplace install (`claude plugin install prawduct@prawduct` → v2.0.0, no SSH). Related operational gotchas from the same release: `claude plugin marketplace remove <name>` **cascades** — it disables dependent plugins and wipes their `enabledPlugins`/`extraKnownMarketplaces` from settings (don't use it as "cleanup" if you want the plugin to stay enabled); and `git merge -F -` does **not** read stdin like `git commit` (use `-m` or a real file). Full spike results in `docs/release-process.md`. Relates to Validate Before Propagating (#15) and Visible Costs (#9).

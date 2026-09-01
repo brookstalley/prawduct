@@ -425,12 +425,25 @@ def _take_active_narrative(
     no such block; ``("", <reason>)`` when it refuses, and then ``lines`` is
     untouched.
 
-    ``limit`` is the historical section's index, so a heading already archived
-    is never re-cut — otherwise a re-run would strip the note it wrote last
-    time. Matching is exact on the title, mirroring how the pairing is
-    maintained everywhere else; a heading that has drifted out of exact match
-    is left alone rather than guessed at, because cutting the wrong block
-    silently destroys an unrelated narrative.
+    ``limit`` bounds the search. Since the archive moved to its own file it is
+    ordinarily the whole detail file; it remains a parameter because a pre-split
+    corpus still being lifted must not have its archived blocks re-cut.
+
+    **Matching follows the stated pairing convention: EXACT first, then PREFIX.**
+    `learnings.md`'s header now says what the pairing actually is — a detail
+    heading is the opening clause of its index entry, a prefix of it, not a copy
+    — and this function is the machinery that depends on it. It matched exact
+    titles only, so for the 26 pairs whose detail heading is a truncation the
+    narrative was never found and never moved: the retirement wrote a historical
+    block with no prose while the prose stayed behind in the active file,
+    orphaned, pointed at by nothing. That is how orphans were manufactured, one
+    per retirement, by the very operation whose docstring calls itself a MOVE.
+
+    Exact wins outright when present, so nothing about a conforming pair
+    changes. Prefix is the fallback, and it is **fail-closed the same way**: two
+    detail headings that both prefix one index title is an ambiguity this cannot
+    resolve, and it refuses rather than cutting one, because cutting the wrong
+    block silently destroys an unrelated narrative.
 
     **A DUPLICATED title refuses, where a DRIFTED one is merely skipped.** The
     docstring above warned about drift and this function guarded it; nothing
@@ -449,15 +462,24 @@ def _take_active_narrative(
     de-duplication: an automatic fix here would delete an entry to satisfy a
     check, in the one file that says never to.
     """
-    matches = [
-        i for i in range(min(limit, len(lines)))
-        if lines[i].startswith("## ") and lines[i][3:].strip() == title
+    headings = [
+        (i, lines[i][3:].strip())
+        for i in range(min(limit, len(lines)))
+        if lines[i].startswith("## ")
     ]
+    matches = [i for i, heading in headings if heading == title]
+    if not matches:
+        # The convention: the detail heading is the opening clause of the index
+        # entry. Only non-empty headings participate — a bare `## ` prefixes
+        # every title and would match the first block in the file.
+        matches = [
+            i for i, heading in headings if heading and title.startswith(heading)
+        ]
     if len(matches) > 1:
         where = ", ".join(str(i + 1) for i in matches)
         return "", (
-            f"learnings-detail.md carries {len(matches)} active blocks titled "
-            f"{title!r} (lines {where}). Retiring it would archive one and "
+            f"learnings-detail.md carries {len(matches)} active blocks pairing "
+            f"with {title!r} (lines {where}). Retiring it would archive one and "
             "orphan the rest — they would keep their prose and lose the index "
             "entry that points at it, in a file whose invariant is that no "
             "entry is ever deleted. Retitle the duplicates or merge them by "
@@ -1465,32 +1487,116 @@ def _active_titles(content: str) -> list[str]:
     ]
 
 
+#: How a retirement note names the rule that replaced the entry, as written by
+#: :func:`_retirement_note`. Parsed back out so the pointer can be graded: this
+#: is the ONE thing a reader gets in exchange for a rule leaving the index, and
+#: an unfollowable one is worse than no retirement — the rule is gone AND its
+#: replacement is unfindable.
+_FORWARDING_POINTER_RE = re.compile(r"superseded by \*\*(.+?)\*\*", re.DOTALL)
+
+
+def _normalise(text: str) -> str:
+    """Collapse whitespace, so a heading that wrapped across lines in a note
+    still compares equal to the single-line heading it names."""
+    return " ".join(text.split())
+
+
+def forwarding_pointer_findings(
+    archive_text: str, index_titles: list[str], archive_titles: list[str]
+) -> list[dict]:
+    """Findings for retirement notes whose forwarding address resolves nowhere.
+
+    `resolve_supersession_target` fails closed at RETIREMENT time, so every
+    pointer resolved when it was written. Nothing has watched them since — and
+    the corpus moves underneath them: reword the successor's heading, or
+    consolidate it away, and the pointer silently becomes a hole. Measured on
+    this repo the first time anything looked: 4 of 17 pointed at a rule that had
+    left `learnings.md` entirely, so four retirements forwarded four readers to
+    a heading that does not exist.
+
+    Resolution follows the same PREFIX convention as everything else, and
+    accepts the archive as a target too: a chain (A superseded by B, B by C)
+    legitimately terminates in history, which is a worse read than a direct
+    pointer and a far better one than a hole.
+    """
+    index_norm = [_normalise(t) for t in index_titles]
+    archive_norm = [_normalise(t) for t in archive_titles]
+    findings: list[dict] = []
+    for raw in _FORWARDING_POINTER_RE.findall(archive_text):
+        needle = _normalise(raw)
+        if not needle:
+            continue
+        if any(t.startswith(needle) for t in index_norm):
+            continue
+        if any(t.startswith(needle) for t in archive_norm):
+            continue
+        findings.append({
+            "kind": "unresolvable-forwarding-pointer",
+            "file": HISTORY_FILENAME,
+            "title": needle[:120],
+            "detail": (
+                f"a retirement note forwards to {needle[:80]!r}..., which "
+                "resolves to no heading in learnings.md or the archive. That "
+                "pointer is the whole exchange a reader gets for the rule "
+                "leaving the index, so an unfollowable one is worse than no "
+                "retirement: the rule is gone AND its replacement is "
+                "unfindable. Restore the successor's heading, or repoint the "
+                "note at the rule that actually replaced it."
+            ),
+        })
+    return findings
+
+
+def _all_titles(content: str) -> list[str]:
+    """Every level-2 heading, in file order — no historical boundary.
+
+    For `learnings-history.md`, where the entries ARE the archive. Running
+    :func:`_active_titles` over it returns nothing, because that function stops
+    at the section header this file leads with — which silently emptied both the
+    archive count and the set a forwarding pointer's chain resolves against.
+    """
+    return [
+        line[3:].strip() for line in content.split("\n") if line.startswith("## ")
+    ]
+
+
 def check_learnings_pairing(product_dir: str | Path) -> dict:
     """Grade `learnings.md` against `learnings-detail.md`.
 
-    **What is GRADED: duplicate active headings within either file.** That is
-    the dimension with teeth. A duplicated title is what
-    :func:`_take_active_narrative` refuses on, because a retirement would
-    archive one block and orphan its twin — prose kept, index entry lost, in a
-    file whose stated invariant is that no entry is ever deleted. The check and
-    the refusal guard one defect at two times: this one before a retirement is
-    attempted, the refusal at the moment it is.
+    **THE CONVENTION, decided (#339).** A `learnings-detail.md` heading is the
+    OPENING CLAUSE of its `learnings.md` entry — a prefix of it, not a copy. The
+    pairing is one-directional: every detail heading must prefix exactly one
+    index heading, and an index rule may have no narrative at all (282 index
+    entries against 180 detail ones on this repo, which is the normal state, not
+    drift). RELATIVE ORDER IS NOT PART OF IT: `learnings.md` groups by topic and
+    the detail file accretes chronologically, so grading order would findings-ify
+    prose position, which nothing depends on.
 
-    **What is MEASURED but not graded: counterparts and relative order.** #717
-    asked for these as findings on the stated invariant that the two files
-    "mirror each other's headings in the same order". Measured against this
-    repo's own corpus before building to it, that invariant does not hold and
-    was never held: 270 active index entries against 179 active detail entries,
-    and the detail headings are a truncated PREFIX of the index heading rather
-    than an exact copy. Grading it would have emitted ~117 findings on a
-    corpus nobody considers broken — the misfiring probe `docs/norms.md` names
-    by its cost, which is that it trains its reader to ignore the one real
-    catch. So the counts ride the result for an operator who wants to work the
-    drift down, and no finding is raised on them.
+    Everything else follows from that sentence. `learnings.md`'s header states
+    it, :func:`_take_active_narrative` matches by it, and this function grades
+    conformance to it. The three used to disagree — the header asserted an exact
+    match that "does not hold and was never held", the cutter implemented exact
+    match and so silently orphaned every truncated pair it was asked to move,
+    and this check measured prefix conformance without grading it. An invariant
+    stated in one place, implemented differently in a second, and unenforced in a
+    third is three facts, none of them true.
 
-    That is a deliberate, recorded narrowing of the issue's ask, not a silent
-    drop: the pairing dimension needs a decision about what the convention
-    actually IS before anything can grade conformance to it.
+    **What is GRADED.**
+
+    * *Duplicate active headings* in either file. A duplicate is what
+      :func:`_take_active_narrative` refuses on, because a retirement would
+      archive one block and orphan its twin — prose kept, index entry lost, in a
+      file whose stated invariant is that no entry is ever deleted.
+    * *Detail headings pairing with no index entry.* An orphaned narrative: prose
+      in the file every lookup reads, that no active rule points at and no reader
+      can reach except by grep. It is also the residue of the cutter bug above,
+      which manufactured one per truncated retirement.
+    * *Unresolvable forwarding pointers* in the archive — see
+      :func:`forwarding_pointer_findings`.
+
+    **What is MEASURED, not graded: relative order.** `paired_entries_out_of_order`
+    rides the result for an operator who wants to work it down, and raises no
+    finding, because the decided convention does not include order.
 
     Reports; never repairs. Every repair here edits an authored corpus that must
     never lose an entry — de-duplicating picks a survivor, reordering rewrites
@@ -1499,17 +1605,19 @@ def check_learnings_pairing(product_dir: str | Path) -> dict:
     silent mutation this plan exists to close.
 
     Returns ``{"status", "reason", "findings", "counts", "index_path",
-    "detail_path"}``. ``status`` is ``ok`` | ``findings`` | ``unchecked`` — the
-    third when a file could not be read, reported as ungraded and never as
-    clean, because a check that could not run is otherwise indistinguishable
-    from one that ran and found nothing.
+    "detail_path", "history_path"}``. ``status`` is ``ok`` | ``findings`` |
+    ``unchecked`` — the third when a file could not be read, reported as ungraded
+    and never as clean, because a check that could not run is otherwise
+    indistinguishable from one that ran and found nothing.
     """
     prawduct_dir = Path(product_dir) / ".prawduct"
     index_path = prawduct_dir / "learnings.md"
-    detail_path = prawduct_dir / "learnings-detail.md"
+    detail_path = prawduct_dir / DETAIL_FILENAME
+    history_path = prawduct_dir / HISTORY_FILENAME
     base = {
         "index_path": str(index_path),
         "detail_path": str(detail_path),
+        "history_path": str(history_path),
         "findings": [],
         "counts": {},
     }
@@ -1529,9 +1637,21 @@ def check_learnings_pairing(product_dir: str | Path) -> dict:
     try:
         index_titles = _active_titles(index_path.read_text(encoding="utf-8"))
         detail_titles = _active_titles(detail_path.read_text(encoding="utf-8"))
+        # The archive is optional — a corpus that has never retired anything has
+        # no history file, and that is not an unreadable one.
+        archive_text = (
+            history_path.read_text(encoding="utf-8")
+            if history_path.is_file() else ""
+        )
     except (OSError, UnicodeDecodeError) as exc:
         return {**base, "status": "unchecked",
-                "reason": f"could not read the pair ({exc.__class__.__name__})"}
+                "reason": f"could not read the corpus ({exc.__class__.__name__})"}
+    # `_all_titles`, not `_active_titles`: this file IS the archive, and the
+    # section header it leads with would zero out an active-only scan.
+    archive_titles = [
+        t for t in _all_titles(archive_text)
+        if not t.startswith(_HISTORICAL_SECTION_HEADER[3:])
+    ]
 
     findings: list[dict] = []
     for label, titles in (("learnings.md", index_titles),
@@ -1555,7 +1675,7 @@ def check_learnings_pairing(product_dir: str | Path) -> dict:
                 })
 
     # Prefix, not equality: a detail heading is the opening clause of its index
-    # entry. Measured, never graded — see the docstring.
+    # entry. This is the decided convention, and it is graded — see the docstring.
     def _index_position(detail_title: str) -> "int | None":
         for pos, title in enumerate(index_titles):
             if title.startswith(detail_title):
@@ -1576,6 +1696,27 @@ def check_learnings_pairing(product_dir: str | Path) -> dict:
         1 for a, b in zip(positions, positions[1:]) if b < a
     )
 
+    unpaired = [d for d in detail_titles if not _paired(d)]
+    for title in unpaired:
+        findings.append({
+            "kind": "detail-without-index-entry",
+            "file": DETAIL_FILENAME,
+            "title": title,
+            "detail": (
+                f"learnings-detail.md carries {title!r} but no learnings.md "
+                "entry begins with it, so nothing points at this narrative and "
+                "no reader reaches it except by grep — while every lookup pays "
+                "to read it. Either the index rule was reworded (realign this "
+                "heading to it) or the rule is gone (move the block to "
+                "learnings-history.md, which never deletes anything). Do not "
+                "delete it."
+            ),
+        })
+
+    findings.extend(
+        forwarding_pointer_findings(archive_text, index_titles, archive_titles)
+    )
+
     return {
         **base,
         "status": "findings" if findings else "ok",
@@ -1583,14 +1724,28 @@ def check_learnings_pairing(product_dir: str | Path) -> dict:
         "counts": {
             "index_active": len(index_titles),
             "detail_active": len(detail_titles),
-            "detail_without_index_prefix_match": sum(
-                1 for d in detail_titles if not _paired(d)
-            ),
+            "archive_entries": len(archive_titles),
+            "detail_without_index_prefix_match": len(unpaired),
             "paired_entries_out_of_order": out_of_order,
         },
         "reason": (
-            f"{len(findings)} duplicate-heading finding(s)" if findings
-            else f"no duplicate headings ({len(index_titles)} index, "
-                 f"{len(detail_titles)} detail active entries)"
+            _findings_reason(findings) if findings
+            else f"corpus pairs cleanly ({len(index_titles)} index, "
+                 f"{len(detail_titles)} detail, {len(archive_titles)} archived)"
         ),
     }
+
+
+def _findings_reason(findings: list[dict]) -> str:
+    """One line naming what was found, by kind.
+
+    A bare count told an operator how many lines to read and nothing about what
+    they were about to read — and the check now raises three different kinds, so
+    "12 finding(s)" would be the same sentence for a duplicate heading, an
+    orphaned narrative and a broken forwarding pointer, which need three
+    different responses.
+    """
+    by_kind: dict[str, int] = {}
+    for finding in findings:
+        by_kind[finding["kind"]] = by_kind.get(finding["kind"], 0) + 1
+    return ", ".join(f"{n} {kind}" for kind, n in sorted(by_kind.items()))

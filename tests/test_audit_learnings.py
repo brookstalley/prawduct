@@ -2507,3 +2507,105 @@ class TestTheArchiveHasItsOwnFile:
         assert _mod._HISTORICAL_SECTION_HEADER not in detail.read_text(), (
             "an archive has re-formed inside learnings-detail.md"
         )
+
+
+class TestRetirementFindsAPrefixPairedNarrative:
+    """The machinery half of the convention, and the orphan factory it was.
+
+    `_take_active_narrative` matched EXACT titles while the corpus paired by
+    prefix, so retiring a truncated pair wrote a historical block with no prose
+    and left the narrative behind in the active file — orphaned, pointed at by
+    nothing. One orphan manufactured per retirement, by the operation whose own
+    docstring calls itself a MOVE.
+    """
+
+    def test_a_truncated_detail_heading_has_its_narrative_moved(self, tmp_path):
+        _seed_learnings(tmp_path, (
+            "# Learnings\n\n"
+            "## Old rule — with a sharpened tail\n"
+            "<!-- prawduct-learning: superseded-by=New rule -->\n\nbody\n\n"
+            "## New rule\n\nb\n"
+        ))
+        (tmp_path / ".prawduct" / "learnings-detail.md").write_text(
+            "# D\n\n## Old rule\n\nThe original narrative.\n"
+        )
+        audit_learnings(tmp_path, apply=True, today=date(2026, 9, 1))
+
+        detail = (tmp_path / ".prawduct" / "learnings-detail.md").read_text()
+        assert "The original narrative." not in detail, (
+            "the prefix-paired narrative was left behind — an orphan created by "
+            "the retirement that was supposed to move it"
+        )
+        assert "The original narrative." in _archive_text(tmp_path)
+
+    def test_an_exact_match_still_wins_over_a_prefix_one(self, tmp_path):
+        """Exact first, so nothing about a conforming pair changes — and a
+        shorter heading that merely prefixes the title must not outrank the
+        block that actually carries the title."""
+        _seed_learnings(tmp_path, (
+            "# Learnings\n\n"
+            "## Old rule extended\n"
+            "<!-- prawduct-learning: superseded-by=New rule -->\n\nbody\n\n"
+            "## New rule\n\nb\n"
+        ))
+        (tmp_path / ".prawduct" / "learnings-detail.md").write_text(
+            "# D\n\n## Old rule\n\nThe PREFIX block.\n\n"
+            "## Old rule extended\n\nThe EXACT block.\n"
+        )
+        audit_learnings(tmp_path, apply=True, today=date(2026, 9, 1))
+
+        detail = (tmp_path / ".prawduct" / "learnings-detail.md").read_text()
+        assert "The PREFIX block." in detail, "the wrong block was cut"
+        assert "The EXACT block." not in detail
+        assert "The EXACT block." in _archive_text(tmp_path)
+
+    def test_two_prefix_candidates_refuse_rather_than_choose(self, tmp_path):
+        """Fail-closed, the same way a duplicate does. Which of two blocks that
+        both prefix one title is the real one is not something this can know,
+        and cutting the wrong one destroys an unrelated narrative."""
+        learnings = _seed_learnings(tmp_path, (
+            "# Learnings\n\n"
+            "## Old rule extended further\n"
+            "<!-- prawduct-learning: superseded-by=New rule -->\n\nbody\n\n"
+            "## New rule\n\nb\n"
+        ))
+        before = learnings.read_text()
+        (tmp_path / ".prawduct" / "learnings-detail.md").write_text(
+            "# D\n\n## Old rule\n\nA.\n\n## Old rule extended\n\nB.\n"
+        )
+        result = audit_learnings(tmp_path, apply=True, today=date(2026, 9, 1))
+
+        assert result["applied"] is False
+        assert learnings.read_text() == before
+        assert any("2 active blocks pairing" in e["error"] for e in result["errors"])
+
+    def test_a_bare_heading_never_prefixes_everything(self, tmp_path):
+        """An empty `## ` is a prefix of every title in the file. Left in the
+        candidate set it matches the first block and cuts it."""
+        _seed_learnings(tmp_path, (
+            "# Learnings\n\n"
+            "## Old rule\n"
+            "<!-- prawduct-learning: superseded-by=New rule -->\n\nbody\n\n"
+            "## New rule\n\nb\n"
+        ))
+        (tmp_path / ".prawduct" / "learnings-detail.md").write_text(
+            "# D\n\n## \n\nStray empty heading.\n\n## Old rule\n\nThe narrative.\n"
+        )
+        result = audit_learnings(tmp_path, apply=True, today=date(2026, 9, 1))
+        assert result["errors"] == []
+        detail = (tmp_path / ".prawduct" / "learnings-detail.md").read_text()
+        assert "Stray empty heading." in detail
+        assert "The narrative." not in detail
+
+
+def test_this_repos_header_states_the_decided_convention():
+    """The header is the third surface, and it was the one asserting an
+    invariant that never held. A convention decided in code and left unstated in
+    the file its authors read is one nobody will follow."""
+    header = (
+        Path(__file__).resolve().parent.parent / ".prawduct" / "learnings.md"
+    ).read_text(encoding="utf-8").split("---", 1)[0]
+    assert "prefix" in header.lower()
+    assert "not a copy" in header.lower() or "never required to be a copy" in header.lower()
+    assert "order is not part of it" in header.lower()
+    assert "learnings-history.md" in header
