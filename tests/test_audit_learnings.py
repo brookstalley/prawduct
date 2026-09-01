@@ -2061,3 +2061,113 @@ class TestUnknownMetadataKeysAreReported:
                 f"{entry.title!r} carries {sorted(unknown)}, which the audit "
                 "does not read — fix it here, not by widening the roster."
             )
+
+
+class TestRetirementReadinessHasOneHome:
+    """Readiness is decided once at the producer; consumers render it (#349).
+
+    The predicate was re-derived in three places — the audit's own apply-site
+    branch, the CLI printer, and doctor's prose — and the two routes do not
+    share a field to read: a sentinel is ready when `passed is True`, a
+    supersession when `resolved_to` is not None. A consumer that picks one field
+    and branches reports every resolvable supersession as blocked, because its
+    `passed` is None by construction. The copy furthest from the producer
+    (prose in a skill file) cannot be tested at all.
+    """
+
+    def test_every_retirement_record_carries_the_three_fields(self, tmp_path):
+        _seed_learnings(tmp_path, (
+            "# Learnings\n\n"
+            "## Broad rule\nBody.\n\n"
+            "## Superseded one\n"
+            "<!-- prawduct-learning: superseded-by=Broad rule -->\n"
+            "Body.\n\n"
+            "## Sentineled one\n"
+            "<!-- prawduct-learning: sentinel=tests/test_x.py::test_y -->\n"
+            "Body.\n"
+        ))
+        result = _mod.audit_learnings(tmp_path, run_sentinels=False)
+        assert len(result["retirements"]) == 2
+        for record in result["retirements"]:
+            assert {"ready", "readiness", "why"} <= set(record)
+            assert record["readiness"] in _mod.RETIREMENT_READINESS_STATES
+
+    def test_ready_and_readiness_never_disagree(self):
+        """`ready` is exactly `readiness == "ready"` — pinned, not conventional.
+
+        Two fields expressing one decision is how they drift; this is the pin
+        that makes the redundancy safe rather than a second source of truth.
+        """
+        cases = [
+            {"reason": "superseded-by", "resolved_to": "X", "superseded_by": "X"},
+            {"reason": "superseded-by", "resolved_to": None, "superseded_by": "X"},
+            {"reason": "sentinel", "sentinel": "t.py", "passed": True},
+            {"reason": "sentinel", "sentinel": "t.py", "passed": False},
+            {"reason": "sentinel", "sentinel": "t.py", "passed": None},
+            {"reason": "some-future-route"},
+        ]
+        for record in cases:
+            out = _mod.retirement_readiness(record)
+            assert out["ready"] is (out["readiness"] == "ready"), record
+
+    def test_a_resolvable_supersession_is_ready_though_passed_is_none(self):
+        """The exact misread a per-consumer re-derivation makes."""
+        record = {
+            "reason": "superseded-by", "passed": None,
+            "superseded_by": "Broad", "resolved_to": "Broad rule",
+        }
+        out = _mod.retirement_readiness(record)
+        assert out["ready"] is True
+        assert out["readiness"] == "ready"
+        assert out["why"] == "superseded-by=Broad rule"
+
+    def test_an_ungraded_sentinel_is_ungraded_not_blocked(self):
+        out = _mod.retirement_readiness(
+            {"reason": "sentinel", "sentinel": "t.py", "passed": None}
+        )
+        assert out["readiness"] == "ungraded"
+        assert out["ready"] is False
+        assert out["why"] == "sentinel=t.py"
+
+    def test_an_unrecognised_route_is_ungraded_and_says_so(self):
+        """No catch-all `else` reading the sentinel field.
+
+        The printer's `else` arm meant "everything that is not superseded-by",
+        so a third route would have been graded by reading a `sentinel` field it
+        does not set — rendering a brand-new route as a failing test. Ungraded
+        is the honest reading, and it surfaces the gap instead of hiding it.
+        """
+        out = _mod.retirement_readiness({"reason": "licence-expired"})
+        assert out["readiness"] == "ungraded"
+        assert out["ready"] is False
+        assert "licence-expired" in out["why"]
+        assert "sentinel=" not in out["why"]
+
+    def test_a_blocked_supersession_names_the_unresolved_prefix(self):
+        """`why` must still name something when the pointer did not resolve —
+        a blocked candidate with no target named is one an operator cannot fix.
+        """
+        out = _mod.retirement_readiness({
+            "reason": "superseded-by", "superseded_by": "Nonexistent prefix",
+            "resolved_to": None,
+        })
+        assert out["readiness"] == "blocked"
+        assert "Nonexistent prefix" in out["why"]
+
+    def test_the_audit_apply_branch_reads_the_minted_field(self, tmp_path):
+        """The producer's own branch renders the decision too.
+
+        A field only *consumers* read is decorative — the same shape the
+        unknown-key roster had one layer up. This pins that an applied run
+        retires exactly the records the readiness helper called ready.
+        """
+        _seed_learnings(tmp_path, (
+            "# Learnings\n\n"
+            "## Broad rule\nBody.\n\n"
+            "## Superseded one\n"
+            "<!-- prawduct-learning: superseded-by=Broad rule -->\n"
+            "Body.\n"
+        ))
+        result = _mod.audit_learnings(tmp_path, apply=True, run_sentinels=False)
+        for record in result["retirements"]:
+            assert record["applied"] is record["ready"]

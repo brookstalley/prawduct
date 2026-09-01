@@ -264,6 +264,77 @@ def _retirement_note(
     )
 
 
+#: The readiness vocabulary, in the order a renderer should prefer it. ``ready``
+#: and ``blocked`` are verdicts about the rule; ``ungraded`` is the absence of a
+#: verdict, and collapsing it into ``blocked`` is the false accusation this
+#: subsystem keeps having to un-make — it tells an operator a test is failing
+#: when prawduct never ran one.
+RETIREMENT_READINESS_STATES = ("ready", "blocked", "ungraded")
+
+
+def retirement_readiness(record: dict) -> dict:
+    """The ONE place that decides whether a retirement candidate is retirable.
+
+    Returns the three additive fields every ``retirements`` record carries —
+    ``ready`` (the decision), ``readiness`` (its label, one of
+    :data:`RETIREMENT_READINESS_STATES`), and ``why`` (the route-appropriate
+    one-line reason a renderer prints). ``ready`` is exactly
+    ``readiness == "ready"``, pinned by test rather than left to agree by
+    convention.
+
+    **Why this is a function and not three lines at each call site.** The
+    predicate was re-derived in three places — here, the CLI printer, and
+    doctor's prose — and the routes do not share a field: a sentinel candidate
+    is ready when ``passed is True``, a supersession when ``resolved_to`` is not
+    ``None``. A consumer reading ``passed`` for both reports every resolvable
+    supersession as blocked, because its ``passed`` is ``None`` by construction.
+    Each re-derivation is a chance to get that backwards, and the copy furthest
+    from the producer (prose in a skill file) cannot be tested at all.
+
+    **Dispatch is exhaustive on ``reason``, with no catch-all ``else``.** The
+    printer's ``else`` arm meant "everything that is not ``superseded-by``",
+    so a third retirement route would have been graded by reading its
+    ``sentinel`` field — ``None`` — and rendered ``blocked``: a brand-new route
+    reported as a failing test. An unrecognised ``reason`` is ``ungraded`` and
+    says so by name, which is the honest reading and the one that surfaces the
+    gap instead of hiding it.
+
+    Consumers RENDER this. A consumer that recomputes it is the defect.
+    """
+    reason = record.get("reason")
+    if reason == "superseded-by":
+        resolved = record.get("resolved_to")
+        target = resolved or record.get("superseded_by")
+        return {
+            "ready": resolved is not None,
+            "readiness": "ready" if resolved is not None else "blocked",
+            "why": f"superseded-by={target}",
+        }
+    if reason == "sentinel":
+        passed = record.get("passed")
+        # Three-valued, and `bool()` would flatten it. `None` is ungraded, not
+        # blocked: no command declared, an unrunnable one, or the
+        # `run_sentinels=False` seam.
+        if passed is None:
+            readiness = "ungraded"
+        else:
+            readiness = "ready" if passed is True else "blocked"
+        return {
+            "ready": passed is True,
+            "readiness": readiness,
+            "why": f"sentinel={record.get('sentinel')}",
+        }
+    return {
+        "ready": False,
+        "readiness": "ungraded",
+        "why": (
+            f"unrecognised retirement reason {reason!r} — prawduct has no rule "
+            "for grading this route, so it reports no verdict rather than "
+            "guessing one"
+        ),
+    }
+
+
 def _historical_block(
     entry: LearningEntry, note: str, narrative: str = ""
 ) -> str:
@@ -594,6 +665,16 @@ def audit_learnings(
         route and ``None``/``""`` on the other, and
         ``superseded_by``/``resolved_to`` the reverse.
 
+        Every record also carries the retirement's **readiness, decided once**
+        by :func:`retirement_readiness` and never re-derived by a consumer:
+        ``ready`` (bool), ``readiness`` (``ready`` | ``blocked`` | ``ungraded``)
+        and ``why`` (the route-appropriate one-line reason). Readiness is asked
+        of a different field per route — ``passed`` for a sentinel,
+        ``resolved_to`` for a supersession — so a consumer that picks one field
+        and branches reports every resolvable supersession as blocked. Render
+        these; do not recompute them. Additive under `api-contract.md`'s norm:
+        three new keys, no key repurposed.
+
         ``passed`` is three-valued on the sentinel route and a reader must treat
         it that way: ``True`` enforced, ``False`` genuinely failing, ``None``
         **ungraded** — no command declared, or one that could not run.
@@ -760,7 +841,7 @@ def audit_learnings(
             })
             retained_entries.append(entry)
         elif superseded_by is not None:
-            resolved, why = resolve_supersession_target(
+            resolved, resolve_error = resolve_supersession_target(
                 superseded_by, all_titles, entry.title
             )
             record = {
@@ -777,8 +858,9 @@ def audit_learnings(
                 "resolved_to": resolved,
                 "applied": False,
             }
-            if resolved is None:
-                errors.append({"title": entry.title, "error": why})
+            record.update(retirement_readiness(record))
+            if not record["ready"]:
+                errors.append({"title": entry.title, "error": resolve_error})
                 retained_entries.append(entry)
             elif apply:
                 record["applied"] = True
@@ -812,7 +894,8 @@ def audit_learnings(
                 "unevaluated_reason": sentinel_unevaluated,
                 "applied": False,
             }
-            if sentinel_passed is False:
+            retirement_record.update(retirement_readiness(retirement_record))
+            if retirement_record["readiness"] == "blocked":
                 # Failing sentinel: surfaced as both a retirement attempt
                 # (record on disk) AND an error (so users see "fix me"
                 # without needing to inspect every retirement entry).
@@ -825,7 +908,7 @@ def audit_learnings(
                 })
                 retirements.append(retirement_record)
                 retained_entries.append(entry)
-            elif sentinel_passed is True:
+            elif retirement_record["ready"]:
                 if apply:
                     retirement_record["applied"] = True
                     retired_with_notes.append((entry, _retirement_note(
