@@ -2395,6 +2395,95 @@ class TestTreeValidatedFreshness:
             "backdated --from-counts is stale (timestamp-only; no tree clause)"
 
 
+class TestUnanchoredFreshnessFailsClosed:
+    """STH-6D4Q — with no `.session-start`, the tree clause is the ONLY clause.
+
+    The no-marker path used to return `current` unconditionally: a schema
+    check, `failed == 0`, and the presence of a timestamp bought arbitrarily
+    old evidence a pass, with no tree check anywhere on that branch. It was
+    survivable only while the old boundary reset accidentally re-anchored an
+    unanchored worktree through `resume`; that repair is gone by design, so
+    the path is reachable indefinitely. An absent anchor now degrades the way
+    the plan committed to — closed — and the tree clause supplies the answer
+    a missing clock cannot.
+    """
+
+    def _seed(self, tmp_path, name: str, *, from_counts: bool = False) -> Path:
+        """A repo with recorded, backdated, passing evidence and NO marker."""
+        repo = tmp_path / name
+        repo.mkdir()
+        (repo / ".prawduct").mkdir()
+        (repo / "src").mkdir()
+        (repo / "src" / "app.py").write_text("def add(a, b):\n    return a + b\n")
+        (repo / "test_app.py").write_text("def test_ok():\n    assert True\n")
+        _git(repo, "init", "-b", "main")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "c1")
+        # The marker has to exist for `record` to run in a governed shape; it
+        # is removed below so the assertions run on the unanchored path.
+        _make_session_start(repo / ".prawduct", offset_seconds=-60)
+        if from_counts:
+            assert _run_in(repo, "test-evidence", "record", "--from-counts",
+                           "passed=1", "failed=0").returncode == 0
+        else:
+            assert _run_in(repo, "test-evidence", "record").returncode == 0
+        ev_path = repo / ".prawduct" / ".test-evidence.json"
+        ev = json.loads(ev_path.read_text())
+        ev["timestamp"] = "2000-01-01T00:00:00Z"
+        ev_path.write_text(json.dumps(ev))
+        (repo / ".prawduct" / ".session-start").unlink()
+        return repo
+
+    def test_untied_evidence_with_no_marker_reads_stale(self, tmp_path):
+        """The regression: `--from-counts` carries no `evidence_tree`, so with
+        no marker there is nothing left that can vouch for it. Old code said
+        `current` on a record timestamped in the year 2000."""
+        repo = self._seed(tmp_path, "untied", from_counts=True)
+        assert "evidence_tree" not in json.loads(
+            (repo / ".prawduct" / ".test-evidence.json").read_text()
+        )
+        result = _run_in(repo, "test-status")
+        assert result.returncode == 1, \
+            "no marker and no tree — nothing can vouch, must read stale"
+        assert "no session marker" in (result.stdout + result.stderr)
+
+    def test_unchanged_tree_with_no_marker_still_reads_current(self, tmp_path):
+        """The clause is hoisted, not tightened into a blanket refusal: an
+        unanchored worktree whose judgeable tree is byte-identical to the
+        recorded run's is still current. This is what keeps the change from
+        forcing a re-run on every ungoverned checkout."""
+        repo = self._seed(tmp_path, "unchanged")
+        assert _run_in(repo, "test-status").returncode == 0, \
+            "no marker but an unchanged judgeable tree — the tree vouches"
+
+    def test_judgeable_change_with_no_marker_reads_stale(self, tmp_path):
+        repo = self._seed(tmp_path, "changed")
+        (repo / "src" / "app.py").write_text("def add(a, b):\n    return a + b + 1\n")
+        assert _run_in(repo, "test-status").returncode == 1, \
+            "no marker and a judgeable edit — must read stale"
+
+    def test_non_judgeable_change_with_no_marker_stays_current(self, tmp_path):
+        """The unanchored path uses the SAME judgeability predicate as the
+        anchored one — a doc edit is not a reason to re-run either way."""
+        repo = self._seed(tmp_path, "docedit")
+        (repo / "README.md").write_text("# notes\nchanged\n")
+        assert _run_in(repo, "test-status").returncode == 0, \
+            "a non-protected .md is not judgeable on the unanchored path either"
+
+    def test_a_marker_still_makes_session_freshness_sufficient(self, tmp_path):
+        """Clause 1 is untouched: with a marker, session-fresh evidence passes
+        without the tree ever being consulted."""
+        repo = self._seed(tmp_path, "anchored")
+        _make_session_start(repo / ".prawduct", offset_seconds=-60)
+        ev_path = repo / ".prawduct" / ".test-evidence.json"
+        ev = json.loads(ev_path.read_text())
+        ev["timestamp"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        ev["evidence_tree"] = "0" * 40  # a tree that cannot possibly validate
+        ev_path.write_text(json.dumps(ev))
+        assert _run_in(repo, "test-status").returncode == 0, \
+            "session-fresh evidence passes on clause 1 alone"
+
+
 class TestTreeValidHelperFailsToStale:
     """The tree-validity clause must FAIL TOWARD STALE on any git error: a
     capture or diff failure can only leave evidence stale, never flip it fresh

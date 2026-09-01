@@ -178,8 +178,20 @@ def tests_are_current(project_dir: Path) -> tuple[bool, str]:
        mechanisms dead. Records without ``evidence_tree`` (pre-clause, or a
        ``--from-counts`` on-ramp) skip clause 2 and behave exactly as before.
 
-    Falls back to timestamp-only comparison when no session-start marker
-    exists (e.g., running outside a governed session).
+    **With no session-start marker, clause 2 is the only clause** (STH-6D4Q).
+    An unanchored working copy has no session clock to compare against, so
+    clause 1 cannot be asked — and the answer used to be an unconditional
+    ``True`` on nothing but a schema check, a zero failure count, and the
+    presence of a timestamp. That fail-open was survivable only while the old
+    boundary reset accidentally re-anchored a worktree on its way through
+    ``resume``; that repair is gone by design, so the path is now reachable
+    indefinitely. Clause 2 answers "has anything judgeable changed since the
+    recorded run" without needing a clock, which is exactly the question the
+    missing marker made unaskable. Evidence with no ``evidence_tree`` (a
+    ``--from-counts`` on-ramp, or a pre-clause record) therefore reads STALE
+    on the unanchored path — nothing about it can be verified, and the
+    documented commitment for an absent anchor is that freshness gates fail
+    closed. The remedy is one command: re-record the run.
 
     Returns (is_current, reason). reason is a short human-readable string suitable
     for printing back to the agent.
@@ -195,24 +207,28 @@ def tests_are_current(project_dir: Path) -> tuple[bool, str]:
         return False, "no timestamp in evidence"
 
     session_start = _read_session_start(prawduct_dir)
-    if session_start:
-        if evidence_ts >= session_start:
-            return True, f"evidence from this session ({evidence_ts})"
-        # Timestamp-stale — but the additive tree-validity clause can still
-        # vouch when nothing judgeable has changed since the recorded run. A
-        # relax-only disjunction: it can only turn this stale into current,
-        # never the reverse, so it cannot manufacture a false stale.
-        recorded_tree = evidence.get("evidence_tree")
-        if isinstance(recorded_tree, str) and recorded_tree:
-            tree_valid, tree_reason = _test_evidence_tree_valid(project_dir, recorded_tree)
-            if tree_valid:
+    if session_start and evidence_ts >= session_start:
+        return True, f"evidence from this session ({evidence_ts})"
+
+    # Clause 2, asked on BOTH paths. When a marker exists this is the
+    # relax-only disjunct: timestamp-stale evidence can still be vouched for
+    # by an unchanged judgeable tree. When no marker exists it is the ONLY
+    # thing that can vouch — see the no-marker return below.
+    recorded_tree = evidence.get("evidence_tree")
+    if isinstance(recorded_tree, str) and recorded_tree:
+        tree_valid, tree_reason = _test_evidence_tree_valid(project_dir, recorded_tree)
+        if tree_valid:
+            if session_start:
                 return True, f"tree-valid despite predating session: {tree_reason}"
+            return True, f"tree-valid, no session marker to date it against: {tree_reason}"
+
+    if session_start:
         return False, f"evidence predates session ({evidence_ts} < {session_start})"
 
-    # No session-start marker — fall back to recency check.
-    # Evidence exists with passing tests and a timestamp, but we can't verify
-    # it's from this session. Accept it with a note.
-    return True, f"evidence has passing tests ({evidence_ts}, no session marker to verify)"
+    return False, (
+        f"no session marker to date the evidence against ({evidence_ts}), and "
+        "it does not vouch for the current tree — run the suite and record it"
+    )
 
 
 def _test_evidence_tree_valid(
