@@ -34,6 +34,7 @@ import sys
 from pathlib import Path
 
 from . import change_log as change_log_mod
+from . import gates
 from . import plan_index
 
 _BACKLOG_REL_PATH = ".prawduct/backlog.md"
@@ -55,6 +56,16 @@ _ITEM_ID_RE = re.compile(r"\b([A-Z]{2,4}-[A-Z0-9]{4})\b")
 #: :func:`_open_digest_section` for why a stricter match would let an
 #: unparseable heading fail to delimit.
 _DIGEST_SECTION_RE = re.compile(r"^##\s+\S")
+
+#: The seeded prerelease headline. Every cut ends by opening a fresh
+#: ``## vX.Y.Z-dev`` section carrying a one-line seed, and the NEXT cut is meant
+#: to replace that seed with the release's real headline. It reached consumers
+#: once already: the v3.4.0 section still led with the seed after eight weeks of
+#: notes had accumulated underneath it, because a section full of good notes
+#: reads as a finished section. Matched on the opening words rather than the
+#: whole sentence, so rewording the seed's trailing clause cannot silently
+#: retire the check.
+_SEEDED_HEADLINE = "prerelease under test"
 
 
 def scopes_tagged_for(entries: list, version: str) -> set[str]:
@@ -496,9 +507,72 @@ def _digest_mentions(section_text: str, scope: str) -> bool:
     )
 
 
-def _digest_coverage_warnings(
-    project_dir: Path, pending: list[str]
-) -> tuple[list[str], str | None, str | None]:
+def _section_headline(body: list[str]) -> str | None:
+    """The line the version-delta banner shows for this section, or ``None``.
+
+    The banner's rule restated: the first non-empty line that is not itself a
+    markdown heading, and a heading reached first ends the search rather than
+    being read as the headline. It is restated rather than imported because the
+    banner is a hook and ``lib/`` never imports from a hook — so the coupling is
+    held by a test fixing the property that matters (a section the banner
+    renders blank is a section this check warns about) rather than by a shared
+    body, which is the honest thing to pin: what the operator needs is that the
+    two agree about *emptiness*, not that they strip emphasis alike.
+
+    Returned verbatim, markers and all, because the emission prints it back and
+    what the operator needs to see is the line as they wrote it.
+    """
+    for line in body:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        return None if stripped.startswith("#") else stripped
+    return None
+
+
+def _headline_advisory(heading: str, body: list[str]) -> tuple[list[str], str]:
+    """Whether this release's section carries a consumer-facing headline.
+
+    Two failures, one message each, and both have shipped. v2.1.6 was tagged
+    and version-bumped with no section at all — which left `develop` red on
+    ``test_changelog_has_current_version_entry`` from the release onward, i.e.
+    the release shipped on a red suite and the redness was the only complaint.
+    v3.4.0 had its section and still led with the seed the previous cut wrote,
+    so every upgrading repo was shown "Prerelease under test" as the news.
+
+    **Advisory, and the reason is the moment rather than the stakes.** Phase 0
+    runs *before* the step that writes the headline, so on a correct release
+    this fires exactly once and is then fixed — a refusal here would block a
+    release for a condition the release is on its way to fixing. What the
+    warning buys is that the operator meets the reminder while reading the
+    gate's output, instead of meeting it eight weeks later in a consumer's
+    session banner.
+
+    Returns ``(warnings, emission)``. The emission prints the headline itself
+    rather than a verdict about it: the whole failure mode is a line nobody
+    looked at, so the control's yield is putting that line in front of somebody.
+    """
+    headline = _section_headline(body)
+    if headline is None:
+        return [
+            f"the open {_DIGEST_REL_PATH} section ({heading}) has no headline — "
+            f"its first non-empty line is what the version-delta banner shows "
+            f"every repo crossing this version, so consumers would meet this "
+            f"release with nothing said about it."
+        ], f"digest headline: none in {heading} of {_DIGEST_REL_PATH}"
+    if _SEEDED_HEADLINE in headline.lower():
+        return [
+            f"the open {_DIGEST_REL_PATH} section ({heading}) still leads with "
+            f"the seeded placeholder ({headline!r}) — the banner shows that line "
+            f"verbatim to every upgrading repo, so replace it with this "
+            f"release's headline before the cut."
+        ], f"digest headline: {headline!r} (still the seed) in {heading}"
+    return [], f"digest headline: {headline!r} in {heading}"
+
+
+def _coverage_advisory(
+    heading: str, body: list[str], pending: list[str]
+) -> tuple[list[str], str]:
     """Release-pending scopes the open digest section does not mention.
 
     A scope can reach the tag with zero consumer-facing notes and nothing asks.
@@ -515,33 +589,12 @@ def _digest_coverage_warnings(
     just may ship under-described. A known false positive is live in this repo
     today, which is the argument settled rather than a defect outstanding.
 
-    Returns ``(warnings, note, summary)`` — all three ``None``-or-empty in a repo
-    that publishes no digest, where this check has no subject at all. The note is
-    non-``None`` exactly when a digest that should exist could not be read or
-    held no section, and it names the
-    consequence rather than only the cause: **advice fails soft is not advice
-    fails silent**, and a check that skips itself quietly is indistinguishable
-    from one that passed.
-
-    The summary is the control's yield, emitted whether or not it found
+    The emission is the control's yield, printed whether or not it found
     anything, because a control heard from only when it fires cannot be retired
     on evidence — the only honest argument for dropping this later is a run of
     it finding nothing, and that argument needs the denominator it was measured
     against.
     """
-    if not _ships_the_plugin_tree(project_dir):
-        return [], None, None
-    lines, reason = _read_digest(project_dir)
-    section = None if reason is not None else _open_digest_section(lines)
-    if section is None:
-        reason = reason or f"{_DIGEST_REL_PATH} has no `## ` section to read"
-        return [], (
-            f"digest coverage not checked: {reason}. No release-pending scope "
-            f"was tested for a consumer-facing note, so one shipping with "
-            f"nothing written about it would not be reported here."
-        ), None
-
-    heading, body = section
     section_text = "\n".join(body).lower()
     warnings = [
         f"could not find release-pending scope={scope!r} in the open "
@@ -551,11 +604,83 @@ def _digest_coverage_warnings(
         for scope in pending
         if not _digest_mentions(section_text, scope)
     ]
-    summary = (
+    emission = (
         f"digest coverage: {len(pending) - len(warnings)} of {len(pending)} "
         f"release-pending scope(s) named in {heading} of {_DIGEST_REL_PATH}"
     )
-    return warnings, None, summary
+    return warnings, emission
+
+
+def _digest_advisories(
+    project_dir: Path, pending: list[str]
+) -> tuple[list[str], str | None, list[str]]:
+    """Everything the consumer digest can be asked at Phase 0, from one read.
+
+    Two questions with one subject: does this release's section carry a
+    headline, and does it name each scope shipping in the release. They share a
+    function because they share the section — reading the file twice would let
+    the two answer about different states of it, and would double the degraded
+    note into two sentences saying the same thing happened.
+
+    Returns ``(warnings, note, emissions)`` — all three empty-or-``None`` in a
+    repo that publishes no digest, where neither question has a subject at all.
+    The note is non-``None`` exactly when a digest that should exist could not
+    be read or held no section, and it names the consequence rather than only
+    the cause: **advice fails soft is not advice fails silent**, and a check
+    that skips itself quietly is indistinguishable from one that passed.
+    """
+    if not _ships_the_plugin_tree(project_dir):
+        return [], None, []
+    lines, reason = _read_digest(project_dir)
+    section = None if reason is not None else _open_digest_section(lines)
+    if section is None:
+        reason = reason or f"{_DIGEST_REL_PATH} has no `## ` section to read"
+        return [], (
+            f"digest coverage not checked: {reason}. No release-pending scope "
+            f"was tested for a consumer-facing note, so one shipping with "
+            f"nothing written about it would not be reported here — and the "
+            f"headline every upgrading repo is shown went unread with it."
+        ), []
+
+    heading, body = section
+    headline_warnings, headline_emission = _headline_advisory(heading, body)
+    coverage_warnings, coverage_emission = _coverage_advisory(heading, body, pending)
+    return (
+        headline_warnings + coverage_warnings,
+        None,
+        [headline_emission, coverage_emission],
+    )
+
+
+def _suite_verdict(project_dir: Path) -> tuple[bool, str]:
+    """Whether the saved suite run can vouch for this release, and why.
+
+    **The one thing on this gate that refuses over the code rather than over
+    the bookkeeping.** v2.1.6 shipped on a red suite; nothing in the release
+    path read a test result, so the redness was visible only to whoever
+    happened to run the suite. Missing evidence, a run reporting failures, a run
+    that predates the session and no longer matches the tree, and a run that
+    reported itself ``degraded`` are one state as far as a release is concerned:
+    nothing has said this code passes. So it fails closed, like every other
+    verdict here — the publish it prevents is unrecallable and the remedy is one
+    suite run.
+
+    **What it does NOT claim, and the runbook says so too.** The predicate is
+    the framework's own :func:`gates.tests_are_current`, whose first disjunct is
+    session-freshness — it asks *when* a run happened, not which tree it met, so
+    a run from earlier in this session vouches for edits made after it. That is
+    the right bound here and not a weakness worked around: Phase 0 runs before
+    Phase 1 rewrites four files, so **no** check at this point can vouch for the
+    tree the tag will carry. The claim available at this moment is "the suite is
+    recorded green and current", and that is the claim made. A refusal at the
+    tagging moment would be a different control at a different phase.
+
+    Reusing that predicate is also what keeps one answer to one question: the
+    builder's ``test-status``, the Stop hook and this gate all read the same
+    record through the same reader, so a repo cannot be green for one and stale
+    for another.
+    """
+    return gates.tests_are_current(project_dir)
 
 
 def _tagged_count(entries: list) -> int:
@@ -702,15 +827,41 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
     # so a repo whose release plan does not exist yet — the state this one is in
     # while the notes are still being written — still gets the advice while it
     # is still actionable.
-    digest_warnings, digest_note, digest_summary = _digest_coverage_warnings(
+    digest_warnings, digest_note, digest_emissions = _digest_advisories(
         project_dir, pending
     )
     for warning in digest_warnings:
         print(f"WARNING: {warning}", file=sys.stderr)
     if digest_note:
         print(f"NOTE: {digest_note}", file=sys.stderr)
-    if digest_summary:
-        print(f"  {digest_summary}.")
+    for emission in digest_emissions:
+        print(f"  {emission}.")
+
+    # The suite verdict is REPORTED here and RETURNED at the bottom, and the
+    # split is deliberate. Printing it here is what makes it reachable at all:
+    # this repo's ordinary Phase 0 state exits at `no-release-plan:` a few lines
+    # down — that is the documented, expected first run — so a refusal wired
+    # only into the final return would never be seen by the operator it is for.
+    # Holding the return to the bottom keeps the property the rest of this gate
+    # holds: every other check still runs, so one command reports every problem
+    # rather than one per round trip.
+    #
+    # Below the no-pending return on purpose. That branch is "there is nothing
+    # to cut", and a suite verdict about a release that is not happening is a
+    # refusal with no release to refuse.
+    suite_ok, suite_reason = _suite_verdict(project_dir)
+    if suite_ok:
+        # Emitted on the passing runs too: a control heard from only when it
+        # fires cannot be retired on evidence, and naming which evidence
+        # vouched is what lets a reader disagree with it.
+        print(f"  suite: green — {suite_reason}.")
+    else:
+        print(
+            f"unproven-suite: {suite_reason}. Nothing has said this code "
+            "passes, and a release publishes unrecallably — run the suite and "
+            "record it (`prawduct-hook test-evidence record`), then re-run.",
+            file=sys.stderr,
+        )
 
     version = _resolve_version(project_dir, release)
     if version is None:
@@ -855,6 +1006,13 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
             "every release-pending scope must be accounted for.",
             file=sys.stderr,
         )
+        return 1
+
+    if not suite_ok:
+        # The reason was printed above, where the operator meets it beside the
+        # rest of the gate's output; this is only the verdict it earns. Nothing
+        # is re-said here — a second copy of the sentence would read as a second
+        # problem.
         return 1
 
     shipping = sorted(s for s in pending if classification[s][0] == SHIPS)

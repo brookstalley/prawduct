@@ -13,6 +13,8 @@ indistinguishable from no gate, which is the state this replaces.
 
 from __future__ import annotations
 
+import importlib.util
+import json
 import re
 import sys
 from pathlib import Path
@@ -25,9 +27,40 @@ from lib import release_readiness  # noqa: E402
 from lib.release_readiness import _DIGEST_REL_PATH  # noqa: E402
 
 
+#: Sentinel for "the caller said nothing about test evidence", so `None` can
+#: mean "write no record" without collapsing into the default.
+_EVIDENCE_DEFAULT: dict = {}
+
+
 def _write(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
+
+
+def _evidence(**overrides) -> dict:
+    """A schema-valid record of a green suite run.
+
+    The gate refuses when nothing says the code passes, so a fixture that omits
+    this is a fixture staging a *red* release — which is a state worth testing
+    deliberately and never worth inheriting by accident. Every field here is
+    required by ``gates._validate_evidence_schema``; a record missing one is
+    rejected for the schema rather than for the thing under test, which reads as
+    the same failure and is not.
+    """
+    record = {
+        "timestamp": "2026-01-01T00:00:00Z",
+        "passed": 12,
+        "failed": 0,
+        "skipped": 0,
+        "duration_seconds": 1.5,
+        "command": "pytest",
+        "verifier": "pytest",
+        "tests_executed": ["tests/"],
+        "changes_referenced": [],
+        "coverage_level": "referenced",
+    }
+    record.update(overrides)
+    return record
 
 
 def _make_project(
@@ -39,9 +72,26 @@ def _make_project(
     version: str = "3.2.0",
     plan_suffix: str = "",
     digest: str | None = None,
+    evidence: dict | None = _EVIDENCE_DEFAULT,
+    session_start: str | None = None,
 ) -> Path:
     project = tmp_path / "proj"
     _write(project / ".prawduct" / "change-log.md", "# Change Log\n\n" + entries)
+    # A green run by default: the gate refuses over the code as well as over the
+    # bookkeeping, so every fixture that is not *about* the suite has to state
+    # that the suite passed. `evidence=None` writes no record — the missing-
+    # evidence refusal. `session_start` is what makes a record STALE: with no
+    # marker the reader has no session to compare against and accepts a passing
+    # run, which is the same fallback a repo outside a governed session gets.
+    if evidence is _EVIDENCE_DEFAULT:
+        evidence = _evidence()
+    if evidence is not None:
+        _write(
+            project / ".prawduct" / ".test-evidence.json",
+            json.dumps(evidence),
+        )
+    if session_start is not None:
+        _write(project / ".prawduct" / ".session-start", session_start)
     _write(project / ".prawduct" / "backlog.md", "# Backlog\n\n## Open\n\n" + backlog)
     _write(project / "plugin" / "VERSION", version + "\n")
     # Absent by default, so a fixture that passes none exercises the degraded
@@ -1146,6 +1196,10 @@ class TestDigestCoverageIsAdvisory:
         err = capsys.readouterr().err
         assert "digest coverage not checked" in err
         assert "would not be reported here" in err
+        assert "headline every upgrading repo is shown went unread" in err, (
+            "both questions share this read, so the note owes both consequences "
+            "— a headline that went unchecked is the one a consumer actually sees"
+        )
         assert _warned_scopes(err) == set()
 
     def test_only_the_open_section_counts_as_coverage(self, tmp_path, capsys):
@@ -1306,6 +1360,365 @@ class TestDigestCoverageIsAdvisory:
         out = capsys.readouterr()
         assert _warned_scopes(out.err) == set()
         assert "digest coverage: 2 of 2" in out.out
+
+
+class TestTheHeadlineIsChecked:
+    """The consumer-facing headline is a hand step, and it gets forgotten.
+
+    The version-delta banner shows a section's first non-empty line to every
+    repo crossing that version, so the headline IS the release as far as a
+    consumer is concerned. v2.1.6 was tagged and version-bumped with no section
+    at all; v3.4.0 had one and still led with the seed the previous cut wrote,
+    after eight weeks of good notes had accumulated underneath it.
+
+    Fixtures throughout, for the reason the neighbouring class states: pinning
+    this against the live digest would pin this repo's current release phase as
+    an invariant, and a release is the event that ends that phase.
+    """
+
+    def test_a_section_with_no_headline_warns(self, tmp_path, capsys):
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha"),
+            classification="| alpha | ships | |\n",
+            digest="# Digest\n\n## v9.9.9\n\n## v1.0.0\n\nOld news.\n",
+        )
+        assert release_readiness.check_releasability(project) == 0
+        err = capsys.readouterr().err
+        assert "has no headline" in err
+        assert "## v9.9.9" in err, "the warning must name the section it read"
+
+    def test_a_heading_is_not_a_headline(self, tmp_path, capsys):
+        """A section opening on a subsection has no headline, not a `###` one.
+
+        The banner stops at the first heading rather than rendering it, so a
+        digest organised as `## v9.9.9` / `### Fixes` shows consumers a blank.
+        Reading the subheading as the headline here would report a section the
+        banner renders empty as perfectly healthy.
+        """
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha"),
+            classification="| alpha | ships | |\n",
+            digest=_digest("### Fixes\n\n**alpha** is described here."),
+        )
+        assert release_readiness.check_releasability(project) == 0
+        assert "has no headline" in capsys.readouterr().err
+
+    def test_the_seeded_placeholder_warns(self, tmp_path, capsys):
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha"),
+            classification="| alpha | ships | |\n",
+            digest=_digest(
+                "**Prerelease under test — this build is the develop branch "
+                "ahead of the next release.**\n\n**alpha** ships."
+            ),
+        )
+        assert release_readiness.check_releasability(project) == 0
+        assert "still leads with the seeded placeholder" in capsys.readouterr().err
+
+    def test_a_real_headline_is_silent(self, tmp_path, capsys):
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha"),
+            classification="| alpha | ships | |\n",
+            digest=_digest("**alpha now does the thing.** Consumers can rely on it."),
+        )
+        assert release_readiness.check_releasability(project) == 0
+        err = capsys.readouterr().err
+        assert "headline" not in err
+
+    def test_writing_the_headline_is_what_stops_the_warning(self, tmp_path, capsys):
+        """**The advisory's EFFECT, with the un-written case as the control.**
+
+        The recommendation this prints — replace the seed and this stops — has
+        to be known to work rather than known to fire, because it ships to every
+        repo that runs the gate. A treatment observed without a control proves
+        only that the two fixtures differ somehow.
+        """
+        seed = (
+            "**Prerelease under test — this build is the develop branch ahead "
+            "of the next release.**"
+        )
+        control = _make_project(
+            tmp_path / "control",
+            entries=_entry("A", "alpha"),
+            classification="| alpha | ships | |\n",
+            digest=_digest(seed + "\n\n**alpha** ships."),
+        )
+        assert release_readiness.check_releasability(control) == 0
+        assert "seeded placeholder" in capsys.readouterr().err, (
+            "the control must warn, or the treatment below proves nothing"
+        )
+
+        treatment = _make_project(
+            tmp_path / "treatment",
+            entries=_entry("A", "alpha"),
+            classification="| alpha | ships | |\n",
+            digest=_digest("**alpha ships.** Here is what it means for you."),
+        )
+        assert release_readiness.check_releasability(treatment) == 0
+        assert "headline" not in capsys.readouterr().err
+
+    def test_the_headline_is_reported_even_when_it_is_fine(self, tmp_path, capsys):
+        """A control heard from only when it fires can never be retired.
+
+        And the yield here is the headline itself, not a count of them: the
+        failure mode is a line nobody looked at, so putting that exact line in
+        front of the operator is what the emission is for.
+        """
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha"),
+            classification="| alpha | ships | |\n",
+            digest=_digest("**alpha ships.** Here is what it means for you."),
+        )
+        assert release_readiness.check_releasability(project) == 0
+        out = capsys.readouterr().out
+        assert "digest headline: '**alpha ships.** Here is what it means for you.'" in out
+
+    def test_the_advisory_never_changes_the_exit_code(self, tmp_path, capsys):
+        """Coverage, not authority — the same disposition the scope check holds.
+
+        Phase 0 runs BEFORE the step that writes the headline, so on a correct
+        release this fires once and is then fixed. A refusal here would block a
+        release for a condition the release is on its way to fixing.
+        """
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha"),
+            classification="| alpha | ships | |\n",
+            digest="# Digest\n\n## v9.9.9\n",
+        )
+        assert release_readiness.check_releasability(project) == 0
+        out = capsys.readouterr()
+        assert "has no headline" in out.err
+        assert "releasable: v3.2.0 — 1 release-pending scope(s)" in out.out, (
+            "the advisory must leave the pass verdict exactly as it found it"
+        )
+
+    def test_a_repo_that_publishes_no_digest_is_asked_no_headline_question(
+        self, tmp_path, capsys
+    ):
+        """Downstream there is no `plugin/CHANGELOG.md` to have a headline in.
+
+        Same predicate as the coverage check beside it, and deliberately the
+        same one rather than a second `.exists()`: every `plugin/…` path this
+        module can print names prawduct's own layout, and asking a product user
+        about a file they have no way to have is an instruction they can only
+        fail. This is the third message that would have entered that class.
+        """
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha"),
+            classification="| alpha | ships | |\n",
+            version="1.0.0",
+            digest=None,
+        )
+        (project / "plugin" / "VERSION").unlink()
+        assert release_readiness.check_releasability(project, release="v1.0.0") == 0
+        out = capsys.readouterr()
+        assert "headline" not in out.err + out.out
+
+    def test_the_line_this_judges_is_the_line_the_banner_shows(self, tmp_path):
+        """The two implementations must agree about EMPTINESS.
+
+        The banner is a hook and `lib/` never imports from a hook, so the
+        headline rule is stated twice. What has to hold is not that the two
+        strip emphasis alike but that they agree on the only thing this check
+        claims: a section the banner renders blank is a section this warns
+        about, and one it renders is one this leaves alone. Asserting the
+        weaker property is what keeps this test from failing on a cosmetic
+        difference while missing the divergence that matters.
+        """
+        spec = importlib.util.spec_from_file_location(
+            "prawduct_banner", ROOT / "hooks" / "banner.py"
+        )
+        banner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(banner)
+
+        for body, renders in (
+            ("**alpha ships.** Details.", True),
+            ("", False),
+            ("### Fixes\n\n**alpha** is described here.", False),
+        ):
+            root = tmp_path / f"root{renders}{len(body)}"
+            _write(root / "CHANGELOG.md", _digest(body))
+            shown = dict(banner.parse_changelog(root)).get("9.9.9", "")
+            section = release_readiness._open_digest_section(
+                (root / "CHANGELOG.md").read_text(encoding="utf-8").splitlines()
+            )
+            judged = release_readiness._section_headline(section[1])
+            assert bool(shown) == renders, f"banner disagrees about {body!r}"
+            assert (judged is not None) == renders, (
+                f"the gate and the banner disagree about {body!r} — one of them "
+                "is reporting a headline the consumer never sees"
+            )
+
+
+class TestTheSuiteMustBeProvenGreen:
+    """A release must not proceed on code nothing has said passes.
+
+    v2.1.6 shipped on a red suite: the release path read no test result at all,
+    so the redness was visible only to whoever happened to run the suite. This
+    is a verdict about whether the release may proceed, so unlike the digest
+    advisories beside it, it fails closed.
+
+    **What it does not claim.** The predicate is `gates.tests_are_current`,
+    whose session-freshness disjunct asks when a run happened rather than which
+    tree it met. That is the honest bound at this phase — Phase 0 runs before
+    the release rewrites four files, so nothing checkable here can vouch for the
+    tree the tag will carry.
+    """
+
+    def _project(self, tmp_path, **kwargs):
+        return _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha"),
+            classification="| alpha | ships | |\n",
+            digest=_digest("**alpha ships.** What it means for you."),
+            **kwargs,
+        )
+
+    def test_a_green_run_passes_and_names_the_evidence(self, tmp_path, capsys):
+        project = self._project(tmp_path)
+        assert release_readiness.check_releasability(project) == 0
+        out = capsys.readouterr().out
+        assert "suite: green" in out, "the passing run must emit its own yield"
+        assert "releasable:" in out
+
+    def test_missing_evidence_refuses(self, tmp_path, capsys):
+        project = self._project(tmp_path, evidence=None)
+        assert release_readiness.check_releasability(project) == 1
+        err = capsys.readouterr().err
+        assert "unproven-suite:" in err
+        assert "no .test-evidence.json" in err, "the refusal must say which condition failed"
+
+    def test_a_failing_run_refuses(self, tmp_path, capsys):
+        project = self._project(tmp_path, evidence=_evidence(failed=3))
+        assert release_readiness.check_releasability(project) == 1
+        err = capsys.readouterr().err
+        assert "unproven-suite:" in err
+        assert "3 test(s) failing" in err
+
+    def test_a_degraded_run_refuses_rather_than_reading_as_a_pass(
+        self, tmp_path, capsys
+    ):
+        """A contended run reports a plausible total and covers less than it says.
+
+        Nothing in the counts can tell it apart from a clean pass, which is why
+        the record carries the observation rather than deriving it — and why a
+        release must read it as "no run", not as "a green run".
+        """
+        project = self._project(
+            tmp_path,
+            evidence=_evidence(degraded="a worker died; ~half never reported"),
+        )
+        assert release_readiness.check_releasability(project) == 1
+        err = capsys.readouterr().err
+        assert "unproven-suite:" in err
+        assert "a worker died" in err
+
+    def test_stale_evidence_refuses(self, tmp_path, capsys):
+        """A run that predates this session and cannot say which tree it met.
+
+        The record carries no `evidence_tree`, so the tree-validity clause that
+        would otherwise rescue it has nothing to compare — which is exactly the
+        `--from-counts` shape as well as the pre-clause one.
+        """
+        project = self._project(
+            tmp_path,
+            evidence=_evidence(timestamp="2026-01-01T00:00:00Z"),
+            session_start="2026-06-01T00:00:00Z",
+        )
+        assert release_readiness.check_releasability(project) == 1
+        err = capsys.readouterr().err
+        assert "unproven-suite:" in err
+        assert "predates session" in err
+
+    def test_recording_a_green_run_is_what_lifts_the_refusal(self, tmp_path, capsys):
+        """**The refusal's EFFECT, with the un-recorded case as the control.**
+
+        The remedy this prints — run the suite, record it, re-run — has to be
+        known to work. It names the next step, and the gate that judges that
+        step is the one asked here rather than a cheaper proxy.
+        """
+        control = self._project(tmp_path / "control", evidence=None)
+        assert release_readiness.check_releasability(control) == 1
+        assert "unproven-suite:" in capsys.readouterr().err, (
+            "the control must refuse, or the treatment below proves nothing"
+        )
+
+        treatment = self._project(tmp_path / "treatment")
+        assert release_readiness.check_releasability(treatment) == 0
+        assert "unproven-suite" not in capsys.readouterr().err
+
+    def test_the_refusal_still_lets_every_other_check_report(self, tmp_path, capsys):
+        """One command, every problem — the property this gate holds elsewhere.
+
+        The verdict is returned at the bottom and reported at the top, so an
+        operator whose suite is red still learns that a scope is unclassified
+        and that a shipping scope has no consumer note. A bare early return
+        would buy one problem per round trip.
+        """
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha") + _entry("B", "beta"),
+            classification="| alpha | ships | |\n",
+            digest=_digest("Notes about nothing in particular."),
+            evidence=None,
+        )
+        assert release_readiness.check_releasability(project) == 1
+        out = capsys.readouterr()
+        err = out.err
+        assert "unproven-suite:" in err
+        assert "unclassified scope(s)" in err, "the classification check must still have run"
+        assert _warned_scopes(err) == {"alpha", "beta"}, "the digest check must still have run"
+        assert "scanned:" in out.out, "the accounting must still have printed"
+
+    def test_nothing_to_cut_is_not_refused_on_the_suite(self, tmp_path, capsys):
+        """No release is proceeding, so there is no release to refuse.
+
+        The no-pending branch answers "there is nothing to cut" and the runbook
+        reads it as *stop*. Refusing it on an unproven suite would attach a
+        remedy to a state that needs none.
+        """
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha", release="v3.2.0"),
+            classification=None,
+            digest=None,
+            evidence=None,
+        )
+        assert release_readiness.check_releasability(project) == 0
+        out = capsys.readouterr()
+        assert "no release-pending scopes" in out.out
+        assert "unproven-suite" not in out.err
+
+    def test_the_v2_1_6_scenario_is_refused(self, tmp_path, capsys):
+        """Version bumped, no headline — and the release stops.
+
+        Both halves of this chunk meet here, and which one refuses is the
+        design. The missing headline is caught by the advisory, which warns so
+        the operator fixes it before the cut. What *stops* the release is the
+        suite: a version with no digest section is precisely what
+        `test_changelog_has_current_version_entry` fails on, so at v2.1.6 the
+        missing headline WAS the red suite — and the release path read no test
+        result, so it shipped anyway. The fixture states that redness rather
+        than deriving it; the derivation lives in the guard named above.
+        """
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha"),
+            classification="| alpha | ships | |\n",
+            digest="# Digest\n\n## v9.9.9\n\n## v1.0.0\n\nOld news.\n",
+            evidence=_evidence(failed=1),
+        )
+        assert release_readiness.check_releasability(project) == 1
+        err = capsys.readouterr().err
+        assert "has no headline" in err, "the operator must be told what to write"
+        assert "unproven-suite:" in err, "and the release must not proceed"
 
 
 class TestReleasePlanSurvivesArchival:

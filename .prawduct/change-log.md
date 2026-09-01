@@ -3,6 +3,57 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-09-01: the headline nobody wrote, and the red suite nothing refused
+
+<!-- prawduct: type=feat | scope=release-gate-blindness -->
+
+Two failures met at one moment. The consumer-facing headline is a hand step and it gets forgotten:
+**v2.1.6 was tagged and version-bumped with no digest section at all**, which left `develop` red on
+`test_changelog_has_current_version_entry` from that release onward — so v2.1.6 shipped on a red
+suite, and the redness was the only complaint anything made. It recurred at v3.0.4 and was
+backfilled out of band. **v3.4.0 had its section and still led with the seed the previous cut
+wrote**, so every upgrading repo was shown "Prerelease under test" as the news, after eight weeks of
+good notes had accumulated underneath it. And nothing anywhere on the release path read a test
+result.
+
+Phase 0 now answers both. It prints the open section's first non-empty line back verbatim — that is
+the line the version-delta banner shows every repo crossing this version, and the whole failure mode
+is a line nobody looked at — and warns when there is none or when it is still the seed. It also
+asks whether the saved suite run is green and current, and **refuses when it is not**.
+
+**The two halves fail in opposite directions, and that is the architecture rather than a
+preference.** The headline check is *coverage*: its subject is prose, and Phase 0 runs before the
+step that writes the headline, so on a correct release it fires exactly once and is then fixed. A
+refusal there would block a release for a condition the release is on its way to fixing. The suite
+check is a *verdict* about whether the release may proceed at all, so it fails closed, on the
+channel's existing blocking value — the same exit 1 every other refusal here uses, not a new code.
+
+**What the suite check does NOT claim is written into its message and into the runbook.** It reuses
+`gates.tests_are_current`, so the builder's `test-status`, the Stop hook and the release gate read
+one record through one reader and a repo cannot be green for one and stale for another. That
+predicate's first disjunct is session-freshness — it asks *when* a run happened, not which tree it
+met. That is the honest bound at this phase rather than a weakness worked around: Phase 1 rewrites
+four files after Phase 0, so **nothing checkable here can vouch for the tree the tag will carry**. A
+green-suite check at the tagging moment would be a different control at Phase 2.
+
+Four states reach the one refusal and the message names which: no evidence on disk, a run reporting
+failures, a run predating the session that can no longer be matched to the tree, and a run that
+reported itself `degraded`. The last is the one worth stating — a contended run exits 0 and reports
+a plausible total, so nothing in the counts distinguishes it from a clean pass; a release has to
+read it as "no run", never as "a green run".
+
+**The verdict is reported at the top and returned at the bottom.** This repo's ordinary Phase 0 run
+exits at `no-release-plan:` — the documented, expected first result — so a refusal wired only into
+the final return would never be seen by the operator it is for. Printing it early also keeps the
+property this gate holds elsewhere: every other check still runs, so one command reports every
+problem instead of one per round trip.
+
+Both digest questions now come from **one read of one section**. Reading the file twice would let
+them answer about different states of it, and would double the degraded NOTE into two sentences
+saying the same thing happened; that NOTE now names both consequences, because advice failing soft
+is not advice failing silent. And both stay behind `_ships_the_plugin_tree`: the headline message
+would have been the third `plugin/…` path printed at a repo that cannot have one.
+
 ## 2026-08-29: the release-pending scope that reaches the tag with nothing written about it
 
 <!-- prawduct: type=feat | scope=release-gate-blindness -->

@@ -137,11 +137,19 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
    number to read is the last one, and it is `0 unclassifiable` on every run that gets this far,
    because a non-zero one refuses instead.
 
-   Beneath it, `digest coverage: N of M release-pending scope(s) named in …` — how many pending
-   scopes this release's notes actually mention. It prints on every run that reads the digest —
-   including the ones that find nothing, so the check can later be retired on a record of finding
-   nothing rather than defended on principle. Where it is absent, the `NOTE:` below says why. `N < M` is not a stop; it is the list to walk before you write the
+   Beneath it, `digest headline: '…' in ## vX.Y.Z-dev.N` — the section's first non-empty line,
+   printed back verbatim because that is the line the version-delta banner shows every repo
+   crossing this version, and the whole failure mode is a line nobody looked at. Then
+   `digest coverage: N of M release-pending scope(s) named in …` — how many pending
+   scopes this release's notes actually mention. Both print on every run that reads the digest —
+   including the ones that find nothing, so the checks can later be retired on a record of finding
+   nothing rather than defended on principle. Where they are absent, the `NOTE:` below says why. `N < M` is not a stop; it is the list to walk before you write the
    headline.
+
+   Last, `suite: green — <which evidence vouched>`. Read what it actually claims: the saved run
+   is recorded green and current **as of now**. It is not a statement about the tree you will
+   tag — Phase 1 rewrites four files after this point, and nothing checkable at Phase 0 can
+   vouch for a tree that does not exist yet.
 
    **Also exit 0, but different:** `releasable: no release-pending scopes — nothing to classify`.
    This line names no version and yields **no `K`**; read it as `K = 0`. Reaching it *during* a
@@ -214,12 +222,38 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
      release mechanics itself will never have a consumer note. Open the section and look. None of
      the three changes the exit code.
 
+   `WARNING: the open plugin/CHANGELOG.md section (…) has no headline` · `WARNING: … still leads
+   with the seeded placeholder`
+   - **Advisory, not a stop** — and it fires on a correct release, once. Step 22 of the last cut
+     opened this section with a seeded one-liner, and **step 10 below is where you replace it**;
+     this warning is that step arriving early, while you are still reading Phase 0 output and the
+     notes are cheap to write. It is not a refusal because Phase 0 runs *before* the step that
+     fixes it. Both shapes have shipped: v2.1.6 was tagged with no headline at all, and v3.4.0
+     went out still leading with the seed after eight weeks of good notes had accumulated
+     underneath it — a section full of good notes reads as a finished section.
+
    `NOTE: digest coverage not checked: …`
    - The digest exists but could not be read, or holds no `## ` section, so **no scope was checked
      for a note at all**. Not a refusal, and not a pass either — the coverage question simply went
      unasked. Fix the file and re-run before you trust a clean Phase 0 on this point. (In a repo
      that publishes no digest the check has no subject and says nothing; this line means yours
      does and it could not be read.)
+
+   `unproven-suite:`
+   - Nothing has said this code passes. Four states reach this one line and the message names
+     which: no `.test-evidence.json` at all, a saved run reporting failures, a run that predates
+     this session and can no longer be matched to the tree, and a run that reported itself
+     `degraded` (a contended run covers less than its counts imply, so a release must read it as
+     "no run" rather than "a green run"). **Run the suite and record it** —
+     `prawduct-hook test-evidence record` — then re-run. This is not a gate defect and there is no
+     variant of it to work around: v2.1.6 shipped on a red suite because the release path read no
+     test result at all.
+   - **Read the bound.** It asks the same question `prawduct-hook test-status` asks, so a repo
+     cannot be green for the builder and stale for the release. That question is *"is the saved
+     run green and current"*, **not** *"did a run meet the tree you are about to tag"* — Phase 1
+     rewrites `plugin/VERSION`, `plugin/.claude-plugin/plugin.json`, `pyproject.toml` and
+     `plugin/CHANGELOG.md` after this phase, so the tagged tree does not exist yet. If you want a
+     green-suite check at the tagging moment, that is a control at Phase 2, not this one.
 
    `no-release-plan:` · `no-change-log:` · `no-version:` · `unreadable-release-plan:` · `no-backlog:`
    - An input the gate needs is missing or unreadable. **The message names the path** — create or
@@ -453,6 +487,10 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
     this release, and replace the seeded placeholder if it is still there. Only when no
     prerelease section exists (the first cut after this runbook changed) do you add a fresh
     `## vX.Y.Z` section above the previous release.
+
+    > *Phase 0 already told you which of these you are in: it prints the section's first line
+    > back as `digest headline: '…'` and warns when that line is missing or still the seed. If
+    > you read a warning there, this is the step it was pointing at.*
 
     > *Why check first: `develop` runs on a prerelease of the version it is heading for and
     > accumulates its notes under `## vX.Y.Z-dev.N`, so on any release that was dogfooded the
