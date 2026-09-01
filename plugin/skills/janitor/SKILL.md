@@ -255,7 +255,21 @@ You cannot determine which without the user. For each divergence, use the infer-
 3. **Recommend** a resolution: "I'd update preferences to note this exception rather than renaming 47 functions"
 4. **Confirm**: "Does that match your intent?"
 
-Batch related divergences — don't ask one per message. Group by theme and present as a single confirm-or-correct block. Read fatigue signals: if the user starts answering with just "yes" or "sounds good," compress remaining questions into a single batch or infer more aggressively.
+**Surface by exception — never a flat confirm-or-correct wall.** A single grouped block was the whole instruction here, and on a real survey it is a wall: a mature codebase yields dozens of divergences, most of them obvious, and a flat dump buries the two that carry a real decision under the twenty that do not. The owner bounces off it or answers "yes" to the lot — and a blanket yes to a list they did not read is indistinguishable from having asked nothing. This is the same taxonomy `/prawduct:doctor`'s **Norm Ratification Flow** uses, under the same names on purpose: one vocabulary, so a reader who has met it once recognises it here.
+
+Tag every reconcilable finding into one of two tiers **before** presenting anything:
+
+- **clear-to-ratify** — your inference is plainly right: the divergence is unambiguous, the evidence is one-sided (git history, scope, how deliberate it looks), and the recommendation follows from it. Confirmed in bulk, never discussed one by one.
+- **needs-a-ruling** — the finding carries a fork only the owner can settle. The recurring kinds: **drift-or-evolution genuinely unclear** (both readings fit the evidence); **scope fork** (fix the twelve sites, or narrow the stated preference); **cost fork** (the right answer is expensive enough that the owner should choose to pay it); **collision** (two preferences or two norms point opposite ways). Each is surfaced individually with its fork and your recommendation.
+
+Then present the two tiers **asymmetrically**:
+
+- **needs-a-ruling: individually**, each with its fork and a recommendation. These are the point of the step.
+- **clear-to-ratify: one bulk-confirm line, and it must carry the count** — "these N divergences where the reading is unambiguous", named compactly, with a single "confirm, or veto any". **The count is not decoration:** it is what tells an owner whether they are agreeing to three things or thirty, and a bulk confirm without one asks for a yes to an unstated quantity. Never expand the tier into a per-finding interrogation.
+- **Above ~6 total reconcilable findings the flat block is banned** — surface-by-exception becomes mandatory, not a nicety. At or below ~6 a single grouped block is fine, provided every needs-a-ruling item still shows its own fork; the cap governs when exception-surfacing is *required*, never whether a real ruling may be bundled away.
+- **The guard: a bulk confirm is still an explicit confirm.** A tier presented and not affirmed is not resolved — silence resolves nothing. And read fatigue signals: if the user starts answering with just "yes" or "sounds good," that is a signal to *infer more aggressively and ask less*, not to widen the bulk tier — moving a real ruling into the bulk line to shorten the exchange is how a decision gets made by nobody.
+
+**When the user cannot confirm, the finding becomes a backlog item — it does not evaporate.** "I don't know", "ask me later", an owner who isn't around, or a fork that needs a conversation this session cannot have: file it via `/prawduct:backlog` with what you found, both readings, and your recommendation, and say in the findings report that you did. An unresolved divergence dropped at the end of a janitor run is the worst of the three outcomes — the survey paid to find it, and the next run pays again to find it a second time, with nothing recording that anyone has already looked. This closes the same loop Step 7 closes for Step 2.5's Backlog Health findings.
 
 **This pattern extends beyond preferences.** Any finding where "drift or evolution?" is genuinely unclear should be reconciled: architectural patterns that don't match stated conventions, test approaches that diverge from declared strategy, documentation that contradicts implementation. When in doubt about intent, infer and confirm — don't interrogate.
 

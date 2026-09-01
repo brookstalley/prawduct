@@ -65,6 +65,72 @@ class TestSkillMirrors:
         assert CANONICAL in src, f"{METHODOLOGY} must point to the canonical {CANONICAL}"
 
 
+class TestReconcileTaxonomy:
+    """Both skills ask an owner to settle a batch of judgment calls, and they must
+    ask the same way. Doctor's Norm Ratification Flow shipped the surface-by-exception
+    taxonomy; janitor's Step 3 kept a flat "single confirm-or-correct block", which is
+    the failure that taxonomy exists to prevent — a mature survey yields dozens of
+    divergences and a flat wall gets a blanket yes (#239).
+    """
+
+    TIERS = ("clear-to-ratify", "needs-a-ruling")
+
+    def test_doctor_still_carries_the_taxonomy_it_is_the_source_of(self):
+        """The port has a source; if the source goes, this pair is no longer a pair."""
+        src = _read(DOCTOR)
+        for tier in self.TIERS:
+            assert tier in src, (
+                f"{DOCTOR}'s Norm Ratification Flow must carry the `{tier}` tier — "
+                f"it is where this taxonomy is defined"
+            )
+        assert "Surface by exception" in src
+
+    def test_janitor_reconcile_uses_the_same_two_tiers(self):
+        src = _read(JANITOR)
+        for tier in self.TIERS:
+            assert tier in src, (
+                f"{JANITOR}'s Step 3 must tag findings `{tier}` — the same names "
+                f"doctor uses, so the taxonomy has one vocabulary rather than two"
+            )
+        assert "Surface by exception" in src, (
+            f"{JANITOR}'s Step 3 must surface by exception, not as one flat block"
+        )
+        assert "confirm-or-correct block" not in src or "never a flat" in src, (
+            f"{JANITOR} must not still instruct a flat confirm-or-correct block"
+        )
+
+    def test_the_janitor_bulk_confirm_states_a_count(self):
+        """A bulk confirm without a count asks for a yes to an unstated quantity.
+
+        Doctor's version names them compactly ("these N ... norms"); the port has
+        to carry that guard, not just the tier names — the count is what tells an
+        owner whether they are agreeing to three things or thirty.
+        """
+        src = _read(JANITOR)
+        bulk = [
+            line for line in src.splitlines() if "bulk-confirm" in line or "bulk confirm" in line
+        ]
+        assert bulk, f"{JANITOR}'s Step 3 must offer a bulk confirm for the clear tier"
+        assert any("count" in line for line in bulk), (
+            f"{JANITOR}'s bulk-confirm line must require the COUNT of what is being "
+            f"confirmed; without it the owner cannot tell what they are agreeing to"
+        )
+
+    def test_an_unconfirmable_finding_is_filed_not_dropped(self):
+        """Step 3 → Step 7 was open at the unresolved end (#285).
+
+        A divergence the user cannot settle in-session had no stated destination,
+        so it ended the run in conversation only — and the next janitor pays the
+        survey cost to find it again, with nothing recording that anyone looked.
+        """
+        src = _read(JANITOR)
+        assert "/prawduct:backlog" in src
+        assert "cannot confirm" in src, (
+            f"{JANITOR}'s Step 3 must say what happens when the user cannot "
+            f"confirm — the finding becomes a backlog item, it does not evaporate"
+        )
+
+
 class TestGitignoreCrossReference:
     """The gitignore concern lives in both skills (doctor = prawduct contract, janitor =
     general hygiene); each must cross-reference the other so the split is discoverable."""
