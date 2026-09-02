@@ -992,6 +992,38 @@ class TestUpdateBlockFields:
         assert "human text" in body  # the prose is untouched too
         assert body.count("```prawduct") == 1  # and no second block was minted
 
+    def test_a_discarded_block_edit_is_reported_not_swallowed(self, fake):
+        # The silent misroute: an operator pastes the body back with a block line
+        # deleted, gets `ok`, and the field is still there. `superseded_by` is the
+        # one that bites — `resolve_redirect` walks it on every resolve, so a stale
+        # pointer sends lookups to the wrong item, and nothing said the edit failed.
+        n = self._seed_with_block(fake, "v: 1\nsuperseded_by: octo/repo#999")
+        stripped = "human text\n\n```prawduct\nv: 1\n```\n"
+        r = core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"body": stripped})
+        assert r["status"] == "ok"  # the body edit itself is legitimate
+        assert any("superseded_by" in w for w in r["warnings"]), r["warnings"]
+        # The field is still preserved — the warning reports reality, it does not
+        # change the preservation rule that protects `id_aliases` from MG2 loss.
+        body = fake.get_issue(OWNER, REPO, n)["body"]
+        assert "superseded_by: octo/repo#999" in body
+
+    def test_an_unchanged_pasted_block_is_not_warned_about(self, fake):
+        # Round-tripping the body verbatim is the ordinary case. Warning on it
+        # would fire on most body edits and train the reader to skip the notice.
+        n = self._seed_with_block(fake, "v: 1\nrefs: a.md")
+        same = "new prose\n\n```prawduct\nv: 1\nrefs: a.md\n```\n"
+        r = core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"body": same})
+        assert r["status"] == "ok"
+        assert not any("not editable through" in w for w in r["warnings"]), r["warnings"]
+
+    def test_a_body_with_no_block_is_not_warned_about(self, fake):
+        # Genuinely ambiguous — "I deleted the block" and "I never pasted one" are
+        # the same text — so it stays silent rather than guessing at intent.
+        n = self._seed_with_block(fake, "v: 1\nrefs: a.md")
+        r = core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"body": "just prose"})
+        assert r["status"] == "ok"
+        assert not any("not editable through" in w for w in r["warnings"]), r["warnings"]
+
     def test_an_empty_value_clears_the_field(self, fake):
         # An expired `revisit:` has to be removable, not merely blankable.
         n = self._seed_with_block(fake, "v: 1\nrevisit: 2026-01-01")

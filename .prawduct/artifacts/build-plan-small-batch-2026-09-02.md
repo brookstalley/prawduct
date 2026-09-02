@@ -29,7 +29,7 @@ The chunk is ordered last of the three code chunks so the ruling can arrive late
 ## Status
 
 - [ ] Chunk 01: A bare issue number resolves against `--repo`
-- [ ] Chunk 02: `update --superseded-by ''` clears the field
+- [ ] Chunk 02: a discarded block edit is reported, not swallowed
 - [ ] Chunk 03: Reconcile `quarantine` and `untriaged` to one name
 - [ ] Chunk 04: A failing cache warm leaves a durable record
 Context: Plan written 2026-09-02 against a green baseline (6120 passed, 17 skipped) on
@@ -79,27 +79,45 @@ that the two documents no longer name one query two ways, checked by grep.
   1. Acceptance criteria met and tests pass
   2. Committed and chunk marked `[x]` in Status
 
-### Chunk 02: `update --superseded-by ''` clears the field
+### Chunk 02: a discarded block edit is reported, not swallowed
 
 - **Description:** `backlog merge` has no inverse. `--superseded-by` sets the field but
   no value clears it, unlike `--refs`, `--revisit` and `--closed-by`, which all clear on
   an empty value. Worse, `update --body` with the line stripped returns `ok` and the
   adapter silently RE-SERIALIZES the field from its parsed state, so the operator is
   told the write succeeded and nothing changed. This is not cosmetic:
-  `cachequery.py:738` calls `ids.resolve_redirect` on every resolve and walks
+  `cachequery.py` calls `ids.resolve_redirect` on every resolve and walks
   `superseded_by`, so a reopened item carrying a stale pointer silently redirects
   lookups to the wrong issue. The previous session had to repair #304 with a raw
-  `gh issue edit`, outside the adapter.
+  `gh issue edit`, outside the adapter. Reproduced before building: the update
+  returns `ok` with an empty `warnings` list and the field intact.
 - **Depends on:** none
 - **Artifacts consumed:** `backlog-service-api-contract.md` (update flags)
-- **Deliverables:** `plugin/bin/prawduct-hook` and `plugin/lib/backlog/` update path —
-  make an empty `--superseded-by` clear, mirroring the three flags that already do
-- **Tests:** unit — setting then clearing round-trips; clearing an already-clear item is
-  a no-op that reports honestly; an item whose `superseded_by` is cleared no longer
-  redirects in `resolve_redirect`; the silent re-serialization path is covered by a
-  regression test that would have caught the original defect
-- **Acceptance criteria:** an item merged away and then reopened can be restored to a
-  non-redirecting state through the adapter, with no raw `gh` call
+- **[DECISION: the planned fix was WRONG and is descoped. Do NOT add a
+  `--superseded-by` flag.]** The plan inherited "mirror the three clearing flags"
+  from the previous session's handoff. Reading the code first falsified it:
+  `core.py`'s `_UPDATE_BLOCK` comment records `superseded_by` as *deliberately*
+  not writable — "owned by link/unlink and merge — a bare field write would bypass
+  their invariants (edge symmetry, redirect)". A clearing flag would punch through
+  a recorded invariant to fix an ergonomics complaint. What the handoff actually
+  found is two separate problems: a **silent failure** (this chunk) and a
+  **missing inverse for `merge`** (filed, not built — it needs an `unmerge` that
+  owns the invariant the way `merge` does, which is an M with a design question,
+  not the S this chunk was scoped as).
+- **Deliverables:** `plugin/lib/backlog/core.py` — `update_item` reports a
+  discarded block edit instead of swallowing it. Pasting a body with a block line
+  removed returned `ok`, silently re-appended the stored block, and said nothing;
+  the operator was told a write succeeded that did not happen. Only a *pasted*
+  block is reported: a body with no block at all cannot distinguish "I deleted it"
+  from "I never included it", so it stays silent rather than guessing.
+- **Tests:** unit — a discarded block edit is reported (the regression that would have
+  caught the original defect); an unchanged pasted block is NOT warned about, so the
+  notice stays rare enough to read; a body with no block is NOT warned about, since
+  that case is ambiguous
+- **Acceptance criteria:** an operator whose block edit was discarded is told so, and
+  told which flags do edit block fields. (The original criterion — restoring a
+  reopened item through the adapter with no raw `gh` call — is NOT met and is not
+  this chunk's to meet; it needs the `unmerge` op filed above.)
 - **Type:** bugfix
 - **Critic mode:** chunk
 - **Done when:**
