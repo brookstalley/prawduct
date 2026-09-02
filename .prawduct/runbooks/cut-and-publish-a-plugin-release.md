@@ -313,107 +313,86 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
    **Expected:** numbered tag lines, newest first, at least one carrying
    `release=v...`.
 
-2. Find the boundary — the topmost line whose tag carries `release=`. That's
-   the previous release.
+2. **Derive the release-pending set per candidate.** An entry is release-pending
+   **iff** it carries no `release=` tag **and** its code is absent from the
+   previous release's tree. That test — not a position in the file — is the
+   procedure. Run it over every untagged entry in the whole file.
 
-   **Expected:** one line number and a version, like
-   `404:<!-- prawduct: chunks=01,02,03 | type=fix | scope=backlog-title-enforcement | release=v3.2.7 | status=shipped -->`.
-   Entries written before 2026-08-08 carry `chunks=` and `status=` from the retired
-   derived-views mechanism. Those keys are **inert** — read `release=`, ignore the rest,
-   and do not rewrite them.
+   First, name the previous release's tag:
 
-   > ⚠️ **The boundary narrows the search. It does NOT define the set — do not
-   > flip "everything above it" (REL-7D4X).** An entry lands where it merged,
-   > not above the last release, so a genuinely unreleased entry can sit
-   > *below* the boundary and a positional sweep drops it silently. This
-   > happened at v3.1.1: `2026-07-14: Stale remote-base diagnostics` sits below
-   > and had to be flipped.
-   >
-   > **The sound test is per candidate:** an entry is release-pending iff it
-   > carries no `release=` tag **and** its code is absent from the previous
-   > release's tree (`git show <prev-tag>:<path>`). Walk every untagged entry
-   > and apply it. Entries predating the tag convention (roughly pre-2026-06)
-   > are untagged but shipped — the code test is what separates them.
+   ```
+   git tag --list 'v*' --sort=-v:refname | head -3
+   ```
 
-   > ⚠️ **The set also spans SCOPES — narrowing the sweep to one `scope=` drops
-   > the rest just as silently.** A release bundle routinely carries several, so
-   > re-deriving the set with `grep 'scope=<the-one-you-remember>'` returns a
-   > subset that looks complete. **Step 0 already printed the full list** — the
-   > release-pending scopes it enumerated are the scopes to walk here. Use that
-   > output; do not re-derive it from memory.
-   >
-   > **Step 0 is what makes the scope-keyed part of this sweep complete.** A
-   > release-pending entry that carries a tag line but no `scope=` refuses there
-   > (`unclassifiable-pending-entry:`), so every *tagged* release-pending entry has
-   > a scope by the time you reach this step, and none of them can hide from a
-   > `scope=`-keyed grep. Before that refusal existed such an entry was invisible
-   > to the gate *and* to this pipeline, and nothing in the procedure would have
-   > said so.
-   >
-   > **It does not cover untagged history.** An entry with no tag line at all is
-   > not release-pending *to the gate* — deliberately, since the gate claims no
-   > authority over entries predating the tag convention — so it never reaches that
-   > refusal and never appears in a `scope=` grep at all. The per-candidate code
-   > test above is the only thing that separates those. Walk them; a clean Step 0
-   > is not permission to skip that walk.
-   >
-   > Count them rather than recalling them — the number moves every time work
-   > merges. This enumerates every scope with a statusless entry, **whole file,
-   > no boundary restriction**:
-   >
-   > ```
-   > grep -o '<!-- prawduct:[^>]*-->' .prawduct/change-log.md | grep -v 'release=' \
-   >   | grep -oE 'scope=[A-Za-z0-9._-]+' | sort | uniq -c | sort -rn
-   > ```
-   >
-   > It deliberately **over**-includes: entries below the step-2 boundary land in
-   > it too, and the per-candidate code test above is what filters them. Over-
-   > inclusion is the safe direction here — the failure being prevented is a
-   > scope you never looked at.
-   >
-   > To reproduce the figures below, restrict it to the boundary first:
-   >
-   > ```
-   > sed -n "1,$(( $(grep -n '<!-- prawduct:.*release=' .prawduct/change-log.md | head -1 | cut -d: -f1) - 1 ))p" \
-   >   .prawduct/change-log.md | grep -o '<!-- prawduct:[^>]*-->' | grep -v 'release=' \
-   >   | grep -oE 'scope=[A-Za-z0-9._-]+' | sort | uniq -c | sort -rn
-   > ```
-   >
-   > *(The boundary pattern must be the **tag line** `<!-- prawduct:.*release=`, not a
-   > bare `release=` — this file's own prose contains that string, and a bare match
-   > lands the boundary in a paragraph near the top and returns almost nothing.)*
-   >
-   > Measured that way on `feature/rel-8p6m-releasability-gate` @ `1a353d1`:
-   > **23 release-pending entries across six scopes**, of which
-   > `scope=v3.2.0-golive` is only **7** — so that one grep misses **16 across
-   > five other scopes** (`release-readiness` 7, `coverage-perf` 4,
-   > `chunk-refs-gate` 2, `critic-disposition` 2, `review-loop-termination` 1).
-   > One of the missed entries is the `protected_path_violation` widening, a
-   > change to the governance bounds of every installed repo. Step 10's
-   > consumer-facing headline is derived from **all** shipping scopes, so a
-   > scope-narrowed sweep quietly shortens the release notes as well as the tags.
-   >
-   > *(Any figure written here is a measurement of one tree, not a property of
-   > the repo. Re-run the commands rather than citing this paragraph.)*
+   Then enumerate every candidate — **whole file, no boundary restriction**, and
+   grouped by scope so you can see the shape of what you are about to walk:
 
-   > 🚧 **If this selection rule looks wrong to you, it is — and it is
-   > deliberately not being fixed here.** The positional-and-scoped sweep is
-   > REL-8P6M (e), **held** by owner decision 2026-07-29:
-   > `artifacts/change-log-ledger-design.md` proposes deleting this machinery
-   > outright, so rewriting the rule now is throwaway work. **That decision was
-   > taken 2026-07-31 — GO on the design, HOLD on the schedule (§11.7) — so the
-   > hold survives and only its bound moved: it now runs until the ledger plan
-   > is scheduled and shipped.** Until then, this release tags its shipping
-   > subset **by hand across every scope, once**. `REL-7D4X` stays open with it.
-   >
-   > Retiring the derived views (2026-08-08) did **not** close this. It removed
-   > two of the three keys the sweep used to write, so the edit is smaller — but
-   > *which entries shipped* is the question the sweep was always wrong about,
-   > and `release=` is the surviving key that answers it. The hold is unchanged
-   > and the per-candidate code test above is still the sound rule.
+   ```
+   grep -o '<!-- prawduct:[^>]*-->' .prawduct/change-log.md | grep -v 'release=' \
+     | grep -oE 'scope=[A-Za-z0-9._-]+' | sort | uniq -c | sort -rn
+   ```
 
-3. Append ` | release=vX.Y.Z` to every tag line that passed the step-2 test,
-   keeping the keys already there and the ` | ` separator. This is the only
+   **Expected:** a scope histogram whose scope set **equals** the release-pending
+   scope list Phase 0 step 0 printed. Reconcile any difference before you edit
+   anything — the two derivations disagreeing means one of them is looking at the
+   wrong tree.
+
+   Now apply the per-candidate test to each untagged entry the enumeration
+   reaches. For an entry whose change you can localize to a file, the test is
+   mechanical:
+
+   ```
+   git show <prev-tag>:<path>
+   ```
+
+   Absent from that tree, or present without the change the entry describes →
+   **release-pending**. Present with the change → already shipped, leave it
+   untagged. Entries predating the tag convention (roughly pre-2026-06) are
+   untagged but shipped; the code test is the only thing that separates them from
+   genuinely pending ones, and a clean Phase 0 is not permission to skip the walk
+   — the gate claims no authority over untagged history, so those entries never
+   appear in a `scope=` grep at all.
+
+   **Three ways the older positional method got this wrong, all still live if you
+   fall back to it:**
+
+   - **Position does not decide.** An entry lands where it merged, not above the
+     last release, so a genuinely unreleased entry can sit *below* the topmost
+     `release=` line and a "flip everything above the boundary" sweep drops it
+     silently. This happened at v3.1.1: `2026-07-14: Stale remote-base
+     diagnostics` sits below and had to be flipped.
+   - **One scope is not the set.** A release bundle routinely carries several, so
+     re-deriving with `grep 'scope=<the-one-you-remember>'` returns a subset that
+     looks complete. Measured once on `feature/rel-8p6m-releasability-gate` @
+     `1a353d1`: 23 release-pending entries across six scopes, of which the
+     remembered one was 7 — the grep missed 16 across five others, including a
+     `protected_path_violation` widening that changes the governance bounds of
+     every installed repo. Step 10's consumer-facing headline derives from the
+     same set, so a narrowed sweep quietly shortens the release notes too. *(That
+     figure is a measurement of one tree, not a property of the repo. Re-run the
+     command above; do not cite the paragraph.)*
+   - **Not everything pending ships.** See step 3.
+
+   **What the boundary is still good for:** reading. The topmost line whose tag
+   carries `release=` tells you which release you are walking back to, and
+   restricting the enumeration to it is how you reproduce a historical figure:
+
+   ```
+   sed -n "1,$(( $(grep -n '<!-- prawduct:.*release=' .prawduct/change-log.md | head -1 | cut -d: -f1) - 1 ))p" \
+     .prawduct/change-log.md | grep -o '<!-- prawduct:[^>]*-->' | grep -v 'release=' \
+     | grep -oE 'scope=[A-Za-z0-9._-]+' | sort | uniq -c | sort -rn
+   ```
+
+   *(The boundary pattern must be the **tag line** `<!-- prawduct:.*release=`, not
+   a bare `release=` — this file's own prose contains that string, and a bare
+   match lands the boundary in a paragraph near the top and returns almost
+   nothing.)* It narrows; it never decides. Entries written before 2026-08-08
+   also carry `chunks=` and `status=` from the retired derived-views mechanism —
+   those keys are **inert**: read `release=`, ignore the rest, do not rewrite them.
+
+3. **Tag the shipping scopes only.** Append ` | release=vX.Y.Z` to the tag line of
+   every entry that passed step 2's test **and** whose scope the release plan's
+   `## Release classification` table classifies `ships`. This is the only
    change-log edit the release makes:
 
    ```diff
@@ -421,19 +400,42 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
    + <!-- prawduct: type=feature | scope=skills-cutover-awareness | release=v3.2.0 -->
    ```
 
-   > *Why: the tag's ABSENCE is the release-pending state, so an entry left
-   > untagged here stays pending forever and nothing downstream complains. Do
-   > not invent a placeholder for the other direction — any value at all,
-   > `release=unreleased` included, ships the entry's whole scope silently.*
-
-4. Re-run the enumeration and read down to the boundary:
+   **If this is a pruned release** — Phase 0 step 0 printed `K withheld` with `K`
+   ≥ 1 — the withheld scopes' entries **stay untagged**. Tagging one marks
+   withheld work as shipped in a release that does not contain it, which is
+   unrecoverable in the direction that matters: the entry now reads as delivered,
+   the next release's step 2 will not re-derive it as pending, and the code it
+   describes ships to nobody while the log says otherwise. Prawduct has pruned
+   twice, so this is a pattern, not a hypothetical. Cross-check before you edit:
 
    ```
-   grep -n "<!-- prawduct:" .prawduct/change-log.md | head -20
+   ./plugin/bin/prawduct-hook check-releasability --release vX.Y.Z
    ```
 
-   **Expected:** every line above the step 2 boundary now carries
-   `| release=vX.Y.Z`.
+   **Expected:** the shipping list it prints is exactly the set of scopes you are
+   about to tag. If a scope is in one and not the other, the table and the change
+   log disagree — Phase 0 step 0's ``scope(s) classified `withheld` whose entries
+   already carry this release's tag`` remedy says how to settle it, and deleting
+   the table row is never the answer.
+
+   > *Why the direction of the error matters: the tag's ABSENCE is the
+   > release-pending state, so an entry left untagged here stays pending and is
+   > picked up by the next release's step 2 — recoverable. An entry tagged wrongly
+   > is silently gone from every future pending set. Do not invent a placeholder
+   > for the other direction either — any value at all, `release=unreleased`
+   > included, ships the entry's whole scope silently.*
+
+4. Re-derive the pending set and confirm it shrank to exactly what you withheld:
+
+   ```
+   grep -o '<!-- prawduct:[^>]*-->' .prawduct/change-log.md | grep -v 'release=' \
+     | grep -oE 'scope=[A-Za-z0-9._-]+' | sort | uniq -c | sort -rn
+   ```
+
+   **Expected:** the scopes still listed are exactly the `withheld` rows of the
+   release plan's classification table — empty on an unpruned release. Re-running
+   step 2's own enumeration is the check here on purpose: a positional read-down
+   would agree with a positional sweep and confirm nothing.
 
 5. Validate the tags you just wrote:
 

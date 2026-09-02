@@ -28,6 +28,46 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools]
 packages = []
 
+# Ruff is prawduct's linter (#164). Until this stanza existed the project-preferences
+# Enforcement table's Linter row read `(none configured for prawduct)`, and the framework
+# had hand-rolled a worse one: `compliance.py`'s broad-exception canary re-derived, per
+# language, rules a linter already implements — and failed open on every language it did
+# not know. That check is deleted; `E722` and `BLE001` below are what replaced it.
+#
+# **The selection is an explicit code list, not a family list, and every code earns its
+# place one of two ways.** Two are required by #164 as the retired canary's successors
+# (`E722`, `BLE001`). The rest are codes this tree ALREADY writes against — each one is
+# suppressed at one or more sites with a `# noqa`, which is evidence the code was authored
+# under that rule. Selecting a whole family instead (`E`, `S`, `PL`) would switch on
+# hundreds of rules nobody has decided about, and `E501` in particular contradicts lines
+# this repo writes on purpose.
+#
+# **Known state: `ruff check` is not clean today, and no CI job runs it.** 149 sites carry
+# prawduct's own `# prawduct:allow prawduct/broad-except -- <reason>` pragma, which ruff
+# does not read, so `BLE001` reports every one of them until those pragmas migrate to
+# `# noqa: BLE001 -- <reason>`. That sweep touches most of the tree and is filed
+# separately. A CI job is deliberately withheld until it lands: a lint gate that is red on
+# arrival gets waved through once and then forever. Run it by hand meanwhile:
+#
+#     ruff check .
+[tool.ruff]
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+    # Required by #164 — what the deleted broad-exception canary was approximating.
+    "E722",     # bare `except:`
+    "BLE001",   # `except Exception` / `except BaseException` without re-raise
+    # Already written against — each is suppressed with `# noqa` somewhere in this tree.
+    "E402",     # module-level import not at top of file
+    "E731",     # lambda assigned to a name
+    "F401",     # unused import
+    "B018",     # useless expression
+    "S102",     # exec used
+    "S603",     # subprocess call without shell=True audit
+    "PLC0415",  # import outside top level
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # Worker count is pinned rather than `auto` (owner request 2026-08-19): `auto`
