@@ -75,6 +75,7 @@ CHECKS = (
     "learnings-entry-shape",
     "learnings-over-budget",
     "learnings-budget-unreasoned",
+    "learnings-area-dead",
 )
 
 # Two checks were built, measured, and REMOVED before this shipped — recorded
@@ -1025,7 +1026,10 @@ def _base_size(project_dir: Path, base_tree: str, rel: str) -> "int | None":
 
 
 def _check_learnings_budget(
-    project_dir: Path, prawduct_dir: Path, base_tree: str
+    project_dir: Path,
+    prawduct_dir: Path,
+    base_tree: str,
+    layout: "learnings_files.Layout | None" = None,
 ) -> "tuple[list[dict], list[str], set[str]]":
     """The curation gate: a rules file over budget **and grown this interval**.
 
@@ -1049,14 +1053,20 @@ def _check_learnings_budget(
 
     state_text = _read_text(prawduct_dir / "project-state.yaml") or ""
     budgets, malformed = parse_learnings_budgets(state_text)
-    if malformed:
+    # ONE LINE PER ENTRY, each naming the entry it could not read. This is the
+    # only branch here an operator triggers by hand, and its failure is silent
+    # in the dangerous direction: the declaration stays in the file, looks
+    # applied, and the default ceiling quietly governs instead. Joining several
+    # into one line buries the one they need to fix.
+    for name in malformed:
         unchecked.append(
             f"{_BUDGET_CHECKS[0]}, {_BUDGET_CHECKS[1]} unchecked — "
-            f"`{_LEARNINGS_BUDGETS_KEY}` in {_STATE_REL} declares "
-            + ", ".join(repr(name) for name in malformed)
-            + " in a shape this reader does not parse; the declared budget was "
-            "NOT applied and the default stands"
+            f"`{_LEARNINGS_BUDGETS_KEY}.{name}` in {_STATE_REL} is in a shape "
+            "this reader does not parse, so the declared budget was NOT applied "
+            f"and the {_LEARNINGS_BUDGET_DEFAULT_KB}KB default governs this file "
+            "instead. Fix the entry or delete it"
         )
+    if malformed:
         no_answer.update(_BUDGET_CHECKS)
 
     for name in sorted(budgets):
@@ -1073,7 +1083,8 @@ def _check_learnings_budget(
                 )
             )
 
-    layout = learnings_files.resolve(project_dir)
+    if layout is None:
+        layout = learnings_files.resolve(project_dir)
     if not layout.files:
         return findings, unchecked, no_answer
 
@@ -1131,6 +1142,69 @@ def _check_learnings_budget(
                 )
             )
     return findings, unchecked, no_answer
+
+
+def _check_learnings_areas(
+    project_dir: Path, layout: "learnings_files.Layout"
+) -> "tuple[list[dict], list[str], set[str]]":
+    """An area file whose ``paths:`` globs match nothing that is tracked.
+
+    Returns ``(findings, unchecked, no_answer)``.
+
+    The rules directory only grows, and an area file is reached by its globs or
+    not at all: rename the directory those globs name, or retire the area, and
+    the file stops being loaded by the harness and stops being returned by
+    ``files_for_paths`` — so the Critic never reads it either. Nothing else
+    notices, because the file is still there, still valid, still full of rules.
+    The corpus then *displays* a rule no session will ever see, which is the
+    cross-check going dark from the opposite direction to the one
+    ``learnings_files`` was written to prevent.
+
+    Matched against **tracked** paths (``git ls-files``), not the working tree:
+    build output and ignored scratch directories would keep a dead area alive,
+    and the globs are meant to name code that is committed.
+
+    An area declaring no globs is exempt — the harness loads it unconditionally,
+    exactly like ``core.md``, so it cannot be dead.
+    """
+    findings: list[dict] = []
+    scoped = [area for area in layout.areas if area.globs]
+    if not scoped:
+        return findings, [], set()
+
+    rc, out, err = evidence.run_git(project_dir, "ls-files", "-z")
+    if rc != 0:
+        return (
+            findings,
+            [
+                "learnings-area-dead unchecked — git could not list tracked "
+                f"files ({err.strip() or 'no output'}); a glob matches nothing "
+                "when nothing can be listed, which is the false positive"
+            ],
+            {"learnings-area-dead"},
+        )
+    tracked = [name for name in out.split("\0") if name]
+
+    for area in scoped:
+        if learnings_files.matches(area.globs, tracked):
+            continue
+        try:
+            rel = area.path.relative_to(project_dir).as_posix()
+        except ValueError:
+            rel = area.path.name
+        findings.append(
+            _finding(
+                "learnings-area-dead",
+                rel,
+                None,
+                "no tracked file matches "
+                + ", ".join(f"`{glob}`" for glob in area.globs)
+                + " — the harness never loads this file and the cross-check "
+                "never reads it, so its rules reach nobody. Rename the globs to "
+                "what the code is called now, or fold the rules into core.md",
+            )
+        )
+    return findings, [], set()
 
 
 # ---------------------------------------------------------------------------
@@ -1225,13 +1299,17 @@ def lint_records(
         findings.extend(_check_governed_by(project_dir, prawduct_dir, rel, text))
 
     # Not record-scoped: the rules corpus grows on a commit that changed nothing
-    # else, and the budget is about the file's size rather than its added lines.
-    budget_findings, budget_gaps, budget_no_answer = _check_learnings_budget(
-        project_dir, prawduct_dir, base_tree
-    )
-    findings.extend(budget_findings)
-    unchecked.extend(budget_gaps)
-    no_answer.update(budget_no_answer)
+    # else, and these read file sizes and glob reachability rather than added
+    # lines. Resolved ONCE and shared, so the two arms cannot disagree about
+    # which files the corpus holds.
+    layout = learnings_files.resolve(project_dir)
+    for arm_findings, arm_gaps, arm_no_answer in (
+        _check_learnings_budget(project_dir, prawduct_dir, base_tree, layout),
+        _check_learnings_areas(project_dir, layout),
+    ):
+        findings.extend(arm_findings)
+        unchecked.extend(arm_gaps)
+        no_answer.update(arm_no_answer)
 
     return {
         "records": records,

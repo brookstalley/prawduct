@@ -367,8 +367,7 @@ These flag; they never adjudicate whether an item "really" closed (the builder's
 
 ### Record-Lint — the checks the machine already ran
 
-`prawduct-hook critic-begin` runs a deterministic pass over the changed **records** (markdown; the
-archive excluded) and writes the result into the dispatch manifest as `record_lint`. Read it. Do not
+`prawduct-hook critic-begin` runs a deterministic pass over the changed **records** and writes the result into the dispatch manifest as `record_lint`. Read it. Do not
 re-derive any of it, and do not recount anything it counted — re-deriving a machine-checked number
 is how a record defect buys a review round, which is the cost this exists to remove.
 
@@ -382,6 +381,7 @@ Severity per check:
 | `learnings-entry-shape` | An added `learnings.md` rule over 400 chars, or a narrative body — both belong in `learnings-detail.md` | **NOTE** |
 | `learnings-over-budget` | A `.claude/rules/learnings/` file over budget **and grown since the base tree** (sizes, not lines) | **BLOCKING** |
 | `learnings-budget-unreasoned` | A `learnings_budgets:` entry with no `reason:` | **BLOCKING** |
+| `learnings-area-dead` | An area file whose `paths:` globs match no tracked file | **WARNING** |
 
 **Under the coordinator pattern, whoever holds Goal 2 raises every one of these** — including the
 `suite-total-claim` NOTE, which would otherwise sit in Goal 4. The manifest is named in Goal 2 and
@@ -392,8 +392,9 @@ stay findings; the WARNING and NOTE rows become observations like anything else 
 BLOCKING (see "A re-review does not manufacture work" — the general rule is not suspended for this
 table).
 
-**`unchecked` is not a pass, and the PREFIX decides the severity.** Each entry names a check that
-could not run, or an assumption made in place of one — told apart by the string, not by judgment.
+**`unchecked` is not a pass: an entry inherits one step below its check's severity** — BLOCKING
+→ **WARNING**, else **NOTE**. Each entry names a check that could not run, or an assumption made
+in place of one; the prefixes below are the exceptions.
 **A severity with no remedy is a false blocker**, and code, not the builder, decides a line's shape:
 
 - **`chunk-ref-missing unchecked — …` → BLOCKING.** A deliverable check that could not run is
@@ -403,15 +404,15 @@ could not run, or an assumption made in place of one — told apart by the strin
   deliverable check's severity, not as a generic NOTE.
 - **`chunk-ref-missing no-subject — …` → NOTE.** The scope names no plan *and* the change-log
   declares that scope: real, and deliberately plan-less — the ordinary shape of a framework-only fix,
-  which `building.md` says needs no plan. Nothing was skipped; there is no deliverable set to grade,
-  and no edit could clear it. A typo'd scope is declared nowhere and still arrives `unchecked`.
+  which `building.md` says needs no plan. Nothing was skipped and no edit could clear it. A typo'd scope is declared nowhere and still arrives `unchecked`.
 - **`chunk-ref-missing graded chunk … of <plan>: …` → NOTE.** An *assumption*, not a failure: the
   check ran (`chunk_graded` non-null), but one half of "whose deliverables" was inferred — the
   **chunk** inferred from build-plan Status (which names the first UNCHECKED chunk, so possibly the next one),
   or the **plan** from the `active_build_plan` pointer because the dispatch carried no scope. The
   line names which fired. Either means **no answer about this diff**, not clean; a branch that builds
   no chunk has no `--chunk` to supply.
-- **Every other `unchecked` entry → NOTE**, still stated in your summary.
+- **Every other entry takes the inherited severity above** — BLOCKING → WARNING, else NOTE — and
+  is stated either way.
 
 `goals-1-3.md` carries this same rule for the modes that read only that file; the two must agree.
 
@@ -428,8 +429,6 @@ is, so a subject and its tally can no longer disagree.
 Record-lint is **advice**: it reports to the builder and gates nothing. Its findings are yours to
 raise at the severities above, and its per-check counts ride into the review fact so the control's
 own yield stays measurable — which is also how a check that never catches anything gets retired.
-Two checks (`dangling-ref`, `unknown-backlog-id`) were built, measured at zero true positives, and
-removed before this shipped.
 
 ### Governing-Artifact Reconciliation
 

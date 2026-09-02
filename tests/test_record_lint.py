@@ -996,6 +996,7 @@ class TestUncheckedReporting:
                 # honestly found nothing.
                 "learnings-over-budget": 0,
                 "learnings-budget-unreasoned": 0,
+                "learnings-area-dead": 0,
             },
         }
 
@@ -1694,15 +1695,43 @@ class TestLearningsBudget:
         _state(repo, "learnings_budgets:\n  core.md: 32\n")
 
         result = self._lint_budget(repo, base)
-        assert any(
-            "learnings-over-budget, learnings-budget-unreasoned unchecked" in r
-            and "core.md" in r
-            for r in result["unchecked"]
-        ), result["unchecked"]
+        loud = [
+            r for r in result["unchecked"]
+            if r.startswith("learnings-over-budget, learnings-budget-unreasoned unchecked")
+        ]
+        assert len(loud) == 1, result["unchecked"]
+        assert "learnings_budgets.core.md" in loud[0], "it must name the entry"
+        assert "NOT applied" in loud[0] and "default governs" in loud[0], (
+            "the operator has to be told their declaration is inert and which "
+            "ceiling took over — a silent fallback is the failure mode"
+        )
         # A check that produced no answer counts None, never 0 — the tally is
         # what gets quoted, so the distinction has to live in the number.
         assert result["counts"]["learnings-over-budget"] is None
         assert result["counts"]["learnings-budget-unreasoned"] is None
+
+    def test_each_unreadable_entry_gets_its_own_line(self, tmp_path):
+        """Joining several into one line buries the one the operator must fix.
+
+        This is the only branch here a person triggers by hand, and it fails in
+        the dangerous direction: the declaration stays in the file, looks
+        applied, and the default ceiling quietly governs instead.
+        """
+        repo = _make_repo(tmp_path)
+        base = _tree(repo)
+        _state(
+            repo,
+            "learnings_budgets:\n  core.md: 32\n  critic.md: {kb: big}\n",
+        )
+
+        lines = [
+            r for r in self._lint_budget(repo, base)["unchecked"]
+            if "learnings_budgets." in r
+        ]
+        assert len(lines) == 2, lines
+        assert {"core.md", "critic.md"} == {
+            r.split("learnings_budgets.")[1].split("`")[0] for r in lines
+        }
 
     def test_an_unresolvable_base_tree_is_unchecked_not_a_wall_of_blockers(
         self, tmp_path
@@ -1734,6 +1763,102 @@ class TestLearningsBudget:
         )
         assert result["records"] == []
         assert len(_checks(result, "learnings-over-budget")) == 1
+
+
+class TestLearningsAreaDead:
+    """An area file reachable by nothing is a rule nobody will ever be shown.
+
+    The rules directory only grows, and an area file is reached by its globs or
+    not at all. Rename the directory those globs name and the file stops being
+    loaded by the harness and stops being returned by `files_for_paths`, so the
+    Critic stops reading it too — while the file sits there, valid and full of
+    rules, looking exactly like a live one.
+    """
+
+    def _area(self, repo: Path, name: str, globs: list[str]) -> None:
+        path = repo / learnings_files.RULES_DIR_REL / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        body = "\n".join(f'  - "{glob}"' for glob in globs)
+        path.write_text(f"---\npaths:\n{body}\n---\n\n## a rule\n")
+
+    def _dead(self, repo: Path) -> list[dict]:
+        return _checks(
+            _lint(repo, [], _tree(repo), _tree(repo)), "learnings-area-dead"
+        )
+
+    def test_globs_matching_no_tracked_file_fire(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        self._area(repo, "engine.md", ["engine/**", "engine/*.py"])
+        _commit(repo, "add a dead area")
+
+        findings = self._dead(repo)
+        assert len(findings) == 1
+        assert findings[0]["path"].endswith("engine.md")
+        # The globs are named, or the reader cannot tell which one to rename.
+        assert "`engine/**`" in findings[0]["detail"]
+        assert "fold the rules into core.md" in findings[0]["detail"]
+
+    def test_globs_matching_a_tracked_file_are_quiet(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        self._area(repo, "code.md", ["code.py"])
+        _commit(repo, "add a live area")
+
+        assert self._dead(repo) == []
+
+    def test_an_unscoped_area_is_exempt(self, tmp_path):
+        """No `paths:` means the harness loads it unconditionally, exactly like
+        `core.md` — it cannot be unreachable, so it cannot be dead."""
+        repo = _make_repo(tmp_path)
+        path = repo / learnings_files.RULES_DIR_REL / "always.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("## a rule that applies everywhere\n")
+        _commit(repo, "add an unscoped area")
+
+        assert self._dead(repo) == []
+
+    def test_core_is_never_reported(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        _rules_file(repo, learnings_files.CORE_NAME, 100)
+        _commit(repo, "seed core")
+
+        assert self._dead(repo) == []
+
+    def test_an_untracked_area_file_is_still_matched_against_tracked_paths(
+        self, tmp_path
+    ):
+        """Matched against `git ls-files`, not the working tree: build output and
+        ignored scratch trees would keep a dead area alive, and the globs are
+        meant to name code that is committed."""
+        repo = _make_repo(tmp_path)
+        (repo / "build").mkdir()
+        (repo / "build" / "out.py").write_text("x = 1\n")
+        self._area(repo, "build.md", ["build/**"])
+
+        assert len(self._dead(repo)) == 1
+
+    def test_an_unlistable_tree_is_unchecked_never_a_wall_of_dead_areas(
+        self, tmp_path, monkeypatch
+    ):
+        """A glob matches nothing when nothing can be listed — reporting that as
+        a dead area would blame the corpus for a broken git call."""
+        repo = _make_repo(tmp_path)
+        self._area(repo, "code.md", ["code.py"])
+        _commit(repo, "add a live area")
+
+        real = record_lint.evidence.run_git
+
+        def fail(project_dir, *args, **kwargs):
+            if args and args[0] == "ls-files":
+                return 1, "", "fatal: not a git repository"
+            return real(project_dir, *args, **kwargs)
+
+        monkeypatch.setattr(record_lint.evidence, "run_git", fail)
+        result = _lint(repo, [], _tree(repo), _tree(repo))
+        assert _checks(result, "learnings-area-dead") == []
+        assert any(
+            "learnings-area-dead unchecked" in r for r in result["unchecked"]
+        ), result["unchecked"]
+        assert result["counts"]["learnings-area-dead"] is None
 
 
 class TestBudgetDeclarationParsing:
