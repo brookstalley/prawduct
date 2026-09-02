@@ -57,6 +57,11 @@ user can override]
 impact — the resolver's matcher must agree with the harness's, or a file the harness loads is
 one the Critic does not read | user can correct]
 
+[ASSUMPTION: a product may gitignore `.claude/` (common), which would make `resolve()` report
+`new` from an untracked, never-committed rules tree | MED impact — Critic finding, Chunk 01 final
+review 2026-09-02 | disposition: guarded in Chunk 02 (migrate refuses an ignored destination) and
+Chunk 04 (briefing names the ignored state); the resolver itself stays a pure filesystem reader]
+
 **What would raise confidence:** one probe in Chunk 01 — a rules file with `paths: ["plugin/lib/**"]`
 in this worktree, read a matching file, confirm the rule text arrives. Five minutes; do it before
 writing the matcher.
@@ -68,8 +73,11 @@ writing the matcher.
 - [ ] Chunk 03: Budget gate — over-and-grew blocks the next addition
 - [ ] Chunk 04: Detection, directive, Stop floor, and the cross-check re-pointed
 - [ ] Chunk 05: Migrate this repo with its own command
-Context: Plan drawn 2026-09-02 from discovery §8.2. Nothing built. Next: Chunk 01, serial.
-02–04 dispatch together after 01's `final` review; 05 after all three are merged.
+Context: Plan drawn 2026-09-02 from discovery §8.2. Harness probe done 2026-09-02 (coordinator
+session): a `.claude/rules/zz-probe.md` with `paths: ["plugin/lib/**"]` injected its rule text on
+the first Read of `plugin/lib/onboarding_probes.py` — root-relative, `**` spans directories,
+loaded lazily on the matching read; the §6 assumption holds. Chunk 01 in progress (opus delegate,
+in place). 02–04 dispatch together after 01's `final` review; 05 after all three are merged.
 
 ## Scaffolding
 
@@ -192,8 +200,11 @@ allowlist that Wave 2 shrinks to the migrate module and `CHANGELOG.md`.
     under their own heading; paragraph rules → `core.md` under `## Unsorted`; `core.md` opens
     with `learnings_files.CORE_HEADER`; then delete `.prawduct/learnings.md`,
     `learnings-detail.md`, `learnings-history.md` where present. Refuse (exit 2, named reason)
-    when `git status --porcelain` shows any of those three paths modified. On a `new` layout
-    report "nothing to do" (exit 0); on `both`, refuse and point at the R4 fold directive.
+    when `git status --porcelain` shows any of those three paths modified. Refuse (exit 2,
+    named reason: the destination is gitignored, unignore `.claude/rules/` first) when
+    `git check-ignore -q .claude/rules/learnings/core.md` succeeds — otherwise `--apply` would
+    delete a tracked file and write an untracked one. On a `new` layout report "nothing to do"
+    (exit 0); on `both`, refuse and point at the R4 fold directive.
   - `plugin/bin/prawduct-hook`: `cmd_learnings_migrate(project_dir, argv)` with `--apply`,
     `--map <path>` (a `slug: [glob, …]` file, one per line), `--propose-map` (print the proposal
     in that format and exit), `--json`; dispatch line and usage entry. Dry run prints the plan:
@@ -203,7 +214,7 @@ allowlist that Wave 2 shrinks to the migrate module and `CHANGELOG.md`.
     of discodon's file with both shapes, links, and a metadata comment.
 - **Tests:** unit — each fixture round-trips; **byte accounting**: every rule line of the source,
   after `strip_links`, appears verbatim in the concatenated output; refuse-on-dirty; idempotence
-  (second run reports nothing); `both` refuses; `--propose-map` on a fixture tree with
+  (second run reports nothing); `both` refuses; gitignored destination refuses; `--propose-map` on a fixture tree with
   `discodon/eval/` proposes `eval-model-bake-offs: [discodon/eval/**]`; hook-argument-shape
   test for the new verb (`tests/test_hook_argument_shape.py` pattern).
 - **Acceptance criteria:** `uv run pytest -q tests/test_learnings_migrate.py tests/preferences`
@@ -260,6 +271,9 @@ allowlist that Wave 2 shrinks to the migrate module and `CHANGELOG.md`.
     --propose-map, edit the map, run --apply --map <file>, commit "chore(learnings): migrate to
     .claude/rules/learnings (prawduct <version>)" — before other work`. `both`: `agent → fold
     .prawduct/learnings.md into .claude/rules/learnings/ by hand and delete it`. `none`: nothing.
+    In the `new` and `both` states, when `git check-ignore -q` accepts the rules directory, append
+    ` — GITIGNORED: the rules tree is not committed; unignore .claude/rules/` to the line (the
+    harness still loads it, but nothing survives a clone).
     No advisory id, no dismiss. The `.subagent-briefing.md` learnings embedding is untouched
     here (Wave 2 removes it).
   - `plugin/bin/prawduct-hook` `cmd_stop`: when the layout state is `legacy` or `both` and the
@@ -282,7 +296,8 @@ allowlist that Wave 2 shrinks to the migrate module and `CHANGELOG.md`.
     and `tests/test_pr_reviewer.py` updated for the new phrasing, `tests/test_hook_argument_shape.py`
     for `learnings-files`.
 - **Tests:** as listed; plus `test_observability`-style assertion that no emitted line contains
-  an advisory-id-shaped token.
+  an advisory-id-shaped token; plus the gitignored-rules-dir briefing suffix (present when
+  ignored, absent when tracked).
 - **Acceptance criteria:** `uv run pytest -q tests/test_briefing_functions.py
   tests/test_learnings_cutover_gate.py tests/test_pr_reviewer.py tests/preferences` passes.
 - **Done when:**

@@ -26,13 +26,14 @@ repo's problem is repair (``/prawduct:doctor``), not installation.
 The markers are chosen by one test — **is this written ONLY by an onboarding
 path?** — which rules out most of what an onboarded repo contains:
 
-- ``.prawduct/learnings.md``, ``backlog.md``, ``change-log.md``,
-  ``artifacts/project-preferences.md`` are all things the *runtime* independently
-  asks for. The session-start hook prints a CRITICAL telling the agent to author
-  ``project-preferences.md`` whenever product code exists; the reflection loop
-  asks for ``learnings.md``; ``/prawduct:backlog`` creates ``backlog.md``. All of
-  that happens without an onboard, so counting their existence would blind the
-  probe on exactly the trajectory it is built for.
+- ``.claude/rules/learnings/core.md``, ``.prawduct/backlog.md``,
+  ``change-log.md``, ``artifacts/project-preferences.md`` are all things the
+  *runtime* independently asks for. The session-start hook prints a CRITICAL
+  telling the agent to author ``project-preferences.md`` whenever product code
+  exists; the reflection loop writes rules into ``core.md``; ``/prawduct:backlog``
+  creates ``backlog.md``. All of that happens without an onboard, so counting
+  their existence would blind the probe on exactly the trajectory it is built
+  for.
 - The committed install reference in ``.claude/settings.json`` is excluded for the
   same reason from the other direction: adding the marketplace entry and enabling
   the plugin is the *install* step the reporter performed, and it is precisely the

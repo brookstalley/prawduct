@@ -1783,33 +1783,34 @@ class TestDescentObligationReachesTheReader:
         )
 
     def test_a_newly_onboarded_product_gets_the_home_too(self):
-        """The pointer must resolve in PRODUCTS, not only in this repo.
+        """The obligation must reach PRODUCTS, not only this repo.
 
-        `/prawduct:learnings` ships with the plugin and tells its caller to
-        apply the obligation "marked `prawduct:descent-obligation`". The guard
-        above reads *this repo's* learnings.md, so it stayed green while every
-        newly onboarded product received an instruction aimed at a starter file
-        that had no such marker — a framework-repo-only feature with a
+        The guard above reads *this repo's* corpus, so it stayed green while
+        every newly onboarded product received an instruction aimed at a starter
+        file that carried nothing — a framework-repo-only feature with a
         framework-repo-only test, which is the corpus's own "a test asserting
         the framework repo's OWN state instead of the propagated contract"
-        failure. Assert the contract that reaches consumer repos.
+        failure. So this asserts the contract that reaches consumer repos.
 
-        Asserted on the STARTER STRING, not on the module's text. The first cut
-        of this guard read the whole file, where the marker appears twice — once
-        in the `#:` doc comment explaining it and once in the string that ships.
+        The carrier changed and the contract did not: a new product's corpus is
+        `.claude/rules/learnings/core.md`, scaffolded from
+        `learnings_files.CORE_HEADER`, and the obligation is stated there in
+        full rather than pointed at by a marker.
+
+        Asserted on the SCAFFOLDED STRING, not on the module's text. The first
+        cut of this guard read the whole file, where the statement appears twice
+        — once in the comment explaining it and once in the string that ships.
         Deleting it from the string left the guard green, satisfied by the
-        comment standing beside the thing it guards. Caught by the verify pass,
-        and it is the same defect one level up: a fixture that never reaches
-        the subject.
+        comment standing beside the thing it guards.
         """
-        if not (self._repo_root() / "plugin" / "lib" / "init_product.py").is_file():
-            pytest.skip("no init_product.py in this checkout")
-        from lib import init_product  # noqa: PLC0415 — plugin/ is on sys.path via conftest
+        if not (self._repo_root() / "plugin" / "lib" / "learnings_files.py").is_file():
+            pytest.skip("no learnings_files.py in this checkout")
+        from lib import learnings_files  # noqa: PLC0415 — plugin/ is on sys.path via conftest
 
-        assert self.MARKER in init_product._LEARNINGS_STARTER, (
-            f"the starter learnings.md carries no `{self.MARKER}` marker, so "
-            "/prawduct:learnings ships every onboarded product a pointer at a "
-            "hole."
+        assert "Reading a rule is not applying it" in learnings_files.CORE_HEADER, (
+            "the starter core.md states no descent obligation, so every "
+            "onboarded product receives a corpus with nothing telling its "
+            "reader that reading a rule is not applying it."
         )
 
     def test_the_skill_references_the_home_and_does_not_copy_it(self):

@@ -353,22 +353,22 @@ class TestRepair:
 
 
 # ---------------------------------------------------------------------------
-# One home for the obligation — the scaffold and the repair plant the same thing
+# The repair plants the block this module owns
 # ---------------------------------------------------------------------------
 
 
-def test_scaffold_and_repair_write_the_identical_block(tmp_path):
-    """The defect one level up.
+def test_repair_writes_the_obligation_block(tmp_path):
+    """The repair is the only writer of this block.
 
-    If the starter corpus and the repair each carried their own copy, a reworded
-    obligation would reach newly-onboarded products and skip repaired ones — the
-    fleet would then hold two statements under one marker, which is worse than the
-    hole this repair fills.
+    It once had a twin: `init_product` planted the same block into a starter
+    `.prawduct/learnings.md`, and this test pinned the two together so a reworded
+    obligation could not reach newly-onboarded products while skipping repaired
+    ones. Onboarding no longer scaffolds a `.prawduct/` corpus at all — a new
+    product gets `.claude/rules/learnings/core.md` from
+    `learnings_files.CORE_HEADER`, whose obligation is pinned by
+    `tests/test_learnings_files.py`. So there is one writer here again, and the
+    thing worth asserting is that it writes.
     """
-    from lib import init_product  # noqa: PLC0415
-
-    assert lo.OBLIGATION_BLOCK in init_product._LEARNINGS_STARTER
-
     _product(tmp_path, _PREAMBLE + _RULES)
     lo.repair(tmp_path, apply=True)
     repaired = (tmp_path / lo.LEARNINGS_REL).read_text(encoding="utf-8")
