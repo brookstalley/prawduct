@@ -182,6 +182,99 @@ class TestRoundTripFidelity:
         assert len(manifest["items"]) == len(_DIS_PFXS)
 
 
+# --- #727: an invisible backlog is refused, never imported as empty ----------
+
+
+class TestInvisibleSourceIsRefused:
+    """A backlog whose items are indented parses as zero items — and zero items
+    imported cleanly, then `verify-migration` compared an empty source set
+    against an empty alias set, found them consistent, and recorded a successful
+    cutover over a backlog it had silently emptied.
+
+    Both halves are pinned. Fixing only `import` leaves the gate certifying the
+    loss for anyone who imported before the fix; fixing only the gate leaves the
+    import doing it.
+    """
+
+    INDENTED = (
+        "# Backlog\n\n## Open\n\n"
+        "  - **[SWD-0001]** Weapon feel is wrong\n"
+        "    `effort: M · impact: L · area: weapon-feel · status: open`\n\n"
+        "  - **[SWD-0002]** Safety net is missing\n"
+        "    `effort: S · impact: M · area: safety · status: open`\n"
+    )
+    FLUSH = (
+        "# Backlog\n\n## Open\n\n"
+        "- **[SWD-0001]** Weapon feel is wrong\n"
+        "  `effort: M · impact: L · area: weapon-feel · status: open`\n"
+    )
+    EMPTY = "# Backlog\n\n## Open\n\n## Promoted\n\n## Archive\n"
+
+    def test_import_refuses_and_writes_nothing(self, fake):
+        result = _import(fake, self.INDENTED)
+        assert result["status"] == "error"
+        assert result["error"]["code"] == "validation"
+        assert result["error"]["details"]["items_if_dedented"] == 2
+        assert "column 0" in result["error"]["message"]
+        assert fake.list_issues(OWNER, REPO, state="all") == []
+
+    def test_verify_migration_refuses_instead_of_certifying_the_loss(self, fake):
+        verified = migrate.verify_migration(
+            fake, owner=OWNER, repo=REPO, content=self.INDENTED
+        )
+        assert verified["status"] == "error"
+        assert verified["error"]["code"] == "validation"
+        assert verified["error"]["details"]["items_if_dedented"] == 2
+
+    def test_a_genuinely_empty_backlog_is_not_accused(self, fake):
+        # "Nothing to migrate" must stay a clean pass — the refusal keys on
+        # items that WOULD parse, not on the file being large.
+        assert _import(fake, self.EMPTY)["status"] == "ok"
+        verified = migrate.verify_migration(fake, owner=OWNER, repo=REPO, content=self.EMPTY)
+        assert verified["status"] == "ok", verified
+
+    def test_the_shipped_template_is_not_accused(self, fake):
+        """The scaffolded backlog is exactly the "big file, zero items" shape a
+        byte-count heuristic would have failed on."""
+        template = (
+            Path(__file__).resolve().parent.parent
+            / "plugin" / "templates" / "backlog.md"
+        ).read_text(encoding="utf-8")
+        assert _import(fake, template)["status"] == "ok"
+
+    def test_a_flush_left_backlog_imports(self, fake):
+        assert _import(fake, self.FLUSH)["status"] == "ok"
+
+    def test_an_indented_archive_file_is_caught_too(self, fake):
+        result = migrate.import_backlog(
+            fake, owner=OWNER, repo=REPO,
+            content=self.EMPTY, archive_content=self.INDENTED,
+        )
+        assert result["status"] == "error"
+        assert result["error"]["details"]["items_if_dedented"] == 2
+
+
+class TestTemplateDocumentsTheColumnZeroRule:
+    """The template is what an author pattern-matches against; it was the source
+    of the trap and is the only place a new repo can learn the rule."""
+
+    def _template(self):
+        return (
+            Path(__file__).resolve().parent.parent
+            / "plugin" / "templates" / "backlog.md"
+        ).read_text(encoding="utf-8")
+
+    def test_the_item_example_is_flush_left(self):
+        text = self._template()
+        assert re.search(r"^- \*\*\[PFX-XXXX\]\*\*", text, re.M), (
+            "the template's item-shape example is indented again — an author "
+            "copying it authors a backlog that parses as zero items"
+        )
+
+    def test_the_column_zero_rule_is_stated(self):
+        assert "COLUMN 0" in self._template()
+
+
 # --- #728: prefixing is a property of import ---------------------------------
 
 

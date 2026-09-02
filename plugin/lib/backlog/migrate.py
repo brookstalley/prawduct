@@ -723,6 +723,62 @@ def collect_records(
     return records, collisions
 
 
+#: The indentation the trap produces. Two spaces is what a template comment's
+#: own indentation teaches an author to copy; the sweep is not fussy about the
+#: exact width because the question is only "would this parse at column 0".
+_LEADING_INDENT_RE = re.compile(r"^[ \t]+", re.M)
+
+
+def _invisible_items(content: str | None) -> int:
+    """How many items ``content`` WOULD yield if its bullets were flush-left.
+
+    Zero when the file genuinely holds no items, so a freshly scaffolded backlog
+    is not accused of anything.
+
+    The parser takes a column-0 ``- `` bullet as the item boundary — deliberately,
+    so indented body bullets cannot false-positive — but the shipped template
+    documented the item shape indented, and stated the rule nowhere. A backlog
+    authored by following that example parses as **zero items**, imports as zero
+    issues, and `verify-migration` then compares an empty source set against an
+    empty alias set, finds them consistent, and records a successful cutover over
+    a backlog it silently emptied (#727).
+
+    Dedent-and-reparse rather than a byte-count heuristic: "big file, no items"
+    fires on every scaffolded backlog, while "these exact lines become N items
+    one indent to the left" is the trap and nothing else. It is also the check
+    the reporter ran by hand (`sed 's/^  //'`) before believing the diagnosis."""
+    if not content or not content.strip():
+        return 0
+    return len(legacy.parse_backlog(_LEADING_INDENT_RE.sub("", content)).items)
+
+
+def refuse_invisible_source(
+    content: str, archive_content: str | None, records: list[ImportRecord]
+) -> dict | None:
+    """A ``validation`` envelope when the source parses to nothing but would parse
+    to something flush-left, else ``None``.
+
+    Refuses rather than warns. "Nothing to migrate" and "everything is invisible"
+    deserve different outcomes, and the second one currently reads as the first
+    all the way through the completeness gate — which is the only place left that
+    could have caught it."""
+    if records:
+        return None
+    hidden = _invisible_items(content) + _invisible_items(archive_content)
+    if not hidden:
+        return None
+    return core.error(
+        "validation",
+        f"the source parses to 0 items, but {hidden} item(s) would parse if its "
+        "bullets started at column 0 — every backlog item must begin at the left "
+        "margin, and everything indented under it is that item's body. Re-indent "
+        "the file (each item's `- **[PFX-XXXX]**` line flush-left) and re-run. "
+        "Refusing rather than importing nothing: an empty import would pass "
+        "verify-migration and record a cutover over a backlog it emptied.",
+        details={"parsed_items": 0, "items_if_dedented": hidden},
+    )
+
+
 # The owner-confirmed archive-scope lever (MG4b), surfaced at scrub time and
 # applied by the deterministic importer — a data-plane lever, never a model call.
 ARCHIVE_SCOPES: tuple[str, ...] = ("all", "open")
@@ -807,6 +863,9 @@ def import_backlog(
     backfill an ``open``-scoped migration will reopen anything closed on the service
     since cutover."""
     records, collisions = collect_records(content, archive_content)
+    refusal = refuse_invisible_source(content, archive_content, records)
+    if refusal is not None:
+        return refusal
     records, archive_skipped = apply_archive_scope(records, archive_scope)
     plan_warnings: list[str] = []
     restructured = 0
@@ -1489,6 +1548,12 @@ def verify_migration(
     reconciles nothing.
     """
     records, collisions = collect_records(content, archive_content)
+    # The gate has to answer the question independently of the import: an empty
+    # source against an empty alias set is "consistent" and would certify the
+    # cutover the import silently emptied (#727).
+    refusal = refuse_invisible_source(content, archive_content, records)
+    if refusal is not None:
+        return refusal
     records, _archive_skipped = apply_archive_scope(records, archive_scope)
     source = [r.pfx for r in records if r.pfx]
     unaliasable = [r.title for r in records if not r.pfx]
