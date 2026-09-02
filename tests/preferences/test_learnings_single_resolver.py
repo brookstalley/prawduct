@@ -53,9 +53,9 @@ WAVES = {"wave-1", "wave-2", "wave-3", "none"}
 ALLOWLIST: dict[str, tuple[str, str]] = {
     # --- Wave 1, Chunk 04 (W1-C): detection, directive, cross-check re-pointed
     "plugin/lib/briefing.py": (
-        "wave-1",
-        "the learnings count line and the size nudge; Chunk 04 replaces both "
-        "with the resolver's three states plus the migration directive",
+        "wave-2",
+        "the `.subagent-briefing.md` learnings embedding (Wave 2 removes it); "
+        "the count line and size nudge already went in Chunk 04",
     ),
     "plugin/lib/gates.py": (
         "wave-2",
@@ -63,9 +63,9 @@ ALLOWLIST: dict[str, tuple[str, str]] = {
         "cross-check text itself was repointed in Chunk 04 (grep-clean sweep)",
     ),
     "plugin/skills/critic/review-cycle.md": (
-        "wave-1",
-        "the Final-Mode Cross-Checks scan (Chunk 04); the `learnings-entry-shape` "
-        "severity row beside it goes with its check in Wave 2",
+        "wave-2",
+        "the `learnings-entry-shape` severity row, which goes with its check in "
+        "Wave 2; the cross-check scan itself was repointed in Chunk 04",
     ),
     # --- Wave 2 (`learnings-v2-delete`), R6: whole-feature deletions
     "plugin/lib/audit_learnings_cmd.py": (

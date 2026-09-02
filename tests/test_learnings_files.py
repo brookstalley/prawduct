@@ -378,3 +378,38 @@ class TestScaffoldCore:
         layout = lf.resolve(tmp_path)
         assert layout.state == lf.STATE_NEW
         assert layout.files == [tmp_path / lf.RULES_DIR_REL / lf.CORE_NAME]
+
+
+class TestRulesDirIsGitignored:
+    """The one predicate for "will the rules tree survive a clone?"."""
+
+    @staticmethod
+    def _repo(tmp_path):
+        import subprocess as sp
+        sp.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+        return tmp_path
+
+    def test_false_in_a_repo_that_does_not_ignore_it(self, tmp_path):
+        repo = self._repo(tmp_path)
+        assert lf.rules_dir_is_gitignored(repo) is False
+
+    def test_true_when_claude_is_ignored(self, tmp_path):
+        repo = self._repo(tmp_path)
+        (repo / ".gitignore").write_text(".claude/\n")
+        assert lf.rules_dir_is_gitignored(repo) is True
+
+    def test_a_tracked_sibling_does_not_mask_the_answer(self, tmp_path):
+        """A directory pathspec is satisfied by any tracked file beneath it;
+        the question is about the NEXT file, so a tracked area file beside an
+        ignored core.md must still read as ignored."""
+        import subprocess as sp
+        repo = self._repo(tmp_path)
+        (repo / ".gitignore").write_text(".claude/\n")
+        area = repo / lf.RULES_DIR_REL / "area.md"
+        area.parent.mkdir(parents=True)
+        area.write_text("# area\n")
+        sp.run(["git", "add", "-f", str(area)], cwd=repo, check=True)
+        assert lf.rules_dir_is_gitignored(repo) is True
+
+    def test_false_outside_a_git_repo(self, tmp_path):
+        assert lf.rules_dir_is_gitignored(tmp_path) is False

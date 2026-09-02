@@ -212,11 +212,11 @@ A v2 product repo commits only its own state plus the install reference — no f
 ```
 my-product/
 ├── CLAUDE.md                    # your product instructions + a thin static governance anchor (PRAWDUCT:ANCHOR)
+├── .claude/rules/learnings/
+│   ├── core.md                  # cross-cutting rules — loaded by the harness in every session
+│   └── <area>.md                # area rules with `paths:` — loaded when a matching file is read
 ├── .prawduct/
 │   ├── project-state.yaml       # product definition, work tracking, build plan
-│   ├── learnings.md             # active rules (read by /prawduct:learnings)
-│   ├── learnings-detail.md      # full learning context
-│   ├── learnings-history.md     # retired/superseded entries, read only on a miss
 │   ├── backlog.md               # deferred work items (out-of-scope captures)
 │   ├── change-log.md            # change log
 │   ├── artifacts/               # specifications generated during planning

@@ -628,8 +628,9 @@ LAST_MEASURED_TOKENS = {
     # `test_mandated_hook_subcommands_are_granted_on_every_binding_surface`
     # exists to catch. Nothing paid: three tokens against a 3450 ceiling that
     # still holds, and the standing rule (the next addition trims or relocates)
-    # is unchanged by a grant line that has no prose to trim.
-    "skills/critic/SKILL.md": 3438,
+    # is unchanged by a grant line that has no prose to trim. 2026-09-02: +7 for the
+    # two `learnings-files` grants (hook and python3 twin) — same kind, nothing to trim.
+    "skills/critic/SKILL.md": 3442,
     "skills/critic/framework-checks.md": 1116,
     # The on-demand class, first recorded 2026-08-19 (#688) — readings, no
     # ceilings; the block above this dict is the decision and its reasoning.

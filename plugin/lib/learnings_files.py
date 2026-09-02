@@ -39,6 +39,7 @@ are driven from.
 from __future__ import annotations
 
 import re
+import subprocess
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -505,3 +506,27 @@ def scaffold_core(project_dir: str | Path) -> Path:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(CORE_HEADER, encoding="utf-8")
     return path
+
+
+def rules_dir_is_gitignored(project_dir: str | Path) -> bool:
+    """Would a NEW file under the rules directory be ignored by git?
+
+    The one home for this question (two chunks answered it independently, one
+    against the directory and one against ``core.md``, and the two disagree
+    under check-ignore's index awareness: a directory pathspec is satisfied by
+    any tracked file beneath it, so a half-committed corpus read as "tracked").
+    Asking about a path that does not exist, with ``--no-index``, asks the
+    question every caller means: the briefing wants to know whether the corpus
+    will survive a clone, and the migration wants to know whether what it is
+    about to write will. Not a git repo, or git missing: False — there is no
+    commit for the answer to be about, and the callers say nothing.
+    """
+    probe = f"{RULES_DIR_REL}/__prawduct_probe__.md"
+    try:
+        proc = subprocess.run(
+            ["git", "check-ignore", "-q", "--no-index", "--", probe],
+            cwd=str(project_dir), capture_output=True, text=True, timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return proc.returncode == 0
