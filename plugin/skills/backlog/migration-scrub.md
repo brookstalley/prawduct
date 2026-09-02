@@ -392,11 +392,11 @@ the cutover*. Run:
     prawduct-hook backlog verify-migration --repo <target> \
       --from .prawduct/backlog.md [--archive <archive>] [--archive-scope all|open]
 
-**Exit 0 — `missing`, `unaliasable`, `collisions`, `status_mismatch` and
-`duplicate_alias` all empty — is the precondition for the rest of this step.** Do
-**not** record the key while any is non-empty. Exit 4 names the items, and the
-five lists have different remedies — **re-running the import is the right answer
-for only two of them**:
+**Exit 0 — `missing`, `unaliasable`, `collisions`, `status_mismatch`,
+`duplicate_alias` and `unencodable_status` all empty — is the precondition for
+the rest of this step.** Do **not** record the key while any is non-empty. Exit 4
+names the items, and the six lists have different remedies — **re-running the
+import is the right answer for only two of them**:
 
 - **`missing`** — source items with no issue on the target. Re-run the import
   (idempotent, alias-keyed, so already-migrated items skip rather than
@@ -420,6 +420,10 @@ for only two of them**:
   `--archive-scope all` a rate-limited close stretch can leave every archived
   item sitting open. Same remedy as `missing` — re-run the import, which
   reconciles the status axis on already-migrated items too — and verify again.
+  **But the re-run drives the target back to the SOURCE's status**, so it
+  overwrites a deliberate correction as readily as a failed reconcile. If you
+  moved the item on the target on purpose, fix the source markdown to match
+  instead; otherwise the gate keeps asking and its remedy keeps reverting you.
 - **`duplicate_alias`** — **two issues on the target** record the same id in their
   body block and their statuses disagree, so nothing can decide which is
   authoritative. It looks like `status_mismatch` and behaves like `collisions`:
@@ -430,6 +434,13 @@ for only two of them**:
   number** — `merge <owner>/<repo>#<n> --into <owner>/<repo>#<m>`. The bare `PFX` form
   cannot express this merge: both endpoints resolve through the `id:PFX` label search
   to the *same* labelled survivor, so it is rejected as merging an item into itself.
+- **`unencodable_status`** — the source item declares a `status:` in no documented
+  vocabulary (a typo, or a value from another tool). The import substituted one
+  rather than refusing, so the issue exists at a plausible-but-unasserted status
+  — and **a re-run substitutes it again**. Correct the source markdown to a
+  documented value (`open`, `promoted`, `shipped`, `dropped`) and re-import.
+  `promoted` in particular is now carried across: it lands as the service's
+  `in-progress` sub-state rather than being flattened to `open`.
   The number is the only handle that distinguishes the two. **This fold is a migration
   repair, not a confirmed disposition** — it reconciles two target issues onto one
   source item rather than diverging from the source — so it is correct to run here,

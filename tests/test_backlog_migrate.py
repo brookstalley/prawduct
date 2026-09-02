@@ -182,6 +182,108 @@ class TestRoundTripFidelity:
         assert len(manifest["items"]) == len(_DIS_PFXS)
 
 
+# --- #729: promoted survives, and the gate no longer grades its own homework -
+
+
+class TestPromotedSurvivesTheImport:
+    """`promoted` is documented markdown vocabulary and a first-class section, but
+    it is not an `encode.STATUS_VALUES` member, so it fell through the
+    unknown-value path to `open` — losing the in-flight signal on exactly the item
+    most likely to carry it."""
+
+    PROMOTED = (
+        "# Backlog\n\n## Promoted\n\n"
+        "- **[SWD-K3M1]** The active spike\n"
+        "  `effort: M · impact: L · area: core · stage: ready · status: promoted`\n"
+    )
+
+    def test_promoted_maps_to_in_progress(self):
+        records, _ = migrate.collect_records(self.PROMOTED)
+        assert [r.status for r in records] == ["in-progress"]
+
+    def test_the_created_issue_carries_the_in_progress_sub_state(self, fake):
+        assert _import(fake, self.PROMOTED)["status"] == "ok"
+        issue = _alias_issues(fake, "SWD-K3M1")[0]
+        assert "status:in-progress" in encode.label_names(issue)
+
+    def test_the_source_spelling_is_still_preserved_in_the_block(self, fake):
+        # The alias maps the value; it does not erase what the author wrote.
+        _import(fake, self.PROMOTED)
+        issue = _alias_issues(fake, "SWD-K3M1")[0]
+        assert encode.parse_block(issue["body"]).get("status") == "promoted"
+
+    def test_the_gate_passes_on_a_faithful_promoted_import(self, fake):
+        _import(fake, self.PROMOTED)
+        verified = migrate.verify_migration(
+            fake, owner=OWNER, repo=REPO, content=self.PROMOTED
+        )
+        assert verified["status"] == "ok", verified
+
+
+class TestGateExpectationIsIndependent:
+    """The gate derived its expectation through `_target_status` — the very
+    function that produced the outcome — so it could only confirm that the code
+    agreed with itself. These pin the second implementation, and the fact that a
+    disagreement between the two is now visible rather than certified."""
+
+    def test_the_expectation_table_covers_the_documented_vocabulary(self):
+        """`templates/backlog.md` is what an author writes against; every status
+        it documents must be a status the gate can grade."""
+        template = (
+            Path(__file__).resolve().parent.parent
+            / "plugin" / "templates" / "backlog.md"
+        ).read_text(encoding="utf-8")
+        documented = re.search(r"^\s*status: (.+)$", template, re.M).group(1)
+        for value in (v.strip() for v in documented.split("|")):
+            assert value in migrate._GATE_EXPECTED_STATUS, (
+                f"the template documents `status: {value}` but the completeness "
+                "gate has no expectation for it, so an item carrying it cannot be "
+                "graded — the divergence #729 was about"
+            )
+
+    def test_a_regressed_target_status_is_reported_not_certified(self, fake):
+        """The regression itself: with the importer's mapping reverted, the gate
+        must still see `open` where `in-progress` was expected."""
+        _import(fake, TestPromotedSurvivesTheImport.PROMOTED)
+        number = _alias_issues(fake, "SWD-K3M1")[0]["number"]
+        # Drive the target back to what the pre-fix import produced.
+        core.set_status(fake, id_raw=f"{OWNER}/{REPO}#{number}", target="open")
+
+        verified = migrate.verify_migration(
+            fake, owner=OWNER, repo=REPO, content=TestPromotedSurvivesTheImport.PROMOTED
+        )
+
+        assert verified["status"] == "error"
+        assert verified["error"]["details"]["status_mismatch"] == [
+            "SWD-K3M1 (source: in-progress, target: open)"
+        ]
+
+    def test_an_undocumented_status_is_its_own_class_with_its_own_remedy(self, fake):
+        """A status in no vocabulary was silently substituted with `open` and the
+        gate passed. It is not a `status_mismatch`: re-running the import — that
+        list's remedy — substitutes it again."""
+        content = (
+            "# Backlog\n\n## Open\n\n"
+            "- **[SWD-0009]** An item with a typo'd status\n"
+            "  `effort: S · impact: M · area: core · status: opne`\n"
+        )
+        assert _import(fake, content)["status"] == "ok"
+
+        verified = migrate.verify_migration(fake, owner=OWNER, repo=REPO, content=content)
+
+        assert verified["status"] == "error"
+        details = verified["error"]["details"]
+        assert details["unencodable_status"] == ["SWD-0009 (source status: 'opne')"]
+        assert details["status_mismatch"] == []
+        assert "do not re-run the import" in verified["error"]["message"]
+
+    def test_the_mismatch_remedy_warns_that_a_re_import_overwrites_a_repair(self, fake):
+        """The message steered an operator who had repaired the target into
+        reverting their own repair."""
+        remedy = migrate._incompleteness_remedy([], [], [], ["X (source: a, target: b)"], [])
+        assert "overwrites a deliberate correction" in remedy
+
+
 # --- #727: an invisible backlog is refused, never imported as empty ----------
 
 

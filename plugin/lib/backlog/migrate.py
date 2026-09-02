@@ -654,15 +654,35 @@ def _record_from_item(item: legacy.BacklogItem, pfx: str | None) -> ImportRecord
     return ImportRecord(pfx=pfx, title=title, body=item.body, status=status, labels=labels, block=block)
 
 
+#: Markdown-vocabulary statuses that are DOCUMENTED but not service statuses, and
+#: the service status each one means. The two backends have different status
+#: vocabularies and the import is the one place they meet, so the mapping belongs
+#: here and nowhere else.
+#:
+#: `promoted` is the whole of it today, and it is load-bearing: `## Promoted` is a
+#: first-class section, the skill instructs `update <id> status=promoted`, and it
+#: names the item currently being worked — the highest-signal item in the backlog.
+#: It is not in `encode.STATUS_VALUES` because the service spells that state
+#: `in-progress`, and adding a second spelling there would fork one state into two
+#: on the target. Before this mapping existed a `promoted` item fell through the
+#: unknown-value path to `open`, so the in-flight signal was lost on exactly the
+#: item most likely to carry it (#729) — a documentation defect wearing the costume
+#: of user error.
+_MARKDOWN_STATUS_ALIASES: dict[str, str] = {"promoted": "in-progress"}
+
+
 def _target_status(item: legacy.BacklogItem) -> str:
     """The two-axis status *target* for an imported item: the explicit ``status:``
-    metadata when it is a valid status, else inferred from the section (``## Archive``
-    → closed). An unknown status value does not drive the axis (a bogus status is
-    never applied), but it is **preserved verbatim in the block** (``_block_for``) so
-    nothing is silently dropped — the migration scrub can see it."""
+    metadata when it is a valid service status or a documented markdown alias for
+    one, else inferred from the section (``## Archive`` → closed). An unknown
+    status value does not drive the axis (a bogus status is never applied), but it
+    is **preserved verbatim in the block** (``_block_for``) so nothing is silently
+    dropped — the migration scrub can see it."""
     meta_status = (item.metadata.get("status") or "").strip()
     if meta_status in encode.STATUS_VALUES:
         return meta_status
+    if meta_status in _MARKDOWN_STATUS_ALIASES:
+        return _MARKDOWN_STATUS_ALIASES[meta_status]
     if _is_archived(item.section):
         return "dropped"  # a closed archive item with no valid status decodes as dropped
     return "open"
@@ -750,6 +770,57 @@ def _invisible_items(content: str | None) -> int:
     if not content or not content.strip():
         return 0
     return len(legacy.parse_backlog(_LEADING_INDENT_RE.sub("", content)).items)
+
+
+#: The gate's OWN reading of the documented markdown status vocabulary → the
+#: service status a faithful import must land on. Written out here, and never
+#: derived from `_target_status`, because a gate whose expectation comes from the
+#: transform it is checking can only ever confirm that the code agrees with
+#: itself. That is how a `promoted` item arrived as `open`, was compared `open`
+#: against `open`, and had the loss certified as correct (#729).
+#:
+#: This is a deliberate second implementation, not duplication to be tidied away:
+#: the two disagreeing is the signal. Keep it flat and literal so a reader can
+#: check it against `templates/backlog.md`'s documented vocabulary by eye.
+_GATE_EXPECTED_STATUS: dict[str, str] = {
+    # documented markdown vocabulary (templates/backlog.md)
+    "open": "open",
+    "promoted": "in-progress",
+    "shipped": "shipped",
+    "dropped": "dropped",
+    # service vocabulary, for a source already written in it
+    "submitted": "submitted",
+    "in-progress": "in-progress",
+}
+
+
+def _gate_expectation(item: legacy.BacklogItem) -> str | None:
+    """The status the gate expects on the target for ``item``, or ``None`` when
+    the source declares a status that is in no documented vocabulary.
+
+    ``None`` is not "assume open" — that substitution is the defect. It routes to
+    the gate's ``unencodable_status`` list, whose remedy is to fix the source,
+    which is a different remedy from every other list here."""
+    raw = (item.metadata.get("status") or "").strip()
+    if raw:
+        return _GATE_EXPECTED_STATUS.get(raw)
+    return "dropped" if _is_archived(item.section) else "open"
+
+
+def _gate_expectations(
+    content: str, archive_content: str | None
+) -> dict[str, tuple[str | None, str]]:
+    """``pfx -> (expected target status, the raw source spelling)``, read straight
+    off the parsed markdown rather than off the import records."""
+    out: dict[str, tuple[str | None, str]] = {}
+    for source in (content, archive_content):
+        if not source:
+            continue
+        for item in legacy.parse_backlog(source).items:
+            pfx = item.item_id
+            if pfx and ids.is_pfx(pfx) and pfx not in out:
+                out[pfx] = (_gate_expectation(item), (item.metadata.get("status") or "").strip())
+    return out
 
 
 def refuse_invisible_source(
@@ -1589,11 +1660,21 @@ def verify_migration(
     # again — a full ~900-write re-run that converges on nothing. Only a target-side
     # deduplication fixes it.
     duplicate_alias = [p for p in source if p in ambiguous]
-    status_mismatch = [
-        f"{r.pfx} (source: {r.status}, target: {aliased[r.pfx]})"
-        for r in records
-        if r.pfx and r.pfx in aliased and r.pfx not in ambiguous and aliased[r.pfx] != r.status
-    ]
+    # The expectation is the GATE's own reading of the parsed source, never the
+    # importer's — see `_GATE_EXPECTED_STATUS` for why that independence is the
+    # whole point of this comparison.
+    expectations = _gate_expectations(content, archive_content)
+    status_mismatch: list[str] = []
+    unencodable_status: list[str] = []
+    for record in records:
+        pfx = record.pfx
+        if not pfx or pfx not in aliased or pfx in ambiguous:
+            continue
+        expected, raw = expectations.get(pfx, (record.status, record.status))
+        if expected is None:
+            unencodable_status.append(f"{pfx} (source status: {raw!r})")
+        elif aliased[pfx] != expected:
+            status_mismatch.append(f"{pfx} (source: {expected}, target: {aliased[pfx]})")
     data = {
         "repo": f"{owner}/{repo}",
         "source_items": len(records),
@@ -1603,14 +1684,24 @@ def verify_migration(
         "collisions": collided,
         "status_mismatch": status_mismatch,
         "duplicate_alias": duplicate_alias,
+        "unencodable_status": unencodable_status,
     }
-    if missing or unaliasable or collided or status_mismatch or duplicate_alias:
+    incomplete = (
+        missing or unaliasable or collided
+        or status_mismatch or duplicate_alias or unencodable_status
+    )
+    if incomplete:
         return core.error(
             "conflict",
             f"{len(records)} source item(s) in scope, {data['aliased']} verifiably "
             f"keyed to an issue on {owner}/{repo} — the migration is incomplete; "
             + _incompleteness_remedy(
-                missing, unaliasable, collided, status_mismatch, duplicate_alias
+                missing,
+                unaliasable,
+                collided,
+                status_mismatch,
+                duplicate_alias,
+                unencodable_status,
             ),
             details=data,
         )
@@ -1623,6 +1714,7 @@ def _incompleteness_remedy(
     collided: list[str],
     status_mismatch: list[str],
     duplicate_alias: list[str],
+    unencodable_status: list[str] | None = None,
 ) -> str:
     """The operator-facing next step, which differs by *why* an item is absent.
 
@@ -1640,8 +1732,11 @@ def _incompleteness_remedy(
     and behaves like ``collided``: two issues on the *target* record the same PFX at
     different statuses, and a re-import touches neither — the labelled one already
     matches so nothing is written, and the unlabelled one is never looked up — so
-    the only fix is a target-side deduplication. Saying "re-run import" for all five
-    would be wrong for three of them."""
+    the only fix is a target-side deduplication. An ``unencodable_status`` item is
+    the source's own problem: it declares a status in no documented vocabulary, so
+    the import substituted one and a re-run would substitute it again — the source
+    is what has to change. Saying "re-run import" for all six would be wrong for
+    four of them."""
     parts = []
     if missing:
         parts.append(
@@ -1668,7 +1763,11 @@ def _incompleteness_remedy(
             "at the WRONG status — the issue exists and is keyed, but a status "
             "reconcile never landed (see `status_unreconciled` in the import result); "
             "re-run the import, which reconciles the status axis on already-migrated "
-            "items too"
+            "items too. **The re-run drives the target back to the SOURCE's status, "
+            "so it overwrites a deliberate correction as readily as a failed "
+            "reconcile** — if you moved the item on the target on purpose, fix the "
+            "source markdown to match instead, or the gate will keep asking and the "
+            "remedy will keep reverting you"
         )
     if duplicate_alias:
         parts.append(
@@ -1680,6 +1779,14 @@ def _incompleteness_remedy(
             "deduplicate there by ISSUE NUMBER — `merge owner/repo#<n> --into "
             "owner/repo#<m>` — and verify again. The bare PFX cannot spell this "
             "merge: both ends resolve through the alias label to the same issue"
+        )
+    if unencodable_status:
+        parts.append(
+            f"the {len(unencodable_status)} item(s) in `unencodable_status` declare a "
+            "`status:` in no documented vocabulary, so the import substituted one and "
+            "a re-run substitutes it again — **do not re-run the import**; correct the "
+            f"source markdown to a documented value ({', '.join(sorted(_GATE_EXPECTED_STATUS))}) "
+            "and import again"
         )
     return "; ".join(parts)
 
