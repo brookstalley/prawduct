@@ -50,7 +50,10 @@ _hook_loader.exec_module(_hook)
 #: The blocker's opening words — what a reader greps for, and what every
 #: assertion below is anchored on rather than on a whole paragraph that would
 #: make a wording fix look like a regression.
-BLOCKER = "LEARNINGS UNMIGRATED:"
+BLOCKER = "LEARNINGS UNMIGRATED"
+BLOCKER_LEGACY = "LEARNINGS UNMIGRATED: this session changed judgeable code"
+BLOCKER_BOTH = "LEARNINGS UNMIGRATED (both layouts present)"
+BUDGET_BLOCKER = "LEARNINGS BUDGET:"
 
 #: Advisory ids (`<feature>-<probe>-v<n>-<hash6>`) and prawduct-internal
 #: requirement ids (`ABC-1D2E`) may not appear in operator-emitted text.
@@ -79,7 +82,7 @@ def _repo(tmp_path: Path) -> Path:
     every assertion below reads the blocker it means.
     """
     repo = tmp_path / "repo"
-    repo.mkdir()
+    repo.mkdir(parents=True)
     _git(repo, "init", "-q", "-b", "main")
     (repo / "code.py").write_text("x = 1\n")
     (repo / "notes.md").write_text("notes\n")
@@ -91,6 +94,19 @@ def _repo(tmp_path: Path) -> Path:
         "A sufficiently long session reflection so the reflection gate stays quiet here.\n"
     )
     return repo
+
+
+def _base_tree(repo: Path) -> None:
+    """Record the session base tree the way `cmd_clear` does at session start.
+
+    Without it the budget gate has no "before" to compare against and correctly
+    reports itself unchecked rather than guessing.
+    """
+    out = subprocess.run(
+        ["git", "rev-parse", "HEAD^{tree}"],
+        cwd=str(repo), capture_output=True, text=True, check=True,
+    ).stdout.strip()
+    (repo / ".prawduct" / ".session-base-tree").write_text(out)
 
 
 def _legacy(repo: Path) -> None:
@@ -137,6 +153,32 @@ class TestTheFloorFires:
         rc, err = _stop(repo, capsys)
         assert rc == 2
         assert BLOCKER in err
+
+    def test_each_state_gets_its_own_diagnosis(self, tmp_path, capsys):
+        """One headline for two states told the `both` agent something false.
+
+        In `both` the rules tree exists and the harness loaded it — the same
+        session's briefing said so in as many words. A blocker claiming "the
+        harness loaded none of it" hands that agent a diagnosis it will act on,
+        most likely by re-running a migration that refuses `both` outright.
+        """
+        legacy_repo = _repo(tmp_path / "a")
+        _legacy(legacy_repo)
+        _touch_code(legacy_repo)
+        _, legacy_err = _stop(legacy_repo, capsys)
+        assert BLOCKER_LEGACY in legacy_err
+        assert "loaded none of it" in legacy_err
+
+        both_repo = _repo(tmp_path / "b")
+        _legacy(both_repo)
+        _rules(both_repo)
+        _touch_code(both_repo)
+        _, both_err = _stop(both_repo, capsys)
+        assert BLOCKER_BOTH in both_err
+        # The true half, said out loud...
+        assert "those rules WERE in context" in both_err
+        # ...and the false half, never said.
+        assert "loaded none of it" not in both_err
 
     def test_the_blocker_carries_the_briefing_directive_verbatim(self, tmp_path, capsys):
         from lib import briefing
@@ -355,3 +397,372 @@ def _hook_evidence(repo: Path) -> None:
         {"mode": gates._CRITIC_MODE_CHUNK, "base": "0" * 40, "head": "0" * 40},
     )
     assert result["status"] == "appended", result
+
+
+class TestDegradationIsNeverSilent:
+    """Both detection channels name their own failure, and neither un-detects.
+
+    R4 exists because "a silent failure here is *an unmigrated repo the new
+    version reads as empty*". A channel that swallows its own exception
+    reproduces exactly that, and takes the operator's only signal with it —
+    which is why failing OPEN here is right and failing QUIET is not.
+    """
+
+    def test_a_rendering_failure_does_not_clear_a_detected_state(
+        self, tmp_path, capsys, monkeypatch
+    ):
+        """The reset that mattered: the first cut caught import + resolve +
+        render in one `except` that set the verdict to "migrated", so a repo
+        correctly DETECTED as legacy passed the floor because the sentence
+        describing it could not be built."""
+        from lib import briefing
+
+        repo = _repo(tmp_path)
+        _legacy(repo)
+        _touch_code(repo)
+        monkeypatch.setattr(
+            briefing,
+            "_learnings_lines",
+            lambda d: (_ for _ in ()).throw(RuntimeError("render-boom")),
+        )
+        rc, err = _stop(repo, capsys)
+        assert rc == 2, "a rendering failure cleared a detected legacy state"
+        assert BLOCKER_LEGACY in err
+        # ...and it says the message is the short form, rather than implying the
+        # recipe was omitted on purpose.
+        assert "could not be rendered" in err
+        assert "render-boom" in err
+
+    def test_an_unreadable_layout_says_so_at_stop(self, tmp_path, capsys, monkeypatch):
+        # Fail OPEN, deliberately — a gate that cannot see the tree has no
+        # verdict — but never fail quiet.
+        from lib import learnings_files
+
+        repo = _repo(tmp_path)
+        _legacy(repo)
+        _touch_code(repo)
+        monkeypatch.setattr(
+            learnings_files,
+            "resolve",
+            lambda d: (_ for _ in ()).throw(RuntimeError("resolve-boom")),
+        )
+        rc, err = _stop(repo, capsys)
+        assert rc == 0
+        assert BLOCKER not in err
+        assert "the learnings layout could not be read" in err
+        assert "resolve-boom" in err
+
+    def test_the_briefing_says_so_too(self, tmp_path, monkeypatch):
+        """The same defect takes out session start and session end together, so
+        a silent briefing plus a silent floor is a fully governed-looking
+        session on a repo whose rules were never loaded."""
+        from lib import briefing
+
+        repo = _repo(tmp_path)
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            "product_identity:\n  name: P\n"
+        )
+        monkeypatch.setattr(
+            briefing,
+            "_learnings_lines",
+            lambda d: (_ for _ in ()).throw(RuntimeError("briefing-boom")),
+        )
+        out = briefing.assemble_session_briefing(repo, [])
+        assert "== SESSION BRIEFING ==" in out  # still never blocks session start
+        assert "NOTE: the learnings layout could not be read" in out
+        assert "briefing-boom" in out
+
+
+class TestTheBudgetFloor:
+    """The ceiling fires at Stop, which is the channel the ruling picked.
+
+    Discovery §2 criterion 4: an over-budget rule file "blocks the *next
+    addition* at Stop and nothing else"; §8.8 Q1 chose Stop over a Critic
+    finding *because* rules are written at work boundaries of every size while
+    the Critic runs only on medium+. Enforced only at review time, the ceiling
+    is absent exactly where the audit measured the growth.
+    """
+
+    def _over_budget(self, repo: Path, *, grown: bool) -> None:
+        d = repo / ".claude" / "rules" / "learnings"
+        d.mkdir(parents=True, exist_ok=True)
+        core = d / "core.md"
+        core.write_text("# core\n" + "x" * (20 * 1024))
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "corpus")
+        _base_tree(repo)
+        if grown:
+            core.write_text("# core\n" + "x" * (24 * 1024))
+
+    def test_over_and_grew_blocks_at_stop(self, tmp_path, capsys):
+        repo = _repo(tmp_path)
+        self._over_budget(repo, grown=True)
+        _touch_code(repo)
+        rc, err = _stop(repo, capsys)
+        assert rc == 2
+        assert BUDGET_BLOCKER in err
+        # The finding text is carried, not re-worded: one wording wherever the
+        # builder meets this check.
+        assert "learnings-over-budget" in err
+        assert "never trim a rule to fit" in err
+
+    def test_over_but_unchanged_passes(self, tmp_path, capsys):
+        # Over alone is a one-time sweep, not this gate's business — the
+        # direction of travel is the finding.
+        repo = _repo(tmp_path)
+        self._over_budget(repo, grown=False)
+        _touch_code(repo)
+        rc, err = _stop(repo, capsys)
+        assert rc == 0
+        assert BUDGET_BLOCKER not in err
+
+    def test_under_budget_passes(self, tmp_path, capsys):
+        repo = _repo(tmp_path)
+        _rules(repo)
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "corpus")
+        _base_tree(repo)
+        _touch_code(repo)
+        rc, err = _stop(repo, capsys)
+        assert rc == 0
+        assert BUDGET_BLOCKER not in err
+
+    def test_the_budget_waiver_key_suppresses_it(self, tmp_path, capsys):
+        repo = _repo(tmp_path)
+        self._over_budget(repo, grown=True)
+        _touch_code(repo)
+        (repo / ".prawduct" / ".gates-waived").write_text(
+            json.dumps({"learnings-budget": "compaction lands next session"})
+        )
+        rc, err = _stop(repo, capsys)
+        assert rc == 0
+        assert BUDGET_BLOCKER not in err
+        assert "learnings-budget: waived (compaction lands next session)" in err
+        # A key that suppresses a real blocker while being reported ineffective
+        # is the worst of both readings.
+        assert "unknown keys" not in err
+
+    def test_the_cutover_floors_waiver_does_not_suppress_the_budget(
+        self, tmp_path, capsys
+    ):
+        repo = _repo(tmp_path)
+        self._over_budget(repo, grown=True)
+        _touch_code(repo)
+        (repo / ".prawduct" / ".gates-waived").write_text(
+            json.dumps({"learnings": "different gate entirely"})
+        )
+        rc, err = _stop(repo, capsys)
+        assert rc == 2
+        assert BUDGET_BLOCKER in err
+
+    def test_an_unchecked_result_is_a_note_never_silence(self, tmp_path, capsys):
+        """No base tree means no growth comparison. That is not a pass, and a
+        ceiling that could not be measured must not read as one that held."""
+        repo = _repo(tmp_path)
+        _rules(repo)
+        _touch_code(repo)  # no _base_tree() call
+        rc, err = _stop(repo, capsys)
+        assert rc == 0
+        assert "learnings-over-budget unchecked" in err
+        assert "no .session-base-tree marker" in err
+
+    def test_an_unmigrated_repo_is_not_budgeted(self, tmp_path, capsys):
+        # Two controls naming one state teach a reader to skip both; the legacy
+        # state is the cutover floor's business.
+        repo = _repo(tmp_path)
+        _legacy(repo)
+        _touch_code(repo)
+        _, err = _stop(repo, capsys)
+        assert BUDGET_BLOCKER not in err
+        assert "learnings-over-budget unchecked" not in err
+
+
+class TestOneDefinitionOfTheDiff:
+    """The gate note and `learnings-files --for-diff` resolve the same change set.
+
+    They were built against different helpers — session-changed files versus the
+    base BRANCH — so a builder who commits the chunk before Stop fires (the
+    ordinary cadence) got a nudge naming `core.md` alone while the verb named
+    the area files the harness had actually loaded. The one line whose purpose
+    is to make a silent disagreement noticeable was the disagreement.
+    """
+
+    def _corpus(self, repo: Path) -> None:
+        d = repo / ".claude" / "rules" / "learnings"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "core.md").write_text("# core\n")
+        (d / "code.md").write_text('---\npaths: ["code.py"]\n---\n# code rules\n')
+        (d / "web.md").write_text('---\npaths: ["web/**"]\n---\n# web rules\n')
+
+    def test_committed_and_uncommitted_changes_give_one_answer(self, tmp_path, capsys):
+        """One committed change and one uncommitted, which is where the two
+        definitions used to part company."""
+        from lib import gates
+
+        repo = _repo(tmp_path)
+        self._corpus(repo)
+        (repo / "web").mkdir()
+        (repo / "web" / "app.ts").write_text("//\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "corpus")
+        _base_tree(repo)
+
+        # committed this session...
+        (repo / "code.py").write_text("x = 2\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "committed work")
+        # ...and uncommitted.
+        (repo / "web" / "app.ts").write_text("// edited\n")
+
+        changed, reason = gates.learnings_change_set(repo)
+        assert reason == ""
+        assert "code.py" in changed and "web/app.ts" in changed
+
+        note = gates.learnings_cross_check_note(repo)
+        assert _hook.cmd_learnings_files(repo, ["--for-diff"]) == 0
+        printed = [ln for ln in capsys.readouterr().out.splitlines() if ln.strip()]
+
+        # The verb names the committed change's area file, which the old
+        # session-scoped reading dropped...
+        assert printed == [
+            ".claude/rules/learnings/core.md",
+            ".claude/rules/learnings/code.md",
+            ".claude/rules/learnings/web.md",
+        ]
+        # ...and the gate note names exactly what the verb printed. THIS is the
+        # agreement: a reviewer following the line and a reviewer running the
+        # command open the same files.
+        assert note == "The Learnings Cross-Check reads: " + ", ".join(printed) + "."
+
+    def test_the_note_says_when_it_could_not_compute(self, tmp_path, monkeypatch):
+        # "nothing changed" and "could not tell" are opposite facts.
+        from lib import coverage, gates
+
+        repo = _repo(tmp_path)
+        self._corpus(repo)
+        monkeypatch.setattr(
+            coverage,
+            "_coverage_changed_files",
+            lambda d, b: (_ for _ in ()).throw(RuntimeError("diff-boom")),
+        )
+        note = gates.learnings_cross_check_note(repo)
+        assert "could not be computed" in note
+        assert "diff-boom" in note
+        assert "nothing to read" not in note
+
+    def test_the_verb_fails_loud_on_the_same_failure(self, tmp_path, capsys, monkeypatch):
+        from lib import coverage
+
+        repo = _repo(tmp_path)
+        self._corpus(repo)
+        monkeypatch.setattr(
+            coverage,
+            "_coverage_changed_files",
+            lambda d, b: (_ for _ in ()).throw(RuntimeError("diff-boom")),
+        )
+        rc = _hook.cmd_learnings_files(repo, ["--for-diff"])
+        assert rc == 1, "a silent empty list is a narrowing that looks like an answer"
+        assert "diff-boom" in capsys.readouterr().err
+
+
+class TestTheReflectionNudgeDoesNotRecreateTheLegacyFile:
+    """The Stop hook must not direct the agent to write the file it blocks on.
+
+    Both messages come out of `cmd_stop` into the same blocker list, seventy
+    lines apart: the reflection blocker said "also add it to
+    `.prawduct/learnings.md`" while the cutover floor blocks any repo holding
+    that file. An agent obeying the first recreates the corpus, `resolve()`
+    flips to `both`, the next session's floor fires, and `learnings-migrate`
+    refuses the state outright — governance manufacturing the defect it gates.
+    """
+
+    @staticmethod
+    def _reflection_blocks(tmp_path: Path) -> Path:
+        repo = _repo(tmp_path)
+        (repo / ".prawduct" / ".session-reflected").unlink()
+        artifacts = repo / ".prawduct" / "artifacts"
+        artifacts.mkdir()
+        (artifacts / "build-plan.md").write_text(
+            "# Plan\n\n## Status\n\n- [ ] Chunk 01: work\n"
+        )
+        _touch_code(repo)
+        return repo
+
+    def test_it_points_at_the_rules_files(self, tmp_path, capsys):
+        repo = self._reflection_blocks(tmp_path)
+        _rules(repo)
+        rc, err = _stop(repo, capsys)
+        assert rc == 2
+        assert "REFLECTION:" in err
+        assert ".claude/rules/learnings/core.md" in err
+        assert ".prawduct/learnings.md" not in err
+
+    def test_it_names_the_area_files_too(self, tmp_path, capsys):
+        # A rule about one area belongs in that area's file, not in the file
+        # every session pays for.
+        repo = self._reflection_blocks(tmp_path)
+        _rules(repo)
+        _, err = _stop(repo, capsys)
+        assert "area file under .claude/rules/learnings/ whose `paths:` cover it" in err
+
+    def test_an_unreadable_layout_leaves_a_path_free_pointer(
+        self, tmp_path, capsys, monkeypatch
+    ):
+        """The fallback names no path at all. A hardcoded second opinion about
+        the layout is precisely what the one-resolver rule exists to remove —
+        so when the resolver cannot answer, this says less rather than guessing.
+        """
+        from lib import learnings_files
+
+        repo = self._reflection_blocks(tmp_path)
+        monkeypatch.setattr(
+            learnings_files,
+            "resolve",
+            lambda d: (_ for _ in ()).throw(RuntimeError("resolve-boom")),
+        )
+        _, err = _stop(repo, capsys)
+        assert "REFLECTION:" in err
+        assert "this repo's learnings rules files" in err
+        assert ".prawduct/learnings.md" not in err
+
+
+class TestOneGitignorePredicate:
+    """`briefing` asks the resolver; it holds no copy of the question.
+
+    Two chunks answered it independently — one against the directory, one
+    against `core.md` — and the two disagree under check-ignore's index
+    awareness: a directory pathspec is satisfied by ANY tracked file beneath it,
+    so a repo with one area file committed and `core.md` untracked read as
+    "tracked" and got no GITIGNORED suffix. That half-committed corpus is the
+    exact state the suffix exists to name.
+    """
+
+    def test_briefing_holds_no_second_implementation(self):
+        """Scoped to the LEARNINGS question, not to `check-ignore` generally —
+        `briefing` legitimately asks git about other candidate files, and a
+        blanket ban would fail for a reason this test is not about."""
+        from lib import briefing
+
+        source = (
+            Path(__file__).resolve().parent.parent
+            / "plugin" / "lib" / "briefing.py"
+        ).read_text()
+        assert not hasattr(briefing, "_rules_dir_is_gitignored"), (
+            "briefing still carries its own copy of the rules-tree predicate"
+        )
+        assert "learnings_files.rules_dir_is_gitignored(" in source, (
+            "briefing no longer asks the resolver whether the corpus is committed"
+        )
+
+    def test_the_suffix_follows_the_resolver(self, tmp_path, monkeypatch):
+        from lib import briefing, learnings_files
+
+        repo = _repo(tmp_path)
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            "product_identity:\n  name: P\n"
+        )
+        _rules(repo)
+        monkeypatch.setattr(learnings_files, "rules_dir_is_gitignored", lambda d: True)
+        assert "GITIGNORED" in "\n".join(briefing._learnings_lines(repo))
+        monkeypatch.setattr(learnings_files, "rules_dir_is_gitignored", lambda d: False)
+        assert "GITIGNORED" not in "\n".join(briefing._learnings_lines(repo))

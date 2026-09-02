@@ -1084,8 +1084,12 @@ def assemble_session_briefing(
     # states carry a directive rather than an advisory.
     try:
         lines.extend(_learnings_lines(project_dir))
-    except Exception:  # prawduct:allow prawduct/broad-except -- briefing must never block session start
-        pass
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- briefing must never block session start
+        lines.append(
+            f"NOTE: the learnings layout could not be read ({type(exc).__name__}: {exc}) — "
+            "this session does not know whether its rules were loaded; "
+            "`prawduct-hook learnings-files` shows what is on disk"
+        )
 
     # Backlog — surface the count of outstanding items (cutover-aware; see
     # _backlog_pending_line for the adapter-vs-markdown routing).
@@ -1116,27 +1120,6 @@ _MIGRATE_COMMIT_MESSAGE = (
     f"chore(learnings): migrate to {learnings_files.RULES_DIR_REL} "
     f"(prawduct {PRAWDUCT_VERSION})"
 )
-
-
-def _rules_dir_is_gitignored(project_dir: Path) -> bool:
-    """True when git would ignore the learnings rules directory.
-
-    ``git check-ignore`` consults the index by default, so a tracked rules tree
-    answers "not ignored" even under a matching pattern — which is the question
-    worth asking here (the tree survives a clone), not "does some pattern match".
-    Any failure — no git, no repo, a timeout — reads as *not* ignored: a session
-    briefing that guesses at a warning is worse than one that stays quiet.
-    """
-    try:
-        result = subprocess.run(
-            ["git", "check-ignore", "-q", learnings_files.RULES_DIR_REL],
-            cwd=str(project_dir),
-            capture_output=True,
-            timeout=5,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return False
-    return result.returncode == 0
 
 
 def _core_kb(core: Path) -> int:
@@ -1195,7 +1178,7 @@ def _learnings_lines(project_dir: Path) -> list[str]:
         + " + ".join(parts)
         + " — loaded by the harness; rules apply, cite the one you applied"
     )
-    if _rules_dir_is_gitignored(project_dir):
+    if learnings_files.rules_dir_is_gitignored(project_dir):
         line += GITIGNORED_RULES_SUFFIX
     out.append(line)
 
