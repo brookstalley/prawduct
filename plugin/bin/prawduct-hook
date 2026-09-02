@@ -2332,7 +2332,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # are noise — they make every session look like it bypassed governance.
     waivers = _gates()._read_gates_waived(prawduct_dir)
     waiver_notes: list[str] = []
-    KNOWN_WAIVER_KEYS = {"reflection", "critic", "pr"}
+    KNOWN_WAIVER_KEYS = {"reflection", "critic", "pr", "learnings"}
     unknown_waiver_keys = sorted(k for k in waivers if k not in KNOWN_WAIVER_KEYS)
     if unknown_waiver_keys:
         # Stderr-only warning so the agent learns about typos. Doesn't affect gate
@@ -2421,6 +2421,77 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
             "  start or /clear, not a resume/compact/fork).\n",
             file=sys.stderr,
         )
+
+    # Gate 1b: the learnings cutover floor — the reflection gate's sibling.
+    #
+    # A repo still on the old layout gets no rules loaded by the harness at all,
+    # and reads to every session exactly like a repo that has none. The briefing
+    # says so at session start; this is the end of the same session saying it
+    # again, because the state that matters is "code was written here today
+    # without the rules that govern it".
+    #
+    # The blocker text IS the briefing's directive — one wording for one job, so
+    # the agent that scrolled past it at session start meets the same commands
+    # here rather than a second, subtly different recipe.
+    #
+    # The trigger is judgeable code LITERALLY, which is narrower than the Critic
+    # gate's `not doc_only`: that predicate reads False for a session whose only
+    # changes were `.prawduct/` metadata (an empty non-metadata set is
+    # deliberately NOT doc-only, so the reflection and Critic gates still fire on
+    # a governance-only session). Nothing was judged in such a session, so
+    # nothing here is owed — and a blocker whose first sentence says "this
+    # session changed judgeable code" must not fire where that sentence is false.
+    _non_metadata = [
+        f
+        for f in _gs._get_session_changed_files(project_dir, status_output)
+        if not _gs._is_metadata_path(f)
+    ]
+    if _non_metadata and not doc_only:
+        _learnings_directive = ""
+        try:
+            lib_root = _plugin_root()
+            if lib_root not in sys.path:
+                sys.path.insert(0, lib_root)
+            from lib import learnings_files  # noqa: PLC0415 — lazy keeps top-level cheap
+
+            _unmigrated = learnings_files.resolve(project_dir).state in (
+                learnings_files.STATE_LEGACY,
+                learnings_files.STATE_BOTH,
+            )
+            if _unmigrated:
+                # `lib.briefing` is the heavier import (it pulls the plan index
+                # and the backlog reader), so it is paid for only on the disk
+                # that is actually about to be blocked.
+                from lib import briefing as _briefing  # noqa: PLC0415 — lazy keeps top-level cheap
+
+                _learnings_directive = "\n".join(
+                    f"  {ln}" for ln in _briefing._learnings_lines(project_dir)
+                )
+        except Exception:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
+            # Unreadable layout is not an unmigrated one: a gate that cannot see
+            # the tree has no verdict, and inventing a block here would fire on
+            # every repo with a broken install.
+            _unmigrated = False
+        if _unmigrated:
+            if "learnings" in waivers:
+                waiver_notes.append(f"learnings: waived ({waivers['learnings']})")
+            else:
+                blockers.append(_attributed("learnings-unmigrated",
+                    "LEARNINGS UNMIGRATED: this session changed judgeable code while the\n"
+                    "  learnings corpus is still in the pre-cutover layout, so the harness\n"
+                    "  loaded none of it — the rules that govern this repo were not in\n"
+                    "  context for any of the work above.\n"
+                    "\n"
+                    + _learnings_directive + "\n"
+                    "\n"
+                    "  Escape hatch: if the migration genuinely cannot happen this session\n"
+                    "  (mid-rebase, a dirty learnings file you are still editing), declare a\n"
+                    "  waiver so this gate stops re-firing every turn:\n"
+                    "    echo '{\"learnings\": \"reason — be specific\"}' > .prawduct/.gates-waived\n"
+                    "  Empty reasons are rejected; the file clears at the next session boundary\n"
+                    "  (a fresh start or /clear), so it outlives a resume/compact/fork. See\n"
+                    "  `/prawduct:methodology building` (Gate waivers) for when this is appropriate.\n"
+                ))
 
     # Gate 2: Critic review (only when building against a plan)
     # Skipped for doc-only changes (no code to review). The waiver is only
@@ -5718,6 +5789,80 @@ def cmd_update_gitignore(project_dir: Path, argv: list[str]) -> int:
     return 0
 
 
+def cmd_learnings_files(project_dir: Path, argv: list[str]) -> int:
+    """Print the learnings rules files, one repo-relative path per line.
+
+    The reviewer's read list. Learnings are ordinary ``.claude/rules/`` files,
+    so the HARNESS decides which of them a session had in context: ``core.md``
+    always, plus every area file whose ``paths:`` globs match a file that was
+    read. A reviewer that opens a different set than the session was given is
+    the one failure this layout could introduce, and it is silent — so the set
+    comes from the one resolver rather than from anybody's glob.
+
+    ``--for-diff`` narrows the list to the area files the CURRENT diff pulls in
+    (the same base the review and the gates use, via ``resolve-base``, union the
+    working tree and untracked files). Bare, it prints every rules file — what
+    the budget gate sizes.
+
+    Exit 0 whenever it ran, including when the answer is an empty list: a repo
+    with no rules is a fact, not a failure. Exit 1 when it could not run
+    (lib not importable, git unusable under ``--for-diff``); 2 on an unknown flag.
+    """
+    rejected = _reject_unknown_args("learnings-files", argv, {"--for-diff", "--json"})
+    if rejected is not None:
+        return rejected
+    for_diff = "--for-diff" in argv
+    as_json = "--json" in argv
+
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import learnings_files  # noqa: PLC0415 — lazy keeps top-level cheap
+    except ImportError as exc:
+        print(
+            f"error: learnings-files could not import the plugin lib/ ({exc})",
+            file=sys.stderr,
+        )
+        return 1
+
+    layout = learnings_files.resolve(project_dir)
+    if for_diff:
+        try:
+            from lib import coverage  # noqa: PLC0415 — lazy keeps top-level cheap
+
+            base, reason = coverage._resolve_base_branch(project_dir)
+            if base is None:
+                # Fail LOUD, never to the full list: a silent widening would
+                # hand the reviewer area files the session never loaded, and a
+                # silent narrowing would hide ones it did. Neither is an answer.
+                print(f"error: learnings-files --for-diff cannot resolve a base ({reason})",
+                      file=sys.stderr)
+                return 1
+            changed = coverage._coverage_changed_files(project_dir, base)
+        except (ImportError, OSError, RuntimeError, subprocess.SubprocessError) as exc:
+            print(f"error: learnings-files --for-diff could not read the diff ({exc})",
+                  file=sys.stderr)
+            return 1
+        files = learnings_files.files_for_paths(layout, changed)
+    else:
+        files = list(layout.files)
+
+    rel = []
+    for path in files:
+        try:
+            rel.append(path.relative_to(project_dir).as_posix())
+        except ValueError:
+            rel.append(path.as_posix())
+
+    if as_json:
+        print(json.dumps({"state": layout.state, "files": rel}, indent=2))
+    else:
+        for line in rel:
+            print(line)
+    return 0
+
+
 def cmd_learnings_obligation(project_dir: Path, argv: list[str]) -> int:
     """Check — and on ``--apply`` repair — the descent obligation in ``learnings.md``.
 
@@ -6460,6 +6605,7 @@ _USAGE = (
     "migrate-plugin [--apply] [--json]|init-product <target> --name <name> [--backlog-repo owner/repo] [--apply] [--json]|"
     "update-gitignore [--dry-run]|"
     "audit-learnings [--apply] [--json]|learnings-obligation [--apply] [--json]|"
+    "learnings-files [--for-diff] [--json]|"
     "norm-index-scaffold [--apply] [--json]|"
     "lifecycle-repair [--apply] [--json]|"
     "plan-backfill [--apply] [--json] [--date YYYY-MM-DD]|"
@@ -6805,6 +6951,11 @@ _EPHEMERAL_SAFE_COMMANDS = frozenset({
     "handoff",
     "infer-critic-mode",
     "jurisdiction",
+    # Reads the rules tree and (under --for-diff) the git diff; writes nothing.
+    # Listed because the Critic reviewer that runs it is frequently dispatched
+    # inside a disposable agent worktree, where the fail-closed default would
+    # refuse the reviewer's own read list.
+    "learnings-files",
     "print-install-reference",
     "render-dispositions",
     "resolve-base",
@@ -7395,6 +7546,8 @@ def _dispatch() -> int:
         return cmd_audit_learnings(project_dir, sys.argv[2:])
     elif command == "norm-index-scaffold":
         return cmd_norm_index_scaffold(project_dir, sys.argv[2:])
+    elif command == "learnings-files":
+        return cmd_learnings_files(project_dir, sys.argv[2:])
     elif command == "learnings-obligation":
         return cmd_learnings_obligation(project_dir, sys.argv[2:])
     elif command == "lifecycle-repair":

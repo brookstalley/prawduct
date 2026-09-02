@@ -39,7 +39,7 @@ reasons. Do not re-raise one absent material change in its cited files** — one
 = older answers dropped; `unavailable` = the join failed, so you know nothing.
 
 **Record checks are already answered — read the manifest's `record_lint`.** Never
-recount it: that is how a record defect buys a review round. Each entry carries its explanation — raise it. `chunk-ref-missing` → **BLOCKING**. `governed-by-gap` →
+recount it: that is how a record defect buys a review round. Each entry carries its explanation — raise it. `chunk-ref-missing` and `learnings-over-budget` → **BLOCKING**. `governed-by-gap` →
 **WARNING** under Goal 2. `suite-total-claim` and `learnings-entry-shape` → **NOTE**.
 **`unchecked` is not a pass, and only one shape blocks.**
 `chunk-ref-missing unchecked — …` is

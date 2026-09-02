@@ -339,11 +339,13 @@ After the goal-based review in `final` mode, run two additional passes that `chu
 
 ### Learnings Cross-Check
 
-Scan your findings against active learnings. If a change reintroduces a pattern `.prawduct/learnings.md` explicitly warns against, escalate severity — tolerating regression undoes the learning. Conversely, if learnings reference patterns the changed code handles correctly, no finding is needed.
+Scan your findings against the rules the session actually had in context: `.claude/rules/learnings/core.md` plus each area file whose `paths:` intersect the diff (`prawduct-hook learnings-files --for-diff` prints the list). Read that list rather than guessing at globs — an area file the harness loaded and the reviewer never opened is this cross-check going quietly dark, which is the one failure the layout could introduce. If a change reintroduces a pattern one of those rules explicitly warns against, escalate severity — tolerating regression undoes the learning. Conversely, if a rule references patterns the changed code handles correctly, no finding is needed.
 
 **Learnings are ordered, not infallible — the later one wins.** Rules are undated `##` headings; the file is append-only, so **position is the ordering signal — later in the file is later in time**. Do not hunt for timestamps, and do not treat a date mentioned in a narrative body as the rule's own date. Two entries can disagree: a later rule may revoke an earlier one outright, narrow its scope, or soften it from a prohibition to a preference. When they conflict, the **later** rule governs, and a change conforming to it is not a regression no matter what the earlier rule says — do not escalate against a superseded rule.
 
 Two different outputs, so keep them apart. Against the *change*: no finding. Against the *learnings file*, when the supersession is implicit rather than stated: a **NOTE** naming both entries, because the stale rule reads as live to the next reviewer and to every product that inherits the file. The second is about the record, not the code, and it is the only case here that produces a finding at all.
+
+**Rules added or changed this cycle get their own pass** — is the new rule a duplicate of one already in the corpus, is it in the wrong area file (scoped by `paths:` globs that do not cover the code it governs, or parked in `core.md` where every session pays for it), or is it discipline/framework content that belongs upstream in the methodology rather than in this product's learnings? Each is a **NOTE** naming the rule and the specific one of the three. This is about the corpus the next session inherits, so it fires whether or not the cycle produced any other finding.
 
 ### Backlog Reconciliation
 
@@ -381,6 +383,7 @@ history in it reports on the entry just written and nothing else. Severity per c
 | `governed-by-gap` | A plan disposes of fewer norms than the cited artifact's `## Direction` carries, or cites an artifact that does not exist | **WARNING** (Goal 2 — the paperwork arm below) |
 | `suite-total-claim` | A suite-total test claim in durable prose — the store already records pass/fail per tree | **NOTE** |
 | `learnings-entry-shape` | A `learnings.md` entry carrying its evidence (rule over 400 chars) or a narrative body — both belong in `learnings-detail.md` | **NOTE** |
+| `learnings-over-budget` | A rules file over its declared budget that ALSO grew this session — pay from genuine duplication (merge or delete in this commit), or raise `learnings_budgets.<name>` in project-state.yaml with a reason; never trim a rule to fit | **BLOCKING** |
 
 **Under the coordinator pattern, whoever holds Goal 2 raises every one of these** — including the
 `suite-total-claim` NOTE, which would otherwise sit in Goal 4. The manifest is named in Goal 2 and

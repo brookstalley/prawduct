@@ -41,14 +41,14 @@ import time
 from pathlib import Path
 from typing import NamedTuple
 
-from . import buildplan_refs, gates, gitstate, plan_index
+from . import buildplan_refs, gates, gitstate, learnings_files, plan_index
 from .backlog import legacy as backlog
 from .coverage import _resolve_base_branch
 from .core import (
     BUILD_PLAN_POINTER_KEY,
+    PRAWDUCT_VERSION,
     atomic_write_text,
     describe_branch_claim,
-    oversized_file_threshold,
     pointer_plan_path,
     read_str_yaml_key,
     resolve_branch_claim,
@@ -1079,48 +1079,13 @@ def assemble_session_briefing(
     # timing quip. Neither is actionable at session start — the canonical test
     # count lives in .test-evidence.json, and a past review's duration is noise.)
 
-    # Relevant learnings — show count + pointer so Claude knows rules exist
-    learnings_path = prawduct_dir / "learnings.md"
-    if learnings_path.is_file():
-        try:
-            learnings_content = learnings_path.read_text()
-            # One rule per `## ` entry (the documented learnings format). The
-            # bullet count is a fallback for legacy bullet-list files — counting
-            # bullets FIRST under-reported entry-format files as 0 rules, which
-            # silently dropped this line on any repo using the real format
-            # (found while landing the MET-6W3J size nudge below).
-            heading_count = sum(
-                1 for line in learnings_content.splitlines() if line.startswith("## ")
-            )
-            bullet_count = sum(
-                1 for line in learnings_content.splitlines() if line.strip().startswith("- ")
-            )
-            rule_count = heading_count or bullet_count
-            # Collapse to a count + pointer. The full topic index re-printed
-            # unchanged every session — a static table of contents is tax; the
-            # /prawduct:learnings skill is the intended lookup path.
-            if rule_count > 0:
-                lines.append(f"Learnings ({rule_count} rules): /prawduct:learnings <topic> or read .prawduct/learnings.md")
-            # Size nudge (MET-6W3J): every /prawduct:learnings lookup and
-            # Critic learnings cross-check reads the whole file, so size is a
-            # recurring per-session cost. The threshold is now the ONE the
-            # governance-file nudges share (`core.oversized_file_threshold`,
-            # repo-overridable) rather than a second hardcoded 40000 — the two
-            # copies were documented as "the same threshold" while being free to
-            # drift, and only one of them could be tuned. (An earlier 8KB
-            # clear-hook warning was retired when the fork-skill lookup landed;
-            # at ~80KB the lookup itself became the cost, so the nudge returns
-            # at the shared threshold.)
-            size = learnings_path.stat().st_size
-            threshold = oversized_file_threshold(prawduct_dir)
-            if size > threshold:
-                lines.append(
-                    f"learnings.md is large ({size // 1000}KB > {threshold // 1000}KB) — "
-                    "compact: keep each entry's When-X-do-Y-because-Z rule here, move "
-                    "narrative to learnings-detail.md (never delete it)"
-                )
-        except Exception:  # prawduct:allow prawduct/broad-except -- briefing must never block session start
-            pass
+    # Learnings — which layout this repo is in, and whether the harness is
+    # loading the rules. See _learnings_lines for why the two unmigrated
+    # states carry a directive rather than an advisory.
+    try:
+        lines.extend(_learnings_lines(project_dir))
+    except Exception:  # prawduct:allow prawduct/broad-except -- briefing must never block session start
+        pass
 
     # Backlog — surface the count of outstanding items (cutover-aware; see
     # _backlog_pending_line for the adapter-vs-markdown routing).
@@ -1132,6 +1097,116 @@ def assemble_session_briefing(
         pass
 
     return "\n".join(lines)
+
+
+#: Appended to the learnings line when git would ignore the rules directory.
+#: The harness loads the files anyway — they are on disk — so this is not "your
+#: rules are off"; it is "your rules die with this checkout", which is invisible
+#: until someone clones the repo and finds a learnings corpus of nothing. A
+#: product that gitignores `.claude/` (common) hits this on its first session
+#: after migrating, and the resolver reports `new` for it either way.
+GITIGNORED_RULES_SUFFIX = (
+    " — GITIGNORED: the rules tree is not committed; unignore .claude/rules/"
+)
+
+#: The commit message the migration directive prescribes, so the fleet's
+#: migration commits are findable by one grep. The version is the plugin's, not
+#: the repo's: it says which plugin the layout was cut over FOR.
+_MIGRATE_COMMIT_MESSAGE = (
+    f"chore(learnings): migrate to {learnings_files.RULES_DIR_REL} "
+    f"(prawduct {PRAWDUCT_VERSION})"
+)
+
+
+def _rules_dir_is_gitignored(project_dir: Path) -> bool:
+    """True when git would ignore the learnings rules directory.
+
+    ``git check-ignore`` consults the index by default, so a tracked rules tree
+    answers "not ignored" even under a matching pattern — which is the question
+    worth asking here (the tree survives a clone), not "does some pattern match".
+    Any failure — no git, no repo, a timeout — reads as *not* ignored: a session
+    briefing that guesses at a warning is worse than one that stays quiet.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "check-ignore", "-q", learnings_files.RULES_DIR_REL],
+            cwd=str(project_dir),
+            capture_output=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return result.returncode == 0
+
+
+def _core_kb(core: Path) -> int:
+    """``core.md``'s size to the nearest whole KiB, floor 1.
+
+    KiB rather than KB because the budget gate that blocks on this file is
+    denominated in KiB — a briefing that says 15KB about a file the gate calls
+    16KB is two numbers for one fact. The floor keeps a real, small corpus from
+    reading as "0KB", which looks like an empty file rather than a short one.
+    """
+    try:
+        size = core.stat().st_size
+    except OSError:
+        return 0
+    return max(1, round(size / 1024))
+
+
+def _learnings_lines(project_dir: Path) -> list[str]:
+    """The briefing's learnings block: one state line, sometimes a directive.
+
+    The four states come from the ONE resolver (:mod:`lib.learnings_files`);
+    nothing here looks for the files itself.
+
+    **`legacy` and `both` carry an `agent →` directive, not an advisory.** An
+    advisory can be dismissed, and the whole failure this guards against is a
+    repo whose rules the new plugin does not load: it reads exactly like a repo
+    that has no rules, silently, for as long as nobody looks. A dismissible nag
+    would be dismissed once and then never seen again by the sessions that most
+    need it. So: no id, no dismiss key, and the directive says what to run.
+    """
+    layout = learnings_files.resolve(project_dir)
+    if layout.state == learnings_files.STATE_NONE:
+        return []
+
+    out: list[str] = []
+    if layout.state == learnings_files.STATE_LEGACY:
+        # No rules directory at all: the harness loads nothing, so say that
+        # before saying anything about counts or sizes.
+        out.append("Learnings: UNMIGRATED — not loaded")
+        out.append(
+            "agent → run prawduct-hook learnings-migrate --propose-map, edit the map, "
+            f'run --apply --map <file>, commit "{_MIGRATE_COMMIT_MESSAGE}" '
+            "— before other work"
+        )
+        return out
+
+    # `new` and `both`: the rules tree exists, so the harness is loading it.
+    # Describe what it holds, then (for `both`) name the leftover to fold in.
+    parts: list[str] = []
+    if layout.core is not None:
+        parts.append(f"{learnings_files.CORE_NAME} ({_core_kb(layout.core)}KB)")
+    areas = len(layout.areas)
+    parts.append(f"{areas} area file{'' if areas == 1 else 's'}")
+    line = (
+        "Learnings: "
+        + " + ".join(parts)
+        + " — loaded by the harness; rules apply, cite the one you applied"
+    )
+    if _rules_dir_is_gitignored(project_dir):
+        line += GITIGNORED_RULES_SUFFIX
+    out.append(line)
+
+    if layout.state == learnings_files.STATE_BOTH:
+        # By hand, not by command: `learnings-migrate` refuses this state
+        # precisely because it cannot know which of the two corpora is current.
+        out.append(
+            f"agent → fold {learnings_files.LEGACY_REL} into "
+            f"{learnings_files.RULES_DIR_REL}/ by hand and delete it"
+        )
+    return out
 
 
 def _backlog_pending_line(

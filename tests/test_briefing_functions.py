@@ -965,12 +965,10 @@ class TestAssembleSessionBriefingSections:
             assert "old)" not in pointer and "just now" not in pointer
         assert "predates THIS session" in briefing._handoff_pointer(gone, continuation=True)
 
-    def test_learnings_and_backlog_counts(self, tmp_path):
+    def test_backlog_count(self, tmp_path):
         pr = self._state(tmp_path, "")
-        (pr / "learnings.md").write_text("# L\n- rule one\n- rule two\n")
         (pr / "backlog.md").write_text("# Backlog\n## Open\n- [A-1] one\n- [A-2] two\n")
         out = briefing.assemble_session_briefing(tmp_path, [])
-        assert "Learnings (2 rules): /prawduct:learnings <topic>" in out
         assert "Backlog: 2 pending (/prawduct:backlog to triage)" in out
 
     def test_backlog_excludes_resolved_section_and_strikethrough(self, tmp_path):
@@ -980,31 +978,6 @@ class TestAssembleSessionBriefingSections:
         )
         out = briefing.assemble_session_briefing(tmp_path, [])
         assert "Backlog: 1 pending" in out
-
-    def test_learnings_entry_format_counts_headings(self, tmp_path):
-        # The documented format is one rule per `## ` entry; bullet counting
-        # alone reported 0 rules and silently dropped the Learnings line.
-        pr = self._state(tmp_path, "")
-        (pr / "learnings.md").write_text(
-            "# L\n\n## Rule one\n\nBody.\n\n## Rule two\n\nBody with\n- an inner bullet\n"
-        )
-        out = briefing.assemble_session_briefing(tmp_path, [])
-        assert "Learnings (2 rules)" in out  # headings win; inner bullet not counted
-
-    def test_learnings_size_nudge_over_threshold(self, tmp_path):
-        # MET-6W3J: every lookup reads the whole file — nudge when oversized.
-        pr = self._state(tmp_path, "")
-        big = "# L\n" + ("- rule\n" + "x" * 100 + "\n") * 500  # > 40KB
-        (pr / "learnings.md").write_text(big)
-        out = briefing.assemble_session_briefing(tmp_path, [])
-        assert "learnings.md is large" in out
-        assert "learnings-detail.md" in out  # the fix is taught, not just the size
-
-    def test_learnings_size_nudge_silent_under_threshold(self, tmp_path):
-        pr = self._state(tmp_path, "")
-        (pr / "learnings.md").write_text("# L\n- rule one\n- rule two\n")
-        out = briefing.assemble_session_briefing(tmp_path, [])
-        assert "learnings.md is large" not in out
 
     def test_claude_md_size_warning_over_threshold(self, tmp_path):
         self._state(tmp_path, "")
@@ -1057,6 +1030,157 @@ class TestAssembleSessionBriefingSections:
         ]})
         out = briefing.assemble_session_briefing(tmp_path, [])
         assert f"owner → {briefing.OWNER_ACTION_FALLBACK}" in out
+
+
+#: An advisory id is ``<feature>-<probe>-v<n>-<hash6>`` (lib/advisory_store.compute_id);
+#: a prawduct-internal requirement/defect id is ``ABC-1D2E``. Neither may appear in
+#: operator-emitted text (observability-strategy: "no prawduct-internal ids"), and the
+#: learnings directive is the surface most likely to grow one, because the thing it
+#: replaced WAS an advisory.
+_ID_SHAPES = (
+    re.compile(r"-v\d+-[0-9a-f]{6}\b"),
+    re.compile(r"\b[A-Z]{3}-[A-Z0-9]{4}\b"),
+)
+
+
+def _assert_no_ids(lines) -> None:
+    for line in lines:
+        for shape in _ID_SHAPES:
+            assert not shape.search(line), f"id-shaped token in operator text: {line}"
+
+
+class TestLearningsLayoutLine:
+    """The briefing's learnings block — three states, and a directive, not an advisory.
+
+    The failure this block exists to make loud: a repo on the pre-cutover layout
+    gets NO rules loaded by the harness, and to every session that reads exactly
+    like a repo which has none. So `legacy` says UNMIGRATED before it says
+    anything else, and the follow-up is an `agent →` directive with no id and no
+    dismiss key — an advisory would be dismissed once and then never seen again
+    by the sessions that most need it (audit §8.7).
+    """
+
+    def _state(self, tmp_path: Path) -> Path:
+        pr = _prawduct(tmp_path)
+        (pr / "project-state.yaml").write_text("product_identity:\n  name: P\n")
+        return pr
+
+    def _rules(self, tmp_path: Path) -> Path:
+        d = tmp_path / ".claude" / "rules" / "learnings"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def _learnings_lines(self, out: str) -> list[str]:
+        return [
+            ln for ln in out.splitlines()
+            if ln.startswith("Learnings:") or ln.startswith("agent →")
+        ]
+
+    def test_none_state_says_nothing(self, tmp_path):
+        self._state(tmp_path)
+        out = briefing.assemble_session_briefing(tmp_path, [])
+        assert self._learnings_lines(out) == []
+
+    def test_new_state_names_the_files_and_the_obligation(self, tmp_path):
+        self._state(tmp_path)
+        rules = self._rules(tmp_path)
+        (rules / "core.md").write_text("# core\n" + "x" * 3000)
+        (rules / "critic.md").write_text('---\npaths: ["plugin/skills/critic/**"]\n---\n# c\n')
+        (rules / "gates.md").write_text('---\npaths: ["plugin/bin/**"]\n---\n# g\n')
+        out = briefing.assemble_session_briefing(tmp_path, [])
+        lines = self._learnings_lines(out)
+        assert lines == [
+            "Learnings: core.md (3KB) + 2 area files — loaded by the harness; "
+            "rules apply, cite the one you applied"
+        ]
+        _assert_no_ids(lines)
+
+    def test_one_area_file_is_singular(self, tmp_path):
+        self._state(tmp_path)
+        rules = self._rules(tmp_path)
+        (rules / "core.md").write_text("# core\n")
+        (rules / "one.md").write_text("# one\n")
+        out = briefing.assemble_session_briefing(tmp_path, [])
+        assert "+ 1 area file —" in out
+
+    def test_legacy_state_says_unmigrated_and_directs(self, tmp_path):
+        pr = self._state(tmp_path)
+        (pr / "learnings.md").write_text("# L\n\n## a rule\n")
+        out = briefing.assemble_session_briefing(tmp_path, [])
+        lines = self._learnings_lines(out)
+        assert lines[0] == "Learnings: UNMIGRATED — not loaded"
+        directive = lines[1]
+        # The whole recipe, in order: propose, edit, apply, commit — and the
+        # "before other work" that makes it a directive rather than a suggestion.
+        assert directive.startswith("agent → run prawduct-hook learnings-migrate --propose-map")
+        assert "--apply --map <file>" in directive
+        assert 'chore(learnings): migrate to .claude/rules/learnings (prawduct ' in directive
+        assert directive.endswith("— before other work")
+        _assert_no_ids(lines)
+
+    def test_the_directive_carries_no_dismiss_route(self, tmp_path):
+        # An advisory offers `/prawduct:advisory dismiss <id>`; this must not.
+        pr = self._state(tmp_path)
+        (pr / "learnings.md").write_text("# L\n\n## a rule\n")
+        out = "\n".join(self._learnings_lines(briefing.assemble_session_briefing(tmp_path, [])))
+        assert "dismiss" not in out
+
+    def test_both_state_keeps_the_layout_line_and_adds_the_fold(self, tmp_path):
+        pr = self._state(tmp_path)
+        (pr / "learnings.md").write_text("# L\n\n## a rule\n")
+        rules = self._rules(tmp_path)
+        (rules / "core.md").write_text("# core\n")
+        out = briefing.assemble_session_briefing(tmp_path, [])
+        lines = self._learnings_lines(out)
+        assert lines[0].startswith("Learnings: core.md (")
+        assert lines[1] == (
+            "agent → fold .prawduct/learnings.md into .claude/rules/learnings/ "
+            "by hand and delete it"
+        )
+        _assert_no_ids(lines)
+
+    def test_gitignored_rules_tree_is_named(self, tmp_path):
+        # The harness still loads the tree; nothing survives a clone. Invisible
+        # until someone clones, which is why the briefing says it every session.
+        _init_git_repo(tmp_path)
+        self._state(tmp_path)
+        (tmp_path / ".gitignore").write_text(".claude/\n")
+        rules = self._rules(tmp_path)
+        (rules / "core.md").write_text("# core\n")
+        out = briefing.assemble_session_briefing(tmp_path, [])
+        line = self._learnings_lines(out)[0]
+        assert line.endswith(
+            " — GITIGNORED: the rules tree is not committed; unignore .claude/rules/"
+        )
+
+    def test_tracked_rules_tree_carries_no_gitignored_suffix(self, tmp_path):
+        _init_git_repo(tmp_path)
+        self._state(tmp_path)
+        rules = self._rules(tmp_path)
+        (rules / "core.md").write_text("# core\n")
+        out = briefing.assemble_session_briefing(tmp_path, [])
+        assert "GITIGNORED" not in out
+
+    def test_gitignored_suffix_also_fires_in_the_both_state(self, tmp_path):
+        _init_git_repo(tmp_path)
+        pr = self._state(tmp_path)
+        (pr / "learnings.md").write_text("# L\n\n## a rule\n")
+        (tmp_path / ".gitignore").write_text(".claude/\n")
+        rules = self._rules(tmp_path)
+        (rules / "core.md").write_text("# core\n")
+        lines = self._learnings_lines(briefing.assemble_session_briefing(tmp_path, []))
+        assert "GITIGNORED" in lines[0]
+        assert lines[1].startswith("agent → fold")
+
+    def test_an_unreadable_tree_never_blocks_session_start(self, tmp_path, monkeypatch):
+        self._state(tmp_path)
+        monkeypatch.setattr(
+            briefing.learnings_files, "resolve",
+            lambda d: (_ for _ in ()).throw(OSError("boom")),
+        )
+        out = briefing.assemble_session_briefing(tmp_path, [])
+        assert "== SESSION BRIEFING ==" in out
+        assert self._learnings_lines(out) == []
 
 
 class TestAdvisoryRelayDirective:

@@ -62,19 +62,10 @@ ALLOWLIST: dict[str, tuple[str, str]] = {
         "the Critic gate's Learnings Cross-Check text (Chunk 04 points it at "
         "the resolver's file list for the session's changed paths)",
     ),
-    "plugin/skills/critic/review-protocol.md": (
-        "wave-1",
-        "'read .prawduct/learnings.md' in the final-mode read list — Chunk 04 "
-        "rewrites it to core.md plus the area files the diff intersects",
-    ),
     "plugin/skills/critic/review-cycle.md": (
         "wave-1",
         "the Final-Mode Cross-Checks scan (Chunk 04); the `learnings-entry-shape` "
         "severity row beside it goes with its check in Wave 2",
-    ),
-    "plugin/skills/pr/review-protocol.md": (
-        "wave-1",
-        "the PR reviewer's step-6 read of the product's learnings (Chunk 04)",
     ),
     # --- Wave 2 (`learnings-v2-delete`), R6: whole-feature deletions
     "plugin/lib/audit_learnings_cmd.py": (

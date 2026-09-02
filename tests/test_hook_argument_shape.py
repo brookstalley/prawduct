@@ -554,6 +554,7 @@ def test_every_dispatched_command_appears_in_the_documented_list():
         "evidence", "bug-inbox", "version", "print-install-reference", "advisory",
         "backlog", "coverage-status", "coverage-scaffold", "migrate-plugin",
         "init-product", "update-gitignore", "audit-learnings", "norm-index-scaffold",
+        "learnings-files",
         "learnings-obligation", "lifecycle-repair", "plan-backfill", "repo-disable",
     }
     assert set(_dispatch_branches()) == listed
@@ -664,3 +665,22 @@ def test_an_argv_taking_command_still_refuses_its_own_unknown_flags(tmp_path: Pa
 
     assert proc.returncode == 2
     assert "--a-flag-that-never-existed" in proc.stderr
+
+
+def test_learnings_files_takes_argv_and_refuses_what_it_cannot_read(tmp_path: Path):
+    """The new read-only verb, on both halves of this file's contract.
+
+    It is dispatched WITH `sys.argv[2:]` — so it is the wrapper's job, not the
+    pre-dispatch guard's, to refuse an unrecognised token — and its wrapper does
+    that job. The specific hazard is the one that reached a live `.gitignore`
+    rewrite: `--for-diff` is detected with `"--flag" in argv`, so a typo'd
+    `--fordiff` read as *absent* would silently print the WHOLE rules corpus to
+    a reviewer who asked for the diff's subset, which is a wider read that looks
+    exactly like a correct one.
+    """
+    branches = _dispatch_branches()
+    assert "sys.argv[2:]" in branches["learnings-files"]
+
+    proc = _run(tmp_path, ["learnings-files", "--fordiff"])
+    assert proc.returncode == 2
+    assert "--fordiff" in proc.stderr
