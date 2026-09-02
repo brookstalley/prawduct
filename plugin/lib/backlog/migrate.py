@@ -625,11 +625,32 @@ def _records_from_backlog(
 def _record_from_item(item: legacy.BacklogItem, pfx: str | None) -> ImportRecord:
     """Map one parsed backlog item to an :class:`ImportRecord` (the label/status/
     block split). The ``[PFX]`` marker is stripped from the title (the PFX lives in
-    the alias); every non-consumed metadata key is preserved verbatim in the block."""
-    title = _ID_MARKER_RE.sub("", item.title).strip()
+    the alias); every non-consumed metadata key is preserved verbatim in the block.
+
+    The title is then normalized to the §1 ``area: summary`` shape, so **prefixing
+    is a property of import** rather than of having been retitled (#728). Before
+    this, the only normalizing call site on the migration path was
+    ``restructure.apply``, and only for plan entries carrying a ``title`` key — so
+    the obvious way to author a restructure plan (retitle the items the linter
+    complained about, leave the rest) produced a half-prefixed issue list, in a
+    brand-new repo where that list was the whole backlog. Nothing caught it: no §1
+    rule requires the prefix, so the import succeeded and the preview reported
+    clean. ``normalize_title`` never double-prefixes, so this composes with a
+    restructure plan that also normalizes; with no ``area:`` facet it is a no-op.
+    """
+    stripped = _ID_MARKER_RE.sub("", item.title).strip()
+    title = issuefmt.normalize_title(stripped, (item.metadata.get("area") or "").strip() or None)
     status = _target_status(item)
     labels = _labels_for(item, status)
     block = _block_for(item, pfx)
+    if title != stripped:
+        # MG6 write-once provenance, on the same rule restructure follows: the
+        # importer stashes the pre-migration string whenever it changed it. The
+        # prefix is derivable from the `area:` label, but "derivable" is not
+        # "recorded" — the round-trip fidelity contract is that the source title
+        # comes back verbatim, and a normalization that quietly rewrote it would
+        # break that for every item on the backlog at once.
+        block["original_title"] = stripped
     return ImportRecord(pfx=pfx, title=title, body=item.body, status=status, labels=labels, block=block)
 
 

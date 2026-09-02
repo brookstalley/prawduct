@@ -39,7 +39,7 @@ for _p in (str(_REPO_ROOT), str(_TESTS_DIR)):
 
 import pytest  # noqa: E402
 
-from lib.backlog import cli, core, encode, ids, legacy, migrate  # noqa: E402
+from lib.backlog import cli, core, encode, ids, issuefmt, legacy, migrate  # noqa: E402
 from lib.backlog.transport import TransportError  # noqa: E402
 from fakes.fake_github import FakeGitHub  # noqa: E402
 from fixtures.backlog_fixtures import DISCODON_MINI, multi_prefix_backlog  # noqa: E402
@@ -149,8 +149,16 @@ class TestRoundTripFidelity:
             assert rec is not None, f"{pfx} missing from export"
             # ID: the hand-minted PFX survives as a permanent alias (verbatim).
             assert pfx in (rec["id_aliases"] or [])
-            # Title: the [PFX] marker stripped, the rest verbatim.
-            assert rec["title"] == _ID_MARKER.sub("", item.title).strip()
+            # Title: the [PFX] marker stripped, then normalized to the §1
+            # `area: summary` shape (#728 — prefixing is a property of import,
+            # not of having been retitled). Fidelity is preserved, not waived:
+            # the pre-migration string is stashed verbatim in the block, so the
+            # source title still comes back exactly.
+            source_title = _ID_MARKER.sub("", item.title).strip()
+            expected = issuefmt.normalize_title(source_title, item.metadata.get("area"))
+            assert rec["title"] == expected
+            if expected != source_title:
+                assert rec["block"].get("original_title") == source_title
             # Body: verbatim, minus the appended prawduct: block.
             assert encode.strip_block(rec["body"]).strip() == item.body.strip()
             # Status (section/metadata → the two axes).
@@ -172,6 +180,68 @@ class TestRoundTripFidelity:
         assert manifest["repo"] == SCOPE
         assert manifest["count"] == len(_DIS_PFXS)
         assert len(manifest["items"]) == len(_DIS_PFXS)
+
+
+# --- #728: prefixing is a property of import ---------------------------------
+
+
+class TestImportAppliesTheAreaPrefix:
+    """The import path must normalize titles itself, not inherit prefixing as a
+    side effect of a restructure plan happening to name the item.
+
+    The trap this closes is a DEFAULT-PATH one: the obvious way to author a
+    restructure plan is to retitle the items the linter complained about and
+    leave the rest. That produced an issue list where the retitled items carried
+    `area:` and the untouched ones did not — in a new repo, the whole backlog —
+    and nothing caught it, because no §1 rule requires the prefix, so the import
+    succeeded and the preview reported clean.
+    """
+
+    def _records(self, content):
+        records, _collisions = migrate.collect_records(content)
+        return {r.pfx: r for r in records}
+
+    def test_an_untouched_item_still_gains_its_prefix(self):
+        content = (
+            "## Open\n\n"
+            "- **[BKL-0001]** Rate-limit the trade API\n"
+            "  `effort: S · impact: M · area: backend · status: open`\n"
+        )
+        record = self._records(content)["BKL-0001"]
+        assert record.title == "backend: Rate-limit the trade API"
+
+    def test_an_already_prefixed_title_is_left_alone(self):
+        # Composition with restructure rests on this: normalize_title never
+        # double-prefixes, so import and a plan can both run it.
+        content = (
+            "## Open\n\n"
+            "- **[BKL-0002]** backend: Rate-limit the trade API\n"
+            "  `effort: S · impact: M · area: backend · status: open`\n"
+        )
+        record = self._records(content)["BKL-0002"]
+        assert record.title == "backend: Rate-limit the trade API"
+        assert record.block.get("original_title") is None
+
+    def test_a_slash_bearing_area_prefixes_once(self):
+        """#591 is a prerequisite, not a coincidence: with the old charset every
+        slash-bearing area double-prefixed, so wiring normalization into import
+        would have mis-titled twelve areas' worth of items on every migration."""
+        content = (
+            "## Open\n\n"
+            "- **[BKL-0003]** governance/kernel: a summary\n"
+            "  `effort: S · impact: M · area: governance/kernel · status: open`\n"
+        )
+        assert self._records(content)["BKL-0003"].title == "governance/kernel: a summary"
+
+    def test_an_item_with_no_area_is_untouched(self):
+        content = (
+            "## Open\n\n"
+            "- **[BKL-0004]** Rate-limit the trade API\n"
+            "  `effort: S · impact: M · status: open`\n"
+        )
+        record = self._records(content)["BKL-0004"]
+        assert record.title == "Rate-limit the trade API"
+        assert record.block.get("original_title") is None
 
 
 # --- MIG-2: multi-prefix absorption ------------------------------------------
@@ -228,7 +298,10 @@ class TestMultiPrefixAbsorption:
 
         issues = _alias_issues(fake, "MIG-M4-REMOVE")
         assert len(issues) == 1
-        assert issues[0]["title"] == "Remove the shim"
+        # Normalized on import (#728): the marker is stripped and the `area:`
+        # prefix applied, so the issue reads `core: Remove the shim` rather
+        # than `[MIG-M4-REMOVE] Remove the shim` OR a bare summary.
+        assert issues[0]["title"] == "core: Remove the shim"
 
     def test_multi_segment_id_satisfies_the_completeness_gate(self, fake):
         """The end the widening exists to serve: such an item no longer lands in
@@ -257,7 +330,9 @@ class TestMultiPrefixAbsorption:
         verified = migrate.verify_migration(fake, owner=OWNER, repo=REPO, content=content)
         assert verified["status"] == "error", verified
         assert verified["error"]["code"] == "conflict"
-        assert verified["error"]["details"]["unaliasable"] == ["A bare legacy item with no id"]
+        assert verified["error"]["details"]["unaliasable"] == [
+            "core: A bare legacy item with no id"
+        ]
 
     def test_id_less_item_keyed_on_import_marker_not_duplicated(self, fake):
         content = "## Open\n\n- A bare legacy item with no id\n  `area: core · status: open`\n"

@@ -187,6 +187,15 @@ template body sections, and a `kind:`. **Flag non-atomic items
 (`"non_atomic": true`) for owner manual split — never auto-split** (splitting
 mints new IDs and is an owner scrub decision; 1 PFX = 1 issue).
 
+**The `area:` prefix is the import's job, not the plan's.** `import` normalizes
+every title to the §1 `area: summary` shape from the item's own `area:` facet,
+whether or not the plan names that item (#728) — so a plan that retitles only
+the lint-failing items no longer yields a half-prefixed issue list, and you
+never need a `title` entry whose only purpose is to add the prefix. Write plan
+titles as the summary you want; the prefix arrives either way, and
+`normalize_title` never adds a second one. Every title the import changes keeps
+its pre-migration string verbatim in the block's `original_title:`.
+
 Plan shape (v1 — validation is fail-closed; a typo'd PFX or unknown key
 refuses the whole run, so match this exactly):
 
