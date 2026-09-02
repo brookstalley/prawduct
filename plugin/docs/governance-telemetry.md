@@ -78,6 +78,12 @@ Both nest under a `learning` key, under the same envelope:
   **Rewording a rule mints a new hash on purpose**: a rule whose text changed is
   a different rule to a reader, so "never fired" must not be answered from text
   the corpus no longer carries.
+- **A citation** is a unit's opening eight words (the whole unit when shorter),
+  matched against a finding's `summary` + `recommendation` after the same
+  normalization. A unit of fewer than three words — a section banner such as
+  `## Unsorted` — is **uncitable**: it can be written, it just cannot fire, or a
+  single stray word would report a rule as exercised by a review that never read
+  it.
 - **`session`** is the `.session-start` marker's mtime as UTC ISO
   (`evidence._session_epoch`) — nullable, never invented.
 - **`review_id`** is the review fact's id on `learning.fired`, and `null` on
