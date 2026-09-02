@@ -165,6 +165,14 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `check-releasability [--release vX.Y.Z]`, `check-released vX.Y.Z [--json] [--allow-unverifiable]`,
   `resolve-base`,
   `regen-views` (deprecated, inert), `stamp-merged` (deprecated, inert).
+- **Learnings lifecycle (retired with learnings v2)** — `audit-learnings`, `learnings-obligation`,
+  `check-learnings-pairing` (deprecated, inert): the corpus they graded — `.prawduct/learnings.md`
+  and its detail/history pair — no longer exists; rules are harness-loaded from
+  `.claude/rules/learnings/`. Kept dispatchable under the deprecation norm above because a doctor
+  skill on an older per-project pin or a copied runbook can still call them: exit 0 for any
+  flags, one `WARNING:` on stderr naming the replacement, nothing on stdout, nothing written.
+  `ledger-append --event learning.*` is REFUSED (exit 1): those two kinds are emitted by the Stop
+  hook and `critic-consolidate`, never by hand (`docs/governance-telemetry.md`).
 - **Retired hook subcommands** — `build-index`, `user-prompt-submit` (deprecated, inert since
   v3.3.3). No longer registered in `hooks.json`; kept dispatchable because a pre-3.3.2 registration
   still invokes them and plugin version pins update per project. Silent on **both** streams, unlike

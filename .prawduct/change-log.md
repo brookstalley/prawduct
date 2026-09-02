@@ -3,6 +3,43 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-09-02: learnings v2 delete — the lookup, audit and archive mechanisms retired; the reflection gate fires on the common case; the loop measures itself
+
+<!-- prawduct: type=feat | scope=learnings-v2-delete -->
+
+Wave 2 of the learning-system v2 program (#744; plan `build-plan-learnings-v2-delete.md`, five
+chunks, four opus delegates in isolated worktrees, one merged `final` review). **Chunk 01:**
+`audit-learnings`, `learnings-obligation` and `check-learnings-pairing` are deprecated-inert stubs
+(exit 0, stderr `WARNING:`, nothing written — the `regen-views` shape, pinned in
+`test_deprecated_inert_commands.py`) per the api-contract deprecation norm rather than dispatcher
+deletions; their modules (2,107 lines) and tests (4,222 lines) are deleted, with the record-lint
+`learnings-entry-shape` check, the `sentinel_command` template key, and doctor's checks 13/13a and
+audit flow. **Chunk 02:** the `/prawduct:learnings` skill, the `reflections.md` archive and its
+provenance header, the `.subagent-briefing.md` learnings embedding, and every instruction site
+(planning/building/reflection guides, the digest, pr/methodology/doctor skills, README, CLAUDE.md)
+are deleted or rewritten to the harness-loaded model; the single-resolver allowlist shrinks to four
+entries. **Chunk 03 (#685):** the Stop hook's reflection gate reads `gates.session_work_span` (base
+tree → working tree; porcelain when the marker is missing) and grades shape via
+`gates.reflection_shape` (expected/actual + root cause or "no defect"); the plan conjunct and the
+50-character floor are gone; the Critic gate keeps its porcelain guard (#304 holds that flip). The
+merge-only false fire is measured by a real `git merge` in `test_reflection_gate.py` and costs two
+lines once. The session-start advisory in `briefing.py` reads the same span and shape. **Chunk 04:**
+`learning.written` (Stop, one per new rule unit, idempotent by session+file+hash) and
+`learning.fired` (`critic-consolidate`, a finding containing a unit's opening eight words, joined
+by review id) — `lib.ledger` stays the one writer and the CLI refuses `learning.*`; a rule unit is a
+`##`/`###` heading or top-level bullet, hashed by `learnings_files.unit_hash`; units under three
+words cannot fire. This repo's core.md: 288 units, 288 distinct hashes. **Chunk 05:** the grep-clean
+re-derivation `grep -rnE "audit_learnings|learnings_obligation|learnings_pairing|learnings-entry-shape|_check_learnings_shape|prawduct:learnings|reflections\.md|reflection_provenance|sentinel_command|sentinel_ungraded|Active Learnings|learning_families" plugin tests README.md CLAUDE.md documentation`
+returns only the three stubs, test assertion strings that guard the absence, one budget-ledger
+comment, and `plugin/CHANGELOG.md` / `documentation/issues/` history.
+
+Token ceilings moved by declaration in Chunk 03 (`building.md` 4757→4788, digest framework
+3198→3214 / product 2086→2101: the gate's predicate changed on the one surface every session
+receives) and were ratcheted down by Chunks 01/02 (`review-cycle.md` 9600→9597 net of Chunk 04's
+citation sentence; `goals-1-3.md` 2280→2278). Known limit, recorded not fixed: `learning.written`
+inherits the budget block's porcelain trigger, so a turn that writes AND commits a rule with nothing
+else uncommitted records no event that turn.
+
 ## 2026-09-02: learnings v2 core — the corpus moves to `.claude/rules/learnings/`, loaded by the harness
 
 <!-- prawduct: type=feat | scope=learnings-v2-core -->
