@@ -15,6 +15,7 @@ isolation mirrors ``test_gitignore_probes.py`` (autouse ``clear_registry``).
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -334,3 +335,44 @@ def test_direct_register_is_idempotent_and_fires(tmp_path):
     assert len(fired) == 1
     assert fired[0].feature == "install-reference"
     assert fired[0].probe_version == irp.PROBE_VERSION
+
+
+def test_doctor_asks_the_plugin_for_the_contract_rather_than_parsing_it():
+    """Health Check #1 must RUN ``print-install-reference``, not read the constant.
+
+    The advisory this module probes routes to `/prawduct:doctor` as its
+    recommended action, so the two have to grade the same contract. The probe
+    reads `INSTALL_REFERENCE` directly, which it can — it is the same process.
+    Doctor cannot: it is prose executed by a model in a repo where the plugin is
+    installed elsewhere. Telling it to *read the constant out of the plugin's
+    source* asked a model to parse Python for a value the binary will print, and
+    carried a hedge ("if the constant is genuinely unreadable, say so") whose
+    escape hatch was the illustrative four-field list two sentences earlier — so
+    the documented fallback for a failed read was grading against a transcription,
+    which is precisely the drift this whole feature exists to catch.
+
+    Pinned as prose because that is the whole implementation (#574).
+    """
+    doctor = (
+        Path(__file__).resolve().parents[1] / "plugin" / "skills" / "doctor" / "SKILL.md"
+    ).read_text(encoding="utf-8")
+    check_one = doctor.split("\n1. **Install reference**", 1)[1].split("\n2. **", 1)[0]
+    assert "prawduct-hook print-install-reference" in check_one, (
+        "doctor Health Check #1 must run `prawduct-hook print-install-reference` — "
+        "the published form of the contract — rather than reading "
+        "migrate_plugin.INSTALL_REFERENCE out of the plugin's source"
+    )
+    assert "lib/migrate_plugin.py" not in check_one, (
+        "doctor Health Check #1 must not send the reader back to the plugin's "
+        "source file for the contract"
+    )
+    assert "illustrative, not the set" in check_one, (
+        "the four named fields must stay marked illustrative; they are an example "
+        "of the shape, never the set the check grades against"
+    )
+    # A non-zero exit is the plugin's failure, not the repo's — and it must never
+    # fall through to the illustrative list.
+    assert "degraded because ungraded" in check_one, (
+        "a non-zero exit from print-install-reference must be reported as "
+        "degraded because ungraded, never as a healthy or a broken repo"
+    )

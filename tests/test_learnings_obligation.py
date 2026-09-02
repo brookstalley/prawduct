@@ -15,6 +15,7 @@ else, and this file is the "anything else".
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from pathlib import Path
 from unittest import mock
@@ -303,6 +304,14 @@ class TestRepair:
         assert result["applied"] is False
         assert "could not write" in result["detail"]
         assert lo.check(tmp_path)["status"] == lo.STATUS_MISSING  # untouched
+        # ...and the RESULT says the repair failed, not that the marker is
+        # missing (#571). The branch used to leave `status` at whatever check()
+        # had set, so the one field doctor grades on relayed a failed write as
+        # the finding it had been asked to fix — an owner told "missing" and
+        # never told prawduct had already tried. `detail` carried the truth and
+        # nothing reads `detail` for a grade.
+        assert result["status"] == lo.STATUS_UNWRITABLE
+        assert result["repairable"] is False
 
     def test_an_encoding_failure_refuses_rather_than_raising(self, tmp_path, monkeypatch):
         """A `UnicodeEncodeError` is not an `OSError`, so it needs naming.
@@ -321,6 +330,7 @@ class TestRepair:
         result = lo.repair(tmp_path, apply=True)
         assert result["applied"] is False
         assert "could not write" in result["detail"]
+        assert result["status"] == lo.STATUS_UNWRITABLE
 
     def test_the_insertion_survives_the_round_trip_intact(self, tmp_path):
         # The block is non-ASCII (em-dashes). An encoding mismatch between the write
@@ -456,3 +466,57 @@ class TestCommand:
         result = _run(tmp_path, str(tmp_path))
         assert result.returncode == 2
         assert "unknown argument" in result.stderr
+
+
+DOCTOR_SKILL = ROOT / "skills" / "doctor" / "SKILL.md"
+
+
+def _doctor_check_13() -> str:
+    """The prose of doctor Health Check #13, and nothing either side of it."""
+    text = DOCTOR_SKILL.read_text(encoding="utf-8")
+    head = "13. **Descent obligation in `learnings.md`**"
+    assert head in text, f"{DOCTOR_SKILL} no longer carries Health Check #13"
+    return text.split(head, 1)[1].split("\n14. ", 1)[0]
+
+
+def test_doctor_check_13_enumerates_every_status_this_module_can_report():
+    """The health check's documented enumeration must match the command's (#571).
+
+    A status the module can return and the check does not name is a state with
+    no documented grade — the model relaying it either invents one or reports
+    the nearest thing it recognises. That is exactly how a failed repair got
+    relayed as `missing`: `unwritable` did not exist, so the write-failure
+    branch left `status` alone and the check's five-member list still looked
+    complete.
+
+    Asserted in both directions on purpose. A member the check names and the
+    module cannot produce is dead prose that reads as coverage, and it ages into
+    a grade for a state that was renamed somewhere else.
+    """
+    prose = _doctor_check_13()
+    statuses = {
+        value
+        for name, value in vars(lo).items()
+        if name.startswith("STATUS_") and isinstance(value, str)
+    }
+    assert len(statuses) >= 5, "status set shrank; this test's premise is stale"
+
+    undocumented = sorted(s for s in statuses if f"`{s}`" not in prose)
+    assert not undocumented, (
+        f"doctor Health Check #13 does not name {undocumented}, which "
+        f"`learnings_obligation` can report. Every status needs a documented "
+        f"grade — healthy, degraded, or degraded because ungraded — or the "
+        f"relay is left to invent one."
+    )
+
+    # The converse: every backticked lowercase word in the grading sentence must
+    # be a real status. Scoped to that sentence onward so ordinary prose earlier
+    # in the check is not swept in.
+    graded = prose.split("Report **degraded** on", 1)[1]
+    named = set(re.findall(r"`([a-z]+)`", graded))
+    invented = sorted(named - statuses - {"apply", "json"})
+    assert not invented, (
+        f"doctor Health Check #13 grades {invented}, which `learnings_obligation` "
+        f"never returns — a grade for a state that cannot occur reads as coverage "
+        f"and hides the one that can."
+    )

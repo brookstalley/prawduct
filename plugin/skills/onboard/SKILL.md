@@ -3,7 +3,7 @@ description: Onboard a repo to Prawduct — scaffold a new or existing repo onto
 argument-hint: "[target-path]"
 user-invocable: true
 disable-model-invocation: false
-allowed-tools: Bash(prawduct-hook init-product *), Bash(prawduct-hook coverage-scaffold *), Bash(prawduct-hook backlog provision *), Bash(python3 plugin/bin/prawduct-hook backlog provision *), Bash(prawduct-hook check-plugin-active *), Bash(python3 plugin/bin/prawduct-hook check-plugin-active *), Read, Glob
+allowed-tools: Bash(prawduct-hook init-product*), Bash(prawduct-hook coverage-scaffold*), Bash(prawduct-hook backlog provision*), Bash(python3 plugin/bin/prawduct-hook backlog provision*), Bash(prawduct-hook check-plugin-active*), Bash(python3 plugin/bin/prawduct-hook check-plugin-active*), Read, Glob
 ---
 
 You are onboarding a repo onto Prawduct under the **plugin** distribution model. Prawduct is installed as a Claude Code plugin (dev-time governance); a product commits only the install *reference* plus its own `.prawduct/` state — no framework files. Onboarding is the same whether the repo is brand-new or an existing codebase, and it operates on the consumer's own repo — there is no framework checkout to call back to.

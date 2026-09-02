@@ -6,7 +6,24 @@
      `**Status:** pending | verified | accepted`. When
      `operator_verification_required: true`, `/pr create` BLOCKS on any pending
      entry (currently false here, so this is a tracked reminder, not a gate).
-     Append-only history — don't delete drained entries. -->
+     Append-only history — don't delete drained entries.
+
+     THE STATUS LINE IS THE BARE TOKEN AND NOTHING ELSE. The parser reads
+     `**Status:** <one word>` and treats anything after it as malformed, which
+     fails CLOSED to `pending`. Six entries here once read `verified (date, repo)`
+     or `VERIFIED 2026-08-01 - ...`, and the gate counted 14 pending where a human
+     counted 8 - so flipping the flag would have blocked on six entries already
+     done. Put the detail on the `**Verified:**` / `**Accepted:**` line below it,
+     which is where `prawduct-hook verify-operator-verification` writes it anyway.
+     `superseded` is not a status: an entry that must NOT be drained by running its
+     steps is `accepted`, with the reason as its rationale.
+
+     WHY EACH ENTRY IS HERE, AND WHEN IT MAY LEAVE (#183). This queue was
+     write-only until 2026-09-01: entries went in conscientiously and never came
+     back out, and VRF-002 named CRT-2J8N's root cause seventeen days before an
+     unrelated review found it. Every still-pending entry now carries a dated
+     DRAIN DISPOSITION block saying what it turns on and whose harness can answer
+     it. Add one when you defer, not when someone finally asks. -->
 
 ## VRF-001 — Chunk 01 — Worktree resolution against the live harness
 
@@ -45,7 +62,8 @@ open assumption in `artifacts/build-plan-worktree-compat.md`.
 
 ## VRF-002 — Chunk 04 — SubagentStop fires critic-consolidate for a dispatched critic-reviewer
 
-**Status:** pending — narrowed 2026-07-27; fact 2 is CLOSED and was a real defect
+**Status:** pending
+**Narrowed:** 2026-07-27 — fact 2 is CLOSED and was a real defect (see below).
 
 > === 2026-07-27 — FACT 2 RESOLVED BY STATIC ANALYSIS, AND IT WAS BROKEN (CRT-2J8N) ===
 >
@@ -96,6 +114,23 @@ open assumption in `artifacts/build-plan-worktree-compat.md`.
 >    skill's explicit consolidate call suppressed, or the verdict means nothing.
 
 **Added:** 2026-07-10 (critic-persistence-redesign Chunk 04)
+
+> === 2026-09-01 — DRAIN DISPOSITION (#183): STAYS PENDING — LIVE HARNESS, AND BLOCKED ===
+>
+> **What it turns on.** A real Claude Code session on a *released* plugin carrying the fixed
+> matcher, run with `CLAUDE_CONFIG_DIR` pointed at an empty directory — the installed plugin's
+> hooks fire in every repo you open, so a stale copy fires alongside the fixed one — and with the
+> skill's own explicit `critic-consolidate` suppressed. No amount of reading discharges it.
+>
+> **Its static half is already closed**, which is the point of the split rule this entry taught:
+> fact 2 was resolved by analysis on 2026-07-27, was a real defect from birth, and is now pinned
+> by `tests/test_critic_reviewer_agent.py`. Only *delivery* is still owed.
+>
+> **Blocked for an unambiguous verdict, and sequence matters.** Three things can consolidate —
+> this hook, the skill's explicit call, and the session-end backstop — and nothing records which
+> one did (`#182`). Until a trigger is recorded on the `review.critic` event, a run that sees
+> findings appear cannot distinguish a working hook from a dead one, which is exactly how this
+> went unnoticed for seventeen days. **Do #182 first, or the live run cannot answer.**
 **Where to verify:** A real Claude Code session in this repo AFTER the plugin is
 updated to a version carrying `agents/critic-reviewer.md` + the `SubagentStop` hook
 (this session runs the plugin from `~/.claude/plugins/cache/.../2.3.0`, so the new
@@ -133,6 +168,21 @@ wrong agent_type). The consolidation core itself is `tests/test_critic_consolida
 
 **Status:** pending
 **Added:** 2026-07-16 (structural-coverage Chunk 05)
+
+> === 2026-09-01 — DRAIN DISPOSITION (#183): RE-SCOPE — HALF OF IT IS NO LONGER OBSERVABLE ===
+>
+> **Step 1 is still checkable** at the next live session start: the briefing no longer prints the
+> `DISCOVERY NOT CAPTURED` block.
+>
+> **Step 2 is not, and never will be here.** `prawduct-hook coverage-status` now reports layer 0
+> recorded, layer 1 all artifacts present, **active nudge → none**. The layer-1 advisory this entry
+> was written to watch cannot fire in this repo again; that state was left behind on 2026-07-16, so
+> an operator following step 2 would be waiting on a nudge that is correctly silent. Confirming
+> "the probe roster produces the layer-1 briefing text" needs a fixture repo parked at layer 1 —
+> which is a **test**, not an operator check.
+>
+> **Owner call:** keep step 1 as the live remainder and file step 2 as test coverage, or accept the
+> entry whole on the CLI evidence already recorded above. Not decided here.
 **Where to verify:** The next real Claude Code session opened in this repo (a `clear`
 hook run), reading the SessionStart briefing.
 
@@ -159,7 +209,8 @@ path (hook → probe roster → briefing text) is exercised only by a live sessi
 
 ## VRF-004 — Chunk 01 (backlog-service) — CLI file/get round-trip + JSON envelope
 
-**Status:** verified (2026-07-17, throwaway repo `brookstalley/prawduct-backlog-smoke`)
+**Status:** verified
+**Verified:** 2026-07-17 — throwaway repo `brookstalley/prawduct-backlog-smoke`.
 **Added:** 2026-07-16 (backlog-service Chunk 01 — walking skeleton; renumbered from VRF-003
 on the 2026-07-17 develop merge — the id collided with structural-coverage's VRF-003 above)
 **Result:** L5 live smoke passed through `cli.run`; the hand round-trip confirmed every
@@ -207,6 +258,19 @@ GET works. Run 2026-07-17 — see **Result** above.
 
 **Status:** pending
 **Added:** 2026-07-17 (backlog-service Chunk 02 — state-machine keystone)
+
+> === 2026-09-01 — DRAIN DISPOSITION (#183): ACCEPT-WITH-RATIONALE — OWNER SIGNS ===
+>
+> **The argument for accepting.** All three fake-unconfirmable behaviours — the URL-encoded
+> label-remove path, `reopen` clearing `state_reason`, and `add_labels` staying additive through an
+> open sub-state transition — are now exercised continuously against real GitHub: prawduct's own
+> backlog *is* Issues, and every `backlog status` transition since the cutover runs those paths.
+> That is stronger evidence than the throwaway-repo smoke this entry asks for.
+>
+> **Why it is not flipped here.** It is an argument, not a run, and the vocabulary already has the
+> right word for that: `accepted`, with the reasoning on the record. Acceptance is the owner's
+> override to make — `prawduct-hook accept-operator-verification "<rationale>"` records it. An
+> agent writing `verified` on an argument is exactly the laundering this queue exists to prevent.
 **Where to verify:** a throwaway GitHub repo with `gh` authenticated (`repo` scope). Run the
 gated L5 status smoke, or drive the CLI by hand:
 
@@ -235,7 +299,8 @@ behaviors are confirmed only against real GitHub —
 
 ## VRF-006 — Chunk 06 (backlog-service) — prawduct-first migration: scrub dispositions + migrated repo + live briefing
 
-**Status:** VERIFIED 2026-08-01 — the real migration ran. See § "Settled facts" below.
+**Status:** verified
+**Verified:** 2026-08-01 — the real migration ran. See § "Settled facts" below.
 **Added:** 2026-07-17 (backlog-service Chunk 06, offline deliverables landed; live
 migration/repoint/retirement deferred to an owner-run session after design sign-off)
 
@@ -362,6 +427,20 @@ never before it. Before/at the retirement, eyeball that the replacement is live:
 
 **Status:** pending
 **Added:** 2026-07-19 (backlog-skill-repoint Chunk 02 — read + write ops via the adapter)
+
+> === 2026-09-01 — DRAIN DISPOSITION (#183): ACCEPT-WITH-RATIONALE OR RE-SCOPE — OWNER SIGNS ===
+>
+> **Its premise expired.** This is framed as *Phase 1* — the owner-scoped dogfood that exercises
+> the repointed skill "without touching prawduct's own backlog". The cutover has since happened:
+> prawduct's backlog is on Issues and the skill has driven it for weeks, which is a larger and
+> longer dogfood than the one this entry describes.
+>
+> **What dogfooding still has not answered** is the *sibling-repo* half — a repo pointed at this
+> checkout via `--plugin-dir`, and step 6 in particular (with `backlog_service_repo` unset the
+> skill behaves exactly as before), which prawduct's own cut-over repo cannot exercise.
+>
+> **Owner call:** accept on the dogfood record, or re-scope the entry down to step 6 and keep that
+> pending. Not decided here.
 **Pre-verified (adapter loop, 2026-07-19):** the adapter substrate the skill drives is confirmed live
 against the private throwaway `brookstalley/prawduct-backlog-smoke` — reads (`counts`/`list`/`list
 --filter`/`get`/`pick`), writes (`file`/`status`/`claim`/`link`/`update`/`status --to dropped`), the
@@ -397,7 +476,8 @@ Drains when Phase 1 runs.
 
 ## VRF-008 — Chunk 01 (skills-cutover-awareness) — dormancy is stated, not silently wrong
 
-**Status:** superseded
+**Status:** accepted
+**Accepted:** 2026-09-01 — rationale: superseded 2026-08-07 by the backlog read-through cache (Chunk 06) and by VRF-015; its eleven steps now assert the inverse of what ships, so draining it by running them would report a failure against correct behaviour. Not verifiable and not to be verified.
 **Added:** 2026-07-19 (skills-cutover-awareness Chunk 01 — GV8 interim contract)
 **Superseded:** 2026-08-07 by the backlog read-through cache (Chunk 06), which **restored every
 reader this entry verified as dormant.** Do not drain it — its eleven steps now assert the inverse of
@@ -566,7 +646,8 @@ then the real prawduct backlog") — now done. It does **not** run the real migr
 
 ## VRF-010 — Chunk 05b / F1 — the three relationship-timeline readers, live
 
-**Status:** verified (2026-07-28, throwaway repo `brookstalley/prawduct-readers-20260728`)
+**Status:** verified
+**Verified:** 2026-07-28 — throwaway repo `brookstalley/prawduct-readers-20260728`.
 **Added:** 2026-07-28 (functional-audit F1 — the readers no migration exercises)
 
 **Why this run existed.** `BKL-3N8Q` records that `list_blocked_by` / `list_sub_issues` /
@@ -629,7 +710,8 @@ settle-retry `file` already uses.
 
 ## VRF-011 — Chunk 05b / BKL-8K2N — the import progress heartbeat, live
 
-**Status:** verified (2026-07-28, throwaway repo `brookstalley/prawduct-readers-20260728`)
+**Status:** verified
+**Verified:** 2026-07-28 — throwaway repo `brookstalley/prawduct-readers-20260728`.
 **Added:** 2026-07-28
 
 **Result.** A 55-record live import emitted exactly the designed signal:
@@ -664,7 +746,8 @@ exact count — a paged list costs 1 point regardless of page count. The `≥` i
 
 ## VRF-012 — F9 — `samsung-frame-art-loader` stranded-item recovery
 
-**Status:** verified (2026-07-28)
+**Status:** verified
+**Verified:** 2026-07-28.
 **Added:** 2026-07-28
 
 **Before.** `backlog_service_repo` set (so `post_cutover` True, markdown read as frozen history) while
@@ -706,7 +789,30 @@ completeness comparison above is a hand-run script, not a command. See functiona
 
 ## VRF-013 — Chunk 06 pre-run gate — the two transport/pagination defects, live read-only
 
-**Status:** pending
+**Status:** verified
+**Verified:** 2026-09-01 — run against the real `brookstalley/prawduct`, read-only, from a
+prawduct checkout with `gh` authenticated. **Numbers observed, not just "passed"** (the entry
+asks for them, so a later reader can tell this met real scale rather than a fixture):
+
+- **Fact 1 — multi-page reassembly.** `_api_paged(repos/brookstalley/prawduct/labels)` returned
+  **502** labels at `per_page=100` and **502** at `per_page=2`; the two name sets compared
+  **equal**. `per_page=2` forced ~251 pages over the same data, so the equal result is the page
+  loop reassembling rather than truncating or throwing. The gate named ">30 labels"; this is 502.
+  **PASS.**
+- **Fact 2 — the terminator reads the RAW page.** `iter_alias_issues` reached **540** issues.
+  Page 1 raw is **100 records of which 96 are pull requests** — a non-PR count of **4**. The scan
+  passed a page that was 96% PRs and kept going to 540, which is the opposite of the
+  early-termination signature (landing at or just under 4). This is the sharper of the two
+  defects and the one the gate's "127+ PRs" test bed exists for. **PASS.**
+- **Fact 3 — the other two `_api_paged` readers on a real object.** Issue #4:
+  `list_timeline` returned **14** events, `list_sub_issues` returned **0**. Neither raised.
+  **PASS.**
+
+**Who ran it, stated plainly:** an agent session in a linked worktree, not a human at a terminal.
+That is the right kind of evidence *for this entry* and only this one — every step is a mechanical
+snippet with a numeric PASS/FAIL, no eyeball judgment and no writes — and it is recorded here so
+a reader can weigh it rather than assume an operator sat through it.
+
 **Added:** 2026-07-31
 
 **Why this exists.** `.prawduct/artifacts/migration-scrub-decisions.md` carries a **pre-run gate**
@@ -922,6 +1028,19 @@ re-litigating it out. Only the amplified *delivery* was open, and only that is a
 **Status:** pending
 **Added:** 2026-08-07 (backlog-cache Chunk 06 — supersedes VRF-008)
 
+> === 2026-09-01 — DRAIN DISPOSITION (#183): STAYS PENDING — LIVE HARNESS, BUT SPLIT ===
+>
+> **This entry is the worked example of the split rule.** Step 4 — "the janitor's Backlog Health
+> ran without a permission prompt for `prawduct-hook backlog cache-query`" — is a *can this be true
+> in principle* question, and it is **closed as of `#730`**: janitor's grant is now the house form
+> `Bash(prawduct-hook backlog cache-query*)`, and `tests/test_skill_command_grants.py` fails if a
+> starred-only grant is ever paired with a bare call again. It never needed a live session; it
+> needed someone to notice it was decidable.
+>
+> **Steps 1–3 and 5–7 are the live half** and genuinely are: a real `/prawduct:critic final` and
+> `/prawduct:janitor` on a cut-over repo, including moving the cache store aside to confirm each
+> reader *says* it cannot read rather than reporting clean. No reading discharges those.
+
 **Why a human check:** the deliverable is a *judgement* made by three prose readers. Tests pin that
 the queries answer, that an unreadable store exits 6, and that the prose routes correctly — but no
 test can confirm that a reviewer reading `review-cycle.md` actually runs the walk and emits findings
@@ -950,6 +1069,20 @@ a person would act on. Skills are prose a model executes, and the failure this w
 
 **Status:** pending
 **Added:** 2026-08-19 (critic-reliability Chunk 01, #675)
+
+> === 2026-09-01 — DRAIN DISPOSITION (#183): STAYS PENDING — A HARNESS THIS PROJECT DOES NOT HAVE ===
+>
+> **Nobody here can discharge it.** The defect only manifests where a file read costs a mount round
+> trip, and the entry itself says it must be confirmed in *the reporter's* environment. No machine
+> prawduct develops on has one, so "pending" here is not a queue of work — it is a permanent
+> resident, which is the write-only failure in miniature.
+>
+> **What to do instead of leaving it here.** Give it an owner and a revisit trigger the way an
+> `in-transition` norm carries one: assign it to the reporter with a date, or **accept** it on the
+> mechanism measurement the acceptance criteria already took on local disk (re-hash volume and
+> elapsed capture time, where the same change is worth roughly 3x) and say plainly that the
+> reported symptom was never reproduced here. Owner call — both are honest; leaving it pending
+> indefinitely is not.
 
 **Why a human check:** the defect only manifests where a file read costs a mount round trip.
 This repo has no bind mount, so the acceptance criteria measure the MECHANISM — re-hash volume
@@ -986,6 +1119,16 @@ is reached over a bind mount or network filesystem.
 
 **Status:** pending
 **Added:** 2026-08-27 (branch-claim-multiplicity Chunk 04, PR #658)
+
+> === 2026-09-01 — DRAIN DISPOSITION (#183): STAYS PENDING — CORRECTLY, AND IT UNBLOCKS ITSELF ===
+>
+> **Not a decision, just time.** This cannot be met from any branch by construction: the recipe
+> installs from `{source: github, ref: develop}`, so the work has to be merged and pushed before an
+> install can see it, and verifying it from a local path would confirm a different recipe than the
+> documented one. Its blocker is the ordinary passage of a release.
+>
+> **The one thing to watch:** it will go stale rather than wrong. Re-read the `-dev.N` note above
+> before running it — the format already changed once underneath this entry.
 
 **Why a human check:** the acceptance criterion is that a sibling repo is *actually running* the
 develop track and its briefing reports the prerelease version. That cannot be met from this branch
