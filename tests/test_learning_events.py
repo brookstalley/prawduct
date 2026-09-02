@@ -30,8 +30,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-
 _ROOT = Path(__file__).resolve().parent.parent / "plugin"
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
@@ -43,8 +41,10 @@ _spec = importlib.util.spec_from_loader("prawduct_hook_learning_events", _loader
 _hook = importlib.util.module_from_spec(_spec)
 _loader.exec_module(_hook)
 
+from lib import critic_consolidate as cc  # noqa: E402
 from lib import learnings_files as lf  # noqa: E402
 from lib import ledger  # noqa: E402
+from lib import telemetry  # noqa: E402
 
 HOOK = _ROOT / "bin" / "prawduct-hook"
 LEDGER_REL = ".prawduct/.governance-ledger.jsonl"
@@ -451,8 +451,6 @@ class TestConsolidateTelemetryIsBestEffort:
     ):
         """In-process, because the failure has to be injected. The subprocess
         tests above are what prove the same code path runs for real."""
-        from lib import critic_consolidate as cc
-
         repo = _repo(tmp_path, rules=(RULE_A,))
         _dispatch(repo, [_finding(f"Regression: {lf.unit_citation(RULE_A)} ...")])
 
@@ -466,8 +464,6 @@ class TestConsolidateTelemetryIsBestEffort:
         assert (repo / ".prawduct" / ".critic-findings.json").is_file()
 
     def test_the_note_names_what_is_lost(self, tmp_path, monkeypatch, capsys):
-        from lib import critic_consolidate as cc
-
         repo = _repo(tmp_path, rules=(RULE_A,))
         _dispatch(repo, [_finding(f"Regression: {lf.unit_citation(RULE_A)} ...")])
         monkeypatch.setattr(
@@ -507,8 +503,6 @@ class TestReviewStatsToleratesTheNewKinds:
     JSON key is not repurposed and `--json` consumers pin it."""
 
     def test_learning_events_are_counted_as_unknown_kinds(self, tmp_path, capsys):
-        from lib import telemetry
-
         repo = _repo(tmp_path)
         _write_rules(repo, RULE_A, RULE_B)
         _stop(repo, capsys)
@@ -525,8 +519,6 @@ class TestReviewStatsToleratesTheNewKinds:
     def test_a_review_event_beside_them_still_aggregates(self, tmp_path, capsys):
         """The control: a `skipped` count that swallowed everything would pass
         the assertion above while breaking the report."""
-        from lib import telemetry
-
         repo = _repo(tmp_path)
         _write_rules(repo, RULE_A)
         _stop(repo, capsys)
