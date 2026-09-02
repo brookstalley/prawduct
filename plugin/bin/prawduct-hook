@@ -6571,9 +6571,17 @@ def cmd_learnings_migrate(project_dir: Path, argv: list[str]) -> int:
     recognises, ``--apply --map <file>`` migrates, and the operator's control
     point is the commit that follows.
 
-    Exit codes: 0 when the plan printed or the migration ran (and 0 for a repo
-    with nothing to migrate — a second run is a no-op, not an error); **2** for
-    a usage error or a refusal; 1 when the bundled lib/ cannot be imported.
+    Exit codes follow ``artifacts/api-contract.md`` § Error Model, like the
+    sibling repairs (``learnings-obligation``, ``norm-index-scaffold``,
+    ``lifecycle-repair``): **0** written or a no-op — including a repo with
+    nothing to migrate, because a second run is a no-op rather than an error;
+    **1** refused, nothing written, and the same for a lib/ that will not
+    import (it could not run); **2** usage error — an unknown flag, a missing
+    ``--map`` value, a ``--map`` file that cannot be read or parsed, or
+    ``--propose-map`` combined with ``--apply``. Keeping refusals separate from
+    usage errors is the point: a caller must be able to tell "fix your dirty
+    tree" from "you typed the flag wrong", and the briefing directive sends an
+    agent here that has to make exactly that distinction.
 
     Refusals apply in **every** mode, not only under ``--apply``. A dirty
     learnings file or a gitignored destination is a condition the agent must fix
@@ -6658,7 +6666,7 @@ def cmd_learnings_migrate(project_dir: Path, argv: list[str]) -> int:
             }, indent=2))
         for reason in migration.refusals:
             print(f"learnings-migrate: REFUSED — {reason}", file=sys.stderr)
-        return 2
+        return 1
 
     if propose:
         proposal = learnings_migrate.propose_map(project_dir, migration.sections)
@@ -6705,6 +6713,18 @@ def cmd_learnings_migrate(project_dir: Path, argv: list[str]) -> int:
                 f"{learnings_files.CORE_NAME} and loaded every session: "
                 + ", ".join(migration.unmapped)
             )
+        if migration.dropped:
+            # Preamble prose the new core.md's own header replaces. Named, and
+            # never merely counted, because "what did it throw away" is the one
+            # question the operator cannot answer after the fact.
+            print(
+                f"dropped {len(migration.dropped)} preamble line(s) carried into "
+                "no rule:"
+            )
+            for line in migration.dropped[:5]:
+                print(f"    {line[:110]}")
+            if len(migration.dropped) > 5:
+                print(f"    … and {len(migration.dropped) - 5} more")
 
     if do_apply:
         try:
@@ -6719,10 +6739,10 @@ def cmd_learnings_migrate(project_dir: Path, argv: list[str]) -> int:
                 "finishes it.",
                 file=sys.stderr,
             )
-            return 2
+            return 1
         except (OSError, learnings_migrate.MigrateRefused) as exc:
             print(f"learnings-migrate: failed — {exc}", file=sys.stderr)
-            return 2
+            return 1
         if not as_json:
             for output in migration.outputs:
                 print(f"wrote {output.rel} ({output.size} bytes, {output.rules} rules)")

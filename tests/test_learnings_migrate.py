@@ -53,7 +53,7 @@ from lib import learnings_migrate as lm  # noqa: E402
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "learnings_migrate"
 HOOK = _PLUGIN_ROOT / "bin" / "prawduct-hook"
 
-SHAPES = ("topic", "paragraph", "mixed", "collision")
+SHAPES = ("topic", "paragraph", "mixed", "collision", "flat")
 
 
 # --- helpers ----------------------------------------------------------------
@@ -133,9 +133,14 @@ def migrated_text(root: Path, mapping: dict[str, list[str]] | None = None) -> st
     )
 
 
+def sections_of(root: Path) -> list[lm.Section]:
+    """The corpus's sections, dropping the parser's second return value."""
+    return lm.parse_legacy(legacy_text(root))[0]
+
+
 def full_map(root: Path) -> dict[str, list[str]]:
     """Every topic the proposer can scope, so the mapped path gets exercised."""
-    return lm.propose_map(root, lm.parse_legacy(legacy_text(root)))
+    return lm.propose_map(root, sections_of(root))
 
 
 # --- parsing ----------------------------------------------------------------
@@ -152,7 +157,7 @@ class TestParseLegacy:
         rule. Nothing here reads title length — a topic with a 60-character
         name and a rule with a short one must still land on the right side.
         """
-        sections = lm.parse_legacy(legacy_text(repo(tmp_path, "mixed")))
+        sections = sections_of(repo(tmp_path, "mixed"))
         topics = [s for s in sections if s.is_topic]
         rules = [s for s in sections if not s.is_topic]
         assert [s.slug for s in topics] == [
@@ -166,14 +171,14 @@ class TestParseLegacy:
         assert sum(len(s.rules) for s in sections) == 30
 
     def test_the_paragraph_shape_parses_with_no_topics_at_all(self, tmp_path: Path):
-        sections = lm.parse_legacy(legacy_text(repo(tmp_path, "paragraph")))
+        sections = sections_of(repo(tmp_path, "paragraph"))
         assert sections
         assert not any(s.is_topic for s in sections)
 
     def test_the_topic_shape_parses_with_no_paragraph_rules_at_all(
         self, tmp_path: Path
     ):
-        sections = lm.parse_legacy(legacy_text(repo(tmp_path, "topic")))
+        sections = sections_of(repo(tmp_path, "topic"))
         assert sections
         assert all(s.is_topic for s in sections)
 
@@ -199,7 +204,7 @@ class TestParseLegacy:
             "## not a section\n"
             "```\n"
         )
-        sections = lm.parse_legacy(text)
+        sections, _dropped = lm.parse_legacy(text)
         assert [s.title for s in sections] == ["Markdown"]
 
 
@@ -298,7 +303,7 @@ class TestProposeMap:
         its domains.
         """
         root = repo(tmp_path, "mixed")
-        proposal = lm.propose_map(root, lm.parse_legacy(legacy_text(root)))
+        proposal = lm.propose_map(root, sections_of(root))
         assert proposal["eval-model-bake-offs"] == ["discodon/eval/**"]
         assert proposal["music-streaming"] == ["discodon/music/**"]
 
@@ -308,20 +313,20 @@ class TestProposeMap:
         """No entry, never a guessed one: an unscoped rule in core is merely
         unfiltered, while one scoped to the wrong directory is invisible."""
         root = repo(tmp_path, "mixed")
-        proposal = lm.propose_map(root, lm.parse_legacy(legacy_text(root)))
+        proposal = lm.propose_map(root, sections_of(root))
         assert "pydantic-v2" not in proposal
         assert "zmq-multi-process" not in proposal
 
     def test_paragraph_rules_are_never_proposed_a_scope(self, tmp_path: Path):
         root = repo(tmp_path, "paragraph")
-        assert lm.propose_map(root, lm.parse_legacy(legacy_text(root))) == {}
+        assert lm.propose_map(root, sections_of(root)) == {}
 
     def test_a_layer_named_directory_does_not_win_a_topic(self, tmp_path: Path):
         """`src/` and `lib/` name where code sits, not what it is about."""
         root = tmp_path / "layered"
         (root / "src").mkdir(parents=True)
         (root / "src" / "a.py").write_text("pass\n")
-        sections = lm.parse_legacy("# L\n\n## Src Conventions\n- **A rule.**\n")
+        sections, _ = lm.parse_legacy("# L\n\n## Src Conventions\n- **A rule.**\n")
         assert lm.propose_map(root, sections) == {}
 
 
@@ -330,7 +335,7 @@ class TestMapFile:
         """The sidecar is written by the command and read by the command; a
         format only one half agreed with would fail on the agent's first run."""
         root = repo(tmp_path, "mixed")
-        sections = lm.parse_legacy(legacy_text(root))
+        sections = sections_of(root)
         proposal = lm.propose_map(root, sections)
         unmatched = [
             s.slug for s in sections if s.is_topic and s.slug not in proposal
@@ -402,7 +407,7 @@ class TestPlan:
         against itself — a writer that dropped a section would still report a
         self-consistent total."""
         root = repo(tmp_path, shape)
-        sections = lm.parse_legacy(legacy_text(root))
+        sections = sections_of(root)
         migration = lm.plan(root, full_map(root))
         assert migration.rules == sum(len(s.rules) for s in sections)
 
@@ -432,7 +437,7 @@ class TestByteAccounting:
         self, tmp_path: Path, shape: str
     ):
         root = repo(tmp_path, shape)
-        sections = lm.parse_legacy(legacy_text(root))
+        sections = sections_of(root)
         output = migrated_text(root, full_map(root))
         missing = [
             rule for section in sections for rule in section.rules if rule not in output
@@ -444,7 +449,7 @@ class TestByteAccounting:
         """The unmapped path writes core alone — a different branch of the
         writer, and the one a repo that skips `--propose-map` takes."""
         root = repo(tmp_path, shape)
-        sections = lm.parse_legacy(legacy_text(root))
+        sections = sections_of(root)
         output = migrated_text(root)
         assert all(
             rule in output for section in sections for rule in section.rules
@@ -453,7 +458,7 @@ class TestByteAccounting:
     def test_the_check_is_not_vacuous(self, tmp_path: Path):
         """A parse that found no rules would make every assertion above pass."""
         root = repo(tmp_path, "mixed")
-        sections = lm.parse_legacy(legacy_text(root))
+        sections = sections_of(root)
         rule_bytes = sum(len(r.encode("utf-8")) for s in sections for r in s.rules)
         assert sum(len(s.rules) for s in sections) == 30
         assert rule_bytes > 5000
@@ -462,7 +467,7 @@ class TestByteAccounting:
         """The detector, detected. Asserting on real output only proves the
         writer agrees with itself unless a known-lossy output fails."""
         root = repo(tmp_path, "mixed")
-        sections = lm.parse_legacy(legacy_text(root))
+        sections = sections_of(root)
         lossy = migrated_text(root, full_map(root)).replace(
             sections[0].rules[0], ""
         )
@@ -577,7 +582,7 @@ class TestSlugCollisions:
         """The dry run's headline number must describe the tree, not the plan:
         an overwrite used to leave it over-stating what landed."""
         root = repo(tmp_path, "collision")
-        sections = lm.parse_legacy(legacy_text(root))
+        sections = sections_of(root)
         migration = lm.plan(root, self.MAP)
         assert migration.rules == sum(len(s.rules) for s in sections)
 
@@ -603,7 +608,7 @@ class TestUnknownMapKeys:
         """Only topics can be scoped; a paragraph rule's slug in the map is the
         same mistake wearing a real string."""
         root = repo(tmp_path, "mixed")
-        rule = next(s for s in lm.parse_legacy(legacy_text(root)) if not s.is_topic)
+        rule = next(s for s in sections_of(root) if not s.is_topic)
         refusals = lm.plan(root, {rule.slug: ["web/**"]}).refusals
         assert any("matching no section" in r for r in refusals)
 
@@ -612,7 +617,7 @@ class TestUnknownMapKeys:
         bad = tmp_path / "bad.txt"
         bad.write_text("no-such-topic: [web/**]\n", encoding="utf-8")
         proc = run_hook(root, "--apply", "--map", str(bad))
-        assert proc.returncode == 2
+        assert proc.returncode == 1
         assert "no-such-topic" in proc.stderr
         assert not (root / lf.RULES_DIR_REL).exists()
         assert (root / lf.LEGACY_REL).is_file()
@@ -674,7 +679,7 @@ class TestAnInterruptedApply:
         accounting has to hold across it too."""
         root = repo(tmp_path, "mixed")
         mapping = full_map(root)
-        sections = lm.parse_legacy(legacy_text(root))
+        sections = sections_of(root)
         self._half_apply(root, mapping)
         lm.apply(root, lm.plan(root, mapping))
         tree = "\n".join(
@@ -734,7 +739,7 @@ class TestAnInterruptedApply:
 
         proc = run_hook(root, "--apply", "--map", str(map_file))
 
-        assert proc.returncode == 2
+        assert proc.returncode == 1
         assert "INTERRUPTED" in proc.stderr
         assert migration.outputs[0].rel in proc.stderr
         assert "Re-run" in proc.stderr
@@ -805,7 +810,7 @@ class TestRefusals:
 
         proc = run_hook(root, "--apply")
 
-        assert proc.returncode == 2
+        assert proc.returncode == 1
         assert (root / lf.LEGACY_REL).read_bytes() == before
 
     def test_a_gitignored_destination_refuses_and_says_what_to_unignore(
@@ -903,6 +908,236 @@ class TestApply:
         )
 
 
+class TestTheFlatShape:
+    """A corpus with no `## ` headings at all — and the shape that made this
+    command destructive.
+
+    `# Learnings` then a plain bullet list is what prawduct's own starter file
+    writes and what the oldest fleet corpora look like. Parsing sections only on
+    `## ` made every one of those lines preamble, so the corpus parsed to zero
+    rules, the plan was a header-only `core.md` with all three legacy files in
+    `deletions`, and no guard fired: `--apply` would write an empty corpus and
+    unlink the real one.
+    """
+
+    MINIMAL = "# Learnings\n\n- a standing rule\n"
+
+    def test_the_minimal_headingless_corpus_yields_its_rule(self):
+        sections, dropped = lm.parse_legacy(self.MINIMAL)
+        assert [r for s in sections for r in s.rules] == ["a standing rule"]
+        assert dropped == ["Learnings"]
+
+    def test_that_corpus_migrates_rather_than_being_deleted(self, tmp_path: Path):
+        """End to end on the exact fixture that exposed this."""
+        root = tmp_path / "starter"
+        (root / ".prawduct").mkdir(parents=True)
+        (root / lf.LEGACY_REL).write_text(self.MINIMAL, encoding="utf-8")
+
+        migration = lm.plan(root)
+        assert not migration.refusals, migration.refusals
+        assert migration.rules == 1
+        lm.apply(root, migration)
+
+        core = (root / lf.RULES_DIR_REL / lf.CORE_NAME).read_text(encoding="utf-8")
+        assert "a standing rule" in core
+
+    def test_a_flat_bullet_stays_a_bullet(self, tmp_path: Path):
+        """Promoting it to a heading would silently edit someone's corpus, and
+        would read as a topic title in a file where every heading means topic."""
+        root = repo(tmp_path, "flat")
+        lm.apply(root, lm.plan(root))
+        core = (root / lf.RULES_DIR_REL / lf.CORE_NAME).read_text(encoding="utf-8")
+        assert "- **A vacuous test is worse than no test.**" in core
+        assert "### A stated cause is a hypothesis" in core
+
+    def test_prose_under_a_flat_rule_travels_with_it(self, tmp_path: Path):
+        root = repo(tmp_path, "flat")
+        core = lm.plan(root).outputs[0].content
+        assert "a second guess wearing a commit message" in core
+
+    def test_only_the_title_and_its_paragraph_are_dropped(self, tmp_path: Path):
+        root = repo(tmp_path, "flat")
+        dropped = lm.plan(root).dropped
+        assert "Learnings" in dropped
+        assert any("Accumulated project wisdom" in d for d in dropped)
+        assert not any(lm._RULE_SHAPED.match(d) for d in dropped)
+
+    def test_the_dropped_preamble_is_named_to_the_operator(self, tmp_path: Path):
+        """"What did it throw away" is the one question that cannot be answered
+        after the deletion, so it is answered before it."""
+        root = repo(tmp_path, "flat")
+        proc = run_hook(root)
+        assert proc.returncode == 0, proc.stderr
+        assert "dropped 2 preamble line(s)" in proc.stdout
+        assert "Accumulated project wisdom" in proc.stdout
+
+
+class TestTheAccountingRunsInsideThePlan:
+    """The losslessness contract, moved from the suite into the command.
+
+    The suite asserts every rule survives — on fixtures. The corpus this
+    command deletes is never a fixture, so the same contract runs in `plan()`
+    and a shortfall is a refusal rather than a test failure nobody was there to
+    see. Three checks, and each is exercised against a case the other two
+    cannot see.
+    """
+
+    def test_a_writer_that_loses_a_rule_refuses(self, tmp_path: Path, monkeypatch):
+        """Check (1): a rule parsed but not emitted. Simulated by an output
+        builder that forgets a section — the class of bug a parser check is
+        blind to."""
+        root = repo(tmp_path, "mixed")
+        real = lm._build_outputs
+
+        def lossy(sections, mapping):
+            outputs, unmapped, merges = real(sections[:-1], mapping)
+            return outputs, unmapped, merges
+
+        monkeypatch.setattr(lm, "_build_outputs", lossy)
+        refusals = lm.plan(root).refusals
+        assert any("do not appear in the planned output" in r for r in refusals)
+
+    def test_a_parser_gap_refuses(self, tmp_path: Path, monkeypatch):
+        """Check (2): a rule-shaped line carried into no output. A rule that was
+        never parsed is not in `sections` for check (1) to miss."""
+        root = repo(tmp_path, "mixed")
+        real = lm.parse_legacy
+        monkeypatch.setattr(
+            lm, "parse_legacy",
+            lambda text: (real(text)[0], ["- **A rule this parser did not know.**"]),
+        )
+        refusals = lm.plan(root).refusals
+        assert any("look like rules were carried into no output" in r for r in refusals)
+
+    def test_a_corpus_that_parses_to_nothing_refuses(self, tmp_path: Path):
+        """Check (3): the catastrophic shape, in its own terms. Prose only —
+        no bullets, no headings — so neither subtler check would fire."""
+        root = tmp_path / "prose"
+        (root / ".prawduct").mkdir(parents=True)
+        (root / lf.LEGACY_REL).write_text(
+            "Some notes we never got round to formatting.\n\nMore of them.\n",
+            encoding="utf-8",
+        )
+        refusals = lm.plan(root).refusals
+        assert any("parsed to zero rules" in r for r in refusals)
+
+    def test_the_refusal_stops_the_deletion_end_to_end(self, tmp_path: Path):
+        """The assertion that matters is on the corpus, not the exit code."""
+        root = tmp_path / "prose"
+        (root / ".prawduct").mkdir(parents=True)
+        legacy = root / lf.LEGACY_REL
+        legacy.write_text("Some notes.\n", encoding="utf-8")
+        before = legacy.read_bytes()
+
+        proc = run_hook(root, "--apply")
+
+        assert proc.returncode == 1
+        assert legacy.read_bytes() == before
+        assert not (root / lf.RULES_DIR_REL).exists()
+
+    @pytest.mark.parametrize("shape", SHAPES)
+    def test_no_real_fixture_trips_the_accounting(self, tmp_path: Path, shape: str):
+        """The guard's failure mode is over-refusal, which would stop every
+        migration the command exists for."""
+        root = repo(tmp_path, shape)
+        assert not lm.plan(root, full_map(root)).refusals
+
+
+class TestGitCannotAnswer:
+    """"Could not ask" must not read as "nothing dirty".
+
+    `dirty_legacy_files` returned `[]` on an OSError, a timeout, a held
+    `index.lock` or a nonzero status, so one of the guards over an irreversible
+    delete silently stopped applying on exactly the repos where something was
+    already wrong.
+    """
+
+    def test_an_unanswerable_status_is_a_third_outcome(self, tmp_path: Path, monkeypatch):
+        root = repo(tmp_path, "mixed")
+        real = lm._git
+
+        def refuse_status(project_dir, *args):
+            if args[:1] == ("status",):
+                return None
+            return real(project_dir, *args)
+
+        monkeypatch.setattr(lm, "_git", refuse_status)
+        assert lm.dirty_legacy_files(root) is None
+
+    def test_it_becomes_a_refusal_naming_git(self, tmp_path: Path, monkeypatch):
+        root = repo(tmp_path, "mixed")
+        real = lm._git
+
+        def refuse_status(project_dir, *args):
+            if args[:1] == ("status",):
+                return None
+            return real(project_dir, *args)
+
+        monkeypatch.setattr(lm, "_git", refuse_status)
+        refusals = lm.plan(root).refusals
+        assert any("git could not report" in r for r in refusals)
+
+    def test_a_nonzero_status_is_unanswerable_not_clean(
+        self, tmp_path: Path, monkeypatch
+    ):
+        root = repo(tmp_path, "mixed")
+        real = lm._git
+
+        def failing_status(project_dir, *args):
+            proc = real(project_dir, *args)
+            if args[:1] == ("status",) and proc is not None:
+                proc.returncode = 128
+            return proc
+
+        monkeypatch.setattr(lm, "_git", failing_status)
+        assert lm.dirty_legacy_files(root) is None
+
+    def test_no_repo_still_fails_open(self, tmp_path: Path):
+        """The intended fail-open, kept distinct: with no repo there is no
+        history for the deletion to be measured against and nothing to promise.
+        """
+        root = tmp_path / "nogit"
+        shutil.copytree(FIXTURES / "topic", root)
+        assert not lm.plan(root).refusals
+
+
+class TestExitCodes:
+    """`artifacts/api-contract.md` § Error Model, which the sibling repairs
+    (`learnings-obligation`, `norm-index-scaffold`, `lifecycle-repair`) follow
+    verbatim: 0 written or no-op, 1 refused, 2 usage error.
+
+    This command returned 2 for both refusals and usage errors, so a caller —
+    including the agent the briefing directive sends here — could not tell "fix
+    your dirty tree" from "you typed the flag wrong".
+    """
+
+    def test_a_refusal_is_1(self, tmp_path: Path):
+        root = repo(tmp_path, "mixed")
+        (root / lf.LEGACY_REL).write_text("# Learnings\n\n## T\n- **New.**\n")
+        assert run_hook(root, "--apply").returncode == 1
+
+    def test_a_usage_error_is_2(self, tmp_path: Path):
+        root = repo(tmp_path, "mixed")
+        assert run_hook(root, "--zzz-unrecognised-token").returncode == 2
+        assert run_hook(root, "--map").returncode == 2
+        assert run_hook(root, "--propose-map", "--apply").returncode == 2
+
+    def test_a_successful_run_and_a_no_op_are_both_0(self, tmp_path: Path):
+        root = repo(tmp_path, "mixed")
+        assert run_hook(root, "--apply").returncode == 0
+        assert run_hook(root).returncode == 0
+
+    def test_the_two_are_distinguishable_which_is_the_whole_point(
+        self, tmp_path: Path
+    ):
+        root = repo(tmp_path, "mixed")
+        (root / lf.LEGACY_REL).write_text("# Learnings\n\n## T\n- **New.**\n")
+        refused = run_hook(root, "--apply").returncode
+        mistyped = run_hook(root, "--aply").returncode
+        assert refused != mistyped
+
+
+
 # --- the command ------------------------------------------------------------
 
 
@@ -953,11 +1188,11 @@ class TestTheCommand:
         assert again.returncode == 0
         assert "nothing to do" in again.stdout
 
-    def test_a_refusal_exits_2_and_names_the_reason_on_stderr(self, tmp_path: Path):
+    def test_a_refusal_exits_1_and_names_the_reason_on_stderr(self, tmp_path: Path):
         root = repo(tmp_path, "mixed")
         (root / lf.LEGACY_REL).write_text("# Learnings\n\n## T\n- **New.**\n")
         proc = run_hook(root, "--apply")
-        assert proc.returncode == 2
+        assert proc.returncode == 1
         assert "REFUSED" in proc.stderr
         assert (root / lf.LEGACY_REL).is_file()
 
@@ -969,7 +1204,7 @@ class TestTheCommand:
 
         proc = run_hook(root, "--apply")
 
-        assert proc.returncode == 2
+        assert proc.returncode == 1
         assert "gitignored" in proc.stderr
         assert (root / lf.LEGACY_REL).is_file()
         assert not (root / lf.RULES_DIR_REL).exists()
@@ -981,19 +1216,25 @@ class TestTheCommand:
         assert "Nothing ran" in proc.stderr
         assert (root / lf.LEGACY_REL).is_file()
 
-    def test_map_without_a_value_is_refused(self, tmp_path: Path):
+    def test_map_without_a_value_is_a_usage_error(self, tmp_path: Path):
         root = repo(tmp_path, "mixed")
         proc = run_hook(root, "--map")
         assert proc.returncode == 2
         assert "--map needs a value" in proc.stderr
 
-    def test_an_unreadable_map_file_is_refused_by_name(self, tmp_path: Path):
+    def test_an_unreadable_map_file_is_a_usage_error_named_by_path(
+        self, tmp_path: Path
+    ):
         root = repo(tmp_path, "mixed")
         proc = run_hook(root, "--map", str(tmp_path / "absent.txt"))
         assert proc.returncode == 2
         assert "cannot read --map" in proc.stderr
 
-    def test_a_malformed_map_file_is_refused_by_line(self, tmp_path: Path):
+    def test_a_malformed_map_file_is_a_usage_error_named_by_line(
+        self, tmp_path: Path
+    ):
+        """A file the operator wrote and mistyped is bad input, not a refusal —
+        exit 2, the same as an unknown flag."""
         root = repo(tmp_path, "mixed")
         bad = tmp_path / "bad.txt"
         bad.write_text("eval: [a/**]\nthis is not a mapping\n", encoding="utf-8")
