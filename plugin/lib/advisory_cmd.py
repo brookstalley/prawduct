@@ -123,6 +123,7 @@ def show_advisory(product_dir, advisory_id: str) -> dict:
                 advisory["type"] = advisory.get("type") or cand.type
                 advisory["trigger_summary"] = advisory.get("trigger_summary") or cand.trigger_summary
                 advisory["recommended_action"] = advisory.get("recommended_action") or cand.recommended_action
+                advisory["owner_action"] = advisory.get("owner_action") or cand.owner_action
                 reconstructed = True
                 break
 
@@ -183,9 +184,17 @@ def _print_list(result: dict) -> None:
     print(f"{len(advisories)} advisory(ies) ({scope}):")
     for advisory in advisories:
         print(_render_advisory_line(advisory))
+        if advisory.get("state") != "active":
+            continue
+        # Both audiences, labelled — the same split the briefing renders. An
+        # owner-only advisory (no command to run) used to print a bare summary
+        # here with no route out of it at all, because the only line this surface
+        # had was the runtime's.
+        owner = advisory.get("owner_action") or store_mod.OWNER_ACTION_FALLBACK
+        print(f"      owner → {owner}")
         action = advisory.get("recommended_action")
-        if action and advisory.get("state") == "active":
-            print(f"      → {action}")
+        if action:
+            print(f"      agent → {action}")
 
 
 def _print_show(result: dict, advisory_id: str) -> int:
@@ -201,6 +210,10 @@ def _print_show(result: dict, advisory_id: str) -> int:
         print(f"type:              {advisory.get('type')}")
     if advisory.get("trigger_summary"):
         print(f"trigger:           {advisory.get('trigger_summary')}")
+    # Always printed, even absent — a missing owner line reads as "this advisory
+    # has no owner", the exact inverse of the truth (the briefing's twin makes the
+    # same call for the same reason).
+    print(f"owner action:      {advisory.get('owner_action') or store_mod.OWNER_ACTION_FALLBACK}")
     if advisory.get("recommended_action"):
         print(f"recommended:       {advisory.get('recommended_action')}")
     # The drill-down is where alternatives belong: the briefing is capped at one

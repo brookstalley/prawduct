@@ -171,21 +171,62 @@ _REFUSAL_NOT_WANTED = {
     # wrapper; never add one for a command the scan can verify itself.
 }
 
-# NOT AUDITED. A bare invocation of each already errors (they require a
-# subcommand or a required argument), so the bare-vs-bogus probe cannot tell a
-# refusal from that pre-existing error, and I did not construct a valid
-# invocation for each. Listed so the gap is visible rather than absorbed into a
-# confident-looking allowlist — brookstalley/prawduct#667 carries the audit.
-_REFUSAL_NOT_AUDITED = {
-    "backlog", "test-evidence", "advisory", "ledger-append", "critic-begin",
-    "critic-restore", "handoff", "disposition", "archive-plan",
+# Audited (#667), and the audit changed the METHOD as well as the verdict.
+#
+# These nine error on a BARE invocation — they need a subcommand or a required
+# argument — so the bare-vs-bogus exit-code probe used above cannot tell a real
+# refusal from that pre-existing error. Worse, for three of them
+# (`ledger-append`, `critic-begin`, `critic-restore`) the valid and the
+# bogus invocation share an exit code, so an exit-code comparison would have
+# recorded a refusal as a swallow whichever way it was run. What separates them
+# is the MESSAGE, so :data:`_VALID_INVOCATIONS` gives each a real invocation and
+# :class:`TestTheAuditedNineActuallyRefuse` runs it both ways and reads the
+# output. Verdicts below are observed exit codes from that run, not read off a
+# comment.
+_REFUSAL_AUDITED = {
+    "backlog": "names the token; exits 2 (valid cache-query exits 6)",
+    "test-evidence": "names the token; exits 2 (valid record exits 0)",
+    "advisory": "names the token; exits 1 (valid list exits 0)",
+    "ledger-append": "names the token; exits 1 — same code as the valid run, message differs",
+    "critic-begin": "names the token; exits 1 — same code as the valid run, message differs",
+    "critic-restore": "names the token; exits 1 — same code as the valid run, message differs",
+    "handoff": "names the token; exits 2 (valid preview exits 0)",
+    "disposition": "names the token; exits 2 (valid record exits 1 here)",
+    "archive-plan": "names the token; exits 2 (valid --dry-run exits 0)",
 }
+
+# Empty, and it must stay that way by argument rather than by neglect: an entry
+# here is a command nobody has run both ways. #667 emptied it; a new one is a
+# claim that needs its own audit.
+_REFUSAL_NOT_AUDITED: dict[str, str] = {}
 
 _REFUSAL_DELEGATED_TO_LIB = {
     **_REFUSAL_VERIFIED,
     **_REFUSAL_NOT_WANTED,
-    **{c: "not audited — see #667" for c in _REFUSAL_NOT_AUDITED},
+    **_REFUSAL_AUDITED,
+    **_REFUSAL_NOT_AUDITED,
 }
+
+#: One VALID invocation per audited command — the thing the bare-invocation
+#: probe could not construct. Every one is offline and cheap: `backlog` reads the
+#: local cache (never the network), and `test-evidence` supplies counts rather
+#: than running a suite, because a test that runs the suite inside the suite is
+#: not a test anyone will keep.
+_VALID_INVOCATIONS = {
+    "backlog": ["backlog", "cache-query", "open", "--repo", "octo/x"],
+    "test-evidence": [
+        "test-evidence", "record", "--from-counts", "passed=1", "failed=0", "skipped=0",
+    ],
+    "advisory": ["advisory", "list"],
+    "ledger-append": ["ledger-append", "--event", "review.critic"],
+    "critic-begin": ["critic-begin", "--mode", "chunk"],
+    "critic-restore": ["critic-restore", "rev-20260101T000000Z-abcdef12"],
+    "handoff": ["handoff", "preview"],
+    "disposition": ["disposition", "rev-1", "F-1", "--accept", "why"],
+    "archive-plan": ["archive-plan", ".prawduct/artifacts/build-plan.md", "--dry-run"],
+}
+
+_UNKNOWN_TOKEN = "--zzz-unrecognised-token"
 
 
 def test_every_argv_taking_command_refuses_what_it_cannot_read():
@@ -224,6 +265,66 @@ def test_every_argv_taking_command_refuses_what_it_cannot_read():
         f"reason: {unguarded}. Add `_reject_unknown_args` to the wrapper, or record "
         "where the refusal lives in _REFUSAL_DELEGATED_TO_LIB."
     )
+
+
+class TestTheAuditedNineActuallyRefuse:
+    """#667's audit, executed rather than asserted.
+
+    The nine were exempted with the reason "not audited" because a BARE
+    invocation of each already errors, so the bare-vs-bogus exit-code probe
+    could not tell a refusal from that pre-existing error. Constructing a valid
+    invocation is what closes it — and doing so exposed that exit codes alone
+    are the wrong instrument here: three of the nine refuse with the SAME exit
+    code as their valid run and differ only in the message. An exit-code
+    comparison would have filed those three as swallows.
+
+    So the contract asserted is the one that actually matters: an unrecognised
+    token must never be absorbed into the run. It is refused, and the refusal
+    says which token — otherwise the operator is left re-reading their own
+    command line for the difference. The ``"--flag" in argv`` idiom reads an
+    unrecognised token as *absent*, which is the defect class that reached a
+    live `.gitignore` rewrite.
+    """
+
+    @staticmethod
+    def _repo(tmp_path: Path) -> Path:
+        (tmp_path / ".prawduct" / "artifacts").mkdir(parents=True)
+        (tmp_path / ".prawduct" / "project-state.yaml").write_text(
+            "product_name: t\n", encoding="utf-8"
+        )
+        (tmp_path / ".prawduct" / "artifacts" / "build-plan.md").write_text(
+            "# Plan\n", encoding="utf-8"
+        )
+        subprocess.run(["git", "init", "-q", "."], cwd=tmp_path, capture_output=True)
+        return tmp_path
+
+    def test_the_audit_covers_exactly_the_nine_it_claims_to(self):
+        # The record and the invocations are two lists of the same set; letting
+        # them drift is how a command gets a verdict nobody ran.
+        assert set(_REFUSAL_AUDITED) == set(_VALID_INVOCATIONS)
+
+    def test_nothing_is_left_unaudited(self):
+        assert _REFUSAL_NOT_AUDITED == {}, (
+            "a command exempted as 'not audited' is one nobody has run both ways — "
+            f"run it and record the verdict: {sorted(_REFUSAL_NOT_AUDITED)}"
+        )
+
+    @pytest.mark.parametrize("command", sorted(_VALID_INVOCATIONS))
+    def test_an_unknown_token_is_refused_and_named(self, command: str, tmp_path: Path):
+        repo = self._repo(tmp_path)
+        argv = _VALID_INVOCATIONS[command]
+        valid = _run(repo, argv)
+        bogus = _run(repo, [*argv, _UNKNOWN_TOKEN])
+        assert bogus.returncode != 0, (
+            f"{command} completed with an unrecognised token in argv — it was "
+            f"swallowed:\n{bogus.stdout}\n{bogus.stderr}"
+        )
+        assert _UNKNOWN_TOKEN in (bogus.stderr + bogus.stdout), (
+            f"{command} refused but did not say what it refused:\n{bogus.stderr}"
+        )
+        # ...and the refusal is about the token, not about the invocation being
+        # broken in some other way — the valid form gets a different answer.
+        assert (valid.returncode, valid.stderr) != (bogus.returncode, bogus.stderr), command
 
 
 def test_the_delegation_record_names_only_real_commands():

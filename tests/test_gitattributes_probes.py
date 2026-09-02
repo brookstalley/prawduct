@@ -164,7 +164,16 @@ class TestProbe:
         cand = out[0]
         assert cand.type == "change-log-union-merge"
         assert cand.priority == "info"
-        assert gap.UNION_MERGE_LINE in cand.recommended_action
+        # RE-POINTED at the two-audience split (post-sync-advisory-spec.md §3.6):
+        # this is the assertion the test always made, moved to the field that now
+        # carries operator-facing text. `.gitattributes` sits outside the plugin's
+        # write set, so there is no command for the runtime to run — the owner is
+        # the only reader who can act, and the literal line belongs where they read
+        # it. `recommended_action == ""` is asserted rather than assumed, because a
+        # well-meaning edit refilling it with the prose it used to hold would
+        # restore exactly the `→ Run add ...` mis-render the split removed.
+        assert gap.UNION_MERGE_LINE in cand.owner_action
+        assert cand.recommended_action == ""
         # The recommendation is the literal line, spelled the way git needs it.
         assert gap.UNION_MERGE_LINE == ".prawduct/change-log.md merge=union"
         assert "merge=union" in cand.trigger_summary

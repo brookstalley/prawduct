@@ -29,8 +29,11 @@ in a consuming repo at migration (Chunk 9), where the cutover gitignores it and
 the plugin runtime auto-untracks it. (It is deliberately NOT added to the legacy
 1.x ``GITIGNORE_ENTRIES``/``_SESSION_GITIGNORED_PATHS`` lists — that would touch
 the frozen 1.x runtime and push a gratuitous ``.gitignore`` diff into pure
-file-sync repos that never create the marker.) The changelog + gate registry
-live inside the plugin, out of every consumer's tree.
+file-sync repos that never create the marker. Naming those two is naming half
+the registry: a session file that *is* added there touches four sites in
+lockstep, enumerated at ``_SESSION_GITIGNORED_PATHS`` and pinned by
+``tests/test_hook_session_file_registry.py`` — #324.) The changelog + gate
+registry live inside the plugin, out of every consumer's tree.
 
 Load provenance: ``VERSION``/``plugin.json`` only move at release-prep, so an
 integration branch carrying unreleased work reports the same version as the

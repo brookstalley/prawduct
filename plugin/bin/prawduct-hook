@@ -458,8 +458,15 @@ def _read_str_yaml_key(state_path: Path, key: str) -> str | None:
     return None
 
 
+# prawduct:allow prawduct/duplication -- intentional inline mirror (import-light hot path); pinned by TestHookYamlListReaderParity
 def _read_str_list_yaml_key(state_path: Path, key: str) -> list[str] | None:
     """Items of a top-level ``key:`` block sequence of strings, or None.
+
+    Inline mirror of ``lib.core.read_block_sequence`` narrowed to this call
+    site's ``list | None`` shape (parity-pinned by
+    ``TestHookYamlListReaderParity``). It sat here UNPINNED while its scalar
+    sibling above was pinned, which is how the four readers drifted (#590) — and
+    it is the copy that was RIGHT, so its contract is the one `lib` adopted.
 
     Parses only the shape the docstrings prescribe (``test_commands:`` — a
     column-0 ``key:`` line followed by indented ``- item`` lines); flow style
@@ -467,8 +474,9 @@ def _read_str_list_yaml_key(state_path: Path, key: str) -> list[str] | None:
     lines, and an empty sequence ALL read as None — any in-block anomaly makes
     the WHOLE declaration unparseable, never a partial list (callers convert
     None-but-present to a loud refusal via ``_yaml_top_level_key_present``).
-    Comment stripping matches the scalar sibling (``_read_str_yaml_key``):
-    everything after ``#`` is dropped."""
+    Comments and blank lines are inert at ANY indent, column 0 included: breaking
+    on a column-0 comment silently truncates the list, so some environments would
+    never run while the record claimed full evidence."""
     try:
         content = state_path.read_text(encoding="utf-8")
     except OSError:
@@ -476,10 +484,6 @@ def _read_str_list_yaml_key(state_path: Path, key: str) -> list[str] | None:
     items: list[str] = []
     in_block = False
     for raw in content.splitlines():
-        # Blank and comment-only lines are inert at ANY indent — including
-        # column 0 inside the block, where breaking instead would silently
-        # truncate the list (some environments would never run while the
-        # record claimed full evidence).
         stripped = raw.split("#", 1)[0].strip()
         if not stripped:
             continue
@@ -492,9 +496,6 @@ def _read_str_list_yaml_key(state_path: Path, key: str) -> list[str] | None:
         if raw[:1] not in (" ", "\t"):
             break  # next top-level key ends the block cleanly
         if not stripped.startswith("- "):
-            # Nested mapping, bare dash, or a wrapped command's continuation
-            # line: the whole declaration is unparseable — a partial list
-            # would silently skip environments while claiming full evidence.
             return None
         value = stripped[2:].strip().strip("\"'")
         if not value:
@@ -535,6 +536,19 @@ def _yaml_top_level_key_present(state_path: Path, key: str) -> bool:
 # `__pycache__/` and a trailing slash on `.pr-reviews/` for its `.gitignore`
 # writer, while this list uses bare paths for `git ls-files` untracking. Keep the
 # shared session-file set in sync when adding entries.
+#
+# THE MIRROR IS TWO OF FOUR SITES, and saying only "keep the two in sync"
+# understates the fan-out to whoever finds this comment (#324). Adding one
+# session file touches:
+#   1. `core.GITIGNORE_ENTRIES`         — the canonical set
+#   2. this list                        — the untrack set
+#   3. this repo's own `.gitignore`     — nothing writes prawduct's copy for it
+#   4. `_boundary_close_session`        — deleted at the boundary, or a recorded
+#                                         reason it must outlive one
+# 1↔2 are pinned by `TestSessionGitignoreMirror`; 3 and 4 by
+# `tests/test_hook_session_file_registry.py`, which forces every new entry to
+# declare its boundary disposition rather than defaulting to "never deleted" —
+# the default that leaks state into the next session.
 # prawduct:allow prawduct/duplication -- intentional inline mirror (import-light hot path); pinned by TestSessionGitignoreMirror
 _SESSION_GITIGNORED_PATHS = (
     ".claude/settings.local.json",
@@ -1285,6 +1299,23 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
     cannot clobber the session it is reviewing. A continuation neither sweeps nor
     refuses — it mutates no session state, so the guard has nothing to protect.
 
+    **That exemption reaches a BARE ``clear --brief-only`` too, deliberately, and
+    the sentence above is the whole of its licence — so read it exactly.** "No
+    session state" is not "nothing": a continuation writes ``.advisories.json``,
+    regenerates ``.subagent-briefing.md``, and can ``git rm --cached`` an
+    accidentally-committed session file, which mutates the git index. None of
+    those is the *reviewed* session's evidence, which is the only thing CRT-3X9D
+    protects. ``hooks.json`` never issues this shape — both its ``clear``
+    registrations carry ``--session-start`` — so it is reachable only by hand,
+    i.e. exclusively by the CRT-3X9D vector; requiring ``--session-start`` for the
+    CONTINUATION classification was weighed and rejected, because it would leave a
+    reviewer subagent unable to ORIENT itself and would give up ``--brief-only``'s
+    orthogonality, to refuse a path that touches none of what the guard defends.
+    Pinned by ``TestBoundaryDependentInterpretation`` — a live marker plus a bare
+    ``--brief-only``, asserting the marker and every evidence file survive
+    (CRT-7N4B). If that stops holding, this classification changes; the pin is not
+    a licence to start mutating here.
+
     ``--brief-only`` exists because the SessionStart matcher is the only thing
     that knows whether this invocation ends a session or continues one, and
     ``startup|resume|clear`` threw that fact away: `resume`, `compact` and `fork`
@@ -1488,20 +1519,13 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
     # Agent-facing messages go to stdout (SessionStart hooks show stdout to the model).
     # stderr is only visible to the user in the terminal, not to the agent.
 
-    # Warn if project-state.yaml is oversized
-    state_path = prawduct_dir / "project-state.yaml"
-    if state_path.is_file():
-        try:
-            size = state_path.stat().st_size
-            if size > 40000:  # ~10K tokens ≈ ~40KB
-                print(
-                    f"NOTE: .prawduct/project-state.yaml is {size // 1024}KB — recommend compacting.\n"
-                    f"  Completed build plan chunks: keep only id, name, status (remove deliverables/acceptance_criteria).\n"
-                    f"  Test history: keep only the current count, remove per-chunk history.\n"
-                    f"  Change log: keep the last ~10 entries, remove older ones (git has the history)."
-                )
-        except Exception:  # prawduct:allow prawduct/broad-except -- size check must not block session start
-            pass
+    # The oversized-governance-file note used to live here as a bare `print`. It
+    # is now `lib/oversized_state_probes`, raised through the advisory system by
+    # the probe step above, for three reasons the print could not meet: its
+    # bullets are gated on content actually present in the file it measured (it
+    # prescribed cuts to two files it never inspected), the file it names is the
+    # file to edit, and it can be DISMISSED — a repo that has correctly decided
+    # not to compact was otherwise nagged every session forever.
 
     # Check for missing or unfilled project-preferences.md
     prefs_path = prawduct_dir / "artifacts" / "project-preferences.md"
@@ -1585,7 +1609,12 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
     # v5: Staleness scan + session briefing + subagent briefing
     try:
         staleness = _briefing().staleness_scan(project_dir)
-        briefing = _briefing().assemble_session_briefing(project_dir, staleness)
+        # `brief_only` IS the continuation fact (SCN-5B8Q): the handoff pointer
+        # is boundary-scoped, so a continuation must be told the handoff predates
+        # its own session rather than pointed at it as news.
+        briefing = _briefing().assemble_session_briefing(
+            project_dir, staleness, continuation=brief_only
+        )
         print(briefing)
     except Exception as e:  # prawduct:allow prawduct/broad-except -- briefing must never block session start
         print(f"NOTE: Session briefing failed: {e}", file=sys.stderr)

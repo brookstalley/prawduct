@@ -106,6 +106,14 @@ def probe_external_backlog(state: ProjectState, codebase: Codebase):
             type="external-backlog-detected",
             evidence=tuple(found),
             trigger_summary=f"External backlog file(s) not yet imported: {', '.join(found)}",
+            # No file list here: the summary above already names them, and a second
+            # copy would drift from the first the moment one is imported.
+            owner_action=(
+                "Say go and the items in these files are folded into the tracked backlog — "
+                "a committed file, so you will see a diff to review before anything is "
+                "staged. Tell me instead if one of them is deliberately kept separate: I "
+                "will leave it alone, though the reminder stays until it is imported or removed."
+            ),
             recommended_action=f"/prawduct:backlog import {found[0]}",
             priority="info",
         )
@@ -161,6 +169,11 @@ def probe_legacy_section_schema(state: ProjectState, codebase: Codebase):
             type="legacy-section-schema",
             evidence=tuple(present),
             trigger_summary="backlog.md uses the legacy section schema",
+            owner_action=(
+                "Say go — this rewrites the section headings in a committed file, so you "
+                "will see a diff to review before anything is staged. No item is dropped "
+                "or reworded; only the headings they sit under change."
+            ),
             recommended_action="/prawduct:backlog migrate --sections",
             priority="info",
         )
@@ -208,6 +221,11 @@ def probe_overdue_grooming(state: ProjectState, codebase: Codebase):
             evidence=(f"{open_count} open items", "last groomed: "
                       + str(state.get("backlog_last_groomed_at") or "never")),
             trigger_summary=f"{open_count} open backlog items and no grooming in over {GROOMING_STALE_DAYS} days",
+            owner_action=(
+                "Tell me when you want to walk the open items together. I can pull them up, "
+                "rank them and close out the ones you are done with, but only you can say "
+                "which ones stopped mattering — and dropping an item is your call, not mine."
+            ),
             recommended_action="/prawduct:backlog list",
             priority="info",
         )
@@ -245,9 +263,17 @@ def probe_legacy_backlog_format(state: ProjectState, codebase: Codebase):
         AdvisoryCandidate(
             type="legacy-backlog-format",
             evidence=(".prawduct/backlog.md contains items without [PFX-XXXX] structured ids",),
+            # States the condition, not the fix — this line is relayed to the owner,
+            # and the fix now has its two audience-specific homes below.
             trigger_summary=(
-                f"{len(items)} backlog items lack [PFX-XXXX] structured ids — run "
-                "/prawduct:backlog migrate to add metadata and enable pick/find/list filtering"
+                f"{len(items)} backlog items lack [PFX-XXXX] structured ids, so they cannot "
+                "be filtered, ranked or picked up by id"
+            ),
+            owner_action=(
+                "Say go — this rewrites every item in a committed file to carry structured "
+                "metadata, so you will see a diff to review before anything is staged. "
+                "Nothing is dropped and no item's text is rewritten; each one gains an id "
+                "and a few fields."
             ),
             recommended_action="/prawduct:backlog migrate",
             priority="info",
@@ -301,6 +327,20 @@ def probe_migration_required(state: ProjectState, codebase: Codebase):
                 f"{len(pending)} pending items in the markdown backlog and no "
                 "backlog_service_repo — migrate to GitHub Issues before an upgrade "
                 "retires the shared markdown read path"
+            ),
+            # The cost of yes, in the sentence the owner actually reads. Both the
+            # volume and the irreversibility are load-bearing and neither is
+            # decoration: GitHub has no ordinary issue delete and never reuses a
+            # number, so this batch cannot be walked back the way a bad commit can.
+            # Stating it here rather than leaving it to the summary is what makes the
+            # approval an informed one — the same count appears above as the *trigger*
+            # ("this many items are unmigrated"); here it is the *price* ("this many
+            # issues get created"). One expression, two different facts.
+            owner_action=(
+                f"Decide whether to migrate now: this creates {len(pending)} real GitHub "
+                "issues in one batch and cannot be undone — GitHub has no ordinary delete "
+                "for an issue and never reuses a number. You review and approve the "
+                "proposed batch before anything is written."
             ),
             recommended_action="/prawduct:backlog scrub",
             priority="warn",

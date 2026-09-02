@@ -55,6 +55,7 @@ from pathlib import Path
 
 from . import gitstate
 from .buildplan_refs import _looks_like_file_path
+from .core import YAML_ABSENT, YAML_DECLARED, YAML_UNPARSEABLE, read_block_sequence
 
 # Derived-default risk surfaces (resolution order step 2). Framework-shaped on
 # purpose — the governance machinery itself (skills, gates, the hook) is where
@@ -92,40 +93,40 @@ DERIVED_DEFAULT_SURFACES = tuple(
 _BACKTICK_RE = re.compile(r"`([^`]+)`")
 
 
-def _read_list_yaml_key(state_path: Path, key: str) -> list[str] | None:
-    """Items of a top-level (column-0) ``key:`` block list, or ``None`` when
-    the key is absent/unreadable. Distinguishes declared-but-empty (``[]``,
-    which is exclusive per the resolution order) from undeclared (``None``).
-    Same minimal-YAML discipline as ``core.read_str_yaml_key`` — column-0 key,
-    ``- item`` lines until the next column-0 key, inline comments stripped."""
+def read_declared_surfaces(state_path: Path, key: str) -> tuple[str, list[str]]:
+    """``(status, items)`` for a block-sequence key, on ``core``'s one reader.
+
+    Three outcomes, and all three are load-bearing here (see
+    :data:`core.YAML_ABSENT` and its siblings for the shared contract):
+    ``absent`` falls back to the derived defaults, ``declared`` is exclusive —
+    including when it is EMPTY, which is a deliberate opt-out — and
+    ``unparseable`` is refused rather than answered.
+
+    **The refusal is why this reader stopped being its own.** It used to take
+    whatever parsed and stop at the first anomaly, so a column-0 comment inside
+    the block truncated the list, and flow style (``risk_surfaces: [a, b]``)
+    returned ``[]`` — *declared empty*, which this key honours exclusively. A
+    real declaration therefore resolved to ZERO risk surfaces and the gate
+    relaxed on a syntax slip, silently. An unreadable file is ``absent``: the
+    fallback is safe (it can only escalate), and a file nobody can read has
+    declared nothing.
+    """
     try:
         content = state_path.read_text(encoding="utf-8")
-    except OSError:
-        return None
-    lines = content.splitlines()
-    needle = f"{key}:"
-    for i, raw in enumerate(lines):
-        if raw[:1] in (" ", "\t"):
-            continue
-        line = raw.split("#", 1)[0].rstrip()
-        if not line.startswith(needle):
-            continue
-        inline = line.split(":", 1)[1].strip()
-        if inline == "[]":
-            return []
-        items: list[str] = []
-        for follow in lines[i + 1:]:
-            if follow[:1] not in (" ", "\t") and follow.strip():
-                break  # next column-0 key — the block ended
-            stripped = follow.split("#", 1)[0].strip()
-            if stripped.startswith("- "):
-                value = stripped[2:].strip().strip("\"'")
-                if value:
-                    items.append(value)
-            elif stripped:
-                break  # non-list content under the key — stop, take what parsed
-        return items
-    return None
+    except (OSError, UnicodeDecodeError):
+        return YAML_ABSENT, []
+    status, items = read_block_sequence(content, key)
+    return status, list(items)
+
+
+def _read_list_yaml_key(state_path: Path, key: str) -> list[str] | None:
+    """The ``list | None`` view of :func:`read_declared_surfaces`.
+
+    ``None`` covers both "absent" and "unparseable", which is exactly why the
+    callers that must tell them apart use the status form instead.
+    """
+    status, items = read_declared_surfaces(state_path, key)
+    return items if status == YAML_DECLARED else None
 
 
 def _boundary_pattern_paths(prawduct_dir: Path) -> list[str]:
@@ -158,6 +159,12 @@ def _surface_matches(path: str, surface: str) -> bool:
 #: caller can tell a declared opt-in from the framework defaults.
 SOURCE_DECLARED = "declared risk_surfaces"
 SOURCE_DERIVED = "derived defaults"
+#: `risk_surfaces:` is there in a shape the reader does not parse. NOT a
+#: provenance for a surface list — it is the absence of an answer, and the CLI
+#: refuses on it rather than picking one of the other two. Both alternatives are
+#: wrong in a way nobody would see: taking it as declared-empty relaxes the gate
+#: on a typo, taking it as absent silently ignores what the operator wrote.
+SOURCE_UNPARSEABLE = "unparseable risk_surfaces"
 
 
 def resolve_surfaces(prawduct_dir: Path) -> tuple[list[str], str]:
@@ -168,10 +175,18 @@ def resolve_surfaces(prawduct_dir: Path) -> tuple[list[str], str]:
     A ``risk_surfaces:`` key is exclusive when present (declared-empty is a
     deliberate opt-out and returns ``[]``); otherwise the derived defaults plus
     the product's documented contract paths.
+
+    A key present in an unparseable shape returns ``([], SOURCE_UNPARSEABLE)``.
+    Callers must not treat that as either of the other two — see
+    :data:`SOURCE_UNPARSEABLE`.
     """
-    declared = _read_list_yaml_key(prawduct_dir / "project-state.yaml", "risk_surfaces")
-    if declared is not None:
-        return list(declared), SOURCE_DECLARED
+    status, declared = read_declared_surfaces(
+        prawduct_dir / "project-state.yaml", "risk_surfaces"
+    )
+    if status == YAML_UNPARSEABLE:
+        return [], SOURCE_UNPARSEABLE
+    if status == YAML_DECLARED:
+        return declared, SOURCE_DECLARED
     return (
         [*DERIVED_DEFAULT_SURFACES, *_boundary_pattern_paths(prawduct_dir)],
         SOURCE_DERIVED,
@@ -250,6 +265,17 @@ def paths_touch_risk_surface(prawduct_dir: Path, paths: "list[str]") -> tuple[bo
     there is no unverifiable-diff case to fail closed on.
     """
     surfaces, source = resolve_surfaces(prawduct_dir)
+    if source == SOURCE_UNPARSEABLE:
+        # There is no git call here to fail closed on, but there is still an
+        # unanswered question — the repo DID say where its risk lives and the
+        # reader could not read it. Answering "no risk surfaces" would relax the
+        # roster on a syntax slip, invisibly. Escalate and say why; this caller
+        # has no channel to refuse through.
+        return True, (
+            "risk_surfaces: is declared in a shape prawduct cannot parse — "
+            "escalating rather than reading a syntax error as low risk "
+            "(use a block sequence of plain strings, or `[]` to opt out)"
+        )
     if not surfaces:
         return False, f"no risk surfaces ({source})"
     matches = surface_matches(paths, surfaces)
@@ -335,6 +361,23 @@ def classify_diff_risk(project_dir: Path, argv: list[str]) -> int:
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     surfaces, source = resolve_surfaces(prawduct_dir)
     declared = surfaces if source == SOURCE_DECLARED else None
+
+    if source == SOURCE_UNPARSEABLE:
+        # Refuse, exactly as `test_commands` does for the same fact. Silently
+        # degrading past an operator's declaration is the failure mode: the two
+        # available guesses are "declared empty" (relaxes the gate to nothing)
+        # and "absent" (ignores what they wrote), and neither is visible.
+        print(
+            "error: risk_surfaces is declared in project-state.yaml but not in "
+            "the supported shape — use a block sequence of plain strings:\n"
+            "  risk_surfaces:\n"
+            "    - plugin/lib/gates.py\n"
+            "    - plugin/bin/\n"
+            "(flow style `[a, b]`, nested mappings and empty items are not "
+            "parsed; `risk_surfaces: []` is the deliberate opt-out)",
+            file=sys.stderr,
+        )
+        return 1
 
     if not surfaces:
         # Declared-empty opt-out: nothing can ever match, so the diff doesn't

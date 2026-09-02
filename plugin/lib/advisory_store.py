@@ -68,6 +68,13 @@ ACTIVE_CAP = 100
 RESOLVED_CAP = 50
 DISMISSED_CAP = 200
 
+# Owner line for a stored advisory that predates the two-audience schema, or a
+# probe not yet carrying it. Canonical here, where the schema lives; `briefing.py`
+# keeps a literal mirror of it (that module deliberately reads the store through
+# the dependency-light standalone reader so the briefing survives a partial
+# install, so it must not import this one), and a parity test pins the two.
+OWNER_ACTION_FALLBACK = "Approve the action below, or dismiss the advisory."
+
 # Priority vocabulary and briefing ordering (spec §3.3, §5.1).
 VALID_PRIORITIES = ("info", "warn", "urgent")
 PRIORITY_ORDER = {"urgent": 0, "warn": 1, "info": 2}
@@ -86,17 +93,44 @@ _SCAN_SKIP_DIRS = {".git", ".hg", "node_modules", "__pycache__", ".venv", "venv"
 class AdvisoryCandidate:
     """One advisory a probe wants to raise.
 
-    A probe sets ``type``, ``evidence``, ``trigger_summary``,
-    ``recommended_action`` (and optionally ``priority`` / ``alternative_actions``).
-    ``feature`` and ``probe_version`` are stamped from the registration by
-    :func:`run_all_probes`, so a probe body need not repeat them. The ``id`` and
-    ``triggered_at`` are computed by the store at write time, not by the probe.
+    A probe sets ``type``, ``evidence``, ``trigger_summary``, and **both** action
+    fields (and optionally ``priority`` / ``alternative_actions`` /
+    ``prerequisite_of``). ``feature`` and ``probe_version`` are stamped from the
+    registration by :func:`run_all_probes`, so a probe body need not repeat them.
+    The ``id`` and ``triggered_at`` are computed by the store at write time, not
+    by the probe.
+
+    **An advisory has two audiences, so it states two actions.** A single action
+    field served both and reached neither: agent commands relayed to a person read
+    as an instruction to type ``prawduct-hook`` (which owners do not run), while
+    probes with no command to offer filled the same field with prose, which the
+    briefing then rendered behind a literal "Run" prefix.
+
+    - ``recommended_action`` — what the RUNTIME executes. One command: a slash
+      command, a ``prawduct-hook`` invocation, or a plain shell command it can run
+      as-is. Empty when the probe has no command to offer — an owner-only advisory
+      is a valid shape — but never prose describing what someone should consider.
+    - ``owner_action`` — what the PERSON decides, approves, or supplies, in one or
+      two plain sentences, and never containing a command. Where saying yes costs
+      something irreversible, this is the field that says so, because the owner
+      reads this sentence and nothing else before approving.
+
+    Both are authored here rather than derived at relay time: the probe is the only
+    place that knows the answer, and a model asked to infer "what should the owner
+    do?" from a trigger summary invents commands that do not exist.
     """
 
     type: str
     evidence: tuple[str, ...] = ()
     trigger_summary: str = ""
     recommended_action: str = ""
+    owner_action: str = ""
+    #: Advisories that should be actioned AFTER this one, as
+    #: ``(("<feature>:<type>", "<name of this work>, so <why it comes first>"), …)``.
+    #: Declared on the EARLIER advisory — the probe that knows why its work feeds
+    #: the other one. Ordering only, never gating: both advisories still render and
+    #: both stay independently dismissable.
+    prerequisite_of: tuple[tuple[str, str], ...] = ()
     alternative_actions: tuple[str, ...] = ()
     priority: str = "info"
     feature: str = ""
@@ -442,6 +476,79 @@ def _utcnow_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _valid_prerequisites(declared) -> list[tuple[str, str]]:
+    """The well-formed ``(dependent_key, because)`` pairs in a probe's declaration.
+
+    Fail-soft, per `architecture.md` § Direction — *authority fails closed; advice
+    fails soft*. Advisories are advice, so a probe that mis-declares an edge loses
+    its ordering hint and nothing else; it must never cost the session its whole
+    advisory block. Strings are rejected outright rather than iterated, because
+    iterating one yields characters and would silently turn a typo into edges.
+    """
+    pairs: list[tuple[str, str]] = []
+    if declared is None or isinstance(declared, (str, bytes)):
+        return pairs
+    try:
+        entries = list(declared)
+    except TypeError:
+        return pairs
+    for entry in entries:
+        if isinstance(entry, (str, bytes)) or not isinstance(entry, (list, tuple)):
+            continue
+        if len(entry) != 2:
+            continue
+        key, because = entry
+        if isinstance(key, str) and key and isinstance(because, str):
+            pairs.append((key, because))
+    return pairs
+
+
+#: Fields on a stored advisory that are pure functions of the probe and the repo
+#: state it read — its presentation, as opposed to its identity and lifecycle.
+#: Refreshed on every sync while an advisory stays active (:func:`_refreshed_active`).
+_DERIVED_DISPLAY_FIELDS = (
+    "trigger_summary",
+    "evidence",
+    "owner_action",
+    "recommended_action",
+    "prerequisite_of",
+    "alternative_actions",
+    "priority",
+)
+
+
+def _refreshed_active(advisory: dict, candidate: AdvisoryCandidate, *, now: str = "", sync_version: str = "") -> dict:
+    """An already-active advisory, with its derived presentation brought current.
+
+    **Identity is not presentation, and this path used to conflate them.** An
+    active advisory whose probe fires again was returned untouched, on the reading
+    that a re-fire is a no-op. It is a no-op for *state* — the entry keeps its id,
+    its `triggered_at`, and its place in the store, which is what idempotency
+    (spec A2) actually asks for. It is not a no-op for the text, and probes are
+    written on the opposite assumption: the id hashes ``evidence`` precisely so
+    volatile detail can live in ``trigger_summary`` without churning the id, so
+    every live count a probe computes ("16 entries missing", "349 pending items")
+    was frozen at first trigger and re-read to the owner every session afterwards.
+    The number that is meant to prove the advisory is current was the stalest thing
+    in it.
+
+    So the derived fields refresh and the identity/lifecycle fields do not. That
+    also makes probe copy reach advisories that are already active — without it, a
+    rewritten owner action only ever appears on repos that had not yet tripped the
+    probe, which is the minority and never the ones that have been living with it.
+    """
+    refreshed = dict(advisory)
+    fresh = _new_advisory(
+        candidate,
+        advisory_id=advisory.get("id", ""),
+        now=now or advisory.get("triggered_at") or "",
+        sync_version=sync_version or advisory.get("triggered_by_sync_version") or "",
+    )
+    for field in _DERIVED_DISPLAY_FIELDS:
+        refreshed[field] = fresh[field]
+    return refreshed
+
+
 def _new_advisory(candidate: AdvisoryCandidate, *, advisory_id: str, now: str, sync_version: str) -> dict:
     priority = candidate.priority if candidate.priority in VALID_PRIORITIES else "info"
     return {
@@ -454,6 +561,14 @@ def _new_advisory(candidate: AdvisoryCandidate, *, advisory_id: str, now: str, s
         "trigger_summary": candidate.trigger_summary,
         "evidence": list(candidate.evidence[:EVIDENCE_CAP]),
         "recommended_action": candidate.recommended_action,
+        "owner_action": candidate.owner_action,
+        # Persisted as self-describing objects rather than 2-element arrays: the
+        # store is read by eye during triage, and `["backlog:x", "because…"]` gives
+        # the reader no way to tell which slot is which.
+        "prerequisite_of": [
+            {"type": key, "because": because}
+            for key, because in _valid_prerequisites(candidate.prerequisite_of)
+        ],
         "alternative_actions": list(candidate.alternative_actions),
         "priority": priority,
         "state": "active",
@@ -564,7 +679,7 @@ def reconcile(store: dict, candidates: Iterable[AdvisoryCandidate], *, now: str 
                     _new_advisory(cand_by_id[advisory_id], advisory_id=advisory_id, now=now, sync_version=sync_version)
                 )
             else:
-                result.append(advisory)  # active → idempotent no-op
+                result.append(_refreshed_active(advisory, cand_by_id[advisory_id]))
         elif state == "active":
             target = supersedes.get((advisory.get("feature"), advisory.get("type")))
             resolved = dict(advisory)
