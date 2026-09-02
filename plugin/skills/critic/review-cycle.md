@@ -335,17 +335,15 @@ are ACCEPTs, and saying so takes a clause each.
 
 ## Final-Mode Cross-Checks
 
-After the goal-based review in `final` mode, run two additional passes that `chunk` mode skips. **`final`/`cumulative` is the owner of both cross-checks** — the PR reviewer does not re-run them (see `skills/pr/review-protocol.md`), so each runs once per PR:
+**`final`/`cumulative` is the owner of both cross-checks** — the PR reviewer does not re-run them (see `skills/pr/review-protocol.md`), so each runs once per PR:
 
 ### Learnings Cross-Check
 
-Scan your findings against the rules the session actually had in context: `.claude/rules/learnings/core.md` plus each area file whose `paths:` intersect the diff (`prawduct-hook learnings-files --for-diff` prints the list). Read that list rather than guessing at globs — an area file the harness loaded and the reviewer never opened is this cross-check going quietly dark, which is the one failure the layout could introduce. If a change reintroduces a pattern one of those rules explicitly warns against, escalate severity — tolerating regression undoes the learning. Conversely, if a rule references patterns the changed code handles correctly, no finding is needed.
+Scan your findings against the rules the session actually had in context: `.claude/rules/learnings/core.md` plus each area file whose `paths:` intersect the diff. Read that list — `prawduct-hook learnings-files --for-diff` prints it — never guess at globs; an area file the harness loaded and no reviewer opened is this cross-check going dark. If a change reintroduces a pattern one of those rules warns against, escalate severity — tolerating regression undoes the learning.
 
-**Learnings are ordered, not infallible — the later one wins.** Rules are undated `##` headings; the file is append-only, so **position is the ordering signal — later in the file is later in time**. Do not hunt for timestamps, and do not treat a date mentioned in a narrative body as the rule's own date. Two entries can disagree: a later rule may revoke an earlier one outright, narrow its scope, or soften it from a prohibition to a preference. When they conflict, the **later** rule governs, and a change conforming to it is not a regression no matter what the earlier rule says — do not escalate against a superseded rule.
+**Learnings are ordered, not infallible — the later one wins.** Rules are undated `##` headings and each file is append-only, so **position within a file is the ordering signal**; do not hunt for timestamps, or read a date in a narrative body as the rule's own. A later rule may revoke an earlier one, narrow it, or soften it to a preference. Two outputs, kept apart: against the *change*, no finding — a change conforming to the later rule is not a regression; against the *corpus*, when the supersession is implicit rather than stated, a **NOTE** naming both rules, because the stale one reads as live to the next reviewer. Only the second produces a finding.
 
-Two different outputs, so keep them apart. Against the *change*: no finding. Against the *learnings file*, when the supersession is implicit rather than stated: a **NOTE** naming both entries, because the stale rule reads as live to the next reviewer and to every product that inherits the file. The second is about the record, not the code, and it is the only case here that produces a finding at all.
-
-**Rules added or changed this cycle get their own pass** — is the new rule a duplicate of one already in the corpus, is it in the wrong area file (scoped by `paths:` globs that do not cover the code it governs, or parked in `core.md` where every session pays for it), or is it discipline/framework content that belongs upstream in the methodology rather than in this product's learnings? Each is a **NOTE** naming the rule and the specific one of the three. This is about the corpus the next session inherits, so it fires whether or not the cycle produced any other finding.
+**Rules added or changed this cycle get their own pass** — a duplicate of one already in the corpus, the wrong area file (globs that miss the code it governs, or parked in `core.md` where every session pays), or discipline/framework content belonging upstream in the methodology? Each is a **NOTE** naming the rule and which of the three.
 
 ### Backlog Reconciliation
 
@@ -374,25 +372,25 @@ archive excluded) and writes the result into the dispatch manifest as `record_li
 re-derive any of it, and do not recount anything it counted — re-deriving a machine-checked number
 is how a record defect buys a review round, which is the cost this exists to remove.
 
-The suite-total tripwire reads only the lines a change **added**, so a change-log with years of
-history in it reports on the entry just written and nothing else. Severity per check:
+Severity per check:
 
 | `check` | Means | Severity |
 |---|---|---|
 | `chunk-ref-missing` | A deliverable the reviewed chunk *declares* does not exist | **BLOCKING** |
 | `governed-by-gap` | A plan disposes of fewer norms than the cited artifact's `## Direction` carries, or cites an artifact that does not exist | **WARNING** (Goal 2 — the paperwork arm below) |
-| `suite-total-claim` | A suite-total test claim in durable prose — the store already records pass/fail per tree | **NOTE** |
-| `learnings-entry-shape` | A `learnings.md` entry carrying its evidence (rule over 400 chars) or a narrative body — both belong in `learnings-detail.md` | **NOTE** |
-| `learnings-over-budget` | A rules file over its declared budget that ALSO grew this session — pay from genuine duplication (merge or delete in this commit), or raise `learnings_budgets.<name>` in project-state.yaml with a reason; never trim a rule to fit | **BLOCKING** |
+| `suite-total-claim` | A suite-total test claim on an **added** line of durable prose — the store already records pass/fail per tree | **NOTE** |
+| `learnings-entry-shape` | An added `learnings.md` rule over 400 chars, or a narrative body — both belong in `learnings-detail.md` | **NOTE** |
+| `learnings-over-budget` | A `.claude/rules/learnings/` file over budget **and grown since the base tree** (sizes, not lines) | **BLOCKING** |
+| `learnings-budget-unreasoned` | A `learnings_budgets:` entry with no `reason:` | **BLOCKING** |
 
 **Under the coordinator pattern, whoever holds Goal 2 raises every one of these** — including the
 `suite-total-claim` NOTE, which would otherwise sit in Goal 4. The manifest is named in Goal 2 and
 only that reviewer reads it, so splitting the findings by their natural goal loses them.
 
-**The severities above are the other three modes'.** In `verify-resolutions` only `chunk-ref-missing`
-stays a finding; the WARNING and NOTE rows become observations like anything else rated below
-BLOCKING (see "A re-review does not manufacture work"). A record defect on a fix delta is precisely
-the non-gating work that buys the next round, so the general rule is not suspended for this table.
+**The severities above are the other three modes'.** In `verify-resolutions` only the **BLOCKING** rows
+stay findings; the WARNING and NOTE rows become observations like anything else rated below
+BLOCKING (see "A re-review does not manufacture work" — the general rule is not suspended for this
+table).
 
 **`unchecked` is not a pass, and the PREFIX decides the severity.** Each entry names a check that
 could not run, or an assumption made in place of one — told apart by the string, not by judgment.

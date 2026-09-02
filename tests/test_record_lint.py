@@ -38,7 +38,7 @@ ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK = ROOT / "bin" / "prawduct-hook"
 
 sys.path.insert(0, str(ROOT))
-from lib import record_lint  # noqa: E402
+from lib import learnings_files, record_lint  # noqa: E402
 
 
 def _run_hook(repo: Path, *args: str) -> subprocess.CompletedProcess:
@@ -991,6 +991,11 @@ class TestUncheckedReporting:
                 "governed-by-gap": 0,
                 "suite-total-claim": 0,
                 "learnings-entry-shape": 0,
+                # The budget check is not record-scoped — it runs over the rules
+                # corpus whatever the diff touched. This fixture has none, so it
+                # honestly found nothing.
+                "learnings-over-budget": 0,
+                "learnings-budget-unreasoned": 0,
             },
         }
 
@@ -1459,3 +1464,287 @@ class TestEveryCheckCarriesASeverity:
                 f"{rel} does not tell the reviewer that a `null` count differs "
                 "from a `0` — the reading a quoted tally invites."
             )
+
+
+# ---------------------------------------------------------------------------
+# The learnings budget — over AND grown blocks the next addition
+# ---------------------------------------------------------------------------
+
+
+def _rules_file(repo: Path, name: str, size: int) -> Path:
+    """A rules file of exactly ``size`` bytes under the resolver's directory."""
+    path = repo / learnings_files.RULES_DIR_REL / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("x" * size)
+    return path
+
+
+_CORE_REL = f"{learnings_files.RULES_DIR_REL}/{learnings_files.CORE_NAME}"
+_BUDGET = record_lint._LEARNINGS_BUDGET_DEFAULT_KB * 1024
+
+
+def _state(repo: Path, block: str) -> None:
+    (repo / ".prawduct" / "project-state.yaml").write_text(
+        f"project_name: t\n{block}"
+    )
+
+
+class TestLearningsBudget:
+    """The curation gate. Direction of travel is the finding, not size.
+
+    Every fixture writes the CURRENT size into the working tree and compares it
+    against a committed base tree, because that is the pair the check reads: a
+    session's growth is only visible as working-tree-vs-base, and a check that
+    compared two commits would go quiet for exactly the session that is adding
+    the rule.
+    """
+
+    def _lint_budget(self, repo: Path, base: str) -> dict:
+        return _lint(repo, [], base, _tree(repo))
+
+    def test_over_budget_and_grown_blocks(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        _rules_file(repo, learnings_files.CORE_NAME, 1000)
+        base = _commit(repo, "seed rules")
+        _rules_file(repo, learnings_files.CORE_NAME, _BUDGET + 500)
+
+        findings = _checks(self._lint_budget(repo, base), "learnings-over-budget")
+        assert len(findings) == 1
+        assert findings[0]["path"] == _CORE_REL
+        detail = findings[0]["detail"]
+        # Both sizes and the budget, so the author can see the trade without
+        # re-deriving any of the three.
+        assert str(_BUDGET + 500) in detail and "1000B" in detail
+        assert f"{_BUDGET}B budget" in detail
+        # The payment rule, verbatim — the finding has to say what paying looks
+        # like, or the cheapest way out is to shorten a rule until it fits.
+        assert "pay from genuine duplication (merge or delete in this commit)" in detail
+        assert "never trim a rule to fit" in detail
+        assert "learnings_budgets.core.md" in detail
+
+    def test_over_budget_but_shrunk_passes(self, tmp_path):
+        """An inherited corpus is not asked to stop the world and compact.
+
+        The two prior sweeps were one-time subtractions against a continuous
+        addition and the file regrew both times; what this gate buys is payment
+        for the NEXT addition, so a file moving in the right direction is quiet
+        even while it is still over.
+        """
+        repo = _make_repo(tmp_path)
+        _rules_file(repo, learnings_files.CORE_NAME, _BUDGET + 5000)
+        base = _commit(repo, "seed rules")
+        _rules_file(repo, learnings_files.CORE_NAME, _BUDGET + 500)
+
+        assert _checks(self._lint_budget(repo, base), "learnings-over-budget") == []
+
+    def test_unchanged_over_budget_file_is_quiet(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        _rules_file(repo, learnings_files.CORE_NAME, _BUDGET + 500)
+        base = _commit(repo, "seed rules")
+
+        assert _checks(self._lint_budget(repo, base), "learnings-over-budget") == []
+
+    def test_under_budget_growth_passes(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        _rules_file(repo, learnings_files.CORE_NAME, 100)
+        base = _commit(repo, "seed rules")
+        _rules_file(repo, learnings_files.CORE_NAME, 8000)
+
+        assert _checks(self._lint_budget(repo, base), "learnings-over-budget") == []
+
+    def test_absent_at_base_counts_as_grown(self, tmp_path):
+        """A file that did not exist before is all addition.
+
+        Exempting the first commit of an area file would let a repo land a 40KB
+        one and be told from then on that it may never touch it.
+        """
+        repo = _make_repo(tmp_path)
+        base = _tree(repo)
+        _rules_file(repo, "critic.md", _BUDGET + 1)
+
+        findings = _checks(self._lint_budget(repo, base), "learnings-over-budget")
+        assert len(findings) == 1
+        assert findings[0]["path"].endswith("critic.md")
+        assert "grown from 0B" in findings[0]["detail"]
+
+    def test_an_area_file_is_budgeted_beside_core(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        _rules_file(repo, learnings_files.CORE_NAME, 10)
+        _rules_file(repo, "critic.md", 10)
+        base = _commit(repo, "seed rules")
+        _rules_file(repo, learnings_files.CORE_NAME, _BUDGET + 1)
+        _rules_file(repo, "critic.md", _BUDGET + 1)
+
+        paths = {
+            f["path"] for f in _checks(self._lint_budget(repo, base), "learnings-over-budget")
+        }
+        assert paths == {_CORE_REL, f"{learnings_files.RULES_DIR_REL}/critic.md"}
+
+    def test_a_declared_budget_raises_the_ceiling(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        _rules_file(repo, learnings_files.CORE_NAME, 10)
+        base = _commit(repo, "seed rules")
+        _rules_file(repo, learnings_files.CORE_NAME, _BUDGET + 500)
+        _state(
+            repo,
+            'learnings_budgets:\n'
+            '  core.md: {kb: 32, reason: "the fleet-wide rules, sweep is done"}\n',
+        )
+
+        result = self._lint_budget(repo, base)
+        assert _checks(result, "learnings-over-budget") == []
+        assert _checks(result, "learnings-budget-unreasoned") == []
+
+    def test_the_nested_form_is_read_too(self, tmp_path):
+        """A user writing ordinary block YAML must not have the override
+        silently dropped — a half-read declaration applies the default while the
+        operator believes their number is in force."""
+        repo = _make_repo(tmp_path)
+        _rules_file(repo, learnings_files.CORE_NAME, 10)
+        base = _commit(repo, "seed rules")
+        _rules_file(repo, learnings_files.CORE_NAME, _BUDGET + 500)
+        _state(
+            repo,
+            "learnings_budgets:\n"
+            "  core.md:\n"
+            "    kb: 32\n"
+            '    reason: "reviewers read this file every cycle"\n',
+        )
+
+        result = self._lint_budget(repo, base)
+        assert _checks(result, "learnings-over-budget") == []
+        assert result["unchecked"] == []
+
+    def test_a_declared_budget_without_a_reason_blocks(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        base = _tree(repo)
+        _state(repo, "learnings_budgets:\n  core.md: {kb: 32}\n")
+
+        findings = _checks(self._lint_budget(repo, base), "learnings-budget-unreasoned")
+        assert len(findings) == 1
+        assert findings[0]["path"] == ".prawduct/project-state.yaml"
+        assert "learnings_budgets.core.md" in findings[0]["detail"]
+        assert "`reason:`" in findings[0]["detail"]
+
+    def test_an_empty_reason_is_no_reason(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        base = _tree(repo)
+        _state(repo, 'learnings_budgets:\n  core.md: {kb: 32, reason: ""}\n')
+
+        assert _checks(self._lint_budget(repo, base), "learnings-budget-unreasoned")
+
+    def test_a_reason_holding_a_comma_or_hash_survives(self, tmp_path):
+        """The reason is prose, and both separators this file's other readers
+        split on appear in prose. Truncating inside the quotes and then
+        reporting the truncation as "no reason given" manufactures a blocking
+        finding out of punctuation."""
+        repo = _make_repo(tmp_path)
+        base = _tree(repo)
+        _state(
+            repo,
+            "learnings_budgets:\n"
+            '  core.md: {kb: 32, reason: "merged, deduped # see PR 12"}\n',
+        )
+
+        result = self._lint_budget(repo, base)
+        assert _checks(result, "learnings-budget-unreasoned") == []
+        assert result["unchecked"] == []
+        budgets, malformed = record_lint.parse_learnings_budgets(
+            (repo / ".prawduct" / "project-state.yaml").read_text()
+        )
+        assert malformed == []
+        assert budgets["core.md"]["reason"] == "merged, deduped # see PR 12"
+
+    def test_a_legacy_layout_yields_no_finding(self, tmp_path):
+        """The unmigrated state is the migration directive's business (R4).
+        Two controls naming the same state teach a reader to skip both."""
+        repo = _make_repo(tmp_path)
+        legacy = repo / learnings_files.LEGACY_REL
+        legacy.parent.mkdir(parents=True, exist_ok=True)
+        legacy.write_text("x" * (_BUDGET * 4))
+        base = _tree(repo)
+
+        result = self._lint_budget(repo, base)
+        assert _checks(result, "learnings-over-budget") == []
+        assert result["unchecked"] == []
+
+    def test_an_unparseable_entry_is_unchecked_never_a_silent_default(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        _rules_file(repo, learnings_files.CORE_NAME, 10)
+        base = _commit(repo, "seed rules")
+        _rules_file(repo, learnings_files.CORE_NAME, _BUDGET + 500)
+        _state(repo, "learnings_budgets:\n  core.md: 32\n")
+
+        result = self._lint_budget(repo, base)
+        assert any(
+            "learnings-over-budget, learnings-budget-unreasoned unchecked" in r
+            and "core.md" in r
+            for r in result["unchecked"]
+        ), result["unchecked"]
+        # A check that produced no answer counts None, never 0 — the tally is
+        # what gets quoted, so the distinction has to live in the number.
+        assert result["counts"]["learnings-over-budget"] is None
+        assert result["counts"]["learnings-budget-unreasoned"] is None
+
+    def test_an_unresolvable_base_tree_is_unchecked_not_a_wall_of_blockers(
+        self, tmp_path
+    ):
+        """Reading a per-file `cat-file` failure as "absent at base" would make
+        every rules file look grown-from-nothing whenever the interval itself is
+        the broken thing. The tree is validated once, before any file is."""
+        repo = _make_repo(tmp_path)
+        _rules_file(repo, learnings_files.CORE_NAME, _BUDGET + 500)
+
+        result = _lint(repo, [], "0" * 40, _tree(repo))
+        assert _checks(result, "learnings-over-budget") == []
+        assert any(
+            "learnings-over-budget unchecked" in r and "base tree" in r
+            for r in result["unchecked"]
+        ), result["unchecked"]
+        assert result["counts"]["learnings-over-budget"] is None
+
+    def test_the_budget_runs_without_a_changed_record(self, tmp_path):
+        """The corpus grows on commits that change nothing else, and the budget
+        is about the file's size rather than its added lines — so this check
+        cannot be gated on the record subset the line-scoped checks read."""
+        repo = _make_repo(tmp_path)
+        base = _tree(repo)
+        _rules_file(repo, learnings_files.CORE_NAME, _BUDGET + 1)
+
+        result = record_lint.lint_records(
+            repo, repo / ".prawduct", ["code.py"], base, _tree(repo)
+        )
+        assert result["records"] == []
+        assert len(_checks(result, "learnings-over-budget")) == 1
+
+
+class TestBudgetDeclarationParsing:
+    def test_absent_key_is_no_budgets_and_no_complaint(self):
+        assert record_lint.parse_learnings_budgets("project_name: t\n") == ({}, [])
+
+    def test_comments_and_blanks_are_inert_inside_the_block(self):
+        budgets, malformed = record_lint.parse_learnings_budgets(
+            "learnings_budgets:\n"
+            "  # why these are raised\n"
+            "\n"
+            '  core.md: {kb: 24, reason: "swept"}\n'
+            "next_key: 1\n"
+            "  core.md: {kb: 99}\n"
+        )
+        assert malformed == []
+        # A column-0 key ends the block; anything after it belongs to that key.
+        assert budgets == {"core.md": {"kb": 24, "reason": "swept"}}
+
+    def test_an_unknown_field_makes_the_entry_malformed_not_partial(self):
+        budgets, malformed = record_lint.parse_learnings_budgets(
+            'learnings_budgets:\n  core.md: {kb: 24, why: "swept"}\n'
+        )
+        assert budgets == {}
+        assert malformed == ["core.md"]
+
+    def test_a_non_integer_kb_is_malformed(self):
+        budgets, malformed = record_lint.parse_learnings_budgets(
+            'learnings_budgets:\n  core.md: {kb: big, reason: "swept"}\n'
+        )
+        assert budgets == {}
+        assert malformed == ["core.md"]

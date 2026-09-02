@@ -423,7 +423,18 @@ LAST_MEASURED_TOKENS = {
     # meant). `chunk` mode is UNCOVERED and explicitly so: `goals-1-3.md` has 2
     # tokens of headroom and the rule costs ~65, which is an owner ruling on
     # that ceiling, not a trim to slip into this chunk.
-    "skills/critic/review-protocol.md": 3799,
+    # -9 on 2026-09-02 (learnings-v2 Chunk 04), 3799 -> 3790 across two edits
+    # that net to a REFUND. The cutover repointed step 4's read list from one
+    # file to "core.md plus the area files `learnings-files --for-diff` lists"
+    # (+10), and the Learnings Cross-Check paragraph 100 lines below restated
+    # that same list a second time. PAID FOR: that restatement, which now points
+    # at step 4 instead (-13); the paragraph's "**`final`/`cumulative` only.**"
+    # marker, which `## Modes` already declares of the whole file (-4); and
+    # "This file is the Critic's complete instruction set" (-8), the identical
+    # sentence `goals-1-3.md`'s entry below records cutting for the identical
+    # reason -- the H1 says it, and "complete" stopped being true of this file
+    # when `chunk`/`verify-resolutions` were split into `goals-1-3.md`.
+    "skills/critic/review-protocol.md": 3790,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -469,7 +480,13 @@ LAST_MEASURED_TOKENS = {
     # for the dispatched roster, but the single-pass modes this file serves do
     # not read that file -- flagged for an owner ruling rather than re-added
     # under the same pressure that removed it.
-    "skills/critic/goals-1-3.md": 2265,
+    # +3 on 2026-09-02 (learnings-v2 Chunk 04), 2272 -> 2275: `learnings-over-budget`
+    # joins `chunk-ref-missing` in the record-lint severity mapping. The budget
+    # check runs at dispatch for EVERY mode, so a reviewer reading only this file
+    # meets a BLOCKING finding with no severity unless the row is here too. Bought
+    # at three tokens by folding it into the existing BLOCKING clause rather than
+    # writing a second sentence; the ceiling is untouched.
+    "skills/critic/goals-1-3.md": 2275,
     # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
     # a computed pass the gate can now print, which a reader who only knows
     # "uncovered means run a cumulative" will otherwise re-review straight
@@ -501,7 +518,33 @@ LAST_MEASURED_TOKENS = {
     # was asserting a timing that is false on the Issues backend, so the routing
     # replaced prose rather than adding to it, and the "why" the routing would
     # have restated stayed at the owner where the reader is already being sent.
-    "skills/critic/review-cycle.md": 9591,
+    # -9 on 2026-09-02 (learnings-v2 Chunk 04), 9599 -> 9590, and the two edits
+    # that made it are worth separating. ADDED: the cross-check's read list is
+    # now the resolver's answer (core.md plus the diff's area files, printed by
+    # `learnings-files --for-diff`) instead of one file path, and R5's goal --
+    # a rule added this cycle can be a duplicate, in the wrong area file, or
+    # framework content that belongs upstream -- which is the only cross-check
+    # output that is about the corpus rather than the code.
+    #
+    # PAID FOR, all of it from restatement rather than from a diet:
+    # * The ordering paragraph and the "two different outputs" paragraph beneath
+    #   it stated one conclusion twice -- "the later rule governs, do not
+    #   escalate against a superseded rule", then "against the change: no
+    #   finding". Merged into one paragraph carrying the rule and its two
+    #   outputs once. (The merge also corrected a claim the cutover falsified:
+    #   position orders rules WITHIN a file, and the corpus is now several.)
+    # * "run two additional passes that `chunk` mode skips" -- the per-mode
+    #   table's "Goals skipped" cell already names both cross-checks under
+    #   `chunk`, so the sentence restated a row two screens up. The ownership
+    #   clause, which the table does not carry, stayed.
+    # * "Conversely, if a rule references patterns the changed code handles
+    #   correctly, no finding is needed" -- an instruction to do nothing, in a
+    #   pass whose default is already nothing.
+    # * The record-lint table's closing sentence re-argued the thesis of
+    #   "A re-review does not manufacture work" one clause after citing it.
+    # * R5's own closing sentence ("it fires whether or not the cycle produced
+    #   another finding") restated "get their own pass" in its own heading.
+    "skills/critic/review-cycle.md": 9590,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -577,7 +620,16 @@ LAST_MEASURED_TOKENS = {
     # explicitly rules out. Collapsing the pair and attaching the stars removed a
     # duplicate grant line, so the saving is duplication going away rather than
     # any rule being shortened. (#160's +2 from the same burndown is included.)
-    "skills/critic/SKILL.md": 3435,
+    # +3 on 2026-09-02 (learnings-v2 Chunk 04): the `learnings-files` grant, in
+    # the house form, one line. The fork runs the Critic's own cross-check and
+    # `review-protocol.md` names the command it enumerates the read list with --
+    # a mandate its reader cannot issue is either a permission prompt nobody can
+    # answer or a silently skipped check, which is the gap
+    # `test_mandated_hook_subcommands_are_granted_on_every_binding_surface`
+    # exists to catch. Nothing paid: three tokens against a 3450 ceiling that
+    # still holds, and the standing rule (the next addition trims or relocates)
+    # is unchanged by a grant line that has no prose to trim.
+    "skills/critic/SKILL.md": 3438,
     "skills/critic/framework-checks.md": 1116,
     # The on-demand class, first recorded 2026-08-19 (#688) — readings, no
     # ceilings; the block above this dict is the decision and its reasoning.
@@ -3970,6 +4022,12 @@ class TestCriticGoals13:
         # agents/critic-reviewer.md, whose reader never writes `resolutions`.
         # THIS file is the only surface whose reader writes both, and they sat
         # eight lines apart with no cue. Three words in the schema example.
+        #
+        # 2265 -> 2272 (2026-09-02) -- the budget gate's two findings are graded
+        # here because an ungraded record-lint check reaches a reviewer with no
+        # verdict, which is how `learnings-entry-shape` shipped. Spent from
+        # headroom, not paid: one clause, two check names and a severity, and
+        # the rule behind it lives with the check in `review-cycle.md`.
         tokens = estimate_tokens(self.content)
         assert tokens < 2280, f"goals-1-3.md is ~{tokens} tokens, should be <2280"
 
@@ -4384,6 +4442,15 @@ class TestReviewCycle:
         # reason in one clause rather than the paragraph the first draft carried:
         # a correction to an instruction that cannot fire is not spending the
         # ceiling, but the explanation of it would have been.
+        #
+        # 9591 -> 9599 (2026-09-02) -- the budget gate's two rows. An ungraded
+        # record-lint check reaches a reviewer with no verdict, which is how
+        # `learnings-entry-shape` shipped, so a row is not optional. PAID FOR:
+        # the standalone line-scoping sentence named "the suite-total tripwire"
+        # and read as a property of the whole pass -- which the budget check,
+        # reading file sizes on a diff that changed no record, contradicts. It
+        # folded into the two rows that own the scope, where a reader meets it
+        # beside the check instead of as a claim two of six rows deny. Net +8.
         content = read_file("skills/critic/review-cycle.md")
         tokens = estimate_tokens(content)
         assert tokens < 9600, f"review-cycle.md is ~{tokens} tokens, should be <9600"
