@@ -23,7 +23,7 @@ prawduct/
 │   ├── lib/                           # the bodies the hook reaches lazily (init_product, migrate_plugin, core,
 │   │                                  #   change_log, plan_index, plan_archive, critic_consolidate, release_readiness, …)
 │   ├── skills/                        # framework skills → /prawduct:* (critic, pr, backlog, doctor, janitor,
-│   │   │                              #   learnings, methodology, migrate, onboard, report-bug, runbook, advisory, …)
+│   │   │                              #   methodology, migrate, onboard, report-bug, runbook, advisory, …)
 │   │   ├── critic/                    # bundled Critic protocol (context:fork — SKILL.md, review-protocol.md,
 │   │   │                              #   review-cycle.md, goals-1-3.md, framework-checks.md)
 │   │   └── pr/                        # bundled PR-reviewer protocol

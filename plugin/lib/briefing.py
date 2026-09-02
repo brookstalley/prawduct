@@ -3,9 +3,9 @@
 Extracted from ``bin/prawduct-hook`` (STH-9V4K, Chunk 7 — the final chunk). Holds
 the session-start surface the SessionStart (``clear``) hook renders: the
 content-based staleness scan, the structured session briefing (project identity,
-work-in-progress, other-branch WIP, worktree awareness, advisories, learnings,
-backlog), the subagent governance briefing, and the cross-``/clear`` session
-handoff. Plus the previous-session governance check ``cmd_clear`` warns on.
+work-in-progress, other-branch WIP, worktree awareness, advisories, the learnings
+layout state, backlog), the subagent governance briefing, and the
+cross-``/clear`` session handoff. Plus the previous-session governance check ``cmd_clear`` warns on.
 
 ``cmd_clear`` itself STAYS in the hook (it is the deliberately-inline hot-path
 SessionStart entry point that orchestrates session-marker hygiene, the advisory
@@ -1432,17 +1432,10 @@ def generate_subagent_briefing(project_dir: Path) -> None:
         except Exception:  # prawduct:allow prawduct/broad-except -- briefing generation is best-effort
             pass
 
-    # Active learnings
-    learnings_path = prawduct_dir / "learnings.md"
-    if learnings_path.is_file():
-        try:
-            learnings = learnings_path.read_text().strip()
-            if learnings:
-                sections.append("## Active Learnings\n")
-                sections.append(learnings + "\n")
-        except Exception:  # prawduct:allow prawduct/broad-except -- briefing generation is best-effort
-            pass
-
+    # No learnings section. The rules are `.claude/rules/` files, so the harness
+    # loads them for a subagent exactly as it does for the main agent — embedding
+    # a copy here would spend the subagent's context on text it already has, and
+    # would go stale the moment the corpus was edited.
     (prawduct_dir / ".subagent-briefing.md").write_text("\n".join(sections))
 
 
@@ -1813,7 +1806,9 @@ def render_session_handoff(project_dir: Path) -> HandoffRender:
             sections.append(f"**Current chunk**: {wip['current_chunk']}")
         sections.append("")
 
-    # 2. Session reflection (from .session-reflected, before it gets archived)
+    # 2. Session reflection (from .session-reflected). This handoff is the ONLY
+    #    thing that carries it across a boundary — `_boundary_close_session`
+    #    generates the handoff and then unlinks the file, and nothing archives it.
     reflected_path = prawduct_dir / ".session-reflected"
     if reflected_path.is_file():
         try:

@@ -253,7 +253,7 @@ def round_price(prawduct_dir: Path, *, mode: str = PRICED_MODE) -> dict:
     exactly how the framework has burned itself before: a number copied into
     prose drifts from the thing it describes, and correcting it costs a review
     round — the very round this helper exists to stop a builder from spending
-    (``learnings.md``: cite the command that re-derives a number, never the
+    (``core.md``: cite the command that re-derives a number, never the
     digits; ``project-preferences.md`` forbids the sibling suite-total claim
     for the same stated reason). So there is one home for the fact and no
     copies: callers ask, they never assert.
@@ -281,7 +281,7 @@ def round_price(prawduct_dir: Path, *, mode: str = PRICED_MODE) -> dict:
     advice fails soft (``architecture.md`` § Direction). It is deliberately
     distinguishable from "free" by callers, because an advisory that goes
     quiet when it breaks manufactures the false confidence it was meant to
-    prevent (``learnings.md``: "advice fails soft" is not "advice fails
+    prevent (``core.md``: "advice fails soft" is not "advice fails
     silent").
     """
     path = ledger_path(prawduct_dir)

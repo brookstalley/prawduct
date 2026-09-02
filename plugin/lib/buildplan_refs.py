@@ -1379,7 +1379,7 @@ def _looks_like_file_path(token: str, project_dir: "Path | None" = None) -> bool
     conceptual references whose actual location varies, so they're not
     verifiable in a useful way.
 
-    Slash-commands (``/prawduct:pr``, ``/prawduct:learnings``, ``/prawduct:critic``) also contain
+    Slash-commands (``/prawduct:pr``, ``/prawduct:backlog``, ``/prawduct:critic``) also contain
     ``/`` but are not file paths. Exclude tokens that start with ``/``,
     have no further ``/``, and contain no ``.`` — that shape is a single
     slash-command identifier, not a path.
@@ -1570,7 +1570,7 @@ def _strip_code(text: str) -> str:
     """Remove fenced blocks and inline code spans.
 
     A markdown link *inside backticks* is being quoted, not offered — a plan
-    that quotes a broken ``[learnings file](../.prawduct/learnings.md)`` as
+    that quotes a broken ``[the rules](../.claude/rules/learnings/core.md)`` as
     evidence would redden on the document specifying it. Same
     citation-versus-reference rule as for bare paths, applied to the link form.
     """

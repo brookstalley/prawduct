@@ -337,7 +337,17 @@ LAST_MEASURED_TOKENS = {
     # its Direction precondition and it was reverted. The sentence is true again
     # because the check is back. Recorded as one entry rather than two so the
     # next reader sees a no-op, not a pair of unexplained swings.
-    "methodology/building.md": 4754,
+    # -2 on 2026-09-02 (learnings-v2-delete chunk 02): the lookup skill is gone,
+    # so the two sentences that named it were rewritten to the harness-loaded
+    # model — the "run the lookup skill for this chunk" sentence became "open the
+    # `.claude/rules/learnings/` area files covering this chunk", and `/clear`'s
+    # list of what it does stopped claiming an archive step that no longer
+    # exists. A CUT: the path is longer than the slash-command, and it still nets
+    # out below because the archive clause shrank to "clears the previous
+    # reflection" — where the reflection GOES is already stated by this file's
+    # own handoff paragraph, so saying it twice was the spare part. The ceiling
+    # is ratcheted by the same -2 rather than banking the slack.
+    "methodology/building.md": 4752,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -771,7 +781,15 @@ LAST_MEASURED_TOKENS = {
     # "nobody reviewed it") rather than explaining it. Principle 16 is the norm;
     # this is the procedure that makes it checkable.
     # 2026-09-02 (learnings-v2 chunk 05, cumulative R-6): four write-path sites repointed at .claude/rules/learnings/ (R8 rewrite is Wave 3).
-    "methodology/reflection.md": 5103,
+    # -122 on 2026-09-02 (learnings-v2-delete chunk 02): the reflections archive
+    # is deleted, not relocated, so § "Reflections Archive" and the provenance
+    # tag it documented describe nothing — a section telling a reader to look for
+    # a file the boundary no longer writes. What replaces it is one clause on the
+    # `.session-reflected` bullet naming the generated handoff as the only
+    # carrier. The lookup-skill sentence went with the skill. A READING, no
+    # ceiling (see the decision block above this dict); Wave 3's R8 rewrites this
+    # file, so nothing else here was restructured.
+    "methodology/reflection.md": 4981,
     # First reading, 2026-08-21, taken at birth: a new on-demand guide, so it
     # joins the class above — a READING, no ceiling. `test_every_methodology_guide_is_accounted_for`
     # requires the entry; the decision block above this
@@ -1124,8 +1142,13 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # 2026-09-02 (learnings-v2 chunk 05): CLAUDE.md repointed four learnings references
     # at .claude/rules/learnings/; paid by dropping the lookup-skill mention and the
     # "read learnings.md" instruction (the harness loads the rules now).
-    "framework": 3194,
-    "product": 2085,
+    # framework 3194 -> 3192, product 2085 -> 2083 on 2026-09-02
+    # (learnings-v2-delete chunk 02): the digest's read-on-demand line stopped
+    # listing the lookup skill, which is deleted. Charged to both shapes
+    # because the digest is a member of both. A CUT with no addition anywhere in
+    # either shape, and the ceilings below move by the same -2.
+    "framework": 3192,
+    "product": 2083,
 }
 
 #: Ceilings. HARD, like the per-file prose ceilings in this module and
@@ -1210,8 +1233,11 @@ INJECTED_FOOTPRINT_CEILINGS = {
     # reserve is characters against a harness threshold that no ruling buys past
     # (`tests/test_plugin_methodology_digest.py`'s DIGEST_HEADROOM_RESERVE).
     # Banking headroom in a raisable budget would have protected nothing.
-    "framework": 3198,
-    "product": 2086,
+    # RATCHETED 3198 -> 3196, 2086 -> 2084 (2026-09-02): the digest dropped the
+    # deleted lookup skill from its read-on-demand line. Both ceilings move by
+    # the same -2 as the readings, so the deletion banks nothing.
+    "framework": 3196,
+    "product": 2084,
 }
 
 
@@ -1506,10 +1532,18 @@ class TestBuildingMethodology:
         )
 
     def test_references(self):
-        """References subagent briefing, boundary patterns, learnings skill."""
+        """References subagent briefing, boundary patterns, the rules corpus.
+
+        The third assertion named the lookup skill until that skill was
+        deleted. Retargeted rather than dropped: what it pins is that the build
+        cycle tells a builder where this project's rules are, and the answer
+        changed from a lookup command to a path the harness loads. Retargeting
+        keeps the pin on the requirement instead of on the mechanism that
+        happened to satisfy it.
+        """
         assert ".subagent-briefing.md" in self.content
         assert "boundary-patterns.md" in self.content
-        assert "/prawduct:learnings" in self.content
+        assert ".claude/rules/learnings/" in self.content
 
     def test_goal_based_critic(self):
         """References goal-based Critic review."""
@@ -2258,7 +2292,11 @@ class TestBuildingMethodology:
         # pointer's table of contents went with it. The ceiling moves by the
         # same -5 rather than banking it — unratcheted slack is a loan the next
         # edit collects silently and green.
-        assert tokens < 4757, f"building.md is ~{tokens} tokens, should be <4757"
+        # RATCHETED AGAIN 4757 -> 4755 (2026-09-02): the lookup-skill sentences
+        # were rewritten to the harness-loaded model and the `/clear` list
+        # stopped naming a reflections archive that no longer exists. The
+        # ceiling moves by the same -2 the reading did.
+        assert tokens < 4755, f"building.md is ~{tokens} tokens, should be <4755"
 
 
 # =============================================================================
@@ -3503,7 +3541,10 @@ class TestOtherMethodology:
         content = read_file("methodology/planning.md")
         lower = content.lower()
         assert "not a one-time phase" in lower or "isn't a one-time phase" in lower or "continuous" in lower
-        assert "/prawduct:learnings" in content
+        # Named the lookup skill; retargeted when that skill was deleted. The
+        # requirement is unchanged — planning starts from this project's rules —
+        # and only where they live moved.
+        assert ".claude/rules/learnings/" in content
 
     def test_discovery_operationalizes_coverage_expectation(self):
         # Recording structural characteristics is tied to the strategy-class

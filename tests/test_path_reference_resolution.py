@@ -49,10 +49,10 @@ over-reported twenty non-defects during the census.
 line up.** ``_is_record`` exempts whole files, but the reason it gives — *narrates defects, quoting
 the paths they occurred at* — is a claim about a reference's role. It holds for
 ``learnings-detail.md``, which quotes stale invocations as evidence. It does not hold for every
-reference inside ``learnings.md``: that file also carries live instructions (one rule tells the
-reader to invoke ``python3 plugin/bin/prawduct-hook``, and ``/prawduct:learnings`` serves it as
-current guidance), so a future relocation strands them with the suite green — the exact defect
-class this test exists for. Scoping the exemption per reference rather than per file is not worth
+reference inside a rules corpus: those files also carry live instructions (one rule tells the
+reader to invoke ``python3 plugin/bin/prawduct-hook``, and the harness serves that rule to every
+session as current guidance), so a future relocation strands them with the suite green — the exact
+defect class this test exists for. Scoping the exemption per reference rather than per file is not worth
 building for one known instance; leaving the gap unnamed is what is not acceptable, since an
 exemption nobody has examined reads as one somebody has.
 """
@@ -112,7 +112,6 @@ _RECORD_FILES = frozenset(
         ".prawduct/learnings.md",        # narrates defects, quoting the paths they occurred at
         ".prawduct/learnings-detail.md",
         ".prawduct/learnings-history.md",   # the archive half of the same record
-        ".prawduct/reflections.md",
         ".prawduct/operator-verification.md",
     }
 )

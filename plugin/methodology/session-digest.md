@@ -119,8 +119,8 @@ modeled as CI — a gate can legitimately block, and a block names itself.
 
 - `/prawduct:methodology [<topic>]` — the overview, or one guide:
   `building | discovery | planning | reflection | delegation | principles | norms`
-- `/prawduct:critic` · `/prawduct:pr` · `/prawduct:backlog` · `/prawduct:learnings` ·
-  `/prawduct:janitor` · `/prawduct:doctor`
+- `/prawduct:critic` · `/prawduct:pr` · `/prawduct:backlog` · `/prawduct:janitor` ·
+  `/prawduct:doctor`
 
 **Hit a bug in prawduct itself?** `/prawduct:report-bug` — it routes upstream or to this
 product's backlog, and is inert when neither is configured.

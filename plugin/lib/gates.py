@@ -1796,7 +1796,7 @@ def _cumulative_critic_verdict(project_dir: Path, read: dict, cache) -> int:
     if churn is not None and churn.get("status") == "unavailable":
         # A degraded advisory that says nothing is indistinguishable from one
         # that found nothing, and the builder then runs the round this control
-        # exists to prevent with no record that it never ran (learnings.md:
+        # exists to prevent with no record that it never ran (core.md:
         # "'Advice fails soft' is not 'advice fails silent'").
         print(
             f"NOTE: the fix-churn diagnosis could not run ({churn['reason']}) — "

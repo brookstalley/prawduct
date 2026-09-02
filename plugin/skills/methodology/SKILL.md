@@ -34,4 +34,4 @@ Operational procedures — runbooks for incident response, deploy/rollback, rele
 recovery, maintenance and field service — are authored with `/prawduct:runbook`, against the
 canonical rules and evidence in `docs/runbook-authoring.md`.
 
-Quality review runs through `/prawduct:critic` (independent review after medium+ work) and `/prawduct:pr` (release readiness). Look up project rules with `/prawduct:learnings <topic>` and deferred work with `/prawduct:backlog`. Keep the repo healthy with `/prawduct:doctor` (prawduct governance/install conformance) and `/prawduct:janitor` (the product's own codebase craft); their split is `docs/doctor-vs-janitor.md`.
+Quality review runs through `/prawduct:critic` (independent review after medium+ work) and `/prawduct:pr` (release readiness). Project rules are `.claude/rules/learnings/` files the harness loads (`core.md` always, an `<area>.md` on a matching read); deferred work is `/prawduct:backlog`. Keep the repo healthy with `/prawduct:doctor` (prawduct governance/install conformance) and `/prawduct:janitor` (the product's own codebase craft); their split is `docs/doctor-vs-janitor.md`.
