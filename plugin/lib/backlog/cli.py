@@ -801,7 +801,67 @@ def _run_sync(rest: list[str], transport, project_dir):
     from . import sync as sync_mod  # noqa: PLC0415 — only this op drives the store
 
     run = sync_mod.full_rebuild if flags.get("rebuild") else sync_mod.incremental_sync
-    return run(transport, project_dir=Path(project_dir), owner=owner, repo=repo)
+    # Record the attempt HERE, at the one point every sync run concludes, rather
+    # than in each of the branches that can fail. The session-start warm is
+    # detached with its stderr to DEVNULL, so without this a failing sync leaves
+    # no trace anywhere: the store stays readable, reads keep answering from stale
+    # rows, and nothing distinguishes a warm that failed once from one failing for
+    # a week.
+    #
+    # **Both exits are recorded, and the raising one is not the rare case.** A sync
+    # can end as an error ENVELOPE or as a raised exception that `cli.run`'s
+    # boundary handler turns into one — and a revoked credential, the motivating
+    # failure, takes the raising path. Recording only the returned envelope left
+    # exactly the case this exists for unrecorded; the re-raise keeps that handler
+    # the one place an exception becomes an envelope.
+    scope = f"{owner}/{repo}"
+    try:
+        result = run(transport, project_dir=Path(project_dir), owner=owner, repo=repo)
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- records the attempt, then re-raises for the CLI boundary to envelope; narrowing it would silently skip recording for exactly the failures nobody anticipated
+        from .transport import scrub_secrets  # noqa: PLC0415 — only this path stamps
+
+        _record_sync_attempt(
+            Path(project_dir),
+            scope,
+            scrub_secrets(f"{type(exc).__name__}: {exc}"),
+        )
+        raise
+    _record_sync_attempt(Path(project_dir), scope, _sync_failure_of(result))
+    return result
+
+
+def _sync_failure_of(result) -> str | None:
+    """The failure text of a sync envelope, or ``None`` when it succeeded."""
+    if not isinstance(result, dict) or result.get("status") != "error":
+        return None
+    err = result.get("error") or {}
+    code, message = err.get("code"), err.get("message")
+    return f"{code}: {message}" if code and message else (message or code or "error")
+
+
+def _record_sync_attempt(project_dir, scope: str, failure: str | None) -> None:
+    """Stamp this sync run's outcome on the cursor. Best-effort throughout.
+
+    Never let bookkeeping change the answer: a store that cannot be opened, or a
+    scope with no cursor row yet, simply records nothing. The second case is
+    deliberate rather than a gap — see :func:`cache.record_sync_attempt` on why a
+    first-attempt failure must not mint a row."""
+    from datetime import datetime, timezone  # noqa: PLC0415 — only this path stamps
+
+    from . import cache as cache_mod  # noqa: PLC0415 — only this path writes the cursor
+
+    conn = cache_mod.open_store(project_dir, create=False)
+    if isinstance(conn, dict):
+        return  # the store is unavailable; the sync result already says so
+    try:
+        cache_mod.record_sync_attempt(
+            conn,
+            scope,
+            attempted_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            failure=failure,
+        )
+    finally:
+        conn.close()
 
 
 #: The default staleness horizon for `cache-query stale`, in days — carried over
@@ -1425,6 +1485,13 @@ def _print_cache_query(data: dict) -> None:
         print(f"  {len(items)} item(s)")
     print(f"  cache: {data.get('scope')}, confirmed {data.get('synced_at')} "
           f"({_humanize_seconds(data.get('age_seconds'))})")
+    # Printed directly under the age, because it is the sentence that changes how
+    # the age should be read: a store that is merely old is a different fact from
+    # one whose refresh has been failing since that stamp.
+    if data.get("sync_error"):
+        print(f"  SYNC FAILING: {data['sync_error']} "
+              f"(last attempt {data.get('sync_last_attempt_at') or 'unknown'}) — "
+              f"everything above predates it")
 
 
 def _humanize_seconds(age) -> str:

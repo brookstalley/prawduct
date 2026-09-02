@@ -25,7 +25,7 @@ for _p in (str(_REPO_ROOT), str(_TESTS_DIR)):
 
 import pytest  # noqa: E402
 
-from lib.backlog import cli, core  # noqa: E402
+from lib.backlog import cache, cli, core  # noqa: E402
 from lib.backlog.transport import TransportError  # noqa: E402
 from fakes.fake_github import FakeGitHub  # noqa: E402
 
@@ -652,6 +652,60 @@ class TestSyncCli:
         payload = json.loads(out)
         assert payload["status"] == "ok"
         assert payload["data"]["written"] == 1
+
+    def test_a_failing_sync_records_itself_on_a_warmed_scope(self, tmp_path, capsys):
+        """The wiring half of #625: `_run_sync` must stamp the attempt, not just
+        return the envelope. The session-start warm is detached with its stderr
+        discarded, so a sync that returns an error envelope and records nothing
+        leaves no trace anywhere at all."""
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+        fake = FakeGitHub()
+        core.file_item(
+            fake, owner="octo", repo="repo",
+            title="cli: the sync item under test", body="b", facets={},
+        )
+        cli.run(str(tmp_path), ["sync", "--repo", REPO, "--json"], transport=fake)  # warm it
+        capsys.readouterr()
+
+        # Now make every later sync fail, the way revoked `gh` auth would.
+        class _Broken:
+            def __getattr__(self, name):
+                raise TransportError("gh auth failed")
+
+        cli.run(str(tmp_path), ["sync", "--repo", REPO, "--json"], transport=_Broken())
+        capsys.readouterr()
+
+        conn = cache.open_store(tmp_path, create=False)
+        try:
+            attempted_at, last_error = cache.sync_health(conn, REPO)
+        finally:
+            conn.close()
+        assert last_error, "a failing sync left no record on a warmed scope"
+        assert attempted_at
+
+    def test_a_recovering_sync_clears_the_record_through_the_cli(self, tmp_path, capsys):
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+        fake = FakeGitHub()
+        core.file_item(
+            fake, owner="octo", repo="repo",
+            title="cli: the sync item under test", body="b", facets={},
+        )
+        cli.run(str(tmp_path), ["sync", "--repo", REPO, "--json"], transport=fake)
+
+        class _Broken:
+            def __getattr__(self, name):
+                raise TransportError("gh auth failed")
+
+        cli.run(str(tmp_path), ["sync", "--repo", REPO, "--json"], transport=_Broken())
+        cli.run(str(tmp_path), ["sync", "--repo", REPO, "--json"], transport=fake)  # recovered
+        capsys.readouterr()
+
+        conn = cache.open_store(tmp_path, create=False)
+        try:
+            _attempted_at, last_error = cache.sync_health(conn, REPO)
+        finally:
+            conn.close()
+        assert last_error is None, "a recovered sync left a stale failure behind"
 
     def test_the_error_strings_that_name_this_op_now_name_a_real_one(self):
         """`cache.py` and `cachequery.py` tell the operator to run

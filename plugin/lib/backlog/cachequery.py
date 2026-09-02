@@ -174,6 +174,11 @@ def _serve(project_dir: Path, *, scope: str, now: datetime, query) -> dict:
         if fresh is None:
             return error("unavailable", _NEVER_SYNCED)
         confirmed_at, age = fresh
+        # Read the attempt stamps inside the same connection that read the age:
+        # the two are one answer. An age alone cannot distinguish a quiet backlog
+        # from a sync that has been failing since the last success, and the warm
+        # that would have told you is spawned detached with its stderr discarded.
+        last_attempt_at, last_error = cache.sync_health(conn, scope)
         payload = query(conn)
     except _Reported as reported:
         return reported.envelope
@@ -185,7 +190,23 @@ def _serve(project_dir: Path, *, scope: str, now: datetime, query) -> dict:
     finally:
         conn.close()
 
-    return ok({**payload, "scope": scope, "synced_at": confirmed_at, "age_seconds": age})
+    served = {**payload, "scope": scope, "synced_at": confirmed_at, "age_seconds": age}
+    if last_error:
+        # Reported as data AND as a warning. The data is for a machine reader
+        # deciding whether to trust the age; the warning is what reaches a human
+        # who ran this to answer a different question entirely and would otherwise
+        # read a stale answer as a current one.
+        served["sync_error"] = last_error
+        served["sync_last_attempt_at"] = last_attempt_at
+        return ok(
+            served,
+            [
+                f"the last backlog sync for {scope} FAILED ({last_error}); everything "
+                f"below predates it. Last attempt: {last_attempt_at or 'unknown'}. "
+                f"Run `prawduct-hook backlog sync --repo {scope}` to see the error."
+            ],
+        )
+    return ok(served)
 
 
 def _rows(conn: sqlite3.Connection, sql: str, params=()) -> list[dict]:

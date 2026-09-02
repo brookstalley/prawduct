@@ -33,14 +33,15 @@ The chunk is ordered last of the three code chunks so the ruling can arrive late
 - [x] Chunk 01: A bare issue number resolves against `--repo`
 - [x] Chunk 02: a discarded block edit is reported, not swallowed
 - [x] Chunk 03: state the quarantine ⊂ untriaged containment
-- [ ] Chunk 04: A failing cache warm leaves a durable record
-Context: Chunks 01 and 02 built and committed (ad1f23d1, bad2ee70) on a green suite.
-Both were the OWED prawduct defects from the 2026-09-02 triage; Chunk 01's also bit this
-session. Chunk 02 was DESCOPED mid-build — its planned fix would have breached a recorded
-invariant — and the real gap is filed as #751 (`unmerge`, design). Next: Chunk 03, which
-needs its naming decision made. The cumulative Critic runs after Chunk 04, covering all
-four. #609 was considered for this batch and DROPPED: its blocker (`constraints.txt` on
-the unmerged `feature/upstream-dependency-policy`) was re-verified live and still holds.
+- [x] Chunk 04: A failing cache warm leaves a durable record
+Context: All four chunks built, committed and verified against a green suite (6146
+passed, 17 skipped, recorded from JUnit). Chunk 02 was DESCOPED mid-build — its planned
+fix would have breached a recorded invariant — and the real gap is filed as #751
+(`unmerge`, design). Chunk 03's premise was likewise falsified by the code and the
+reconciliation went the other way, with the unbuilt predicate filed as #752. #609 was
+considered and DROPPED: its blocker (`constraints.txt` on the unmerged
+`feature/upstream-dependency-policy`) was re-verified live and still holds. Remaining:
+the cumulative Critic, which covers all four chunks. NOT PR'd — the user did not ask.
 
 ## Verification Strategy
 
@@ -175,14 +176,31 @@ that the two documents no longer name one query two ways, checked by grep.
   against no named threshold.
 - **Depends on:** none
 - **Artifacts consumed:** `plugin/skills/backlog/cache-reads.md`
-- **Deliverables:** a persisted failure record on the cursor (`last_error`,
-  `last_attempt_at`) in `plugin/lib/backlog/sync.py` and `plugin/lib/backlog/cache.py`;
-  surfaced by `plugin/lib/backlog/cachequery.py`; named in
-  `plugin/skills/backlog/cache-reads.md` so a reader knows to look for it
-- **Tests:** unit — a failed sync writes the record and leaves `coverage_confirmed_at`
-  untouched; a later *successful* sync clears it (the multi-hop case: one step beyond
-  the immediate post-state); `cache-query` surfaces the record in both human and JSON
-  modes; a reader with a healthy cursor sees no failure noise
+- **Deliverables:** `last_attempt_at` / `last_error` columns on the `cursor` table
+  (`plugin/lib/backlog/cache.py`, SCHEMA_VERSION 7→8 — a store at v7 discards and
+  rebuilds, which loses nothing); `record_sync_attempt` / `sync_health` beside the
+  existing cursor accessors; recorded from `_run_sync` (`plugin/lib/backlog/cli.py`),
+  the one point every sync concludes; surfaced through `cachequery._serve`, the one
+  point every query passes; printed under the age in human mode; documented in
+  `plugin/skills/backlog/cache-reads.md`
+- **[DECISION: record only against an EXISTING cursor row — never INSERT.]**
+  `cursor_scopes` answers "has this scope ever been synced?" from row *existence*, so
+  minting a row to record a first-attempt failure would make a never-synced scope claim
+  it had synced. Cold start is already covered (a scope with no row reports exit 6,
+  `unavailable`), so the uncovered case — and the only one this serves — is
+  warm-then-failing, which is exactly what #625 scoped.
+- **[DECISION: record on BOTH sync exit paths.]** Found by a test that failed: a sync
+  can end as an error envelope *or* as a raised exception that the CLI boundary handler
+  turns into one, and a revoked credential — the motivating failure — takes the raising
+  path. Recording only the returned envelope left precisely the case this exists for
+  unrecorded. The `except` re-raises, so the boundary handler stays the single place an
+  exception becomes an envelope.
+- **Tests:** unit — a failure is recorded against a warmed scope; a later *successful*
+  sync clears it (the multi-hop case, one step beyond the immediate post-state); a
+  failure mints no row for an unsynced scope; a reader is told its answer predates a
+  failed sync and still receives the rows; a healthy scope carries no failure noise.
+  CLI — a failing sync records itself through `_run_sync` (this is the test that caught
+  the raising exit path), and a recovering one clears it.
 - **Acceptance criteria:** with `gh` auth revoked, a cache read still answers, and its
   output names the failure and when it started — distinguishable from a merely old store
 - **Type:** feature

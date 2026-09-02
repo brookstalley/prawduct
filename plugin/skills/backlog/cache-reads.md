@@ -69,6 +69,20 @@ whole reason these checks were built to announce themselves. The fix path to nam
 A conspicuously old store is worth naming beside the finding, because a stale answer is a different
 thing from a wrong one and the reader deciding what to do needs to tell them apart.
 
+**`sync_error` says the age is not merely old — it is stuck.** When the last sync attempt FAILED, the
+payload carries `sync_error` and `sync_last_attempt_at`, and human mode prints a `SYNC FAILING:` line
+directly under the age. Treat it as changing the meaning of every number beside it: the store is not
+being refreshed, so the age will keep growing on its own and nothing is working to close it. Age
+alone cannot tell you this — the session-start warm is spawned detached with its stderr discarded, so
+before this a sync failing for a week looked exactly like one that failed once, and reads kept
+answering from stale rows either way. Name it beside any finding you report from that read, and give
+the operator `prawduct-hook backlog sync --repo <scope>` to see the actual error.
+
+Its absence is a real answer too: no `sync_error` means the most recent attempt succeeded. The field
+is cleared and re-stamped by each attempt, so a failure can never outlive the sync that fixed it.
+One limit worth knowing: it is recorded only for a scope that has synced at least once. A scope that
+has *never* synced reports exit 6 (`unavailable`) instead, which is the case above.
+
 **Your own writes are already in there — but the age does not say so.** A `file`, `status`,
 `update`, `merge` or `link`/`unlink --edge related` through this adapter updates the store as it goes, so an
 item you just filed resolves and one you just shipped reads `shipped`, with no sync in between.

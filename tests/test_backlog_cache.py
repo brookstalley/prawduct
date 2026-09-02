@@ -193,7 +193,7 @@ class TestCachePath:
 
 #: The schema's fingerprint at the version below. Paired with `SCHEMA_VERSION` by
 #: the test that follows, so a schema edit cannot land under an unchanged version.
-_SCHEMA_DIGEST = "174c4ed14946"
+_SCHEMA_DIGEST = "d4fd5c9fa9ba"
 
 
 class TestSchema:
@@ -235,7 +235,7 @@ class TestSchema:
             "\n".join(cache._SCHEMA_STATEMENTS).encode("utf-8")
         ).hexdigest()[:12]
 
-        assert (cache.SCHEMA_VERSION, digest) == (7, _SCHEMA_DIGEST), (
+        assert (cache.SCHEMA_VERSION, digest) == (8, _SCHEMA_DIGEST), (
             "the store's schema changed. Bump `SCHEMA_VERSION` and update the "
             "expected pair here — a schema edit under an unchanged version leaves "
             "every existing store unrepairable by the check that approves it"
@@ -647,6 +647,98 @@ class TestVisibleAge:
 
         assert result["status"] == "ok", result
         assert result["data"]["age_seconds"] == pytest.approx(4 * 3600, abs=2)
+
+
+class TestAFailingSyncLeavesARecord:
+    """#625 — a warm that failed once must be distinguishable from one failing
+    for a week.
+
+    The session-start warm is spawned detached with stderr to DEVNULL, and only a
+    SUCCESSFUL sync stamps `coverage_confirmed_at`. So before this, a persistently
+    failing sync left the store readable and merely stale: reads kept answering,
+    and the only signal was an age judged against no named threshold. Cold start
+    was already covered — a scope with no cursor row reports never-synced — so the
+    uncovered case, and the one these pin, is warm-then-failing.
+    """
+
+    def _health(self, repo_dir):
+        conn = cache.open_store(repo_dir, create=False)
+        assert not isinstance(conn, dict), conn
+        try:
+            return cache.sync_health(conn, SCOPE)
+        finally:
+            conn.close()
+
+    def _record(self, repo_dir, *, failure, at="2026-09-02T12:00:00+00:00"):
+        conn = cache.open_store(repo_dir, create=False)
+        assert not isinstance(conn, dict), conn
+        try:
+            cache.record_sync_attempt(conn, SCOPE, attempted_at=at, failure=failure)
+        finally:
+            conn.close()
+
+    def test_a_failure_is_recorded_against_a_warmed_scope(self, fake, repo_dir):
+        _corpus(fake)
+        assert _rebuild(fake, repo_dir)["status"] == "ok"
+
+        self._record(repo_dir, failure="unavailable: gh auth failed")
+
+        attempted_at, last_error = self._health(repo_dir)
+        assert last_error == "unavailable: gh auth failed"
+        assert attempted_at == "2026-09-02T12:00:00+00:00"
+
+    def test_a_later_success_clears_the_failure(self, fake, repo_dir):
+        # The multi-hop case: one step beyond the immediate post-state. A stale
+        # failure outliving the sync that fixed it would be worse than none — it
+        # would train the reader to ignore the notice.
+        _corpus(fake)
+        assert _rebuild(fake, repo_dir)["status"] == "ok"
+        self._record(repo_dir, failure="unavailable: gh auth failed")
+
+        self._record(repo_dir, failure=None, at="2026-09-02T13:00:00+00:00")
+
+        attempted_at, last_error = self._health(repo_dir)
+        assert last_error is None
+        assert attempted_at == "2026-09-02T13:00:00+00:00", (
+            "a success must re-stamp the attempt, not merely clear the error"
+        )
+
+    def test_a_failure_does_not_mint_a_cursor_row_for_an_unsynced_scope(self, repo_dir):
+        """`cursor_scopes` answers "was this scope ever synced?" from row
+        EXISTENCE. Recording a first-attempt failure as a new row would make a
+        never-synced scope claim it had synced — breaking the one question that
+        reader exists to answer, to report a case cold start already covers."""
+        conn = cache.open_store(repo_dir, create=True)
+        try:
+            cache.record_sync_attempt(
+                conn, SCOPE, attempted_at="2026-09-02T12:00:00+00:00", failure="boom"
+            )
+            assert cache.cursor_scopes(conn) == []
+            assert cache.sync_health(conn, SCOPE) == (None, None)
+        finally:
+            conn.close()
+
+    def test_a_reader_is_told_the_answer_predates_a_failed_sync(self, fake, repo_dir):
+        _corpus(fake)
+        assert _rebuild(fake, repo_dir)["status"] == "ok"
+        self._record(repo_dir, failure="unavailable: gh auth failed")
+
+        result = cachequery.open_items(repo_dir, scope=SCOPE, now=NOW + timedelta(hours=3))
+
+        assert result["status"] == "ok", result  # it still ANSWERS — reads degrade, never block
+        assert result["data"]["items"], "a failing sync must not empty the served set"
+        assert result["data"]["sync_error"] == "unavailable: gh auth failed"
+        assert result["data"]["sync_last_attempt_at"] == "2026-09-02T12:00:00+00:00"
+        assert any("FAILED" in w for w in result["warnings"]), result["warnings"]
+
+    def test_a_healthy_scope_carries_no_failure_noise(self, fake, repo_dir):
+        _corpus(fake)
+        assert _rebuild(fake, repo_dir)["status"] == "ok"
+
+        result = cachequery.open_items(repo_dir, scope=SCOPE, now=NOW + timedelta(hours=3))
+
+        assert "sync_error" not in result["data"]
+        assert not any("FAILED" in w for w in result["warnings"]), result["warnings"]
 
 
 class TestFullRebuild:
