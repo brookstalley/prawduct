@@ -53,7 +53,7 @@ from lib import learnings_migrate as lm  # noqa: E402
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "learnings_migrate"
 HOOK = _PLUGIN_ROOT / "bin" / "prawduct-hook"
 
-SHAPES = ("topic", "paragraph", "mixed")
+SHAPES = ("topic", "paragraph", "mixed", "collision")
 
 
 # --- helpers ----------------------------------------------------------------
@@ -117,8 +117,20 @@ def legacy_text(root: Path) -> str:
     return (root / lf.LEGACY_REL).read_text(encoding="utf-8")
 
 
-def concatenated(migration: lm.Plan) -> str:
-    return "\n".join(o.content for o in migration.outputs)
+def migrated_text(root: Path, mapping: dict[str, list[str]] | None = None) -> str:
+    """Apply the migration, then read every rules file back **off disk**.
+
+    Asserting against `Plan.outputs` only proves the writer agrees with itself.
+    Two outputs can name one path — and then the tree holds one of them while
+    the plan still reports both, which is a loss no in-memory check can see.
+    The filesystem is the thing the harness will load, so it is the thing the
+    accounting is done against.
+    """
+    lm.apply(root, lm.plan(root, mapping))
+    return "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted((root / lf.RULES_DIR_REL).rglob("*.md"))
+    )
 
 
 def full_map(root: Path) -> dict[str, list[str]]:
@@ -174,7 +186,7 @@ class TestParseLegacy:
         """
         root = repo(tmp_path, "mixed")
         assert "Concise rules from 15+ build sessions" in legacy_text(root)
-        out = concatenated(lm.plan(root, full_map(root)))
+        out = migrated_text(root, full_map(root))
         assert "Concise rules from 15+ build sessions" not in out
         assert out.count("# Learnings — core") == 1
 
@@ -421,7 +433,7 @@ class TestByteAccounting:
     ):
         root = repo(tmp_path, shape)
         sections = lm.parse_legacy(legacy_text(root))
-        output = concatenated(lm.plan(root, full_map(root)))
+        output = migrated_text(root, full_map(root))
         missing = [
             rule for section in sections for rule in section.rules if rule not in output
         ]
@@ -433,7 +445,7 @@ class TestByteAccounting:
         writer, and the one a repo that skips `--propose-map` takes."""
         root = repo(tmp_path, shape)
         sections = lm.parse_legacy(legacy_text(root))
-        output = concatenated(lm.plan(root))
+        output = migrated_text(root)
         assert all(
             rule in output for section in sections for rule in section.rules
         )
@@ -451,7 +463,7 @@ class TestByteAccounting:
         writer agrees with itself unless a known-lossy output fails."""
         root = repo(tmp_path, "mixed")
         sections = lm.parse_legacy(legacy_text(root))
-        lossy = concatenated(lm.plan(root, full_map(root))).replace(
+        lossy = migrated_text(root, full_map(root)).replace(
             sections[0].rules[0], ""
         )
         assert any(
@@ -494,6 +506,252 @@ class TestTheOutputIsReadableByTheResolver:
         assert elsewhere == [lf.CORE_NAME]
 
 
+class TestSlugCollisions:
+    """Two sections wanting one file, which is a silent overwrite by default.
+
+    `plan()` used to emit one `OutputFile` per mapped topic keyed on
+    `slug(title)` and `apply()` wrote them in list order, so `## Testing` and
+    `## Testing!` — one directory match, one map entry, two sections — both
+    addressed `testing.md` and the second replaced the first. The sharpest
+    instance was a topic titled "Core": its file IS `core.md`, so it took out
+    the header, every unmapped topic and the whole `## Unsorted` block.
+
+    Outputs are now keyed by destination path and sections landing on one path
+    merge, which is the lossless answer and makes the reserved-name case fall
+    out of the same rule rather than needing its own.
+    """
+
+    MAP = {"testing": ["src/testing/**"], "core": ["src/core/**"]}
+
+    def test_two_topics_that_slug_alike_produce_one_file_not_two_writes(
+        self, tmp_path: Path
+    ):
+        root = repo(tmp_path, "collision")
+        migration = lm.plan(root, self.MAP)
+        rels = [o.rel for o in migration.outputs]
+        assert len(rels) == len(set(rels)), f"duplicate destination: {rels}"
+        assert rels.count(f"{lf.RULES_DIR_REL}/testing.md") == 1
+
+    def test_both_headings_and_all_their_rules_survive_the_merge(
+        self, tmp_path: Path
+    ):
+        root = repo(tmp_path, "collision")
+        lm.apply(root, lm.plan(root, self.MAP))
+        area = (root / lf.RULES_DIR_REL / "testing.md").read_text(encoding="utf-8")
+        assert "# Testing\n" in area
+        assert "# Testing!\n" in area
+        assert "A vacuous test is worse than no test." in area
+        assert "this goes red without X" in area
+
+    def test_a_topic_slugging_to_core_does_not_replace_core(self, tmp_path: Path):
+        """The header, the unsorted block and the topic's own rules coexist."""
+        root = repo(tmp_path, "collision")
+        lm.apply(root, lm.plan(root, self.MAP))
+        core = (root / lf.RULES_DIR_REL / lf.CORE_NAME).read_text(encoding="utf-8")
+        assert core.startswith(lf.CORE_HEADER.rstrip("\n"))
+        assert "The core loop owns the clock." in core
+        assert f"## {lm.UNSORTED_HEADING}" in core
+
+    def test_every_merge_is_named_in_the_plan(self, tmp_path: Path):
+        """A fold the operator did not ask for is one they must be able to see —
+        the `core` merge especially, because it silently drops the scoping the
+        agent wrote into the map."""
+        root = repo(tmp_path, "collision")
+        merges = lm.plan(root, self.MAP).merges
+        assert any("both slug to 'testing'" in m for m in merges)
+        assert any("always-loaded file" in m and "'Core'" in m for m in merges)
+
+    def test_the_merges_reach_the_operator_on_the_apply_path(self, tmp_path: Path):
+        root = repo(tmp_path, "collision")
+        map_file = tmp_path / "map.txt"
+        map_file.write_text(
+            "testing: [src/testing/**]\ncore: [src/core/**]\n", encoding="utf-8"
+        )
+        proc = run_hook(root, "--apply", "--map", str(map_file))
+        assert proc.returncode == 0, proc.stderr
+        assert "merged:" in proc.stdout
+
+    def test_the_rule_count_still_matches_the_corpus_after_merging(
+        self, tmp_path: Path
+    ):
+        """The dry run's headline number must describe the tree, not the plan:
+        an overwrite used to leave it over-stating what landed."""
+        root = repo(tmp_path, "collision")
+        sections = lm.parse_legacy(legacy_text(root))
+        migration = lm.plan(root, self.MAP)
+        assert migration.rules == sum(len(s.rules) for s in sections)
+
+
+class TestUnknownMapKeys:
+    """A typo'd slug scopes nothing and says nothing — the mirror of the
+    unparseable-line refusal `parse_map` already carries.
+
+    Left silent, the prescribed `--propose-map` -> edit -> `--apply --map` flow
+    ends with the agent believing its scoping took while the rules went to the
+    always-loaded file, which is the inverse of what the budget gate is for.
+    """
+
+    def test_a_key_matching_no_section_refuses_and_names_the_key(
+        self, tmp_path: Path
+    ):
+        root = repo(tmp_path, "mixed")
+        refusals = lm.plan(root, {"evel-model-bake-offs": ["discodon/eval/**"]}).refusals
+        assert refusals
+        assert any("'evel-model-bake-offs'" in r for r in refusals)
+
+    def test_a_key_naming_a_paragraph_rule_refuses_too(self, tmp_path: Path):
+        """Only topics can be scoped; a paragraph rule's slug in the map is the
+        same mistake wearing a real string."""
+        root = repo(tmp_path, "mixed")
+        rule = next(s for s in lm.parse_legacy(legacy_text(root)) if not s.is_topic)
+        refusals = lm.plan(root, {rule.slug: ["web/**"]}).refusals
+        assert any("matching no section" in r for r in refusals)
+
+    def test_the_command_refuses_and_writes_nothing(self, tmp_path: Path):
+        root = repo(tmp_path, "mixed")
+        bad = tmp_path / "bad.txt"
+        bad.write_text("no-such-topic: [web/**]\n", encoding="utf-8")
+        proc = run_hook(root, "--apply", "--map", str(bad))
+        assert proc.returncode == 2
+        assert "no-such-topic" in proc.stderr
+        assert not (root / lf.RULES_DIR_REL).exists()
+        assert (root / lf.LEGACY_REL).is_file()
+
+    def test_a_correct_map_is_not_refused(self, tmp_path: Path):
+        """The guard's failure mode is over-refusal, which would break the flow
+        it exists to protect."""
+        root = repo(tmp_path, "mixed")
+        assert not lm.plan(root, full_map(root)).refusals
+
+    def test_the_unmapped_topics_are_named_on_the_apply_path(self, tmp_path: Path):
+        """Not only the dry run: an apply that reported just what it wrote let
+        the scoping decision go unexamined at the one moment it becomes real."""
+        root = repo(tmp_path, "mixed")
+        map_file = tmp_path / "map.txt"
+        map_file.write_text(run_hook(root, "--propose-map").stdout, encoding="utf-8")
+        proc = run_hook(root, "--apply", "--map", str(map_file))
+        assert proc.returncode == 0, proc.stderr
+        assert "no glob mapping" in proc.stdout
+        assert "pydantic-v2" in proc.stdout
+
+
+class TestAnInterruptedApply:
+    """A transient write error must not cost a hand-merge of a 160KB corpus.
+
+    `apply` writes every file before deleting anything, so a failure part-way
+    leaves the rules tree half-written and the legacy file intact — which
+    `resolve()` reports as `both`, the one state the command refused outright.
+    Recovery is decided from the tree rather than from the exception, so an
+    interrupt no `except` could have seen recovers the same way.
+    """
+
+    def _half_apply(self, root: Path, mapping: dict[str, list[str]]) -> lm.Plan:
+        """Write only the first output — exactly what an OSError on the second
+        would have left behind."""
+        migration = lm.plan(root, mapping)
+        first = migration.outputs[0]
+        path = root / first.rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(first.content, encoding="utf-8")
+        return migration
+
+    def test_the_half_written_tree_is_recognised_and_finished(self, tmp_path: Path):
+        root = repo(tmp_path, "mixed")
+        mapping = full_map(root)
+        self._half_apply(root, mapping)
+        assert lf.resolve(root).state == lf.STATE_BOTH
+
+        resumed = lm.plan(root, mapping)
+
+        assert resumed.resumed
+        assert not resumed.refusals
+        lm.apply(root, resumed)
+        assert lf.resolve(root).state == lf.STATE_NEW
+        assert not (root / lf.LEGACY_REL).exists()
+
+    def test_resuming_loses_nothing(self, tmp_path: Path):
+        """The recovery path is a full migration, not a patch-up: the byte
+        accounting has to hold across it too."""
+        root = repo(tmp_path, "mixed")
+        mapping = full_map(root)
+        sections = lm.parse_legacy(legacy_text(root))
+        self._half_apply(root, mapping)
+        lm.apply(root, lm.plan(root, mapping))
+        tree = "\n".join(
+            p.read_text(encoding="utf-8")
+            for p in sorted((root / lf.RULES_DIR_REL).rglob("*.md"))
+        )
+        assert all(r in tree for s in sections for r in s.rules)
+
+    def test_a_both_holding_anything_else_still_refuses(self, tmp_path: Path):
+        """One extra file nobody planned, and it is a two-corpus repo again —
+        the distinction has to be strict or the fold directive stops meaning
+        anything."""
+        root = repo(tmp_path, "mixed")
+        mapping = full_map(root)
+        self._half_apply(root, mapping)
+        (root / lf.RULES_DIR_REL / "hand-written.md").write_text(
+            "# Someone's own rules\n", encoding="utf-8"
+        )
+        migration = lm.plan(root, mapping)
+        assert not migration.resumed
+        assert migration.refusals and "by hand" in migration.refusals[0]
+
+    def test_a_planned_file_with_different_content_still_refuses(
+        self, tmp_path: Path
+    ):
+        root = repo(tmp_path, "mixed")
+        mapping = full_map(root)
+        self._half_apply(root, mapping)
+        core = root / lf.RULES_DIR_REL / lf.CORE_NAME
+        core.write_text(core.read_text(encoding="utf-8") + "\n- **Edited.**\n")
+        assert not lm.plan(root, mapping).resumed
+
+    def test_the_failure_names_the_files_that_reached_disk(self, tmp_path: Path):
+        """`failed — <exc>` left the operator with no way to know what state the
+        repo was in. The written set IS the answer."""
+        root = repo(tmp_path, "mixed")
+        migration = lm.plan(root, full_map(root))
+        # A directory where the second output's file must go: the write raises,
+        # the first output has already landed.
+        blocked = root / migration.outputs[1].rel
+        blocked.mkdir(parents=True)
+
+        with pytest.raises(lm.MigrateInterrupted) as caught:
+            lm.apply(root, migration)
+
+        assert caught.value.written == [migration.outputs[0].rel]
+        assert (root / lf.LEGACY_REL).is_file(), "nothing was deleted"
+
+    def test_the_command_reports_the_written_set_and_how_to_recover(
+        self, tmp_path: Path
+    ):
+        root = repo(tmp_path, "mixed")
+        map_file = tmp_path / "map.txt"
+        map_file.write_text(run_hook(root, "--propose-map").stdout, encoding="utf-8")
+        migration = lm.plan(root, lm.parse_map(map_file.read_text(encoding="utf-8")))
+        (root / migration.outputs[1].rel).mkdir(parents=True)
+
+        proc = run_hook(root, "--apply", "--map", str(map_file))
+
+        assert proc.returncode == 2
+        assert "INTERRUPTED" in proc.stderr
+        assert migration.outputs[0].rel in proc.stderr
+        assert "Re-run" in proc.stderr
+
+    def test_the_resume_is_announced_rather_than_silent(self, tmp_path: Path):
+        root = repo(tmp_path, "mixed")
+        map_file = tmp_path / "map.txt"
+        map_file.write_text(run_hook(root, "--propose-map").stdout, encoding="utf-8")
+        self._half_apply(root, lm.parse_map(map_file.read_text(encoding="utf-8")))
+
+        proc = run_hook(root, "--map", str(map_file))
+
+        assert proc.returncode == 0, proc.stderr
+        assert "resuming an interrupted --apply" in proc.stdout
+
+
+
 # --- refusals ---------------------------------------------------------------
 
 
@@ -511,7 +769,44 @@ class TestRefusals:
         committed. Refusing costs one commit."""
         root = repo(tmp_path, "mixed", commit=False)
         refusals = lm.plan(root).refusals
-        assert refusals and "uncommitted changes" in refusals[0]
+        assert refusals
+        assert any("never committed" in r for r in refusals)
+        assert any("cannot give it back" in r for r in refusals)
+
+    def test_a_gitignored_legacy_corpus_refuses(self, tmp_path: Path):
+        """R-2's case, and the one `git status` cannot see.
+
+        Porcelain omits ignored paths entirely, so a repo that ignores
+        `.prawduct/` reads *clean* — and `--apply` would then unlink a corpus
+        git has never held a byte of. Deciding from tracking is what closes it,
+        and the reason has to say `ignored`, because "commit it first" is
+        useless advice about a file an ignore rule keeps out of the index.
+        """
+        root = repo(tmp_path, "mixed", commit=False)
+        (root / ".gitignore").write_text(".prawduct/\n")
+        _git(root, "add", "-A")
+        _git(root, "commit", "-qm", "everything but the corpus")
+
+        assert _git(root, "status", "--porcelain").stdout.strip() == ""
+        refusals = lm.plan(root).refusals
+        assert refusals
+        assert any("ignored by git" in r for r in refusals)
+        assert any(lf.LEGACY_REL in r for r in refusals)
+
+    def test_the_ignored_corpus_is_still_there_after_a_refused_apply(
+        self, tmp_path: Path
+    ):
+        """The assertion that matters is on the file, not the exit code."""
+        root = repo(tmp_path, "mixed", commit=False)
+        (root / ".gitignore").write_text(".prawduct/\n")
+        _git(root, "add", "-A")
+        _git(root, "commit", "-qm", "everything but the corpus")
+        before = (root / lf.LEGACY_REL).read_bytes()
+
+        proc = run_hook(root, "--apply")
+
+        assert proc.returncode == 2
+        assert (root / lf.LEGACY_REL).read_bytes() == before
 
     def test_a_gitignored_destination_refuses_and_says_what_to_unignore(
         self, tmp_path: Path
@@ -528,17 +823,22 @@ class TestRefusals:
         assert "gitignored" in refusals[0]
         assert ".claude/rules/" in refusals[0]
 
-    def test_the_both_state_refuses_and_points_at_the_hand_fold(
+    def test_a_divergent_both_refuses_and_points_at_the_hand_fold(
         self, tmp_path: Path
     ):
         """Two corpora, and only a reader can tell which copy of a rule is the
-        current one — so this is not a transform, it is a decision."""
+        current one — so this is not a transform, it is a decision.
+
+        `scaffold_core` writes the bare header, which is not what this plan
+        would write, so the state is genuinely divergent rather than an
+        interrupted run of it.
+        """
         root = repo(tmp_path, "mixed")
         lf.scaffold_core(root)
         migration = lm.plan(root)
         assert migration.state == lf.STATE_BOTH
         assert migration.refusals and "by hand" in migration.refusals[0]
-        assert not migration.outputs
+        assert not migration.resumed
 
     def test_a_migrated_repo_reports_nothing_to_do(self, tmp_path: Path):
         root = repo(tmp_path, "mixed")

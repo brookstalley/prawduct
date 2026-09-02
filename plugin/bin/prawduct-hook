@@ -6491,19 +6491,51 @@ def cmd_learnings_migrate(project_dir: Path, argv: list[str]) -> int:
         print(json.dumps({
             "state": migration.state,
             "applied": do_apply,
+            "resumed": migration.resumed,
             "outputs": [
                 {"path": o.rel, "bytes": o.size, "rules": o.rules}
                 for o in migration.outputs
             ],
             "deletions": list(migration.deletions),
             "unmapped": list(migration.unmapped),
+            "merges": list(migration.merges),
             "total_bytes": migration.size,
             "total_rules": migration.rules,
         }, indent=2))
 
+    # The unscoped topics and the merges print on BOTH paths. An apply that
+    # reported only what it wrote let the prescribed --propose-map -> edit ->
+    # --apply flow end with the agent believing its scoping took, while the
+    # rules had gone to the always-loaded file instead.
+    def _report_folds() -> None:
+        if migration.resumed:
+            print(
+                "resuming an interrupted --apply: the rules files already on "
+                "disk are byte-identical to this plan's."
+            )
+        for note in migration.merges:
+            print(f"merged: {note}")
+        if migration.unmapped:
+            print(
+                f"{len(migration.unmapped)} topic(s) with no glob mapping, so in "
+                f"{learnings_files.CORE_NAME} and loaded every session: "
+                + ", ".join(migration.unmapped)
+            )
+
     if do_apply:
         try:
             learnings_migrate.apply(project_dir, migration)
+        except learnings_migrate.MigrateInterrupted as exc:
+            print(f"learnings-migrate: INTERRUPTED — {exc}", file=sys.stderr)
+            for rel in exc.written:
+                print(f"  wrote {rel}", file=sys.stderr)
+            print(
+                "  Nothing was deleted that had not been written first. Re-run "
+                "the same command: it recognises this half-written tree and "
+                "finishes it.",
+                file=sys.stderr,
+            )
+            return 2
         except (OSError, learnings_migrate.MigrateRefused) as exc:
             print(f"learnings-migrate: failed — {exc}", file=sys.stderr)
             return 2
@@ -6512,6 +6544,7 @@ def cmd_learnings_migrate(project_dir: Path, argv: list[str]) -> int:
                 print(f"wrote {output.rel} ({output.size} bytes, {output.rules} rules)")
             for rel in migration.deletions:
                 print(f"deleted {rel}")
+            _report_folds()
             print(
                 f"migrated {migration.rules} rules into {len(migration.outputs)} "
                 f"file(s). Commit them — the commit is this migration's undo."
@@ -6527,10 +6560,10 @@ def cmd_learnings_migrate(project_dir: Path, argv: list[str]) -> int:
         print("would delete:")
         for rel in migration.deletions:
             print(f"  {rel}")
+        _report_folds()
         print(
             f"{migration.rules} rules, {migration.size} bytes across "
-            f"{len(migration.outputs)} file(s); {len(migration.unmapped)} topic(s) "
-            "unmapped and therefore in core.md."
+            f"{len(migration.outputs)} file(s)."
         )
         print("Run `--propose-map` to draft the scoping map, then `--apply --map <file>`.")
     return 0

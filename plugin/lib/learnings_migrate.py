@@ -21,20 +21,34 @@ other HTML comments survive: they are rationale someone wrote, not machinery.
 
 *One-time* — so the failure that matters is not a bad layout, it is a **deletion
 without a destination**. ``--apply`` writes three tracked files and deletes
-three; the operator's control point is the commit that follows. Three refusals
+three; the operator's control point is the commit that follows. Five refusals
 protect that commit, all of them exit 2 with a named reason:
 
+* a legacy file git cannot give back — **ignored** or never committed.
+  ``git status`` does not list ignored paths at all, so this is decided from
+  *tracking*, where an ignored file and an untracked one are the same answer;
 * the legacy files have uncommitted changes — git is the undo, and a dirty file
   has no committed version to come back to;
 * the destination is **gitignored** — ``--apply`` would delete tracked files and
   write untracked ones, which is data loss dressed as a migration (a product
   gitignoring ``.claude/`` is common, so this is the likely case, not the exotic
   one);
-* the repo is in the ``both`` state — a half-finished migration is a fold the
-  agent must do by hand, because only a reader can tell which of two texts of
-  the same rule is the current one.
+* a **map key naming no section** — a mistyped slug scopes nothing, and the
+  topic it meant to scope lands in the always-loaded file instead, which is the
+  inverse of what scoping is for;
+* the repo is in the ``both`` state and its rules files are **not** this plan's
+  output — two corpora is a fold only a reader can do.
 
 A migrated repo reports "nothing to do" and exits 0, so a second run is safe.
+A ``both`` whose rules files ARE byte-identical to this plan is not a second
+corpus but an interrupted run of this one, and finishes instead of refusing.
+
+Two sections can want the same file. Outputs are therefore keyed by
+**destination path**, and sections landing on one path merge into it under
+their own headings, globs unioned — including the reserved ``core.md``, which a
+topic titled "Core" would otherwise overwrite wholesale. Every merge is named
+in the plan, because a fold the operator did not ask for is a fold they must
+be able to see.
 
 Format coverage. The fleet writes learnings three ways and this reads all of
 them by one discriminator: **a ``## `` section holding top-level ``- `` bullets
@@ -97,6 +111,19 @@ _STOP_TOKENS = frozenset({"and", "the", "a", "of", "in", "for", "lib", "src"})
 
 class MigrateRefused(RuntimeError):
     """:func:`apply` was called on a plan carrying refusals."""
+
+
+class MigrateInterrupted(RuntimeError):
+    """:func:`apply` failed part-way. ``written`` is what reached disk.
+
+    Carried rather than merely logged because the operator's next question is
+    always "what state am I in now", and because the answer is short: re-run the
+    same command — it recognises its own half-written tree and finishes.
+    """
+
+    def __init__(self, message: str, written: list[str]) -> None:
+        super().__init__(message)
+        self.written = list(written)
 
 
 # ---------------------------------------------------------------------------
@@ -424,6 +451,12 @@ class Plan:
     ``refusals`` non-empty means ``--apply`` must not run; ``nothing_to_do``
     means it need not. Both are reported rather than raised so a dry run can
     print the reason in the same shape as the plan it could not make.
+
+    ``merges``, ``unmapped`` and ``resumed`` exist because the operator's whole
+    control over this command is reading its report before authorising it: a
+    transform that quietly folded two topics together, quietly ignored a
+    scoping decision, or quietly resumed someone else's half-finished run would
+    be a report you cannot audit against the tree it produces.
     """
 
     state: str
@@ -433,6 +466,8 @@ class Plan:
     nothing_to_do: str | None = None
     sections: list[Section] = field(default_factory=list)
     unmapped: list[str] = field(default_factory=list)
+    merges: list[str] = field(default_factory=list)
+    resumed: bool = False
 
     @property
     def rules(self) -> int:
@@ -443,13 +478,16 @@ class Plan:
         return sum(o.size for o in self.outputs)
 
 
-def _git(project_dir: Path, *args: str) -> subprocess.CompletedProcess | None:
+# ---------------------------------------------------------------------------
+# What git can and cannot restore
+# ---------------------------------------------------------------------------
+
+
+def _git(project_dir: Path | str, *args: str) -> subprocess.CompletedProcess | None:
     """Run git in the project, or ``None`` when git cannot answer.
 
     ``None`` is "unknown", never "clean": callers treat it as *no evidence of a
-    problem* only where the absence of a repo genuinely removes the risk — a
-    non-repo has no uncommitted changes and no ignore rules, so neither guard
-    has anything to protect.
+    problem* only where the absence of a repo genuinely removes the risk.
     """
     try:
         proc = subprocess.run(
@@ -464,37 +502,94 @@ def _git(project_dir: Path, *args: str) -> subprocess.CompletedProcess | None:
     return proc
 
 
-def dirty_legacy_files(project_dir: str | Path) -> list[str]:
-    """Porcelain status lines for the three files ``--apply`` deletes.
+def _is_git_repo(project_dir: str | Path) -> bool:
+    proc = _git(project_dir, "rev-parse", "--git-dir")
+    return proc is not None and proc.returncode == 0
 
-    **Untracked counts as dirty.** A modified file has a committed version to
-    restore; an untracked one has none, so deleting it is the only irreversible
-    thing this command could do. Refusing there costs one commit and buys back
-    the whole undo story.
+
+def dirty_legacy_files(project_dir: str | Path) -> list[str]:
+    """Porcelain status lines for **tracked** legacy files with local changes.
+
+    Untracked entries are filtered out here rather than reported twice: a file
+    git does not track is :func:`unrecoverable_legacy_files`' subject, and it
+    needs a different sentence — "commit your edit" is useless advice about a
+    file that has never been committed at all.
     """
     proc = _git(project_dir, "status", "--porcelain", "--", *LEGACY_FILES)
     if proc is None or proc.returncode != 0:
         return []
-    return [line for line in proc.stdout.split("\n") if line.strip()]
+    return [
+        line
+        for line in proc.stdout.split("\n")
+        if line.strip() and not line.startswith("??")
+    ]
 
 
-def destination_is_ignored(project_dir: str | Path) -> bool:
-    """True when ``.gitignore`` covers the file the migration must commit.
+def unrecoverable_legacy_files(project_dir: str | Path) -> list[tuple[str, str]]:
+    """``(path, why)`` for each legacy file git could not give back.
 
-    A product that gitignores ``.claude/`` is ordinary — and under that ignore
-    ``--apply`` deletes three tracked files and writes files git will never see,
-    so the corpus survives only in the working tree of whoever ran it. The
-    harness would still load the rules, which is what makes this quiet: the
-    session looks migrated and the clone is empty.
+    Two ways a corpus about to be deleted has no committed version behind it,
+    and they are not the same fix:
+
+    * **ignored** — ``.gitignore`` covers it (``.prawduct/`` is a plausible
+      thing for a product to ignore). ``git status --porcelain`` does not list
+      ignored paths at all, so a status-based check reads such a repo as clean
+      and ``--apply`` unlinks a file git has never seen. Deciding from
+      *tracking* is what closes that: an ignored file and an untracked one are
+      both simply "not in the index".
+    * **never committed** — added to the tree but not to git.
+
+    Nothing is reported outside a git repo: with no repo there is no history
+    for the deletion to be measured against, and refusing there would block a
+    real, if unusual, product for a risk it does not carry.
     """
-    core_rel = f"{learnings_files.RULES_DIR_REL}/{learnings_files.CORE_NAME}"
-    proc = _git(project_dir, "check-ignore", "-q", core_rel)
-    return proc is not None and proc.returncode == 0
+    root = Path(project_dir)
+    if not _is_git_repo(root):
+        return []
+    out: list[tuple[str, str]] = []
+    for rel in LEGACY_FILES:
+        if not (root / rel).is_file():
+            continue
+        tracked = _git(root, "ls-files", "--error-unmatch", "--", rel)
+        if tracked is not None and tracked.returncode == 0:
+            continue
+        ignored = _git(root, "check-ignore", "-q", "--no-index", "--", rel)
+        why = (
+            "ignored by git"
+            if ignored is not None and ignored.returncode == 0
+            else "never committed"
+        )
+        out.append((rel, why))
+    return out
 
 
-def _area_content(section: Section, globs: list[str]) -> str:
-    paths = "\n".join(f'  - "{g}"' for g in globs)
-    return f"---\npaths:\n{paths}\n---\n\n# {section.title}\n\n{section.body}\n"
+# ---------------------------------------------------------------------------
+# Building the output files
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class _Destination:
+    """One output path and every section that lands on it.
+
+    Sections are grouped by **destination**, not by slug, which is what makes
+    the collision cases fall out of one rule instead of three. Two topics whose
+    titles slug alike address one file — ``propose_map`` can only give them one
+    map entry anyway — and merging them keeps both headings and every byte,
+    where writing them in list order silently kept whichever came last.
+    """
+
+    rel: str
+    sections: list[Section] = field(default_factory=list)
+    globs: list[str] = field(default_factory=list)
+
+
+def _area_content(destination: _Destination) -> str:
+    paths = "\n".join(f'  - "{g}"' for g in destination.globs)
+    body = "\n\n".join(
+        f"# {s.title}\n\n{s.body}".rstrip() for s in destination.sections
+    )
+    return f"---\npaths:\n{paths}\n---\n\n{body}\n"
 
 
 def _core_content(topics: list[Section], rules: list[Section]) -> str:
@@ -512,6 +607,95 @@ def _core_content(topics: list[Section], rules: list[Section]) -> str:
     return "\n\n".join(parts) + "\n"
 
 
+def _build_outputs(
+    sections: list[Section], mapping: dict[str, list[str]]
+) -> tuple[list[OutputFile], list[str], list[str]]:
+    """``(outputs, unmapped slugs, merge notes)`` — core first, areas by path."""
+    core_rel = f"{learnings_files.RULES_DIR_REL}/{learnings_files.CORE_NAME}"
+    destinations: dict[str, _Destination] = {}
+    core_topics: list[Section] = []
+    core_rules: list[Section] = []
+    unmapped: list[str] = []
+    merges: list[str] = []
+
+    for section in sections:
+        if not section.is_topic:
+            core_rules.append(section)
+            continue
+        globs = mapping.get(section.slug)
+        if not globs:
+            core_topics.append(section)
+            if section.slug not in unmapped:
+                unmapped.append(section.slug)
+            continue
+        rel = f"{learnings_files.RULES_DIR_REL}/{section.slug}.md"
+        if rel == core_rel:
+            # The reserved name. Merging is still the lossless answer — every
+            # byte lands in core.md under its own heading — but the `paths:`
+            # the agent wrote cannot survive it, because core.md is *defined*
+            # as the file with no paths. Said out loud rather than absorbed:
+            # the difference is a rule loaded on every session start instead of
+            # on a matching read, which is the budget gate's whole subject.
+            core_topics.append(section)
+            merges.append(
+                f"{section.title!r} slugs to {learnings_files.CORE_NAME!r}, the "
+                "always-loaded file — merged into it, so the globs mapped to "
+                f"{section.slug!r} do not scope it"
+            )
+            continue
+        existing = destinations.get(rel)
+        if existing is None:
+            destinations[rel] = _Destination(rel, [section], list(globs))
+            continue
+        merges.append(
+            f"{section.title!r} and {existing.sections[0].title!r} both slug to "
+            f"{section.slug!r} — merged into one file, each under its own heading"
+        )
+        existing.sections.append(section)
+        for glob in globs:
+            if glob not in existing.globs:
+                existing.globs.append(glob)
+
+    outputs = [
+        OutputFile(
+            rel=core_rel,
+            content=_core_content(core_topics, core_rules),
+            rules=sum(len(s.rules) for s in core_topics + core_rules),
+        )
+    ]
+    for rel in sorted(destinations):
+        destination = destinations[rel]
+        outputs.append(
+            OutputFile(
+                rel=rel,
+                content=_area_content(destination),
+                rules=sum(len(s.rules) for s in destination.sections),
+            )
+        )
+    return outputs, unmapped, merges
+
+
+def _resume_state(root: Path, outputs: list[OutputFile]) -> bool:
+    """Is this ``both`` the wreckage of an interrupted apply of THIS plan?
+
+    True only when every rules file already on disk is byte-identical to what
+    this plan would write — which no genuine two-corpus repo can be, and which
+    a half-finished run of this exact plan always is. That distinction is what
+    lets a transient write error be re-run away instead of sending an operator
+    to hand-merge a 160KB corpus.
+    """
+    rules_dir = root / learnings_files.RULES_DIR_REL
+    planned = {o.rel: o.content.encode("utf-8") for o in outputs}
+    existing = {
+        p.relative_to(root).as_posix(): p.read_bytes()
+        for p in sorted(rules_dir.rglob("*.md"))
+        if p.is_file()
+    }
+    if not existing:
+        return False
+    return all(planned.get(rel) == data for rel, data in existing.items())
+
+
 def plan(
     project_dir: str | Path, mapping: dict[str, list[str]] | None = None
 ) -> Plan:
@@ -523,18 +707,7 @@ def plan(
     root = Path(project_dir)
     layout = learnings_files.resolve(root)
 
-    if layout.state == learnings_files.STATE_BOTH:
-        return Plan(
-            state=layout.state,
-            refusals=[
-                "both layouts are present: "
-                f"{learnings_files.LEGACY_REL} and {learnings_files.RULES_DIR_REL}/ "
-                "both hold rules. Fold the old file into the rules files by hand "
-                "and delete it — only a reader can tell which copy of a rule is "
-                "the current one."
-            ],
-        )
-    if layout.state != learnings_files.STATE_LEGACY:
+    if layout.state not in (learnings_files.STATE_LEGACY, learnings_files.STATE_BOTH):
         return Plan(
             state=layout.state,
             nothing_to_do=(
@@ -543,7 +716,54 @@ def plan(
             ),
         )
 
+    legacy = root / learnings_files.LEGACY_REL
+    try:
+        text = legacy.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        return Plan(
+            state=layout.state,
+            refusals=[f"cannot read {learnings_files.LEGACY_REL}: {exc}"],
+        )
+
+    sections = parse_legacy(text)
+    mapping = mapping or {}
+    outputs, unmapped, merges = _build_outputs(sections, mapping)
+    deletions = [rel for rel in LEGACY_FILES if (root / rel).is_file()]
+
     refusals: list[str] = []
+    resumed = False
+
+    if layout.state == learnings_files.STATE_BOTH:
+        resumed = _resume_state(root, outputs)
+        if not resumed:
+            refusals.append(
+                "both layouts are present: "
+                f"{learnings_files.LEGACY_REL} and "
+                f"{learnings_files.RULES_DIR_REL}/ both hold rules, and the rules "
+                "files are NOT what this plan would write — so this is a repo with "
+                "two corpora, not an interrupted --apply. Fold the old file into "
+                "the rules files by hand and delete it; only a reader can tell "
+                "which copy of a rule is the current one."
+            )
+
+    unknown = sorted(
+        key for key in mapping if key not in {s.slug for s in sections if s.is_topic}
+    )
+    if unknown:
+        refusals.append(
+            "map key(s) matching no section in the corpus: "
+            + ", ".join(repr(k) for k in unknown)
+            + ". A mistyped slug would silently send its topic to core.md, where "
+            "it loads on every session start instead of on a matching read. Run "
+            "--propose-map again for the current slugs."
+        )
+
+    for rel, why in unrecoverable_legacy_files(root):
+        refusals.append(
+            f"{rel} is {why}, so git cannot give it back once --apply deletes "
+            "it. Commit it first (unignore it if an ignore rule covers it) — "
+            "the commit is this migration's undo."
+        )
     dirty = dirty_legacy_files(root)
     if dirty:
         refusals.append(
@@ -551,53 +771,14 @@ def plan(
             "or stash them first, because the commit is the undo:\n    "
             + "\n    ".join(dirty)
         )
-    if destination_is_ignored(root):
+    if learnings_files.rules_dir_is_gitignored(root):
         refusals.append(
-            f"the destination is gitignored: {learnings_files.RULES_DIR_REL}/"
-            f"{learnings_files.CORE_NAME} matches an ignore rule, so --apply "
+            f"the destination is gitignored: a new file under "
+            f"{learnings_files.RULES_DIR_REL}/ matches an ignore rule, so --apply "
             "would delete tracked files and write files git never sees. "
             "Unignore .claude/rules/ first."
         )
 
-    legacy = root / learnings_files.LEGACY_REL
-    try:
-        text = legacy.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError) as exc:
-        refusals.append(f"cannot read {learnings_files.LEGACY_REL}: {exc}")
-        return Plan(state=layout.state, refusals=refusals)
-
-    sections = parse_legacy(text)
-    mapping = mapping or {}
-
-    outputs: list[OutputFile] = []
-    core_topics: list[Section] = []
-    core_rules: list[Section] = []
-    unmapped: list[str] = []
-    for section in sections:
-        if not section.is_topic:
-            core_rules.append(section)
-            continue
-        globs = mapping.get(section.slug)
-        if globs:
-            outputs.append(
-                OutputFile(
-                    rel=f"{learnings_files.RULES_DIR_REL}/{section.slug}.md",
-                    content=_area_content(section, globs),
-                    rules=len(section.rules),
-                )
-            )
-        else:
-            core_topics.append(section)
-            unmapped.append(section.slug)
-
-    core = OutputFile(
-        rel=f"{learnings_files.RULES_DIR_REL}/{learnings_files.CORE_NAME}",
-        content=_core_content(core_topics, core_rules),
-        rules=sum(len(s.rules) for s in core_topics + core_rules),
-    )
-    outputs = [core] + sorted(outputs, key=lambda o: o.rel)
-
-    deletions = [rel for rel in LEGACY_FILES if (root / rel).is_file()]
     return Plan(
         state=layout.state,
         outputs=outputs,
@@ -605,6 +786,8 @@ def plan(
         refusals=refusals,
         sections=sections,
         unmapped=unmapped,
+        merges=merges,
+        resumed=resumed,
     )
 
 
@@ -615,6 +798,14 @@ def apply(project_dir: str | Path, migration: Plan) -> list[str]:
     the check belongs here as well as in the command, because this is the
     function that can lose a corpus and a caller that skipped the dry run must
     not be able to skip the guard with it.
+
+    A write that fails part-way raises :class:`MigrateInterrupted` carrying the
+    files that reached disk. Nothing is rolled back on purpose: the half-written
+    tree is what lets the *next* run recognise its own wreckage and finish the
+    job (:func:`_resume_state`), where a rollback would leave the operator with
+    an error message and no evidence. An interrupt that no ``except`` can see
+    lands in the same recoverable state, because recovery is decided from the
+    tree rather than from the exception.
     """
     if migration.refusals:
         raise MigrateRefused("; ".join(migration.refusals))
@@ -622,10 +813,16 @@ def apply(project_dir: str | Path, migration: Plan) -> list[str]:
     changed: list[str] = []
     for output in migration.outputs:
         path = root / output.rel
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(output.content, encoding="utf-8")
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(output.content, encoding="utf-8")
+        except OSError as exc:
+            raise MigrateInterrupted(f"writing {output.rel}: {exc}", changed) from exc
         changed.append(output.rel)
     for rel in migration.deletions:
-        (root / rel).unlink(missing_ok=True)
+        try:
+            (root / rel).unlink(missing_ok=True)
+        except OSError as exc:
+            raise MigrateInterrupted(f"deleting {rel}: {exc}", changed) from exc
         changed.append(rel)
     return changed
