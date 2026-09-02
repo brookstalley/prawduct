@@ -17,6 +17,46 @@ says so wherever it appears, so a repo pinned to the develop ref can tell what i
 cached review verdict from the released plugin is not replayed against this one. Rolling release
 notes accumulate here, and this section is renamed to the release number at the cut.
 
+**A stalled norm no longer expires in silence.** A `Stopgap:` field on an in-transition norm —
+the bounded exception that says "this half-finished state is deliberate until <date>" — was
+being written into governing artifacts but could not be read by the probe that watches them.
+Five live exceptions were sitting behind a clock nothing would ever fire. The probe now parses
+the field, stays quiet while the bound holds, and raises the transition once it lapses, naming
+each artifact and tracking item. The companion tripwire that was meant to catch this had been
+passing vacuously — it resolved none of this repo's norm citations and reported success — and
+now fails, or skips with a stated reason, instead of passing on an empty evaluation.
+
+**Coverage verdicts stop passing on a zero-length interval.** A blocking finding recorded where
+the base tree equals the target tree gated nothing, so a review could be composed *through* the
+node carrying it. The verdict now sweeps every review fact standing on the found path — self-loops
+included — before returning `covered`.
+
+**`resolve-base` asks the remote before guessing `main`.** An unset `base_branch:` fell back to a
+candidate list headed by `main`, so a gitflow repo that never recorded the knob had its feature
+branches scoped against the wrong base. It now consults `origin/HEAD` and prefers it when the
+remote names a non-main-family branch; onboarding and migration record the knob when the remote
+earns it. A repo whose remote default is `main` but which integrates on `develop` still sets it
+by hand — nothing can infer that.
+
+**Your learnings file has a route out.** The detail file was an unbounded sink with nothing ever
+leaving it; retired and superseded entries now move to a third file that the lookup skill reads
+only on a miss, so the working set stays small. Nothing is deleted. The index/detail pairing
+convention is now stated truthfully (a detail heading is a *prefix* of its index entry) and
+graded, which found four forwarding pointers resolving nowhere.
+
+**The advisory line now separates what you decide from what the agent runs.** Advisories carry an
+`owner_action` distinct from the runnable `recommended_action`, and the briefing orders them by
+triage sequence rather than severity alone — so a nudge that needs your ruling reads differently
+from one the agent can discharge itself. The oversized-state note also stops prescribing cuts it
+never inspected: each bullet is now gated on the content class actually being present in the file
+it names.
+
+**Smaller edges:** the session briefing's handoff pointer says when a note predates your session
+rather than only how old it is; `list` reports truncation in human output, not only in JSON; a
+doctor health check previews its `.gitignore` reconciliation instead of writing during a
+read-only check; and a `prawduct-hook` grant written with a spaced star no longer silently fails
+to cover the bare call the skill actually makes.
+
 **Your release now refuses to proceed on a suite nothing has said passes.**
 `check-releasability` — the Phase 0 gate — reads your saved test evidence and stops with
 `unproven-suite:` when there is none, when the saved run reports failures, when it predates the

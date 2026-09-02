@@ -5,7 +5,7 @@
 
 ## 2026-09-01: backlog burndown — 57 items across ten parallel work groups
 
-<!-- prawduct: type=feat | scope=backlog-burndown -->
+<!-- prawduct: type=feat | scope=backlog-burndown-2026-09 -->
 
 A parallel burndown over the 202-item open backlog. One triage agent scrubbed and grouped; nine
 implementation agents ran in isolated worktrees on mechanically-disjoint file sets (every path in
