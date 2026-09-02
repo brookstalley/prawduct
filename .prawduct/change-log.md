@@ -3,6 +3,28 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-09-02: learnings v2 core — the corpus moves to `.claude/rules/learnings/`, loaded by the harness
+
+<!-- prawduct: type=feat | scope=learnings-v2-core -->
+
+Wave 1 of the learning-system v2 program (#744; discovery `learning-system-v2-discovery.md`).
+The plugin stops re-reading `.prawduct/learnings.md` into context through a lookup skill and
+lets the harness load `.claude/rules/learnings/core.md` (every session) plus `<area>.md` files
+whose `paths:` frontmatter matches a file being read. Five chunks: the resolver every reader goes
+through (`lib/learnings_files.py`), `prawduct-hook learnings-migrate` (lossless relayout of the
+fleet's formats, byte-accounted against the written tree), a budget gate in record-lint AND at
+Stop (`learnings-over-budget`: over budget and grown — pay from duplication, never trim a rule),
+detection of an unmigrated repo (briefing directive + Stop floor `learnings-unmigrated`), and the
+Critic/PR cross-check repointed at `learnings-files --for-diff`.
+
+This repo migrated with its own command: 287 rules → one `core.md` of 100,181 bytes under
+`## Unsorted` (the corpus was paragraph-rules only, so the map proposal was empty — splitting it
+into area files is #343's content program). `learnings-detail.md` and `learnings-history.md` are
+deleted (owner-ruled 2026-09-02; git history is the archive). The budget check passes on this file
+because it is over budget and NOT grown; every future addition pays. Wave 2 (`learnings-v2-delete`)
+removes the lookup skill, the audit lifecycle, the obligation repair and the size nudge; until
+then `/prawduct:learnings` and doctor #5/#13/#13a point at a file this repo no longer has.
+
 ## 2026-09-01: backlog burndown — 57 items across ten parallel work groups
 
 <!-- prawduct: type=feat | scope=backlog-burndown-2026-09 -->

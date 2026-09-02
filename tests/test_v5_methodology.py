@@ -1119,7 +1119,10 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # form a view on whether the work should happen. That is the gap: the most
     # expensive failure available here is building the wrong thing well, and it
     # is invisible to a check that only interrogates scope.
-    "framework": 3197,
+    # 2026-09-02 (learnings-v2 chunk 05): CLAUDE.md repointed four learnings references
+    # at .claude/rules/learnings/; paid by dropping the lookup-skill mention and the
+    # "read learnings.md" instruction (the harness loads the rules now).
+    "framework": 3194,
     "product": 2085,
 }
 
