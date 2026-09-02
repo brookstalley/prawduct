@@ -1133,9 +1133,14 @@ class TestLearningsLayoutLine:
         out = briefing.assemble_session_briefing(tmp_path, [])
         lines = self._learnings_lines(out)
         assert lines[0].startswith("Learnings: core.md (")
+        # The re-run comes first: an interrupted `--apply` leaves exactly this
+        # shape on purpose, and after a write that failed partway the rules that
+        # never landed exist ONLY in the legacy file — so "delete it" as the
+        # opening instruction is the destructive reading.
         assert lines[1] == (
-            "agent → fold .prawduct/learnings.md into .claude/rules/learnings/ "
-            "by hand and delete it"
+            "agent → if a `learnings-migrate --apply` was interrupted, re-run it — it "
+            "recognises and finishes a half-written tree; otherwise fold "
+            ".prawduct/learnings.md into .claude/rules/learnings/ by hand and delete it"
         )
         _assert_no_ids(lines)
 
@@ -1170,7 +1175,7 @@ class TestLearningsLayoutLine:
         (rules / "core.md").write_text("# core\n")
         lines = self._learnings_lines(briefing.assemble_session_briefing(tmp_path, []))
         assert "GITIGNORED" in lines[0]
-        assert lines[1].startswith("agent → fold")
+        assert lines[1].startswith("agent → if a `learnings-migrate --apply` was interrupted")
 
     def test_an_unreadable_tree_never_blocks_session_start(self, tmp_path, monkeypatch):
         self._state(tmp_path)

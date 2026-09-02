@@ -1183,11 +1183,19 @@ def _learnings_lines(project_dir: Path) -> list[str]:
     out.append(line)
 
     if layout.state == learnings_files.STATE_BOTH:
-        # By hand, not by command: `learnings-migrate` refuses this state
-        # precisely because it cannot know which of the two corpora is current.
+        # Two ways to arrive here and only one of them is a two-corpus repo. An
+        # interrupted `--apply` leaves exactly this shape on purpose, and
+        # `learnings_migrate._resume_state` can tell its own wreckage apart from
+        # a genuine `both` (every file on disk byte-identical to what the plan
+        # would write) — so the re-run comes FIRST: it is cheap, it refuses the
+        # case it cannot finish, and the hand-fold is unrecoverable if guessed at
+        # wrong. After a write that failed partway, the rules that never landed
+        # exist ONLY in the legacy file.
         out.append(
-            f"agent → fold {learnings_files.LEGACY_REL} into "
-            f"{learnings_files.RULES_DIR_REL}/ by hand and delete it"
+            "agent → if a `learnings-migrate --apply` was interrupted, re-run it — it "
+            "recognises and finishes a half-written tree; otherwise fold "
+            f"{learnings_files.LEGACY_REL} into {learnings_files.RULES_DIR_REL}/ "
+            "by hand and delete it"
         )
     return out
 
