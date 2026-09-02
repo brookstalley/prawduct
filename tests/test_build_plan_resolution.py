@@ -1310,10 +1310,18 @@ class TestRemovalQualifier:
 
     def test_narrative_prose_does_not_exempt(self, tmp_path: Path):
         """Same narrowing as `new`, for the same reason: one sentence mentioning
-        a deletion must not exempt a real deliverable for the whole chunk."""
+        a deletion must not exempt a real deliverable for the whole chunk.
+
+        And the same #552 restatement as its `new` sibling — the property is
+        asserted about the DECLARED deliverable, since the narrative mention is
+        a citation that now contributes nothing on its own. Both halves matter:
+        the prose does not exempt, and the prose is not itself reported.
+        """
         _project, prawduct = _project_with_chunk(
             tmp_path,
-            "Context: this follows the run that deleted `lib/gone.py` last week.\n",
+            "Context: this follows the run that deleted `lib/gone.py` last week.\n"
+            "\n"
+            "- **Deliverables:** `lib/gone.py` lands here\n",
         )
         refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
         assert [e["ref"] for e in refs["file_paths"]] == ["lib/gone.py"]
@@ -1384,9 +1392,19 @@ class TestNewQualifierScope:
     def test_narrative_prose_does_not_exempt(self, tmp_path: Path):
         # The defect: one adjectival sentence in a paragraph silently exempted a
         # real path from verification for the WHOLE chunk section.
+        #
+        # Asserted against a DECLARED deliverable since #552, because the prose
+        # occurrence is now a citation and contributes no ref of its own. That
+        # is the stronger form of the same property rather than a weaker one: it
+        # pins both rules at once — the narrative `new` exempts nothing, AND the
+        # deliverable it sits above is still verified. Asserting on the prose
+        # occurrence alone would have made this test's subject the citation, and
+        # a citation being reported is the defect #552 is about.
         _project, prawduct = _project_with_chunk(
             tmp_path,
-            "Context: this reworks the new `lib/created.py` behaviour.\n",
+            "Context: this reworks the new `lib/created.py` behaviour.\n"
+            "\n"
+            "- **Deliverables:** `lib/created.py`\n",
         )
         refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
         assert [r["ref"] for r in refs["file_paths"]] == ["lib/created.py"]
@@ -1399,6 +1417,161 @@ class TestNewQualifierScope:
             tmp_path, "- **Tests:** the new `tests/test_created.py` above\n"
         )
         assert _bpr._parse_build_plan_chunk_refs(prawduct, "01")["file_paths"] == []
+
+
+class TestCitationsAreNotDeclarations:
+    """#552: a path the chunk DISCUSSES is not a path the chunk owes.
+
+    The reported case: a plan enumerating broken paths by name as its
+    adversarial evidence drew eight BLOCKING `chunk-ref-missing` findings
+    against a record that was correct *because* those paths were absent. Two
+    extractors then disagreed about one tree — `test_path_reference_resolution`
+    had already moved to form-based extraction and called the same references
+    clean — with the naive one holding the veto.
+
+    Position decides and command position overrides. These pin both halves,
+    and the second half is not garnish: a rule that only ever *removes* refs
+    can be made to pass by removing all of them, so every test here that
+    asserts a citation is dropped has a sibling asserting a declaration is not.
+    """
+
+    def test_a_path_in_a_narrative_paragraph_is_not_a_deliverable(self, tmp_path: Path):
+        _project, prawduct = _project_with_chunk(
+            tmp_path,
+            "The defect was a scan root that never existed on any branch:\n"
+            "`plugin/tests` is named here because it is missing.\n",
+        )
+        assert _bpr._parse_build_plan_chunk_refs(prawduct, "01")["file_paths"] == []
+
+    def test_a_path_in_the_description_field_is_not_a_deliverable(self, tmp_path: Path):
+        # A `Description` bullet IS a list item, so the list-item scoping the
+        # `new` qualifier uses does not reach it. The label rule does.
+        _project, prawduct = _project_with_chunk(
+            tmp_path,
+            "- **Description:** the old reader looked in `plugin/nowhere/gone.py`,\n"
+            "  which is the whole reason this chunk exists.\n",
+        )
+        assert _bpr._parse_build_plan_chunk_refs(prawduct, "01")["file_paths"] == []
+
+    def test_a_deliverable_beside_a_description_is_still_verified(self, tmp_path: Path):
+        # The sibling that stops the rule from being satisfiable by extracting
+        # nothing: one bullet is dropped and the next is not.
+        _project, prawduct = _project_with_chunk(
+            tmp_path,
+            "- **Description:** the old reader looked in `plugin/nowhere/gone.py`.\n"
+            "- **Deliverables:** `plugin/lib/replacement.py`\n",
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert [r["ref"] for r in refs["file_paths"]] == ["plugin/lib/replacement.py"]
+
+    def test_a_wrapped_description_continuation_stays_excluded(self, tmp_path: Path):
+        # This repo's plans wrap a Description across many indented lines. If the
+        # label's scope ended at its first newline, most of the prose #552 is
+        # about would still be extracted and the fix would look like it worked.
+        _project, prawduct = _project_with_chunk(
+            tmp_path,
+            "- **Description:** the reader is wrong. It resolves against\n"
+            "  `plugin/nowhere/one.py` and then falls back to\n"
+            "  `plugin/nowhere/two.py`, neither of which exists.\n"
+            "- **Deliverables:** `plugin/lib/replacement.py`\n",
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert [r["ref"] for r in refs["file_paths"]] == ["plugin/lib/replacement.py"]
+
+    @pytest.mark.parametrize(
+        "label", ["Tests", "Artifacts consumed", "Done when", "Acceptance criteria"]
+    )
+    def test_every_other_declaration_field_stays_checked(self, tmp_path: Path, label: str):
+        # `_LIST_ITEM_RE` already argues against scoping to Deliverables alone,
+        # and the corpus agrees: plans name load-bearing paths in all four of
+        # these. A denylist of prose labels keeps them; an allowlist of
+        # declaration labels would have to enumerate them and would miss the
+        # long tail of ad-hoc ones authors actually write.
+        _project, prawduct = _project_with_chunk(
+            tmp_path, f"- **{label}:** `plugin/lib/target.py`\n"
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert [r["ref"] for r in refs["file_paths"]] == ["plugin/lib/target.py"]
+
+    def test_an_invented_declaration_label_stays_checked(self, tmp_path: Path):
+        # The reason the rule is a denylist. Real plans in this repo carry
+        # `Surfaces this touches`, `Delivers`, `Deliverable files`,
+        # `Scope — delete`. None of those would survive an allowlist.
+        _project, prawduct = _project_with_chunk(
+            tmp_path, "- **Surfaces this touches:** `plugin/lib/target.py`\n"
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert [r["ref"] for r in refs["file_paths"]] == ["plugin/lib/target.py"]
+
+    def test_command_position_in_prose_is_still_an_instruction(self, tmp_path: Path):
+        # Form overrides position. A Description that tells the reader to run
+        # something names a path a relocation would strand, and prose is where
+        # that instruction legitimately lives.
+        _project, prawduct = _project_with_chunk(
+            tmp_path,
+            "- **Description:** confirm with `grep -rn installed_plugins plugin/lib/gone.py`\n"
+            "  before starting.\n",
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert [r["ref"] for r in refs["file_paths"]] == ["plugin/lib/gone.py"]
+
+    def test_a_bare_citation_beside_a_command_is_still_dropped(self, tmp_path: Path):
+        # The grant is per-PATH, not per-line: one instruction in a Description
+        # must not re-admit every other path in it.
+        _project, prawduct = _project_with_chunk(
+            tmp_path,
+            "- **Description:** run `python3 plugin/lib/runner.py` — the old\n"
+            "  `plugin/nowhere/gone.py` is what it replaces.\n",
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert [r["ref"] for r in refs["file_paths"]] == ["plugin/lib/runner.py"]
+
+    def test_the_waiver_still_works_inside_a_declaration(self, tmp_path: Path):
+        # The residue the position rule cannot reach: a citation inside a
+        # Deliverables bullet. The pragma stays the honest answer there, which
+        # is why #552 narrows the waiver's job rather than retiring it.
+        _project, prawduct = _project_with_chunk(
+            tmp_path,
+            "  <!-- prawduct:allow prawduct/chunk-ref-missing -- naming the removed file -->\n"
+            "- **Deliverables:** `plugin/nowhere/gone.py` is what we are removing\n",
+        )
+        assert _bpr._parse_build_plan_chunk_refs(prawduct, "01")["file_paths"] == []
+
+
+class TestInstructionFormsHaveOneHome:
+    """#552's other half: the form vocabulary is a library function, not a test's.
+
+    It shipped inside `tests/test_path_reference_resolution.py` and stayed
+    there while the extractor wired to the BLOCKING gate read by shape. Sharing
+    the matcher is not enough on its own — the norm registry learned that one
+    module over — so this pins the exported surface the test module now imports.
+    """
+
+    def test_a_bare_backticked_path_is_not_an_instruction(self):
+        assert _bpr.instruction_references("the reader consults `plugin/lib/x.py`") == []
+
+    def test_command_position_inline_and_fenced(self):
+        inline = _bpr.instruction_references("run `python3 plugin/lib/x.py --json`")
+        fenced = _bpr.instruction_references("```\npytest tests/test_x.py -q\n```")
+        assert inline == [("command", "plugin/lib/x.py")]
+        assert fenced == [("command", "tests/test_x.py")]
+
+    def test_an_allowed_tools_grant_is_a_reference(self):
+        text = "---\nallowed-tools: Read, Bash(python3 plugin/bin/prawduct-hook stop *)\n---\nbody\n"
+        assert ("allowed-tools", "plugin/bin/prawduct-hook") in _bpr.instruction_references(text)
+
+    def test_a_repository_argument_is_not_a_path(self):
+        # `owner/repo` is path-shaped, sits in command position, and names
+        # nothing on disk. It is the reason `is_repo_path_token` exists.
+        text = "run `prawduct-hook backlog list --repo brookstalley/prawduct`"
+        assert _bpr.instruction_references(text) == []
+
+    def test_a_quoted_markdown_link_is_a_citation(self):
+        # A link inside backticks is being quoted as evidence, not offered.
+        assert _bpr.instruction_references("it links to `[x](../nowhere/absent.md)`") == []
+
+    def test_invocation_forms_are_the_two_that_run_something(self):
+        assert _bpr.INVOCATION_FORMS == frozenset({"command", "allowed-tools"})
 
 
 class TestVerifyChunkRefsPathSymbol:
@@ -1590,6 +1763,139 @@ class TestVerifyChunkRefsGitRefs:
         )
         refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
         assert [e["ref"] for e in refs["file_paths"]] == ["release/notes.v2.md"]
+
+
+class TestGitAnswersTheBranchQuestion:
+    """#537: the repo classifies its own branch names; the allowlist is history.
+
+    `_GIT_REF_PREFIXES` was a guess about other teams' branch naming, extended
+    once already (#333) and still missing `epic/`, `spike/`, `deps/` and
+    `PROJ-123/` — every one of which is a real convention, and every one of
+    which drew a BLOCKING `missing-ref:` for a branch named in plan prose. An
+    allowlist of naming conventions cannot finish, because the conventions
+    belong to the consuming team.
+
+    So the primary question goes to git. The allowlist stays for the one thing
+    git cannot answer — a branch that has since been deleted, which is every
+    archived plan naming the branch it shipped on — and a NEGATIVE from git is
+    deliberately not evidence, or the whole archive would redden.
+    """
+
+    def _repo_with_branch(self, tmp_path: Path, branch: str, body: str):
+        project, prawduct = _project_with_chunk(tmp_path, body)
+        _git(project, "init", "-q", "-b", "main")
+        _git(project, "config", "user.email", "t@example.com")
+        _git(project, "config", "user.name", "T")
+        _git(project, "add", "-A")
+        _git(project, "commit", "-qm", "seed")
+        _git(project, "branch", branch)
+        return project, prawduct
+
+    @pytest.mark.parametrize(
+        "branch",
+        ["epic/observability", "spike/cache-shape", "deps/bump-ruff", "PROJ-123/adapter"],
+    )
+    def test_a_live_branch_outside_the_allowlist_is_a_ref(self, tmp_path: Path, branch: str):
+        # None of these prefixes is in `_GIT_REF_PREFIXES`, and none should have
+        # to be. Before #537 each drew a BLOCKING missing-ref against a plan
+        # that was simply naming the branch it was built on.
+        project, prawduct = self._repo_with_branch(
+            tmp_path, branch, f"- **Deliverables:** landed on `{branch}`\n"
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert refs["error"] is None
+        assert refs["file_paths"] == []
+        assert _bpr._verify_chunk_refs(project, refs) == []
+
+    def test_a_deleted_branch_still_falls_back_to_the_allowlist(self, tmp_path: Path):
+        # The reason the allowlist is kept rather than narrowed. This repo has a
+        # git checkout that answers fine — it simply has never heard of the
+        # branch, which is the permanent state of every archived plan.
+        project, prawduct = self._repo_with_branch(
+            tmp_path, "epic/live", "- **Deliverables:** built on `feature/long-since-merged`\n"
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert refs["file_paths"] == []
+        assert _bpr._verify_chunk_refs(project, refs) == []
+
+    def test_a_negative_from_git_does_not_reclassify_an_unknown_prefix(self, tmp_path: Path):
+        # The corollary, and the one that decides whether this change is safe to
+        # ship: git saying "not a ref" must leave the verdict exactly where the
+        # shape rule puts it. `epic/gone` has no allowlisted prefix and no
+        # extension, so it stays a path and stays reported — the pre-#537
+        # verdict, unchanged. Narrowing on a negative is what would redden the
+        # archive.
+        project, prawduct = self._repo_with_branch(
+            tmp_path, "epic/live", "- **Deliverables:** `epic/gone`\n"
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert [r["ref"] for r in refs["file_paths"]] == ["epic/gone"]
+        assert [m["ref"] for m in _bpr._verify_chunk_refs(project, refs)] == ["epic/gone"]
+
+    def test_a_real_file_shadowed_by_a_branch_name_is_still_checked(self, tmp_path: Path):
+        # The risk the git arm introduces: a branch and a path can collide. The
+        # extension guard is what keeps the collision from blinding the verifier
+        # — a real path keeps its suffix, and `epic/thing.py` is checked even
+        # while a branch literally named `epic/thing.py` exists.
+        project, prawduct = self._repo_with_branch(
+            tmp_path, "epic/live", "- **Deliverables:** `plugin/lib/absent.py`\n"
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert [m["ref"] for m in _bpr._verify_chunk_refs(project, refs)] == [
+            "plugin/lib/absent.py"
+        ]
+
+    def test_both_ref_spellings_answer_the_same(self, tmp_path: Path):
+        # `refs/heads/epic/x` and `epic/x` are one object written two ways. A
+        # classifier that knew only the short form would answer differently
+        # about the same ref depending on how the plan wrote it.
+        project, prawduct = self._repo_with_branch(tmp_path, "epic/x", "- x\n")
+        names = _bpr._git_ref_names(project)
+        assert names is not None
+        assert {"epic/x", "refs/heads/epic/x"} <= names
+
+    def test_a_non_checkout_falls_back_rather_than_reclassifying(self, tmp_path: Path):
+        # `None` means COULD NOT ASK, and every caller must read it that way.
+        # Reading it as "there are no refs" would make an unavailable git
+        # silently turn every branch name in every plan into a missing file.
+        not_a_repo = tmp_path / "bare"
+        not_a_repo.mkdir()
+        assert _bpr._git_ref_names(not_a_repo) is None
+        assert not _bpr._names_a_live_git_ref("feature/x", not_a_repo)
+        # …and the shape rule still carries the verdict it always did.
+        assert not _bpr._looks_like_file_path("feature/x", not_a_repo)
+        assert _bpr._looks_like_file_path("feature/x.py", not_a_repo)
+
+    def test_the_predicate_still_works_with_no_repo_at_all(self):
+        # `lib.risk` shares this predicate to classify tokens in a diff, where
+        # there is no plan and no repo question to ask. Omitting `project_dir`
+        # must be the pre-#537 behaviour exactly, or #537 breaks a second caller.
+        assert not _bpr._looks_like_file_path("feature/backlog-relayout")
+        assert _bpr._looks_like_file_path("plugin/lib/gates.py")
+        assert not _bpr._looks_like_file_path("epic/observability") is False
+
+    def test_git_is_asked_once_per_repo_not_once_per_token(self, tmp_path: Path, monkeypatch):
+        # A gate reads every backticked token of every chunk of every plan. One
+        # `git rev-parse` per token turns one gate into hundreds of process
+        # spawns, which is why the whole ref namespace is fetched once.
+        project, prawduct = self._repo_with_branch(
+            tmp_path,
+            "epic/live",
+            "- **Deliverables:** `epic/live`, `epic/live`, `feature/a`, `plugin/lib/x.py`\n"
+            "- **Tests:** `epic/live` and `refs/heads/epic/live`\n",
+        )
+        _bpr._GIT_REF_NAMES_CACHE.clear()
+        calls = []
+        real = _bpr.subprocess.run
+
+        def counting(cmd, *a, **kw):
+            if isinstance(cmd, list) and "for-each-ref" in cmd:
+                calls.append(cmd)
+            return real(cmd, *a, **kw)
+
+        monkeypatch.setattr(_bpr.subprocess, "run", counting)
+        _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert len(calls) == 1, f"{len(calls)} for-each-ref calls for one chunk"
 
 
 class TestVerifyChunkRefsNonPathTokens:

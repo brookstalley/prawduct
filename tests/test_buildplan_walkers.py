@@ -1170,6 +1170,86 @@ class TestChunkRefGapForUnparseablePlan:
         ) is None
 
 
+class TestCountChunksCallerEnumeration:
+    """#541: the docstring enumerates `_count_build_plan_chunks`'s callers — pin it.
+
+    That enumeration went stale twice. It said "both callers are in
+    ``lib.gates``" while a third had appeared in ``lib.record_lint``, and it
+    said the gate paths pass ``plan_path`` while one of them does not. A
+    docstring naming a call graph is a fact with a home, and a fact nothing
+    checks is a fact that drifts — which is exactly what a reader consults this
+    docstring to avoid, since the whole point of the argument is that a caller
+    holding a resolved plan must not let this function resolve a different one.
+
+    Mechanized rather than corrected, because correcting it is what was done
+    last time.
+    """
+
+    CALL = "_count_build_plan_chunks("
+
+    def _call_sites(self) -> dict[str, int]:
+        """``module -> call count`` across the plugin library, definition excluded."""
+        sites: dict[str, int] = {}
+        for path in sorted(LIB_DIR.glob("*.py")):
+            text = path.read_text(encoding="utf-8")
+            calls = sum(
+                1
+                for line in text.splitlines()
+                if self.CALL in line and not line.lstrip().startswith("def ")
+            )
+            if calls:
+                sites[f"lib.{path.stem}"] = calls
+        return sites
+
+    def test_the_docstring_names_every_calling_module(self):
+        doc = buildplan_refs._count_build_plan_chunks.__doc__ or ""
+        callers = self._call_sites()
+        # The defining module references it in its own docstring; that is not a call.
+        callers.pop("lib.buildplan_refs", None)
+        unnamed = sorted(m for m in callers if m not in doc)
+        assert not unnamed, (
+            f"`_count_build_plan_chunks` is called from {unnamed}, which the docstring's "
+            "caller enumeration does not name. Update the enumeration — it exists so a "
+            "reader can see who must pass `plan_path` and who does not."
+        )
+
+    def test_the_docstring_claims_the_right_number_of_callers(self):
+        callers = self._call_sites()
+        callers.pop("lib.buildplan_refs", None)
+        total = sum(callers.values())
+        assert total == 3, (
+            f"{total} call sites across {sorted(callers)}; the docstring enumerates three. "
+            "A new caller must be added to that list with whether it passes `plan_path` — "
+            "the argument exists because resolving twice can answer about two plans."
+        )
+
+    def test_the_two_callers_documented_as_passing_a_plan_actually_do(self):
+        # The half a prose enumeration cannot be trusted with. Read from source
+        # rather than asserted from memory: `_has_active_build_plan_file` and
+        # `record_lint._check_chunk_refs` each hand the resolved plan through,
+        # and this reddens if either stops.
+        gates_src = (LIB_DIR / "gates.py").read_text(encoding="utf-8")
+        lint_src = (LIB_DIR / "record_lint.py").read_text(encoding="utf-8")
+        assert f"{self.CALL}prawduct_dir, plan_path)" in gates_src
+        assert self.CALL in lint_src and "plan.path" in lint_src
+
+    def test_the_third_caller_is_the_one_the_docstring_flags(self):
+        # `_critic_session_satisfies_gate` resolves its own plan. #541's fix is
+        # one argument at that call site and lives in `lib/gates.py`, which this
+        # group does not own — so the pin is that the docstring keeps SAYING so
+        # for as long as it is true, and reddens the moment the fix lands
+        # without the docstring following it.
+        gates_src = (LIB_DIR / "gates.py").read_text(encoding="utf-8")
+        doc = buildplan_refs._count_build_plan_chunks.__doc__ or ""
+        resolves_own_plan = f"{self.CALL}prawduct_dir)" in gates_src
+        assert resolves_own_plan == ("does not" in doc and "#541" in doc), (
+            "gates.py and the docstring disagree about whether "
+            "`_critic_session_satisfies_gate` passes `plan_path`. If the call site was "
+            "fixed, drop the flagged bullet from the enumeration; if the docstring was "
+            "edited, fix the call site."
+        )
+
+
 class TestIterLivePlanFiles:
     """`plan_index.iter_live_plan_files` — four behaviours, none of which a flat
     fixture can tell apart from the glob it replaced.
