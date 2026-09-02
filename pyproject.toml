@@ -33,10 +33,11 @@ packages = []
 # Enforcement table's Linter row read `(none configured for prawduct)`, and the framework
 # had hand-rolled a worse one: `compliance.py`'s broad-exception canary re-derived, per
 # language, rules a linter already implements — and failed open on every language it did
-# not know. That check is deleted; `E722` and `BLE001` below are what replaced it.
+# not know. That check is still IN PLACE (the retirement was reverted -- see below);
+# `E722` and `BLE001` are what will replace it once ruff actually gates.
 #
 # **The selection is an explicit code list, not a family list, and every code earns its
-# place one of two ways.** Two are required by #164 as the retired canary's successors
+# place one of two ways.** Two are required by #164 as the canary's eventual successors
 # (`E722`, `BLE001`). The rest are codes this tree ALREADY writes against — each one is
 # suppressed at one or more sites with a `# noqa`, which is evidence the code was authored
 # under that rule. Selecting a whole family instead (`E`, `S`, `PL`) would switch on
@@ -65,7 +66,8 @@ target-version = "py310"
 
 [tool.ruff.lint]
 select = [
-    # Required by #164 — what the deleted broad-exception canary was approximating.
+    # Required by #164 — what the broad-exception canary approximates, and what will
+    # take over from it once the pragma migration lands and this gates.
     "E722",     # bare `except:`
     "BLE001",   # `except Exception` / `except BaseException` without re-raise
     # Already written against — each is suppressed with `# noqa` somewhere in this tree.

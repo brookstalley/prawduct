@@ -65,7 +65,8 @@ _DEPENDENCY_FILENAMES = frozenset({
     "CMakeLists.txt",       # C / C++ (CMake)
 })
 
-#: project rather than after the tool. `.csproj`/`.sln` carry `<PackageReference>`
+#: Dependency declarations whose EXTENSION identifies them, not their filename:
+#: .NET names the manifest after the project rather than after the tool. `.csproj`/`.sln` carry `<PackageReference>`
 #: and the project list respectively, so either changing is a dependency change.
 _DEPENDENCY_SUFFIXES = (".csproj", ".sln")   # .NET / C#
 

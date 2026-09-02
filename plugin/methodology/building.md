@@ -210,7 +210,7 @@ Every consolidated review appends a **fact** to a store shared by all worktrees 
 
 ## Exception Handling
 
-A broad catch is legitimate at system boundaries, event loops and top-level supervisors — mark it with `prawduct:allow prawduct/broad-except -- reason` in a comment on the `except`/`catch` line *itself*. The Critic verifies each is legitimate — "reviewed and intentional," not "exempt."
+A broad catch is legitimate at system boundaries, event loops and top-level supervisors — mark it with `prawduct:allow prawduct/broad-except -- reason` in a comment on the `except`/`catch` line *itself*. The canary skips waived lines; the Critic verifies each is legitimate — "reviewed and intentional," not "exempt."
 
 ## Common Traps
 

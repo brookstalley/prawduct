@@ -331,14 +331,13 @@ LAST_MEASURED_TOKENS = {
     # Discipline that restated this file's own evidence-model section (nothing
     # expires by session). The other two scaffolds went to `discovery.md` and
     # `reflection.md`, which is where their judgements are made.
-    # -7 on 2026-09-01 (#164): "The canary skips waived lines" became false when
-    # #164 deleted `_check_broad_exceptions` -- ruff owns broad-except now and
-    # does not read the `prawduct:allow` pragma. Deleted rather than reworded:
-    # the accurate replacement ran +23 and breached the ceiling, and a factual
-    # correction has no business costing a raise. The clause that survives ("the
-    # Critic verifies each is legitimate") is the half that is still true and is
-    # the half the marker's writer needs.
-    "methodology/building.md": 4747,
+    # +/-0 net on 2026-09-01 (#164, then its revert): "The canary skips waived
+    # lines" was deleted (-7) when #164 retired `_check_broad_exceptions`, and
+    # RESTORED (+7) when the cumulative Critic found that retirement had outrun
+    # its Direction precondition and it was reverted. The sentence is true again
+    # because the check is back. Recorded as one entry rather than two so the
+    # next reader sees a no-op, not a pair of unexplained swings.
+    "methodology/building.md": 4754,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
