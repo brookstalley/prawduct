@@ -3177,8 +3177,8 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
 #: record the gates read — the one point where green stops being an observation
 #: and becomes evidence someone else will rely on.
 #:
-#: This text lives in code rather than in `learnings.md` deliberately. The
-#: general form of this rule has been in that file for a long time and does not
+#: This text lives in code rather than in the learnings rules deliberately. The
+#: general form of this rule has been in that corpus for a long time and does not
 #: fire: a rule read at session start competes with the whole rest of the
 #: context by the time the test gets written. `_BATCH_FIX_DIRECTIVE` in
 #: ``lib/critic_consolidate.py`` is the same move for the same reason, and is

@@ -62,10 +62,11 @@ ALLOWLIST: dict[str, tuple[str, str]] = {
         "`learnings_files.LEGACY_REL` and outside this program",
     ),
     "plugin/bin/prawduct-hook": (
-        "wave-2",
-        "R6 — the removed verbs (`audit-learnings`, `check-learnings-pairing`, "
-        "`learnings-obligation`) and the reflection gate's 'also add it to "
-        "learnings.md' nudge text",
+        "none",
+        "`cmd_learnings_migrate`'s docstring names the legacy path because "
+        "reading it IS that command's job (it retires with the migrate module, "
+        "outside this program), and the three deprecated-inert lifecycle stubs "
+        "say in their notices that there is no learnings.md left to grade",
     ),
     # --- Wave 3 (`learnings-v2-docs`)
     "plugin/methodology/reflection.md": (
