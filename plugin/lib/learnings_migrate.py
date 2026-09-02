@@ -150,6 +150,9 @@ _DEAD_SENTENCE = re.compile(
 #: ``[detail](learnings-detail.md#…)`` sitting inside a sentence that continues
 #: without it. The trailing period is NOT eaten here — it belongs to the
 #: surrounding sentence.
+# A bare bracketed pointer with no link target — `… — [learnings-detail.md]` — the
+# form one fleet member (prawduct itself, 67 headings) used instead of a markdown link.
+_DEAD_BRACKET = re.compile(r"[ \t]*(?:—|-)?[ \t]*\[learnings-detail\.md\]")
 _DEAD_LINK = re.compile(
     r"[ \t]*\[[^\]\n]*\]\([ \t]*" + _DEAD_FILES + r"[^)\n]*\)",
     re.IGNORECASE,
@@ -190,6 +193,7 @@ def strip_links(text: str) -> str:
     text = _DEAD_CLAUSE.sub("", text)
     text = _DEAD_SENTENCE.sub("", text)
     text = _DEAD_LINK.sub("", text)
+    text = _DEAD_BRACKET.sub("", text)
     text = _DEAD_ARROW.sub("", text)
     # Cleaning leaves the punctuation that led into the pointer stranded a space
     # from its sentence. Per-line so a removal can never join two lines.

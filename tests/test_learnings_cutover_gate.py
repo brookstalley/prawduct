@@ -650,6 +650,24 @@ class TestOneDefinitionOfTheDiff:
         assert "diff-boom" in note
         assert "nothing to read" not in note
 
+    def test_a_slow_git_reads_as_could_not_tell_not_a_traceback(self, tmp_path, monkeypatch):
+        """coverage's git calls carry a 30s bound; TimeoutExpired is a
+        SubprocessError, not an OSError, and used to escape the helper."""
+        import subprocess
+
+        from lib import coverage, gates
+
+        repo = _repo(tmp_path)
+        self._corpus(repo)
+        monkeypatch.setattr(
+            coverage,
+            "_coverage_changed_files",
+            lambda d, b: (_ for _ in ()).throw(
+                subprocess.TimeoutExpired(["git", "diff"], 30)),
+        )
+        changed, reason = gates.learnings_change_set(repo)
+        assert changed == [] and reason.startswith("TimeoutExpired")
+
     def test_the_verb_fails_loud_on_the_same_failure(self, tmp_path, capsys, monkeypatch):
         from lib import coverage
 

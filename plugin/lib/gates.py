@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -1160,7 +1161,9 @@ def learnings_change_set(project_dir: Path) -> "tuple[list[str], str]":
         base = "HEAD"
     try:
         return coverage._coverage_changed_files(project_dir, base), ""
-    except (OSError, ValueError, RuntimeError) as exc:
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
+        # SubprocessError covers TimeoutExpired: coverage's git calls carry a
+        # 30s bound, and a slow diff must read as "could not tell", not a traceback.
         return [], f"{type(exc).__name__}: {exc}"
 
 
