@@ -116,7 +116,15 @@ _RECORD_FILES = frozenset(
         ".prawduct/operator-verification.md",
     }
 )
-_RECORD_PREFIXES = (".prawduct/archive/",)
+_RECORD_PREFIXES = (
+    ".prawduct/archive/",
+    # The learnings corpus in its harness-loaded home plays the same role learnings.md did
+    # above: it narrates defects, quoting the paths they occurred at.
+    ".claude/rules/learnings/",
+    # A fixture corpus is DATA by construction — a legacy learnings file kept precisely so a
+    # migrator can be shown stripping its dead links — never an instruction a reader follows.
+    "tests/fixtures/",
+)
 # An archived build plan is a record of what was built, and its instructions were
 # true when written — `tools/product-hook` really was the entry point before the
 # plugin distribution. Grading one as a live instruction file demands editing
@@ -152,12 +160,13 @@ def _is_record(rel: str) -> bool:
 
 # Named exceptions that are neither records nor fixable. Kept tiny and reasoned on purpose.
 ALLOWLISTED_FILES = {
-    "tests/fixtures/learnings_migrate/mixed/.prawduct/learnings.md": (
-        "learnings-migrate fixture: carries the dead `learnings-detail.md#…` links on purpose — "
-        "strip_links removing them is what the fixture proves"
+    ".prawduct/artifacts/learning-system-audit-2026-09-01.md": (
+        "historical by construction: the audit of the legacy learnings layout, whose commands "
+        "name the file the migration it recommended then deleted"
     ),
-    "tests/fixtures/learnings_migrate/topic/.prawduct/learnings.md": (
-        "learnings-migrate fixture: same — a legacy corpus with detail links, by construction"
+    ".prawduct/artifacts/collapse-map-learnings-firing.md": (
+        "historical by construction: a pre-migration analysis of the legacy learnings.md; "
+        "kept as the record of what the v2 program replaced"
     ),
     "documentation/prompt-management-requirements.md": (
         "requirements doc describing a config file that does not exist yet — a forward reference to "
@@ -438,7 +447,7 @@ def test_relative_targets_resolve_against_the_containing_file():
     assert not _resolves("plugin/docs/principles.md", "../.prawduct/learnings.md", "md-link")
     # The same target from a file one level up DOES resolve — proving the base is the containing
     # file rather than a constant.
-    assert _resolves("plugin/principles.md", "../.prawduct/learnings.md", "md-link")
+    assert _resolves("plugin/principles.md", "../.prawduct/project-state.yaml", "md-link")
 
 
 # ---------------------------------------------------------------------------

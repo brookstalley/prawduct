@@ -155,11 +155,6 @@ ALLOWLIST: dict[str, tuple[str, str]] = {
         "wave-3",
         "R8 — the write-path guide is rewritten to the new model",
     ),
-    "plugin/docs/principles.md": (
-        "wave-3",
-        "R13 — the 'case law that interprets the constitution' pointer is "
-        "repointed with the rest of the records",
-    ),
     "plugin/docs/norms.md": (
         "wave-3",
         "R13 — the norms-are-statute / learnings-are-case-law cross-links",
