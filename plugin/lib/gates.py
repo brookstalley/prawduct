@@ -1129,8 +1129,43 @@ def _critic_session_satisfies_gate(project_dir: Path) -> tuple[bool, str]:
     return True, ""
 
 
+def learnings_change_set(project_dir: Path) -> "tuple[list[str], str]":
+    """THE change set the learnings read list is computed from: ``(files, reason)``.
+
+    One definition, because two were worse than either. The gate nudge asked
+    ``_get_session_changed_files`` (uncommitted work only) while the reviewer's
+    ``learnings-files --for-diff`` asked the base BRANCH — so a builder who
+    commits the chunk before Stop fires, which is the ordinary cadence, got a
+    nudge naming ``core.md`` alone while the verb named the area files the
+    harness had actually loaded. The one line whose purpose is to make a silent
+    disagreement noticeable was the disagreement.
+
+    The definition is the **session's** base tree → the working tree, union
+    untracked: everything this session touched whether or not it has been
+    committed yet. That is the span both readers mean — the gate is judging this
+    session, and the reviewer is reading the rules this session had loaded.
+
+    ``reason`` is empty on success and names the failure otherwise. It is a
+    return value rather than an exception or a silent ``[]`` because "nothing
+    changed" and "could not tell" are opposite facts and both callers have to
+    say which one they got (`R4`: a degraded advisory path names its
+    consequence).
+    """
+    prawduct_dir = gitstate.get_prawduct_dir(project_dir)
+    base = _read_session_base_tree(prawduct_dir)
+    if not base:
+        # No session marker (a resume in a fresh checkout, a repo that never ran
+        # SessionStart): HEAD's tree is the honest fallback and is what the
+        # session gate itself degrades to.
+        base = "HEAD"
+    try:
+        return coverage._coverage_changed_files(project_dir, base), ""
+    except (OSError, ValueError, RuntimeError) as exc:
+        return [], f"{type(exc).__name__}: {exc}"
+
+
 def learnings_cross_check_note(project_dir: Path) -> str:
-    """What the Learnings Cross-Check will read, for the session's changed paths.
+    """What the Learnings Cross-Check will read, over :func:`learnings_change_set`.
 
     Named from the resolver, never from a path this module knows: the harness
     loads ``core.md`` plus every area file whose ``paths:`` globs match a file
@@ -1141,14 +1176,22 @@ def learnings_cross_check_note(project_dir: Path) -> str:
 
     The empty answer is stated rather than omitted, because "no rules file
     matches this diff" and "the cross-check ran and found nothing" look
-    identical in a report that says neither.
+    identical in a report that says neither — and so is the *undetermined*
+    answer, which is a third thing again.
     """
+    changed, reason = learnings_change_set(project_dir)
     try:
         layout = learnings_files.resolve(project_dir)
-        changed = gitstate._get_session_changed_files(project_dir)
         files = learnings_files.files_for_paths(layout, changed)
-    except (OSError, ValueError):
-        return ""
+    except (OSError, ValueError) as exc:
+        reason = reason or f"{type(exc).__name__}: {exc}"
+        files = []
+    if reason:
+        return (
+            "The Learnings Cross-Check's read list could not be computed "
+            f"({reason}) — run `prawduct-hook learnings-files --for-diff` before "
+            "the scan rather than assuming core.md is the whole of it."
+        )
     if not files:
         return (
             "The Learnings Cross-Check has nothing to read: no rules file under "

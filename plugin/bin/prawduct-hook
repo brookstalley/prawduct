@@ -2332,7 +2332,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # are noise — they make every session look like it bypassed governance.
     waivers = _gates()._read_gates_waived(prawduct_dir)
     waiver_notes: list[str] = []
-    KNOWN_WAIVER_KEYS = {"reflection", "critic", "pr", "learnings"}
+    KNOWN_WAIVER_KEYS = {"reflection", "critic", "pr", "learnings", "learnings-budget"}
     unknown_waiver_keys = sorted(k for k in waivers if k not in KNOWN_WAIVER_KEYS)
     if unknown_waiver_keys:
         # Stderr-only warning so the agent learns about typos. Doesn't affect gate
@@ -2342,6 +2342,54 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
             f"Valid keys: {', '.join(sorted(KNOWN_WAIVER_KEYS))}.",
             file=sys.stderr,
         )
+
+    # The learnings layout, read ONCE and in its OWN guarded step — three
+    # things below need it (the reflection blocker's "where does a rule go"
+    # pointer, the cutover floor, the budget gate), and R4's whole premise is
+    # that an unmigrated repo must never read as an empty one.
+    #
+    # Separate from anything that RENDERS it, deliberately. The first cut wrapped
+    # the import, the state read and the directive rendering in one `except` that
+    # reset the verdict to "migrated" — so a repo correctly DETECTED as legacy
+    # passed the floor because the sentence describing it could not be built.
+    # A rendering failure must never un-detect a detected state.
+    #
+    # Failing open on an unreadable layout is right (pre-dispatch code fails open
+    # on a lib/ ImportError), but "advice fails soft" is not "advice fails
+    # silent": every degraded path here names its consequence on stderr, or it
+    # manufactures the false success it exists to prevent.
+    _learnings_state = ""
+    _learnings_core = ""
+    _learnings_rules_dir = ""
+    _learnings_both = ""
+    _unmigrated_states: tuple[str, ...] = ()
+    try:
+        _lib_root = _plugin_root()
+        if _lib_root not in sys.path:
+            sys.path.insert(0, _lib_root)
+        from lib import learnings_files as _lf  # noqa: PLC0415 — lazy keeps top-level cheap
+
+        _learnings_state = _lf.resolve(project_dir).state
+        _learnings_rules_dir = _lf.RULES_DIR_REL
+        _learnings_core = f"{_lf.RULES_DIR_REL}/{_lf.CORE_NAME}"
+        _learnings_both = _lf.STATE_BOTH
+        _unmigrated_states = (_lf.STATE_LEGACY, _lf.STATE_BOTH)
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
+        print(
+            f"\nNOTE: the learnings layout could not be read ({type(exc).__name__}: {exc}).\n"
+            "  The cutover floor and the budget gate did NOT run this session — nothing\n"
+            "  below says whether this repo's rules were loaded or whether they fit.\n",
+            file=sys.stderr,
+        )
+
+    # Where a durable rule goes, named by the ONE resolver rather than by a path
+    # this file knows. The fallback is deliberately path-free: a hardcoded second
+    # opinion about the layout is the defect the resolver exists to remove.
+    _rule_destination = (
+        f"{_learnings_core} (or the area file under {_learnings_rules_dir}/ whose `paths:` cover it)"
+        if _learnings_core
+        else "this repo's learnings rules files"
+    )
 
     # Determine if there's an active build plan (used by both gates).
     # "Active" means incomplete chunks remain — a completed plan (all [x]) does not count.
@@ -2396,8 +2444,9 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 "  as you go; the file accumulates across the session. Then /clear is instant.\n"
                 "\n"
                 "  If this session produced a durable lesson (a rule future sessions should follow),\n"
-                "  also add it to .prawduct/learnings.md. Learnings are concise standing rules;\n"
-                "  the session reflection is the story behind them.\n"
+                f"  also add it to {_rule_destination}.\n"
+                "  Learnings are concise standing rules; the session reflection is the story\n"
+                "  behind them.\n"
                 "\n"
                 "  Escape hatch: if this gate cannot be satisfied this session (rare for reflection —\n"
                 "  it is meant to be cheap), declare a waiver so this gate stops re-firing:\n"
@@ -2424,15 +2473,10 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
 
     # Gate 1b: the learnings cutover floor — the reflection gate's sibling.
     #
-    # A repo still on the old layout gets no rules loaded by the harness at all,
-    # and reads to every session exactly like a repo that has none. The briefing
-    # says so at session start; this is the end of the same session saying it
-    # again, because the state that matters is "code was written here today
-    # without the rules that govern it".
-    #
-    # The blocker text IS the briefing's directive — one wording for one job, so
-    # the agent that scrolled past it at session start meets the same commands
-    # here rather than a second, subtly different recipe.
+    # A repo still holding the pre-cutover corpus reads to every session exactly
+    # like a repo that has none. The briefing says so at session start; this is
+    # the end of the same session saying it again, because the state that matters
+    # is "code was written here today without the rules that govern it".
     #
     # The trigger is judgeable code LITERALLY, which is narrower than the Critic
     # gate's `not doc_only`: that predicate reads False for a session whose only
@@ -2446,19 +2490,35 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
         for f in _gs._get_session_changed_files(project_dir, status_output)
         if not _gs._is_metadata_path(f)
     ]
-    if _non_metadata and not doc_only:
-        _learnings_directive = ""
-        try:
-            lib_root = _plugin_root()
-            if lib_root not in sys.path:
-                sys.path.insert(0, lib_root)
-            from lib import learnings_files  # noqa: PLC0415 — lazy keeps top-level cheap
-
-            _unmigrated = learnings_files.resolve(project_dir).state in (
-                learnings_files.STATE_LEGACY,
-                learnings_files.STATE_BOTH,
-            )
-            if _unmigrated:
+    _judgeable_work = bool(_non_metadata) and not doc_only
+    if _judgeable_work and _learnings_state in _unmigrated_states:
+        if "learnings" in waivers:
+            waiver_notes.append(f"learnings: waived ({waivers['learnings']})")
+        else:
+            # TWO states reach this gate and they are not the same failure, so
+            # they do not get the same sentence. In `both` the rules tree exists
+            # and the harness loaded it — the session's own briefing said so —
+            # and telling that agent "the harness loaded none of it" hands it a
+            # false diagnosis to act on, most likely by re-running a migration
+            # that refuses `both` outright.
+            if _learnings_state == _learnings_both:
+                _headline = (
+                    "LEARNINGS UNMIGRATED (both layouts present): this session changed\n"
+                    "  judgeable code with two learnings corpora on disk. The harness loads the\n"
+                    "  rules tree, so those rules WERE in context — the legacy file beside it is\n"
+                    "  dead weight and a second source of truth that nothing reads.\n"
+                )
+            else:
+                _headline = (
+                    "LEARNINGS UNMIGRATED: this session changed judgeable code while the\n"
+                    "  learnings corpus is still in the pre-cutover layout, so the harness\n"
+                    "  loaded none of it — the rules that govern this repo were not in\n"
+                    "  context for any of the work above.\n"
+                )
+            # Rendering is its OWN guarded step: a directive that cannot be built
+            # is a shorter message, never a cleared verdict (the state above was
+            # already read and is not revisited here).
+            try:
                 # `lib.briefing` is the heavier import (it pulls the plan index
                 # and the backlog reader), so it is paid for only on the disk
                 # that is actually about to be blocked.
@@ -2467,27 +2527,84 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 _learnings_directive = "\n".join(
                     f"  {ln}" for ln in _briefing._learnings_lines(project_dir)
                 )
-        except Exception:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
-            # Unreadable layout is not an unmigrated one: a gate that cannot see
-            # the tree has no verdict, and inventing a block here would fire on
-            # every repo with a broken install.
-            _unmigrated = False
-        if _unmigrated:
-            if "learnings" in waivers:
-                waiver_notes.append(f"learnings: waived ({waivers['learnings']})")
+            except Exception as exc:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
+                _learnings_directive = (
+                    "  agent → the session briefing carries the migration recipe; "
+                    "`prawduct-hook learnings-files` shows what is on disk"
+                )
+                print(
+                    f"\nNOTE: the learnings directive could not be rendered "
+                    f"({type(exc).__name__}: {exc}) — the floor still blocks, but the short\n"
+                    "  form below is all it can say. The full recipe is in the session briefing.\n",
+                    file=sys.stderr,
+                )
+            blockers.append(_attributed("learnings-unmigrated",
+                _headline
+                + "\n"
+                + _learnings_directive + "\n"
+                "\n"
+                "  Escape hatch: if the migration genuinely cannot happen this session\n"
+                "  (mid-rebase, a dirty learnings file you are still editing), declare a\n"
+                "  waiver so this gate stops re-firing every turn:\n"
+                "    echo '{\"learnings\": \"reason — be specific\"}' > .prawduct/.gates-waived\n"
+                "  Empty reasons are rejected; the file clears at the next session boundary\n"
+                "  (a fresh start or /clear), so it outlives a resume/compact/fork. See\n"
+                "  `/prawduct:methodology building` (Gate waivers) for when this is appropriate.\n"
+            ))
+
+    # Gate 1c: the learnings BUDGET floor — a rules file over its ceiling that
+    # also grew this session.
+    #
+    # At Stop because that is where the ruling put it (discovery §2 criterion 4,
+    # §8.8 Q1): rules are written at work boundaries of every size, and the
+    # Critic runs only on medium+ work — so enforcing the ceiling only at review
+    # time leaves the bugfix-sized boundary, which is where the audit measured
+    # the growth, with no ceiling at all. `record_lint` owns the check; this is
+    # the channel, and it re-renders nothing — the finding text is carried
+    # verbatim so the builder reads one wording wherever it meets them.
+    if _judgeable_work and _learnings_state and _learnings_state not in _unmigrated_states:
+        try:
+            from lib import record_lint as _record_lint  # noqa: PLC0415 — lazy keeps top-level cheap
+
+            _budget_base = _gates()._read_session_base_tree(prawduct_dir)
+            if not _budget_base:
+                _budget_findings, _budget_unchecked = [], [
+                    "learnings-over-budget unchecked — no .session-base-tree marker, so "
+                    "there is no base size to compare this session's growth against"
+                ]
             else:
-                blockers.append(_attributed("learnings-unmigrated",
-                    "LEARNINGS UNMIGRATED: this session changed judgeable code while the\n"
-                    "  learnings corpus is still in the pre-cutover layout, so the harness\n"
-                    "  loaded none of it — the rules that govern this repo were not in\n"
-                    "  context for any of the work above.\n"
+                _budget_findings, _budget_unchecked, _ = (
+                    _record_lint._check_learnings_budget(
+                        project_dir, prawduct_dir, _budget_base
+                    )
+                )
+        except Exception as exc:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
+            _budget_findings, _budget_unchecked = [], [
+                f"learnings-over-budget unchecked — the budget check could not run "
+                f"({type(exc).__name__}: {exc})"
+            ]
+        # `unchecked` is not a pass, and it is never silent: a ceiling that could
+        # not be measured must not read as a ceiling that held.
+        for _entry in _budget_unchecked:
+            print(f"\nNOTE: {_entry}", file=sys.stderr)
+        if _budget_findings:
+            if "learnings-budget" in waivers:
+                waiver_notes.append(
+                    f"learnings-budget: waived ({waivers['learnings-budget']})"
+                )
+            else:
+                _budget_lines = "".join(
+                    f"    - {f['check']} {f['path']}: {f['detail']}\n"
+                    for f in _budget_findings
+                )
+                blockers.append(_attributed("learnings-over-budget",
+                    "LEARNINGS BUDGET: a rules file is over its ceiling and grew this\n"
+                    "  session, so the next addition pays before it lands:\n"
+                    + _budget_lines +
                     "\n"
-                    + _learnings_directive + "\n"
-                    "\n"
-                    "  Escape hatch: if the migration genuinely cannot happen this session\n"
-                    "  (mid-rebase, a dirty learnings file you are still editing), declare a\n"
-                    "  waiver so this gate stops re-firing every turn:\n"
-                    "    echo '{\"learnings\": \"reason — be specific\"}' > .prawduct/.gates-waived\n"
+                    "  Escape hatch: if the payment genuinely cannot be made this session,\n"
+                    "  declare a waiver so this gate stops re-firing every turn:\n"
+                    "    echo '{\"learnings-budget\": \"reason — be specific\"}' > .prawduct/.gates-waived\n"
                     "  Empty reasons are rejected; the file clears at the next session boundary\n"
                     "  (a fresh start or /clear), so it outlives a resume/compact/fork. See\n"
                     "  `/prawduct:methodology building` (Gate waivers) for when this is appropriate.\n"
@@ -5799,10 +5916,12 @@ def cmd_learnings_files(project_dir: Path, argv: list[str]) -> int:
     the one failure this layout could introduce, and it is silent — so the set
     comes from the one resolver rather than from anybody's glob.
 
-    ``--for-diff`` narrows the list to the area files the CURRENT diff pulls in
-    (the same base the review and the gates use, via ``resolve-base``, union the
-    working tree and untracked files). Bare, it prints every rules file — what
-    the budget gate sizes.
+    ``--for-diff`` narrows the list to the area files this SESSION's changes
+    pull in — ``gates.learnings_change_set``: the session's base tree → the
+    working tree, union untracked, committed work included. The Stop hook's
+    cross-check note reads the same helper, so the line a builder is shown and
+    the list a reviewer computes cannot name different files. Bare, it prints
+    every rules file — what the budget gate sizes.
 
     Exit 0 whenever it ran, including when the answer is an empty list: a repo
     with no rules is a fact, not a failure. Exit 1 when it could not run
@@ -5829,19 +5948,18 @@ def cmd_learnings_files(project_dir: Path, argv: list[str]) -> int:
     layout = learnings_files.resolve(project_dir)
     if for_diff:
         try:
-            from lib import coverage  # noqa: PLC0415 — lazy keeps top-level cheap
+            from lib import gates as _gates_mod  # noqa: PLC0415 — lazy keeps top-level cheap
 
-            base, reason = coverage._resolve_base_branch(project_dir)
-            if base is None:
-                # Fail LOUD, never to the full list: a silent widening would
-                # hand the reviewer area files the session never loaded, and a
-                # silent narrowing would hide ones it did. Neither is an answer.
-                print(f"error: learnings-files --for-diff cannot resolve a base ({reason})",
-                      file=sys.stderr)
-                return 1
-            changed = coverage._coverage_changed_files(project_dir, base)
-        except (ImportError, OSError, RuntimeError, subprocess.SubprocessError) as exc:
-            print(f"error: learnings-files --for-diff could not read the diff ({exc})",
+            changed, reason = _gates_mod.learnings_change_set(project_dir)
+        except ImportError as exc:
+            changed, reason = [], f"ImportError: {exc}"
+        if reason:
+            # Fail LOUD, never to the full list and never to an empty one: a
+            # silent widening hands the reviewer area files the session never
+            # loaded, a silent narrowing hides ones it did, and both look like
+            # an answer. `learnings_change_set` is also what the Stop-hook
+            # cross-check note reads, so the two can no longer disagree.
+            print(f"error: learnings-files --for-diff could not read the diff ({reason})",
                   file=sys.stderr)
             return 1
         files = learnings_files.files_for_paths(layout, changed)
