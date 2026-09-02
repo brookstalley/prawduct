@@ -8,13 +8,19 @@ entry here*. Its docstring warned about a DRIFTED title and guarded that; a
 DUPLICATED one was unguarded, and the two fail in opposite directions (drift
 matches nothing and is a no-op; duplication matches twice and loses prose).
 
-The check grades duplicates only. #717 also asked for counterpart and order
-findings on the stated invariant that the files "mirror each other's headings in
-the same order" — measured against the real corpus that invariant does not hold
-and never did (270 active index entries vs 179 detail; detail headings are a
-truncated prefix, not a copy). Grading it would fire ~117 findings on a corpus
-nobody considers broken. The narrowing is deliberate and recorded, and
-`test_this_repos_own_corpus_is_clean` is what keeps it honest.
+#339 then decided what the pairing convention actually IS, which is what #717's
+counterpart findings were waiting on: a detail heading is the OPENING CLAUSE of
+its index entry — a prefix of it, not a copy — the pairing is one-directional
+(an index rule may have no narrative), and relative order is NOT part of it. The
+exact-match reading the header used to assert never held: 283 index entries
+against 162 detail ones, and detail headings are truncations. Grading the exact
+invariant would have fired ~117 findings on a corpus nobody considers broken.
+
+So the check now grades three things — duplicate headings, detail headings that
+begin no index entry, and archive forwarding pointers that resolve nowhere — and
+still measures order without grading it. `test_this_repos_own_corpus_is_clean`
+is what keeps that honest: a check that fires on the corpus prawduct itself
+maintains is noise, and noise trains a reader to skip the one real catch.
 """
 
 from __future__ import annotations
@@ -31,12 +37,16 @@ if _PLUGIN not in sys.path:
 from lib import audit_learnings_cmd as al  # noqa: E402
 
 
-def _corpus(tmp_path, index: str, detail: str | None = None) -> Path:
+def _corpus(
+    tmp_path, index: str, detail: str | None = None, history: str | None = None
+) -> Path:
     d = tmp_path / ".prawduct"
     d.mkdir(parents=True, exist_ok=True)
     (d / "learnings.md").write_text(index, encoding="utf-8")
     if detail is not None:
         (d / "learnings-detail.md").write_text(detail, encoding="utf-8")
+    if history is not None:
+        (d / al.HISTORY_FILENAME).write_text(history, encoding="utf-8")
     return tmp_path
 
 
@@ -300,7 +310,10 @@ def test_a_clean_corpus_still_applies_and_reports_applied(tmp_path):
 
     assert result["applied"] is True
     assert all(r["applied"] for r in result["retirements"])
-    assert "the only copy" in (repo / ".prawduct" / "learnings-detail.md").read_text()
+    # The archive is its own file since #350 — the narrative MOVED, and the
+    # property under test is that it still exists somewhere, not that it
+    # stayed in the file a lookup reads.
+    assert "the only copy" in (repo / ".prawduct" / "learnings-history.md").read_text()
 
 
 _HOOK = Path(__file__).resolve().parent.parent / "plugin" / "bin" / "prawduct-hook"
@@ -358,7 +371,7 @@ def test_the_cli_tests_target_the_fixture_and_not_the_real_repo(tmp_path):
 
     _run_hook(repo, "audit-learnings", "--apply")
 
-    assert "superseded by" in (repo / ".prawduct" / "learnings-detail.md").read_text()
+    assert "superseded by" in (repo / ".prawduct" / "learnings-history.md").read_text()
     if real_before is not None:
         assert real_index.read_text(encoding="utf-8") == real_before
 
@@ -464,3 +477,169 @@ def test_the_ambient_project_dir_pin_is_removed_even_when_the_harness_sets_it(tm
         "the session fixture did not remove an ambient CLAUDE_PROJECT_DIR:\n"
         + proc.stdout[-1500:]
     )
+
+
+class TestTheConventionIsPrefixAndIsGraded:
+    """The decision: a detail heading is the OPENING CLAUSE of its index entry.
+
+    A prefix of it, never required to be a copy. One-directional — an index rule
+    may carry no narrative at all. Order is NOT part of it.
+
+    The three surfaces that had to agree and did not: `learnings.md`'s header
+    asserted an exact match "under the same heading"; `_take_active_narrative`
+    implemented exact match, so it silently failed to move the prose for every
+    truncated pair; and this check measured prefix conformance without grading
+    it. An invariant stated one way, implemented another, and unenforced in a
+    third place is three facts, none of them true.
+    """
+
+    def test_an_orphaned_detail_heading_is_a_finding(self, tmp_path):
+        repo = _corpus(
+            tmp_path,
+            "# L\n\n## Rule one — with a sharpened tail\n\na\n",
+            "# D\n\n## Rule one\n\nnarrative\n\n## Nobody points here\n\nprose\n",
+        )
+        result = al.check_learnings_pairing(repo)
+        kinds = [f["kind"] for f in result["findings"]]
+        assert kinds == ["detail-without-index-entry"]
+        assert result["findings"][0]["title"] == "Nobody points here"
+        assert result["status"] == "findings"
+
+    def test_a_prefix_pair_is_conforming_not_a_finding(self, tmp_path):
+        """The whole reason the exact-match reading had to go: the corpus is
+        full of legitimately truncated detail headings."""
+        repo = _corpus(
+            tmp_path,
+            "# L\n\n## Rule one — with a long sharpened tail\n\na\n",
+            "# D\n\n## Rule one\n\nnarrative\n",
+        )
+        result = al.check_learnings_pairing(repo)
+        assert result["status"] == "ok", result["reason"]
+        assert result["counts"]["detail_without_index_prefix_match"] == 0
+
+    def test_an_index_rule_with_no_narrative_is_not_a_finding(self, tmp_path):
+        """One-directional, deliberately. 283 index entries against 162 detail
+        ones on this repo is the normal state, not drift — most rules never earn
+        a narrative, and grading their absence would findings-ify the majority
+        of a healthy corpus."""
+        repo = _corpus(
+            tmp_path,
+            "# L\n\n## Rule one\n\na\n\n## Rule two\n\nb\n\n## Rule three\n\nc\n",
+            "# D\n\n## Rule two\n\nnarrative\n",
+        )
+        result = al.check_learnings_pairing(repo)
+        assert result["status"] == "ok", result["reason"]
+
+    def test_order_is_measured_and_never_graded(self, tmp_path):
+        """`learnings.md` groups by topic; the detail file accretes
+        chronologically. Grading order would raise findings on prose position,
+        which nothing in the machinery depends on."""
+        repo = _corpus(
+            tmp_path,
+            "# L\n\n## Alpha\n\na\n\n## Beta\n\nb\n",
+            "# D\n\n## Beta\n\nb prose\n\n## Alpha\n\na prose\n",
+        )
+        result = al.check_learnings_pairing(repo)
+        assert result["status"] == "ok", result["reason"]
+        assert result["counts"]["paired_entries_out_of_order"] == 1
+
+    def test_the_reason_names_the_kinds_not_just_a_count(self, tmp_path):
+        """Three kinds now need three different responses. "12 finding(s)" is
+        the same sentence for a duplicate heading, an orphaned narrative and a
+        broken forwarding pointer."""
+        repo = _corpus(
+            tmp_path,
+            "# L\n\n## Rule one\n\na\n",
+            "# D\n\n## Orphan A\n\nx\n\n## Orphan B\n\ny\n",
+        )
+        result = al.check_learnings_pairing(repo)
+        assert result["reason"] == "2 detail-without-index-entry"
+
+
+class TestForwardingPointersAreGuarded:
+    """`resolve_supersession_target` fails closed at RETIREMENT time, so every
+    pointer resolved when written. Nothing watched them afterwards, and the
+    corpus moves underneath them: reword the successor's heading or consolidate
+    it away and the pointer becomes a hole silently.
+
+    Measured on this repo the first time anything looked: 4 of 17 pointed at a
+    rule that had left `learnings.md` entirely, so four retirements forwarded
+    four readers to a heading that does not exist. Found by this guard, fixed by
+    restoring the rule.
+    """
+
+    ARCHIVE_NOTE = (
+        "# H\n\n## Historical (structurally enforced)\n\n"
+        "## Old rule\n\n*Retired 2026-01-01 — superseded by **{target}**. "
+        "That rule is the active statement.*\n"
+    )
+
+    def test_a_pointer_that_resolves_raises_nothing(self, tmp_path):
+        repo = _corpus(
+            tmp_path,
+            "# L\n\n## Broad rule about evidence\n\na\n",
+            "# D\n\n## Broad rule about evidence\n\nn\n",
+            self.ARCHIVE_NOTE.format(target="Broad rule about evidence"),
+        )
+        assert al.check_learnings_pairing(repo)["status"] == "ok"
+
+    def test_a_pointer_that_resolves_nowhere_is_a_finding(self, tmp_path):
+        repo = _corpus(
+            tmp_path,
+            "# L\n\n## Some other rule\n\na\n",
+            "# D\n",
+            self.ARCHIVE_NOTE.format(target="A rule nobody kept"),
+        )
+        result = al.check_learnings_pairing(repo)
+        kinds = [f["kind"] for f in result["findings"]]
+        assert kinds == ["unresolvable-forwarding-pointer"]
+        assert "A rule nobody kept" in result["findings"][0]["title"]
+
+    def test_a_chain_terminating_in_the_archive_resolves(self, tmp_path):
+        """A -> B -> C with B already archived. The reader following A lands on
+        B in history, which carries its own pointer to C. Worse than a direct
+        pointer, far better than a hole — and the audit deliberately allows the
+        chain, so the guard must not call it broken."""
+        repo = _corpus(
+            tmp_path,
+            "# L\n\n## Rule C\n\nc\n",
+            "# D\n",
+            "# H\n\n## Historical (structurally enforced)\n\n"
+            "## Rule A\n\n*Retired — superseded by **Rule B**.*\n\n"
+            "## Rule B\n\n*Retired — superseded by **Rule C**.*\n",
+        )
+        assert al.check_learnings_pairing(repo)["status"] == "ok"
+
+    def test_a_pointer_wrapped_across_lines_still_resolves(self, tmp_path):
+        """Retirement notes wrap in the file; the heading they name does not.
+        Comparing raw text would report every wrapped pointer as a hole."""
+        repo = _corpus(
+            tmp_path,
+            "# L\n\n## A long rule heading that wraps in the archive\n\na\n",
+            "# D\n",
+            "# H\n\n## Historical (structurally enforced)\n\n"
+            "## Old\n\n*Retired — superseded by **A long rule heading\nthat "
+            "wraps in the archive**.*\n",
+        )
+        assert al.check_learnings_pairing(repo)["status"] == "ok"
+
+    def test_the_archive_is_optional(self, tmp_path):
+        """A corpus that has never retired anything has no history file, and
+        that is not an unreadable one."""
+        repo = _corpus(tmp_path, "# L\n\n## Rule\n\na\n", "# D\n\n## Rule\n\nn\n")
+        result = al.check_learnings_pairing(repo)
+        assert result["status"] == "ok"
+        assert result["counts"]["archive_entries"] == 0
+
+    def test_archive_entries_are_counted_by_a_scan_that_can_see_them(self, tmp_path):
+        """The archive's own entries sit BELOW its section header, so an
+        active-only scan reports zero of them — which would empty both the count
+        and the set a chain pointer resolves against, and the check would pass
+        by measuring nothing.
+        """
+        repo = _corpus(
+            tmp_path, "# L\n\n## Rule\n\na\n", "# D\n",
+            "# H\n\n## Historical (structurally enforced)\n\n"
+            "## One\n\nx\n\n## Two\n\ny\n",
+        )
+        assert al.check_learnings_pairing(repo)["counts"]["archive_entries"] == 2
