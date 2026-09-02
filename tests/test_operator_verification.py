@@ -667,10 +667,10 @@ def _run_check(repo):
     `gitstate.resolve_project_dir` returns the `CLAUDE_PROJECT_DIR` pin whenever
     cwd is not a git work tree, and a pytest `tmp_path` never is — so the hook
     would grade the real repo instead of the fixture. These two calls are
-    read-only, so the failure is a spurious result rather than a mutation; the
-    destructive form of the same mistake is documented at
-    `tests/test_learnings_pairing.py::_run_hook` and at
-    `tests/test_audit_learnings.py::TestAuditLearningsCLI`.
+    read-only, so the failure is a spurious result rather than a mutation. The
+    destructive form of the same mistake is a `--apply`-capable command graded
+    against the real repo: `tests/test_norm_index_scaffold.py::_run` pins the
+    same pinned-environment idiom for one that writes.
     """
     return _subprocess.run(
         [_sys.executable, str(_HOOK_PATH), "check-operator-verification"],

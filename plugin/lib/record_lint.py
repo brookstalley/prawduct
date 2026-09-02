@@ -49,10 +49,10 @@ never Python-specific).
 **Scoped to governance state, never to YAML generally.** A product's CI config,
 its lockfiles and its own app config are its data, not governance records;
 linting them would put this control in the business of grading product content.
-The three markdown-specific checks are unaffected because each already selects
-its own inputs — ``learnings-entry-shape`` by filename, ``governed-by-gap`` by
-build-plan name (``.md$``) — rather than trusting the record set to be markdown;
-tests pin that, so widening the set here cannot silently widen them.
+The markdown-specific checks are unaffected because each already selects its own
+inputs — ``governed-by-gap`` by build-plan name (``.md$``) — rather than trusting
+the record set to be markdown; tests pin that, so widening the set here cannot
+silently widen them.
 
 Archived history is excluded whatever its suffix: it is not being asserted any
 more.
@@ -72,7 +72,6 @@ CHECKS = (
     "chunk-ref-missing",
     "governed-by-gap",
     "suite-total-claim",
-    "learnings-entry-shape",
     "learnings-over-budget",
     "learnings-budget-unreasoned",
     "learnings-area-dead",
@@ -300,158 +299,6 @@ def _check_suite_totals(path: str, added: "list[tuple[int, str]]") -> list[dict]
                 "reads it",
             )
         )
-    return findings
-
-
-#: `learnings.md` holds the RULE; `learnings-detail.md` holds the narrative.
-#: A rule longer than this is carrying its evidence, which belongs in detail.
-#: Set so a rule carrying its evidence trips it and an ordinary rule does not:
-#: at the 2026-07-30 compaction, 16 of 156 headings were above the line.
-#: **No percentile relation is claimed here, deliberately.** Four successive
-#: attempts to state one shipped a wrong number — each while correcting the
-#: last — because the statistic moves with every entry edited while the
-#: sentence does not. Recompute the distribution if you need it:
-#:   python3 -c "import re,statistics as s;h=[len(x[3:].strip()) for x in re.findall(r'^## .*$',open('.prawduct/learnings.md').read(),re.M)];print(s.median(h),sorted(h)[int(.9*len(h))])"
-_LEARNINGS_RULE_MAX = 400
-
-_LEARNINGS_REL = "learnings.md"
-
-
-def _first_heading_line(text: "str | None") -> int:
-    """1-indexed line of the first ``## `` entry, or 0 if there is none.
-
-    Everything above it is the file's own preamble — prose by design, and not a
-    finding. Without this the check reports the header paragraph that explains
-    the format as a violation of the format.
-    """
-    if not text:
-        return 0
-    for i, line in enumerate(text.splitlines(), start=1):
-        if line.startswith("## "):
-            return i
-    return 0
-
-
-def _follows_heading(text: "str | None", line_num: int) -> bool:
-    """Is the 1-indexed line inside the FIRST body block under a ``## `` heading?
-
-    Block, not line: a rule hard-wrapped at terminal width becomes a heading plus
-    several body lines, and every one of them is part of the same continuation.
-    Checking only the immediate predecessor would guard line 2 and hand line 3
-    the destructive "move it" instruction — in the same report, on the same
-    sentence. So this walks back over the whole contiguous non-blank run and asks
-    whether that run starts under a heading.
-
-    A blank line ends the continuation only once body prose precedes it. A
-    paragraph separated from its heading by nothing but blank lines is still the
-    first block and still gets the guarded message — a rule may be written with a
-    blank line under the heading, so that position cannot be assumed safe. The
-    bare move instruction therefore fires only after at least one non-blank body
-    line, which is the one position where a continuation cannot be.
-
-    Returns False when the file text is unavailable, so an unreadable file yields
-    the conservative branch rather than a confident instruction derived from
-    nothing.
-    """
-    if not text:
-        return False
-    lines = text.splitlines()
-    i = line_num - 2  # 0-indexed predecessor of a 1-indexed line
-    if i >= len(lines):
-        return False
-    # Back to the start of this contiguous block (a heading also terminates it).
-    while i >= 0 and lines[i].strip() and not lines[i].startswith("## "):
-        i -= 1
-    if i >= 0 and lines[i].startswith("## "):
-        return True  # block runs flush under the heading
-    while i >= 0 and not lines[i].strip():
-        i -= 1
-    return i >= 0 and lines[i].startswith("## ")
-
-
-def _check_learnings_shape(
-    path: str, added: "list[tuple[int, str]]", text: "str | None" = None
-) -> list[dict]:
-    """Keep `learnings.md` a rule index rather than a second detail file.
-
-    **Why this exists at all.** Compaction ran twice (2026-06-10, 2026-07-17) and
-    the file regrew past its starting size both times, because a sweep is a
-    one-time subtraction against a continuous addition. The 2026-07-30 pass took
-    it 121KB -> 34KB; without something that fires per entry, the third sweep is
-    already scheduled.
-
-    **Why it checks the heading and not just the body.** The rule has always been
-    "keep the rule here, move the narrative to detail" — so narrative migrated
-    into the `##` heading, where the sweep never looked. On the eve of this pass
-    the longest "rule" was 1,921 characters, a paragraph wearing a heading. A
-    control that watches one channel relocates the content it was meant to stop.
-
-    Added lines only, so existing entries are grandfathered and the check costs
-    nothing until someone writes a new learning — which is the moment the
-    guidance is actually actionable.
-    """
-    findings: list[dict] = []
-    preamble_end = _first_heading_line(text)
-    for line_num, line in added:
-        if preamble_end and line_num < preamble_end:
-            continue  # the file's own header prose, not an entry body
-        stripped = line.strip()
-        if stripped.startswith("## "):
-            rule = stripped[3:].strip()
-            if len(rule) > _LEARNINGS_RULE_MAX:
-                findings.append(
-                    _finding(
-                        "learnings-entry-shape",
-                        path,
-                        line_num,
-                        f"learnings rule is {len(rule)} chars (>{_LEARNINGS_RULE_MAX}) — "
-                        "the heading carries the When-X-do-Y-because-Z rule; move the "
-                        "evidence to learnings-detail.md under the same heading",
-                    )
-                )
-        elif stripped and not stripped.startswith(("#", "---", "<!--", "[[")):
-            # Body lines get one of two OPPOSITE remedies, and picking wrong in
-            # one direction destroys data: telling an author to move a sentence
-            # *continuation* to detail truncates the rule, and the loss is silent
-            # because the heading still parses, still renders, and still reads as
-            # a rule right up to the dangling word. Three rules were lost exactly
-            # that way and repaired on 2026-07-31.
-            #
-            # Nothing here can classify reliably — a continuation may resume with
-            # a backtick or a proper noun, and a narrative paragraph's first line
-            # sits in the same position as a continuation. So position decides
-            # which ADVICE is safe rather than which label is true: a line
-            # adjacent to the heading is offered both remedies with the guard
-            # clause attached, and the bare "move it" instruction is issued only
-            # where a continuation cannot be (after intervening body prose).
-            # Deliberately no case test — it is wrong for backtick-initial
-            # continuations and meaningless in caseless scripts.
-            if _follows_heading(text, line_num):
-                findings.append(
-                    _finding(
-                        "learnings-entry-shape",
-                        path,
-                        line_num,
-                        "body line directly under a `## ` heading — if it "
-                        "CONTINUES the rule sentence, join it onto the heading "
-                        "as one physical line; if it is evidence, move it to "
-                        "learnings-detail.md under the same heading. Either way "
-                        "the heading must still read as a complete rule "
-                        "afterwards — moving a continuation truncates it "
-                        "mid-sentence, and nothing downstream will notice",
-                    )
-                )
-            else:
-                findings.append(
-                    _finding(
-                        "learnings-entry-shape",
-                        path,
-                        line_num,
-                        "narrative body added to learnings.md — this file is the "
-                        "rule index; the body belongs in learnings-detail.md "
-                        "under the same heading (a move, never a deletion)",
-                    )
-                )
     return findings
 
 
@@ -1281,27 +1128,17 @@ def lint_records(
         diffed = _added_lines(project_dir, base_tree, head_tree, records)
         if diffed is None:
             unchecked.append(
-                "suite-total-claim, learnings-entry-shape unchecked — git could "
+                "suite-total-claim unchecked — git could "
                 f"not read the diff {base_tree[:12]}..{head_tree[:12]} over the "
                 "changed records"
             )
-            no_answer.update({"suite-total-claim", "learnings-entry-shape"})
+            no_answer.add("suite-total-claim")
         else:
             added_by_path = diffed
     for rel in records:
         added = added_by_path.get(rel)
         if added:
             findings.extend(_check_suite_totals(rel, added))
-            # The rule index is the ROOT record only. A `learnings.md` nested
-            # elsewhere (a migration fixture under tests/, a vendored product
-            # sample) is data, not this repo's index, and grading its shape
-            # reports thirty findings about a file nobody maintains as an index.
-            if Path(rel).name == _LEARNINGS_REL and Path(rel).parent == Path(".prawduct"):
-                findings.extend(
-                    _check_learnings_shape(
-                        rel, added, _read_text(project_dir / rel)
-                    )
-                )
 
     for rel in _plans_to_check(prawduct_dir, records):
         text = _read_text(project_dir / rel)

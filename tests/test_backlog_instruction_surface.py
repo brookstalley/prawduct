@@ -196,7 +196,7 @@ def _in_adapter_context(surface: Path, line: str) -> bool:
     lines that actually invoke the adapter count — because other skills carry
     legitimate ``--apply`` flags belonging to entirely different commands
     (``init-product --apply``, ``coverage-scaffold --apply``,
-    ``audit-learnings --apply``). Scanning those files wholesale produced five
+    ``norm-index-scaffold --apply``). Scanning those files wholesale produced five
     false positives on the first run: exactly the misfiring probe this module's
     docstring warns trains its reader to ignore the one real catch.
     """

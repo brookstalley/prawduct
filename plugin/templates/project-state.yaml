@@ -402,20 +402,6 @@ coverage_required: false
 #   Whitespace-separated test trees for the coverage verifier (default:
 #   `tests`). One verifier run unions discovery across all of them.
 
-# sentinel_command: npx vitest run {sentinel}
-#   How this product runs ONE test file, for `prawduct-hook audit-learnings`.
-#   A learning may declare `sentinel=<path>`, meaning "the failure mode this
-#   rule warns about is now enforced by that test" — and the audit retires the
-#   rule when the test passes. Grading it needs a single-file invocation, which
-#   `test_command:` cannot express: that one runs the whole suite, so reusing it
-#   would grade every rule by the suite's verdict.
-#   Must contain the `{sentinel}` literal, where the test path is substituted.
-#   Shlex-split, run from the repo root, same `#`-truncation caveat as above.
-#   UNSET IS SAFE AND MEANS UNGRADED: sentinels are reported `ungraded` with a
-#   reason, never `failed`, and no rule is retired on a verdict that was never
-#   taken. There is deliberately no default — prawduct governs products in every
-#   language and will not guess at one's test runner.
-
 # =============================================================================
 # LEARNINGS BUDGETS (opt-in override, v3.5+)
 # =============================================================================

@@ -157,6 +157,9 @@ _REFUSAL_NOT_WANTED = {
     "user-prompt-submit": "harness hook; must exit 0 for any argv or it blocks the session",
     "build-index": "inert — `del argv`; an ignored argument cannot act",
     "regen-views": "deprecated and inert; exit 0 for any input is its contract",
+    "audit-learnings": "deprecated and inert; exit 0 for any input is its contract",
+    "learnings-obligation": "deprecated and inert; exit 0 for any input is its contract",
+    "check-learnings-pairing": "deprecated and inert; exit 0 for any input is its contract",
     "infer-critic-mode": "takes free-form $ARGUMENTS by contract; an unrecognised mode "
                          "falling through to inference is the documented behaviour",
     "jurisdiction": "documented fail-open: a bad --file or any other error yields no "
@@ -663,8 +666,14 @@ class TestUpdateGitignoreDryRun:
 def test_an_argv_taking_command_still_refuses_its_own_unknown_flags(tmp_path: Path):
     """The dispatcher speaks only for commands that cannot speak for
     themselves; `_reject_unknown_args` is unchanged and still the guard for the
-    ones that can."""
-    proc = _run(tmp_path, ["audit-learnings", "--a-flag-that-never-existed"])
+    ones that can.
+
+    The subject must be a command with a live body. A deprecated-inert one
+    accepts every token by design (`tests/test_deprecated_inert_commands.py`),
+    so using one here would assert the opposite of what this file pins while
+    reading exactly the same.
+    """
+    proc = _run(tmp_path, ["norm-index-scaffold", "--a-flag-that-never-existed"])
 
     assert proc.returncode == 2
     assert "--a-flag-that-never-existed" in proc.stderr

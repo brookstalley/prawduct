@@ -85,8 +85,6 @@ _FLATTENED_EXPORTS: dict[str, str] = {
     "undismiss_advisory": "advisory_cmd",
     # Critic mode inference (no-arg /critic picks mode from state)
     "infer_mode": "critic_mode",
-    # Learnings-lifecycle audit (/prawduct:doctor Audit-Learnings flow)
-    "run_audit_learnings": "audit_learnings_cmd",
     # Operator-verification queue (pre-merge human-verification gate)
     "VerificationEntry": "operator_verification",
     "count_pending": "operator_verification",

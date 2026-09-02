@@ -348,9 +348,10 @@ def _reject_unknown_args(
 
     Flag-only subcommands take no positionals and detect options with
     ``"--flag" in argv`` — a pattern that silently ignores any token that
-    isn't a recognized flag. That swallowed a real bug where a test passed
-    ``tmp_path`` positionally to ``audit-learnings`` and the live repo was
-    audited instead of the fixture. Returns exit code 2 (the hook's usage-error
+    isn't a recognized flag. The failure that shape produces is not a crash but
+    a silent target swap: a caller that passes a directory positionally, meaning
+    "operate on this one", is ignored and the command operates on the repo it
+    was invoked from. Returns exit code 2 (the hook's usage-error
     convention, matching ``cmd_test_evidence``'s extra-args rejection) after
     printing the first unrecognized token to stderr, or ``None`` when every
     token is a recognized flag. Mirrors the inline ``unknown argument``
@@ -6047,68 +6048,37 @@ def cmd_learnings_files(project_dir: Path, argv: list[str]) -> int:
     return 0
 
 
-def cmd_learnings_obligation(project_dir: Path, argv: list[str]) -> int:
-    """Check — and on ``--apply`` repair — the descent obligation in ``learnings.md``.
+def cmd_learnings_obligation(project_dir: Path, argv: list[str] | None = None) -> int:
+    """DEPRECATED and inert — prints a notice, writes nothing, exits 0.
 
-    ``/prawduct:learnings`` points every product's reader at the obligation marked
-    ``prawduct:descent-obligation``; only ``init-product``'s starter corpus ever
-    wrote that marker, and it writes it only when the file does not exist. So the
-    entire already-onboarded fleet carries a pointer at nothing. This is the doctor
-    health check that detects it (``/prawduct:doctor`` Health Check #13) and the
-    repair that closes it.
+    This detected — and on ``--apply`` inserted — the descent obligation that
+    ``.prawduct/learnings.md`` was supposed to carry above its first rule, so a
+    reader pointed at the summary knew to descend into the detail file. Both
+    files are gone and so is the descent: ``.claude/rules/learnings/`` holds
+    whole rules the harness loads by path match, with nothing to descend into
+    and no marker to insert.
 
-    Exit codes follow ``artifacts/api-contract.md`` § Error Model. **Dry run is an
-    advisory report:** 0 when it ran — a finding is not a failure — and 1 only when
-    it could not run (lib not importable, file undecodable). **``--apply`` is a
-    state-mutating writer:** 0 when it inserted or was an idempotent no-op, 1 when
-    it refused (nothing written). Unknown flags are 2.
+    Kept callable and signalled for the reason given in
+    :func:`cmd_audit_learnings`, which cites the governing norm.
+
+    Exit 0 unconditionally, including for ``--apply`` and ``--json``. The
+    ``--apply`` change is the one worth naming: this was a writer, and a writer
+    that exits 0 having written nothing would normally be a false success. It is
+    not one here, because the state it wrote toward — an obligation marker in a
+    file at a path nothing creates — is unreachable, so a caller asking for the
+    repair is already in the post-repair world it wanted.
     """
-    rejected = _reject_unknown_args("learnings-obligation", argv, {"--apply", "--json"})
-    if rejected is not None:
-        return rejected
-    apply = "--apply" in argv
-    as_json = "--json" in argv
-
-    lib_root = _plugin_root()
-    if lib_root not in sys.path:
-        sys.path.insert(0, lib_root)
-    try:
-        from lib import learnings_obligation  # noqa: PLC0415 — lazy keeps top-level cheap
-    except ImportError as exc:
-        # Fail-closed for the writer, fail-open would be a false success; the dry
-        # run cannot run either, so both directions are 1 here ("could not run").
-        print(
-            f"error: learnings-obligation could not import the plugin lib/ ({exc})",
-            file=sys.stderr,
-        )
-        return 1
-
-    result = learnings_obligation.repair(project_dir, apply=apply)
-    status = result["status"]
-
-    if as_json:
-        print(json.dumps(result, indent=2))
-    else:
-        # Labelled from the MODE the operator asked for, not from whether a write
-        # happened: `--apply` against a refused status (misplaced, absent,
-        # unreadable) writes nothing, and calling that run "dry-run" invites the
-        # reader to conclude they forgot the flag and re-run it. `status`/`detail`
-        # say what actually happened.
-        print(f"learnings-obligation ({'apply' if apply else 'dry-run'}): {status}")
-        print(f"  {result['detail']}")
-        if result["repairable"] and not result["applied"]:
-            # The informed confirmation: name the file, the exact line, and the
-            # exact text, so `--apply` is a yes to something the owner has read.
-            print(
-                f"  Would insert into {result['path']} above line "
-                f"{result['insert_before_line']} (--apply to write it):"
-            )
-            for line in (result["insert_text"] or "").split("\n"):
-                print(f"    | {line}")
-
-    if apply:
-        return 0 if result["applied"] or status == learnings_obligation.STATUS_OK else 1
-    return 1 if status == learnings_obligation.STATUS_UNREADABLE else 0
+    del project_dir, argv  # kept so the dispatcher's call site is unchanged
+    print(
+        "WARNING: learnings-obligation no longer does anything and will be "
+        "removed in a future major version. The learnings lifecycle audit is "
+        "gone: rules now live in .claude/rules/learnings/, which the harness "
+        "loads by path match, so there is no learnings.md and no descent "
+        "obligation to insert. If a flow or checklist still calls this "
+        "command, drop the call.",
+        file=sys.stderr,
+    )
+    return 0
 
 
 def cmd_norm_index_scaffold(project_dir: Path, argv: list[str]) -> int:
@@ -6516,44 +6486,35 @@ def cmd_plan_backfill(project_dir: Path, argv: list[str]) -> int:
     return 1 if incomplete else 0
 
 
-def cmd_check_learnings_pairing(project_dir: Path, argv: list[str]) -> int:
-    """Grade `learnings.md` against `learnings-detail.md`. Read-only.
+def cmd_check_learnings_pairing(project_dir: Path, argv: list[str] | None = None) -> int:
+    """DEPRECATED and inert — prints a notice, writes nothing, exits 0.
 
-    Exit 0 when there is nothing to report, 1 on a duplicate heading, **3** when
-    the pair could not be read — the standing third-outcome rule for a check
-    whose subject is unreadable (api-contract § Error Model). Reporting a clean
-    pair off a file that would not decode is the failure this whole scope is
-    about.
+    This graded ``.prawduct/learnings.md`` against ``.prawduct/learnings-detail.md``
+    — one heading per rule in the summary, its narrative in the detail file —
+    and reported a duplicate heading or an unreadable pair. Neither file exists
+    any more: rules live in ``.claude/rules/learnings/`` as whole entries, with
+    no summary/detail split, so the pairing this checked is not a state the
+    corpus can be in.
+
+    Kept callable and signalled for the reason given in
+    :func:`cmd_audit_learnings`, which cites the governing norm. This one is the
+    likelier of the three to survive in a copied script, because it was the
+    cheap read a doctor flow ran unconditionally.
+
+    Exit 0 unconditionally, including for ``--json`` and for flags it never had.
+    It previously returned 1 on a finding and 3 on an unreadable pair; a caller
+    branching on those now takes its clean path, which is the correct answer —
+    there is no pair to find anything wrong with.
     """
-    rejected = _reject_unknown_args("check-learnings-pairing", argv, {"--json"})
-    if rejected is not None:
-        return rejected
-    lib_root = _plugin_root()
-    if lib_root not in sys.path:
-        sys.path.insert(0, lib_root)
-    try:
-        from lib import audit_learnings_cmd  # noqa: PLC0415 — lazy import
-    except ImportError:
-        print(
-            "NOTE: check-learnings-pairing could not import the plugin lib/; "
-            "the learnings pair was NOT graded.",
-            file=sys.stderr,
-        )
-        return 0
-
-    result = audit_learnings_cmd.check_learnings_pairing(project_dir)
-    if "--json" in argv:
-        print(json.dumps(result, indent=2))
-    elif result["status"] == "ok":
-        print(f"ok: {result['reason']}")
-    else:
-        print(f"{result['status']}: {result['reason']}", file=sys.stderr)
-        for finding in result["findings"]:
-            print(f"  - {finding['detail']}", file=sys.stderr)
-    if result["status"] == "findings":
-        return 1
-    if result["status"] == "unchecked":
-        return 3
+    del project_dir, argv  # kept so the dispatcher's call site is unchanged
+    print(
+        "WARNING: check-learnings-pairing no longer does anything and will be "
+        "removed in a future major version. The learnings lifecycle audit is "
+        "gone: rules now live in .claude/rules/learnings/ as whole entries, so "
+        "there is no summary/detail pair to grade. If a flow or checklist still "
+        "calls this command, drop the call.",
+        file=sys.stderr,
+    )
     return 0
 
 
@@ -6572,8 +6533,8 @@ def cmd_learnings_migrate(project_dir: Path, argv: list[str]) -> int:
     point is the commit that follows.
 
     Exit codes follow ``artifacts/api-contract.md`` § Error Model, like the
-    sibling repairs (``learnings-obligation``, ``norm-index-scaffold``,
-    ``lifecycle-repair``): **0** written or a no-op — including a repo with
+    sibling repairs (``norm-index-scaffold``, ``lifecycle-repair``): **0**
+    written or a no-op — including a repo with
     nothing to migrate, because a second run is a no-op rather than an error;
     **1** refused, nothing written, and the same for a lib/ that will not
     import (it could not run); **2** usage error — an unknown flag, a missing
@@ -6772,121 +6733,44 @@ def cmd_learnings_migrate(project_dir: Path, argv: list[str]) -> int:
         print("Run `--propose-map` to draft the scoping map, then `--apply --map <file>`.")
     return 0
 
-def cmd_audit_learnings(project_dir: Path, argv: list[str]) -> int:
-    """Audit the consumer's ``.prawduct/learnings.md`` lifecycle (F9).
+def cmd_audit_learnings(project_dir: Path, argv: list[str] | None = None) -> int:
+    """DEPRECATED and inert — prints a notice, writes nothing, exits 0.
 
-    Plugin-native port of the legacy file-sync ``audit-learnings`` path (gone in
-    a migrated consumer — there is no framework checkout). Walks the
-    consumer's OWN ``learnings.md``, classifying entries as promotion /
-    retirement / stale candidates, and with ``--apply`` moves sentinel-passing
-    entries to ``learnings-detail.md``'s historical section. Invoked by
-    ``/prawduct:doctor``'s Audit-Learnings flow (``--json``). ``argv`` is
-    ``sys.argv[2:]`` (``--apply``, ``--json``); read-only by default.
+    This walked a consumer's ``.prawduct/learnings.md`` and classified its
+    entries as promotion, retirement or stale candidates, moving the ones whose
+    sentinel passed into a historical section on ``--apply``. The lifecycle it
+    graded no longer exists: rules live in ``.claude/rules/learnings/``, the
+    harness loads them by path match, and a rule earns its place by being read
+    at the moment it applies rather than by accumulating confirmations against a
+    per-entry sentinel. There is nothing left to audit, and no file at the path
+    it audited.
 
-    Fail-safe: if the bundled lib/ cannot be imported (an incomplete plugin
-    install), print a clear message and return 1 rather than crashing.
+    **Why it is still callable.** ``api-contract.md`` § Direction (additive-first
+    evolution) requires a retired subcommand a human or a skill can call to be
+    signalled rather than removed — kept working, announced on stderr, removal
+    deferred to a major — and the retention window that clause's case law sets
+    runs until no supported install still calls it. The callers this protects
+    are a copied ``/prawduct:doctor`` flow and a hand-written health-check
+    script on an older per-project plugin pin: each gets a notice naming where
+    rules live now, not usage text and exit 1.
+
+    Exit 0 unconditionally, including for the ``--apply`` and ``--json`` flags it
+    used to honour and for flags it never had: a command that does nothing
+    cannot be misused, and a usage error here is the break the deprecation
+    exists to avoid. Nothing reaches stdout, so a ``--json`` caller that piped
+    this gets an empty payload rather than a corrupted one.
     """
-    rejected = _reject_unknown_args("audit-learnings", argv, {"--apply", "--json"})
-    if rejected is not None:
-        return rejected
-    apply = "--apply" in argv
-    as_json = "--json" in argv
-
-    lib_root = _plugin_root()
-    if lib_root not in sys.path:
-        sys.path.insert(0, lib_root)
-    try:
-        from lib import run_audit_learnings  # noqa: PLC0415 — lazy keeps top-level cheap
-    except ImportError:
-        print(
-            "error: audit-learnings could not import the plugin lib/ from "
-            "${CLAUDE_PLUGIN_ROOT}.",
-            file=sys.stderr,
-        )
-        return 1
-
-    result = run_audit_learnings(str(project_dir), apply=apply)
-
-    # The ungraded notice goes to STDERR, before either renderer, so it reaches
-    # BOTH. On the `--json` path stdout is a machine payload, so a notice
-    # printed there would either corrupt it or (as shipped) be omitted entirely
-    # — leaving the sole `--json` consumer, the doctor skill, with no signal at
-    # all where the pre-fix code at least printed something loud and wrong.
-    ungraded = [
-        r for r in result.get("retirements", []) if r.get("unevaluated_reason")
-    ]
-    if ungraded:
-        print(
-            f"notice: {len(ungraded)} sentinel(s) could not be graded and were "
-            "left active — no rule is retired on a verdict nobody took. "
-            f"First: {ungraded[0]['title']}: {ungraded[0]['unevaluated_reason']}",
-            file=sys.stderr,
-        )
-
-    if as_json:
-        print(json.dumps(result, indent=2))
-        # A refusal lands in `errors`, not `error`, and `applied: false` after a
-        # requested `--apply` means the writer refused and wrote nothing —
-        # api-contract gives a refusing writer exit 1. Reporting 0 there tells
-        # the caller the retirement happened.
-        if "error" in result:
-            return 1
-        return 1 if (apply and result.get("applied") is False) else 0
-
-    if "error" in result:
-        print(f"error: {result['error']}", file=sys.stderr)
-        return 1
-
-    promotions = result["promotions"]
-    retirements = result["retirements"]
-    stale = result["stale_flags"]
-    errors = result["errors"]
+    # Both parameters are kept so the dispatcher's call site is unchanged — a
+    # deprecated command that still accepts its old invocation is the point.
+    del project_dir, argv
     print(
-        f"audit-learnings ({'applied' if result['applied'] else 'dry-run'}): "
-        f"{len(promotions)} promotion candidate(s), {len(retirements)} retirement "
-        f"candidate(s), {len(stale)} stale flag(s), {len(errors)} error(s)."
+        "WARNING: audit-learnings no longer does anything and will be removed "
+        "in a future major version. The learnings lifecycle audit is gone: "
+        "rules now live in .claude/rules/learnings/, where the harness loads "
+        "them by path match, and there is no learnings.md left to grade. If a "
+        "flow or checklist still calls this command, drop the call.",
+        file=sys.stderr,
     )
-    for p in promotions:
-        print(f"  promote: {p['title']} (confirmations={p['confirmations']})")
-    for r in retirements:
-        # Two retirement routes, and the readiness question differs per route:
-        # a sentinel candidate is ready when its test passes, a supersession
-        # when its pointer resolved. Reading `passed` for both would report
-        # every resolvable supersession as "blocked" (its `passed` is None by
-        # construction) — a clean candidate rendered as a problem.
-        ungraded = False
-        if r.get("reason") == "superseded-by":
-            ready = r.get("resolved_to") is not None
-            why = f"superseded-by={r.get('resolved_to') or r.get('superseded_by')}"
-        else:
-            # Three-valued, and `bool()` would flatten it: an UNGRADED sentinel
-            # (`passed is None`) is not a blocked one. Rendering it "blocked"
-            # tells the operator a test is failing when prawduct never ran one,
-            # which is the same false accusation in the report that the runner
-            # stopped making.
-            ready = r.get("passed") is True
-            ungraded = r.get("passed") is None
-            why = f"sentinel={r['sentinel']}"
-        if r.get("applied"):
-            state = "retired"
-        elif ungraded:
-            state = "ungraded"
-        elif ready:
-            state = "ready"
-        else:
-            state = "blocked"
-        print(f"  retire[{state}]: {r['title']} ({why})")
-        if r.get("unevaluated_reason"):
-            print(f"    not graded: {r['unevaluated_reason']}")
-    for s in stale:
-        print(f"  stale: {s['title']} ({s['age_days']}d, confirmations={s['confirmations']})")
-    for e in errors:
-        print(f"  error: {e['title']}: {e['error']}")
-    # Same rule as the `--json` path above: a requested `--apply` that came back
-    # `applied: false` refused and wrote nothing, and a writer that refused
-    # exits 1.
-    if apply and result.get("applied") is False:
-        return 1
     return 0
 
 
@@ -7326,20 +7210,25 @@ _EPHEMERAL_SAFE_COMMANDS = frozenset({
     # bodies is a print-and-return-0 or a bare return 0 — and membership here is
     # what makes their docstrings' "exits 0 everywhere" true. Without it the
     # fail-closed guard above treats an unlisted command as a write and refuses
-    # with exit 1 inside a disposable worktree, which for the two hook-invoked
+    # with exit 1 inside a disposable worktree, which for the hook-invoked
     # members is the very session-start hook error they were restored to remove
-    # (v3.3.3). `regen-views` and `stamp-merged` carried the same gap and the
-    # same false claim since they were emptied; this is one classification, not
-    # four decisions. Pinned in tests/test_retired_hook_subcommands.py.
+    # (v3.3.3). Every member is here for one classification decision, not one
+    # per command: a body that does nothing cannot strand a write. The three
+    # learnings verbs arrived from `_EPHEMERAL_APPLY_GATED_COMMANDS` when they
+    # were emptied — an apply-gated entry says "this writes under --apply", and
+    # a stub has no --apply left to honour. Pinned in
+    # tests/test_retired_hook_subcommands.py.
     "build-index",
     "user-prompt-submit",
     "regen-views",
     "stamp-merged",
+    "audit-learnings",
+    "learnings-obligation",
+    "check-learnings-pairing",
     "bug-inbox",
     "check-change-log-entry",
     "check-cumulative-critic",
     "check-operator-verification",
-    "check-learnings-pairing",
     "check-plugin-active",
     "check-pr-doc-only",
     "check-releasability",
@@ -7371,9 +7260,7 @@ _EPHEMERAL_SAFE_COMMANDS = frozenset({
 # Read-only reports that mutate only under `--apply` — a third shape, neither
 # whole-command nor per-op.
 _EPHEMERAL_APPLY_GATED_COMMANDS = frozenset({
-    "audit-learnings",
     "coverage-scaffold",
-    "learnings-obligation",
     "lifecycle-repair",
     "norm-index-scaffold",
     "plan-backfill",
