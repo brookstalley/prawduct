@@ -526,6 +526,9 @@ def test_documented_invocations_are_not_refused(capsys):
         ("check-plugin-active", ["--context", "onboard"]),
         ("check-learnings-pairing", []),
         ("check-learnings-pairing", ["--json"]),
+        ("learnings-migrate", []),
+        ("learnings-migrate", ["--propose-map"]),
+        ("learnings-migrate", ["--apply", "--map", "/tmp/map.txt", "--json"]),
     ]
     for command, argv in documented:
         assert _hook._check_argument_shape(command, argv) == 0, (
@@ -548,7 +551,7 @@ def test_every_dispatched_command_appears_in_the_documented_list():
         "verify-operator-verification", "check-change-log-entry",
         "check-releasability", "archive-plan", "check-released", "check-pr-doc-only",
         "check-plugin-active",
-        "check-learnings-pairing",
+        "check-learnings-pairing", "learnings-migrate",
         "stamp-merged", "build-index", "user-prompt-submit", "regen-views",
         "infer-critic-mode", "resolve-base", "disposition", "render-dispositions",
         "evidence", "bug-inbox", "version", "print-install-reference", "advisory",

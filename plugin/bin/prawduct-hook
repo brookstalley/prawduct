@@ -6228,6 +6228,168 @@ def cmd_check_learnings_pairing(project_dir: Path, argv: list[str]) -> int:
     return 0
 
 
+def cmd_learnings_migrate(project_dir: Path, argv: list[str]) -> int:
+    """Relayout ``.prawduct/learnings.md`` into ``.claude/rules/learnings/``.
+
+    The cutover command every onboarded repo runs once. Dry by default and
+    dry-by-default for a reason that is not the usual one: the mutation is
+    small (three files written, three deleted) but it is the **only** operation
+    prawduct has that can destroy a corpus a product cannot regenerate. So the
+    plan is printed with per-file byte and rule counts, the agent edits the
+    proposed topic→glob map, and ``--apply`` performs exactly what was printed.
+
+    Flow: ``--propose-map`` writes the sidecar, the agent scopes the topics it
+    recognises, ``--apply --map <file>`` migrates, and the operator's control
+    point is the commit that follows.
+
+    Exit codes: 0 when the plan printed or the migration ran (and 0 for a repo
+    with nothing to migrate — a second run is a no-op, not an error); **2** for
+    a usage error or a refusal; 1 when the bundled lib/ cannot be imported.
+
+    Refusals apply in **every** mode, not only under ``--apply``. A dirty
+    learnings file or a gitignored destination is a condition the agent must fix
+    before any of this is worth planning, and a dry run that printed a plan it
+    could never execute would teach the reader to skip the reason.
+    """
+    flags = {"--apply", "--propose-map", "--json"}
+    rest: list[str] = []
+    map_path: str | None = None
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg == "--map":
+            if i + 1 >= len(argv):
+                print("learnings-migrate: --map needs a value", file=sys.stderr)
+                return 2
+            map_path = argv[i + 1]
+            i += 2
+            continue
+        rest.append(arg)
+        i += 1
+    rejected = _reject_unknown_args("learnings-migrate", rest, flags)
+    if rejected is not None:
+        return rejected
+
+    do_apply = "--apply" in rest
+    propose = "--propose-map" in rest
+    as_json = "--json" in rest
+    if propose and do_apply:
+        print(
+            "learnings-migrate: --propose-map prints the map and exits; it "
+            "cannot be combined with --apply. Nothing ran.",
+            file=sys.stderr,
+        )
+        return 2
+
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import learnings_files, learnings_migrate  # noqa: PLC0415 — lazy import
+    except ImportError:
+        print(
+            "error: learnings-migrate could not import the plugin lib/ from "
+            "${CLAUDE_PLUGIN_ROOT}; nothing was migrated.",
+            file=sys.stderr,
+        )
+        return 1
+
+    mapping = None
+    if map_path is not None:
+        try:
+            map_text = Path(map_path).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            print(f"learnings-migrate: cannot read --map {map_path}: {exc}", file=sys.stderr)
+            return 2
+        try:
+            mapping = learnings_migrate.parse_map(map_text)
+        except ValueError as exc:
+            print(f"learnings-migrate: bad map file {map_path}: {exc}", file=sys.stderr)
+            return 2
+
+    migration = learnings_migrate.plan(project_dir, mapping)
+
+    if migration.nothing_to_do:
+        if as_json:
+            print(json.dumps({
+                "state": migration.state,
+                "nothing_to_do": migration.nothing_to_do,
+                "applied": False,
+            }, indent=2))
+        else:
+            print(f"nothing to do: {migration.nothing_to_do}")
+        return 0
+
+    if migration.refusals:
+        if as_json:
+            print(json.dumps({
+                "state": migration.state,
+                "refusals": migration.refusals,
+                "applied": False,
+            }, indent=2))
+        for reason in migration.refusals:
+            print(f"learnings-migrate: REFUSED — {reason}", file=sys.stderr)
+        return 2
+
+    if propose:
+        proposal = learnings_migrate.propose_map(project_dir, migration.sections)
+        unmatched = [
+            s.slug for s in migration.sections if s.is_topic and s.slug not in proposal
+        ]
+        if as_json:
+            print(json.dumps({"map": proposal, "unmatched": unmatched}, indent=2))
+        else:
+            print(learnings_migrate.format_map(proposal, unmatched), end="")
+        return 0
+
+    if as_json:
+        print(json.dumps({
+            "state": migration.state,
+            "applied": do_apply,
+            "outputs": [
+                {"path": o.rel, "bytes": o.size, "rules": o.rules}
+                for o in migration.outputs
+            ],
+            "deletions": list(migration.deletions),
+            "unmapped": list(migration.unmapped),
+            "total_bytes": migration.size,
+            "total_rules": migration.rules,
+        }, indent=2))
+
+    if do_apply:
+        try:
+            learnings_migrate.apply(project_dir, migration)
+        except (OSError, learnings_migrate.MigrateRefused) as exc:
+            print(f"learnings-migrate: failed — {exc}", file=sys.stderr)
+            return 2
+        if not as_json:
+            for output in migration.outputs:
+                print(f"wrote {output.rel} ({output.size} bytes, {output.rules} rules)")
+            for rel in migration.deletions:
+                print(f"deleted {rel}")
+            print(
+                f"migrated {migration.rules} rules into {len(migration.outputs)} "
+                f"file(s). Commit them — the commit is this migration's undo."
+            )
+        return 0
+
+    if not as_json:
+        width = max((len(o.rel) for o in migration.outputs), default=0)
+        print("learnings-migrate: dry run — nothing was written.")
+        print("would write:")
+        for output in migration.outputs:
+            print(f"  {output.rel:<{width}}  {output.size:>7} bytes  {output.rules:>4} rules")
+        print("would delete:")
+        for rel in migration.deletions:
+            print(f"  {rel}")
+        print(
+            f"{migration.rules} rules, {migration.size} bytes across "
+            f"{len(migration.outputs)} file(s); {len(migration.unmapped)} topic(s) "
+            "unmapped and therefore in core.md."
+        )
+        print("Run `--propose-map` to draft the scoping map, then `--apply --map <file>`.")
+    return 0
+
 def cmd_audit_learnings(project_dir: Path, argv: list[str]) -> int:
     """Audit the consumer's ``.prawduct/learnings.md`` lifecycle (F9).
 
@@ -6460,6 +6622,7 @@ _USAGE = (
     "migrate-plugin [--apply] [--json]|init-product <target> --name <name> [--backlog-repo owner/repo] [--apply] [--json]|"
     "update-gitignore [--dry-run]|"
     "audit-learnings [--apply] [--json]|learnings-obligation [--apply] [--json]|"
+    "learnings-migrate [--apply] [--map <file>] [--propose-map] [--json]|"
     "norm-index-scaffold [--apply] [--json]|"
     "lifecycle-repair [--apply] [--json]|"
     "plan-backfill [--apply] [--json] [--date YYYY-MM-DD]|"
@@ -7331,6 +7494,8 @@ def _dispatch() -> int:
         return cmd_check_plugin_active(project_dir, sys.argv[2:])
     elif command == "check-learnings-pairing":
         return cmd_check_learnings_pairing(project_dir, sys.argv[2:])
+    elif command == "learnings-migrate":
+        return cmd_learnings_migrate(project_dir, sys.argv[2:])
     elif command == "check-operator-verification":
         return cmd_check_operator_verification(project_dir)
     elif command == "accept-operator-verification":
