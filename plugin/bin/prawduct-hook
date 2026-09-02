@@ -2485,12 +2485,27 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # a governance-only session). Nothing was judged in such a session, so
     # nothing here is owed — and a blocker whose first sentence says "this
     # session changed judgeable code" must not fire where that sentence is false.
-    _non_metadata = [
-        f
-        for f in _gs._get_session_changed_files(project_dir, status_output)
-        if not _gs._is_metadata_path(f)
-    ]
+    _session_changed = _gs._get_session_changed_files(project_dir, status_output)
+    _non_metadata = [f for f in _session_changed if not _gs._is_metadata_path(f)]
     _judgeable_work = bool(_non_metadata) and not doc_only
+
+    def _touches_rules(path: str) -> bool:
+        """Did this changed path put a learnings rules file in the session?
+
+        Both directions, because porcelain reports an untracked DIRECTORY: a
+        never-committed `.claude/` arrives as `.claude/` and contains the rules
+        tree, while a tracked one arrives as the file itself.
+        """
+        if not _learnings_rules_dir:
+            return False
+        candidate = path.rstrip("/")
+        return (
+            candidate == _learnings_rules_dir
+            or candidate.startswith(_learnings_rules_dir + "/")
+            or _learnings_rules_dir.startswith(candidate + "/")
+        )
+
+    _rules_changed = any(_touches_rules(f) for f in _session_changed)
     if _judgeable_work and _learnings_state in _unmigrated_states:
         if "learnings" in waivers:
             waiver_notes.append(f"learnings: waived ({waivers['learnings']})")
@@ -2505,8 +2520,9 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 _headline = (
                     "LEARNINGS UNMIGRATED (both layouts present): this session changed\n"
                     "  judgeable code with two learnings corpora on disk. The harness loads the\n"
-                    "  rules tree, so those rules WERE in context — the legacy file beside it is\n"
-                    "  dead weight and a second source of truth that nothing reads.\n"
+                    "  rules tree, so those rules WERE in context; the legacy file beside it may\n"
+                    "  still hold rules that never reached the tree — an interrupted `--apply`\n"
+                    "  leaves exactly this shape, and the directive below resolves both cases.\n"
                 )
             else:
                 _headline = (
@@ -2552,32 +2568,53 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 "  `/prawduct:methodology building` (Gate waivers) for when this is appropriate.\n"
             ))
 
-    # Gate 1c: the learnings BUDGET floor — a rules file over its ceiling that
-    # also grew this session.
+    # Gate 1c: the learnings BUDGET floor.
     #
     # At Stop because that is where the ruling put it (discovery §2 criterion 4,
     # §8.8 Q1): rules are written at work boundaries of every size, and the
     # Critic runs only on medium+ work — so enforcing the ceiling only at review
     # time leaves the bugfix-sized boundary, which is where the audit measured
     # the growth, with no ceiling at all. `record_lint` owns the check; this is
-    # the channel, and it re-renders nothing — the finding text is carried
-    # verbatim so the builder reads one wording wherever it meets them.
-    if _judgeable_work and _learnings_state and _learnings_state not in _unmigrated_states:
+    # the channel, and it re-renders nothing — the finding detail is carried
+    # verbatim so the builder reads one wording wherever it meets it.
+    #
+    # Its OWN trigger, not Gate 1b's. 1b's `_judgeable_work` guard is argued
+    # about a sentence that names judgeable code; this gate's subject is a rules
+    # file, and a rules file is neither metadata nor judgeable (a `.md` outside
+    # the protected set). Riding on 1b meant a session whose only change was
+    # growing `core.md` computed `doc_only` and never ran the floor — the growth
+    # then committed into the next session's base tree, `now == base`, and it was
+    # never charged again. Bypassable, permanently and silently, by the exact
+    # write path the gate exists to govern.
+    if (
+        (_judgeable_work or _rules_changed)
+        and _learnings_state
+        and _learnings_state not in _unmigrated_states
+    ):
         try:
             from lib import record_lint as _record_lint  # noqa: PLC0415 — lazy keeps top-level cheap
 
+            # Called even with no base-tree marker, because only ONE of the two
+            # arms needs one: `learnings-budget-unreasoned` is decided from
+            # project-state.yaml alone and is emitted before the check ever
+            # looks at a file. Skipping the call on a missing marker silenced a
+            # finding whose answer did not depend on it.
             _budget_base = _gates()._read_session_base_tree(prawduct_dir)
+            _budget_findings, _budget_unchecked, _ = (
+                _record_lint._check_learnings_budget(
+                    project_dir, prawduct_dir, _budget_base
+                )
+            )
             if not _budget_base:
-                _budget_findings, _budget_unchecked = [], [
+                # `record_lint` reports this as "could not resolve the base tree
+                # <empty>"; the cause is one level up and is the actionable form.
+                _budget_unchecked = [
+                    _e for _e in _budget_unchecked
+                    if "could not resolve the base tree" not in _e
+                ] + [
                     "learnings-over-budget unchecked — no .session-base-tree marker, so "
                     "there is no base size to compare this session's growth against"
                 ]
-            else:
-                _budget_findings, _budget_unchecked, _ = (
-                    _record_lint._check_learnings_budget(
-                        project_dir, prawduct_dir, _budget_base
-                    )
-                )
         except Exception as exc:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
             _budget_findings, _budget_unchecked = [], [
                 f"learnings-over-budget unchecked — the budget check could not run "
@@ -2593,22 +2630,51 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                     f"learnings-budget: waived ({waivers['learnings-budget']})"
                 )
             else:
-                _budget_lines = "".join(
-                    f"    - {f['check']} {f['path']}: {f['detail']}\n"
-                    for f in _budget_findings
-                )
-                blockers.append(_attributed("learnings-over-budget",
-                    "LEARNINGS BUDGET: a rules file is over its ceiling and grew this\n"
-                    "  session, so the next addition pays before it lands:\n"
-                    + _budget_lines +
-                    "\n"
-                    "  Escape hatch: if the payment genuinely cannot be made this session,\n"
-                    "  declare a waiver so this gate stops re-firing every turn:\n"
-                    "    echo '{\"learnings-budget\": \"reason — be specific\"}' > .prawduct/.gates-waived\n"
-                    "  Empty reasons are rejected; the file clears at the next session boundary\n"
-                    "  (a fresh start or /clear), so it outlives a resume/compact/fork. See\n"
-                    "  `/prawduct:methodology building` (Gate waivers) for when this is appropriate.\n"
-                ))
+                # DERIVED from the checks present, never written for the one in
+                # mind. `_check_learnings_budget` returns two kinds in one list
+                # and they have nothing in common: `learnings-budget-unreasoned`
+                # is about a `learnings_budgets:` entry in project-state.yaml, it
+                # fires before the check ever looks at a rules file (so it
+                # reaches a `none`-state repo with no corpus at all), and its
+                # remedy is one `reason:` line. Under the over-budget headline an
+                # operator was sent hunting for growth that never happened, and
+                # the blocker id named a control that did not fire.
+                _budget_headlines = {
+                    "learnings-over-budget": (
+                        "LEARNINGS BUDGET (over and grown): a rules file is over its ceiling\n"
+                        "  and grew this session, so the next addition pays before it lands:\n"
+                    ),
+                    "learnings-budget-unreasoned": (
+                        "LEARNINGS BUDGET (ceiling with no reason): a `learnings_budgets:` entry\n"
+                        "  raises a budget without saying what earned the extra room. Nothing here\n"
+                        "  is about a file's size — the fix is one `reason:` line:\n"
+                    ),
+                }
+                _by_check: dict[str, list[dict]] = {}
+                for _f in _budget_findings:
+                    _by_check.setdefault(_f["check"], []).append(_f)
+                for _check in sorted(_by_check):
+                    _detail = "".join(
+                        f"    - {_f['path']}: {_f['detail']}\n" for _f in _by_check[_check]
+                    )
+                    # A check this gate has no sentence for still gets a true
+                    # one: naming it beats heading it with another check's.
+                    _head = _budget_headlines.get(
+                        _check,
+                        f"LEARNINGS BUDGET ({_check}): the budget check reported this and\n"
+                        "  this gate carries its wording unchanged:\n",
+                    )
+                    blockers.append(_attributed(_check,
+                        _head
+                        + _detail
+                        + "\n"
+                        "  Escape hatch: if this cannot be resolved this session, declare a\n"
+                        "  waiver so this gate stops re-firing every turn:\n"
+                        "    echo '{\"learnings-budget\": \"reason — be specific\"}' > .prawduct/.gates-waived\n"
+                        "  Empty reasons are rejected; the file clears at the next session boundary\n"
+                        "  (a fresh start or /clear), so it outlives a resume/compact/fork. See\n"
+                        "  `/prawduct:methodology building` (Gate waivers) for when this is appropriate.\n"
+                    ))
 
     # Gate 2: Critic review (only when building against a plan)
     # Skipped for doc-only changes (no code to review). The waiver is only

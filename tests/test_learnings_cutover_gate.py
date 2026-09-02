@@ -53,7 +53,9 @@ _hook_loader.exec_module(_hook)
 BLOCKER = "LEARNINGS UNMIGRATED"
 BLOCKER_LEGACY = "LEARNINGS UNMIGRATED: this session changed judgeable code"
 BLOCKER_BOTH = "LEARNINGS UNMIGRATED (both layouts present)"
-BUDGET_BLOCKER = "LEARNINGS BUDGET:"
+BUDGET_BLOCKER = "LEARNINGS BUDGET"
+BUDGET_OVER = "LEARNINGS BUDGET (over and grown):"
+BUDGET_UNREASONED = "LEARNINGS BUDGET (ceiling with no reason):"
 
 #: Advisory ids (`<feature>-<probe>-v<n>-<hash6>`) and prawduct-internal
 #: requirement ids (`ABC-1D2E`) may not appear in operator-emitted text.
@@ -784,3 +786,196 @@ class TestOneGitignorePredicate:
         assert "GITIGNORED" in "\n".join(briefing._learnings_lines(repo))
         monkeypatch.setattr(learnings_files, "rules_dir_is_gitignored", lambda d: False)
         assert "GITIGNORED" not in "\n".join(briefing._learnings_lines(repo))
+
+
+class TestTheBudgetBlockerIsDerivedFromItsFindings:
+    """One list, two checks, two remedies — so two blockers.
+
+    `_check_learnings_budget` returns `learnings-over-budget` and
+    `learnings-budget-unreasoned` together. They share nothing: the second's
+    subject is a `learnings_budgets:` entry in project-state.yaml, it is emitted
+    before the check ever looks at a rules file (so it reaches a repo with no
+    corpus at all), and its remedy is one `reason:` line. Relayed under the
+    over-budget headline, an operator is sent hunting for growth that never
+    happened, and the blocker id names a control that did not fire.
+
+    Every rendered branch is pinned, because the rule that asks for this
+    ("a message covering two states must be DERIVED from the state, never
+    written for the one in mind") was earned by exactly this defect.
+    """
+
+    @staticmethod
+    def _budgets(repo: Path, body: str) -> None:
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            "product_identity:\n  name: P\nlearnings_budgets:\n" + body
+        )
+
+    def test_the_unreasoned_case_gets_its_own_headline_and_id(self, tmp_path, capsys):
+        repo = _repo(tmp_path)
+        _rules(repo)
+        self._budgets(repo, "  core.md:\n    kb: 64\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "corpus")
+        _base_tree(repo)
+        _touch_code(repo)
+        rc, err = _stop(repo, capsys)
+        assert rc == 2
+        assert BUDGET_UNREASONED in err
+        assert "the fix is one `reason:` line" in err
+        # The over-budget diagnosis must not appear: no file is over anything.
+        assert BUDGET_OVER not in err
+        assert "grew this session" not in err
+        # ...and the blocker is attributed to the check that actually fired.
+        assert "gate: learnings-budget-unreasoned" in err
+        assert "gate: learnings-over-budget" not in err
+
+    def test_the_unreasoned_case_reaches_a_repo_with_no_corpus(self, tmp_path, capsys):
+        """It fires before the check looks at a rules file, so a `none`-state
+        repo meets it — the one shape where the over-budget wording could not
+        possibly be true."""
+        repo = _repo(tmp_path)
+        self._budgets(repo, "  core.md:\n    kb: 64\n")
+        _touch_code(repo)
+        rc, err = _stop(repo, capsys)
+        assert rc == 2
+        assert BUDGET_UNREASONED in err
+        assert BUDGET_OVER not in err
+
+    def test_the_over_budget_case_keeps_its_own_headline_and_id(self, tmp_path, capsys):
+        repo = _repo(tmp_path)
+        d = repo / ".claude" / "rules" / "learnings"
+        d.mkdir(parents=True)
+        (d / "core.md").write_text("# core\n" + "x" * (20 * 1024))
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "corpus")
+        _base_tree(repo)
+        (d / "core.md").write_text("# core\n" + "x" * (24 * 1024))
+        _touch_code(repo)
+        rc, err = _stop(repo, capsys)
+        assert rc == 2
+        assert BUDGET_OVER in err
+        assert "gate: learnings-over-budget" in err
+        assert BUDGET_UNREASONED not in err
+
+    def test_both_checks_at_once_render_as_two_blockers(self, tmp_path, capsys):
+        repo = _repo(tmp_path)
+        d = repo / ".claude" / "rules" / "learnings"
+        d.mkdir(parents=True)
+        (d / "core.md").write_text("# core\n" + "x" * (20 * 1024))
+        self._budgets(repo, "  areas.md:\n    kb: 64\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "corpus")
+        _base_tree(repo)
+        (d / "core.md").write_text("# core\n" + "x" * (24 * 1024))
+        _touch_code(repo)
+        rc, err = _stop(repo, capsys)
+        assert rc == 2
+        assert BUDGET_OVER in err and BUDGET_UNREASONED in err
+        assert "gate: learnings-over-budget" in err
+        assert "gate: learnings-budget-unreasoned" in err
+
+
+class TestARulesOnlySessionPays:
+    """The floor runs on its own subject, not on Gate 1b's.
+
+    A rules file is neither metadata nor judgeable — a `.md` outside the
+    protected set — so a session whose only change was growing `core.md`
+    computed `doc_only`, skipped the floor, committed the growth into the next
+    session's base tree, and was never charged. The ceiling was bypassable,
+    permanently and silently, by the exact write path it exists to govern
+    (discovery criterion 4: it blocks the *next addition* at Stop).
+    """
+
+    @staticmethod
+    def _corpus(repo: Path, kb: int) -> Path:
+        d = repo / ".claude" / "rules" / "learnings"
+        d.mkdir(parents=True, exist_ok=True)
+        core = d / "core.md"
+        core.write_text("# core\n" + "x" * (kb * 1024))
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "corpus")
+        _base_tree(repo)
+        return core
+
+    def test_growing_a_rules_file_alone_blocks(self, tmp_path, capsys):
+        repo = _repo(tmp_path)
+        core = self._corpus(repo, 20)
+        core.write_text("# core\n" + "x" * (24 * 1024))  # the ONLY change
+        rc, err = _stop(repo, capsys)
+        assert rc == 2, "a rules-only session skipped the floor it exists for"
+        assert BUDGET_OVER in err
+
+    def test_a_rules_only_session_under_budget_passes(self, tmp_path, capsys):
+        repo = _repo(tmp_path)
+        core = self._corpus(repo, 2)
+        core.write_text("# core\n" + "x" * (3 * 1024))
+        rc, err = _stop(repo, capsys)
+        assert rc == 0
+        assert BUDGET_BLOCKER not in err
+
+    def test_the_cutover_floor_is_not_widened_by_the_same_change(
+        self, tmp_path, capsys
+    ):
+        """Gate 1b keeps its own, narrower trigger. Its first sentence names
+        judgeable code, and a rules-only session did not change any."""
+        repo = _repo(tmp_path)
+        _legacy(repo)
+        d = repo / ".claude" / "rules" / "learnings"
+        d.mkdir(parents=True)
+        core = d / "core.md"
+        core.write_text("# core\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "both corpora")
+        _base_tree(repo)
+        core.write_text("# core\n\n## a rule\n")  # the ONLY change
+        rc, err = _stop(repo, capsys)
+        assert rc == 0
+        assert BLOCKER not in err
+
+
+class TestTheBothDirectiveNamesTheResumePath:
+    """`apply()` leaves a half-written tree ON PURPOSE so a re-run can finish it.
+
+    `learnings_migrate._resume_state` tells its own wreckage from a genuine
+    two-corpus repo (every file on disk byte-identical to what the plan would
+    write). Across a session boundary the operator meets only these two
+    surfaces, and both told them to hand-fold and delete — when after a write
+    that failed partway, the rules that never landed exist ONLY in the legacy
+    file, so "delete it" is the destructive reading.
+    """
+
+    def test_the_briefing_directive_offers_the_re_run_first(self, tmp_path):
+        from lib import briefing
+
+        repo = _repo(tmp_path)
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            "product_identity:\n  name: P\n"
+        )
+        _legacy(repo)
+        _rules(repo)
+        directive = next(
+            ln for ln in briefing._learnings_lines(repo) if ln.startswith("agent →")
+        )
+        assert "learnings-migrate --apply` was interrupted, re-run it" in directive
+        assert "finishes a half-written tree" in directive
+        # The hand-fold survives as the OTHER branch, not as the only one.
+        assert "otherwise fold" in directive
+        assert "by hand and delete it" in directive
+
+    def test_the_stop_headline_drops_the_dead_weight_claim(self, tmp_path, capsys):
+        repo = _repo(tmp_path)
+        _legacy(repo)
+        _rules(repo)
+        _touch_code(repo)
+        _, err = _stop(repo, capsys)
+        assert BLOCKER_BOTH in err
+        assert "dead weight" not in err, (
+            "the blocker still calls the legacy file dead weight while the "
+            "directive beneath it says to fold the file in — one blocker, two "
+            "contradictory instructions"
+        )
+        assert "nothing reads" not in err
+        flat = " ".join(err.split())
+        assert "may still hold rules that never reached the tree" in flat
+        # The resume path reaches the Stop channel too, via the directive.
+        assert "re-run it" in err
