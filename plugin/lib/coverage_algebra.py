@@ -131,10 +131,11 @@ def judgeable_files(paths: "list[str] | None") -> list[str]:
 #:   pins named sections and references in it.
 #:
 #: **The residual, stated rather than implied.** ``backlog.md``,
-#: ``change-log.md``, ``learnings.md`` and ``artifacts/**`` are ALSO read by
-#: repo-coupled tests (``test_backlog_parser`` pins an item id;
+#: ``change-log.md``, ``.claude/rules/learnings/**`` and ``artifacts/**`` are
+#: ALSO read by repo-coupled tests (``test_backlog_parser`` pins an item id;
 #: ``test_change_log`` pins the tagged/untagged split, the scope-to-plan join
-#: and same-line duplicates). They are held out on cost, not on principle: all
+#: and same-line duplicates; ``test_path_reference_resolution`` grades every
+#: path a rule cites). They are held out on cost, not on principle: all
 #: four are written as ordinary bookkeeping in nearly every session, and a
 #: change-log entry is written LATE by construction because the PR gate demands
 #: one — so suite-coupling them would tax every PR with a re-run after the

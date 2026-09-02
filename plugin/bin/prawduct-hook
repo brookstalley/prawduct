@@ -572,7 +572,6 @@ _SESSION_GITIGNORED_PATHS = (
     ".prawduct/.gates-waived",
     ".prawduct/.advisories.json",
     ".prawduct/.work-model-index.json",
-    ".prawduct/reflections.md",
     # NOTE: .prawduct/artifacts/build-plan.md is deliberately NOT here —
     # build plans are tracked artifacts (gate-soundness ch.3); this loop
     # used to force-untrack them at every session start, reverting any
@@ -679,52 +678,6 @@ def _untrack_session_files(project_dir: Path) -> list[str]:
 # =============================================================================
 
 
-# Each archived reflection carries the version that produced it, because nothing
-# else on disk can supply it later: `.prawduct/.prawduct-version` holds only the
-# most recently seen value, and `reflections.md` is gitignored, so it has no
-# history to mine. Grouping a corpus by release otherwise degrades to whatever
-# dates the prose happens to contain, which is a minority of entries.
-#
-# The line is this repo's existing machine-readable tag idiom — the same shape
-# `lib/change_log.py` parses — so "which release produced this reflection" is a
-# query rather than an act of archaeology. A prose line would carry the same
-# words and stay unparseable, repeating the gap at lower cost.
-def _reflection_provenance_header() -> str:
-    """The tag line written ahead of one archived reflection block.
-
-    The version comes from the plugin manifest — the same accessor `version`
-    publishes — rather than from `.prawduct/.prawduct-version`: the banner
-    rewrites that marker earlier in this same SessionStart, so it holds nothing
-    the manifest does not, and it is absent altogether in a repo whose banner
-    has never run.
-
-    Every failure resolves to `unknown` rather than to an omitted header or a
-    raise. An omitted header is indistinguishable from an unstamped block, and a
-    raise would escape the archive's `(UnicodeError, OSError)` handler below and
-    take the whole session boundary with it — making the stamp a new way to lose
-    a reflection, which is the one thing this write site must never become.
-    """
-    # Computed ABOVE the guard, because it cannot fail and the guard's job is to
-    # name what did. Inside, a manifest read that raises degraded the date too,
-    # so the tag said `archived=unknown` for a value nothing had asked the disk
-    # for — a field reading as unresolvable when it was merely adjacent to one.
-    archived = datetime.now(timezone.utc).date().isoformat()
-    try:
-        version = _plugin_manifest_version() or "unknown"
-    except Exception as exc:  # prawduct:allow prawduct/broad-except -- provenance is metadata; the reflection it labels must survive anything this line does
-        # Named, not swallowed. Every other degradation at this boundary prints
-        # `NOTE: … ({exc})`, and a stamp that quietly reads `unknown` forever is
-        # the failure this header exists to end — an entry nobody can attribute,
-        # with nothing on the record saying why.
-        print(
-            f"NOTE: could not resolve the prawduct version for this reflection ({exc}) "
-            "— archiving it stamped `unknown`.",
-            file=sys.stderr,
-        )
-        return f"<!-- prawduct: version=unknown | archived={archived} -->"
-    return f"<!-- prawduct: version={version} | archived={archived} -->"
-
-
 def _consume_handoff_notes(prawduct_dir: Path, briefing, handoff) -> None:
     """Clear `.handoff-notes.md` iff its text reached the generated handoff.
 
@@ -773,10 +726,11 @@ def _consume_handoff_notes(prawduct_dir: Path, briefing, handoff) -> None:
 def _boundary_close_session(project_dir: Path, prawduct_dir: Path) -> None:
     """The first of two session-BOUNDARY regions: end the outgoing session.
 
-    Generates the handoff, consumes the forward notes it carried, archives the
-    reflection, deletes the session-scoped files, and re-stamps the session
-    clock. Every statement here destroys evidence belonging to a session that is
-    OVER, so none of it may run on a continuation (SCN-5B8Q) — a new boundary
+    Generates the handoff, consumes the forward notes it carried, deletes the
+    session-scoped files — the reflection among them — and re-stamps the session
+    clock. The handoff is the only thing that carries a reflection forward, so it
+    is generated before anything is deleted. Every statement here destroys
+    evidence belonging to a session that is OVER, so none of it may run on a continuation (SCN-5B8Q) — a new boundary
     statement belongs inside this function, which is the point of extracting it.
     """
     # Announce a finished-but-unticked chunk BEFORE the handoff is generated, and
@@ -797,9 +751,11 @@ def _boundary_close_session(project_dir: Path, prawduct_dir: Path) -> None:
     except Exception:  # prawduct:allow prawduct/broad-except -- a diagnostic must never block /clear, and it has no remedy to narrate
         pass
 
-    # Generate handoff BEFORE archiving/deleting session files, then consume the
-    # notes it carried. Both live under one guard because both need lib.briefing,
-    # which an incomplete install may not have — and neither may ever block /clear.
+    # Generate handoff BEFORE deleting session files, then consume the notes it
+    # carried. `.session-reflected` is read here and unlinked below, so this
+    # ordering is what makes a reflection survive the boundary at all. Both live
+    # under one guard because both need lib.briefing, which an incomplete install
+    # may not have — and neither may ever block /clear.
     try:
         briefing = _briefing()
         _consume_handoff_notes(
@@ -824,57 +780,22 @@ def _boundary_close_session(project_dir: Path, prawduct_dir: Path) -> None:
             "this one. Treat its contents as stale provenance."
         )
 
-    # Preserve previous session's reflection before clearing. `reflection_preserved`
-    # gates the delete below: True when there was nothing to preserve or the archive
-    # succeeded, False only when the archive genuinely failed.
-    reflected = prawduct_dir / ".session-reflected"
-    reflection_preserved = True
-    if reflected.is_file():
-        reflection_preserved = False
-        try:
-            # Explicit UTF-8 on every hop. Without `encoding=`, the append used the
-            # operator's locale codec and raised UnicodeEncodeError — a ValueError,
-            # NOT an OSError — which escaped the handler below, and nothing above
-            # catches it (`cmd_clear` calls this unguarded; `main()` has no
-            # top-level handler). That tracebacked out of the SessionStart hook and
-            # took the rest of the boundary AND the whole orientation half with it,
-            # contradicting this design's own promise that `/clear` is never
-            # blocked. The except-set is widened to UnicodeError as well, so a
-            # future codec path cannot re-open the hole.
-            content = reflected.read_text(encoding="utf-8").strip()
-            if content:
-                log = prawduct_dir / "reflections.md"
-                prior = log.read_text(encoding="utf-8").strip() if log.is_file() else ""
-                separator = "\n\n---\n\n" if prior else ""
-                # Inside the guard, so a stamp shares the archive's failure
-                # contract instead of standing outside it.
-                header = _reflection_provenance_header()
-                with open(log, "a", encoding="utf-8") as f:
-                    f.write(f"{separator}{header}\n\n{content}\n")
-            reflection_preserved = True
-        except (UnicodeError, OSError) as exc:
-            # Consumption keys on PRESERVATION, not on "we tried" — the same rule
-            # `.handoff-notes.md` already uses, applied to its literal sibling.
-            # Previously this swallowed the failure and the deletion loop below
-            # unlinked the file three statements later, so a reflection that could
-            # not be archived was destroyed rather than kept: the one silent
-            # permanent-loss path left in the boundary. Keeping it is an
-            # unbounded-but-announced failure, which is the trade architecture.md
-            # already ratifies for this channel.
-            print(
-                f"NOTE: could not archive .session-reflected ({exc}) — keeping the file "
-                "so the reflection is not lost; it will be retried at the next boundary "
-                "(archive or remove it by hand to stop this repeating)",
-                file=sys.stderr,
-            )
-
     # Remove session files. Best-effort per file (STH-8M3V): an OSError here
     # (permissions, transient FS) must not traceback the SessionStart hook —
     # a survivor just carries stale state into the new session, which the
     # NOTE names so the user can remove it by hand.
-    doomed = [".session-start", ".session-git-baseline", ".session-base-tree", ".gates-waived"]
-    if reflection_preserved:
-        doomed.insert(0, ".session-reflected")
+    # `.session-reflected` is deleted unconditionally. Nothing archives it any
+    # more: the handoff generated ABOVE reads it and carries the narrative into
+    # the next session, so the generation and the delete must stay in this order
+    # — swapping them hands the next session an empty handoff. That ordering is
+    # the whole contract now, and `tests/test_session_boundary_events.py` pins it.
+    doomed = [
+        ".session-reflected",
+        ".session-start",
+        ".session-git-baseline",
+        ".session-base-tree",
+        ".gates-waived",
+    ]
     for name in doomed:
         f = prawduct_dir / name
         try:

@@ -3421,7 +3421,7 @@ def _already_consolidated_note(prawduct_dir: Path) -> str:
     prevent.
 
     **Absence of the note means "clean", so a failure must never render as
-    absence** — that is the swallow-into-``""`` shape ``learnings.md`` warns
+    absence** — that is the swallow-into-``""`` shape ``core.md`` warns
     about by name, and here it would report a truncated cache as a clean review
     to the one caller CLAUDE.md routes through this branch. Read/parse/shape
     failures therefore say so; only a genuinely finding-free cache is silent.

@@ -693,7 +693,11 @@ class TestPluginDocsNamespacing:
         cycle = (ROOT / "skills/critic/review-cycle.md").read_text(encoding="utf-8")
         assert "/prawduct:critic" in cycle and "/prawduct:pr create" in cycle
         planning = (ROOT / "methodology/planning.md").read_text(encoding="utf-8")
-        assert "/prawduct:learnings" in planning
+        # Named the deleted learnings lookup skill. What this pins is the
+        # NAMESPACED form, not any one skill, so it retargets to another skill
+        # planning.md names rather than being dropped — dropping it would leave
+        # planning.md the one guide here with no namespaced form asserted.
+        assert "/prawduct:backlog" in planning
         building = (ROOT / "methodology/building.md").read_text(encoding="utf-8")
         assert "/prawduct:critic" in building and "/prawduct:pr" in building
 

@@ -19,7 +19,7 @@ practice — ``.handoff-notes.md`` had to be threaded through all four by hand.
 
 **Site 4 is not a set to match, it is a decision to force.** Most of the session
 set deliberately outlives a boundary (the per-clone advisory nag log, the
-findings archive, the reflections file the boundary *writes into*), so equality
+findings archive, the handoff the boundary *writes into*), so equality
 would be the wrong assertion and a subset check would let a new file default to
 "never deleted" — which is exactly the leak. Instead the two dispositions are
 enumerated with reasons and asserted to PARTITION the session set, so a new
@@ -122,9 +122,6 @@ _BOUNDARY_SURVIVORS = {
     ".prawduct/.work-model-index.json":
         "retired in v3.3.2 along with the tripwire that wrote it; nothing produces it, "
         "and the gitignore entry only keeps pre-3.3.2 leftovers invisible",
-    ".prawduct/reflections.md":
-        "the archive the boundary APPENDS `.session-reflected` into; it is the "
-        "destination, never the thing removed",
     ".prawduct/.handoff-notes.md":
         "deleted at the boundary, but by the handoff generator rather than this loop — "
         "consumption keys on the handoff having been PRESERVED, so an unconditional "

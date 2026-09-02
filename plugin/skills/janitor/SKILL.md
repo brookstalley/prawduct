@@ -323,7 +323,7 @@ After all approved work is complete:
 - Summarize what was changed, what was deferred, and why
 - If template drift advisories were addressed, record in `.prawduct/change-log.md` which artifacts were brought up to the current plugin templates. Plugin templates are read-only and there is no per-product hash store to write back — Template Currency is a live comparison against `${CLAUDE_SKILL_DIR}/../../templates/`, so updating the product artifact is itself the resolution.
 - Reconcile the backlog via `/prawduct:backlog` — which routes to whichever backend is live, so this step runs on both: `update status=shipped` items maintenance resolved (on the markdown backend that moves them to Archive — never delete, never strikethrough), and `add` items discovered. Status is always an explicit `/prawduct:backlog update` call, never inferred (D4). The stale/dedup/stage findings come from Step 2.5, so there are none to action when that block reported the cache unreadable — closing the loop on findings that were never produced is not a gap.
-- Capture learnings in `.prawduct/learnings.md` if the maintenance surfaced patterns worth remembering
+- Capture learnings in `.claude/rules/learnings/` (`core.md`, or the `<area>.md` whose `paths:` cover what you touched) if the maintenance surfaced patterns worth remembering
 - Reflect: did the maintenance reveal systemic issues that suggest process changes, new tooling, or methodology updates?
 
 ## Important

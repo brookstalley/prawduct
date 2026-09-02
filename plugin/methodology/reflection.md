@@ -41,7 +41,7 @@ Three whys is typical, and the chain is short by default because most chains are
 ### Step 4: Capture
 Two targets, two purposes:
 
-- **`.prawduct/.session-reflected`** — the *narrative* of this work cycle. A short entry per reflection; archived to `reflections.md` at the next session boundary (a fresh start or `/clear` — not a resume/compact/fork, which continue this session).
+- **`.prawduct/.session-reflected`** — the *narrative* of this work cycle. A short entry per reflection; removed at the next session boundary (a fresh start or `/clear` — not a resume/compact/fork, which continue this session), which is also where the machine-generated handoff picks it up. That handoff is the only thing carrying a reflection forward — nothing archives it.
 - **`.claude/rules/learnings/core.md`** (or the area file whose `paths:` cover the lesson) — *standing rules* future sessions should follow. Add here only when the cycle produced a durable lesson; most cycles produce a reflection entry and no new learning.
 
 Good learnings have: **context** (one sentence), **what happened**, **why** (root cause), **lesson** (what to do differently), and the **related principle**. Bad learnings are too abstract ("be more careful with tests"), too specific ("in file X line 42 change Y"), or write-only (filed where nobody reads them).
@@ -166,7 +166,7 @@ Two files, split by purpose:
 
 **`learnings-detail.md`** — full root cause / fix / rule format with `## Topic` headers, consulted when debugging in a known area. No size constraint.
 
-The `/prawduct:learnings [topic]` skill reads both in a forked context and returns only what's relevant. The Critic and PR reviewer read the full files directly.
+The Critic and PR reviewer read the full files directly.
 
 **Prune regularly.** A learning incorporated into methodology or structurally enforced has done its job — condense or remove it. **Consolidate** related entries into single stronger ones. **Keep `learnings.md` scannable** — most common first; stale entries archived. Learnings have freshness: yesterday's is highly relevant; a three-month-old one never reinforced may be an artifact of one situation.
 
@@ -174,9 +174,3 @@ Example of a concise rule:
 > **Pydantic v2**: Never use `@computed_field` in models with `extra="forbid"` — it serializes but fails deserialization. Use `@property` for derived values.
 
 The corresponding `learnings-detail.md` entry carries the full observation, error message, root-cause chain, and fix.
-
-## Reflections Archive
-
-Session reflections in `.prawduct/.session-reflected` are automatically archived to `.prawduct/reflections.md` at the next session boundary (a fresh start or `/clear`) — an unbounded historical record for framework improvement, NOT loaded into session context.
-
-Each archived block is preceded by a provenance tag line — `<!-- prawduct: version=X.Y.Z | archived=YYYY-MM-DD -->` — recording the plugin version that archived it, so the corpus can be grouped by release without reconstructing it from prose dates. `version=unknown` means the version could not be read, never that the reflection is suspect. The file is gitignored, so this line is the only history it has.

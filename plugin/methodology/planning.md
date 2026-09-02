@@ -6,7 +6,7 @@ A `/prawduct:backlog` item at `stage: design` is a planning task: requirements a
 
 ## Learnings as Design Constraints
 
-Before generating artifacts, run `/prawduct:learnings [your planned work]` to surface relevant project rules and preferences without loading the full files. Active learnings encode architecture decisions, technology constraints, and patterns the project has been burned by — context that prevents repeating known mistakes, not a checklist.
+The harness loads the rules: `core.md` every session, an `<area>.md` when you read a file its `paths:` match. Before generating artifacts, open the `.claude/rules/learnings/` area files covering what this work will touch — architecture decisions, technology constraints, and patterns the project has been burned by.
 
 ## Artifact Generation
 
