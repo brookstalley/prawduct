@@ -63,7 +63,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from . import buildplan_refs, evidence
+from . import buildplan_refs, evidence, learnings_files
 from .core import resolve_build_plan_path
 
 #: Every check this module can run, in manifest order. Named so a consumer can
@@ -73,6 +73,8 @@ CHECKS = (
     "governed-by-gap",
     "suite-total-claim",
     "learnings-entry-shape",
+    "learnings-over-budget",
+    "learnings-budget-unreasoned",
 )
 
 # Two checks were built, measured, and REMOVED before this shipped — recorded
@@ -835,6 +837,303 @@ def _check_chunk_refs(
 
 
 # ---------------------------------------------------------------------------
+# The learnings budget — over AND grown blocks the next addition
+# ---------------------------------------------------------------------------
+
+
+#: Default ceiling for one learnings rules file, in KB. Every session pays for
+#: ``core.md`` at launch and for an area file the moment a matching path is read,
+#: so the cost of a rule is paid by every session that follows it, forever. The
+#: number is a *curation* trigger, not a storage limit: the two prior compactions
+#: (2026-06-10, 2026-07-17) were one-time subtractions against a continuous
+#: addition, and the file regrew past its starting size both times. A ceiling
+#: that fires per addition is the standing form of the same sweep.
+_LEARNINGS_BUDGET_DEFAULT_KB = 16
+
+#: ``project-state.yaml`` key holding a per-file override, ``{kb, reason}``.
+_LEARNINGS_BUDGETS_KEY = "learnings_budgets"
+
+#: The two findings the budget check emits. Named as a pair because a budget
+#: declaration this reader cannot parse compromises both of them at once — the
+#: ceiling it states and the reason it gives for it.
+_BUDGET_CHECKS = ("learnings-over-budget", "learnings-budget-unreasoned")
+
+#: The repo-relative record the override lives in — named in every finding, so a
+#: reader is told where to go rather than which knob abstractly exists.
+_STATE_REL = ".prawduct/project-state.yaml"
+
+
+def _split_unquoted(text: str, separators: str) -> list[str]:
+    """Split ``text`` on any character in ``separators``, ignoring quoted runs.
+
+    A budget's ``reason`` is prose: it holds commas and it may hold a ``#``, and
+    both are the separators this file's other readers split on. Splitting inside
+    the quotes truncates the operator's stated reason and then reports the
+    truncation as "no reason given" — a BLOCKING finding manufactured out of
+    punctuation. Quote-awareness is the whole reason this does not reuse
+    ``core.read_yaml_block``'s comment stripping.
+    """
+    parts: list[str] = []
+    current: list[str] = []
+    quote: str | None = None
+    for char in text:
+        if quote is not None:
+            current.append(char)
+            if char == quote:
+                quote = None
+            continue
+        if char in "\"'":
+            quote = char
+            current.append(char)
+            continue
+        if char in separators:
+            parts.append("".join(current))
+            current = []
+            continue
+        current.append(char)
+    parts.append("".join(current))
+    return parts
+
+
+def _unquote(value: str) -> str:
+    value = value.strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+        return value[1:-1].strip()
+    return value
+
+
+def _budget_block(text: str) -> "list[str] | None":
+    """The raw indented lines under the column-0 ``learnings_budgets:`` key.
+
+    Indentation is *preserved*, unlike ``core.read_yaml_block``, because this
+    block is the one nested mapping the governance state carries and the nesting
+    is what tells an entry name from its fields. ``None`` means the key is
+    absent, which is the ordinary case and not a defect.
+    """
+    lines = text.splitlines()
+    needle = f"{_LEARNINGS_BUDGETS_KEY}:"
+    for index, raw in enumerate(lines):
+        if raw[:1] in (" ", "\t"):
+            continue
+        if not raw.split("#", 1)[0].rstrip().startswith(needle):
+            continue
+        body: list[str] = []
+        for follow in lines[index + 1:]:
+            if not _split_unquoted(follow, "#")[0].strip():
+                continue  # blank or comment-only — inert at any indent
+            if follow[:1] not in (" ", "\t"):
+                break  # the next column-0 key ends the block
+            body.append(_split_unquoted(follow, "#")[0].rstrip())
+        return body
+    return None
+
+
+def _parse_budget_fields(pairs: "list[str]", entry: dict) -> bool:
+    """Fold ``k: v`` strings into ``entry``. False on anything unrecognised."""
+    for pair in pairs:
+        if not pair.strip():
+            continue
+        key, sep, value = pair.partition(":")
+        key = key.strip().strip("\"'")
+        if not sep or key not in ("kb", "reason"):
+            return False
+        if key == "kb":
+            try:
+                entry["kb"] = int(_unquote(value))
+            except ValueError:
+                return False
+        else:
+            entry["reason"] = _unquote(value)
+    return True
+
+
+def parse_learnings_budgets(text: str) -> "tuple[dict[str, dict], list[str]]":
+    """``learnings_budgets:`` as ``({name: {kb, reason}}, malformed_names)``.
+
+    Both the block form and the flow form the template documents::
+
+        learnings_budgets:
+          core.md: {kb: 24, reason: "the fleet's rules, and the sweep is done"}
+          critic.md:
+            kb: 20
+            reason: "…"
+
+    An entry this reader cannot parse lands in ``malformed`` and NOT in the
+    budgets: a half-read declaration silently applies the 16KB default while the
+    operator believes their override is in force, and the difference surfaces as
+    a blocking finding they cannot explain. The caller reports it ``unchecked``,
+    which is this module's standing answer for "did not run" (never a pass).
+    """
+    body = _budget_block(text)
+    if not body:
+        return {}, []
+    indents = [len(line) - len(line.lstrip()) for line in body]
+    top = min(indents)
+    budgets: dict[str, dict] = {}
+    malformed: list[str] = []
+    current: "str | None" = None
+    for line, indent in zip(body, indents):
+        key, sep, value = line.strip().partition(":")
+        name = _unquote(key)
+        if indent == top:
+            current = None
+            if not sep or not name:
+                malformed.append(line.strip())
+                continue
+            entry: dict = {"kb": None, "reason": None}
+            value = value.strip()
+            if value.startswith("{") and value.endswith("}"):
+                if not _parse_budget_fields(
+                    _split_unquoted(value[1:-1], ","), entry
+                ):
+                    malformed.append(name)
+                    continue
+            elif value:
+                malformed.append(name)  # a scalar where a mapping belongs
+                continue
+            budgets[name] = entry
+            current = name
+        elif current is None:
+            malformed.append(line.strip())
+        elif not _parse_budget_fields([line.strip()], budgets[current]):
+            malformed.append(current)
+            budgets.pop(current, None)
+            current = None
+    return budgets, malformed
+
+
+def _base_size(project_dir: Path, base_tree: str, rel: str) -> "int | None":
+    """Bytes this path held in ``base_tree``; 0 when it was not there.
+
+    Absent-at-base counts as **grown** — a file that did not exist before is all
+    addition, and exempting the first commit of an area file would let a repo
+    ship a 40KB one and then be told it may never touch it again.
+
+    ``None`` means git answered in a shape this cannot read, which the caller
+    reports ``unchecked``. The base tree itself is validated by the caller, so a
+    nonzero exit here is genuinely "no such object in that tree".
+    """
+    rc, out, _err = evidence.run_git(
+        project_dir, "cat-file", "-s", f"{base_tree}:{rel}"
+    )
+    if rc != 0:
+        return 0
+    try:
+        return int(out.strip())
+    except ValueError:
+        return None
+
+
+def _check_learnings_budget(
+    project_dir: Path, prawduct_dir: Path, base_tree: str
+) -> "tuple[list[dict], list[str], set[str]]":
+    """The curation gate: a rules file over budget **and grown this interval**.
+
+    Returns ``(findings, unchecked, no_answer)``.
+
+    **Over-and-grew, never over alone.** A repo arriving with a 40KB corpus is
+    not asked to stop the world and compact it — that is a one-time sweep, and
+    the two this project ran both regrew. What it is asked is to pay for the
+    *next* addition, which is the moment the trade is live and the duplicate is
+    in front of the author. So an over-budget file that shrank, or held still,
+    passes: the direction of travel is the finding, not the size.
+
+    **Legacy layouts are silent.** ``resolve`` reports no files for a repo that
+    has not migrated, so nothing here fires — the unmigrated state is the
+    migration directive's business (R4), and two controls naming the same state
+    teach a reader to skip both.
+    """
+    findings: list[dict] = []
+    unchecked: list[str] = []
+    no_answer: set[str] = set()
+
+    state_text = _read_text(prawduct_dir / "project-state.yaml") or ""
+    budgets, malformed = parse_learnings_budgets(state_text)
+    if malformed:
+        unchecked.append(
+            f"{_BUDGET_CHECKS[0]}, {_BUDGET_CHECKS[1]} unchecked — "
+            f"`{_LEARNINGS_BUDGETS_KEY}` in {_STATE_REL} declares "
+            + ", ".join(repr(name) for name in malformed)
+            + " in a shape this reader does not parse; the declared budget was "
+            "NOT applied and the default stands"
+        )
+        no_answer.update(_BUDGET_CHECKS)
+
+    for name in sorted(budgets):
+        if not budgets[name].get("reason"):
+            findings.append(
+                _finding(
+                    "learnings-budget-unreasoned",
+                    _STATE_REL,
+                    None,
+                    f"`{_LEARNINGS_BUDGETS_KEY}.{name}` raises a budget with no "
+                    "`reason:` — an unreasoned ceiling only ever rises, and the "
+                    "next author reads a number with no argument behind it. Say "
+                    "what this file earns the extra room for",
+                )
+            )
+
+    layout = learnings_files.resolve(project_dir)
+    if not layout.files:
+        return findings, unchecked, no_answer
+
+    rc, _out, err = evidence.run_git(
+        project_dir, "rev-parse", "--verify", "--quiet", f"{base_tree}^{{tree}}"
+    )
+    if rc != 0:
+        # Validate the tree ONCE rather than reading a per-file failure as
+        # "absent at base". An unresolvable base tree makes every file look new,
+        # and every rules file would be reported grown-from-nothing — a wall of
+        # blocking findings caused by the interval, not by the corpus.
+        unchecked.append(
+            f"{_BUDGET_CHECKS[0]} unchecked — git could not resolve the base "
+            f"tree {base_tree[:12]} ({err.strip() or 'no such tree'}); a growth "
+            "comparison needs both sides"
+        )
+        no_answer.add(_BUDGET_CHECKS[0])
+        return findings, unchecked, no_answer
+
+    for path in layout.files:
+        try:
+            rel = path.relative_to(project_dir).as_posix()
+            now = path.stat().st_size
+        except (ValueError, OSError) as exc:
+            unchecked.append(
+                f"{_BUDGET_CHECKS[0]} unchecked on {path.name} — "
+                f"{type(exc).__name__}: {exc}"
+            )
+            no_answer.add(_BUDGET_CHECKS[0])
+            continue
+        base = _base_size(project_dir, base_tree, rel)
+        if base is None:
+            unchecked.append(
+                f"{_BUDGET_CHECKS[0]} unchecked on {rel} — git reported an "
+                "unreadable size for the base revision of this file"
+            )
+            no_answer.add(_BUDGET_CHECKS[0])
+            continue
+        declared = budgets.get(path.name, {}).get("kb")
+        kb = declared if isinstance(declared, int) and declared > 0 else (
+            _LEARNINGS_BUDGET_DEFAULT_KB
+        )
+        budget = kb * 1024
+        if now > budget and now > base:
+            findings.append(
+                _finding(
+                    "learnings-over-budget",
+                    rel,
+                    None,
+                    f"{now}B, over its {budget}B budget and grown from {base}B "
+                    "at the base tree — pay from genuine duplication (merge or "
+                    f"delete in this commit), or raise `{_LEARNINGS_BUDGETS_KEY}"
+                    f".{path.name}` in project-state.yaml with a reason — never "
+                    "trim a rule to fit",
+                )
+            )
+    return findings, unchecked, no_answer
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
@@ -920,6 +1219,15 @@ def lint_records(
             no_answer.add("governed-by-gap")
             continue
         findings.extend(_check_governed_by(project_dir, prawduct_dir, rel, text))
+
+    # Not record-scoped: the rules corpus grows on a commit that changed nothing
+    # else, and the budget is about the file's size rather than its added lines.
+    budget_findings, budget_gaps, budget_no_answer = _check_learnings_budget(
+        project_dir, prawduct_dir, base_tree
+    )
+    findings.extend(budget_findings)
+    unchecked.extend(budget_gaps)
+    no_answer.update(budget_no_answer)
 
     return {
         "records": records,

@@ -41,6 +41,7 @@ reasons. Do not re-raise one absent material change in its cited files** — one
 **Record checks are already answered — read the manifest's `record_lint`.** Never
 recount it: that is how a record defect buys a review round. Each entry carries its explanation — raise it. `chunk-ref-missing` → **BLOCKING**. `governed-by-gap` →
 **WARNING** under Goal 2. `suite-total-claim` and `learnings-entry-shape` → **NOTE**.
+`learnings-over-budget` and `learnings-budget-unreasoned` → **BLOCKING**.
 **`unchecked` is not a pass, and only one shape blocks.**
 `chunk-ref-missing unchecked — …` is
 **BLOCKING**: the check could not run — indistinguishable from passing. `chunk-ref-missing

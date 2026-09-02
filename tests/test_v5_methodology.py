@@ -469,7 +469,7 @@ LAST_MEASURED_TOKENS = {
     # for the dispatched roster, but the single-pass modes this file serves do
     # not read that file -- flagged for an owner ruling rather than re-added
     # under the same pressure that removed it.
-    "skills/critic/goals-1-3.md": 2265,
+    "skills/critic/goals-1-3.md": 2272,
     # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
     # a computed pass the gate can now print, which a reader who only knows
     # "uncovered means run a cumulative" will otherwise re-review straight
@@ -501,7 +501,7 @@ LAST_MEASURED_TOKENS = {
     # was asserting a timing that is false on the Issues backend, so the routing
     # replaced prose rather than adding to it, and the "why" the routing would
     # have restated stayed at the owner where the reader is already being sent.
-    "skills/critic/review-cycle.md": 9591,
+    "skills/critic/review-cycle.md": 9634,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -3970,6 +3970,12 @@ class TestCriticGoals13:
         # agents/critic-reviewer.md, whose reader never writes `resolutions`.
         # THIS file is the only surface whose reader writes both, and they sat
         # eight lines apart with no cue. Three words in the schema example.
+        #
+        # 2265 -> 2272 (2026-09-02) -- the budget gate's two findings are graded
+        # here because an ungraded record-lint check reaches a reviewer with no
+        # verdict, which is how `learnings-entry-shape` shipped. Spent from
+        # headroom, not paid: one clause, two check names and a severity, and
+        # the rule behind it lives with the check in `review-cycle.md`.
         tokens = estimate_tokens(self.content)
         assert tokens < 2280, f"goals-1-3.md is ~{tokens} tokens, should be <2280"
 

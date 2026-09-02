@@ -381,13 +381,15 @@ history in it reports on the entry just written and nothing else. Severity per c
 | `governed-by-gap` | A plan disposes of fewer norms than the cited artifact's `## Direction` carries, or cites an artifact that does not exist | **WARNING** (Goal 2 — the paperwork arm below) |
 | `suite-total-claim` | A suite-total test claim in durable prose — the store already records pass/fail per tree | **NOTE** |
 | `learnings-entry-shape` | A `learnings.md` entry carrying its evidence (rule over 400 chars) or a narrative body — both belong in `learnings-detail.md` | **NOTE** |
+| `learnings-over-budget` | A `.claude/rules/learnings/` file over budget **and grown since the base tree** | **BLOCKING** |
+| `learnings-budget-unreasoned` | A `learnings_budgets:` entry raising a ceiling with no `reason:` | **BLOCKING** |
 
 **Under the coordinator pattern, whoever holds Goal 2 raises every one of these** — including the
 `suite-total-claim` NOTE, which would otherwise sit in Goal 4. The manifest is named in Goal 2 and
 only that reviewer reads it, so splitting the findings by their natural goal loses them.
 
-**The severities above are the other three modes'.** In `verify-resolutions` only `chunk-ref-missing`
-stays a finding; the WARNING and NOTE rows become observations like anything else rated below
+**The severities above are the other three modes'.** In `verify-resolutions` only the **BLOCKING** rows
+stay findings; the WARNING and NOTE rows become observations like anything else rated below
 BLOCKING (see "A re-review does not manufacture work"). A record defect on a fix delta is precisely
 the non-gating work that buys the next round, so the general rule is not suspended for this table.
 

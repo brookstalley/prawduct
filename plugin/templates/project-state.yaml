@@ -401,20 +401,37 @@ coverage_required: false
 # tests_dirs: engine/tests server/tests
 #   Whitespace-separated test trees for the coverage verifier (default:
 #   `tests`). One verifier run unions discovery across all of them.
+
+# =============================================================================
+# LEARNINGS BUDGETS (opt-in override, v3.5+)
+# =============================================================================
+# Learnings live in `.claude/rules/learnings/`: `core.md` is in every session's
+# context from launch, and each `<area>.md` arrives when a file its `paths:`
+# globs match is read. So a rule is paid for by every session that follows it,
+# and the corpus has no natural ceiling — twice compacted, twice regrown past
+# where it started.
 #
-# sentinel_command: npx vitest run {sentinel}
-#   How this product runs ONE test file, for `prawduct-hook audit-learnings`.
-#   A learning may declare `sentinel=<path>`, meaning "the failure mode this
-#   rule warns about is now enforced by that test" — and the audit retires the
-#   rule when the test passes. Grading it needs a single-file invocation, which
-#   `test_command:` cannot express: that one runs the whole suite, so reusing it
-#   would grade every rule by the suite's verdict.
-#   Must contain the `{sentinel}` literal, where the test path is substituted.
-#   Shlex-split, run from the repo root, same `#`-truncation caveat as above.
-#   UNSET IS SAFE AND MEANS UNGRADED: sentinels are reported `ungraded` with a
-#   reason, never `failed`, and no rule is retired on a verdict that was never
-#   taken. There is deliberately no default — prawduct governs products in every
-#   language and will not guess at one's test runner.
+# `prawduct-hook verify-records` therefore reports a rules file that is over
+# budget AND larger than it was at the review's base tree. Over alone is quiet:
+# an inherited corpus is not asked to stop the world, only to pay for the next
+# addition, which is the moment the duplicate is in front of the author. The
+# payment is genuine duplication (merge or delete two rules in the same commit)
+# — never trimming a rule until it fits, which keeps the bytes and loses the
+# meaning.
+#
+# Default: 16 KB per file. Raise one here when a file has earned the room:
+#
+# learnings_budgets:
+#   core.md: {kb: 24, reason: "the fleet-wide rules; the 2026-09 sweep is done"}
+#   critic.md:
+#     kb: 20
+#     reason: "review protocol rules, and reviewers read this file every cycle"
+#
+#   Both the flow form and the nested form above are read. `kb` is an integer;
+#   `reason` is REQUIRED — an entry without one is its own finding, because an
+#   unreasoned ceiling only ever rises and the next author inherits a number
+#   with no argument behind it. Same `#`-truncation caveat as above, except
+#   inside quotes: quote any reason containing a `#`.
 
 # =============================================================================
 # OPERATOR VERIFICATION (opt-in, v1.4+)
