@@ -46,8 +46,8 @@ The cutover engine derives the REMOVE set from the **framework registry** — it
   any `learnings*.md` the repo still carries, `backlog.md`, `change-log.md`, `artifacts/`,
   `.critic-findings.json` — nor `.claude/rules/learnings/`, and **all** non-framework files:
   the product's own skills, `src/`, `tests/`, MCP server, configs. (Relaying a legacy learnings
-  corpus into `.claude/rules/learnings/` is `prawduct-hook learnings-migrate`'s job, not this
-  command's.)
+  corpus into `.claude/rules/learnings/` is the `learnings-migrate` command's job — the session-start
+  directive runs it — not this command's.)
 
 ## Flow
 

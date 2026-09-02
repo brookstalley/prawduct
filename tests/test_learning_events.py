@@ -45,6 +45,7 @@ from lib import critic_consolidate as cc  # noqa: E402
 from lib import learnings_files as lf  # noqa: E402
 from lib import ledger  # noqa: E402
 from lib import telemetry  # noqa: E402
+from conftest import SHAPED_REFLECTION  # noqa: E402 — one home for the shape
 
 HOOK = _ROOT / "bin" / "prawduct-hook"
 LEDGER_REL = ".prawduct/.governance-ledger.jsonl"
@@ -83,9 +84,10 @@ def _corpus(*rules: str) -> str:
 def _repo(tmp_path: Path, *, rules: tuple[str, ...] = ()) -> Path:
     """A committed repo whose only live gate is the budget block.
 
-    No build plan, and a satisfied reflection — the Critic and reflection gates
-    both need one, so their absence leaves the exit code free to mean what the
-    assertions below say it means.
+    No build plan (the Critic gate needs one) and a SHAPED reflection (the
+    reflection gate keys on the session's code changes, plan or no plan, and
+    grades shape), so the exit code is free to mean what the assertions below
+    say it means.
     """
     repo = tmp_path / "repo"
     repo.mkdir(parents=True)
@@ -98,9 +100,7 @@ def _repo(tmp_path: Path, *, rules: tuple[str, ...] = ()) -> Path:
     _git(repo, "commit", "-q", "-m", "c1")
     prawduct = repo / ".prawduct"
     prawduct.mkdir(exist_ok=True)
-    (prawduct / ".session-reflected").write_text(
-        "A sufficiently long session reflection so the reflection gate stays quiet here.\n"
-    )
+    (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
     (prawduct / ".session-start").write_text("")
     _base_tree(repo)
     return repo
