@@ -17,12 +17,31 @@ install reference) and NONE of the file-sync machinery.
 
 from __future__ import annotations
 
+import re
 import json
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+
+
+def _writes_no_base_branch_key(text: str) -> bool:
+    """No *uncommented* `base_branch:` key in the rendered state file.
+
+    A bare `"base_branch" not in text` substring test is wrong here: the
+    template carries a COMMENTED-OUT `# base_branch: develop` hint, and a hint
+    is not a written key. (An uncommented placeholder would be a real defect --
+    it suppresses the write, and if the branch it names does not resolve every
+    diff-base gate fails closed -- so the commented form is deliberate.) What
+    these negative controls actually assert is that onboarding recorded nothing.
+    """
+    return not any(
+        re.match(r"\s*base_branch\s*:", line)
+        for line in text.splitlines()
+        if not line.lstrip().startswith("#")
+    )
+
 
 ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK = ROOT / "bin" / "prawduct-hook"
@@ -423,7 +442,7 @@ def test_base_branch_written_only_for_a_non_main_family_remote_default(
 
     assert result["base_branch"] == expected
     if expected is None:
-        assert "base_branch" not in state, (
+        assert _writes_no_base_branch_key(state), (
             "a trunk repo got a key that only restates the resolver's default — "
             "noise in every ordinary repo"
         )
@@ -458,9 +477,9 @@ def test_a_repo_with_no_origin_head_scaffolds_normally(tmp_path: Path):
     assert result["base_branch"] is None
     for rel in EXPECTED_FILES:
         assert (target / rel).is_file(), f"onboarding lost {rel}"
-    assert "base_branch" not in (
-        target / ".prawduct" / "project-state.yaml"
-    ).read_text()
+    assert _writes_no_base_branch_key(
+        (target / ".prawduct" / "project-state.yaml").read_text()
+    )
 
 
 def test_a_non_git_directory_scaffolds_normally(tmp_path: Path):
@@ -483,9 +502,9 @@ def test_a_dangling_origin_head_is_not_recorded(tmp_path: Path):
     result = run_init(target, "Prod", "--apply")
 
     assert result["base_branch"] is None
-    assert "base_branch" not in (
-        target / ".prawduct" / "project-state.yaml"
-    ).read_text()
+    assert _writes_no_base_branch_key(
+        (target / ".prawduct" / "project-state.yaml").read_text()
+    )
 
 
 def test_dry_run_previews_the_base_branch_without_writing(tmp_path: Path):

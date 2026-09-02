@@ -41,6 +41,24 @@ if str(ROOT) not in sys.path:
 
 from lib import migrate_plugin as _migrate_plugin  # noqa: E402 — sys.path mutated above
 
+
+def _writes_no_base_branch_key(text: str) -> bool:
+    """No *uncommented* `base_branch:` key in the rendered state file.
+
+    A bare `"base_branch" not in text` substring test is wrong here: the
+    template carries a COMMENTED-OUT `# base_branch: develop` hint, and a hint
+    is not a written key. (An uncommented placeholder would be a real defect --
+    it suppresses the write, and if the branch it names does not resolve every
+    diff-base gate fails closed -- so the commented form is deliberate.) What
+    these negative controls actually assert is that onboarding recorded nothing.
+    """
+    return not any(
+        re.match(r"\s*base_branch\s*:", line)
+        for line in text.splitlines()
+        if not line.lstrip().startswith("#")
+    )
+
+
 # The 7 framework skills (registry-derived; mirrored here so the fixture is
 # realistic — the engine derives this set itself, the test must not).
 FRAMEWORK_SKILLS = [
@@ -889,7 +907,7 @@ def test_cutover_records_base_branch_only_for_a_non_main_family_default(
 
     assert result["base_branch"] == expected
     if expected is None:
-        assert "base_branch" not in state
+        assert _writes_no_base_branch_key(state)
     else:
         assert f"base_branch: {expected}\n" in state
         assert ".prawduct/project-state.yaml" in result["edited"]
@@ -905,9 +923,9 @@ def test_a_repo_with_no_origin_head_migrates_normally(tmp_path: Path):
     result = run_migrate(repo, "--apply")
 
     assert result["base_branch"] is None
-    assert "base_branch" not in (
-        repo / ".prawduct" / "project-state.yaml"
-    ).read_text()
+    assert _writes_no_base_branch_key(
+        (repo / ".prawduct" / "project-state.yaml").read_text()
+    )
     assert "distribution: plugin" in (
         repo / ".prawduct" / "project-state.yaml"
     ).read_text()
