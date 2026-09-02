@@ -143,6 +143,14 @@ missing data.
 When you need one item's full detail (a direct "show me PFX-XXXX", or before an `update`):
 `prawduct-hook backlog get <id> --repo <r> --json` → render the item's fields + body from `data`.
 
+`get` also returns the item's **comment thread** — `data.comments`, oldest-first
+`{id, author, created_at, body, url}` — because comments are where an item evolves after filing: a
+clarification, a narrowed scope, a link to the fix. **Read the thread before acting on an item**;
+the body alone may be stale. Every read (`get`/`list`/`pick`) carries `comments_count`, so a
+nonzero count on a list line is your cue to drill down with `get`. If the thread can't be fetched,
+`get` still succeeds — `comments` comes back empty while `comments_count` keeps the payload count,
+and a warning says the discussion is there but unread; don't treat that as "no comments".
+
 ## Write operations
 
 Same envelope + exit discipline as reads. Render by the **operation you invoked** (you know which

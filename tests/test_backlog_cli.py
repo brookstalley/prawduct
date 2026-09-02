@@ -297,6 +297,27 @@ class TestGetAndProvisionCli:
         assert code == 0
         assert "stage:ready" in json.loads(out)["data"]["created"]
 
+    def test_get_json_carries_the_comment_thread(self, capsys):
+        fake = FakeGitHub()
+        _run(["file", "--repo", REPO, "--title", "cli: the thread item under test", "--body", "b", "--json"], fake, capsys)
+        _run(["comment", "octo/repo#1", "--body", "scope narrowed — CLI only", "--json"], fake, capsys)
+        code, out, err = _run(["get", "octo/repo#1", "--json"], fake, capsys)
+        assert code == 0
+        data = json.loads(out)["data"]
+        assert data["comments_count"] == 1
+        assert data["comments"][0]["body"] == "scope narrowed — CLI only"
+        assert data["comments"][0]["author"] == "octocat"
+
+    def test_get_human_mode_renders_the_thread(self, capsys):
+        fake = FakeGitHub()
+        _run(["file", "--repo", REPO, "--title", "cli: the thread item under test", "--body", "b", "--json"], fake, capsys)
+        _run(["comment", "octo/repo#1", "--body", "see the fix in #99", "--json"], fake, capsys)
+        code, out, err = _run(["get", "octo/repo#1"], fake, capsys)
+        assert code == 0
+        assert "1 comment(s):" in out
+        assert "octocat" in out
+        assert "see the fix in #99" in out
+
 
 class TestNonInteractive:
     """INV-2 — the runner never reads stdin (nothing to hang on)."""

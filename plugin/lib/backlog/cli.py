@@ -1796,6 +1796,19 @@ def _print_human_ok(data) -> None:
             if data.get("resolves_to"):
                 line += f"  (survivor: {data['resolves_to']})"
             print(line)
+        # The comment thread (only `get` attaches it — the DM5 drill-down).
+        # A failed fetch leaves it empty with the payload count intact; the
+        # warning on stderr says why, so nothing extra is rendered here.
+        comments = data.get("comments") or []
+        if comments:
+            print(f"  {len(comments)} comment(s):")
+            for comment in comments:
+                stamp = " · ".join(
+                    bit for bit in (comment.get("author"), comment.get("created_at")) if bit
+                )
+                print(f"  — {stamp}" if stamp else "  —")
+                for line in (comment.get("body") or "").splitlines():
+                    print(f"    {line}")
     elif "created" in data:
         # provision / reconcile-labels.
         line = (

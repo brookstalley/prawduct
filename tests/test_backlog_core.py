@@ -19,6 +19,7 @@ for _p in (str(_REPO_ROOT), str(_TESTS_DIR)):
 import pytest  # noqa: E402
 
 from lib.backlog import core, encode, ids  # noqa: E402
+from lib.backlog.transport import TransportError  # noqa: E402
 from fakes.fake_github import FakeGitHub  # noqa: E402
 
 OWNER, REPO = "octo", "repo"
@@ -195,6 +196,59 @@ class TestGetItem:
         got = core.get_item(fake, id_raw="not-an-id-at-all")
         assert got["status"] == "error"
         assert got["error"]["code"] == "validation"
+
+
+class TestGetComments:
+    """The DM5 drill-down read — `get` carries the comment thread, because the
+    clarification that changes what an item means lands as a comment after
+    filing, and an agent reading only the body acts on stale scope."""
+
+    def test_get_returns_the_thread_oldest_first(self, fake):
+        filed = core.file_item(fake, owner=OWNER, repo=REPO, title="core: the X item under test", body="b")
+        fake.create_comment(OWNER, REPO, 1, body="actually, scope this to the CLI only")
+        fake.create_comment(OWNER, REPO, 1, body="fix landed in #99")
+        got = core.get_item(fake, id_raw=filed["data"]["id"])
+        assert got["status"] == "ok"
+        comments = got["data"]["comments"]
+        assert [c["body"] for c in comments] == [
+            "actually, scope this to the CLI only",
+            "fix landed in #99",
+        ]
+        assert comments[0]["author"] == "octocat"
+        assert comments[0]["created_at"]
+        assert comments[0]["url"]
+        assert got["data"]["comments_count"] == 2
+
+    def test_zero_comments_skips_the_fetch_call(self, fake):
+        filed = core.file_item(fake, owner=OWNER, repo=REPO, title="core: the X item under test", body="b")
+        got = core.get_item(fake, id_raw=filed["data"]["id"])
+        assert got["status"] == "ok"
+        assert got["data"]["comments"] == []
+        assert got["data"]["comments_count"] == 0
+        assert not [c for c in fake.calls if c[0] == "list_comments"]
+
+    def test_failed_thread_fetch_degrades_with_warning(self, fake):
+        # ERR-6: the item still returns; the payload count survives so the
+        # reader knows discussion exists even though the thread is unread.
+        filed = core.file_item(fake, owner=OWNER, repo=REPO, title="core: the X item under test", body="b")
+        fake.create_comment(OWNER, REPO, 1, body="clarified here")
+
+        class _ThreadDown(type(fake)):
+            def list_comments(self, owner, repo, number):
+                raise TransportError("unavailable", "comments endpoint down")
+
+        fake.__class__ = _ThreadDown
+        got = core.get_item(fake, id_raw=filed["data"]["id"])
+        assert got["status"] == "ok"
+        assert got["data"]["comments"] == []
+        assert got["data"]["comments_count"] == 1  # the payload count, kept
+        assert any("comment thread" in w for w in got["warnings"])
+
+    def test_fake_models_the_native_payload_count(self, fake):
+        core.file_item(fake, owner=OWNER, repo=REPO, title="core: the X item under test", body="b")
+        assert fake.get_issue(OWNER, REPO, 1)["comments"] == 0
+        fake.create_comment(OWNER, REPO, 1, body="one")
+        assert fake.get_issue(OWNER, REPO, 1)["comments"] == 1
 
 
 class TestGetByPfxAlias:
