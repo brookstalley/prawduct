@@ -163,8 +163,16 @@ def _split_area(title: str) -> tuple[str | None, str]:
     by ``: `` (so a mid-sentence ``foo: bar`` colon or a ``file.py: 12`` reference
     is not mistaken for a prefix). Case-insensitive on the token: an author's
     ``CLI:`` counts as a prefix so ``normalize_title`` never double-prefixes it
-    (canonical area labels are lowercase, but a human title may not be)."""
-    match = re.match(r"^([A-Za-z][A-Za-z0-9._-]*): +(\S.*)$", title)
+    (canonical area labels are lowercase, but a human title may not be).
+
+    ``/`` is IN the charset because areas carry it — ``governance/kernel``,
+    ``methodology/planning``, ``templates/artifacts`` and nine more on this
+    backlog alone. Without it a slash-bearing area matched as no prefix at all,
+    so ``normalize_title`` prepended a second copy and the create then tripped
+    the ``title-too-long`` lint it had just caused (#591). The single-token
+    anchoring is what keeps a mid-sentence colon out; the charset was the
+    defect, not the structure."""
+    match = re.match(r"^([A-Za-z][A-Za-z0-9._/-]*): +(\S.*)$", title)
     if match:
         return match.group(1), match.group(2)
     return None, title
