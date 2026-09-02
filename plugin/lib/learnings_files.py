@@ -38,6 +38,7 @@ are driven from.
 
 from __future__ import annotations
 
+import hashlib
 import re
 import subprocess
 from collections.abc import Iterable
@@ -530,3 +531,122 @@ def rules_dir_is_gitignored(project_dir: str | Path) -> bool:
     except (OSError, subprocess.TimeoutExpired):
         return False
     return proc.returncode == 0
+
+
+# ---------------------------------------------------------------------------
+# Rule units — the addressable thing a telemetry event is about
+# ---------------------------------------------------------------------------
+
+#: How many opening words identify a unit in a citation. Eight is long enough
+#: that two rules in a 300-rule corpus do not share an opening, and short
+#: enough that a reviewer quoting a rule in a finding will reach it without
+#: transcribing the whole sentence.
+CITATION_WORDS = 8
+
+#: Below this, a "citation" is a WORD, and a word matches by accident. A rules
+#: file's section banner (``## Unsorted``) is a unit by the same grammar every
+#: rule is — telling one from the other means parsing prose for intent — so the
+#: floor is what stops it firing on any finding that happens to use the word,
+#: which would report a rule as exercised by a review that never read it.
+MIN_CITATION_WORDS = 3
+
+#: Trailing characters a unit may end with that carry no identity: sentence
+#: punctuation and the markdown emphasis that closes a heading. Stripped from
+#: the END only — the same characters INSIDE a unit are its text.
+_TRAILING = ".,;:!?-–—…*_`\"'"
+
+
+def normalize_unit(text: str) -> str:
+    """The comparison form of a rule unit: lowercased, whitespace collapsed,
+    trailing punctuation stripped.
+
+    One definition, because two things depend on the answer agreeing: the hash
+    a ``learning.written`` event carries, and the substring a ``learning.fired``
+    citation is matched by. A normalizer that differed between them would make
+    the fired-event's join key point at nothing, and the join is the whole
+    reason the events exist (``docs/governance-telemetry.md``).
+    """
+    return " ".join(text.split()).lower().rstrip(_TRAILING).strip()
+
+
+def unit_hash(text: str) -> str:
+    """The stable id of a rule unit: sha256 of :func:`normalize_unit`, first 16
+    hex characters.
+
+    Truncated because this is a join key inside one repo's ledger, not a
+    security primitive: 64 bits over a corpus of a few hundred units has no
+    reachable collision, and the shorter token keeps a ledger line readable.
+    Rewording a rule mints a new id ON PURPOSE — a rule whose text changed is a
+    different rule to a reader, so "this rule has never fired" must not be
+    answered from the text it used to have.
+    """
+    return hashlib.sha256(normalize_unit(text).encode("utf-8")).hexdigest()[:16]
+
+
+def unit_citation(text: str, words: int = CITATION_WORDS) -> str:
+    """The opening of a unit, normalized — what a finding must contain for the
+    citation to count. The WHOLE unit when it is shorter than ``words``.
+
+    Trailing punctuation is stripped from the CUT as well as from the unit: the
+    eighth word routinely ends in a comma, and the text a citation is matched
+    against has had its own trailing punctuation removed — so a citation landing
+    at the end of a finding would miss on a character neither side kept.
+
+    ``""`` — "no citation is possible", which a caller must treat as never
+    matching rather than as a substring that matches everything — for an empty
+    unit and for one shorter than :data:`MIN_CITATION_WORDS`. Such a unit is
+    still a unit with a hash: it can be WRITTEN, it just cannot be cited, which
+    is the honest answer for a heading too short to quote.
+    """
+    normalized = normalize_unit(text)
+    cut = " ".join(normalized.split()[:words]).rstrip(_TRAILING)
+    return cut if len(cut.split()) >= MIN_CITATION_WORDS else ""
+
+
+def rule_units(text: str) -> list[str]:
+    """The addressable rules in a rules file, in document order.
+
+    A unit is a ``##``/``###`` heading below the file's title, or a top-level
+    ``- `` bullet. Excluded, each for its own reason:
+
+    * **The ``#`` title.** A file's ``#`` heading names the file, not a rule.
+      Exclusion is by LEVEL, not by position: a rules file with no title is
+      still all rules, so "the first heading" would silently eat one.
+    * **The scaffold's obligation header** (:data:`CORE_HEADER`'s second
+      paragraph) — a bold paragraph, so it is excluded by the grammar rather
+      than by a name check; a header that grew a heading would need this
+      docstring re-read, not a regex tightened.
+    * **Fenced code.** A ``#`` comment or a ``- `` list item inside a fence is
+      an illustration, and counting it would mint a unit that no reviewer can
+      cite and that shows up forever in "rules that never fired".
+    * **Indented bullets**, which continue the unit above them rather than
+      starting one.
+
+    A section BANNER (``## Unsorted``) is a heading and therefore reads as a
+    unit. That is deliberate: telling a banner from a rule means parsing prose
+    for intent, which ``docs/norms.md`` § Deliberate Non-Design forbids, and the
+    cost is one row in a report a person reads.
+
+    Frontmatter is skipped, so an area file's ``paths:`` block cannot contribute
+    a unit; the ``---`` fence lines cannot either.
+    """
+    _globs, body = parse_frontmatter(text)
+    units: list[str] = []
+    fence: str | None = None
+    for line in body.splitlines():
+        stripped = line.strip()
+        # Fences: ``` or ~~~, closed by the same marker (a longer run closes a
+        # shorter opener, per CommonMark; the extra length is ignored here
+        # because nothing in a rules corpus nests fences).
+        if fence is not None:
+            if stripped.startswith(fence):
+                fence = None
+            continue
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            fence = stripped[:3]
+            continue
+        if line.startswith("## ") or line.startswith("### "):
+            units.append(line.lstrip("#").strip())
+        elif line.startswith("- "):
+            units.append(line[2:].strip())
+    return [u for u in units if u]

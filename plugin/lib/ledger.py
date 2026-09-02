@@ -12,17 +12,27 @@ cross-project aggregation (TEL-7A4X). Fields exist to serve those questions.
 ``{schema_version, event, ts, duration_seconds, project, scope, chunk,
 actor: {role, model}, git: {head, base}}`` — and nests its kind-specific
 payload beneath a family-named key (``review`` for both ``review.critic``
-and ``review.pr``). Aggregators key on the envelope without understanding
-every payload; consumers skip unknown event kinds and unknown fields. v1
-emits ``review.critic`` and ``review.pr`` (``build.chunk`` /
-``plan.authored`` / ``discovery.session`` are accommodated by the envelope
-and deliberately NOT built — see the build plan's Out of scope).
+and ``review.pr``; ``learning`` for both ``learning.*``). Aggregators key on
+the envelope without understanding every payload; consumers skip unknown
+event kinds and unknown fields. Emitted: ``review.critic`` and ``review.pr``
+(a review happened), plus ``learning.written`` and ``learning.fired`` — a
+rule authored this session, and a rule a Critic finding cited — which are
+what let an audit of the learning loop read a number instead of sampling
+transcripts. (``build.chunk`` / ``plan.authored`` / ``discovery.session``
+are accommodated by the envelope and deliberately NOT built — see the build
+plan's Out of scope.) Two additive kinds change no existing line's meaning,
+so ``schema_version`` stays 1.
 
 **Structural writer.** The agent never hand-authors JSONL: ``prawduct-hook
 ledger-append`` reads the just-written findings file, validates it,
 computes the envelope itself, and appends ONE line in a single
-``O_APPEND``-mode write. Validation lives at the append boundary because this
-is the only writer — ``review.critic`` payloads through
+``O_APPEND``-mode write. The ``learning.*`` kinds are refused AT that CLI —
+their fields are derived (a unit hash from the corpus, a session from disk),
+so a typed one measures nothing; :func:`append_learning_event` is their one
+entry point, and it is idempotent because the Stop hook re-observes the same
+new rule on every turn of a session.
+
+Validation lives at the append boundary because this is the only writer — ``review.critic`` payloads through
 ``lib.gates.validate_critic_findings`` (the derived-cache schema),
 ``review.pr`` payloads through the same bar the stop-hook PR gate applies
 (``findings`` list + non-empty ``summary``). ``review.critic`` always reads
@@ -62,7 +72,29 @@ LEDGER_SCHEMA_VERSION = 1
 
 # Event kind -> actor role. Fail-closed: unknown kinds are rejected at append
 # (learnings: "Escape hatches in classification create silent failures").
-_EVENT_ROLES = {"review.critic": "critic", "review.pr": "pr"}
+_EVENT_ROLES = {
+    "review.critic": "critic",
+    "review.pr": "pr",
+    # The learning loop's two measurements. `written` is the builder's act (a
+    # rule authored this session); `fired` is the critic's (a finding that
+    # cited one). Both are MACHINE-emitted — see `_MACHINE_ONLY_PREFIX`.
+    "learning.written": "builder",
+    "learning.fired": "critic",
+}
+
+#: Kinds the CLI refuses. A hand-appended learning event would be a measurement
+#: of nothing: the emitters derive `unit_hash` from the corpus and `session`
+#: from disk, and a typed one can agree with neither — so the instrument would
+#: report a rule that fired without a review, or a rule nobody wrote. The
+#: refusal is what keeps a `learning.*` line meaning what the join assumes.
+_MACHINE_ONLY_PREFIX = "learning."
+
+
+def _cli_appendable() -> list[str]:
+    """The kinds `ledger-append` accepts, for its own error message — derived
+    so a kind added above cannot be advertised as hand-appendable by accident.
+    """
+    return sorted(k for k in _EVENT_ROLES if not k.startswith(_MACHINE_ONLY_PREFIX))
 
 
 def ledger_path(prawduct_dir: Path) -> Path:
@@ -140,6 +172,54 @@ def _validate_pr_evidence(record) -> bool:
     )
 
 
+def _append_event(
+    project_dir: Path,
+    prawduct_dir: Path,
+    event_kind: str,
+    payload_key: str,
+    payload,
+    *,
+    duration_seconds=None,
+    scope: str | None = None,
+    chunk: str | None = None,
+    actor_model: str | None = None,
+) -> Path:
+    """Build the envelope and append ONE line. The only writer.
+
+    Every kind shares this function so the envelope cannot fork: a second
+    hand-built one would drift on the fields nothing local reads — ``project``,
+    ``git.base``, the ``ts`` format — and those are exactly the fields
+    cross-project aggregation (TEL-7A4X) keys on, so the drift would surface
+    a fleet away from the code that caused it. The kind-specific part is one
+    argument pair: the family key and the payload beneath it.
+
+    Returns the ledger path, for the caller's own message.
+    """
+    base, _reason = _resolve_base(project_dir)
+    event = {
+        "schema_version": LEDGER_SCHEMA_VERSION,
+        "event": event_kind,
+        "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "duration_seconds": duration_seconds,
+        "project": project_dir.resolve().name,
+        "scope": scope,
+        "chunk": chunk,
+        "actor": {"role": _EVENT_ROLES[event_kind], "model": actor_model},
+        "git": {
+            "head": _git_capture(project_dir, "rev-parse", "HEAD"),
+            "base": base,
+        },
+        payload_key: payload,
+    }
+    path = ledger_path(prawduct_dir)
+    prawduct_dir.mkdir(parents=True, exist_ok=True)
+    line = json.dumps(event) + "\n"
+    # "a" opens O_APPEND; one write() call keeps concurrent appends whole.
+    with open(path, "a", encoding="utf-8") as fh:
+        fh.write(line)
+    return path
+
+
 def ledger_append(project_dir: Path, argv: list[str]) -> int:
     """Body of ``prawduct-hook ledger-append`` — see module docstring.
 
@@ -183,8 +263,22 @@ def ledger_append(project_dir: Path, argv: list[str]) -> int:
     if event_kind is None:
         print("ledger-append: --event is required", file=sys.stderr)
         return 1
+    # Checked BEFORE membership so `learning.written` and a mistyped
+    # `learning.writen` get the same true answer — nothing under this prefix is
+    # hand-appendable, and listing the real kinds as "allowed" would invite the
+    # caller to fix the spelling and try again.
+    if event_kind.startswith(_MACHINE_ONLY_PREFIX):
+        print(
+            f"ledger-append: {event_kind!r} is emitted by the Stop hook and "
+            "critic-consolidate, never by hand — a typed learning event "
+            "carries a unit hash and a session nothing derived, so it "
+            "measures nothing. Those two record it themselves; there is "
+            "nothing to append here.",
+            file=sys.stderr,
+        )
+        return 1
     if event_kind not in _EVENT_ROLES:
-        allowed = ", ".join(sorted(_EVENT_ROLES))
+        allowed = ", ".join(_cli_appendable())
         print(
             f"ledger-append: unknown event kind {event_kind!r} (allowed: "
             f"{allowed}). Unknown kinds are rejected, not guessed.",
@@ -258,29 +352,17 @@ def ledger_append(project_dir: Path, argv: list[str]) -> int:
     if scope is None:
         scope = _scope_from_plan(prawduct_dir)
 
-    base, _reason = _resolve_base(project_dir)
-    event = {
-        "schema_version": LEDGER_SCHEMA_VERSION,
-        "event": event_kind,
-        "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "duration_seconds": duration,
-        "project": project_dir.resolve().name,
-        "scope": scope,
-        "chunk": chunk,
-        "actor": {"role": _EVENT_ROLES[event_kind], "model": actor_model},
-        "git": {
-            "head": _git_capture(project_dir, "rev-parse", "HEAD"),
-            "base": base,
-        },
-        "review": record,
-    }
-
-    path = ledger_path(prawduct_dir)
-    prawduct_dir.mkdir(parents=True, exist_ok=True)
-    line = json.dumps(event) + "\n"
-    # "a" opens O_APPEND; one write() call keeps concurrent appends whole.
-    with open(path, "a", encoding="utf-8") as fh:
-        fh.write(line)
+    path = _append_event(
+        project_dir,
+        prawduct_dir,
+        event_kind,
+        "review",
+        record,
+        duration_seconds=duration,
+        scope=scope,
+        chunk=chunk,
+        actor_model=actor_model,
+    )
     print(
         f"appended: {event_kind} -> {path} "
         f"(scope={scope or '-'}, chunk={chunk or '-'}, model={actor_model or '-'})"
@@ -297,6 +379,129 @@ def _resolve_base(project_dir: Path) -> tuple[str | None, str]:
         return coverage._resolve_base_branch(project_dir)
     except Exception:  # prawduct:allow prawduct/broad-except -- envelope fields are nullable, never fatal
         return None, "base resolution failed"
+
+
+def _learning_key(kind: str, learning: dict) -> tuple:
+    """The idempotence key of a learning event, from its payload.
+
+    One home, used by both the probe and the writer: a key built twice is a key
+    that can be built two ways, and the two would disagree the first time a
+    field is added — silently, as a duplicate line rather than an error.
+    """
+    return (
+        kind,
+        learning.get("session"),
+        learning.get("file"),
+        learning.get("unit_hash"),
+        learning.get("review_id"),
+    )
+
+
+def learning_event_exists(
+    prawduct_dir: Path,
+    kind: str,
+    *,
+    file: str,
+    unit_hash: str,
+    session: "str | None",
+    review_id: "str | None" = None,
+) -> bool:
+    """True if this exact learning event is already on the ledger.
+
+    The same shape as :func:`review_event_exists` and for the same reason: the
+    ledger has no key and no dedupe, and its lines are COUNTED — so a repeat
+    emission inflates the instrument rather than being harmless. The repeat here
+    is structural, not exceptional: the Stop hook runs every turn, so a rule
+    written once is re-observed as "new since the session base" on every turn
+    until the session ends, and a re-consolidation re-reads the same findings.
+    The key is what makes that a no-op.
+
+    ``session`` participates in the key, so the SAME rule written in two
+    sessions is two events — which is what question 1 (rules written per
+    session) needs. ``review_id`` likewise separates two reviews citing one
+    rule, and is ``None`` for ``learning.written``.
+
+    Cost is one ledger read per probe, and the probe runs only for a unit that
+    is new since the session's base revision — zero on a turn that wrote no
+    rule, and a corpus's worth exactly once, on the turn a repo's rules first
+    appear. If a repo ever appends learning events by the thousand per turn,
+    this is the read to amortize into a single pass.
+    """
+    want = (kind, session, file, unit_hash, review_id)
+    for _lineno, event in iter_events_newest_first(prawduct_dir):
+        if event.get("event") != kind:
+            continue
+        learning = event.get("learning")
+        if not isinstance(learning, dict):
+            continue
+        if _learning_key(kind, learning) == want:
+            return True
+    return False
+
+
+def append_learning_event(
+    project_dir: Path,
+    kind: str,
+    *,
+    file: str,
+    unit_hash: str,
+    review_id: "str | None" = None,
+) -> bool:
+    """Append one ``learning.*`` event. ``True`` when a line was written,
+    ``False`` when this exact event was already recorded.
+
+    Not reachable from the CLI (see :data:`_MACHINE_ONLY_PREFIX`): the two
+    callers are the Stop hook, which derives the unit hashes by diffing the
+    corpus against the session's base revision, and ``critic-consolidate``,
+    which derives them from the units a finding cited. Both are measurements of
+    something that already happened, so both are best-effort at their call
+    sites — a ledger failure must never change a gate's verdict or a
+    consolidation's exit code.
+
+    ``session`` is :func:`evidence._session_epoch`, nullable and never invented:
+    a fixture or a headless probe has no session, and a made-up id would put
+    those events in a bucket of their own rather than leaving them uncounted.
+
+    Raises ``ValueError`` for a kind outside :data:`_EVENT_ROLES` — fail-closed
+    at the write boundary, exactly as the CLI does, because the caller catching
+    it turns the mistake into a visible NOTE rather than a mystery line.
+    """
+    if kind not in _EVENT_ROLES or not kind.startswith(_MACHINE_ONLY_PREFIX):
+        known = ", ".join(
+            sorted(k for k in _EVENT_ROLES if k.startswith(_MACHINE_ONLY_PREFIX))
+        )
+        raise ValueError(
+            f"append_learning_event: {kind!r} is not a learning event kind "
+            f"(this plugin emits: {known})"
+        )
+
+    from . import evidence  # noqa: PLC0415 — lazy; evidence is heavy and this is a leaf call
+
+    prawduct_dir = gitstate.get_prawduct_dir(project_dir)
+    session = evidence._session_epoch(project_dir)
+    if learning_event_exists(
+        prawduct_dir, kind, file=file, unit_hash=unit_hash,
+        session=session, review_id=review_id,
+    ):
+        return False
+    _append_event(
+        project_dir,
+        prawduct_dir,
+        kind,
+        "learning",
+        {
+            "file": file,
+            "unit_hash": unit_hash,
+            "session": session,
+            "review_id": review_id,
+        },
+        # A measurement of an act, not of a duration, and no model produced it:
+        # both stay null rather than being given a plausible value.
+        duration_seconds=None,
+        scope=_scope_from_plan(prawduct_dir),
+        actor_model=None,
+    )
+    return True
 
 
 def review_event_exists(prawduct_dir: Path, fact_id: str) -> bool:

@@ -413,3 +413,224 @@ class TestRulesDirIsGitignored:
 
     def test_false_outside_a_git_repo(self, tmp_path):
         assert lf.rules_dir_is_gitignored(tmp_path) is False
+
+
+# ---------------------------------------------------------------------------
+# Rule units and their hashes — the join key the ledger events are about
+# ---------------------------------------------------------------------------
+
+
+class TestRuleUnits:
+    def test_headings_below_the_title_are_units(self):
+        text = (
+            "# Learnings — core\n"
+            "\n"
+            "## Unsorted\n"
+            "\n"
+            "### First rule\n"
+            "Some narrative body.\n"
+            "\n"
+            "### Second rule\n"
+        )
+        assert lf.rule_units(text) == ["Unsorted", "First rule", "Second rule"]
+
+    def test_top_level_bullets_are_units_and_indented_ones_are_not(self):
+        text = (
+            "# Rules\n"
+            "\n"
+            "- a bullet rule\n"
+            "  - a continuation, not its own rule\n"
+            "- another bullet rule\n"
+        )
+        assert lf.rule_units(text) == ["a bullet rule", "another bullet rule"]
+
+    def test_mixed_corpus_keeps_document_order(self):
+        text = (
+            "# Rules\n"
+            "\n"
+            "## Section\n"
+            "- bullet one\n"
+            "\n"
+            "### Heading rule\n"
+            "- bullet two\n"
+        )
+        assert lf.rule_units(text) == [
+            "Section", "bullet one", "Heading rule", "bullet two",
+        ]
+
+    def test_the_title_is_never_a_unit(self):
+        """Excluded by LEVEL, not by position — so a file whose first heading is
+        a rule keeps that rule."""
+        assert "Learnings — core" not in lf.rule_units(lf.CORE_HEADER)
+        assert lf.rule_units("## a rule with no title above it\n") == [
+            "a rule with no title above it"
+        ]
+
+    def test_the_scaffold_obligation_header_is_not_a_unit(self):
+        """`CORE_HEADER` is a title plus a bold paragraph. A freshly scaffolded
+        repo must have ZERO rules, or its first Stop records a rule nobody
+        wrote and the corpus reads as used from the moment it is created."""
+        assert lf.rule_units(lf.CORE_HEADER) == []
+
+    def test_frontmatter_contributes_no_units(self):
+        text = _area("  - src/**\n", body="\n# Area\n\n### the only rule\n")
+        assert lf.rule_units(text) == ["the only rule"]
+
+    def test_fenced_code_is_not_scanned(self):
+        """A `#` comment or a `- ` item inside a fence is an illustration. A
+        unit minted from one can never be cited, so it would sit in
+        "rules that never fired" forever."""
+        text = (
+            "# Rules\n"
+            "\n"
+            "### a real rule\n"
+            "\n"
+            "```bash\n"
+            "## not a heading\n"
+            "- not a bullet rule\n"
+            "```\n"
+            "\n"
+            "### another real rule\n"
+        )
+        assert lf.rule_units(text) == ["a real rule", "another real rule"]
+
+    def test_tilde_fences_close_on_their_own_marker(self):
+        text = "# R\n\n~~~\n### inside\n~~~\n\n### outside\n"
+        assert lf.rule_units(text) == ["outside"]
+
+    def test_deeper_headings_are_not_units(self):
+        """`####` and below are structure within a rule, not rules."""
+        assert lf.rule_units("# R\n\n#### deep\n") == []
+
+    def test_empty_headings_are_dropped(self):
+        assert lf.rule_units("# R\n\n###   \n\n### real\n") == ["real"]
+
+
+class TestUnitHash:
+    def test_stable_across_case_and_whitespace_and_trailing_punctuation(self):
+        base = "When a fix lands, sweep the neighbouring prose"
+        for variant in (
+            "when a fix lands, sweep the neighbouring prose",
+            "WHEN A FIX LANDS, SWEEP THE NEIGHBOURING PROSE",
+            "When a fix   lands,\n  sweep the neighbouring prose",
+            "When a fix lands, sweep the neighbouring prose.",
+            "  When a fix lands, sweep the neighbouring prose —  ",
+            "When a fix lands, sweep the neighbouring prose…",
+            "When a fix lands, sweep the neighbouring prose`",
+        ):
+            assert lf.unit_hash(variant) == lf.unit_hash(base), variant
+
+    def test_two_real_headings_hash_differently(self):
+        a = "When a review finds the SAME class twice, stop fixing instances"
+        b = "When a review finds the SAME class twice, stop fixing instance"
+        assert lf.unit_hash(a) != lf.unit_hash(b)
+
+    def test_shape(self):
+        h = lf.unit_hash("anything")
+        assert len(h) == 16
+        assert all(c in "0123456789abcdef" for c in h)
+
+    def test_rewording_mints_a_new_id(self):
+        """Deliberate: "this rule has never fired" must not be answered from
+        text the corpus no longer carries."""
+        assert lf.unit_hash("Verify, do not guess") != lf.unit_hash(
+            "Verify; never guess"
+        )
+
+
+class TestUnitCitation:
+    def test_opening_words_only(self):
+        unit = "one two three four five six seven eight nine ten"
+        assert lf.unit_citation(unit) == "one two three four five six seven eight"
+
+    def test_a_short_unit_is_its_whole_self(self):
+        assert lf.unit_citation("Verify, do not guess.") == "verify, do not guess"
+
+    def test_empty_unit_yields_no_citation(self):
+        """`""` is in every string — a caller must not treat it as a match."""
+        assert lf.unit_citation("   ") == ""
+
+    def test_a_unit_too_short_to_quote_yields_no_citation(self):
+        """A section banner is a unit by the same grammar every rule is. One
+        word is not a citation, and letting it be one reports a rule as
+        exercised by every review that happens to use the word."""
+        assert lf.unit_citation("Unsorted") == ""
+        assert lf.unit_citation("Two words") == ""
+        assert lf.unit_citation("Three words here") == "three words here"
+
+    def test_an_uncitable_unit_still_has_a_hash(self):
+        """It can be WRITTEN, it just cannot be cited — the two are separate
+        questions and a shared "is this a rule" answer would drop it from the
+        corpus the never-fired join is taken over."""
+        assert lf.unit_hash("Unsorted")
+
+    def test_citation_is_the_normalized_form(self):
+        assert lf.unit_citation("  When A Fix   LANDS  ") == "when a fix lands"
+
+    def test_the_cut_drops_its_own_trailing_punctuation(self):
+        """The eighth word routinely ends in a comma, and the finding text a
+        citation is matched against has had ITS trailing punctuation stripped —
+        so a citation quoted at the very end of a finding would otherwise miss
+        on a character neither side kept."""
+        unit = "one two three four five six seven eight, nine ten"
+        assert lf.unit_citation(unit) == "one two three four five six seven eight"
+        assert lf.unit_citation(unit) in lf.normalize_unit(
+            "as the rule says: One two three four five six seven eight."
+        )
+
+
+class TestAgainstTheRealCorpus:
+    """A collision check against real DATA, not a fixture.
+
+    A fixture encodes my belief about what a rules corpus looks like, so a
+    suite made only of them is green exactly where the belief is wrong. This
+    reads the repo's own `core.md` through the resolver's own path constants —
+    the file the framework actually ships and grows — and asserts the property
+    the whole join rests on: distinct rules get distinct ids.
+    """
+
+    def _core(self) -> Path:
+        return Path(__file__).resolve().parent.parent / lf.RULES_DIR_REL / lf.CORE_NAME
+
+    def test_the_real_core_file_is_where_the_resolver_says(self):
+        """The reachability assert. Without it every assertion below passes
+        vacuously on a checkout where the corpus moved or is not present."""
+        assert self._core().is_file(), (
+            f"{self._core()} is missing — this repo's own learnings corpus is "
+            "the fixture for the collision check, and its absence makes the "
+            "check pass without reading anything"
+        )
+
+    def test_every_unit_of_the_real_corpus_hashes_uniquely(self):
+        units = lf.rule_units(self._core().read_text(encoding="utf-8"))
+        # Well above zero: this repo's corpus is hundreds of rules, and a
+        # parser that silently returned a handful would satisfy any bare
+        # non-empty assertion.
+        assert len(units) > 100, f"only {len(units)} units parsed from the real core.md"
+        hashes = [lf.unit_hash(u) for u in units]
+        collisions = {h for h in hashes if hashes.count(h) > 1}
+        assert not collisions, (
+            f"{len(collisions)} unit hash(es) collide in the real corpus — the "
+            "'which rules never fired' join is keyed on this id, so a collision "
+            "reports one rule as fired because a different one was cited"
+        )
+
+    def test_every_real_RULE_has_a_citation_key(self):
+        """Uncitable units exist by design (a section banner), so this asserts
+        the split rather than a blanket truth: the corpus's rules are citable,
+        and the handful that are not are the ones too short to quote."""
+        units = lf.rule_units(self._core().read_text(encoding="utf-8"))
+        citable = [u for u in units if lf.unit_citation(u)]
+        uncitable = [u for u in units if not lf.unit_citation(u)]
+        assert len(citable) > 100, f"only {len(citable)} citable units"
+        for unit in uncitable:
+            assert len(lf.normalize_unit(unit).split()) < lf.MIN_CITATION_WORDS, (
+                f"{unit!r} is long enough to quote but produced no citation"
+            )
+        # No citation is ever the empty string, which would match every finding.
+        assert all(lf.unit_citation(u) for u in citable)
+
+    def test_the_real_title_and_obligation_header_are_excluded(self):
+        units = lf.rule_units(self._core().read_text(encoding="utf-8"))
+        assert not any(u.startswith("Learnings —") for u in units)
+        assert not any("Reading a rule is not applying it" in u for u in units)

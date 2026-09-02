@@ -544,7 +544,17 @@ LAST_MEASURED_TOKENS = {
     #   "A re-review does not manufacture work" one clause after citing it.
     # * R5's own closing sentence ("it fires whether or not the cycle produced
     #   another finding") restated "get their own pass" in its own heading.
-    "skills/critic/review-cycle.md": 9595,
+    # +26 on 2026-09-02: the Learnings Cross-Check gained one sentence — quote
+    # the rule's opening words in a finding that rests on it. The citation is
+    # the whole input to `learning.fired` (`docs/governance-telemetry.md`): an
+    # uncited finding is a rule that fired and is counted as never having fired,
+    # which is a measurement reading the opposite of the truth, so the
+    # instruction has to reach the reviewer who writes the finding.
+    # NOT paid for in this file, and deliberately not: the same wave retires the
+    # `learnings-entry-shape` severity row from the record-lint table below,
+    # which is a bigger deletion than this addition. Trimming other prose to fit
+    # ahead of that would spend a clause twice.
+    "skills/critic/review-cycle.md": 9621,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
