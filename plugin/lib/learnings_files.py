@@ -523,7 +523,7 @@ def rules_dir_is_gitignored(project_dir: str | Path) -> bool:
     """
     probe = f"{RULES_DIR_REL}/__prawduct_probe__.md"
     try:
-        proc = subprocess.run(
+        proc = subprocess.run(  # noqa: S603 — list-form argv, no shell (project preference)
             ["git", "check-ignore", "-q", "--no-index", "--", probe],
             cwd=str(project_dir), capture_output=True, text=True, timeout=10,
         )

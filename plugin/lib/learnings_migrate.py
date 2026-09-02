@@ -490,7 +490,7 @@ def _git(project_dir: Path | str, *args: str) -> subprocess.CompletedProcess | N
     problem* only where the absence of a repo genuinely removes the risk.
     """
     try:
-        proc = subprocess.run(
+        proc = subprocess.run(  # noqa: S603 — list-form argv, no shell (project preference)
             ["git", *args],
             cwd=str(project_dir),
             capture_output=True,
