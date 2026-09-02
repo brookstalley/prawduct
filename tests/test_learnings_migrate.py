@@ -1268,11 +1268,9 @@ class TestBareBracketPointer:
     own corpus carried 67 of them); after migration it would name a deleted file."""
 
     def test_bare_bracket_pointer_is_stripped(self):
-        from lib import learnings_migrate as lm
         src = "## When X do Y because Z — [learnings-detail.md]\n"
         assert lm.strip_links(src) == "## When X do Y because Z\n"
 
     def test_a_real_link_elsewhere_survives(self):
-        from lib import learnings_migrate as lm
         src = "## When X do Y — see [the norm](docs/norms.md#x) — [learnings-detail.md]\n"
         assert lm.strip_links(src) == "## When X do Y — see [the norm](docs/norms.md#x)\n"
