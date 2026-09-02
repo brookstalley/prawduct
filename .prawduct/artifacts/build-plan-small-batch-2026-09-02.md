@@ -189,12 +189,24 @@ that the two documents no longer name one query two ways, checked by grep.
   it had synced. Cold start is already covered (a scope with no row reports exit 6,
   `unavailable`), so the uncovered case — and the only one this serves — is
   warm-then-failing, which is exactly what #625 scoped.
-- **[DECISION: record on BOTH sync exit paths.]** Found by a test that failed: a sync
-  can end as an error envelope *or* as a raised exception that the CLI boundary handler
-  turns into one, and a revoked credential — the motivating failure — takes the raising
-  path. Recording only the returned envelope left precisely the case this exists for
-  unrecorded. The `except` re-raises, so the boundary handler stays the single place an
-  exception becomes an envelope.
+- **[DECISION: record on BOTH sync exit paths — rationale CORRECTED at review.]** The
+  first version of this decision said a revoked credential takes the *raising* path. That
+  was wrong, and the test I wrote to prove it was wrong too: it raised `TransportError`
+  with one argument where `__init__` takes two, so a `TypeError` escaped, the test drove
+  the exception branch, and the envelope branch it existed to cover had **zero coverage
+  while passing** (Critic R-1). The truth is the reverse — `_revalidate` catches
+  `TransportError` and returns `from_transport_error(exc)`, so an auth failure is an
+  ENVELOPE. Both exits still record, because an unexpected exception is exactly when a
+  record is most wanted, but the envelope is the one that carries the motivating case
+  and it is now the one under test.
+- **[DECISION: the stamp lives at the SYNC boundary, not in the CLI.]** Critic R-6/R-2.
+  `confirm_coverage` is written inside `sync`, so every caller advances it; the health
+  stamps were written by `cli._run_sync` alone, so `pick`'s revalidating sync
+  (`query.py`) and the post-import warm (`cli._refresh_after_import`) moved the coverage
+  stamp *without* clearing the failure beside it. A stale `SYNC FAILING` banner then
+  outlived the sync that fixed it and printed under a newer `synced_at` — the store
+  contradicting itself in two adjacent lines. Two facts that must move together belong
+  at one seam, and the seam is where the one that already worked lives.
 - **Tests:** unit — a failure is recorded against a warmed scope; a later *successful*
   sync clears it (the multi-hop case, one step beyond the immediate post-state); a
   failure mints no row for an unsynced scope; a reader is told its answer predates a

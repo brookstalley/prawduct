@@ -653,11 +653,27 @@ class TestSyncCli:
         assert payload["status"] == "ok"
         assert payload["data"]["written"] == 1
 
+    def _health(self, project_dir):
+        """``(last_attempt_at, last_error)`` straight from the store."""
+        conn = cache.open_store(project_dir, create=False)
+        assert not isinstance(conn, dict), conn
+        try:
+            return cache.sync_health(conn, REPO)
+        finally:
+            conn.close()
+
     def test_a_failing_sync_records_itself_on_a_warmed_scope(self, tmp_path, capsys):
-        """The wiring half of #625: `_run_sync` must stamp the attempt, not just
-        return the envelope. The session-start warm is detached with its stderr
-        discarded, so a sync that returns an error envelope and records nothing
-        leaves no trace anywhere at all."""
+        """The wiring half of #625: a sync that fails must stamp the attempt, not
+        just return the envelope. The session-start warm is detached with its
+        stderr discarded, so a sync that records nothing leaves no trace at all.
+
+        **The transport is broken the way a revoked credential breaks it** — by
+        raising a real `TransportError`, which `sync` catches and converts to an
+        error ENVELOPE. An earlier version of this test raised `TransportError`
+        with one argument; its `__init__` takes two, so what actually escaped was
+        a `TypeError`, the test drove the exception path instead, and the envelope
+        branch it was written to cover had no coverage at all while passing.
+        """
         subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
         fake = FakeGitHub()
         core.file_item(
@@ -667,20 +683,18 @@ class TestSyncCli:
         cli.run(str(tmp_path), ["sync", "--repo", REPO, "--json"], transport=fake)  # warm it
         capsys.readouterr()
 
-        # Now make every later sync fail, the way revoked `gh` auth would.
-        class _Broken:
-            def __getattr__(self, name):
-                raise TransportError("gh auth failed")
+        class AuthFail(FakeGitHub):
+            def list_issues(self, *a, **k):
+                raise TransportError("auth", "auth required")
 
-        cli.run(str(tmp_path), ["sync", "--repo", REPO, "--json"], transport=_Broken())
-        capsys.readouterr()
+        cli.run(str(tmp_path), ["sync", "--repo", REPO, "--rebuild", "--json"], transport=AuthFail())
+        out = capsys.readouterr().out
+        assert json.loads(out)["status"] == "error", out  # the envelope path, not the raise
 
-        conn = cache.open_store(tmp_path, create=False)
-        try:
-            attempted_at, last_error = cache.sync_health(conn, REPO)
-        finally:
-            conn.close()
+        attempted_at, last_error = self._health(tmp_path)
         assert last_error, "a failing sync left no record on a warmed scope"
+        assert "TypeError" not in last_error, f"drove the exception path, not the envelope: {last_error}"
+        assert "auth" in last_error, last_error
         assert attempted_at
 
     def test_a_recovering_sync_clears_the_record_through_the_cli(self, tmp_path, capsys):
@@ -692,20 +706,79 @@ class TestSyncCli:
         )
         cli.run(str(tmp_path), ["sync", "--repo", REPO, "--json"], transport=fake)
 
-        class _Broken:
-            def __getattr__(self, name):
-                raise TransportError("gh auth failed")
+        class AuthFail(FakeGitHub):
+            def list_issues(self, *a, **k):
+                raise TransportError("auth", "auth required")
 
-        cli.run(str(tmp_path), ["sync", "--repo", REPO, "--json"], transport=_Broken())
+        cli.run(str(tmp_path), ["sync", "--repo", REPO, "--rebuild", "--json"], transport=AuthFail())
         cli.run(str(tmp_path), ["sync", "--repo", REPO, "--json"], transport=fake)  # recovered
         capsys.readouterr()
 
-        conn = cache.open_store(tmp_path, create=False)
-        try:
-            _attempted_at, last_error = cache.sync_health(conn, REPO)
-        finally:
-            conn.close()
-        assert last_error is None, "a recovered sync left a stale failure behind"
+        assert self._health(tmp_path)[1] is None, "a recovered sync left a stale failure behind"
+
+    def test_an_unexpected_exception_is_recorded_before_it_propagates(self, tmp_path, capsys):
+        # The other exit. `TransportError` becomes an envelope (above); an
+        # UNEXPECTED exception reaches the CLI boundary handler instead, and that
+        # is exactly when a record is most wanted. Distinct from the envelope test
+        # on purpose — conflating them is what let the arity bug hide.
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+        fake = FakeGitHub()
+        core.file_item(
+            fake, owner="octo", repo="repo",
+            title="cli: the sync item under test", body="b", facets={},
+        )
+        cli.run(str(tmp_path), ["sync", "--repo", REPO, "--json"], transport=fake)
+        capsys.readouterr()
+
+        class Exploding(FakeGitHub):
+            def list_issues(self, *a, **k):
+                raise RuntimeError("something nobody anticipated")
+
+        cli.run(str(tmp_path), ["sync", "--repo", REPO, "--rebuild", "--json"], transport=Exploding())
+        capsys.readouterr()
+
+        _attempted_at, last_error = self._health(tmp_path)
+        assert last_error, "an unexpected exception left no record"
+        assert "RuntimeError" in last_error, last_error
+
+    def test_every_sync_caller_stamps_the_health_beside_the_coverage(self, tmp_path, capsys):
+        """R-6: the health stamps must move wherever the coverage stamp moves.
+
+        `confirm_coverage` lives inside `sync`, so every caller advances it. While
+        the health stamps were written by `_run_sync` alone, `pick`'s revalidating
+        sync and the post-import warm advanced the coverage stamp WITHOUT clearing
+        the failure beside it — so a stale `SYNC FAILING` banner outlived the sync
+        that fixed it and printed under a newer `synced_at`.
+        """
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+        fake = FakeGitHub()
+        core.file_item(
+            fake, owner="octo", repo="repo",
+            title="cli: the sync item under test", body="b", facets={},
+        )
+        cli.run(str(tmp_path), ["sync", "--repo", REPO, "--json"], transport=fake)
+
+        class AuthFail(FakeGitHub):
+            def list_issues(self, *a, **k):
+                raise TransportError("auth", "auth required")
+
+        cli.run(str(tmp_path), ["sync", "--repo", REPO, "--rebuild", "--json"], transport=AuthFail())
+        capsys.readouterr()
+
+        # Pin the precondition. Without it this test passes when NOTHING records
+        # at all — "cleared correctly" and "never written" look identical at the
+        # end state, which is the same vacuity that hid the `TransportError`
+        # arity bug in the test above.
+        assert self._health(tmp_path)[1], "setup did not record a failure to clear"
+
+        # A caller that is NOT `sync`: `pick` revalidates through the same path.
+        cli.run(str(tmp_path), ["pick", "--repo", REPO, "--json"], transport=fake)
+        capsys.readouterr()
+
+        assert self._health(tmp_path)[1] is None, (
+            "a successful sync through `pick` advanced the coverage stamp but left "
+            "the failure beside it — the two must move together"
+        )
 
     def test_the_error_strings_that_name_this_op_now_name_a_real_one(self):
         """`cache.py` and `cachequery.py` tell the operator to run

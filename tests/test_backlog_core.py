@@ -1007,6 +1007,34 @@ class TestUpdateBlockFields:
         body = fake.get_issue(OWNER, REPO, n)["body"]
         assert "superseded_by: octo/repo#999" in body
 
+    def test_a_paste_whose_edit_the_flags_land_is_not_reported_discarded(self, fake):
+        # The warning compares against the FINAL block, not the stored one. A
+        # caller who pastes `refs: b` AND passes `--refs b` gets exactly what they
+        # asked for, and calling that discarded is a false alarm — the fastest way
+        # to teach a reader to skip the notice that matters.
+        n = self._seed_with_block(fake, "v: 1\nrefs: a.md")
+        pasted = "human text\n\n```prawduct\nv: 1\nrefs: b.md\n```\n"
+        r = core.update_item(
+            fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"body": pasted, "refs": "b.md"}
+        )
+        assert r["status"] == "ok"
+        assert not any("not editable through" in w for w in r["warnings"]), r["warnings"]
+        assert "refs: b.md" in fake.get_issue(OWNER, REPO, n)["body"]
+
+    def test_a_paste_the_flags_only_partly_land_still_reports_the_rest(self, fake):
+        # The complement: one field agreed by flag, another silently dropped. The
+        # dropped one must still be named, or the fix for the false alarm would
+        # have swallowed the true one.
+        n = self._seed_with_block(fake, "v: 1\nrefs: a.md\nsuperseded_by: octo/repo#999")
+        pasted = "human text\n\n```prawduct\nv: 1\nrefs: b.md\n```\n"
+        r = core.update_item(
+            fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"body": pasted, "refs": "b.md"}
+        )
+        warned = [w for w in r["warnings"] if "not editable through" in w]
+        assert warned, r["warnings"]
+        assert "superseded_by" in warned[0]
+        assert "refs" not in warned[0].split("differed at")[1].split("and the stored")[0]
+
     def test_an_unchanged_pasted_block_is_not_warned_about(self, fake):
         # Round-tripping the body verbatim is the ordinary case. Warning on it
         # would fire on most body edits and train the reader to skip the notice.

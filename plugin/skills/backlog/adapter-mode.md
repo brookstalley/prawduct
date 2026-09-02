@@ -266,8 +266,11 @@ Route by what changed:
   an expired `revisit:` can be removed rather than blanked. `file` also takes `--refs` so a new item
   can carry its governing-doc link from birth. With `--affected`, `--working-branch` and `--tags`
   above, these are the only writable block fields; **`--body` is not a route into the block** — a
-  pasted block is stripped and the existing one re-appended, so a block edit sent that way reports
-  success and changes nothing.
+  pasted block is stripped and the existing one re-appended, so a block edit sent that way changes
+  nothing. It does not do so silently: a pasted block that differs from the stored one comes back
+  with a warning naming the differing fields, so check `warnings` rather than reading `ok` as "the
+  block edit landed". A body carrying NO block is not reported — "I deleted it" and "I never pasted
+  one" are the same text.
 - **link edge** (`related:`/blocks/blocked-by/parent/child) → `link <id> --edge <e> --to <target>` /
   `unlink …`.
 - **a free note** → `comment <id> --body B`.
