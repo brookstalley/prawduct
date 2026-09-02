@@ -68,7 +68,7 @@ writing the matcher.
 
 ## Status
 
-- [ ] Chunk 01: Resolver, layout and scaffold — the keystone every reader uses
+- [x] Chunk 01: Resolver, layout and scaffold — the keystone every reader uses
 - [ ] Chunk 02: `learnings-migrate` — lossless relayout of any fleet format
 - [ ] Chunk 03: Budget gate — over-and-grew blocks the next addition
 - [ ] Chunk 04: Detection, directive, Stop floor, and the cross-check re-pointed
@@ -76,8 +76,11 @@ writing the matcher.
 Context: Plan drawn 2026-09-02 from discovery §8.2. Harness probe done 2026-09-02 (coordinator
 session): a `.claude/rules/zz-probe.md` with `paths: ["plugin/lib/**"]` injected its rule text on
 the first Read of `plugin/lib/onboarding_probes.py` — root-relative, `**` spans directories,
-loaded lazily on the matching read; the §6 assumption holds. Chunk 01 in progress (opus delegate,
-in place). 02–04 dispatch together after 01's `final` review; 05 after all three are merged.
+loaded lazily on the matching read; the §6 assumption holds. Chunk 01 done 2026-09-02 (03662deb;
+final review rev-20260902T120140Z-ba4c090d + verify-resolutions rev-20260902T121546Z-91cf4260, clean).
+02–04 dispatched together 2026-09-02 to three opus delegates (worktrees prawduct-w1a/w1b/w1c,
+branches wave1/chunk02-migrate, chunk03-budget, chunk04-detect); coordinator merges each `--no-ff`
+then reviews. 05 after all three are merged.
 
 ## Scaffolding
 
