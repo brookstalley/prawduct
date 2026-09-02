@@ -1010,6 +1010,12 @@ def _base_size(project_dir: Path, base_tree: str, rel: str) -> "int | None":
     addition, and exempting the first commit of an area file would let a repo
     ship a 40KB one and then be told it may never touch it again.
 
+    One exception, by construction: ``core.md`` absent at base while the legacy
+    ``.prawduct/learnings.md`` was present there is the migration commit — the
+    corpus MOVED, it did not grow — so the base is the legacy file's size. Every
+    fleet repo passes through exactly this tree once, and reading it as
+    "grown from 0B" would block the migration the framework itself directed.
+
     ``None`` means git answered in a shape this cannot read, which the caller
     reports ``unchecked``. The base tree itself is validated by the caller, so a
     nonzero exit here is genuinely "no such object in that tree".
@@ -1018,7 +1024,14 @@ def _base_size(project_dir: Path, base_tree: str, rel: str) -> "int | None":
         project_dir, "cat-file", "-s", f"{base_tree}:{rel}"
     )
     if rc != 0:
-        return 0
+        core_rel = f"{learnings_files.RULES_DIR_REL}/{learnings_files.CORE_NAME}"
+        if rel != core_rel:
+            return 0
+        rc, out, _err = evidence.run_git(
+            project_dir, "cat-file", "-s", f"{base_tree}:{learnings_files.LEGACY_REL}"
+        )
+        if rc != 0:
+            return 0
     try:
         return int(out.strip())
     except ValueError:

@@ -428,7 +428,7 @@
 
 ### Promoting an advisory check to blocking changes what its false positives COST, so audit them as part of the wiring — a placeholder lint matched "fix it" inside "pre-FIX IT-em" harmlessly for years, then became a false refusal on an irreversible migration. Fix the classification, never the budget
 
-### A gate on a value that nearly every fixture supplies will touch nearly every fixture — estimate that blast radius in the plan, because it changes the chunk's real size. Enforcing a title rule broke 126 tests across 8 modules, none of which asserted anything about titles; fixing fixture DATA (never assertions) is correct, but discovering the number at build time is a planning miss
+### A gate on a value that nearly every fixture supplies will touch nearly every fixture — estimate that blast radius in the plan, because it changes the chunk's real size. Enforcing a title rule broke well over a hundred tests across eight modules, none of which asserted anything about titles; fixing fixture DATA (never assertions) is correct, but discovering the number at build time is a planning miss
 
 ### Derive what an instrument can OBSERVE before deciding what it is worth — recommendation formed first makes verification a correction instead of an input. Two over-claims in one session from this: a per-file coverage gate sold as catching branch-level gaps, and branch coverage sold as the lever when line coverage already catches an untested arm (its body never executes). Tell: you can name the gate's benefit but not the field it reads
 

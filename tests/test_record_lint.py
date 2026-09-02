@@ -1586,6 +1586,48 @@ class TestLearningsBudget:
         assert findings[0]["path"].endswith("critic.md")
         assert "grown from 0B" in findings[0]["detail"]
 
+    def test_the_migration_commit_measures_against_the_legacy_file(self, tmp_path):
+        """core.md absent at base while .prawduct/learnings.md was present is the
+        relayout every fleet repo passes through once: the corpus moved, it did not
+        grow. Read as "grown from 0B" the gate would block the migration the
+        framework itself directed (this repo, 2026-09-02: 100KB, first run)."""
+        repo = _make_repo(tmp_path)
+        legacy = repo / learnings_files.LEGACY_REL
+        legacy.parent.mkdir(parents=True, exist_ok=True)
+        legacy.write_text("# Learnings\n" + ("- rule\n" * 3000))
+        legacy_size = legacy.stat().st_size
+        assert legacy_size > _BUDGET
+        base = _commit(repo, "legacy corpus")
+        legacy.unlink()
+        _rules_file(repo, learnings_files.CORE_NAME, legacy_size - 200)
+
+        assert _checks(self._lint_budget(repo, base), "learnings-over-budget") == []
+
+    def test_a_migration_that_also_grew_still_pays(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        legacy = repo / learnings_files.LEGACY_REL
+        legacy.parent.mkdir(parents=True, exist_ok=True)
+        legacy.write_text("# Learnings\n" + ("- rule\n" * 3000))
+        legacy_size = legacy.stat().st_size
+        base = _commit(repo, "legacy corpus")
+        legacy.unlink()
+        _rules_file(repo, learnings_files.CORE_NAME, legacy_size + 200)
+
+        findings = _checks(self._lint_budget(repo, base), "learnings-over-budget")
+        assert len(findings) == 1
+        assert f"grown from {legacy_size}B" in findings[0]["detail"]
+
+    def test_an_area_file_absent_at_base_gets_no_legacy_credit(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        legacy = repo / learnings_files.LEGACY_REL
+        legacy.parent.mkdir(parents=True, exist_ok=True)
+        legacy.write_text("# Learnings\n" + ("- rule\n" * 3000))
+        base = _commit(repo, "legacy corpus")
+        _rules_file(repo, "critic.md", _BUDGET + 1)
+
+        findings = _checks(self._lint_budget(repo, base), "learnings-over-budget")
+        assert len(findings) == 1 and "grown from 0B" in findings[0]["detail"]
+
     def test_an_area_file_is_budgeted_beside_core(self, tmp_path):
         repo = _make_repo(tmp_path)
         _rules_file(repo, learnings_files.CORE_NAME, 10)
