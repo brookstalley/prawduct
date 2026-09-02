@@ -60,7 +60,7 @@ for this fix — it is the meaning the framework's own current vocabulary alread
 `/backlog pick` excludes it as "already in flight." That is "actively being worked," which is
 exactly `in-progress`.
 
-**This resolves #529's open question rather than sidestepping it.** #529's corpus used `promoted`
+**This answers the open question in #529 rather than sidestepping it.** #529's corpus used `promoted`
 to mean "code landed, awaiting the release flip" — nearer shipped-pending. But shipped-pending has
 no encoding in the service's five-value axis (Data Model closes that set deliberately), and
 inventing a sixth value to carry one historical corpus's usage would misdocument what `promoted`
