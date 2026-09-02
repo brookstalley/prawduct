@@ -2055,3 +2055,141 @@ class TestUnrecognizedCriticModeIsAnnounced:
         infer_mode(repo, None)
 
         assert "NOTE: chunk's `Critic mode:`" not in capsys.readouterr().err
+
+
+class TestExplicitTokenReachesTheCleanTreeRedirect:
+    """An explicit mode token is an instruction, not a way around the ladder.
+
+    The defect (#684): the explicit-args return sat ABOVE the whole ladder, so
+    rule 4's clean-tree redirect — which exists precisely so a review is never
+    dispatched into an interval that is provably empty — was unreachable by the
+    one path that names the mode out loud. `/prawduct:critic final` on a fully
+    committed branch returned `final` with rationale `explicit-args`, and
+    `critic-begin` then refused on the empty diff. Three sessions out of three.
+
+    The redirect is scoped exactly to the two modes whose interval is
+    HEAD-tree → working-tree, and only where `cumulative` would actually work.
+    Everywhere else the token stands, because a redirect to a second refusal is
+    worth nothing and a rationale that claims the operator chose the redirected
+    mode is a false entry in a durable field.
+    """
+
+    def _committed_branch(self, tmp_path: Path) -> str:
+        """A standalone fix branch with everything committed — the reported case.
+
+        The review record is gitignored up front so a fixture that writes one
+        does not leave the tree dirty and satisfy the guard for the wrong
+        reason: `_working_tree_is_empty` counts untracked files.
+        """
+        _init_repo(tmp_path)
+        _write(tmp_path, "README.md", "x\n")
+        _write(tmp_path, ".gitignore", ".prawduct/.critic-findings.json\n")
+        _commit(tmp_path, "initial")
+        _checkout_new_branch(tmp_path, "fix/standalone")
+        _write(tmp_path, "src/fix.py", "# fix\n")
+        return _commit(tmp_path, "fix: it")
+
+    @pytest.mark.parametrize("token", ["chunk", "final"])
+    def test_a_named_working_tree_mode_on_a_clean_tree_redirects(
+        self, tmp_path: Path, token: str
+    ):
+        self._committed_branch(tmp_path)
+
+        mode, rationale = infer_mode(tmp_path, token)
+        assert mode == "cumulative", (
+            f"explicit `{token}` on a clean tree still dispatches an interval "
+            f"that is provably empty"
+        )
+        assert "empty interval" in rationale
+
+    @pytest.mark.parametrize("token", ["chunk", "final"])
+    def test_the_rationale_names_the_token_it_replaced(
+        self, tmp_path: Path, token: str
+    ):
+        """`mode_chosen_by` is durable. Recording a bare rule-4 rationale here
+        would claim the operator inferred nothing and chose `cumulative`; both
+        halves are false, and the operator's own word is the part worth keeping."""
+        self._committed_branch(tmp_path)
+
+        _mode, rationale = infer_mode(tmp_path, token)
+        assert rationale.startswith(f"explicit-args {token} redirected:"), rationale
+
+    @pytest.mark.parametrize("token", ["cumulative", "verify-resolutions"])
+    def test_the_other_two_tokens_are_untouched(self, tmp_path: Path, token: str):
+        """Neither goes empty because the working tree is clean, so neither has
+        anything to redirect — and redirecting `verify-resolutions` in
+        particular would swap the gate-unblocking pass for the one it grades."""
+        self._committed_branch(tmp_path)
+
+        mode, rationale = infer_mode(tmp_path, token)
+        assert mode == token
+        assert rationale == "explicit-args"
+
+    @pytest.mark.parametrize("token", ["chunk", "final"])
+    def test_a_dirty_tree_keeps_the_named_mode(self, tmp_path: Path, token: str):
+        """The redirect is gated on the interval being EMPTY, not on the branch
+        being ahead. Uncommitted work is exactly what these two modes review."""
+        self._committed_branch(tmp_path)
+        _write(tmp_path, "src/more.py", "# in flight\n")
+
+        mode, rationale = infer_mode(tmp_path, token)
+        assert mode == token
+        assert rationale == "explicit-args"
+
+    def test_uncommitted_records_alone_still_keep_the_named_mode(self, tmp_path: Path):
+        """Same distinction rule 4 draws: `capture_tree` stages `.prawduct/`, so
+        an uncommitted change-log is IN the interval. Redirecting it would
+        note-and-exclude the records just written and stamp "working tree is
+        clean" over a tree that is not."""
+        self._committed_branch(tmp_path)
+        _write(tmp_path, ".prawduct/change-log.md", "# log\n\n- did a thing\n")
+
+        mode, rationale = infer_mode(tmp_path, "chunk")
+        assert mode == "chunk"
+        assert rationale == "explicit-args"
+
+    @pytest.mark.parametrize("token", ["chunk", "final"])
+    def test_no_redirect_when_cumulative_would_refuse_too(
+        self, tmp_path: Path, token: str
+    ):
+        """Nothing committed beyond the base: `cumulative` has no bundle either.
+
+        The honest empty-interval refusal on the mode the operator named beats a
+        redirect to a different refusal — the caller learns the same thing and
+        keeps its own word for it. Same rule rule 4 applies to itself.
+        """
+        _init_repo(tmp_path)
+        _write(tmp_path, "README.md", "x\n")
+        _commit(tmp_path, "initial")
+
+        mode, rationale = infer_mode(tmp_path, token)
+        assert mode == token
+        assert rationale == "explicit-args"
+
+    @pytest.mark.parametrize("token", ["chunk", "final"])
+    def test_no_redirect_when_a_fresh_cumulative_already_covers_head(
+        self, tmp_path: Path, token: str
+    ):
+        """The bundle review just ran. Re-recommending it is the noise rule 2
+        declines to make, and the operator asked for something else."""
+        head_sha = self._committed_branch(tmp_path)
+        _write_findings(
+            tmp_path / ".prawduct",
+            mode="cumulative (bundle review, ready for merge)",
+            commit_reviewed=head_sha,
+        )
+
+        mode, rationale = infer_mode(tmp_path, token)
+        assert mode == token
+        assert rationale == "explicit-args"
+
+    def test_an_unrecognized_token_still_falls_through_to_inference(
+        self, tmp_path: Path
+    ):
+        """The guard sits inside the recognized-token branch and must not have
+        moved the fall-through: an unknown word is still not a mode."""
+        self._committed_branch(tmp_path)
+
+        mode, rationale = infer_mode(tmp_path, "ultra-thorough")
+        assert mode == "cumulative"
+        assert rationale.startswith("rule-"), rationale

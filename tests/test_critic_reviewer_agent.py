@@ -274,3 +274,73 @@ class TestSinglePassUnchanged:
         exec_section = text.split("## Review Execution", 1)[1].split("### Coordinator", 1)[0]
         assert "single-pass" in exec_section.lower()
         assert "critic-consolidate" in exec_section
+
+
+class TestReviewerAnchorsToTheDispatchedTree:
+    """A reviewer must resolve every path against the directory it was sent to.
+
+    The defect (#147): nothing bound the dispatched project directory to
+    anything. `review-protocol.md` passed `Project: [dir]` and then said nothing
+    about it; the agent definition contained no `git -C` and told the reviewer to
+    record `commit_reviewed` from its prompt "verbatim" without ever checking
+    that the tree in front of it was that commit. In a worktree session the
+    primary checkout is a different tree on a different branch, and a review that
+    resolved there finds no changes, no broken references and no missing
+    coverage - so the failure mode is a clean pass, which is invisible.
+
+    `critic-begin` already anchors correctly (it records the worktree it
+    measured, pinned in `test_critic_dispatch_refusal.py`). The gap was entirely
+    on the instruction side, which is what these pins hold.
+    """
+
+    def test_agent_is_told_its_cwd_is_not_the_project_directory(self):
+        body = AGENT_DEF.read_text()
+        assert "not necessarily your cwd" in body, (
+            "the agent definition must say the project directory is not the cwd - "
+            "without it, 'the project directory' reads as a synonym for 'here'"
+        )
+        assert "primary checkout" in body
+
+    def test_agent_requires_git_dash_c_on_git_calls(self):
+        body = AGENT_DEF.read_text()
+        assert body.count("git -C") >= 2, (
+            "the agent definition must require `git -C <project dir>`; a bare git "
+            "verb answers for whichever tree the subagent process started in"
+        )
+
+    def test_agent_verifies_head_against_the_dispatched_sha(self):
+        body = AGENT_DEF.read_text()
+        assert "rev-parse" in body and "HEAD" in body, (
+            "the reviewer must confirm the dispatched tree's HEAD"
+        )
+        assert "dispatch-mismatch" in body, (
+            "a mismatch needs a named, reportable outcome - not 'stop', which "
+            "leaves the roster incomplete and the review stalled to its TTL"
+        )
+        assert "BLOCKING" in body
+
+    def test_the_check_precedes_the_review(self):
+        """Verifying after reading the diff buys nothing: the findings are
+        already about the wrong tree."""
+        body = AGENT_DEF.read_text()
+        check = body.index("rev-parse")
+        read_goals = body.index("Read the goal definitions for YOUR goals")
+        read_diff = body.index("Read the changed files and inspect the diff")
+        assert check < read_goals < read_diff, (
+            "the HEAD check must come before the reviewer reads anything"
+        )
+
+    def test_protocol_binds_the_dispatched_directory(self):
+        text = REVIEW_PROTOCOL.read_text()
+        coord = text.split("### Coordinator Pattern", 1)[1].split("## Output Format", 1)[0]
+        assert "Project (absolute)" in coord, (
+            "the dispatch template must mark the project directory absolute"
+        )
+        assert "`worktree`" in coord, (
+            "the template must say WHERE the absolute path comes from - the "
+            "manifest's `worktree`, which is the tree critic-begin measured"
+        )
+        assert "git -C [dir] rev-parse HEAD" in coord, (
+            "the dispatch prompt must carry the SHA confirmation; the agent "
+            "definition alone does not bind a reviewer whose prompt overrides it"
+        )

@@ -213,3 +213,180 @@ class TestCoordinatorDispatchIsConcurrent:
     def test_skill_routing_bullet_demands_one_message(self):
         content = _PLUGIN_CRITIC_SKILL.read_text()
         assert "in a single message so they run concurrently" in content
+
+
+# =============================================================================
+# Every mandated hook subcommand is granted on every surface that mandates it
+# =============================================================================
+
+_PLUGIN_CRITIC_REVIEWER = REPO_ROOT / "agents" / "critic-reviewer.md"
+
+#: The Critic's instruction surfaces, mapped to the grant list(s) that bind the
+#: agent that READS each one. This mapping is the substance of the check: a
+#: mandate is only runnable if it is granted on the surface whose reader meets
+#: it, and the Critic has two readers with two different grant lists.
+#:
+#:   * the fork (`SKILL.md`'s `allowed-tools`) reads `SKILL.md`, `goals-1-3.md`,
+#:     `review-cycle.md`, `framework-checks.md`, and - in single-pass
+#:     `final`/`cumulative` - `review-protocol.md`;
+#:   * the dispatched `critic-reviewer` subagent (`critic-reviewer.md`'s
+#:     `tools:`) reads `review-protocol.md` and its own definition.
+#:
+#: `review-protocol.md` therefore binds BOTH, which is the case the original
+#: defect lived in: its Goal 1 `verify-coverage` mandate was granted to neither.
+_SURFACE_GRANTS: dict[str, tuple[Path, ...]] = {
+    "skills/critic/SKILL.md": (_PLUGIN_CRITIC_SKILL,),
+    "skills/critic/goals-1-3.md": (_PLUGIN_CRITIC_SKILL,),
+    "skills/critic/review-cycle.md": (_PLUGIN_CRITIC_SKILL,),
+    "skills/critic/framework-checks.md": (_PLUGIN_CRITIC_SKILL,),
+    "skills/critic/review-protocol.md": (_PLUGIN_CRITIC_SKILL, _PLUGIN_CRITIC_REVIEWER),
+    "agents/critic-reviewer.md": (_PLUGIN_CRITIC_REVIEWER,),
+}
+
+#: A mandate this surface issues that the named grant list deliberately withholds.
+#: Keyed by (surface, grant-list stem, subcommand); the value is the reason, and
+#: adding a row is meant to be uncomfortable enough to make you check.
+_MANDATE_NOT_GRANTED: dict[tuple[str, str, str], str] = {
+    # `review-protocol.md`'s consolidate instruction is explicitly labelled
+    # "single-pass only - coordinator reviewers get this schema from their agent
+    # definition", and that definition tells the dispatched reviewer the exact
+    # opposite: "do NOT run `prawduct-hook critic-consolidate`". The missing grant
+    # IS that rule's enforcement - a reviewer that could consolidate could persist
+    # a review from three partials of which only one exists.
+    ("skills/critic/review-protocol.md", "critic-reviewer", "critic-consolidate"): (
+        "single-pass only; a dispatched reviewer must never consolidate"
+    ),
+    # `review-cycle.md` prints this inside the NOTE text the Critic hands the
+    # BUILDER when backlog reconciliation is unavailable. It is remedy prose the
+    # operator runs, and granting it would give a read-only review a network write.
+    ("skills/critic/review-cycle.md", "critic", "backlog sync"): (
+        "remedy text reported to the builder, never run by the review"
+    ),
+}
+
+#: "run `prawduct-hook <sub>`" - the imperative that makes a subcommand a mandate.
+#: Matched on the whitespace-normalised text (prose wraps mid-command) and only
+#: within a short window after the verb, so a table cell reading "**Goals run**"
+#: does not adopt every command later in the same row. 90 characters is the
+#: measured setting: it reaches the second command of a chained mandate ("run
+#: `... classify-diff-risk` for the tier, then `... critic-begin`") and stops
+#: short of the next unrelated one (at 120 a `check-cumulative-critic` mention
+#: two clauses away in `review-cycle.md` gets adopted).
+_MANDATE_WINDOW = 90
+_RUN_RE = re.compile(r"\brun\b", re.IGNORECASE)
+_NEGATED_RE = re.compile(r"(?:\b(?:not|never|n't|neither)\s+|\brefuses?\s+to\s+)$", re.I)
+_HOOK_CALL_RE = re.compile(r"`prawduct-hook ([a-z][a-z0-9-]*(?: [a-z][a-z0-9-]*)?)")
+
+
+def _mandated_subcommands(text: str) -> set[str]:
+    """Every `prawduct-hook` subcommand this surface tells its reader to RUN.
+
+    A negated verb ("do NOT run", "refuses to run") is not a mandate - those are
+    the prohibitions the grant lists enforce by omission, and reading them as
+    mandates would invert the check.
+    """
+    flat = " ".join(text.split())
+    found: set[str] = set()
+    for m in _RUN_RE.finditer(flat):
+        if _NEGATED_RE.search(flat[: m.start()]):
+            continue
+        end = m.end() + _MANDATE_WINDOW
+        # Never cut a command in half: a window boundary that lands mid-token
+        # turns `verify-coverage` into a subcommand named `verify-cover`, which
+        # is ungranted everywhere and would be reported as the gap.
+        while end < len(flat) and flat[end] not in " `":
+            end += 1
+        found.update(_HOOK_CALL_RE.findall(flat[m.end() : end]))
+    return found
+
+
+def _granted_subcommands(grant_line: str) -> set[str]:
+    """Bare-spelling `prawduct-hook` grants, as their subcommand words.
+
+    Only the bare spelling counts: in a governed product the plugin is installed
+    outside the repo, so `python3 plugin/bin/prawduct-hook ...` names a path that
+    does not exist there and the bare form is the only string that resolves.
+    """
+    out: set[str] = set()
+    for m in re.finditer(r"(?<![\w/-])prawduct-hook\s+([^)]*)\)", grant_line):
+        words = [w for w in m.group(1).split() if re.fullmatch(r"[a-z][a-z0-9-]*", w)]
+        if words:
+            out.add(" ".join(words))
+    return out
+
+
+def _grant_line(path: Path) -> str:
+    text = path.read_text()
+    m = re.search(r"^(?:allowed-tools|tools):\s*(.+)$", text, re.MULTILINE)
+    assert m is not None, f"{path.name} declares no tool grant"
+    return m.group(1).strip()
+
+
+def test_mandated_hook_subcommands_are_granted_on_every_binding_surface():
+    """A BLOCKING check the protocol mandates must be runnable by the agent it
+    is mandated to.
+
+    The instance this generalises: `review-protocol.md` and `goals-1-3.md` both
+    grade `prawduct-hook verify-coverage` **BLOCKING per missing file** and say
+    the wording "must not be softened" - while neither the fork's
+    `allowed-tools` nor the dispatched reviewer's `tools:` granted it. The
+    reviewer meets a mandatory command it cannot issue, and the only outcomes
+    are a permission prompt in a subagent that cannot answer one, or a
+    silently-skipped blocking check. Either way the finding is never made, and
+    nothing anywhere goes red.
+
+    The converse direction has been pinned since Chunk 13
+    (`test_no_allow_pattern_permits_pytest`, `test_verify_chunk_refs_grant_is_retired`):
+    a grant with no instruction behind it is a mechanism's name outliving its
+    mechanism. This is the missing half - an instruction with no grant behind it.
+    """
+    gaps = []
+    for surface, grant_paths in _SURFACE_GRANTS.items():
+        surface_path = REPO_ROOT / surface
+        mandated = _mandated_subcommands(surface_path.read_text())
+        for grant_path in grant_paths:
+            stem = (
+                grant_path.parent.name if grant_path.name == "SKILL.md" else grant_path.stem
+            )
+            granted = _granted_subcommands(_grant_line(grant_path))
+            for sub in sorted(mandated):
+                if (surface, stem, sub) in _MANDATE_NOT_GRANTED:
+                    continue
+                family = sub.split(" ")[0]
+                if sub in granted or family in granted:
+                    continue
+                gaps.append(
+                    f"{surface} mandates `prawduct-hook {sub}`, "
+                    f"ungranted in {grant_path.name}"
+                )
+    assert not gaps, (
+        "a Critic instruction surface mandates a `prawduct-hook` subcommand its "
+        "reader is not granted:\n  " + "\n  ".join(gaps) + "\n"
+        "Grant it in that surface's binding tool list (the bare `prawduct-hook` "
+        "spelling - the self-hosted one does not exist in a governed product), "
+        "demote the instruction so it is no longer a mandate, or add a "
+        "_MANDATE_NOT_GRANTED row with the reason."
+    )
+
+
+def test_the_mandate_sweep_has_subjects():
+    """A green assert-absent test proves nothing if it swept an empty set."""
+    per_surface = {
+        s: _mandated_subcommands((REPO_ROOT / s).read_text()) for s in _SURFACE_GRANTS
+    }
+    assert sum(len(v) for v in per_surface.values()) >= 8, per_surface
+    assert "verify-coverage" in per_surface["skills/critic/review-protocol.md"], (
+        "the mandate this test was written for is no longer detected - either "
+        "Goal 1's symbol-coverage check moved, or the detector stopped seeing it"
+    )
+    assert "verify-coverage" in per_surface["skills/critic/goals-1-3.md"]
+
+
+def test_no_stale_mandate_exemptions():
+    """An exemption outlives the sentence that earned it."""
+    stale = [
+        key
+        for key in _MANDATE_NOT_GRANTED
+        if key[2] not in _mandated_subcommands((REPO_ROOT / key[0]).read_text())
+    ]
+    assert not stale, f"stale _MANDATE_NOT_GRANTED rows: {stale}"
