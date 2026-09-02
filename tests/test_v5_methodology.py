@@ -417,7 +417,7 @@ LAST_MEASURED_TOKENS = {
     # meant). `chunk` mode is UNCOVERED and explicitly so: `goals-1-3.md` has 2
     # tokens of headroom and the rule costs ~65, which is an owner ruling on
     # that ceiling, not a trim to slip into this chunk.
-    "skills/critic/review-protocol.md": 3794,
+    "skills/critic/review-protocol.md": 3799,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -443,7 +443,27 @@ LAST_MEASURED_TOKENS = {
     # below already owns, `chunk_graded`/`plan_graded` re-listed what they name
     # right after naming it, and the two false-blocker arguments (no-subject and
     # graded) were one sentence said twice. Ceiling 2250 untouched, 1 to spare.
-    "skills/critic/goals-1-3.md": 2247,
+    # +18 on 2026-09-01, ceiling 2250 -> 2280 (#644, #166): the raise is for a
+    # NEW OBLIGATION, not for fat. #644 added the API-retention conformance
+    # clause -- a `stable`/`deprecated` member removed against a `Retention:`
+    # policy is a BLOCKING norm departure -- and this file must state it because
+    # `chunk`/`verify-resolutions` read nothing else. #166's fold-in rule landed
+    # beside it. Both were first funded by TRIMMING, and the trim took load-
+    # bearing prose with it: the two causes of the `graded chunk` assumption
+    # shape ("inferred from build-plan Status, or the plan from the
+    # `active_build_plan` pointer"), which `test_record_lint.py` requires on
+    # every reviewer surface precisely so a surface naming one cause cannot let
+    # the other read as a clean grade. That clause is restored here and the +18
+    # is what it costs. Deduping was NOT attempted a second time: the entry
+    # directly above records this file already squeezed to 1 token of headroom,
+    # and hunting a further trim under ceiling pressure is exactly what deleted
+    # the clause the first time. Also deleted by that pass and NOT restored:
+    # "You are a separate agent and have not seen the builder's reasoning --
+    # that independence is the product." It survives in `agents/critic-reviewer.md`
+    # for the dispatched roster, but the single-pass modes this file serves do
+    # not read that file -- flagged for an owner ruling rather than re-added
+    # under the same pressure that removed it.
+    "skills/critic/goals-1-3.md": 2265,
     # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
     # a computed pass the gate can now print, which a reader who only knows
     # "uncovered means run a cumulative" will otherwise re-review straight
@@ -475,7 +495,7 @@ LAST_MEASURED_TOKENS = {
     # was asserting a timing that is false on the Issues backend, so the routing
     # replaced prose rather than adding to it, and the "why" the routing would
     # have restated stayed at the owner where the reader is already being sent.
-    "skills/critic/review-cycle.md": 9596,
+    "skills/critic/review-cycle.md": 9591,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -3939,7 +3959,7 @@ class TestCriticGoals13:
         # THIS file is the only surface whose reader writes both, and they sat
         # eight lines apart with no cue. Three words in the schema example.
         tokens = estimate_tokens(self.content)
-        assert tokens < 2250, f"goals-1-3.md is ~{tokens} tokens, should be <2250"
+        assert tokens < 2280, f"goals-1-3.md is ~{tokens} tokens, should be <2280"
 
     def test_is_self_contained(self):
         """No follow-the-pointer reads at review time — the acceptance criterion
