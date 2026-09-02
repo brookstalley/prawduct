@@ -1269,6 +1269,24 @@ class TestLearningsEntryShape:
         assert len(rule) < 400
         assert not self._findings(tmp_path, f"## {rule}")
 
+    def test_quiet_on_a_learnings_md_that_is_not_the_root_record(self, tmp_path):
+        """Only `.prawduct/learnings.md` is this repo's rule index.
+
+        A `learnings.md` nested elsewhere — the learnings-migrate fixtures under
+        tests/ carry three legacy corpora on purpose — is data. Grading its shape
+        reported thirty findings about files nobody maintains as an index
+        (learnings-v2 integration, 2026-09-02).
+        """
+        repo = _make_repo(tmp_path, name="nested-learnings")
+        doc = repo / "tests" / "fixtures" / "sample" / ".prawduct" / "learnings.md"
+        doc.parent.mkdir(parents=True)
+        doc.write_text("# Learnings\n\n---\n")
+        base = _commit(repo, "seed")
+        doc.write_text("# Learnings\n\n---\n## When X do Y because Z\n\nNarrative body.\n")
+        head = _commit(repo, "add")
+        rel = "tests/fixtures/sample/.prawduct/learnings.md"
+        assert not _checks(_lint(repo, [rel], base, head), "learnings-entry-shape")
+
     def test_fires_on_a_narrative_body(self, tmp_path):
         """The channel the sweep was built for.
 

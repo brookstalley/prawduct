@@ -1205,7 +1205,11 @@ def lint_records(
         added = added_by_path.get(rel)
         if added:
             findings.extend(_check_suite_totals(rel, added))
-            if Path(rel).name == _LEARNINGS_REL:
+            # The rule index is the ROOT record only. A `learnings.md` nested
+            # elsewhere (a migration fixture under tests/, a vendored product
+            # sample) is data, not this repo's index, and grading its shape
+            # reports thirty findings about a file nobody maintains as an index.
+            if Path(rel).name == _LEARNINGS_REL and Path(rel).parent == Path(".prawduct"):
                 findings.extend(
                     _check_learnings_shape(
                         rel, added, _read_text(project_dir / rel)

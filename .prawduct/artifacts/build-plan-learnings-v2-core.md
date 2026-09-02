@@ -204,7 +204,7 @@ allowlist that Wave 2 shrinks to the migrate module and `CHANGELOG.md`.
     with `learnings_files.CORE_HEADER`; then delete `.prawduct/learnings.md`,
     `learnings-detail.md`, `learnings-history.md` where present. Refuse (exit 2, named reason)
     when `git status --porcelain` shows any of those three paths modified. Refuse (exit 2,
-    named reason: the destination is gitignored, unignore `.claude/rules/` first) when
+    named reason: the destination is gitignored, unignore the rules directory first) when
     `git check-ignore -q .claude/rules/learnings/core.md` succeeds — otherwise `--apply` would
     delete a tracked file and write an untracked one. On a `new` layout report "nothing to do"
     (exit 0); on `both`, refuse and point at the R4 fold directive.
@@ -213,12 +213,12 @@ allowlist that Wave 2 shrinks to the migrate module and `CHANGELOG.md`.
     in that format and exit), `--json`; dispatch line and usage entry. Dry run prints the plan:
     each output file, its byte size, and its rule count.
   - new `tests/test_learnings_migrate.py` with fixtures under
-    `tests/fixtures/learnings_migrate/{topic,paragraph,mixed}/` — `mixed` is a 30-rule excerpt
+    `tests/fixtures/learnings_migrate/` (subtrees topic, paragraph, mixed) — `mixed` is a 30-rule excerpt
     of discodon's file with both shapes, links, and a metadata comment.
 - **Tests:** unit — each fixture round-trips; **byte accounting**: every rule line of the source,
   after `strip_links`, appears verbatim in the concatenated output; refuse-on-dirty; idempotence
   (second run reports nothing); `both` refuses; gitignored destination refuses; `--propose-map` on a fixture tree with
-  `discodon/eval/` proposes `eval-model-bake-offs: [discodon/eval/**]`; hook-argument-shape
+  an eval directory under a discodon package proposes `eval-model-bake-offs: [discodon/eval/**]`; hook-argument-shape
   test for the new verb (`tests/test_hook_argument_shape.py` pattern).
 - **Acceptance criteria:** `uv run pytest -q tests/test_learnings_migrate.py tests/preferences`
   passes; a dry run against the scratch copy of discodon's file reports output totals that sum
