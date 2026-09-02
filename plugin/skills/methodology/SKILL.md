@@ -28,7 +28,7 @@ Every unit of work follows **understand → plan → build → verify → Critic
 - `/prawduct:methodology reflection` — at work boundaries and before `/clear`
 - `/prawduct:methodology delegation` — before splitting work across subagents
 
-The principles guide every decision — read the full set, where the count and the groups are defined rather than restated, with `/prawduct:methodology principles`. How the agent communicates and acts while applying them — advisor first (expert take before compliance), verify don't guess, stress-test before agreeing, frame decisions — is the stance block in the always-injected session digest (`methodology/session-digest.md`). Governance is enforced structurally: the plugin's Stop hook runs the Critic + reflection gates at session end, so a code change against an active build plan with no review or reflection blocks the session.
+The principles guide every decision — read the full set, where the count and the groups are defined rather than restated, with `/prawduct:methodology principles`. How the agent communicates and acts while applying them — advisor first (expert take before compliance), verify don't guess, stress-test before agreeing, frame decisions — is the stance block in the always-injected session digest (`methodology/session-digest.md`). Governance is enforced structurally: the plugin's Stop hook runs the Critic + reflection gates at session end, so judgeable code changed this session with no shaped reflection blocks the session, as does a change against an active build plan with no review.
 
 Operational procedures — runbooks for incident response, deploy/rollback, release, disaster
 recovery, maintenance and field service — are authored with `/prawduct:runbook`, against the

@@ -2019,26 +2019,39 @@ def _check_previous_session_gates(project_dir: Path) -> list[str]:
     # baseline-diff probes below (STH-6Q9D) instead of each re-spawning git.
     status_output = gitstate.git_status_output(project_dir)
 
-    # Was there a previous session with changes?
+    # Was there a previous session with changes? Two readers, because the two
+    # gates at session end read two spans: the reflection gate reads the
+    # session's WORK span (base tree -> working tree, committed work included)
+    # and the Critic gate reads porcelain. An advisory that asked only porcelain
+    # would stay silent at session start about a committed session the
+    # reflection gate blocks at session end — the divergence the comment on
+    # Gate 2 below promises cannot happen.
     had_changes = gitstate.git_has_session_changes(project_dir, status_output)
-    if not had_changes:
+    span = gates.session_work_span(project_dir, status_output)
+    if not had_changes and not span["judgeable"]:
         return warnings
 
     # Honor any waivers the previous session declared (file is deleted right
     # after this check runs, so waivers never carry past the gate they covered).
     waivers = gates._read_gates_waived(prawduct_dir)
 
-    # Gate 1: Reflection (skipped for doc-only changes or when waived).
-    # "Doc-only" = no judgeable session change (the one predicate, via gates —
-    # kernel-v3 chunk 04).
-    doc_only = gates.session_changes_all_non_judgeable(project_dir, status_output)
-    if not doc_only and "reflection" not in waivers:
+    # Gate 1: Reflection — the SAME predicate cmd_stop's Gate 1 blocks on:
+    # judgeable code in the session's work span, and a reflection graded by
+    # SHAPE (`gates.reflection_shape`), never by a character count. "Doc-only"
+    # for THIS gate is the span's own judgeability answer.
+    if span["judgeable"] and "reflection" not in waivers:
         reflected_file = prawduct_dir / ".session-reflected"
         try:
-            if not reflected_file.is_file() or len(reflected_file.read_text().strip()) < 50:
-                warnings.append("reflection not captured")
+            text = reflected_file.read_text() if reflected_file.is_file() else ""
         except (UnicodeDecodeError, OSError):
+            text = ""
+        shaped, _missing = gates.reflection_shape(text)
+        if not shaped:
             warnings.append("reflection not captured")
+
+    # Gate 2's "doc-only" stays the porcelain answer, because the Critic gate
+    # it mirrors still reads porcelain (the span flip for that gate is #304's).
+    doc_only = gates.session_changes_all_non_judgeable(project_dir, status_output)
 
     # Gate 2: Critic review (only when building against an active plan).
     # STH-4F7C: delegates to the shared lib/gates.py session gate — the same
