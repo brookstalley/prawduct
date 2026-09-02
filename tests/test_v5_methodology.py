@@ -347,7 +347,23 @@ LAST_MEASURED_TOKENS = {
     # reflection" — where the reflection GOES is already stated by this file's
     # own handoff paragraph, so saying it twice was the spare part. The ceiling
     # is ratcheted by the same -2 rather than banking the slack.
-    "methodology/building.md": 4752,
+    # +35 on 2026-09-02 (#685): the reflection gate's predicate widened from "a
+    # build plan is active" to "this session changed judgeable code", and it now
+    # grades a reflection's SHAPE instead of counting characters. Two sentences
+    # here stated the old one. The safety-net line said "reflection captured"
+    # (+4). The "Reflect — now" step said what to write, and what it said —
+    # delivered / caught / surprised — does not satisfy the gate that grades it
+    # (+31): a checklist step whose own gate refuses its output routes the
+    # reader to the waiver hatch, which is the failure mode a floor exists to
+    # prevent. NOT funded by a trim, and the ceiling is RAISED with it (see
+    # test_token_budget): the two candidates were another file's content, which
+    # this file is the wrong place to spend, and cutting the shape back out,
+    # which reintroduces the defect. Declared, per the standing rule that a
+    # ceiling is resolved by paying in place or raising with a reason, never by
+    # trimming until it fits.
+    # MERGED 2026-09-02: Chunk 02's cut and Chunk 03's raise landed together;
+    # the number below is the measured merge (B's delta + C's delta), not either side.
+    "methodology/building.md": 4787,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -808,7 +824,14 @@ LAST_MEASURED_TOKENS = {
     # carrier. The lookup-skill sentence went with the skill. A READING, no
     # ceiling (see the decision block above this dict); Wave 3's R8 rewrites this
     # file, so nothing else here was restructured.
-    "methodology/reflection.md": 4981,
+    # +22 on 2026-09-02 (#685): "the hook checks only a session-end floor —
+    # `.session-reflected` exists and has content" described a floor that no
+    # longer exists. It now names the gate's actual predicate (judgeable code
+    # changed this session) and the shape it grades. A READING, no ceiling, so
+    # the cost is paid only by a session that opens this guide.
+    # MERGED 2026-09-02: Chunk 02's cut and Chunk 03's raise landed together;
+    # the number below is the measured merge (B's delta + C's delta), not either side.
+    "methodology/reflection.md": 5003,
     # First reading, 2026-08-21, taken at birth: a new on-demand guide, so it
     # joins the class above — a READING, no ceiling. `test_every_methodology_guide_is_accounted_for`
     # requires the entry; the decision block above this
@@ -1166,8 +1189,20 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # listing the lookup skill, which is deleted. Charged to both shapes
     # because the digest is a member of both. A CUT with no addition anywhere in
     # either shape, and the ceilings below move by the same -2.
-    "framework": 3192,
-    "product": 2083,
+    # framework 3194 -> 3215, product 2085 -> 2102 on 2026-09-02 (#685): the
+    # digest's Enforcement section stated a predicate that stopped being true.
+    # Reflection no longer keys on an active build plan — it keys on "did this
+    # session change judgeable code" — and it grades a shape rather than a
+    # character count. Both halves are here rather than only the first, and that
+    # is the whole spend: a repo whose CLAUDE.md is only the governance anchor
+    # learns what satisfies the gate here or at a blocker, and a blocked turn
+    # costs orders of magnitude more than ~17 tokens a session. The blocker
+    # names the missing lines itself, so this is the cheaper of the two teachers,
+    # not a second copy of it.
+    # MERGED 2026-09-02: Chunk 02's cut and Chunk 03's raise landed together;
+    # the number below is the measured merge (B's delta + C's delta), not either side.
+    "framework": 3213,
+    "product": 2100,
 }
 
 #: Ceilings. HARD, like the per-file prose ceilings in this module and
@@ -1255,8 +1290,19 @@ INJECTED_FOOTPRINT_CEILINGS = {
     # RATCHETED 3198 -> 3196, 2086 -> 2084 (2026-09-02): the digest dropped the
     # deleted lookup skill from its read-on-demand line. Both ceilings move by
     # the same -2 as the readings, so the deletion banks nothing.
-    "framework": 3196,
-    "product": 2084,
+    # RAISED 3198 -> 3216, 2086 -> 2103 on 2026-09-02 (#685), by declaration
+    # and with its reason. The addition is a governance PREDICATE that changed,
+    # on the one surface every session receives; there is no version of this
+    # section that is both true and free. Paying in place was considered and
+    # refused: the two shortest cuts available were the Enforcement section's
+    # own "a block names itself" clause (which is the argument for why the
+    # digest need not teach anything else) and CLAUDE.md's compact-instruction
+    # parentheticals (a different subject, and collateral to this change). One
+    # over each reading, so nothing is banked.
+    # MERGED 2026-09-02: Chunk 02's cut and Chunk 03's raise landed together;
+    # the number below is the measured merge (B's delta + C's delta), not either side.
+    "framework": 3214,
+    "product": 2101,
 }
 
 
@@ -2315,7 +2361,20 @@ class TestBuildingMethodology:
         # were rewritten to the harness-loaded model and the `/clear` list
         # stopped naming a reflections archive that no longer exists. The
         # ceiling moves by the same -2 the reading did.
-        assert tokens < 4755, f"building.md is ~{tokens} tokens, should be <4755"
+        # RAISED 4757 -> 4790 on 2026-09-02 (#685), by declaration and with its
+        # reason, because neither of the two ways to pay in place was sound
+        # here. The reflection gate stopped keying on an active build plan and
+        # started grading a reflection's shape; this file's "Reflect — now" step
+        # told the builder to write something that gate refuses. The addition is
+        # the shape itself, in the step whose output is graded. Funding it by
+        # cutting elsewhere in this file would have spent a clause defended by
+        # nothing to protect a clause defended by nothing, and funding it by
+        # cutting the shape back down reintroduces the defect. One over the
+        # reading, so nothing is banked and the next addition is under the
+        # standing trim-or-relocate rule with nothing to collect silently.
+        # MERGED 2026-09-02: Chunk 02's cut and Chunk 03's raise landed together;
+        # the number below is the measured merge (B's delta + C's delta), not either side.
+        assert tokens < 4788, f"building.md is ~{tokens} tokens, should be <4788"
 
 
 # =============================================================================

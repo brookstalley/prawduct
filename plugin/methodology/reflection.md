@@ -17,7 +17,7 @@ Reflection is how Prawduct gets smarter — not through accumulated rules or hoo
 
 Depth scales with significance: a routine bug fix warrants a sentence; a structural failure warrants deep analysis. Noting "this went smoothly" is useful too — and "this went smoothly despite X" more so.
 
-**The stop hook enforces the habit, not the cadence.** The prescribed cadence is work-boundary reflection; the hook checks only a session-end floor — `.session-reflected` exists and has content. It trusts your judgment about what to reflect on and how deeply. If you've been reflecting at work boundaries, the gate is already satisfied. (Per-work-cycle governance is the methodology's responsibility, not the hook's — see `methodology/building.md` "Sessions and Work Cycles".)
+**The stop hook enforces the habit, not the cadence.** The prescribed cadence is work-boundary reflection; the hook checks only a session-end floor — when this session changed judgeable code, `.session-reflected` names what you expected vs. what actually happened and a root cause (or "no defect"). It trusts your judgment about what to reflect on and how deeply. If you've been reflecting at work boundaries, the gate is already satisfied. (Per-work-cycle governance is the methodology's responsibility, not the hook's — see `methodology/building.md` "Sessions and Work Cycles".)
 
 ## The Reflection Process
 

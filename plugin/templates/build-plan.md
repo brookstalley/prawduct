@@ -110,8 +110,9 @@ last_validated: 2026-07-03
      dropped from the handoff.
 
      Ticking is load-bearing in both directions. Ticking the LAST box disarms the Stop
-     hook's Critic and reflection gates, which is why "Done when" puts the review before
-     the tick. The opposite error — a chunk built, committed, left unticked — is caught
+     hook's Critic gate, which is why "Done when" puts the review before the tick. (Not
+     the reflection gate — that one asks whether this session changed judgeable code, so
+     no box disarms it.) The opposite error — a chunk built, committed, left unticked — is caught
      by an advisory, and ITS PRECONDITION IS YOUR COMMIT CONVENTION: it fires only on a
      NUMERIC chunk id in one of three anchored positions —
 

@@ -37,6 +37,9 @@ from pathlib import Path
 _ROOT = Path(__file__).resolve().parent.parent / "plugin"
 
 sys.path.insert(0, str(_ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from conftest import SHAPED_REFLECTION  # noqa: E402 — one home for the shape
 
 _hook_loader = importlib.machinery.SourceFileLoader(
     "prawduct_hook_learnings_cutover", str(_ROOT / "bin" / "prawduct-hook")
@@ -79,9 +82,14 @@ def _git(repo: Path, *args: str) -> None:
 def _repo(tmp_path: Path) -> Path:
     """A committed repo with a satisfied reflection gate and no build plan.
 
-    No build plan on purpose: the reflection and Critic gates both need one to
-    block, so their absence leaves this gate as the only thing that can fire and
-    every assertion below reads the blocker it means.
+    No build plan on purpose: the CRITIC gate needs one to block, so its absence
+    leaves this gate as the only other thing that can fire and every assertion
+    below reads the blocker it means. The reflection gate stopped needing one
+    (#685) — it fires on judgeable code whether or not a plan is active — so it
+    is silenced here the only way left, by writing a reflection that satisfies
+    its shape check. `SHAPED_REFLECTION` is that text, and it lives in
+    `conftest.py` because the shape is a governance decision every Stop-gate
+    fixture in this suite has to track.
     """
     repo = tmp_path / "repo"
     repo.mkdir(parents=True)
@@ -92,9 +100,7 @@ def _repo(tmp_path: Path) -> Path:
     _git(repo, "commit", "-q", "-m", "c1")
     prawduct = repo / ".prawduct"
     prawduct.mkdir()
-    (prawduct / ".session-reflected").write_text(
-        "A sufficiently long session reflection so the reflection gate stays quiet here.\n"
-    )
+    (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
     return repo
 
 
