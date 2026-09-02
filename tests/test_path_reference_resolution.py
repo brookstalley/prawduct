@@ -152,6 +152,13 @@ def _is_record(rel: str) -> bool:
 
 # Named exceptions that are neither records nor fixable. Kept tiny and reasoned on purpose.
 ALLOWLISTED_FILES = {
+    "tests/fixtures/learnings_migrate/mixed/.prawduct/learnings.md": (
+        "learnings-migrate fixture: carries the dead `learnings-detail.md#…` links on purpose — "
+        "strip_links removing them is what the fixture proves"
+    ),
+    "tests/fixtures/learnings_migrate/topic/.prawduct/learnings.md": (
+        "learnings-migrate fixture: same — a legacy corpus with detail links, by construction"
+    ),
     "documentation/prompt-management-requirements.md": (
         "requirements doc describing a config file that does not exist yet — a forward reference to "
         "a planned surface, not a stale reference to a removed one"

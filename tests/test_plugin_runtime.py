@@ -235,10 +235,12 @@ class TestPluginClearBriefing:
 
     def test_clear_briefing_namespaces_status_hints(self, tmp_path):
         # ADV-3K7Q (whole-briefing coherence): the plugin clear briefing's status
-        # lines — backlog triage and learnings lookup — must name the
-        # plugin-namespaced skills, not the bare file-sync forms that do not
-        # resolve in a plugin repo's command namespace. (The file-sync engine that
-        # kept the bare forms was retired in M4.)
+        # lines must name plugin-namespaced skills, not the bare file-sync forms
+        # that do not resolve in a plugin repo's command namespace. (The file-sync
+        # engine that kept the bare forms was retired in M4.) The learnings line
+        # no longer advertises a lookup skill at all: a legacy `.prawduct/
+        # learnings.md` is reported UNMIGRATED with the migrate directive
+        # (learnings-v2 R4), and the bare `/learnings` form must still not leak.
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
         # A structured backlog (two items) so the count line fires and we isolate
@@ -250,9 +252,11 @@ class TestPluginClearBriefing:
         (prawduct / "learnings.md").write_text("# Learnings\n\n- a standing rule\n")
         result = run_plugin_hook("clear", tmp_path)
         assert result.returncode == 0, result.stderr
-        # Both status hints name the plugin-namespaced skills...
+        # The backlog hint names the plugin-namespaced skill, and the legacy
+        # learnings file yields the migrate directive rather than a lookup hint...
         assert "/prawduct:backlog to triage" in result.stdout
-        assert "/prawduct:learnings <topic>" in result.stdout
+        assert "Learnings: UNMIGRATED" in result.stdout
+        assert "prawduct-hook learnings-migrate" in result.stdout
         # ...and the bare file-sync forms do not leak into a plugin briefing.
         assert "(/backlog to triage)" not in result.stdout
         assert "/learnings <topic>" not in result.stdout
