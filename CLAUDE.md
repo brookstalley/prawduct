@@ -72,8 +72,8 @@ independent reviewer for a fresh-eyes release-readiness assessment. Protocol:
 
 Reflect at **work boundaries**, not at session end. When a chunk concludes (Critic passes), a bug
 is fixed, an error is recovered from, or a judgment call is made — reflect *now*, while context is
-fresh, into `.prawduct/.session-reflected`. The stop hook enforces only a session-end floor (a
-reflection exists), not this cadence.
+fresh, into `.prawduct/.session-reflected`. The stop hook enforces only a session-end floor (the
+assess and root-cause lines below), not this cadence.
 
 Each time: **assess** (expected vs. actual), **pattern-match** against the learnings rules,
 find the **root cause** when something went wrong, **capture** a narrative entry — adding a durable

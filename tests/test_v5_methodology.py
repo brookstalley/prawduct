@@ -337,7 +337,21 @@ LAST_MEASURED_TOKENS = {
     # its Direction precondition and it was reverted. The sentence is true again
     # because the check is back. Recorded as one entry rather than two so the
     # next reader sees a no-op, not a pair of unexplained swings.
-    "methodology/building.md": 4754,
+    # +35 on 2026-09-02 (#685): the reflection gate's predicate widened from "a
+    # build plan is active" to "this session changed judgeable code", and it now
+    # grades a reflection's SHAPE instead of counting characters. Two sentences
+    # here stated the old one. The safety-net line said "reflection captured"
+    # (+4). The "Reflect — now" step said what to write, and what it said —
+    # delivered / caught / surprised — does not satisfy the gate that grades it
+    # (+31): a checklist step whose own gate refuses its output routes the
+    # reader to the waiver hatch, which is the failure mode a floor exists to
+    # prevent. NOT funded by a trim, and the ceiling is RAISED with it (see
+    # test_token_budget): the two candidates were another file's content, which
+    # this file is the wrong place to spend, and cutting the shape back out,
+    # which reintroduces the defect. Declared, per the standing rule that a
+    # ceiling is resolved by paying in place or raising with a reason, never by
+    # trimming until it fits.
+    "methodology/building.md": 4789,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -771,7 +785,12 @@ LAST_MEASURED_TOKENS = {
     # "nobody reviewed it") rather than explaining it. Principle 16 is the norm;
     # this is the procedure that makes it checkable.
     # 2026-09-02 (learnings-v2 chunk 05, cumulative R-6): four write-path sites repointed at .claude/rules/learnings/ (R8 rewrite is Wave 3).
-    "methodology/reflection.md": 5103,
+    # +22 on 2026-09-02 (#685): "the hook checks only a session-end floor —
+    # `.session-reflected` exists and has content" described a floor that no
+    # longer exists. It now names the gate's actual predicate (judgeable code
+    # changed this session) and the shape it grades. A READING, no ceiling, so
+    # the cost is paid only by a session that opens this guide.
+    "methodology/reflection.md": 5125,
     # First reading, 2026-08-21, taken at birth: a new on-demand guide, so it
     # joins the class above — a READING, no ceiling. `test_every_methodology_guide_is_accounted_for`
     # requires the entry; the decision block above this
@@ -1124,8 +1143,18 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # 2026-09-02 (learnings-v2 chunk 05): CLAUDE.md repointed four learnings references
     # at .claude/rules/learnings/; paid by dropping the lookup-skill mention and the
     # "read learnings.md" instruction (the harness loads the rules now).
-    "framework": 3194,
-    "product": 2085,
+    # framework 3194 -> 3215, product 2085 -> 2102 on 2026-09-02 (#685): the
+    # digest's Enforcement section stated a predicate that stopped being true.
+    # Reflection no longer keys on an active build plan — it keys on "did this
+    # session change judgeable code" — and it grades a shape rather than a
+    # character count. Both halves are here rather than only the first, and that
+    # is the whole spend: a repo whose CLAUDE.md is only the governance anchor
+    # learns what satisfies the gate here or at a blocker, and a blocked turn
+    # costs orders of magnitude more than ~17 tokens a session. The blocker
+    # names the missing lines itself, so this is the cheaper of the two teachers,
+    # not a second copy of it.
+    "framework": 3215,
+    "product": 2102,
 }
 
 #: Ceilings. HARD, like the per-file prose ceilings in this module and
@@ -1210,8 +1239,17 @@ INJECTED_FOOTPRINT_CEILINGS = {
     # reserve is characters against a harness threshold that no ruling buys past
     # (`tests/test_plugin_methodology_digest.py`'s DIGEST_HEADROOM_RESERVE).
     # Banking headroom in a raisable budget would have protected nothing.
-    "framework": 3198,
-    "product": 2086,
+    # RAISED 3198 -> 3216, 2086 -> 2103 on 2026-09-02 (#685), by declaration
+    # and with its reason. The addition is a governance PREDICATE that changed,
+    # on the one surface every session receives; there is no version of this
+    # section that is both true and free. Paying in place was considered and
+    # refused: the two shortest cuts available were the Enforcement section's
+    # own "a block names itself" clause (which is the argument for why the
+    # digest need not teach anything else) and CLAUDE.md's compact-instruction
+    # parentheticals (a different subject, and collateral to this change). One
+    # over each reading, so nothing is banked.
+    "framework": 3216,
+    "product": 2103,
 }
 
 
@@ -2258,7 +2296,18 @@ class TestBuildingMethodology:
         # pointer's table of contents went with it. The ceiling moves by the
         # same -5 rather than banking it — unratcheted slack is a loan the next
         # edit collects silently and green.
-        assert tokens < 4757, f"building.md is ~{tokens} tokens, should be <4757"
+        # RAISED 4757 -> 4790 on 2026-09-02 (#685), by declaration and with its
+        # reason, because neither of the two ways to pay in place was sound
+        # here. The reflection gate stopped keying on an active build plan and
+        # started grading a reflection's shape; this file's "Reflect — now" step
+        # told the builder to write something that gate refuses. The addition is
+        # the shape itself, in the step whose output is graded. Funding it by
+        # cutting elsewhere in this file would have spent a clause defended by
+        # nothing to protect a clause defended by nothing, and funding it by
+        # cutting the shape back down reintroduces the defect. One over the
+        # reading, so nothing is banked and the next addition is under the
+        # standing trim-or-relocate rule with nothing to collect silently.
+        assert tokens < 4790, f"building.md is ~{tokens} tokens, should be <4790"
 
 
 # =============================================================================

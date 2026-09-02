@@ -29,6 +29,8 @@ from pathlib import Path
 
 import pytest
 
+from conftest import SHAPED_REFLECTION
+
 ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK = ROOT / "bin" / "prawduct-hook"
 
@@ -104,10 +106,12 @@ def _run_stop(
 
 def _active_plan_repo(tmp_path: Path, *, chunk_type: str) -> Path:
     """An active-build-plan fixture whose single current chunk declares
-    `**Type:** <chunk_type>`. Reflection is pre-satisfied so the *only* gate in
-    play is the Critic gate — a non-CRITIC block (e.g. reflection) would be a
-    confounder. No `.critic-findings.json` is written: the gate fires unless the
-    Type carves it out."""
+    `**Type:** <chunk_type>`. Reflection is pre-satisfied — with
+    `SHAPED_REFLECTION`, since the gate grades shape rather than length (#685) —
+    so the *only* gate in play is the Critic gate; a non-CRITIC block would be a
+    confounder, and after #685 the reflection gate fires on this fixture's code
+    diff whether or not its plan is active. No `.critic-findings.json` is
+    written: the gate fires unless the Type carves it out."""
     prawduct = tmp_path / ".prawduct"
     artifacts = prawduct / "artifacts"
     artifacts.mkdir(parents=True)
@@ -116,9 +120,7 @@ def _active_plan_repo(tmp_path: Path, *, chunk_type: str) -> Path:
         "## Status\n- [ ] Chunk 01: Demo\n\n"
         f"### Chunk 01: Demo\n**Type:** {chunk_type}\n\nBody.\n"
     )
-    (prawduct / ".session-reflected").write_text(
-        "Session reflection: implemented the chunk and verified all tests pass cleanly."
-    )
+    (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
     (prawduct / ".session-git-baseline").write_text("")
     ts = datetime.now(timezone.utc) - timedelta(seconds=60)
     (prawduct / ".session-start").write_text(ts.strftime("%Y-%m-%dT%H:%M:%SZ"))
@@ -298,9 +300,7 @@ class TestGateReadsTheBranchsPlanNotThePointer:
             "# Build Plan\n\n## Status\n- [ ] Chunk 01: Mine\n\n"
             f"### Chunk 01: Mine\n**Type:** {branch_type}\n\nBody.\n"
         )
-        (prawduct / ".session-reflected").write_text(
-            "Session reflection: implemented the chunk and verified all tests pass."
-        )
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
         (prawduct / ".session-git-baseline").write_text("")
         ts = datetime.now(timezone.utc) - timedelta(seconds=60)
         (prawduct / ".session-start").write_text(ts.strftime("%Y-%m-%dT%H:%M:%SZ"))
@@ -354,15 +354,24 @@ class TestGateReadsTheBranchsPlanNotThePointer:
     def test_whether_the_gate_runs_follows_the_branchs_plan_too(self, tmp_path):
         """The gate's WHETHER must read the same plan as its WHAT.
 
-        `has_build_plan` decides whether the reflection and Critic gates run at
-        all. It resolved through `active_build_plan` while the three chunk-level
-        fields beneath it came from the branch's plan — one question answered
-        from two places, at the gate that decides whether the others happen.
+        `has_build_plan` decides whether the CRITIC gate runs at all. It
+        resolved through `active_build_plan` while the three chunk-level fields
+        beneath it came from the branch's plan — one question answered from two
+        places, at the gate that decides whether the rest happen.
+
+        **Narrowed on 2026-09-02 (#685), not weakened: this used to say
+        "the reflection and Critic gates", and the reflection half is no longer
+        true.** That gate stopped asking whether a plan is active and now asks
+        whether this session changed judgeable code, so `has_build_plan` decides
+        nothing for it — a planless session with a code diff blocks. The
+        assertion below is unchanged and still discriminates, because the
+        fixture pre-satisfies reflection; the added negative pins that, so the
+        exit code can only have come from the gate this test names.
 
         This fixture is built to DISCRIMINATE, which the three above it are not:
         the POINTER's plan is entirely `[x]`, so `_has_active_build_plan_file`
-        reads False through it and every gate goes silent; the BRANCH's plan has
-        an open chunk, so it reads True. Revert `gate_plan` out of the
+        reads False through it and the Critic gate goes silent; the BRANCH's
+        plan has an open chunk, so it reads True. Revert `gate_plan` out of the
         `has_build_plan` line and this sees exit 0 instead of the Critic block.
         """
         prawduct = tmp_path / ".prawduct"
@@ -378,9 +387,7 @@ class TestGateReadsTheBranchsPlanNotThePointer:
             "# Build Plan\n\n## Status\n- [ ] Chunk 01: in progress\n\n"
             "### Chunk 01: in progress\n**Type:** code\n\nBody.\n"
         )
-        (prawduct / ".session-reflected").write_text(
-            "Session reflection: implemented the chunk and verified all tests pass."
-        )
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
         (prawduct / ".session-git-baseline").write_text("")
         ts = datetime.now(timezone.utc) - timedelta(seconds=60)
         (prawduct / ".session-start").write_text(ts.strftime("%Y-%m-%dT%H:%M:%SZ"))
@@ -391,3 +398,7 @@ class TestGateReadsTheBranchsPlanNotThePointer:
             f"the Critic gate must fire. stdout={result.stdout!r} stderr={result.stderr!r}"
         )
         assert "CRITIC" in result.stderr
+        assert "REFLECTION:" not in result.stderr, (
+            "the exit code must come from the Critic gate, not from the "
+            f"reflection gate this fixture pre-satisfies. stderr={result.stderr!r}"
+        )

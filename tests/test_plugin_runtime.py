@@ -32,6 +32,8 @@ from pathlib import Path
 
 import pytest
 
+from conftest import SHAPED_REFLECTION
+
 ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK = ROOT / "bin" / "prawduct-hook"
 HOOKS_JSON = ROOT / "hooks" / "hooks.json"
@@ -293,9 +295,7 @@ class TestPluginStopGate:
         artifacts = prawduct / "artifacts"
         artifacts.mkdir(parents=True)
         (artifacts / "build-plan.md").write_text("# Build Plan\n\n## Status\n- [ ] Chunk 1\n")
-        (prawduct / ".session-reflected").write_text(
-            "Session reflection: implemented the chunk and verified all tests pass cleanly."
-        )
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
         (prawduct / ".session-git-baseline").write_text("")
         _make_session_start(prawduct)
         return prawduct
@@ -330,12 +330,38 @@ class TestPluginStopGate:
         assert "no composed review coverage" in result.stderr
 
     def test_stop_passes_with_no_build_plan(self, tmp_path):
+        """No active plan means no CRITIC gate — that is what this pins.
+
+        It used to mean no gate at all, and the reflection is now written into
+        the fixture rather than omitted, because the reflection gate stopped
+        keying on a build plan (#685) and fires on the code diff below whether
+        or not one exists. Isolating this test's subject is what the write buys;
+        the partner beneath it pins the behaviour that changed.
+        """
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / ".session-git-baseline").write_text("")
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
+        _make_session_start(prawduct)
+        result = run_plugin_hook("stop", tmp_path, git_status=" M src/app.py")
+        assert result.returncode == 0, (result.stdout, result.stderr)
+
+    def test_stop_blocks_on_reflection_with_no_build_plan(self, tmp_path):
+        """The contrast partner, and the behaviour change stated as a test.
+
+        Same repo, same diff, reflection omitted: this used to exit 0 with an
+        advisory note on stderr. It now blocks, and on REFLECTION rather than
+        CRITIC — the plan-less session is the one whose lesson was never getting
+        written down, which is the whole of #685.
+        """
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
         (prawduct / ".session-git-baseline").write_text("")
         _make_session_start(prawduct)
         result = run_plugin_hook("stop", tmp_path, git_status=" M src/app.py")
-        assert result.returncode == 0, (result.stdout, result.stderr)
+        assert result.returncode == 2, (result.stdout, result.stderr)
+        assert "REFLECTION:" in result.stderr
+        assert "CRITIC" not in result.stderr
 
     def test_stop_blocks_when_findings_mtime_exactly_ties_session_start(self, tmp_path):
         """STH-6B4R tie rule: findings_mtime == session_start is NOT fresh.
@@ -379,9 +405,7 @@ class TestPluginStopGateBackgroundDefer:
         artifacts = prawduct / "artifacts"
         artifacts.mkdir(parents=True)
         (artifacts / "build-plan.md").write_text("# Build Plan\n\n## Status\n- [ ] Chunk 1\n")
-        (prawduct / ".session-reflected").write_text(
-            "Session reflection: implemented the chunk and verified all tests pass cleanly."
-        )
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
         (prawduct / ".session-git-baseline").write_text("")
         _make_session_start(prawduct)
         return prawduct
@@ -475,9 +499,7 @@ class TestPluginStopGateRegressions:
         artifacts = prawduct / "artifacts"
         artifacts.mkdir(parents=True)
         (artifacts / "build-plan.md").write_text("# Build Plan\n\n## Status\n- [ ] Chunk 1\n")
-        (prawduct / ".session-reflected").write_text(
-            "Session reflection: implemented the chunk and verified all tests pass cleanly."
-        )
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
         (prawduct / ".session-git-baseline").write_text("")
         _make_session_start(prawduct)
         return prawduct
@@ -518,9 +540,7 @@ class TestPluginStopGateRegressions:
             "**Type:** trivial\n"
             "**Trivial because:** a one-word typo fix in a skill doc.\n"
         )
-        (prawduct / ".session-reflected").write_text(
-            "Session reflection: edited the skill doc and confirmed the change reads cleanly."
-        )
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
         (prawduct / ".session-git-baseline").write_text("")
         _make_session_start(prawduct)
         result = run_plugin_hook(
@@ -532,11 +552,15 @@ class TestPluginStopGateRegressions:
 
     def test_unknown_gate_waiver_key_warns_without_blocking(self, tmp_path):
         # (c) An unknown key in .gates-waived emits a stderr diagnostic but never
-        # blocks — unknown keys simply have no effect. Use a no-build-plan repo so
-        # nothing else would block: exit 0, with the diagnostic present.
+        # blocks — unknown keys simply have no effect. Nothing else may block, so
+        # the repo has no build plan (no Critic gate) AND a shaped reflection:
+        # since #685 the reflection gate fires on the code diff below with or
+        # without a plan, so omitting it would make this test pass on the wrong
+        # gate's exit code. Expected: exit 0, with the diagnostic present.
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
         (prawduct / ".session-git-baseline").write_text("")
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
         _make_session_start(prawduct)
         (prawduct / ".gates-waived").write_text(json.dumps({"bogus": "not a real gate"}))
         result = run_plugin_hook("stop", tmp_path, git_status=" M src/app.py")
@@ -557,9 +581,7 @@ class TestStopGateAttribution:
         (prawduct / "artifacts" / "build-plan.md").write_text(
             "# Build Plan\n\n## Status\n- [ ] Chunk 1\n"
         )
-        (prawduct / ".session-reflected").write_text(
-            "Session reflection: implemented the chunk and verified all tests pass cleanly."
-        )
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
         (prawduct / ".session-git-baseline").write_text("")
         _make_session_start(prawduct)
         result = run_plugin_hook("stop", tmp_path, git_status=" M src/app.py")

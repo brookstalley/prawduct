@@ -2408,35 +2408,43 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     )
 
     # Gate 1: Reflection
-    # - With active build plan: BLOCKING (structured work deserves reflection)
-    # - Without build plan: ADVISORY (exploratory/Q&A — reflection optional)
-    # - Doc-only changes: skipped entirely
+    # - Fires on THIS SESSION'S WORK SPAN — judgeable code changed between the
+    #   session base tree and the working tree, committed work included. No
+    #   build-plan conjunct: a planless session that shipped code is exactly the
+    #   session whose lesson never got written down, and the old plan conjunct
+    #   made that the silent case. There is no advisory branch any more, because
+    #   this IS the branch that used to be advisory.
+    # - Grades SHAPE, not length. The floor it replaces passed any fifty
+    #   characters, so a sentence saying nothing scored what a reflection that
+    #   found a root cause scored.
+    # - Its doc-only carveout is derived from the SPAN, never from the porcelain
+    #   `doc_only` above: widening the trigger to committed work while asking a
+    #   porcelain-scoped question about docs makes a docs-only committed session
+    #   fire. The two must move together or not at all.
+    reflection_span = _gates().session_work_span(project_dir, status_output)
     reflected_file = prawduct_dir / ".session-reflected"
-    reflection_sufficient = False
+    _reflection_text = ""
     if reflected_file.is_file():
         try:
-            content = reflected_file.read_text().strip()
-            # Require at least ~50 chars to avoid empty/token reflections
-            reflection_sufficient = len(content) >= 50
+            _reflection_text = reflected_file.read_text().strip()
         except Exception:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
-            pass
+            # An unreadable reflection is an absent one, which blocks — the same
+            # direction the old floor failed in, and the one authority owes.
+            _reflection_text = ""
+    reflection_shape_ok, reflection_missing = _gates().reflection_shape(_reflection_text)
 
-    # Reflection blocker fires when there are real changes, the reflection is
-    # missing or too short, the changes are not all docs, AND a build plan is
-    # active. (Without a build plan, the gate is advisory — see below.)
-    reflection_would_block = (
-        has_changes and not reflection_sufficient and not doc_only and has_build_plan
-    )
+    reflection_would_block = reflection_span["judgeable"] and not reflection_shape_ok
     if reflection_would_block:
         if "reflection" in waivers:
             waiver_notes.append(f"reflection: waived ({waivers['reflection']})")
         else:
+            _missing_lines = "".join(f"    - {m}\n" for m in reflection_missing)
             blockers.append(_attributed("reflection",
-                "REFLECTION: Files were modified but no session reflection was captured.\n"
-                "  Append your reflection to .prawduct/.session-reflected. This is a narrative of what\n"
-                "  happened: what changed, what surprised you, what the methodology helped or hindered.\n"
-                "  It gets archived to reflections.md at the next session boundary (a fresh\n"
-                "  start or /clear) — resuming or compacting this session does not.\n"
+                "REFLECTION: This session changed judgeable code and .prawduct/.session-reflected\n"
+                "  does not yet carry a reflection's two lines. Missing:\n"
+                + _missing_lines +
+                "  Append them — a couple of sentences is enough. The narrative around them is\n"
+                "  yours: what changed, what surprised you, what the methodology helped or hindered.\n"
                 "\n"
                 "  Going forward, reflect at WORK BOUNDARIES — right after Critic passes, after a bug\n"
                 "  fix, after error recovery — not at session end. Writing reflections when the user is\n"
@@ -2455,21 +2463,6 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 "  (a fresh start or /clear), so it outlives a resume/compact/fork. See\n"
                 "  `/prawduct:methodology building` (Gate waivers) for when this is appropriate.\n"
             ))
-    elif (
-        has_changes
-        and not reflection_sufficient
-        and not doc_only
-        and not has_build_plan
-        and "reflection" not in waivers
-    ):
-        # Advisory: print to stderr but don't block
-        print(
-            "\nNOTE: No session reflection captured. Reflection is not required for exploratory work,\n"
-            "  but if this session produced useful insights, consider writing them to\n"
-            "  .prawduct/.session-reflected (archived at the next session boundary — a fresh\n"
-            "  start or /clear, not a resume/compact/fork).\n",
-            file=sys.stderr,
-        )
 
     # Gate 1b: the learnings cutover floor — the reflection gate's sibling.
     #
@@ -2967,6 +2960,16 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # Skip the coverage gate when the abandoned-marker blocker already fired:
     # both describe one underlying cause (the review never landed), and the
     # abandoned message is the accurate, actionable one — don't double-block.
+    #
+    # This guard is still PORCELAIN — `has_changes` and `doc_only` both answer
+    # "what is uncommitted right now", so a session that committed its work
+    # leaves this gate silent. `gates.session_work_span` is the span that would
+    # fix that, and the reflection gate above already reads it; this one does
+    # not, deliberately. A reflection false-fire costs two lines and a Critic
+    # false-fire costs a review round, and the merge-only case — a pull that
+    # brings judgeable files nobody here wrote — has not been reasoned about for
+    # a gate priced that way. Flipping this guard onto the span is one edit when
+    # it has been.
     if (
         has_changes and has_build_plan and not doc_only
         and not designer_handoff_skip and not abandoned_critic

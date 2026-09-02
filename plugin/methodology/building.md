@@ -14,7 +14,7 @@ A **work cycle** is one unit of work with its own governance: understand → pla
 
 **Working in a git worktree.** Run the work cycle (including `/prawduct:critic` and `/prawduct:pr`) *from the worktree*, where the gates resolve `.prawduct/` state to it. One edge: entering a worktree *mid*-cycle leaves the SessionStart markers in the primary checkout (gate readers fail safe) — launch, or `/clear`, in the worktree.
 
-The stop hook is a **final safety net**: reflection captured, Critic invoked if code was built against a plan, advisory **compliance canary** checks run. Per-work-cycle governance is the methodology's responsibility, not the hook's.
+The stop hook is a **final safety net**: a shaped reflection if judgeable code changed, Critic if it was built against a plan, advisory **compliance canary** checks run. Per-work-cycle governance is the methodology's responsibility, not the hook's.
 
 ## Work-Scaled Governance
 
@@ -104,7 +104,7 @@ Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 **Resolve findings.** Consolidate before reading `.critic-findings.json` where the digest says to; single-pass reviews consolidate themselves. **Disposition them ALL in ONE pass — fix everything in the working tree, then ONE `/prawduct:critic verify-resolutions`, then ONE commit** (in that order — committing first re-anchors the pass; `review-cycle.md`) — fix-commit-verify per finding multiplies rounds. **Once zero blocking remain the review is over — then fix, accept, or file** (`skills/critic/review-cycle.md`). Accept (won't-fix, reasoned) is the default. **Record it as a fact (`prawduct-hook disposition`), then `render-dispositions` into the entry — never hand-count.** Re-run the gate, don't infer a round from stale output. Document disagreements with rationale.
 
-**Reflect — now, not at session end.** Append to `.prawduct/.session-reflected`: what the chunk delivered, what the Critic caught, what surprised you. A paragraph is enough. Add a rule under `.claude/rules/learnings/` only if this cycle produced one.
+**Reflect — now, not at session end.** Append to `.prawduct/.session-reflected`: what you expected vs. what actually happened, and the root cause or "no defect" — the two lines the gate grades — then what the chunk delivered, what the Critic caught, what surprised you. A paragraph is enough. Add a rule under `.claude/rules/learnings/` only if this cycle produced one.
 
 **Operator verification (F10).** Visual / live-integration chunks: enqueue in `.prawduct/operator-verification.md` and mark `Visual change: yes`. `/prawduct:pr create` blocks on pending entries when `operator_verification_required: true`.
 
