@@ -246,6 +246,43 @@ class TestTheHandoffIsTheOnlyCarrier:
             "the boundary consumes the reflection once the handoff has carried it"
         )
 
+    def test_an_unreadable_reflection_is_kept_and_named(self, tmp_path):
+        """Deletion keys on DELIVERY, never on "a handoff was attempted".
+
+        The archive used to be the second carrier; with it gone, an unreadable
+        reflection that the boundary deleted anyway would be lost permanently
+        and silently (the file is gitignored). A Critic review found the
+        delete unconditional; this pins the rule the notes already follow.
+        """
+        prawduct = _seed_session(tmp_path)
+        (prawduct / ".session-reflected").write_bytes(b"\xff\xfe not utf-8 \x80")
+        res = run_plugin_hook("clear", tmp_path, "--session-start")
+        assert res.returncode == 0, res.stderr
+        assert (prawduct / ".session-reflected").is_file(), (
+            "an unreadable reflection must be KEPT — nothing carried it"
+        )
+        handoff = (prawduct / ".session-handoff.md").read_text()
+        assert "## Previous Session Reflection" not in handoff
+        # Continuity fact for the incoming agent, on stdout.
+        assert "did NOT reach this handoff" in res.stdout
+        assert "not valid UTF-8" in res.stdout
+
+    def test_a_handoff_that_cannot_be_written_keeps_the_reflection(self, tmp_path):
+        """The write path fails soft; the reflection must not pay for it."""
+        prawduct = _seed_session(tmp_path)
+        # A directory where the handoff file goes: the atomic write raises.
+        (prawduct / ".session-handoff.md").mkdir()
+        res = run_plugin_hook("clear", tmp_path, "--session-start")
+        assert res.returncode == 0, res.stderr
+        assert (prawduct / ".session-reflected").is_file(), (
+            "a reflection whose handoff was never written must be KEPT"
+        )
+        assert "did NOT reach this handoff" in res.stdout
+        # And the other session files still go: the keep is targeted, not a stall.
+        # (`.gates-waived`, not `.session-start` — the clear re-stamps the latter
+        # right after the boundary, so its presence says nothing about deletion.)
+        assert not (prawduct / ".gates-waived").is_file()
+
     def test_the_boundary_writes_no_reflections_archive(self, tmp_path):
         """The archive step is deleted, not relocated (discovery §5).
 
@@ -259,7 +296,7 @@ class TestTheHandoffIsTheOnlyCarrier:
         assert not (prawduct / "reflections.md").exists(), (
             "no reflections archive may be written at a session boundary"
         )
-        assert "archive" not in res.stderr.lower(), (
+        assert "could not archive .session-reflected" not in res.stderr, (
             "the boundary must not narrate an archive step it no longer has: "
             f"{res.stderr}"
         )

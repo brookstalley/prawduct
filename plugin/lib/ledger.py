@@ -32,7 +32,7 @@ so a typed one measures nothing; :func:`append_learning_event` is their one
 entry point, and it is idempotent because the Stop hook re-observes the same
 new rule on every turn of a session.
 
-Validation lives at the append boundary because this is the only writer — ``review.critic`` payloads through
+Validation lives at the append boundary because ``_append_event`` is the only writer — the CLI for review kinds, :func:`append_learning_event` for learning kinds — ``review.critic`` payloads through
 ``lib.gates.validate_critic_findings`` (the derived-cache schema),
 ``review.pr`` payloads through the same bar the stop-hook PR gate applies
 (``findings`` list + non-empty ``summary``). ``review.critic`` always reads

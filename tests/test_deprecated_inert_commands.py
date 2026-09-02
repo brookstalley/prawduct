@@ -243,6 +243,14 @@ def test_the_usage_text_still_lists_every_inert_command(tmp_path: Path):
     usage = proc.stdout + proc.stderr
     for name in INERT_COMMANDS:
         assert name in usage, f"`{name}` is missing from the usage text: {usage!r}"
+        # The MARKER is the contract, not the name: an inert verb listed beside
+        # its old flags reads as live, and `[--apply]` on a stub advertises a
+        # write it no longer performs. A Critic review found three verbs listed
+        # unmarked while this test was green on `name in usage`.
+        assert f"{name} [deprecated, inert]" in usage, (
+            f"`{name}` is listed in the usage text without the `[deprecated, inert]` "
+            f"marker the other inert verbs carry: {usage!r}"
+        )
 
 
 LEARNINGS_VERBS = ("audit-learnings", "learnings-obligation", "check-learnings-pairing")

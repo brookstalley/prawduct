@@ -1591,15 +1591,29 @@ RESCUE_UNREADABLE = "unreadable"
 
 
 class HandoffResult(NamedTuple):
-    """Outcome of a handoff generation: was it written, and what became of the notes."""
+    """Outcome of a handoff generation: was it written, and what became of the
+    notes and of the reflection — the two agent-authored inputs the boundary
+    deletes, each only once its text is durably in the handoff."""
 
     written: bool
     notes_state: str
+    # Same vocabulary as the notes (absent / empty / carried / unreadable /
+    # undelivered), because the deletion site asks the same question of both.
+    reflection_state: str = NOTES_ABSENT
 
     @property
     def notes_consumed(self) -> bool:
         """True when the notes file may be deleted without losing anything."""
         return self.notes_state in (NOTES_CARRIED, NOTES_EMPTY)
+
+    @property
+    def reflection_consumed(self) -> bool:
+        """True when `.session-reflected` may be deleted without losing anything:
+        its text reached the written handoff, or there was no text to carry.
+        Unreadable and undelivered are NOT consumed — the handoff is the only
+        carrier now (no archive), so deleting on either loses the reflection
+        permanently and silently."""
+        return self.reflection_state in (NOTES_CARRIED, NOTES_EMPTY, NOTES_ABSENT)
 
 
 class HandoffRender(NamedTuple):
@@ -1615,6 +1629,7 @@ class HandoffRender(NamedTuple):
     text: str
     notes_state: str
     rescue_state: str
+    reflection_state: str = NOTES_ABSENT
 
 
 def _read_handoff_notes(prawduct_dir: Path) -> tuple[str, str]:
@@ -1759,7 +1774,9 @@ def render_session_handoff(project_dir: Path) -> HandoffRender:
         # read, so it cannot be folded in, so writing would destroy content that
         # may be the previous agent's only forward context. Rendering stops here
         # and reports the state; the writer declines and narrates it.
-        return HandoffRender("", notes_state, rescue_state)
+        return HandoffRender(
+            "", notes_state, rescue_state, _unread_reflection_state(prawduct_dir)
+        )
     if rescued:
         sections.append("## Preserved: Hand-Authored Handoff")
         sections.append(
@@ -1809,16 +1826,24 @@ def render_session_handoff(project_dir: Path) -> HandoffRender:
     # 2. Session reflection (from .session-reflected). This handoff is the ONLY
     #    thing that carries it across a boundary — `_boundary_close_session`
     #    generates the handoff and then unlinks the file, and nothing archives it.
+    #    The state is returned, not inferred from the text: "there was no
+    #    reflection" and "the reflection could not be read" demand opposite
+    #    handling at the deletion site (kept vs. removed), exactly as the notes.
     reflected_path = prawduct_dir / ".session-reflected"
+    reflection_state = NOTES_ABSENT
     if reflected_path.is_file():
         try:
-            reflection = reflected_path.read_text().strip()
+            reflection = reflected_path.read_text(encoding="utf-8").strip()
+        except (UnicodeDecodeError, OSError):
+            reflection_state = NOTES_UNREADABLE
+        else:
             if reflection:
                 sections.append("## Previous Session Reflection")
                 sections.append(reflection)
                 sections.append("")
-        except Exception:  # prawduct:allow prawduct/broad-except -- handoff generation is best-effort
-            pass
+                reflection_state = NOTES_CARRIED
+            else:
+                reflection_state = NOTES_EMPTY
 
     # 3. Critic findings summary
     critic_summary = _summarize_critic_findings(prawduct_dir)
@@ -1854,7 +1879,23 @@ def render_session_handoff(project_dir: Path) -> HandoffRender:
     # Non-empty notes always push past header_len, so an empty render can never
     # coincide with notes pending — nothing is dropped by returning "".
     text = "\n".join(sections) + "\n" if len(sections) > header_len else ""
-    return HandoffRender(text, notes_state, rescue_state)
+    return HandoffRender(text, notes_state, rescue_state, reflection_state)
+
+
+def _unread_reflection_state(prawduct_dir: Path) -> str:
+    """The reflection's state on a render that returned before reading it: a
+    file that exists was NOT delivered; no file is simply absent."""
+    return (
+        NOTES_UNDELIVERED
+        if (prawduct_dir / ".session-reflected").is_file()
+        else NOTES_ABSENT
+    )
+
+
+def _undelivered(state: str) -> str:
+    """A carried input whose handoff was never written is undelivered; every
+    other state already says what happened to it."""
+    return NOTES_UNDELIVERED if state == NOTES_CARRIED else state
 
 
 def generate_session_handoff(project_dir: Path) -> HandoffResult:
@@ -1874,7 +1915,7 @@ def generate_session_handoff(project_dir: Path) -> HandoffResult:
     """
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     if not prawduct_dir.is_dir():
-        return HandoffResult(False, NOTES_ABSENT)
+        return HandoffResult(False, NOTES_ABSENT, NOTES_ABSENT)
 
     rendered = render_session_handoff(project_dir)
     notes_state = rendered.notes_state
@@ -1891,7 +1932,7 @@ def generate_session_handoff(project_dir: Path) -> HandoffResult:
             f"that file, then write forward notes to `.prawduct/{HANDOFF_NOTES_NAME}`."
         )
         return HandoffResult(
-            False, NOTES_UNDELIVERED if notes_state == NOTES_CARRIED else notes_state
+            False, _undelivered(notes_state), _undelivered(rendered.reflection_state)
         )
 
     if rendered.text:
@@ -1899,7 +1940,7 @@ def generate_session_handoff(project_dir: Path) -> HandoffResult:
             # Atomic: the next session's briefing reads this file, and a torn
             # handoff silently loses cross-session context.
             atomic_write_text(prawduct_dir / ".session-handoff.md", rendered.text)
-            return HandoffResult(True, notes_state)
+            return HandoffResult(True, notes_state, rendered.reflection_state)
         except Exception as exc:  # prawduct:allow prawduct/broad-except -- handoff write must never block clear
             # Fails soft, but never silent — degrading gracefully and narrating
             # false success are not the same thing. This half is the operator's:
@@ -1918,9 +1959,9 @@ def generate_session_handoff(project_dir: Path) -> HandoffResult:
                 file=sys.stderr,
             )
             return HandoffResult(
-                False, NOTES_UNDELIVERED if notes_state == NOTES_CARRIED else notes_state
+                False, _undelivered(notes_state), _undelivered(rendered.reflection_state)
             )
-    return HandoffResult(False, notes_state)
+    return HandoffResult(False, notes_state, rendered.reflection_state)
 
 
 def handoff_cmd(project_dir: Path, argv: list[str]) -> int:

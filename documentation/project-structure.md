@@ -105,7 +105,7 @@ my-product/
 │   ├── .pr-reviews/                   # PR review evidence (gitignored)
 │   ├── .test-evidence.json            # test evidence for the Critic (gitignored)
 │   ├── .critic-findings.json          # derived view of the latest Critic review fact (gitignored; gates compose over the evidence store under .git/, not this file)
-│   └── .governance-ledger.jsonl       # append-only governance-event history (gitignored; written only by `prawduct-hook ledger-append`)
+│   └── .governance-ledger.jsonl       # append-only governance-event history (gitignored; written only by `lib.ledger` — `ledger-append` for review events, the Stop hook and `critic-consolidate` for `learning.*`)
 ├── .claude/
 │   └── settings.json                  # the committed install reference (marketplace + enabled plugin)
 └── src/                               # product source code (+ the product's own skills, MCP servers, configs)

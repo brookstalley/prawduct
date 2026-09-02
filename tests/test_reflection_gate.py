@@ -322,6 +322,19 @@ class TestTheNoMarkerFallback:
         assert BLOCKER in err
         assert gates.session_work_span(repo)["source"] == "porcelain"
 
+    def test_the_blocker_says_when_it_read_porcelain_only(self, tmp_path, capsys):
+        """`source` is part of the span's contract, and this is its consumer: a
+        blocker that fired off the degraded span says so, because the same
+        session's COMMITTED work was invisible to it and the reader owes the
+        operator that difference (the degradation used to be announced for the
+        Critic gate only)."""
+        repo = _repo(tmp_path)
+        (repo / "code.py").write_text("x = 2\n")
+        rc, err = _stop(repo, capsys)
+        assert rc == 2
+        assert "uncommitted changes only" in err
+        assert "no .prawduct/.session-base-tree" in err
+
     def test_no_marker_plus_committed_change_is_silent(self, tmp_path, capsys):
         """The other half of today's behaviour, and the direction that matters:
         degrading SHRINKS this gate's jurisdiction to uncommitted work. It never
@@ -377,6 +390,18 @@ class TestTheNoMarkerFallback:
 
 
 class TestTheBlockerText:
+    def test_with_a_marker_the_blocker_does_not_claim_porcelain(self, tmp_path, capsys):
+        """The positive control for the porcelain clause: with the marker in
+        place the span is the real one and the clause must not appear."""
+        repo = _repo(tmp_path)
+        _mark_base(repo)
+        (repo / "code.py").write_text("x = 2\n")
+        rc, err = _stop(repo, capsys)
+        assert rc == 2
+        assert BLOCKER in err
+        assert "uncommitted changes only" not in err
+
+
     def _err(self, tmp_path, capsys) -> str:
         repo = _repo(tmp_path)
         _mark_base(repo)

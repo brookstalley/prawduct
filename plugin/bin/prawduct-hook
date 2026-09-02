@@ -756,11 +756,11 @@ def _boundary_close_session(project_dir: Path, prawduct_dir: Path) -> None:
     # ordering is what makes a reflection survive the boundary at all. Both live
     # under one guard because both need lib.briefing, which an incomplete install
     # may not have — and neither may ever block /clear.
+    handoff = None
     try:
         briefing = _briefing()
-        _consume_handoff_notes(
-            prawduct_dir, briefing, briefing.generate_session_handoff(project_dir)
-        )
+        handoff = briefing.generate_session_handoff(project_dir)
+        _consume_handoff_notes(prawduct_dir, briefing, handoff)
     except Exception as exc:  # prawduct:allow prawduct/broad-except -- handoff must never block clear
         # Split by audience, not by precedent. The diagnosis is the operator's,
         # so the exception text goes to stderr with its housekeeping siblings.
@@ -790,12 +790,31 @@ def _boundary_close_session(project_dir: Path, prawduct_dir: Path) -> None:
     # — swapping them hands the next session an empty handoff. That ordering is
     # the whole contract now, and `tests/test_session_boundary_events.py` pins it.
     doomed = [
-        ".session-reflected",
         ".session-start",
         ".session-git-baseline",
         ".session-base-tree",
         ".gates-waived",
     ]
+    # The reflection is deleted iff the handoff CARRIED it (or there was nothing
+    # to carry) — keyed on delivery, never on "a handoff was attempted", the
+    # same rule `_consume_handoff_notes` applies to the notes. The handoff is
+    # the only carrier now; an unreadable reflection, or one whose handoff
+    # could not be written, is kept for the incoming agent to read directly.
+    # Continuity fact, so stdout: the agent starting now is the audience.
+    reflected = prawduct_dir / ".session-reflected"
+    if handoff is not None and handoff.reflection_consumed:
+        doomed.insert(0, ".session-reflected")
+    elif reflected.is_file():
+        why = (
+            " (it could not be read — not valid UTF-8?)"
+            if handoff is not None and handoff.reflection_state == "unreadable"
+            else ""
+        )
+        print(
+            "NOTE: the previous session's reflection in .prawduct/.session-reflected did "
+            f"NOT reach this handoff{why}. It was kept, not consumed — read it directly, "
+            "then remove it to clear this notice."
+        )
     for name in doomed:
         f = prawduct_dir / name
         try:
@@ -866,15 +885,15 @@ def _boundary_capture_git_anchors(project_dir: Path, prawduct_dir: Path) -> None
             )
         elif baseline is not None:
             print(
-                "NOTE: could not resolve HEAD^{tree} — the session Critic gate "
-                "will judge uncommitted work only this session",
+                "NOTE: could not resolve HEAD^{tree} — the session Critic gate and the "
+                "reflection gate will see uncommitted work only this session",
                 file=sys.stderr,
             )
     except (OSError, subprocess.SubprocessError, ImportError) as exc:
         # Same never-block-session-start posture as the baseline write above.
         print(
             f"NOTE: could not write .session-base-tree ({exc}) — the session "
-            "Critic gate will judge uncommitted work only this session",
+            "Critic gate and the reflection gate will see uncommitted work only this session",
             file=sys.stderr,
         )
 
@@ -1523,7 +1542,8 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
         print(
             "NOTE: no .prawduct/.session-base-tree and this is a continuation "
             "(resume/compact/fork), which never writes one — the session Critic gate "
-            "will judge uncommitted work only and skip the merge-base rescue. "
+            "will judge uncommitted work only and skip the merge-base rescue, and the "
+            "reflection gate will not see work this session committed. "
             "Start the session with /clear in this worktree to anchor it.",
             file=sys.stderr,
         )
@@ -2364,8 +2384,14 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
             blockers.append(_attributed("reflection",
                 "REFLECTION: This session changed judgeable code and .prawduct/.session-reflected\n"
                 "  does not yet carry a reflection's two lines. Missing:\n"
-                + _missing_lines +
-                "  Append them — a couple of sentences is enough. The narrative around them is\n"
+                + _missing_lines
+                + (
+                    "  (Read from uncommitted changes only: there is no .prawduct/.session-base-tree\n"
+                    "  marker this session, so work already committed is not seen.)\n"
+                    if reflection_span["source"] == "porcelain"
+                    else ""
+                )
+                + "  Append them — a couple of sentences is enough. The narrative around them is\n"
                 "  yours: what changed, what surprised you, what the methodology helped or hindered.\n"
                 "\n"
                 "  Going forward, reflect at WORK BOUNDARIES — right after Critic passes, after a bug\n"
@@ -6867,7 +6893,7 @@ _USAGE = (
     "verify-operator-verification <vrf-id>|"
     "check-pr-doc-only|check-change-log-entry|check-releasability [--release vX.Y.Z]|"
     "check-plugin-active [--path P] [--context onboard|doctor] [--json]|"
-    "check-learnings-pairing [--json]|"
+    "check-learnings-pairing [deprecated, inert]|"
     "archive-plan <path> [--state completed|superseded] [--date YYYY-MM-DD] "
     "[--release vX.Y.Z] [--superseded-by <text>] [--dry-run]|"
     "check-released vX.Y.Z [--json] [--allow-unverifiable]|"
@@ -6881,7 +6907,7 @@ _USAGE = (
     "coverage-status [--json]|coverage-scaffold [--apply] [--json]|"
     "migrate-plugin [--apply] [--json]|init-product <target> --name <name> [--backlog-repo owner/repo] [--apply] [--json]|"
     "update-gitignore [--dry-run]|"
-    "audit-learnings [--apply] [--json]|learnings-obligation [--apply] [--json]|"
+    "audit-learnings [deprecated, inert]|learnings-obligation [deprecated, inert]|"
     "learnings-migrate [--apply] [--map <file>] [--propose-map] [--json]|"
     "learnings-files [--for-diff] [--json]|"
     "norm-index-scaffold [--apply] [--json]|"

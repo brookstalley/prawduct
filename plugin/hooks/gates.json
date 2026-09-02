@@ -1,11 +1,11 @@
 {
-  "_comment": "Gate registry for new-gate attribution (design §5a). Read by the version-delta banner (hooks/banner.py) to ANNOUNCE a gate as new when its `since` falls in the (last_seen, current] range a repo crosses, and by the Stop hook (bin/prawduct-hook cmd_stop) to ATTRIBUTE a blocking message to the version + gate that caused it. `since` is the plugin version that introduced the gate; foundational gates that predate semver versioning carry `1.0.0`. This file ships inside the plugin, so adding a gate (and its attribution) creates no diff in any consuming repo. Release process: when a release adds an enforcing gate, append it here with `since` = that release's version, so the banner announces it on the bump and blocking messages flag it NEW.",
+  "_comment": "Gate registry for new-gate attribution (design \u00a75a). Read by the version-delta banner (hooks/banner.py) to ANNOUNCE a gate as new when its `since` falls in the (last_seen, current] range a repo crosses, and by the Stop hook (bin/prawduct-hook cmd_stop) to ATTRIBUTE a blocking message to the version + gate that caused it. `since` is the plugin version that introduced the gate; foundational gates that predate semver versioning carry `1.0.0`. This file ships inside the plugin, so adding a gate (and its attribution) creates no diff in any consuming repo. Release process: when a release adds an enforcing gate, append it here with `since` = that release's version, so the banner announces it on the bump and blocking messages flag it NEW.",
   "gates": [
     {
       "id": "reflection",
       "name": "reflection",
       "since": "1.0.0",
-      "summary": "a session that changed judgeable code must capture a shaped reflection before session end — what was expected vs. what was actual, and a root cause or \"no defect\""
+      "summary": "a session that changed judgeable code must capture a shaped reflection before session end \u2014 what was expected vs. what was actual, and a root cause or \"no defect\""
     },
     {
       "id": "critic",
@@ -24,6 +24,24 @@
       "name": "trivial-declaration",
       "since": "1.5.0",
       "summary": "Type: trivial chunks must satisfy the fileset + rationale bounds"
+    },
+    {
+      "id": "learnings-unmigrated",
+      "name": "learnings-cutover",
+      "since": "3.5.0",
+      "summary": "a repo still holding the legacy learnings corpus must run learnings-migrate before code work ends the session"
+    },
+    {
+      "id": "learnings-over-budget",
+      "name": "learnings-budget",
+      "since": "3.5.0",
+      "summary": "a .claude/rules/learnings/ file over its byte budget and grown this session must pay from duplication or raise the budget with a reason"
+    },
+    {
+      "id": "learnings-budget-unreasoned",
+      "name": "learnings-budget-reason",
+      "since": "3.5.0",
+      "summary": "a learnings_budgets: override in project-state.yaml must carry a reason"
     }
   ]
 }

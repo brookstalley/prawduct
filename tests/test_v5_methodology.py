@@ -589,7 +589,12 @@ LAST_MEASURED_TOKENS = {
     # ahead of that would spend a clause twice.
     # Merged 2026-09-02: the two edits above landed together, net -3 against the
     # pre-wave 9595; the reading below is the measured merge, not either side.
-    "skills/critic/review-cycle.md": 9592,
+    # +4 on 2026-09-02 (learnings-v2-delete Chunk 05, review R-8): the ledger's
+    # "single writer" claim made RELATIONAL (`lib.ledger`: the CLI for reviews,
+    # in-process for learning events) after a second entry point falsified
+    # the CLI-level wording; paid mostly in place by trimming the same
+    # paragraph's review-stats clause. Under the 9597 ceiling, not raised.
+    "skills/critic/review-cycle.md": 9596,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
