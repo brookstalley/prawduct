@@ -348,9 +348,10 @@ def _reject_unknown_args(
 
     Flag-only subcommands take no positionals and detect options with
     ``"--flag" in argv`` — a pattern that silently ignores any token that
-    isn't a recognized flag. That swallowed a real bug where a test passed
-    ``tmp_path`` positionally to ``audit-learnings`` and the live repo was
-    audited instead of the fixture. Returns exit code 2 (the hook's usage-error
+    isn't a recognized flag. The failure that shape produces is not a crash but
+    a silent target swap: a caller that passes a directory positionally, meaning
+    "operate on this one", is ignored and the command operates on the repo it
+    was invoked from. Returns exit code 2 (the hook's usage-error
     convention, matching ``cmd_test_evidence``'s extra-args rejection) after
     printing the first unrecognized token to stderr, or ``None`` when every
     token is a recognized flag. Mirrors the inline ``unknown argument``
@@ -571,7 +572,6 @@ _SESSION_GITIGNORED_PATHS = (
     ".prawduct/.gates-waived",
     ".prawduct/.advisories.json",
     ".prawduct/.work-model-index.json",
-    ".prawduct/reflections.md",
     # NOTE: .prawduct/artifacts/build-plan.md is deliberately NOT here —
     # build plans are tracked artifacts (gate-soundness ch.3); this loop
     # used to force-untrack them at every session start, reverting any
@@ -678,52 +678,6 @@ def _untrack_session_files(project_dir: Path) -> list[str]:
 # =============================================================================
 
 
-# Each archived reflection carries the version that produced it, because nothing
-# else on disk can supply it later: `.prawduct/.prawduct-version` holds only the
-# most recently seen value, and `reflections.md` is gitignored, so it has no
-# history to mine. Grouping a corpus by release otherwise degrades to whatever
-# dates the prose happens to contain, which is a minority of entries.
-#
-# The line is this repo's existing machine-readable tag idiom — the same shape
-# `lib/change_log.py` parses — so "which release produced this reflection" is a
-# query rather than an act of archaeology. A prose line would carry the same
-# words and stay unparseable, repeating the gap at lower cost.
-def _reflection_provenance_header() -> str:
-    """The tag line written ahead of one archived reflection block.
-
-    The version comes from the plugin manifest — the same accessor `version`
-    publishes — rather than from `.prawduct/.prawduct-version`: the banner
-    rewrites that marker earlier in this same SessionStart, so it holds nothing
-    the manifest does not, and it is absent altogether in a repo whose banner
-    has never run.
-
-    Every failure resolves to `unknown` rather than to an omitted header or a
-    raise. An omitted header is indistinguishable from an unstamped block, and a
-    raise would escape the archive's `(UnicodeError, OSError)` handler below and
-    take the whole session boundary with it — making the stamp a new way to lose
-    a reflection, which is the one thing this write site must never become.
-    """
-    # Computed ABOVE the guard, because it cannot fail and the guard's job is to
-    # name what did. Inside, a manifest read that raises degraded the date too,
-    # so the tag said `archived=unknown` for a value nothing had asked the disk
-    # for — a field reading as unresolvable when it was merely adjacent to one.
-    archived = datetime.now(timezone.utc).date().isoformat()
-    try:
-        version = _plugin_manifest_version() or "unknown"
-    except Exception as exc:  # prawduct:allow prawduct/broad-except -- provenance is metadata; the reflection it labels must survive anything this line does
-        # Named, not swallowed. Every other degradation at this boundary prints
-        # `NOTE: … ({exc})`, and a stamp that quietly reads `unknown` forever is
-        # the failure this header exists to end — an entry nobody can attribute,
-        # with nothing on the record saying why.
-        print(
-            f"NOTE: could not resolve the prawduct version for this reflection ({exc}) "
-            "— archiving it stamped `unknown`.",
-            file=sys.stderr,
-        )
-        return f"<!-- prawduct: version=unknown | archived={archived} -->"
-    return f"<!-- prawduct: version={version} | archived={archived} -->"
-
-
 def _consume_handoff_notes(prawduct_dir: Path, briefing, handoff) -> None:
     """Clear `.handoff-notes.md` iff its text reached the generated handoff.
 
@@ -772,10 +726,11 @@ def _consume_handoff_notes(prawduct_dir: Path, briefing, handoff) -> None:
 def _boundary_close_session(project_dir: Path, prawduct_dir: Path) -> None:
     """The first of two session-BOUNDARY regions: end the outgoing session.
 
-    Generates the handoff, consumes the forward notes it carried, archives the
-    reflection, deletes the session-scoped files, and re-stamps the session
-    clock. Every statement here destroys evidence belonging to a session that is
-    OVER, so none of it may run on a continuation (SCN-5B8Q) — a new boundary
+    Generates the handoff, consumes the forward notes it carried, deletes the
+    session-scoped files — the reflection among them — and re-stamps the session
+    clock. The handoff is the only thing that carries a reflection forward, so it
+    is generated before anything is deleted. Every statement here destroys
+    evidence belonging to a session that is OVER, so none of it may run on a continuation (SCN-5B8Q) — a new boundary
     statement belongs inside this function, which is the point of extracting it.
     """
     # Announce a finished-but-unticked chunk BEFORE the handoff is generated, and
@@ -796,9 +751,11 @@ def _boundary_close_session(project_dir: Path, prawduct_dir: Path) -> None:
     except Exception:  # prawduct:allow prawduct/broad-except -- a diagnostic must never block /clear, and it has no remedy to narrate
         pass
 
-    # Generate handoff BEFORE archiving/deleting session files, then consume the
-    # notes it carried. Both live under one guard because both need lib.briefing,
-    # which an incomplete install may not have — and neither may ever block /clear.
+    # Generate handoff BEFORE deleting session files, then consume the notes it
+    # carried. `.session-reflected` is read here and unlinked below, so this
+    # ordering is what makes a reflection survive the boundary at all. Both live
+    # under one guard because both need lib.briefing, which an incomplete install
+    # may not have — and neither may ever block /clear.
     try:
         briefing = _briefing()
         _consume_handoff_notes(
@@ -823,57 +780,22 @@ def _boundary_close_session(project_dir: Path, prawduct_dir: Path) -> None:
             "this one. Treat its contents as stale provenance."
         )
 
-    # Preserve previous session's reflection before clearing. `reflection_preserved`
-    # gates the delete below: True when there was nothing to preserve or the archive
-    # succeeded, False only when the archive genuinely failed.
-    reflected = prawduct_dir / ".session-reflected"
-    reflection_preserved = True
-    if reflected.is_file():
-        reflection_preserved = False
-        try:
-            # Explicit UTF-8 on every hop. Without `encoding=`, the append used the
-            # operator's locale codec and raised UnicodeEncodeError — a ValueError,
-            # NOT an OSError — which escaped the handler below, and nothing above
-            # catches it (`cmd_clear` calls this unguarded; `main()` has no
-            # top-level handler). That tracebacked out of the SessionStart hook and
-            # took the rest of the boundary AND the whole orientation half with it,
-            # contradicting this design's own promise that `/clear` is never
-            # blocked. The except-set is widened to UnicodeError as well, so a
-            # future codec path cannot re-open the hole.
-            content = reflected.read_text(encoding="utf-8").strip()
-            if content:
-                log = prawduct_dir / "reflections.md"
-                prior = log.read_text(encoding="utf-8").strip() if log.is_file() else ""
-                separator = "\n\n---\n\n" if prior else ""
-                # Inside the guard, so a stamp shares the archive's failure
-                # contract instead of standing outside it.
-                header = _reflection_provenance_header()
-                with open(log, "a", encoding="utf-8") as f:
-                    f.write(f"{separator}{header}\n\n{content}\n")
-            reflection_preserved = True
-        except (UnicodeError, OSError) as exc:
-            # Consumption keys on PRESERVATION, not on "we tried" — the same rule
-            # `.handoff-notes.md` already uses, applied to its literal sibling.
-            # Previously this swallowed the failure and the deletion loop below
-            # unlinked the file three statements later, so a reflection that could
-            # not be archived was destroyed rather than kept: the one silent
-            # permanent-loss path left in the boundary. Keeping it is an
-            # unbounded-but-announced failure, which is the trade architecture.md
-            # already ratifies for this channel.
-            print(
-                f"NOTE: could not archive .session-reflected ({exc}) — keeping the file "
-                "so the reflection is not lost; it will be retried at the next boundary "
-                "(archive or remove it by hand to stop this repeating)",
-                file=sys.stderr,
-            )
-
     # Remove session files. Best-effort per file (STH-8M3V): an OSError here
     # (permissions, transient FS) must not traceback the SessionStart hook —
     # a survivor just carries stale state into the new session, which the
     # NOTE names so the user can remove it by hand.
-    doomed = [".session-start", ".session-git-baseline", ".session-base-tree", ".gates-waived"]
-    if reflection_preserved:
-        doomed.insert(0, ".session-reflected")
+    # `.session-reflected` is deleted unconditionally. Nothing archives it any
+    # more: the handoff generated ABOVE reads it and carries the narrative into
+    # the next session, so the generation and the delete must stay in this order
+    # — swapping them hands the next session an empty handoff. That ordering is
+    # the whole contract now, and `tests/test_session_boundary_events.py` pins it.
+    doomed = [
+        ".session-reflected",
+        ".session-start",
+        ".session-git-baseline",
+        ".session-base-tree",
+        ".gates-waived",
+    ]
     for name in doomed:
         f = prawduct_dir / name
         try:
@@ -2408,35 +2330,43 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     )
 
     # Gate 1: Reflection
-    # - With active build plan: BLOCKING (structured work deserves reflection)
-    # - Without build plan: ADVISORY (exploratory/Q&A — reflection optional)
-    # - Doc-only changes: skipped entirely
+    # - Fires on THIS SESSION'S WORK SPAN — judgeable code changed between the
+    #   session base tree and the working tree, committed work included. No
+    #   build-plan conjunct: a planless session that shipped code is exactly the
+    #   session whose lesson never got written down, and the old plan conjunct
+    #   made that the silent case. There is no advisory branch any more, because
+    #   this IS the branch that used to be advisory.
+    # - Grades SHAPE, not length. The floor it replaces passed any fifty
+    #   characters, so a sentence saying nothing scored what a reflection that
+    #   found a root cause scored.
+    # - Its doc-only carveout is derived from the SPAN, never from the porcelain
+    #   `doc_only` above: widening the trigger to committed work while asking a
+    #   porcelain-scoped question about docs makes a docs-only committed session
+    #   fire. The two must move together or not at all.
+    reflection_span = _gates().session_work_span(project_dir, status_output)
     reflected_file = prawduct_dir / ".session-reflected"
-    reflection_sufficient = False
+    _reflection_text = ""
     if reflected_file.is_file():
         try:
-            content = reflected_file.read_text().strip()
-            # Require at least ~50 chars to avoid empty/token reflections
-            reflection_sufficient = len(content) >= 50
+            _reflection_text = reflected_file.read_text().strip()
         except Exception:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
-            pass
+            # An unreadable reflection is an absent one, which blocks — the same
+            # direction the old floor failed in, and the one authority owes.
+            _reflection_text = ""
+    reflection_shape_ok, reflection_missing = _gates().reflection_shape(_reflection_text)
 
-    # Reflection blocker fires when there are real changes, the reflection is
-    # missing or too short, the changes are not all docs, AND a build plan is
-    # active. (Without a build plan, the gate is advisory — see below.)
-    reflection_would_block = (
-        has_changes and not reflection_sufficient and not doc_only and has_build_plan
-    )
+    reflection_would_block = reflection_span["judgeable"] and not reflection_shape_ok
     if reflection_would_block:
         if "reflection" in waivers:
             waiver_notes.append(f"reflection: waived ({waivers['reflection']})")
         else:
+            _missing_lines = "".join(f"    - {m}\n" for m in reflection_missing)
             blockers.append(_attributed("reflection",
-                "REFLECTION: Files were modified but no session reflection was captured.\n"
-                "  Append your reflection to .prawduct/.session-reflected. This is a narrative of what\n"
-                "  happened: what changed, what surprised you, what the methodology helped or hindered.\n"
-                "  It gets archived to reflections.md at the next session boundary (a fresh\n"
-                "  start or /clear) — resuming or compacting this session does not.\n"
+                "REFLECTION: This session changed judgeable code and .prawduct/.session-reflected\n"
+                "  does not yet carry a reflection's two lines. Missing:\n"
+                + _missing_lines +
+                "  Append them — a couple of sentences is enough. The narrative around them is\n"
+                "  yours: what changed, what surprised you, what the methodology helped or hindered.\n"
                 "\n"
                 "  Going forward, reflect at WORK BOUNDARIES — right after Critic passes, after a bug\n"
                 "  fix, after error recovery — not at session end. Writing reflections when the user is\n"
@@ -2455,21 +2385,6 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 "  (a fresh start or /clear), so it outlives a resume/compact/fork. See\n"
                 "  `/prawduct:methodology building` (Gate waivers) for when this is appropriate.\n"
             ))
-    elif (
-        has_changes
-        and not reflection_sufficient
-        and not doc_only
-        and not has_build_plan
-        and "reflection" not in waivers
-    ):
-        # Advisory: print to stderr but don't block
-        print(
-            "\nNOTE: No session reflection captured. Reflection is not required for exploratory work,\n"
-            "  but if this session produced useful insights, consider writing them to\n"
-            "  .prawduct/.session-reflected (archived at the next session boundary — a fresh\n"
-            "  start or /clear, not a resume/compact/fork).\n",
-            file=sys.stderr,
-        )
 
     # Gate 1b: the learnings cutover floor — the reflection gate's sibling.
     #
@@ -3037,6 +2952,16 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # Skip the coverage gate when the abandoned-marker blocker already fired:
     # both describe one underlying cause (the review never landed), and the
     # abandoned message is the accurate, actionable one — don't double-block.
+    #
+    # This guard is still PORCELAIN — `has_changes` and `doc_only` both answer
+    # "what is uncommitted right now", so a session that committed its work
+    # leaves this gate silent. `gates.session_work_span` is the span that would
+    # fix that, and the reflection gate above already reads it; this one does
+    # not, deliberately. A reflection false-fire costs two lines and a Critic
+    # false-fire costs a review round, and the merge-only case — a pull that
+    # brings judgeable files nobody here wrote — has not been reasoned about for
+    # a gate priced that way. Flipping this guard onto the span is one edit when
+    # it has been.
     if (
         has_changes and has_build_plan and not doc_only
         and not designer_handoff_skip and not abandoned_critic
@@ -3325,8 +3250,8 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
 #: record the gates read — the one point where green stops being an observation
 #: and becomes evidence someone else will rely on.
 #:
-#: This text lives in code rather than in `learnings.md` deliberately. The
-#: general form of this rule has been in that file for a long time and does not
+#: This text lives in code rather than in the learnings rules deliberately. The
+#: general form of this rule has been in that corpus for a long time and does not
 #: fire: a rule read at session start competes with the whole rest of the
 #: context by the time the test gets written. `_BATCH_FIX_DIRECTIVE` in
 #: ``lib/critic_consolidate.py`` is the same move for the same reason, and is
@@ -6117,68 +6042,37 @@ def cmd_learnings_files(project_dir: Path, argv: list[str]) -> int:
     return 0
 
 
-def cmd_learnings_obligation(project_dir: Path, argv: list[str]) -> int:
-    """Check — and on ``--apply`` repair — the descent obligation in ``learnings.md``.
+def cmd_learnings_obligation(project_dir: Path, argv: list[str] | None = None) -> int:
+    """DEPRECATED and inert — prints a notice, writes nothing, exits 0.
 
-    ``/prawduct:learnings`` points every product's reader at the obligation marked
-    ``prawduct:descent-obligation``; only ``init-product``'s starter corpus ever
-    wrote that marker, and it writes it only when the file does not exist. So the
-    entire already-onboarded fleet carries a pointer at nothing. This is the doctor
-    health check that detects it (``/prawduct:doctor`` Health Check #13) and the
-    repair that closes it.
+    This detected — and on ``--apply`` inserted — the descent obligation that
+    ``.prawduct/learnings.md`` was supposed to carry above its first rule, so a
+    reader pointed at the summary knew to descend into the detail file. Both
+    files are gone and so is the descent: ``.claude/rules/learnings/`` holds
+    whole rules the harness loads by path match, with nothing to descend into
+    and no marker to insert.
 
-    Exit codes follow ``artifacts/api-contract.md`` § Error Model. **Dry run is an
-    advisory report:** 0 when it ran — a finding is not a failure — and 1 only when
-    it could not run (lib not importable, file undecodable). **``--apply`` is a
-    state-mutating writer:** 0 when it inserted or was an idempotent no-op, 1 when
-    it refused (nothing written). Unknown flags are 2.
+    Kept callable and signalled for the reason given in
+    :func:`cmd_audit_learnings`, which cites the governing norm.
+
+    Exit 0 unconditionally, including for ``--apply`` and ``--json``. The
+    ``--apply`` change is the one worth naming: this was a writer, and a writer
+    that exits 0 having written nothing would normally be a false success. It is
+    not one here, because the state it wrote toward — an obligation marker in a
+    file at a path nothing creates — is unreachable, so a caller asking for the
+    repair is already in the post-repair world it wanted.
     """
-    rejected = _reject_unknown_args("learnings-obligation", argv, {"--apply", "--json"})
-    if rejected is not None:
-        return rejected
-    apply = "--apply" in argv
-    as_json = "--json" in argv
-
-    lib_root = _plugin_root()
-    if lib_root not in sys.path:
-        sys.path.insert(0, lib_root)
-    try:
-        from lib import learnings_obligation  # noqa: PLC0415 — lazy keeps top-level cheap
-    except ImportError as exc:
-        # Fail-closed for the writer, fail-open would be a false success; the dry
-        # run cannot run either, so both directions are 1 here ("could not run").
-        print(
-            f"error: learnings-obligation could not import the plugin lib/ ({exc})",
-            file=sys.stderr,
-        )
-        return 1
-
-    result = learnings_obligation.repair(project_dir, apply=apply)
-    status = result["status"]
-
-    if as_json:
-        print(json.dumps(result, indent=2))
-    else:
-        # Labelled from the MODE the operator asked for, not from whether a write
-        # happened: `--apply` against a refused status (misplaced, absent,
-        # unreadable) writes nothing, and calling that run "dry-run" invites the
-        # reader to conclude they forgot the flag and re-run it. `status`/`detail`
-        # say what actually happened.
-        print(f"learnings-obligation ({'apply' if apply else 'dry-run'}): {status}")
-        print(f"  {result['detail']}")
-        if result["repairable"] and not result["applied"]:
-            # The informed confirmation: name the file, the exact line, and the
-            # exact text, so `--apply` is a yes to something the owner has read.
-            print(
-                f"  Would insert into {result['path']} above line "
-                f"{result['insert_before_line']} (--apply to write it):"
-            )
-            for line in (result["insert_text"] or "").split("\n"):
-                print(f"    | {line}")
-
-    if apply:
-        return 0 if result["applied"] or status == learnings_obligation.STATUS_OK else 1
-    return 1 if status == learnings_obligation.STATUS_UNREADABLE else 0
+    del project_dir, argv  # kept so the dispatcher's call site is unchanged
+    print(
+        "WARNING: learnings-obligation no longer does anything and will be "
+        "removed in a future major version. The learnings lifecycle audit is "
+        "gone: rules now live in .claude/rules/learnings/, which the harness "
+        "loads by path match, so there is no learnings.md and no descent "
+        "obligation to insert. If a flow or checklist still calls this "
+        "command, drop the call.",
+        file=sys.stderr,
+    )
+    return 0
 
 
 def cmd_norm_index_scaffold(project_dir: Path, argv: list[str]) -> int:
@@ -6586,44 +6480,35 @@ def cmd_plan_backfill(project_dir: Path, argv: list[str]) -> int:
     return 1 if incomplete else 0
 
 
-def cmd_check_learnings_pairing(project_dir: Path, argv: list[str]) -> int:
-    """Grade `learnings.md` against `learnings-detail.md`. Read-only.
+def cmd_check_learnings_pairing(project_dir: Path, argv: list[str] | None = None) -> int:
+    """DEPRECATED and inert — prints a notice, writes nothing, exits 0.
 
-    Exit 0 when there is nothing to report, 1 on a duplicate heading, **3** when
-    the pair could not be read — the standing third-outcome rule for a check
-    whose subject is unreadable (api-contract § Error Model). Reporting a clean
-    pair off a file that would not decode is the failure this whole scope is
-    about.
+    This graded ``.prawduct/learnings.md`` against ``.prawduct/learnings-detail.md``
+    — one heading per rule in the summary, its narrative in the detail file —
+    and reported a duplicate heading or an unreadable pair. Neither file exists
+    any more: rules live in ``.claude/rules/learnings/`` as whole entries, with
+    no summary/detail split, so the pairing this checked is not a state the
+    corpus can be in.
+
+    Kept callable and signalled for the reason given in
+    :func:`cmd_audit_learnings`, which cites the governing norm. This one is the
+    likelier of the three to survive in a copied script, because it was the
+    cheap read a doctor flow ran unconditionally.
+
+    Exit 0 unconditionally, including for ``--json`` and for flags it never had.
+    It previously returned 1 on a finding and 3 on an unreadable pair; a caller
+    branching on those now takes its clean path, which is the correct answer —
+    there is no pair to find anything wrong with.
     """
-    rejected = _reject_unknown_args("check-learnings-pairing", argv, {"--json"})
-    if rejected is not None:
-        return rejected
-    lib_root = _plugin_root()
-    if lib_root not in sys.path:
-        sys.path.insert(0, lib_root)
-    try:
-        from lib import audit_learnings_cmd  # noqa: PLC0415 — lazy import
-    except ImportError:
-        print(
-            "NOTE: check-learnings-pairing could not import the plugin lib/; "
-            "the learnings pair was NOT graded.",
-            file=sys.stderr,
-        )
-        return 0
-
-    result = audit_learnings_cmd.check_learnings_pairing(project_dir)
-    if "--json" in argv:
-        print(json.dumps(result, indent=2))
-    elif result["status"] == "ok":
-        print(f"ok: {result['reason']}")
-    else:
-        print(f"{result['status']}: {result['reason']}", file=sys.stderr)
-        for finding in result["findings"]:
-            print(f"  - {finding['detail']}", file=sys.stderr)
-    if result["status"] == "findings":
-        return 1
-    if result["status"] == "unchecked":
-        return 3
+    del project_dir, argv  # kept so the dispatcher's call site is unchanged
+    print(
+        "WARNING: check-learnings-pairing no longer does anything and will be "
+        "removed in a future major version. The learnings lifecycle audit is "
+        "gone: rules now live in .claude/rules/learnings/ as whole entries, so "
+        "there is no summary/detail pair to grade. If a flow or checklist still "
+        "calls this command, drop the call.",
+        file=sys.stderr,
+    )
     return 0
 
 
@@ -6642,8 +6527,8 @@ def cmd_learnings_migrate(project_dir: Path, argv: list[str]) -> int:
     point is the commit that follows.
 
     Exit codes follow ``artifacts/api-contract.md`` § Error Model, like the
-    sibling repairs (``learnings-obligation``, ``norm-index-scaffold``,
-    ``lifecycle-repair``): **0** written or a no-op — including a repo with
+    sibling repairs (``norm-index-scaffold``, ``lifecycle-repair``): **0**
+    written or a no-op — including a repo with
     nothing to migrate, because a second run is a no-op rather than an error;
     **1** refused, nothing written, and the same for a lib/ that will not
     import (it could not run); **2** usage error — an unknown flag, a missing
@@ -6842,121 +6727,44 @@ def cmd_learnings_migrate(project_dir: Path, argv: list[str]) -> int:
         print("Run `--propose-map` to draft the scoping map, then `--apply --map <file>`.")
     return 0
 
-def cmd_audit_learnings(project_dir: Path, argv: list[str]) -> int:
-    """Audit the consumer's ``.prawduct/learnings.md`` lifecycle (F9).
+def cmd_audit_learnings(project_dir: Path, argv: list[str] | None = None) -> int:
+    """DEPRECATED and inert — prints a notice, writes nothing, exits 0.
 
-    Plugin-native port of the legacy file-sync ``audit-learnings`` path (gone in
-    a migrated consumer — there is no framework checkout). Walks the
-    consumer's OWN ``learnings.md``, classifying entries as promotion /
-    retirement / stale candidates, and with ``--apply`` moves sentinel-passing
-    entries to ``learnings-detail.md``'s historical section. Invoked by
-    ``/prawduct:doctor``'s Audit-Learnings flow (``--json``). ``argv`` is
-    ``sys.argv[2:]`` (``--apply``, ``--json``); read-only by default.
+    This walked a consumer's ``.prawduct/learnings.md`` and classified its
+    entries as promotion, retirement or stale candidates, moving the ones whose
+    sentinel passed into a historical section on ``--apply``. The lifecycle it
+    graded no longer exists: rules live in ``.claude/rules/learnings/``, the
+    harness loads them by path match, and a rule earns its place by being read
+    at the moment it applies rather than by accumulating confirmations against a
+    per-entry sentinel. There is nothing left to audit, and no file at the path
+    it audited.
 
-    Fail-safe: if the bundled lib/ cannot be imported (an incomplete plugin
-    install), print a clear message and return 1 rather than crashing.
+    **Why it is still callable.** ``api-contract.md`` § Direction (additive-first
+    evolution) requires a retired subcommand a human or a skill can call to be
+    signalled rather than removed — kept working, announced on stderr, removal
+    deferred to a major — and the retention window that clause's case law sets
+    runs until no supported install still calls it. The callers this protects
+    are a copied ``/prawduct:doctor`` flow and a hand-written health-check
+    script on an older per-project plugin pin: each gets a notice naming where
+    rules live now, not usage text and exit 1.
+
+    Exit 0 unconditionally, including for the ``--apply`` and ``--json`` flags it
+    used to honour and for flags it never had: a command that does nothing
+    cannot be misused, and a usage error here is the break the deprecation
+    exists to avoid. Nothing reaches stdout, so a ``--json`` caller that piped
+    this gets an empty payload rather than a corrupted one.
     """
-    rejected = _reject_unknown_args("audit-learnings", argv, {"--apply", "--json"})
-    if rejected is not None:
-        return rejected
-    apply = "--apply" in argv
-    as_json = "--json" in argv
-
-    lib_root = _plugin_root()
-    if lib_root not in sys.path:
-        sys.path.insert(0, lib_root)
-    try:
-        from lib import run_audit_learnings  # noqa: PLC0415 — lazy keeps top-level cheap
-    except ImportError:
-        print(
-            "error: audit-learnings could not import the plugin lib/ from "
-            "${CLAUDE_PLUGIN_ROOT}.",
-            file=sys.stderr,
-        )
-        return 1
-
-    result = run_audit_learnings(str(project_dir), apply=apply)
-
-    # The ungraded notice goes to STDERR, before either renderer, so it reaches
-    # BOTH. On the `--json` path stdout is a machine payload, so a notice
-    # printed there would either corrupt it or (as shipped) be omitted entirely
-    # — leaving the sole `--json` consumer, the doctor skill, with no signal at
-    # all where the pre-fix code at least printed something loud and wrong.
-    ungraded = [
-        r for r in result.get("retirements", []) if r.get("unevaluated_reason")
-    ]
-    if ungraded:
-        print(
-            f"notice: {len(ungraded)} sentinel(s) could not be graded and were "
-            "left active — no rule is retired on a verdict nobody took. "
-            f"First: {ungraded[0]['title']}: {ungraded[0]['unevaluated_reason']}",
-            file=sys.stderr,
-        )
-
-    if as_json:
-        print(json.dumps(result, indent=2))
-        # A refusal lands in `errors`, not `error`, and `applied: false` after a
-        # requested `--apply` means the writer refused and wrote nothing —
-        # api-contract gives a refusing writer exit 1. Reporting 0 there tells
-        # the caller the retirement happened.
-        if "error" in result:
-            return 1
-        return 1 if (apply and result.get("applied") is False) else 0
-
-    if "error" in result:
-        print(f"error: {result['error']}", file=sys.stderr)
-        return 1
-
-    promotions = result["promotions"]
-    retirements = result["retirements"]
-    stale = result["stale_flags"]
-    errors = result["errors"]
+    # Both parameters are kept so the dispatcher's call site is unchanged — a
+    # deprecated command that still accepts its old invocation is the point.
+    del project_dir, argv
     print(
-        f"audit-learnings ({'applied' if result['applied'] else 'dry-run'}): "
-        f"{len(promotions)} promotion candidate(s), {len(retirements)} retirement "
-        f"candidate(s), {len(stale)} stale flag(s), {len(errors)} error(s)."
+        "WARNING: audit-learnings no longer does anything and will be removed "
+        "in a future major version. The learnings lifecycle audit is gone: "
+        "rules now live in .claude/rules/learnings/, where the harness loads "
+        "them by path match, and there is no learnings.md left to grade. If a "
+        "flow or checklist still calls this command, drop the call.",
+        file=sys.stderr,
     )
-    for p in promotions:
-        print(f"  promote: {p['title']} (confirmations={p['confirmations']})")
-    for r in retirements:
-        # Two retirement routes, and the readiness question differs per route:
-        # a sentinel candidate is ready when its test passes, a supersession
-        # when its pointer resolved. Reading `passed` for both would report
-        # every resolvable supersession as "blocked" (its `passed` is None by
-        # construction) — a clean candidate rendered as a problem.
-        ungraded = False
-        if r.get("reason") == "superseded-by":
-            ready = r.get("resolved_to") is not None
-            why = f"superseded-by={r.get('resolved_to') or r.get('superseded_by')}"
-        else:
-            # Three-valued, and `bool()` would flatten it: an UNGRADED sentinel
-            # (`passed is None`) is not a blocked one. Rendering it "blocked"
-            # tells the operator a test is failing when prawduct never ran one,
-            # which is the same false accusation in the report that the runner
-            # stopped making.
-            ready = r.get("passed") is True
-            ungraded = r.get("passed") is None
-            why = f"sentinel={r['sentinel']}"
-        if r.get("applied"):
-            state = "retired"
-        elif ungraded:
-            state = "ungraded"
-        elif ready:
-            state = "ready"
-        else:
-            state = "blocked"
-        print(f"  retire[{state}]: {r['title']} ({why})")
-        if r.get("unevaluated_reason"):
-            print(f"    not graded: {r['unevaluated_reason']}")
-    for s in stale:
-        print(f"  stale: {s['title']} ({s['age_days']}d, confirmations={s['confirmations']})")
-    for e in errors:
-        print(f"  error: {e['title']}: {e['error']}")
-    # Same rule as the `--json` path above: a requested `--apply` that came back
-    # `applied: false` refused and wrote nothing, and a writer that refused
-    # exits 1.
-    if apply and result.get("applied") is False:
-        return 1
     return 0
 
 
@@ -7396,20 +7204,25 @@ _EPHEMERAL_SAFE_COMMANDS = frozenset({
     # bodies is a print-and-return-0 or a bare return 0 — and membership here is
     # what makes their docstrings' "exits 0 everywhere" true. Without it the
     # fail-closed guard above treats an unlisted command as a write and refuses
-    # with exit 1 inside a disposable worktree, which for the two hook-invoked
+    # with exit 1 inside a disposable worktree, which for the hook-invoked
     # members is the very session-start hook error they were restored to remove
-    # (v3.3.3). `regen-views` and `stamp-merged` carried the same gap and the
-    # same false claim since they were emptied; this is one classification, not
-    # four decisions. Pinned in tests/test_retired_hook_subcommands.py.
+    # (v3.3.3). Every member is here for one classification decision, not one
+    # per command: a body that does nothing cannot strand a write. The three
+    # learnings verbs arrived from `_EPHEMERAL_APPLY_GATED_COMMANDS` when they
+    # were emptied — an apply-gated entry says "this writes under --apply", and
+    # a stub has no --apply left to honour. Pinned in
+    # tests/test_retired_hook_subcommands.py.
     "build-index",
     "user-prompt-submit",
     "regen-views",
     "stamp-merged",
+    "audit-learnings",
+    "learnings-obligation",
+    "check-learnings-pairing",
     "bug-inbox",
     "check-change-log-entry",
     "check-cumulative-critic",
     "check-operator-verification",
-    "check-learnings-pairing",
     "check-plugin-active",
     "check-pr-doc-only",
     "check-releasability",
@@ -7441,9 +7254,7 @@ _EPHEMERAL_SAFE_COMMANDS = frozenset({
 # Read-only reports that mutate only under `--apply` — a third shape, neither
 # whole-command nor per-op.
 _EPHEMERAL_APPLY_GATED_COMMANDS = frozenset({
-    "audit-learnings",
     "coverage-scaffold",
-    "learnings-obligation",
     "lifecycle-repair",
     "norm-index-scaffold",
     "plan-backfill",

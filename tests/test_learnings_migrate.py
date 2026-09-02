@@ -1103,8 +1103,8 @@ class TestGitCannotAnswer:
 
 class TestExitCodes:
     """`artifacts/api-contract.md` § Error Model, which the sibling repairs
-    (`learnings-obligation`, `norm-index-scaffold`, `lifecycle-repair`) follow
-    verbatim: 0 written or no-op, 1 refused, 2 usage error.
+    (`norm-index-scaffold`, `lifecycle-repair`) follow verbatim: 0 written or
+    no-op, 1 refused, 2 usage error.
 
     This command returned 2 for both refusals and usage errors, so a caller —
     including the agent the briefing directive sends here — could not tell "fix

@@ -126,7 +126,7 @@ The framework detects structural characteristics (human interface, API, backgrou
 
 ### Closed learning loop
 
-Learnings are captured during development and surfaced on demand via the `/prawduct:learnings` skill, which reads the knowledge files in a forked context and returns only what's relevant to the task at hand. A three-tier system separates concise standing rules (`learnings.md`) from full root cause / debugging detail (`learnings-detail.md`), with retired and superseded entries moved to `learnings-history.md` — kept, never deleted, and off the lookup read path so the working set stays small (#350). Learnings follow a lifecycle: provisional (single observation) → confirmed (recurring pattern) → incorporated (absorbed into principles or methodology).
+Learnings are captured during development as ordinary `.claude/rules/learnings/` files, so the harness loads them and nothing has to look them up: `core.md` is in context from launch, and each `<area>.md` declares `paths:` globs that bring it in when Claude reads a file they match. Rules are concise standing statements — the narrative behind one lives in the session reflection, not in the rule. Learnings follow a lifecycle: provisional (single observation) → confirmed (recurring pattern) → incorporated (absorbed into principles or methodology).
 
 ## Working with Prawduct
 

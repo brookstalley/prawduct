@@ -23,7 +23,7 @@ prawduct/
 │   ├── lib/                           # the bodies the hook reaches lazily (init_product, migrate_plugin, core,
 │   │                                  #   change_log, plan_index, plan_archive, critic_consolidate, release_readiness, …)
 │   ├── skills/                        # framework skills → /prawduct:* (critic, pr, backlog, doctor, janitor,
-│   │   │                              #   learnings, methodology, migrate, onboard, report-bug, runbook, advisory, …)
+│   │   │                              #   methodology, migrate, onboard, report-bug, runbook, advisory, …)
 │   │   ├── critic/                    # bundled Critic protocol (context:fork — SKILL.md, review-protocol.md,
 │   │   │                              #   review-cycle.md, goals-1-3.md, framework-checks.md)
 │   │   └── pr/                        # bundled PR-reviewer protocol
@@ -61,7 +61,6 @@ prawduct/
 │   ├── test_build_plan_resolution.py     # active-build-plan resolver (lib ↔ hook parity)
 │   ├── test_operator_verification.py     # operator-verification queue + gate
 │   ├── test_advisory_store.py, test_advisory_cmd.py  # post-sync advisories
-│   ├── test_audit_learnings.py           # learnings-lifecycle audit
 │   ├── test_reference_verifier.py        # coverage floor verifier
 │   ├── test_pr_reviewer.py               # PR review gate + protocol
 │   ├── test_v5_methodology.py            # Methodology + Critic skill content

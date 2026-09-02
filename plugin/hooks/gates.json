@@ -5,7 +5,7 @@
       "id": "reflection",
       "name": "reflection",
       "since": "1.0.0",
-      "summary": "a session reflection must be captured before session end"
+      "summary": "a session that changed judgeable code must capture a shaped reflection before session end — what was expected vs. what was actual, and a root cause or \"no defect\""
     },
     {
       "id": "critic",

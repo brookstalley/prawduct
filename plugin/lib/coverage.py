@@ -320,7 +320,7 @@ def diagnose_fix_churn(
       | {"status": "unavailable", "reason": str}
 
     The two negatives are **not** the same answer, and collapsing them is the
-    shape ``learnings.md`` names: *"'Advice fails soft' is not 'advice fails
+    shape the learnings rules name: *"'Advice fails soft' is not 'advice fails
     silent' — a degraded advisory path must still name its consequence, or it
     manufactures the false success it was meant to prevent."* ``None`` means
     the diagnosis ran and this is not churn; ``unavailable`` means it could not
@@ -687,7 +687,7 @@ def count_branch_rounds(
     ``{"status": "unavailable", "reason"}``. Never raises: this is advice, and
     advice fails soft. It is deliberately not silent, because a tally that
     vanishes when it breaks reads as "round one" to the builder it exists to
-    warn (``learnings.md``: "'advice fails soft' is not 'advice fails silent'").
+    warn (``core.md``: "'advice fails soft' is not 'advice fails silent'").
     """
     from . import evidence  # noqa: PLC0415 -- lazy: mirrors diagnose_fix_churn's import posture; avoids an import cycle at module load
 
@@ -729,7 +729,7 @@ def format_branch_rounds(tally: "dict | None") -> str:
 
     One function owns the whole sentence and decides which of the three
     readings leads, so no call site can assemble a variant of its own
-    (``learnings.md``: advice with an exception stapled on still leads with the
+    (``core.md``: advice with an exception stapled on still leads with the
     advice). The figure is computed from the branch's own rounds at call time
     and never written down — a duration copied into prose drifts, and
     correcting it costs the review round this message exists to save.

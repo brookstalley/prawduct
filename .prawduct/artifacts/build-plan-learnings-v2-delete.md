@@ -106,7 +106,16 @@ field on findings, which is a persisted-format change this plan does not make]
 - [ ] Chunk 03: The reflection gate fires on the session's work and grades shape
 - [ ] Chunk 04: Two ledger events — `learning.written` and `learning.fired`
 - [ ] Chunk 05: Integrate, re-derive every removal, record
-Context: Plan drawn 2026-09-02 from the tree at 18767064 (Wave 1 complete). Next: dispatch A–D.
+Context: Plan drawn 2026-09-02 from the tree at 18767064 (Wave 1 complete). A–D built and merged
+2026-09-02 (4ea91ff7 + coordinator fixes). Chunk 03's false-fire analysis, measured by its tests:
+FIRES on a committed judgeable change with no plan (the target), an uncommitted one, a new untracked
+judgeable file, 200 shapeless characters, and a merge/pull that brought judgeable files (two lines,
+once — pinned by a real `git merge --no-ff` in `test_reflection_gate.py`); SILENT on no change,
+doc-only or metadata-only spans, a waived gate, a shaped reflection, and a repo without the
+base-tree marker (today's behaviour). Residual false-fire class: judgeable files entering the tree
+without this session authoring them (merge, pull, rebase, switch). Fixture blast radius was 10
+modules, not 18 (the rest read the file without going through the gate); the shape text lives in
+`tests/conftest.py::SHAPED_REFLECTION`. Next: full suite, records, one `final` review.
 
 ## Scaffolding
 
@@ -198,9 +207,9 @@ learning emitters call its append, never `open()`. `gates.session_work_span` is 
     command is REFUSED inside an ephemeral worktree, which would break the stub's exit-0 promise;
     a stub writes nothing, so it belongs with the reads. Verify by reading the two sets' comments
     before moving anything.
-  - deleted: `plugin/lib/audit_learnings_cmd.py`, `plugin/lib/learnings_obligation.py`,
-    `tests/test_audit_learnings.py`, `tests/test_learnings_obligation.py`,
-    `tests/test_learnings_pairing.py`, `tests/spikes/learning_families.py`.
+  - deleted `plugin/lib/audit_learnings_cmd.py`, deleted `plugin/lib/learnings_obligation.py`,
+    deleted `tests/test_audit_learnings.py`, deleted `tests/test_learnings_obligation.py`,
+    deleted `tests/test_learnings_pairing.py`, deleted `tests/spikes/learning_families.py`.
   - `plugin/lib/__init__.py`: the `run_audit_learnings` lazy-import entry.
   - `plugin/lib/record_lint.py`: `_check_learnings_shape`, the `learnings-entry-shape` id in the
     check roster, and the unchecked-line that names it; `tests/test_record_lint.py`
@@ -257,7 +266,7 @@ learning emitters call its append, never `open()`. `gates.session_work_span` is 
   `documentation/`); the single-resolver allowlist's `wave-2` entries, which name every docstring
   site the sweep owes.
 - **Deliverables:**
-  - deleted: `plugin/skills/learnings/` (whole), `tests/test_reflection_provenance.py`.
+  - deleted `plugin/skills/learnings/` (whole), deleted `tests/test_reflection_provenance.py`.
   - `plugin/lib/buildplan_refs.py`: `/prawduct:learnings` leaves the slash-command resolution
     set; `tests/test_path_reference_resolution.py` follows.
   - Instruction sites, each rewritten to the harness-loaded model or deleted: `methodology/planning.md`
@@ -302,7 +311,8 @@ learning emitters call its append, never `open()`. `gates.session_work_span` is 
   tests/test_briefing_functions.py tests/test_path_reference_resolution.py tests/test_handoff_affordance.py
   tests/preferences tests/test_v5_methodology.py tests/test_plugin_methodology_digest.py` passes;
   `grep -rn "prawduct:learnings\|reflections\.md\|reflection_provenance\|Active Learnings" plugin tests README.md CLAUDE.md documentation`
-  returns only `plugin/CHANGELOG.md` history and `documentation/issues/` history.
+  returns only `plugin/CHANGELOG.md` history, `documentation/issues/` history, and test ASSERTION
+  strings that guard the absence (a guard must name what it forbids).
 - **Critic mode:** final (reviewed in Chunk 05's merged review)
 - **Done when:**
   1. Acceptance criteria met and tests pass on the delegate branch
@@ -425,7 +435,9 @@ learning emitters call its append, never `open()`. `gates.session_work_span` is 
     turn, so the idempotence key is what keeps this at one line per rule.
   - `plugin/lib/critic_consolidate.py`: after the `review.critic` anchor, for each finding in the
     consolidated record and each unit in EVERY file the resolver returns (a finding may cite a
-    rule from any loaded file), when the normalized `summary + description` contains the unit's
+    rule from any loaded file), when the normalized `summary + recommendation` (the two prose
+    fields a cache record carries — the plan first said `description`, which no finding has)
+    contains the unit's
     normalized opening eight words (the whole unit when shorter): one `learning.fired` carrying the
     review id. Failure is a NOTE; consolidation's exit code is unaffected.
   - `plugin/skills/critic/review-cycle.md` § Learnings Cross-Check, one sentence (this region
@@ -472,8 +484,9 @@ learning emitters call its append, never `open()`. `gates.session_work_span` is 
     (the test message carries the number).
   - The grep-clean re-derivation, as ONE command the change-log entry cites:
     `grep -rnE "audit_learnings|learnings_obligation|learnings_pairing|learnings-entry-shape|_check_learnings_shape|prawduct:learnings|reflections\.md|reflection_provenance|sentinel_command|sentinel_ungraded|Active Learnings|learning_families" plugin tests README.md CLAUDE.md documentation`
-    — expected survivors: the three stubs and their test, `plugin/CHANGELOG.md`, and
-    `documentation/issues/` history. Anything else is a delegate's miss and is fixed here.
+    — expected survivors: the three stubs and their test, test assertion strings that guard an
+    absence, `plugin/CHANGELOG.md`, and `documentation/issues/` history. Anything else is a
+    delegate's miss and is fixed here.
   - `tests/preferences/test_learnings_single_resolver.py`: the surviving allowlist is
     `learnings_migrate.py` (none), `bin/prawduct-hook` (re-classified `none` — the migrate
     command's docstring names the legacy path because reading it is its job), `reflection.md` and

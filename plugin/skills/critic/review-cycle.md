@@ -91,7 +91,7 @@ Every consolidated review appends a **fact** to the shared evidence store (`<git
 
 `uncovered` caused only by the **base advancing** transfers instead of buying a round, at BOTH gates: `coverage.diagnose_base_advance_transfer` grants it when the branch's own diff is byte-identical across both spans and a suite run has met the tree that gate vouches for. A denial on that condition alone says so: the remedy is a run, not a review.
 
-**Prep work before invoking cumulative.** A cumulative review takes ~4-10 minutes. Before invoking it, complete prep that doesn't depend on its findings — `/prawduct:learnings` for next topics, draft the PR description, audit the backlog, capture deferred reflections — so you integrate findings the moment it returns. This prep is also what keeps the wait cheap: a session that idles silently while reviewers run lets its prompt cache expire and re-reads its whole context when they land. If the prep runs out before the review does, emit a one-line progress note at least every 4 minutes rather than going quiet.
+**Prep work before invoking cumulative.** A cumulative review takes ~4-10 minutes. Before invoking it, complete prep that doesn't depend on its findings — `.claude/rules/learnings/` for next topics, draft the PR description, audit the backlog, capture deferred reflections — so you integrate findings the moment it returns. This prep is also what keeps the wait cheap: a session that idles silently while reviewers run lets its prompt cache expire and re-reads its whole context when they land. If the prep runs out before the review does, emit a one-line progress note at least every 4 minutes rather than going quiet.
 
 ### Verify-resolutions anchoring and demotion
 
@@ -378,7 +378,6 @@ Severity per check:
 | `chunk-ref-missing` | A deliverable the reviewed chunk *declares* does not exist | **BLOCKING** |
 | `governed-by-gap` | A plan disposes of fewer norms than the cited artifact's `## Direction` carries, or cites an artifact that does not exist | **WARNING** (Goal 2 — the paperwork arm below) |
 | `suite-total-claim` | A suite-total test claim on an **added** line of durable prose — the store already records pass/fail per tree | **NOTE** |
-| `learnings-entry-shape` | An added `learnings.md` rule over 400 chars, or a narrative body — both belong in `learnings-detail.md` | **NOTE** |
 | `learnings-over-budget` | A `.claude/rules/learnings/` file over budget **and grown since the base tree** (sizes, not lines) | **BLOCKING** |
 | `learnings-budget-unreasoned` | A `learnings_budgets:` entry with no `reason:` | **BLOCKING** |
 | `learnings-area-dead` | An area file whose `paths:` globs match no tracked file | **WARNING** |

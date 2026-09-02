@@ -27,6 +27,8 @@ from pathlib import Path
 
 import pytest
 
+from conftest import SHAPED_REFLECTION
+
 from lib import briefing, gates, gitstate
 
 
@@ -543,15 +545,45 @@ class TestExtractCriticalRules:
 # generate_subagent_briefing
 # --------------------------------------------------------------------------- #
 class TestGenerateSubagentBriefing:
-    def test_writes_file_with_name_rules_and_learnings(self, tmp_path):
+    def test_writes_file_with_name_and_rules(self, tmp_path):
         pr = _prawduct(tmp_path)
         (pr / "project-state.yaml").write_text("product_identity:\n  name: Widget\n")
-        (pr / "learnings.md").write_text("# Learnings\n- be careful\n")
         briefing.generate_subagent_briefing(tmp_path)
         text = (pr / ".subagent-briefing.md").read_text()
         assert "# Subagent Briefing — Widget" in text
         assert "## Governance Rules" in text
-        assert "## Active Learnings" in text and "be careful" in text
+
+    def test_no_learnings_section_even_when_a_corpus_is_present(self, tmp_path):
+        """The rules are `.claude/rules/` files the harness loads for a subagent
+        too, so the briefing embeds no copy of them.
+
+        Both corpora are written, because "absent" has to hold against the file
+        the embedding used to read (`.prawduct/learnings.md`) AND against the
+        one rules live in now — a briefing that quietly re-pointed at the new
+        home would still be spending a subagent's context on a duplicate. The
+        positive assertions are what keep the two negatives honest: without them
+        a generator that wrote nothing at all would pass.
+        """
+        pr = _prawduct(tmp_path)
+        (pr / "project-state.yaml").write_text("product_identity:\n  name: Widget\n")
+        (pr / "artifacts").mkdir(exist_ok=True)
+        (pr / "artifacts" / "project-preferences.md").write_text(
+            "# Preferences\n\n- **Testing**: pytest-marker-xyz\n"
+        )
+        (pr / "learnings.md").write_text("# Learnings\n- legacy-corpus-marker\n")
+        rules = tmp_path / ".claude" / "rules" / "learnings"
+        rules.mkdir(parents=True)
+        (rules / "core.md").write_text("# Learnings — core\n\n### new-corpus-marker\n")
+
+        briefing.generate_subagent_briefing(tmp_path)
+        text = (pr / ".subagent-briefing.md").read_text()
+
+        assert "# Subagent Briefing — Widget" in text
+        assert "## Governance Rules" in text
+        assert "## Project Preferences" in text and "pytest-marker-xyz" in text
+        assert "## Active Learnings" not in text
+        assert "legacy-corpus-marker" not in text
+        assert "new-corpus-marker" not in text
 
     def test_no_prawduct_dir_is_noop(self, tmp_path):
         # project dir has no .prawduct -> returns without writing
@@ -759,10 +791,19 @@ class TestGenerateSessionHandoff:
 # --------------------------------------------------------------------------- #
 class TestCheckPreviousSessionGates:
     def _patch(self, monkeypatch, *, changes=True, doc_only=False, code=True,
-               waivers=None, build_plan=True):
+               waivers=None, build_plan=True, judgeable=None):
         # Stubs accept the optional status_output param (STH-6Q9D) the real
         # signatures gained — the gate now captures porcelain once and threads it.
         monkeypatch.setattr(briefing.gitstate, "git_has_session_changes", lambda d, s=None: changes)
+        # The reflection half reads the session's WORK span (the same helper
+        # cmd_stop's Gate 1 reads); by default it agrees with the porcelain
+        # stubs, and a test that wants the two to disagree says so.
+        if judgeable is None:
+            judgeable = bool(changes) and not doc_only
+        monkeypatch.setattr(
+            briefing.gates, "session_work_span",
+            lambda d, s=None: {"changed": ["x.py"] if judgeable else [], "judgeable": judgeable, "source": "base-tree"},
+        )
         monkeypatch.setattr(briefing.gates, "session_changes_all_non_judgeable", lambda d, s=None: doc_only)
         monkeypatch.setattr(briefing.gitstate, "git_has_code_changes", lambda d, s=None: code)
         monkeypatch.setattr(briefing.gates, "_read_gates_waived", lambda d: waivers or {})
@@ -798,21 +839,37 @@ class TestCheckPreviousSessionGates:
         self._patch(monkeypatch, waivers={"reflection": "n/a"}, build_plan=False)
         assert briefing._check_previous_session_gates(tmp_path) == []
 
-    def test_sufficient_reflection_no_warning(self, tmp_path, monkeypatch):
+    def test_shaped_reflection_no_warning(self, tmp_path, monkeypatch):
         pr = _prawduct(tmp_path)
-        (pr / ".session-reflected").write_text("x" * 60)
+        (pr / ".session-reflected").write_text(SHAPED_REFLECTION)
         self._patch(monkeypatch, build_plan=False)
         assert briefing._check_previous_session_gates(tmp_path) == []
 
+    def test_a_shapeless_sixty_characters_warns(self, tmp_path, monkeypatch):
+        """The advisory grades SHAPE, as the Stop gate does — sixty characters
+        with no expected/actual and no root-cause line passed the old floor and
+        blocks at session end, which is the advisory/gate divergence this pins."""
+        pr = _prawduct(tmp_path)
+        (pr / ".session-reflected").write_text("x" * 60)
+        self._patch(monkeypatch, build_plan=False)
+        assert "reflection not captured" in briefing._check_previous_session_gates(tmp_path)
+
+    def test_committed_work_with_clean_porcelain_still_warns(self, tmp_path, monkeypatch):
+        """A session that committed its code has clean porcelain and a non-empty
+        work span; the Stop gate blocks on the span, so the advisory must too."""
+        _prawduct(tmp_path)
+        self._patch(monkeypatch, changes=False, judgeable=True, build_plan=False)
+        assert "reflection not captured" in briefing._check_previous_session_gates(tmp_path)
+
     def test_build_plan_with_code_and_no_findings_warns_critic(self, tmp_path, monkeypatch):
         pr = _prawduct(tmp_path)
-        (pr / ".session-reflected").write_text("x" * 60)  # silence reflection gate
+        (pr / ".session-reflected").write_text(SHAPED_REFLECTION)  # silence reflection gate
         self._patch(monkeypatch, build_plan=True, code=True)
         assert "Critic review not recorded" in briefing._check_previous_session_gates(tmp_path)
 
     def test_critic_waiver_skips_critic_gate(self, tmp_path, monkeypatch):
         pr = _prawduct(tmp_path)
-        (pr / ".session-reflected").write_text("x" * 60)
+        (pr / ".session-reflected").write_text(SHAPED_REFLECTION)
         self._patch(monkeypatch, build_plan=True, code=True, waivers={"critic": "n/a"})
         assert briefing._check_previous_session_gates(tmp_path) == []
 

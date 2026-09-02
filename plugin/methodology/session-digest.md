@@ -27,7 +27,7 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
   plans are archived, not deleted.) Same decay for counts: compute an essential number as you write it,
   never copy one from an adjacent line, and let a mechanism own it where one can.
 - **The build plan's `## Status` boxes are yours to tick** — nothing derives them, and every
-  reader believes them. Tick after the chunk's review: the LAST tick disarms the Stop gates.
+  reader believes them. Tick after the chunk's review: the LAST tick disarms the Critic gate.
 - **Never silently drop a requirement — or silently *invent* one.** Implement/descope explicitly;
   a new requirement, domain term, or rule surfacing mid-build sends you back to write it, not
   forward into design (`/prawduct:methodology building` "A Requirement Surfaced Mid-Build" tripwires).
@@ -111,16 +111,17 @@ forbids: `docs/principles.md` § Agent Stance (`/prawduct:methodology principles
 
 ## Enforcement
 
-At session end the plugin's **Stop hook** runs the Critic and reflection gates; they BLOCK when
-code changed against an active build plan with no review or reflection captured. Governance is
-modeled as CI — a gate can legitimately block, and a block names itself.
+The **Stop hook** BLOCKS at session end: reflection, when this session changed judgeable code and
+no reflection names expected vs. actual plus a root cause (or "no defect"); Critic, when that code
+was built against an active build plan with no review. Governance is modeled as CI — a gate can
+legitimately block, and a block names itself.
 
 ## Read on demand
 
 - `/prawduct:methodology [<topic>]` — the overview, or one guide:
   `building | discovery | planning | reflection | delegation | principles | norms`
-- `/prawduct:critic` · `/prawduct:pr` · `/prawduct:backlog` · `/prawduct:learnings` ·
-  `/prawduct:janitor` · `/prawduct:doctor`
+- `/prawduct:critic` · `/prawduct:pr` · `/prawduct:backlog` · `/prawduct:janitor` ·
+  `/prawduct:doctor`
 
 **Hit a bug in prawduct itself?** `/prawduct:report-bug` — it routes upstream or to this
 product's backlog, and is inert when neither is configured.

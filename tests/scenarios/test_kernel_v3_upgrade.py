@@ -57,6 +57,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[2] / "plugin"
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from conftest import SHAPED_REFLECTION  # noqa: E402 — one home for the shape
 from lib.evidence import SCHEMA_VERSION  # noqa: E402
 from kernel_v3_harness import (  # noqa: E402
     HOOK,
@@ -109,11 +110,14 @@ def _stop(repo: Path) -> subprocess.CompletedProcess:
 
 def _write_reflection(repo: Path) -> None:
     """Satisfy the reflection gate so Stop-gate assertions isolate the
-    Critic gate (the reflection gate is not under test here)."""
-    (repo / ".prawduct" / ".session-reflected").write_text(
-        "Scenario reflection: exercised the upgrade path end-to-end, "
-        "observed the gates compose over the evidence store as designed.\n"
-    )
+    Critic gate (the reflection gate is not under test here).
+
+    The text comes from `conftest.SHAPED_REFLECTION` because that gate grades
+    SHAPE now, not length: a fixture sentence written to look like a reflection
+    no longer satisfies it, and forty local variants would be forty things to
+    re-edit the next time the shape moves.
+    """
+    (repo / ".prawduct" / ".session-reflected").write_text(SHAPED_REFLECTION)
 
 
 def _write_active_build_plan(repo: Path) -> None:

@@ -20,7 +20,7 @@ When someone opens this directory, route on what they came for:
 | **Framework development** (this repo) | It is a Prawduct product in active development. Read `.prawduct/project-state.yaml`; apply the methodology to framework changes like any other work. |
 | **Onboard another product** — *"set up prawduct for ../foo"* | `/prawduct:onboard <target-path>` (it routes a pre-2.0 file-sync repo to `/prawduct:migrate`). Then tell the user to open the target in a new session — `claude <target-path>` — because governance loads at session start. `/prawduct:doctor` for an already-onboarded repo. |
 | **Ad-hoc work outside this repo** — *"build me X in ../foo"* | Not framework work and not being onboarded. Do the work, applying the principles as engineering judgment rather than as process. Reflect at the end on whether the methodology helped, hindered, or was irrelevant — that observation is the only thing this repo gets out of it. |
-| **Review product feedback** — *"what have my products learned?"* | Scan known product directories for `.prawduct/learnings.md`, looking for methodology friction; summarize it and propose framework updates. Also triage `incoming-bugs/` — upstream bug reports about prawduct itself, which the `untriaged-upstream-reports` advisory nudges — into the backlog via `/prawduct:backlog`, then archive each (`/prawduct:report-bug`). |
+| **Review product feedback** — *"what have my products learned?"* | Scan known product directories for `.claude/rules/learnings/`, looking for methodology friction; summarize it and propose framework updates. Also triage `incoming-bugs/` — upstream bug reports about prawduct itself, which the `untriaged-upstream-reports` advisory nudges — into the backlog via `/prawduct:backlog`, then archive each (`/prawduct:report-bug`). |
 | **First contact** — *"what is this?"* | Prawduct helps you build software by guiding structured discovery, producing quality specifications, governing the build, and learning from experience. It installs as a Claude Code plugin; product repos commit a small install reference and no framework files. |
 
 ## Before Building: Requirements Clarity
@@ -72,8 +72,8 @@ independent reviewer for a fresh-eyes release-readiness assessment. Protocol:
 
 Reflect at **work boundaries**, not at session end. When a chunk concludes (Critic passes), a bug
 is fixed, an error is recovered from, or a judgment call is made — reflect *now*, while context is
-fresh, into `.prawduct/.session-reflected`. The stop hook enforces only a session-end floor (a
-reflection exists), not this cadence.
+fresh, into `.prawduct/.session-reflected`. The stop hook enforces only a session-end floor (the
+assess and root-cause lines below), not this cadence.
 
 Each time: **assess** (expected vs. actual), **pattern-match** against the learnings rules,
 find the **root cause** when something went wrong, **capture** a narrative entry — adding a durable

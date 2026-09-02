@@ -337,7 +337,33 @@ LAST_MEASURED_TOKENS = {
     # its Direction precondition and it was reverted. The sentence is true again
     # because the check is back. Recorded as one entry rather than two so the
     # next reader sees a no-op, not a pair of unexplained swings.
-    "methodology/building.md": 4754,
+    # -2 on 2026-09-02 (learnings-v2-delete chunk 02): the lookup skill is gone,
+    # so the two sentences that named it were rewritten to the harness-loaded
+    # model — the "run the lookup skill for this chunk" sentence became "open the
+    # `.claude/rules/learnings/` area files covering this chunk", and `/clear`'s
+    # list of what it does stopped claiming an archive step that no longer
+    # exists. A CUT: the path is longer than the slash-command, and it still nets
+    # out below because the archive clause shrank to "clears the previous
+    # reflection" — where the reflection GOES is already stated by this file's
+    # own handoff paragraph, so saying it twice was the spare part. The ceiling
+    # is ratcheted by the same -2 rather than banking the slack.
+    # +35 on 2026-09-02 (#685): the reflection gate's predicate widened from "a
+    # build plan is active" to "this session changed judgeable code", and it now
+    # grades a reflection's SHAPE instead of counting characters. Two sentences
+    # here stated the old one. The safety-net line said "reflection captured"
+    # (+4). The "Reflect — now" step said what to write, and what it said —
+    # delivered / caught / surprised — does not satisfy the gate that grades it
+    # (+31): a checklist step whose own gate refuses its output routes the
+    # reader to the waiver hatch, which is the failure mode a floor exists to
+    # prevent. NOT funded by a trim, and the ceiling is RAISED with it (see
+    # test_token_budget): the two candidates were another file's content, which
+    # this file is the wrong place to spend, and cutting the shape back out,
+    # which reintroduces the defect. Declared, per the standing rule that a
+    # ceiling is resolved by paying in place or raising with a reason, never by
+    # trimming until it fits.
+    # MERGED 2026-09-02: Chunk 02's cut and Chunk 03's raise landed together;
+    # the number below is the measured merge (B's delta + C's delta), not either side.
+    "methodology/building.md": 4787,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -486,7 +512,11 @@ LAST_MEASURED_TOKENS = {
     # meets a BLOCKING finding with no severity unless the row is here too. Bought
     # at three tokens by folding it into the existing BLOCKING clause rather than
     # writing a second sentence; the ceiling is untouched.
-    "skills/critic/goals-1-3.md": 2278,
+    # -2 on 2026-09-02 (learnings-v2-delete Chunk 01), 2278 -> 2276: the
+    # entry-shape clause left the record-lint severity mapping with the check
+    # it graded. A CUT, so the ceiling below moves with it — slack a
+    # deletion opens is not headroom the next addition inherits.
+    "skills/critic/goals-1-3.md": 2276,
     # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
     # a computed pass the gate can now print, which a reader who only knows
     # "uncovered means run a cumulative" will otherwise re-review straight
@@ -544,6 +574,9 @@ LAST_MEASURED_TOKENS = {
     #   "A re-review does not manufacture work" one clause after citing it.
     # * R5's own closing sentence ("it fires whether or not the cycle produced
     #   another finding") restated "get their own pass" in its own heading.
+    # -29 on 2026-09-02 (learnings-v2-delete Chunk 01), 9595 -> 9566: the
+    # entry-shape row left the record-lint severity table with the check it
+    # graded. A CUT, and its ceiling is ratcheted in the same commit.
     # +26 on 2026-09-02: the Learnings Cross-Check gained one sentence — quote
     # the rule's opening words in a finding that rests on it. The citation is
     # the whole input to `learning.fired` (`docs/governance-telemetry.md`): an
@@ -554,7 +587,9 @@ LAST_MEASURED_TOKENS = {
     # `learnings-entry-shape` severity row from the record-lint table below,
     # which is a bigger deletion than this addition. Trimming other prose to fit
     # ahead of that would spend a clause twice.
-    "skills/critic/review-cycle.md": 9621,
+    # Merged 2026-09-02: the two edits above landed together, net -3 against the
+    # pre-wave 9595; the reading below is the measured merge, not either side.
+    "skills/critic/review-cycle.md": 9592,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -781,7 +816,22 @@ LAST_MEASURED_TOKENS = {
     # "nobody reviewed it") rather than explaining it. Principle 16 is the norm;
     # this is the procedure that makes it checkable.
     # 2026-09-02 (learnings-v2 chunk 05, cumulative R-6): four write-path sites repointed at .claude/rules/learnings/ (R8 rewrite is Wave 3).
-    "methodology/reflection.md": 5103,
+    # -122 on 2026-09-02 (learnings-v2-delete chunk 02): the reflections archive
+    # is deleted, not relocated, so § "Reflections Archive" and the provenance
+    # tag it documented describe nothing — a section telling a reader to look for
+    # a file the boundary no longer writes. What replaces it is one clause on the
+    # `.session-reflected` bullet naming the generated handoff as the only
+    # carrier. The lookup-skill sentence went with the skill. A READING, no
+    # ceiling (see the decision block above this dict); Wave 3's R8 rewrites this
+    # file, so nothing else here was restructured.
+    # +22 on 2026-09-02 (#685): "the hook checks only a session-end floor —
+    # `.session-reflected` exists and has content" described a floor that no
+    # longer exists. It now names the gate's actual predicate (judgeable code
+    # changed this session) and the shape it grades. A READING, no ceiling, so
+    # the cost is paid only by a session that opens this guide.
+    # MERGED 2026-09-02: Chunk 02's cut and Chunk 03's raise landed together;
+    # the number below is the measured merge (B's delta + C's delta), not either side.
+    "methodology/reflection.md": 5003,
     # First reading, 2026-08-21, taken at birth: a new on-demand guide, so it
     # joins the class above — a READING, no ceiling. `test_every_methodology_guide_is_accounted_for`
     # requires the entry; the decision block above this
@@ -1134,8 +1184,25 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # 2026-09-02 (learnings-v2 chunk 05): CLAUDE.md repointed four learnings references
     # at .claude/rules/learnings/; paid by dropping the lookup-skill mention and the
     # "read learnings.md" instruction (the harness loads the rules now).
-    "framework": 3194,
-    "product": 2085,
+    # framework 3194 -> 3192, product 2085 -> 2083 on 2026-09-02
+    # (learnings-v2-delete chunk 02): the digest's read-on-demand line stopped
+    # listing the lookup skill, which is deleted. Charged to both shapes
+    # because the digest is a member of both. A CUT with no addition anywhere in
+    # either shape, and the ceilings below move by the same -2.
+    # framework 3194 -> 3215, product 2085 -> 2102 on 2026-09-02 (#685): the
+    # digest's Enforcement section stated a predicate that stopped being true.
+    # Reflection no longer keys on an active build plan — it keys on "did this
+    # session change judgeable code" — and it grades a shape rather than a
+    # character count. Both halves are here rather than only the first, and that
+    # is the whole spend: a repo whose CLAUDE.md is only the governance anchor
+    # learns what satisfies the gate here or at a blocker, and a blocked turn
+    # costs orders of magnitude more than ~17 tokens a session. The blocker
+    # names the missing lines itself, so this is the cheaper of the two teachers,
+    # not a second copy of it.
+    # MERGED 2026-09-02: Chunk 02's cut and Chunk 03's raise landed together;
+    # the number below is the measured merge (B's delta + C's delta), not either side.
+    "framework": 3213,
+    "product": 2100,
 }
 
 #: Ceilings. HARD, like the per-file prose ceilings in this module and
@@ -1220,8 +1287,22 @@ INJECTED_FOOTPRINT_CEILINGS = {
     # reserve is characters against a harness threshold that no ruling buys past
     # (`tests/test_plugin_methodology_digest.py`'s DIGEST_HEADROOM_RESERVE).
     # Banking headroom in a raisable budget would have protected nothing.
-    "framework": 3198,
-    "product": 2086,
+    # RATCHETED 3198 -> 3196, 2086 -> 2084 (2026-09-02): the digest dropped the
+    # deleted lookup skill from its read-on-demand line. Both ceilings move by
+    # the same -2 as the readings, so the deletion banks nothing.
+    # RAISED 3198 -> 3216, 2086 -> 2103 on 2026-09-02 (#685), by declaration
+    # and with its reason. The addition is a governance PREDICATE that changed,
+    # on the one surface every session receives; there is no version of this
+    # section that is both true and free. Paying in place was considered and
+    # refused: the two shortest cuts available were the Enforcement section's
+    # own "a block names itself" clause (which is the argument for why the
+    # digest need not teach anything else) and CLAUDE.md's compact-instruction
+    # parentheticals (a different subject, and collateral to this change). One
+    # over each reading, so nothing is banked.
+    # MERGED 2026-09-02: Chunk 02's cut and Chunk 03's raise landed together;
+    # the number below is the measured merge (B's delta + C's delta), not either side.
+    "framework": 3214,
+    "product": 2101,
 }
 
 
@@ -1516,10 +1597,18 @@ class TestBuildingMethodology:
         )
 
     def test_references(self):
-        """References subagent briefing, boundary patterns, learnings skill."""
+        """References subagent briefing, boundary patterns, the rules corpus.
+
+        The third assertion named the lookup skill until that skill was
+        deleted. Retargeted rather than dropped: what it pins is that the build
+        cycle tells a builder where this project's rules are, and the answer
+        changed from a lookup command to a path the harness loads. Retargeting
+        keeps the pin on the requirement instead of on the mechanism that
+        happened to satisfy it.
+        """
         assert ".subagent-briefing.md" in self.content
         assert "boundary-patterns.md" in self.content
-        assert "/prawduct:learnings" in self.content
+        assert ".claude/rules/learnings/" in self.content
 
     def test_goal_based_critic(self):
         """References goal-based Critic review."""
@@ -2268,7 +2357,24 @@ class TestBuildingMethodology:
         # pointer's table of contents went with it. The ceiling moves by the
         # same -5 rather than banking it — unratcheted slack is a loan the next
         # edit collects silently and green.
-        assert tokens < 4757, f"building.md is ~{tokens} tokens, should be <4757"
+        # RATCHETED AGAIN 4757 -> 4755 (2026-09-02): the lookup-skill sentences
+        # were rewritten to the harness-loaded model and the `/clear` list
+        # stopped naming a reflections archive that no longer exists. The
+        # ceiling moves by the same -2 the reading did.
+        # RAISED 4757 -> 4790 on 2026-09-02 (#685), by declaration and with its
+        # reason, because neither of the two ways to pay in place was sound
+        # here. The reflection gate stopped keying on an active build plan and
+        # started grading a reflection's shape; this file's "Reflect — now" step
+        # told the builder to write something that gate refuses. The addition is
+        # the shape itself, in the step whose output is graded. Funding it by
+        # cutting elsewhere in this file would have spent a clause defended by
+        # nothing to protect a clause defended by nothing, and funding it by
+        # cutting the shape back down reintroduces the defect. One over the
+        # reading, so nothing is banked and the next addition is under the
+        # standing trim-or-relocate rule with nothing to collect silently.
+        # MERGED 2026-09-02: Chunk 02's cut and Chunk 03's raise landed together;
+        # the number below is the measured merge (B's delta + C's delta), not either side.
+        assert tokens < 4788, f"building.md is ~{tokens} tokens, should be <4788"
 
 
 # =============================================================================
@@ -3513,7 +3619,10 @@ class TestOtherMethodology:
         content = read_file("methodology/planning.md")
         lower = content.lower()
         assert "not a one-time phase" in lower or "isn't a one-time phase" in lower or "continuous" in lower
-        assert "/prawduct:learnings" in content
+        # Named the lookup skill; retargeted when that skill was deleted. The
+        # requirement is unchanged — planning starts from this project's rules —
+        # and only where they live moved.
+        assert ".claude/rules/learnings/" in content
 
     def test_discovery_operationalizes_coverage_expectation(self):
         # Recording structural characteristics is tied to the strategy-class
@@ -4041,7 +4150,7 @@ class TestCriticGoals13:
         #
         # 2265 -> 2272 (2026-09-02) -- the budget gate's two findings are graded
         # here because an ungraded record-lint check reaches a reviewer with no
-        # verdict, which is how `learnings-entry-shape` shipped. Spent from
+        # verdict — a check has shipped in exactly that state. Spent from
         # headroom, not paid: one clause, two check names and a severity, and
         # the rule behind it lives with the check in `review-cycle.md`.
         #
@@ -4056,7 +4165,13 @@ class TestCriticGoals13:
         # became "State every entry" -- the severity is now the rule's, not the
         # sentence's. Net +3, carrying one added check name.
         tokens = estimate_tokens(self.content)
-        assert tokens < 2280, f"goals-1-3.md is ~{tokens} tokens, should be <2280"
+        #
+        # Ceiling 2280 -> 2278 on 2026-09-02 (learnings-v2-delete Chunk 01),
+        # ratcheted by the two tokens the retired entry-shape clause freed.
+        # A cut that leaves the ceiling where it was converts a deletion into a
+        # standing credit the next addition spends without declaring it.
+        tokens = estimate_tokens(self.content)
+        assert tokens < 2278, f"goals-1-3.md is ~{tokens} tokens, should be <2278"
 
     def test_is_self_contained(self):
         """No follow-the-pointer reads at review time — the acceptance criterion
@@ -4471,8 +4586,8 @@ class TestReviewCycle:
         # ceiling, but the explanation of it would have been.
         #
         # 9591 -> 9599 (2026-09-02) -- the budget gate's two rows. An ungraded
-        # record-lint check reaches a reviewer with no verdict, which is how
-        # `learnings-entry-shape` shipped, so a row is not optional. PAID FOR:
+        # record-lint check reaches a reviewer with no verdict, and a check has
+        # shipped in exactly that state, so a row is not optional. PAID FOR:
         # the standalone line-scoping sentence named "the suite-total tripwire"
         # and read as a property of the whole pass -- which the budget check,
         # reading file sizes on a diff that changed no record, contradicts. It
@@ -4492,7 +4607,14 @@ class TestReviewCycle:
         # Net +5.
         content = read_file("skills/critic/review-cycle.md")
         tokens = estimate_tokens(content)
-        assert tokens < 9600, f"review-cycle.md is ~{tokens} tokens, should be <9600"
+        # Ceiling 9600 -> 9571 on 2026-09-02 (learnings-v2-delete Chunk 01),
+        # ratcheted by the 29 tokens the retired entry-shape row freed. Same
+        # rule as the reading above: slack a deletion opens is not headroom.
+        # 9571 -> 9597 on 2026-09-02 (learnings-v2-delete Chunk 04): the Learnings
+        # Cross-Check gained the citation sentence `learning.fired` reads (+26),
+        # funded by Chunk 01's row cut (-29) — the wave nets -3 against the 9600
+        # this ceiling was before the wave, so it lands at 9600-3, ratcheted.
+        assert tokens < 9597, f"review-cycle.md is ~{tokens} tokens, should be <9597"
 
     def test_framework_checks_token_budget(self):
         # Ceiling 1150. This file is `final`/`cumulative` payload: SKILL.md's

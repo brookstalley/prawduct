@@ -714,6 +714,150 @@ def session_changes_all_non_judgeable(
     return not coverage_algebra.judgeable_files(non_metadata)
 
 
+def _session_untracked_paths(
+    project_dir: Path, status_output: "str | None" = None
+) -> list[str]:
+    """Paths this session left UNTRACKED — the porcelain ``??`` lines that are
+    new since the session baseline.
+
+    ``git diff <base-tree>`` cannot see them: an untracked file is in no tree,
+    so a session whose only work is a brand-new module reads as an empty span
+    without this. The baseline subtraction is not re-derived here — membership
+    is tested against :func:`gitstate._get_session_changed_files`, which owns
+    the "new since session start" rule, so a pre-existing untracked file stays
+    pre-existing dirt under both spans rather than under only one of them.
+
+    Git reports an untracked DIRECTORY as one entry with a trailing slash
+    (``newdir/``) rather than its contents; that entry is carried through
+    unchanged, exactly as the porcelain span carries it today.
+    """
+    current = (
+        status_output
+        if status_output is not None
+        else gitstate.git_status_output(project_dir)
+    )
+    if current is None:
+        return []
+    session_new = set(gitstate._get_session_changed_files(project_dir, current))
+    paths: list[str] = []
+    for line in current.splitlines():
+        if not line.startswith("??"):
+            continue
+        parsed = gitstate.parse_porcelain_line(line)
+        if parsed and parsed[2] in session_new:
+            paths.append(parsed[2])
+    return paths
+
+
+def session_work_span(
+    project_dir: Path, status_output: "str | None" = None
+) -> dict:
+    """What this session CHANGED, committed work included.
+
+    ``{"changed": [non-metadata paths], "judgeable": bool, "source": str}``.
+
+    The span is the ``.session-base-tree`` marker (the ``HEAD^{tree}`` recorded
+    at session start) against the WORKING TREE, so a session that commits its
+    work is still holding that work — which the porcelain span, empty the
+    moment you commit, is not. ``judgeable`` is
+    ``coverage_algebra.judgeable_files`` over the non-metadata paths: the one
+    judgeability predicate, never a second copy of it.
+
+    ``source`` says which span answered, and it is part of the contract rather
+    than debug colour — a caller that blocks on this owes the operator the
+    difference between "nothing changed" and "this reader could not tell".
+    ``"base-tree"`` is the real answer; ``"porcelain"`` is the degraded one,
+    returned whenever the marker is missing, malformed, or git will not diff
+    it. Degrading to porcelain SHRINKS this predicate's jurisdiction to
+    uncommitted work — it never widens it — which is the direction authority
+    must fail in.
+
+    **Cost bound: at most one ``git status`` and one ``git diff``, and no
+    temp-index capture.** This runs on every Stop, which is every turn.
+    ``evidence.capture_tree`` — which writes an index file and walks the whole
+    tree — is deliberately not used: it belongs to the review data plane, whose
+    callers run once per review rather than once per turn. ``status_output`` is
+    the porcelain snapshot ``cmd_stop`` already holds; pass it and the
+    ``git status`` is free too, leaving exactly the one ``git diff``. The
+    snapshot is taken ONCE here and threaded into both readers below, because
+    each of them would otherwise spawn its own.
+
+    Never raises: every failure it can reach is a returned degraded span.
+    """
+    prawduct_dir = gitstate.get_prawduct_dir(project_dir)
+    snapshot = (
+        status_output
+        if status_output is not None
+        else gitstate.git_status_output(project_dir)
+    )
+    porcelain = [
+        f
+        for f in gitstate._get_session_changed_files(project_dir, snapshot)
+        if not gitstate._is_metadata_path(f)
+    ]
+
+    def _span(changed: list[str], source: str) -> dict:
+        return {
+            "changed": changed,
+            "judgeable": bool(coverage_algebra.judgeable_files(changed)),
+            "source": source,
+        }
+
+    base = _read_session_base_tree(prawduct_dir)
+    if not base or not gitstate.is_object_id(base):
+        return _span(porcelain, "porcelain")
+    # `-z` for the same reason `evidence.tree_diff` uses it: `--name-only`
+    # honours `core.quotepath`, so a non-ASCII filename comes back C-quoted and
+    # would be classified on a spelling that is not the path.
+    rc, out, _err = evidence.run_git(project_dir, "diff", "--name-only", "-z", base)
+    if rc != 0:
+        return _span(porcelain, "porcelain")
+    changed = [p for p in out.split("\0") if p]
+    changed += [
+        p for p in _session_untracked_paths(project_dir, snapshot) if p not in changed
+    ]
+    return _span([f for f in changed if not gitstate._is_metadata_path(f)], "base-tree")
+
+
+#: The two lines a reflection must carry, and the words the blocker uses for
+#: each. A reflection is graded on SHAPE because length graded nothing: the
+#: floor it replaces passed any fifty characters, so "did the chunk, tests
+#: green" scored the same as a reflection that found a root cause.
+#:
+#: Substring tests, case-insensitive, anywhere in the text — deliberately the
+#: weakest check that can tell the two shapes apart. Anything stronger is
+#: prose-parsing, which `docs/norms.md` § Deliberate Non-Design forbids, and
+#: which would grade an agent's phrasing rather than whether it did the work.
+_REFLECTION_EXPECTED_VS_ACTUAL = (
+    'what you expected vs. what actually happened (the words "expected" and '
+    '"actual")'
+)
+_REFLECTION_ROOT_CAUSE = (
+    'the root cause when something went wrong, or "no defect" when nothing did'
+)
+_REFLECTION_CAUSE_TOKENS = ("root cause", "root-cause", "no defect")
+
+
+def reflection_shape(text: str) -> "tuple[bool, list[str]]":
+    """``(ok, missing)`` for a session reflection's SHAPE.
+
+    ``ok`` when the text names both what was expected and what was actual, AND
+    either a root cause or its explicit absence. ``missing`` names each absent
+    line in the wording the reflection blocker prints, so the operator reads
+    one phrasing wherever they meet it rather than two that drifted.
+
+    Never raises: a non-string (a caller that read nothing) is treated as empty
+    text, which is the maximally-missing answer and the one that blocks.
+    """
+    lowered = (text or "").lower() if isinstance(text, str) else ""
+    missing: list[str] = []
+    if "expected" not in lowered or "actual" not in lowered:
+        missing.append(_REFLECTION_EXPECTED_VS_ACTUAL)
+    if not any(token in lowered for token in _REFLECTION_CAUSE_TOKENS):
+        missing.append(_REFLECTION_ROOT_CAUSE)
+    return not missing, missing
+
+
 def _cached_diff_fn(project_dir: Path):
     """A ``coverage_algebra.DiffFn`` that memoizes ``evidence.tree_diff`` per
     gate invocation.
@@ -1796,7 +1940,7 @@ def _cumulative_critic_verdict(project_dir: Path, read: dict, cache) -> int:
     if churn is not None and churn.get("status") == "unavailable":
         # A degraded advisory that says nothing is indistinguishable from one
         # that found nothing, and the builder then runs the round this control
-        # exists to prevent with no record that it never ran (learnings.md:
+        # exists to prevent with no record that it never ran (core.md:
         # "'Advice fails soft' is not 'advice fails silent'").
         print(
             f"NOTE: the fix-churn diagnosis could not run ({churn['reason']}) — "

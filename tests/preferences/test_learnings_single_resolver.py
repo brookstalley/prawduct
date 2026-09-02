@@ -42,105 +42,31 @@ WAVES = {"wave-1", "wave-2", "wave-3", "none"}
 
 #: path (repo-relative, posix) -> (wave that removes the entry, why it is here).
 #:
-#: Derived on 2026-09-02 from `git grep -l 'learnings.md' -- plugin` after Chunk
-#: 01, classified against discovery R4/R5 (Wave 1), R6 (Wave 2) and R8/R13
-#: (Wave 3). Seven entries are marked `wave-2` on the strength of §9's
-#: **grep-clean sweep** rather than a named R6 deliverable: they are prose
-#: citations and skill instructions that name the old path, nobody's chunk lists
-#: them, and the sweep is the only mechanism the plan gives for them. They are
-#: called out here rather than quietly filed so the sweep's owner knows they are
-#: on it.
+#: Derived from `git grep -l 'learnings.md' -- plugin`, classified against
+#: discovery R4/R5 (Wave 1), R6 (Wave 2) and R8/R13 (Wave 3). Re-derive it with
+#: that command rather than trusting this list's shape; the list only shrinks, so
+#: a path the command returns that is not below is a new hardcoding, and a path
+#: below that it does not return is an entry a landed wave forgot to remove.
+#:
+#: Wave 2 emptied every entry that held only a *prose citation* of the old path —
+#: docstring rule-citations, the skill instructions naming what init/migrate
+#: write, and the subagent-briefing embedding. What is left names the corpus for
+#: a reason a reader can check in the file itself.
 ALLOWLIST: dict[str, tuple[str, str]] = {
-    # --- Wave 1, Chunk 04 (W1-C): detection, directive, cross-check re-pointed
-    "plugin/lib/briefing.py": (
-        "wave-2",
-        "the `.subagent-briefing.md` learnings embedding (Wave 2 removes it); "
-        "the count line and size nudge already went in Chunk 04",
-    ),
-    "plugin/lib/gates.py": (
-        "wave-2",
-        "one docstring rule-citation naming learnings.md as its source; the "
-        "cross-check text itself was repointed in Chunk 04 (grep-clean sweep)",
-    ),
-    "plugin/skills/critic/review-cycle.md": (
-        "wave-2",
-        "the `learnings-entry-shape` severity row, which goes with its check in "
-        "Wave 2; the cross-check scan itself was repointed in Chunk 04",
-    ),
     # --- Wave 2 (`learnings-v2-delete`), R6: whole-feature deletions
-    "plugin/lib/audit_learnings_cmd.py": (
-        "wave-2",
-        "R6 — the lifecycle audit command is deleted whole",
-    ),
-    "plugin/lib/learnings_obligation.py": (
-        "wave-2",
-        "R6 — the descent-obligation marker mechanism is deleted whole "
-        "(the obligation itself now ships in learnings_files.CORE_HEADER)",
-    ),
     "plugin/lib/record_lint.py": (
-        "wave-2",
-        "R6 — `_check_learnings_shape` and its `learnings-entry-shape` finding "
-        "are deleted; Wave 1's budget check replaces them",
-    ),
-    "plugin/lib/buildplan_refs.py": (
-        "wave-2",
-        "R6 — the `/prawduct:learnings` slash-command resolution goes with the "
-        "skill",
+        "none",
+        "`_base_size`'s migration-commit exception reads the legacy file's size "
+        "as `core.md`'s base, so a repo crossing that tree is not graded as "
+        "having grown a 0B corpus; it retires with legacy detection, alongside "
+        "`learnings_files.LEGACY_REL` and outside this program",
     ),
     "plugin/bin/prawduct-hook": (
-        "wave-2",
-        "R6 — the removed verbs (`audit-learnings`, `check-learnings-pairing`, "
-        "`learnings-obligation`) and the reflection gate's 'also add it to "
-        "learnings.md' nudge text",
-    ),
-    "plugin/skills/learnings/SKILL.md": (
-        "wave-2",
-        "R6 — the `/prawduct:learnings` skill directory is deleted whole",
-    ),
-    "plugin/skills/doctor/SKILL.md": (
-        "wave-2",
-        "R6 — health checks 13/13a and the audit-learnings flow go with their "
-        "commands",
-    ),
-    # --- Wave 2, via §9's grep-clean sweep (no named R6 deliverable)
-    "plugin/lib/coverage.py": (
-        "wave-2",
-        "grep-clean sweep (§9): three docstring citations of the form "
-        "``(learnings.md: \"…\")`` naming the file a rule came from",
-    ),
-    "plugin/lib/telemetry.py": (
-        "wave-2",
-        "grep-clean sweep (§9): two docstring citations naming the file a rule "
-        "came from",
-    ),
-    "plugin/lib/evidence.py": (
-        "wave-2",
-        "grep-clean sweep (§9): one docstring citation naming the file a rule "
-        "came from",
-    ),
-    "plugin/lib/critic_consolidate.py": (
-        "wave-2",
-        "grep-clean sweep (§9): one docstring citation naming the file a rule "
-        "came from",
-    ),
-    "plugin/lib/coverage_algebra.py": (
-        "wave-2",
-        "grep-clean sweep (§9): the comment listing the `.prawduct/` records "
-        "repo-coupled tests also read — a real path list, so it moves with the "
-        "corpus",
-    ),
-    "plugin/skills/janitor/SKILL.md": (
-        "wave-2",
-        "grep-clean sweep (§9): 'capture learnings in .prawduct/learnings.md'",
-    ),
-    "plugin/skills/onboard/SKILL.md": (
-        "wave-2",
-        "grep-clean sweep (§9): the enumerated list of what init-product writes",
-    ),
-    "plugin/skills/migrate/SKILL.md": (
-        "wave-2",
-        "grep-clean sweep (§9): the enumerated list of product-owned state the "
-        "migration preserves (R11 names this file's `learnings*.md` handling)",
+        "none",
+        "`cmd_learnings_migrate`'s docstring names the legacy path because "
+        "reading it IS that command's job (it retires with the migrate module, "
+        "outside this program), and the three deprecated-inert lifecycle stubs "
+        "say in their notices that there is no learnings.md left to grade",
     ),
     # --- Wave 3 (`learnings-v2-docs`)
     "plugin/methodology/reflection.md": (
