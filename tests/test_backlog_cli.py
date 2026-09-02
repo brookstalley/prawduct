@@ -497,6 +497,41 @@ class TestNewFieldFlagsCli:
     def test_the_help_names_all_three_new_flags(self):
         for flag in ("--tags", "--affected", "--working-branch", "--tag T"):
             assert flag in cli._HELP, flag
+class TestBlockFieldFlagsCli:
+    """The block-field flags reach `core` through the front (#550).
+
+    `core` is covered directly in test_backlog_core.py; what these pin is the
+    wiring — that each flag is *parsed* rather than rejected as unknown, since a
+    flag missing from the `valued`/`boolean` sets is exactly how these writes were
+    unreachable in the first place.
+    """
+
+    def _body_of(self, fake, item_id):
+        owner_repo, number = item_id.split("#")
+        owner, repo = owner_repo.split("/")
+        return fake.get_issue(owner, repo, int(number))["body"]
+
+    @pytest.mark.parametrize("flag,value", [
+        ("--refs", "documentation/x.md"),
+        ("--revisit", "2027-01-01"),
+        ("--closed-by", "fix/some-branch"),
+    ])
+    def test_each_valued_block_flag_parses_and_writes(self, capsys, flag, value):
+        fake = FakeGitHub()
+        item_id = _file(fake, capsys)
+        code, out, err = _run(["update", item_id, flag, value, "--json"], fake, capsys)
+        assert code == 0
+        assert f"{flag[2:]}: {value}" in self._body_of(fake, item_id)
+
+    def test_file_refs_flag_parses(self, capsys):
+        fake = FakeGitHub()
+        code, out, err = _run(
+            ["file", "--repo", REPO, "--title", "cli: the refs item under test", "--body", "b",
+             "--refs", "documentation/x.md", "--json"],
+            fake, capsys,
+        )
+        assert code == 0
+        assert "refs: documentation/x.md" in self._body_of(fake, json.loads(out)["data"]["id"])
 
 
 class TestCommentCli:
@@ -644,3 +679,69 @@ class TestSyncCli:
         code, _out, _err = _run(["sync"], fake, capsys)
 
         assert code == 2
+class TestUpdateRefusesAStrayPositional:
+    """`update` must not silently ignore a second positional (#550, cumulative R-15).
+
+    The arrival that matters is `update <id> status=shipped` — the markdown
+    spelling still instructed by `skills/pr` and the Critic's review-cycle. It
+    parsed as a stray positional `_run_update` dropped: exit 0, nothing written,
+    no diagnostic. A wrong result with a success code is worse than any error,
+    because nothing prompts the caller to look.
+    """
+
+    def test_a_field_value_positional_is_rejected(self, capsys):
+        fake = FakeGitHub()
+        item_id = _file(fake, capsys)
+        code, out, err = _run(
+            ["update", item_id, "status=shipped", "--json"], fake, capsys
+        )
+        assert code == 2
+        assert "named flags" in json.loads(out)["error"]["message"]
+
+    def test_the_stray_argument_writes_nothing(self, capsys):
+        # The exit code is not the property that matters — that nothing was
+        # written is.
+        fake = FakeGitHub()
+        item_id = _file(fake, capsys)
+        owner_repo, number = item_id.split("#")
+        owner, repo = owner_repo.split("/")
+        before = fake.get_issue(owner, repo, int(number))["body"]
+        _run(["update", item_id, "status=shipped", "--json"], fake, capsys)
+        assert fake.get_issue(owner, repo, int(number))["body"] == before
+
+    def test_the_single_positional_form_still_works(self, capsys):
+        fake = FakeGitHub()
+        item_id = _file(fake, capsys)
+        code, _, _ = _run(["update", item_id, "--refs", "docs/x.md", "--json"], fake, capsys)
+        assert code == 0
+
+
+class TestExtraPositionalHintIsConditional:
+    """The stray-positional error must name the RIGHT likely cause.
+
+    Blaming `--reviewed` unconditionally misleads the other common arrival —
+    `update <id> status=shipped`, the markdown spelling still instructed by
+    skills/pr and the Critic's review-cycle. Both arms are pinned, because with
+    only the `--reviewed` arm tested, reverting the conditional leaves the suite
+    green and the wrong-cause message comes straight back.
+    """
+
+    def test_reviewed_arm_names_reviewed(self, capsys):
+        fake = FakeGitHub()
+        item_id = _file(fake, capsys)
+        code, out, _ = _run(
+            ["update", item_id, "--reviewed", "2020-01-01", "--json"], fake, capsys
+        )
+        assert code == 2
+        assert "--reviewed" in json.loads(out)["error"]["message"]
+
+    def test_non_reviewed_arm_does_not_blame_reviewed(self, capsys):
+        fake = FakeGitHub()
+        item_id = _file(fake, capsys)
+        code, out, _ = _run(
+            ["update", item_id, "status=shipped", "--json"], fake, capsys
+        )
+        assert code == 2
+        message = json.loads(out)["error"]["message"]
+        assert "--reviewed" not in message, "the wrong cause is named"
+        assert "named flags" in message, "the right cause is not named"

@@ -43,6 +43,25 @@ legitimate roadmap (``--like``) and skill-frontmatter flags, and a probe that
 misfires trains its reader to ignore the one real catch (`docs/norms.md`, and the
 same reasoning `tests/preferences/test_no_upstream_content_egress.py` gives for
 scoping). Extend the vocabularies below when a new safety mechanism is coined.
+
+The phantom-CAPABILITY half (added #550) carries **two blind spots of its own**,
+stated here rather than only beside the code:
+
+- **Shape, not paraphrase.** It matches a command form (``update <id> foo=bar``)
+  and a verb-led prose form ("set ``foo:`` to …"). It does not match arbitrary
+  wording. A real miss it did not catch: *"write it into the metadata bar as
+  ``closed-by: <ref>``"* — backwards for the Issues backend, where the block IS
+  the body — because the backtick span holds a value as well as a key. Widening
+  to value-bearing spans was tried and rejected: `` `key: value` `` matches
+  ordinary documentation constantly.
+- **Backend scoping is heuristic.** ``SKILL.md`` documents both backends, and the
+  writable set is the Issues adapter's, so a markdown-legitimate write
+  (``accepted-by:``, ``added:``) would read as a phantom. The exemption is the
+  word "markdown" within ``_MARKDOWN_WINDOW`` characters *before* the write —
+  adjacency, not line-wide, because line-wide exempted ten mixed-backend lines
+  outright. A markdown-scoped write further from that word than the window still
+  reports, and a doc restructure that separates the scope from the instruction
+  will need this revisited.
 """
 
 from __future__ import annotations
@@ -471,13 +490,13 @@ def test_the_prawduct_block_is_declared_adapter_owned_and_off_limits():
 # --- a close records no scope, and no surface may say it does ----------------
 
 
-def _status_valued_flags() -> set[str]:
-    """The flags `status` actually parses, read off `_run_status`'s own
-    `_parse_flags(valued=…)` call. Derived rather than typed here so the day the
-    op learns `--closed-by` this check stands down by itself."""
+def _handler_valued_flags(handler: str) -> set[str]:
+    """The flags ``handler`` actually parses, read off its own
+    `_parse_flags(valued=…)` call. Derived rather than typed here so the day an
+    op learns `--closed-by` the checks below stand down by themselves."""
     tree = ast.parse(CLI_PATH.read_text(encoding="utf-8"))
     for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef) and node.name == "_run_status":
+        if isinstance(node, ast.FunctionDef) and node.name == handler:
             for inner in ast.walk(node):
                 if (
                     isinstance(inner, ast.Call)
@@ -491,9 +510,25 @@ def _status_valued_flags() -> set[str]:
                                 if isinstance(elt, ast.Constant)
                             }
     raise AssertionError(
-        "`_run_status` no longer parses its flags through `_parse_flags(valued=…)`; "
+        f"`{handler}` no longer parses its flags through `_parse_flags(valued=…)`; "
         "this check reads that call to learn what a close can record"
     )
+
+
+def _close_scope_route() -> str | None:
+    """The op through which a ship handle can actually be stored, or ``None``.
+
+    Two routes are legitimate and the adapter has moved between them: `status`
+    learning `--closed-by`, or `update` learning it (which is what #550 did —
+    the close stays a pure state transition and the handle is a block write).
+    Derived from the CLI either way, so a surface's claim is graded against the
+    op set that exists rather than against the one that existed when the guard
+    was written."""
+    if "closed-by" in _handler_valued_flags("_run_status"):
+        return "status"
+    if "closed-by" in _handler_valued_flags("_run_update"):
+        return "update"
+    return None
 
 
 _CLOSED_BY_CLAIMS = (
@@ -507,9 +542,9 @@ def test_no_surface_claims_a_close_records_the_closed_by_scope():
     op it routes to has nowhere to put it: the scope is dropped, silently. The
     code has always been honest — `set_status` records the deferral in its own
     docstring — so this pins the only layer that overstated it, against the flag
-    set the op really parses."""
-    if "closed-by" in _status_valued_flags():
-        return  # the op learned the flag; the claim is then true
+    set the ops really parse."""
+    if _close_scope_route() is not None:
+        return  # some op learned the flag; the claim is then true
 
     def _find(line: str):
         hits = [m.start() for p in _CLOSED_BY_CLAIMS if (m := p.search(line))]
@@ -519,7 +554,7 @@ def test_no_surface_claims_a_close_records_the_closed_by_scope():
     assert not offenders, (
         "a backlog instruction surface says a close records `closed_by`. The "
         "`status` op parses only "
-        f"{sorted(_status_valued_flags())}, so a `closed-by=<scope>` argument is "
+        f"{sorted(_handler_valued_flags('_run_status'))}, so a `closed-by=<scope>` argument is "
         "dropped — and a caller told otherwise loses the traceability it asked "
         "for without ever seeing a failure. Say the scope is not recorded, and "
         "where to put it instead.\n  - " + "\n  - ".join(offenders)
@@ -663,6 +698,325 @@ def test_the_router_states_what_a_close_does_with_the_scope_on_each_backend():
         "qualifier — on the Issues backend the op parses only --repo and --to, so the "
         "scope is dropped in silence"
     )
-    assert "comment" in clause.lower(), (
-        "the router names no route for the scope on the backend that cannot store it"
+    # The required route is whatever the CLI actually offers, not a literal from
+    # the day this guard was written: with no write path the honest answer was
+    # "leave it as a comment"; with `update --closed-by` it is that op. Deriving
+    # it means the day the route moves again, the guard follows instead of
+    # pinning the router to a stale remedy.
+    route = _close_scope_route()
+    required = f"{route} <id> --closed-by" if route else "comment"
+    assert required in clause, (
+        f"the router names no route for the scope on the Issues backend — expected "
+        f"it to point at `{required}`"
     )
+# --- Phantom CAPABILITIES (the sibling class of phantom guards) --------------
+#
+# Everything above catches an instruction surface promising a *safety mechanism*
+# the adapter lacks. This section catches the sibling: a surface instructing the
+# model to WRITE A FIELD no exposed op can write. Same defect shape — prose
+# describing an adapter that does not exist — and the reason it needed its own
+# check is that the guards above are scoped, by their own docstring, to "the
+# mutation-safety family", so a capability claim sailed straight through them.
+#
+# It went unnoticed for the whole GitHub-Issues cutover (#550). The importer
+# preserves every metadata key verbatim as a block field, one-way, while the
+# ongoing write surface covered only facets, title and body — so `refs`,
+# `reviewed`, `closed-by` and `accepted-by` were instructed but unwritable, and
+# `update --body` made it look like it worked by returning ok and discarding the
+# edit.
+#
+# The writable set is DERIVED, never listed here: a hand-kept list is a snapshot
+# of what someone thought of, and drifts silently the moment the CLI changes.
+#
+# HONEST LIMIT, stated rather than implied (Principle 5) — same discipline as the
+# mutation-safety half above. This catches two SHAPES of field-write instruction:
+# a command form (`update <id> foo=bar`) and a verb-led prose form
+# ("set `foo:` to …"). It does not catch arbitrary paraphrase. A real example it
+# misses: "write it into the metadata bar as `closed-by: <ref>`" — the backtick
+# span holds a value as well as the key, so the prose pattern does not fire. That
+# sentence was fixed by hand, not by this guard. Widening the value-tolerant case
+# was tried and rejected: `` `key: value` `` spans match ordinary documentation
+# prose constantly, and a check that cries wolf trains its reader to skip the one
+# real catch — the failure this module's own docstring warns about.
+#
+# There is a SECOND blind spot, and it is not restated here so the two cannot
+# drift apart: backend scoping is heuristic (the `markdown` adjacency window
+# below). Both are written out together in the module docstring — read that
+# before trusting a green run to mean "no phantom capability is instructed".
+
+# Fields with no flag of their own because a dedicated op owns them — writing
+# them through `update` would bypass that op's invariants (atomic take-and-
+# verify, edge symmetry, redirect-before-close). Curated for the same reason
+# IMPLEMENTED_ADAPTER_GUARDS is: an unknown name must be unbacked BY DEFAULT, so
+# adding one is a deliberate review moment rather than a heuristic's guess.
+OP_OWNED_FIELDS: frozenset[str] = frozenset({
+    "status",         # `status --to`
+    "assignee",       # native/protected — no prawduct write path sets it at all
+    "claimed_at",     # retired with the claim mechanism; `working-branch` replaced it
+    "related",        # `link` / `unlink`
+    "superseded_by",  # `merge`
+})
+
+# Tokens that match the `field=value` shape without being item fields at all.
+_NOT_ITEM_FIELDS: frozenset[str] = frozenset({
+    "repo", "to", "edge", "from", "archive", "restructure", "plan", "out",
+    "limit", "page", "per-page", "sort", "direction", "state", "assignee-filter",
+    "type", "scope", "chunks", "id", "key", "value", "name", "owner",
+    # Syntax placeholders, not field names: the `update` heading is literally
+    # spelled `update PFX-XXXX <field=value>`.
+    "field",
+})
+
+# "set `refs:` …" / "stamp `reviewed:` …" — a field write asserted in prose.
+_PROSE_FIELD_WRITE = re.compile(
+    r"\b(?:set|sets|setting|stamp|stamps|record|records|write|writes)\b[^.\n]{0,80}?"
+    r"`(?P<f>[a-z][a-z0-9_-]*):`"
+)
+# "update <id> closed-by=<scope>" — a field write asserted as a command form.
+_COMMAND_FIELD_WRITE = re.compile(r"(?<![\w-])(?P<f>[a-z][a-z0-9_-]{2,})=")
+_UPDATE_FORM = re.compile(r"\bupdate\b\s+(?:`)?(?:PFX-XXXX|<id>|&lt;id&gt;)")
+
+
+def _writable_field_names() -> frozenset[str]:
+    """Every field name the adapter can actually write, derived from the CLI.
+
+    A flag reaches `_parse_flags` only as a real string literal in its `valued=`
+    / `boolean=` set, so the CLI's non-docstring literals ARE the flag
+    vocabulary — the same authoritative signal `_cli_string_literals` already
+    relies on for evasion 1, reused rather than re-derived.
+    """
+    return frozenset(_cli_string_literals()) | OP_OWNED_FIELDS
+
+
+# SKILL.md is the DUAL-BACKEND file, and the writable set derived above is the
+# Issues adapter's. A line that explicitly scopes itself to the markdown backend
+# is therefore judged against the wrong vocabulary: `accepted-by:`, `closes:` and
+# `added:` are legitimate markdown metadata-bar writes and phantom Issues ones.
+# Today nothing false-positives, but only by luck of phrasing — so scope it
+# rather than wait for the misfire (cumulative R-8).
+#
+# Deliberately a NAMED-BACKEND check, not a heuristic: the prose has to say
+# "markdown" to be exempt, which keeps the default "this is an Issues claim" and
+# makes the exemption visible in the text a reader is already looking at.
+#
+# ADJACENCY, not line-wide — the same correction `_is_denied` already carries for
+# negations, and for the same reason. A line-wide test exempted TEN SKILL.md
+# lines outright, including the ~1,300-char `update` paragraph and the Issues
+# claim rule: both mention markdown *somewhere* while stating Issues-side
+# behaviour, and both are precisely where a future phantom Issues capability
+# would land. Scoping to a window means a mixed-backend line still gets scanned,
+# and only the clause actually next to the word "markdown" is exempt.
+_MARKDOWN_WINDOW = 90
+_MARKDOWN_SCOPED = re.compile(r"\bmarkdown\b", re.I)
+
+
+def _is_markdown_scoped(line: str, match_start: int) -> bool:
+    """True when 'markdown' sits close enough before this write to be scoping it."""
+    window = line[max(0, match_start - _MARKDOWN_WINDOW) : match_start]
+    return bool(_MARKDOWN_SCOPED.search(window))
+
+
+def _instructed_field_writes(surfaces=None) -> list[tuple[str, str]]:
+    """``(field, "path:lineno: line")`` for every field write an instruction asserts."""
+    found: list[tuple[str, str]] = []
+    for surface in surfaces if surfaces is not None else SURFACES:
+        for lineno, line in enumerate(
+            surface.read_text(encoding="utf-8").splitlines(), 1
+        ):
+            if not _in_adapter_context(surface, line):
+                continue
+            # A negation adjacent to the verb makes the clause a PROHIBITION, not
+            # an instruction — "Never hand-write a `prawduct:` block" is the
+            # surface doing the right thing, and flagging it is the cry-wolf
+            # failure this module's docstring warns about. Same window and same
+            # helper the mutation-safety half already uses, so the two agree.
+            names = {
+                m.group("f")
+                for m in _PROSE_FIELD_WRITE.finditer(line)
+                if not _is_markdown_scoped(line, m.start())
+                and not _is_denied(line, m.start())
+            }
+            if _UPDATE_FORM.search(line):
+                names |= {
+                    m.group("f")
+                    for m in _COMMAND_FIELD_WRITE.finditer(line)
+                    if not _is_markdown_scoped(line, m.start())
+                    and not _is_denied(line, m.start())
+                }
+            # `relative_to` raises for a path outside PLUGIN, which the
+            # discrimination fixtures below deliberately are.
+            try:
+                rel = surface.relative_to(PLUGIN).as_posix()
+            except ValueError:
+                rel = surface.name
+            for name in sorted(names - _NOT_ITEM_FIELDS):
+                found.append((name, f"{rel}:{lineno}: {line.strip()[:110]}"))
+    return found
+
+
+def test_surfaces_instruct_no_unwritable_field():
+    """A surface must not tell the model to set a field no op can write.
+
+    The phantom-CAPABILITY class. `update --body` accepts an edited block and
+    silently discards it (`_body_update_preserving_block` re-appends the old one
+    by design), so an instruction to set an unwritable field does not fail — it
+    reports success and changes nothing, which is the worst available outcome.
+    """
+    writable = _writable_field_names()
+    offenders = [
+        where for field, where in _instructed_field_writes() if field not in writable
+    ]
+    assert not offenders, (
+        "A backlog instruction surface tells the model to set a field the adapter "
+        "cannot write. `update` writes only its declared flags; everything else in "
+        "the prawduct: block is import-only, and a --body edit carrying the field "
+        "is silently discarded. Either add the flag (lib/backlog/cli.py + core.py) "
+        "or redirect the instruction to the op that owns the field (#550).\n  - "
+        + "\n  - ".join(offenders)
+    )
+
+
+def test_the_capability_guard_actually_discriminates(tmp_path):
+    """The guard must FAIL on a surface claiming an unwritable field.
+
+    Without this, the check above passes just as happily when its regexes match
+    nothing at all — and a guard that cannot fail is indistinguishable from one
+    that is working. `added` is the fixture's phantom because it is a real block
+    field that is deliberately NOT writable (native `created_at` answers it), so
+    the fixture tests the actual predicate rather than a nonsense token.
+    """
+    fixture = tmp_path / "SKILL.md"
+    fixture.write_text(
+        "Run `prawduct-hook backlog update <id>` and always set `added:` to today.\n",
+        encoding="utf-8",
+    )
+    caught = [
+        f for f, _ in _instructed_field_writes([fixture])
+        if f not in _writable_field_names()
+    ]
+    assert "added" in caught, (
+        "the phantom-capability guard did not flag a surface instructing an "
+        "unwritable field — it is matching nothing and would pass on a real one"
+    )
+
+
+def test_the_capability_guard_does_not_flag_a_writable_field(tmp_path):
+    """The other half: it must stay silent on a field that IS writable, or the
+    real check would be noise the next reader learns to ignore."""
+    fixture = tmp_path / "SKILL.md"
+    fixture.write_text(
+        "Run `prawduct-hook backlog update <id>` and set `refs:` to the design doc.\n",
+        encoding="utf-8",
+    )
+    assert [
+        f for f, _ in _instructed_field_writes([fixture])
+        if f not in _writable_field_names()
+    ] == []
+
+
+# --- The prose enumeration must match the derived set ------------------------
+
+# Bounded at the SENTENCE, not the line: the surrounding paragraph goes on to
+# discuss `--body` (which is a real flag, but not a block field), and a
+# to-end-of-line span swept it in and reported a disagreement that was the
+# regex's fault rather than the prose's. A false alarm here is worse than none —
+# it is the "probe that misfires trains its reader to ignore it" failure this
+# module's own docstring names.
+_WRITABLE_PROSE = re.compile(r"block fields are writable[^.]*")
+
+
+def test_skill_prose_field_list_matches_the_derived_writable_set():
+    """SKILL.md states the writable block fields in prose; that list must be true.
+
+    The guards above check that no instruction names an UNWRITABLE field. They do
+    not check the converse — a sentence enumerating "only these are writable"
+    carries a closed-world claim, and nothing binds it to the CLI. Add a fifth
+    flag and that sentence becomes silently false, which is precisely the drift
+    class this whole file exists to close, one level up (cumulative R-7).
+
+    The expected set is DERIVED from the three write-surface tuples in `core`,
+    never restated here — restating it would reproduce the defect inside its own
+    guard.
+    """
+    import sys
+
+    if str(PLUGIN) not in sys.path:
+        sys.path.insert(0, str(PLUGIN))
+    from lib.backlog import core  # noqa: PLC0415 — path set above
+
+    expected = {
+        f"--{name}"
+        for name in core._UPDATE_BLOCK + core._UPDATE_BLOCK_FIELDS + core._UPDATE_MULTI_FACETS
+    }
+    skill = (PLUGIN / "skills" / "backlog" / "SKILL.md").read_text(encoding="utf-8")
+    claims = _WRITABLE_PROSE.findall(skill)
+    assert claims, (
+        "SKILL.md no longer states which block fields are writable — if the "
+        "sentence moved, retarget this guard; if it was deleted, the skill lost "
+        "the one place a reader learns the write surface"
+    )
+    for claim in claims:
+        named = set(re.findall(r"`(--[a-z-]+)`", claim))
+        assert named == expected, (
+            f"SKILL.md's writable-field list {sorted(named)} disagrees with the "
+            f"adapter's actual set {sorted(expected)} — update the prose, or the "
+            "closed-world claim 'only these are writable' is false"
+        )
+
+
+def test_a_markdown_scoped_line_is_exempt_but_an_issues_one_is_not(tmp_path):
+    """R-8's scoping must cut exactly one way.
+
+    A markdown-backend line naming `added:` is legitimate; the identical claim
+    without that scope is a phantom Issues capability. Both directions are pinned
+    because an exemption that swallows the unscoped case would silently disable
+    the guard for every line that happens to say "markdown".
+    """
+    exempt = tmp_path / "a.md"
+    exempt.write_text(
+        "Run `prawduct-hook backlog update <id>`. On the markdown backend, set `added:` to today.\n",
+        encoding="utf-8",
+    )
+    assert [f for f, _ in _instructed_field_writes([exempt])] == []
+
+    caught = tmp_path / "b.md"
+    caught.write_text(
+        "Run `prawduct-hook backlog update <id>` and set `added:` to today.\n",
+        encoding="utf-8",
+    )
+    assert "added" in [f for f, _ in _instructed_field_writes([caught])]
+
+
+def test_a_mixed_backend_line_is_still_scanned(tmp_path):
+    """R-8's exemption must be adjacency-scoped, not line-wide.
+
+    SKILL.md's real lines state markdown and Issues behaviour in one long
+    paragraph. A line-wide exemption left ten of them — including the `update`
+    paragraph and the claim rule, exactly where a phantom Issues capability would
+    land — entirely unscanned. This pins the shape that actually occurs, not just
+    the short synthetic one.
+    """
+    mixed = tmp_path / "SKILL.md"
+    mixed.write_text(
+        "Run `prawduct-hook backlog update <id>`. On the markdown backend the bar "
+        "carries `accepted-by:`; on this backend the block is the body, there is no "
+        "metadata bar, and the ship handle rides along. Always set `added:` to today "
+        "so the sweep can rank it.\n",
+        encoding="utf-8",
+    )
+    caught = [
+        f for f, _ in _instructed_field_writes([mixed])
+        if f not in _writable_field_names()
+    ]
+    assert "added" in caught, (
+        "a field write far from the word 'markdown' was exempted anyway — the "
+        "scope is line-wide again, and the mixed-backend lines that make up most "
+        "of SKILL.md are unscanned"
+    )
+    # NOT asserting `accepted-by` is absent here: the fixture's verb ("carries")
+    # is not in `_PROSE_FIELD_WRITE`'s list and there is no `foo=` form, so that
+    # field can never be emitted from this line — the assertion would pass with
+    # the exemption present, absent, or inverted. Vacuous, so it is gone; the
+    # exempt direction is genuinely covered by
+    # `test_a_markdown_scoped_line_is_exempt_but_an_issues_one_is_not`, whose
+    # fixture uses a real write verb.

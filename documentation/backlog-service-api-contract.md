@@ -381,6 +381,16 @@ Authn/authz live in the Security Model; this names the **API-boundary** failure 
   partial exception is **`working_branch`**, whose *referent* is checked at the write (the branch
   must exist on the named repo) — so it cannot point at nothing, though who claims it and why
   remains self-asserted like every other block field.
+  `update` writes `title`, `body`, the soft-enum facets, `tags`, the block-authoritative
+  `--affected`/`--working-branch`, and the **editorial** block fields
+  `--refs`/`--revisit`/`--closed-by` (each valued; an empty value clears); `file` additionally
+  accepts `--refs`. Every other block field is import-only or owned by the op holding its invariant
+  (Data Model §1.2) and is **rejected by name**, never silently ignored, so a typo and a
+  mass-assignment attempt are equally visible.
+  **The allowlist binds keys; a second guard binds values.** Block values are body text in a
+  line-based format, so a value carrying any `str.splitlines()` separator injects sibling fields —
+  reaching the very keys the allowlist just rejected. Such values are rejected at the op boundary,
+  by a predicate derived from the parser rather than an enumerated separator set.
 - **Excessive data exposure.** JSON returns **item fields only** — never tokens, auth state, or the
   cache path (§4).
 - **Resource / rate bounds.** Caller-drivable cost is bounded: `batch`/`import` **pace under the 80/min

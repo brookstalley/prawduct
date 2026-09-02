@@ -89,7 +89,8 @@ _EXIT_CLASS: dict[str, int] = {
 _OP_USAGE: dict[str, str] = {
     "file": (
         "  file     --repo owner/repo --title T --body B "
-        "[--stage S] [--kind K] [--area A] [--effort E] [--impact I] [--source SRC]\n"
+        "[--stage S] [--kind K] [--area A] [--effort E] [--impact I] [--source SRC] "
+        "[--refs R]\n"
     ),
     "get": "  get      <id> [--repo owner/repo]   (`show` is an alias)\n",
     "status": (
@@ -99,11 +100,14 @@ _OP_USAGE: dict[str, str] = {
     "update": (
         "  update   <id> [--title T] [--body B] [--stage S] [--kind K] [--area A] "
         "[--effort E] [--impact I] [--source SRC] [--tags a,b] [--affected p1,p2] "
-        "[--working-branch owner/repo@branch] [--if-updated-at TS] [--repo owner/repo]\n"
+        "[--working-branch owner/repo@branch] [--refs R] [--revisit R] [--closed-by REF] "
+        "[--if-updated-at TS] [--repo owner/repo]\n"
         "           --tags sets the WHOLE tag set (absent ones are stripped; --tags '' clears)\n"
         "           --affected takes repo-relative paths only, no prose (a directory "
         "covers everything under it)\n"
         "           --working-branch must name a PUSHED branch, repo-qualified\n"
+        "           --refs/--revisit/--closed-by edit the prawduct: block; an empty "
+        "value clears the field\n"
     ),
     "comment": "  comment  <id> --body B [--repo owner/repo]\n",
     "list": (
@@ -296,10 +300,10 @@ def _unknown_op(op: str, *, json_mode: bool) -> int:
 #: by AST so this set cannot fall behind them.
 _VALUED_FLAG_NAMES: frozenset[str] = frozenset({
     "affected", "archive", "archive-scope", "area", "assignee", "body",
-    "direction", "edge", "effort", "from", "if-updated-at", "impact", "into",
-    "kind", "limit", "older-than", "out", "page", "per-page", "plan", "repo",
-    "restructure", "sort", "source", "stage", "state", "status", "tag", "tags",
-    "title", "to", "working-branch",
+    "closed-by", "direction", "edge", "effort", "from", "if-updated-at",
+    "impact", "into", "kind", "limit", "older-than", "out", "page", "per-page",
+    "plan", "refs", "repo", "restructure", "revisit", "sort", "source", "stage",
+    "state", "status", "tag", "tags", "title", "to", "working-branch",
 })
 
 
@@ -459,7 +463,10 @@ def run(project_dir, argv: list[str], *, transport=None) -> int:
 def _run_file(rest: list[str], transport, project_dir):
     flags, positionals, err = _parse_flags(
         rest,
-        valued={"repo", "title", "body", "stage", "kind", "area", "effort", "impact", "source"},
+        valued={
+            "repo", "title", "body", "stage", "kind", "area",
+            "effort", "impact", "source", "refs",
+        },
     )
     if err:
         return core.error("validation", err)
@@ -492,6 +499,7 @@ def _run_file(rest: list[str], transport, project_dir):
             facets=facets,
             automated=automated,
             worker=context.worker_marker() if automated else None,
+            refs=flags.get("refs"),
             absorb=absorb,
         ),
     )
@@ -554,12 +562,23 @@ def _run_update(rest: list[str], transport, project_dir):
             "repo", "title", "body", "stage", "kind", "area",
             "effort", "impact", "source", "if-updated-at",
             "tags", "affected", "working-branch",
+            "refs", "revisit", "closed-by",
         },
     )
     if err:
         return core.error("validation", err)
     if not positionals:
         return core.error("validation", "update requires an <id>")
+    if len(positionals) > 1:
+        # A stray positional was silently IGNORED before this guard, which is how
+        # `update <id> status=shipped` — the markdown spelling still instructed by
+        # skills/pr and the Critic's review-cycle — read as a success that changed
+        # nothing. A wrong result at exit 0 is worse than any error.
+        return core.error(
+            "validation",
+            f"unexpected argument(s) {positionals[1:]} — fields are set with named "
+            "flags on this backend (`--stage ready`), not as `field=value` arguments",
+        )
     # `--tags` is plural because it sets the whole set rather than adding one —
     # the `--tag` on `list` filters by a single tag, which is a different verb on
     # purpose and is named for it.
@@ -568,6 +587,7 @@ def _run_update(rest: list[str], transport, project_dir):
         for key in (
             "title", "body", "stage", "kind", "area", "effort", "impact", "source",
             "tags", "affected", "working-branch",
+            "refs", "revisit", "closed-by",
         )
         if key in flags
     }

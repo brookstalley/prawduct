@@ -8,6 +8,7 @@ Covers the envelope (ERR-3/ERR-4), the file→get round-trip, SEC-3 attribution
 from __future__ import annotations
 
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 _TESTS_DIR = Path(__file__).resolve().parent
@@ -930,6 +931,289 @@ class TestUpdateNewDomainFields:
         assert new_body.count("```prawduct") == 1
 
 
+class TestUpdateBlockFields:
+    """update — the editorial block fields (#550).
+
+    Before these, the block was write-once at import: `--body` reports success and
+    changes nothing, because `_body_update_preserving_block` re-appends the OLD
+    block by design. These pin that the sanctioned path can now perform the writes
+    the skill's own instructions ask for, without widening the SEC-2 guard.
+    """
+
+    def _seed_with_block(self, fake, block_lines: str = "v: 1\nid_aliases: [BKL-0007]"):
+        fake.seed_labels(OWNER, REPO, _STATUS_LABELS)
+        body = f"human text\n\n```prawduct\n{block_lines}\n```\n"
+        return fake.create_issue(OWNER, REPO, title="t", body=body, labels=[])["number"]
+
+    @pytest.mark.parametrize("field,value", [
+        ("refs", "documentation/x.md#section"),
+        ("revisit", "2027-01-01"),
+        ("closed-by", "fix/some-branch"),
+    ])
+    def test_each_block_field_round_trips(self, fake, field, value):
+        n = self._seed_with_block(fake)
+        r = core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={field: value})
+        assert r["status"] == "ok"
+        body = fake.get_issue(OWNER, REPO, n)["body"]
+        assert f"{field}: {value}" in body
+
+    def test_a_block_write_leaves_every_sibling_field_intact(self, fake):
+        # The whole hazard of body-level editing: a write that lands the new value
+        # but drops a neighbour is worse than no write at all (MG2 alias loss).
+        n = self._seed_with_block(
+            fake, "v: 1\nid_aliases: [BKL-0007]\nadded: 2026-01-01\nrelated: BKL-0001"
+        )
+        core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"refs": "a.md"})
+        body = fake.get_issue(OWNER, REPO, n)["body"]
+        for survivor in ("v: 1", "id_aliases: [BKL-0007]", "added: 2026-01-01", "related: BKL-0001"):
+            assert survivor in body
+        assert "human text" in body  # the prose is untouched too
+        assert body.count("```prawduct") == 1  # and no second block was minted
+
+    def test_an_empty_value_clears_the_field(self, fake):
+        # An expired `revisit:` has to be removable, not merely blankable.
+        n = self._seed_with_block(fake, "v: 1\nrevisit: 2026-01-01")
+        core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"revisit": ""})
+        body = fake.get_issue(OWNER, REPO, n)["body"]
+        assert "revisit" not in body and "v: 1" in body
+
+    def test_body_edit_and_block_write_compose_in_one_call(self, fake):
+        # Order matters: the body edit carries the OLD block forward, so the block
+        # write must land ON TOP of it. Reversed, the body edit would discard it.
+        n = self._seed_with_block(fake)
+        r = core.update_item(
+            fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"body": "rewritten", "refs": "b.md"}
+        )
+        assert r["status"] == "ok"
+        body = fake.get_issue(OWNER, REPO, n)["body"]
+        assert "rewritten" in body and "human text" not in body  # prose replaced
+        assert "refs: b.md" in body                              # block write landed
+        assert "id_aliases: [BKL-0007]" in body                  # carried block intact
+
+    def test_reviewed_is_never_written_by_an_edit(self, fake):
+        # `reviewed` gained no write path (#550's 2026-08-07 scope reshape): the
+        # staleness sweep takes its date from native `updated_at`, so a second,
+        # forgeable copy would answer nothing. An edit must not mint one.
+        n = self._seed_with_block(fake)
+        core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"area": "critic"})
+        assert "reviewed" not in fake.get_issue(OWNER, REPO, n)["body"]
+
+    def test_an_empty_request_is_still_validation(self, fake):
+        n = self._seed_with_block(fake)
+        r = core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={})
+        assert r["status"] == "error" and r["error"]["code"] == "validation"
+
+    @pytest.mark.parametrize("protected", [
+        "added", "id_aliases", "original_title", "original_body", "v",
+        "automated", "worker", "provenance", "claimed_at", "related",
+        "superseded_by", "verified", "attachments", "reviewed",
+    ])
+    def test_the_other_block_fields_are_still_rejected(self, fake, protected):
+        # Extending the write path must not widen SEC-2. Each of these is barred
+        # for its own reason — native equivalent, write-once provenance, forgeable
+        # attribution, or another op owning the invariant. `reviewed` is here too:
+        # it is settable ONLY via mark_reviewed, never as a caller-supplied value.
+        n = self._seed_with_block(fake)
+        r = core.update_item(
+            fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={protected: "x"}
+        )
+        assert r["status"] == "error" and r["error"]["code"] == "validation"
+        assert protected in r["error"]["details"]["rejected"]
+
+    def test_file_can_set_refs_at_birth(self, fake):
+        # Without this a natively-filed item could never carry a `refs:` at all.
+        fake.seed_labels(OWNER, REPO, _STATUS_LABELS)
+        r = core.file_item(
+            fake, owner=OWNER, repo=REPO, title="core: the refs item under test", body="b", refs="documentation/x.md"
+        )
+        assert r["status"] == "ok"
+        n = int(r["data"]["id"].split("#")[1])
+        assert "refs: documentation/x.md" in fake.get_issue(OWNER, REPO, n)["body"]
+
+    def test_file_without_refs_mints_no_empty_field(self, fake):
+        fake.seed_labels(OWNER, REPO, _STATUS_LABELS)
+        r = core.file_item(fake, owner=OWNER, repo=REPO, title="core: the refs item under test", body="b")
+        n = int(r["data"]["id"].split("#")[1])
+        assert "refs" not in fake.get_issue(OWNER, REPO, n)["body"]
+
+    def test_a_facet_only_update_issues_no_body_patch(self, fake):
+        # The guard is `if "body" in fields or block_writes or mark_reviewed`, which
+        # replaced a plain `if "body" in fields`. Patching the body unconditionally
+        # would reserialize the block on every facet-only edit — pointless writes
+        # that widen the CAS lost-update window for no change in content.
+        fake.seed_labels(OWNER, REPO, ["area:critic"])
+        n = self._seed_with_block(fake)
+        mark = len(fake.calls)
+        core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"area": "critic"})
+        body_patches = [
+            c for c in fake.calls[mark:]
+            if c[0] == "update_issue" and "body" in (c[-1] or ())
+        ]
+        assert body_patches == []
+        # Control: the same harness DOES see a body patch when one is warranted,
+        # so the assertion above is discriminating and not merely matching nothing.
+        mark = len(fake.calls)
+        core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"refs": "a.md"})
+        assert [
+            c for c in fake.calls[mark:]
+            if c[0] == "update_issue" and "body" in (c[-1] or ())
+        ]
+
+
+class TestBlockValueInjection:
+    """A legal KEY must not smuggle a forbidden SIBLING through its value (#550).
+
+    `_UPDATE_BLOCK` guards the keys a caller may name. The block is line-based, so
+    without a value-level guard a newline inside an allowed value expands into
+    extra `key: value` lines that `parse_block` reads as real fields — reaching
+    exactly the `automated`/`worker`/`id_aliases` the key allowlist forbids.
+    """
+
+    def _seed_with_block(self, fake):
+        fake.seed_labels(OWNER, REPO, _STATUS_LABELS)
+        body = "text\n\n```prawduct\nv: 1\nid_aliases: [BKL-0007]\n```\n"
+        return fake.create_issue(OWNER, REPO, title="t", body=body, labels=[])["number"]
+
+    @pytest.mark.parametrize("field", ["refs", "revisit", "closed-by"])
+    def test_a_newline_bearing_value_is_rejected(self, fake, field):
+        n = self._seed_with_block(fake)
+        r = core.update_item(
+            fake, id_raw=f"{OWNER}/{REPO}#{n}",
+            fields={field: "a\nautomated: true"},
+        )
+        assert r["status"] == "error" and r["error"]["code"] == "validation"
+
+    @pytest.mark.parametrize("field", ["refs", "revisit", "closed-by"])
+    def test_the_forged_sibling_never_reaches_the_block(self, fake, field):
+        # The envelope saying "error" is not the property that matters — that the
+        # forgery is absent from the stored block is.
+        n = self._seed_with_block(fake)
+        core.update_item(
+            fake, id_raw=f"{OWNER}/{REPO}#{n}",
+            fields={field: "a\nautomated: true\nworker: evil"},
+        )
+        block = encode.parse_block(fake.get_issue(OWNER, REPO, n)["body"])
+        assert "automated" not in block.fields
+        assert "worker" not in block.fields
+        assert field not in block.fields  # nothing partial was written either
+
+    @pytest.mark.parametrize("sep,name", [
+        ("\n", "LF"), ("\r", "CR"), ("\r\n", "CRLF"), ("\v", "VT"), ("\f", "FF"),
+        ("\x1c", "FS"), ("\x1d", "GS"), ("\x1e", "RS"), ("\x85", "NEL"),
+        (" ", "LS"), (" ", "PS"),
+    ])
+    def test_every_separator_splitlines_honours_is_barred(self, fake, sep, name):
+        # The guard must cover the parser's WHOLE separator set, not just \n\r.
+        # `parse_block` splits on `splitlines()`, and `_emit_block` writes the
+        # value as one PHYSICAL line — so a `\v` leaves the \n-anchored fence
+        # regex undisturbed while still re-parsing as an extra field. A guard
+        # narrower than the parser is not a guard.
+        n = self._seed_with_block(fake)
+        r = core.update_item(
+            fake, id_raw=f"{OWNER}/{REPO}#{n}",
+            fields={"refs": f"a{sep}automated: true"},
+        )
+        assert r["status"] == "error", f"{name} was accepted"
+        block = encode.parse_block(fake.get_issue(OWNER, REPO, n)["body"])
+        assert "automated" not in block.fields, f"{name} landed a forged field"
+
+    def test_a_trailing_separator_is_barred_too(self, fake):
+        # "abc\n".splitlines() == ["abc"] — one element, so a `len(...) > 1` check
+        # passes it while `_emit_block` still writes a stray line.
+        n = self._seed_with_block(fake)
+        r = core.update_item(
+            fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"refs": "docs/x.md\n"}
+        )
+        assert r["status"] == "error"
+
+    def test_the_guard_tracks_the_parser_not_a_hardcoded_list(self, fake):
+        # What this actually protects: the guard must stay DERIVED from
+        # `splitlines()` rather than re-enumerating characters — which is exactly
+        # the defect the first version of the guard had (it listed \n and \r, and
+        # \v walked straight through). Refactor the predicate back to a literal
+        # set and this fails on the first codepoint the list forgets.
+        #
+        # It does NOT protect against Python widening the universal-newline set:
+        # the oracle below and the guard both delegate to `splitlines()`, so a
+        # widened set moves them in lockstep and this still passes. Guarding that
+        # would need an independently-maintained list — the very thing whose
+        # absence is the point.
+        for cp in range(0x110000):
+            ch = chr(cp)
+            if len((f"a{ch}b").splitlines()) > 1:
+                assert encode.check_block_value("refs", f"a{ch}b") is not None, (
+                    f"U+{cp:04X} splits under splitlines() but the guard allows it"
+                )
+
+    def test_a_carriage_return_is_rejected_too(self, fake):
+        # `.splitlines()` splits on \r as well, so \r alone is a live injection.
+        n = self._seed_with_block(fake)
+        r = core.update_item(
+            fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"refs": "a\rid_aliases: [EVIL]"}
+        )
+        assert r["status"] == "error"
+        assert "EVIL" not in fake.get_issue(OWNER, REPO, n)["body"]
+
+    def test_a_fence_bearing_value_cannot_close_the_block(self, fake):
+        n = self._seed_with_block(fake)
+        core.update_item(
+            fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"refs": "a\n```\ntrailing prose"}
+        )
+        body = fake.get_issue(OWNER, REPO, n)["body"]
+        assert body.count("```prawduct") == 1
+        assert encode.parse_block(body).fields.get("id_aliases") == "[BKL-0007]"
+
+    def test_file_rejects_an_injecting_refs(self, fake):
+        fake.seed_labels(OWNER, REPO, _STATUS_LABELS)
+        r = core.file_item(
+            fake, owner=OWNER, repo=REPO, title="core: the block item under test", body="b",
+            refs="a\nautomated: true",
+        )
+        assert r["status"] == "error" and r["error"]["code"] == "validation"
+
+    def test_the_write_is_confirmable_from_its_own_response(self, fake):
+        # The original defect returned `status: ok` while changing nothing, so a
+        # response that cannot show the field leaves that failure mode readable
+        # only by re-reading and re-parsing the body. The write and its proof
+        # should come back together.
+        n = self._seed_with_block(fake)
+        r = core.update_item(
+            fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"refs": "docs/x.md"}
+        )
+        assert r["data"]["refs"] == "docs/x.md"
+
+    def test_closed_by_crosses_from_hyphen_to_underscore(self, fake):
+        # The block key is `closed-by`; the item projection is snake_case. Pin the
+        # hop so a future "harmonisation" of either side is a test failure and not
+        # a silently absent field.
+        n = self._seed_with_block(fake)
+        core.update_item(
+            fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"closed-by": "fix/branch"}
+        )
+        r = core.get_item(fake, id_raw=f"{OWNER}/{REPO}#{n}")
+        assert r["data"]["closed_by"] == "fix/branch"
+        assert "closed-by: fix/branch" in fake.get_issue(OWNER, REPO, n)["body"]
+
+    def test_absent_editorial_fields_project_as_none(self, fake):
+        n = self._seed_with_block(fake)
+        r = core.get_item(fake, id_raw=f"{OWNER}/{REPO}#{n}")
+        for key in ("refs", "revisit", "closed_by", "reviewed"):
+            assert r["data"][key] is None
+
+    def test_a_single_line_value_with_colons_still_works(self, fake):
+        # The guard bars newlines, NOT the `:` that a doc ref legitimately carries
+        # — over-rejecting would break `refs: path.md#section` and URLs.
+        n = self._seed_with_block(fake)
+        r = core.update_item(
+            fake, id_raw=f"{OWNER}/{REPO}#{n}",
+            fields={"refs": "https://x.test/a#b, docs/y.md:42"},
+        )
+        assert r["status"] == "ok"
+        assert encode.parse_block(
+            fake.get_issue(OWNER, REPO, n)["body"]
+        ).fields["refs"] == "https://x.test/a#b, docs/y.md:42"
+
+
 class TestCommentItem:
     def test_comment_is_attributed_to_the_api_identity(self, fake):
         n = _seed_item(fake)
@@ -986,3 +1270,150 @@ class TestBodyUpdatePreservesEveryBlock:
         out = core._body_update_preserving_block("Old prose.", "New prose.")
         assert encode.parse_block(out).get("v") == "1"
         assert "New prose." in out
+
+class TestBodyFenceInjection:
+    """The sibling route to `check_block_value` (#550, cumulative R-14).
+
+    `strip_block` removes a WELL-FORMED block, so an unterminated ```prawduct
+    opener in `--body` survives stripping, concatenates with the preserved block,
+    and every line between the two openers parses as a field — landing the same
+    SEC-6 forgery the value guard bars, one flag to the left.
+    """
+
+    def _seed_with_block(self, fake):
+        fake.seed_labels(OWNER, REPO, _STATUS_LABELS)
+        body = "x\n\n```prawduct\nv: 1\nid_aliases: [BKL-0007]\n```\n"
+        return fake.create_issue(OWNER, REPO, title="t", body=body, labels=[])["number"]
+
+    def test_an_unterminated_fence_in_body_is_rejected(self, fake):
+        n = self._seed_with_block(fake)
+        r = core.update_item(
+            fake, id_raw=f"{OWNER}/{REPO}#{n}",
+            fields={"body": "intro\n```prawduct\nautomated: true\nworker: evil"},
+        )
+        assert r["status"] == "error" and r["error"]["code"] == "validation"
+
+    def test_the_forgery_never_reaches_the_block(self, fake):
+        n = self._seed_with_block(fake)
+        core.update_item(
+            fake, id_raw=f"{OWNER}/{REPO}#{n}",
+            fields={"body": "intro\n```prawduct\nautomated: true\nworker: evil"},
+        )
+        block = encode.parse_block(fake.get_issue(OWNER, REPO, n)["body"])
+        assert "automated" not in block.fields and "worker" not in block.fields
+        assert block.fields.get("id_aliases") == "[BKL-0007]"
+
+    def test_file_rejects_an_unterminated_fence_too(self, fake):
+        fake.seed_labels(OWNER, REPO, _STATUS_LABELS)
+        r = core.file_item(
+            fake, owner=OWNER, repo=REPO, title="core: the block item under test",
+            body="intro\n```prawduct\nautomated: true",
+        )
+        assert r["status"] == "error" and r["error"]["code"] == "validation"
+
+    def test_a_terminated_pasted_block_still_just_gets_stripped(self, fake):
+        # The pre-existing behaviour must not regress into a rejection: a
+        # well-formed pasted block is silently dropped, not an error.
+        n = self._seed_with_block(fake)
+        r = core.update_item(
+            fake, id_raw=f"{OWNER}/{REPO}#{n}",
+            fields={"body": "new\n\n```prawduct\nv: 1\nid_aliases: [ATTACKER]\n```\n"},
+        )
+        assert r["status"] == "ok"
+        body = fake.get_issue(OWNER, REPO, n)["body"]
+        assert "ATTACKER" not in body and "BKL-0007" in body
+
+    def test_ordinary_body_text_is_unaffected(self, fake):
+        # Over-rejection would break every normal edit; a fence of another
+        # language, or the word in prose, must both pass.
+        n = self._seed_with_block(fake)
+        r = core.update_item(
+            fake, id_raw=f"{OWNER}/{REPO}#{n}",
+            fields={"body": "see the prawduct block below\n\n```python\nx = 1\n```\n"},
+        )
+        assert r["status"] == "ok"
+
+
+class TestBodyFenceGuardTracksTheParser:
+    """The guard tracks `_BLOCK_RE`'s opener — with ONE deliberate exception.
+
+    The first version was a `startswith` on the stripped line, which rejected an
+    INDENTED fence the column-anchored parser can never match — a false positive
+    that refused the one workaround the docstring recommends.
+
+    **Do not "correct" the guard into exact equivalence.** `_FENCE_OPEN_RE`'s `$`
+    matches at end-of-string; `_BLOCK_RE`'s opener requires a following newline.
+    So a body ENDING in a bare ```` ```prawduct ```` is rejected here though the
+    parser would not open on it *as written* — and it must be, because
+    `_body_update_preserving_block` composes `f"{human}\\n\\n{rendered}\\n"` and
+    supplies exactly the newline the parser was missing. That is the R-14 attack.
+    Equivalence is the goal everywhere the two can be compared on the same input;
+    this one case is where the guard is correctly stricter, and
+    `test_a_body_ending_in_a_bare_opener_is_rejected` is what stops a future
+    tidy-up from reopening it.
+    """
+
+    def _seed(self, fake):
+        fake.seed_labels(OWNER, REPO, _STATUS_LABELS)
+        body = "x\n\n```prawduct\nv: 1\nid_aliases: [BKL-0007]\n```\n"
+        return fake.create_issue(OWNER, REPO, title="t", body=body, labels=[])["number"]
+
+    def test_an_indented_fence_is_allowed(self, fake):
+        n = self._seed(fake)
+        r = core.update_item(
+            fake, id_raw=f"{OWNER}/{REPO}#{n}",
+            fields={"body": "here is the shape:\n\n    ```prawduct\n    v: 1\n"},
+        )
+        assert r["status"] == "ok"
+
+    def test_an_indented_fence_really_cannot_open_a_block(self, fake):
+        # The permission above is only safe because the PARSER agrees. Pin that
+        # rather than trusting the claim.
+        assert encode.parse_block("    ```prawduct\n    automated: true\n").fields == {}
+
+    def test_a_column_zero_fence_is_still_rejected(self, fake):
+        n = self._seed(fake)
+        r = core.update_item(
+            fake, id_raw=f"{OWNER}/{REPO}#{n}",
+            fields={"body": "intro\n```prawduct\nautomated: true"},
+        )
+        assert r["status"] == "error"
+
+    def test_guard_and_parser_agree_on_every_opener_spelling(self, fake):
+        # Derived-not-described, asserted directly: for each candidate spelling,
+        # the guard rejects it iff the parser would treat it as an opener. Every
+        # case here is newline-terminated, which is what makes the comparison
+        # fair — the end-of-string case is deliberately asymmetric and is pinned
+        # separately below rather than smuggled in here as a passing equivalence.
+        for spelling in (
+            "```prawduct", "```prawduct ", "```prawduct\t",
+            " ```prawduct", "    ```prawduct", "x ```prawduct", "```prawductx",
+        ):
+            text = f"{spelling}\nautomated: true\n"
+            guard_rejects = encode.check_body_text(text) is not None
+            parser_opens = encode.parse_block(text + "```\n").fields != {}
+            assert guard_rejects == parser_opens, spelling
+
+    def test_a_body_ending_in_a_bare_opener_is_rejected(self, fake):
+        # The one place the guard is CORRECTLY stricter than the parser. The
+        # parser does not open on this text as written (no trailing newline), but
+        # `_body_update_preserving_block` appends "\n\n" + the preserved block —
+        # supplying the newline and completing the R-14 injection. Pinned so a
+        # future "make the guard exactly match the parser" tidy-up fails here
+        # instead of silently reopening the hole.
+        assert encode.check_body_text("intro\n```prawduct") is not None
+
+    def test_that_composition_is_what_makes_it_dangerous(self, fake):
+        # The reason above, asserted rather than asserted-in-a-comment: the raw
+        # text is inert, and composition is what arms it.
+        raw = "intro\n```prawduct"
+        assert encode.parse_block(raw).fields == {}          # inert as written
+        composed = f"{raw}\n\n```prawduct\nv: 1\nx: 1\n```\n"
+        assert encode.parse_block(composed).fields != {}     # armed by composition
+
+    def test_the_end_to_end_path_refuses_it(self, fake):
+        n = self._seed(fake)
+        r = core.update_item(
+            fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"body": "intro\n```prawduct"}
+        )
+        assert r["status"] == "error"
