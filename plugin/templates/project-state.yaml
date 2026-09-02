@@ -232,6 +232,35 @@ build_state:
 # active_build_plan: artifacts/build-plan-my-scope.md
 
 # =============================================================================
+# BASE BRANCH (opt-in, unset by default)
+# =============================================================================
+# The branch this product's feature work integrates onto — the base every gate
+# diffs against: the PR gate, the doc-only gate, the cumulative-Critic span, and
+# the reviewer's own range.
+#
+# **Set it on a gitflow repo.** Unset, base resolution first asks the remote what
+# it integrates onto (`refs/remotes/origin/HEAD`, which a clone records) and
+# prefers that when it names something outside the main family; only if that
+# yields nothing does it fall back to guessing `origin/main`, then `main`, then
+# `HEAD~1`. On a repo whose features cut from `develop`, reaching that guess
+# anchors every gate to `merge-base(main, HEAD)` — a two-commit branch reviewed as
+# the entire `develop..main` promotion delta, silently and plausibly.
+#
+# **This key outranks the remote's answer**, deliberately: a remote default and a
+# product's integration branch are allowed to differ (a repo whose remote default
+# is `main` while feature work integrates onto `develop` is exactly the case
+# `origin/HEAD` cannot see), and this is the one an owner wrote down. `origin/<b>`
+# is preferred over a bare `<b>` for a merge-base that is the same value in every
+# clone and worktree.
+#
+# A configured-but-unresolvable value fails CLOSED — the gate refuses rather than
+# quietly diffing the wrong range — so a typo surfaces instead of shipping.
+# `/prawduct:onboard` and `/prawduct:migrate` write it when the remote's default
+# is non-main; set it by hand otherwise.
+#
+# base_branch: develop
+
+# =============================================================================
 # BUILD-PLAN REF ROOT (opt-in, unset by default)
 # =============================================================================
 # A second root that this repo's build-plan file refs may be written relative

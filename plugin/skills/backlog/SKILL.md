@@ -4,7 +4,7 @@ argument-hint: "[pick|add|find|list|update|migrate] ... (e.g. `pick stop-hook st
 user-invocable: true
 disable-model-invocation: false
 context: fork
-allowed-tools: Read, Edit, Write, Grep, Glob, Bash(prawduct-hook backlog file *), Bash(python3 plugin/bin/prawduct-hook backlog file *), Bash(prawduct-hook backlog get *), Bash(python3 plugin/bin/prawduct-hook backlog get *), Bash(prawduct-hook backlog status *), Bash(python3 plugin/bin/prawduct-hook backlog status *), Bash(prawduct-hook backlog update *), Bash(python3 plugin/bin/prawduct-hook backlog update *), Bash(prawduct-hook backlog comment *), Bash(python3 plugin/bin/prawduct-hook backlog comment *), Bash(prawduct-hook backlog list *), Bash(python3 plugin/bin/prawduct-hook backlog list *), Bash(prawduct-hook backlog pick *), Bash(python3 plugin/bin/prawduct-hook backlog pick *), Bash(prawduct-hook backlog counts *), Bash(python3 plugin/bin/prawduct-hook backlog counts *), Bash(prawduct-hook backlog link *), Bash(python3 plugin/bin/prawduct-hook backlog link *), Bash(prawduct-hook backlog unlink *), Bash(python3 plugin/bin/prawduct-hook backlog unlink *), Bash(prawduct-hook backlog sync *), Bash(python3 plugin/bin/prawduct-hook backlog sync *), Bash(prawduct-hook backlog cache-query *), Bash(python3 plugin/bin/prawduct-hook backlog cache-query *), Bash(prawduct-hook backlog --help), Bash(python3 plugin/bin/prawduct-hook backlog --help)
+allowed-tools: Read, Edit, Write, Grep, Glob, Bash(prawduct-hook backlog file*), Bash(python3 plugin/bin/prawduct-hook backlog file*), Bash(prawduct-hook backlog get*), Bash(python3 plugin/bin/prawduct-hook backlog get*), Bash(prawduct-hook backlog status*), Bash(python3 plugin/bin/prawduct-hook backlog status*), Bash(prawduct-hook backlog update*), Bash(python3 plugin/bin/prawduct-hook backlog update*), Bash(prawduct-hook backlog comment*), Bash(python3 plugin/bin/prawduct-hook backlog comment*), Bash(prawduct-hook backlog list*), Bash(python3 plugin/bin/prawduct-hook backlog list*), Bash(prawduct-hook backlog pick*), Bash(python3 plugin/bin/prawduct-hook backlog pick*), Bash(prawduct-hook backlog counts*), Bash(python3 plugin/bin/prawduct-hook backlog counts*), Bash(prawduct-hook backlog link*), Bash(python3 plugin/bin/prawduct-hook backlog link*), Bash(prawduct-hook backlog unlink*), Bash(python3 plugin/bin/prawduct-hook backlog unlink*), Bash(prawduct-hook backlog sync*), Bash(python3 plugin/bin/prawduct-hook backlog sync*), Bash(prawduct-hook backlog cache-query*), Bash(python3 plugin/bin/prawduct-hook backlog cache-query*), Bash(prawduct-hook backlog --help), Bash(python3 plugin/bin/prawduct-hook backlog --help)
 ---
 
 You manage the product's **structured backlog**. You run in a forked context, so the full backlog never pollutes the main session. The backlog has two backends — a markdown file, or GitHub Issues once the product has cut over — so **decide the backend first** (next section), then do the operation and return a concise result. **Never** delete items (archive instead) and **never** weaken existing content.
@@ -131,6 +131,16 @@ Accept flag form for machine callers (`--area=sync --budget=30m --type=quick-win
 - **No `stage:`** → treat as *not yet ready*: don't present it as directly buildable; prompt to assess clarity first (fail toward requirements, not toward code). This is the safe default for the large existing backlog whose items predate the field.
 
 This routing is advisory, not a hard gate — surface the stage and the recommended next step; the user may still choose to override. Don't silently let an early-stage item flow into implementation.
+
+**Presenting a candidate carries an advisory obligation.** With each item you surface,
+say whether it is still worth doing — the premise that may have expired, the cheaper thing
+that would close most of it, the reason it should be dropped instead of picked. "Still
+worth it, for the reason it was filed" is a fine answer when it is true. What is not an
+option is handing over a ranked list with no position on it, because an item presented
+silently reads as endorsed — and `pick` is the moment an item stops being a note and
+becomes work someone starts (Principles 7 and 23). This is the checkpoint's own reading,
+not a lint: the score says how an item compares to its neighbours, never whether the
+problem it names is still real.
 
 **Worked examples** (parsed filter → behavior):
 - `pick stop-hook stuff under an hour` → `{area: stop-hook, budget: S–M}` → open stop-hook items, effort S/M, top 2–3 by score.
