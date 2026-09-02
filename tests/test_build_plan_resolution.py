@@ -1587,6 +1587,43 @@ class TestVerifyChunkRefsPathSymbol:
         assert [e["ref"] for e in refs["file_paths"]] == ["lib/gone.py"]
         assert _bpr._verify_chunk_refs(project, refs) == []
 
+    def test_a_broken_symlink_is_diagnosed_as_escaping_the_worktree(
+        self, tmp_path: Path
+    ):
+        """#147: the deliverable WAS written — just not reachably from here.
+
+        A review dispatched into a linked worktree whose `.prawduct/artifacts`
+        is symlinked back at the primary checkout hits this: `Path.exists()`
+        follows the link and returns False, so the ref reported as plainly
+        absent and sent the reader hunting for a file that exists. The verdict
+        is unchanged (it IS missing at this ref); only the diagnosis moves.
+        """
+        project, prawduct = _project_with_chunk(
+            tmp_path, "- touches `lib/linked.py`\n"
+        )
+        (project / "lib").mkdir()
+        (project / "lib" / "linked.py").symlink_to(
+            tmp_path / "elsewhere" / "linked.py"
+        )
+        assert (project / "lib" / "linked.py").is_symlink()
+        assert not (project / "lib" / "linked.py").exists()
+
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        missing = _bpr._verify_chunk_refs(project, refs)
+        assert len(missing) == 1
+        assert missing[0]["ref"] == "lib/linked.py"
+        assert missing[0]["reason"] == "symlink escapes the worktree"
+
+    def test_a_plainly_absent_file_keeps_the_ordinary_reason(self, tmp_path: Path):
+        """The negative control for the branch above: no symlink, no rewording."""
+        project, prawduct = _project_with_chunk(
+            tmp_path, "- touches `lib/absent.py`\n"
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        missing = _bpr._verify_chunk_refs(project, refs)
+        assert len(missing) == 1
+        assert missing[0]["reason"] == "file does not exist"
+
     def test_missing_path_symbol_reports_path_portion_only(self, tmp_path: Path):
         project, prawduct = _project_with_chunk(
             tmp_path, "- touches `lib/gone.py::foo`\n"

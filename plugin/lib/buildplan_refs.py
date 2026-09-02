@@ -324,11 +324,10 @@ def _count_build_plan_chunks(
 
     - ``lib.gates._has_active_build_plan_file`` — passes ``plan_path``.
     - ``lib.record_lint._check_chunk_refs`` — passes ``plan.path``.
-    - ``lib.gates._critic_session_satisfies_gate`` — **does not**, and that is
-      #541's open leg: it resolves its own plan while its sibling one screen up
-      passes the branch-resolved one, so on a branch whose scope names a plan
-      the two gates can disagree about how many chunks exist. The fix is one
-      argument at that call site.
+    - ``lib.gates._critic_session_satisfies_gate`` — passes the branch-resolved
+      plan (``resolve_branch_plan``). It used to resolve its own, so on a branch
+      whose scope named a plan it and its sibling one screen up could disagree
+      about how many chunks exist; #541 closed that.
     """
     if plan_path is None:
         plan_path = resolve_build_plan_path(prawduct_dir)
@@ -2692,10 +2691,22 @@ def _verify_chunk_refs(project_dir: Path, refs: dict) -> list[dict]:
                 # legitimately absent from a fresh checkout — not a missing
                 # deliverable. Skip rather than cry wolf.
                 continue
+            # #147: `Path.exists()` follows the link and reports False for a
+            # BROKEN one, while `is_symlink()` stays True. A review dispatched
+            # into a linked worktree whose `.prawduct/artifacts` is symlinked
+            # back at the primary checkout hits exactly that, and "file does
+            # not exist" sends the reader hunting for a deliverable that was
+            # written — the path is reachable, just not from here. Same
+            # verdict (it IS missing at this ref), different diagnosis.
+            reason = (
+                "symlink escapes the worktree"
+                if target.is_symlink()
+                else "file does not exist"
+            )
             missing.append({
                 "kind": "file_path",
                 "ref": ref,
                 "line_num": entry["line_num"],
-                "reason": "file does not exist",
+                "reason": reason,
             })
     return missing

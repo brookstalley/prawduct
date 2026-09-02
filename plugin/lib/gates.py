@@ -1102,7 +1102,8 @@ def _critic_session_satisfies_gate(project_dir: Path) -> tuple[bool, str]:
        (or no review fact exists — nothing to judge) → satisfied.
     """
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
-    total, complete = buildplan_refs._count_build_plan_chunks(prawduct_dir)
+    plan_path = buildplan_refs.resolve_branch_plan(project_dir, prawduct_dir).path
+    total, complete = buildplan_refs._count_build_plan_chunks(prawduct_dir, plan_path)
     if total == 0:
         return True, ""
     if total == 1:
