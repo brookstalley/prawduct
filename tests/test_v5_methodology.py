@@ -561,7 +561,19 @@ LAST_MEASURED_TOKENS = {
     # -29 on 2026-09-02 (learnings-v2-delete Chunk 01), 9595 -> 9566: the
     # entry-shape row left the record-lint severity table with the check it
     # graded. A CUT, and its ceiling is ratcheted in the same commit.
-    "skills/critic/review-cycle.md": 9566,
+    # +26 on 2026-09-02: the Learnings Cross-Check gained one sentence — quote
+    # the rule's opening words in a finding that rests on it. The citation is
+    # the whole input to `learning.fired` (`docs/governance-telemetry.md`): an
+    # uncited finding is a rule that fired and is counted as never having fired,
+    # which is a measurement reading the opposite of the truth, so the
+    # instruction has to reach the reviewer who writes the finding.
+    # NOT paid for in this file, and deliberately not: the same wave retires the
+    # `learnings-entry-shape` severity row from the record-lint table below,
+    # which is a bigger deletion than this addition. Trimming other prose to fit
+    # ahead of that would spend a clause twice.
+    # Merged 2026-09-02: the two edits above landed together, net -3 against the
+    # pre-wave 9595; the reading below is the measured merge, not either side.
+    "skills/critic/review-cycle.md": 9592,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -4539,7 +4551,11 @@ class TestReviewCycle:
         # Ceiling 9600 -> 9571 on 2026-09-02 (learnings-v2-delete Chunk 01),
         # ratcheted by the 29 tokens the retired entry-shape row freed. Same
         # rule as the reading above: slack a deletion opens is not headroom.
-        assert tokens < 9571, f"review-cycle.md is ~{tokens} tokens, should be <9571"
+        # 9571 -> 9597 on 2026-09-02 (learnings-v2-delete Chunk 04): the Learnings
+        # Cross-Check gained the citation sentence `learning.fired` reads (+26),
+        # funded by Chunk 01's row cut (-29) — the wave nets -3 against the 9600
+        # this ceiling was before the wave, so it lands at 9600-3, ratcheted.
+        assert tokens < 9597, f"review-cycle.md is ~{tokens} tokens, should be <9597"
 
     def test_framework_checks_token_budget(self):
         # Ceiling 1150. This file is `final`/`cumulative` payload: SKILL.md's

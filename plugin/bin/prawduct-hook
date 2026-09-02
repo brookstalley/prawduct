@@ -2535,7 +2535,9 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                     if "could not resolve the base tree" not in _e
                 ] + [
                     "learnings-over-budget unchecked — no .session-base-tree marker, so "
-                    "there is no base size to compare this session's growth against"
+                    "there is no base size to compare this session's growth against, "
+                    "and no `learning.written` telemetry was recorded either (both "
+                    "questions are the same comparison against the same missing base)"
                 ]
         except Exception as exc:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
             _budget_findings, _budget_unchecked = [], [
@@ -2597,6 +2599,74 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                         "  (a fresh start or /clear), so it outlives a resume/compact/fork. See\n"
                         "  `/prawduct:methodology building` (Gate waivers) for when this is appropriate.\n"
                     ))
+
+        # Telemetry, not a gate: one `learning.written` per rule unit that is
+        # new since this session's base revision (`docs/governance-telemetry.md`).
+        # It rides the budget block's own trigger and its own base marker so
+        # that ONE state answers both questions — "did the corpus grow past its
+        # ceiling" and "which rules did this session write" are the same
+        # comparison against the same base, and a second condition here would
+        # let the two disagree about whether the comparison happened.
+        #
+        # BEST-EFFORT, always: this measures something that already happened, so
+        # nothing below may change `blockers`, `waiver_notes` or the exit code.
+        # The failure is ONE stderr NOTE naming the consequence — a measurement
+        # that silently does not happen is how an instrument reads zero forever.
+        if _budget_base:
+            try:
+                from lib import evidence as _lt_evidence  # noqa: PLC0415
+                from lib import learnings_files as _lt_lf  # noqa: PLC0415
+                from lib import ledger as _lt_ledger  # noqa: PLC0415
+
+                # Validate the base tree ONCE, as the budget check does and for
+                # the same reason inverted: there, an unresolvable base makes
+                # every file look grown-from-nothing; here it would make every
+                # rule in the corpus look written this session, and unlike a
+                # wall of findings that noise is PERSISTED and counted.
+                _lt_rc, _, _lt_err = _lt_evidence.run_git(
+                    project_dir, "rev-parse", "--verify", "--quiet",
+                    f"{_budget_base}^{{tree}}",
+                )
+                if _lt_rc != 0:
+                    raise RuntimeError(
+                        f"git could not resolve the base tree {_budget_base[:12]} "
+                        f"({_lt_err.strip() or 'no such tree'})"
+                    )
+                for _lt_path in _lt_lf.resolve(project_dir).files:
+                    _lt_rel = _lt_path.relative_to(project_dir).as_posix()
+                    _lt_rc, _lt_base_text, _ = _lt_evidence.run_git(
+                        project_dir, "show", f"{_budget_base}:{_lt_rel}"
+                    )
+                    # Nonzero here is "not in that tree" — the base tree itself
+                    # already resolved — so every unit of a brand-new rules file
+                    # is new, which is what it is.
+                    _lt_base = (
+                        {_lt_lf.unit_hash(_u) for _u in _lt_lf.rule_units(_lt_base_text)}
+                        if _lt_rc == 0 else set()
+                    )
+                    for _lt_unit in _lt_lf.rule_units(
+                        _lt_path.read_text(encoding="utf-8")
+                    ):
+                        _lt_hash = _lt_lf.unit_hash(_lt_unit)
+                        if _lt_hash in _lt_base:
+                            continue
+                        # Telemetry is PULLED, not pushed: nothing is printed on
+                        # success, and the return value (appended vs. already
+                        # recorded) is a fact for a caller that reports, which
+                        # the Stop hook is not.
+                        _lt_ledger.append_learning_event(
+                            project_dir, "learning.written",
+                            file=_lt_rel, unit_hash=_lt_hash,
+                        )
+            except Exception as _lt_exc:  # prawduct:allow prawduct/broad-except -- telemetry must never change a gate's verdict
+                print(
+                    "\nNOTE: `learning.written` was not recorded this turn "
+                    f"({type(_lt_exc).__name__}: {_lt_exc}) — the rules written "
+                    "in this session are missing from the governance ledger, so "
+                    "an audit of the learning loop will under-count them. The "
+                    "gates above are unaffected.",
+                    file=sys.stderr,
+                )
 
     # Gate 2: Critic review (only when building against a plan)
     # Skipped for doc-only changes (no code to review). The waiver is only

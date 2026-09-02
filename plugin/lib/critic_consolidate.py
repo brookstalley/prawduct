@@ -3735,6 +3735,61 @@ def consolidate(project_dir: Path) -> int:
             )
             return 1
 
+    # Telemetry, not a gate: which RULES fired (`docs/governance-telemetry.md`).
+    # A finding that quotes a rule's opening words is a rule doing its job, and
+    # counting those is what turns "the corpus helps" from an impression into a
+    # number — the join is `learning.written` minus `learning.fired` on the unit
+    # hash, which is the list of rules nobody has ever cited.
+    #
+    # Every file the resolver returns, not just `core.md`: a reviewer reads the
+    # area files the harness loaded, so a finding may cite a rule from any of
+    # them. BEST-EFFORT — a measurement of a review that already happened must
+    # not change the review's exit code, so the failure is one NOTE.
+    try:
+        from . import learnings_files  # noqa: PLC0415 — lazy, matching this module's other lib imports
+
+        # Citations resolved ONCE for the whole corpus, then matched against
+        # each finding: the alternative re-reads and re-normalizes several
+        # hundred units per finding, which is the same work N times.
+        citations: list[tuple[str, str, str]] = []  # (opening, rel, unit_hash)
+        for rules_path in learnings_files.resolve(project_dir).files:
+            rel = rules_path.relative_to(project_dir).as_posix()
+            for unit in learnings_files.rule_units(
+                rules_path.read_text(encoding="utf-8")
+            ):
+                opening = learnings_files.unit_citation(unit)
+                if opening:
+                    citations.append((opening, rel, learnings_files.unit_hash(unit)))
+        for finding in record.get("findings") or []:
+            # `summary` and `recommendation` are the finding's two prose fields
+            # (`fact_to_cache_record` builds them from the partial's `title` and
+            # `recommendation`); `goal` and `severity` are enums no rule text
+            # can appear in. Normalized through the SAME function that made the
+            # openings, or the substring test is comparing two spellings.
+            text = learnings_files.normalize_unit(
+                f"{finding.get('summary') or ''} {finding.get('recommendation') or ''}"
+            )
+            if not text:
+                continue
+            for opening, rel, unit in citations:
+                if opening in text:
+                    # Keyed by (kind, session, file, unit_hash, review_id), so
+                    # two findings citing one rule in one review are ONE line:
+                    # the question is "did this rule fire in this review", and
+                    # a per-finding count would grade reviewers' wording.
+                    ledger.append_learning_event(
+                        project_dir, "learning.fired",
+                        file=rel, unit_hash=unit, review_id=review_id,
+                    )
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- telemetry must never change a review's exit code
+        print(
+            "critic-consolidate: NOTE: `learning.fired` was not recorded for "
+            f"{review_id} ({type(exc).__name__}: {exc}) — this review's rule "
+            "citations are missing from the governance ledger, so rules it "
+            "exercised will read as never-fired. The review itself is complete.",
+            file=sys.stderr,
+        )
+
     # Persisted + anchored. Clear the critic-active marker and remove the
     # partials so a repeat call (or a straggler SubagentStop) is a clean no-op.
     critic_marker.clear_marker(prawduct_dir)
