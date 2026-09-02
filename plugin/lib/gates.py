@@ -29,7 +29,8 @@ were reassigned here (they are gate logic, lib-clean) from the briefing region.
 
 Depends on its lib siblings ``gitstate`` / ``coverage`` / ``buildplan_refs``
 (build-plan Status parsing, including ``_count_build_plan_chunks``),
-``evidence`` / ``coverage_algebra`` (the v3 data plane), and ``core``
+``evidence`` / ``coverage_algebra`` (the v3 data plane), ``learnings_files``
+(the one resolver for the rules layout the cross-check nudge names), and ``core``
 (``read_bool_yaml_key`` — canonical twin of the hook's parity-pinned inline
 mirror), plus the stdlib.
 """
@@ -48,6 +49,7 @@ from . import (
     coverage_algebra,
     evidence,
     gitstate,
+    learnings_files,
     verdict_cache,
 )
 from .core import read_bool_yaml_key
@@ -1121,9 +1123,46 @@ def _critic_session_satisfies_gate(project_dir: Path) -> tuple[bool, str]:
             f"All {total} chunks complete; last Critic review was "
             f"'{mode}'. Run /prawduct:critic final for end-of-cycle "
             "synthesis (Coherence, Design, Learnings Cross-Check, Backlog "
-            "Reconciliation) before pushing."
+            "Reconciliation) before pushing. "
+            + learnings_cross_check_note(project_dir)
         )
     return True, ""
+
+
+def learnings_cross_check_note(project_dir: Path) -> str:
+    """What the Learnings Cross-Check will read, for the session's changed paths.
+
+    Named from the resolver, never from a path this module knows: the harness
+    loads ``core.md`` plus every area file whose ``paths:`` globs match a file
+    the session touched, and the cross-check is only honest if it reads that
+    same set. Saying the set out loud in the nudge is what makes a *silent*
+    disagreement — an area file in context that no reviewer opened — into
+    something a reader can notice.
+
+    The empty answer is stated rather than omitted, because "no rules file
+    matches this diff" and "the cross-check ran and found nothing" look
+    identical in a report that says neither.
+    """
+    try:
+        layout = learnings_files.resolve(project_dir)
+        changed = gitstate._get_session_changed_files(project_dir)
+        files = learnings_files.files_for_paths(layout, changed)
+    except (OSError, ValueError):
+        return ""
+    if not files:
+        return (
+            "The Learnings Cross-Check has nothing to read: no rules file under "
+            f"{learnings_files.RULES_DIR_REL}/ applies to this session's changes."
+        )
+    named = ", ".join(_repo_relative(project_dir, p) for p in files)
+    return f"The Learnings Cross-Check reads: {named}."
+
+
+def _repo_relative(project_dir: Path, path: Path) -> str:
+    try:
+        return path.relative_to(project_dir).as_posix()
+    except ValueError:
+        return path.as_posix()
 
 
 def _has_build_plan_in_state(prawduct_dir: Path) -> bool:

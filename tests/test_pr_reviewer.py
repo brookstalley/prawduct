@@ -651,9 +651,21 @@ class TestPrReviewSkillContent:
         )
 
     def test_review_protocol_references_learnings(self):
-        """PR reviewer must read learnings.md during setup."""
+        """PR reviewer must read the product's learnings during setup.
+
+        Post-cutover that is not one file: `core.md` is always loaded and each
+        area file arrives only when the diff intersects its `paths:` globs, so
+        the read list is computed, not written down. The protocol names the
+        command that computes it — a reviewer told to "read the learnings" with
+        no way to enumerate them reads `core.md` and silently misses every area
+        rule the session actually had in context.
+        """
         content = (FRAMEWORK_DIR / "skills" / "pr" / "review-protocol.md").read_text()
-        assert "learnings.md" in content
+        assert ".claude/rules/learnings/core.md" in content
+        assert "prawduct-hook learnings-files --for-diff" in content
+        assert "learnings.md" not in content, (
+            "the PR protocol still names the pre-cutover corpus — nothing reads it"
+        )
 
     def test_review_protocol_has_learnings_crosscheck(self):
         """PR reviewer must have a Learnings Cross-Check section."""
