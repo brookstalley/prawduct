@@ -372,17 +372,16 @@ archive excluded) and writes the result into the dispatch manifest as `record_li
 re-derive any of it, and do not recount anything it counted — re-deriving a machine-checked number
 is how a record defect buys a review round, which is the cost this exists to remove.
 
-The suite-total tripwire reads only the lines a change **added**, so a change-log with years of
-history in it reports on the entry just written and nothing else. Severity per check:
+Severity per check:
 
 | `check` | Means | Severity |
 |---|---|---|
 | `chunk-ref-missing` | A deliverable the reviewed chunk *declares* does not exist | **BLOCKING** |
 | `governed-by-gap` | A plan disposes of fewer norms than the cited artifact's `## Direction` carries, or cites an artifact that does not exist | **WARNING** (Goal 2 — the paperwork arm below) |
-| `suite-total-claim` | A suite-total test claim in durable prose — the store already records pass/fail per tree | **NOTE** |
-| `learnings-entry-shape` | A `learnings.md` entry carrying its evidence (rule over 400 chars) or a narrative body — both belong in `learnings-detail.md` | **NOTE** |
-| `learnings-over-budget` | A `.claude/rules/learnings/` file over budget **and grown since the base tree** | **BLOCKING** |
-| `learnings-budget-unreasoned` | A `learnings_budgets:` entry raising a ceiling with no `reason:` | **BLOCKING** |
+| `suite-total-claim` | A suite-total test claim on an **added** line of durable prose — the store already records pass/fail per tree | **NOTE** |
+| `learnings-entry-shape` | An added `learnings.md` rule over 400 chars, or a narrative body — both belong in `learnings-detail.md` | **NOTE** |
+| `learnings-over-budget` | A `.claude/rules/learnings/` file over budget **and grown since the base tree** (sizes, not lines) | **BLOCKING** |
+| `learnings-budget-unreasoned` | A `learnings_budgets:` entry with no `reason:` | **BLOCKING** |
 
 **Under the coordinator pattern, whoever holds Goal 2 raises every one of these** — including the
 `suite-total-claim` NOTE, which would otherwise sit in Goal 4. The manifest is named in Goal 2 and

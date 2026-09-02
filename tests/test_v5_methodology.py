@@ -501,7 +501,7 @@ LAST_MEASURED_TOKENS = {
     # was asserting a timing that is false on the Issues backend, so the routing
     # replaced prose rather than adding to it, and the "why" the routing would
     # have restated stayed at the owner where the reader is already being sent.
-    "skills/critic/review-cycle.md": 9634,
+    "skills/critic/review-cycle.md": 9599,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -4390,6 +4390,15 @@ class TestReviewCycle:
         # reason in one clause rather than the paragraph the first draft carried:
         # a correction to an instruction that cannot fire is not spending the
         # ceiling, but the explanation of it would have been.
+        #
+        # 9591 -> 9599 (2026-09-02) -- the budget gate's two rows. An ungraded
+        # record-lint check reaches a reviewer with no verdict, which is how
+        # `learnings-entry-shape` shipped, so a row is not optional. PAID FOR:
+        # the standalone line-scoping sentence named "the suite-total tripwire"
+        # and read as a property of the whole pass -- which the budget check,
+        # reading file sizes on a diff that changed no record, contradicts. It
+        # folded into the two rows that own the scope, where a reader meets it
+        # beside the check instead of as a claim two of six rows deny. Net +8.
         content = read_file("skills/critic/review-cycle.md")
         tokens = estimate_tokens(content)
         assert tokens < 9600, f"review-cycle.md is ~{tokens} tokens, should be <9600"
