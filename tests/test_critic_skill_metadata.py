@@ -67,7 +67,7 @@ class TestCriticSkillDenyPatterns:
         expected = [
             "Read", "Glob", "Grep", "Bash(wc *)", "Write", "Agent",
             "Bash(prawduct-hook test-status)",
-            "Bash(prawduct-hook infer-critic-mode *)",
+            "Bash(prawduct-hook infer-critic-mode*)",
         ]
         allowed = _extract_allowed_tools(_PLUGIN_CRITIC_SKILL.read_text())
         for tool in expected:
@@ -182,9 +182,15 @@ class TestExplicitModeArgContract:
     def test_helper_wildcard_still_in_allowed_tools(self):
         """Forwarding needs the wildcarded allow entry — the bare
         `Bash(prawduct-hook infer-critic-mode)` form would reject the
-        argument-carrying invocation."""
+        argument-carrying invocation.
+
+        The star is attached to the command word with NO space: #730 made the
+        spaced form (`infer-critic-mode *`) stop covering a BARE call, and the
+        skill instructs one. The house grant form is written down in
+        tests/test_skill_command_grants.py's module docstring; this pin follows
+        it rather than restating a second convention."""
         allowed = _extract_allowed_tools(_PLUGIN_CRITIC_SKILL.read_text())
-        assert "Bash(prawduct-hook infer-critic-mode *)" in allowed
+        assert "Bash(prawduct-hook infer-critic-mode*)" in allowed
 
 
 _PLUGIN_REVIEW_PROTOCOL = REPO_ROOT / "skills" / "critic" / "review-protocol.md"
@@ -309,7 +315,17 @@ def _granted_subcommands(grant_line: str) -> set[str]:
     """
     out: set[str] = set()
     for m in re.finditer(r"(?<![\w/-])prawduct-hook\s+([^)]*)\)", grant_line):
-        words = [w for w in m.group(1).split() if re.fullmatch(r"[a-z][a-z0-9-]*", w)]
+        # Both grant spellings reduce to the same subcommand words. The house
+        # form (#730) attaches the star to the last command word with no space
+        # -- `infer-critic-mode*` -- so the star is grant syntax, not part of
+        # the command name, and has to come off before the word is matched.
+        # Reading it as a name silently drops the grant and reports the
+        # subcommand as ungranted, which is exactly what it did.
+        words = [
+            stripped
+            for w in m.group(1).split()
+            if re.fullmatch(r"[a-z][a-z0-9-]*", (stripped := w.rstrip("*")))
+        ]
         if words:
             out.add(" ".join(words))
     return out

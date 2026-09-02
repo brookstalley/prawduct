@@ -111,6 +111,7 @@ _RECORD_FILES = frozenset(
         ".prawduct/backlog.md",          # frozen by the GitHub Issues cutover
         ".prawduct/learnings.md",        # narrates defects, quoting the paths they occurred at
         ".prawduct/learnings-detail.md",
+        ".prawduct/learnings-history.md",   # the archive half of the same record
         ".prawduct/reflections.md",
         ".prawduct/operator-verification.md",
     }
