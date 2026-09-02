@@ -77,7 +77,7 @@ writing the matcher.
 - [x] Chunk 02: `learnings-migrate` — lossless relayout of any fleet format
 - [x] Chunk 03: Budget gate — over-and-grew blocks the next addition
 - [x] Chunk 04: Detection, directive, Stop floor, and the cross-check re-pointed
-- [ ] Chunk 05: Migrate this repo with its own command
+- [x] Chunk 05: Migrate this repo with its own command
 Context: Plan drawn 2026-09-02 from discovery §8.2. Harness probe done 2026-09-02 (coordinator
 session): a `.claude/rules/zz-probe.md` with `paths: ["plugin/lib/**"]` injected its rule text on
 the first Read of `plugin/lib/onboarding_probes.py` — root-relative, `**` spans directories,
@@ -86,7 +86,7 @@ final review rev-20260902T120140Z-ba4c090d + verify-resolutions rev-20260902T121
 02–04 built 2026-09-02 by three opus delegates (file-tree partition), merged `--no-ff`, reviewed
 together: final rev-20260902T133555Z-1c5f77dc (1 blocking, 16 warnings — all fixed, notes accepted)
 and verify-resolutions rev-20260902T173315Z-5ec2a8ab (clean; R-11 registry row half-done, rides
-Chunk 05's commit with the `learnings_change_set` TimeoutExpired gap). Chunk 05 next, serial.
+Chunk 05's commit with the `learnings_change_set` TimeoutExpired gap). Chunk 05 done 2026-09-02 (e267482b + fixes): cumulative rev-20260902T180431Z-087ea761 → all blocking/warnings fixed (R-9 accepted → #343), verify-resolutions rev-20260902T183848Z-4d6a28c3 clean. WAVE 1 COMPLETE; Wave 2 (`learnings-v2-delete`) is next and draws its own plan.
 
 ## Scaffolding
 
