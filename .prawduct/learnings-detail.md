@@ -2495,3 +2495,49 @@ widest-reaching one — a shipped pointer resolving only in the framework repo �
 about consumer repos, which the author was not. Corollary for the cheap case: where a separate
 context is not available, take the attack from a roster you did not author, so at least the
 *selection* is not yours.
+
+## A precondition recorded only in PROSE is never re-evaluated when it is discharged — wire it as the machine-readable dependency the tool already honours, because nothing revisits an item whose blocker quietly closed
+
+Found during the 2026-09-02 design-queue triage (50 items at `stage: design` against 51 at
+`ready`). The pass was framed as "advance or drop"; what it actually measured was how many items
+had stopped being true.
+
+**The three instances, all verified against the tree rather than the body.**
+
+*#237* ("modernize ~28 terse learnings headings") carried a scope-out forbidding the work "before
+the two guardrails land", plus a HAZARD naming 17 forwarding pointers and a pairing invariant that
+break silently. Both guardrails were discharged: #345 closed `not_planned` on 2026-08-01 carrying
+`superseded_by: #339`, and #339 closed COMPLETED on 2026-09-02. #339 absorbed #345 and shipped
+`check_learnings_pairing` (`audit_learnings_cmd.py:1563`), whose docstring grades "Unresolvable
+forwarding pointers in the archive" — precisely the #345 half. Running it returns `status: ok`.
+The item had been parked for a month on a condition met the day before, and the thing that would
+have told you is the thing that shipped.
+
+*The janitor* (`skills/janitor/SKILL.md:231`) skips its neglected-hygiene check because
+"the `promoted` status value has no GitHub-Issues equivalent … (blocked on #529)". Both clauses
+are false: `promoted` maps to `in-progress` (`migrate.py:671`), which is first-class in
+`encode.STATUS_VALUES`, and `backlog list --status in-progress` runs clean. #529 closed
+`not_planned` superseded by #729, which closed COMPLETED. Note the trap in reading this one: the
+skill's CONCLUSION ("would match nothing") is currently true — nothing is claimed — while its
+REASON is wrong. A stale reason under a coincidentally-true conclusion is the hardest kind to
+notice, and the reason is what the next reader will act on.
+
+*#677* described the evidence and review gates re-opening on a docs-only delta. Both halves had
+shipped in kernel-v3 chunk 04, before the item was filed. Worse, its proposed predicate
+(`is_executable_path`, False for every `.md`) would have made governance prose a free edge — the
+direction a prior revert already killed, with a do-not-reintroduce comment naming it.
+
+**Why prose preconditions rot specifically.** A blocker closing is an event at the BLOCKER. A prose
+precondition lives at the BLOCKED item, where that event never arrives. Nothing joins them, so the
+item's readiness is frozen at the moment someone last read it. The machine-readable form inverts
+this: `pick` re-evaluates every candidate's `blocked_by` on every call, so discharging the blocker
+un-gates the item with no one revisiting anything.
+
+**The measurement that makes the case.** Querying `dependencies/blocked_by` across all 131 open
+items returned exactly three edges (#164→#742, #167→#677, #641→#640-closed). The mechanism was
+built, tested and honoured by `pick`, and used on 2% of the corpus, while at least three items
+carried prose gates instead. The gap is not a missing feature; it is a habit.
+
+**Corollary for triage.** Requiring one NAMED ANSWERABLE QUESTION from anything staying at
+`design` — with "needs design" rejected — is what exposed these. An item that cannot produce its
+blocking question in one sentence is not blocked; it is mislabelled, already done, or dead.
