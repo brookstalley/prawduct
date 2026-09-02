@@ -123,6 +123,122 @@ class TestJudgeablePath:
         assert ca.judgeable_files(None) == []
 
 
+class TestSuiteCoupledState:
+    """COV-4H7N — "needs review" and "can flip a test red" are two questions.
+
+    PR #125 changed only `.prawduct/*.md` plus `project-state.yaml`.
+    `check-pr-doc-only` took the fast path (no Critic, no PR review, no suite)
+    AND `test-status` read current, because both asked the review question of
+    a change only the suite could judge. `test_norm_probes` reads the live
+    `project-state.yaml`, so develop broke silently.
+    """
+
+    def test_the_repro_path_is_suite_coupled_but_not_judgeable(self):
+        """Both halves matter. Judgeable would demand a reviewer for a file the
+        batch-fix directive promises is free to write mid-review; not
+        suite-coupled is what let the change skip the suite."""
+        path = ".prawduct/project-state.yaml"
+        assert ca.is_judgeable_path(path) is False
+        assert ca.affects_test_outcome(path) is True
+
+    def test_every_judgeable_path_is_also_suite_coupled(self):
+        """A strict superset — code that needs review can obviously flip a
+        test, and a predicate that lost that would silence the suite question
+        on exactly the paths it matters most for."""
+        for path in TestJudgeablePath.JUDGEABLE:
+            assert ca.affects_test_outcome(path), path
+
+    def test_ordinary_metadata_is_still_free_of_both(self):
+        """The inventory is named, not a `.prawduct/**` rule. Bookkeeping churn
+        keeps costing nothing — that is the whole reason this is a list."""
+        for path in (".prawduct/.critic-findings.json", ".claude/settings.json",
+                     "docs/notes.md", "README.md"):
+            assert ca.is_judgeable_path(path) is False, path
+            assert ca.affects_test_outcome(path) is False, path
+
+    def test_the_held_out_bookkeeping_files_are_recorded_as_a_residual(self):
+        """These ARE read by repo-coupled tests and are deliberately out, on
+        cost. Pinned so the exclusion stays a decision someone made rather than
+        an oversight nobody noticed — flipping one is a deliberate edit here."""
+        for path in (".prawduct/backlog.md", ".prawduct/change-log.md",
+                     ".prawduct/learnings.md",
+                     ".prawduct/artifacts/build-plan-x.md"):
+            assert ca.affects_test_outcome(path) is False, path
+
+    def test_the_inventory_names_files_that_exist(self):
+        """An entry naming a path this repo does not have is a rule guarding
+        nothing, and reads as coverage while providing none."""
+        import pathlib
+
+        repo_root = pathlib.Path(__file__).resolve().parents[1]
+        missing = [p for p in ca.TEST_COUPLED_STATE if not (repo_root / p).is_file()]
+        assert missing == [], (
+            f"TEST_COUPLED_STATE names {missing}, which this repo does not "
+            "carry — drop the entry or fix the spelling"
+        )
+
+    def test_suite_coupled_files_filters_and_preserves_order(self):
+        mixed = ["lib/a.py", "docs/a.md", ".prawduct/project-state.yaml",
+                 ".prawduct/backlog.md", "CLAUDE.md"]
+        assert ca.suite_coupled_files(mixed) == [
+            "lib/a.py", ".prawduct/project-state.yaml", "CLAUDE.md"
+        ]
+        assert ca.suite_coupled_files(None) == []
+
+    def test_suite_coupled_state_never_enters_the_coverage_algebra(self):
+        """The review side must not widen. A review that changed the state file
+        and never reviewed it still yields a valid edge, and a state-only
+        interval is still a free edge — the batch-fix directive's promise."""
+        facts = [
+            _review(
+                "r1", T0, T1, ["lib/a.py", ".prawduct/project-state.yaml"],
+                reviewed=["lib/a.py"],
+            )
+        ]
+        table = {(T1, T2): [".prawduct/project-state.yaml"]}
+        verdict = ca.coverage_verdict(facts, T0, T2, _diff(table))
+        assert verdict["status"] == "covered"
+
+
+class TestExecutablePath:
+    """COV-8R2K — the coverage floor's jurisdiction, the narrowest of the three
+    readings of one boundary.
+
+    `is_judgeable_path` asks whether a change needs a reviewer,
+    `affects_test_outcome` whether it can change what the suite says, and
+    `is_executable_path` whether a test can RUN it — which is what a
+    symbol-grep floor is measuring when it demands a reference.
+    """
+
+    def test_code_is_executable(self):
+        for path in ("lib/gates.py", "bin/prawduct-hook", "src/app.ts",
+                     "config.json", "config/app.yaml"):
+            assert ca.is_executable_path(path), path
+
+    def test_no_md_is_executable_protected_or_not(self):
+        """The one clause on top of judgeability, and the case a second suffix
+        table would have had to get right by hand: protection makes fork-skill
+        prose review-worthy, not testable."""
+        for path in ("skills/critic/SKILL.md", "methodology/building.md",
+                     "templates/build-plan.md", "CLAUDE.md",
+                     "docs/notes.md", "README.md"):
+            assert not ca.is_executable_path(path), path
+
+    def test_framework_state_is_not_executable(self):
+        for path in (".prawduct/project-state.yaml",
+                     ".prawduct/.critic-findings.json",
+                     ".claude/settings.json"):
+            assert not ca.is_executable_path(path), path
+
+    def test_executable_is_a_subset_of_judgeable(self):
+        """Direction matters: the floor may exempt what review still demands,
+        never the reverse — an exemption that outran judgeability would let an
+        unreviewed file out of both gates."""
+        for path in TestJudgeablePath.JUDGEABLE + TestJudgeablePath.NON_JUDGEABLE:
+            if ca.is_executable_path(path):
+                assert ca.is_judgeable_path(path), path
+
+
 # ---------------------------------------------------------------------------
 # Composition verdicts
 # ---------------------------------------------------------------------------
@@ -481,6 +597,112 @@ class TestBlockingAndResolutions:
             )
         ]
         assert ca.coverage_verdict(facts, T0, T1, _diff({}))["status"] == "covered"
+
+
+class TestBlockersAreAPropertyOfNodes:
+    """CRT-5H2D — the findings question is asked of the trees the path stands
+    on, not of the edges it traversed.
+
+    Two independent doors let a BLOCKING finding gate nothing before this:
+    ``review_edges`` drops a self-loop (``base_tree == head_tree``) before
+    either search phase runs, and ``coverage_verdict`` short-circuited an
+    equal-trees span to ``covered`` before the edges were built at all. Both
+    are pinned here, plus the widening they imply and the limits on it.
+    """
+
+    def test_the_live_case_a_self_loop_blocker_blocks_a_span_through_its_tree(self):
+        """The exact observed failure: a verify-resolutions re-dispatch against
+        an unchanged tree recorded a BLOCKING finding at ``T1 -> T1``, and
+        ``check-cumulative-critic`` answered ``satisfied ... 0 unresolved``.
+        A span composed through T1 must now read ``blocked``."""
+        facts = [
+            _review("r1", T0, T1, ["lib/a.py"]),
+            _review("r-self", T1, T1, [], findings=[BLOCKER]),
+            _review("r2", T1, T2, ["lib/b.py"]),
+        ]
+        verdict = ca.coverage_verdict(facts, T0, T2, _diff({}))
+        assert verdict["status"] == "blocked"
+        assert [e["review_id"] for e in verdict["unresolved"]] == ["r-self"]
+        assert verdict["unresolved"][0]["fid"] == "F-1"
+
+    def test_a_degenerate_gate_span_is_not_free_coverage(self):
+        """Door two: the gate's own span is zero-length. There is still a node,
+        and the node still carries the finding."""
+        facts = [_review("r-self", T1, T1, [], findings=[BLOCKER])]
+        verdict = ca.coverage_verdict(facts, T1, T1, _diff({}))
+        assert verdict["status"] == "blocked"
+        assert verdict["path"] == []
+        assert [e["review_id"] for e in verdict["unresolved"]] == ["r-self"]
+
+    def test_a_degenerate_span_names_the_verify_route(self):
+        """The self-loop fact IS what a verify-resolutions pass anchors to, so
+        the finding must not be reported as superseded — that would advise a
+        spanning review when the cheap route is available."""
+        facts = [_review("r-self", T1, T1, [], findings=[BLOCKER])]
+        verdict = ca.coverage_verdict(facts, T1, T1, _diff({}))
+        assert verdict["unresolved"][0]["superseded"] is False
+
+    def test_a_resolution_fact_clears_a_self_loop_blocker(self):
+        """The blocker becomes reachable, so the ordinary route out works —
+        no re-review, and no special case for the degenerate interval."""
+        facts = [
+            _review("r-self", T1, T1, [], findings=[BLOCKER]),
+            _resolution("s1", "r-self", "F-1"),
+        ]
+        assert ca.coverage_verdict(facts, T1, T1, _diff({}))["status"] == "covered"
+
+    def test_a_self_loop_blocker_at_an_unrelated_tree_still_does_not_haunt(self):
+        """The sweep is scoped to the path's nodes. An abandoned state's
+        self-loop is no more haunting than an abandoned state's edge."""
+        facts = [
+            _review("r-dead-self", T_DEAD, T_DEAD, [], findings=[BLOCKER]),
+            _review("r1", T0, T1, ["lib/a.py"]),
+        ]
+        assert ca.coverage_verdict(facts, T0, T1, _diff({}))["status"] == "covered"
+
+    def test_a_blocker_at_a_node_survives_a_free_edge_around_it(self):
+        """Routing around the blocked edge does not answer the accusation the
+        node carries: the tree is still the one a reviewer refused."""
+        facts = [_review("r1", T0, T1, ["lib/a.py"], findings=[BLOCKER])]
+        table = {(T0, T1): [".prawduct/backlog.md"]}  # free edge, same endpoints
+        verdict = ca.coverage_verdict(facts, T0, T1, _diff(table))
+        assert verdict["status"] == "blocked"
+        assert [e["review_id"] for e in verdict["unresolved"]] == ["r1"]
+
+    def test_an_under_reviewed_fact_still_accuses_even_though_it_cannot_vouch(self):
+        """Edge validity gates what evidence *proves*, never what it accuses.
+        A scoped pass that saw less than its diff yields no edge — and its
+        BLOCKING finding is still a real one."""
+        partial = _review(
+            "r-partial", T0, T1, ["lib/a.py", "lib/b.py"],
+            reviewed=["lib/a.py"], findings=[BLOCKER],
+        )
+        facts = [partial, _review("r-full", T0, T1, ["lib/a.py", "lib/b.py"])]
+        verdict = ca.coverage_verdict(facts, T0, T1, _diff({}))
+        assert verdict["status"] == "blocked"
+        assert [e["review_id"] for e in verdict["unresolved"]] == ["r-partial"]
+
+    def test_a_spanning_review_past_the_blocked_tree_still_composes(self):
+        """The documented escape stays open: a review whose interval never
+        stands at the accused tree supplies a clean path around it."""
+        facts = [
+            _review("r1", T0, T1, ["lib/a.py"], findings=[BLOCKER]),
+            _review("r-span", T0, T2, ["lib/a.py", "lib/b.py"]),
+        ]
+        verdict = ca.coverage_verdict(facts, T0, T2, _diff({}))
+        assert verdict["status"] == "covered"
+        assert [s["id"] for s in verdict["path"]] == ["r-span"]
+
+    def test_a_clean_span_with_no_findings_anywhere_is_untouched(self):
+        """The sweep costs nothing when there is nothing to sweep — the
+        ordinary case keeps its ordinary verdict and its ordinary path."""
+        facts = [
+            _review("r1", T0, T1, ["lib/a.py"]),
+            _review("r2", T1, T2, ["lib/b.py"]),
+        ]
+        verdict = ca.coverage_verdict(facts, T0, T2, _diff({}))
+        assert verdict["status"] == "covered"
+        assert [s["id"] for s in verdict["path"]] == ["r1", "r2"]
 
 
 class TestReproScenarios:
