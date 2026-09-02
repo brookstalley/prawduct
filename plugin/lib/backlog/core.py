@@ -428,8 +428,9 @@ def resolve_ref(
     """Normalize ``id_raw`` to a canonical ``owner/repo#number``, resolving a hand-
     minted ``PFX`` alias via its ``id:PFX`` label when the plain spellings don't
     match (MG1). ``default_repo`` (``(owner, repo)``, from ``--repo``) is the repo a
-    bare ``PFX`` is resolved against; absent it a ``PFX`` cannot resolve and is a
-    ``validation`` error (never a silent guess). A ``PFX`` that matches no live item
+    bare ``PFX`` is resolved against, and the repo a bare ``621``/``#621`` resolves
+    against; absent it neither can resolve and both are a ``validation`` error
+    (never a silent guess). A ``PFX`` that matches no live item
     is ``not_found``; one that matches more than one is an ``alias_collision`` (the
     §5 uniqueness invariant broke — flag it, never pick one).
 
@@ -444,7 +445,13 @@ def resolve_ref(
     ``default_repo`` set), so it may raise ``TransportError`` — call it inside
     the caller's transport ``try``/``except`` (a ``#`` or ``/`` spelling does
     no I/O)."""
-    nid = ids.normalize_id(id_raw, default_owner=default_owner)
+    # `default_repo` goes to the parser too, not only to the PFX branch below:
+    # it is what lets a bare `621` — the number an operator reads off a GitHub
+    # URL — resolve here the same way it does on the cache path. A bare number
+    # can never collide with the PFX grammar, which requires a leading letter.
+    nid = ids.normalize_id(
+        id_raw, default_owner=default_owner, default_repo=default_repo
+    )
     if nid.ok:
         if default_repo and ids.is_pfx(id_raw):
             # Both grammars match — alias-if-exists precedence (see docstring).

@@ -174,8 +174,12 @@ field home.)*
 **Item shape = the Data Model entity** (§1.1), not restated here. Contract-level rules:
 
 - **Inputs.** Only `title`+`body` are required to `file` (AG2); every other field is optional and
-  backfillable. IDs accept `owner/repo#number` · `repo#number` · `repo-number` · `repo/number` and
-  **normalize** to canonical (D4). Soft-enum values (`stage:`,`kind:`,…) are **advisory** — an unknown
+  backfillable. IDs accept `owner/repo#number` · `repo#number` · `repo-number` · `repo/number` ·
+  bare `number`/`#number` and **normalize** to canonical (D4). The short and shell forms need a
+  `--repo` owner; the bare forms carry no repo either and need the full `--repo`, so an owner alone
+  will not resolve one. Bare forms are accepted from OPERATOR INPUT only — a ref parsed out of issue
+  body text (`superseded_by`) resolves canonically or not at all, since body text is writable by
+  anyone who can file an issue. Soft-enum values (`stage:`,`kind:`,…) are **advisory** — an unknown
   value is *flagged, not rejected* (DM1); the hard reject is reserved for genuine ambiguity (unknown
   *status*, malformed ID). A digit-suffix token (`ADR-12`) matches both `repo-number` and the
   migrated-PFX alias grammar; precedence is fixed (Data Model §5): with `--repo` present the
@@ -350,7 +354,8 @@ never as *published*.
 Small choices expensive to reverse once consumers depend on them:
 
 - **IDs (D4):** canonical `owner/repo#number`; short `repo#number` **same-owner only** (else
-  `ambiguous_id`). Accept the four spellings (§3), normalize on the way in.
+  `ambiguous_id`); bare `number`/`#number` **same-repo only**. Accept the spellings listed in §3,
+  normalize on the way in.
 - **Timestamps:** **ISO-8601, UTC** — matches the Data Model's `verified.on`.
 - **Enums:** named string values, never magic ints; **soft** (unknown → `warning`, not reject; DM1).
 - **null vs. absent:** absence = "unset / use default"; explicit `null` = "clear this field." A

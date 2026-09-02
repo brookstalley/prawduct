@@ -364,13 +364,14 @@ rather than impossible (Data Model §1.4).
 
 ### 3.7 IDs, aliases & redirects (DM4/D4)
 
-**ID-1 — Four spellings normalize to canonical** (→ D4, API §3/§8)
+**ID-1 — Every spelling normalizes to canonical** (→ D4, API §3/§8)
 - Level: unit
-- Setup: the four accepted spellings of one ID: `owner/repo#number`, `repo#number`, `repo-number`,
-  `repo/number`.
+- Setup: the accepted spellings of one ID: `owner/repo#number`, `repo#number`, `repo-number`,
+  `repo/number`, and bare `number` / `#number`.
 - Action: normalize each.
-- Expected: all four → the same canonical `owner/repo#number`; a short `repo#number` resolves same-owner
-  only. (Property candidate.)
+- Expected: each → the same canonical `owner/repo#number`; a short `repo#number` resolves same-owner
+  only; a bare `number`/`#number` resolves same-repo only, so a default owner alone leaves it a
+  `validation` error rather than a guess. (Property candidate.)
 
 **ID-2 — `ambiguous_id` under federation** (→ D4, API §4; *implied-not-named in source docs — named here*)
 - Level: unit

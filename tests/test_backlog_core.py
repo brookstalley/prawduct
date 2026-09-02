@@ -336,6 +336,28 @@ class TestDigitSuffixPfxDisambiguation:
         assert nid.canonical == f"{OWNER}/ADR#12"
         assert not any(c[0] == "list_issues" for c in fake.calls)
 
+    def test_a_bare_number_resolves_against_the_target_repo(self, fake):
+        # The live commands (`get`, `status`, `update`, …) reach the parser through
+        # resolve_ref, so the bare form has to work here too — not only on the
+        # cache path. Two of two callers hit this during one triage pass.
+        nid = core.resolve_ref(fake, "621", default_owner=OWNER, default_repo=(OWNER, REPO))
+        assert nid.ok
+        assert nid.canonical == f"{OWNER}/{REPO}#621"
+
+    def test_a_bare_number_does_no_alias_io(self, fake):
+        # A bare number cannot be a PFX (the grammar needs a leading letter), so
+        # it must never reach the label search — that would be a network call per
+        # resolve for the commonest spelling there is.
+        fake.calls.clear()
+        nid = core.resolve_ref(fake, "621", default_owner=OWNER, default_repo=(OWNER, REPO))
+        assert nid.ok
+        assert not any(c[0] == "list_issues" for c in fake.calls)
+
+    def test_a_bare_number_without_a_target_repo_is_a_validation_error(self, fake):
+        nid = core.resolve_ref(fake, "621", default_owner=OWNER)
+        assert not nid.ok
+        assert nid.error == "validation"
+
     def test_without_a_target_repo_the_repo_number_reading_stands(self, fake):
         _seed_item(fake, labels=[ids.alias_label(self.PFX)])  # bait alias
         fake.calls.clear()
