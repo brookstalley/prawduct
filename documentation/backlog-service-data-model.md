@@ -1,6 +1,6 @@
 # Backlog Service — Data Model
 
-`status: draft v3 — build-plan coherence sweep (2026-07-16, from the §16(6) Build-plan drill-down review): §8 open-Q5 added — the export on-disk file layout is deferred to the export build chunk (bounded by the NFR §8 fidelity contract), resolving PRD §8.9/MG2's over-promise that this doc "pins the on-disk representation." Prior v3 — coherence touch-up (2026-07-16, §5): field-home added for two operation-idempotency markers (`split-op:` and `source-key:`), the field homes for the split / file-upstream keys the Test-Specs review made the API contract pin (§2.3/§2.4). Prior v3 — GV3 coherence (2026-07-16): added a closed_by field to Item §1.1 — GV3's ship-traceability handle had no field home, surfaced by the API-contract independent review; native close-ref authoritative on close-on-merge, the block field the manual-close fallback, and the bidirectional drift sweep is a janitor list+timeline scan (API contract §2.6). Prior v2 — independent-review fold (2026-07-16): B1 fixed (open-state transitions are now crash-safe via an idempotent set-status op + decoder precedence); ready-work restated as list-then-fan-out (M1); cache gains an ETag validator (M2) + a briefing-counts snapshot reconciling GV2 (M3); Q4 routed to query-side fan-out, not the per-clone cache (M4); a single authority fixed per field + corrected write-cost attribution (M5); verification encoding resolved to one authority (M6); dead node_id cache column dropped (m1); redirect facet added to the taxonomy (m2); duplicate→target timeline read stated (m3); block evolution is additive-only-forever (m4); duplicated-block rule (m5). Prior v1: initial drill-down from PRD §7/§7a. · source: planning session · stage: design`
+`status: draft v3 — DM5 read side (2026-08-02, from the backlog-comments-read cycle): §1.1 gains a `comments` row and §1.3 the read-path rule — `get` returns the thread, every read carries `comments_count` (API contract §2.1 updated in step). Prior v3 — build-plan coherence sweep (2026-07-16, from the §16(6) Build-plan drill-down review): §8 open-Q5 added — the export on-disk file layout is deferred to the export build chunk (bounded by the NFR §8 fidelity contract), resolving PRD §8.9/MG2's over-promise that this doc "pins the on-disk representation." Prior v3 — coherence touch-up (2026-07-16, §5): field-home added for two operation-idempotency markers (`split-op:` and `source-key:`), the field homes for the split / file-upstream keys the Test-Specs review made the API contract pin (§2.3/§2.4). Prior v3 — GV3 coherence (2026-07-16): added a closed_by field to Item §1.1 — GV3's ship-traceability handle had no field home, surfaced by the API-contract independent review; native close-ref authoritative on close-on-merge, the block field the manual-close fallback, and the bidirectional drift sweep is a janitor list+timeline scan (API contract §2.6). Prior v2 — independent-review fold (2026-07-16): B1 fixed (open-state transitions are now crash-safe via an idempotent set-status op + decoder precedence); ready-work restated as list-then-fan-out (M1); cache gains an ETag validator (M2) + a briefing-counts snapshot reconciling GV2 (M3); Q4 routed to query-side fan-out, not the per-clone cache (M4); a single authority fixed per field + corrected write-cost attribution (M5); verification encoding resolved to one authority (M6); dead node_id cache column dropped (m1); redirect facet added to the taxonomy (m2); duplicate→target timeline read stated (m3); block evolution is additive-only-forever (m4); duplicated-block rule (m5). Prior v1: initial drill-down from PRD §7/§7a. · source: planning session · stage: design`
 
 **Parent:** `documentation/backlog-service-prd.md` (PRD v4) and, through it,
 `documentation/backlog-service-requirements.md` (DM1–7, Q1–5). This doc fixes the **field-level
@@ -51,14 +51,15 @@ cache (§6) projects the same fields for the queries GitHub can't serve read-you
 | `relationships` | §1.3 | native dependencies / sub-issues / refs | DM3, ready-work |
 | `provenance` | §1.5 | block (detail) + `source:<product>` label (the coarse XP2/Q4 filter) | XP2 |
 | `history` | append-only | issue **timeline/events** (native) | CC4 |
-| `closed_by` | branch/PR/release handle | native **timeline close-ref** (close-on-merge) + block `closed_by` (manual-close fallback) | GV3 |
+| `comments` | thread (§1.3) + native count | issue **comments** — `get` returns the thread; every read carries `comments_count` (payload count) | DM5 (drill-down) |
+| `closed_by` | branch/PR/release handle | native **timeline close-ref** (close-on-merge) + block **`closed-by`** (manual-close fallback — hyphenated in the block; see §2) | GV3 |
 
 *Soft enums (DM1):* an undeclared `stage:`/`kind:` value is **flagged, not rejected** (scriob's `kind:`
 on 158 items). `added` is display/sort metadata (sort-by-date under Q1), not a standalone query key.
 
 *`closed_by` (GV3, added v3):* the ship-**traceability** handle that replaces git's ship-atomicity. On a
 close-on-merge it is **authoritative from the native `closed` timeline event** (the closing PR/commit
-ref, no new stored field), with the block `closed_by` only as the **manual-close** fallback (a bare
+ref, no new stored field), with the block **`closed-by`** (hyphenated — §2) only as the **manual-close** fallback (a bare
 `status`→shipped otherwise carries no handle). The GV3 bidirectional drift sweep (*shipped-but-PR-died* ·
 *merged-but-item-open*) is a janitor `list`+timeline scan, not a stored projection — see API contract
 §2.6.
@@ -69,14 +70,31 @@ ref, no new stored field), with the block `closed_by` only as the **manual-close
   too but is **not writable at all** — see §1.1.
 - **Block-authoritative, unmirrored:** `affected`, `working_branch`, `verified`, `attachments`, `superseded_by`,
   `automated`/`worker` (the unattended-actor marker — Security §1a/CC4; self-asserted like all block
-  fields, trustworthy for audit only insofar as the acting API identity is).
+  fields, trustworthy for audit only insofar as the acting API identity is), and the three
+  **editorial** fields `refs`/`revisit`/`closed-by` (§2).
+- **Writable vs import-only, within the block.** Block-authoritative does not mean writable — the
+  two axes are independent and conflating them is what left the editorial fields stranded for a
+  whole cutover. Writable through `update`: `affected`, `working_branch` and the three editorial
+  fields. Writable only through the op that owns the invariant: `related` (link/unlink),
+  `superseded_by` (merge). **Import-only, deliberately and permanently:** `id_aliases` and `v` (identity and schema
+  version — MG2 alias loss), `original_title`/`original_body` (write-once MG6 provenance),
+  `automated`/`worker` (caller-settable attribution *is* the SEC-6 forgery they guard against),
+  `provenance` (untrusted until triaged — Security §5), `added` — for which the native
+  `created_at` is a better answer than any stored copy, being unforgeable and never in need of
+  update — and `reviewed`, which keeps its 300 imported values readable but gained no write path,
+  because the stale-items sweep takes its date from native `updated_at` (#550 scope reshape
+  2026-08-07) and a second, forgeable copy would answer nothing.
 - **Two justified mirrors** (each side serves a *distinct* consumer, not the same value twice):
   - `id:` — the **label** makes old refs *queryable/resolvable*; the **block `id_aliases`** is the
     export round-trip record.
   - `source:` — the **label** is the coarse Q4/XP2 *filter*; the **block provenance** is the detail.
 
 ### 1.3 Comment · 1.4 Taking an item · 1.5 Provenance · 1.6 Attachment
-- **Comment** → native issue comments (DM5); cache mirrors text only for Q1-fulltext/Q3.
+- **Comment** → native issue comments (DM5); cache mirrors text only for Q1-fulltext/Q3. **Read
+  side (added 2026-08-02):** `get` returns the thread (oldest-first `{id, author, created_at,
+  body, url}` — `id` is the native comment id, kept as the stable handle for any future
+  comment-level op) — comments are where an item evolves after filing, so the drill-down read ships with the
+  single-item fetch; every decoded item carries `comments_count` from the native payload count.
 - **Taking an item** (Item facet) → set `working-branch` (§1.1). **There is no Claim entity**, and its
   removal is the substantive change here rather than a rename: the claim was an `assignee` take plus a
   `claimed_at` stamp plus a staleness TTL that drove an auto-unclaim so `pick` could not starve —
@@ -118,6 +136,10 @@ automated: true                                          # unattended-actor mark
 worker: prawduct-hook                                    # the unattended worker id (paired with `automated`)
 original_title: Add the harbor map overlay               # pre-migration title, verbatim (MG6 — only when the scrub changed it)
 original_body: "line one\nline two"                      # pre-migration body, verbatim; JSON-string-encoded to one line
+refs: requirements-x.md#section, arch-y.md               # governing docs (item→doc; `related`/`superseded_by` are item→item)
+revisit: 2027-01-01 | <event trigger text>               # norm-exception / stopgap expiry clock
+closed-by: fix/some-branch                               # manual-close ship handle (§1.1 `closed_by`; NOTE the hyphen)
+reviewed: 2026-08-02                                     # import-only TF2 re-confirmation date — see § Editorial fields below
 ```
 ````
 
@@ -126,6 +148,43 @@ CLI flag, this document's §1.1 row). The block's keys are snake throughout and 
 additive-only-forever (§7), so the spelling chosen at birth is the spelling always — it matches its
 neighbours rather than the flag. `encode.Block.working_branch` (read) and `core._BLOCK_KEY` (write)
 are the only two places the two spellings meet.
+
+**Editorial fields (`refs` · `revisit` · `closed-by`) — writable, not import-only.**
+These three carry a human/agent *judgment about the item* that GitHub has no native slot for. They
+entered the block through the importer's preserve-unknown-keys rule (§7 additive-only-forever) and
+were **write-once for the whole cutover**: the only writers were the importer and the ops owning one
+field apiece, so `update --body` carrying an edited block returned ok and discarded the edit. They
+are now written by `update --refs/--revisit/--closed-by` and `file --refs` (#550, #564).
+Usage when that landed, across 388 blocks: `refs` 270 · `closed-by` 149 · `revisit` 6. (`reviewed`,
+at 300, is the fourth field of the same shape and deliberately stayed import-only — see §1.2.)
+
+**`closed-by` is hyphenated in the block** while §1.1 names the field `closed_by` and the item
+projection exposes `closed_by`. That is deliberate and must not be "harmonised": 149 live items
+spell it with a hyphen and none with an underscore, so renaming the block key would orphan every
+one. The hyphen→underscore hop happens in `encode.decode_item` and only there.
+
+**Block values are single-line by construction, and this is a security property, not a formatting
+one.** The block is line-based and the parser reads *every* line inside the fence as a field, so a
+value carrying any separator `str.splitlines()` recognises does not store a multi-line value — it
+injects sibling fields, reaching `automated`/`worker` (SEC-6 attribution forgery) and `id_aliases`
+(MG2 permanent-alias loss) past any key-level allowlist. `encode.check_block_value` rejects such
+values at every write op, and derives its predicate from `splitlines()` itself rather than
+enumerating separators, so guard and parser cannot drift. Rejected rather than escaped:
+`format_text` would make any value safe but JSON-quotes it on disk, forking `closed-by` into two
+spellings against the items that carry it bare.
+
+**`reviewed` vs `verified` — one concept, two fidelities (resolved 2026-08-02).** §1.1's
+`reviewed`/verification row and the block's `reviewed:` date are **not** competing fields. TF2 asks
+for *"premise re-checked against code by `<actor>` on `<date>`"*, and TF3 counts `reviewed:` stamps
+as the observed workload — so `reviewed:` **is** TF2's stamp, in its date-only form. The richer
+`verified: [{by, on}]` shape sketched above remains designed-but-unbuilt: **zero live items carry
+it.** The live encoding is therefore the `reviewed:` date, with the `<actor>` half supplied by the
+GitHub API identity on the write (native, unforgeable, in the issue timeline) rather than
+self-asserted in the block — which is strictly better than storing it, since every block field is
+forgeable by any write-capable actor. Build `verified` only if a use case needs multiple retained
+verification events per item; a single latest-re-confirmation does not. Neither is written today:
+the 2026-08-07 reshape of #550 took the staleness sweep's date from native `updated_at`, so the
+300 imported `reviewed:` values are read and never refreshed.
 
 **`original_title` / `original_body` (MG6 restructure preservation).** Written by the importer only
 when an owner-confirmed restructure plan changed the item at create (issue-standard §5); absent
@@ -329,6 +388,6 @@ submitted/in-progress carry one — §4.)*
 DM1→§1.1/§3; DM2→§4; DM3→§1.3; DM4→§5; DM5→§1.3; DM6→§1.6; DM7→§8. Q1-structured→§4 ready-work + §6;
 Q1-fulltext/Q3→§6 (`item_fts`); Q2→§6 (`cursor`); **Q4→query-side fan-out (NOT the cache), §6 note**;
 Q5→§6 (derived-on-read + the `briefing_counts` GV2 exception). ready-work→§4 (list-then-fan-out);
-stale-verification (TF2)→§1.1 `verified` + cache `reviewed`; provenance (XP2)→§1.5 + `source:` label
-(the XP2 filter — *not* Q4); **GV3→§1.1 `closed_by`** (native close-ref authoritative, block fallback;
+stale-verification (TF2)→§1.1 block `reviewed` (live; `verified` + cache `reviewed` designed-but-unbuilt); provenance (XP2)→§1.5 + `source:` label
+(the XP2 filter — *not* Q4); **GV3→§1.1 `closed_by`**, block key `closed-by` (native close-ref authoritative, block fallback;
 drift sweep is a janitor scan, API contract §2.6).

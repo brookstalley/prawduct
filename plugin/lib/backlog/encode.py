@@ -121,10 +121,19 @@ NAMESPACED_LABEL_PREFIXES: tuple[str, ...] = (
     "tag:",
 )
 
+# The opener is written ONCE and both readers are built from it. `check_body_text`
+# previously hand-rolled `line.strip().startswith("```prawduct")`, which is looser
+# than this pattern in exactly the direction that hurts: it rejected an INDENTED
+# fence that `_BLOCK_RE` — column-anchored — could never have matched. A guard
+# stricter than its parser is not safe, it is a false positive, and this one
+# refused the very workaround its own docstring recommended.
+_FENCE_OPEN = r"```prawduct[ \t]*"
 _BLOCK_RE = re.compile(
-    r"^```prawduct[ \t]*\n(?P<body>.*?)^```[ \t]*$",
+    rf"^{_FENCE_OPEN}\n(?P<body>.*?)^```[ \t]*$",
     re.MULTILINE | re.DOTALL,
 )
+#: The opener alone — what `check_body_text` must look for, same source as above.
+_FENCE_OPEN_RE = re.compile(rf"^{_FENCE_OPEN}$", re.MULTILINE)
 
 
 # --- The prawduct: block -----------------------------------------------------
@@ -426,6 +435,100 @@ def format_list(items: list[str]) -> str:
     """Render a list of values as the block's ``[a, b]`` form (inverse of
     :func:`parse_list`)."""
     return "[" + ", ".join(items) + "]"
+
+
+def check_body_text(text: str | None) -> str | None:
+    """Reject human body text that still opens a ``prawduct`` fence after stripping.
+
+    The sibling injection route to :func:`check_block_value`, and it must be
+    guarded in the same breath or the value guard is security theatre: locking
+    ``--refs`` while ``--body`` stays open leaves the identical forgery one flag
+    to the left.
+
+    :func:`strip_block` removes a *well-formed* block, because ``_BLOCK_RE``
+    requires a closing fence. An **unterminated** ````` ```prawduct ````` opener
+    therefore survives stripping — and once the preserved block is appended after
+    it, the body holds two openers, the non-greedy regex spans from the attacker's
+    to the real block's terminator, and every line between them parses as a field.
+    Observed: a ``--body`` ending mid-fence landed ``automated: true`` and
+    ``worker: evil`` *ahead* of the genuine fields, so the next re-serialization
+    made them permanent.
+
+    Rejecting the opener outright is deliberate over trying to escape or re-fence
+    it. A body that legitimately needs to *show* a prawduct block can **indent
+    it** (an indented fence is not an opener to :data:`_BLOCK_RE`, so it is safe
+    *and* accepted here), use a different fence language, or say it in prose; a
+    rewrite rule would have to be exactly as clever as every future attacker.
+
+    The predicate is :data:`_FENCE_OPEN_RE`, built from the same ``_FENCE_OPEN``
+    source as the parser — not a hand-written ``startswith``. The first version
+    *was* a ``startswith`` on the stripped line, which made it **stricter** than
+    the parser: it rejected indented fences the parser can never match, so the
+    docstring's own "indent it" advice was the one workaround the code refused.
+    Same rule as :func:`check_block_value` — derive from the reader, never
+    re-describe it.
+
+    Returns an error message, or ``None`` when the text is safe.
+    """
+    if not text:
+        return None
+    if _FENCE_OPEN_RE.search(strip_block(text)):
+        return (
+            "body may not open a ```prawduct fence at the start of a line — an "
+            "unterminated one survives block-stripping and injects every line "
+            "after it as a block field; indent it to show one, and edit the real "
+            "block through its own flags"
+        )
+    return None
+
+
+def check_block_value(key: str, value) -> str | None:
+    """Reject a block field value that would break the line-based block format.
+
+    The block is ``key: value``, one per line (§2), and :func:`parse_block` reads
+    **every** line inside the fence as a field. So a value carrying a newline does
+    not store a multi-line value — it *injects sibling fields*. Concretely,
+    ``--refs $'a\\nautomated: true'`` writes a forged ``automated:`` marker (the
+    SEC-6 unattended-actor attribution) that no allowlist catches, because an
+    allowlist guards **the keys a caller named**, not the lines those keys' values
+    expand into. The same reach lands ``worker``, ``provenance`` and
+    ``id_aliases`` — the MG2 permanent-alias loss the block exists to prevent.
+    A value that starts a line with a backtick fence closes the block early and
+    corrupts the body/block split, so even a benign multi-line paste is a
+    correctness bug; barring the newline bars that too, since a fence can only
+    close the block from the start of a line.
+
+    Free text is **rejected, not escaped.** :func:`format_text` exists and would
+    make any value safe, but it JSON-quotes the value on disk, and the 149 live
+    items spelling ``closed-by: fix/branch`` bare are the format of record —
+    quoting new writes would fork one field into two spellings every reader would
+    then have to guess between. Rejecting keeps one spelling and loses nothing a
+    single-line field wanted to say.
+
+    Returns an error message, or ``None`` when the value is legal.
+
+    **The predicate is derived from the parser, never from a hand-listed set of
+    separators.** :func:`parse_block` splits the fence body with ``splitlines()``,
+    which breaks on the whole universal-newline set — ``\\v``, ``\\f``, ``\\x1c``,
+    ``\\x1d``, ``\\x1e``, ``\\x85``, ``\\u2028``, ``\\u2029`` as well as ``\\n``/``\\r``.
+    A guard that checked only ``\\n``/``\\r`` (the first version of this function
+    did) left the exploit fully live: ``--refs $'a\\vautomated: true'`` passes such a
+    check, ``_emit_block`` writes it as one *physical* line so the ``_BLOCK_RE``
+    fence — anchored on ``\\n`` only — is undisturbed, and the next parse yields the
+    forged field anyway. Asking ``splitlines()`` itself is the only formulation
+    that cannot drift from the parser as Python's set evolves.
+
+    ``splitlines() == [text]`` is also strictly stronger than a ``len(...) > 1``
+    count: a value ending in a separator (``"abc\\n"``) splits to a single element
+    and would slip past a count check while still emitting a stray line.
+    """
+    text = value if isinstance(value, str) else str(value)
+    if text.splitlines() not in ([], [text]):
+        return (
+            f"{key} must be a single line — a line separator in a block value "
+            "injects sibling fields instead of storing a multi-line value"
+        )
+    return None
 
 
 def format_text(text: str) -> str:
@@ -959,9 +1062,32 @@ def decode_item(issue: dict, *, canonical_id: str | None = None) -> tuple[dict, 
         "working_branch": block.working_branch(),
         "automated": block.get("automated") == "true",
         "url": issue.get("html_url"),
+        # The native comment count rides the issue payload, so every read path
+        # (get/list/pick) can show "this item has discussion" for free; the
+        # thread itself is fetched only by `get` (DM5 drill-down).
+        "comments_count": issue.get("comments") or 0,
         "labels": labels,
         "id_aliases": block.id_aliases(),
         "superseded_by": block.superseded_by(),
         "block_version": block.version(),
+        # The editorial block fields, projected so a write is confirmable from the
+        # SAME response that performed it. Without these, `update --refs X --json`
+        # returns an item with no `refs` key and the caller has to re-read and
+        # re-parse the body to learn whether anything happened — which is exactly
+        # the blindness that let `--body` "succeed" while changing nothing for the
+        # whole cutover. Additive per the api-contract norm (`--json` readers
+        # tolerate unknown keys); no consumer pins this dict's key set.
+        #
+        # NOTE THE TWO SPELLINGS, which are both deliberate and must not be
+        # "harmonised": the BLOCK key is `closed-by` (hyphen) because that is what
+        # 149 live items carry and renaming it would orphan every one, while the
+        # ITEM key is `closed_by` (underscore) because this projection is snake_case
+        # throughout (`id_aliases`, `superseded_by`, `claimed_at`) and matches the
+        # data model's §1.1 field name. The hyphen→underscore hop happens here and
+        # only here.
+        "refs": block.get("refs") or None,
+        "revisit": block.get("revisit") or None,
+        "closed_by": block.get("closed-by") or None,
+        "reviewed": block.get("reviewed") or None,
     }
     return item, warnings

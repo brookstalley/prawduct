@@ -187,6 +187,15 @@ template body sections, and a `kind:`. **Flag non-atomic items
 (`"non_atomic": true`) for owner manual split — never auto-split** (splitting
 mints new IDs and is an owner scrub decision; 1 PFX = 1 issue).
 
+**The `area:` prefix is the import's job, not the plan's.** `import` normalizes
+every title to the §1 `area: summary` shape from the item's own `area:` facet,
+whether or not the plan names that item (#728) — so a plan that retitles only
+the lint-failing items no longer yields a half-prefixed issue list, and you
+never need a `title` entry whose only purpose is to add the prefix. Write plan
+titles as the summary you want; the prefix arrives either way, and
+`normalize_title` never adds a second one. Every title the import changes keeps
+its pre-migration string verbatim in the block's `original_title:`.
+
 Plan shape (v1 — validation is fail-closed; a typo'd PFX or unknown key
 refuses the whole run, so match this exactly):
 
@@ -383,11 +392,11 @@ the cutover*. Run:
     prawduct-hook backlog verify-migration --repo <target> \
       --from .prawduct/backlog.md [--archive <archive>] [--archive-scope all|open]
 
-**Exit 0 — `missing`, `unaliasable`, `collisions`, `status_mismatch` and
-`duplicate_alias` all empty — is the precondition for the rest of this step.** Do
-**not** record the key while any is non-empty. Exit 4 names the items, and the
-five lists have different remedies — **re-running the import is the right answer
-for only two of them**:
+**Exit 0 — `missing`, `unaliasable`, `collisions`, `status_mismatch`,
+`duplicate_alias` and `unencodable_status` all empty — is the precondition for
+the rest of this step.** Do **not** record the key while any is non-empty. Exit 4
+names the items, and the six lists have different remedies — **re-running the
+import is the right answer for only two of them**:
 
 - **`missing`** — source items with no issue on the target. Re-run the import
   (idempotent, alias-keyed, so already-migrated items skip rather than
@@ -411,6 +420,10 @@ for only two of them**:
   `--archive-scope all` a rate-limited close stretch can leave every archived
   item sitting open. Same remedy as `missing` — re-run the import, which
   reconciles the status axis on already-migrated items too — and verify again.
+  **But the re-run drives the target back to the SOURCE's status**, so it
+  overwrites a deliberate correction as readily as a failed reconcile. If you
+  moved the item on the target on purpose, fix the source markdown to match
+  instead; otherwise the gate keeps asking and its remedy keeps reverting you.
 - **`duplicate_alias`** — **two issues on the target** record the same id in their
   body block and their statuses disagree, so nothing can decide which is
   authoritative. It looks like `status_mismatch` and behaves like `collisions`:
@@ -418,53 +431,33 @@ for only two of them**:
   the `id:PFX` label already matches, and the block-only one is never looked up —
   so it burns a full pass and returns the identical exit 4. Find the pair by
   searching the target for the id, then fold one into the other **by issue
-  number** — `merge <owner>/<repo>#<n> --into <owner>/<repo>#<m>`. The bare `PFX` form
+  number** — `merge <owner>/<repo>#<n> --into <owner>/<repo>#<m>`. That clears the
+  list: the merge writes a `superseded_by` redirect on the loser, and a redirected
+  issue stops counting as an independent claimant of the id — while keeping its
+  `id_aliases` entry, so an old ref to it still resolves. The bare `PFX` form
   cannot express this merge: both endpoints resolve through the `id:PFX` label search
   to the *same* labelled survivor, so it is rejected as merging an item into itself.
+- **`unencodable_status`** — the source item declares a `status:` in no documented
+  vocabulary (a typo, or a value from another tool). The import substituted one
+  rather than refusing, so the issue exists at a plausible-but-unasserted status
+  — and **a re-run substitutes it again**. Correct the source markdown to a
+  documented value (`open`, `promoted`, `shipped`, `dropped`) and re-import.
+  `promoted` in particular is now carried across: it lands as the service's
+  `in-progress` sub-state rather than being flattened to `open`.
   The number is the only handle that distinguishes the two. **This fold is a migration
   repair, not a confirmed disposition** — it reconciles two target issues onto one
   source item rather than diverging from the source — so it is correct to run here,
   before the gate passes, and the import step's "no disposals yet" rule does not reach
   it.
 
-  ⚠ **The fold alone will NOT clear this list — you must also remove the loser's
-  `id_aliases` entry.** The scan derives its ids from the body block and never consults
-  `superseded_by`, so after the fold the closed loser still records the same id, now at
-  `dropped`; unless the survivor is *also* `dropped`, the two still disagree and the
-  gate exits 4 again. Edit the losing issue's body to drop that id from `id_aliases`,
-  leaving the survivor as the only claimant, then verify again. This is the
-  "target-side deduplication" the gate's own code comment says is the only fix.
-
-  **Use `gh` or the web editor for this one edit — `backlog update --body` cannot do
-  it, and will report `ok` while leaving `id_aliases` untouched.** Read the body,
-  delete only that one entry, and pass everything else back **verbatim**:
-
-      gh issue view <n> --repo <target> --json body -q .body > /tmp/loser-body.md
-      # remove the duplicated id from the id_aliases LIST; keep the rest of the line
-      gh issue edit <n> --repo <target> --body-file /tmp/loser-body.md
-
-  **`id_aliases` is one line holding a list** — `id_aliases: [ABC-1234, DEF-5678]` — so
-  what you are deleting is a list *element*, not the line. Delete the whole line only if
-  the duplicated id is its sole element. The importer writes exactly one id per issue,
-  so a longer list means someone hand-edited it; and since `merge` never copies a
-  loser's aliases onto the survivor, this issue is the only record of whatever it
-  carries.
-
-  **Round-trip it — do not retype it.** `gh issue edit --body` replaces the *whole*
-  body, and the fold you ran moments ago wrote `superseded_by: <survivor>` into this
-  issue's block. Retyping the body drops that redirect — along with `v: 1` and
-  `verified` — and the loss is **silent**: the scan never consults `superseded_by`, so
-  the re-verify you finish on passes clean while every stale reference to the folded id
-  now resolves to nothing. Prefer the web editor if you want to see what you are
-  replacing.
-
-  This is the one case where you must go around the adapter, and it is worth knowing
-  why. `update` deliberately **preserves** the `prawduct:` block — it re-parses the old
-  block, strips any block you paste into the new text, and re-appends the original —
-  guarding exactly the body-authoritative fields above from a careless whole-body
-  rewrite. Going around it means carrying that guard's job yourself, which is what the
-  round-trip above is for. **Known defect — the gate's exit-4 message still prescribes
-  the fold alone, with no mention of any of this: `#534`.**
+  **The fold clears the list.** `merge` writes a `superseded_by` redirect on the loser
+  before closing it, and a redirected issue stops counting as a claimant of the id — so
+  the survivor is left as the only one and the gate goes green on the next run. The
+  loser keeps its `id_aliases` entry on purpose: an old reference to the folded id still
+  has to resolve, and it resolves through the redirect to the survivor. **Do not
+  hand-edit the loser's body to strip the id** — that breaks the very refs the redirect
+  exists to keep working, and `backlog update --body` cannot do it anyway (it re-appends
+  the original block by design and reports `ok` while changing nothing).
 
 `source_items` counts **every** parsed item in scope, not just the aliasable
 ones — so `source_items` exceeding `aliased` with an empty `missing` is exactly
@@ -472,12 +465,12 @@ the `unaliasable`/`collisions` case, not an arithmetic error. The converse does
 **not** mean you are clear: `status_mismatch` and `duplicate_alias` both count
 items that ARE keyed, so `source_items` equalling `aliased` and still exiting 4
 is the expected reading for either of those two, not a contradiction. **Read the
-five lists, not the arithmetic** — and read **every** one that is non-empty, not
-just the first. Exit 4 fires on any of the five and the message joins a clause per
+six lists, not the arithmetic** — and read **every** one that is non-empty, not
+just the first. Exit 4 fires on any of the six and the message joins a clause per
 applicable cause, so a multi-list verdict is ordinary: stopping at `missing`, re-
 running the import and waiting out another full pass only to meet the source-side
 `unaliasable` fix afterwards is the failure this sentence exists to prevent. Only
-two of the five are "re-run the import."
+two of the six are "re-run the import."
 
 **Pass the same `--archive-scope` you imported with.** The gate derives its
 source set through the importer's own record assembly, so `open` verifies against
@@ -527,7 +520,7 @@ live.** Setting the scalar changes what the *tooling* reads; it changes nothing 
 human sees when they open `.prawduct/backlog.md`, which still carries a "managed via
 the backlog skill" header and a `## Open (pickable)` section under it. Write a
 frozen-history banner at the head of the source naming the cutover date, the live
-tracker URL, and the read commands. Two constraints, both learned the hard way:
+tracker URL, and the read commands. Three constraints, all learned the hard way:
 
 - **It must be visible when RENDERED.** An HTML comment is invisible in GitHub's
   rendered view — a reader browsing the file sees a heading and a list of open items
@@ -536,6 +529,17 @@ tracker URL, and the read commands. Two constraints, both learned the hard way:
   dispositions* land on the tracker and are *not* backported here, so the frozen file
   will show items as open that the tracker has closed. A banner that omits this reads as
   a bug the first time someone reconciles the two.
+- **Check which archive SHAPE you have before you write a word about it, and banner
+  every source file.** The archive is either a `## Archive` section *inside*
+  `.prawduct/backlog.md`, or a **separate file** passed as `--archive`. "The skipped
+  archive stays in the source markdown" is true of the first and false of the second,
+  and a banner asserting "only the archive below was not migrated" over a file with no
+  archive below it — every item having migrated — is a factual error a reader has no
+  way to catch. Under `--archive-scope open` a separate archive file is the **only**
+  record of the skipped items, and it needs its own banner more than `backlog.md` does:
+  its own header very likely still says "resolved items moved here from `backlog.md`",
+  pointing at a file that is now frozen. Banner it too, naming where those items
+  actually live.
 
 **Unwinding the cutover takes all three halves, or the repo is worse off than before.**
 Unsetting `backlog_service_repo` restores markdown as live and silences the dormancy
@@ -555,6 +559,57 @@ Portfolio-wide retirement is not this runbook's business.
 `incoming-bugs/` is different: it retires **in lockstep with its MG5 replacement**,
 never before it (BKL-0QR1) — and that leg is **gated by BKL-9XQ2**, so it does not
 run here either. Everything else in this runbook is unaffected by that gate.
+
+**6b. Repair the items the import ADOPTED.** A `--restructure` plan applies **at
+create**, so it cannot reach an item the importer adopted by its `id:PFX` alias from an
+earlier partial run — that item keeps whatever title and body it already had. On a real
+415-item migration that was 25 issues, which would have kept their original run-on
+titles in a migration whose entire purpose was fixing run-on titles. The CLI usage line
+says "applied as each issue is created, not as a later edit"; nothing drew the
+consequence, and nothing repaired it.
+
+- The import result names them: everything in `existing` rather than `created`. For each
+  one that the plan has an entry for, apply the entry now —
+  `prawduct-hook backlog update <id> --title '<planned title>' --repo <target>` (and the
+  body, if the plan restructured it).
+- **Then lint the whole target, not just the adopted set.** `verify-migration` compares
+  *source → target coverage*; **nothing compares target → the issue standard**. An issue
+  that was aliased and on the target before this run is in no source open set, no plan,
+  no gate list and no disposition — invisible to every step. The same migration carried
+  two issues with 142- and 123-character titles that no step would ever have looked at.
+  List every aliased issue and check its title against §1 (`≤72`, `area:`-prefixed,
+  atomic); fix what fails with `update --title`.
+
+**6c. Sweep inbound references — instructions, not just links.** Setting the scalar
+repoints the *tooling*; the repo's prose still says whatever it said. A migration that
+repoints the tooling and leaves the documentation telling people to write into a dead
+file is half a migration.
+
+- Grep the repo for the source path (`.prawduct/backlog.md`) and for the words the team
+  uses for the backlog. Fix **wrong instructions**, not only stale links: the real find
+  was a `DEVELOPMENT.md` telling contributors to file new items into the now-frozen
+  file, which no link-checker would ever flag.
+- **Name the anchor doc explicitly: `CLAUDE.md`** (or this repo's equivalent). It is the
+  file every agent session and every new contributor actually reads, and on that
+  migration it did not mention where the backlog lived at all — before or after.
+- Banner **every** source file, including a separate `--archive` file (see the archive
+  shape constraint in step 6).
+
+**6d. Hand off to everyone else.**
+
+- **Run refresh-counts against the target:**
+
+      prawduct-hook backlog refresh-counts --repo <target>
+
+  The briefing snapshot
+  is file-only, so until this runs the next session's briefing has no counts to show. It
+  is one command and it is the difference between a working briefing and a blank one.
+- **State the `gh` prerequisite for contributors.** The cutover key is committed, so
+  pulling it repoints *everyone's* tooling — but the adapter drives `gh` as a subprocess
+  and deliberately never manages a token (it relies on `~/.config/gh`). Every
+  contributor therefore needs the `gh` CLI installed and authenticated with `repo`
+  scope, or the backlog simply stops working for them **with no hint that credentials
+  are the cause**. Say so where contributors will read it — the same anchor doc 6c names.
 
 **7. Apply the confirmed dispositions — on the tracker, now that the gate has passed.**
 These are the drops and merges the owner accepted at *Owner confirms*. They run last on

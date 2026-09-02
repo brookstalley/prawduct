@@ -89,7 +89,8 @@ _EXIT_CLASS: dict[str, int] = {
 _OP_USAGE: dict[str, str] = {
     "file": (
         "  file     --repo owner/repo --title T --body B "
-        "[--stage S] [--kind K] [--area A] [--effort E] [--impact I] [--source SRC]\n"
+        "[--stage S] [--kind K] [--area A] [--effort E] [--impact I] [--source SRC] "
+        "[--refs R]\n"
     ),
     "get": "  get      <id> [--repo owner/repo]   (`show` is an alias)\n",
     "status": (
@@ -99,11 +100,14 @@ _OP_USAGE: dict[str, str] = {
     "update": (
         "  update   <id> [--title T] [--body B] [--stage S] [--kind K] [--area A] "
         "[--effort E] [--impact I] [--source SRC] [--tags a,b] [--affected p1,p2] "
-        "[--working-branch owner/repo@branch] [--if-updated-at TS] [--repo owner/repo]\n"
+        "[--working-branch owner/repo@branch] [--refs R] [--revisit R] [--closed-by REF] "
+        "[--if-updated-at TS] [--repo owner/repo]\n"
         "           --tags sets the WHOLE tag set (absent ones are stripped; --tags '' clears)\n"
         "           --affected takes repo-relative paths only, no prose (a directory "
         "covers everything under it)\n"
         "           --working-branch must name a PUSHED branch, repo-qualified\n"
+        "           --refs/--revisit/--closed-by edit the prawduct: block; an empty "
+        "value clears the field\n"
     ),
     "comment": "  comment  <id> --body B [--repo owner/repo]\n",
     "list": (
@@ -296,10 +300,10 @@ def _unknown_op(op: str, *, json_mode: bool) -> int:
 #: by AST so this set cannot fall behind them.
 _VALUED_FLAG_NAMES: frozenset[str] = frozenset({
     "affected", "archive", "archive-scope", "area", "assignee", "body",
-    "direction", "edge", "effort", "from", "if-updated-at", "impact", "into",
-    "kind", "limit", "older-than", "out", "page", "per-page", "plan", "repo",
-    "restructure", "sort", "source", "stage", "state", "status", "tag", "tags",
-    "title", "to", "working-branch",
+    "closed-by", "direction", "edge", "effort", "from", "if-updated-at",
+    "impact", "into", "kind", "limit", "older-than", "out", "page", "per-page",
+    "plan", "refs", "repo", "restructure", "revisit", "sort", "source", "stage",
+    "state", "status", "tag", "tags", "title", "to", "working-branch",
 })
 
 
@@ -459,7 +463,10 @@ def run(project_dir, argv: list[str], *, transport=None) -> int:
 def _run_file(rest: list[str], transport, project_dir):
     flags, positionals, err = _parse_flags(
         rest,
-        valued={"repo", "title", "body", "stage", "kind", "area", "effort", "impact", "source"},
+        valued={
+            "repo", "title", "body", "stage", "kind", "area",
+            "effort", "impact", "source", "refs",
+        },
     )
     if err:
         return core.error("validation", err)
@@ -492,6 +499,7 @@ def _run_file(rest: list[str], transport, project_dir):
             facets=facets,
             automated=automated,
             worker=context.worker_marker() if automated else None,
+            refs=flags.get("refs"),
             absorb=absorb,
         ),
     )
@@ -554,12 +562,23 @@ def _run_update(rest: list[str], transport, project_dir):
             "repo", "title", "body", "stage", "kind", "area",
             "effort", "impact", "source", "if-updated-at",
             "tags", "affected", "working-branch",
+            "refs", "revisit", "closed-by",
         },
     )
     if err:
         return core.error("validation", err)
     if not positionals:
         return core.error("validation", "update requires an <id>")
+    if len(positionals) > 1:
+        # A stray positional was silently IGNORED before this guard, which is how
+        # `update <id> status=shipped` — the markdown spelling still instructed by
+        # skills/pr and the Critic's review-cycle — read as a success that changed
+        # nothing. A wrong result at exit 0 is worse than any error.
+        return core.error(
+            "validation",
+            f"unexpected argument(s) {positionals[1:]} — fields are set with named "
+            "flags on this backend (`--stage ready`), not as `field=value` arguments",
+        )
     # `--tags` is plural because it sets the whole set rather than adding one —
     # the `--tag` on `list` filters by a single tag, which is a different verb on
     # purpose and is named for it.
@@ -568,6 +587,7 @@ def _run_update(rest: list[str], transport, project_dir):
         for key in (
             "title", "body", "stage", "kind", "area", "effort", "impact", "source",
             "tags", "affected", "working-branch",
+            "refs", "revisit", "closed-by",
         )
         if key in flags
     }
@@ -1744,6 +1764,17 @@ def _print_human_ok(data) -> None:
         for item in data.get("items", []):
             _print_item_line(item)
         print(f"  {data.get('count', 0)} item(s)")
+        # A truncated page must not read as the complete set (#549, the class
+        # #313 closed on four other paginators). `has_more` is computed
+        # correctly and handed to `--json`; dropping it here made "99 item(s),
+        # exit 0" indistinguishable from a backlog of 99 when it was 160, and
+        # every count derived from that page was wrong while looking well-formed.
+        # Named remedy, not a bare flag: the reader has to be able to act on it.
+        if data.get("has_more"):
+            print(
+                "  MORE AVAILABLE — this is one page, not the whole set; "
+                "re-run with --page 2 (and onward) or raise --per-page"
+            )
     elif "by_status" in data:
         # A counts / refresh-counts result.
         print(f"{data.get('repo')}: {data.get('total')} item(s)")
@@ -1796,6 +1827,19 @@ def _print_human_ok(data) -> None:
             if data.get("resolves_to"):
                 line += f"  (survivor: {data['resolves_to']})"
             print(line)
+        # The comment thread (only `get` attaches it — the DM5 drill-down).
+        # A failed fetch leaves it empty with the payload count intact; the
+        # warning on stderr says why, so nothing extra is rendered here.
+        comments = data.get("comments") or []
+        if comments:
+            print(f"  {len(comments)} comment(s):")
+            for comment in comments:
+                stamp = " · ".join(
+                    bit for bit in (comment.get("author"), comment.get("created_at")) if bit
+                )
+                print(f"  — {stamp}" if stamp else "  —")
+                for line in (comment.get("body") or "").splitlines():
+                    print(f"    {line}")
     elif "created" in data:
         # provision / reconcile-labels.
         line = (

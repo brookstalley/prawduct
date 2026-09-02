@@ -102,26 +102,38 @@ def _grant_matches(pattern: str, command: str) -> bool:
 
 
 def test_no_bare_wildcard_grant():
+    # Both spellings, so the narrowing cannot be undone by respelling the star:
+    # `backlog *` and `backlog*` confer the same thing.
     allowed = _allowed_tools()
     for inv in _INVOCATIONS:
-        assert f"Bash({inv} *)" not in allowed, (
-            f"backlog SKILL.md still grants the bare wildcard `Bash({inv} *)` — "
-            "narrow it to the everyday ops so high-consequence scrub ops prompt "
-            "(BKL-5N9W)."
-        )
+        for grant in (f"Bash({inv} *)", f"Bash({inv}*)"):
+            assert grant not in allowed, (
+                f"backlog SKILL.md still grants the bare wildcard `{grant}` — "
+                "narrow it to the everyday ops so high-consequence scrub ops prompt "
+                "(BKL-5N9W)."
+            )
 
 
 def test_everyday_ops_granted_in_both_forms():
+    """The house grant form (#730): the star attaches to the last command word with
+    NO space, one line per command.
+
+    A Bash grant is a literal prefix match, so the old `... <op> *)` spelling
+    required a trailing space plus an argument and did not cover the bare call —
+    which fell through to a permission prompt nothing in an unattended run can
+    answer. The attached star covers the bare call and every argument form at once.
+    """
     allowed = _allowed_tools()
     missing: list[str] = []
     for op in EVERYDAY_OPS:
         for inv in _INVOCATIONS:
-            grant = f"Bash({inv} {op} *)"
+            grant = f"Bash({inv} {op}*)"
             if grant not in allowed:
                 missing.append(grant)
     assert not missing, (
-        "backlog SKILL.md is missing everyday-op grants (both invocation forms are "
-        "required — JNT-4R2M):\n  - " + "\n  - ".join(missing)
+        "backlog SKILL.md is missing everyday-op grants in the house form — the "
+        "star attaches to the op with no space, and both invocation forms are "
+        "required (JNT-4R2M, #730):\n  - " + "\n  - ".join(missing)
     )
 
 
