@@ -431,10 +431,12 @@ class TestTheLearningsReadListIsComputed:
         """The read list moved; a surface still pointing at `.prawduct/learnings.md`
         sends a reviewer to a path that, post-migration, does not exist.
 
-        Scoped to the PATH, not the bare filename: `review-cycle.md`'s
-        `learnings-entry-shape` row describes a check that still runs against the
-        old corpus and is deleted with that check in Wave 2, and folding it into
-        this assertion would make it fail for a reason it is not about.
+        Scoped to the PATH, not the bare filename. A surface may legitimately
+        NAME the legacy corpus — describing a migration, or a check whose
+        subject is the old file — without sending a reviewer to read it, and
+        folding the bare filename in would fail this for a reason it is not
+        about. The property is "no reviewer is pointed at a path that does not
+        exist", so the path is what it matches.
         """
         stale = [
             name

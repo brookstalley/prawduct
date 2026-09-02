@@ -421,20 +421,19 @@ class TestTheStateFileIsLintedToo:
         assert not found, "linted a product file this control does not own"
 
     def test_the_markdown_only_checks_stay_markdown_only(self, tmp_path):
-        """The other three checks must not start firing on a YAML path.
+        """The markdown checks must not start firing on a YAML path.
 
-        Each already self-filters — `learnings-entry-shape` guards on the
-        filename, `governed-by-gap` runs only over paths matching a build-plan
-        name — so this pins the guards rather than adding new ones. Without it,
-        widening the record set is a silent widening of three unrelated checks.
+        `governed-by-gap` already self-filters, running only over paths matching
+        a build-plan name — so this pins the guard rather than adding one.
+        Without it, widening the record set is a silent widening of an unrelated
+        check.
         """
         result = self._findings(
             tmp_path, ".prawduct/project-state.yaml", "  harmless: true", "guards"
         )
-        for check in ("learnings-entry-shape", "governed-by-gap"):
-            assert not _checks(result, check), (
-                f"{check} fired on a YAML path — it is a markdown check"
-            )
+        assert not _checks(result, "governed-by-gap"), (
+            "governed-by-gap fired on a YAML path — it is a markdown check"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -990,7 +989,6 @@ class TestUncheckedReporting:
                 "chunk-ref-missing": None,
                 "governed-by-gap": 0,
                 "suite-total-claim": 0,
-                "learnings-entry-shape": 0,
                 # The budget check is not record-scoped — it runs over the rules
                 # corpus whatever the diff touched. This fixture has none, so it
                 # honestly found nothing.
@@ -1240,164 +1238,13 @@ class TestVerifyRecordsCLI:
         assert json.loads(result.stdout)["plan_graded"].endswith("build-plan-mine.md")
 
 
-class TestLearningsEntryShape:
-    """`learnings.md` is the rule index; the narrative lives in detail.
-
-    Two prior compactions (2026-06-10, 2026-07-17) each returned the file to a
-    size larger than before, because a one-time sweep cannot hold a line against
-    continuous addition. This check is the per-entry half.
-    """
-
-    def _findings(self, tmp_path, added: str, name: str = "learnings.md"):
-        repo = _make_repo(tmp_path, name=f"r{abs(hash(added + name)) % 100000}")
-        doc = repo / ".prawduct" / name
-        doc.write_text("# Learnings\n\n---\n")
-        base = _commit(repo, "seed")
-        doc.write_text(f"# Learnings\n\n---\n{added}\n")
-        head = _commit(repo, "add")
-        return _checks(_lint(repo, [f".prawduct/{name}"], base, head),
-                       "learnings-entry-shape")
-
-    def test_fires_on_an_over_long_rule(self, tmp_path):
-        rule = "When X happens do Y because Z, " + ("and here is the evidence " * 20)
-        assert len(rule) > 400
-        assert self._findings(tmp_path, f"## {rule}")
-
-    def test_quiet_on_a_normal_rule(self, tmp_path):
-        rule = ("When a review ends with zero blocking, dispose every remaining "
-                "finding as FIX or ACCEPT because filing by default turns the "
-                "backlog into a guilt pile")
-        assert len(rule) < 400
-        assert not self._findings(tmp_path, f"## {rule}")
-
-    def test_quiet_on_a_learnings_md_that_is_not_the_root_record(self, tmp_path):
-        """Only `.prawduct/learnings.md` is this repo's rule index.
-
-        A `learnings.md` nested elsewhere — the learnings-migrate fixtures under
-        tests/ carry three legacy corpora on purpose — is data. Grading its shape
-        reported thirty findings about files nobody maintains as an index
-        (learnings-v2 integration, 2026-09-02).
-        """
-        repo = _make_repo(tmp_path, name="nested-learnings")
-        doc = repo / "tests" / "fixtures" / "sample" / ".prawduct" / "learnings.md"
-        doc.parent.mkdir(parents=True)
-        doc.write_text("# Learnings\n\n---\n")
-        base = _commit(repo, "seed")
-        doc.write_text("# Learnings\n\n---\n## When X do Y because Z\n\nNarrative body.\n")
-        head = _commit(repo, "add")
-        rel = "tests/fixtures/sample/.prawduct/learnings.md"
-        assert not _checks(_lint(repo, [rel], base, head), "learnings-entry-shape")
-
-    def test_fires_on_a_narrative_body(self, tmp_path):
-        """The channel the sweep was built for.
-
-        This body sits directly under its heading, which is also where a
-        continuation would sit — so it gets the both-remedies message rather
-        than the bare move instruction. `test_prose_after_intervening_body_...`
-        covers the position where the plain instruction is safe.
-        """
-        entry = "## When X do Y because Z\n\nHere is a paragraph of narrative evidence."
-        findings = self._findings(tmp_path, entry)
-        assert findings
-        assert "move it to learnings-detail.md" in findings[0]["detail"]
-
-    def test_a_line_under_the_heading_offers_both_remedies_with_the_guard(self, tmp_path):
-        """The two remedies are opposite and one of them destroys the rule.
-
-        A continuation told to "move to detail" leaves the heading truncated
-        mid-sentence, and the loss is silent — the entry still parses and still
-        reads as a rule up to the dangling word. Three rules were lost that way
-        and repaired on 2026-07-31 from learnings-detail.md, where the move had
-        parked the text. Nothing can classify continuation-vs-evidence reliably,
-        so position decides which ADVICE is safe: adjacent to the heading, the
-        bare "move it" instruction is never issued alone.
-        """
-        entry = "## When a guard test pins a safety claim, assert the PROPERTY — a test that\n\nmatches a literal passes for every rewording of the same defect"
-        findings = self._findings(tmp_path, entry)
-        assert findings, "a body line must still be reported"
-        message = findings[0]["detail"]
-        assert "join it onto the heading" in message
-        assert "must still read as a complete rule" in message
-
-    def test_a_backtick_initial_continuation_is_not_told_to_move(self, tmp_path):
-        """The case test this replaced got this exactly backwards.
-
-        `islower()` is False for a continuation resuming with code punctuation,
-        so the old discriminator handed it the destructive instruction — the
-        same one that truncated three rules.
-        """
-        entry = "## When a plan resolves by scope name, never a version, because\n\n`regen-views` silently skips Status flipping otherwise"
-        message = self._findings(tmp_path, entry)[0]["detail"]
-        assert "must still read as a complete rule" in message
-        assert message.count("belongs in learnings-detail.md") == 0
-
-    def test_every_line_of_a_wrapped_rule_gets_the_same_remedy(self, tmp_path):
-        """A hard-wrapped rule is one sentence, so it needs ONE instruction.
-
-        Rules in this file run to several hundred characters on a single
-        physical line; wrapping one at terminal width yields a heading plus
-        several body lines. An earlier fix checked only the immediate
-        predecessor, so line 2 was guarded and line 3 was told to move — the
-        same sentence, opposite remedies, in one report. An author following
-        both truncates the rule, which is the original defect reintroduced one
-        line deeper.
-        """
-        entry = (
-            "## When a release has two documents tracking its state, one is already wrong\n"
-            "— designate a single live tracker and demote the other to a decision record;\n"
-            "and author each build chunk from the TREE, never from the upstream plan,\n"
-            "because a plan derived from a plan describes intent the code may have overtaken"
-        )
-        details = [f["detail"] for f in self._findings(tmp_path, entry)]
-        assert len(details) == 3, f"expected one finding per wrapped line, got {len(details)}"
-        assert all("must still read as a complete rule" in d for d in details), details
-        assert not any("(a move, never a deletion)" in d for d in details), details
-
-    def test_prose_after_intervening_body_still_says_move(self, tmp_path):
-        """Where a continuation cannot be, the plain instruction is safe."""
-        entry = ("## When X do Y because Z\n\nFirst narrative paragraph of evidence.\n\n"
-                 "Second narrative paragraph, which cannot be continuing the heading.")
-        details = [f["detail"] for f in self._findings(tmp_path, entry)]
-        assert any("belongs in learnings-detail.md" in d for d in details)
-
-    def test_quiet_on_structural_lines(self, tmp_path):
-        """Separators, comments and wiki-links are not narrative."""
-        for line in ("---", "<!-- a note -->", "[[another-rule]]", "# Learnings"):
-            assert not self._findings(tmp_path, line), line
-
-    def test_does_not_apply_to_the_detail_file(self, tmp_path):
-        """`learnings-detail.md` is explicitly unbounded — it is the destination."""
-        entry = "## When X do Y\n\nA long narrative body belongs here."
-        assert not self._findings(tmp_path, entry, name="learnings-detail.md")
-
-    def test_quiet_on_the_files_own_preamble(self, tmp_path):
-        """The header paragraph explains the format; it is not a violation of it.
-
-        Without the preamble boundary the check reports line 3 of the real
-        `learnings.md` — the sentence describing what the file is for.
-        """
-        repo = _make_repo(tmp_path, name="rpreamble")
-        doc = repo / ".prawduct" / "learnings.md"
-        doc.write_text("# Learnings\n\n---\n\n## When X do Y because Z\n")
-        base = _commit(repo, "seed")
-        doc.write_text(
-            "# Learnings\n\nActive rules from this project's development, surfaced "
-            "by topic.\n\n---\n\n## When X do Y because Z\n"
-        )
-        head = _commit(repo, "add preamble prose")
-        assert not _checks(
-            _lint(repo, [".prawduct/learnings.md"], base, head),
-            "learnings-entry-shape",
-        )
-
-
 class TestEveryCheckCarriesASeverity:
     """`CHECKS` and the reviewer-facing severity surfaces cannot drift apart.
 
     A check that fires with no documented severity leaves the Goal-2 reviewer —
     told to "raise them at the severities given there" — to invent one or drop
-    the finding. `learnings-entry-shape` shipped in exactly that state and all
-    three coordinator reviewers found it independently, which is the signal that
+    the finding. A check has shipped in exactly that state, and all three
+    coordinator reviewers found it independently, which is the signal that
     nothing pinned the relationship.
     """
 

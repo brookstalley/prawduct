@@ -62,25 +62,13 @@ ALLOWLIST: dict[str, tuple[str, str]] = {
         "one docstring rule-citation naming learnings.md as its source; the "
         "cross-check text itself was repointed in Chunk 04 (grep-clean sweep)",
     ),
-    "plugin/skills/critic/review-cycle.md": (
-        "wave-2",
-        "the `learnings-entry-shape` severity row, which goes with its check in "
-        "Wave 2; the cross-check scan itself was repointed in Chunk 04",
-    ),
     # --- Wave 2 (`learnings-v2-delete`), R6: whole-feature deletions
-    "plugin/lib/audit_learnings_cmd.py": (
-        "wave-2",
-        "R6 — the lifecycle audit command is deleted whole",
-    ),
-    "plugin/lib/learnings_obligation.py": (
-        "wave-2",
-        "R6 — the descent-obligation marker mechanism is deleted whole "
-        "(the obligation itself now ships in learnings_files.CORE_HEADER)",
-    ),
     "plugin/lib/record_lint.py": (
-        "wave-2",
-        "R6 — `_check_learnings_shape` and its `learnings-entry-shape` finding "
-        "are deleted; Wave 1's budget check replaces them",
+        "none",
+        "`_base_size`'s migration-commit exception reads the legacy file's size "
+        "as `core.md`'s base, so a repo crossing that tree is not graded as "
+        "having grown a 0B corpus; it retires with legacy detection, alongside "
+        "`learnings_files.LEGACY_REL` and outside this program",
     ),
     "plugin/lib/buildplan_refs.py": (
         "wave-2",
@@ -96,11 +84,6 @@ ALLOWLIST: dict[str, tuple[str, str]] = {
     "plugin/skills/learnings/SKILL.md": (
         "wave-2",
         "R6 — the `/prawduct:learnings` skill directory is deleted whole",
-    ),
-    "plugin/skills/doctor/SKILL.md": (
-        "wave-2",
-        "R6 — health checks 13/13a and the audit-learnings flow go with their "
-        "commands",
     ),
     # --- Wave 2, via §9's grep-clean sweep (no named R6 deliverable)
     "plugin/lib/coverage.py": (

@@ -486,7 +486,11 @@ LAST_MEASURED_TOKENS = {
     # meets a BLOCKING finding with no severity unless the row is here too. Bought
     # at three tokens by folding it into the existing BLOCKING clause rather than
     # writing a second sentence; the ceiling is untouched.
-    "skills/critic/goals-1-3.md": 2278,
+    # -2 on 2026-09-02 (learnings-v2-delete Chunk 01), 2278 -> 2276: the
+    # entry-shape clause left the record-lint severity mapping with the check
+    # it graded. A CUT, so the ceiling below moves with it — slack a
+    # deletion opens is not headroom the next addition inherits.
+    "skills/critic/goals-1-3.md": 2276,
     # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
     # a computed pass the gate can now print, which a reader who only knows
     # "uncovered means run a cumulative" will otherwise re-review straight
@@ -544,7 +548,10 @@ LAST_MEASURED_TOKENS = {
     #   "A re-review does not manufacture work" one clause after citing it.
     # * R5's own closing sentence ("it fires whether or not the cycle produced
     #   another finding") restated "get their own pass" in its own heading.
-    "skills/critic/review-cycle.md": 9595,
+    # -29 on 2026-09-02 (learnings-v2-delete Chunk 01), 9595 -> 9566: the
+    # entry-shape row left the record-lint severity table with the check it
+    # graded. A CUT, and its ceiling is ratcheted in the same commit.
+    "skills/critic/review-cycle.md": 9566,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -4031,7 +4038,7 @@ class TestCriticGoals13:
         #
         # 2265 -> 2272 (2026-09-02) -- the budget gate's two findings are graded
         # here because an ungraded record-lint check reaches a reviewer with no
-        # verdict, which is how `learnings-entry-shape` shipped. Spent from
+        # verdict — a check has shipped in exactly that state. Spent from
         # headroom, not paid: one clause, two check names and a severity, and
         # the rule behind it lives with the check in `review-cycle.md`.
         #
@@ -4046,7 +4053,13 @@ class TestCriticGoals13:
         # became "State every entry" -- the severity is now the rule's, not the
         # sentence's. Net +3, carrying one added check name.
         tokens = estimate_tokens(self.content)
-        assert tokens < 2280, f"goals-1-3.md is ~{tokens} tokens, should be <2280"
+        #
+        # Ceiling 2280 -> 2278 on 2026-09-02 (learnings-v2-delete Chunk 01),
+        # ratcheted by the two tokens the retired entry-shape clause freed.
+        # A cut that leaves the ceiling where it was converts a deletion into a
+        # standing credit the next addition spends without declaring it.
+        tokens = estimate_tokens(self.content)
+        assert tokens < 2278, f"goals-1-3.md is ~{tokens} tokens, should be <2278"
 
     def test_is_self_contained(self):
         """No follow-the-pointer reads at review time — the acceptance criterion
@@ -4461,8 +4474,8 @@ class TestReviewCycle:
         # ceiling, but the explanation of it would have been.
         #
         # 9591 -> 9599 (2026-09-02) -- the budget gate's two rows. An ungraded
-        # record-lint check reaches a reviewer with no verdict, which is how
-        # `learnings-entry-shape` shipped, so a row is not optional. PAID FOR:
+        # record-lint check reaches a reviewer with no verdict, and a check has
+        # shipped in exactly that state, so a row is not optional. PAID FOR:
         # the standalone line-scoping sentence named "the suite-total tripwire"
         # and read as a property of the whole pass -- which the budget check,
         # reading file sizes on a diff that changed no record, contradicts. It
@@ -4482,7 +4495,10 @@ class TestReviewCycle:
         # Net +5.
         content = read_file("skills/critic/review-cycle.md")
         tokens = estimate_tokens(content)
-        assert tokens < 9600, f"review-cycle.md is ~{tokens} tokens, should be <9600"
+        # Ceiling 9600 -> 9571 on 2026-09-02 (learnings-v2-delete Chunk 01),
+        # ratcheted by the 29 tokens the retired entry-shape row freed. Same
+        # rule as the reading above: slack a deletion opens is not headroom.
+        assert tokens < 9571, f"review-cycle.md is ~{tokens} tokens, should be <9571"
 
     def test_framework_checks_token_budget(self):
         # Ceiling 1150. This file is `final`/`cumulative` payload: SKILL.md's

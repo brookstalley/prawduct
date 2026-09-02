@@ -61,7 +61,6 @@ prawduct/
 │   ├── test_build_plan_resolution.py     # active-build-plan resolver (lib ↔ hook parity)
 │   ├── test_operator_verification.py     # operator-verification queue + gate
 │   ├── test_advisory_store.py, test_advisory_cmd.py  # post-sync advisories
-│   ├── test_audit_learnings.py           # learnings-lifecycle audit
 │   ├── test_reference_verifier.py        # coverage floor verifier
 │   ├── test_pr_reviewer.py               # PR review gate + protocol
 │   ├── test_v5_methodology.py            # Methodology + Critic skill content

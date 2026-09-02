@@ -126,9 +126,7 @@ def judgeable_files(paths: "list[str] | None") -> list[str]:
 #: it AND the file is low-churn framework configuration.
 #:
 #: - ``project-state.yaml`` — ``test_norm_probes.TestSilentAgainstThisRepo``
-#:   requires every norm-lifecycle probe to stay silent against it, and
-#:   ``test_audit_learnings`` requires a ``sentinel_command:`` spelled with the
-#:   canonical placeholder.
+#:   requires every norm-lifecycle probe to stay silent against it.
 #: - ``cross-cutting-concerns.md`` — ``test_v5_methodology.TestCrossCuttingConcerns``
 #:   pins named sections and references in it.
 #:

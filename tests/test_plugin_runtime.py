@@ -1384,111 +1384,45 @@ class TestVerifyOperatorVerificationSubcommand:
         assert "verify-operator-verification" in result.stderr
 
 
-class TestAuditLearningsSubcommand:
-    """`prawduct-hook audit-learnings [--apply] [--json]` (Chunk 13) is the
-    plugin-native replacement for the legacy `prawduct-setup.py audit-learnings`
-    path, gone in a migrated consumer. It operates purely on the consumer's own
-    `.prawduct/learnings.md`; `/prawduct:doctor`'s Audit-Learnings flow invokes
-    it with --json. (Entries here carry NO `sentinel=` so no pytest subprocess
-    runs — the runner only shells out for retirement-candidate sentinels.)
-    """
-
-    def _seed(self, tmp_path: Path, learnings: str | None) -> Path:
-        repo = tmp_path / "consumer"
-        prawduct = repo / ".prawduct"
-        prawduct.mkdir(parents=True)
-        if learnings is not None:
-            (prawduct / "learnings.md").write_text(learnings)
-        return repo
-
-    def test_promotion_candidate_surfaced_json(self, tmp_path):
-        repo = self._seed(
-            tmp_path,
-            "# Learnings\n\n## A confirmed rule\n"
-            "<!-- prawduct-learning: confirmations=2; created=2026-01-01 -->\n\nBody.\n",
-        )
-        result = _run_in(repo, "audit-learnings", "--json")
-        assert result.returncode == 0, result.stderr
-        data = json.loads(result.stdout)
-        assert data["applied"] is False
-        assert [p["title"] for p in data["promotions"]] == ["A confirmed rule"]
-
-    def test_stale_flag_surfaced_json(self, tmp_path):
-        repo = self._seed(
-            tmp_path,
-            "# Learnings\n\n## An old unconfirmed rule\n"
-            "<!-- prawduct-learning: confirmations=1; created=2020-01-01 -->\n\nBody.\n",
-        )
-        result = _run_in(repo, "audit-learnings", "--json")
-        assert result.returncode == 0, result.stderr
-        data = json.loads(result.stdout)
-        assert [s["title"] for s in data["stale_flags"]] == ["An old unconfirmed rule"]
-
-    def test_missing_learnings_is_clean_empty_not_error(self, tmp_path):
-        # A .prawduct/ with no learnings.md is a clean empty result, not an error.
-        repo = self._seed(tmp_path, None)
-        result = _run_in(repo, "audit-learnings", "--json")
-        assert result.returncode == 0, result.stderr
-        data = json.loads(result.stdout)
-        assert data["promotions"] == [] and data["retirements"] == []
-        assert "error" not in data
-
-    def test_non_prawduct_dir_errors(self, tmp_path):
-        repo = tmp_path / "bare"
-        repo.mkdir()
-        result = _run_in(repo, "audit-learnings", "--json")
-        assert result.returncode == 1
-        data = json.loads(result.stdout)
-        assert "error" in data
-
-    def test_human_summary_without_json(self, tmp_path):
-        repo = self._seed(
-            tmp_path,
-            "# Learnings\n\n## A confirmed rule\n"
-            "<!-- prawduct-learning: confirmations=2; created=2026-01-01 -->\n\nBody.\n",
-        )
-        result = _run_in(repo, "audit-learnings")
-        assert result.returncode == 0, result.stderr
-        assert "promotion candidate" in result.stdout
-        assert "A confirmed rule" in result.stdout
-
-    def test_subcommand_listed_in_usage(self, tmp_path):
-        repo = tmp_path / "r"
-        repo.mkdir()
-        result = _run_in(repo, "bogus-subcommand")
-        assert result.returncode == 1
-        assert "audit-learnings" in result.stderr
-
-
 class TestFlagOnlyArgRejection:
     """STH-5R2Q: flag-only subcommands (no positionals; options detected via
-    `"--flag" in argv`) historically swallowed any unrecognized token. That
-    masked a real bug — a test passed `tmp_path` positionally to
-    `audit-learnings`, which silently ignored it and audited the inherited
-    CLAUDE_PROJECT_DIR repo instead. Each flag-only command now rejects unknown
-    args with exit 2 (the hook's usage-error convention), matching the
-    fail-closed arg handling in lib.ledger / lib.telemetry / lib.risk.
+    `"--flag" in argv`) historically swallowed any unrecognized token, so a
+    directory passed positionally — meaning "operate on this one" — was ignored
+    and the command operated on the inherited CLAUDE_PROJECT_DIR repo instead.
+    Each flag-only command now rejects unknown args with exit 2 (the hook's
+    usage-error convention), matching the fail-closed arg handling in
+    lib.ledger / lib.telemetry / lib.risk.
+
+    The subject must be a command with a live body: a deprecated-inert one
+    accepts every token by design, so it would pass the shape of these tests
+    while asserting their opposite (`tests/test_deprecated_inert_commands.py`
+    holds that contract).
     """
 
-    def test_audit_learnings_rejects_unknown_positional(self, tmp_path):
+    def test_flag_only_command_rejects_unknown_positional(self, tmp_path):
         repo = tmp_path / "r"
         (repo / ".prawduct").mkdir(parents=True)
-        result = _run_in(repo, "audit-learnings", str(repo), "--json")
+        result = _run_in(repo, "norm-index-scaffold", str(repo), "--json")
         assert result.returncode == 2
         assert "unknown argument" in result.stderr
 
-    def test_audit_learnings_rejects_unknown_flag(self, tmp_path):
+    def test_flag_only_command_rejects_unknown_flag(self, tmp_path):
         repo = tmp_path / "r"
         (repo / ".prawduct").mkdir(parents=True)
-        result = _run_in(repo, "audit-learnings", "--bogus")
+        result = _run_in(repo, "norm-index-scaffold", "--bogus")
         assert result.returncode == 2
         assert "unknown argument" in result.stderr
 
-    def test_audit_learnings_recognized_flags_still_pass(self, tmp_path):
+    def test_flag_only_command_recognized_flags_still_pass(self, tmp_path):
         repo = tmp_path / "r"
-        (repo / ".prawduct").mkdir(parents=True)
-        (repo / ".prawduct" / "learnings.md").write_text("# Learnings\n")
-        result = _run_in(repo, "audit-learnings", "--apply", "--json")
+        (repo / ".prawduct" / "artifacts").mkdir(parents=True)
+        # `norm-index-scaffold` reads the preferences file — an absent one is a
+        # finding and exits 1, so a bare `.prawduct/` would fail this for a
+        # reason that has nothing to do with the flags being recognised.
+        (repo / ".prawduct" / "artifacts" / "project-preferences.md").write_text(
+            "# Preferences\n"
+        )
+        result = _run_in(repo, "norm-index-scaffold", "--apply", "--json")
         assert result.returncode == 0, result.stderr
 
     def test_repo_disable_rejects_unknown_arg(self, tmp_path):
