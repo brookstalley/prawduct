@@ -1033,7 +1033,13 @@ class TestUpdateBlockFields:
         warned = [w for w in r["warnings"] if "not editable through" in w]
         assert warned, r["warnings"]
         assert "superseded_by" in warned[0]
-        assert "refs" not in warned[0].split("differed at")[1].split("and the stored")[0]
+        # Pins the RENDERED FIELD LIST, not a slice between two literal phrases:
+        # slicing makes a copy edit raise IndexError instead of failing cleanly,
+        # and a bare `"refs" not in ...` is wrong because the message names
+        # `--refs` in its closing advice. If `refs` were wrongly reported the list
+        # would read "refs, superseded_by", so pinning the singleton says exactly
+        # what this test means.
+        assert "asked for superseded_by " in warned[0], warned[0]
 
     def test_an_unchanged_pasted_block_is_not_warned_about(self, fake):
         # Round-tripping the body verbatim is the ordinary case. Warning on it

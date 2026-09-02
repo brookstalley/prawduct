@@ -916,8 +916,8 @@ def update_item(
                 if differing:
                     warnings.append(
                         "block fields are not editable through `--body` — your pasted "
-                        f"block differed at {', '.join(differing)} and the stored block "
-                        "was kept. Edit block fields with their own flags "
+                        f"block asked for {', '.join(differing)} and the write did not "
+                        "land it. Edit block fields with their own flags "
                         "(`--refs`, `--revisit`, `--closed-by`); `superseded_by` is "
                         "owned by `merge` and has no inverse yet, so clearing one still "
                         "needs a direct edit at the provider."

@@ -70,7 +70,8 @@ def _recording(project_dir: Path, scope: str, run) -> dict:
 
         _record_attempt(project_dir, scope, scrub_secrets(f"{type(exc).__name__}: {exc}"))
         raise
-    return _record_attempt(project_dir, scope, _failure_of(result)) or result
+    _record_attempt(project_dir, scope, _failure_of(result))
+    return result
 
 
 def _record_attempt(project_dir: Path, scope: str, failure: str | None) -> None:
