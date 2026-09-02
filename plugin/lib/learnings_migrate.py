@@ -219,7 +219,14 @@ def slug(title: str) -> str:
 
 @dataclass(frozen=True)
 class Section:
-    """One ``## `` section of the legacy corpus, already cleaned.
+    """One rule-bearing region of the legacy corpus, already cleaned.
+
+    Usually a ``## `` section. It is also **one flat rule** — a bullet or a
+    heading standing outside any section, which is how the oldest fleet
+    corpora and prawduct's own starter file are written
+    (``# Learnings`` then a plain bullet list). Those used to be dropped as
+    preamble, which meant a whole corpus could parse to zero sections and be
+    deleted as if it had held nothing.
 
     ``rules`` is the rule **text** rather than the rule *line*: a topic's
     bullets without their ``- ``, or — for a single-rule section — the title
@@ -227,12 +234,16 @@ class Section:
     and it is prefix-independent on purpose, because a single-rule section is
     written ``## `` in the source and ``### `` under ``## Unsorted`` in the
     output. The heading level changes; the rule may not.
+
+    ``bullet`` remembers which form a flat rule arrived in, so a bullet is
+    re-emitted as a bullet rather than promoted to a heading it never was.
     """
 
     title: str
     body: str
     kind: str
     rules: list[str] = field(default_factory=list)
+    bullet: bool = False
 
     @property
     def slug(self) -> str:
@@ -243,16 +254,31 @@ class Section:
         return self.kind == KIND_TOPIC
 
 
-def parse_legacy(text: str) -> list[Section]:
-    """Split the corpus into sections, cleaned and classified.
+def parse_legacy(text: str) -> tuple[list[Section], list[str]]:
+    """``(sections, dropped)`` — the corpus's rules, and the lines carried nowhere.
 
-    Everything before the first ``## `` is preamble and is dropped: it is the
-    old file's title and its pointer at ``learnings-detail.md``, both of which
-    the new layout replaces. Headings inside fenced code blocks are not
-    headings — a rule quoting markdown would otherwise split itself in half.
+    Sections open on ``## ``. **Rules living outside any section are parsed
+    too**: a top-level bullet or a ``#``/``###`` heading before the first
+    ``## `` is one flat rule, which is how prawduct's own starter corpus and
+    the oldest fleet files are written. Treating those as preamble is what let
+    a whole corpus parse to zero rules and be deleted as if it were empty, so
+    the only thing that still counts as preamble is prose: the file's own
+    ``# Title`` on the first line, and paragraphs introducing nothing.
+
+    ``dropped`` is every non-blank line carried into no rule. It is returned
+    rather than discarded because "what did this transform throw away" must be
+    answerable before the operator authorises a deletion — :func:`plan` reports
+    it, and refuses if anything in it still looks like a rule.
+
+    Headings inside fenced code blocks are not headings — a rule quoting
+    markdown would otherwise split itself in half.
     """
+    sections: list[Section] = []
+    dropped: list[str] = []
+
     titles: list[str] = []
     bodies: list[list[str]] = []
+    preamble: list[str] = []
     current: list[str] | None = None
     fenced = False
     for line in text.split("\n"):
@@ -263,10 +289,10 @@ def parse_legacy(text: str) -> list[Section]:
             current = []
             bodies.append(current)
             continue
-        if current is not None:
-            current.append(line)
+        (current if current is not None else preamble).append(line)
 
-    sections: list[Section] = []
+    sections.extend(_parse_flat(preamble, dropped))
+
     for title, body_lines in zip(titles, bodies):
         clean_title = strip_links(title).strip()
         body = _trim_blank_edges(strip_links("\n".join(body_lines)))
@@ -286,7 +312,72 @@ def parse_legacy(text: str) -> list[Section]:
                     rules=[clean_title] if clean_title else [],
                 )
             )
-    return sections
+    return sections, dropped
+
+
+#: A heading of any level other than ``## `` (which opens a section).
+_FLAT_HEADING = re.compile(r"^(#{1,6})[ \t]+(.*)$")
+
+
+def _parse_flat(lines: list[str], dropped: list[str]) -> list[Section]:
+    """Rules standing outside any ``## `` section, in order.
+
+    A top-level bullet is a rule; so is a heading, on the same reading the
+    ``## `` sections already use — a heading with no bullets under it *is* the
+    rule. The one exception is the file's own title: a ``# `` heading on the
+    first non-blank line, which every fleet corpus opens with and which the new
+    ``core.md`` replaces with its own header.
+
+    Indented and prose lines attach to the rule above them as its body; with no
+    rule above them they are preamble, appended to ``dropped`` so the caller can
+    say what it did not carry.
+    """
+    cleaned = strip_links("\n".join(lines)).split("\n")
+    rules: list[list[str]] = []  # [marker-bearing first line, *body lines]
+    bullets: list[bool] = []
+    seen_content = False
+    for line in cleaned:
+        stripped = line.strip()
+        if not stripped:
+            if rules:
+                rules[-1].append(line)
+            continue
+        heading = _FLAT_HEADING.match(line)
+        is_title = heading is not None and len(heading.group(1)) == 1 and not seen_content
+        seen_content = True
+        if is_title:
+            # By its text, not its raw line: `_RULE_SHAPED` is the parser-gap
+            # alarm, and the one heading this parser drops ON PURPOSE must not
+            # ring it. Every corpus opens with this line and the new core.md
+            # ships its own header in its place.
+            dropped.append(heading.group(2).strip())
+            continue
+        if heading is not None:
+            rules.append([heading.group(2).strip()])
+            bullets.append(False)
+            continue
+        if line.startswith("- "):
+            rules.append([line[2:].strip()])
+            bullets.append(True)
+            continue
+        if rules:
+            rules[-1].append(line)
+        else:
+            dropped.append(stripped)
+
+    out: list[Section] = []
+    for (title, *body_lines), is_bullet in zip(rules, bullets):
+        body = _trim_blank_edges("\n".join(body_lines))
+        out.append(
+            Section(
+                title=title,
+                body=body,
+                kind=KIND_RULE,
+                rules=[title] if title else [],
+                bullet=is_bullet,
+            )
+        )
+    return out
 
 
 def _trim_blank_edges(text: str) -> str:
@@ -471,6 +562,7 @@ class Plan:
     sections: list[Section] = field(default_factory=list)
     unmapped: list[str] = field(default_factory=list)
     merges: list[str] = field(default_factory=list)
+    dropped: list[str] = field(default_factory=list)
     resumed: bool = False
 
     @property
@@ -511,17 +603,27 @@ def _is_git_repo(project_dir: str | Path) -> bool:
     return proc is not None and proc.returncode == 0
 
 
-def dirty_legacy_files(project_dir: str | Path) -> list[str]:
-    """Porcelain status lines for **tracked** legacy files with local changes.
+def dirty_legacy_files(project_dir: str | Path) -> list[str] | None:
+    """Porcelain lines for **tracked** legacy files with local changes.
 
-    Untracked entries are filtered out here rather than reported twice: a file
-    git does not track is :func:`unrecoverable_legacy_files`' subject, and it
-    needs a different sentence — "commit your edit" is useless advice about a
-    file that has never been committed at all.
+    ``None`` means *git could not answer* — the binary is missing, the 10s
+    timeout expired, `index.lock` is held, the call returned nonzero. That is a
+    third outcome and it must stay one: returning ``[]`` there made "could not
+    ask" indistinguishable from "nothing dirty", so one of the five guards over
+    an irreversible delete silently stopped applying on exactly the repos where
+    something was already wrong. :func:`plan` turns ``None`` into a refusal.
+
+    Callers check :func:`_is_git_repo` first, because *no repo* is a different
+    answer again: there, fail-open is correct and intended.
+
+    Untracked entries are filtered out rather than reported twice: a file git
+    does not track is :func:`unrecoverable_legacy_files`' subject, and it needs
+    a different sentence — "commit your edit" is useless advice about a file
+    that has never been committed at all.
     """
     proc = _git(project_dir, "status", "--porcelain", "--", *LEGACY_FILES)
     if proc is None or proc.returncode != 0:
-        return []
+        return None
     return [
         line
         for line in proc.stdout.split("\n")
@@ -603,7 +705,10 @@ def _core_content(topics: list[Section], rules: list[Section]) -> str:
     if rules:
         unsorted = [f"## {UNSORTED_HEADING}"]
         for section in rules:
-            block = f"### {section.title}"
+            # A bullet is re-emitted as a bullet. Promoting it to a heading
+            # would be a silent edit to someone's corpus, and would read as a
+            # section title in a file where every heading means "topic".
+            block = f"- {section.title}" if section.bullet else f"### {section.title}"
             if section.body:
                 block += f"\n\n{section.body}"
             unsorted.append(block)
@@ -700,6 +805,66 @@ def _resume_state(root: Path, outputs: list[OutputFile]) -> bool:
     return all(planned.get(rel) == data for rel, data in existing.items())
 
 
+#: A dropped line that still looks like a rule. If one of these ever reaches
+#: :data:`Plan.dropped`, the parser has a gap and the corpus is not safe to
+#: delete — which is the whole subject of :func:`_accounting_refusals`.
+_RULE_SHAPED = re.compile(r"^\s*(?:[-*+][ \t]|#{1,6}[ \t])")
+
+
+def _accounting_refusals(
+    sections: list[Section], dropped: list[str], outputs: list[OutputFile]
+) -> list[str]:
+    """The losslessness contract, enforced *before* anything is deleted.
+
+    The suite has always asserted that every rule survives; that assertion runs
+    on fixtures, and the corpus this command deletes is never a fixture. So the
+    same contract runs inside the plan, and a shortfall is a refusal rather than
+    a test failure nobody was there to see.
+
+    Three questions, each catching a different way content disappears, and none
+    of them able to answer for the others:
+
+    1. **Did every parsed rule reach an output?** A writer bug — two sections
+       addressed to one path, a branch that forgets to emit — is invisible to a
+       parser check.
+    2. **Does anything the parser dropped still look like a rule?** A parser gap
+       is invisible to (1), because a rule that was never parsed is not in
+       ``sections`` to be missed. This is the check that would have caught a
+       whole flat corpus reading as zero rules.
+    3. **Did a corpus with content produce no rules at all?** The catastrophic
+       shape, stated in its own terms so it cannot depend on either subtler
+       check being right: a file with bytes in it must not migrate to nothing.
+    """
+    refusals: list[str] = []
+    joined = "\n".join(o.content for o in outputs)
+
+    missing = [
+        rule for section in sections for rule in section.rules if rule not in joined
+    ]
+    if missing:
+        refusals.append(
+            f"{len(missing)} rule(s) parsed from the corpus do not appear in the "
+            "planned output — this migration would lose them, so nothing will be "
+            "written or deleted. First: " + repr(missing[0][:120])
+        )
+
+    rule_shaped = [line for line in dropped if _RULE_SHAPED.match(line)]
+    if rule_shaped:
+        refusals.append(
+            f"{len(rule_shaped)} line(s) that look like rules were carried into no "
+            "output — a shape this parser does not understand. Nothing will be "
+            "written or deleted. First: " + repr(rule_shaped[0][:120])
+        )
+
+    if not any(section.rules for section in sections):
+        refusals.append(
+            "the corpus parsed to zero rules while holding content — migrating it "
+            "would replace it with an empty core.md and delete the original. "
+            "Nothing will be written or deleted."
+        )
+    return refusals
+
+
 def plan(
     project_dir: str | Path, mapping: dict[str, list[str]] | None = None
 ) -> Plan:
@@ -729,12 +894,12 @@ def plan(
             refusals=[f"cannot read {learnings_files.LEGACY_REL}: {exc}"],
         )
 
-    sections = parse_legacy(text)
+    sections, dropped = parse_legacy(text)
     mapping = mapping or {}
     outputs, unmapped, merges = _build_outputs(sections, mapping)
     deletions = [rel for rel in LEGACY_FILES if (root / rel).is_file()]
 
-    refusals: list[str] = []
+    refusals: list[str] = _accounting_refusals(sections, dropped, outputs)
     resumed = False
 
     if layout.state == learnings_files.STATE_BOTH:
@@ -768,13 +933,22 @@ def plan(
             "it. Commit it first (unignore it if an ignore rule covers it) — "
             "the commit is this migration's undo."
         )
-    dirty = dirty_legacy_files(root)
-    if dirty:
-        refusals.append(
-            "uncommitted changes to the files this migration deletes — commit "
-            "or stash them first, because the commit is the undo:\n    "
-            + "\n    ".join(dirty)
-        )
+    if _is_git_repo(root):
+        dirty = dirty_legacy_files(root)
+        if dirty is None:
+            refusals.append(
+                "git could not report whether the files this migration deletes "
+                "have uncommitted changes (`git status` failed, timed out, or "
+                "the index is locked). An unanswerable guard is not a passed "
+                "one — the commit is this migration's undo, and nothing here "
+                "can establish there is one. Re-run once git answers."
+            )
+        elif dirty:
+            refusals.append(
+                "uncommitted changes to the files this migration deletes — commit "
+                "or stash them first, because the commit is the undo:\n    "
+                + "\n    ".join(dirty)
+            )
     if learnings_files.rules_dir_is_gitignored(root):
         refusals.append(
             f"the destination is gitignored: a new file under "
@@ -791,6 +965,7 @@ def plan(
         sections=sections,
         unmapped=unmapped,
         merges=merges,
+        dropped=dropped,
         resumed=resumed,
     )
 
