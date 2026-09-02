@@ -58,9 +58,9 @@ ALLOWLIST: dict[str, tuple[str, str]] = {
         "with the resolver's three states plus the migration directive",
     ),
     "plugin/lib/gates.py": (
-        "wave-1",
-        "the Critic gate's Learnings Cross-Check text (Chunk 04 points it at "
-        "the resolver's file list for the session's changed paths)",
+        "wave-2",
+        "one docstring rule-citation naming learnings.md as its source; the "
+        "cross-check text itself was repointed in Chunk 04 (grep-clean sweep)",
     ),
     "plugin/skills/critic/review-cycle.md": (
         "wave-1",
