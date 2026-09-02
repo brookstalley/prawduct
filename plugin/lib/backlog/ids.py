@@ -39,7 +39,14 @@ from dataclasses import dataclass
 # (GitHub is stricter still, but this is the adapter's tolerant input gate — the
 # real existence check happens at the transport, not here.)
 _SEGMENT = r"[A-Za-z0-9._-]+"
-_NUMBER = re.compile(r"^\d+$")
+# `[0-9]`, not `\d`. Python's `\d` matches every Unicode decimal digit, so
+# `#１２３` in full-width digits parsed as a number, `int()` accepted it, and the
+# canonical id carried the non-ASCII glyphs into `repos/{owner}/{repo}/issues/{n}`
+# at the transport — an id GitHub cannot resolve, built out of an input that
+# looked numeric to every check on the way in. The reachable source is
+# attacker-writable for the same reason `_valid_segment` guards its own: ids are
+# parsed out of issue-body text.
+_NUMBER = re.compile(r"^[0-9]+$")
 
 
 @dataclass(frozen=True)
@@ -68,10 +75,16 @@ def _fail(message: str, *, code: str = "validation") -> NormalizedId:
 
 
 def _build(owner: str, repo: str, number: str) -> NormalizedId:
-    canonical = f"{owner}/{repo}#{number}"
-    return NormalizedId(
-        canonical=canonical, owner=owner, repo=repo, number=int(number)
-    )
+    # The number is re-rendered from its integer value rather than pasted through,
+    # so a zero-padded spelling reaches the SAME canonical string as its bare one.
+    # Otherwise `#007` and `#7` — one issue — normalize to two different canonical
+    # ids, and every consumer keyed on that string (the cache's `item.id`, the
+    # alias table, `resolve_redirect`) treats them as two items. ID-1 says one
+    # canonical per item, and pasting the caller's digits through quietly broke it
+    # for any spelling a human might pad.
+    value = int(number)
+    canonical = f"{owner}/{repo}#{value}"
+    return NormalizedId(canonical=canonical, owner=owner, repo=repo, number=value)
 
 
 def normalize_id(

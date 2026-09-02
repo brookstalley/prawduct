@@ -140,12 +140,54 @@ class TestBareNumberResolvesAgainstDefaultRepo:
         result = ids.normalize_id("007", default_repo=("octo", "repo"))
         assert result.ok
         assert result.number == 7
+        assert result.canonical == "octo/repo#7"
 
     def test_an_explicit_spelling_still_wins_over_the_default_repo(self):
         # The default is a fallback for what the input omits, never an override.
         result = ids.normalize_id("other/elsewhere#9", default_repo=("octo", "repo"))
         assert result.ok
         assert result.canonical == "other/elsewhere#9"
+
+
+class TestOneCanonicalPerItem:
+    """ID-1 says one canonical string per item, and two spellings quietly broke it.
+
+    Both predate the bare form and both are reachable from every spelling; the bare
+    form is what made them reachable from the commonest one there is.
+    """
+
+    @pytest.mark.parametrize(
+        "spelling",
+        ["007", "#007", "repo#007", "octo/repo#007", "repo/007", "repo-007"],
+    )
+    def test_a_zero_padded_number_reaches_the_same_canonical_as_its_bare_one(self, spelling):
+        # Pasting the caller's digits through meant `#007` and `#7` — one issue —
+        # normalized to two different canonical strings, and every consumer keyed
+        # on that string (the cache's `item.id`, the alias table, the redirect
+        # walk) would treat them as two items.
+        result = ids.normalize_id(spelling, default_owner="octo", default_repo=("octo", "repo"))
+        assert result.ok, result.message
+        assert result.canonical == "octo/repo#7"
+        assert result.number == 7
+
+    @pytest.mark.parametrize("spelling", ["１２３", "#１２３", "repo#１２３", "octo/repo#１２３"])
+    def test_non_ascii_digits_are_not_a_number(self, spelling):
+        """Python's `\\d` matches every Unicode decimal digit, so full-width digits
+        parsed as a number and `int()` accepted them — producing a canonical id
+        whose glyphs go into `repos/{owner}/{repo}/issues/{n}` at the transport,
+        an id GitHub cannot resolve, from an input that looked numeric to every
+        check on the way in. Ids are parsed out of issue-body text, so the source
+        is attacker-writable for the same reason `_valid_segment` guards its own.
+        """
+        result = ids.normalize_id(spelling, default_owner="octo", default_repo=("octo", "repo"))
+        assert not result.ok
+        assert result.error == "validation"
+
+    def test_ascii_digits_still_normalize(self):
+        # The guard must not cost the legitimate case it shares a pattern with.
+        result = ids.normalize_id("42", default_repo=("octo", "repo"))
+        assert result.ok
+        assert result.canonical == "octo/repo#42"
 
 
 class TestRejections:
