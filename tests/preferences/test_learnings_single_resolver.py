@@ -102,14 +102,6 @@ ALLOWLIST: dict[str, tuple[str, str]] = {
         "R6 — health checks 13/13a and the audit-learnings flow go with their "
         "commands",
     ),
-    "plugin/methodology/planning.md": (
-        "wave-2",
-        "R6 — the § Learnings as Design Constraints instruction site",
-    ),
-    "plugin/methodology/building.md": (
-        "wave-2",
-        "R6 — the 'add a rule to learnings.md' instruction site",
-    ),
     # --- Wave 2, via §9's grep-clean sweep (no named R6 deliverable)
     "plugin/lib/coverage.py": (
         "wave-2",

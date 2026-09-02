@@ -177,10 +177,12 @@ optional body. Sections model lifecycle placement: `## Open` (pickable) → `## 
 active plan) → `## Archive` (shipped/dropped, append-only, bodies preserved). Items move only via
 the backlog skill, never hand-edited across sections.
 
-#### Learnings — `.prawduct/learnings.md` + `learnings-detail.md`
+#### Learnings — `.claude/rules/learnings/` (`core.md` + `<area>.md`)
 
-Committed. `learnings.md` holds one "When X, do Y because Z" rule per `##` heading plus a dense
-summary; `learnings-detail.md` mirrors the headings 1:1 with the full narrative. Intent: the rule
+Committed, harness-loaded. `core.md` holds cross-cutting "When X, do Y because Z" rules, one per
+heading; each `<area>.md` carries `paths:` frontmatter and loads when a matching file is read.
+Narrative lives in `.session-reflected`, not beside the rule. (Pre-v2: `.prawduct/learnings.md` +
+`learnings-detail.md`, relaid by `learnings-migrate`; a legacy repo reads UNMIGRATED until then.) Intent: the rule
 is the durable, index-surfaced artifact; the narrative is a deep-read reference, kept out of the
 hot path. Cross-linked to principles and backlog ids.
 

@@ -25,7 +25,7 @@ Depth scales with significance: a routine bug fix warrants a sentence; a structu
 What happened? Was the outcome expected? If not, what's the gap between expected and actual?
 
 ### Step 2: Pattern-Match
-Check `learnings.md`. Does this resemble a known pattern? If a learning exists but wasn't followed, that's important — it isn't prominent enough, needs refinement, or was the wrong lesson. If no relevant learning exists, this may be a new pattern worth capturing.
+Check the learnings rules (`.claude/rules/learnings/`, already in your context). Does this resemble a known pattern? If a learning exists but wasn't followed, that's important — it isn't prominent enough, needs refinement, or was the wrong lesson. If no relevant learning exists, this may be a new pattern worth capturing.
 
 ### Step 3: Root Cause (when something went wrong)
 Don't fix the symptom — ask "what about the system allowed this?" and chain the whys:
@@ -42,7 +42,7 @@ Three whys is typical, and the chain is short by default because most chains are
 Two targets, two purposes:
 
 - **`.prawduct/.session-reflected`** — the *narrative* of this work cycle. A short entry per reflection; archived to `reflections.md` at the next session boundary (a fresh start or `/clear` — not a resume/compact/fork, which continue this session).
-- **`.prawduct/learnings.md`** — *standing rules* future sessions should follow. Add here only when the cycle produced a durable lesson; most cycles produce a reflection entry and no new learning.
+- **`.claude/rules/learnings/core.md`** (or the area file whose `paths:` cover the lesson) — *standing rules* future sessions should follow. Add here only when the cycle produced a durable lesson; most cycles produce a reflection entry and no new learning.
 
 Good learnings have: **context** (one sentence), **what happened**, **why** (root cause), **lesson** (what to do differently), and the **related principle**. Bad learnings are too abstract ("be more careful with tests"), too specific ("in file X line 42 change Y"), or write-only (filed where nobody reads them).
 
@@ -152,7 +152,7 @@ When fixing a bug or recovering from an error, apply root-cause discipline befor
 
 **Provisional**: single incident; may be wrong or over-specific. Format: "When X, do Y because Z."
 
-**Confirmed**: validated across 2+ incidents or by the user. Promoted to active rules in `learnings.md` — the learnings that change behavior.
+**Confirmed**: validated across 2+ incidents or by the user. Promoted to active rules in `.claude/rules/learnings/` — the learnings that change behavior.
 
 **Incorporated**: encoded into methodology, templates, or hooks. Archived from active rules — the wisdom lives in the system's instructions now.
 
@@ -162,7 +162,7 @@ When fixing a bug or recovering from an error, apply root-cause discipline befor
 
 Two files, split by purpose:
 
-**`learnings.md`** — concise standing rules, organized by topic (not chronology): each entry a `## ` heading that states the rule and its brief why in one line ("When X, do Y because Z"), with the full narrative kept in `learnings-detail.md` under the same heading — not duplicated here. Keywords in the heading trigger pattern recognition; the headings feed the session briefing.
+**`.claude/rules/learnings/`** — concise standing rules: `core.md` for cross-cutting ones, `<area>.md` with `paths:` frontmatter for scoped ones; each entry a rule heading that states the rule and its brief why in one line ("When X, do Y because Z"), narrative in `.session-reflected`, never here. The harness loads them; nothing re-reads them into context.
 
 **`learnings-detail.md`** — full root cause / fix / rule format with `## Topic` headers, consulted when debugging in a known area. No size constraint.
 

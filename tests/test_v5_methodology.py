@@ -729,7 +729,8 @@ LAST_MEASURED_TOKENS = {
     # is a plan handed over with no position on it. Distinct from the Plan Shape
     # pushback above, which is one specific take (this plan is too big); this is
     # the general obligation that take is an instance of.
-    "methodology/planning.md": 5466,
+    # 2026-09-02 (learnings-v2 chunk 05, cumulative R-6): the "program, not a plan" bullet names the learnings rules, not a file.
+    "methodology/planning.md": 5469,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
@@ -769,7 +770,8 @@ LAST_MEASURED_TOKENS = {
     # stopped early: a terminal that restates the failure ("we were in a hurry",
     # "nobody reviewed it") rather than explaining it. Principle 16 is the norm;
     # this is the procedure that makes it checkable.
-    "methodology/reflection.md": 5094,
+    # 2026-09-02 (learnings-v2 chunk 05, cumulative R-6): four write-path sites repointed at .claude/rules/learnings/ (R8 rewrite is Wave 3).
+    "methodology/reflection.md": 5103,
     # First reading, 2026-08-21, taken at birth: a new on-demand guide, so it
     # joins the class above — a READING, no ceiling. `test_every_methodology_guide_is_accounted_for`
     # requires the entry; the decision block above this

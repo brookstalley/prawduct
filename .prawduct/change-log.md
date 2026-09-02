@@ -22,7 +22,8 @@ This repo migrated with its own command: 287 rules → one `core.md` of 100,181 
 into area files is #343's content program). `learnings-detail.md` and `learnings-history.md` are
 deleted (owner-ruled 2026-09-02; git history is the archive). The budget check passes on this file
 because it is over budget and NOT grown; every future addition pays. Wave 2 (`learnings-v2-delete`)
-removes the lookup skill, the audit lifecycle, the obligation repair and the size nudge; until
+removes the lookup skill, the audit lifecycle and the obligation repair (the size nudge already
+went in Chunk 04); until
 then `/prawduct:learnings` and doctor #5/#13/#13a point at a file this repo no longer has.
 
 ## 2026-09-01: backlog burndown — 57 items across ten parallel work groups

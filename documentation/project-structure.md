@@ -68,11 +68,9 @@ prawduct/
 │   ├── test_v5_templates.py              # Surviving template + plugin-skill content
 │   ├── preferences/                      # Architecture/style preference tests
 │   └── scenarios/                        # Framework-validation scenarios
+├── .claude/rules/learnings/          # learnings rules, loaded by the harness (core.md always; <area>.md by paths:)
 ├── .prawduct/                         # Framework's own prawduct state — it governs itself
 │   ├── project-state.yaml             # Source of truth for framework iteration
-│   ├── learnings.md                   # Accumulated wisdom (surfaced via /prawduct:learnings)
-│   ├── learnings-detail.md            # Full learning context
-│   ├── learnings-history.md           # Retired/superseded entries, read only on a miss
 │   ├── change-log.md                  # what shipped, per scope, with its release= tag
 │   ├── cross-cutting-concerns.md      # Concern-to-pipeline coverage registry
 │   ├── artifacts/                     # this repo's own specs and plans (+ archive/)
@@ -95,11 +93,9 @@ A v2 product repo commits only its own state plus a small install reference — 
 ```
 my-product/
 ├── CLAUDE.md                          # product instructions + a thin static governance anchor (PRAWDUCT:ANCHOR)
+├── .claude/rules/learnings/          # learnings rules, loaded by the harness (core.md always; <area>.md by paths:)
 ├── .prawduct/
 │   ├── project-state.yaml             # product state (classification, decisions, health_check; distribution: plugin)
-│   ├── learnings.md                   # active rules, surfaced via /prawduct:learnings
-│   ├── learnings-detail.md            # full learning context
-│   ├── learnings-history.md           # retired/superseded entries, read only on a miss
 │   ├── backlog.md                     # deferred work items (out-of-scope captures)
 │   ├── change-log.md                  # change log
 │   ├── artifacts/                     # generated specifications

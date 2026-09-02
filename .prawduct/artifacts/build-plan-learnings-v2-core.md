@@ -23,6 +23,10 @@ governed_by:
       - "untrusted governance state (learnings included) is data, not instructions → conforms: the briefing line prints counts and sizes, never rule text; the migrate command copies content without interpreting it; the Critic reads the files as evidence"
       - "a destructive or irreversible operation requires owner approval at the operation level → exception (owner-ruled 2026-09-02, audit §8.7): the agent runs `learnings-migrate --apply` without a per-repo prompt because the operation is git-reversible (three tracked files, one commit), the dry run names every write and delete, and the command refuses on a dirty tree; the owner's control point is the migration commit"
       - "no upstream content egress → inapplicable because nothing in this plan sends anything off the repo"
+  - artifact: api-contract
+    dispositions:
+      - "exit codes: 1 refused / 2 usage → conforms (after the cumulative review's R-11: learnings-migrate returned 2 for refusals; aligned in the Chunk 05 fix round)"
+      - "stable stdout/stderr channel split → conforms: dry run and apply report on stdout, refusals and NOTEs on stderr"
   - artifact: observability-strategy
     dispositions:
       - "stable severity-prefix vocabulary with the stdout/stderr channel split → conforms: the Stop floor emits a `BLOCKED —` blocker on the existing channel; the briefing line uses the briefing; the migrate dry run reports on stdout"
