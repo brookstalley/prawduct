@@ -429,6 +429,24 @@ operator_verification_required: false
 #   backlog_prefixes        — OPTIONAL declared prefix vocabulary for /backlog
 #                             validation (e.g. [STH, CRT, SYN]). Emergent by
 #                             default; declare only if you want validation.
+#   backlog_backend         — set to `markdown` to declare that this product is
+#                             staying on the markdown backlog PERMANENTLY: no
+#                             GitHub remote, another forge, air-gapped, or an
+#                             owner who does not want an Issues tracker. It
+#                             resolves `backlog-service-migration-required` and
+#                             NOTHING else — the format, schema and grooming
+#                             nudges keep running, because a product staying on
+#                             the file needs its hygiene more, not less.
+#                             Absent means undecided, which is the default and
+#                             keeps the migration nudge. `markdown` is the only
+#                             defined value. Set it with
+#                             `/prawduct:backlog decline-migration <reason>`,
+#                             which records the reason as a comment directly
+#                             above the field; unset it by deleting the line.
+#                             An actual cutover (the backlog-service repo
+#                             scalar, written by `scrub`) wins outright if both
+#                             are set — having migrated beats declaring you
+#                             never will.
 #
 # Reserved for deferred backlog probes (v1.7 ships only legacy-backlog-format):
 #   backlog_external_imports — list of external backlog files already audited
@@ -437,6 +455,7 @@ operator_verification_required: false
 #                              overdue-grooming).
 
 # backlog_format_version:
+# backlog_backend:
 # backlog_prefixes: []
 # backlog_external_imports: []
 # backlog_last_groomed_at:

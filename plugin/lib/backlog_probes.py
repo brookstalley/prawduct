@@ -272,12 +272,34 @@ def probe_migration_required(state: ProjectState, codebase: Codebase):
     fires only when the structured format is already in use (≥1 ``[PFX-XXXX]`` id).
     The two partition the space, so a backlog trips at most one of them.
 
-    Resolution: ``backlog_service_repo`` set at cutover (``post_cutover``) — the
-    same switch that retires the other markdown probes. ``warn`` priority (above
-    the ``info`` format/grooming nudges): unmigrated-at-upgrade is a real
-    signal-loss risk — though, like every advisory, never blocking.
+    Resolution, two ways. ``backlog_service_repo`` set at cutover
+    (``post_cutover``) — the same switch that retires the other markdown probes.
+    Or ``backlog_backend: markdown``, the committed declaration that this product
+    is **terminally** on markdown (#197/TM1): no GitHub remote, another forge,
+    air-gapped, or an owner who simply does not want an Issues tracker. Without
+    it, a nudge that can never be acted on repeats every session forever, which
+    is how a real signal becomes noise a reader learns to skip.
+
+    The second check is deliberately inline here rather than folded into
+    ``post_cutover()``, which five other readers share: widening it would also
+    silence ``legacy-backlog-format``, ``legacy-section-schema``,
+    ``backlog-overdue-grooming`` and ``revisit-due`` for a product that has
+    merely said it will never migrate — the second-class outcome TM3 rules out.
+    A product staying on markdown still owes that file its format, schema and
+    grooming hygiene, and needs those nudges more than a migrating one, not less.
+
+    ``post_cutover`` is checked FIRST, and that ordering IS TM4's precedence rule:
+    once a product has actually cut over, a stale ``backlog_backend: markdown``
+    left from before is never consulted, so no "if both, prefer" branch exists to
+    get wrong.
+
+    ``warn`` priority (above the ``info`` format/grooming nudges):
+    unmigrated-at-upgrade is a real signal-loss risk — though, like every
+    advisory, never blocking.
     """
     if post_cutover(state):
+        return []
+    if state.get("backlog_backend") == "markdown":
         return []
     text = _read_text(_backlog_path(codebase))
     if not text:

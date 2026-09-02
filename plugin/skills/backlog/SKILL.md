@@ -155,6 +155,35 @@ Convert legacy unstructured items to the structured format and fold the old sect
 5. **On completion** (all legacy items structured + sections folded + strikeouts cleaned + legend refreshed), write `backlog_format_version: 2` as a top-level key in `.prawduct/project-state.yaml`. This records — as a committed, shared fact — that the backlog is on the structured format, and is the resolution-condition the plugin-native `legacy-backlog-format` probe (`lib/backlog_probes.py`) consults to clear its advisory for everyone on next sync. If migration is partial (user skipped items), do **not** set it yet — say how many remain.
 6. Report: items migrated, sections folded, whether the legend was refreshed (and which fields it gained), whether `backlog_format_version` was set, and how many (if any) remain legacy.
 
+### decline-migration <reason>
+Permanently record that this product is staying on the **markdown** backlog (#197/TM1) — a product
+with no GitHub remote, on another forge, air-gapped, or whose owner simply does not want an Issues
+tracker. Without this, `backlog-service-migration-required` nudges every session toward a migration
+that is never going to happen, and a signal nobody can act on is one a reader learns to skip.
+**Requires a reason**; if none is given, ask for one rather than writing the field with no rationale.
+
+1. **Precondition.** Read `backlog_service_repo` from `.prawduct/project-state.yaml`. If it is
+   already set, this product has cut over — say so and stop; there is nothing to decline.
+2. **Write.** Add, as a top-level scalar in `.prawduct/project-state.yaml` (create the field if
+   absent; if it is already `markdown`, report "already declined" and stop):
+
+   ```yaml
+   # <reason, verbatim from the caller> — recorded <today's date>
+   backlog_backend: markdown
+   ```
+
+   The comment directly above the field is the record of *why* — the same convention this file
+   already uses above `backlog_service_repo` once a product cuts over. Do not invent a reason the
+   caller did not give.
+3. **Report.** Confirm the field was written and that `backlog-service-migration-required` will no
+   longer fire. Say explicitly that `legacy-backlog-format`, `legacy-section-schema` and
+   `backlog-overdue-grooming` are **unaffected** and keep running: the product is staying on the
+   file, so that file's format, schema and grooming hygiene matter more, not less.
+
+**Reversing it** is a normal, unceremonious edit to a committed file — delete the `backlog_backend`
+line, or set `backlog_service_repo` if the product does decide to migrate, which wins outright. There
+is deliberately no `undecline-migration` verb.
+
 ### import <path>
 Convert an external backlog file (`TODO.md`, `BACKLOG.md`, `ROADMAP.md`, `IDEAS.md`, a GitHub issue export, etc.) into structured items. **Always confirm before writing.**
 1. Read the source file. Identify items by structure (markdown bullets, headings, issue-template fields).
