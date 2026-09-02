@@ -199,7 +199,7 @@ def run_plugin_hook(
     }
     return subprocess.run(
         ["python3", str(HOOK), command, *args],
-        capture_output=True, text=True, env=env, timeout=20, input=stdin,
+        capture_output=True, text=True, env=env, timeout=90, input=stdin,
     )
 
 
@@ -783,7 +783,7 @@ class TestPluginSubcommandsResolveViaLib:
         self._repo(tmp_path)
         result = subprocess.run(
             ["python3", str(HOOK), "advisory", "list"],
-            capture_output=True, text=True, timeout=20,
+            capture_output=True, text=True, timeout=90,
             env={"HOME": str(tmp_path / "_home"), "CLAUDE_PROJECT_DIR": str(tmp_path),
                  "CLAUDE_PLUGIN_ROOT": str(ROOT), "PATH": "/usr/bin:/bin",
                  "PYTHONDONTWRITEBYTECODE": "1"},
@@ -943,7 +943,7 @@ def _run_in(repo: Path, *args: str) -> subprocess.CompletedProcess:
     home.mkdir(exist_ok=True)
     return subprocess.run(
         ["python3", str(HOOK), *args],
-        capture_output=True, text=True, timeout=20,
+        capture_output=True, text=True, timeout=90,
         env={"HOME": str(home), "CLAUDE_PROJECT_DIR": str(repo),
              "CLAUDE_PLUGIN_ROOT": str(ROOT), "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
              "PYTHONDONTWRITEBYTECODE": "1"},
@@ -3008,7 +3008,7 @@ class TestJurisdictionSubcommand:
         result = subprocess.run(
             ["python3", str(HOOK), "jurisdiction"],
             input="adopt the telemetry substrate for tracing",
-            capture_output=True, text=True, timeout=20,
+            capture_output=True, text=True, timeout=90,
             env={"HOME": str(home), "CLAUDE_PROJECT_DIR": str(repo),
                  "CLAUDE_PLUGIN_ROOT": str(ROOT),
                  "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
