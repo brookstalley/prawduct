@@ -5,7 +5,7 @@ design decisions await veto (§7); build plans not yet written.
 **Parent:** `learning-system-audit-2026-09-01.md` (§1–§6 the evidence and Option C; §8 the
 scoping, location, migration and open-question rulings). This document does not restate the
 evidence; it turns the rulings into requirements a build plan can be drawn from.
-**Backlog homes:** #295 (memory convergence), #343 (shipped discipline corpus), #685 (reflection
+**Backlog homes:** #744 (the program), #295 (memory convergence), #343 (shipped discipline corpus), #685 (reflection
 gate on planless repos), #350 (detail file sink), #347 (reflection.md stale). Eighteen further
 learning-machinery defects close by deletion in Wave 2 (§8.3).
 
@@ -124,7 +124,7 @@ mapping is removed with its check. *Proof:* the skill-structure preference tests
 review-cycle test that the goal text is present once.
 
 **R6 — Deletions, whole.** Code, tests, docs and records together (`purpose.md`): 
-`audit_learnings_cmd.py` (1,751) and `tests/test_audit_learnings.py` (131 tests);
+`audit_learnings_cmd.py` (1,751) and `tests/test_audit_learnings.py` (131 `test_` functions);
 `learnings_obligation.py` (356), `tests/test_learnings_obligation.py` (34), the obligation block
 in `init_product.py` and `onboarding_probes.py`; `check-learnings-pairing` and
 `tests/test_learnings_pairing.py` (37); `record_lint._check_learnings_shape` and

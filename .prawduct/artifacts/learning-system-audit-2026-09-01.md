@@ -41,7 +41,7 @@ side works, the read side barely registers, and the maintenance side consumes mo
   rule as the reason for a decision appears in ~6% of sessions. The Critic's structurally required
   cross-check is where most citation happens (86 of 106 strict citations are in reviewer subagents).
 - **Maintenance side — strongly negative.** ≈2,770 lines of plugin Python and 5,519 lines of tests
-  (293 tests, ~5.7% of the suite) guard the subsystem. 38 backlog items have the learning system
+  (293 `test_` functions, ~5.7% of the suite) guard the subsystem. 38 backlog items have the learning system
   as their subject; 22 are the machinery's own defects, 11 of them filed in the four weeks after the
   lifecycle was extended. `learnings.md` in this repo has 301 commits, 153 in August alone. Five
   size interventions in five months; after every one the file returned to a new high within 4–6
@@ -407,7 +407,7 @@ and a live candidate for retrieval later.
 Delete, whole (code, tests, docs, records together — `purpose.md` "deletion gets the same care"):
 - `learnings-detail.md` and `learnings-history.md` as durable files (git is the history; narrative
   lives in the reflection and the commit message).
-- `audit_learnings_cmd.py` (1,751 lines, 131 tests) — sentinel/supersession/confirmations
+- `audit_learnings_cmd.py` (1,751 lines, 131 `test_` functions) — sentinel/supersession/confirmations
   lifecycle, used by one entry fleet-wide; `check-learnings-pairing`; `learnings_obligation.py`
   (356 lines to insert a paragraph); `record_lint` `learnings-entry-shape` (superseded by the cap).
 - The `/prawduct:learnings` fork skill and its instruction sites (planning.md, building.md,
