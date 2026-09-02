@@ -34,14 +34,33 @@ The chunk is ordered last of the three code chunks so the ruling can arrive late
 - [x] Chunk 02: a discarded block edit is reported, not swallowed
 - [x] Chunk 03: state the quarantine ⊂ untriaged containment
 - [x] Chunk 04: A failing cache warm leaves a durable record
-Context: All four chunks built, committed and verified against a green suite (6146
-passed, 17 skipped, recorded from JUnit). Chunk 02 was DESCOPED mid-build — its planned
-fix would have breached a recorded invariant — and the real gap is filed as #751
-(`unmerge`, design). Chunk 03's premise was likewise falsified by the code and the
+Context: All four chunks built, committed and verified. Chunk 02 was DESCOPED mid-build
+— its planned fix would have breached a recorded invariant — and the real gap is filed as
+#751 (`unmerge`, design). Chunk 03's premise was likewise falsified by the code and the
 reconciliation went the other way, with the unbuilt predicate filed as #752. #609 was
 considered and DROPPED: its blocker (`constraints.txt` on the unmerged
-`feature/upstream-dependency-policy`) was re-verified live and still holds. Remaining:
-the cumulative Critic, which covers all four chunks. NOT PR'd — the user did not ask.
+`feature/upstream-dependency-policy`) was re-verified live and still holds. NOT PR'd —
+the user did not ask.
+
+**Review: CLOSED.** Cumulative `rev-20260902T125809Z-fa56d43b` raised 3 blocking + 6
+warnings; `verify-resolutions` (`rev-20260902T133055Z-7f00a9b9`) confirmed all nine
+resolved, zero blocking, re-deriving R-6's caller search independently rather than taking
+the fix on trust.
+
+**Goals 5 and 6 (learnings cross-check, backlog reconciliation) were never assessed —
+ACCEPTED by owner ruling 2026-09-02, reason recorded here.** The sustainability reviewer
+halted at its pre-check because HEAD moved during the review; correctness and design
+reviewed the pinned tree cleanly. The ruling weighed a second cumulative (~10 min, a third
+round on this branch) against the fact that nothing gates on those two goals while there is
+no PR. This is a deferral, not a judgment that the goals do not apply: if this branch is
+ever PR'd, `check-cumulative-critic` will require the coverage, and that gate — not this
+note — is what decides it then.
+
+**Suite evidence.** 6161 passed, 0 failed, 17 skipped, 218.5s at 2026-09-02T22:12:24Z,
+recorded against `5792f8aa` on an uncontended run. This supersedes the earlier 6146 figure,
+which covered an ancestor tree. Two later commits (the inherited learnings entry and the
+grooming stamp, 2316cf94 and 5f04d5ec) are docs and state only, touch no code, and postdate
+both the review and that run.
 
 ## Verification Strategy
 
