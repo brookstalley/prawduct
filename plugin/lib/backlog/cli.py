@@ -1764,6 +1764,17 @@ def _print_human_ok(data) -> None:
         for item in data.get("items", []):
             _print_item_line(item)
         print(f"  {data.get('count', 0)} item(s)")
+        # A truncated page must not read as the complete set (#549, the class
+        # #313 closed on four other paginators). `has_more` is computed
+        # correctly and handed to `--json`; dropping it here made "99 item(s),
+        # exit 0" indistinguishable from a backlog of 99 when it was 160, and
+        # every count derived from that page was wrong while looking well-formed.
+        # Named remedy, not a bare flag: the reader has to be able to act on it.
+        if data.get("has_more"):
+            print(
+                "  MORE AVAILABLE — this is one page, not the whole set; "
+                "re-run with --page 2 (and onward) or raise --per-page"
+            )
     elif "by_status" in data:
         # A counts / refresh-counts result.
         print(f"{data.get('repo')}: {data.get('total')} item(s)")

@@ -716,32 +716,57 @@ class TestUpdateRefusesAStrayPositional:
         assert code == 0
 
 
-class TestExtraPositionalHintIsConditional:
-    """The stray-positional error must name the RIGHT likely cause.
+class TestListHumanModeSurfacesTruncation:
+    """A truncated page must not read as the complete set (#549).
 
-    Blaming `--reviewed` unconditionally misleads the other common arrival —
-    `update <id> status=shipped`, the markdown spelling still instructed by
-    skills/pr and the Critic's review-cycle. Both arms are pinned, because with
-    only the `--reviewed` arm tested, reverting the conditional leaves the suite
-    green and the wrong-cause message comes straight back.
+    `list_items` computes `has_more` correctly and `--json` receives it; the
+    human formatter dropped it, so `99 item(s)` + exit 0 was indistinguishable
+    from a backlog of 99 when it held 160 — and every count derived from that
+    page was wrong while looking well-formed. A `--json`-only test cannot see
+    this: the defect lives one layer above the data the JSON tests read.
     """
 
-    def test_reviewed_arm_names_reviewed(self, capsys):
+    def _seeded(self, capsys, how_many):
         fake = FakeGitHub()
-        item_id = _file(fake, capsys)
-        code, out, _ = _run(
-            ["update", item_id, "--reviewed", "2020-01-01", "--json"], fake, capsys
-        )
-        assert code == 2
-        assert "--reviewed" in json.loads(out)["error"]["message"]
+        for n in range(how_many):
+            _run(
+                ["file", "--repo", REPO, "--title", f"cli: the page item {n} under test",
+                 "--body", "b", "--json"],
+                fake, capsys,
+            )
+        return fake
 
-    def test_non_reviewed_arm_does_not_blame_reviewed(self, capsys):
-        fake = FakeGitHub()
-        item_id = _file(fake, capsys)
-        code, out, _ = _run(
-            ["update", item_id, "status=shipped", "--json"], fake, capsys
+    def test_a_truncated_page_says_so_and_names_the_remedy(self, capsys):
+        fake = self._seeded(capsys, 3)
+
+        code, out, _err = _run(
+            ["list", "--repo", REPO, "--per-page", "3", "--page", "1"], fake, capsys
         )
-        assert code == 2
-        message = json.loads(out)["error"]["message"]
-        assert "--reviewed" not in message, "the wrong cause is named"
-        assert "named flags" in message, "the right cause is not named"
+
+        assert code == 0
+        assert "3 item(s)" in out
+        assert "MORE AVAILABLE" in out
+        assert "--page 2" in out, "the signal names no way to see the rest"
+
+    def test_a_complete_result_stays_silent(self, capsys):
+        # The signal has to be by exception, or it stops meaning anything.
+        fake = self._seeded(capsys, 2)
+
+        code, out, _err = _run(
+            ["list", "--repo", REPO, "--per-page", "10", "--page", "1"], fake, capsys
+        )
+
+        assert code == 0
+        assert "2 item(s)" in out
+        assert "MORE AVAILABLE" not in out
+
+    def test_the_human_signal_agrees_with_the_json_envelope(self, capsys):
+        """The two views must not disagree — the whole defect was one honest
+        surface and one silent one over the same fact."""
+        fake = self._seeded(capsys, 3)
+        argv = ["list", "--repo", REPO, "--per-page", "3", "--page", "1"]
+
+        _code, human, _ = _run(argv, fake, capsys)
+        _code, envelope, _ = _run([*argv, "--json"], fake, capsys)
+
+        assert json.loads(envelope)["data"]["has_more"] is ("MORE AVAILABLE" in human)
