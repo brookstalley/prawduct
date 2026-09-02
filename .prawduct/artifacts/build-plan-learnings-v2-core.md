@@ -25,8 +25,9 @@ governed_by:
       - "no upstream content egress → inapplicable because nothing in this plan sends anything off the repo"
   - artifact: api-contract
     dispositions:
-      - "exit codes: 1 refused / 2 usage → conforms (after the cumulative review's R-11: learnings-migrate returned 2 for refusals; aligned in the Chunk 05 fix round)"
-      - "stable stdout/stderr channel split → conforms: dry run and apply report on stdout, refusals and NOTEs on stderr"
+      - "whole-surface semantic versioning; no per-subcommand version; persisted data independent of the plugin version → conforms: `learnings-migrate` and `learnings-files` ship under the plugin version with no version of their own, and nothing here touches the evidence store's schema"
+      - "exit codes are the contract on a documented, consistent scheme; stable severity prefixes; errors attributed, never stack traces → conforms after the cumulative review's R-11 (learnings-migrate returned 2 for refusals; now 0 written / 1 refused or could-not-run / 2 usage, as the sibling repairs), refusals named on stderr with the NOTE/BLOCKED vocabulary"
+      - "additive-first evolution: new subcommands and flags only; existing flag names, exit-code meanings and --json keys never repurposed → conforms: two new verbs, one new waiver key, one new project-state key (`learnings_budgets`); no existing flag, code or key changed meaning"
   - artifact: observability-strategy
     dispositions:
       - "stable severity-prefix vocabulary with the stdout/stderr channel split → conforms: the Stop floor emits a `BLOCKED —` blocker on the existing channel; the briefing line uses the briefing; the migrate dry run reports on stdout"
