@@ -486,7 +486,7 @@ LAST_MEASURED_TOKENS = {
     # meets a BLOCKING finding with no severity unless the row is here too. Bought
     # at three tokens by folding it into the existing BLOCKING clause rather than
     # writing a second sentence; the ceiling is untouched.
-    "skills/critic/goals-1-3.md": 2275,
+    "skills/critic/goals-1-3.md": 2278,
     # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
     # a computed pass the gate can now print, which a reader who only knows
     # "uncovered means run a cumulative" will otherwise re-review straight
@@ -544,7 +544,7 @@ LAST_MEASURED_TOKENS = {
     #   "A re-review does not manufacture work" one clause after citing it.
     # * R5's own closing sentence ("it fires whether or not the cycle produced
     #   another finding") restated "get their own pass" in its own heading.
-    "skills/critic/review-cycle.md": 9590,
+    "skills/critic/review-cycle.md": 9595,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -4029,6 +4029,17 @@ class TestCriticGoals13:
         # verdict, which is how `learnings-entry-shape` shipped. Spent from
         # headroom, not paid: one clause, two check names and a severity, and
         # the rule behind it lives with the check in `review-cycle.md`.
+        #
+        # 2275 -> 2278 (2026-09-02) -- the `unchecked` rule became RELATIONAL
+        # ("one step below the check it names") because it was an enumeration of
+        # prefixes: every new BLOCKING check landed silently in the NOTE default,
+        # so a check that could not run read as advisory -- the state the
+        # `chunk-ref-missing unchecked` bullet exists to prevent. PAID FOR: the
+        # four per-severity sentences merged into three (the merge seam had
+        # graded `learnings-over-budget` BLOCKING twice in consecutive
+        # sentences), and "Every other entry is a NOTE you must still state"
+        # became "State every entry" -- the severity is now the rule's, not the
+        # sentence's. Net +3, carrying one added check name.
         tokens = estimate_tokens(self.content)
         assert tokens < 2280, f"goals-1-3.md is ~{tokens} tokens, should be <2280"
 
@@ -4452,6 +4463,18 @@ class TestReviewCycle:
         # reading file sizes on a diff that changed no record, contradicts. It
         # folded into the two rows that own the scope, where a reader meets it
         # beside the check instead of as a claim two of six rows deny. Net +8.
+        #
+        # 9590 -> 9591 (2026-09-02) -- the same relational `unchecked` rule, plus
+        # the `learnings-area-dead` row. PAID FOR three ways, all of them things
+        # this change made wrong or spare: the record set's "(markdown; the
+        # archive excluded)" gloss had been wrong since YAML under `.prawduct/`
+        # joined the set and is wrong a second way now that two rows read
+        # neither; the `no-subject` bullet's "there is no deliverable set to
+        # grade" restates "deliberately plan-less" one clause earlier; and the
+        # retired-checks example named two checks that no longer exist, which is
+        # history a reviewer never acts on -- the rule it illustrated stays, and
+        # `record_lint.py` carries the instance where a re-adding author reads.
+        # Net +5.
         content = read_file("skills/critic/review-cycle.md")
         tokens = estimate_tokens(content)
         assert tokens < 9600, f"review-cycle.md is ~{tokens} tokens, should be <9600"
