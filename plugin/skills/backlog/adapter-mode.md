@@ -139,6 +139,11 @@ sending them to the GitHub web UI. It scans every page and **refuses** `--per-pa
 stage, kind or area — so render `ID · title` and treat the missing facets as *untriaged*, not as
 missing data.
 
+This set is a **superset of the security model's `quarantine`**, which is the *non-collaborator*
+half of it (Security §6/F7). The author predicate is not implemented, so `--untriaged` is what
+reaches an anonymous filing today — over-including the owner's own unlabeled issues rather than
+missing one. Do not describe the two as the same query.
+
 ### get <id> — view one item
 When you need one item's full detail (a direct "show me PFX-XXXX", or before an `update`):
 `prawduct-hook backlog get <id> --repo <r> --json` → render the item's fields + body from `data`.

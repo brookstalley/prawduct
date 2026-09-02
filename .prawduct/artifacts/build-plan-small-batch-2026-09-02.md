@@ -19,26 +19,28 @@ files and expected outcome. Chunk 03 is a vocabulary reconciliation whose *decis
 — which of two names survives — is not yet made.
 
 **Open assumptions / unknowns:**
-- [ASSUMPTION: Chunk 03 resolves toward `untriaged`, because that is the name already
-  implemented and shipped, while `quarantine` exists only in a design document |
-  MED impact — the reverse choice means renaming a live flag | user can override]
+- ~~[ASSUMPTION: Chunk 03 resolves toward `untriaged`…]~~ **RESOLVED 2026-09-02, and neither
+  way.** The assumption presupposed that one name had to win. Reading `query.py` showed the two
+  denote different sets, so both stay and the containment is documented instead. Recorded rather
+  than deleted: the assumption was the reason the chunk was ordered last, and it turned out the
+  question itself was mis-posed.
 
 **What would raise confidence:** An owner ruling on Chunk 03's name before it is built.
 The chunk is ordered last of the three code chunks so the ruling can arrive late.
 
 ## Status
 
-- [ ] Chunk 01: A bare issue number resolves against `--repo`
-- [ ] Chunk 02: a discarded block edit is reported, not swallowed
-- [ ] Chunk 03: Reconcile `quarantine` and `untriaged` to one name
+- [x] Chunk 01: A bare issue number resolves against `--repo`
+- [x] Chunk 02: a discarded block edit is reported, not swallowed
+- [x] Chunk 03: state the quarantine ⊂ untriaged containment
 - [ ] Chunk 04: A failing cache warm leaves a durable record
-Context: Plan written 2026-09-02 against a green baseline (6120 passed, 17 skipped) on
-`develop` at 0877eead. Nothing built yet. Next: Chunk 01. Chunks 01 and 02 are the two
-prawduct defects the 2026-09-02 triage session recorded as OWED under the standing
-"fix what bit you, in place" preference; both bit real sessions, and Chunk 01's defect
-also bit this one. #609 was considered for this batch and DROPPED: its stated blocker
-(`constraints.txt` living on the unmerged `feature/upstream-dependency-policy`) was
-re-verified live on 2026-09-02 and still holds.
+Context: Chunks 01 and 02 built and committed (ad1f23d1, bad2ee70) on a green suite.
+Both were the OWED prawduct defects from the 2026-09-02 triage; Chunk 01's also bit this
+session. Chunk 02 was DESCOPED mid-build — its planned fix would have breached a recorded
+invariant — and the real gap is filed as #751 (`unmerge`, design). Next: Chunk 03, which
+needs its naming decision made. The cumulative Critic runs after Chunk 04, covering all
+four. #609 was considered for this batch and DROPPED: its blocker (`constraints.txt` on
+the unmerged `feature/upstream-dependency-policy`) was re-verified live and still holds.
 
 ## Verification Strategy
 
@@ -124,7 +126,7 @@ that the two documents no longer name one query two ways, checked by grep.
   1. Acceptance criteria met and tests pass
   2. Committed and chunk marked `[x]` in Status
 
-### Chunk 03: Reconcile `quarantine` and `untriaged` to one name
+### Chunk 03: state the quarantine ⊂ untriaged containment
 
 - **Description:** Backlog item #544. `list --untriaged` and the anonymous-filing
   **quarantine** surface in `documentation/backlog-service-api-contract.md` §9 are the
@@ -135,13 +137,25 @@ that the two documents no longer name one query two ways, checked by grep.
   vocabulary has forked across four surfaces.
 - **Depends on:** none
 - **Artifacts consumed:** `documentation/backlog-service-api-contract.md` §9, Data Model §3
-- **Deliverables:** one name across `documentation/backlog-service-api-contract.md`,
-  the Data Model section, and the PROV-2 / SEC-7 test specs; the losing name recorded as
-  a superseded term rather than deleted, so a reader of the old wording can find the new one
-- **Tests:** none — prose only. Verified by grep: the losing name appears only in the
-  supersession note.
-- **Acceptance criteria:** no surface names the query by the retired name except the one
-  note that says it was retired and what replaced it
+- **[DECISION: keep BOTH names — the item's premise was wrong.]** #544 assumed one query
+  under two names. Reading the code first falsified it. **Quarantine** is defined by
+  AUTHOR (Security §6/F7 — a *non-collaborator's* unlabeled filing); **`--untriaged`**
+  selects on LABEL only, returning every unlabeled issue whoever filed it (`query.py`,
+  the PROV-2 scope inversion — no author or collaborator predicate exists on that path).
+  Quarantine is a strict SUBSET, presently served by its superset. Picking one name would
+  have deleted the author boundary that makes quarantine a security concept rather than a
+  hygiene one. So the reconciliation is to state the containment on every surface, not to
+  collapse it. The direction is worth recording: the standing query over-includes, so no
+  anonymous filing is missed — a precision gap, not a hole.
+- **Deliverables:** the containment stated in `documentation/backlog-service-api-contract.md`
+  §9, `documentation/backlog-service-data-model.md` §3,
+  `documentation/backlog-service-security-model.md` §6/F7 (which now marks its own query
+  *specified, not yet implemented*), and `plugin/skills/backlog/adapter-mode.md`; the
+  unbuilt author predicate filed as #752 rather than assumed away
+- **Tests:** none — prose only, and no code changed. Verified by grep across the four
+  surfaces, and by reading `query.py` to confirm the absent predicate rather than inferring it.
+- **Acceptance criteria:** no surface presents the two as the same query, and each one a
+  reader could land on states the containment and which set the shipped query returns
 - **Type:** trivial
 - **Trivial because:** documentation reconciliation with no behavior change; the decision
   it records is the deliverable, and no code path moves

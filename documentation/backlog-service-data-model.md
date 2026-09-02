@@ -208,7 +208,9 @@ merge/transfer, §1.3/§5 — m2). Provisioned +
 reconciled by `/prawduct:onboard`/`doctor` (GV5). **Non-prawduct issues/labels are out-of-scope, not
 malformed** — the adapter ignores issues carrying no `stage:`/`id:` marker (but see the
 anonymous-quarantine reconciliation, Security Model §6/F7: an unlabeled non-collaborator filing *is*
-the quarantine state, surfaced to triage, not silently ignored).
+the quarantine state, surfaced to triage, not silently ignored). The triage surface that reaches it,
+`list --untriaged`, selects on the LABEL half of that definition only — so it returns every unlabeled
+issue rather than only a non-collaborator's, making it a superset of quarantine (API §9).
 
 ---
 
