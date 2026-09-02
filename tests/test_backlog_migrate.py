@@ -2015,6 +2015,66 @@ class TestVerifyMigration:
         assert again["status"] == "error"  # converges on nothing, exactly as claimed
         assert again["error"]["details"]["duplicate_alias"] == ["DIS-0001"]
 
+    def test_the_prescribed_merge_actually_clears_duplicate_alias(self, fake):
+        """#534 — the sibling of `test_the_gate_clears_once_the_resume_converges`,
+        and the one that was missing.
+
+        The gate prescribed `merge <n> --into <m>` for `duplicate_alias`, and that
+        remedy did not clear the list: `merge` upserts `superseded_by` on the loser
+        and closes it, but never strips its `id_aliases`, so the pair still recorded
+        one PFX at two disagreeing statuses. The operator was stranded at the one
+        step the runbook says must not be taken on trust. A check that stays red
+        after the remedy it prescribes is as useless as one that never fired.
+        """
+        _import(fake, DISCODON_MINI)
+        dup = fake.create_issue(
+            OWNER, REPO,
+            title="a second issue recording the same alias",
+            body="Body.\n\n```prawduct\nv: 1\nid_aliases: [DIS-0001]\n```\n",
+            labels=[],
+        )
+        fake.update_issue(
+            OWNER, REPO, dup["number"],
+            fields={"state": "closed", "state_reason": "completed"},
+        )
+        blocked = migrate.verify_migration(fake, owner=OWNER, repo=REPO, content=DISCODON_MINI)
+        assert blocked["error"]["details"]["duplicate_alias"] == ["DIS-0001"]
+
+        survivor = _alias_issues(fake, "DIS-0001")[0]["number"]
+        merged = migrate.merge(
+            fake,
+            source_raw=f"{OWNER}/{REPO}#{dup['number']}",
+            target_raw=f"{OWNER}/{REPO}#{survivor}",
+        )
+        assert merged["status"] == "ok", merged
+
+        cleared = migrate.verify_migration(fake, owner=OWNER, repo=REPO, content=DISCODON_MINI)
+        details = cleared.get("error", {}).get("details", {"duplicate_alias": []})
+        assert details["duplicate_alias"] == [], (
+            "the remedy the gate itself prescribes still does not clear the list "
+            "it is prescribed for"
+        )
+
+    def test_a_redirected_issue_stops_claiming_its_alias(self, fake):
+        """The mechanism under the convergence above, pinned on its own so the
+        two cannot be fixed apart: a `superseded_by` issue is not an independent
+        claimant of the ids in its block."""
+        _import(fake, DISCODON_MINI)
+        dup = fake.create_issue(
+            OWNER, REPO,
+            title="a redirected issue",
+            body=(
+                "Body.\n\n```prawduct\nv: 1\nid_aliases: [DIS-0001]\n"
+                f"superseded_by: {OWNER}/{REPO}#1\n```\n"
+            ),
+            labels=[],
+        )
+        seen = [
+            number for number, _pfxs, _labels, _status
+            in core.iter_alias_issues(fake, OWNER, REPO)
+        ]
+        assert dup["number"] not in seen
+
     def test_the_gate_clears_once_the_resume_converges(self, fake):
         """The mismatch must be a live reading, not a sticky one: re-running the
         import closes DIS-0004, and the gate then passes. A check that stayed red

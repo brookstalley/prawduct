@@ -1191,6 +1191,19 @@ def iter_alias_issues(transport: Transport, owner: str, repo: str):
     discarded. Decode advisories (a torn or unrecognized encoding) are *not*
     surfaced here — this is a coverage scan, not a decoder audit, and the decode
     fails open to a safe value by design.
+
+    **An issue carrying ``superseded_by`` is skipped entirely.** A redirected
+    issue is not an independent claimant of the id: the redirect already encodes
+    "this is not the authoritative record", and every consumer of this scan wants
+    the authoritative one. Without the skip, ``merge`` — which upserts
+    ``superseded_by`` on the loser and closes it, but never strips its
+    ``id_aliases`` entry — left the pair still recording one PFX at two
+    disagreeing statuses, so the completeness gate's ``duplicate_alias`` list
+    survived the very remedy the gate prescribed for it, and the cutover could
+    not proceed (#534). The other two consumers want the skip for the same
+    reason: the alias-label restorer would otherwise re-add a label to a
+    redirected loser, and the import's skip-authority would key the item to it
+    rather than to the survivor.
     """
     issues = paginate(
         lambda page, size: transport.list_issues(
@@ -1205,6 +1218,8 @@ def iter_alias_issues(transport: Transport, owner: str, repo: str):
         if number is None:
             continue
         block = encode.parse_block(issue.get("body"))
+        if block.superseded_by():
+            continue  # redirected away — not an independent claimant of its ids
         pfxs = [pfx for pfx in block.id_aliases() if ids.is_pfx(pfx)]
         label_names = {
             name for label in issue.get("labels", []) if (name := label.get("name"))

@@ -1777,8 +1777,12 @@ def _incompleteness_remedy(
             "neither (the labelled issue already matches; the block-only one is never "
             "looked up). Find the pair by searching the target for the id, then "
             "deduplicate there by ISSUE NUMBER — `merge owner/repo#<n> --into "
-            "owner/repo#<m>` — and verify again. The bare PFX cannot spell this "
-            "merge: both ends resolve through the alias label to the same issue"
+            "owner/repo#<m>` — and verify again. That converges because the merge "
+            "writes a `superseded_by` redirect on the loser, and a redirected issue "
+            "stops counting as a claimant of the id; the loser keeps its "
+            "`id_aliases` entry, so the old ref still resolves. The bare PFX cannot "
+            "spell this merge: both ends resolve through the alias label to the same "
+            "issue"
         )
     if unencodable_status:
         parts.append(

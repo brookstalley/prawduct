@@ -431,7 +431,10 @@ import is the right answer for only two of them**:
   the `id:PFX` label already matches, and the block-only one is never looked up —
   so it burns a full pass and returns the identical exit 4. Find the pair by
   searching the target for the id, then fold one into the other **by issue
-  number** — `merge <owner>/<repo>#<n> --into <owner>/<repo>#<m>`. The bare `PFX` form
+  number** — `merge <owner>/<repo>#<n> --into <owner>/<repo>#<m>`. That clears the
+  list: the merge writes a `superseded_by` redirect on the loser, and a redirected
+  issue stops counting as an independent claimant of the id — while keeping its
+  `id_aliases` entry, so an old ref to it still resolves. The bare `PFX` form
   cannot express this merge: both endpoints resolve through the `id:PFX` label search
   to the *same* labelled survivor, so it is rejected as merging an item into itself.
 - **`unencodable_status`** — the source item declares a `status:` in no documented
