@@ -850,18 +850,27 @@ def _record_sync_attempt(project_dir, scope: str, failure: str | None) -> None:
 
     from . import cache as cache_mod  # noqa: PLC0415 — only this path writes the cursor
 
-    conn = cache_mod.open_store(project_dir, create=False)
-    if isinstance(conn, dict):
-        return  # the store is unavailable; the sync result already says so
+    # Total by construction. This runs on the failure path, where it is called
+    # BEFORE a `raise` that must reach the CLI boundary intact — so an exception
+    # escaping here would replace "the 'gh' CLI was not found" with whatever went
+    # wrong while writing it down, and the operator would be sent to debug the
+    # bookkeeping instead of the failure. `open_store` returns envelopes rather
+    # than raising by contract, but it resolves a path through git to do it.
     try:
-        cache_mod.record_sync_attempt(
-            conn,
-            scope,
-            attempted_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            failure=failure,
-        )
-    finally:
-        conn.close()
+        conn = cache_mod.open_store(project_dir, create=False)
+        if isinstance(conn, dict):
+            return  # the store is unavailable; the sync result already says so
+        try:
+            cache_mod.record_sync_attempt(
+                conn,
+                scope,
+                attempted_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                failure=failure,
+            )
+        finally:
+            conn.close()
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- bookkeeping must never replace the failure it is recording; logged, never swallowed silently
+        core.log_diag(f"could not record the sync attempt: {type(exc).__name__}: {exc}")
 
 
 #: The default staleness horizon for `cache-query stale`, in days — carried over
