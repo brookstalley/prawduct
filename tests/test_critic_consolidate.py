@@ -770,12 +770,20 @@ class TestNextLineRelayContract:
         it is not the same as the instruction having effect."""
         text = self._text("goals-1-3.md")
         shorthand = text.index("No issues found")
-        relay = text.index("your last line is consolidate's")
+        # Pin the STRUCTURE, not the sentence. This pin used to name the
+        # clause verbatim ("your last line is consolidate's" / "Either way"),
+        # and #166's rewrite of the surrounding paragraph broke it while
+        # strengthening the very thing it guards -- the false failure this
+        # class's own `_text` docstring warns gets a pin deleted rather than
+        # fixed. What must hold is that the carrier is re-asserted AFTER the
+        # shorthand, in whatever words; a reader who stops at "No issues
+        # found." must still meet the NEXT-ACTION obligation below it.
+        relay = text.find("NEXT-ACTION:", shorthand)
         assert relay > shorthand, (
-            "the relay order precedes the no-findings shorthand, so the "
-            "shorthand reads as a total replacement and drops the carrier"
+            "goals-1-3.md states the no-findings shorthand (\"No issues found\") "
+            "with no NEXT-ACTION re-assertion after it, so the shorthand reads "
+            "as a total replacement for the report and drops the relay carrier"
         )
-        assert "Either way" in text
 
     def test_both_protocols_say_why_the_relay_is_not_optional(self):
         # Without the reason, a token-diet pass reads the order as redundant

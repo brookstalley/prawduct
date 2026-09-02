@@ -194,6 +194,17 @@ def probe_never_onboarded(state: ProjectState, codebase: Codebase):
                 "it up; every other advisory here is a consequence of this one, so fix the cause "
                 "and re-check rather than repairing each symptom."
             ),
+            # The one advisory whose owner action is a genuine yes/no rather than a
+            # ratification: onboarding writes into CLAUDE.md and project-state.yaml
+            # in a repo that never asked for it, and a repo may legitimately have
+            # the plugin enabled without wanting to be governed by it.
+            owner_action=(
+                "Say go and I will set this repo up: it writes a governance anchor into "
+                "CLAUDE.md and a few keys into project-state.yaml, both committed files you "
+                "will see a diff for. Say no if this repo is deliberately not governed — the "
+                "reminder stays, but nothing else here is worth fixing until you decide, "
+                "because every other advisory in this list is downstream of this one."
+            ),
             recommended_action="/prawduct:onboard",
             # No alternative action, deliberately. /prawduct:doctor is the obvious
             # candidate and is the wrong prescription: it health-checks and repairs

@@ -297,6 +297,27 @@ class TestGetAndProvisionCli:
         assert code == 0
         assert "stage:ready" in json.loads(out)["data"]["created"]
 
+    def test_get_json_carries_the_comment_thread(self, capsys):
+        fake = FakeGitHub()
+        _run(["file", "--repo", REPO, "--title", "cli: the thread item under test", "--body", "b", "--json"], fake, capsys)
+        _run(["comment", "octo/repo#1", "--body", "scope narrowed — CLI only", "--json"], fake, capsys)
+        code, out, err = _run(["get", "octo/repo#1", "--json"], fake, capsys)
+        assert code == 0
+        data = json.loads(out)["data"]
+        assert data["comments_count"] == 1
+        assert data["comments"][0]["body"] == "scope narrowed — CLI only"
+        assert data["comments"][0]["author"] == "octocat"
+
+    def test_get_human_mode_renders_the_thread(self, capsys):
+        fake = FakeGitHub()
+        _run(["file", "--repo", REPO, "--title", "cli: the thread item under test", "--body", "b", "--json"], fake, capsys)
+        _run(["comment", "octo/repo#1", "--body", "see the fix in #99", "--json"], fake, capsys)
+        code, out, err = _run(["get", "octo/repo#1"], fake, capsys)
+        assert code == 0
+        assert "1 comment(s):" in out
+        assert "octocat" in out
+        assert "see the fix in #99" in out
+
 
 class TestNonInteractive:
     """INV-2 — the runner never reads stdin (nothing to hang on)."""
@@ -476,6 +497,41 @@ class TestNewFieldFlagsCli:
     def test_the_help_names_all_three_new_flags(self):
         for flag in ("--tags", "--affected", "--working-branch", "--tag T"):
             assert flag in cli._HELP, flag
+class TestBlockFieldFlagsCli:
+    """The block-field flags reach `core` through the front (#550).
+
+    `core` is covered directly in test_backlog_core.py; what these pin is the
+    wiring — that each flag is *parsed* rather than rejected as unknown, since a
+    flag missing from the `valued`/`boolean` sets is exactly how these writes were
+    unreachable in the first place.
+    """
+
+    def _body_of(self, fake, item_id):
+        owner_repo, number = item_id.split("#")
+        owner, repo = owner_repo.split("/")
+        return fake.get_issue(owner, repo, int(number))["body"]
+
+    @pytest.mark.parametrize("flag,value", [
+        ("--refs", "documentation/x.md"),
+        ("--revisit", "2027-01-01"),
+        ("--closed-by", "fix/some-branch"),
+    ])
+    def test_each_valued_block_flag_parses_and_writes(self, capsys, flag, value):
+        fake = FakeGitHub()
+        item_id = _file(fake, capsys)
+        code, out, err = _run(["update", item_id, flag, value, "--json"], fake, capsys)
+        assert code == 0
+        assert f"{flag[2:]}: {value}" in self._body_of(fake, item_id)
+
+    def test_file_refs_flag_parses(self, capsys):
+        fake = FakeGitHub()
+        code, out, err = _run(
+            ["file", "--repo", REPO, "--title", "cli: the refs item under test", "--body", "b",
+             "--refs", "documentation/x.md", "--json"],
+            fake, capsys,
+        )
+        assert code == 0
+        assert "refs: documentation/x.md" in self._body_of(fake, json.loads(out)["data"]["id"])
 
 
 class TestCommentCli:
@@ -623,3 +679,94 @@ class TestSyncCli:
         code, _out, _err = _run(["sync"], fake, capsys)
 
         assert code == 2
+class TestUpdateRefusesAStrayPositional:
+    """`update` must not silently ignore a second positional (#550, cumulative R-15).
+
+    The arrival that matters is `update <id> status=shipped` — the markdown
+    spelling still instructed by `skills/pr` and the Critic's review-cycle. It
+    parsed as a stray positional `_run_update` dropped: exit 0, nothing written,
+    no diagnostic. A wrong result with a success code is worse than any error,
+    because nothing prompts the caller to look.
+    """
+
+    def test_a_field_value_positional_is_rejected(self, capsys):
+        fake = FakeGitHub()
+        item_id = _file(fake, capsys)
+        code, out, err = _run(
+            ["update", item_id, "status=shipped", "--json"], fake, capsys
+        )
+        assert code == 2
+        assert "named flags" in json.loads(out)["error"]["message"]
+
+    def test_the_stray_argument_writes_nothing(self, capsys):
+        # The exit code is not the property that matters — that nothing was
+        # written is.
+        fake = FakeGitHub()
+        item_id = _file(fake, capsys)
+        owner_repo, number = item_id.split("#")
+        owner, repo = owner_repo.split("/")
+        before = fake.get_issue(owner, repo, int(number))["body"]
+        _run(["update", item_id, "status=shipped", "--json"], fake, capsys)
+        assert fake.get_issue(owner, repo, int(number))["body"] == before
+
+    def test_the_single_positional_form_still_works(self, capsys):
+        fake = FakeGitHub()
+        item_id = _file(fake, capsys)
+        code, _, _ = _run(["update", item_id, "--refs", "docs/x.md", "--json"], fake, capsys)
+        assert code == 0
+
+
+class TestListHumanModeSurfacesTruncation:
+    """A truncated page must not read as the complete set (#549).
+
+    `list_items` computes `has_more` correctly and `--json` receives it; the
+    human formatter dropped it, so `99 item(s)` + exit 0 was indistinguishable
+    from a backlog of 99 when it held 160 — and every count derived from that
+    page was wrong while looking well-formed. A `--json`-only test cannot see
+    this: the defect lives one layer above the data the JSON tests read.
+    """
+
+    def _seeded(self, capsys, how_many):
+        fake = FakeGitHub()
+        for n in range(how_many):
+            _run(
+                ["file", "--repo", REPO, "--title", f"cli: the page item {n} under test",
+                 "--body", "b", "--json"],
+                fake, capsys,
+            )
+        return fake
+
+    def test_a_truncated_page_says_so_and_names_the_remedy(self, capsys):
+        fake = self._seeded(capsys, 3)
+
+        code, out, _err = _run(
+            ["list", "--repo", REPO, "--per-page", "3", "--page", "1"], fake, capsys
+        )
+
+        assert code == 0
+        assert "3 item(s)" in out
+        assert "MORE AVAILABLE" in out
+        assert "--page 2" in out, "the signal names no way to see the rest"
+
+    def test_a_complete_result_stays_silent(self, capsys):
+        # The signal has to be by exception, or it stops meaning anything.
+        fake = self._seeded(capsys, 2)
+
+        code, out, _err = _run(
+            ["list", "--repo", REPO, "--per-page", "10", "--page", "1"], fake, capsys
+        )
+
+        assert code == 0
+        assert "2 item(s)" in out
+        assert "MORE AVAILABLE" not in out
+
+    def test_the_human_signal_agrees_with_the_json_envelope(self, capsys):
+        """The two views must not disagree — the whole defect was one honest
+        surface and one silent one over the same fact."""
+        fake = self._seeded(capsys, 3)
+        argv = ["list", "--repo", REPO, "--per-page", "3", "--page", "1"]
+
+        _code, human, _ = _run(argv, fake, capsys)
+        _code, envelope, _ = _run([*argv, "--json"], fake, capsys)
+
+        assert json.loads(envelope)["data"]["has_more"] is ("MORE AVAILABLE" in human)

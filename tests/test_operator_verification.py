@@ -844,3 +844,85 @@ def test_cli_still_exits_1_on_genuinely_pending_entries(tmp_path):
 
     assert proc.returncode == 1
     assert "VRF-001" in proc.stderr
+
+
+# =============================================================================
+# The write-only failure (#183)
+# =============================================================================
+
+TEMPLATE = REPO_ROOT / "templates" / "operator-verification.md"
+LIVE_QUEUE = Path(__file__).resolve().parents[1] / ".prawduct" / "operator-verification.md"
+
+
+def test_the_template_teaches_splitting_the_deferral():
+    """The rule belongs where deferrals are MADE, not where they are drained.
+
+    One entry in this repo's own queue deferred three integration facts together
+    because "matcher semantics vary by Claude Code version". True of two of them.
+    False of the third, which was a pure static question, was decidable that day,
+    was broken, and sat unexamined for seventeen days while the entry that named
+    it waited on a live session it never got. Deferring a statically-decidable
+    claim alongside a genuinely-live one launders an untested assertion into a
+    queue nobody reads.
+    """
+    text = TEMPLATE.read_text(encoding="utf-8")
+    assert "SPLIT THE DEFERRAL" in text, (
+        f"{TEMPLATE} must teach the split — 'can this be true in principle' "
+        f"(static, testable now) vs 'does the harness actually do it' (live) — "
+        f"at the moment of deferral, which is the only moment it can help"
+    )
+    assert "ONLY THE SECOND HALF BELONGS IN THIS QUEUE" in text, (
+        "the split is useless without the consequence: the static half is a test "
+        "you write now, not a queue entry"
+    )
+    assert "Drain before you flip" in text, (
+        f"{TEMPLATE} must warn that turning the flag on makes the queue a "
+        f"blocking gate — a queue full of un-dispositioned entries stops work "
+        f"rather than starting it"
+    )
+
+
+def test_the_status_line_grammar_is_documented_where_it_bites():
+    """Six live entries read as drained and parsed as pending (#183).
+
+    `_STATUS_LINE_RE` takes one token and fails closed on anything else, so
+    `**Status:** verified (2026-07-17, throwaway repo foo)` counts as PENDING.
+    The parser is right to fail closed; what was missing was anyone saying so
+    where an author writes the line.
+    """
+    for path in (TEMPLATE, LIVE_QUEUE):
+        if not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8").lower()
+        assert "bare token and nothing else" in text, (
+            f"{path} must state that `**Status:**` takes the bare token and "
+            f"nothing else — trailing prose parses as malformed and fails "
+            f"closed to `pending`, so the gate blocks on finished work"
+        )
+
+
+def test_every_pending_entry_in_the_live_queue_carries_a_disposition():
+    """The acceptance criterion of #183, kept rather than done once.
+
+    A queue is write-only when entries go in and nothing ever says what would
+    take them out. Each pending entry must name what it turns on and whose
+    harness can answer it — the four in this repo that genuinely need a live
+    harness say so, which is a different and honest state from silence.
+    """
+    if not LIVE_QUEUE.is_file():
+        pytest.skip("no live queue in this checkout")
+    _preamble, entries = ov.parse_operator_verification(
+        LIVE_QUEUE.read_text(encoding="utf-8")
+    )
+    undispositioned = [
+        e.vrf_id
+        for e in ov.pending_entries(entries)
+        if "DRAIN DISPOSITION" not in "\n".join(e.body_lines)
+    ]
+    assert not undispositioned, (
+        f"pending entries with no disposition: {undispositioned}. Every deferral "
+        f"needs a dated `> === <date> — DRAIN DISPOSITION ===` block saying what "
+        f"it turns on and whose harness answers it — written when you defer, not "
+        f"when someone finally asks. Splitting it first (see the template) often "
+        f"turns half of it into a test you can write today."
+    )

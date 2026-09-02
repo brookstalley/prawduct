@@ -50,6 +50,37 @@ class TestNormalizeTitle:
         # A `word:` with no space, or a non-area colon, must not block prefixing.
         assert issuefmt.normalize_title("fix ratio 3:1 scaling", "cli") == "cli: fix ratio 3:1 scaling"
 
+    def test_a_slash_bearing_area_is_idempotent(self):
+        """#591 — twelve areas on this backlog carry a slash. Without `/` in the
+        prefix charset every one of them double-prefixed, and the create then
+        tripped the `title-too-long` lint it had just caused."""
+        assert (
+            issuefmt.normalize_title("governance/kernel: a summary", "governance/kernel")
+            == "governance/kernel: a summary"
+        )
+
+    def test_a_slash_bearing_area_still_prefixes_a_bare_title(self):
+        # The fix must not turn idempotence into never-prefixing.
+        assert (
+            issuefmt.normalize_title("a summary", "methodology/planning")
+            == "methodology/planning: a summary"
+        )
+
+    def test_a_slash_bearing_prefix_is_respected_when_it_differs(self):
+        assert (
+            issuefmt.normalize_title("templates/artifacts: a summary", "critic")
+            == "templates/artifacts: a summary"
+        )
+
+    def test_a_slash_bearing_prefix_splits_for_the_lint_too(self):
+        """`lint_title` splits on the same helper, so before the fix the whole
+        `area: summary` string was linted as the summary — a `—` in the area
+        path would have read as a non-atomic join."""
+        assert issuefmt._split_area("governance/kernel: a summary") == (
+            "governance/kernel",
+            "a summary",
+        )
+
 
 class TestRenderBody:
     def test_emits_sections_in_template_order(self):

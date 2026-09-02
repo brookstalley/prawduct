@@ -193,6 +193,22 @@ def _seed_learnings(product_dir: Path, content: str) -> Path:
     return learnings
 
 
+def _archive_text(product_dir: Path) -> str:
+    """The retired-entry archive, which since #350 is its OWN file.
+
+    Retirement used to append to a `## Historical` section at the bottom of
+    `learnings-detail.md`, which made the archive part of every lookup's read —
+    557KB across 4,748 lines, 182KB of it archive, growing 65% a month. It now
+    moves one file further, to `learnings-history.md`, read only on a miss.
+
+    Every assertion about *where a retired entry lands* points here. The
+    assertions themselves are unchanged: an entry still moves, still carries its
+    forwarding address, still sheds its lifecycle comment, and is still never
+    deleted.
+    """
+    return (product_dir / ".prawduct" / _mod.HISTORY_FILENAME).read_text()
+
+
 #: A verbatim restoration of the default this fix deleted, kept as the specimen
 #: the guard is tested against. Source text, not a live function: it must never
 #: be importable or callable, only parsed.
@@ -411,8 +427,8 @@ class TestAuditLearnings:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ):
         """End-to-end retirement: passing sentinel + apply=True moves the
-        entry from learnings.md to learnings-detail.md under the historical
-        section."""
+        entry from learnings.md to `learnings-history.md` under the historical
+        section, and does NOT leave it in the detail file's read path."""
         learnings_path = _seed_learnings(
             tmp_path,
             "# Learnings\n\n"
@@ -446,20 +462,32 @@ class TestAuditLearnings:
         assert "Active rule" in new_content
         assert "Preamble paragraph" in new_content
 
-        # learnings-detail.md was created with the historical section + the
+        # learnings-history.md was created with the historical section + the
         # retired entry body.
+        history_path = tmp_path / ".prawduct" / _mod.HISTORY_FILENAME
+        assert history_path.is_file()
+        archive = history_path.read_text()
+        assert "Historical (structurally enforced)" in archive
+        assert "Retired rule" in archive
+        assert "Body of retired rule." in archive
+        # And the archive is NOT in the detail file, which is the whole route
+        # out: a lookup reads the active corpus without paying for history.
         detail_path = tmp_path / ".prawduct" / "learnings-detail.md"
-        assert detail_path.is_file()
-        detail_content = detail_path.read_text()
-        assert "Historical (structurally enforced)" in detail_content
-        assert "Retired rule" in detail_content
-        assert "Body of retired rule." in detail_content
+        if detail_path.is_file():
+            assert "Retired rule" not in detail_path.read_text()
 
     def test_apply_true_appends_to_existing_detail(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ):
-        """When learnings-detail.md already has the historical section,
-        append rather than re-creating the header."""
+        """A PRE-SPLIT corpus keeps its archive inside `learnings-detail.md`.
+
+        The first `--apply` after the split lifts it wholesale into
+        `learnings-history.md` rather than leaving the old sink in place beside
+        a new one — a route out that routes nothing is not a route out, and the
+        old archive would keep being read on every lookup. Nothing is deleted:
+        the earlier retirement arrives in the new file intact, and the section
+        header exists exactly once.
+        """
         _seed_learnings(
             tmp_path,
             "# Learnings\n\n## Retired rule\n"
@@ -481,12 +509,20 @@ class TestAuditLearnings:
 
         audit_learnings(tmp_path, apply=True)
 
+        archive = _archive_text(tmp_path)
+        # Header appears exactly once, in the file that now owns the archive.
+        assert archive.count("## Historical (structurally enforced)") == 1
+        # Earlier and new retirements both present — the lift loses nothing.
+        assert "Earlier retired rule" in archive
+        assert "Earlier body." in archive
+        assert "Retired rule" in archive
+
+        # ...and the legacy section is GONE from the detail file, which is the
+        # point of the lift. The active prose above it survives.
         detail_content = detail_path.read_text()
-        # Header appears exactly once.
-        assert detail_content.count("## Historical (structurally enforced)") == 1
-        # Earlier and new retirements both present.
-        assert "Earlier retired rule" in detail_content
-        assert "Retired rule" in detail_content
+        assert "Historical (structurally enforced)" not in detail_content
+        assert "Earlier retired rule" not in detail_content
+        assert "Prior content." in detail_content
 
     def test_failing_sentinel_surfaces_as_error(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1008,15 +1044,15 @@ class TestSupersessionRetirement:
         _seed_learnings(tmp_path, self.CORPUS)
         audit_learnings(tmp_path, apply=True, today=date(2026, 7, 31))
 
-        detail = (tmp_path / ".prawduct" / "learnings-detail.md").read_text()
-        assert "## Narrow rule about fixtures" in detail
-        assert "superseded by **General rule about evidence**" in detail
-        assert "Retired 2026-07-31" in detail
-        assert "Body of the narrow rule." in detail
+        archive = _archive_text(tmp_path)
+        assert "## Narrow rule about fixtures" in archive
+        assert "superseded by **General rule about evidence**" in archive
+        assert "Retired 2026-07-31" in archive
+        assert "Body of the narrow rule." in archive
 
         # The pointer sits directly under the title — a forwarding address
         # below the body is one the reader reads the whole entry to find.
-        lines = detail.splitlines()
+        lines = archive.splitlines()
         title_at = lines.index("## Narrow rule about fixtures")
         after = [ln for ln in lines[title_at + 1:title_at + 4] if ln.strip()]
         assert after and "superseded by" in after[0]
@@ -1059,10 +1095,10 @@ class TestSupersessionRetirement:
         )
         audit_learnings(tmp_path, apply=True, today=date(2026, 7, 31))
 
-        detail = (tmp_path / ".prawduct" / "learnings-detail.md").read_text()
-        assert "prawduct-learning:" not in detail
-        assert "sentinel `tests/foo.py::test_bar` passes" in detail
-        assert "Retired 2026-07-31" in detail
+        archive = _archive_text(tmp_path)
+        assert "prawduct-learning:" not in archive
+        assert "sentinel `tests/foo.py::test_bar` passes" in archive
+        assert "Retired 2026-07-31" in archive
 
     def test_unresolvable_target_errors_and_does_not_apply(self, tmp_path: Path):
         """Fail-closed. The entry stays put, the detail file is never created,
@@ -1141,10 +1177,10 @@ class TestSupersessionRetirement:
         assert {r["title"] for r in result["retirements"]} == {"Rule A", "Rule B"}
         assert all(r["applied"] for r in result["retirements"])
 
-        detail = (tmp_path / ".prawduct" / "learnings-detail.md").read_text()
-        assert "superseded by **Rule B**" in detail
-        assert "superseded by **Rule C**" in detail
-        assert "## Rule C" not in detail  # C is still active
+        archive = _archive_text(tmp_path)
+        assert "superseded by **Rule B**" in archive
+        assert "superseded by **Rule C**" in archive
+        assert "## Rule C" not in archive  # C is still active
 
     def test_a_bodyless_entry_retires_to_note_only(self, tmp_path: Path):
         """The branch the delivered green-is-evidence directive sent me back for:
@@ -1160,10 +1196,10 @@ class TestSupersessionRetirement:
         )
         audit_learnings(tmp_path, apply=True, today=date(2026, 7, 31))
 
-        detail = (tmp_path / ".prawduct" / "learnings-detail.md").read_text()
-        assert "superseded by **General rule**" in detail
-        assert "prawduct-learning:" not in detail
-        block = detail.split("## Terse rule", 1)[1]
+        archive = _archive_text(tmp_path)
+        assert "superseded by **General rule**" in archive
+        assert "prawduct-learning:" not in archive
+        block = archive.split("## Terse rule", 1)[1]
         assert "\n\n\n" not in block, f"stray blank paragraph in the block: {block!r}"
 
     def test_retired_entries_land_inside_the_historical_section(self, tmp_path: Path):
@@ -1174,9 +1210,9 @@ class TestSupersessionRetirement:
         every subsequent retirement filed under a heading it does not belong
         to — with the file reading as though it did."""
         _seed_learnings(tmp_path, self.CORPUS)
-        detail = tmp_path / ".prawduct" / "learnings-detail.md"
-        detail.write_text(
-            "# Learnings — Full Detail\n\n"
+        history = tmp_path / ".prawduct" / _mod.HISTORY_FILENAME
+        history.write_text(
+            "# Learnings — Retired\n\n"
             "## Historical (structurally enforced)\n\n"
             "Existing blurb.\n\n"
             "## Previously retired\n\nOld body.\n\n"
@@ -1184,7 +1220,7 @@ class TestSupersessionRetirement:
         )
         audit_learnings(tmp_path, apply=True, today=date(2026, 7, 31))
 
-        text = detail.read_text()
+        text = history.read_text()
         hist = text.index("## Historical (structurally enforced)")
         appendix = text.index("# Appendix")
         retired = text.index("## Narrow rule about fixtures")
@@ -1215,15 +1251,15 @@ class TestSupersessionRetirement:
         file and never reached the detail file. Chunk 03's bulk `--apply` is the
         first caller. Both files are now composed before either is written."""
         learnings = _seed_learnings(tmp_path, self.CORPUS)
-        detail = tmp_path / ".prawduct" / "learnings-detail.md"
-        detail.write_text(f"# Learnings — Full Detail\n\n{header}\n\nBlurb.\n")
+        history = tmp_path / ".prawduct" / _mod.HISTORY_FILENAME
+        history.write_text(f"# Learnings — Retired\n\n{header}\n\nBlurb.\n")
 
         audit_learnings(tmp_path, apply=True, today=date(2026, 7, 31))
 
         # Retired out of the active file...
         assert "Narrow rule about fixtures" not in learnings.read_text()
-        # ...and INTO the detail file. Neither half may happen alone.
-        text = detail.read_text()
+        # ...and INTO the archive. Neither half may happen alone.
+        text = history.read_text()
         assert "## Narrow rule about fixtures" in text, (
             f"entry vanished: removed from learnings.md and never filed under "
             f"{header!r}"
@@ -1242,15 +1278,16 @@ class TestSupersessionRetirement:
         def _boom(*a, **k):
             raise RuntimeError("composition failed")
 
-        monkeypatch.setattr(_mod, "_detail_with_retirements", _boom)
+        monkeypatch.setattr(_mod, "_compose_retirement_files", _boom)
         with pytest.raises(RuntimeError):
             audit_learnings(tmp_path, apply=True, today=date(2026, 7, 31))
 
         assert learnings.read_text() == before, (
-            "learnings.md was rewritten before the detail file was composed — "
+            "learnings.md was rewritten before the archive was composed — "
             "the retired entries are gone and were never filed"
         )
         assert not (tmp_path / ".prawduct" / "learnings-detail.md").exists()
+        assert not (tmp_path / ".prawduct" / _mod.HISTORY_FILENAME).exists()
 
     def test_a_failed_write_leaves_a_duplicate_not_a_hole(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1280,8 +1317,8 @@ class TestSupersessionRetirement:
         # Active file untouched — the rule is still there...
         assert learnings.read_text() == before
         # ...and the archive already has it. A duplicate, which a re-run fixes.
-        detail = (tmp_path / ".prawduct" / "learnings-detail.md").read_text()
-        assert "## Narrow rule about fixtures" in detail, (
+        archive = _archive_text(tmp_path)
+        assert "## Narrow rule about fixtures" in archive, (
             "the archive write did not happen first — a failure here would have "
             "deleted the entry from learnings.md and filed it nowhere"
         )
@@ -1309,15 +1346,15 @@ class TestSupersessionRetirement:
         )
         audit_learnings(tmp_path, apply=True, today=date(2026, 7, 31))
 
-        detail = (tmp_path / ".prawduct" / "learnings-detail.md").read_text()
+        archive = _archive_text(tmp_path)
         # Both retired, each keeping ITS OWN reason and body.
-        assert detail.count("## Same heading") == 2
-        assert "sentinel `tests/foo.py::test_bar` passes" in detail
-        assert "superseded by **General rule**" in detail
-        first = detail.index("First body.")
-        second = detail.index("Second body.")
-        assert detail.index("sentinel `tests/foo.py::test_bar` passes") < first
-        assert first < detail.index("superseded by **General rule**") < second
+        assert archive.count("## Same heading") == 2
+        assert "sentinel `tests/foo.py::test_bar` passes" in archive
+        assert "superseded by **General rule**" in archive
+        first = archive.index("First body.")
+        second = archive.index("Second body.")
+        assert archive.index("sentinel `tests/foo.py::test_bar` passes") < first
+        assert first < archive.index("superseded by **General rule**") < second
 
     def test_result_keys_are_uniform_across_both_routes(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1537,6 +1574,29 @@ class TestLifecycleMetadataLivesWhereItsReaderLooks:
             "them back under their `## ` title in learnings.md."
         )
 
+    def test_no_lifecycle_metadata_has_drifted_to_the_history_file(self):
+        """The same invariant, at the archive the split created.
+
+        Retired entries land in `learnings-history.md` now, and the strip that
+        keeps their lifecycle comments out is the same one — so the guard has to
+        follow the entries. Without this, the split would have moved 92 archived
+        entries out from under the check that has been watching them.
+        """
+        history = self._repo_root() / ".prawduct" / _mod.HISTORY_FILENAME
+        if not history.is_file():
+            pytest.skip("no learnings-history.md in this checkout")
+        stray = [
+            line.strip()
+            for line in history.read_text().splitlines()
+            if line.strip().startswith("<!--") and "prawduct-learning:" in line
+        ]
+        assert not stray, (
+            f"{len(stray)} lifecycle comment(s) in learnings-history.md — "
+            "audit-learnings never reads that file, so these are inert, and a "
+            "retired entry has no live lifecycle state anyway. The retirement "
+            "note replaces the comment."
+        )
+
     def test_every_comment_in_learnings_sits_where_the_parser_expects(self):
         learnings = self._repo_root() / ".prawduct" / "learnings.md"
         if not learnings.is_file():
@@ -1572,10 +1632,23 @@ class TestRetirementMovesTheDetailNarrative:
     """
 
     def _apply(self, tmp_path: Path, learnings: str, detail: str) -> str:
+        """Both post-move files, concatenated.
+
+        The narrative's DESTINATION moved (it now lands in
+        `learnings-history.md`) but the property under test did not: exactly one
+        copy of a retired heading exists across the corpus, and an unrelated
+        narrative is never cut. Reading both files is what keeps these
+        assertions counting copies of a heading rather than copies in one file —
+        a per-file count would go green on a duplicate that straddles the split.
+        """
         _seed_learnings(tmp_path, learnings)
         (tmp_path / ".prawduct" / "learnings-detail.md").write_text(detail)
         audit_learnings(tmp_path, apply=True, today=date(2026, 8, 1))
-        return (tmp_path / ".prawduct" / "learnings-detail.md").read_text()
+        history = tmp_path / ".prawduct" / _mod.HISTORY_FILENAME
+        return (
+            (tmp_path / ".prawduct" / "learnings-detail.md").read_text()
+            + (history.read_text() if history.is_file() else "")
+        )
 
     def test_the_narrative_moves_instead_of_being_duplicated(self, tmp_path):
         out = self._apply(
@@ -1964,3 +2037,575 @@ class TestTheDocumentedExampleActuallyWorks:
         (tmp_path / ".prawduct").mkdir()
         _argv, reason = _mod.resolve_sentinel_command(tmp_path)
         assert _mod.SENTINEL_PLACEHOLDER in reason
+
+
+class TestUnknownMetadataKeysAreReported:
+    """A well-formed key nobody reads is reported, not silently ignored (#346).
+
+    The failure this closes is silence, not damage. `sentinal=tests/x.py` parses
+    cleanly, matches no branch in the audit, and leaves the entry classified
+    "active, no lifecycle metadata" — byte-for-byte the same outcome as an entry
+    carrying no comment at all. The author who wrote a lifecycle directive sees
+    a fully-annotated entry in the file and an audit that never mentions it, so
+    the typo survives every run that was supposed to catch it.
+
+    The roster is the allow-list; the PARSER is deliberately not. Validation
+    lives in the audit because that is the layer that decides what a key means,
+    and `parse_learning_metadata` stays usable by callers that only want pairs.
+    """
+
+    def test_unknown_key_raises_an_error_naming_it(self, tmp_path):
+        _seed_learnings(tmp_path, (
+            "# Learnings\n\n"
+            "## Misspelled directive\n"
+            "<!-- prawduct-learning: sentinal=tests/test_x.py::test_y -->\n"
+            "Body.\n"
+        ))
+        result = _mod.audit_learnings(tmp_path, run_sentinels=False)
+        messages = [e["error"] for e in result["errors"]]
+        assert len(messages) == 1, messages
+        assert "`sentinal=`" in messages[0]
+        assert result["errors"][0]["title"] == "Misspelled directive"
+        # And it names the roster, so the fix is visible without opening source.
+        for known in _mod._KNOWN_METADATA_KEYS:
+            assert f"`{known}=`" in messages[0]
+
+    def test_every_known_key_passes_validation(self, tmp_path):
+        """Roster-derived, not a second transcription of the same list."""
+        pairs = "; ".join(f"{k}=x" for k in sorted(_mod._KNOWN_METADATA_KEYS))
+        _seed_learnings(tmp_path, (
+            "# Learnings\n\n"
+            "## Fully annotated\n"
+            f"<!-- prawduct-learning: {pairs} -->\n"
+            "Body.\n"
+        ))
+        result = _mod.audit_learnings(tmp_path, run_sentinels=False)
+        unknown = [
+            e for e in result["errors"] if "unknown lifecycle metadata" in e["error"]
+        ]
+        assert unknown == []
+
+    def test_malformed_no_equals_fragments_stay_tolerated(self, tmp_path):
+        """The parser's prose tolerance is NOT reconsidered by this validation.
+
+        A fragment with no `=` is prose that resembled metadata. Grading it
+        would turn a stray semicolon in an entry's narrative into a finding,
+        which is the misfiring probe this repo names by its cost.
+        """
+        _seed_learnings(tmp_path, (
+            "# Learnings\n\n"
+            "## Stray semicolon\n"
+            "<!-- prawduct-learning: created=2026-01-01; and then; more prose -->\n"
+            "Body.\n"
+        ))
+        result = _mod.audit_learnings(tmp_path, run_sentinels=False)
+        assert [e["error"] for e in result["errors"]] == []
+
+    def test_an_unknown_key_does_not_block_a_valid_sibling_key(self, tmp_path):
+        """Reported and ignored — never fatal to the keys that ARE correct.
+
+        An unknown key cannot retire anything, so fail-closed is already the
+        behavior. Letting a typo elsewhere in the comment veto a retirement
+        whose own key is right would be a gate weakened by an unrelated edit.
+        """
+        _seed_learnings(tmp_path, (
+            "# Learnings\n\n"
+            "## Promotable but typo'd\n"
+            "<!-- prawduct-learning: confirmations=3; sentinal=tests/x.py -->\n"
+            "Body.\n"
+        ))
+        result = _mod.audit_learnings(tmp_path, run_sentinels=False)
+        assert [p["title"] for p in result["promotions"]] == ["Promotable but typo'd"]
+        assert any("`sentinal=`" in e["error"] for e in result["errors"])
+
+    def test_this_repos_own_corpus_declares_no_unknown_key(self):
+        """The guard, run against the corpus it governs.
+
+        A validation shipped without this is one nobody has pointed at real
+        data — and this repo's `learnings.md` is the only corpus prawduct's own
+        development touches every day.
+        """
+        repo_learnings = Path(__file__).resolve().parents[1] / ".prawduct" / "learnings.md"
+        if not repo_learnings.is_file():
+            pytest.skip("no .prawduct/learnings.md in this checkout")
+        for entry in _mod.parse_learnings_file(repo_learnings.read_text()):
+            unknown = set(entry.metadata) - _mod._KNOWN_METADATA_KEYS
+            assert not unknown, (
+                f"{entry.title!r} carries {sorted(unknown)}, which the audit "
+                "does not read — fix it here, not by widening the roster."
+            )
+
+
+class TestRetirementReadinessHasOneHome:
+    """Readiness is decided once at the producer; consumers render it (#349).
+
+    The predicate was re-derived in three places — the audit's own apply-site
+    branch, the CLI printer, and doctor's prose — and the two routes do not
+    share a field to read: a sentinel is ready when `passed is True`, a
+    supersession when `resolved_to` is not None. A consumer that picks one field
+    and branches reports every resolvable supersession as blocked, because its
+    `passed` is None by construction. The copy furthest from the producer
+    (prose in a skill file) cannot be tested at all.
+    """
+
+    def test_every_retirement_record_carries_the_three_fields(self, tmp_path):
+        _seed_learnings(tmp_path, (
+            "# Learnings\n\n"
+            "## Broad rule\nBody.\n\n"
+            "## Superseded one\n"
+            "<!-- prawduct-learning: superseded-by=Broad rule -->\n"
+            "Body.\n\n"
+            "## Sentineled one\n"
+            "<!-- prawduct-learning: sentinel=tests/test_x.py::test_y -->\n"
+            "Body.\n"
+        ))
+        result = _mod.audit_learnings(tmp_path, run_sentinels=False)
+        assert len(result["retirements"]) == 2
+        for record in result["retirements"]:
+            assert {"ready", "readiness", "why"} <= set(record)
+            assert record["readiness"] in _mod.RETIREMENT_READINESS_STATES
+
+    def test_ready_and_readiness_never_disagree(self):
+        """`ready` is exactly `readiness == "ready"` — pinned, not conventional.
+
+        Two fields expressing one decision is how they drift; this is the pin
+        that makes the redundancy safe rather than a second source of truth.
+        """
+        cases = [
+            {"reason": "superseded-by", "resolved_to": "X", "superseded_by": "X"},
+            {"reason": "superseded-by", "resolved_to": None, "superseded_by": "X"},
+            {"reason": "sentinel", "sentinel": "t.py", "passed": True},
+            {"reason": "sentinel", "sentinel": "t.py", "passed": False},
+            {"reason": "sentinel", "sentinel": "t.py", "passed": None},
+            {"reason": "some-future-route"},
+        ]
+        for record in cases:
+            out = _mod.retirement_readiness(record)
+            assert out["ready"] is (out["readiness"] == "ready"), record
+
+    def test_a_resolvable_supersession_is_ready_though_passed_is_none(self):
+        """The exact misread a per-consumer re-derivation makes."""
+        record = {
+            "reason": "superseded-by", "passed": None,
+            "superseded_by": "Broad", "resolved_to": "Broad rule",
+        }
+        out = _mod.retirement_readiness(record)
+        assert out["ready"] is True
+        assert out["readiness"] == "ready"
+        assert out["why"] == "superseded-by=Broad rule"
+
+    def test_an_ungraded_sentinel_is_ungraded_not_blocked(self):
+        out = _mod.retirement_readiness(
+            {"reason": "sentinel", "sentinel": "t.py", "passed": None}
+        )
+        assert out["readiness"] == "ungraded"
+        assert out["ready"] is False
+        assert out["why"] == "sentinel=t.py"
+
+    def test_an_unrecognised_route_is_ungraded_and_says_so(self):
+        """No catch-all `else` reading the sentinel field.
+
+        The printer's `else` arm meant "everything that is not superseded-by",
+        so a third route would have been graded by reading a `sentinel` field it
+        does not set — rendering a brand-new route as a failing test. Ungraded
+        is the honest reading, and it surfaces the gap instead of hiding it.
+        """
+        out = _mod.retirement_readiness({"reason": "licence-expired"})
+        assert out["readiness"] == "ungraded"
+        assert out["ready"] is False
+        assert "licence-expired" in out["why"]
+        assert "sentinel=" not in out["why"]
+
+    def test_a_blocked_supersession_names_the_unresolved_prefix(self):
+        """`why` must still name something when the pointer did not resolve —
+        a blocked candidate with no target named is one an operator cannot fix.
+        """
+        out = _mod.retirement_readiness({
+            "reason": "superseded-by", "superseded_by": "Nonexistent prefix",
+            "resolved_to": None,
+        })
+        assert out["readiness"] == "blocked"
+        assert "Nonexistent prefix" in out["why"]
+
+    def test_the_audit_apply_branch_reads_the_minted_field(self, tmp_path):
+        """The producer's own branch renders the decision too.
+
+        A field only *consumers* read is decorative — the same shape the
+        unknown-key roster had one layer up. This pins that an applied run
+        retires exactly the records the readiness helper called ready.
+        """
+        _seed_learnings(tmp_path, (
+            "# Learnings\n\n"
+            "## Broad rule\nBody.\n\n"
+            "## Superseded one\n"
+            "<!-- prawduct-learning: superseded-by=Broad rule -->\n"
+            "Body.\n"
+        ))
+        result = _mod.audit_learnings(tmp_path, apply=True, run_sentinels=False)
+        for record in result["retirements"]:
+            assert record["applied"] is record["ready"]
+
+
+class TestBrokenEnvironmentIsUngradedWhenDeclared:
+    """#720: a runner that dies on a broken environment is not a failing test.
+
+    A runner that starts and then exits non-zero because `node_modules` is
+    absent, or the workspace is unbuilt, is indistinguishable from a test that
+    ran and failed — from outside. Prawduct must not learn per-runner exit-code
+    tables, so the PRODUCT declares which codes mean "could not run", in the
+    same posture that gives `sentinel_command:` no default.
+
+    The stakes are the ones this whole tri-state exists for: a rule reported as
+    failing when nothing judged it argues for retiring a rule that is still
+    enforced.
+    """
+
+    def _declare(self, product_dir: Path, value: str) -> None:
+        prawduct = product_dir / ".prawduct"
+        prawduct.mkdir(parents=True, exist_ok=True)
+        state = prawduct / "project-state.yaml"
+        prior = state.read_text() if state.is_file() else ""
+        state.write_text(f"{prior}sentinel_ungraded_exit_codes: {value}\n")
+
+    def test_absent_declaration_leaves_every_nonzero_a_real_failure(self, tmp_path):
+        """The default is unchanged — this is additive to existing products."""
+        codes, error = _mod.resolve_ungraded_exit_codes(tmp_path)
+        assert codes == frozenset()
+        assert error is None
+
+    def test_a_declared_code_grades_ungraded_not_failed(self, tmp_path):
+        (tmp_path / "t.py").write_text("")
+        _declare_sentinel_command(
+            tmp_path, f"{sys.executable} -c \"import sys; sys.exit(3)\" {{sentinel}}"
+        )
+        self._declare(tmp_path, "3")
+        passed, detail = _mod.run_sentinel(tmp_path, "t.py")
+        assert passed is None, detail
+        assert "ungraded rather than failed" in detail
+        assert "sentinel_ungraded_exit_codes" in detail
+
+    def test_an_undeclared_nonzero_code_is_still_a_real_failure(self, tmp_path):
+        """The declaration widens the ungraded side; it must not swallow the
+        failures the retirement route depends on catching."""
+        (tmp_path / "t.py").write_text("")
+        _declare_sentinel_command(
+            tmp_path, f"{sys.executable} -c \"import sys; sys.exit(1)\" {{sentinel}}"
+        )
+        self._declare(tmp_path, "3")
+        passed, _detail = _mod.run_sentinel(tmp_path, "t.py")
+        assert passed is False
+
+    def test_a_declared_code_does_not_change_a_passing_sentinel(self, tmp_path):
+        (tmp_path / "t.py").write_text("")
+        _declare_sentinel_command(
+            tmp_path, f"{sys.executable} -c \"pass\" {{sentinel}}"
+        )
+        self._declare(tmp_path, "3 4")
+        passed, _detail = _mod.run_sentinel(tmp_path, "t.py")
+        assert passed is True
+
+    def test_zero_is_refused(self, tmp_path):
+        """Listing 0 would report every green sentinel as ungraded and disable
+        the retirement route entirely — a gate switched off by a declaration
+        that reads like configuration."""
+        self._declare(tmp_path, "0")
+        codes, error = _mod.resolve_ungraded_exit_codes(tmp_path)
+        assert codes == frozenset()
+        assert error is not None and "PASSED" in error
+
+    def test_a_malformed_declaration_is_reported_not_ignored(self, tmp_path):
+        """An operator who asked for the distinction and typo'd must not keep
+        getting the false accusation with the file reading as though they had
+        fixed it."""
+        self._declare(tmp_path, "three")
+        codes, error = _mod.resolve_ungraded_exit_codes(tmp_path)
+        assert codes == frozenset()
+        assert error is not None and "'three'" in error
+
+    def test_a_malformed_declaration_ungrades_rather_than_grades(self, tmp_path):
+        """And it reaches `run_sentinel` BEFORE the subprocess runs — spending a
+        test run to produce a number nobody can interpret is the wrong order."""
+        (tmp_path / "t.py").write_text("")
+        _declare_sentinel_command(
+            tmp_path, f"{sys.executable} -c \"import sys; sys.exit(1)\" {{sentinel}}"
+        )
+        self._declare(tmp_path, "not-a-code")
+        passed, detail = _mod.run_sentinel(tmp_path, "t.py")
+        assert passed is None
+        assert "sentinel_ungraded_exit_codes" in detail
+
+    def test_codes_parse_from_either_separator(self, tmp_path):
+        self._declare(tmp_path, "3, 4  5")
+        codes, error = _mod.resolve_ungraded_exit_codes(tmp_path)
+        assert error is None
+        assert codes == frozenset({3, 4, 5})
+
+    def test_the_boundary_is_documented_where_sentinel_is_defined(self):
+        """The acceptance criterion, asserted rather than assumed.
+
+        "Document the boundary" was the third option on #720 and is not an
+        alternative to fixing it — the module docstring is where a reader learns
+        what `sentinel=` means, so it is where ungraded-versus-failed belongs.
+        """
+        doc = _mod.__doc__ or ""
+        assert "Ungraded is not failed" in doc
+        assert _mod.UNGRADED_EXIT_CODES_KEY in doc
+
+    def test_no_runner_is_hardcoded_by_the_new_resolver(self):
+        """The language-agnostic acceptance criterion, structurally."""
+        assert _hardcoded_runner_violations(_mod.resolve_ungraded_exit_codes) == []
+        assert _hardcoded_runner_violations(_mod.run_sentinel) == []
+
+
+class TestTheArchiveHasItsOwnFile:
+    """#350: `learnings-detail.md` had no route out, and the archive was the sink.
+
+    Measured 2026-09-01 on this repo: the detail file was 557KB across 4,748
+    lines and 273 headings, up 65% in a month, with ~182KB of it the terminal
+    `## Historical (structurally enforced)` section. Every `/prawduct:learnings`
+    lookup read all of it — ~658KB with the index — to answer a question about
+    the ACTIVE corpus.
+
+    The route out is a third tier: retired entries move to
+    `learnings-history.md`, which the skill reads only on a miss. Nothing is
+    deleted, and retirement is still a MOVE — it just moves one file further,
+    out of the read path instead of to the bottom of it.
+    """
+
+    CORPUS = (
+        "# Learnings\n\n"
+        "## Old rule\n"
+        "<!-- prawduct-learning: superseded-by=New rule -->\n\nRule body.\n\n"
+        "## New rule\n\nSuccessor body.\n"
+    )
+
+    def _apply(self, tmp_path: Path, detail: str | None = None) -> None:
+        _seed_learnings(tmp_path, self.CORPUS)
+        if detail is not None:
+            (tmp_path / ".prawduct" / "learnings-detail.md").write_text(detail)
+        audit_learnings(tmp_path, apply=True, today=date(2026, 9, 1))
+
+    def test_the_archive_is_not_in_the_file_a_lookup_reads(self, tmp_path):
+        self._apply(tmp_path, "# Detail\n\n## Old rule\n\nNarrative prose.\n")
+        detail = (tmp_path / ".prawduct" / "learnings-detail.md").read_text()
+        assert "Old rule" not in detail
+        assert "Narrative prose." not in detail
+        assert "Historical (structurally enforced)" not in detail
+        # And the successor's own narrative is untouched by the move.
+        archive = _archive_text(tmp_path)
+        assert "Narrative prose." in archive
+        assert "superseded by **New rule**" in archive
+
+    def test_the_history_file_is_seeded_with_its_own_preamble(self, tmp_path):
+        self._apply(tmp_path)
+        archive = _archive_text(tmp_path)
+        assert archive.startswith("# Learnings — Retired")
+        # The invariant that governs the file is stated IN the file, where an
+        # agent about to prune it will read it.
+        assert "Nothing is ever deleted from this file" in archive
+        assert _mod._HISTORICAL_SECTION_HEADER in archive
+
+    def test_a_pre_split_archive_is_lifted_whole_and_loses_nothing(self, tmp_path):
+        """The migration path every existing product takes on its next apply.
+
+        Leaving the old section in place beside a new file would give a product
+        two archives and a route out that routes nothing — the old sink would
+        keep being read on every lookup.
+        """
+        self._apply(
+            tmp_path,
+            "# Detail\n\nActive prose.\n\n"
+            "## Old rule\n\nNarrative prose.\n\n"
+            "## Historical (structurally enforced)\n\n"
+            "Boilerplate blurb.\n\n"
+            "## Ancient rule\n\n*Retired 2019-01-01 — superseded by **Gone**.*\n"
+        )
+        detail = (tmp_path / ".prawduct" / "learnings-detail.md").read_text()
+        archive = _archive_text(tmp_path)
+
+        assert "Historical (structurally enforced)" not in detail
+        assert "Ancient rule" not in detail
+        assert "Active prose." in detail, "the lift cut live prose"
+
+        assert archive.count("## Ancient rule") == 1
+        assert "superseded by **Gone**" in archive, "a forwarding address was lost"
+        assert archive.count(_mod._HISTORICAL_SECTION_HEADER) == 1, (
+            "the lifted section's own header was carried across, filing a "
+            "second header inside the first section"
+        )
+        assert "Boilerplate blurb." not in archive, (
+            "the old section's blurb rode along — the history file supplies its "
+            "own, so this is a duplicate paragraph, not content"
+        )
+        # The new retirement is there too, alongside the lifted one.
+        assert "## Old rule" in archive
+
+    def test_a_lift_and_a_retirement_never_produce_two_archives(self, tmp_path):
+        self._apply(
+            tmp_path,
+            "# Detail\n\n## Historical (structurally enforced)\n\n"
+            "## Ancient rule\n\nold\n",
+        )
+        detail = (tmp_path / ".prawduct" / "learnings-detail.md").read_text()
+        archive = _archive_text(tmp_path)
+        assert _mod._HISTORICAL_SECTION_HEADER not in detail
+        assert archive.count(_mod._HISTORICAL_SECTION_HEADER) == 1
+
+    def test_a_detail_file_with_no_archive_is_the_steady_state(self, tmp_path):
+        """Post-split, the lift is a no-op and must not disturb the file."""
+        lines = "# Detail\n\n## Unrelated\n\nprose\n".split("\n")
+        assert _mod._lift_legacy_historical_section(lines) == []
+        assert "\n".join(lines) == "# Detail\n\n## Unrelated\n\nprose\n"
+
+    def test_the_archive_is_written_before_the_file_the_entry_leaves(
+        self, tmp_path, monkeypatch
+    ):
+        """Three files now, and the direction argument is unchanged.
+
+        Every partial failure must land on the DUPLICATE side — the entry
+        visible in two places, which a re-run reconciles — never on the deletion
+        side. With the archive written last, a failure here removes the entry
+        from `learnings.md` and files it nowhere.
+        """
+        learnings = _seed_learnings(tmp_path, self.CORPUS)
+        (tmp_path / ".prawduct" / "learnings-detail.md").write_text(
+            "# Detail\n\n## Old rule\n\nThe only copy.\n"
+        )
+        before = learnings.read_text()
+        real_write = Path.write_text
+
+        def _fail_after_history(self, *a, **k):
+            if self.name != _mod.HISTORY_FILENAME:
+                raise OSError("disk full")
+            return real_write(self, *a, **k)
+
+        monkeypatch.setattr(Path, "write_text", _fail_after_history)
+        with pytest.raises(OSError):
+            audit_learnings(tmp_path, apply=True, today=date(2026, 9, 1))
+        monkeypatch.undo()
+
+        assert learnings.read_text() == before
+        assert "The only copy." in _archive_text(tmp_path), (
+            "the narrative existed in exactly one place and the failure "
+            "destroyed it — the archive must be written first"
+        )
+
+    def test_this_repos_own_corpus_is_split(self):
+        """The migration, asserted against the real files rather than assumed.
+
+        A split shipped without this is one nobody has pointed at the corpus it
+        was measured on.
+        """
+        prawduct = Path(__file__).resolve().parents[1] / ".prawduct"
+        detail = prawduct / "learnings-detail.md"
+        history = prawduct / _mod.HISTORY_FILENAME
+        if not detail.is_file():
+            pytest.skip("no learnings-detail.md in this checkout")
+        assert history.is_file(), (
+            "the archive was never split out — a lookup still reads it"
+        )
+        assert _mod._HISTORICAL_SECTION_HEADER not in detail.read_text(), (
+            "an archive has re-formed inside learnings-detail.md"
+        )
+
+
+class TestRetirementFindsAPrefixPairedNarrative:
+    """The machinery half of the convention, and the orphan factory it was.
+
+    `_take_active_narrative` matched EXACT titles while the corpus paired by
+    prefix, so retiring a truncated pair wrote a historical block with no prose
+    and left the narrative behind in the active file — orphaned, pointed at by
+    nothing. One orphan manufactured per retirement, by the operation whose own
+    docstring calls itself a MOVE.
+    """
+
+    def test_a_truncated_detail_heading_has_its_narrative_moved(self, tmp_path):
+        _seed_learnings(tmp_path, (
+            "# Learnings\n\n"
+            "## Old rule — with a sharpened tail\n"
+            "<!-- prawduct-learning: superseded-by=New rule -->\n\nbody\n\n"
+            "## New rule\n\nb\n"
+        ))
+        (tmp_path / ".prawduct" / "learnings-detail.md").write_text(
+            "# D\n\n## Old rule\n\nThe original narrative.\n"
+        )
+        audit_learnings(tmp_path, apply=True, today=date(2026, 9, 1))
+
+        detail = (tmp_path / ".prawduct" / "learnings-detail.md").read_text()
+        assert "The original narrative." not in detail, (
+            "the prefix-paired narrative was left behind — an orphan created by "
+            "the retirement that was supposed to move it"
+        )
+        assert "The original narrative." in _archive_text(tmp_path)
+
+    def test_an_exact_match_still_wins_over_a_prefix_one(self, tmp_path):
+        """Exact first, so nothing about a conforming pair changes — and a
+        shorter heading that merely prefixes the title must not outrank the
+        block that actually carries the title."""
+        _seed_learnings(tmp_path, (
+            "# Learnings\n\n"
+            "## Old rule extended\n"
+            "<!-- prawduct-learning: superseded-by=New rule -->\n\nbody\n\n"
+            "## New rule\n\nb\n"
+        ))
+        (tmp_path / ".prawduct" / "learnings-detail.md").write_text(
+            "# D\n\n## Old rule\n\nThe PREFIX block.\n\n"
+            "## Old rule extended\n\nThe EXACT block.\n"
+        )
+        audit_learnings(tmp_path, apply=True, today=date(2026, 9, 1))
+
+        detail = (tmp_path / ".prawduct" / "learnings-detail.md").read_text()
+        assert "The PREFIX block." in detail, "the wrong block was cut"
+        assert "The EXACT block." not in detail
+        assert "The EXACT block." in _archive_text(tmp_path)
+
+    def test_two_prefix_candidates_refuse_rather_than_choose(self, tmp_path):
+        """Fail-closed, the same way a duplicate does. Which of two blocks that
+        both prefix one title is the real one is not something this can know,
+        and cutting the wrong one destroys an unrelated narrative."""
+        learnings = _seed_learnings(tmp_path, (
+            "# Learnings\n\n"
+            "## Old rule extended further\n"
+            "<!-- prawduct-learning: superseded-by=New rule -->\n\nbody\n\n"
+            "## New rule\n\nb\n"
+        ))
+        before = learnings.read_text()
+        (tmp_path / ".prawduct" / "learnings-detail.md").write_text(
+            "# D\n\n## Old rule\n\nA.\n\n## Old rule extended\n\nB.\n"
+        )
+        result = audit_learnings(tmp_path, apply=True, today=date(2026, 9, 1))
+
+        assert result["applied"] is False
+        assert learnings.read_text() == before
+        assert any("2 active blocks pairing" in e["error"] for e in result["errors"])
+
+    def test_a_bare_heading_never_prefixes_everything(self, tmp_path):
+        """An empty `## ` is a prefix of every title in the file. Left in the
+        candidate set it matches the first block and cuts it."""
+        _seed_learnings(tmp_path, (
+            "# Learnings\n\n"
+            "## Old rule\n"
+            "<!-- prawduct-learning: superseded-by=New rule -->\n\nbody\n\n"
+            "## New rule\n\nb\n"
+        ))
+        (tmp_path / ".prawduct" / "learnings-detail.md").write_text(
+            "# D\n\n## \n\nStray empty heading.\n\n## Old rule\n\nThe narrative.\n"
+        )
+        result = audit_learnings(tmp_path, apply=True, today=date(2026, 9, 1))
+        assert result["errors"] == []
+        detail = (tmp_path / ".prawduct" / "learnings-detail.md").read_text()
+        assert "Stray empty heading." in detail
+        assert "The narrative." not in detail
+
+
+def test_this_repos_header_states_the_decided_convention():
+    """The header is the third surface, and it was the one asserting an
+    invariant that never held. A convention decided in code and left unstated in
+    the file its authors read is one nobody will follow."""
+    header = (
+        Path(__file__).resolve().parent.parent / ".prawduct" / "learnings.md"
+    ).read_text(encoding="utf-8").split("---", 1)[0]
+    assert "prefix" in header.lower()
+    assert "not a copy" in header.lower() or "never required to be a copy" in header.lower()
+    assert "order is not part of it" in header.lower()
+    assert "learnings-history.md" in header

@@ -119,6 +119,18 @@ class TestApiPaged:
         )
         assert len(gh2.list_sub_issues(OWNER, REPO, 1)) == 105
 
+    def test_comments_use_the_loop_and_reduce(self):
+        # The DM5 drill-down read pages like every other list endpoint and
+        # reduces each comment to the fields the item read carries.
+        gh = _PagedGh(
+            [{"id": i, "user": {"login": "u"}, "created_at": "t",
+              "body": f"c{i}", "html_url": f"h{i}"} for i in range(120)]
+        )
+        out = gh.list_comments(OWNER, REPO, 1)
+        assert len(out) == 120
+        assert len(gh.requests) == 2
+        assert out[0] == {"id": 0, "author": "u", "created_at": "t", "body": "c0", "url": "h0"}
+
     def test_page_cap_raises_rather_than_returning_a_prefix(self):
         """A cap trip is a failure, not a short answer. Returning the collected
         prefix made a truncated result indistinguishable from a complete one —

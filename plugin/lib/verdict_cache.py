@@ -49,7 +49,7 @@ CACHE_BASENAME = "verdict-cache.json"
 #: Bumped whenever the verdict SHAPE changes, so entries written by an older
 #: reading of the same inputs cannot be replayed against a newer consumer. The
 #: fingerprint covers the inputs; this covers the function.
-CACHE_SCHEMA = 1
+CACHE_SCHEMA = 2
 
 #: Entries kept, newest first. A gate call touches a handful of keys (the span,
 #: plus each diagnosis's), and a branch's keys all die on the next store append,

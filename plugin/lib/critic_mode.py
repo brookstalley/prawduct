@@ -146,6 +146,13 @@ def _unrecognized_mode_note(token: str) -> str:
     return note
 
 
+#: The two modes whose interval is HEAD-tree → working-tree, and therefore the
+#: only two an explicit token can name into a provably empty review. `cumulative`
+#: reviews the committed bundle and `verify-resolutions` the delta since a prior
+#: review fact; neither goes empty because the working tree is clean.
+_WORKING_TREE_MODES = frozenset({"chunk", "final"})
+
+
 def infer_mode(
     project_dir: Path | str,
     args: str | None = None,
@@ -159,8 +166,9 @@ def infer_mode(
     args : str | None
         The ``$ARGUMENTS`` string passed to ``/critic``. When non-empty
         and parseable as one of the recognized mode tokens, that token
-        wins outright (rationale ``"explicit-args"``). Empty / None /
-        unrecognized → trigger inference.
+        wins (rationale ``"explicit-args"``) — except where its interval
+        is provably empty, see below. Empty / None / unrecognized →
+        trigger inference.
 
     Returns
     -------
@@ -171,15 +179,15 @@ def infer_mode(
         ``mode_chosen_by`` field in ``.critic-findings.json``.
     """
     project_dir = Path(project_dir)
+    prawduct_dir = project_dir / ".prawduct"
 
     if args is not None:
         stripped = args.strip()
         if stripped:
             token = stripped.split()[0]
             if token in _VALID_ARG_MODES:
-                return token, "explicit-args"
+                return _explicit_mode(token, prawduct_dir, project_dir)
 
-    prawduct_dir = project_dir / ".prawduct"
 
     # Resolve chunk progress ONCE, through the one owner of the question.
     # Re-deriving "which chunk is current" locally is what let the original
@@ -277,6 +285,44 @@ def infer_mode(
         "rule-4 final: no active build plan and no other rule fired — "
         "fail-safe to thoroughness"
     )
+
+
+def _explicit_mode(
+    token: str, prawduct_dir: Path, project_dir: Path
+) -> tuple[str, str]:
+    """Answer a named mode, redirecting only the two whose interval can be empty.
+
+    An explicit token is an operator instruction and the ladder does not
+    second-guess it: `cumulative` and `verify-resolutions` come back exactly as
+    typed, and so do `chunk` and `final` in every case but one.
+
+    That case is the defect (#684). `chunk` and `final` share the interval
+    HEAD-tree → working-tree, so on a clean tree it is EMPTY and `critic-begin`
+    refuses — after the operator has spent the dispatch. Rule 4 already declines
+    to *infer* a mode that cannot review anything (:func:`_clean_tree_redirect`),
+    but the explicit-args return sat above the whole ladder, so naming the mode
+    was the one way to reach the refusal the redirect exists to prevent.
+
+    **Redirect, not refuse, and say whose token moved.** `cumulative` is not a
+    downgrade of `final` here — it is the mode whose interval can SEE work that
+    is already committed, which is the demotion property the SKILL states for
+    every other refusal. The rationale therefore carries the original token, so
+    `mode_chosen_by` — a durable field of the review fact — records that the
+    operator asked for `final` and what moved it, rather than claiming the
+    operator chose `cumulative`. "Never silently downgrade" forbids the silence;
+    this is the opposite of silent.
+
+    **Only where the redirect works.** :func:`_clean_tree_redirect` returns ""
+    when `cumulative` would refuse in its own way (no resolvable base, nothing
+    committed beyond it, or a fresh cumulative record already covering HEAD).
+    Then the token stands and the operator gets the honest empty-interval
+    refusal instead of a redirect to a second one — the same rule rule 4 keeps.
+    """
+    if token in _WORKING_TREE_MODES and _working_tree_is_empty(project_dir):
+        redirect = _clean_tree_redirect(prawduct_dir, project_dir)
+        if redirect:
+            return "cumulative", f"explicit-args {token} redirected: {redirect}"
+    return token, "explicit-args"
 
 
 def _clean_tree_redirect(prawduct_dir: Path, project_dir: Path) -> str:

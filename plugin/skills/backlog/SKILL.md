@@ -4,7 +4,7 @@ argument-hint: "[pick|add|find|list|update|migrate] ... (e.g. `pick stop-hook st
 user-invocable: true
 disable-model-invocation: false
 context: fork
-allowed-tools: Read, Edit, Write, Grep, Glob, Bash(prawduct-hook backlog file *), Bash(python3 plugin/bin/prawduct-hook backlog file *), Bash(prawduct-hook backlog get *), Bash(python3 plugin/bin/prawduct-hook backlog get *), Bash(prawduct-hook backlog status *), Bash(python3 plugin/bin/prawduct-hook backlog status *), Bash(prawduct-hook backlog update *), Bash(python3 plugin/bin/prawduct-hook backlog update *), Bash(prawduct-hook backlog comment *), Bash(python3 plugin/bin/prawduct-hook backlog comment *), Bash(prawduct-hook backlog list *), Bash(python3 plugin/bin/prawduct-hook backlog list *), Bash(prawduct-hook backlog pick *), Bash(python3 plugin/bin/prawduct-hook backlog pick *), Bash(prawduct-hook backlog counts *), Bash(python3 plugin/bin/prawduct-hook backlog counts *), Bash(prawduct-hook backlog link *), Bash(python3 plugin/bin/prawduct-hook backlog link *), Bash(prawduct-hook backlog unlink *), Bash(python3 plugin/bin/prawduct-hook backlog unlink *), Bash(prawduct-hook backlog sync *), Bash(python3 plugin/bin/prawduct-hook backlog sync *), Bash(prawduct-hook backlog cache-query *), Bash(python3 plugin/bin/prawduct-hook backlog cache-query *), Bash(prawduct-hook backlog --help), Bash(python3 plugin/bin/prawduct-hook backlog --help)
+allowed-tools: Read, Edit, Write, Grep, Glob, Bash(prawduct-hook backlog file*), Bash(python3 plugin/bin/prawduct-hook backlog file*), Bash(prawduct-hook backlog get*), Bash(python3 plugin/bin/prawduct-hook backlog get*), Bash(prawduct-hook backlog status*), Bash(python3 plugin/bin/prawduct-hook backlog status*), Bash(prawduct-hook backlog update*), Bash(python3 plugin/bin/prawduct-hook backlog update*), Bash(prawduct-hook backlog comment*), Bash(python3 plugin/bin/prawduct-hook backlog comment*), Bash(prawduct-hook backlog list*), Bash(python3 plugin/bin/prawduct-hook backlog list*), Bash(prawduct-hook backlog pick*), Bash(python3 plugin/bin/prawduct-hook backlog pick*), Bash(prawduct-hook backlog counts*), Bash(python3 plugin/bin/prawduct-hook backlog counts*), Bash(prawduct-hook backlog link*), Bash(python3 plugin/bin/prawduct-hook backlog link*), Bash(prawduct-hook backlog unlink*), Bash(python3 plugin/bin/prawduct-hook backlog unlink*), Bash(prawduct-hook backlog sync*), Bash(python3 plugin/bin/prawduct-hook backlog sync*), Bash(prawduct-hook backlog cache-query*), Bash(python3 plugin/bin/prawduct-hook backlog cache-query*), Bash(prawduct-hook backlog --help), Bash(python3 plugin/bin/prawduct-hook backlog --help)
 ---
 
 You manage the product's **structured backlog**. You run in a forked context, so the full backlog never pollutes the main session. The backlog has two backends — a markdown file, or GitHub Issues once the product has cut over — so **decide the backend first** (next section), then do the operation and return a concise result. **Never** delete items (archive instead) and **never** weaken existing content.
@@ -97,9 +97,11 @@ Tabular view: `ID · title · effort · impact · area · status`. **Default fil
 **Grooming timestamp:** `list` and `pick` both stamp `backlog_last_groomed_at: <today>` (top-level scalar) in `project-state.yaml` on invocation — this is the fact that resolves the `backlog-overdue-grooming` advisory. It's a *timestamp*, not a count (counts are always re-derived, never persisted — D14).
 
 ### update PFX-XXXX <field=value> [...]
-Change metadata or body of one item. Common: `status=promoted|shipped|dropped` (moves the item to the matching section — `promoted`→`## Promoted`, `shipped`/`dropped`→`## Archive`), `area=`, `effort=`, `reviewed=`. On `status=shipped`, accept an optional `closed-by=<ref>` — the branch/feature scope name or a release/change-log tag — **and what happens to it depends on the backend, so say which one you are on before you promise the caller anything.** *Markdown backend:* write it into the **metadata bar** as `closed-by: <ref>` (not the body) for traceability. *Issues backend:* the close op takes no `--closed-by`, so the value has nowhere to go and is dropped — record it as a comment (`comment <id> --body 'closed-by: <ref>'`) and tell the caller it is a comment rather than a queryable field. **Never hand-write a `prawduct:` block to carry it**: that block is adapter-owned and a hand-written one is merged away. This is the one clause a caller most often reads as a guarantee — `pr` Step 1d and the Critic's backlog-reconciliation template both hand the argument out with no backend caveat, and on the Issues backend following them silently loses the scope. The handle must exist *before* the commit that records it: a **bare commit SHA is wrong** — a commit can't contain its own final SHA, and a `--amend` that folds the archive into the ship commit rewrites that SHA so the ref dangles. A **bare chunk id is equally wrong**: it names no plan, so it means nothing to a reader a year out — `Chunk 04` against `eval-system-rebuild`. Always use the **branch/scope name** — not a SHA, and not a PR number that isn't assigned until the PR opens. If a caller passes a bare SHA, record the branch/scope name instead and note the substitution in your result. Always set `reviewed:` to today on any touch. Confirm the item exists first; if the ID isn't found, say so and suggest `/prawduct:backlog find`.
+Change metadata or body of one item. Common: `status=promoted|shipped|dropped` (moves the item to the matching section — `promoted`→`## Promoted`, `shipped`/`dropped`→`## Archive`); on markdown also `area=`, `effort=`, `reviewed=`. On `status=shipped`, accept an optional `closed-by=<ref>` — the branch/feature scope name or a release/change-log tag — **and what happens to it depends on the backend, so say which one you are on before you promise the caller anything.** *Markdown backend:* write it into the **metadata bar** as `closed-by: <ref>` (not the body) for traceability. *Issues backend:* `status <id> --to shipped` records no handle by itself, so follow it with `update <id> --closed-by <ref>`, which stores it in the adapter-owned `prawduct:` block as a queryable field. **Never hand-write a `prawduct:` block to carry it**: that block is adapter-owned and a hand-written one is merged away. The handle must exist *before* the commit that records it: a **bare commit SHA is wrong** — a commit can't contain its own final SHA, and a `--amend` that folds the archive into the ship commit rewrites that SHA so the ref dangles. A **bare chunk id is equally wrong**: it names no plan, so it means nothing to a reader a year out — `Chunk 04` against `eval-system-rebuild`. Always use the **branch/scope name** — not a SHA, and not a PR number that isn't assigned until the PR opens. If a caller passes a bare SHA, record the branch/scope name instead and note the substitution in your result. On the markdown backend, always set `reviewed:` to today on any touch (the Issues block carries `reviewed:` from the import but has no write path for it). Confirm the item exists first; if the ID isn't found, say so and suggest `/prawduct:backlog find`.
 
-**Claims (`accepted-by`):** `update PFX-XXXX accepted-by=@actor` records a claim; `accepted-by=` (empty value) clears it. When you set `status=shipped` or `status=dropped`, **auto-clear** `accepted-by` (a finished item is not claimed) — the work is over, the claim is moot. Never auto-clear on any other transition (a `promoted` or still-`open` item may legitimately stay claimed). Do not touch a claim you didn't set unless the user explicitly asks — reassignment is a human call, not the skill's.
+**On the Issues backend these are flags, not `field=value` args**, and only these block fields are writable: `--affected`, `--working-branch`, `--refs`, `--revisit`, `--closed-by` (each takes a value; an **empty** value clears it, so an expired `revisit:` can be removed rather than blanked), plus the multi-valued `--tags`. Everything else in the `prawduct:` block is import-only or owned by another op — `related` by `link`/`unlink`, `superseded_by` by `merge`, and `added` by nothing at all, since GitHub's `created_at` already answers it unforgeably. **A `--body` edit carrying an edited block is silently discarded** (the existing block is re-appended verbatim, by design, so a naive body replace cannot drop permanent aliases) — so editing the block through `--body` reports success and changes nothing. Use the flags.
+
+**Claims (`accepted-by`) - markdown backend only.** On markdown, `update PFX-XXXX accepted-by=@actor` records a claim; on markdown `accepted-by=` (empty value) clears it. On the Issues backend the equivalent is `--working-branch` (see above). When you set `status=shipped` or `status=dropped`, **auto-clear** `accepted-by` (a finished item is not claimed) — the work is over, the claim is moot. Never auto-clear on any other transition (a `promoted` or still-`open` item may legitimately stay claimed). Do not touch a claim you didn't set unless the user explicitly asks — reassignment is a human call, not the skill's.
 
 ### pick [filters / free-text]
 Return **1–3 ranked candidates** with a one-line rationale each — the answer to "what should I work on right now?" Most invocations carry context; the bare call is the fallback.
@@ -130,6 +132,16 @@ Accept flag form for machine callers (`--area=sync --budget=30m --type=quick-win
 
 This routing is advisory, not a hard gate — surface the stage and the recommended next step; the user may still choose to override. Don't silently let an early-stage item flow into implementation.
 
+**Presenting a candidate carries an advisory obligation.** With each item you surface,
+say whether it is still worth doing — the premise that may have expired, the cheaper thing
+that would close most of it, the reason it should be dropped instead of picked. "Still
+worth it, for the reason it was filed" is a fine answer when it is true. What is not an
+option is handing over a ranked list with no position on it, because an item presented
+silently reads as endorsed — and `pick` is the moment an item stops being a note and
+becomes work someone starts (Principles 7 and 23). This is the checkpoint's own reading,
+not a lint: the score says how an item compares to its neighbours, never whether the
+problem it names is still real.
+
 **Worked examples** (parsed filter → behavior):
 - `pick stop-hook stuff under an hour` → `{area: stop-hook, budget: S–M}` → open stop-hook items, effort S/M, top 2–3 by score.
 - `pick a warmup task` → `{type: warmup}` → small/legacy/cleanup items, low stakes, recency-weighted.
@@ -152,6 +164,35 @@ Convert legacy unstructured items to the structured format and fold the old sect
 4c. **Legend refresh.** The header legend (the `<!-- … -->` comment block at the top of `backlog.md`) is authored once at scaffold time, so a backlog onboarded before a format field existed documents an *older* schema — items get backfilled (e.g. `stage:`) while the legend never mentions the new field, leaving a reader without the key. Reconcile it: ensure the legend documents the **current canonical field set** (every field described above in "The format you operate on" — including `stage:`, `refs:`, `accepted-by:`, and `revisit:`); add a one-line description for any canonical field the legend is missing. **Additive and non-destructive** — never remove or rewrite a project-local field's documentation (a repo may legitimately document its own extension, e.g. a `kind:` facet); you are filling gaps, not overwriting. Idempotent (a legend already covering the canonical set is left untouched). Like the strikeout sweep, run this even when there are no legacy items.
 5. **On completion** (all legacy items structured + sections folded + strikeouts cleaned + legend refreshed), write `backlog_format_version: 2` as a top-level key in `.prawduct/project-state.yaml`. This records — as a committed, shared fact — that the backlog is on the structured format, and is the resolution-condition the plugin-native `legacy-backlog-format` probe (`lib/backlog_probes.py`) consults to clear its advisory for everyone on next sync. If migration is partial (user skipped items), do **not** set it yet — say how many remain.
 6. Report: items migrated, sections folded, whether the legend was refreshed (and which fields it gained), whether `backlog_format_version` was set, and how many (if any) remain legacy.
+
+### decline-migration <reason>
+Permanently record that this product is staying on the **markdown** backlog (#197/TM1) — a product
+with no GitHub remote, on another forge, air-gapped, or whose owner simply does not want an Issues
+tracker. Without this, `backlog-service-migration-required` nudges every session toward a migration
+that is never going to happen, and a signal nobody can act on is one a reader learns to skip.
+**Requires a reason**; if none is given, ask for one rather than writing the field with no rationale.
+
+1. **Precondition.** Read `backlog_service_repo` from `.prawduct/project-state.yaml`. If it is
+   already set, this product has cut over — say so and stop; there is nothing to decline.
+2. **Write.** Add, as a top-level scalar in `.prawduct/project-state.yaml` (create the field if
+   absent; if it is already `markdown`, report "already declined" and stop):
+
+   ```yaml
+   # <reason, verbatim from the caller> — recorded <today's date>
+   backlog_backend: markdown
+   ```
+
+   The comment directly above the field is the record of *why* — the same convention this file
+   already uses above `backlog_service_repo` once a product cuts over. Do not invent a reason the
+   caller did not give.
+3. **Report.** Confirm the field was written and that `backlog-service-migration-required` will no
+   longer fire. Say explicitly that `legacy-backlog-format`, `legacy-section-schema` and
+   `backlog-overdue-grooming` are **unaffected** and keep running: the product is staying on the
+   file, so that file's format, schema and grooming hygiene matter more, not less.
+
+**Reversing it** is a normal, unceremonious edit to a committed file — delete the `backlog_backend`
+line, or set `backlog_service_repo` if the product does decide to migrate, which wins outright. There
+is deliberately no `undecline-migration` verb.
 
 ### import <path>
 Convert an external backlog file (`TODO.md`, `BACKLOG.md`, `ROADMAP.md`, `IDEAS.md`, a GitHub issue export, etc.) into structured items. **Always confirm before writing.**
@@ -181,7 +222,7 @@ The scrub's high-consequence adapter ops — `import` (bulk-creates 100–250 is
 
 GREAT triage so each project doesn't reinvent it. Run periodically (the janitor's Backlog Health step automates the surfacing). The moves, in order:
 1. **Converge duplicates/overlaps** — run `dedup`; merge or cross-link (`related:`) near-duplicates so one canonical item carries the work.
-2. **Link to the source of truth** — for any item whose requirement/arch/design is written down, set `refs:` to that doc; for item→item relationships, set `related:`/`closes:`. A linked backlog is navigable; an unlinked one is a pile.
+2. **Link to the source of truth** — for any item whose requirement/arch/design is written down, set `refs:` to that doc (Issues backend: `update <id> --refs <doc>`, or `file --refs <doc>` to land it at creation); for item→item relationships use `link`/`unlink` (`related`) and `merge` (supersession), not a field write. A linked backlog is navigable; an unlinked one is a pile.
 3. **Set the stage** — give each item a `stage:` (a vague item without one defaults to *not-ready* and won't be picked for implementation). Backfill `stage: ready` on bug/cleanup items, early stages on feature ideas. This is the single highest-value backfill on an existing backlog.
 4. **Staleness review** — for `status: open` items unmoved >90d, decide: re-confirm (touch `reviewed:`), update with current context, or `status=dropped`. Aging out is fine; silting is not.
 5. **Reconcile shipped work (fallback)** — the primary path is archiving an item as part of the work that closes it, at whichever moment "When to mark shipped" above specifies for the live backend; this step is the catch-net for items whose work shipped but were never archived. Move them to `status=shipped` (Archive). Never infer this from build plans/change-logs (D4) — it's an explicit human/agent call; the Critic/PR checks only *surface* candidates.

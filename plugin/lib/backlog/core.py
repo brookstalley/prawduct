@@ -116,6 +116,7 @@ def file_item(
     automated: bool = False,
     worker: str | None = None,
     absorb: Absorb | None = None,
+    refs: str | None = None,
 ) -> dict:
     """Create one item (AG2): ``title`` + ``body`` suffice; every facet optional.
 
@@ -133,6 +134,15 @@ def file_item(
         return error("validation", "title is required")
     if body is None:
         return error("validation", "body is required (may be empty text, not omitted)")
+    if refs is not None:
+        # Same value-level guard as `update` — a create is no less a write path
+        # into the block, and this is the one block field settable here.
+        bad = encode.check_block_value("refs", refs)
+        if bad:
+            return error("validation", bad, details={"field": "refs"})
+    bad = encode.check_body_text(body)
+    if bad:
+        return error("validation", bad, details={"field": "body"})
 
     # Emit the §1 title shape (`area: summary`) before the create so the issue is
     # born standard-compliant (issue-standard §1). Idempotent; never fights a
@@ -169,7 +179,7 @@ def file_item(
         if labels:
             prov = provision.ensure_labels(transport, owner, repo, labels)
             warnings.extend(prov.warnings)
-        full_body = _body_with_block(body, automated=automated, worker=worker)
+        full_body = _body_with_block(body, automated=automated, worker=worker, refs=refs)
         issue = transport.create_issue(
             owner, repo, title=title, body=full_body, labels=labels
         )
@@ -221,16 +231,29 @@ def _title_refusal(title: str) -> dict | None:
     )
 
 
-def _body_with_block(body: str, *, automated: bool = False, worker: str | None = None) -> str:
+def _body_with_block(
+    body: str,
+    *,
+    automated: bool = False,
+    worker: str | None = None,
+    refs: str | None = None,
+) -> str:
     """Append a minimal ``prawduct:`` block (``v: 1``) to the issue body.
 
     An unattended create stamps ``automated: true`` + a ``worker`` marker (CC4/
-    SEC-6) so a background sweep is not misattributed to the human."""
+    SEC-6) so a background sweep is not misattributed to the human.
+
+    ``refs`` is the one editorial field settable at birth. Without it a natively
+    filed item could never carry a ``refs:`` at all: the field is block-resident,
+    and before this the only writer was the importer — so post-cutover items were
+    structurally incapable of the link the skill's triage step asks for."""
     fields = {"v": "1"}
     if automated:
         fields["automated"] = "true"
         if worker:
             fields["worker"] = worker
+    if refs:
+        fields["refs"] = refs
     # The body↔block framing is shared with the importer via encode.compose_body,
     # so the two fresh-block writers can never diverge on separator/newline.
     return encode.compose_body(body, fields)
@@ -305,6 +328,21 @@ def get_item(
         return error("unavailable", "the backend request failed unexpectedly")
 
     item, warnings = encode.decode_item(issue, canonical_id=nid.canonical)
+    # The DM5 drill-down: `get` is the one read that carries the comment thread,
+    # because clarifications and solution links land there after filing. Skipped
+    # when the payload count says there is nothing to fetch; a failed fetch
+    # degrades to the payload count + a warning, never a failed get (ERR-6).
+    item["comments"] = []
+    if issue.get("comments") != 0:
+        try:
+            item["comments"] = transport.list_comments(nid.owner, nid.repo, nid.number)
+            item["comments_count"] = len(item["comments"])
+        except (TransportError, OSError, json.JSONDecodeError) as exc:  # ERR-6
+            log_diag(f"comment fetch failed on get: {type(exc).__name__}")
+            warnings.append(
+                "the comment thread could not be fetched — the item may carry "
+                "discussion (clarifications, solution links) you are not seeing"
+            )
     superseded = item.get("superseded_by")
     if superseded:
         # A merged-away source: follow the redirect chain so the caller learns
@@ -512,9 +550,11 @@ def set_status(
     (For a closed target this reduces to state-first-then-strip-labels — there is no
     ``status:shipped``/``status:dropped`` label in the taxonomy, and the closed
     ``state_reason`` is the authority the decoder reads regardless of any transient
-    label, so there is never an unreadable window. ``closed_by`` recording — native
-    timeline handle + the manual ``--closed-by`` block stamp, Data Model §1.1 /
-    API §2.6 — is deferred, tracked as a NOTE.)
+    label, so there is never an unreadable window. ``closed_by`` recording landed with
+    #550/#564: the native timeline handle plus the ``--closed-by`` block stamp,
+    Data Model §1.1 / API §2.6. It is not a flag on *this* op -- ``status`` takes
+    no ``--closed-by`` -- so a caller that wants the scope recorded pairs this
+    call with ``update <id> --closed-by <scope>``.)
     """
     if target not in encode.STATUS_VALUES:
         return error(
@@ -585,6 +625,7 @@ def set_status(
 # that someone is on an item.
 _UPDATE_DIRECT: tuple[str, ...] = ("title", "body")
 _UPDATE_FACETS: tuple[str, ...] = ("stage", "kind", "area", "effort", "impact", "source")
+
 
 # A DELIBERATE WIDENING of the SEC-2 allowlist, in two new categories rather than
 # three more facets — and the split is mechanical, not stylistic.
@@ -661,6 +702,37 @@ def _prepare_new_fields(fields: dict):
     return block_values, desired_tags, working_ref
 
 
+# The editorial block fields `update` may write — metadata whose value is a
+# human/agent judgment about the item and which GitHub has no native slot for.
+# Before these existed the block was **write-once at import** for them, so the
+# skill's own instructions to set `refs:` / `closed-by:` named writes no exposed
+# op could perform, and `--body` looked like it worked because
+# `_body_update_preserving_block` re-appends the OLD block by design.
+#
+# Deliberately NOT writable, each for a different reason — this list is the
+# extension of the SEC-2 guard, not a hole in it:
+#   `added`                     native `created_at` already answers it, unforgeably;
+#                               a creation date is never updated.
+#   `id_aliases` `v`            identity and schema version — permanent-alias loss
+#                               is the MG2 footgun the block exists to prevent.
+#   `original_title/_body`      write-once migration provenance (MG6).
+#   `automated` `worker`        the unattended-actor marker; caller-settable
+#                               attribution is exactly the SEC-6 forgery it guards.
+#   `provenance`                self-asserted, untrusted-until-triaged (Security §5).
+#   `claimed_at` `related`      owned by link/unlink and merge — a bare field write
+#   `superseded_by`             would bypass their invariants (edge symmetry, redirect).
+#   `verified` `attachments`    structured values, not free text; no flag shape yet.
+#   `reviewed`                  has no consumer: the stale-items sweep takes its date
+#                               from native `updated_at` (#550 scope reshape 2026-08-07),
+#                               so a second, forgeable copy would answer nothing.
+#
+# `closed-by` is HYPHENATED because that is what 149 live items spell and zero
+# spell `closed_by`; the data-model's prose is what gets corrected, not the data.
+# An empty value CLEARS a field — an expired `revisit:` has to be removable — so
+# these are valued flags, never booleans.
+_UPDATE_BLOCK: tuple[str, ...] = ("refs", "revisit", "closed-by")
+
+
 def update_item(
     transport: Transport,
     *,
@@ -675,9 +747,11 @@ def update_item(
 
     Writes **only** the documented item fields the caller named — ``title``,
     ``body``, the soft-enum facets (``stage``/``kind``/``area``/``effort``/
-    ``impact``/``source``), the multi-valued ``tags``, and the block-authoritative
-    ``affected`` / ``working-branch``. ``status`` goes through set-status,
-    and ``assignee`` is not writable at all; any other key — a native/protected field
+    ``impact``/``source``), the multi-valued ``tags``, the block-authoritative
+    ``affected`` / ``working-branch``, and the editorial block fields in
+    :data:`_UPDATE_BLOCK` (``refs``/``revisit``/``closed-by``). ``status`` goes
+    through set-status, and ``assignee`` is not writable at all; any other key — a
+    native/protected field
     (``node_id``, ``number``, ``state``, ``history``), an ``automated:`` marker,
     foreign attribution — is **rejected**, never written from request input
     (attribution comes only from the API identity). When ``expected_updated_at``
@@ -686,8 +760,9 @@ def update_item(
 
     ``tags`` sets the **whole** tag set (missing ones added, absent ones stripped)
     rather than appending, because that is the only semantics under which a
-    caller can *remove* a tag; ``tags=`` clears them. ``affected=`` and
-    ``working-branch=`` likewise clear their block keys.
+    caller can *remove* a tag; ``tags=`` clears them. ``affected=``,
+    ``working-branch=`` and each of the editorial block flags likewise clear
+    their block keys.
     """
     if not fields:
         return error("validation", "update requires at least one field to change")
@@ -698,6 +773,7 @@ def update_item(
         | set(_UPDATE_FACETS)
         | set(_UPDATE_MULTI_FACETS)
         | set(_UPDATE_BLOCK_FIELDS)
+        | set(_UPDATE_BLOCK)
     )
     rejected = sorted(key for key in fields if key not in allowed)
     if rejected:
@@ -706,6 +782,22 @@ def update_item(
             f"update cannot write field(s) {rejected}; writable fields are {sorted(allowed)}",
             details={"rejected": rejected},
         )
+    # The allowlist above guards which KEYS a caller may name; this guards what
+    # their VALUES expand into. Block values are free text and land in a
+    # line-based format, so without this a legal key smuggles forbidden siblings
+    # (`--refs $'a\nautomated: true'`) straight past the allowlist that just ran.
+    for key in _UPDATE_BLOCK:
+        if key in fields:
+            bad = encode.check_block_value(key, fields[key])
+            if bad:
+                return error("validation", bad, details={"field": key})
+    # The sibling route: `--body` is caller text that lands in the same body an
+    # unterminated fence can turn into block fields. Guarding the flags but not
+    # this would leave the identical forgery one flag to the left.
+    if "body" in fields:
+        bad = encode.check_body_text(fields["body"])
+        if bad:
+            return error("validation", bad, details={"field": "body"})
 
     # The §1 title rules block on the title BEING WRITTEN — not on the issue's
     # resulting title (owner ruling 2026-08-06). Checked before any I/O: a
@@ -782,6 +874,12 @@ def update_item(
         for name, value in block_values.items():
             base = new_body if new_body is not None else (issue.get("body") or "")
             new_body = encode.upsert_block_field(base, _BLOCK_KEY[name], value)
+        # The editorial fields compose into the same chain, in the same order and
+        # for the same reason. Empty value → clear the field outright rather than
+        # write an empty one, so an expired `revisit:` can be removed, not blanked.
+        for key in [k for k in _UPDATE_BLOCK if k in fields]:
+            base = new_body if new_body is not None else (issue.get("body") or "")
+            new_body = encode.upsert_block_field(base, key, fields[key] or None)
         # Only PATCH a body that actually changed — clearing a field that was
         # never set would otherwise spend a write and bump `updated_at`, and that
         # stamp is not inert: it is the sync watermark and the CAS comparand, so a
@@ -1095,6 +1193,19 @@ def iter_alias_issues(transport: Transport, owner: str, repo: str):
     discarded. Decode advisories (a torn or unrecognized encoding) are *not*
     surfaced here — this is a coverage scan, not a decoder audit, and the decode
     fails open to a safe value by design.
+
+    **An issue carrying ``superseded_by`` is skipped entirely.** A redirected
+    issue is not an independent claimant of the id: the redirect already encodes
+    "this is not the authoritative record", and every consumer of this scan wants
+    the authoritative one. Without the skip, ``merge`` — which upserts
+    ``superseded_by`` on the loser and closes it, but never strips its
+    ``id_aliases`` entry — left the pair still recording one PFX at two
+    disagreeing statuses, so the completeness gate's ``duplicate_alias`` list
+    survived the very remedy the gate prescribed for it, and the cutover could
+    not proceed (#534). The other two consumers want the skip for the same
+    reason: the alias-label restorer would otherwise re-add a label to a
+    redirected loser, and the import's skip-authority would key the item to it
+    rather than to the survivor.
     """
     issues = paginate(
         lambda page, size: transport.list_issues(
@@ -1109,6 +1220,8 @@ def iter_alias_issues(transport: Transport, owner: str, repo: str):
         if number is None:
             continue
         block = encode.parse_block(issue.get("body"))
+        if block.superseded_by():
+            continue  # redirected away — not an independent claimant of its ids
         pfxs = [pfx for pfx in block.id_aliases() if ids.is_pfx(pfx)]
         label_names = {
             name for label in issue.get("labels", []) if (name := label.get("name"))

@@ -132,7 +132,21 @@ def probe_change_log_union_merge(state: ProjectState, codebase: Codebase):
                 "advanced base conflicts there every time; union-merge keeps both "
                 "sides' entries instead"
             ),
-            recommended_action=f"add `{UNION_MERGE_LINE}` to .gitattributes and commit it",
+            # Addressed to the owner because it is genuinely theirs: `.gitattributes`
+            # is outside the plugin's write set, and that exclusion is part of what
+            # makes running prawduct a safe trust decision. So the concrete line
+            # lives here rather than in an agent field that can never act on it.
+            owner_action=(
+                f"Add the line `{UNION_MERGE_LINE}` to `.gitattributes` and commit it. It "
+                "is one line, and it changes nothing the log says — it only stops every "
+                "branch's entry from colliding on the same first lines at merge time. "
+                "Prawduct never writes that file itself, which is why this one is yours."
+            ),
+            # Empty, deliberately. This field means "the command the runtime
+            # executes", and there is none — the repair is a file edit the plugin
+            # is not allowed to make. It previously held the prose above, which the
+            # briefing rendered behind a literal "Run" prefix, instructing nobody.
+            recommended_action="",
             alternative_actions=("/prawduct:doctor",),
             priority="info",
         )

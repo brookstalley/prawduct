@@ -59,10 +59,27 @@ def probe_untriaged_upstream_reports(state: ProjectState, codebase: Codebase):
                 "not yet triaged into the backlog",
             ),
             trigger_summary=(
-                f"{count} untriaged bug report(s) in incoming-bugs/ — triage each "
-                "into the backlog (/prawduct:backlog add) and archive it"
+                f"{count} untriaged bug report(s) in incoming-bugs/, each waiting to be "
+                "filed into the backlog and archived"
+            ),
+            owner_action=(
+                "Say go, and each report is read, filed into the backlog, and archived. "
+                "Worth a look first if you want a say in which of them count as real bugs "
+                "and what priority each one carries."
             ),
             recommended_action="/prawduct:backlog",
+            # Triage files these reports INTO the backlog, and migrating that backlog
+            # onto the issue service is a one-shot reviewed bulk write. Triaging
+            # afterwards still works — /prawduct:backlog routes on the live backend —
+            # but the stragglers then arrive by a different path and outside the batch
+            # that was reviewed. Severity ordering alone gets this backwards: triage is
+            # `info` and the migration nudge is `warn`.
+            prerequisite_of=(
+                (
+                    "backlog:backlog-service-migration-required",
+                    "incoming-bug triage, so the whole backlog migrates in one reviewed batch",
+                ),
+            ),
             priority="info",
         )
     ]

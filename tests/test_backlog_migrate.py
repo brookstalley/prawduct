@@ -39,7 +39,7 @@ for _p in (str(_REPO_ROOT), str(_TESTS_DIR)):
 
 import pytest  # noqa: E402
 
-from lib.backlog import cli, core, encode, ids, legacy, migrate  # noqa: E402
+from lib.backlog import cli, core, encode, ids, issuefmt, legacy, migrate  # noqa: E402
 from lib.backlog.transport import TransportError  # noqa: E402
 from fakes.fake_github import FakeGitHub  # noqa: E402
 from fixtures.backlog_fixtures import DISCODON_MINI, multi_prefix_backlog  # noqa: E402
@@ -149,8 +149,16 @@ class TestRoundTripFidelity:
             assert rec is not None, f"{pfx} missing from export"
             # ID: the hand-minted PFX survives as a permanent alias (verbatim).
             assert pfx in (rec["id_aliases"] or [])
-            # Title: the [PFX] marker stripped, the rest verbatim.
-            assert rec["title"] == _ID_MARKER.sub("", item.title).strip()
+            # Title: the [PFX] marker stripped, then normalized to the §1
+            # `area: summary` shape (#728 — prefixing is a property of import,
+            # not of having been retitled). Fidelity is preserved, not waived:
+            # the pre-migration string is stashed verbatim in the block, so the
+            # source title still comes back exactly.
+            source_title = _ID_MARKER.sub("", item.title).strip()
+            expected = issuefmt.normalize_title(source_title, item.metadata.get("area"))
+            assert rec["title"] == expected
+            if expected != source_title:
+                assert rec["block"].get("original_title") == source_title
             # Body: verbatim, minus the appended prawduct: block.
             assert encode.strip_block(rec["body"]).strip() == item.body.strip()
             # Status (section/metadata → the two axes).
@@ -172,6 +180,263 @@ class TestRoundTripFidelity:
         assert manifest["repo"] == SCOPE
         assert manifest["count"] == len(_DIS_PFXS)
         assert len(manifest["items"]) == len(_DIS_PFXS)
+
+
+# --- #729: promoted survives, and the gate no longer grades its own homework -
+
+
+class TestPromotedSurvivesTheImport:
+    """`promoted` is documented markdown vocabulary and a first-class section, but
+    it is not an `encode.STATUS_VALUES` member, so it fell through the
+    unknown-value path to `open` — losing the in-flight signal on exactly the item
+    most likely to carry it."""
+
+    PROMOTED = (
+        "# Backlog\n\n## Promoted\n\n"
+        "- **[SWD-K3M1]** The active spike\n"
+        "  `effort: M · impact: L · area: core · stage: ready · status: promoted`\n"
+    )
+
+    def test_promoted_maps_to_in_progress(self):
+        records, _ = migrate.collect_records(self.PROMOTED)
+        assert [r.status for r in records] == ["in-progress"]
+
+    def test_the_created_issue_carries_the_in_progress_sub_state(self, fake):
+        assert _import(fake, self.PROMOTED)["status"] == "ok"
+        issue = _alias_issues(fake, "SWD-K3M1")[0]
+        assert "status:in-progress" in encode.label_names(issue)
+
+    def test_the_source_spelling_is_still_preserved_in_the_block(self, fake):
+        # The alias maps the value; it does not erase what the author wrote.
+        _import(fake, self.PROMOTED)
+        issue = _alias_issues(fake, "SWD-K3M1")[0]
+        assert encode.parse_block(issue["body"]).get("status") == "promoted"
+
+    def test_the_gate_passes_on_a_faithful_promoted_import(self, fake):
+        _import(fake, self.PROMOTED)
+        verified = migrate.verify_migration(
+            fake, owner=OWNER, repo=REPO, content=self.PROMOTED
+        )
+        assert verified["status"] == "ok", verified
+
+
+class TestGateExpectationIsIndependent:
+    """The gate derived its expectation through `_target_status` — the very
+    function that produced the outcome — so it could only confirm that the code
+    agreed with itself. These pin the second implementation, and the fact that a
+    disagreement between the two is now visible rather than certified."""
+
+    def test_the_expectation_table_covers_the_documented_vocabulary(self):
+        """`templates/backlog.md` is what an author writes against; every status
+        it documents must be a status the gate can grade."""
+        template = (
+            Path(__file__).resolve().parent.parent
+            / "plugin" / "templates" / "backlog.md"
+        ).read_text(encoding="utf-8")
+        documented = re.search(r"^\s*status: (.+)$", template, re.M).group(1)
+        for value in (v.strip() for v in documented.split("|")):
+            assert value in migrate._GATE_EXPECTED_STATUS, (
+                f"the template documents `status: {value}` but the completeness "
+                "gate has no expectation for it, so an item carrying it cannot be "
+                "graded — the divergence #729 was about"
+            )
+
+    def test_a_regressed_target_status_is_reported_not_certified(self, fake):
+        """The regression itself: with the importer's mapping reverted, the gate
+        must still see `open` where `in-progress` was expected."""
+        _import(fake, TestPromotedSurvivesTheImport.PROMOTED)
+        number = _alias_issues(fake, "SWD-K3M1")[0]["number"]
+        # Drive the target back to what the pre-fix import produced.
+        core.set_status(fake, id_raw=f"{OWNER}/{REPO}#{number}", target="open")
+
+        verified = migrate.verify_migration(
+            fake, owner=OWNER, repo=REPO, content=TestPromotedSurvivesTheImport.PROMOTED
+        )
+
+        assert verified["status"] == "error"
+        assert verified["error"]["details"]["status_mismatch"] == [
+            "SWD-K3M1 (source: in-progress, target: open)"
+        ]
+
+    def test_an_undocumented_status_is_its_own_class_with_its_own_remedy(self, fake):
+        """A status in no vocabulary was silently substituted with `open` and the
+        gate passed. It is not a `status_mismatch`: re-running the import — that
+        list's remedy — substitutes it again."""
+        content = (
+            "# Backlog\n\n## Open\n\n"
+            "- **[SWD-0009]** An item with a typo'd status\n"
+            "  `effort: S · impact: M · area: core · status: opne`\n"
+        )
+        assert _import(fake, content)["status"] == "ok"
+
+        verified = migrate.verify_migration(fake, owner=OWNER, repo=REPO, content=content)
+
+        assert verified["status"] == "error"
+        details = verified["error"]["details"]
+        assert details["unencodable_status"] == ["SWD-0009 (source status: 'opne')"]
+        assert details["status_mismatch"] == []
+        assert "do not re-run the import" in verified["error"]["message"]
+
+    def test_the_mismatch_remedy_warns_that_a_re_import_overwrites_a_repair(self, fake):
+        """The message steered an operator who had repaired the target into
+        reverting their own repair."""
+        remedy = migrate._incompleteness_remedy([], [], [], ["X (source: a, target: b)"], [])
+        assert "overwrites a deliberate correction" in remedy
+
+
+# --- #727: an invisible backlog is refused, never imported as empty ----------
+
+
+class TestInvisibleSourceIsRefused:
+    """A backlog whose items are indented parses as zero items — and zero items
+    imported cleanly, then `verify-migration` compared an empty source set
+    against an empty alias set, found them consistent, and recorded a successful
+    cutover over a backlog it had silently emptied.
+
+    Both halves are pinned. Fixing only `import` leaves the gate certifying the
+    loss for anyone who imported before the fix; fixing only the gate leaves the
+    import doing it.
+    """
+
+    INDENTED = (
+        "# Backlog\n\n## Open\n\n"
+        "  - **[SWD-0001]** Weapon feel is wrong\n"
+        "    `effort: M · impact: L · area: weapon-feel · status: open`\n\n"
+        "  - **[SWD-0002]** Safety net is missing\n"
+        "    `effort: S · impact: M · area: safety · status: open`\n"
+    )
+    FLUSH = (
+        "# Backlog\n\n## Open\n\n"
+        "- **[SWD-0001]** Weapon feel is wrong\n"
+        "  `effort: M · impact: L · area: weapon-feel · status: open`\n"
+    )
+    EMPTY = "# Backlog\n\n## Open\n\n## Promoted\n\n## Archive\n"
+
+    def test_import_refuses_and_writes_nothing(self, fake):
+        result = _import(fake, self.INDENTED)
+        assert result["status"] == "error"
+        assert result["error"]["code"] == "validation"
+        assert result["error"]["details"]["items_if_dedented"] == 2
+        assert "column 0" in result["error"]["message"]
+        assert fake.list_issues(OWNER, REPO, state="all") == []
+
+    def test_verify_migration_refuses_instead_of_certifying_the_loss(self, fake):
+        verified = migrate.verify_migration(
+            fake, owner=OWNER, repo=REPO, content=self.INDENTED
+        )
+        assert verified["status"] == "error"
+        assert verified["error"]["code"] == "validation"
+        assert verified["error"]["details"]["items_if_dedented"] == 2
+
+    def test_a_genuinely_empty_backlog_is_not_accused(self, fake):
+        # "Nothing to migrate" must stay a clean pass — the refusal keys on
+        # items that WOULD parse, not on the file being large.
+        assert _import(fake, self.EMPTY)["status"] == "ok"
+        verified = migrate.verify_migration(fake, owner=OWNER, repo=REPO, content=self.EMPTY)
+        assert verified["status"] == "ok", verified
+
+    def test_the_shipped_template_is_not_accused(self, fake):
+        """The scaffolded backlog is exactly the "big file, zero items" shape a
+        byte-count heuristic would have failed on."""
+        template = (
+            Path(__file__).resolve().parent.parent
+            / "plugin" / "templates" / "backlog.md"
+        ).read_text(encoding="utf-8")
+        assert _import(fake, template)["status"] == "ok"
+
+    def test_a_flush_left_backlog_imports(self, fake):
+        assert _import(fake, self.FLUSH)["status"] == "ok"
+
+    def test_an_indented_archive_file_is_caught_too(self, fake):
+        result = migrate.import_backlog(
+            fake, owner=OWNER, repo=REPO,
+            content=self.EMPTY, archive_content=self.INDENTED,
+        )
+        assert result["status"] == "error"
+        assert result["error"]["details"]["items_if_dedented"] == 2
+
+
+class TestTemplateDocumentsTheColumnZeroRule:
+    """The template is what an author pattern-matches against; it was the source
+    of the trap and is the only place a new repo can learn the rule."""
+
+    def _template(self):
+        return (
+            Path(__file__).resolve().parent.parent
+            / "plugin" / "templates" / "backlog.md"
+        ).read_text(encoding="utf-8")
+
+    def test_the_item_example_is_flush_left(self):
+        text = self._template()
+        assert re.search(r"^- \*\*\[PFX-XXXX\]\*\*", text, re.M), (
+            "the template's item-shape example is indented again — an author "
+            "copying it authors a backlog that parses as zero items"
+        )
+
+    def test_the_column_zero_rule_is_stated(self):
+        assert "COLUMN 0" in self._template()
+
+
+# --- #728: prefixing is a property of import ---------------------------------
+
+
+class TestImportAppliesTheAreaPrefix:
+    """The import path must normalize titles itself, not inherit prefixing as a
+    side effect of a restructure plan happening to name the item.
+
+    The trap this closes is a DEFAULT-PATH one: the obvious way to author a
+    restructure plan is to retitle the items the linter complained about and
+    leave the rest. That produced an issue list where the retitled items carried
+    `area:` and the untouched ones did not — in a new repo, the whole backlog —
+    and nothing caught it, because no §1 rule requires the prefix, so the import
+    succeeded and the preview reported clean.
+    """
+
+    def _records(self, content):
+        records, _collisions = migrate.collect_records(content)
+        return {r.pfx: r for r in records}
+
+    def test_an_untouched_item_still_gains_its_prefix(self):
+        content = (
+            "## Open\n\n"
+            "- **[BKL-0001]** Rate-limit the trade API\n"
+            "  `effort: S · impact: M · area: backend · status: open`\n"
+        )
+        record = self._records(content)["BKL-0001"]
+        assert record.title == "backend: Rate-limit the trade API"
+
+    def test_an_already_prefixed_title_is_left_alone(self):
+        # Composition with restructure rests on this: normalize_title never
+        # double-prefixes, so import and a plan can both run it.
+        content = (
+            "## Open\n\n"
+            "- **[BKL-0002]** backend: Rate-limit the trade API\n"
+            "  `effort: S · impact: M · area: backend · status: open`\n"
+        )
+        record = self._records(content)["BKL-0002"]
+        assert record.title == "backend: Rate-limit the trade API"
+        assert record.block.get("original_title") is None
+
+    def test_a_slash_bearing_area_prefixes_once(self):
+        """#591 is a prerequisite, not a coincidence: with the old charset every
+        slash-bearing area double-prefixed, so wiring normalization into import
+        would have mis-titled twelve areas' worth of items on every migration."""
+        content = (
+            "## Open\n\n"
+            "- **[BKL-0003]** governance/kernel: a summary\n"
+            "  `effort: S · impact: M · area: governance/kernel · status: open`\n"
+        )
+        assert self._records(content)["BKL-0003"].title == "governance/kernel: a summary"
+
+    def test_an_item_with_no_area_is_untouched(self):
+        content = (
+            "## Open\n\n"
+            "- **[BKL-0004]** Rate-limit the trade API\n"
+            "  `effort: S · impact: M · status: open`\n"
+        )
+        record = self._records(content)["BKL-0004"]
+        assert record.title == "Rate-limit the trade API"
+        assert record.block.get("original_title") is None
 
 
 # --- MIG-2: multi-prefix absorption ------------------------------------------
@@ -228,7 +493,10 @@ class TestMultiPrefixAbsorption:
 
         issues = _alias_issues(fake, "MIG-M4-REMOVE")
         assert len(issues) == 1
-        assert issues[0]["title"] == "Remove the shim"
+        # Normalized on import (#728): the marker is stripped and the `area:`
+        # prefix applied, so the issue reads `core: Remove the shim` rather
+        # than `[MIG-M4-REMOVE] Remove the shim` OR a bare summary.
+        assert issues[0]["title"] == "core: Remove the shim"
 
     def test_multi_segment_id_satisfies_the_completeness_gate(self, fake):
         """The end the widening exists to serve: such an item no longer lands in
@@ -257,7 +525,9 @@ class TestMultiPrefixAbsorption:
         verified = migrate.verify_migration(fake, owner=OWNER, repo=REPO, content=content)
         assert verified["status"] == "error", verified
         assert verified["error"]["code"] == "conflict"
-        assert verified["error"]["details"]["unaliasable"] == ["A bare legacy item with no id"]
+        assert verified["error"]["details"]["unaliasable"] == [
+            "core: A bare legacy item with no id"
+        ]
 
     def test_id_less_item_keyed_on_import_marker_not_duplicated(self, fake):
         content = "## Open\n\n- A bare legacy item with no id\n  `area: core · status: open`\n"
@@ -1744,6 +2014,66 @@ class TestVerifyMigration:
         )
         assert again["status"] == "error"  # converges on nothing, exactly as claimed
         assert again["error"]["details"]["duplicate_alias"] == ["DIS-0001"]
+
+    def test_the_prescribed_merge_actually_clears_duplicate_alias(self, fake):
+        """#534 — the sibling of `test_the_gate_clears_once_the_resume_converges`,
+        and the one that was missing.
+
+        The gate prescribed `merge <n> --into <m>` for `duplicate_alias`, and that
+        remedy did not clear the list: `merge` upserts `superseded_by` on the loser
+        and closes it, but never strips its `id_aliases`, so the pair still recorded
+        one PFX at two disagreeing statuses. The operator was stranded at the one
+        step the runbook says must not be taken on trust. A check that stays red
+        after the remedy it prescribes is as useless as one that never fired.
+        """
+        _import(fake, DISCODON_MINI)
+        dup = fake.create_issue(
+            OWNER, REPO,
+            title="a second issue recording the same alias",
+            body="Body.\n\n```prawduct\nv: 1\nid_aliases: [DIS-0001]\n```\n",
+            labels=[],
+        )
+        fake.update_issue(
+            OWNER, REPO, dup["number"],
+            fields={"state": "closed", "state_reason": "completed"},
+        )
+        blocked = migrate.verify_migration(fake, owner=OWNER, repo=REPO, content=DISCODON_MINI)
+        assert blocked["error"]["details"]["duplicate_alias"] == ["DIS-0001"]
+
+        survivor = _alias_issues(fake, "DIS-0001")[0]["number"]
+        merged = migrate.merge(
+            fake,
+            source_raw=f"{OWNER}/{REPO}#{dup['number']}",
+            target_raw=f"{OWNER}/{REPO}#{survivor}",
+        )
+        assert merged["status"] == "ok", merged
+
+        cleared = migrate.verify_migration(fake, owner=OWNER, repo=REPO, content=DISCODON_MINI)
+        details = cleared.get("error", {}).get("details", {"duplicate_alias": []})
+        assert details["duplicate_alias"] == [], (
+            "the remedy the gate itself prescribes still does not clear the list "
+            "it is prescribed for"
+        )
+
+    def test_a_redirected_issue_stops_claiming_its_alias(self, fake):
+        """The mechanism under the convergence above, pinned on its own so the
+        two cannot be fixed apart: a `superseded_by` issue is not an independent
+        claimant of the ids in its block."""
+        _import(fake, DISCODON_MINI)
+        dup = fake.create_issue(
+            OWNER, REPO,
+            title="a redirected issue",
+            body=(
+                "Body.\n\n```prawduct\nv: 1\nid_aliases: [DIS-0001]\n"
+                f"superseded_by: {OWNER}/{REPO}#1\n```\n"
+            ),
+            labels=[],
+        )
+        seen = [
+            number for number, _pfxs, _labels, _status
+            in core.iter_alias_issues(fake, OWNER, REPO)
+        ]
+        assert dup["number"] not in seen
 
     def test_the_gate_clears_once_the_resume_converges(self, fake):
         """The mismatch must be a live reading, not a sticky one: re-running the

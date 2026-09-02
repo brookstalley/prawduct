@@ -73,16 +73,19 @@ def _make_project(
     plan_suffix: str = "",
     digest: str | None = None,
     evidence: dict | None = _EVIDENCE_DEFAULT,
-    session_start: str | None = None,
+    session_start: str | None = "2000-01-01T00:00:00Z",
 ) -> Path:
     project = tmp_path / "proj"
     _write(project / ".prawduct" / "change-log.md", "# Change Log\n\n" + entries)
     # A green run by default: the gate refuses over the code as well as over the
     # bookkeeping, so every fixture that is not *about* the suite has to state
     # that the suite passed. `evidence=None` writes no record — the missing-
-    # evidence refusal. `session_start` is what makes a record STALE: with no
-    # marker the reader has no session to compare against and accepts a passing
-    # run, which is the same fallback a repo outside a governed session gets.
+    # evidence refusal. `session_start` is what dates a record: the reader
+    # compares the evidence tree against the marker to decide current-vs-stale.
+    # It defaults to an ancient marker so a fixture that is not *about* staleness
+    # reads as current. Passing `None` writes NO marker, which since #186 reads
+    # STALE rather than accepting the run -- an unanchored worktree is exactly
+    # the case the gate must not fail open on.
     if evidence is _EVIDENCE_DEFAULT:
         evidence = _evidence()
     if evidence is not None:

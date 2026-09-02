@@ -143,6 +143,14 @@ missing data.
 When you need one item's full detail (a direct "show me PFX-XXXX", or before an `update`):
 `prawduct-hook backlog get <id> --repo <r> --json` → render the item's fields + body from `data`.
 
+`get` also returns the item's **comment thread** — `data.comments`, oldest-first
+`{id, author, created_at, body, url}` — because comments are where an item evolves after filing: a
+clarification, a narrowed scope, a link to the fix. **Read the thread before acting on an item**;
+the body alone may be stale. Every read (`get`/`list`/`pick`) carries `comments_count`, so a
+nonzero count on a list line is your cue to drill down with `get`. If the thread can't be fetched,
+`get` still succeeds — `comments` comes back empty while `comments_count` keeps the payload count,
+and a warning says the discussion is there but unread; don't treat that as "no comments".
+
 ## Write operations
 
 Same envelope + exit discipline as reads. Render by the **operation you invoked** (you know which
@@ -172,7 +180,7 @@ sections** post-cutover: open/closed state + `status:` labels carry lifecycle pl
 
 ### add
 `prawduct-hook backlog file --repo <r> --title T --body B [--stage S] [--kind K] [--area A]
-[--effort E] [--impact I] [--source SRC]`. Author an issue-standard title (`area: summary`, ≤72,
+[--effort E] [--impact I] [--source SRC] [--refs R]`. Author an issue-standard title (`area: summary`, ≤72,
 atomic, 15-72 chars) + a sectioned body; set `--kind`. **A title failing §1 is REFUSED** with a
 `validation` error, not filed — rewrite and retry. The result may carry `lint[]` (body/label
 issue-standard hints — surface, never blocks). **Dedup-on-create runs on the cache**: check with
@@ -214,13 +222,15 @@ field rather than a missing one; it is not permission to write the block.
 ### update `<id>`
 Route by what changed:
 - **status** (`status=X`) → `status <id> --to <mapped>` (bridge table above). Idempotent (re-run =
-  no-op). **It does not record `closed_by`**: the op takes only `--to` and `--repo`, so a
-  `closed-by=<scope>` argument has nowhere to go and is dropped. GitHub's own timeline holds *who*
+  no-op). A close records `closed_by` natively **only on close-on-merge** (the timeline close-ref);
+  a bare `status --to shipped` carries no handle, so pass a `closed-by=<scope>` argument through as
+  `update <id> --closed-by <scope>` in the same breath or the ship handle is simply lost. GitHub's own timeline holds *who*
   closed the issue (and the closing PR or commit when the close rides a merge), but the adapter
-  neither stamps nor surfaces it, and the *scope* is not recoverable from it. Until `status` accepts
-  a `--closed-by` flag, record the scope where it stays visible on the item —
-  `comment <id> --body 'closed-by: <scope>'` — and say plainly that it is a comment rather than a
-  queryable field. Never hand-write it into a `prawduct:` block: that block is adapter-owned.
+  neither stamps nor surfaces it, and the *scope* is not recoverable from it. `update` **does** take
+  a `--closed-by` flag writing a queryable block field (#550/#564) — the comment workaround this
+  paragraph used to prescribe is retired. `status` itself still takes none, which is why the scope
+  rides the paired `update` above rather than the close. Never hand-write it into a `prawduct:`
+  block: that block is adapter-owned.
 - **field** (title/body/stage/kind/area/effort/impact/source) → `update <id> [--flag …]` (last write
   wins — correct for the interactive single-actor case). **`--title` is gated**: a new title failing
   §1 is refused (exit 2) before any write. Every OTHER field goes through untouched even when the
@@ -246,6 +256,13 @@ Route by what changed:
   the TTL and the assignee stamp. Setting the branch is the whole of taking an item, and `pick`
   excludes on it, so nothing else has to be recorded. Nothing expires it: the branch's last commit
   is the activity signal, which is why there is no TTL to configure and no reap to wait for.
+- **editorial block field** (`refs:`/`revisit:`/`closed-by:`) → `update <id> --refs V`,
+  `--revisit V`, `--closed-by V` — each takes a value, and an **empty** value clears the field, so
+  an expired `revisit:` can be removed rather than blanked. `file` also takes `--refs` so a new item
+  can carry its governing-doc link from birth. With `--affected`, `--working-branch` and `--tags`
+  above, these are the only writable block fields; **`--body` is not a route into the block** — a
+  pasted block is stripped and the existing one re-appended, so a block edit sent that way reports
+  success and changes nothing.
 - **link edge** (`related:`/blocks/blocked-by/parent/child) → `link <id> --edge <e> --to <target>` /
   `unlink …`.
 - **a free note** → `comment <id> --body B`.
