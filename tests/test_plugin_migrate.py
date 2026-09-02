@@ -828,3 +828,187 @@ class TestCollapseBlankRuns:
         # separate triple-newline runs each reduce to a double newline.
         text = "a\n\n\nb\n\n\nc"
         assert _migrate_plugin._collapse_blank_runs(text) == "a\n\nb\n\nc"
+
+
+# =============================================================================
+# base_branch — the gitflow knob, written at cutover (#254)
+# =============================================================================
+#
+# A pre-2.0 repo migrating onto the plugin is exactly a repo that never had the
+# knob, so the cutover is its one cheap moment to acquire it. Recorded ONLY when
+# the remote's own default branch is outside the main family: where it is `main`,
+# `coverage._resolve_base_branch` already answers `main` unaided and the key
+# would be noise in every ordinary repo.
+
+
+def _git(repo: Path, *args: str) -> str:
+    home = repo.parent / "_home"
+    home.mkdir(exist_ok=True, parents=True)
+    proc = subprocess.run(
+        ["git", *args],
+        cwd=str(repo), capture_output=True, text=True, timeout=30,
+        env={
+            "HOME": str(home),
+            "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+            "GIT_CONFIG_GLOBAL": str(home / "gitconfig"),
+            "GIT_CONFIG_SYSTEM": str(home / "gitconfig-system"),
+            "GIT_AUTHOR_NAME": "T", "GIT_AUTHOR_EMAIL": "t@example.com",
+            "GIT_COMMITTER_NAME": "T", "GIT_COMMITTER_EMAIL": "t@example.com",
+        },
+    )
+    assert proc.returncode == 0, f"git {args} failed: {proc.stderr}"
+    return proc.stdout.strip()
+
+
+def gitify(root: Path, remote_default: str | None) -> Path:
+    """Make ``root`` a git repo whose ``origin/HEAD`` names ``remote_default``."""
+    _git(root, "init", "-q", ".")
+    _git(root, "commit", "--allow-empty", "-q", "-m", "seed")
+    if remote_default is not None:
+        _git(root, "update-ref", f"refs/remotes/origin/{remote_default}",
+             _git(root, "rev-parse", "HEAD"))
+        _git(root, "symbolic-ref", "refs/remotes/origin/HEAD",
+             f"refs/remotes/origin/{remote_default}")
+    return root
+
+
+@pytest.mark.parametrize("remote_default,expected", [
+    ("develop", "develop"),   # the gitflow consumer the knob exists for
+    ("integration", "integration"),  # any non-main-family name, not an allowlist
+    ("main", None),           # NEGATIVE CONTROL — the resolver already says main
+    ("master", None),         # ...and master, the other half of the family
+])
+def test_cutover_records_base_branch_only_for_a_non_main_family_default(
+    tmp_path: Path, remote_default: str, expected: "str | None"
+):
+    """Both directions over one fixture: a writer that always writes, or never
+    does, fails half of this parametrization."""
+    repo = gitify(make_filesync_repo(tmp_path / "myproduct"), remote_default)
+    result = run_migrate(repo, "--apply")
+    state = (repo / ".prawduct" / "project-state.yaml").read_text()
+
+    assert result["base_branch"] == expected
+    if expected is None:
+        assert "base_branch" not in state
+    else:
+        assert f"base_branch: {expected}\n" in state
+        assert ".prawduct/project-state.yaml" in result["edited"]
+    # The cutover itself is unaffected either way.
+    assert "distribution: plugin" in state
+    assert result["removed"], "the cutover stopped doing its job"
+
+
+def test_a_repo_with_no_origin_head_migrates_normally(tmp_path: Path):
+    """`make_filesync_repo` is not a git repo at all, which is the harshest
+    version of this: every git probe must fail soft."""
+    repo = make_filesync_repo(tmp_path / "myproduct")
+    result = run_migrate(repo, "--apply")
+
+    assert result["base_branch"] is None
+    assert "base_branch" not in (
+        repo / ".prawduct" / "project-state.yaml"
+    ).read_text()
+    assert "distribution: plugin" in (
+        repo / ".prawduct" / "project-state.yaml"
+    ).read_text()
+
+
+def test_dry_run_previews_base_branch_and_writes_nothing(tmp_path: Path):
+    """The preview is what the operator's single confirmation is given against,
+    and this key changes what every diff-base gate measures."""
+    repo = gitify(make_filesync_repo(tmp_path / "myproduct"), "develop")
+    before = (repo / ".prawduct" / "project-state.yaml").read_bytes()
+
+    preview = run_migrate(repo)
+
+    assert preview["base_branch"] == "develop"
+    assert ".prawduct/project-state.yaml" in preview["edited"]
+    assert (repo / ".prawduct" / "project-state.yaml").read_bytes() == before
+
+
+def test_an_operator_set_base_branch_survives_the_cutover(tmp_path: Path):
+    """Product-authored state is preserved verbatim — and this scalar is a
+    decision, not framework residue: the remote's default is only a guess at it."""
+    repo = gitify(make_filesync_repo(tmp_path / "myproduct"), "develop")
+    state = repo / ".prawduct" / "project-state.yaml"
+    state.write_text("# Project State\nbase_branch: release\nviews_enabled: true\n")
+
+    result = run_migrate(repo, "--apply")
+
+    text = state.read_text()
+    assert "base_branch: release" in text
+    assert "base_branch: develop" not in text
+    assert result["base_branch"] is None, "reported a write that did not happen"
+
+
+def test_the_base_branch_append_preserves_crlf_line_endings(tmp_path: Path):
+    """Two appenders now write to this file in one run. The second one is
+    exactly where the CRLF flattening got in the first time — a hand-written
+    `read_text`/`write_text` pair beside an ending-preserving one."""
+    repo = gitify(make_filesync_repo(tmp_path / "myproduct"), "develop")
+    state = repo / ".prawduct" / "project-state.yaml"
+    state.write_bytes(b"# Project State\r\nbacklog_format_version: 2\r\n")
+
+    run_migrate(repo, "--apply")
+    raw = state.read_bytes()
+
+    assert b"base_branch: develop" in raw
+    assert b"distribution: plugin" in raw
+    assert raw.count(b"\n") == raw.count(b"\r\n"), "a bare LF appeared in a CRLF file"
+
+
+def test_an_unreadable_state_file_blocks_the_base_branch_append_too(tmp_path: Path):
+    """Never append to a file we could not read: the alternative is writing over
+    content we cannot see. The same guard `record_distribution` carries — shared,
+    not re-derived."""
+    repo = gitify(make_filesync_repo(tmp_path / "myproduct"), "develop")
+    state = repo / ".prawduct" / "project-state.yaml"
+    state.write_bytes(b"\xff\xfe not valid utf-8 \x80\x81")
+
+    result = run_migrate(repo, "--apply")
+
+    assert result["base_branch"] is None
+    assert state.read_bytes() == b"\xff\xfe not valid utf-8 \x80\x81", "wrote over it"
+    assert result["removed"], "the cutover aborted on an unreadable state file"
+    # And the preview promises no edit it will decline.
+    preview = run_migrate(repo)
+    assert preview["base_branch"] is None
+    assert ".prawduct/project-state.yaml" not in preview["edited"]
+
+
+def test_the_cutover_owns_no_second_notion_of_a_main_family_branch(tmp_path: Path):
+    """The write half and the read half must agree by construction. Two copies
+    of "non-main-family" drift, and the knob would then steer the gates
+    somewhere the resolver would not have gone on its own."""
+    from lib import coverage
+
+    src = Path(_migrate_plugin.__file__).read_text()
+    assert "coverage._MAIN_FAMILY" in src, (
+        "the cutover restated the resolver's family test instead of reading it"
+    )
+    assert not re.search(r'["\']master["\']', src), (
+        "a branch-name literal appeared in the cutover engine — the resolver owns "
+        "that vocabulary"
+    )
+    # And the shared predicate is what it claims to be.
+    assert coverage._MAIN_FAMILY == frozenset({"main", "master"})
+
+
+def test_human_output_names_the_recorded_base_branch(tmp_path: Path):
+    """The plain (non-JSON) form is what an operator reads before confirming."""
+    repo = gitify(make_filesync_repo(tmp_path / "myproduct"), "develop")
+    home = repo.parent / "_home"
+    home.mkdir(exist_ok=True)
+    proc = subprocess.run(
+        [sys.executable, str(HOOK), "migrate-plugin", "--apply"],
+        capture_output=True, text=True, timeout=30,
+        env={
+            "HOME": str(home),
+            "CLAUDE_PROJECT_DIR": str(repo),
+            "CLAUDE_PLUGIN_ROOT": str(ROOT),
+            "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+            "PYTHONDONTWRITEBYTECODE": "1",
+        },
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "base_branch: develop" in proc.stdout

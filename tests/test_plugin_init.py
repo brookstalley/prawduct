@@ -352,3 +352,177 @@ def test_an_unrecognized_token_refuses_before_scaffolding(tmp_path):
     rc = run([str(target), "--name", "P", "--apply", "--dry-run"])
     assert rc == 2, "a misread invocation must not scaffold"
     assert not target.exists(), "nothing may be written when nothing ran"
+
+
+# =============================================================================
+# base_branch — the gitflow knob, written at onboard (#254)
+# =============================================================================
+#
+# `coverage._resolve_base_branch` consults `origin/HEAD` when no `base_branch:`
+# is recorded, but that fallback cannot see the repo whose remote default is
+# `main` while its integration branch is `develop` — only the written knob can,
+# and onboarding is the moment it is cheap to write. What is under test is the
+# discrimination, not the write: a key that appears in every ordinary repo is
+# noise, and a key naming a branch that does not exist fails every gate CLOSED.
+
+
+def _git(repo: Path, *args: str) -> str:
+    home = repo.parent / "_home"
+    home.mkdir(exist_ok=True, parents=True)
+    proc = subprocess.run(
+        ["git", *args],
+        cwd=str(repo), capture_output=True, text=True, timeout=30,
+        env={
+            "HOME": str(home),
+            "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+            "GIT_CONFIG_GLOBAL": str(home / "gitconfig"),
+            "GIT_CONFIG_SYSTEM": str(home / "gitconfig-system"),
+            "GIT_AUTHOR_NAME": "T", "GIT_AUTHOR_EMAIL": "t@example.com",
+            "GIT_COMMITTER_NAME": "T", "GIT_COMMITTER_EMAIL": "t@example.com",
+        },
+    )
+    assert proc.returncode == 0, f"git {args} failed: {proc.stderr}"
+    return proc.stdout.strip()
+
+
+def make_git_repo(root: Path, remote_default: str | None, *, dangling: bool = False) -> Path:
+    """A git repo whose ``origin/HEAD`` names ``remote_default`` (or has none).
+
+    ``dangling`` writes the symref WITHOUT creating the branch it names — what a
+    stale ``origin/HEAD`` or a partial fetch leaves behind. ``symbolic-ref``
+    never checks its target, so this state is reachable in the field.
+    """
+    root.mkdir(parents=True, exist_ok=True)
+    _git(root, "init", "-q", ".")
+    _git(root, "commit", "--allow-empty", "-q", "-m", "seed")
+    if remote_default is not None:
+        if not dangling:
+            _git(root, "update-ref", f"refs/remotes/origin/{remote_default}",
+                 _git(root, "rev-parse", "HEAD"))
+        _git(root, "symbolic-ref", "refs/remotes/origin/HEAD",
+             f"refs/remotes/origin/{remote_default}")
+    return root
+
+
+@pytest.mark.parametrize("remote_default,expected", [
+    ("develop", "develop"),   # the gitflow repo the knob exists for
+    ("trunk", "trunk"),       # any non-main-family name, not a develop allowlist
+    ("main", None),           # NEGATIVE CONTROL — the resolver already answers main
+    ("master", None),         # ...and master, the other half of the family
+])
+def test_base_branch_written_only_for_a_non_main_family_remote_default(
+    tmp_path: Path, remote_default: str, expected: "str | None"
+):
+    """One parametrization, both directions: the same scaffold over the same
+    fixture must write the key for `develop`/`trunk` and NOT write it for
+    `main`/`master`. Split across two tests, a writer that always writes (or
+    never does) still passes one of them."""
+    target = make_git_repo(tmp_path / "prod", remote_default)
+    result = run_init(target, "Prod", "--apply")
+    state = (target / ".prawduct" / "project-state.yaml").read_text()
+
+    assert result["base_branch"] == expected
+    if expected is None:
+        assert "base_branch" not in state, (
+            "a trunk repo got a key that only restates the resolver's default — "
+            "noise in every ordinary repo"
+        )
+    else:
+        assert f"base_branch: {expected}\n" in state
+        # And it is a bare branch name: the resolver prefixes `origin/` itself,
+        # so `origin/develop` here would resolve to `origin/origin/develop`.
+        assert "base_branch: origin/" not in state
+
+
+def test_the_written_knob_is_what_the_resolver_then_reads(tmp_path: Path):
+    """End to end past the write: the scaffolded repo's gates must actually
+    anchor on the recorded branch. The write is only worth having if the
+    resolver agrees with it."""
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+    from lib import coverage
+
+    target = make_git_repo(tmp_path / "prod", "develop")
+    run_init(target, "Prod", "--apply")
+
+    base, _reason = coverage._resolve_base_branch(target)
+    assert base == "origin/develop"
+
+
+def test_a_repo_with_no_origin_head_scaffolds_normally(tmp_path: Path):
+    """Fresh ``init``, no remote — the overwhelmingly common new-product case.
+    Detection must degrade to silence, not to a failed onboard."""
+    target = make_git_repo(tmp_path / "prod", None)
+    result = run_init(target, "Prod", "--apply")
+
+    assert result["base_branch"] is None
+    for rel in EXPECTED_FILES:
+        assert (target / rel).is_file(), f"onboarding lost {rel}"
+    assert "base_branch" not in (
+        target / ".prawduct" / "project-state.yaml"
+    ).read_text()
+
+
+def test_a_non_git_directory_scaffolds_normally(tmp_path: Path):
+    """`init-product` creates the target if it does not exist, and a repo need
+    not be a git repo at all to be scaffolded — every git probe here is
+    best-effort."""
+    target = tmp_path / "notarepo"
+    result = run_init(target, "Prod", "--apply")
+
+    assert result["base_branch"] is None
+    assert (target / ".prawduct" / "project-state.yaml").is_file()
+
+
+def test_a_dangling_origin_head_is_not_recorded(tmp_path: Path):
+    """``origin/HEAD`` can name a branch that was never fetched. Recording it
+    would be worse than recording nothing: a configured-but-unresolvable
+    `base_branch:` fails EVERY diff-base gate closed, so an unverified name
+    turns a working repo into a broken one."""
+    target = make_git_repo(tmp_path / "prod", "develop", dangling=True)
+    result = run_init(target, "Prod", "--apply")
+
+    assert result["base_branch"] is None
+    assert "base_branch" not in (
+        target / ".prawduct" / "project-state.yaml"
+    ).read_text()
+
+
+def test_dry_run_previews_the_base_branch_without_writing(tmp_path: Path):
+    """The operator's single confirmation is given against the preview, and this
+    key changes what every gate measures — so it has to appear there."""
+    target = make_git_repo(tmp_path / "prod", "develop")
+    result = run_init(target, "Prod")  # no --apply
+
+    assert result["base_branch"] == "develop"
+    assert not (target / ".prawduct").exists(), "dry run wrote state"
+
+
+def test_an_operator_set_base_branch_is_never_clobbered(tmp_path: Path):
+    """Onboarding an existing repo that already recorded its own integration
+    base: the remote's default is a guess, the operator's value is a decision."""
+    target = make_git_repo(tmp_path / "prod", "develop")
+    (target / ".prawduct").mkdir()
+    (target / ".prawduct" / "project-state.yaml").write_text(
+        "# Project State\nbase_branch: release\n"
+    )
+    result = run_init(target, "Prod", "--apply")
+
+    state = (target / ".prawduct" / "project-state.yaml").read_text()
+    assert "base_branch: release" in state
+    assert "base_branch: develop" not in state
+    assert result["base_branch"] == "release", "reported a branch the file does not hold"
+
+
+def test_human_output_names_the_recorded_base_branch(tmp_path: Path):
+    """--json is not the only reader: the skill runs the plain form too, and a
+    silent change to the gates' anchor is exactly the kind of thing an operator
+    must be told about."""
+    target = make_git_repo(tmp_path / "prod", "develop")
+    proc = subprocess.run(
+        [sys.executable, str(HOOK), "init-product", str(target),
+         "--name", "Prod", "--apply"],
+        capture_output=True, text=True, env=_env(target), timeout=30,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "base_branch: develop" in proc.stdout

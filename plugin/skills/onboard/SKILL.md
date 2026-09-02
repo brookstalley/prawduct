@@ -50,6 +50,7 @@ When they do want it, onboard **owns provisioning for this entry path** (scrub o
   }
   ```
   On first trusted open, Claude Code prompts each developer to install the marketplace + plugin (one-time, skippable).
+- **Integration base branch.** When the target's `origin/HEAD` names a branch outside `main`/`master` — a repo whose remote default is `develop` — the scaffold (and `/prawduct:migrate`) records `base_branch: <b>` in `project-state.yaml`, and reports it as `base_branch` in the JSON result. That scalar is what every diff-base gate anchors to: coverage, the cumulative Critic, and the PR gates. A trunk repo gets no key and needs none; a branch the remote names but has never fetched is deliberately not recorded (an unresolvable `base_branch:` fails those gates closed). **The remote's default is a good guess, not the truth.** If features merge onto a branch the remote does not default to — `origin/HEAD` says `main` while the team integrates on `develop`, the case detection cannot see — say so and have the owner set `base_branch:` by hand. Unset, the gates guess `main`, and a gitflow repo then reviews the whole `develop..main` promotion delta on every feature.
 - Governance activates only in the target's OWN session: **"Open `<target>` in a new Claude Code session — the hooks and the session briefing won't fire until then."**
 - After onboarding, run **`/prawduct:doctor`** in the repo anytime to health-check the install.
 
