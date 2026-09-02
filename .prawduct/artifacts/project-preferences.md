@@ -14,7 +14,7 @@ Developer preferences for how code is written in this project. Captured during d
 
 - **Naming**: snake_case functions/variables, PascalCase classes, UPPER_SNAKE constants
 - **Formatting**: No formatter configured — follow existing style (4-space indent, ~100 char lines)
-- **Linting**: No linter configured
+- **Linting**: ruff, configured in `pyproject.toml` `[tool.ruff]` and installable via the `dev` extra — but **not yet gating**: `ruff check` is not clean (149 `prawduct:allow` pragmas it cannot read) and no CI job runs it. Treat it as groundwork, not as a check you can rely on; the Critic still owns this ground (#164)
 - **Type annotations**: Used throughout — function signatures use `str | None`, `list[str]`, `dict[str, str]` style (PEP 604)
 - **Imports**: `from __future__ import annotations` at top of every implementation file in `lib/`, `tests/`, and `hooks/`, plus the plugin runtime scripts `bin/prawduct-hook` and `bin/test-reference-verify` (`__init__.py` and `tests/conftest.py` excepted); grouped by stdlib / third-party / local
 
@@ -64,7 +64,7 @@ Each preference is enforced by one of three mechanisms. This table is the source
 | Mechanism | Where it lives | What it catches | Trade-off |
 |---|---|---|---|
 | **Test** | `tests/preferences/test_*.py` | Structural rules with named exceptions (AST checks, config-presence checks) | Bakes the rule into CI; refuses to be silent. Cost: test must be re-validated when the rule's shape changes. |
-| **Linter** | (none configured for prawduct) | Mechanical style/naming rules already solved by ruff/eslint/etc. | Best tool for the job when configured. Currently N/A — preferences in this category fall through to Critic. |
+| **Linter** | ruff — configured, **not yet gating** (#164) | Mechanical style/naming rules already solved by ruff/eslint/etc. | Best tool for the job when configured. Configured in `pyproject.toml` and installable, but `ruff check` is not clean and no CI job runs it, so preferences in this category still fall through to Critic until the pragma migration lands. |
 | **Critic** | `/critic` review (Goal 4: Norms) | Judgment-required rules (boundary detection, semantic naming, "appropriate" anything) | No false-confidence test. Cost: requires a reviewer per chunk; misses violations between reviews. |
 | **Session config** | Read by Claude/methodology at session boundaries (e.g., `building.md` reads `Branching`; `/pr` reads `PR creation`) | Workflow-level decisions (when to branch, when to PR) | Configuration, not enforcement. Validated by user observing Claude's behavior, not by a test or a reviewer. |
 

@@ -572,7 +572,13 @@ LAST_MEASURED_TOKENS = {
     # had become wrong as well as costly — the block names more than those now.
     # The ceiling holds at 3450 untouched; the standing rule there is that the
     # next addition trims or relocates, and this one trimmed.
-    "skills/critic/SKILL.md": 3446,
+    # -11 on 2026-09-01 (#730): a REFUND, not a trim. #730's house grant form is
+    # one line per command with the star attached; this file carried three spaced
+    # stars and, for `classify-diff-risk`, the both-spellings PAIR the form
+    # explicitly rules out. Collapsing the pair and attaching the stars removed a
+    # duplicate grant line, so the saving is duplication going away rather than
+    # any rule being shortened. (#160's +2 from the same burndown is included.)
+    "skills/critic/SKILL.md": 3435,
     "skills/critic/framework-checks.md": 1116,
     # The on-demand class, first recorded 2026-08-19 (#688) — readings, no
     # ceilings; the block above this dict is the decision and its reasoning.

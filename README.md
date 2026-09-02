@@ -126,7 +126,7 @@ The framework detects structural characteristics (human interface, API, backgrou
 
 ### Closed learning loop
 
-Learnings are captured during development and surfaced on demand via the `/prawduct:learnings` skill, which reads the knowledge files in a forked context and returns only what's relevant to the task at hand. A two-tier system separates concise standing rules (`learnings.md`) from full root cause / debugging detail (`learnings-detail.md`). Learnings follow a lifecycle: provisional (single observation) → confirmed (recurring pattern) → incorporated (absorbed into principles or methodology).
+Learnings are captured during development and surfaced on demand via the `/prawduct:learnings` skill, which reads the knowledge files in a forked context and returns only what's relevant to the task at hand. A three-tier system separates concise standing rules (`learnings.md`) from full root cause / debugging detail (`learnings-detail.md`), with retired and superseded entries moved to `learnings-history.md` — kept, never deleted, and off the lookup read path so the working set stays small (#350). Learnings follow a lifecycle: provisional (single observation) → confirmed (recurring pattern) → incorporated (absorbed into principles or methodology).
 
 ## Working with Prawduct
 
@@ -215,7 +215,8 @@ my-product/
 ├── .prawduct/
 │   ├── project-state.yaml       # product definition, work tracking, build plan
 │   ├── learnings.md             # active rules (read by /prawduct:learnings)
-│   ├── learnings-detail.md      # full learning context and history
+│   ├── learnings-detail.md      # full learning context
+│   ├── learnings-history.md     # retired/superseded entries, read only on a miss
 │   ├── backlog.md               # deferred work items (out-of-scope captures)
 │   ├── change-log.md            # change log
 │   ├── artifacts/               # specifications generated during planning

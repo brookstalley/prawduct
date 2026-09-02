@@ -11,6 +11,7 @@ dev = [
     "pytest-xdist>=3.5",
     "pytest-timeout>=2.3",
     "pyyaml>=6.0",
+    "ruff>=0.6,<1.0",
 ]
 
 # The dev extra above is the only home for the test dependencies, and a CI job
@@ -42,12 +43,21 @@ packages = []
 # hundreds of rules nobody has decided about, and `E501` in particular contradicts lines
 # this repo writes on purpose.
 #
-# **Known state: `ruff check` is not clean today, and no CI job runs it.** 149 sites carry
-# prawduct's own `# prawduct:allow prawduct/broad-except -- <reason>` pragma, which ruff
-# does not read, so `BLE001` reports every one of them until those pragmas migrate to
-# `# noqa: BLE001 -- <reason>`. That sweep touches most of the tree and is filed
-# separately. A CI job is deliberately withheld until it lands: a lint gate that is red on
-# arrival gets waved through once and then forever. Run it by hand meanwhile:
+# **Known state: this stanza is GROUNDWORK, not yet a delegation target.** `ruff check` is
+# not clean today and no CI job runs it: 149 sites carry prawduct's own
+# `# prawduct:allow prawduct/broad-except -- <reason>` pragma, which ruff does not read, so
+# `BLE001` reports every one of them until those pragmas migrate to
+# `# noqa: BLE001 -- <reason>`. That sweep touches most of the tree and is filed separately.
+# A CI job is deliberately withheld until it lands: a lint gate that is red on arrival gets
+# waved through once and then forever.
+#
+# **Because of that, the two `compliance.py` checks #164 would retire are still in place.**
+# `architecture.md` § Direction (LNG-5W8R) and the 2026-09-01 owner Stopgap (#732) both hold
+# that retiring them "cannot honestly precede configuring ruff for prawduct itself, or
+# coverage is lost rather than delegated" -- and configured means *running*, not merely
+# declared here. The retirement shipped ahead of that precondition once (burndown
+# 2026-09-01) and was reverted. Order is: migrate the pragmas, gate the job, THEN retire.
+# Run it by hand meanwhile:
 #
 #     ruff check .
 [tool.ruff]

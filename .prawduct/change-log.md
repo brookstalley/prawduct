@@ -3,6 +3,53 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-09-01: backlog burndown — 57 items across ten parallel work groups
+
+<!-- prawduct: type=feat | scope=backlog-burndown -->
+
+A parallel burndown over the 202-item open backlog. One triage agent scrubbed and grouped; nine
+implementation agents ran in isolated worktrees on mechanically-disjoint file sets (every path in
+`git ls-files` tested against all nine ownership allowlists — zero paths matched two groups); the
+integrating session held the branch, resolved conflicts and owned every full-suite run.
+
+**Backlog: 202 → ~129 open.** 16 closed by triage (12 verified already-shipped with a file:line or
+commit citation, 1 dropped, 3 merged as duplicates), the rest implemented here.
+
+**The urgent one.** `#737` — `ac6bbb8b` had written five live `Stopgap:` fields into Direction
+entries (the entry directly below this one) while `norm_probes.py` could not read the field: five
+silent departures behind a clock nothing would fire. The probe now parses it, verified against
+those five real entries rather than a fixture. Its twin `#738` found the norm-lifecycle silence
+test resolved **0 of this repo's 47 norm citations** in CI and passed anyway — a test that could
+not fail is what let `#737` sit.
+
+**Salvage.** Nine branches were archived as tags earlier the same day with the note "intent captured
+in the backlog." The intent was; the implementations were not — ~11,000 lines of already-reviewed
+work. Two were recovered by owner decision: `#555`, and `#550`+`#564` (29 conflict hunks resolved by
+hand, composing with develop's newer field handling rather than replacing it). The salvaged tests
+caught a live defect: `cli._VALUED_FLAG_NAMES` omitted three new flags, so `--refs <value>` read its
+value as a global flag. `--reviewed`/`mark_reviewed` was deliberately **not** salvaged — `#550`'s own
+2026-08-07 scope reshape declares `reviewed` out, so it would add a write surface with no consumer.
+
+**Tests removed, and what covers that ground now.** Three `TestCanaryWiring` cases in
+`tests/test_waivers.py` were deleted when `#164` retired `_check_broad_exceptions` — and then
+restored with the check itself (below). Net: no test removed. The `#728` change updated six tests
+asserting `normalize_title`'s old verbatim contract; that contract is what `#728` changes, and the
+new one (stash `original_title`, first writer wins) is asserted in their place.
+
+**One norm departure, found by review and reverted.** `#164`'s retirement of the two `compliance.py`
+checks shipped ahead of its own precondition. `architecture.md` § Direction (LNG-5W8R) and the
+2026-09-01 owner Stopgap (`#732`) both hold that retiring them "cannot honestly precede configuring
+ruff for prawduct itself, or coverage is lost rather than delegated" — and configured means
+*running*. Ruff was declared in `pyproject.toml` but absent from the `dev` extra, unpinned, and
+gated by no workflow, so broad-except was ungated rather than delegated. The retirement is reverted;
+ruff is now installable and pinned as groundwork. Order is: migrate the 149 `prawduct:allow`
+pragmas, gate the job, then retire. `#164` stays open.
+
+**Test-suite caveat, unfiled.** The suite is nondeterministic under the repo's pinned
+`-n 5 --dist loadfile`: two runs of an identical 5541-test selection disagreed, and an xdist
+scheduler `INTERNALERROR` truncated another. "Suite green" was therefore not a usable acceptance
+signal for the fleet, so agents graded on targeted serial (`-n0`) runs. Worth its own item.
+
 ## 2026-09-01: four stalled transitions get a bounded exception instead of a silent one
 
 <!-- prawduct: type=fix | scope=norm-lifecycle-stopgaps -->

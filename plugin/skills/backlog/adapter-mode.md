@@ -226,10 +226,11 @@ Route by what changed:
   a bare `status --to shipped` carries no handle, so pass a `closed-by=<scope>` argument through as
   `update <id> --closed-by <scope>` in the same breath or the ship handle is simply lost. GitHub's own timeline holds *who*
   closed the issue (and the closing PR or commit when the close rides a merge), but the adapter
-  neither stamps nor surfaces it, and the *scope* is not recoverable from it. Until `status` accepts
-  a `--closed-by` flag, record the scope where it stays visible on the item —
-  `comment <id> --body 'closed-by: <scope>'` — and say plainly that it is a comment rather than a
-  queryable field. Never hand-write it into a `prawduct:` block: that block is adapter-owned.
+  neither stamps nor surfaces it, and the *scope* is not recoverable from it. `update` **does** take
+  a `--closed-by` flag writing a queryable block field (#550/#564) — the comment workaround this
+  paragraph used to prescribe is retired. `status` itself still takes none, which is why the scope
+  rides the paired `update` above rather than the close. Never hand-write it into a `prawduct:`
+  block: that block is adapter-owned.
 - **field** (title/body/stage/kind/area/effort/impact/source) → `update <id> [--flag …]` (last write
   wins — correct for the interactive single-actor case). **`--title` is gated**: a new title failing
   §1 is refused (exit 2) before any write. Every OTHER field goes through untouched even when the

@@ -211,19 +211,33 @@ class TestWaiverValueObject:
 
 
 class TestCanaryWiring:
-    """The compliance canary consumes the shared recognizer, flagging
-    reason-less waivers.
-
-    The broad-except leg of this class went with `_check_broad_exceptions`,
-    deleted under #164 when ruff took over that ground. The recognizer's own
-    handling of the general and legacy spellings is covered directly above
-    (TestRecognizer), so nothing is lost by their removal -- what went away is
-    the canary wrapper, not the contract."""
+    """The compliance canary consumes the shared recognizer, honoring both the
+    general and legacy spellings and flagging reason-less waivers."""
 
     def _write(self, tmp_path: Path, body: str) -> Path:
         f = tmp_path / "mod.py"
         f.write_text(body)
         return f
+
+    def test_unwaived_broad_except_is_flagged(self, tmp_path: Path):
+        self._write(tmp_path, "def f():\n    try:\n        g()\n    except Exception:\n        pass\n")
+        assert compliance._check_broad_exceptions(tmp_path, ["mod.py"]) == ["mod.py"]
+
+    def test_general_form_waiver_suppresses(self, tmp_path: Path):
+        self._write(
+            tmp_path,
+            "def f():\n    try:\n        g()\n"
+            "    except Exception:  # prawduct:allow prawduct/broad-except -- boundary\n        pass\n",
+        )
+        assert compliance._check_broad_exceptions(tmp_path, ["mod.py"]) == []
+
+    def test_legacy_form_waiver_still_suppresses(self, tmp_path: Path):
+        self._write(
+            tmp_path,
+            "def f():\n    try:\n        g()\n"
+            "    except Exception:  # prawduct:ok-broad-except — boundary\n        pass\n",
+        )
+        assert compliance._check_broad_exceptions(tmp_path, ["mod.py"]) == []
 
     def test_reasonless_waiver_is_flagged_by_invalid_check(self, tmp_path: Path):
         self._write(

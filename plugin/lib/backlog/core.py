@@ -550,9 +550,11 @@ def set_status(
     (For a closed target this reduces to state-first-then-strip-labels — there is no
     ``status:shipped``/``status:dropped`` label in the taxonomy, and the closed
     ``state_reason`` is the authority the decoder reads regardless of any transient
-    label, so there is never an unreadable window. ``closed_by`` recording — native
-    timeline handle + the manual ``--closed-by`` block stamp, Data Model §1.1 /
-    API §2.6 — is deferred, tracked as a NOTE.)
+    label, so there is never an unreadable window. ``closed_by`` recording landed with
+    #550/#564: the native timeline handle plus the ``--closed-by`` block stamp,
+    Data Model §1.1 / API §2.6. It is not a flag on *this* op -- ``status`` takes
+    no ``--closed-by`` -- so a caller that wants the scope recorded pairs this
+    call with ``update <id> --closed-by <scope>``.)
     """
     if target not in encode.STATUS_VALUES:
         return error(
