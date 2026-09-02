@@ -1,6 +1,6 @@
 # Building: Turning Plans Into Working Software
 
-Every unit of work follows the same cycle: **understand → plan → build → verify.** What changes is the depth — determined by the work's size and type.
+How deep the governance goes is determined by the work's size and type.
 
 ## Sessions and Work Cycles
 
@@ -34,7 +34,7 @@ There are no phases. The depth of governance scales with two dimensions:
 - **Debt paydown**: Scope discipline, architecture freshness.
 - **Emergency hotfix**: Minimal path — fix + test + verify. Artifacts can follow.
 
-Classification heuristic: 1-2 files = trivial/small; 5+ files or new dependency = medium; new directory structure or API surface = large.
+Classification heuristic: 1-2 files = trivial/small; 5+ files or new dependency = medium; new directory structure or API surface = large. **3-4 files is the dead zone: medium if the change crosses a contract surface, adds a dependency, or touches state outliving the process; small otherwise.**
 
 ## Before You Build: Confidence Check
 
@@ -46,9 +46,11 @@ Before any non-trivial work cycle, answer three questions in one sentence each:
 
 If any can't be answered, requirements aren't clear enough (Principle 6 — Requirements Precede Code). Three options: **close the gap** with one targeted question or an inference to confirm; **sketch and confirm** by writing the answers and presenting them; or **proceed knowingly** by declaring the unknowns in the plan's Requirements Confidence as Medium or Low. Surface unknowns early — never silently build on guesses. Apply for any chunk that touches behavior; skip for trivial (typo, config). For unclear or multi-file work, Plan Mode is the native clarify-before-build vehicle. Same model as `discovery.md` "Calibrate Rigor".
 
+**Re-check the plan's `[ASSUMPTION: …]` entries as code reveals new facts.** They are recorded at plan time and, unchecked, stay recorded: an assumption nobody revisited is a decision taken on the user's behalf that nobody confirmed.
+
 ### A Requirement Surfaced Mid-Build
 
-The Confidence Check runs at a chunk's *start*; requirements also arrive *during* a build, and the #1 way they enter undocumented is designing them fluently **in chat** and flowing them into code with no artifact between. **Triggered, not always-on:** when a tripwire fires — a noun the artifacts don't contain, design you can't trace to a parent one rung up, a taxonomy invented in chat, the same thing revised 2-3×, or an "are we sure / is this solved" signal — *stop, name it, write or locate the parent requirement, then resume.* Never silently *invent* a requirement any more than you'd *drop* one (Principle 6, mirror of #2).
+The Confidence Check runs at a chunk's *start*; requirements also arrive *during* a build, and the #1 way they enter undocumented is designing them fluently **in chat** and flowing them into code with no artifact between. **Triggered, not always-on:** when a tripwire fires — a noun the artifacts don't contain, design you can't trace to a parent one rung up, a taxonomy invented in chat, the same thing revised 2-3×, or an "are we sure / is this solved" signal — *stop, name it, write or locate the parent requirement, then resume.*
 
 ### A Norm Surfaced Mid-Build
 
@@ -62,11 +64,12 @@ retroactivity). Departing from a norm that already governs your change is a reco
 
 **Establish a clean baseline.** Before the first work cycle of a session:
 
-- *Tests*: Run the full suite. Every test must pass; fix any failures. **A delegate skips this**, inheriting the main agent's baseline.
+- *Tests*: Run the full suite. Every test must pass. **A delegate skips this**, inheriting the main agent's baseline.
+- *A red baseline is diagnosed before it is fixed*: re-run the failure on a clean checkout of the base commit. Red there too → not yours; record it (`test-evidence record --degraded`) and name it in the handoff rather than folding a fix into your diff. Green there → yours, and you fix it first.
 - *Git state*: Commit or stash unrelated work. Medium+ work gets a feature branch (`feature/...`, `fix/...`) unless `project-preferences.md` allows direct commits.
 - *Canary findings*: Address or explicitly acknowledge each compliance finding in the session briefing.
 
-There is no "pre-existing" exception — tests, broad exceptions, stale artifacts, anything: fix it, or flag it with a reason it can't be fixed now. Every session starts clean.
+There is no "pre-existing" exception: every session starts clean.
 
 **Read the spec.** Read the chunk's entry in `.prawduct/artifacts/build-plan.md` and any referenced artifacts — what this chunk delivers, its acceptance criteria, its dependencies. Flag ambiguity before building; don't guess silently. Validate that referenced files and components still exist — plans go stale. Run `/prawduct:learnings [chunk focus]` for relevant rules before coding.
 
@@ -80,9 +83,9 @@ Test at the right level — **unit** (functions, logic), **integration** (compon
 
 **Update artifacts as you go.** When implementation changes something an artifact describes — API surface, data model, architecture — update that artifact as part of implementation, not at the end. Artifact drift is the #1 recurring quality issue at scale.
 
-**CLAUDE.md is instructions, not documentation.** It tells Claude how to work here — dev commands, test workflows, key conventions. Architecture descriptions and component inventories belong in `docs/` or `.prawduct/artifacts/`. Target: project-specific content under ~150 lines (the Critic warns above it).
+**CLAUDE.md is instructions, not documentation** — dev commands, test workflows, conventions. Architecture descriptions and component inventories belong in `docs/` or `.prawduct/artifacts/`. Target: project-specific content under ~150 lines (the Critic warns above it).
 
-**Comments and durable specs are self-contained — explain *why*, never ride meaning on an id that changes under you, and never narrate history.** A comment, docstring or long-lived spec must not anchor to a chunk number: plans get renumbered and the sentence stays wrong while reading as fact. Review and finding ids never ship — history's one home is commits and the change-log, so a comment recounting it (`// Critic caught Y`) is a deletion, not a rewrite. Carry the present-tense reason instead: not `// per chunk 03` but `// OpenFoodFacts rate-limits burst lookups`. Exception: bookkeeping that records the work (reflections, commit/PR text) — there the id is the record (Principle 13).
+**Comments and durable specs are self-contained — explain *why*, never ride meaning on an id that changes under you, and never narrate history.** Review and finding ids never ship — history's one home is commits and the change-log, so a comment recounting it (`// Critic caught Y`) is a deletion, not a rewrite. Carry the present-tense reason instead: not `// per chunk 03` but `// OpenFoodFacts rate-limits burst lookups`.
 
 **Same decay: a count nothing reads is not worth writing.** Ask what gets decided differently if it is wrong by two; if nothing, omit it, make it relational ("the table's rows"), or cite the command that regenerates it. Numbers something *relies* on stay exact. **Suite totals keep coming back** — the evidence store holds pass/fail per tree, so say "suite green" and cite `test-status`; never copy a total into a record or add a field for one.
 
@@ -99,7 +102,7 @@ Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 **Critic review.** Run `/prawduct:critic` (no args) — the SKILL infers mode from git + build-plan state via `prawduct-hook infer-critic-mode` and records `mode_chosen_by`. Pass an explicit mode (e.g. `/prawduct:critic cumulative`) only to override; report override cases so inference can improve.
 
-**Resolve findings.** Consolidate before reading `.critic-findings.json` where the digest says to; single-pass reviews consolidate themselves. **Disposition them ALL in ONE pass — fix everything in the working tree, then ONE `/prawduct:critic verify-resolutions`, then ONE commit** (in that order — committing first re-anchors the pass; `review-cycle.md`) — fix-commit-verify per finding multiplies rounds (consolidate's own output says which writes stay free meanwhile). **Once zero blocking remain the review is over — then fix, accept, or file** (`skills/critic/review-cycle.md`). Accept (won't-fix, reasoned) is the default; filing everything turns the backlog into a guilt pile. **Record it as a fact (`prawduct-hook disposition`), then `render-dispositions` into the entry — never hand-count.** Re-run the gate, don't infer a round from stale output. Document disagreements with rationale.
+**Resolve findings.** Consolidate before reading `.critic-findings.json` where the digest says to; single-pass reviews consolidate themselves. **Disposition them ALL in ONE pass — fix everything in the working tree, then ONE `/prawduct:critic verify-resolutions`, then ONE commit** (in that order — committing first re-anchors the pass; `review-cycle.md`) — fix-commit-verify per finding multiplies rounds. **Once zero blocking remain the review is over — then fix, accept, or file** (`skills/critic/review-cycle.md`). Accept (won't-fix, reasoned) is the default. **Record it as a fact (`prawduct-hook disposition`), then `render-dispositions` into the entry — never hand-count.** Re-run the gate, don't infer a round from stale output. Document disagreements with rationale.
 
 **Reflect — now, not at session end.** Append to `.prawduct/.session-reflected`: what the chunk delivered, what the Critic caught, what surprised you. A paragraph is enough. Add a rule to `learnings.md` only if this cycle produced one.
 
@@ -107,11 +110,11 @@ Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 **Verify artifacts are current.** Confirm artifacts reflect the code — the Critic checks bidirectional freshness.
 
-**Update build plan Status.** Mark the chunk `[x]` in `build-plan.md`'s Status section and update the Context block — the cross-session handoff. Ticking the LAST box disarms the Stop hook's gates — review first, tick after.
+**Update build plan Status.** Mark the chunk `[x]` and update the Context block — the cross-session handoff.
 
 ## Session Scope Discipline
 
-**Size a work cycle by the diff its review must cover, not by a chunk count.** Critic quality degrades across a large diff, and the constraint is the reviewer's *attention* rather than its window. The roster rule names the honest unit: a risk surface, or 12+ judgeable files. A multi-chunk plan spans sessions: per-chunk reviews accumulate, the final/cumulative lands with the last chunk, and session boundaries don't reset the plan.
+**Size a work cycle by the diff its review must cover, not by a chunk count.** Critic quality degrades across a large diff, and the constraint is the reviewer's *attention* rather than its window. The roster rule names the honest unit: a risk surface, or 12+ judgeable files. A multi-chunk plan spans sessions: per-chunk reviews accumulate, and the final/cumulative lands with the last chunk.
 
 **Complete required governance at chunk boundaries, then signal — never *ask* whether to prepare a handoff; prepare it and say so.** At a chunk boundary, or when the user switches tasks, complete in order:
 
@@ -135,6 +138,8 @@ When you modify files that affect a contract surface:
 3. **Incorporate** findings — update consumers, add integration tests.
 4. **Record** what was investigated and found. The Critic verifies investigation occurred.
 
+**Both directions.** Steps 1-4 ask *did my change break downstream consumers?* When you write or change a **consumer**, ask the mirror: read the producer's actual emitted signal sequence — every event, terminal marker and error path, and in what order — not just the type or shape both sides agree on. A consumer that type-checks and still awaits a signal the producer never sends, or drops a terminal/error one it does, is a Critic Goal 1 **BLOCKING** finding.
+
 ### Decision Research (when choices constrain future options)
 
 A decision is "major" when it has: **lock-in** (hard to reverse — a persisted format is always lock-in, measured by reversal cost not LOC; enumerate the data's future consumer queries before designing fields), **pervasiveness** (many files), **structural impact** (shapes architecture), **external dependency** (long-term library/service reliance), or **volatility** (correctness rests on fast-moving / post-cutoff data — web-research it, don't recall; see `methodology/discovery.md` "Calibrate Rigor").
@@ -153,9 +158,11 @@ Research scales to impact: **medium** (pervasive pattern, non-core dep) → quic
 
 **What stays in the main agent:** the combined suite and all end-to-end verification, merge conflicts, Critic, reflection, state updates. The subagent implements; the main agent governs.
 
+**A delegate's "Done" on a removal or a sweep is a claim — verify it by re-deriving it.** Removals and sweeps fail silently and in the direction of looking finished: a symbol left behind, an allowlist wider than the brief, an inventory count several percent short. Before accepting, run the derivation yourself — grep the removed symbol, recount from the source the brief named, diff the files it touched against the ones it owned.
+
 ## Working With Specs
 
-Specs are guides, not scripture. **If the spec is wrong**, flag it, propose the fix, update the spec to match reality. **If the spec is ambiguous**, pick the most likely interpretation, implement it, note the ambiguity. **If the spec is incomplete**, surface it — reasonable choices for minor gaps, escalate significant ones. **If you can't implement something**, say so explicitly. Never silently drop a requirement (Principle 2).
+Specs are guides, not scripture. **If the spec is wrong**, flag it, propose the fix, update the spec to match reality. **If the spec is ambiguous**, pick the most likely interpretation, implement it, note the ambiguity. **If the spec is incomplete**, surface it — reasonable choices for minor gaps, escalate significant ones.
 
 ## Test Discipline
 
@@ -165,9 +172,7 @@ Tests are the most important artifact you produce: contracts that define correct
 
 **Tests are independent.** No shared mutable state, no ordering dependency.
 
-**Tests never weaken.** Don't delete tests or relax assertions to make code pass. Consolidation is fine — name the reason in the change-log. Fix the code, never the test (Principle 1 — a bright line).
-
-**All tests pass, always.** Diagnose and fix every failure.
+**Tests never weaken.** Consolidation is fine — name the reason in the change-log (Principle 1 — a bright line).
 
 **Test coverage is proportionate.** Every product needs at least: happy path, error handling for likely failures, and edge cases for anything involving money, data, or safety.
 
@@ -191,15 +196,13 @@ Every consolidated review appends a **fact** to a store shared by all worktrees 
 
 `Critic mode:` in the plan and an explicit slash arg are successive overrides on the inference described above. Four modes: `chunk`, `final`, `cumulative`, `verify-resolutions`. What each covers — and the fail-safe that a missing, unrecognized or unconfidently-inferred mode runs `final` — is `skills/critic/review-cycle.md`, not restated here. Two facts are worth having before you open it: `cumulative` feeds `/prawduct:pr create`'s gate, and `verify-resolutions` alone records resolution facts.
 
-**The Critic takes minutes, not seconds** (per-mode targets: `review-cycle.md`). Don't poll; deep-scrub your own changes while it runs, which often pre-resolves findings.
-
-**Never write Critic findings yourself** — writing `.critic-findings.json` "based on" expected output is governance fraud. If the agent is slow, wait; if it fails, tell the user and re-invoke.
+**The Critic takes minutes, not seconds** (per-mode targets: `review-cycle.md`). Don't poll; deep-scrub your own changes while it runs, which often pre-resolves findings. If it fails, tell the user and re-invoke — never write `.critic-findings.json` yourself.
 
 **Warnings and notes gate nothing** — every fix commit extends HEAD, which is how a passing review buys another round. Think before dismissing one anyway: the Critic catches blind spots the builder can't see.
 
 ## Creating Pull Requests
 
-**Default: wait for the user to ask.** Do not create PRs proactively; only use `/prawduct:pr` when the user explicitly requests it — unless `project-preferences.md` sets `PR creation: automatic`.
+**Default: wait for the user to ask** — unless `project-preferences.md` sets `PR creation: automatic`.
 
 `/prawduct:pr` handles the full lifecycle (it detects git state and routes to create, update, merge, or status) and invokes the PR reviewer agent for independent release-readiness assessment of the full changeset. Review criteria: the plugin's `skills/pr/review-protocol.md`. After merge, `/prawduct:pr` cleans up the build plan.
 
@@ -207,15 +210,15 @@ Every consolidated review appends a **fact** to a store shared by all worktrees 
 
 ## Exception Handling
 
-Catch specific exceptions. Broad catches (`except Exception`, empty `catch {}`) hide bugs. When one is genuinely necessary — system boundaries, event loops, top-level supervisors — mark it with `prawduct:allow prawduct/broad-except -- reason` in a comment on the `except`/`catch` line itself. The canary skips waived lines; the Critic verifies each is legitimate — "reviewed and intentional," not "exempt." Broad catches that swallow errors without logging are always findings — no waiver can justify silencing errors.
+A broad catch is legitimate at system boundaries, event loops and top-level supervisors — mark it with `prawduct:allow prawduct/broad-except -- reason` in a comment on the `except`/`catch` line *itself*. The canary skips waived lines; the Critic verifies each is legitimate — "reviewed and intentional," not "exempt."
 
 ## Common Traps
 
 **Test-last**: Tests written to pass against existing implementation document behavior, including bugs.
 
-**Uninvestigated decisions**: Major technology or architectural choices without research — lock-in, pervasiveness, structural impact, and external dependencies warrant investigation.
+**Uninvestigated decisions**: a major choice made without the research above.
 
-**Tuning a mechanism you haven't read**: Optimizing configs, thresholds, or prompts of a system you can't explain from having read it — read it first; a ten-minute read routinely collapses a multi-day tuning campaign (Principle 24).
+**Tuning a mechanism you haven't read**: read it first — a ten-minute read routinely collapses a multi-day tuning campaign (Principle 24).
 
 **Boundary blindness**: Modifying a contract surface without checking consumers. The canary catches this at session end; checking proactively is cheaper.
 

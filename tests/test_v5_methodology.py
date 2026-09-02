@@ -254,7 +254,84 @@ LAST_MEASURED_TOKENS = {
     # and has not picked one yet. What made the clause removable here is that
     # this reader has already decided to delegate, so the enumeration answers a
     # question they are no longer asking.
-    "methodology/building.md": 4755,
+    # +/-0 on 2026-09-01 (#547): Boundary Investigation gained the INBOUND
+    # direction -- read the producer's emitted signal sequence when you write a
+    # consumer -- because Critic Goal 1 blocks on that mismatch in `chunk` mode
+    # and nothing guided the builder toward it. PAID FOR IN PLACE, at the
+    # ceiling rather than through it, and funded by the same class the delegation
+    # pointer used: rules the always-injected `session-digest.md` states in full,
+    # restated here beyond the part only this file owns. (1) the "pre-existing"
+    # exception's enumeration ("tests, broad exceptions, stale artifacts,
+    # anything: fix it, or flag it") -- the digest gives the list and the
+    # flag-why clause verbatim, so what stayed is the binding this file owns:
+    # every session starts clean; (2) "Never write Critic findings yourself" as
+    # its own paragraph, folded into the sentence above it -- the digest carries
+    # the rule AND its why ("the independence is the whole value"), and "if the
+    # agent is slow, wait" was the neighbouring "Don't poll" a second time; (3)
+    # Exception Handling's opening and closing sentences -- "catch specific
+    # exceptions", the two syntax examples, and "no waiver can justify silencing
+    # errors" are all the digest's bullet, so what stayed is when a broad catch
+    # is legitimate, that the comment goes on the catch line, and the
+    # canary/Critic behaviour; (4) the PR default's restatement of itself ("do
+    # not create PRs proactively; only use /prawduct:pr when the user explicitly
+    # requests it" says the heading sentence twice), leaving the heading plus the
+    # preference that overrides it.
+    # -4 on 2026-09-01 (#300): the dispatcher-side verification rule -- a
+    # delegate's "Done" on a REMOVAL or a SWEEP is a claim, re-derived before
+    # acceptance -- reached the Delegating section, and came in under what it
+    # cost. Weak-model failures cluster here (premature "Done", over-broad
+    # allowlists, 5-15% inventory undercounts, all already a learning in a
+    # consuming product), and the guide said nothing about verifying a
+    # subagent's report. Funded, again, by the digest-states-it-in-full class:
+    # (1) the durable-prose rule's chunk-number instance and its bookkeeping
+    # exception -- the digest carries both, so what stayed is the clause only
+    # this file owns (review and finding ids never ship, history lives in
+    # commits and the change-log) plus the worked example; (2) "ticking the LAST
+    # box disarms the Stop hook's gates -- review first, tick after", which is
+    # the digest's Status bullet word for word, leaving the Context block that
+    # nothing else states; (3) "never silently *invent* a requirement any more
+    # than you'd *drop* one", the digest's requirements bullet verbatim -- and
+    # the digest already points AT this section for the tripwires, which are
+    # what it does not carry and what stayed.
+    # -4 on 2026-09-01 (#284): the mid-build assumptions checkpoint -- re-check
+    # the plan's `[ASSUMPTION: ...]` entries as code reveals new facts. This was
+    # the last of the item's four sub-items still open; the emphasis-escalation
+    # half (CLAUDE.md's "STOP. Read this before writing ANY code" caps) and the
+    # Foreign-API compression were discharged by the 2026-07 prose diet.
+    # Assumptions were recorded at plan time by `planning.md` and never
+    # checkpointed by anything afterwards, which is the shape the item names:
+    # a decision taken on the user's behalf that, unrevisited, is never
+    # confirmed.
+    #
+    # Funded in place again, and this time out of THIS file's own redundancy
+    # rather than the digest's: (1) the opening sentence stated the work cycle
+    # six lines above the definition that states it in full -- and stated it
+    # INCOMPLETELY, stopping at verify where the real cycle runs through Critic
+    # and reflect, so the shorter form was also the wrong one; (2) two Common
+    # Traps restated the sections directly above them ("Uninvestigated
+    # decisions" is Decision Research, "Tuning a mechanism you haven't read" is
+    # the cheap-check gate), and both are prose-pinned by NAME, so what a trim
+    # can remove is the restated body and not the entry.
+    # +7 on 2026-09-01 (#299): two of the four weaker-model scaffolds, placed
+    # where the judgement is actually made. (a) The 3-4-FILE TIEBREAK -- the
+    # classification heuristic named 1-2 and 5+ and left the middle to taste,
+    # which is a judgement offload with nothing behind it; the tiebreak turns on
+    # blast radius (contract surface / dependency / state outliving the
+    # process), not on taste. (b) The RED-BASELINE PROTOCOL -- "every test must
+    # pass; fix any failures" told a builder what the state must be and nothing
+    # about the commonest way it is not, and the expensive error is folding
+    # someone else's failure into your own diff. It replaces the bare "All tests
+    # pass, always. Diagnose and fix every failure", which it makes specific.
+    #
+    # Nearly self-funded. What paid: the Tests-never-weaken restatement of the
+    # digest's contracts bullet; the guilt-pile argument, which
+    # `reflection.md`'s Earn-the-backlog-entry rule owns in full; "never
+    # silently drop a requirement", the digest again; a compression of the
+    # CLAUDE.md-is-instructions paragraph; and one clause of Session Scope
+    # Discipline that restated this file's own evidence-model section (nothing
+    # expires by session). The other two scaffolds went to `discovery.md` and
+    # `reflection.md`, which is where their judgements are made.
+    "methodology/building.md": 4754,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -483,7 +560,27 @@ LAST_MEASURED_TOKENS = {
     # (3238 → 4083), then the clear-line verdict and its deadline (#687).
     # That growth is the design working, which is exactly why it is recorded
     # rather than capped.
-    "methodology/discovery.md": 4752,
+    # +87 on 2026-09-01 (#298): the advisory obligation attached to DISCOVERY
+    # START -- open with your read of the problem before the first question.
+    # The tone half of advisor-first shipped in 2026-07 as the digest's stance
+    # block, and #298's premise is that a stance living only in adjectives
+    # decays under context pressure and on weaker models. So the obligation is
+    # now attached at three checkpoints an agent already hits, in the surface
+    # that owns each: here, `planning.md` at plan presentation, and CLAUDE.md's
+    # Before-Building check. Unfunded by design -- the on-demand class carries a
+    # reading and no ceiling (#688), and the always-injected surface (CLAUDE.md)
+    # is where the same feature paid at a ceiling.
+    # +311 on 2026-09-01 (#299): the domain-concern checklist, SEEDED BY THE
+    # SIX STRUCTURAL CHARACTERISTICS. "Detect domain-specific concerns
+    # dynamically, no hardcoded lists" is a judgement offload with no floor
+    # under it -- on a weaker model, "dynamically" degrades to "from memory",
+    # and what a hardcoded list was badly doing was guaranteeing a floor. The
+    # seed table restores the floor without becoming the list: it is keyed to
+    # characteristics the product already recorded, and the paragraph after it
+    # says in terms that the table is the floor and the ceiling is the agent's.
+    # Unfunded, and it is the on-demand class -- growth here is declared, not
+    # blocked (#688), and paid only by a session that opens the guide.
+    "methodology/discovery.md": 5150,
     # 4301 -> 4791 on 2026-08-21 (Chunk 02): `### Partition: Serial or
     # Delegated`, the plan-time half of the placement bet. The partition prompt
     # where chunk boundaries are drawn (R6), the `partition:` field the decision
@@ -528,7 +625,26 @@ LAST_MEASURED_TOKENS = {
     # Paid down first rather than recorded whole: the pointer-clear rule kept its
     # RULE here and handed its WHY to `/prawduct:pr`'s Merge Flow step, which
     # states it at length, saving ~58 of the ~258 the merge brought in.
-    "methodology/planning.md": 5060,
+    # +303 on 2026-09-01 (#296): a `### Plan Shape` subsection -- one plan per
+    # scope tag, split when the change types differ, a plan that will not ship
+    # in ~3 sessions is a program (backlog items plus per-wave plans), and the
+    # planner pushes back on a monolithic-plan request. NOT funded by a cut, and
+    # the reason is the file rather than the size: `building.md`'s size ladder
+    # was reading as an instruction to build ONE big chunked plan, and the
+    # long-lived-plan frictions sat in `learnings.md` for weeks without ever
+    # reaching the guide that would have prevented the next one. This is the
+    # on-demand class -- planning.md carries a reading and no ceiling (#688), so
+    # its growth is declared rather than blocked, and the cost is paid only by a
+    # session that opens it. The pushback bullet is also #298's plan-creation
+    # advisory obligation in its plan-shape form: the obligation is stated where
+    # the decision is made, not in the digest's adjectives.
+    # +103 on 2026-09-01 (#298): the advisory obligation attached to PLAN
+    # PRESENTATION -- say what you would do differently before the chunks, and
+    # "nothing, this is the right shape" is a fine answer; what is not an option
+    # is a plan handed over with no position on it. Distinct from the Plan Shape
+    # pushback above, which is one specific take (this plan is too big); this is
+    # the general obligation that take is an instance of.
+    "methodology/planning.md": 5466,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
@@ -559,7 +675,16 @@ LAST_MEASURED_TOKENS = {
     # errors were reasoning from the special case because the principle was
     # never written down. A READING, no ceiling, per the decision block above
     # this dict — the cost is paid by a session that opens the guide.
-    "methodology/reflection.md": 4885,
+    # +209 on 2026-09-01 (#299): the ROOT-CAUSE STOPPING RULE. "Stop when you
+    # reach something you can change" is true and unusable under pressure --
+    # every link in a why-chain is something someone could change, so the rule
+    # licensed stopping at the first one. The replacement is three conditions
+    # that must ALL hold (changeable here, would have prevented this instance,
+    # would prevent instances that look different), plus the tell that the chain
+    # stopped early: a terminal that restates the failure ("we were in a hurry",
+    # "nobody reviewed it") rather than explaining it. Principle 16 is the norm;
+    # this is the procedure that makes it checkable.
+    "methodology/reflection.md": 5094,
     # First reading, 2026-08-21, taken at birth: a new on-demand guide, so it
     # joins the class above — a READING, no ceiling. `test_every_methodology_guide_is_accounted_for`
     # requires the entry; the decision block above this
@@ -652,7 +777,15 @@ LAST_MEASURED_TOKENS = {
     # with the worktree, because a brief left in a reused checkout raises a
     # delegate advisory about work nobody delegated. A READING, so the cost is
     # paid only by a session already about to delegate a tangent.
-    "methodology/delegation.md": 2698,
+    # +68 on 2026-09-01 (#300): the anti-pattern half of the same rule -- the
+    # Done taken on faith, with the tell that makes it fire (you accepted a
+    # completion report on a removal or a sweep without re-deriving it). Not
+    # funded by a cut here and deliberately so: this is the on-demand class, its
+    # cost is paid only by a session that opens it, and the paired statement in
+    # building.md WAS paid for in place against that file's ceiling. An
+    # anti-pattern list is the shape a dispatcher scans at dispatch time, which
+    # is the moment this rule has to fire.
+    "methodology/delegation.md": 2766,
 }
 
 
@@ -867,8 +1000,42 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # a project preference on the one surface that cannot be opted out of. It is
     # also the form the two neighbouring policy bullets already use, naming the
     # governing row inline rather than behind the pointer.
-    "framework": 3343,
-    "product": 2269,
+    # framework 3343 -> 3159, product 2269 -> 2085 on 2026-09-01 (#630): the
+    # digest's stance block was RELOCATED, not cut. Its nine checkable bars now
+    # live in `docs/principles.md` § Agent Stance -- reachable by the pointer the
+    # block already carried and by `/prawduct:methodology principles` -- while
+    # the digest keeps the lead position (the expert take leads, compliance
+    # second) and the roster of nine names. That split is the classification
+    # #630 asks for, applied to the one section where it is unambiguous: the
+    # LEAD is what a thin-anchor repo is wrong without, and the bars are a
+    # lookup a reader consults once they are checking themselves against one.
+    # The obligations that the bars used to carry alone are separately being
+    # attached to the checkpoints an agent already hits (#298), which is what
+    # makes this relocation safe rather than a quiet demotion.
+    #
+    # THE CEILINGS ARE DELIBERATELY NOT RATCHETED IN THIS COMMIT, and this is
+    # the declaration that stops the slack being a silent loan: #298's
+    # `CLAUDE.md` line spends part of this relief, and the ratchet lands with it
+    # in the next commit, at one over the reading it leaves. Ratcheting here
+    # would have forced that commit to RAISE a ceiling to make room for an
+    # addition this one had already paid for -- the accounting reading exactly
+    # backwards from what happened.
+    # framework 3159 -> 3197 on 2026-09-01 (#298): CLAUDE.md's Before-Building
+    # check gained a fourth question -- "should it be built as asked?", leading
+    # with the expert take. Charged to `framework` alone, since `product` takes
+    # the static anchor rather than this file. SPENT OUT OF #630's RELIEF, in
+    # the commit that relief's own entry above named: the two commits net to
+    # framework 3343 -> 3197 and product 2269 -> 2085, and no ceiling was
+    # raised at any point.
+    #
+    # Why this line is worth a surface with no opt-out. The check already fired
+    # at the right moment and asked the right three questions -- and all three
+    # are about the WORK, so an agent could answer them completely and never
+    # form a view on whether the work should happen. That is the gap: the most
+    # expensive failure available here is building the wrong thing well, and it
+    # is invisible to a check that only interrogates scope.
+    "framework": 3197,
+    "product": 2085,
 }
 
 #: Ceilings. HARD, like the per-file prose ceilings in this module and
@@ -942,8 +1109,19 @@ INJECTED_FOOTPRINT_CEILINGS = {
     # here, because a revert target copied into prose goes stale the next time
     # either shape moves and reads as fact while it is wrong. Drop the bullet
     # and read what the assertion prints.)
-    "framework": 3344,
-    "product": 2270,
+    # 3344 -> 3198, 2270 -> 2086 on 2026-09-01 (#630 + #298, ratcheted here
+    # because #630 deliberately deferred it one commit rather than force this
+    # one to RAISE for an addition the previous commit had already funded).
+    # Back to one over the reading -- zero banked, so the next addition is under
+    # the standing trim-or-relocate rule with nothing to collect silently.
+    #
+    # The reserve #630 restored is NOT held here, and that is the point: this
+    # table's unit is tokens and it is raisable by declaration, while the
+    # reserve is characters against a harness threshold that no ruling buys past
+    # (`tests/test_plugin_methodology_digest.py`'s DIGEST_HEADROOM_RESERVE).
+    # Banking headroom in a raisable budget would have protected nothing.
+    "framework": 3198,
+    "product": 2086,
 }
 
 
