@@ -193,7 +193,10 @@ and forgeable by any actor with write access** to the repo. So:
   on it.
 - **Quarantine mechanism, specified (F7).** A non-collaborator cannot apply labels, so an anonymous
   filing arrives **unlabeled** — that **unlabeled state *is* the quarantine**. It is **surfaced to
-  triage** (a submitted-intake query lists non-collaborator-authored unlabeled issues), reconciling with
+  triage** (a submitted-intake query lists non-collaborator-authored unlabeled issues — *specified
+  here, not yet implemented*: the shipped `list --untriaged` selects on unlabeled alone and so returns
+  a superset, over-including the owner's own unlabeled issues rather than missing an anonymous one),
+  reconciling with
   Data Model §3 "ignore unlabeled": *ignore* means "not treated as a live backlog item," **not**
   "invisible" — the intake query and the human/governed triage worker see it and stamp `status:
   submitted` (or drop it). No mutation happens under the filer's own identity.

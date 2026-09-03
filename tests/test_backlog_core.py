@@ -336,6 +336,28 @@ class TestDigitSuffixPfxDisambiguation:
         assert nid.canonical == f"{OWNER}/ADR#12"
         assert not any(c[0] == "list_issues" for c in fake.calls)
 
+    def test_a_bare_number_resolves_against_the_target_repo(self, fake):
+        # The live commands (`get`, `status`, `update`, …) reach the parser through
+        # resolve_ref, so the bare form has to work here too — not only on the
+        # cache path. Two of two callers hit this during one triage pass.
+        nid = core.resolve_ref(fake, "621", default_owner=OWNER, default_repo=(OWNER, REPO))
+        assert nid.ok
+        assert nid.canonical == f"{OWNER}/{REPO}#621"
+
+    def test_a_bare_number_does_no_alias_io(self, fake):
+        # A bare number cannot be a PFX (the grammar needs a leading letter), so
+        # it must never reach the label search — that would be a network call per
+        # resolve for the commonest spelling there is.
+        fake.calls.clear()
+        nid = core.resolve_ref(fake, "621", default_owner=OWNER, default_repo=(OWNER, REPO))
+        assert nid.ok
+        assert not any(c[0] == "list_issues" for c in fake.calls)
+
+    def test_a_bare_number_without_a_target_repo_is_a_validation_error(self, fake):
+        nid = core.resolve_ref(fake, "621", default_owner=OWNER)
+        assert not nid.ok
+        assert nid.error == "validation"
+
     def test_without_a_target_repo_the_repo_number_reading_stands(self, fake):
         _seed_item(fake, labels=[ids.alias_label(self.PFX)])  # bait alias
         fake.calls.clear()
@@ -969,6 +991,72 @@ class TestUpdateBlockFields:
             assert survivor in body
         assert "human text" in body  # the prose is untouched too
         assert body.count("```prawduct") == 1  # and no second block was minted
+
+    def test_a_discarded_block_edit_is_reported_not_swallowed(self, fake):
+        # The silent misroute: an operator pastes the body back with a block line
+        # deleted, gets `ok`, and the field is still there. `superseded_by` is the
+        # one that bites — `resolve_redirect` walks it on every resolve, so a stale
+        # pointer sends lookups to the wrong item, and nothing said the edit failed.
+        n = self._seed_with_block(fake, "v: 1\nsuperseded_by: octo/repo#999")
+        stripped = "human text\n\n```prawduct\nv: 1\n```\n"
+        r = core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"body": stripped})
+        assert r["status"] == "ok"  # the body edit itself is legitimate
+        assert any("superseded_by" in w for w in r["warnings"]), r["warnings"]
+        # The field is still preserved — the warning reports reality, it does not
+        # change the preservation rule that protects `id_aliases` from MG2 loss.
+        body = fake.get_issue(OWNER, REPO, n)["body"]
+        assert "superseded_by: octo/repo#999" in body
+
+    def test_a_paste_whose_edit_the_flags_land_is_not_reported_discarded(self, fake):
+        # The warning compares against the FINAL block, not the stored one. A
+        # caller who pastes `refs: b` AND passes `--refs b` gets exactly what they
+        # asked for, and calling that discarded is a false alarm — the fastest way
+        # to teach a reader to skip the notice that matters.
+        n = self._seed_with_block(fake, "v: 1\nrefs: a.md")
+        pasted = "human text\n\n```prawduct\nv: 1\nrefs: b.md\n```\n"
+        r = core.update_item(
+            fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"body": pasted, "refs": "b.md"}
+        )
+        assert r["status"] == "ok"
+        assert not any("not editable through" in w for w in r["warnings"]), r["warnings"]
+        assert "refs: b.md" in fake.get_issue(OWNER, REPO, n)["body"]
+
+    def test_a_paste_the_flags_only_partly_land_still_reports_the_rest(self, fake):
+        # The complement: one field agreed by flag, another silently dropped. The
+        # dropped one must still be named, or the fix for the false alarm would
+        # have swallowed the true one.
+        n = self._seed_with_block(fake, "v: 1\nrefs: a.md\nsuperseded_by: octo/repo#999")
+        pasted = "human text\n\n```prawduct\nv: 1\nrefs: b.md\n```\n"
+        r = core.update_item(
+            fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"body": pasted, "refs": "b.md"}
+        )
+        warned = [w for w in r["warnings"] if "not editable through" in w]
+        assert warned, r["warnings"]
+        assert "superseded_by" in warned[0]
+        # Pins the RENDERED FIELD LIST, not a slice between two literal phrases:
+        # slicing makes a copy edit raise IndexError instead of failing cleanly,
+        # and a bare `"refs" not in ...` is wrong because the message names
+        # `--refs` in its closing advice. If `refs` were wrongly reported the list
+        # would read "refs, superseded_by", so pinning the singleton says exactly
+        # what this test means.
+        assert "asked for superseded_by " in warned[0], warned[0]
+
+    def test_an_unchanged_pasted_block_is_not_warned_about(self, fake):
+        # Round-tripping the body verbatim is the ordinary case. Warning on it
+        # would fire on most body edits and train the reader to skip the notice.
+        n = self._seed_with_block(fake, "v: 1\nrefs: a.md")
+        same = "new prose\n\n```prawduct\nv: 1\nrefs: a.md\n```\n"
+        r = core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"body": same})
+        assert r["status"] == "ok"
+        assert not any("not editable through" in w for w in r["warnings"]), r["warnings"]
+
+    def test_a_body_with_no_block_is_not_warned_about(self, fake):
+        # Genuinely ambiguous — "I deleted the block" and "I never pasted one" are
+        # the same text — so it stays silent rather than guessing at intent.
+        n = self._seed_with_block(fake, "v: 1\nrefs: a.md")
+        r = core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"body": "just prose"})
+        assert r["status"] == "ok"
+        assert not any("not editable through" in w for w in r["warnings"]), r["warnings"]
 
     def test_an_empty_value_clears_the_field(self, fake):
         # An expired `revisit:` has to be removable, not merely blankable.

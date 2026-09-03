@@ -428,8 +428,9 @@ def resolve_ref(
     """Normalize ``id_raw`` to a canonical ``owner/repo#number``, resolving a hand-
     minted ``PFX`` alias via its ``id:PFX`` label when the plain spellings don't
     match (MG1). ``default_repo`` (``(owner, repo)``, from ``--repo``) is the repo a
-    bare ``PFX`` is resolved against; absent it a ``PFX`` cannot resolve and is a
-    ``validation`` error (never a silent guess). A ``PFX`` that matches no live item
+    bare ``PFX`` is resolved against, and the repo a bare ``621``/``#621`` resolves
+    against; absent it neither can resolve and both are a ``validation`` error
+    (never a silent guess). A ``PFX`` that matches no live item
     is ``not_found``; one that matches more than one is an ``alias_collision`` (the
     §5 uniqueness invariant broke — flag it, never pick one).
 
@@ -444,7 +445,13 @@ def resolve_ref(
     ``default_repo`` set), so it may raise ``TransportError`` — call it inside
     the caller's transport ``try``/``except`` (a ``#`` or ``/`` spelling does
     no I/O)."""
-    nid = ids.normalize_id(id_raw, default_owner=default_owner)
+    # `default_repo` goes to the parser too, not only to the PFX branch below:
+    # it is what lets a bare `621` — the number an operator reads off a GitHub
+    # URL — resolve here the same way it does on the cache path. A bare number
+    # can never collide with the PFX grammar, which requires a leading letter.
+    nid = ids.normalize_id(
+        id_raw, default_owner=default_owner, default_repo=default_repo
+    )
     if nid.ok:
         if default_repo and ids.is_pfx(id_raw):
             # Both grammars match — alias-if-exists precedence (see docstring).
@@ -880,6 +887,41 @@ def update_item(
         for key in [k for k in _UPDATE_BLOCK if k in fields]:
             base = new_body if new_body is not None else (issue.get("body") or "")
             new_body = encode.upsert_block_field(base, key, fields[key] or None)
+        # A caller who PASTES a block into `--body` is editing it, and that edit is
+        # discarded: `_body_update_preserving_block` strips what they wrote and
+        # re-appends the stored block. Silently, before this — the operator got
+        # `ok`, the field they had just deleted was still there, and nothing said
+        # so. That is how a stale `superseded_by` survives a deliberate removal,
+        # and `resolve_redirect` walks it on every resolve, so the lookup keeps
+        # landing on the wrong item.
+        #
+        # **Compared against the FINAL block, not the stored one**, because the
+        # flags layer on above and can land the very edit the paste asked for:
+        # `update <id> --body "<…refs: b…>" --refs b` gets what it wanted, and
+        # reporting it discarded would be a false alarm — the fastest way to teach
+        # a reader to skip the notice that matters.
+        #
+        # Only a pasted block is reported. A body with NO block is genuinely
+        # ambiguous — "I deleted it" and "I never included it" are the same text —
+        # so it is left alone rather than warned about on every ordinary body edit.
+        if "body" in fields:
+            pasted = encode.merge_all_block_fields(fields["body"])
+            if pasted:
+                final = encode.merge_all_block_fields(
+                    new_body if new_body is not None else (issue.get("body") or "")
+                )
+                differing = sorted(
+                    k for k in set(pasted) | set(final) if pasted.get(k) != final.get(k)
+                )
+                if differing:
+                    warnings.append(
+                        "block fields are not editable through `--body` — your pasted "
+                        f"block asked for {', '.join(differing)} and the write did not "
+                        "land it. Edit block fields with their own flags "
+                        "(`--refs`, `--revisit`, `--closed-by`); `superseded_by` is "
+                        "owned by `merge` and has no inverse yet, so clearing one still "
+                        "needs a direct edit at the provider."
+                    )
         # Only PATCH a body that actually changed — clearing a field that was
         # never set would otherwise spend a write and bump `updated_at`, and that
         # stamp is not inert: it is the sync watermark and the CAS comparand, so a
