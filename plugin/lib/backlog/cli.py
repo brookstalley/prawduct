@@ -801,6 +801,10 @@ def _run_sync(rest: list[str], transport, project_dir):
     from . import sync as sync_mod  # noqa: PLC0415 — only this op drives the store
 
     run = sync_mod.full_rebuild if flags.get("rebuild") else sync_mod.incremental_sync
+    # The attempt is stamped inside `sync`, beside the coverage stamp, so every
+    # caller records it — not just this one. It used to be recorded here, and
+    # `pick`'s revalidating sync and the post-import warm both moved the coverage
+    # stamp without clearing the failure beside it.
     return run(transport, project_dir=Path(project_dir), owner=owner, repo=repo)
 
 
@@ -1425,6 +1429,13 @@ def _print_cache_query(data: dict) -> None:
         print(f"  {len(items)} item(s)")
     print(f"  cache: {data.get('scope')}, confirmed {data.get('synced_at')} "
           f"({_humanize_seconds(data.get('age_seconds'))})")
+    # Printed directly under the age, because it is the sentence that changes how
+    # the age should be read: a store that is merely old is a different fact from
+    # one whose refresh has been failing since that stamp.
+    if data.get("sync_error"):
+        print(f"  SYNC FAILING: {data['sync_error']} "
+              f"(last attempt {data.get('sync_last_attempt_at') or 'unknown'}) — "
+              f"everything above predates it")
 
 
 def _humanize_seconds(age) -> str:

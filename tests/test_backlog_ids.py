@@ -79,6 +79,117 @@ class TestShortFormNeedsOwner:
         assert result.message
 
 
+class TestBareNumberResolvesAgainstDefaultRepo:
+    """A bare `123` or `#123` is the spelling an operator reads off a GitHub URL.
+
+    It carries neither owner nor repo, so it resolves only when a full
+    ``default_repo`` is supplied — a ``default_owner`` alone is not enough, and
+    that distinction is the reason this form is separate from the short ones
+    above. Before this form existed, a fully-disambiguating ``--repo owner/repo``
+    still could not resolve the number, and the two failures named different
+    things: `123` fell through every form to "unrecognized ID spelling" while
+    `#123` reached the short-form branch with an empty left side and reported
+    "malformed repo", which is the wrong defect — the input contains no repo at
+    all.
+    """
+
+    @pytest.mark.parametrize("spelling", ["123", "#123", "  #123  ", "  123  "])
+    def test_bare_number_resolves_with_a_default_repo(self, spelling):
+        result = ids.normalize_id(spelling, default_repo=("octo", "repo"))
+        assert result.ok
+        assert result.canonical == "octo/repo#123"
+        assert result.owner == "octo"
+        assert result.repo == "repo"
+        assert result.number == 123
+
+    @pytest.mark.parametrize("spelling", ["123", "#123"])
+    def test_bare_number_is_idempotent(self, spelling):
+        # ID-1 holds for the new form: normalizing the canonical output again
+        # reproduces it, so a caller may re-normalize without special-casing.
+        once = ids.normalize_id(spelling, default_repo=("octo", "repo"))
+        twice = ids.normalize_id(once.canonical, default_repo=("octo", "repo"))
+        assert twice.canonical == once.canonical
+
+    @pytest.mark.parametrize("spelling", ["123", "#123"])
+    def test_default_owner_alone_does_not_resolve_a_bare_number(self, spelling):
+        # An owner without a repo cannot name an item. This is the boundary that
+        # keeps the bare form from silently guessing a repo.
+        result = ids.normalize_id(spelling, default_owner="octo")
+        assert not result.ok
+        assert result.error == "validation"
+
+    @pytest.mark.parametrize("spelling", ["123", "#123"])
+    def test_the_message_names_the_missing_repo_not_a_malformed_one(self, spelling):
+        # The defect this replaces reported "malformed repo in '#123'" — naming a
+        # repo the input never contained, which sends the reader to fix the wrong
+        # thing. The message must say what is absent.
+        result = ids.normalize_id(spelling)
+        assert not result.ok
+        assert "malformed" not in result.message
+        assert "repo" in result.message
+
+    def test_a_non_numeric_hash_form_still_reports_the_number_defect(self):
+        # `#abc` is not a bare-number form at all; it must keep reporting the
+        # number as the defect rather than being recast as a missing repo.
+        result = ids.normalize_id("#abc", default_repo=("octo", "repo"))
+        assert not result.ok
+        assert result.error == "validation"
+        assert "digits" in result.message
+
+    def test_zero_and_leading_zeros_behave_like_any_other_number(self):
+        result = ids.normalize_id("007", default_repo=("octo", "repo"))
+        assert result.ok
+        assert result.number == 7
+        assert result.canonical == "octo/repo#7"
+
+    def test_an_explicit_spelling_still_wins_over_the_default_repo(self):
+        # The default is a fallback for what the input omits, never an override.
+        result = ids.normalize_id("other/elsewhere#9", default_repo=("octo", "repo"))
+        assert result.ok
+        assert result.canonical == "other/elsewhere#9"
+
+
+class TestOneCanonicalPerItem:
+    """ID-1 says one canonical string per item, and two spellings quietly broke it.
+
+    Both predate the bare form and both are reachable from every spelling; the bare
+    form is what made them reachable from the commonest one there is.
+    """
+
+    @pytest.mark.parametrize(
+        "spelling",
+        ["007", "#007", "repo#007", "octo/repo#007", "repo/007", "repo-007"],
+    )
+    def test_a_zero_padded_number_reaches_the_same_canonical_as_its_bare_one(self, spelling):
+        # Pasting the caller's digits through meant `#007` and `#7` — one issue —
+        # normalized to two different canonical strings, and every consumer keyed
+        # on that string (the cache's `item.id`, the alias table, the redirect
+        # walk) would treat them as two items.
+        result = ids.normalize_id(spelling, default_owner="octo", default_repo=("octo", "repo"))
+        assert result.ok, result.message
+        assert result.canonical == "octo/repo#7"
+        assert result.number == 7
+
+    @pytest.mark.parametrize("spelling", ["１２３", "#１２３", "repo#１２３", "octo/repo#１２３"])
+    def test_non_ascii_digits_are_not_a_number(self, spelling):
+        """Python's `\\d` matches every Unicode decimal digit, so full-width digits
+        parsed as a number and `int()` accepted them — producing a canonical id
+        whose glyphs go into `repos/{owner}/{repo}/issues/{n}` at the transport,
+        an id GitHub cannot resolve, from an input that looked numeric to every
+        check on the way in. Ids are parsed out of issue-body text, so the source
+        is attacker-writable for the same reason `_valid_segment` guards its own.
+        """
+        result = ids.normalize_id(spelling, default_owner="octo", default_repo=("octo", "repo"))
+        assert not result.ok
+        assert result.error == "validation"
+
+    def test_ascii_digits_still_normalize(self):
+        # The guard must not cost the legitimate case it shares a pattern with.
+        result = ids.normalize_id("42", default_repo=("octo", "repo"))
+        assert result.ok
+        assert result.canonical == "octo/repo#42"
+
+
 class TestRejections:
     def test_non_numeric_issue_number_rejected(self):
         result = ids.normalize_id("octo/repo#abc")

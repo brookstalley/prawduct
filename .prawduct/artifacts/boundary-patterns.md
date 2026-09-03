@@ -113,7 +113,7 @@ rule locally rather than inheriting it.
 ### Database Schemas
 
 **Producer:** `plugin/lib/backlog/cache.py` — `_SCHEMA_STATEMENTS`, `ITEM_COLUMNS`, and
-`SCHEMA_VERSION` (currently 7) define the local SQLite store.
+`SCHEMA_VERSION` define the local SQLite store.
 **Consumers:** `plugin/lib/backlog/sync.py` (writes), `plugin/lib/backlog/cachequery.py`
 (every read), and — as a *specification* rather than code —
 `documentation/backlog-service-data-model.md` §6, which declares the table
@@ -134,7 +134,7 @@ other people's machines. The rule lives at `cache.py:60-73`; this row is the
 registry pointer to it, not a second copy.
 **Second consumer, second failure mode:** §6 of the data model is prose and
 drifts silently — it declared an `item.etag` column and a `comment` table that
-the shipped v7 schema does not have. When you add or drop a column, edit §6 in
+the shipped schema does not have. When you add or drop a column, edit §6 in
 the same commit; nothing enforces the agreement.
 
 ### Inter-Process Communication

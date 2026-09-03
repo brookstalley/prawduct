@@ -1,17 +1,23 @@
-"""Identifier normalization — the four accepted spellings → canonical form.
+"""Identifier normalization — every accepted spelling → canonical form.
 
 The canonical item identifier is GitHub's own cross-reference syntax
-``owner/repo#number`` (Data Model §5, API §8). Consumers may pass any of four
-spellings and the adapter normalizes on the way in (API §3):
+``owner/repo#number`` (Data Model §5, API §8). Consumers may pass any of the
+spellings below and the adapter normalizes on the way in (API §3):
 
 - ``owner/repo#number``  — canonical
 - ``repo#number``        — short, same-owner (needs a ``default_owner``)
 - ``repo/number``        — shell-friendly (no ``#`` to escape)
 - ``repo-number``        — shell-friendly
+- ``number`` / ``#number`` — bare (needs a ``default_repo``)
 
 Short/shell-friendly forms carry no owner, so they resolve **same-owner only**
 and require a ``default_owner`` (the target repo's owner). Absent one they are a
 ``validation`` error rather than a silent guess.
+
+The bare forms carry no repo either, so a ``default_owner`` cannot resolve them —
+they need a full ``default_repo``. They exist because a bare number is what an
+operator reads off a GitHub URL, and without them a fully-disambiguating
+``--repo owner/repo`` still could not resolve one.
 
 This module is a **pure, function-level seam** (Test Specs §2.1): no transport,
 no I/O. It also holds the **alias & redirect machinery** the importer and the
@@ -33,7 +39,14 @@ from dataclasses import dataclass
 # (GitHub is stricter still, but this is the adapter's tolerant input gate — the
 # real existence check happens at the transport, not here.)
 _SEGMENT = r"[A-Za-z0-9._-]+"
-_NUMBER = re.compile(r"^\d+$")
+# `[0-9]`, not `\d`. Python's `\d` matches every Unicode decimal digit, so
+# `#１２３` in full-width digits parsed as a number, `int()` accepted it, and the
+# canonical id carried the non-ASCII glyphs into `repos/{owner}/{repo}/issues/{n}`
+# at the transport — an id GitHub cannot resolve, built out of an input that
+# looked numeric to every check on the way in. The reachable source is
+# attacker-writable for the same reason `_valid_segment` guards its own: ids are
+# parsed out of issue-body text.
+_NUMBER = re.compile(r"^[0-9]+$")
 
 
 @dataclass(frozen=True)
@@ -62,18 +75,32 @@ def _fail(message: str, *, code: str = "validation") -> NormalizedId:
 
 
 def _build(owner: str, repo: str, number: str) -> NormalizedId:
-    canonical = f"{owner}/{repo}#{number}"
-    return NormalizedId(
-        canonical=canonical, owner=owner, repo=repo, number=int(number)
-    )
+    # The number is re-rendered from its integer value rather than pasted through,
+    # so a zero-padded spelling reaches the SAME canonical string as its bare one.
+    # Otherwise `#007` and `#7` — one issue — normalize to two different canonical
+    # ids, and every consumer keyed on that string (the cache's `item.id`, the
+    # alias table, `resolve_redirect`) treats them as two items. ID-1 says one
+    # canonical per item, and pasting the caller's digits through quietly broke it
+    # for any spelling a human might pad.
+    value = int(number)
+    canonical = f"{owner}/{repo}#{value}"
+    return NormalizedId(canonical=canonical, owner=owner, repo=repo, number=value)
 
 
-def normalize_id(raw: str, *, default_owner: str | None = None) -> NormalizedId:
+def normalize_id(
+    raw: str,
+    *,
+    default_owner: str | None = None,
+    default_repo: tuple[str, str] | None = None,
+) -> NormalizedId:
     """Normalize any accepted ID spelling to canonical ``owner/repo#number``.
 
     ``default_owner`` supplies the owner for the short/shell spellings that omit
-    it. Idempotent: ``normalize_id(normalize_id(x).canonical)`` reproduces the
-    same canonical string for any ``x`` that normalizes at all (ID-1).
+    it. ``default_repo`` is an ``(owner, repo)`` pair supplying BOTH for the bare
+    forms, which carry neither — an owner alone cannot resolve a bare number, so
+    the two defaults are not interchangeable. Idempotent:
+    ``normalize_id(normalize_id(x).canonical)`` reproduces the same canonical
+    string for any ``x`` that normalizes at all (ID-1).
     """
     if raw is None:
         return _fail("no ID given")
@@ -93,6 +120,16 @@ def normalize_id(raw: str, *, default_owner: str | None = None) -> NormalizedId:
             if not _valid_segment(owner) or not _valid_segment(repo):
                 return _fail(f"malformed owner/repo in {raw!r}")
             return _build(owner, repo, num)
+        # Bare '#number' — carries neither owner nor repo, so only a full
+        # `default_repo` resolves it. Handled before the short form because an
+        # empty left side is not a malformed repo name: there is no repo in the
+        # input to be malformed, and saying so sent readers to fix the wrong thing.
+        if not left:
+            if not default_repo:
+                return _fail(
+                    f"bare ID {raw!r} needs a repo — pass owner/repo#number or set the target repo"
+                )
+            return _build(default_repo[0], default_repo[1], num)
         # Short 'repo#number' — same-owner only.
         if not _valid_segment(left):
             return _fail(f"malformed repo in {raw!r}")
@@ -128,6 +165,16 @@ def normalize_id(raw: str, *, default_owner: str | None = None) -> NormalizedId:
                     f"short ID {raw!r} needs an owner — pass owner/repo#number or set the target repo"
                 )
             return _build(default_owner, head, tail)
+
+    # ---- Form 0: a bare 'number'. ------------------------------------------
+    # The spelling an operator reads straight off a GitHub URL. Last, so it can
+    # never shadow a repo whose name is all digits in the hyphen/slash forms above.
+    if _NUMBER.match(text):
+        if not default_repo:
+            return _fail(
+                f"bare ID {raw!r} needs a repo — pass owner/repo#number or set the target repo"
+            )
+        return _build(default_repo[0], default_repo[1], text)
 
     return _fail(f"unrecognized ID spelling {raw!r} (expected owner/repo#number)")
 

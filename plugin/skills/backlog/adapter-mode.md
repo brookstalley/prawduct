@@ -139,6 +139,11 @@ sending them to the GitHub web UI. It scans every page and **refuses** `--per-pa
 stage, kind or area — so render `ID · title` and treat the missing facets as *untriaged*, not as
 missing data.
 
+This set is a **superset of the security model's `quarantine`**, which is the *non-collaborator*
+half of it (Security §6/F7). The author predicate is not implemented, so `--untriaged` is what
+reaches an anonymous filing today — over-including the owner's own unlabeled issues rather than
+missing one. Do not describe the two as the same query.
+
 ### get <id> — view one item
 When you need one item's full detail (a direct "show me PFX-XXXX", or before an `update`):
 `prawduct-hook backlog get <id> --repo <r> --json` → render the item's fields + body from `data`.
@@ -261,8 +266,11 @@ Route by what changed:
   an expired `revisit:` can be removed rather than blanked. `file` also takes `--refs` so a new item
   can carry its governing-doc link from birth. With `--affected`, `--working-branch` and `--tags`
   above, these are the only writable block fields; **`--body` is not a route into the block** — a
-  pasted block is stripped and the existing one re-appended, so a block edit sent that way reports
-  success and changes nothing.
+  pasted block is stripped and the existing one re-appended, so a block edit sent that way changes
+  nothing. It does not do so silently: a pasted block asking for something the write did not land (compared against the block as it finally stands, after the flags layer on — not against the stored one) comes back
+  with a warning naming the differing fields, so check `warnings` rather than reading `ok` as "the
+  block edit landed". A body carrying NO block is not reported — "I deleted it" and "I never pasted
+  one" are the same text.
 - **link edge** (`related:`/blocks/blocked-by/parent/child) → `link <id> --edge <e> --to <target>` /
   `unlink …`.
 - **a free note** → `comment <id> --body B`.
