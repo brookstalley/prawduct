@@ -101,11 +101,11 @@ field on findings, which is a persisted-format change this plan does not make]
 
 ## Status
 
-- [ ] Chunk 01: Retire the lifecycle verbs, the entry-shape check and doctor's learnings checks
-- [ ] Chunk 02: Delete the lookup skill, the reflections archive, the briefing embedding and every instruction site
-- [ ] Chunk 03: The reflection gate fires on the session's work and grades shape
-- [ ] Chunk 04: Two ledger events — `learning.written` and `learning.fired`
-- [ ] Chunk 05: Integrate, re-derive every removal, record
+- [x] Chunk 01: Retire the lifecycle verbs, the entry-shape check and doctor's learnings checks
+- [x] Chunk 02: Delete the lookup skill, the reflections archive, the briefing embedding and every instruction site
+- [x] Chunk 03: The reflection gate fires on the session's work and grades shape
+- [x] Chunk 04: Two ledger events — `learning.written` and `learning.fired`
+- [x] Chunk 05: Integrate, re-derive every removal, record
 Context: Plan drawn 2026-09-02 from the tree at 18767064 (Wave 1 complete). A–D built and merged
 2026-09-02 (4ea91ff7 + coordinator fixes). Chunk 03's false-fire analysis, measured by its tests:
 FIRES on a committed judgeable change with no plan (the target), an uncommitted one, a new untracked
@@ -121,7 +121,7 @@ the first Stop (the appended heading, and the unit R-15 re-worded this session: 
 as a new unit, so a rewording reads as a write — hash identity, recorded not fixed) and 0 on the
 second; the review's resolution round produced 3 `learning.fired` lines. Review
 rev-20260902T232816Z-f97fa40b: 2 blocking + 9 warning + 7 note, all fixed or accepted; one
-verify-resolutions round found the untested raise arm of R-1's fix.
+verify-resolutions round found the untested raise arm of R-1's fix; the second (rev-20260903T002619Z-7276f933) was clean. Wave 2 complete 2026-09-03; the plan stays live until the release ships.
 
 ## Scaffolding
 
