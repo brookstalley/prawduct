@@ -3325,6 +3325,8 @@ class TestGreenIsEvidenceTrigger:
         assert "cannot tell the two orderings apart" in text
         assert "happens to exist on this machine" in text
         assert "blind to what your change broke beside it" in text
+        # discipline.md row 1: a mutation not watched going red applied nothing.
+        assert "a mutation you did not watch go red applied nothing" in text
 
 
 # =============================================================================

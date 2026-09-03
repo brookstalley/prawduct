@@ -303,7 +303,7 @@ class TestDigestHook:
         assert "auto-memory" in digest
         assert "`.claude/rules/learnings/` are authoritative" in digest
 
-
+    def test_the_digest_surfaces_the_report_bug_channel(self):
         # Discoverability of the upstream-bug-reporting channel (regression guard
         # against a silent trim dropping the pointer). This one digest reaches
         # products (the filing side) and the framework repo (the receiving end).

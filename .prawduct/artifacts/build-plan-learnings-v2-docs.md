@@ -394,7 +394,9 @@ lives at exactly one delivery surface.
     #661 → three sub-findings FILED first (`risk_surfaces: []` should warn; no gate detects an
     unpersisted plan; a regression test for a gate switched off by a `build_plan:` key edit), then
     `shipped`; #343 commented (R12 is its first entry; the mechanical-promotion half stays open);
-    #304 left open.
+    #304 left open; #237 (modernise ~28 terse headings) re-scoped by comment — its subject file,
+    both named hazards and its scope-out premise retired with the corpus, while the terse headings
+    themselves survive verbatim in `core.md`, so the ask is live against different machinery.
 - **Tests:** the suite on the candidate tree; `check-released`; the CI run.
 - **Acceptance criteria:** `check-released vX.Y.Z` exit 0; the CI verify green; the next session
   against `main` shows the banner naming the release and the three learnings gates.

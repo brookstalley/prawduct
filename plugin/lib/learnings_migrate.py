@@ -21,8 +21,8 @@ other HTML comments survive: they are rationale someone wrote, not machinery.
 
 *One-time* — so the failure that matters is not a bad layout, it is a **deletion
 without a destination**. ``--apply`` writes three tracked files and deletes
-three; the operator's control point is the commit that follows. Five refusals
-protect that commit, all of them exit 2 with a named reason:
+three; the operator's control point is the commit that follows. Every refusal
+protects that commit, and each exits 1 with a named reason (2 is usage):
 
 * a legacy file git cannot give back — **ignored** or never committed.
   ``git status`` does not list ignored paths at all, so this is decided from

@@ -167,8 +167,8 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `regen-views` (deprecated, inert), `stamp-merged` (deprecated, inert).
 - **Learnings layout (learnings v2)** — `learnings-files [--for-diff] [--json]` (read-only: the one
   resolver's answer — the rules files under `.claude/rules/learnings/`, and with `--for-diff` the
-  core file plus every area file whose `paths:` intersect the diff; three `allowed-tools` lists bind
-  it, so it sits in the stable tier) and `learnings-migrate [--apply] [--map <file>] [--propose-map]
+  core file plus every area file whose `paths:` intersect the diff; two `allowed-tools` grants bind
+  it and the PR reviewer protocol instructs it, so it sits in the stable tier) and `learnings-migrate [--apply] [--map <file>] [--propose-map]
   [--json]` (mutating with `--apply`: the one-way relayout of a legacy `.prawduct/learnings.md` into
   the rules files, byte-accounted against the tree it writes; refuses on a dirty tree; exit 0 written,
   1 refused or could not run, 2 usage — the sibling repairs' scheme). **The contract change, in one

@@ -861,7 +861,10 @@ LAST_MEASURED_TOKENS = {
     # post-fix step says a reported cause is a hypothesis until reproduced —
     # a rule the fleet re-learned, delivered at the step that needs it. A
     # READING, no ceiling.
-    "methodology/reflection.md": 2780,
+    # +65 on 2026-09-03 (learnings-v2-docs Chunk 04 resolutions, review R-9): the
+    # framework-repo clause — in prawduct's own repo the last two routes turn
+    # around, because the curator is the reader. A READING, no ceiling.
+    "methodology/reflection.md": 2845,
     # First reading, 2026-09-03, taken at birth: the standing block and the
     # forward notes, moved verbatim out of `reflection.md` (D2) so the learning
     # loop's guide is about the learning loop. On-demand class: a reading, no
@@ -967,7 +970,9 @@ LAST_MEASURED_TOKENS = {
     # building.md WAS paid for in place against that file's ceiling. An
     # anti-pattern list is the shape a dispatcher scans at dispatch time, which
     # is the moment this rule has to fire.
-    "methodology/delegation.md": 2766,
+    # -4 on 2026-09-03 (learnings-v2-docs Chunk 04 resolutions): the clear-verdict
+    # pointer names `session-hygiene` instead of a section of reflection.md. A CUT.
+    "methodology/delegation.md": 2762,
 }
 
 
@@ -1404,7 +1409,7 @@ def test_every_methodology_guide_is_accounted_for():
 
 
 def _clear_line_guidance() -> str:
-    """Just the standing block's CLEAR item from `reflection.md`.
+    """Just the standing block's CLEAR item from `session-hygiene.md`.
 
     Pins about what the clear line must and must not say belong to that item,
     not to the whole guide -- a negative assertion run over a 200-line file
@@ -1423,14 +1428,14 @@ def _clear_line_guidance() -> str:
     for label, found in (("opener", start), ("closer", end)):
         assert found != -1, (
             f"`_clear_line_guidance` cannot find the {label} it slices on "
-            f"({opener if label == 'opener' else closer!r}) — `reflection.md`'s "
+            f"({opener if label == 'opener' else closer!r}) — `session-hygiene.md`'s "
             "standing-block section was restructured. Re-point the delimiters; "
             "do not delete the pins that depend on this."
         )
     item = text[start:end]
     assert len(item) > 500, (
         "the clear-line slice came back too short to be the real item -- the "
-        "delimiters in `_clear_line_guidance` no longer match `reflection.md`, "
+        "delimiters in `_clear_line_guidance` no longer match `session-hygiene.md`, "
         "and every negative assertion using it is now passing vacuously"
     )
     return item
@@ -1882,7 +1887,7 @@ class TestBuildingMethodology:
         "clear when context passes 50%" ships the rejected design, and the
         positive half alone would stay green through it.
 
-        `reflection.md` only: the digest carries the VERDICT binding in its
+        `session-hygiene.md` only: the digest carries the VERDICT binding in its
         shortest true form (and it is charged to both injected shapes, so a
         digest clause costs twice what a `CLAUDE.md` one does), while the
         reasoning belongs to the canonical carrier. Deliberately no headroom
@@ -1892,14 +1897,14 @@ class TestBuildingMethodology:
         """
         clear_item = _clear_line_guidance()
         assert "*should you*" in clear_item, (
-            "reflection.md's clear line no longer answers *should you* — it is "
+            "session-hygiene.md's clear line no longer answers *should you* — it is "
             "back to answering only *can you*, which is the gap #687 names"
         )
         # Keyed to cost, not to a threshold: coverage survives a clear (so the
         # review argument is not the reason), and the read cost of NOT clearing
         # is what grows.
         assert "review-cycle.md" in clear_item, (
-            "reflection.md stopped citing where review coverage's survival "
+            "session-hygiene.md stopped citing where review coverage's survival "
             "across sessions is defined; without it the cost argument reads as "
             "though clearing risks the accumulated reviews"
         )
@@ -1913,14 +1918,14 @@ class TestBuildingMethodology:
         # banning today's phrasings invites tomorrow's 60%.
         threshold = re.search(r"\d+\s*%", clear_item)
         assert threshold is None, (
-            f"reflection.md's clear guidance names a percentage "
+            f"session-hygiene.md's clear guidance names a percentage "
             f"({threshold.group(0)!r} if matched) — #687 records the "
             "context-fullness trigger as REJECTED on grounds no later edit "
             "re-derives: the percentage proxies the risk rather than measuring "
             "it, and the agent cannot take the measurement anyway"
         )
         assert "context is full" not in clear_item, (
-            "reflection.md's clear guidance gates on context fullness, which "
+            "session-hygiene.md's clear guidance gates on context fullness, which "
             "#687 rejects: the agent cannot reliably measure its own window"
         )
 
@@ -2062,12 +2067,12 @@ class TestBuildingMethodology:
         text = read_file("methodology/session-hygiene.md")
         lowered = text.lower()
         assert "before a long wait" in lowered or "before the wait" in lowered, (
-            "reflection.md does not say WHEN to write the forward notes for a "
+            "session-hygiene.md does not say WHEN to write the forward notes for a "
             "long-running task. 'Prepare it, don't ask' is silent on timing, and "
             "notes written after the wait leave an away-reader stranded during it"
         )
         assert "part of the task" in lowered, (
-            "reflection.md no longer states that reaching `SAFE TO CLEAR` is part "
+            "session-hygiene.md no longer states that reaching `SAFE TO CLEAR` is part "
             "of finishing a long task rather than a report about it"
         )
 

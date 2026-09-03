@@ -52,18 +52,31 @@ def test_each_rows_anchor_is_present_in_its_surface(row):
     )
 
 
+def _line_containing(text: str, needle: str) -> str:
+    hits = [ln.strip() for ln in text.splitlines() if needle in ln]
+    assert len(hits) == 1, f"{needle!r} must appear on exactly one line, found {len(hits)}"
+    return hits[0]
+
+
 def test_critic_goal_rows_agree_across_both_protocol_files():
     """A Goal sentence carried by two files is one rule with two readers; the
     chunk/verify-resolutions modes read goals-1-3.md alone, final/cumulative
     read review-protocol.md, and the two must say the same thing."""
     goals = (ROOT / "skills" / "critic" / "goals-1-3.md").read_text(encoding="utf-8")
     protocol = (ROOT / "skills" / "critic" / "review-protocol.md").read_text(encoding="utf-8")
-    for row in _rows():
-        if row["channel"].startswith("Critic goal"):
-            anchor = _strip_ticks(row["anchor"])
-            assert anchor in goals and anchor in protocol, (
-                f"row {row['n']}'s Critic-goal sentence ({anchor!r}) is not in both protocol files"
-            )
+    # The carrier set is derived from the Channel cell and asserted, so a reworded
+    # cell cannot empty the loop silently; the WHOLE bullet is compared, severity
+    # included — a re-severitied copy in one carrier is two bars for one decision.
+    carried = [r for r in _rows() if "critic goal" in r["channel"].lower()]
+    assert {r["n"] for r in carried} == {"5", "6", "7"}, (
+        "the rows the table carries through a Critic goal changed — update this "
+        "set deliberately, and check both protocol files carry the newcomer"
+    )
+    for row in carried:
+        anchor = _strip_ticks(row["anchor"])
+        assert _line_containing(goals, anchor) == _line_containing(protocol, anchor), (
+            f"row {row['n']}'s Goal bullet differs between goals-1-3.md and review-protocol.md"
+        )
 
 
 def test_every_row_passes_the_three_generality_tests_by_construction():

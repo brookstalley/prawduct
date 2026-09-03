@@ -31,7 +31,7 @@ gate rows carry `since: 3.5.0`).
 
 Closes the program for #685 (the reflection gate), #347 (reflection.md's two stale limbs), #295 (the
 memory triple-track converges on `.session-reflected` + the rules files), and Wave 2's #661 by
-deletion; #343 gets its first entry (R12) and stays open for the mechanical-promotion half; #304
+deletion; #343 gets its first entry (R12) and stays open for the mechanical-promotion half — its ruling's (a) read-at-query-time and (b) distinct-store halves stand as `docs/discipline.md` plus the surfaces it names, while (c)'s named reader `/prawduct:learnings` retired with the lookup model (audit §3.2); #304
 stays open holding the Critic gate's span flip.
 
 ## 2026-09-02: learnings v2 delete — the lookup, audit and archive mechanisms retired; the reflection gate fires on the common case; the loop measures itself

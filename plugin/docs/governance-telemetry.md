@@ -116,8 +116,10 @@ The format is lock-in, so the queries came before the fields:
 
 1. **How many rules were written** per session / scope / repo / window —
    count `learning.written` by `learning.session`, `scope`, `project`, `ts`.
-   The count is of rules the session wrote, committed or not; it is short only
-   for a session that ran with no base-tree marker at all.
+   The count is of rules the session wrote, committed or not. It is short for a session
+   that ran with no base-tree marker, and it is HIGH under rewording: an edited rule mints
+   a new unit hash and is counted as written, so merge-and-reword curation inflates it —
+   read Q1 as writes-or-rewrites, and use Q3 for the corpus.
 2. **Which rules fire, how often, and in which review** — count
    `learning.fired` by `learning.unit_hash`, read `learning.review_id`.
 3. **Which rules never fire** — join the corpus's units (hash each with
