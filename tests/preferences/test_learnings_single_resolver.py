@@ -68,15 +68,6 @@ ALLOWLIST: dict[str, tuple[str, str]] = {
         "outside this program), and the three deprecated-inert lifecycle stubs "
         "say in their notices that there is no learnings.md left to grade",
     ),
-    # --- Wave 3 (`learnings-v2-docs`)
-    "plugin/methodology/reflection.md": (
-        "wave-3",
-        "R8 — the write-path guide is rewritten to the new model",
-    ),
-    "plugin/docs/norms.md": (
-        "wave-3",
-        "R13 — the norms-are-statute / learnings-are-case-law cross-links",
-    ),
     # --- Wave 1, Chunk 02: the one module whose job is reading the old file
     "plugin/lib/learnings_migrate.py": (
         "none",

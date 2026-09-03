@@ -363,7 +363,10 @@ LAST_MEASURED_TOKENS = {
     # trimming until it fits.
     # MERGED 2026-09-02: Chunk 02's cut and Chunk 03's raise landed together;
     # the number below is the measured merge (B's delta + C's delta), not either side.
-    "methodology/building.md": 4787,
+    # -3 on 2026-09-03 (learnings-v2-docs Chunk 01): the standing-block pointer
+    # now names `session-hygiene.md` instead of a section of reflection.md. A
+    # CUT; the ceiling ratchets by the same -3.
+    "methodology/building.md": 4784,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -836,7 +839,16 @@ LAST_MEASURED_TOKENS = {
     # the cost is paid only by a session that opens this guide.
     # MERGED 2026-09-02: Chunk 02's cut and Chunk 03's raise landed together;
     # the number below is the measured merge (B's delta + C's delta), not either side.
-    "methodology/reflection.md": 5003,
+    # Rewritten 2026-09-03 (learnings-v2-docs Chunk 01, discovery R8 + D2): the
+    # standing-block specification (~60% of the file) moved whole to the new
+    # `session-hygiene.md`, and Step 4 became the four-route write path. A
+    # READING, no ceiling (on-demand class).
+    "methodology/reflection.md": 2753,
+    # First reading, 2026-09-03, taken at birth: the standing block and the
+    # forward notes, moved verbatim out of `reflection.md` (D2) so the learning
+    # loop's guide is about the learning loop. On-demand class: a reading, no
+    # ceiling.
+    "methodology/session-hygiene.md": 2811,
     # First reading, 2026-08-21, taken at birth: a new on-demand guide, so it
     # joins the class above — a READING, no ceiling. `test_every_methodology_guide_is_accounted_for`
     # requires the entry; the decision block above this
@@ -1206,8 +1218,11 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # not a second copy of it.
     # MERGED 2026-09-02: Chunk 02's cut and Chunk 03's raise landed together;
     # the number below is the measured merge (B's delta + C's delta), not either side.
-    "framework": 3213,
-    "product": 2100,
+    # -2 on both, 2026-09-03 (learnings-v2-docs Chunk 01): the standing-block
+    # pointer shortened to the new guide's path and the topic list gained
+    # `session-hygiene` — net a cut; ceilings ratchet with it.
+    "framework": 3211,
+    "product": 2098,
 }
 
 #: Ceilings. HARD, like the per-file prose ceilings in this module and
@@ -1306,8 +1321,9 @@ INJECTED_FOOTPRINT_CEILINGS = {
     # over each reading, so nothing is banked.
     # MERGED 2026-09-02: Chunk 02's cut and Chunk 03's raise landed together;
     # the number below is the measured merge (B's delta + C's delta), not either side.
-    "framework": 3214,
-    "product": 2101,
+    # RATCHETED 3214 -> 3212, 2101 -> 2099 (2026-09-03) with the readings.
+    "framework": 3212,
+    "product": 2099,
 }
 
 
@@ -1370,7 +1386,7 @@ def _clear_line_guidance() -> str:
     make every positive assertion below it fail for the wrong reason and every
     negative one PASS vacuously, which is the worse half.
     """
-    text = read_file("methodology/reflection.md")
+    text = read_file("methodology/session-hygiene.md")
     opener, closer = "3. **Clear** —", "\n**Three ways to fail this"
     start, end = text.find(opener), text.find(closer)
     for label, found in (("opener", start), ("closer", end)):
@@ -1677,7 +1693,7 @@ class TestBuildingMethodology:
         exists to prevent.
         """
         surfaces = {
-            "methodology/reflection.md": read_file("methodology/reflection.md"),
+            "methodology/session-hygiene.md": read_file("methodology/session-hygiene.md"),
             "methodology/session-digest.md": read_file("methodology/session-digest.md"),
         }
         for name, text in surfaces.items():
@@ -1785,7 +1801,7 @@ class TestBuildingMethodology:
         digest's pointer arrives.
         """
         for name in (
-            "methodology/reflection.md",
+            "methodology/session-hygiene.md",
             "methodology/session-digest.md",
         ):
             # Normalized because the digest wraps mid-clause: the subject and
@@ -1816,7 +1832,7 @@ class TestBuildingMethodology:
         # blanket implication would make the clear line a restatement of the
         # disposition line — which is the collapse the two-axis design exists
         # to prevent (see the "different axis" clause the shape pin guards).
-        canonical = read_file("methodology/reflection.md")
+        canonical = read_file("methodology/session-hygiene.md")
         assert "for work a clear leaves alone it is correct" in canonical, (
             "reflection.md dropped the clause scoping the new binding to work "
             "a clear DESTROYS. Without it the rule reads as `RUNNING` implying "
@@ -1905,7 +1921,7 @@ class TestBuildingMethodology:
             )
         # Where the reader is sent for the shape. Named, not implied -- a bare
         # "see reflection.md" would survive the section being renamed away.
-        assert 'methodology/reflection.md` "Work cycle boundary"' in self.content
+        assert "methodology/session-hygiene.md" in self.content
 
     def test_handoff_notes_are_reconciled_not_appended(self):
         """A handoff is reconciled against reality on every write, not grown.
@@ -1939,7 +1955,7 @@ class TestBuildingMethodology:
         A rule that merely said "persist your findings" would satisfy a phrase
         check and leave the reader unable to recognise the case they are in.
         """
-        for surface in ("methodology/reflection.md", "methodology/session-digest.md"):
+        for surface in ("methodology/session-hygiene.md", "methodology/session-digest.md"):
             text = read_file(surface)
             # Whitespace-normalized because the phrases below span several
             # words, and both carriers hard-wrap. A pure RE-WRAP -- no word
@@ -1979,7 +1995,7 @@ class TestBuildingMethodology:
         question). Both are reasoning rules, so both are pinned by their
         substance.
         """
-        for surface in ("methodology/reflection.md", "methodology/session-digest.md"):
+        for surface in ("methodology/session-hygiene.md", "methodology/session-digest.md"):
             text = read_file(surface)
             lowered = text.lower()
             # The axis itself. Without it the three labels are just words and an
@@ -2012,7 +2028,7 @@ class TestBuildingMethodology:
         SEQUENCES a long task, which is the on-demand guide's subject, and the
         injected digest is budget-bound to the rules it must carry unconditionally.
         """
-        text = read_file("methodology/reflection.md")
+        text = read_file("methodology/session-hygiene.md")
         lowered = text.lower()
         assert "before a long wait" in lowered or "before the wait" in lowered, (
             "reflection.md does not say WHEN to write the forward notes for a "
@@ -2379,7 +2395,9 @@ class TestBuildingMethodology:
         # standing trim-or-relocate rule with nothing to collect silently.
         # MERGED 2026-09-02: Chunk 02's cut and Chunk 03's raise landed together;
         # the number below is the measured merge (B's delta + C's delta), not either side.
-        assert tokens < 4788, f"building.md is ~{tokens} tokens, should be <4788"
+        # RATCHETED 4788 -> 4785 (2026-09-03): the pointer to the standing block
+        # got shorter when the block moved to its own guide.
+        assert tokens < 4785, f"building.md is ~{tokens} tokens, should be <4785"
 
 
 # =============================================================================
@@ -3645,15 +3663,49 @@ class TestOtherMethodology:
         assert "coverage-scaffold" in content
         assert "/prawduct:doctor" in content
 
+    def test_reflection_names_the_four_routes_and_the_payment_rule(self):
+        """R8 — the write path is a ROUTING decision with four destinations, and
+        the budget's payment rule travels with it. Each route is pinned by the
+        phrase that names its destination, because a guide that lists three of
+        the four teaches the reader to write the fourth somewhere.
+        """
+        content = read_file("methodology/reflection.md")
+        assert "`.prawduct/.session-reflected`" in content          # the episode
+        assert "`.claude/rules/learnings/`" in content              # the product rule
+        assert "`/prawduct:report-bug`" in content                  # framework friction
+        assert "is **not written as a product rule**" in content    # portable discipline
+        assert "the instance that earned it, inline" in content
+        assert "never trim a rule to fit" in content
+        # The standing block lives elsewhere now; this guide only points.
+        assert "`methodology/session-hygiene.md`" in content
+        for label in ("`STATE`", "`RUNNING`", "`SAFE TO CLEAR`"):
+            assert label not in content, f"reflection.md restates the standing block's {label}"
+
+    def test_session_hygiene_carries_the_standing_block_shape(self):
+        """D2 — the moved guide owns the shape whole: the fenced block, all
+        five labels, the procedure, and the forward-notes distinction."""
+        content = read_file("methodology/session-hygiene.md")
+        for label in ("`STATE`", "`RUNNING`", "`YOUR TURN`", "`COMPLETE`", "`SAFE TO CLEAR`", "`DO NOT CLEAR`"):
+            assert label in content, f"session-hygiene.md lacks the {label} label"
+        assert "Choosing the label is a procedure" in content
+        assert "Forward notes are not a reflection" in content
+        assert "methodology/reflection.md" in content  # it says where it was sent from
+
     def test_reflection_learning_lifecycle(self):
         content = read_file("methodology/reflection.md")
         assert "Learning Lifecycle" in content
         for stage in ["Provisional", "Confirmed", "Incorporated"]:
             assert stage in content
-        assert "Recurrence escalation" in content or "recurrence escalation" in content
+        # The recurrence concept by its substance (renegotiated 2026-09-03): a
+        # confirmed rule violated again is promoted to structure and deleted.
+        assert "violated again despite capture" in content
         assert "phase transition" not in content.lower()
-        assert "learnings.md" in content
-        assert "learnings-detail.md" in content
+        # Renegotiated 2026-09-03 (learnings-v2-docs Chunk 01): the two-file
+        # corpus is gone; the lifecycle's home is the rules directory and its
+        # end state is a deletion, not an archive.
+        assert ".claude/rules/learnings/" in content
+        assert "deleted from the rules file" in content
+        assert "learnings-detail.md" not in content
 
 
 # =============================================================================
@@ -3674,6 +3726,7 @@ class TestMethodologyProseHygiene:
         "methodology/discovery.md",
         "methodology/planning.md",
         "methodology/reflection.md",
+        "methodology/session-hygiene.md",
     ]
 
     @pytest.mark.parametrize("rel_path", METHODOLOGY_GUIDES)
@@ -4777,7 +4830,9 @@ class TestMethodologyConsistency:
         assert ".subagent-briefing.md" in self.building
         assert "boundary-patterns.md" in self.critic
         assert "project-preferences.md" in self.critic
-        assert "learnings-detail.md" in self.reflection
+        # Renegotiated 2026-09-03: the detail file no longer exists; the guide
+        # cross-references the rules directory the harness loads.
+        assert ".claude/rules/learnings/" in self.reflection
 
     def test_no_old_check_names(self):
         """v5 uses goal names, not check names."""

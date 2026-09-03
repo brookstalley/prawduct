@@ -31,7 +31,7 @@ DIGEST_SRC = ROOT / "methodology" / "session-digest.md"
 # The methodology guides, read via `/prawduct:methodology <topic>`. `delegation`
 # joined on 2026-08-21; `principles` and `norms` are deliberately absent — they
 # route to `docs/`, not to a guide, and the overview list below names phases.
-PHASES = ("building", "discovery", "planning", "reflection", "delegation")
+PHASES = ("building", "discovery", "planning", "reflection", "session-hygiene", "delegation")
 
 # Claude Code spills additionalContext over this many characters to a file
 # instead of injecting it inline. The digest must stay comfortably under it.

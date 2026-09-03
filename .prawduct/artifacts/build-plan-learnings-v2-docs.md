@@ -96,12 +96,16 @@ is needed, and nothing before it depends on the answer.
 
 ## Status
 
-- [ ] Chunk 01: `reflection.md` rewritten to the write-path model; the standing block moves to its own guide
+- [x] Chunk 01: `reflection.md` rewritten to the write-path model; the standing block moves to its own guide
 - [ ] Chunk 02: Digest line, contract records, and the residue the two earlier waves left in prose
 - [ ] Chunk 03: The discipline seed — ten cross-repo rules delivered where rules fire, recorded in one table
 - [ ] Chunk 04: The program's PR to `develop` — its cumulative review is the gate
 - [ ] Chunk 05: Release — plan, version, cut, verify, reopen `develop`
-Context: Plan drawn 2026-09-03 from the tree at f2dffc6b (Wave 2 complete). Next: Chunk 01.
+Context: Plan drawn 2026-09-03 from the tree at f2dffc6b (Wave 2 complete). Chunk 01 done
+2026-09-03: reflection.md 5003 → 2753 tokens, session-hygiene.md born at 2811 (the block moved
+verbatim; one paragraph restating the digest's reconcile rule dropped as a second home); every
+standing-block pin repointed, lifecycle and cross-reference pins renegotiated to the rules
+directory; the last two wave-3 allowlist entries gone. Review lands in Chunk 04. Next: Chunk 02.
 
 ## Scaffolding
 

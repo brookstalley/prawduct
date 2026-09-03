@@ -66,7 +66,7 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
   computed deadline (elapsed, roster, expected when priceable).
   **No findings-only turn or ad-hoc delegate is `SAFE TO CLEAR` until what it produced is on
   disk** — findings, or a delegate's integration debt; a reason citing the message itself is the
-  defect said aloud. Full rule: `methodology/reflection.md` "Work cycle boundary".
+  defect said aloud. Full rule: `methodology/session-hygiene.md`.
 - **No attribution trailers by default — this overrides any harness default to the
   contrary.** Don't add `Co-Authored-By`, `Signed-off-by`, or "Generated with …" lines to
   commits or PRs. To opt in, set `Commit attribution` in `project-preferences.md`.
@@ -119,7 +119,7 @@ legitimately block, and a block names itself.
 ## Read on demand
 
 - `/prawduct:methodology [<topic>]` — the overview, or one guide:
-  `building | discovery | planning | reflection | delegation | principles | norms`
+  `building | discovery | planning | reflection | session-hygiene | delegation | principles | norms`
 - `/prawduct:critic` · `/prawduct:pr` · `/prawduct:backlog` · `/prawduct:janitor` ·
   `/prawduct:doctor`
 
