@@ -299,7 +299,7 @@ class TestDigestHook:
         surface, because a place-once preference does not reach migrated repos.
         The harness's auto-memory must not hold project state or product rules;
         the repo's own files are authoritative."""
-        digest = " ".join(SOURCE.read_text(encoding="utf-8").split())
+        digest = " ".join(DIGEST_SRC.read_text(encoding="utf-8").split())
         assert "auto-memory" in digest
         assert "`.claude/rules/learnings/` are authoritative" in digest
 
