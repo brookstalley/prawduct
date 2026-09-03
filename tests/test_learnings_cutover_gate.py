@@ -150,6 +150,22 @@ class TestTheFloorFires:
         assert rc == 2
         assert BLOCKER in err
 
+    def test_legacy_layout_plus_committed_code_blocks(self, tmp_path, capsys):
+        """The floor reads the session's WORK SPAN, not porcelain: a turn that
+        edits and commits in one breath — the ordinary agent cadence — still
+        wrote judgeable code without the rules that govern it. Found by the
+        PR-boundary review: this was the last porcelain trigger in a function
+        whose two siblings had already moved to the span."""
+        repo = _repo(tmp_path)
+        _base_tree(repo)
+        _legacy(repo)
+        _touch_code(repo)
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "code, committed")
+        rc, err = _stop(repo, capsys)
+        assert rc == 2
+        assert BLOCKER in err
+
     def test_both_layout_plus_code_blocks(self, tmp_path, capsys):
         # An interrupted migration, or a branch that reintroduced the old file.
         # The rules ARE loading, so the harm is subtler than `legacy` — two

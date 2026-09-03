@@ -466,7 +466,8 @@ LAST_MEASURED_TOKENS = {
     # +58 on 2026-09-03 (learnings-v2-docs Chunk 03): the same two Goal 2
     # bullets as goals-1-3.md, which this file must agree with
     # (tests/test_discipline_table.py pins the pair). Raised, not funded.
-    "skills/critic/review-protocol.md": 3848,
+    # -33 on 2026-09-03 (PR-boundary review R-6): the same bullet left here.
+    "skills/critic/review-protocol.md": 3815,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -528,7 +529,10 @@ LAST_MEASURED_TOKENS = {
     # their own (`docs/discipline.md`). The review is the moment these fire,
     # and this file is what the most frequent modes read. NOT funded by a
     # trim; the ceiling is RAISED with it (see test_token_budget).
-    "skills/critic/goals-1-3.md": 2333,
+    # -32 on 2026-09-03 (PR-boundary review R-6): the removal-is-repo-wide bullet
+    # re-owned Goal 4's drift subject at a different severity; it left, and
+    # discipline row 5 re-homed on the drift bullet. A CUT; the ceiling ratchets.
+    "skills/critic/goals-1-3.md": 2301,
     # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
     # a computed pass the gate can now print, which a reader who only knows
     # "uncovered means run a cumulative" will otherwise re-review straight
@@ -611,7 +615,9 @@ LAST_MEASURED_TOKENS = {
     # heading or a top-level bullet) and drops the "date in a narrative body"
     # clause, stale since narratives left the rules files. Net a cut; the
     # ceiling ratchets with it.
-    "skills/critic/review-cycle.md": 9591,
+    # -1 on 2026-09-03: `learnings` left the free-writes parenthetical (the
+    # corpus is no longer under `.prawduct/`).
+    "skills/critic/review-cycle.md": 9590,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -4048,7 +4054,8 @@ class TestCriticSkill:
         # RAISED 3800 -> 3849 on 2026-09-03 (learnings-v2-docs Chunk 03), by
         # declaration: two fleet-rediscovered rules delivered as Goal 2 bullets
         # (`docs/discipline.md` rows 5 and 7). One over the reading; nothing banked.
-        assert tokens < 3849, f"review-protocol.md is ~{tokens} tokens, should be <3849"
+        # RATCHETED 3849 -> 3816 (2026-09-03) with the reading.
+        assert tokens < 3816, f"review-protocol.md is ~{tokens} tokens, should be <3816"
 
 
 # =============================================================================
@@ -4271,7 +4278,8 @@ class TestCriticGoals13:
         # RAISED 2278 -> 2334 on 2026-09-03 (learnings-v2-docs Chunk 03), by
         # declaration: two fleet-rediscovered rules delivered as Goal 2 bullets
         # (`docs/discipline.md` rows 5 and 7). One over the reading; nothing banked.
-        assert tokens < 2334, f"goals-1-3.md is ~{tokens} tokens, should be <2334"
+        # RATCHETED 2334 -> 2302 (2026-09-03) with the reading.
+        assert tokens < 2302, f"goals-1-3.md is ~{tokens} tokens, should be <2302"
 
     def test_is_self_contained(self):
         """No follow-the-pointer reads at review time — the acceptance criterion
@@ -4717,7 +4725,8 @@ class TestReviewCycle:
         # RATCHETED 9597 -> 9592 (2026-09-03, learnings-v2-docs Chunk 02): the
         # rule-unit sentence stated from the writer cost less than the stale
         # narrative-body clause it replaced.
-        assert tokens < 9592, f"review-cycle.md is ~{tokens} tokens, should be <9592"
+        # RATCHETED 9592 -> 9591 (2026-09-03) with the reading.
+        assert tokens < 9591, f"review-cycle.md is ~{tokens} tokens, should be <9591"
 
     def test_framework_checks_token_budget(self):
         # Ceiling 1150. This file is `final`/`cumulative` payload: SKILL.md's

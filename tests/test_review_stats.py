@@ -303,7 +303,8 @@ class TestJsonSchemaStability:
         # 1 -> 2 when the `learning` block arrived. A key change, so the
         # version moves with it — that is the whole contract this class exists
         # to hold, and a silent add would break TEL-7A4X's consumers quietly.
-        assert report["schema_version"] == 2
+        # 2 -> 3 on 2026-09-03: `learning` gained `units_uncited` (a key change).
+        assert report["schema_version"] == 3
         assert report["project"] == "repo"
 
     def test_group_entry_keys_pinned(self, tmp_path):
@@ -358,11 +359,32 @@ class TestLearningLoopBlock:
         report = json.loads(_run(repo, "--json").stdout)
         assert report["learning"] == {
             "written": 3, "fired": 1, "units_written": 2, "units_fired": 1,
+            "units_uncited": 1,
         }
         # Tallied, not skipped — the defect this block closes.
         assert report["skipped"]["unknown_kinds"] == 0
         # ...and NOT folded into the review count, which means reviews.
         assert report["events_total"] == 0
+
+    def test_uncited_is_a_set_difference_not_a_size_difference(self, tmp_path):
+        """A rule can FIRE without ever being WRITTEN — every rule authored
+        before the emitter shipped does — so the two sets are not nested, and
+        on a migrated fleet repo they are disjoint. A size subtraction clamped
+        at zero read 0 there forever; the true count is the written set minus
+        the fired set. Found live on this repo's own ledger (2 written, 3
+        fired, disjoint, printed 0)."""
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [
+            _learning(unit="w1"), _learning(unit="w2"),
+            _learning(kind="learning.fired", unit="f1", review_id="rev-1"),
+            _learning(kind="learning.fired", unit="f2", review_id="rev-1"),
+            _learning(kind="learning.fired", unit="f3", review_id="rev-1"),
+        ])
+        report = json.loads(_run(repo, "--json").stdout)
+        assert report["learning"]["units_written"] == 2
+        assert report["learning"]["units_fired"] == 3
+        assert report["learning"]["units_uncited"] == 2
+        assert "2 written rule(s) no review has cited" in _run(repo).stdout
 
     def test_zeros_when_the_ledger_holds_none(self, tmp_path):
         repo = tmp_path / "repo"
@@ -370,6 +392,7 @@ class TestLearningLoopBlock:
         report = json.loads(_run(repo, "--json").stdout)
         assert report["learning"] == {
             "written": 0, "fired": 0, "units_written": 0, "units_fired": 0,
+            "units_uncited": 0,
         }
 
     def test_zeros_when_there_is_no_ledger_at_all(self, tmp_path):
@@ -381,6 +404,7 @@ class TestLearningLoopBlock:
         report = json.loads(_run(repo, "--json").stdout)
         assert report["learning"] == {
             "written": 0, "fired": 0, "units_written": 0, "units_fired": 0,
+            "units_uncited": 0,
         }
 
     def test_a_corrupt_learning_line_is_still_corrupt(self, tmp_path):

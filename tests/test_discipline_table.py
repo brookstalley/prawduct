@@ -67,8 +67,10 @@ def test_critic_goal_rows_agree_across_both_protocol_files():
     # The carrier set is derived from the Channel cell and asserted, so a reworded
     # cell cannot empty the loop silently; the WHOLE bullet is compared, severity
     # included — a re-severitied copy in one carrier is two bars for one decision.
-    carried = [r for r in _rows() if "critic goal" in r["channel"].lower()]
-    assert {r["n"] for r in carried} == {"5", "6", "7"}, (
+    # Goals 1-3 have two carriers; Goal 4 has one (only final/cumulative modes
+    # run it), so the two-carrier set is the rows naming a Goal 1, 2 or 3.
+    carried = [r for r in _rows() if re.search(r"critic goal [123]\b", r["channel"].lower())]
+    assert {r["n"] for r in carried} == {"6", "7"}, (
         "the rows the table carries through a Critic goal changed — update this "
         "set deliberately, and check both protocol files carry the newcomer"
     )

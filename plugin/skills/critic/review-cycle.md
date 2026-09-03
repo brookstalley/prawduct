@@ -299,7 +299,7 @@ from here.
 
 **Which writes are free while a review is in flight** — the question the builder actually has
 mid-review, answered by `coverage_algebra.is_judgeable_path`. Free: **everything under
-`.prawduct/`** (change-log, backlog, learnings, `project-state.yaml`, plan prose including its
+`.prawduct/`** (change-log, backlog, `project-state.yaml`, plan prose including its
 `## Status` boxes, and the gitignored session files), `.claude/settings.json`, and `.md` outside the protected
 set — README, `docs/**`, product prose. These are **non-judgeable**: a commit touching only those
 composes as a free edge, so it never needs new coverage and a fix confined to them cannot mandate

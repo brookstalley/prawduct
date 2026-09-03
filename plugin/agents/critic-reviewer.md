@@ -88,8 +88,9 @@ The role → goal mapping
    "does this duplicate R-13?" — it is "is a finding the subject of this one?". A count read as
    review thoroughness is what the builder budgets remediation against.
 6. Read the changed files and inspect the diff (`git -C <project dir> …`). Do NOT run tests or
-   builds — the Goal 1 `test-status` and `verify-coverage` probes report what a previous run
-   recorded and are the only commands your goals ever ask you to issue.
+   builds — the read-only `prawduct-hook` probes your `tools:` line grants (`test-status` and
+   `verify-coverage` report what a previous run recorded; `learnings-files --for-diff` and
+   `backlog cache-query` resolve a read list) are the only commands your goals ever ask you to issue.
 7. Assess your goals and gather findings, each with a severity: `blocking`, `warning`, or `note`
    (definitions in `review-protocol.md`). A clean pass has zero findings — that is normal and
    correct; do not invent findings to fill space. When a finding rests on a rule from the

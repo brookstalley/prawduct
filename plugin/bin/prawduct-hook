@@ -2421,9 +2421,13 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # a governance-only session). Nothing was judged in such a session, so
     # nothing here is owed — and a blocker whose first sentence says "this
     # session changed judgeable code" must not fire where that sentence is false.
-    _session_changed = _gs._get_session_changed_files(project_dir, status_output)
-    _non_metadata = [f for f in _session_changed if not _gs._is_metadata_path(f)]
-    _judgeable_work = bool(_non_metadata) and not doc_only
+    # Read from the SPAN (base tree -> working tree, committed work included),
+    # as the reflection gate above and the budget arm below already do: the
+    # porcelain list is empty the moment you commit, and an unmigrated repo
+    # whose turns end committed was reaching session end with this floor silent.
+    # `judgeable` is the judgeability predicate over the span's non-metadata
+    # paths, which is the sentence the blocker below states.
+    _judgeable_work = reflection_span["judgeable"]
 
     def _touches_rules(path: str) -> bool:
         """Did this changed path put a learnings rules file in the session?
@@ -2660,6 +2664,10 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                         f"git could not resolve the base tree {_budget_base[:12]} "
                         f"({_lt_err.strip() or 'no such tree'})"
                     )
+                # ONE ledger read for the whole corpus: every unit stays "new
+                # since the base" for the rest of the session, so per-unit
+                # probing was a whole-file read per rule per turn.
+                _lt_seen = _lt_ledger.learning_events_seen(prawduct_dir)
                 for _lt_path in _lt_lf.resolve(project_dir).files:
                     _lt_rel = _lt_path.relative_to(project_dir).as_posix()
                     _lt_rc, _lt_base_text, _ = _lt_evidence.run_git(
@@ -2684,7 +2692,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                         # the Stop hook is not.
                         _lt_ledger.append_learning_event(
                             project_dir, "learning.written",
-                            file=_lt_rel, unit_hash=_lt_hash,
+                            file=_lt_rel, unit_hash=_lt_hash, seen=_lt_seen,
                         )
             except Exception as _lt_exc:  # prawduct:allow prawduct/broad-except -- telemetry must never change a gate's verdict
                 print(
@@ -6558,7 +6566,7 @@ def cmd_learnings_migrate(project_dir: Path, argv: list[str]) -> int:
     plan is printed with per-file byte and rule counts, the agent edits the
     proposed topic→glob map, and ``--apply`` performs exactly what was printed.
 
-    Flow: ``--propose-map`` writes the sidecar, the agent scopes the topics it
+    Flow: ``--propose-map`` prints the map for the agent to capture into a sidecar, the agent scopes the topics it
     recognises, ``--apply --map <file>`` migrates, and the operator's control
     point is the commit that follows.
 
@@ -6670,21 +6678,24 @@ def cmd_learnings_migrate(project_dir: Path, argv: list[str]) -> int:
             print(learnings_migrate.format_map(proposal, unmatched), end="")
         return 0
 
-    if as_json:
-        print(json.dumps({
-            "state": migration.state,
-            "applied": do_apply,
-            "resumed": migration.resumed,
-            "outputs": [
-                {"path": o.rel, "bytes": o.size, "rules": o.rules}
-                for o in migration.outputs
-            ],
-            "deletions": list(migration.deletions),
-            "unmapped": list(migration.unmapped),
-            "merges": list(migration.merges),
-            "total_bytes": migration.size,
-            "total_rules": migration.rules,
-        }, indent=2))
+    # Built now, PRINTED after the outcome is known: an envelope emitted before
+    # the apply ran said `"applied": true` over an interrupted write. `dropped`
+    # rides here too — the one question a --json caller could not otherwise ask.
+    _json_payload = {
+        "state": migration.state,
+        "applied": False,
+        "resumed": migration.resumed,
+        "outputs": [
+            {"path": o.rel, "bytes": o.size, "rules": o.rules}
+            for o in migration.outputs
+        ],
+        "deletions": list(migration.deletions),
+        "unmapped": list(migration.unmapped),
+        "merges": list(migration.merges),
+        "dropped": list(migration.dropped),
+        "total_bytes": migration.size,
+        "total_rules": migration.rules,
+    }
 
     # The unscoped topics and the merges print on BOTH paths. An apply that
     # reported only what it wrote let the prescribed --propose-map -> edit ->
@@ -6734,7 +6745,10 @@ def cmd_learnings_migrate(project_dir: Path, argv: list[str]) -> int:
         except (OSError, learnings_migrate.MigrateRefused) as exc:
             print(f"learnings-migrate: failed — {exc}", file=sys.stderr)
             return 1
-        if not as_json:
+        if as_json:
+            _json_payload["applied"] = True
+            print(json.dumps(_json_payload, indent=2))
+        else:
             for output in migration.outputs:
                 print(f"wrote {output.rel} ({output.size} bytes, {output.rules} rules)")
             for rel in migration.deletions:
@@ -6760,7 +6774,9 @@ def cmd_learnings_migrate(project_dir: Path, argv: list[str]) -> int:
             f"{migration.rules} rules, {migration.size} bytes across "
             f"{len(migration.outputs)} file(s)."
         )
-        print("Run `--propose-map` to draft the scoping map, then `--apply --map <file>`.")
+        print("Run `--propose-map > <file>` to draft the scoping map, edit it, then `--apply --map <file>`.")
+    else:
+        print(json.dumps(_json_payload, indent=2))
     return 0
 
 def cmd_audit_learnings(project_dir: Path, argv: list[str] | None = None) -> int:

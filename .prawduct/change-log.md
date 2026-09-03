@@ -22,8 +22,9 @@ injected ceilings by declaration (+33 each; 9,455 of 10,000 characters); `api-co
 contract change in one paragraph, and its inert-tier count is relational; review-cycle's ordering
 rule states a rule unit from the writer (`rule_units`: a heading or a top-level bullet) and drops
 the stale narrative-body clause (net -5). **Chunk 03 (R12):** `docs/discipline.md` — ten rows, seven
-already homed; rows 5 and 7 are Goal 2 bullets in both protocol files (goals-1-3 2278→2334,
-review-protocol 3800→3849, declared), row 1's clause extends `_GREEN_IS_EVIDENCE_DIRECTIVE`, row 9
+already homed; row 7 is a Goal 2 bullet in both protocol files (goals-1-3 and review-protocol raised by
+declaration; the removal-is-repo-wide row re-homed on Goal 4's existing drift bullet after the
+PR-boundary review found it re-owned that subject), row 1's clause extends `_GREEN_IS_EVIDENCE_DIRECTIVE`, row 9
 is one sentence in the post-fix step; `tests/test_discipline_table.py` pins each row against its
 surface and the two protocol files against each other. **Chunk 04:** the program's cumulative review
 and the PR to `develop`; at the base sync one rule develop had added to the legacy `learnings.md` was ported into

@@ -658,5 +658,5 @@ deprecated_terms:
 # plugin/templates/project-state.yaml). Raised with a reason, never silently.
 learnings_budgets:
   core.md:
-    kb: 104
-    reason: "the 287-rule corpus migrated whole on 2026-09-02 at ~100 KB — over the default by construction until #343's content program splits it into area files; this ceiling covers rules ported from develop at the cutover merge (the one-way relayout left the legacy file on develop for a day). New authoring still pays: the next raise needs its own reason"
+    kb: 99
+    reason: "the 287-rule corpus migrated whole on 2026-09-02 at ~100 KB — over the default by construction until #343's content program splits it into area files; this ceiling sits just above the ported corpus so the over-and-grew gate sees the next addition; it covers rules ported from develop at the cutover merge (the one-way relayout left the legacy file on develop for a day). New authoring still pays: the next raise needs its own reason"

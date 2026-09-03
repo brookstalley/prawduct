@@ -415,9 +415,6 @@ class Layout:
     areas: list[AreaFile] = field(default_factory=list)
     files: list[Path] = field(default_factory=list)
 
-    @property
-    def migrated(self) -> bool:
-        return self.state == STATE_NEW
 
 
 def _read(path: Path) -> str:

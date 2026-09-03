@@ -171,11 +171,13 @@ by_role_model_mode  [{role, model, mode, ...stat block}]
 by_scope         [{scope, ...stat block}]
 top_files        [{path, actionable_findings, findings}]
 files_attributed_total  count behind the top_files cap
-learning         {written, fired, units_written, units_fired}
+learning         {written, fired, units_written, units_fired, units_uncited}
 ```
 
 `learning` counts the learning-loop events: `written`/`fired` are events,
-`units_*` are distinct `unit_hash` values. `units_written - units_fired` is the
+`units_*` are distinct `unit_hash` values. `units_uncited` is the SET of written
+units minus the set of fired ones (never a subtraction of the two counts — the sets
+are not nested, and on a repo whose corpus predates the telemetry they are disjoint): the
 rules no review has ever cited — question 3, answered by the report rather than
 by hand. They are **not** in `events_total`, which means reviews and is read as
 such; and they are no longer skips.

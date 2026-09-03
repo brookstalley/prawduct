@@ -387,6 +387,28 @@ def _finding(name: str, recommendation: str = "Fix it.") -> dict:
     }
 
 
+class TestTheDedupeIsAmortized:
+    def test_a_seen_set_answers_without_reading_the_ledger(self, tmp_path, monkeypatch):
+        """`learning_events_seen` is ONE ledger read; a caller looping a corpus
+        passes it and pays no per-unit read. Pinned by making the per-call
+        read impossible and asserting the amortized path still dedupes."""
+        from lib import evidence
+        repo = _repo(tmp_path)
+        assert ledger.append_learning_event(repo, "learning.written", file="core.md", unit_hash="h1")
+        seen = ledger.learning_events_seen(repo / ".prawduct")
+        session = evidence._session_epoch(repo)
+        assert ("learning.written", session, "core.md", "h1", None) in seen
+
+        def _no_read(*_a, **_k):
+            raise AssertionError("the amortized path must not re-read the ledger")
+
+        monkeypatch.setattr(ledger, "iter_events_newest_first", _no_read)
+        assert ledger.append_learning_event(repo, "learning.written", file="core.md", unit_hash="h1", seen=seen) is False
+        assert ledger.append_learning_event(repo, "learning.written", file="core.md", unit_hash="h2", seen=seen) is True
+        assert ("learning.written", session, "core.md", "h2", None) in seen
+        assert len(_events(repo, "learning.written")) == 2
+
+
 class TestConsolidateRecordsRulesFired:
     def test_a_finding_quoting_a_rule_opening_fires_that_rule(self, tmp_path):
         repo = _repo(tmp_path, rules=(RULE_A, RULE_B))

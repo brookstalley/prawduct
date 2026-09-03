@@ -421,11 +421,12 @@ def learning_event_exists(
     session) needs. ``review_id`` likewise separates two reviews citing one
     rule, and is ``None`` for ``learning.written``.
 
-    Cost is one ledger read per probe, and the probe runs only for a unit that
-    is new since the session's base revision — zero on a turn that wrote no
-    rule, and a corpus's worth exactly once, on the turn a repo's rules first
-    appear. If a repo ever appends learning events by the thousand per turn,
-    this is the read to amortize into a single pass.
+    Cost is one ledger read per probe, and — as the paragraph above says — a
+    unit stays "new since the session base" for the rest of the session, so a
+    caller looping over a corpus must not pay this per unit: pass the set
+    :func:`learning_events_seen` returns to :func:`append_learning_event`,
+    which reads the ledger ONCE and answers every probe from memory. This
+    per-call form is for the single-event callers.
     """
     want = (kind, session, file, unit_hash, review_id)
     for _lineno, event in iter_events_newest_first(prawduct_dir):
@@ -439,6 +440,20 @@ def learning_event_exists(
     return False
 
 
+def learning_events_seen(prawduct_dir: Path) -> "set[tuple]":
+    """Every learning-event key on the ledger, from ONE read — the amortized
+    form of :func:`learning_event_exists` for callers that probe a corpus's
+    worth of units on one Stop (a 300-rule file re-observed every turn is 300
+    whole-file reads otherwise, on a hook this repo budgets per turn)."""
+    seen: set[tuple] = set()
+    for _lineno, event in iter_events_newest_first(prawduct_dir):
+        kind = event.get("event")
+        learning = event.get("learning")
+        if kind in _EVENT_ROLES and isinstance(learning, dict) and kind.startswith("learning."):
+            seen.add(_learning_key(kind, learning))
+    return seen
+
+
 def append_learning_event(
     project_dir: Path,
     kind: str,
@@ -446,9 +461,15 @@ def append_learning_event(
     file: str,
     unit_hash: str,
     review_id: "str | None" = None,
+    seen: "set[tuple] | None" = None,
 ) -> bool:
     """Append one ``learning.*`` event. ``True`` when a line was written,
     ``False`` when this exact event was already recorded.
+
+    ``seen`` is the amortized dedupe: a caller probing many units on one turn
+    passes the set :func:`learning_events_seen` returned (one ledger read) and
+    this function answers from it and keeps it current — the per-unit ledger
+    read is the default only for the single-event callers.
 
     Not reachable from the CLI (see :data:`_MACHINE_ONLY_PREFIX`): the two
     callers are the Stop hook, which derives the unit hashes by diffing the
@@ -479,7 +500,12 @@ def append_learning_event(
 
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     session = evidence._session_epoch(project_dir)
-    if learning_event_exists(
+    key = (kind, session, file, unit_hash, review_id)
+    if seen is not None:
+        if key in seen:
+            return False
+        seen.add(key)
+    elif learning_event_exists(
         prawduct_dir, kind, file=file, unit_hash=unit_hash,
         session=session, review_id=review_id,
     ):

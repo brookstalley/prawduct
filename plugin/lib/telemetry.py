@@ -43,7 +43,7 @@ from .ledger import ledger_path
 
 #: Report schema. Bumped to 2 when the learning-loop block arrived: the
 #: `--json` shape gained a top-level key, and TEL-7A4X keys on this shape.
-REPORT_SCHEMA_VERSION = 2
+REPORT_SCHEMA_VERSION = 3
 
 #: Ledger kind -> the tally it feeds. Exact kinds, never a `learning.` prefix
 #: match: a future kind this report has no column for must surface as
@@ -139,6 +139,11 @@ def _read_events(path: Path) -> "tuple[list[dict], dict, dict, str | None]":
             "fired": learning["fired"],
             "units_written": len(units["written"]),
             "units_fired": len(units["fired"]),
+            # A SET difference, never a difference of sizes: the two sets are
+            # not nested — a rule authored before the emitter shipped can fire
+            # without ever being written — and on a migrated fleet repo they
+            # are disjoint, where a size subtraction reads 0 forever.
+            "units_uncited": len(units["written"] - units["fired"]),
         }
 
     try:
@@ -435,12 +440,13 @@ def aggregate_review_stats(
         # The learning loop's own numbers. `written`/`fired` count EVENTS and
         # `units_*` count distinct rules, and the pair is the point: `written`
         # over `units_written` is how often one rule is re-recorded across
-        # sessions, and `units_written - units_fired` is the rules no review
-        # has ever cited, which is the question the corpus cannot ask itself.
+        # sessions, and `units_uncited` — the SET of written units minus the set
+        # of fired ones — is the rules no review has ever cited, which is the
+        # question the corpus cannot ask itself.
         "learning": dict(
             learning
             if learning is not None
-            else {"written": 0, "fired": 0, "units_written": 0, "units_fired": 0}
+            else {"written": 0, "fired": 0, "units_written": 0, "units_fired": 0, "units_uncited": 0}
         ),
     }
 
@@ -498,7 +504,7 @@ def _render_human(report: dict, ledger_rel: str) -> str:
     lines += ["", (
         f"learning loop: {lg['written']} rule write(s) over {lg['units_written']} "
         f"distinct rule(s); {lg['fired']} citation(s) over {lg['units_fired']} "
-        f"distinct rule(s) — {max(lg['units_written'] - lg['units_fired'], 0)} "
+        f"distinct rule(s) — {lg['units_uncited']} "
         "written rule(s) no review has cited"
     )]
     return "\n".join(lines)
@@ -529,7 +535,7 @@ def review_stats(project_dir: Path, argv: list[str]) -> int:
         events, skipped, learning, _unreadable = _read_events(path)
     else:
         events, skipped = [], {"corrupt_lines": 0, "unknown_kinds": 0, "invalid_payloads": 0}
-        learning = {"written": 0, "fired": 0, "units_written": 0, "units_fired": 0}
+        learning = {"written": 0, "fired": 0, "units_written": 0, "units_fired": 0, "units_uncited": 0}
 
     report = aggregate_review_stats(events, skipped, learning)
     # Header fields the pure aggregation can't know — added once, here, so the

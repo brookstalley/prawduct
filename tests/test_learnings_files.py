@@ -232,7 +232,7 @@ class TestResolveStates:
         assert layout.state == lf.STATE_NONE
         assert layout.core is None
         assert layout.files == []
-        assert not layout.migrated
+        assert layout.state != lf.STATE_NEW
 
     def test_legacy(self, tmp_path):
         _legacy(tmp_path)
@@ -247,7 +247,7 @@ class TestResolveStates:
         assert layout.state == lf.STATE_NEW
         assert layout.core == core
         assert layout.files == [core]
-        assert layout.migrated
+        assert layout.state == lf.STATE_NEW
 
     def test_both(self, tmp_path):
         _rules(tmp_path, "core.md", lf.CORE_HEADER)
@@ -256,7 +256,7 @@ class TestResolveStates:
         assert layout.state == lf.STATE_BOTH
         # A repo mid-migration has migrated nothing yet, and reading it as
         # migrated is what would silence the fold directive.
-        assert not layout.migrated
+        assert layout.state != lf.STATE_NEW
 
     def test_an_empty_rules_directory_is_not_a_migrated_repo(self, tmp_path):
         (tmp_path / lf.RULES_DIR_REL).mkdir(parents=True)

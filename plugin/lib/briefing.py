@@ -1160,7 +1160,7 @@ def _learnings_lines(project_dir: Path) -> list[str]:
         # before saying anything about counts or sizes.
         out.append("Learnings: UNMIGRATED — not loaded")
         out.append(
-            "agent → run prawduct-hook learnings-migrate --propose-map, edit the map, "
+            "agent → run prawduct-hook learnings-migrate --propose-map > .prawduct/learnings-map.yaml (it prints the map), edit it, "
             f'run --apply --map <file>, commit "{_MIGRATE_COMMIT_MESSAGE}" '
             "— before other work"
         )
