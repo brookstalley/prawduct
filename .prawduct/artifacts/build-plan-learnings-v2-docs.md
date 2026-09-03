@@ -98,7 +98,7 @@ is needed, and nothing before it depends on the answer.
 
 - [x] Chunk 01: `reflection.md` rewritten to the write-path model; the standing block moves to its own guide
 - [x] Chunk 02: Digest line, contract records, and the residue the two earlier waves left in prose
-- [ ] Chunk 03: The discipline seed — ten cross-repo rules delivered where rules fire, recorded in one table
+- [x] Chunk 03: The discipline seed — ten cross-repo rules delivered where rules fire, recorded in one table
 - [ ] Chunk 04: The program's PR to `develop` — its cumulative review is the gate
 - [ ] Chunk 05: Release — plan, version, cut, verify, reopen `develop`
 Context: Plan drawn 2026-09-03 from the tree at f2dffc6b (Wave 2 complete). Chunk 01 done
@@ -109,7 +109,11 @@ directory; the last two wave-3 allowlist entries gone. Chunk 02 done 2026-09-03:
 digest (+33 tokens each shape, declared; 9,455 chars), api-contract records the two added verbs,
 the stable-tier footing of `learnings-files`, and the contract change in one paragraph; the
 rule-unit sentence stated from the writer (review-cycle nets -5); README refresh deferred to the
-cut where the version is known. Review lands in Chunk 04. Next: Chunk 03.
+cut where the version is known. Chunk 03 done 2026-09-03: `docs/discipline.md` with ten rows, seven
+already homed; rows 5 and 7 are two Goal 2 bullets in both protocol files (goals-1-3 2278→2334,
+review-protocol 3800→3849, both raised by declaration); row 1's second clause extends the record
+directive; row 9 is one sentence in the post-fix step. `tests/test_discipline_table.py` pins each row
+against its surface and the two protocol files against each other. Next: Chunk 04 (suite, cumulative, PR).
 
 ## Scaffolding
 

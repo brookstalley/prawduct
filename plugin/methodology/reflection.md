@@ -95,7 +95,7 @@ This produces change-log entries and may trigger methodology updates. **Product 
 When fixing a bug or recovering from an error, apply root-cause discipline before implementing:
 
 1. **Classify**: product bug or framework/methodology issue? Framework issues get deeper analysis.
-2. **Root cause**: chain the whys to something structural — don't stop at "the code was wrong."
+2. **Root cause**: chain the whys to something structural — don't stop at "the code was wrong." A reported cause is a hypothesis until you reproduce it against live data; the report's own evidence often carries the disproof.
 3. **Fix scope**: fix the root cause, not the symptom. If it's in the methodology, update the methodology.
 4. **Meta-check**: could the same root cause manifest elsewhere? Fix those too.
 5. **Capture**: route it as Step 4 says — failures are the richest source.

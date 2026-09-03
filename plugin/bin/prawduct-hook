@@ -3337,7 +3337,8 @@ _GREEN_IS_EVIDENCE_DIRECTIVE = (
     " Mutation answers this only for the line you ADDED — reverting removes the"
     " damage alongside the fix, so it is blind to what your change broke beside"
     " it; pair it with branch coverage of every path in the function you"
-    " touched."
+    " touched. And a mutation you did not watch go red applied nothing — count"
+    " only the reds you saw, and restore each the way you made it."
 )
 
 

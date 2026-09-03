@@ -463,7 +463,10 @@ LAST_MEASURED_TOKENS = {
     # sentence `goals-1-3.md`'s entry below records cutting for the identical
     # reason -- the H1 says it, and "complete" stopped being true of this file
     # when `chunk`/`verify-resolutions` were split into `goals-1-3.md`.
-    "skills/critic/review-protocol.md": 3790,
+    # +58 on 2026-09-03 (learnings-v2-docs Chunk 03): the same two Goal 2
+    # bullets as goals-1-3.md, which this file must agree with
+    # (tests/test_discipline_table.py pins the pair). Raised, not funded.
+    "skills/critic/review-protocol.md": 3848,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -519,7 +522,13 @@ LAST_MEASURED_TOKENS = {
     # entry-shape clause left the record-lint severity mapping with the check
     # it graded. A CUT, so the ceiling below moves with it — slack a
     # deletion opens is not headroom the next addition inherits.
-    "skills/critic/goals-1-3.md": 2276,
+    # +57 on 2026-09-03 (learnings-v2-docs Chunk 03, discipline rows 5 and 7):
+    # two Goal 2 bullets — a removal is repo-wide, and built-but-unconsumed is
+    # not delivered — each a rule four or five governed repos re-learned on
+    # their own (`docs/discipline.md`). The review is the moment these fire,
+    # and this file is what the most frequent modes read. NOT funded by a
+    # trim; the ceiling is RAISED with it (see test_token_budget).
+    "skills/critic/goals-1-3.md": 2333,
     # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
     # a computed pass the gate can now print, which a reader who only knows
     # "uncovered means run a cumulative" will otherwise re-review straight
@@ -848,7 +857,11 @@ LAST_MEASURED_TOKENS = {
     # standing-block specification (~60% of the file) moved whole to the new
     # `session-hygiene.md`, and Step 4 became the four-route write path. A
     # READING, no ceiling (on-demand class).
-    "methodology/reflection.md": 2753,
+    # +27 on 2026-09-03 (learnings-v2-docs Chunk 03, discipline row 9): the
+    # post-fix step says a reported cause is a hypothesis until reproduced —
+    # a rule the fleet re-learned, delivered at the step that needs it. A
+    # READING, no ceiling.
+    "methodology/reflection.md": 2780,
     # First reading, 2026-09-03, taken at birth: the standing block and the
     # forward notes, moved verbatim out of `reflection.md` (D2) so the learning
     # loop's guide is about the learning loop. On-demand class: a reading, no
@@ -4027,7 +4040,10 @@ class TestCriticSkill:
         # every correctly-sequenced chunk. The PR reviewer's protocol carries it
         # instead, where the sequencing is finished.
         tokens = estimate_tokens(self.content)
-        assert tokens < 3800, f"review-protocol.md is ~{tokens} tokens, should be <3800"
+        # RAISED 3800 -> 3849 on 2026-09-03 (learnings-v2-docs Chunk 03), by
+        # declaration: two fleet-rediscovered rules delivered as Goal 2 bullets
+        # (`docs/discipline.md` rows 5 and 7). One over the reading; nothing banked.
+        assert tokens < 3849, f"review-protocol.md is ~{tokens} tokens, should be <3849"
 
 
 # =============================================================================
@@ -4247,7 +4263,10 @@ class TestCriticGoals13:
         # A cut that leaves the ceiling where it was converts a deletion into a
         # standing credit the next addition spends without declaring it.
         tokens = estimate_tokens(self.content)
-        assert tokens < 2278, f"goals-1-3.md is ~{tokens} tokens, should be <2278"
+        # RAISED 2278 -> 2334 on 2026-09-03 (learnings-v2-docs Chunk 03), by
+        # declaration: two fleet-rediscovered rules delivered as Goal 2 bullets
+        # (`docs/discipline.md` rows 5 and 7). One over the reading; nothing banked.
+        assert tokens < 2334, f"goals-1-3.md is ~{tokens} tokens, should be <2334"
 
     def test_is_self_contained(self):
         """No follow-the-pointer reads at review time — the acceptance criterion

@@ -70,6 +70,8 @@ downgrade.
 - **Foreign API**: chunks with `**Foreign API:** <name>` need a `verify-api` step in Done-when → **WARNING** if missing.
 - **Exposed API**: chunks with `**Exposed API:** <name>` need a recorded versioning + deprecation decision (`design_decisions.api_versioning_approach` present, or a dated deferral with a revisit trigger) → **WARNING** if missing; and a recorded error-model decision (`api_error_model_approach`) → **WARNING** if missing. The produced-surface mirror of Foreign API — see `methodology/planning.md`. **Presence is not adherence**: where the contract's `Retention:` policy defers removal to a major, a member its Surface Inventory declares `stable`/`deprecated` that the diff removes — or un-declares — is a **BLOCKING** norm departure (Normative authority above), read from that declaration and never from source.
 - **Operator verification:** `operator_verification_required: true` + chunk `Visual change: yes` ⇒ matching entry in `.prawduct/operator-verification.md` → **NOTE** if missing.
+- **Removal or rename is repo-wide:** a retired name or claim surviving in code, tests or prose describing the old behaviour → **WARNING** per survivor.
+- **Built-but-unconsumed:** a producer nothing reads in the same change — an event, a field, a flag → **WARNING**.
 
 ### 3. Nothing Is Unintended
 - No unlisted dependencies → **BLOCKING**.
