@@ -3,6 +3,76 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-09-02: four small backlog-adapter items, and two plans falsified by reading the code
+
+<!-- prawduct: type=fix | scope=small-batch-2026-09-02 -->
+
+Four S-sized items on one branch under one cumulative review. Three shipped as planned; **two of
+the four had their premise falsified by reading the code before building**, which is the result
+worth recording — in both cases the plan would have been buildable, passed its tests, and been
+wrong.
+
+**`#N` and a bare number now resolve (Chunk 01).** `normalize_id` accepted four ID spellings, none
+of them the number an operator reads off a GitHub URL. `322` fell through every form to
+"unrecognized ID spelling"; `#322` reached the short-form branch with an empty left side and
+reported `malformed repo in '#322'`, naming a defect the input does not contain. A `default_repo`
+is now threaded through `normalize_id`, and `cli.py`'s one `resolve` call site passes the value
+`_repo_defaults` already computed and was dropping. The previous session hand-spelled
+`prawduct#N` through an entire triage pass to work around this.
+
+**A discarded block edit is reported instead of swallowed (Chunk 02) — and the planned fix was
+descoped as wrong.** The plan inherited "mirror the three clearing flags, add `--superseded-by`"
+from a handoff. `core.py`'s `_UPDATE_BLOCK` comment records `superseded_by` as *deliberately* not
+writable — owned by link/unlink and merge, whose invariants (edge symmetry, redirect) a bare field
+write would bypass. So the flag would have punched through a recorded invariant to settle an
+ergonomics complaint. What the handoff had actually found was two problems, not one: a **silent
+failure**, fixed here — `update --body` with a block line stripped returned `ok`, silently
+re-serialized the field, and said nothing — and a **missing inverse for `merge`**, filed as `#751`
+because it needs an `unmerge` that owns the invariant the way `merge` does. Only a *pasted* block
+is reported; a body with no block at all cannot distinguish "I deleted it" from "I never included
+it", so it stays silent rather than guessing.
+
+**Quarantine ⊂ untriaged — both names stay (Chunk 03).** `#544` held that `list --untriaged` and
+the anonymous-filing **quarantine** surface were one query under two names, forked across four
+documents. They are not. Quarantine is defined by AUTHOR (Security §6/F7 — a *non-collaborator's*
+unlabeled filing); `--untriaged` selects on LABEL alone, returning every unlabeled issue whoever
+filed it, because no author or collaborator predicate exists on that path in `query.py`. Quarantine
+is a strict subset presently served by its superset. Collapsing to one name would have deleted the
+author boundary that makes quarantine a security concept rather than a hygiene one, so the
+containment is stated on all four surfaces instead, the security model marks its own query
+*specified, not yet implemented*, and the unbuilt predicate is filed as `#752`. The direction is
+worth keeping: the standing query over-includes, so no anonymous filing is missed — a precision
+gap, not a hole.
+
+**A failing cache warm now leaves a durable record (Chunk 04).** `#625`.
+`briefing._spawn_cache_warm` spawns the session-start sync detached with stderr to `DEVNULL`, and
+only a *successful* sync stamps `coverage_confirmed_at` — so every `log_diag` on that path wrote
+into a black hole and a warm that failed once was indistinguishable from one failing for a week.
+`last_attempt_at` / `last_error` join the `cursor` table (SCHEMA_VERSION 7→8; a v7 store discards
+and rebuilds, losing nothing), recorded at the sync boundary and surfaced under the age in human
+mode. Three decisions are recorded on the chunk: record only against an **existing** cursor row
+(row existence is what `cursor_scopes` reads as "ever synced", so minting one would make a
+never-synced scope claim it had synced — and cold start is already covered by exit 6), record on
+**both** sync exit paths, and put the stamp at the **sync boundary, not in the CLI**.
+
+**Two defects the Critic caught, both in the same chunk.** R-1: a test written to prove an auth
+failure takes the *raising* path raised `TransportError` with one argument where `__init__` takes
+two, so a `TypeError` escaped, the test drove the exception branch, and the envelope branch it
+existed to cover had **zero coverage while passing**. The rationale was backwards — `_revalidate`
+catches `TransportError` and returns `from_transport_error(exc)`, so an auth failure is an
+envelope. R-6/R-2: the health stamps were written by `cli._run_sync` alone while
+`confirm_coverage` is written inside `sync`, so `pick`'s revalidating sync and the post-import warm
+advanced the coverage stamp without clearing the failure beside it — a stale `SYNC FAILING` banner
+outliving the sync that fixed it, printed under a newer `synced_at`. Two facts that must move
+together now live at one seam.
+
+`#609` was considered and dropped: its blocker (`constraints.txt` on the unmerged
+`feature/upstream-dependency-policy`) was re-verified live and still holds.
+
+Cumulative `rev-20260902T125809Z-fa56d43b` raised 3 blocking + 6 warnings;
+`verify-resolutions` (`rev-20260902T133055Z-7f00a9b9`) confirmed all nine resolved, re-deriving
+R-6's caller search independently rather than taking the fix on trust.
+
 ## 2026-09-01: backlog burndown — 57 items across ten parallel work groups
 
 <!-- prawduct: type=feat | scope=backlog-burndown-2026-09 -->
