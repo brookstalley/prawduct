@@ -102,7 +102,7 @@ prawduct ever placed," only known framework files.
 **Never touched** (product-owned, mutable):
 - The rest of `.prawduct/` — everything in `project-state.yaml` other than the keys above,
   any `learnings*.md` the repo still carries (a legacy corpus `learnings-migrate` relayouts), `backlog.md`, `change-log.md`, `artifacts/`,
-  `.critic-findings.json`, reflections.
+  `.critic-findings.json`.
 - **All** non-framework files — your own skills, `src/`, `tests/`, MCP servers, configs.
 
 ## After migrating
