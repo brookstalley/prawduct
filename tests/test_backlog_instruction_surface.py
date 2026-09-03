@@ -1020,3 +1020,43 @@ def test_a_mixed_backend_line_is_still_scanned(tmp_path):
     # exempt direction is genuinely covered by
     # `test_a_markdown_scoped_line_is_exempt_but_an_issues_one_is_not`, whose
     # fixture uses a real write verb.
+
+
+def test_the_issues_close_says_how_to_establish_the_merge_it_waits_for():
+    """A precondition with no stated way to check it gets checked by invention.
+
+    The Issues-backend timing rule defers `status=shipped` to the merge, and
+    inside `/prawduct:pr` that is free — the merge flow has just merged. Invoked
+    directly, the caller has to establish the merge itself, and the check that
+    comes to hand is `git merge-base --is-ancestor HEAD origin/<base>`, which
+    answers from the last fetch rather than from the remote. A close correctly
+    timed seconds after a merge is then refused, and the refusal reads as the
+    gate misfiring rather than as a stale ref, so the next reader's repair is
+    aimed at the rule instead of at the check. Observed live: a `shipped` call
+    on a merged PR was one step from being refused on exactly this.
+
+    Pinned on the rule's own bullet, not file-wide, because it is the bullet that
+    creates the obligation — guidance that drifts to some other section stops
+    being read by the caller who needs it.
+    """
+    router = (_BACKLOG_SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
+    marker = "Issues backend (`backlog_service_repo` is set) — at the merge"
+    assert marker in router, (
+        "the Issues-backend timing bullet has moved or been reworded; this guard "
+        "pins guidance to that bullet and can no longer find it"
+    )
+    bullet = router[router.index(marker):]
+    bullet = bullet[: bullet.index("\n\n")]
+
+    assert "--is-ancestor" in bullet, (
+        "the bullet defers the close to the merge without naming the stale-ref "
+        "ancestry check as the wrong way to establish it — the caller invents it "
+        "again and refuses a correctly timed close"
+    )
+    # The authority has to be something that reads the remote NOW. Either route
+    # is acceptable; requiring both would pin a remedy rather than the property.
+    reaches_remote = "gh pr" in bullet or "git fetch" in bullet
+    assert reaches_remote, (
+        "the bullet rules out the local-ref check but names no route that reads "
+        "the remote — `gh pr ...` or a `git fetch` before the ancestry test"
+    )

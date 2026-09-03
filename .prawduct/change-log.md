@@ -3,6 +3,31 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-09-03: the Issues-backend close says how to establish the merge it waits for
+
+<!-- prawduct: type=fix | scope=shipped-merge-check -->
+
+The backlog skill's timing rule defers an Issues-backend `status=shipped` to the merge — correctly,
+because closing an issue is an immediate remote side effect with no branch to be abandoned with —
+but it never said how a caller establishes that the merge happened. Inside `/prawduct:pr` that costs
+nothing: the merge flow has just merged and holds the result. Invoked directly, the caller has to
+work it out, and the check that comes to hand is `git merge-base --is-ancestor HEAD origin/<base>`,
+which answers from the last fetch rather than from the remote.
+
+Found by being one step from it. Closing `#625` after PR #758 merged, the check said `HEAD NOT in
+origin/develop` on a ref fetched before the merge; `gh pr list` showed the PR merged minutes
+earlier. A correctly timed close was about to be refused, and the refusal would have read as the
+gate misfiring rather than as a stale ref — which is the expensive part, because the next reader
+repairs the rule instead of the check.
+
+The bullet now names the wrong check explicitly and points at two routes that read the remote (`gh
+pr view`, or a `git fetch` before the ancestry test), and records the asymmetry that makes the
+remedy unambiguous: a stale local ref can only ever produce a **false refusal**, never a false
+permit, since a ref cannot contain a merge that has not happened. So the answer is always to
+re-derive, never to skip the check. Pinned on the rule's own bullet rather than file-wide — guidance
+that drifts out of the bullet stops being read by the caller the obligation lands on — and both
+halves of the pin mutation-checked.
+
 ## 2026-09-02: four small backlog-adapter items, and two plans falsified by reading the code
 
 <!-- prawduct: type=fix | scope=small-batch-2026-09-02 -->
