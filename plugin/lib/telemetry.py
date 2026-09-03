@@ -41,7 +41,8 @@ from statistics import median
 from . import gitstate
 from .ledger import ledger_path
 
-#: Report schema. Bumped to 2 when the learning-loop block arrived: the
+#: Report schema. Bumped to 2 when the learning-loop block arrived, to 3 when
+#: `units_uncited` joined it: the
 #: `--json` shape gained a top-level key, and TEL-7A4X keys on this shape.
 REPORT_SCHEMA_VERSION = 3
 

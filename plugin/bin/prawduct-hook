@@ -2445,7 +2445,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
             or _learnings_rules_dir.startswith(candidate + "/")
         )
 
-    # The SPAN, not the porcelain list. `_session_changed` is empty the moment
+    # The SPAN, not the porcelain list. The porcelain list is empty the moment
     # you commit, so a turn that wrote a rule and committed it in one breath
     # left BOTH the budget gate and the `learning.written` emitter dormant — and
     # if no later turn of that session ended dirty, the rule was never charged

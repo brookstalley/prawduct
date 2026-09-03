@@ -64,7 +64,7 @@ and `learning.fired` when a Critic finding quotes a rule's opening words (record
 `critic-consolidate`, joined to the review). Both are written by the plugin, never by hand.
 `review-stats` reports them: a `learning` block counting writes, citations and the distinct
 rules behind each, closing with the number the corpus cannot ask itself — how many written
-rules no review has ever cited. Its `--json` `schema_version` moves to 2 for the new key.
+rules no review has ever cited. Its `--json` `schema_version` moves to 3 (2 for the block, 3 for `units_uncited`, the set of written rules no review cited).
 
 **A stalled norm no longer expires in silence.** A `Stopgap:` field on an in-transition norm —
 the bounded exception that says "this half-finished state is deliberate until <date>" — was

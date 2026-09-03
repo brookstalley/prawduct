@@ -178,7 +178,8 @@ learning         {written, fired, units_written, units_fired, units_uncited}
 `units_*` are distinct `unit_hash` values. `units_uncited` is the SET of written
 units minus the set of fired ones (never a subtraction of the two counts — the sets
 are not nested, and on a repo whose corpus predates the telemetry they are disjoint): the
-rules no review has ever cited — question 3, answered by the report rather than
+rules no review has ever cited among those WRITTEN since the telemetry shipped — a floor under
+question 3 (whose full answer is the corpus's units minus the fired set), reported rather than
 by hand. They are **not** in `events_total`, which means reviews and is read as
 such; and they are no longer skips.
 

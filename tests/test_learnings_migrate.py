@@ -1188,6 +1188,45 @@ class TestTheCommand:
         assert again.returncode == 0
         assert "nothing to do" in again.stdout
 
+    def test_apply_json_reports_the_outcome_and_the_dropped_lines(self, tmp_path: Path):
+        """The envelope is printed AFTER the apply, from its outcome, and carries
+        `dropped` — the one question a --json caller could not otherwise ask."""
+        root = repo(tmp_path, "mixed")
+        map_file = tmp_path / "map.txt"
+        map_file.write_text(run_hook(root, "--propose-map").stdout, encoding="utf-8")
+        planned = lm.plan(root, lm.parse_map(map_file.read_text(encoding="utf-8")))
+
+        proc = run_hook(root, "--apply", "--map", str(map_file), "--json")
+        assert proc.returncode == 0, proc.stderr
+        payload = json.loads(proc.stdout)  # exactly one JSON document on stdout
+        assert payload["applied"] is True
+        assert payload["dropped"] == list(planned.dropped)
+        assert (root / lf.RULES_DIR_REL / lf.CORE_NAME).is_file()
+
+    def test_an_interrupted_apply_with_json_never_claims_applied(self, tmp_path: Path):
+        """An envelope emitted before the apply ran said `"applied": true` over
+        a half-written tree. Now nothing on stdout says so."""
+        root = repo(tmp_path, "mixed")
+        map_file = tmp_path / "map.txt"
+        map_file.write_text(run_hook(root, "--propose-map").stdout, encoding="utf-8")
+        migration = lm.plan(root, lm.parse_map(map_file.read_text(encoding="utf-8")))
+        (root / migration.outputs[1].rel).mkdir(parents=True)
+        proc = run_hook(root, "--apply", "--map", str(map_file), "--json")
+        assert proc.returncode == 1
+        assert "INTERRUPTED" in proc.stderr
+        assert '"applied": true' not in proc.stdout
+
+    def test_the_dry_run_json_carries_dropped_and_applied_false(self, tmp_path: Path):
+        root = repo(tmp_path, "mixed")
+        map_file = tmp_path / "map.txt"
+        map_file.write_text(run_hook(root, "--propose-map").stdout, encoding="utf-8")
+        proc = run_hook(root, "--map", str(map_file), "--json")
+        assert proc.returncode == 0, proc.stderr
+        payload = json.loads(proc.stdout)
+        assert payload["applied"] is False
+        assert "dropped" in payload
+        assert not (root / lf.RULES_DIR_REL).exists()
+
     def test_a_refusal_exits_1_and_names_the_reason_on_stderr(self, tmp_path: Path):
         root = repo(tmp_path, "mixed")
         (root / lf.LEGACY_REL).write_text("# Learnings\n\n## T\n- **New.**\n")
