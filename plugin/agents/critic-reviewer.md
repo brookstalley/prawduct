@@ -92,7 +92,9 @@ The role → goal mapping
    recorded and are the only commands your goals ever ask you to issue.
 7. Assess your goals and gather findings, each with a severity: `blocking`, `warning`, or `note`
    (definitions in `review-protocol.md`). A clean pass has zero findings — that is normal and
-   correct; do not invent findings to fill space.
+   correct; do not invent findings to fill space. When a finding rests on a rule from the
+   learnings corpus, quote that rule's opening words in the finding — the citation is what makes
+   the rule countable as one that fired, and an uncited one reads as a rule no review has used.
 
 ## What to write — your started marker, then ONLY your partial
 

@@ -50,7 +50,7 @@ actually does, so an audit reads a number instead of sampling transcripts:
 
 | kind | `actor.role` | emitted by | means |
 |---|---|---|---|
-| `learning.written` | `builder` | the Stop hook, after the learnings budget check | a rule unit that is new since this session's base revision |
+| `learning.written` | `builder` | the Stop hook, after the learnings budget check | a rule unit that is new since this session's base revision, **committed work included** |
 | `learning.fired` | `critic` | `critic-consolidate`, after the `review.critic` anchor | a consolidated finding quoted a rule's opening words |
 
 Both nest under a `learning` key, under the same envelope:
@@ -84,6 +84,13 @@ Both nest under a `learning` key, under the same envelope:
   `## Unsorted` — is **uncitable**: it can be written, it just cannot fire, or a
   single stray word would report a rule as exercised by a review that never read
   it.
+- **The span is the session's work, not its uncommitted work.** The Stop hook
+  reaches `learning.written` off `gates.session_work_span`, which diffs the
+  session's base tree against the working tree — so a rule written and
+  committed in one turn is still counted at that turn's Stop. Without the
+  marker there is no base to diff, and then nothing is recorded and the Stop
+  hook says so on stderr; that one missing state is also why the budget check
+  reports itself unchecked.
 - **`session`** is the `.session-start` marker's mtime as UTC ISO
   (`evidence._session_epoch`) — nullable, never invented.
 - **`review_id`** is the review fact's id on `learning.fired`, and `null` on
@@ -108,25 +115,33 @@ The format is lock-in, so the queries came before the fields:
 
 1. **How many rules were written** per session / scope / repo / window —
    count `learning.written` by `learning.session`, `scope`, `project`, `ts`.
+   The count is of rules the session wrote, committed or not; it is short only
+   for a session that ran with no base-tree marker at all.
 2. **Which rules fire, how often, and in which review** — count
    `learning.fired` by `learning.unit_hash`, read `learning.review_id`.
 3. **Which rules never fire** — join the corpus's units (hash each with
    `rule_units` + `unit_hash`) against the `learning.fired` hashes. This is the
    question the corpus cannot answer about itself, and the reason `unit_hash`
-   is a content hash rather than a heading string or a line number.
+   is a content hash rather than a heading string or a line number. **Read it
+   as a floor, not a census:** a rule fires only when a reviewer QUOTES it, so
+   a rule that shaped a finding without being quoted reads here as never fired.
+   The instruction to quote lives with the reviewers (`agents/critic-reviewer.md`,
+   and `review-cycle.md` for the cross-check), but nothing enforces it — so this
+   answer under-counts by however often reviewers paraphrase.
 4. **All of the above across a fleet** — key by the envelope's `project`.
 
-Nothing in the plugin reads these yet; `review-stats` counts them under
-`skipped.unknown_kinds` (below), which is v1's documented contract for a kind a
-consumer does not aggregate.
+`prawduct-hook review-stats` reads them: its `learning` block (below) reports
+all four counts, and its human rendering closes with the number question 3
+asks for.
 
 ## `prawduct-hook review-stats [--json]`
 
-Aggregates `review.*` events; skips corrupt lines, non-`review.*` kinds, and
-unusable payloads **with counts** (never silently). The `learning.*` kinds land
-in `skipped.unknown_kinds` — "unknown to this report", which is what the key has
-always meant. The key is documented rather than renamed: a JSON key is never
-repurposed, and `--json` consumers pin it. Missing ledger → "no
+Aggregates `review.*` events and tallies `learning.*` ones; skips corrupt
+lines, kinds it aggregates neither of, and unusable payloads **with counts**
+(never silently). A `learning.*` event carrying no `unit_hash` is an
+`invalid_payload`, not a skip nobody names — it can answer none of the four
+questions. A `learning.` kind this report has no column for stays
+`unknown_kinds`, which is what that key has always meant. Missing ledger → "no
 review history", exit 0. Exit 1 only on bad arguments.
 
 Per grouping — overall, `actor.role` × `actor.model` × review mode, and
@@ -153,7 +168,14 @@ by_role_model_mode  [{role, model, mode, ...stat block}]
 by_scope         [{scope, ...stat block}]
 top_files        [{path, actionable_findings, findings}]
 files_attributed_total  count behind the top_files cap
+learning         {written, fired, units_written, units_fired}
 ```
+
+`learning` counts the learning-loop events: `written`/`fired` are events,
+`units_*` are distinct `unit_hash` values. `units_written - units_fired` is the
+rules no review has ever cited — question 3, answered by the report rather than
+by hand. They are **not** in `events_total`, which means reviews and is read as
+such; and they are no longer skips.
 
 Stat block: `reviews`, `duration_total_seconds`, `duration_median_seconds`
 (null when no event carried a duration), `findings`

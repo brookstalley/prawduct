@@ -2446,7 +2446,21 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
             or _learnings_rules_dir.startswith(candidate + "/")
         )
 
-    _rules_changed = any(_touches_rules(f) for f in _session_changed)
+    # The SPAN, not the porcelain list. `_session_changed` is empty the moment
+    # you commit, so a turn that wrote a rule and committed it in one breath
+    # left BOTH the budget gate and the `learning.written` emitter dormant — and
+    # if no later turn of that session ended dirty, the rule was never charged
+    # and never recorded. `session_work_span` diffs the session's base tree
+    # against the working tree, so committed work is still this session's work.
+    #
+    # Reused rather than recomputed: the call costs a `git diff` and Stop runs
+    # every turn. The name upstream is its first consumer, not the span's
+    # meaning. And when the span degrades to porcelain it is because the
+    # base-tree marker is missing or unreadable — the same state that leaves
+    # `_budget_base` empty, so the gate, the emitter and the message all fall
+    # back together and the message below still describes one state.
+    _work_span = reflection_span
+    _rules_changed = any(_touches_rules(f) for f in _work_span["changed"])
     if _judgeable_work and _learnings_state in _unmigrated_states:
         if "learnings" in waivers:
             waiver_notes.append(f"learnings: waived ({waivers['learnings']})")

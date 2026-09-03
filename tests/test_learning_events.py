@@ -182,6 +182,47 @@ class TestStopRecordsRulesWritten:
         _stop(repo, capsys)
         assert len(_events(repo, "learning.written")) == 1
 
+    def test_a_committed_rule_write_is_recorded_with_a_clean_porcelain(
+        self, tmp_path, capsys
+    ):
+        """The trigger is the session's WORK SPAN, not its porcelain.
+
+        Writing a rule and committing it in one breath leaves `git status`
+        empty, and a porcelain-scoped trigger reads that as "no rules changed"
+        — so the gate never runs, nothing is recorded, and if no later turn of
+        the session ends dirty the rule is never recorded at all. Silent, and
+        it loses exactly the rules of the most disciplined sessions.
+        """
+        repo = _repo(tmp_path)  # base tree: the scaffold header, zero rules
+        _write_rules(repo, RULE_A)
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "rule")
+        # The precondition, asserted rather than assumed: porcelain is empty, so
+        # a test that passes here cannot be passing on leftover dirt.
+        assert _git(repo, "status", "--porcelain").stdout.strip() == ""
+
+        rc, _err = _stop(repo, capsys)
+        assert rc in (0, 2)  # the budget gate's verdict is not what is under test
+        events = _events(repo, "learning.written")
+        assert len(events) == 1
+        assert events[0]["learning"]["unit_hash"] == lf.unit_hash(RULE_A)
+
+    def test_the_span_source_is_the_base_tree_when_the_marker_resolves(
+        self, tmp_path
+    ):
+        """The reachability assert for the test above. If the span degraded to
+        porcelain in this fixture, that test would pass for the wrong reason on
+        a fallback path and prove nothing about the widening."""
+        from lib import gates
+
+        repo = _repo(tmp_path)
+        _write_rules(repo, RULE_A)
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "rule")
+        span = gates.session_work_span(repo)
+        assert span["source"] == "base-tree"
+        assert RULES_REL in span["changed"]
+
     def test_a_rules_file_absent_at_base_has_every_unit_new(self, tmp_path, capsys):
         repo = _repo(tmp_path, rules=(RULE_A,))
         area = repo / lf.RULES_DIR_REL / "area.md"
@@ -497,12 +538,16 @@ class TestTheTwoEventsJoin:
         assert written - fired == {lf.unit_hash(RULE_B)}
 
 
-class TestReviewStatsToleratesTheNewKinds:
-    """v1's contract: consumers skip unknown event kinds. `review-stats` counts
-    them under `skipped.unknown_kinds` — documented, never renamed, because a
-    JSON key is not repurposed and `--json` consumers pin it."""
+class TestReviewStatsReadsWhatTheStopHookWrote:
+    """End to end: the events the Stop hook and consolidate actually emit are
+    the events `review-stats` counts.
 
-    def test_learning_events_are_counted_as_unknown_kinds(self, tmp_path, capsys):
+    `tests/test_review_stats.py` pins the reader against hand-written ledger
+    lines; this pins the two ends against each other, which is the failure a
+    fixture on either side cannot see — a producer and a consumer that each
+    pass their own tests and disagree about the payload."""
+
+    def test_written_events_reach_the_learning_block(self, tmp_path, capsys):
         repo = _repo(tmp_path)
         _write_rules(repo, RULE_A, RULE_B)
         _stop(repo, capsys)
@@ -511,9 +556,12 @@ class TestReviewStatsToleratesTheNewKinds:
 
         assert telemetry.review_stats(repo, ["--json"]) == 0
         report = json.loads(capsys.readouterr().out)
-        # Skipped WITH A COUNT, never silently — and under the key the `--json`
-        # contract already documents rather than a new one.
-        assert report["skipped"]["unknown_kinds"] == 2
+        assert report["learning"]["written"] == 2
+        assert report["learning"]["units_written"] == 2
+        # Counted, not skipped, and not confused with reviews.
+        assert report["skipped"] == {
+            "corrupt_lines": 0, "unknown_kinds": 0, "invalid_payloads": 0,
+        }
         assert report["events_total"] == 0
 
     def test_a_review_event_beside_them_still_aggregates(self, tmp_path, capsys):
@@ -529,4 +577,62 @@ class TestReviewStatsToleratesTheNewKinds:
         assert telemetry.review_stats(repo, ["--json"]) == 0
         report = json.loads(capsys.readouterr().out)
         assert report["events_total"] == 1
-        assert report["skipped"]["unknown_kinds"] == 2  # one written, one fired
+        assert report["learning"]["written"] == 1
+        assert report["learning"]["fired"] == 1
+        # The join the whole format exists for, computed by the reader: the one
+        # rule written here was cited, so nothing is uncited.
+        assert (
+            report["learning"]["units_written"] - report["learning"]["units_fired"]
+        ) == 0
+
+
+class TestTheCitationInstructionReachesReviewers:
+    """`learning.fired` has exactly one input: a reviewer quoting the rule.
+
+    So the instruction is the feature, and it is carried by two surfaces on
+    purpose — `review-cycle.md`'s Learnings Cross-Check, which only the
+    sustainability reviewer opens, and `agents/critic-reviewer.md`, which every
+    reviewer the coordinator dispatches reads at the moment it writes findings.
+    One file's copy going missing is invisible from the other, so the pin lives
+    here, in the module that reads both.
+
+    **What turns this red:** deleting either sentence, or rewording it so it no
+    longer tells the reviewer to quote the rule's opening words. **What it
+    cannot catch:** a reword that keeps both tokens and inverts the sense.
+    Anything stronger is prose-parsing, which `docs/norms.md` § Deliberate
+    Non-Design forbids.
+    """
+
+    @staticmethod
+    def _prose(rel: str) -> str:
+        return " ".join((_ROOT / rel).read_text(encoding="utf-8").split()).lower()
+
+    def test_every_dispatched_reviewer_is_told_to_quote_the_rule(self):
+        agent = self._prose("agents/critic-reviewer.md")
+        assert "quote that rule's opening words" in agent, (
+            "agents/critic-reviewer.md no longer tells a reviewer to quote the "
+            "rule a finding rests on — `learning.fired` then counts only the "
+            "reviewers who happen to do it anyway"
+        )
+
+    def test_the_cross_check_carries_it_too(self):
+        cycle = self._prose("skills/critic/review-cycle.md")
+        assert "quote that rule's opening words" in cycle
+
+    def test_the_instruction_sits_where_findings_are_written(self):
+        """Placement is the whole point: the sentence has to arrive at the step
+        that writes a finding, not in a section a reviewer reads before it has
+        one. Bounded to the smallest region that must carry it, so a mutation
+        in a neighbouring paragraph does not pass."""
+        text = (_ROOT / "agents" / "critic-reviewer.md").read_text(encoding="utf-8")
+        marker = "Assess your goals and gather findings"
+        assert marker in text, "the findings-writing step was renamed — re-anchor this pin"
+        step = text[text.index(marker):]
+        step = step[: step.index("\n## ")] if "\n## " in step else step
+        assert "opening words" in " ".join(step.split())
+
+    def test_the_registry_says_the_join_under_counts_without_it(self):
+        """A number whose input is an instruction nothing enforces must say so
+        where it is read, or "never fired" gets believed as a census."""
+        doc = self._prose("docs/governance-telemetry.md")
+        assert "reads here as never fired" in doc

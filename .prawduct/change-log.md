@@ -36,9 +36,10 @@ comment, and `plugin/CHANGELOG.md` / `documentation/issues/` history.
 Token ceilings moved by declaration in Chunk 03 (`building.md` 4757→4788, digest framework
 3198→3214 / product 2086→2101: the gate's predicate changed on the one surface every session
 receives) and were ratcheted down by Chunks 01/02 (`review-cycle.md` 9600→9597 net of Chunk 04's
-citation sentence; `goals-1-3.md` 2280→2278). Known limit, recorded not fixed: `learning.written`
-inherits the budget block's porcelain trigger, so a turn that writes AND commits a rule with nothing
-else uncommitted records no event that turn.
+citation sentence; `goals-1-3.md` 2280→2278). `learning.written` and the budget gate both read
+`gates.session_work_span` rather than the porcelain list, so a rule written AND committed in one
+turn is charged and recorded at that turn's Stop — one span, because the ceiling question and the
+written question are the same comparison against the same base.
 
 ## 2026-09-02: learnings v2 core — the corpus moves to `.claude/rules/learnings/`, loaded by the harness
 
