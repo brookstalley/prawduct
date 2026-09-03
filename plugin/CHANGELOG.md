@@ -17,6 +17,22 @@ says so wherever it appears, so a repo pinned to the develop ref can tell what i
 cached review verdict from the released plugin is not replayed against this one. Rolling release
 notes accumulate here, and this section is renamed to the release number at the cut.
 
+**The reflection guide is about the learning loop again, and the standing block has its own
+guide.** `methodology/reflection.md` halves: its Step 4 is now a routing decision with four
+destinations — an episode to `.session-reflected`, a product rule to `.claude/rules/learnings/`
+(with the instance that earned it inline), framework friction upstream through
+`/prawduct:report-bug`, and portable discipline written nowhere because the framework already
+carries it — plus the budget's payment rule in two sentences. The standing block, the clear
+verdict and the forward notes moved whole to `methodology/session-hygiene.md`, reachable as
+`/prawduct:methodology session-hygiene`. The session digest gains one default: the harness's
+auto-memory holds no project state or product rules; the repo's own files are authoritative.
+
+**Ten portable rules the fleet kept re-learning now live where rules fire.** `docs/discipline.md`
+records each one's delivery — seven already had a home, two become Critic Goal 2 bullets (a
+removal is repo-wide; built-but-unconsumed is not delivered), one extends the test-evidence
+directive (a mutation you did not watch go red applied nothing), one lands in the post-fix step (a
+reported cause is a hypothesis until reproduced). A test pins every row against its surface.
+
 **The reflection gate fires on the session that wrote code, plan or no plan, and asks for two
 lines.** It used to fire only with an active build plan and only while the working tree was dirty,
 so a session that committed its work with no plan was never asked to reflect — and a fifty-character

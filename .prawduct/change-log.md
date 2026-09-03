@@ -3,6 +3,37 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-09-03: learnings v2 docs — the guides say what the code does; the discipline corpus has a home; the program ships
+
+<!-- prawduct: type=feat | scope=learnings-v2-docs -->
+
+Wave 3 of the learning-system v2 program (#744; plan `build-plan-learnings-v2-docs.md`, serial).
+**Chunk 01 (R8, D2):** `methodology/reflection.md` rewritten to the four-route write path (episode /
+product rule with its instance inline / upstream friction / portable discipline not written) with the
+budget's payment rule and the lifecycle whose end state is a deletion; 5,003 → 2,780 tokens. The
+standing-block specification moved verbatim to the new `methodology/session-hygiene.md` (2,811
+tokens) with its own `/prawduct:methodology session-hygiene` topic at all four routing sites; every
+pin that named `reflection.md` as the carrier repointed; the lifecycle and cross-reference pins
+renegotiated to the rules directory; `docs/norms.md` stops naming `learnings.md`; the single-resolver
+allowlist is at its end state (`learnings_migrate.py` and `prawduct-hook`, both `none`). **Chunk 02
+(R10, R13):** one digest bullet — auto-memory holds no project state or product rules — raised both
+injected ceilings by declaration (+33 each; 9,455 of 10,000 characters); `api-contract.md` records
+`learnings-migrate` and `learnings-files`, the stable-tier footing of the latter, and the program's
+contract change in one paragraph, and its inert-tier count is relational; review-cycle's ordering
+rule states a rule unit from the writer (`rule_units`: a heading or a top-level bullet) and drops
+the stale narrative-body clause (net -5). **Chunk 03 (R12):** `docs/discipline.md` — ten rows, seven
+already homed; rows 5 and 7 are Goal 2 bullets in both protocol files (goals-1-3 2278→2334,
+review-protocol 3800→3849, declared), row 1's clause extends `_GREEN_IS_EVIDENCE_DIRECTIVE`, row 9
+is one sentence in the post-fix step; `tests/test_discipline_table.py` pins each row against its
+surface and the two protocol files against each other. **Chunk 04:** the program's cumulative review
+and the PR to `develop`. **Chunk 05:** the release (version framed for the owner; the three learnings
+gate rows carry `since: 3.5.0`).
+
+Closes the program for #685 (the reflection gate), #347 (reflection.md's two stale limbs), #295 (the
+memory triple-track converges on `.session-reflected` + the rules files), and Wave 2's #661 by
+deletion; #343 gets its first entry (R12) and stays open for the mechanical-promotion half; #304
+stays open holding the Critic gate's span flip.
+
 ## 2026-09-02: learnings v2 delete — the lookup, audit and archive mechanisms retired; the reflection gate fires on the common case; the loop measures itself
 
 <!-- prawduct: type=feat | scope=learnings-v2-delete -->
