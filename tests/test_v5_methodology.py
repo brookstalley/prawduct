@@ -1704,7 +1704,7 @@ class TestBuildingMethodology:
         """State / Next / Clear, the in-flight rule, and one shared trigger.
 
         What this guards is COVERAGE: the shape has to reach an agent through a
-        surface it actually reads. `reflection.md` is canonical and read on
+        surface it actually reads. `session-hygiene.md` is canonical and read on
         demand at the work-cycle boundary; the digest is injected into every
         session with no opt-out, which is what makes it the carrier that cannot
         be missed. Drop the rule from the digest and an agent that never opens
@@ -1773,7 +1773,7 @@ class TestBuildingMethodology:
                     f"replaced by {absorbed_by}. Two live vocabularies for one "
                     "slot is worse than either alone."
                 )
-            # Deliberately NOT asserting `**State**` is absent. `reflection.md`
+            # Deliberately NOT asserting `**State**` is absent. `session-hygiene.md`
             # keeps a bolded "what each line owes" list that *explains* the
             # three lines rather than being the emitted shape, and forbidding
             # the string would delete useful structure to satisfy a proxy. The
@@ -1833,7 +1833,7 @@ class TestBuildingMethodology:
 
         Pinned on both carriers for the same reason the shape is: the digest is
         injected with no opt-out, so an agent that never opens a guide gets the
-        binding anyway, and `reflection.md` is where a reader sent by the
+        binding anyway, and `session-hygiene.md` is where a reader sent by the
         digest's pointer arrives.
         """
         for name in (
@@ -1870,7 +1870,7 @@ class TestBuildingMethodology:
         # to prevent (see the "different axis" clause the shape pin guards).
         canonical = read_file("methodology/session-hygiene.md")
         assert "for work a clear leaves alone it is correct" in canonical, (
-            "reflection.md dropped the clause scoping the new binding to work "
+            "session-hygiene.md dropped the clause scoping the new binding to work "
             "a clear DESTROYS. Without it the rule reads as `RUNNING` implying "
             "`DO NOT CLEAR`, collapsing two lines that answer different axes."
         )
@@ -1953,10 +1953,10 @@ class TestBuildingMethodology:
         for label in ("`STATE`", "`RUNNING`", "`YOUR TURN`", "`COMPLETE`"):
             assert label not in self.content, (
                 f"building.md restates the standing block's {label} label; "
-                "reflection.md and the injected digest own the shape"
+                "session-hygiene.md and the injected digest own the shape"
             )
         # Where the reader is sent for the shape. Named, not implied -- a bare
-        # "see reflection.md" would survive the section being renamed away.
+        # "see session-hygiene.md" would survive the section being renamed away.
         assert "methodology/session-hygiene.md" in self.content
 
     def test_handoff_notes_are_reconciled_not_appended(self):
