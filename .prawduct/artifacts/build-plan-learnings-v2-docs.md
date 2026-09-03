@@ -97,7 +97,7 @@ is needed, and nothing before it depends on the answer.
 ## Status
 
 - [x] Chunk 01: `reflection.md` rewritten to the write-path model; the standing block moves to its own guide
-- [ ] Chunk 02: Digest line, contract records, and the residue the two earlier waves left in prose
+- [x] Chunk 02: Digest line, contract records, and the residue the two earlier waves left in prose
 - [ ] Chunk 03: The discipline seed — ten cross-repo rules delivered where rules fire, recorded in one table
 - [ ] Chunk 04: The program's PR to `develop` — its cumulative review is the gate
 - [ ] Chunk 05: Release — plan, version, cut, verify, reopen `develop`
@@ -105,7 +105,11 @@ Context: Plan drawn 2026-09-03 from the tree at f2dffc6b (Wave 2 complete). Chun
 2026-09-03: reflection.md 5003 → 2753 tokens, session-hygiene.md born at 2811 (the block moved
 verbatim; one paragraph restating the digest's reconcile rule dropped as a second home); every
 standing-block pin repointed, lifecycle and cross-reference pins renegotiated to the rules
-directory; the last two wave-3 allowlist entries gone. Review lands in Chunk 04. Next: Chunk 02.
+directory; the last two wave-3 allowlist entries gone. Chunk 02 done 2026-09-03: R10 bullet on the
+digest (+33 tokens each shape, declared; 9,455 chars), api-contract records the two added verbs,
+the stable-tier footing of `learnings-files`, and the contract change in one paragraph; the
+rule-unit sentence stated from the writer (review-cycle nets -5); README refresh deferred to the
+cut where the version is known. Review lands in Chunk 04. Next: Chunk 03.
 
 ## Scaffolding
 

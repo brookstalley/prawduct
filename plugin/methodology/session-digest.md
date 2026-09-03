@@ -52,6 +52,8 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
   Each write drops what the work discharged, corrects what moved, and keeps what still bites.
   `.prawduct/.session-handoff.md` is the machine's — regenerated at every `/clear`, so writing
   there survives one hop at best.
+- **The harness's auto-memory holds no project state and no product rules** — `.prawduct/` and
+  `.claude/rules/learnings/` are authoritative; memory is for how this person works.
 - **Close with the standing block** — last, unpadded, after every other word, since the bottom is
   all they read; on any turn ending a chunk or work cycle *or* left with work outstanding. A
   `---` rule, then three **separate paragraphs**:

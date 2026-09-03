@@ -597,7 +597,12 @@ LAST_MEASURED_TOKENS = {
     # in-process for learning events) after a second entry point falsified
     # the CLI-level wording; paid mostly in place by trimming the same
     # paragraph's review-stats clause. Under the 9597 ceiling, not raised.
-    "skills/critic/review-cycle.md": 9596,
+    # -5 on 2026-09-03 (learnings-v2-docs Chunk 02): the ordering rule now says
+    # what a rule UNIT is from the writer (`learnings_files.rule_units`: a
+    # heading or a top-level bullet) and drops the "date in a narrative body"
+    # clause, stale since narratives left the rules files. Net a cut; the
+    # ceiling ratchets with it.
+    "skills/critic/review-cycle.md": 9591,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -1221,8 +1226,16 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # -2 on both, 2026-09-03 (learnings-v2-docs Chunk 01): the standing-block
     # pointer shortened to the new guide's path and the topic list gained
     # `session-hygiene` — net a cut; ceilings ratchet with it.
-    "framework": 3211,
-    "product": 2098,
+    # +33 on both, 2026-09-03 (learnings-v2-docs Chunk 02, discovery R10): one
+    # bullet — the harness's auto-memory holds no project state or product rules;
+    # `.prawduct/` and the rules directory are authoritative. A framework-wide
+    # DEFAULT, and this repo's own rule is that such a default lands on the
+    # always-injected surface, because a place-once preference does not reach
+    # migrated repos. NOT funded by a trim, and the ceilings are RAISED with it
+    # (see the ceilings block): the two shortest cuts on the digest were both
+    # rules a test pins.
+    "framework": 3244,
+    "product": 2131,
 }
 
 #: Ceilings. HARD, like the per-file prose ceilings in this module and
@@ -1322,8 +1335,13 @@ INJECTED_FOOTPRINT_CEILINGS = {
     # MERGED 2026-09-02: Chunk 02's cut and Chunk 03's raise landed together;
     # the number below is the measured merge (B's delta + C's delta), not either side.
     # RATCHETED 3214 -> 3212, 2101 -> 2099 (2026-09-03) with the readings.
-    "framework": 3212,
-    "product": 2099,
+    # RAISED 3212 -> 3245, 2099 -> 2132 on 2026-09-03 (learnings-v2-docs Chunk 02,
+    # R10), by declaration and with its reason: a new framework-wide default
+    # (where project memory lives) on the one surface every session receives.
+    # One over each reading, so nothing is banked. The digest sits at 9,455 of
+    # the 10,000-character wall — checked before this arithmetic, not after.
+    "framework": 3245,
+    "product": 2132,
 }
 
 
@@ -4672,7 +4690,10 @@ class TestReviewCycle:
         # Cross-Check gained the citation sentence `learning.fired` reads (+26),
         # funded by Chunk 01's row cut (-29) — the wave nets -3 against the 9600
         # this ceiling was before the wave, so it lands at 9600-3, ratcheted.
-        assert tokens < 9597, f"review-cycle.md is ~{tokens} tokens, should be <9597"
+        # RATCHETED 9597 -> 9592 (2026-09-03, learnings-v2-docs Chunk 02): the
+        # rule-unit sentence stated from the writer cost less than the stale
+        # narrative-body clause it replaced.
+        assert tokens < 9592, f"review-cycle.md is ~{tokens} tokens, should be <9592"
 
     def test_framework_checks_token_budget(self):
         # Ceiling 1150. This file is `final`/`cumulative` payload: SKILL.md's

@@ -294,7 +294,16 @@ class TestDigestHook:
         assert "/prawduct:methodology" in text
         assert "Critic" in text and "Stop hook" in text
 
-    def test_the_digest_surfaces_the_report_bug_channel(self):
+    def test_the_digest_states_where_project_memory_lives(self):
+        """R10 (learnings v2): a framework-wide DEFAULT lands on the always-injected
+        surface, because a place-once preference does not reach migrated repos.
+        The harness's auto-memory must not hold project state or product rules;
+        the repo's own files are authoritative."""
+        digest = " ".join(SOURCE.read_text(encoding="utf-8").split())
+        assert "auto-memory" in digest
+        assert "`.claude/rules/learnings/` are authoritative" in digest
+
+
         # Discoverability of the upstream-bug-reporting channel (regression guard
         # against a silent trim dropping the pointer). This one digest reaches
         # products (the filing side) and the framework repo (the receiving end).

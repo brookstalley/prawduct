@@ -165,6 +165,18 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `check-releasability [--release vX.Y.Z]`, `check-released vX.Y.Z [--json] [--allow-unverifiable]`,
   `resolve-base`,
   `regen-views` (deprecated, inert), `stamp-merged` (deprecated, inert).
+- **Learnings layout (learnings v2)** — `learnings-files [--for-diff] [--json]` (read-only: the one
+  resolver's answer — the rules files under `.claude/rules/learnings/`, and with `--for-diff` the
+  core file plus every area file whose `paths:` intersect the diff; three `allowed-tools` lists bind
+  it, so it sits in the stable tier) and `learnings-migrate [--apply] [--map <file>] [--propose-map]
+  [--json]` (mutating with `--apply`: the one-way relayout of a legacy `.prawduct/learnings.md` into
+  the rules files, byte-accounted against the tree it writes; refuses on a dirty tree; exit 0 written,
+  1 refused or could not run, 2 usage — the sibling repairs' scheme). **The contract change, in one
+  place:** two verbs added; three retired to deprecated-inert (below) rather than removed, because the
+  deprecation norm above governs every verb a human or a skill can call and the release is a minor;
+  `ledger-append` gained two event kinds it refuses at the CLI; `review-stats --json` moved to
+  `schema_version` 2 (a `learning` block added, no key repurposed). Nothing a consumer allowlisted
+  changed meaning.
 - **Learnings lifecycle (retired with learnings v2)** — `audit-learnings`, `learnings-obligation`,
   `check-learnings-pairing` (deprecated, inert): the corpus they graded — `.prawduct/learnings.md`
   and its detail/history pair — no longer exists; rules are harness-loaded from
@@ -572,6 +584,7 @@ Evolution rules we want to hold, so new versions stay rare:
 
 - **Stable, allowlistable surface** (intended to be depended on, and scoped into skill
   `allowed-tools`): `evidence status|list`, `review-stats --json`, `render-dispositions`,
+  `learnings-files` (bound by the Critic skill, the PR reviewer protocol and the reviewer agent),
   `disposition`, and the query/gate subcommands skills bind to (`test-status`, `verify-coverage`,
   `check-*`, `resolve-base`, `coverage-status`, `advisory *`, `infer-critic-mode`). Several of these
   exist *specifically* to give skills a narrow, stable command to allowlist instead of arbitrary
@@ -591,16 +604,19 @@ Evolution rules we want to hold, so new versions stay rare:
   of the real one. Its `counts` follow the same rule as the manifest's: an integer when a check ran,
   `null` when it produced no answer.
 - **Internal / lifecycle surface** (called by the harness or by consolidation, not a public
-  contract): `clear`, `stop`, `subagent-stop`, `critic-begin`, `critic-consolidate`.
+  contract): `clear`, `stop`, `subagent-stop`, `critic-begin`, `critic-consolidate`,
+  `learnings-migrate` (run once per repo from the session-start directive).
   **`backlog <op>` sits in this tier on different grounds:** its callers are the
   `/prawduct:backlog` skill and adopter agents rather than the harness, and § Direction's 2026-08-02
   ruling puts every subcommand outside the two published surfaces here. Unpromised, not unused —
   § Operations, "Backlog service", is the entry, and it names what would move it.
-- **Deprecated and inert** (callable, writes nothing, exits 0; removal deferred to a major). Four
-  members in two sub-shapes, split by **who calls them** — which decides whether they announce
+- **Deprecated and inert** (callable, writes nothing, exits 0; removal deferred to a major). The
+  members § Operations marks so, in two sub-shapes, split by **who calls them** — which decides whether they announce
   themselves:
 
-  - *Announcing* — `stamp-merged`, `regen-views`. Notice on stderr. Both lost their bodies when
+  - *Announcing* — `stamp-merged`, `regen-views`, and since learnings v2 `audit-learnings`,
+    `learnings-obligation`, `check-learnings-pairing` (their notice names the rules layout that
+    replaced the corpus they graded). Notice on stderr. The first two lost their bodies when
     derived views were retired: `regen-views` had no views left to regenerate, and `stamp-merged`'s
     only output (`status=`) had no reader left. **Prawduct's own release runbook no longer calls
     either**, so the remaining reason to keep them callable is the one that cannot be audited from
@@ -616,7 +632,7 @@ Evolution rules we want to hold, so new versions stay rare:
 
   The split is a **recorded departure pending owner ratification**, not a settled rule — see
   § Deprecation & Compatibility, where the norm it departs from still stands unamended and the
-  proposed *silent-when-the-caller-is-a-registration* clause is the question put to the owner. All four are members of
+  proposed *silent-when-the-caller-is-a-registration* clause is the question put to the owner. All of them are members of
   `_EPHEMERAL_SAFE_COMMANDS` — without it the fail-closed disposable-worktree guard treats an
   unlisted command as a write and exits 1, which would falsify "exits 0" exactly where a hook
   invokes it. Pinned in `tests/test_retired_hook_subcommands.py`.
