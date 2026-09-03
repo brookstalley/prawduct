@@ -39,8 +39,7 @@ Context: All four chunks built, committed and verified. Chunk 02 was DESCOPED mi
 #751 (`unmerge`, design). Chunk 03's premise was likewise falsified by the code and the
 reconciliation went the other way, with the unbuilt predicate filed as #752. #609 was
 considered and DROPPED: its blocker (`constraints.txt` on the unmerged
-`feature/upstream-dependency-policy`) was re-verified live and still holds. NOT PR'd —
-the user did not ask.
+`feature/upstream-dependency-policy`) was re-verified live and still holds.
 
 **Review: CLOSED.** Cumulative `rev-20260902T125809Z-fa56d43b` raised 3 blocking + 6
 warnings; `verify-resolutions` (`rev-20260902T133055Z-7f00a9b9`) confirmed all nine
