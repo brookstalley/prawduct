@@ -99,7 +99,7 @@ is needed, and nothing before it depends on the answer.
 - [x] Chunk 01: `reflection.md` rewritten to the write-path model; the standing block moves to its own guide
 - [x] Chunk 02: Digest line, contract records, and the residue the two earlier waves left in prose
 - [x] Chunk 03: The discipline seed — ten cross-repo rules delivered where rules fire, recorded in one table
-- [ ] Chunk 04: The program's PR to `develop` — its cumulative review is the gate
+- [x] Chunk 04: The program's PR to `develop` — its cumulative review is the gate
 - [ ] Chunk 05: Release — plan, version, cut, verify, reopen `develop`
 Context: Plan drawn 2026-09-03 from the tree at f2dffc6b (Wave 2 complete). Chunk 01 done
 2026-09-03: reflection.md 5003 → 2753 tokens, session-hygiene.md born at 2811 (the block moved
@@ -113,7 +113,11 @@ cut where the version is known. Chunk 03 done 2026-09-03: `docs/discipline.md` w
 already homed; rows 5 and 7 are two Goal 2 bullets in both protocol files (goals-1-3 2278→2334,
 review-protocol 3800→3849, both raised by declaration); row 1's second clause extends the record
 directive; row 9 is one sentence in the post-fix step. `tests/test_discipline_table.py` pins each row
-against its surface and the two protocol files against each other. Next: Chunk 04 (suite, cumulative, PR).
+against its surface and the two protocol files against each other. Chunk 04 done 2026-09-03: base synced (one rule ported, budget declared at 99 KB), two
+cumulatives (rev-…a960563b, rev-…db97159b after the sync) and four verify-resolutions rounds, all
+findings fixed or accepted; PR reviewer (opus) clean on the re-run; PR #759 open against develop,
+merge commit, merge awaits the owner (`PR merge: wait_for_user`). Next: Chunk 05 after the merge —
+the owner's version call first (3.5.0 recommended; gates.json rows carry that `since`).
 
 ## Scaffolding
 
