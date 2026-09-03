@@ -9,8 +9,9 @@ decisions need. Telemetry is **pulled, not pushed** — no hook nags about it;
 ## The event ledger
 
 `.prawduct/.governance-ledger.jsonl` (gitignored) — one JSON event per line,
-written ONLY by `prawduct-hook ledger-append` (agents never hand-author
-JSONL; the helper validates the findings record and computes the envelope).
+written ONLY by `lib.ledger` — `prawduct-hook ledger-append` for review events,
+the Stop hook and `critic-consolidate` in-process for `learning.*` (agents never
+hand-author JSONL; the one append validates the record and computes the envelope).
 
 Every event shares the **envelope**; the kind-specific payload nests beneath a
 kind-named key (`review` for `review.*`):

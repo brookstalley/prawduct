@@ -115,7 +115,13 @@ doc-only or metadata-only spans, a waived gate, a shaped reflection, and a repo 
 base-tree marker (today's behaviour). Residual false-fire class: judgeable files entering the tree
 without this session authoring them (merge, pull, rebase, switch). Fixture blast radius was 10
 modules, not 18 (the rest read the file without going through the gate); the shape text lives in
-`tests/conftest.py::SHAPED_REFLECTION`. Next: full suite, records, one `final` review.
+`tests/conftest.py::SHAPED_REFLECTION`. Chunk 04 live check (2026-09-03, this worktree, repo-local
+hook): one heading appended to core.md, two Stops — the ledger gained 2 `learning.written` lines on
+the first Stop (the appended heading, and the unit R-15 re-worded this session: an EDITED rule hashes
+as a new unit, so a rewording reads as a write — hash identity, recorded not fixed) and 0 on the
+second; the review's resolution round produced 3 `learning.fired` lines. Review
+rev-20260902T232816Z-f97fa40b: 2 blocking + 9 warning + 7 note, all fixed or accepted; one
+verify-resolutions round found the untested raise arm of R-1's fix.
 
 ## Scaffolding
 
@@ -483,7 +489,7 @@ learning emitters call its append, never `open()`. `gates.session_work_span` is 
     the allowlist and `LAST_MEASURED_TOKENS` resolved by hunk, then every pinned file re-measured
     (the test message carries the number).
   - The grep-clean re-derivation, as ONE command the change-log entry cites:
-    `grep -rnE "audit_learnings|learnings_obligation|learnings_pairing|learnings-entry-shape|_check_learnings_shape|prawduct:learnings|reflections\.md|reflection_provenance|sentinel_command|sentinel_ungraded|Active Learnings|learning_families" plugin tests README.md CLAUDE.md documentation`
+    `grep -rnE "audit_learnings|learnings_obligation|learnings_pairing|learnings-entry-shape|_check_learnings_shape|prawduct:learnings|reflections\.md|reflection_provenance|sentinel_command|sentinel_ungraded|Active Learnings|learning_families" plugin tests README.md CLAUDE.md documentation .prawduct/cross-cutting-concerns.md .prawduct/artifacts .claude/rules/learnings`
     — expected survivors: the three stubs and their test, test assertion strings that guard an
     absence, `plugin/CHANGELOG.md`, and `documentation/issues/` history. Anything else is a
     delegate's miss and is fixed here.

@@ -784,11 +784,6 @@ def _boundary_close_session(project_dir: Path, prawduct_dir: Path) -> None:
     # (permissions, transient FS) must not traceback the SessionStart hook —
     # a survivor just carries stale state into the new session, which the
     # NOTE names so the user can remove it by hand.
-    # `.session-reflected` is deleted unconditionally. Nothing archives it any
-    # more: the handoff generated ABOVE reads it and carries the narrative into
-    # the next session, so the generation and the delete must stay in this order
-    # — swapping them hands the next session an empty handoff. That ordering is
-    # the whole contract now, and `tests/test_session_boundary_events.py` pins it.
     doomed = [
         ".session-start",
         ".session-git-baseline",
@@ -807,7 +802,7 @@ def _boundary_close_session(project_dir: Path, prawduct_dir: Path) -> None:
     elif reflected.is_file():
         why = (
             " (it could not be read — not valid UTF-8?)"
-            if handoff is not None and handoff.reflection_state == "unreadable"
+            if handoff is not None and handoff.reflection_state == briefing.NOTES_UNREADABLE
             else ""
         )
         print(

@@ -58,6 +58,19 @@ if str(_ROOT) not in sys.path:
 
 from test_plugin_runtime import HOOKS_JSON, run_plugin_hook  # noqa: E402
 
+# The extensionless hook, loaded in-process for the one arm a subprocess cannot
+# stage (a raise inside the boundary). Same SourceFileLoader idiom as
+# `test_stop_gate_error_posture.py`; shebang dispatch does not run at import.
+import importlib.machinery  # noqa: E402
+import importlib.util  # noqa: E402
+
+_hook_loader = importlib.machinery.SourceFileLoader(
+    "prawduct_hook_boundary", str(Path(__file__).resolve().parent.parent / "plugin" / "bin" / "prawduct-hook")
+)
+_hook_spec = importlib.util.spec_from_loader("prawduct_hook_boundary", _hook_loader)
+_hook = importlib.util.module_from_spec(_hook_spec)
+_hook_loader.exec_module(_hook)
+
 # The five documented SessionStart sources, pinned locally from
 # https://code.claude.com/docs/en/hooks (verified 2026-07-27).
 #
@@ -281,6 +294,30 @@ class TestTheHandoffIsTheOnlyCarrier:
         # And the other session files still go: the keep is targeted, not a stall.
         # (`.gates-waived`, not `.session-start` — the clear re-stamps the latter
         # right after the boundary, so its presence says nothing about deletion.)
+        assert not (prawduct / ".gates-waived").is_file()
+
+    def test_a_handoff_generation_that_raises_keeps_the_reflection(self, tmp_path, monkeypatch, capsys):
+        """The arm the original finding named FIRST: `_briefing()` (an
+        incomplete install) or `generate_session_handoff` raising. The boundary
+        catches it and must then keep the reflection — nothing carried it. In-
+        process, because a raise inside the hook cannot be staged from outside;
+        red-verified against `handoff = HandoffResult(False, absent, absent)`
+        initialised before the try, which the exception arm would then consume.
+        """
+        prawduct = _seed_session(tmp_path)
+
+        def _raise():
+            raise ImportError("lib.briefing is missing from this install")
+
+        monkeypatch.setattr(_hook, "_briefing", _raise)
+        _hook._boundary_close_session(tmp_path, prawduct)
+        out = capsys.readouterr()
+        assert (prawduct / ".session-reflected").is_file(), (
+            "a reflection whose handoff generation raised must be KEPT"
+        )
+        assert "could not generate the session handoff" in out.err
+        assert "did NOT reach this handoff" in out.out
+        # The keep is targeted: the rest of the boundary still runs.
         assert not (prawduct / ".gates-waived").is_file()
 
     def test_the_boundary_writes_no_reflections_archive(self, tmp_path):

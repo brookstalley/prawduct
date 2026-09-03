@@ -29,8 +29,8 @@ lines once. The session-start advisory in `briefing.py` reads the same span and 
 by review id) — `lib.ledger` stays the one writer and the CLI refuses `learning.*`; a rule unit is a
 `##`/`###` heading or top-level bullet, hashed by `learnings_files.unit_hash`; units under three
 words cannot fire. This repo's core.md: 288 units, 288 distinct hashes. **Chunk 05:** the grep-clean
-re-derivation `grep -rnE "audit_learnings|learnings_obligation|learnings_pairing|learnings-entry-shape|_check_learnings_shape|prawduct:learnings|reflections\.md|reflection_provenance|sentinel_command|sentinel_ungraded|Active Learnings|learning_families" plugin tests README.md CLAUDE.md documentation`
-returns only the three stubs, test assertion strings that guard the absence, one budget-ledger
+re-derivation `grep -rnE "audit_learnings|learnings_obligation|learnings_pairing|learnings-entry-shape|_check_learnings_shape|prawduct:learnings|reflections\.md|reflection_provenance|sentinel_command|sentinel_ungraded|Active Learnings|learning_families" plugin tests README.md CLAUDE.md documentation .prawduct/cross-cutting-concerns.md .prawduct/artifacts .claude/rules/learnings`
+(widened after the review found the two governing corpora outside the first sweep) returns only the three stubs, test assertion strings that guard the absence, one budget-ledger
 comment, and `plugin/CHANGELOG.md` / `documentation/issues/` history.
 
 Token ceilings moved by declaration in Chunk 03 (`building.md` 4757→4788, digest framework
