@@ -41,7 +41,14 @@ from statistics import median
 from . import gitstate
 from .ledger import ledger_path
 
-REPORT_SCHEMA_VERSION = 1
+#: Report schema. Bumped to 2 when the learning-loop block arrived: the
+#: `--json` shape gained a top-level key, and TEL-7A4X keys on this shape.
+REPORT_SCHEMA_VERSION = 2
+
+#: Ledger kind -> the tally it feeds. Exact kinds, never a `learning.` prefix
+#: match: a future kind this report has no column for must surface as
+#: `unknown_kinds` rather than be silently folded into `written`.
+_LEARNING_KINDS = {"learning.written": "written", "learning.fired": "fired"}
 
 # Severities with first-class columns. Anything else a record carries lands in
 # "other" — counted, never dropped (the validator only requires a non-empty
@@ -94,15 +101,24 @@ def _canonical_model(model) -> str | None:
     return model.strip()
 
 
-def _read_events(path: Path) -> "tuple[list[dict], dict, str | None]":
-    """All reportable ``review.*`` events oldest-first, skip counts, and the
-    read failure if the file could not be opened at all.
+def _read_events(path: Path) -> "tuple[list[dict], dict, dict, str | None]":
+    """All reportable ``review.*`` events oldest-first, skip counts, the
+    learning-loop tallies, and the read failure if the file could not be
+    opened at all.
 
     ``corrupt_lines``: unparseable JSON, a non-object line, or an envelope
     without a string ``event`` kind. ``unknown_kinds``: a valid envelope whose
-    kind is not ``review.*`` (v1 reports reviews only). ``invalid_payloads``:
-    a ``review.*`` envelope whose ``review`` payload is missing a findings
-    list (unusable for aggregation).
+    kind this report does not aggregate. ``invalid_payloads``: a kind it DOES
+    aggregate whose payload is unusable — a ``review.*`` missing its findings
+    list, or a ``learning.*`` with no ``unit_hash``, which can answer none of
+    the four questions the learning events exist for.
+
+    **The learning tallies ride this one pass.** They are counts, not events,
+    so they do not join ``events_total`` (which means reviews and is read as
+    such by every existing consumer); and they are not skips, because a
+    counted thing is not a skipped one — bucketing them under
+    ``unknown_kinds`` was honest only while nothing read them, and a channel
+    produced and never consumed is a defect rather than an inefficiency.
 
     **The read failure is a third return value, not a fourth key in
     ``skipped``.** An unreadable file is not a skip count, and ``skipped`` is
@@ -113,7 +129,18 @@ def _read_events(path: Path) -> "tuple[list[dict], dict, str | None]":
     command over.
     """
     skipped = {"corrupt_lines": 0, "unknown_kinds": 0, "invalid_payloads": 0}
+    learning = {"written": 0, "fired": 0}
+    units: dict[str, set] = {"written": set(), "fired": set()}
     events: list[dict] = []
+
+    def _finish() -> dict:
+        return {
+            "written": learning["written"],
+            "fired": learning["fired"],
+            "units_written": len(units["written"]),
+            "units_fired": len(units["fired"]),
+        }
+
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
     except OSError as exc:
@@ -121,7 +148,7 @@ def _read_events(path: Path) -> "tuple[list[dict], dict, str | None]":
         # here too, so a `review-stats:` prefix would misattribute the failure
         # to a command the reader never ran.
         print(f"governance ledger unreadable ({exc})", file=sys.stderr)
-        return events, skipped, str(exc).strip()[:80]
+        return events, skipped, _finish(), str(exc).strip()[:80]
     for raw in lines:
         raw = raw.strip()
         if not raw:
@@ -134,7 +161,18 @@ def _read_events(path: Path) -> "tuple[list[dict], dict, str | None]":
         if not isinstance(event, dict) or not isinstance(event.get("event"), str):
             skipped["corrupt_lines"] += 1
             continue
-        if not event["event"].startswith("review."):
+        kind = event["event"]
+        if kind in _LEARNING_KINDS:
+            payload = event.get("learning")
+            unit = payload.get("unit_hash") if isinstance(payload, dict) else None
+            if not isinstance(unit, str) or not unit.strip():
+                skipped["invalid_payloads"] += 1
+                continue
+            bucket = _LEARNING_KINDS[kind]
+            learning[bucket] += 1
+            units[bucket].add(unit)
+            continue
+        if not kind.startswith("review."):
             skipped["unknown_kinds"] += 1
             continue
         payload = event.get("review")
@@ -142,7 +180,7 @@ def _read_events(path: Path) -> "tuple[list[dict], dict, str | None]":
             skipped["invalid_payloads"] += 1
             continue
         events.append(event)
-    return events, skipped, None
+    return events, skipped, _finish(), None
 
 
 def _extract_row(event: dict) -> dict:
@@ -287,7 +325,7 @@ def round_price(prawduct_dir: Path, *, mode: str = PRICED_MODE) -> dict:
     path = ledger_path(prawduct_dir)
     if not path.is_file():
         return {"status": "unavailable", "reason": "this repo has no recorded review history yet"}
-    events, skipped, unreadable = _read_events(path)
+    events, skipped, _learning, unreadable = _read_events(path)
     # An unreadable ledger is not an empty one. Both produce zero durations, but
     # only one of them is honestly described as "no round records how long it
     # took" — and this reason is PERSISTED into the findings cache, the ledger
@@ -359,9 +397,15 @@ def format_round_price(price: dict) -> str:
     )
 
 
-def aggregate_review_stats(events: list[dict], skipped: dict) -> dict:
+def aggregate_review_stats(
+    events: list[dict], skipped: dict, learning: "dict | None" = None
+) -> dict:
     """The report body (everything below the ``project``/``generated_at``
-    header the CLI adds) — pure, deterministic, fully derived from events."""
+    header the CLI adds) — pure, deterministic, fully derived from its inputs.
+
+    ``learning`` is the tally :func:`_read_events` counted on the same pass;
+    omitted, the block renders as zeros, which is the honest reading for a
+    ledger holding no learning events."""
     rows = [_extract_row(e) for e in events]
 
     by_rmm: dict[tuple, list[dict]] = {}
@@ -388,6 +432,16 @@ def aggregate_review_stats(events: list[dict], skipped: dict) -> dict:
         ],
         "top_files": top_files,
         "files_attributed_total": files_attributed_total,
+        # The learning loop's own numbers. `written`/`fired` count EVENTS and
+        # `units_*` count distinct rules, and the pair is the point: `written`
+        # over `units_written` is how often one rule is re-recorded across
+        # sessions, and `units_written - units_fired` is the rules no review
+        # has ever cited, which is the question the corpus cannot ask itself.
+        "learning": dict(
+            learning
+            if learning is not None
+            else {"written": 0, "fired": 0, "units_written": 0, "units_fired": 0}
+        ),
     }
 
 
@@ -436,6 +490,17 @@ def _render_human(report: dict, ledger_rel: str) -> str:
             )
     else:
         lines.append("  (none — no finding carries file attribution yet)")
+    lg = report["learning"]
+    # Both halves on one line, because the useful number is the DIFFERENCE:
+    # rules written that no review has ever cited. Printing only the totals
+    # would make a reader do the subtraction, and a reader who has to compute
+    # the answer mostly does not.
+    lines += ["", (
+        f"learning loop: {lg['written']} rule write(s) over {lg['units_written']} "
+        f"distinct rule(s); {lg['fired']} citation(s) over {lg['units_fired']} "
+        f"distinct rule(s) — {max(lg['units_written'] - lg['units_fired'], 0)} "
+        "written rule(s) no review has cited"
+    )]
     return "\n".join(lines)
 
 
@@ -461,11 +526,12 @@ def review_stats(project_dir: Path, argv: list[str]) -> int:
         # renders as the empty report it truthfully is, with the cause on
         # stderr beside it. `round_price` is the caller that must distinguish
         # them, because its reason string gets persisted.
-        events, skipped, _unreadable = _read_events(path)
+        events, skipped, learning, _unreadable = _read_events(path)
     else:
         events, skipped = [], {"corrupt_lines": 0, "unknown_kinds": 0, "invalid_payloads": 0}
+        learning = {"written": 0, "fired": 0, "units_written": 0, "units_fired": 0}
 
-    report = aggregate_review_stats(events, skipped)
+    report = aggregate_review_stats(events, skipped, learning)
     # Header fields the pure aggregation can't know — added once, here, so the
     # JSON and human renderings always agree.
     report = {

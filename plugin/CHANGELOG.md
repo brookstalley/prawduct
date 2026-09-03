@@ -42,10 +42,13 @@ reader; `.session-reflected` is cleared at each `/clear` and the generated hando
 of the previous session's reflection. Existing `reflections.md` files are untouched.
 
 **The learning loop measures itself.** Two governance-ledger events: `learning.written` when a rule
-appears in a rules file this session (one per rule, keyed by its heading's hash, recorded at Stop),
+appears in a rules file this session (one per rule, keyed by its heading's hash, recorded at Stop,
+and counted whether or not you have committed it yet),
 and `learning.fired` when a Critic finding quotes a rule's opening words (recorded at
 `critic-consolidate`, joined to the review). Both are written by the plugin, never by hand.
-`review-stats` counts them under its existing `unknown_kinds` bucket, as its contract says.
+`review-stats` reports them: a `learning` block counting writes, citations and the distinct
+rules behind each, closing with the number the corpus cannot ask itself — how many written
+rules no review has ever cited. Its `--json` `schema_version` moves to 2 for the new key.
 
 **A stalled norm no longer expires in silence.** A `Stopgap:` field on an in-transition norm —
 the bounded exception that says "this half-finished state is deliberate until <date>" — was
