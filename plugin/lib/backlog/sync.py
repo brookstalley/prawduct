@@ -435,7 +435,7 @@ def _incremental_sync(
     """Bring the store up to date by fetching only what changed.
 
     Three outcomes, and the cheap one is the common one. With no watermark this
-    delegates to :func:`full_rebuild`. With a watermark it first asks the
+    delegates to :func:`_full_rebuild`. With a watermark it first asks the
     provider whether the window changed at all — a conditional request that costs
     **zero rate-limit points** when the answer is no — and returns without
     fetching a page. Only when something did change does it scan the window and

@@ -267,7 +267,7 @@ Route by what changed:
   can carry its governing-doc link from birth. With `--affected`, `--working-branch` and `--tags`
   above, these are the only writable block fields; **`--body` is not a route into the block** — a
   pasted block is stripped and the existing one re-appended, so a block edit sent that way changes
-  nothing. It does not do so silently: a pasted block that differs from the stored one comes back
+  nothing. It does not do so silently: a pasted block asking for something the write did not land (compared against the block as it finally stands, after the flags layer on — not against the stored one) comes back
   with a warning naming the differing fields, so check `warnings` rather than reading `ok` as "the
   block edit landed". A body carrying NO block is not reported — "I deleted it" and "I never pasted
   one" are the same text.

@@ -36,7 +36,7 @@ cache (§6) projects the same fields for the queries GitHub can't serve read-you
 
 | Field | Type / values | **Authority** (one per field) | Justified by |
 |---|---|---|---|
-| `id` | `owner/repo#number` (canon); `repo#number` (short, same-owner) | issue **number** (immutable except transfer, §5) | DM4 · every ref |
+| `id` | canonical `owner/repo#number`; the full accepted grammar and which forms need a default is §5 | issue **number** (immutable except transfer, §5) | DM4 · every ref |
 | `node_id` | opaque | issue **node-id** (entity-level transfer fallback; *not* cached, m1) | DM4 (verify transfer-stability in S2) |
 | `title` | string | issue **title** | AG2, Q1 |
 | `body` | markdown + one `prawduct:` block (§2) | issue **body** | AG2, round-trip |
@@ -276,8 +276,27 @@ every call and decoded it all to rank, which measured ~12.4s at ~209 issues, ~6x
 
 ## 5. Identifiers
 
-- **Canonical `owner/repo#number`** — GitHub's own cross-ref syntax; **short `repo#number` same-owner
-  only** (ambiguous under federation).
+- **The accepted ID grammar, stated once here.** This section is the home; API contract §3/§8, the
+  Direction bullet, the test specs' ID-1 and `plugin/skills/backlog/cache-reads.md` point here rather
+  than restating the list, because a spelling added to some carriers and not others is how the grammar
+  forked before. Five forms, in two classes:
+  - **Self-describing** — **canonical `owner/repo#number`**, GitHub's own cross-ref syntax, and
+    **short `repo#number` same-owner only** (ambiguous under federation). These need no default and
+    are the only forms accepted from a *stored* value.
+  - **Bare** — `number` and `#number`. These carry no repo, so they resolve **only against a supplied
+    default** (`--repo`, or the store's own `scope`, which is where `cachequery.resolve` derives it).
+    **Operator input only.** A ref parsed out of an issue *body* — a `superseded-by:` target, a
+    `resolve_survivor` fetch, a provider alias — resolves canonically or not at all, because a body is
+    attacker-writable and a bare `7` would otherwise redirect a lookup to a real item (Security Model
+    §5/F3).
+  - **Digit-suffix `repo-number`** — the shell spelling, whose collision with the PFX alias grammar the
+    precedence rule below resolves.
+- **One canonical form per item.** The number is re-rendered from its integer value, so `#007` and `#7`
+  are one id and not two; and the digit class is ASCII `[0-9]` only, so a non-ASCII decimal digit is a
+  validation error rather than a canonical id GitHub cannot resolve. Both follow from ID-1 (one
+  canonical id per item) rather than adding to it. A consequence worth naming: a *stored* alias spelled
+  with a padded number no longer round-trips, since `parse_provider_alias` requires the canonical form
+  to equal the ref verbatim.
 - **Immutable except `gh issue transfer`** (renumbers) → transfer writes a **`superseded-by:` redirect**
   via the alias machinery; store `node_id` as the transfer-stable fallback (*undocumented → prove S2*).
 - **Migrated `PFX-XXXX` → permanent `id:PFX-XXXX` alias labels** + `id_aliases` block entries; old refs

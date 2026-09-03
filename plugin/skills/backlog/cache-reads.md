@@ -54,7 +54,7 @@ same edit that narrows it.
 | `resolve <id>` | what an id names — status, `dead`, and whether it resolves at all |
 
 `resolve` goes through the alias table, so a historical citation still resolves after the item gains
-a new id, and a **bare `#N`** resolves against the store's own scope. A miss is a successful answer
+a new id, and the **bare forms** — `N` and `#N` alike — resolve against the store's own scope. Those two carry no repo, so they are accepted from operator input only; the full grammar and that restriction live in `backlog-service-data-model.md` §5. A miss is a successful answer
 (`resolved: false`), not an error.
 
 ## Reading the answer

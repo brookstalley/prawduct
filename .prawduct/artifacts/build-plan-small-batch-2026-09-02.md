@@ -47,18 +47,20 @@ warnings; `verify-resolutions` (`rev-20260902T133055Z-7f00a9b9`) confirmed all n
 resolved, zero blocking, re-deriving R-6's caller search independently rather than taking
 the fix on trust.
 
-**Goals 5 and 6 (learnings cross-check, backlog reconciliation) were never assessed —
-ACCEPTED by owner ruling 2026-09-02, reason recorded here.** The sustainability reviewer
-halted at its pre-check because HEAD moved during the review; correctness and design
-reviewed the pinned tree cleanly. The ruling weighed a second cumulative (~10 min, a third
-round on this branch) against the fact that nothing gates on those two goals while there is
-no PR. This is a deferral, not a judgment that the goals do not apply: if this branch is
-ever PR'd, `check-cumulative-critic` will require the coverage, and that gate — not this
-note — is what decides it then.
+**Goals 5 and 6 (learnings cross-check, backlog reconciliation) — DEFERRED, then
+DISCHARGED at the PR boundary, exactly as the deferral said they would be.** The first
+cumulative's sustainability reviewer halted at its pre-check because HEAD moved during the
+review, so those two goals went unassessed; the owner accepted that on 2026-09-02 while
+there was no PR and nothing gated on them, recording that `check-cumulative-critic` — not
+the note — would decide it if the branch were ever PR'd. It was, the gate did, and round 3
+(`rev-20260903T024635Z-2758d10e`) assessed both cleanly: R-13 confirms #625 resolved and
+#544/#609/#751/#752 correctly placed, R-14 reports the C-B1–C-B4 hygiene sweep. Kept rather
+than deleted, because the shape is the lesson: a deferral that names its own forcing gate
+is discharged by that gate firing, not by anyone remembering.
 
-**Suite evidence.** 6161 passed, 0 failed, 17 skipped, 218.5s at 2026-09-02T22:12:24Z,
-recorded against `5792f8aa` on an uncontended run. This supersedes the earlier 6146 figure,
-which covered an ancestor tree. Two later commits (the inherited learnings entry and the
+**Suite evidence.** The suite passed against `5792f8aa` on an uncontended run; the
+counts live in `.prawduct/.test-evidence.json`, which is what readers should consult —
+a prose copy of a suite total drifts and nothing reads it. Two later commits (the inherited learnings entry and the
 grooming stamp, 2316cf94 and 5f04d5ec) are docs and state only, touch no code, and postdate
 both the review and that run.
 
@@ -86,8 +88,11 @@ that the two documents no longer name one query two ways, checked by grep.
 - **Artifacts consumed:** `backlog-service-api-contract.md` (ID spellings)
 - **Deliverables:** `plugin/lib/backlog/ids.py` — thread a `default_repo` through
   `normalize_id` and add the bare-number form; `plugin/lib/backlog/cachequery.py`
-  (`resolve`) and `plugin/lib/backlog/cli.py:949` — pass the `default_repo` that
-  `_repo_defaults` already computes and that this one call site drops
+  (`resolve`) — derive the `default_repo` from the store's own `scope` rather than
+  taking it from the caller. **AMENDED at review:** this line planned the qualification
+  at a `cli.py` call site; it shipped inside `cachequery.resolve` instead, which is the
+  better siting — one derivation every caller inherits, rather than one each caller can
+  forget. `cli.py` is untouched by this chunk
 - **Tests:** unit — `322`, `#322`, and `  #322  ` each resolve against a `default_repo`;
   each still fails with a *useful* message when no default repo is available; the ID-1
   idempotence property still holds for the new form; a bare number with no digits
@@ -198,8 +203,10 @@ that the two documents no longer name one query two ways, checked by grep.
 - **Deliverables:** `last_attempt_at` / `last_error` columns on the `cursor` table
   (`plugin/lib/backlog/cache.py`, SCHEMA_VERSION 7→8 — a store at v7 discards and
   rebuilds, which loses nothing); `record_sync_attempt` / `sync_health` beside the
-  existing cursor accessors; recorded from `_run_sync` (`plugin/lib/backlog/cli.py`),
-  the one point every sync concludes; surfaced through `cachequery._serve`, the one
+  existing cursor accessors; recorded at the sync boundary (`sync._recording` /
+  `_record_attempt`), the one point every sync concludes — **AMENDED at review:** this
+  line planned the stamp in `cli._run_sync`, which the chunk's own later `[DECISION: the
+  stamp lives at the SYNC boundary, not in the CLI]` reverses; surfaced through `cachequery._serve`, the one
   point every query passes; printed under the age in human mode; documented in
   `plugin/skills/backlog/cache-reads.md`
 - **[DECISION: record only against an EXISTING cursor row — never INSERT.]**

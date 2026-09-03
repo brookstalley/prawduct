@@ -366,12 +366,15 @@ rather than impossible (Data Model §1.4).
 
 **ID-1 — Every spelling normalizes to canonical** (→ D4, API §3/§8)
 - Level: unit
-- Setup: the accepted spellings of one ID: `owner/repo#number`, `repo#number`, `repo-number`,
-  `repo/number`, and bare `number` / `#number`.
+- Setup: the accepted spellings of one ID (grammar's home: Data Model §5) — `owner/repo#number`,
+  `repo#number`, `repo-number`, `repo/number`, and bare `number` / `#number` — plus a **zero-padded**
+  number (`#007` against an item numbered 7) and a **non-ASCII decimal digit** (a full-width `７`).
 - Action: normalize each.
 - Expected: each → the same canonical `owner/repo#number`; a short `repo#number` resolves same-owner
   only; a bare `number`/`#number` resolves same-repo only, so a default owner alone leaves it a
-  `validation` error rather than a guess. (Property candidate.)
+  `validation` error rather than a guess. The padded form yields the SAME canonical id as the
+  unpadded one — one item never carries two — and the non-ASCII digit is a `validation` error, not a
+  canonical id GitHub cannot resolve. (Property candidate.)
 
 **ID-2 — `ambiguous_id` under federation** (→ D4, API §4; *implied-not-named in source docs — named here*)
 - Level: unit

@@ -348,8 +348,10 @@ state; it remains the interim supported path until the GitHub-issue path is buil
   `owner/repo#number` and **no new `PFX-XXXX` is ever minted** (Data Model §5;
   `lib/backlog/ids.py`) — the `id:PFX` alias exists so *migrated* items' old refs resolve forever,
   not as a continuing scheme. Every surface that **cites** an item must therefore recognize *both*
-  forms: the PFX alias for migrated items, and `owner/repo#number` / `repo#number` for everything
-  filed after cutover. Today several recognize only the first — e.g. `lib/norm_probes.py`'s
+  forms: the PFX alias for migrated items, and the GitHub-number grammar for everything filed after
+  cutover — whose accepted spellings are enumerated in **Data Model §5**, the one home, rather than
+  restated here, because a spelling added to some carriers and not others is exactly how the grammar
+  forked before. Today several recognize only the first — e.g. `lib/norm_probes.py`'s
   `_BACKLOG_ID_RE` (`\b[A-Z]{2,4}-[A-Z0-9]{4}\b`), the Critic's C-B4 dangling-id check, PR review
   `R-2`'s `closes: PFX-XXXX` reconciliation, `closes:`/`closed-by:` in backlog metadata and
   change-log tags, and the deferred build-plan backlog-id verification

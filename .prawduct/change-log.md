@@ -16,9 +16,20 @@ wrong.
 of them the number an operator reads off a GitHub URL. `322` fell through every form to
 "unrecognized ID spelling"; `#322` reached the short-form branch with an empty left side and
 reported `malformed repo in '#322'`, naming a defect the input does not contain. A `default_repo`
-is now threaded through `normalize_id`, and `cli.py`'s one `resolve` call site passes the value
-`_repo_defaults` already computed and was dropping. The previous session hand-spelled
-`prawduct#N` through an entire triage pass to work around this.
+is now threaded through `normalize_id`, and `cachequery.resolve` derives it from the store's own
+`scope` — one derivation every caller inherits, rather than one each caller can forget. (The plan
+had sited this at a `cli.py` call site; it shipped inside `cachequery.resolve` instead, and `cli.py`
+is untouched by that chunk.) The previous session hand-spelled `prawduct#N` through an entire triage
+pass to work around this.
+
+A follow-up commit closed the other half of the same invariant, and it is recorded here because
+nothing else states it outside code comments. `_build` now re-renders the number from
+`int(number)`, so `#007` and `#7` — one issue — reach one canonical string instead of two, and
+`_NUMBER` narrowed from `\d` to `[0-9]`, so non-ASCII decimal digits are a validation error rather
+than a canonical id GitHub cannot resolve. Both restore the already-ratified ID-1 invariant rather
+than minting a norm, and both are now stated in API contract §3/§8 and pinned by ID-1's setup.
+`parse_provider_alias` requires `nid.canonical == ref.strip()` and therefore stops accepting a
+padded stored alias — an intended consequence of one canonical form per item.
 
 **A discarded block edit is reported instead of swallowed (Chunk 02) — and the planned fix was
 descoped as wrong.** The plan inherited "mirror the three clearing flags, add `--superseded-by`"
