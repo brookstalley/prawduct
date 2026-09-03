@@ -28,7 +28,7 @@ PR-boundary review found it re-owned that subject), row 1's clause extends `_GRE
 is one sentence in the post-fix step; `tests/test_discipline_table.py` pins each row against its
 surface and the two protocol files against each other. **Chunk 04:** the program's cumulative review
 and the PR to `develop`; at the base sync one rule develop had added to the legacy `learnings.md` was ported into
-`core.md` with its instance inline, and `learnings_budgets.core.md` was declared at 104 KB with its reason (the
+`core.md` with its instance inline, and `learnings_budgets.core.md` was declared at 99 KB — just above the corpus, so the next addition pays — with its reason (the
 migrated corpus is over the default by construction; the port, not new authoring, is what the raise covers). **Chunk 05:** the release (version framed for the owner; the three learnings
 gate rows carry `since: 3.5.0`).
 
@@ -97,6 +97,7 @@ because it is over budget and NOT grown; every future addition pays. Wave 2 (`le
 removes the lookup skill, the audit lifecycle and the obligation repair (the size nudge already
 went in Chunk 04); until
 then `/prawduct:learnings` and doctor #5/#13/#13a point at a file this repo no longer has.
+
 ## 2026-09-02: four small backlog-adapter items, and two plans falsified by reading the code
 
 <!-- prawduct: type=fix | scope=small-batch-2026-09-02 -->
@@ -636,6 +637,7 @@ still live work. They now point at the resolver rather than restating a rule wit
 the briefing's contested-claim line sat inside a broad `except: … pass`, which — with the
 fail-closed route deliberately gone — meant the only surface that ever says a branch is contested
 could vanish with no output at all. It is attributed now: advice fails soft, not silent.
+
 ## 2026-08-27: the version-delta headline renders as one sentence
 
 <!-- prawduct: type=fix | scope=silent-clear-checks -->
@@ -3023,6 +3025,7 @@ The `api-contract.md` sentence added mid-branch — "checked before dispatch, fo
 with three carve-outs named as "the only ones" — was false for two mutating commands when it shipped.
 Corrected, including which nine remain unverified. A written contract that overstates coverage is the
 same defect class as a check that cannot run: both read as assurance.
+
 ## 2026-08-18: the reopen version is guessed LOW, and that is a correctness rule
 
 <!-- prawduct: type=fix | scope=release-cut-checklist | release=v3.4.0 -->

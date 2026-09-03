@@ -175,7 +175,7 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   place:** two verbs added; three retired to deprecated-inert (below) rather than removed, because the
   deprecation norm above governs every verb a human or a skill can call and the release is a minor;
   `ledger-append` gained two event kinds it refuses at the CLI; `review-stats --json` moved to
-  `schema_version` 2 (a `learning` block added, no key repurposed). Nothing a consumer allowlisted
+  `schema_version` 3 (a `learning` block added, then its `units_uncited` key; no key repurposed). Nothing a consumer allowlisted
   changed meaning.
 - **Learnings lifecycle (retired with learnings v2)** — `audit-learnings`, `learnings-obligation`,
   `check-learnings-pairing` (deprecated, inert): the corpus they graded — `.prawduct/learnings.md`

@@ -1,11 +1,11 @@
 {
-  "_comment": "Gate registry for new-gate attribution (design \u00a75a). Read by the version-delta banner (hooks/banner.py) to ANNOUNCE a gate as new when its `since` falls in the (last_seen, current] range a repo crosses, and by the Stop hook (bin/prawduct-hook cmd_stop) to ATTRIBUTE a blocking message to the version + gate that caused it. `since` is the plugin version that introduced the gate; foundational gates that predate semver versioning carry `1.0.0`. This file ships inside the plugin, so adding a gate (and its attribution) creates no diff in any consuming repo. Release process: when a release adds an enforcing gate, append it here with `since` = that release's version, so the banner announces it on the bump and blocking messages flag it NEW.",
+  "_comment": "Gate registry for new-gate attribution (design §5a). Read by the version-delta banner (hooks/banner.py) to ANNOUNCE a gate as new when its `since` falls in the (last_seen, current] range a repo crosses, and by the Stop hook (bin/prawduct-hook cmd_stop) to ATTRIBUTE a blocking message to the version + gate that caused it. `since` is the plugin version that introduced the gate; foundational gates that predate semver versioning carry `1.0.0`. This file ships inside the plugin, so adding a gate (and its attribution) creates no diff in any consuming repo. Release process: when a release adds an enforcing gate, append it here with `since` = that release's version, so the banner announces it on the bump and blocking messages flag it NEW.",
   "gates": [
     {
       "id": "reflection",
       "name": "reflection",
       "since": "1.0.0",
-      "summary": "a session that changed judgeable code must capture a shaped reflection before session end \u2014 what was expected vs. what was actual, and a root cause or \"no defect\""
+      "summary": "a session that changed judgeable code must capture a shaped reflection before session end — what was expected vs. what was actual, and a root cause or \"no defect\""
     },
     {
       "id": "critic",
