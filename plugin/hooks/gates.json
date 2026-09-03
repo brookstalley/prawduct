@@ -27,19 +27,19 @@
     },
     {
       "id": "learnings-unmigrated",
-      "name": "learnings-cutover",
+      "name": "learnings-unmigrated",
       "since": "3.5.0",
       "summary": "a repo still holding the legacy learnings corpus must run learnings-migrate before code work ends the session"
     },
     {
       "id": "learnings-over-budget",
-      "name": "learnings-budget",
+      "name": "learnings-over-budget",
       "since": "3.5.0",
       "summary": "a .claude/rules/learnings/ file over its byte budget and grown this session must pay from duplication or raise the budget with a reason"
     },
     {
       "id": "learnings-budget-unreasoned",
-      "name": "learnings-budget-reason",
+      "name": "learnings-budget-unreasoned",
       "since": "3.5.0",
       "summary": "a learnings_budgets: override in project-state.yaml must carry a reason"
     }
