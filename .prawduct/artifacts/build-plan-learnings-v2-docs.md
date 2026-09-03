@@ -17,6 +17,7 @@ governed_by:
       - "additive-first evolution; deprecation signalled, removal at a major → conforms: R13 records the two ADDED verbs (`learnings-migrate`, `learnings-files`) in § Operations and the stability tier they sit in; the three retired verbs were recorded as deprecated-inert in Wave 2"
   - artifact: operational-spec
     dispositions:
+      - "gitflow: develop is the integration branch, main is the release surface → conforms: the feature branch merges to `develop` through `/prawduct:pr` with a merge commit (Chunk 04); the release promotes `develop` to `main` through the runbook (Chunk 05); nothing lands on `main` any other way"
       - "versioning is conservative: a small feature is a patch bump, not a minor-per-feature → ruling needed: the discovery's D1 argues minor (a consumer's repo is rewritten on first session; four verbs and a skill removed; a Stop gate widened) and the norm argues patch; the release chunk frames it and the owner decides before the cut, recorded in the release plan as v3.4.0's was"
   - artifact: data-model
     dispositions:
@@ -184,7 +185,7 @@ lives at exactly one delivery surface.
     the instance that earned it (inline — the file that fires is the only one read at the
     moment); **framework friction** goes upstream through `/prawduct:report-bug` and is never a
     product rule; **portable discipline** is NOT written — say in the reflection why it is
-    portable, because the framework curates those (`docs/discipline.md`); the **budget and the
+    portable, because the framework curates those (new `docs/discipline.md`, Chunk 03); the **budget and the
     payment rule** in two sentences (over and grown blocks the next addition; pay from a genuine
     duplicate or raise with a reason, never trim a rule to fit); the descent obligation is
     referenced as living in `core.md`'s header, not restated. Step 6 keeps the persistence,
@@ -198,7 +199,7 @@ lives at exactly one delivery surface.
     `.claude/rules/learnings/`. No `learnings.md`, `learnings-detail.md`, `learnings-history.md`
     or `audit-learnings` anywhere in the file when done.
   - `plugin/methodology/session-digest.md`: the "Close with the standing block" bullet's pointer
-    becomes `methodology/session-hygiene.md`; the "Read on demand" topic list gains
+    becomes the new `methodology/session-hygiene.md`; the "Read on demand" topic list gains
     `session-hygiene`. Charged to both digest shapes; paid in place if the bullet can lose a
     clause the new guide now owns, else declared.
   - `plugin/skills/methodology/SKILL.md`: a `session-hygiene` topic row; `building.md`'s pointer
