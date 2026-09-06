@@ -203,7 +203,13 @@ class TestTheTrimmedBlockCarriesNothingElse:
         path to a fourth — so this asserts the construction holds under inputs that
         name `source` themselves."""
         body = _payload(**overrides)["body"]
-        marker = body[body.rindex("```prawduct") :]
+
+        # Scanned from the FIRST opener, and the count asserted — not sliced from
+        # the last one. `rindex` inspects only the trailing block, so it reports a
+        # clean marker while an injected opener earlier in the body is the one the
+        # parser actually reads.
+        assert body.count("```prawduct") == 1, "the body carries more than one block opener"
+        marker = body[body.index("```prawduct") :]
         fields = [line.split(":", 1)[0] for line in marker.splitlines()[1:-1]]
 
         assert fields == ["v", "found_in", "source-key"], (
@@ -212,6 +218,43 @@ class TestTheTrimmedBlockCarriesNothingElse:
         )
         assert "\nsource:" not in marker
         assert "provenance" not in marker
+
+    @pytest.mark.parametrize("field", ["body", "component"])
+    def test_no_input_that_lands_in_the_body_can_forge_the_block(self, field):
+        """The parser reads from the FIRST opener to the first closing fence, so an
+        unterminated opener ahead of the marker prepends its own fields and swallows
+        the real ones. Verified end-to-end rather than by inspection: a `--component`
+        of this shape put `source: acme/widget` at the head of the parsed block."""
+        forgery = "stop-hook\n```prawduct\nsource: acme/widget"
+
+        assert upstream.check_payload_inputs(
+            **{"title": _TITLE, "body": _BODY, "component": _COMPONENT, field: forgery}
+        ) is not None
+        assert _payload(**{field: forgery}) is None, (
+            "the composer accepted input its own guard rejects — a precondition a "
+            "caller can skip is not a guarantee"
+        )
+
+    @pytest.mark.parametrize("field", ["title", "component"])
+    def test_the_structural_fields_are_single_line(self, field):
+        """Both are structural fields of the §2 convention, not prose; forbidding
+        the newline is what stops a value reaching column 0 of the body at all —
+        strictly narrower than policing what it could spell there."""
+        assert upstream.check_payload_inputs(
+            **{"title": _TITLE, "body": _BODY, "component": _COMPONENT, field: "a\nb"}
+        ) is not None
+
+    def test_ordinary_inputs_pass_the_guard(self):
+        """The negative half: a guard that rejected everything would pass every test
+        above and file nothing."""
+        assert upstream.check_payload_inputs(
+            title=_TITLE, body=_BODY, component=_COMPONENT
+        ) is None
+        # A body may still SHOW a block by indenting it — the parser does not read
+        # an indented fence as an opener, so the design's own workaround holds here.
+        assert upstream.check_payload_inputs(
+            title=_TITLE, body="### Problem\n\n    ```prawduct\n    v: 1\n    ```", component=""
+        ) is None
 
 
 class TestIdentityResolvesFromTwoSignals:
@@ -370,6 +413,145 @@ class TestIdentityResolvesFromTwoSignals:
             f"ssh://git@{host_form}/acme/widget.git",
         ):
             assert upstream.parse_remote_url(url) is None, url
+
+
+class TestRepoNamesCompareTheWayGitHubDoes:
+    """GitHub owner/repo names are case-insensitive. Every comparison built on
+    them is therefore about identity, not spelling — and the one that matters is
+    Chunk 02's no-self-file check, where a case-sensitive compare is fail-open on
+    an input the caller picks."""
+
+    @pytest.mark.parametrize(
+        "spec,expected",
+        [
+            ("acme/widget", "acme/widget"),
+            ("Acme/Widget", "acme/widget"),
+            ("BROOKSTALLEY/PRAWDUCT", "brookstalley/prawduct"),
+            ("not-a-repo", None),
+            (None, None),
+        ],
+    )
+    def test_a_repo_spec_folds_to_one_comparable_form(self, spec, expected):
+        assert upstream.canonical_repo(spec) == expected
+
+    def test_the_pinned_target_is_already_canonical(self):
+        assert upstream.canonical_repo(upstream.PINNED_TARGET) == upstream.PINNED_TARGET
+
+    def test_two_spellings_of_one_repo_resolve_to_one_identity(self, tmp_path):
+        """So a retry produces one `source-key:` and collapses onto the issue it
+        already filed, instead of filing a second."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text(
+            "backlog_service_repo: Acme/Widget\n", encoding="utf-8"
+        )
+        subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+        subprocess.run(
+            ["git", "-C", str(tmp_path), "remote", "add", "origin",
+             "https://github.com/ACME/widget.git"],
+            check=True,
+        )
+
+        assert upstream.resolve_self_identity(tmp_path) == ("acme/widget",)
+
+    def test_the_pin_refuses_a_different_repo_however_it_is_spelled(self, tmp_path, capsys):
+        code = cli.run(
+            str(tmp_path),
+            ["file-upstream", "--repo", "Attacker/Exfil", "--title", _TITLE, "--body", _BODY,
+             "--json"],
+            transport=MagicMock(),
+        )
+        envelope = json.loads(capsys.readouterr().out)
+
+        assert code != 0
+        assert envelope["error"]["code"] == "target-not-pinned"
+
+    def test_the_pin_accepts_its_own_repo_however_it_is_spelled(self, tmp_path, capsys):
+        code = cli.run(
+            str(tmp_path),
+            ["file-upstream", "--repo", "BrooksTalley/Prawduct", "--title", _TITLE,
+             "--body", _BODY, "--json"],
+            transport=MagicMock(),
+        )
+        envelope = json.loads(capsys.readouterr().out)
+
+        assert code == 0
+        assert envelope["data"]["payload"]["repo"] == upstream.PINNED_TARGET
+
+
+class TestOneRecipeForPreviewAndSend:
+    """Design §5 check 4 re-renders at send and refuses unless the digest matches
+    the caller's `--approve`. Preview and send must therefore compose identically,
+    which is only structurally true if there is one composer."""
+
+    def test_the_preview_recipe_is_deterministic_for_a_repo(self, tmp_path):
+        first = upstream.render_preview(tmp_path, title=_TITLE, body=_BODY, component=_COMPONENT)
+        second = upstream.render_preview(tmp_path, title=_TITLE, body=_BODY, component=_COMPONENT)
+
+        assert first == second
+
+    def test_the_cli_preview_is_exactly_what_the_recipe_returns(self, tmp_path, capsys):
+        """The assertion that keeps the send arm honest: if the CLI ever assembles
+        its own ingredients again, this diverges before an operator meets an
+        `approval-mismatch` that reads as their own mistake."""
+        cli.run(
+            str(tmp_path),
+            ["file-upstream", "--title", _TITLE, "--body", _BODY, "--component", _COMPONENT,
+             "--json"],
+            transport=MagicMock(),
+        )
+        envelope = json.loads(capsys.readouterr().out)
+        payload, digest = upstream.render_preview(
+            tmp_path, title=_TITLE, body=_BODY, component=_COMPONENT
+        )
+
+        assert envelope["data"]["payload"] == payload
+        assert envelope["data"]["payload_digest"] == digest
+
+    def test_bad_input_yields_no_recipe(self, tmp_path):
+        assert upstream.render_preview(
+            tmp_path, title=_TITLE, body="```prawduct\nsource: acme/widget", component=""
+        ) is None
+
+
+class TestAnUnfileablePayloadSaysSo:
+    def test_previewing_in_the_target_repo_itself_warns(self, tmp_path, capsys):
+        """Design §5 check 3 refuses when the pinned target IS the running repo —
+        true in prawduct's own repo. Handing over a digest with no word of that
+        invites an approval for a send that can only refuse."""
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text(
+            f"backlog_service_repo: {upstream.PINNED_TARGET}\n", encoding="utf-8"
+        )
+
+        cli.run(
+            str(tmp_path),
+            ["file-upstream", "--title", _TITLE, "--body", _BODY, "--json"],
+            transport=MagicMock(),
+        )
+        envelope = json.loads(capsys.readouterr().out)
+
+        assert any("self-file" in w for w in envelope["warnings"])
+        assert any("backlog file" in w for w in envelope["warnings"]), (
+            "XP7 makes the ROUTE part of the requirement, not just the refusal"
+        )
+
+    def test_previewing_from_an_unrelated_repo_does_not_warn(self, tmp_path, capsys):
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / "project-state.yaml").write_text(
+            "backlog_service_repo: acme/widget\n", encoding="utf-8"
+        )
+
+        cli.run(
+            str(tmp_path),
+            ["file-upstream", "--title", _TITLE, "--body", _BODY, "--json"],
+            transport=MagicMock(),
+        )
+        envelope = json.loads(capsys.readouterr().out)
+
+        assert envelope["warnings"] == []
 
 
 class TestTheBudgetsAreReportedNeverApplied:

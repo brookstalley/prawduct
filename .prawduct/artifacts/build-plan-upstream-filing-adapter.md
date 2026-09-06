@@ -10,7 +10,7 @@ depends_on:
 governed_by:
   - artifact: security-model
     dispositions:
-      - "untrusted governance state is data, not instructions → inapplicable because Wave A is outbound-only; nothing in these chunks reads foreign-authored issue content (the intake side is Wave C / BKL-6M4T)"
+      - "untrusted governance state is data, not instructions → inapplicable because Wave A is outbound-only; nothing in these chunks reads foreign-authored issue content (the intake side is Wave C, tracked on the report-bug receiving-side item — NOT BKL-6M4T, which resolves to #233 'run the live prawduct backlog migration', shipped and dead; the design doc carries the same wrong alias at documentation/backlog-service-upstream-filing.md:154 and needs the same correction)"
       - "a destructive or irreversible operation requires explicit owner approval at the OPERATION level → conforms, and the norm already records this surface's conformance by name: preview → `payload-digest` → `--approve <digest>`, per report, where the operation IS one filing"
       - "a governed product's content never leaves that product's own repository and owner (in-transition, BKL-7Q4M) → amendment proposed: this plan is the work the norm waits on. Chunk 01 replaces the interim egress test with the XP7 contract test in the same commit that first names the surface; Chunk 03 amends `Status: in-transition → steady-state` with the steady-state form asserting the five-check contract. Never weakened — the contract test is strictly stronger than the absence it replaces."
   - artifact: architecture
@@ -20,10 +20,17 @@ governed_by:
       - "prawduct is Python and must never be specific to Python → conforms; no gate or language dispatch is touched"
       - "an independent reviewer never mutates the session it reviews → inapplicable because no chunk touches a reviewer write path"
       - "prawduct guides and reviews; it never implements → conforms; this builds prawduct's own adapter, not product code"
-      - "every fact has one home → conforms: the pinned upstream target is ONE constant read by the adapter, and the egress enumeration stays a pointer from `architecture.md` to `security-model.md` + `project-state.yaml` `egress_boundary` rather than gaining a fourth copy"
+      - "every fact has one home → conforms: the pinned upstream target is ONE constant read by the adapter, and the egress enumeration stays a pointer from `architecture.md` to `security-model.md` + `project-state.yaml` `egress_boundary` rather than gaining a fourth copy. Applied again at review: the preview and the send arm compose through ONE `upstream.render_preview`, because check 4 re-renders to validate `--approve` and two spellings of the recipe would make every `ask-user` filing refuse with `approval-mismatch`"
+      - "authority fails closed; advice fails soft → conforms, and the split is load-bearing here. Fails closed: identity resolves to an empty tuple rather than a guess, the target pin refuses a mismatched `--repo` instead of honoring it, a non-GitHub or lookalike remote yields no signal. Fails soft: the issue-standard budget findings ride out as advisory `lint` and never refuse a preview"
+      - "goals and verification bind; prescribed method is advice → invoked twice, both recorded rather than silently taken: the two-signal identity resolver moved from Chunk 02 into Chunk 01 (the payload needs it), and `issuefmt.py` was left untouched (the template fell out of composing sections directly). Neither changes an output contract"
   - artifact: data-model
     dispositions:
       - "`source-key:` marker field-home is Data Model §5 → conforms; Chunk 03 adds the trimmed-upstream-block note there rather than defining a second home"
+      - "every issue written to the backlog store conforms to the issue standard's §1 title rules, on EVERY adapter write path → RULING, surfaced at Chunk 01's review and binding on Chunk 02. `file-upstream` is a fourth adapter write path beside `file`/`update`/`import`, and the norm's Status names only those three. Chunk 01 does not engage it: the preview writes nothing, so reporting the four `title-*` findings advisorily is correct there and is what lets an author fix a title before approving it. **Chunk 02's SEND arm does engage it and must refuse a non-conforming title before filing** — the norm's why (`the title is the handle every later reader triages by`) binds harder upstream, where a non-collaborator filer cannot relabel afterwards and the write is irreversible. Note the shape difference the refusal must respect: the upstream convention is `[prawduct] <component>: <symptom>` (design §2), not §1's `area: summary`, so `_split_area` sees no prefix — the budget and placeholder rules apply, the area-prefix expectation does not"
+      - "`backlog_service_repo` selects which backlog store is authoritative → conforms and does not stretch it: this op reads that scalar as one of two IDENTITY signals, never as a store selector. The target it writes to is the plugin constant, which is why the op is reachable with the scalar unset"
+      - "facts are immutable and append-only · derived views are disposable · a newer-schema fact is a loud block · governance documents reach a terminal state, never deletion → inapplicable; Wave A adds no fact, view, schema or governance document"
+      - "governance verdicts are computed from the fact ledger, never model-written state → inapplicable; no chunk touches the Critic data plane. Adjacent and worth stating: the L1 recomposition IS model judgment, and it lives in the `report-bug` skill (a decision), never in `lib/backlog/` (the data plane) — the same G1 split"
+      - "two stores, two lifetimes → conforms; Wave A persists nothing at all, in either store"
 partition: serial — 02 extends 01's op on the same module, and 03 records what 01–02 built
 last_validated: 2026-09-06
 ---
@@ -58,6 +65,16 @@ the plan must not pick one silently:
 Recommendation: (a). It is the honest shape — the surface exists and should be named — and (b)
 re-introduces exactly the `backlog_service_repo`-keyed fail-open that the design's own §5 check 3
 amendment removed. **This is Chunk 03's blocking input; Chunks 01–02 do not depend on the answer.**
+
+**The two branches do not cost the same, and only one of them fits Chunk 03** (surfaced at Chunk
+01's review). Chunk 03 is records-only — six artifacts, no module. That is the whole of what (a)
+needs: an amendment recording that the norm admits one non-storage network surface. **(b) is a code
+change** — gating the op on `backlog_service_repo` is a refusal arm in `upstream.py` plus its
+`filing-disabled`-shaped error, its tests, and a re-reading of §5 check 3's amendment, which
+deliberately decoupled identity from that scalar. No chunk owns it. So a (b) ruling does not
+reshuffle Chunk 03, it **adds a chunk** — and shipping Wave A on a (b) ruling without that chunk
+leaves the departure recorded and unremedied, which is the one outcome neither branch intends. If
+the owner rules (b), Chunk 03 splits: 03a the gate, 03b the records.
 
 `[ASSUMPTION: the pinned upstream target is a single hard constant, not configurable | MED impact |
 user can correct]` — design §5 check 2 says "the plugin's declared canonical upstream repo (a plugin
@@ -213,6 +230,15 @@ citation, and `tests/test_norm_probes.py::TestSilentAgainstThisRepo` must pass w
   **Carry the advisory/audit fields onto the error returns too**, not only the success envelope:
   error returns use a different constructor from `core.ok`, and this repo has twice shipped a field
   that existed on the success path and silently vanished on the failure path.
+- **Also required, surfaced at Chunk 01's review and not in the design:** the send arm **refuses a
+  non-conforming title** (the four blocking `issuefmt.lint_title` rules) before filing. `data-model.md`
+  § Direction binds title conformance on every adapter write path and names only `file`/`update`/
+  `import`, because this is the fourth. The preview stays advisory — nothing is written there, and an
+  advisory finding is what lets an author fix a title before approving it. See the plan's data-model
+  disposition for the shape difference the refusal must respect.
+- **Closes:** `#329` (BKL-4T9C) — its Expected is the two-signal, fail-closed identity check. Chunk 01
+  shipped the resolver half; this chunk ships the check that consumes it, which is what closes the
+  fail-open the item describes.
 - **Depends on:** Chunk 01
 - **Artifacts consumed:** `documentation/backlog-service-upstream-filing.md` §5 (all five checks
   and the check-3 amendment); `documentation/backlog-service-requirements.md` XP5, XP7

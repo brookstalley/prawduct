@@ -27,9 +27,17 @@ repo's own identity (:func:`resolve_self_identity`).
 **The trimmed block is the minimization.** An in-repo ``prawduct:`` block carries
 ``provenance: {source: <product>, …}`` — the product's own name. Upstream carries
 ``v:``, ``found_in:`` and ``source-key:``, and nothing else. The product name is
-precisely the field that must not cross (design §3), so it is not omitted by
-convention here but by construction: this module composes the block from three
-values and has no path that could reach a fourth.
+precisely the field that must not cross (design §3).
+
+Composing only three fields is **not** by itself enough to guarantee only three
+arrive, and believing it was is how this shipped wrong once. The block is a fenced
+span, and the parser reads from the *first* opener to the first closing fence — so
+caller text that reaches the body ahead of the marker and opens an unterminated
+```` ```prawduct ```` fence prepends its own fields and swallows the real ones. A
+``--component`` of ``stop-hook\n```prawduct\nsource: acme/widget`` put exactly the
+product-name field the trim exists to strip at the head of the parsed block. The
+guarantee lives in :func:`check_payload_inputs`, which every composition runs — not
+in the narrowness of the composer.
 
 **No model, ever.** The recomposition that keeps product content out of the prose
 (design §3, L1) is *model judgment in a decision*, and it lives in the
@@ -155,13 +163,25 @@ def resolve_self_identity(project_dir) -> tuple[str, ...]:
     )
     resolved: list[str] = []
     for candidate in (configured, _origin_repo(directory)):
-        parsed = ids.parse_repo(candidate) if candidate else None
-        if parsed is None:
+        spec = canonical_repo(candidate)
+        if spec is None or spec in resolved:
             continue
-        spec = f"{parsed[0]}/{parsed[1]}"
-        if spec not in resolved:
-            resolved.append(spec)
+        resolved.append(spec)
     return tuple(resolved)
+
+
+def canonical_repo(spec: str | None) -> str | None:
+    """``owner/repo`` in one comparable spelling, or ``None`` if it is not one.
+
+    Case-folded, because **GitHub owner and repo names are case-insensitive** and
+    the comparisons built on this are not opinions about spelling: two spellings
+    of one repo must produce one ``source-key:`` so a retry collapses, and — the
+    sharper one — the no-self-file check must refuse ``BrooksTalley/Prawduct`` as
+    readily as the lowercase form. A case-sensitive compare there is fail-open,
+    and it is fail-open on an input the caller picks.
+    """
+    parsed = ids.parse_repo(spec) if spec else None
+    return f"{parsed[0].lower()}/{parsed[1].lower()}" if parsed else None
 
 
 def submitter_identity(project_dir) -> str:
@@ -333,6 +353,33 @@ def marker_block(*, found_in: str, key: str) -> str:
     )
 
 
+def check_payload_inputs(*, title: str, body: str, component: str) -> str | None:
+    """The first thing wrong with these inputs, or ``None``. Pure.
+
+    Every caller-supplied string that reaches the outbound body is checked here,
+    in the module that owns the bytes, rather than at one call site — a guard the
+    CLI applied to ``--body`` alone left ``--component`` free to forge the whole
+    provenance block, and a second entry point would have inherited the same gap.
+
+    Two rules. **No prawduct fence** in anything that lands in the body: the
+    injection route :func:`marker_block`'s framing cannot defend against, closed
+    the way ``file`` closes it on its own body — by refusing, never by escaping,
+    because a rewrite rule has to be exactly as clever as every future attacker.
+    **One line** for the title and the component: both are structural fields of
+    the §2 convention rather than prose, an issue title is single-line anyway, and
+    forbidding the newline is what stops a value from reaching column 0 of the
+    body at all — a strictly narrower thing to check than what it can spell there.
+    """
+    for label, value in (("--title", title), ("--component", component)):
+        if "\n" in (value or "") or "\r" in (value or ""):
+            return f"{label} must be a single line"
+    for value in (body, component):
+        problem = encode.check_body_text(value)
+        if problem:
+            return problem
+    return None
+
+
 def build_payload(
     *,
     title: str,
@@ -341,8 +388,14 @@ def build_payload(
     found_in: str,
     submitter: str,
     target: str = PINNED_TARGET,
-) -> dict:
+) -> dict | None:
     """The complete outbound payload: ``{repo, title, body, labels}``.
+
+    ``None`` when :func:`check_payload_inputs` rejects the inputs. The composer
+    re-runs that check rather than documenting it as a precondition, because a
+    precondition a caller can skip is exactly what let ``--component`` through:
+    the claim "only three fields can reach the block" has to be enforced where the
+    block is built, not asserted next to it.
 
     ``labels`` is empty and stays empty (§2): the issue lands label-less, and
     prawduct-side triage applies the taxonomy from the intake set. A
@@ -350,6 +403,8 @@ def build_payload(
     them would work for the dogfood case and fail for the case the design exists
     to serve.
     """
+    if check_payload_inputs(title=title, body=body, component=component) is not None:
+        return None
     rendered_title = render_title(component, title)
     report = render_report(component=component, found_in=found_in, body=body)
     key = source_key(submitter=submitter, title=rendered_title, body=report)
@@ -360,6 +415,31 @@ def build_payload(
         "body": f"{report}\n\n{marker}",
         "labels": [],
     }
+
+
+def render_preview(
+    project_dir, *, title: str, body: str, component: str = ""
+) -> tuple[dict, str] | None:
+    """``(payload, digest)`` composed from the running repo, or ``None`` on bad input.
+
+    **The one recipe.** Design §5 check 4 re-renders the payload at send and
+    refuses unless the digest equals the caller's ``--approve`` — so preview and
+    send must compose from identical ingredients, assembled identically. Leaving
+    that assembly at the CLI call site means the send arm re-types it, and any
+    divergence at all makes every ``ask-user`` filing refuse with
+    ``approval-mismatch``, which reads to the operator as their own mistake rather
+    than as two spellings of one recipe. Both arms call this.
+    """
+    payload = build_payload(
+        title=title,
+        body=body,
+        component=component,
+        found_in=plugin_version(),
+        submitter=submitter_identity(project_dir),
+    )
+    if payload is None:
+        return None
+    return payload, payload_digest(payload)
 
 
 def canonical_bytes(payload: dict) -> bytes:

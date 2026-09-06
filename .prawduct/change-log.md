@@ -66,6 +66,34 @@ recalled version drifts silently as the plugin updates and sends triage to the w
 that opens an unterminated ```` ```prawduct ```` fence is refused, closing the same forgery route
 `file` already closes on its own body.
 
+**`--component` could forge the whole provenance block, and the guarding test could not see it.**
+The CLI ran the fence guard on `--body` alone; `--component` was interpolated verbatim into the body
+*ahead of* the marker, and `.strip()` removes surrounding whitespace, not an embedded newline. A
+component of ``stop-hook\n```prawduct\nsource: acme/widget`` put `source: acme/widget` — the
+product-name field the trim exists to strip — at the head of the parsed block, with the genuine
+`v:`/`found_in:`/`source-key:` swallowed inside it, irreversibly, on a public tracker. The test that
+should have caught it sliced the body with `rindex("```prawduct")`, so it inspected only the *last*
+opener while the parser reads from the *first*: it reported a clean marker on a forged body. It now
+asserts the fence appears exactly once and scans from the first.
+
+The guard moved into `upstream.check_payload_inputs` — every caller-supplied string that lands in
+the body, checked in the module that owns the bytes — and `build_payload` re-runs it and returns
+`None` rather than documenting it as a precondition, because a precondition a caller can skip is
+exactly what let this through. Title and component must also be single lines: both are structural
+fields of the §2 convention, and forbidding the newline is strictly narrower than policing what a
+value could spell once it reaches column 0. The shipped docstring claiming the block had "no path
+that could reach a fourth field" was corrected — composing three fields does not guarantee three
+arrive.
+
+Three more from the same review. Owner/repo names now compare **case-insensitively**, as GitHub's
+do: a case-sensitive compare produces divergent `source-key`s today and is fail-open in Chunk 02's
+no-self-file check tomorrow, on an input the caller picks. Preview and send now compose through one
+`upstream.render_preview`, because check 4 re-renders to validate `--approve` and two spellings of
+that recipe would make every `ask-user` filing refuse with `approval-mismatch` — reading to the
+operator as their own mistake. And a preview run *inside* the pinned target now warns that filing
+would refuse with `self-file` and names the in-repo `file` route: handing over an approval digest
+for a send that can only refuse is not a preview, it is a trap.
+
 **Adding the op silently widened a permission grant, and that is now a rule rather than a fix.** The
 backlog skill is model-invocable and granted `Bash(prawduct-hook backlog file*)` no-prompt. A Bash
 grant is a prefix match, so the attached star — the house form, adopted because it covers the bare

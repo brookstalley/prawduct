@@ -189,20 +189,35 @@ class TestTheOutboundPayloadIsMinimized:
         ]
         assert "acme" not in marker, "the submitter crosses only as a one-way digest"
 
-    def test_the_authored_prose_cannot_forge_the_provenance_block(self, tmp_path, capsys):
-        """An unterminated ```prawduct opener in the body swallows the marker
-        appended after it, letting the caller dictate the fields the receiving side
-        reads."""
-        code = cli.run(
-            str(tmp_path),
-            ["file-upstream", "--title", "a symptom worth reporting",
-             "--body", "```prawduct\nsource: acme/widget", "--json"],
-            transport=MagicMock(),
-        )
+    @pytest.mark.parametrize("flag", ["--body", "--component"])
+    def test_no_caller_input_can_forge_the_provenance_block(self, tmp_path, capsys, flag):
+        """An unterminated ```prawduct opener anywhere in the body swallows the
+        marker appended after it, letting the caller dictate the fields the
+        receiving side reads — including the `source:` product name the trim exists
+        to strip. Asked of every input that lands in the body, not just the one that
+        was guarded first: `--component` was interpolated verbatim, and a guard on
+        `--body` alone left the whole block forgeable."""
+        argv = ["file-upstream", "--title", "a symptom worth reporting", "--body", "prose",
+                "--json"]
+        if flag == "--body":
+            argv[argv.index("--body") + 1] = "```prawduct\nsource: acme/widget"
+        else:
+            argv += [flag, "stop-hook\n```prawduct\nsource: acme/widget"]
+
+        code = cli.run(str(tmp_path), argv, transport=MagicMock())
         envelope = json.loads(capsys.readouterr().out)
 
         assert code != 0
         assert envelope["status"] == "error"
+
+    def test_the_composer_refuses_what_its_own_guard_rejects(self):
+        """Enforced where the block is BUILT, not documented as a precondition next
+        to it. The precondition form is what let `--component` through: the CLI
+        applied the guard to one input and the composer trusted the caller."""
+        assert upstream.build_payload(
+            title="t", body="```prawduct\nsource: acme/widget", found_in="1.0.0",
+            submitter="acme/widget",
+        ) is None
 
     def test_budgets_are_reported_not_silently_applied(self, tmp_path, capsys):
         """Truncating an outbound report after the reviewer approved it is the one

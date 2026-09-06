@@ -38,7 +38,7 @@ from __future__ import annotations
 import json
 import sys
 
-from . import context, core, encode, ids, query, upstream
+from . import context, core, ids, query, upstream
 
 # GitHub-mutating ops — refused under an untrusted-triggered Actions run absent an
 # explicit triggering-actor authorization check (SEC-5). Reads, ``counts``,
@@ -556,7 +556,7 @@ def _run_file_upstream(rest: list[str], project_dir):
         return core.error("validation", err)
 
     requested = flags.get("repo")
-    if requested is not None and requested.strip() != upstream.PINNED_TARGET:
+    if requested is not None and upstream.canonical_repo(requested) != upstream.PINNED_TARGET:
         return core.error(
             "target-not-pinned",
             f"--repo {requested.strip()!r} is not the pinned upstream target "
@@ -568,26 +568,38 @@ def _run_file_upstream(rest: list[str], project_dir):
     if "body" not in flags:
         return core.error("validation", "file-upstream requires --body")
 
-    # The same forgery route `file` closes on its own body: an unterminated
-    # ```prawduct opener in the authored prose swallows the marker appended after
-    # it, so a caller could dictate the provenance fields the receiving side reads.
-    body_err = encode.check_body_text(flags["body"])
-    if body_err:
-        return core.error("validation", body_err)
-
-    payload = upstream.build_payload(
-        title=flags["title"],
-        body=flags["body"],
-        component=flags.get("component", ""),
-        found_in=upstream.plugin_version(),
-        submitter=upstream.submitter_identity(project_dir),
+    component = flags.get("component", "")
+    # Every caller string that lands in the body, checked in the module that owns
+    # the bytes. Guarding `--body` here and nothing else is what let `--component`
+    # forge the whole provenance block.
+    input_err = upstream.check_payload_inputs(
+        title=flags["title"], body=flags["body"], component=component
     )
+    if input_err:
+        return core.error("validation", input_err)
+
+    rendered = upstream.render_preview(
+        project_dir, title=flags["title"], body=flags["body"], component=component
+    )
+    payload, digest = rendered
+    warnings: list[str] = []
+    # An unfileable payload must not preview as a fileable one. Design §5 check 3
+    # refuses when the pinned target IS the running repo — true in prawduct's own
+    # repo — and a digest handed over with no word of that invites an approval for
+    # a send that can only ever refuse.
+    if upstream.PINNED_TARGET in upstream.resolve_self_identity(project_dir):
+        warnings.append(
+            "this repo is the pinned upstream target, so filing would refuse "
+            "(self-file): prawduct's own bugs route to its own backlog — use "
+            "`backlog file`"
+        )
     result = core.ok(
         {
             "payload": payload,
-            "payload_digest": upstream.payload_digest(payload),
+            "payload_digest": digest,
             "sent": False,
-        }
+        },
+        warnings,
     )
     # Budgets are REPORTED, never applied: silently truncating an outbound bug
     # report would cut bytes the reviewer already approved.
