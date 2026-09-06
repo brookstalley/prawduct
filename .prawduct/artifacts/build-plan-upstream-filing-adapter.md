@@ -90,13 +90,19 @@ the moment it lands. The design's "the interim test stays live until the contrac
 therefore a same-commit constraint, not a chunk-ordering preference. Splitting them leaves the suite
 red for the whole wave, and a red suite is what the release gate reads.
 
-**Prawduct cannot exercise its own happy path.** §5 check 3 refuses when the pinned target equals
-the running repo's identity, and the pinned target IS `brookstalley/prawduct`. In this repo
-`file-upstream` is reachable only as a refusal. Consequences carried into the chunks: Chunk 02's
-tests assert refusals against real repo state and the happy path against a fixture identity; the
-send path's first real exercise is a consumer-repo trial in Wave B; and the `[XP6 verify]` open item
-(non-collaborator label behavior on a throwaway issue — "load-bearing, do not ship on recall") is
-Wave B's, not this plan's, because it needs network and a live issue.
+**Prawduct cannot exercise its own happy path against a LIVE target** — §5 check 3 refuses when the
+pinned target equals the running repo's identity, and the pinned target IS `brookstalley/prawduct`.
+This constrains less than it first appears, and the limit is worth stating precisely so a later
+chunk does not try to design around it. The offline suite runs entirely against
+`tests/fakes/fake_github.py`, which implements the transport seam, so **Wave A exercises the send
+path in full**; Chunk 02 asserts the refusals against this repo's real identity (prawduct is the
+natural fixture for check 3, since the refusal is live here) and the happy path against the fake.
+
+What genuinely needs a live repo is only the `[XP6 verify]` item, and it is **Wave B's blocker, not
+a self-file consequence**: confirming that a non-collaborator cannot set labels requires a
+*non-collaborator identity*, and the owner is a collaborator on `brookstalley/prawduct`. Relaxing
+check 3 would buy nothing here. Wave B needs a second GitHub identity, or a repo where the filing
+account is not a collaborator — flagged now because it has a lead time that a build session does not.
 
 ## Scaffolding
 
@@ -176,7 +182,14 @@ citation, and `tests/test_norm_probes.py::TestSilentAgainstThisRepo` must pass w
   five §5 checks hold — each a distinct structured error, files nothing on any failure:
   (1) preference ≠ `never-file` → `filing-disabled`; (2) target pinned → `target-not-pinned`;
   (3) no self-file → `self-file`; (4) approval matches the re-rendered bytes → `approval-mismatch`;
-  (5) authenticated via the session `gh` identity → `auth`. **Check 3 carries the design's
+  (5) authenticated via the session `gh` identity → `auth`. **Check 3's refusal ROUTES rather than
+  merely erroring:** XP7 reads "never let prawduct's own repo self-file upstream *(it routes to its
+  own backlog)*" — the routing is part of the requirement, and design §5 reduced it to a bare error.
+  The refusal names the in-repo `file` path as the correct route. The invariant itself stands: the
+  op's ceremony (recomposition, verbatim review, digest approval, the ~175-word body ceiling) exists
+  because content crosses an *owner* boundary, and prawduct→prawduct crosses none — routing its own
+  bugs through the minimized path would lose fidelity to protect prawduct from prawduct.
+  **Check 3 carries the design's
   2026-07-24 amendment and is the subtle one:** identity resolves from **both** `backlog_service_repo`
   **and** the git remote (`origin`), refuses if **either** matches the pinned target, and **fails
   closed when neither resolves**. Keying it on `backlog_service_repo` alone is fail-open in every
@@ -199,7 +212,9 @@ citation, and `tests/test_norm_probes.py::TestSilentAgainstThisRepo` must pass w
 - **Tests:** each of the five checks refuses independently and files nothing (assert the fake
   recorded no write, not merely that an error returned); check 3 refuses when identity comes from
   `backlog_service_repo` alone, when it comes from the git remote alone, and **refuses when neither
-  resolves** — the fail-closed leg, which is the one a naive implementation gets backwards; a digest
+  resolves** — the fail-closed leg, which is the one a naive implementation gets backwards; the
+  `self-file` refusal names the in-repo `file` route (XP7's parenthetical), asserted on the message
+  rather than only on the error code; a digest
   approved for payload A does not authorize payload B; `always-file` waives check 4 but no other;
   `never-file` refuses regardless of a valid digest; every error return carries the same envelope
   fields as the success return.
