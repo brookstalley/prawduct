@@ -151,7 +151,9 @@ On success: file the label-less issue (§2), stamp the trimmed `prawduct:` block
 
 ## 6. Receiving side (referenced, not designed here)
 
-The intake/triage half is MG5's receiving end + Security §5, tracked separately (report-bug receiving side / BKL-6M4T); this doc only guarantees the outbound payload carries the signal it needs:
+The intake/triage half is MG5's receiving end + Security §5, tracked separately (report-bug receiving side — the alias here read `BKL-6M4T`, which resolves to
+`#233`, "run the live prawduct backlog migration", shipped and dead; the receiving-side item is the
+referent, and it is named by title until its alias is confirmed); this doc only guarantees the outbound payload carries the signal it needs:
 
 - **Intake query** = open issues whose title carries the `[prawduct]` convention and no triage label — works for both non-collaborator filings (Security §5's non-collaborator-authored-unlabeled set) and the collaborator dogfood case.
 - The `untriaged-upstream-reports` advisory (today: counts `incoming-bugs/*.md`) is repointed to **count that intake set** instead of drop-box files (MG5). *Exact query pinned on the receiving-side item, at build.*

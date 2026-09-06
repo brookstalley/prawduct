@@ -28,7 +28,10 @@ governed_by:
       - "`source-key:` marker field-home is Data Model §5 → conforms; Chunk 03 adds the trimmed-upstream-block note there rather than defining a second home"
       - "every issue written to the backlog store conforms to the issue standard's §1 title rules, on EVERY adapter write path → RULING, surfaced at Chunk 01's review and binding on Chunk 02. `file-upstream` is a fourth adapter write path beside `file`/`update`/`import`, and the norm's Status names only those three. Chunk 01 does not engage it: the preview writes nothing, so reporting the four `title-*` findings advisorily is correct there and is what lets an author fix a title before approving it. **Chunk 02's SEND arm does engage it and must refuse a non-conforming title before filing** — the norm's why (`the title is the handle every later reader triages by`) binds harder upstream, where a non-collaborator filer cannot relabel afterwards and the write is irreversible. Note the shape difference the refusal must respect: the upstream convention is `[prawduct] <component>: <symptom>` (design §2), not §1's `area: summary`, so `_split_area` sees no prefix — the budget and placeholder rules apply, the area-prefix expectation does not"
       - "`backlog_service_repo` selects which backlog store is authoritative → conforms and does not stretch it: this op reads that scalar as one of two IDENTITY signals, never as a store selector. The target it writes to is the plugin constant, which is why the op is reachable with the scalar unset"
-      - "facts are immutable and append-only · derived views are disposable · a newer-schema fact is a loud block · governance documents reach a terminal state, never deletion → inapplicable; Wave A adds no fact, view, schema or governance document"
+      - "facts are immutable and append-only → inapplicable; Wave A writes no fact"
+      - "derived views are disposable and never authoritative → inapplicable; Wave A adds no view, and no gate reads this op"
+      - "a fact written by a newer schema than the reader is a loud block → inapplicable; no schema changes. Adjacent: the outbound marker carries its own `v: 1`, so a future upstream block format is a receiving-side reader problem, not this one's"
+      - "a governance document reaches a terminal state; it is never deleted → conforms by not acting: the interim egress test is REPLACED in place, keeping its filename and its project-preferences enforcement-row identity, rather than deleted and re-created elsewhere"
       - "governance verdicts are computed from the fact ledger, never model-written state → inapplicable; no chunk touches the Critic data plane. Adjacent and worth stating: the L1 recomposition IS model judgment, and it lives in the `report-bug` skill (a decision), never in `lib/backlog/` (the data plane) — the same G1 split"
       - "two stores, two lifetimes → conforms; Wave A persists nothing at all, in either store"
 partition: serial — 02 extends 01's op on the same module, and 03 records what 01–02 built
@@ -85,7 +88,7 @@ what makes the check meaningful. Recorded because a future fork of prawduct woul
 
 ## Status
 
-- [ ] Chunk 01: The pinned target, the preview payload, and the contract test that replaces the interim guard
+- [x] Chunk 01: The pinned target, the preview payload, and the contract test that replaces the interim guard
 - [ ] Chunk 02: The send path refuses on all five checks, and identity fails closed
 - [ ] Chunk 03: The norm reaches steady-state, and every artifact that described the absence describes the contract
 
@@ -94,6 +97,19 @@ the `report-bug` rewrite plus the live XP6 verification, C = the MG5 drop-box re
 `untriaged-upstream-reports` repoint). The owner ruled 2026-09-06 that the release cuts **after all
 three waves**, so this plan does not close the release on its own. It was split out because the
 three waves have different `Type:` values and would review badly as one unit.
+
+**Chunk 01 complete, 2026-09-06.** The preview op, the pinned target, the two-signal identity
+resolver, and the XP7 contract test in place of the interim egress guard. Suite green with the
+interim test gone. Two things a later chunk must not re-derive: the identity resolver already exists
+(`upstream.resolve_self_identity`), and preview and send compose through one
+`upstream.render_preview` — check 4 re-renders to validate `--approve`, so a second recipe makes
+every `ask-user` filing refuse with `approval-mismatch`.
+
+The chunk's cumulative review also **added a requirement to Chunk 02** (the title refusal — see its
+spec and the data-model disposition) and **changed what a (b) ruling costs** on the Local-first
+question (it adds a chunk rather than reshaping this one). Neither is optional and neither is in the
+design; both were surfaced by review rather than by the design doc, which is why they are recorded
+here rather than left to be rediscovered.
 
 **Two findings from the planning pass that fix the chunk order, and must not be re-litigated
 into a later chunk:**
