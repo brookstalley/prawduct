@@ -89,7 +89,7 @@ what makes the check meaningful. Recorded because a future fork of prawduct woul
 ## Status
 
 - [x] Chunk 01: The pinned target, the preview payload, and the contract test that replaces the interim guard
-- [ ] Chunk 02: The send path refuses on all five checks, and identity fails closed
+- [x] Chunk 02: The send path refuses on all five checks, and identity fails closed
 - [ ] Chunk 03: The norm reaches steady-state, and every artifact that described the absence describes the contract
 
 **Context:** Wave A of the BKL-7Q4M program (three waves; B = the `Upstream filing:` preference and
@@ -110,6 +110,22 @@ spec and the data-model disposition) and **changed what a (b) ruling costs** on 
 question (it adds a chunk rather than reshaping this one). Neither is optional and neither is in the
 design; both were surfaced by review rather than by the design doc, which is why they are recorded
 here rather than left to be rediscovered.
+
+**Chunk 02 complete, 2026-09-06.** The send arm, all five checks refusing independently and filing
+nothing, the title refusal on the fourth adapter write path, `source-key:` idempotency, and the
+advisory carry-through onto every refusal. `#329` (BKL-4T9C) is closed by it. Suite green.
+
+Its review caught the defect the whole test suite was structurally blind to: **the send arm never
+resolved a transport**, because every test injected a fake and production enters `cli.run` with
+none. Resolution now sits inside the send branch — not at the handler top, where it would build a
+seam on the preview path and dissolve the guarantee that arm exists for — and both halves are pinned
+by tests that pass no transport at all. Check 2 was likewise the one of five with no send-arm test,
+its inner leg surviving mutation behind the CLI's pre-check. Two rules went to `learnings.md`.
+
+Chunk 03 inherits three things from this chunk, all recorded in its own section: the `data-model.md`
+§ Direction "all three write paths" count (now four), the still-standing `SKILL.md` claim that the
+adapter-side pin exists "only in the design", and `IMPLEMENTED_ADAPTER_GUARDS`, which still excludes
+`target-pin`.
 
 **Two findings from the planning pass that fix the chunk order, and must not be re-litigated
 into a later chunk:**
@@ -255,6 +271,37 @@ citation, and `tests/test_norm_probes.py::TestSilentAgainstThisRepo` must pass w
 - **Closes:** `#329` (BKL-4T9C) — its Expected is the two-signal, fail-closed identity check. Chunk 01
   shipped the resolver half; this chunk ships the check that consumes it, which is what closes the
   fail-open the item describes.
+
+  **Amendments and decisions, recorded at build.** Four, none of which the design settles:
+  1. **`--approve` is the send trigger in every preference state, and `always-file` waives only its
+     value.** §4.1 says standing consent "files directly (no per-report digest)" and §5 waives check
+     4 there, which leaves open whether a bare call sends under `always-file`. It does not: the
+     token is the only thing separating rendering a payload from filing one, so its *presence* is
+     required always (an empty token is refused) and only the digest comparison is waived. The other
+     reading makes every preview under standing consent an irreversible foreign write.
+  2. **The `source-key:` lookup scans the REST list endpoint, newest-first, not the search API.**
+     §2.4 pins the key and specifies no lookup. Search is not read-your-writes, so it is blind in
+     exactly the seconds after a create — the retry window the key exists for.
+  3. **A dedup lookup that cannot run files anyway, with a loud warning.** XP7 is submit-or-nothing
+     and names a slow flow as what turns "submit" into "nothing"; the cost of proceeding blind is a
+     duplicate a maintainer can close. The five checks are the guarantees and none runs through this
+     path — "authority fails closed, advice fails soft", and retry-safety is advice.
+  4. **An absent or unrecognised `Upstream filing` value reads as `ask-user`.** Never `always-file`
+     (a typo would become standing consent) and never `never-file` (a misspelling would refuse a
+     legitimate report); an unrecognised value additionally warns, because that is the case where
+     the operator believes they set something and did not.
+
+  `transport.py` and `tests/fakes/fake_github.py` were listed as deliverables and needed **no
+  change** — `create_issue`/`list_issues` are already the seam and the fake is keyed per repo, so
+  the pinned target is just another repo to it. `plugin/skills/backlog/adapter-mode.md` gained the
+  send arm, which the deliverable list did not name: the CLI usage table is the referent that
+  surface points at, and it changed here.
+
+  **Still Chunk 03's, confirmed as stale but deliberately not touched here:** `skills/backlog/SKILL.md`
+  (line ~219) still says an adapter-side pin "exists only in the `file-upstream` design", and
+  `tests/test_backlog_instruction_surface.py`'s `IMPLEMENTED_ADAPTER_GUARDS` still excludes
+  `target-pin` with a comment awaiting it. Both are the "describes the capability as unbuilt" class
+  Chunk 03's grep assertion owns, and both went stale at Chunk 01 rather than here.
 - **Depends on:** Chunk 01
 - **Artifacts consumed:** `documentation/backlog-service-upstream-filing.md` §5 (all five checks
   and the check-3 amendment); `documentation/backlog-service-requirements.md` XP5, XP7
@@ -298,6 +345,11 @@ citation, and `tests/test_norm_probes.py::TestSilentAgainstThisRepo` must pass w
   **(3) Coherence edits**, all of which the design's §8 names, so none is discretionary: api-contract
   §2.4 gains the preview/`--approve`/digest contract and the five-check refusal set, and its error
   vocabulary gains `filing-disabled`, `target-not-pinned`, `self-file`, `approval-mismatch`;
+  **`data-model.md` § Direction's title-conformance norm says "all three write paths" in both its
+  `Status:` and its `Mechanism:` and there are now four** (surfaced at Chunk 02's review; not a
+  departure — the code conforms harder than the norm asks, and the binding ruling is already in this
+  plan's `governed_by:` — but the norm's own text still describes the pre-`file-upstream` world, and
+  this list named only §5's `source-key:` note, so it fell through);
   security-model §1a/§5 gains the attended-only reconciliation; data-model §5's `source-key:` gains
   the trimmed-upstream-block note; and `project-state.yaml`'s `egress_boundary` description is
   corrected — the *count* stays three (the op rides `transport.py`, already site 1), but site 1 is

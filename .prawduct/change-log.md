@@ -3,6 +3,85 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-09-06: the `file-upstream` send path refuses on all five checks, and identity fails closed
+
+<!-- prawduct: type=feature | scope=upstream-filing-adapter -->
+
+Wave A, Chunk 02 of BKL-7Q4M, closing `#329` (BKL-4T9C). `file-upstream --approve sha256:<digest>`
+sends, and refuses unless all five design §5 checks hold — each a distinct code, and every one of
+them files nothing: `filing-disabled`, `target-not-pinned`, `self-file`, `approval-mismatch`, `auth`.
+Chunk 01 shipped the two-signal identity resolver; this ships the check that consumes it, which is
+what closes the fail-open the item describes.
+
+**Check 3 is the one with the amendment, and the fail-closed leg is the one a naive implementation
+gets backwards.** Identity resolves from **both** `backlog_service_repo` and the `origin` remote,
+either match refuses, and an identity that resolves from *neither* refuses too — "we could not tell"
+is a refusal, not a pass. The refusal **routes** rather than merely erroring: XP7 reads "never let
+prawduct's own repo self-file upstream *(it routes to its own backlog)*", so the message names
+`prawduct-hook backlog file` and the test asserts that on the prose a human reads, not only on the
+code. The invariant behind the routing is worth keeping: this op's whole ceremony — recomposition,
+verbatim review, digest approval, the visible-word ceiling — exists because content crosses an
+*owner* boundary, and prawduct→prawduct crosses none, so minimizing prawduct's own bug reports would
+lose fidelity to protect prawduct from prawduct.
+
+**The send arm refuses a non-conforming title; the preview still only reports one.** `data-model.md`
+§ Direction binds the issue standard's §1 title rules on **every** adapter write path and names
+`file`/`update`/`import` — because `file-upstream` is the fourth and nobody had noticed. It binds
+harder upstream: the write is irreversible and a non-collaborator filer cannot retitle afterwards.
+The preview stays advisory because nothing is written there, and an advisory finding is exactly what
+lets an author fix a title *before* approving it. The **rendered** title is what is linted, since
+that is the string that lands; `[prawduct] <component>:` is not §1's `area: summary`, so `_split_area`
+reads it as no prefix and the budget, placeholder and atomicity rules are what remain.
+
+**`--approve` is the send trigger in every preference state; `always-file` waives only its value.**
+Design §4.1 says standing consent "files directly (no per-report digest)" and §5 waives check 4
+there, which left open whether a bare preview call *sends* under `always-file`. It does not: the
+token is the only thing separating rendering a payload from filing one, and a caller that previews
+must not discover it filed. So the presence of `--approve` is required always — an empty token is
+refused — and under `always-file` its value is simply not compared. Recorded as a decision because
+the design admits the other reading.
+
+**Every refusal carries the advisory payload the success envelope carries.** The payload is composed
+*before* the checks run, so `lint` findings and preference warnings ride out on all five refusals as
+well as on the ok envelope, and the human-mode error branch prints them — `core.error` is a
+different constructor from `core.ok` with no slot for either, which is how this repo has twice
+shipped a field that vanished on the failure path. A refused filing is precisely the moment an
+author is about to edit the report, so the findings are worth more there than on the success.
+
+**Idempotency reads the list endpoint, and degrades rather than blocks.** The api-contract §2.4
+`source-key:` marker makes a re-file return the existing issue instead of duplicating it; the lookup
+scans issues newest-first for the marker rather than asking GitHub's search API, because the key
+exists for retry safety and search is not read-your-writes — blind exactly in the seconds after a
+create, which is the case that matters. A lookup that *cannot run* files anyway with a loud warning:
+XP7 is submit-or-nothing and names a slow flow as what turns "submit" into "nothing", and the cost of
+proceeding is a duplicate a maintainer can close. The five checks are the guarantees, and none of
+them runs through that path.
+
+**The review caught the one thing every test was blind to: the send arm never resolved a transport.**
+`_run_file_upstream` was the only transport-consuming handler in `cli.py` that did not call
+`_resolve_transport`, and production enters through `run(project_dir, argv)` with no transport — so
+`None` reached `send`, died on `None.get_authenticated_user()`, and the CLI-boundary catch reported
+the whole op as a retryable `unavailable`. Every send test injected a fake, which is exactly why the
+suite was green over a deliverable that could not file at all. Resolution now happens **inside the
+send branch**, not at the top of the handler where its seventeen siblings put it: at the top it would
+construct a `GhTransport` on the preview path and dissolve the "the preview arm is handed no
+transport" guarantee. Both halves are pinned by tests that drive `cli.run` with no transport at all.
+
+Check 2 was likewise the one of five with no send-arm test — the CLI's pre-check short-circuits every
+call routed through `cli.run`, so `send`'s own `check_target` leg was a mutation survivor. It now has
+a class like the other four, plus one that asks `upstream.send` directly.
+
+All five checks are mutation-verified — neutering each fails its own class and nothing else — as are
+the title refusal, the advisory carry-through, the dedup lookup, and both halves of the transport
+wiring. Two warnings landed in the same pass: an unreadable (as opposed to absent)
+`project-preferences.md` now warns rather than silently downgrading a `never-file` standing no, and
+the preview warns on `filing-disabled` as it already did on `self-file`, so nobody reviews bytes and
+approves a digest for a send that was never going to happen. `--approve` had to be added to
+`_VALUED_FLAG_NAMES`; the union guard caught it, which is the guard working. `transport.py` and
+`tests/fakes/fake_github.py` were listed as deliverables and needed no change: `create_issue` and
+`list_issues` are the seam already, and the fake is keyed per repo, so the pinned target is just
+another repo to it.
+
 ## 2026-09-06: `file-upstream` previews the bytes that would cross the owner boundary
 
 <!-- prawduct: type=feature | scope=upstream-filing-adapter -->

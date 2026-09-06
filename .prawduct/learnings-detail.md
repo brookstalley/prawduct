@@ -2541,3 +2541,60 @@ carried prose gates instead. The gap is not a missing feature; it is a habit.
 **Corollary for triage.** Requiring one NAMED ANSWERABLE QUESTION from anything staying at
 `design` — with "needs design" rejected — is what exposed these. An item that cannot produce its
 blocking question in one sentence is not blocked; it is mislabelled, already done, or dead.
+
+## When every test INJECTS a dependency, green says nothing about how production OBTAINS it
+
+**From:** upstream-filing-adapter Chunk 02 (2026-09-06), Critic finding R-1, BLOCKING.
+
+`plugin/lib/backlog/cli.py`'s `_run_file_upstream` began life as the preview arm, whose defining
+property — stated in its docstring and asserted by the contract test — was that it takes **no**
+`transport`, so it cannot reach the network. Chunk 02 extended it into a send arm that needs one and
+threaded the parameter down from `run`. Every one of the seventeen sibling handlers calls
+`_resolve_transport(transport)` on its first line; this one did not, because the question "who
+supplies this in production?" never came up: `run`'s signature has `transport=None`, and every test
+in the suite passes a `FakeGitHub` or a `MagicMock`.
+
+Production enters at `plugin/bin/prawduct-hook` via `backlog_cli.run(project_dir, argv)` with no
+transport kwarg. So `None` travelled into `upstream.send`, which called
+`transport.get_authenticated_user()` and raised `AttributeError`. `run`'s CLI-boundary broad-except
+turned that into `core.error("unavailable", …)` at exit 6 — a code whose contract says *retryable*.
+The chunk's entire deliverable was non-functional for every real caller, and the failure presented
+as a transient GitHub outage that a caller would retry three times before giving up.
+
+Nothing was sent (checks 1–4 pass before the transport is touched), so this was non-function rather
+than a safety hole. But the suite was green over it, and would have stayed green through the PR
+gate: dependency injection at every call site makes the *acquisition* path untested by construction.
+
+**The remedy is two tests, not one.** Drive the new arm through `cli.run` with no transport and
+assert the seam is constructed (monkeypatch the module's `GhTransport`); and drive the arm that must
+NOT build one and assert construction never happens. The second is what forces the resolution to sit
+inside the send branch rather than at the top of the handler where the siblings put it — at the top
+it would build a `GhTransport` on the preview path, dissolving the scope guarantee that is the
+preview arm's whole point. Both mutations were verified: moving the call to the handler top fails the
+preview test, removing it fails the send test.
+
+Related: [[a-fixtures-world-is-narrower-than-the-requirement-it-certifies]].
+
+## Defence in depth costs a test per layer, not per rule
+
+**From:** upstream-filing-adapter Chunk 02 (2026-09-06), Critic finding R-2, BLOCKING.
+
+Design §5 check 2 pins the upstream target. Chunk 01 built it on the preview arm and
+mutation-verified it there. Chunk 02 put the same check in two places on purpose: the CLI answers it
+first, ahead of even the required-flag checks, so a caller naming the wrong repo is not told about a
+missing `--title`; and `upstream.send` re-asks it, because `send` is a module entry point a caller
+can reach without the CLI.
+
+Four of the five checks got a send-arm class asserting refusal *and* that the fake recorded no
+write. Check 2 did not, on the reasoning that chunk 01 had already verified the pin — which was true
+of a different arm. The consequence: deleting `check_target(requested_repo)` from `send`'s refusal
+tuple failed nothing, because every test that reaches check 2 goes through `cli.run` and hits the
+pre-check first. The inner leg — the one that matters for the caller the redundancy exists for —
+was unverified while the coverage looked complete.
+
+The generalisation is about *where a mutation is observable*, not about redundancy being bad.
+Deliberate redundancy is right here; what it costs is one test per layer, each entering at that
+layer's own door. The send-arm class enters through the CLI; a second test calls `upstream.send`
+directly.
+
+Related: [[when-every-test-injects-a-dependency-green-says-nothing-about-how-production-obtains-it]].
