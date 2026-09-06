@@ -228,6 +228,14 @@ class TestIdentityResolvesFromTwoSignals:
             ["git", "-C", str(tmp_path), "remote", "add", "origin", origin], check=True
         )
 
+    def _write_config(self, tmp_path, body):
+        """A hand-written `.git/config`. Real `git remote add` only ever emits the
+        lowercase canonical spelling, so a fixture built through it cannot reach
+        the case-folding rules below — which is how they came to be unasserted."""
+        git = tmp_path / ".git"
+        git.mkdir(exist_ok=True)
+        (git / "config").write_text(body, encoding="utf-8")
+
     def test_neither_signal_resolves_to_nothing(self, tmp_path):
         """The empty tuple is the fail-closed input: a caller enforcing the
         no-self-file invariant must read it as a refusal, never as a pass."""
@@ -290,12 +298,46 @@ class TestIdentityResolvesFromTwoSignals:
         assert upstream.resolve_self_identity(tmp_path / "wt") == ("acme/widget",)
 
     @pytest.mark.parametrize(
+        "header,key,resolves",
+        [
+            ('[remote "origin"]', "url", True),
+            # Git folds SECTION names and KEYS to lowercase; both spellings name
+            # the same remote, and a config written by hand or by another tool may
+            # use either.
+            ('[Remote "origin"]', "url", True),
+            ('[remote "origin"]', "URL", True),
+            ('[REMOTE "origin"]', "Url", True),
+            # A SUBSECTION's case is preserved, so this is a different remote —
+            # honoring only half the rule is what silently costs the signal.
+            ('[remote "Origin"]', "url", False),
+        ],
+    )
+    def test_git_config_case_folding_follows_gits_own_rule(
+        self, tmp_path, header, key, resolves
+    ):
+        self._write_config(tmp_path, f'{header}\n\t{key} = https://github.com/acme/widget.git\n')
+
+        expected = ("acme/widget",) if resolves else ()
+        assert upstream.resolve_self_identity(tmp_path) == expected
+
+    def test_a_later_section_ends_the_origin_block(self, tmp_path):
+        """A `url` belonging to a different remote must not be read as origin's."""
+        self._write_config(
+            tmp_path,
+            '[remote "origin"]\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n'
+            '[remote "fork"]\n\turl = https://github.com/attacker/exfil.git\n',
+        )
+
+        assert upstream.resolve_self_identity(tmp_path) == ()
+
+    @pytest.mark.parametrize(
         "url,expected",
         [
             ("https://github.com/acme/widget.git", "acme/widget"),
             ("https://github.com/acme/widget", "acme/widget"),
             ("git@github.com:acme/widget.git", "acme/widget"),
             ("ssh://git@github.com/acme/widget.git", "acme/widget"),
+            ("https://user@github.com/acme/widget.git", "acme/widget"),
             ("https://gitlab.com/acme/widget.git", None),
             ("https://github.example.com/acme/widget.git", None),
             ("", None),
@@ -306,6 +348,28 @@ class TestIdentityResolvesFromTwoSignals:
         """A GitLab `origin` resolving as a "GitHub identity" would have the
         no-self-file check compare a real target against a fabricated one."""
         assert upstream.parse_remote_url(url) == expected
+
+    @pytest.mark.parametrize(
+        "host_form",
+        [
+            "notgithub.com",           # a prefix, on a domain anyone can register
+            "evilgithub.com",
+            "github.com.attacker.net",  # a suffix
+            "evil.example.com/github.com",  # github.com in PATH position, not host
+            "example.com/x/github.com",
+        ],
+    )
+    def test_no_url_that_merely_CONTAINS_the_host_resolves(self, host_form):
+        """The property, not two spellings of it: `github.com` must be the HOST.
+        Every form here is a domain or path the caller can control, and each one
+        resolving would hand the no-self-file check an identity of the caller's
+        choosing — which is the whole way that check gets defeated."""
+        for url in (
+            f"https://{host_form}/acme/widget.git",
+            f"git@{host_form}:acme/widget.git",
+            f"ssh://git@{host_form}/acme/widget.git",
+        ):
+            assert upstream.parse_remote_url(url) is None, url
 
 
 class TestTheBudgetsAreReportedNeverApplied:

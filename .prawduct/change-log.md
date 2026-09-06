@@ -47,6 +47,15 @@ names a shared `commondir`) is resolved too, because reading only the plain case
 agent worktree with no identity signal, and a fail-closed check with no signal is a refusal nobody
 can explain.
 
+The remote URL is matched as a **host**, not searched for as a substring, and the difference is
+reachable twice over: a prefix guard alone still accepts `https://evil.example.com/github.com/o/r`,
+where `github.com` sits in the *path* of a host the caller chose. The pattern is anchored over the
+whole URL — optional scheme, optional userinfo, then the host and nothing before it — and the test
+asks the property (no URL that merely *contains* the host resolves) rather than pinning two
+spellings. Git's config case-folding is honored on both halves of its own rule: case-insensitive on
+the `remote` section name and the `url` key, exact on the `"origin"` subsection, because handling
+only one half leaves a valid config silently yielding no identity at all.
+
 **What the payload is, exactly.** `[prawduct] <component>: <symptom>`, the two sourced sections
 (**Component**, **Found in**) ahead of the caller's L1-recomposed prose, and a `prawduct:` block
 trimmed to `v:`, `found_in:` and `source-key:`. The in-repo block's `provenance: {source: <product>}`

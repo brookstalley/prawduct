@@ -85,17 +85,32 @@ _LABELLESS_RULES = frozenset({"no-kind", "no-area", "too-many-labels"})
 #: "GitHub identity" would let the no-self-file check compare a real target
 #: against a fabricated one. GitHub Enterprise hosts do not match and resolve as
 #: no signal, which is the fail-closed direction.
+#:
+#: Matched over the WHOLE url with the host in host position — optional scheme,
+#: optional userinfo, then `github.com` and nothing else before it. A prefix guard
+#: is not enough and the difference is reachable: excluding an alphanumeric prefix
+#: stops `notgithub.com/acme/repo`, but leaves `https://evil.example.com/github.com/o/r`
+#: matching in *path* position, on a host the caller chooses. A lookalike host
+#: resolving to a "GitHub identity" is the one input that could make the
+#: no-self-file comparison compare the wrong thing.
 _REMOTE_RE = re.compile(
-    r"github\.com[:/](?P<owner>[^/:\s]+)/(?P<repo>[^/\s]+?)(?:\.git)?/?$"
+    r"(?:[A-Za-z][A-Za-z0-9+.-]*://)?"      # scheme, or none for the scp-like form
+    r"(?:[^/@\s]*@)?"                        # userinfo (`git@`), optional
+    r"github\.com[:/](?P<owner>[^/:\s]+)/(?P<repo>[^/\s]+?)(?:\.git)?/?"
 )
 
 #: Minimal git-config reading: any section header, the `remote "origin"` one, and
 #: a `url =` assignment. Deliberately not a general git-config parser — this reads
 #: one value and every unhandled spelling resolves to "no signal", which composes
 #: correctly with the other identity signal instead of guessing.
+#: Git folds section names and keys to lowercase but preserves a subsection's
+#: case, so `[Remote "origin"]` names the same remote and `[remote "Origin"]` does
+#: not. Both halves of that rule are honored here: case-insensitive on `remote`
+#: and on `url`, exact on `"origin"`. Handling only one half is what leaves a
+#: valid config silently yielding no identity signal.
 _SECTION_RE = re.compile(r"^\s*\[")
-_ORIGIN_SECTION_RE = re.compile(r'^\s*\[\s*remote\s+"origin"\s*\]')
-_URL_RE = re.compile(r"^\s*url\s*=\s*(.+?)\s*$")
+_ORIGIN_SECTION_RE = re.compile(r'^\s*\[\s*(?i:remote)\s+"origin"\s*\]')
+_URL_RE = re.compile(r"^\s*url\s*=\s*(.+?)\s*$", re.IGNORECASE)
 
 
 # --- the two impure reads ----------------------------------------------------
@@ -230,8 +245,13 @@ def _git_config_path(directory: Path) -> Path | None:
 
 
 def parse_remote_url(url: str) -> str | None:
-    """``owner/repo`` from a GitHub remote URL, or ``None``. Pure."""
-    match = _REMOTE_RE.search((url or "").strip())
+    """``owner/repo`` from a GitHub remote URL, or ``None``. Pure.
+
+    Matched against the whole url rather than searched within it — a search finds
+    ``github.com/o/r`` wherever it sits, including in the path of a host somebody
+    else controls.
+    """
+    match = _REMOTE_RE.fullmatch((url or "").strip())
     return f"{match.group('owner')}/{match.group('repo')}" if match else None
 
 
