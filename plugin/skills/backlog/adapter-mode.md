@@ -165,9 +165,13 @@ under an untrusted CI trigger (SEC-5) — surface it plainly, don't retry-loop; 
 mutation path** — the adapter exposes exactly the ops in the usage table `prawduct-hook backlog --help`
 prints, each with its own crash-safety
 contract (idempotent/resumable `import`, redirect-before-close `merge`). No generic preview-or-apply flag
-sits over those mutations: the only preview-before-write is `restructure-preview` (the deterministic
-before/after a bulk `import` would produce, approved in aggregate), and the upstream filing op adds its
-own preview-by-default when it ships.
+sits over those mutations: the two preview-before-write paths are op-specific. `restructure-preview`
+renders the deterministic before/after a bulk `import` would produce, approved in aggregate. And
+`file-upstream` is **preview-by-default** — it renders the exact outbound payload and a
+`payload_digest` and sends nothing, because it writes into a foreign public repo and that is
+irreversible. Do not reach for it as a filing op: it is the data plane under `/prawduct:report-bug`,
+which owns recomposing a report into prawduct's terms and showing a human the literal bytes before
+anything is approved. Filing a product's own work goes through `file`.
 
 ### Status vocabulary bridge
 The markdown skill's statuses are **not** the adapter's. Map before calling `status --to`:

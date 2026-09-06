@@ -153,11 +153,23 @@ citation, and `tests/test_norm_probes.py::TestSilentAgainstThisRepo` must pass w
   already decided, do not re-derive); `documentation/backlog-service-requirements.md` XP4, XP7
 - **Deliverables:** `plugin/lib/backlog/cli.py` (`file-upstream` op + `_OP_USAGE` entry — both
   views, since the help table is composed once), new `plugin/lib/backlog/upstream.py` (the pinned
-  target, payload rendering, digest), `plugin/lib/backlog/issuefmt.py` (the upstream title/body
+  target, payload rendering, digest, **and the two-signal identity resolver** — see the amendment
+  below), `plugin/lib/backlog/issuefmt.py` (the upstream title/body
   template, if it does not fall out of `render_body`), `tests/preferences/test_no_upstream_content_egress.py`
   (**replaced in place** — the file keeps its enforcement-row identity in `project-preferences.md`
-  and is rewritten to assert the contract, so row 86's pointer stays live). Delete nothing else:
+  and is rewritten to assert the contract, so row 86's pointer stays live),
+  `tests/test_ephemeral_worktree.py` (adding an op fails the guard's partition test until the op is
+  classified — that refusal is the guard working, not a surprise). Delete nothing else:
   the drop-box stays whole until Wave C.
+
+  **Amendment, recorded at build:** the two-signal identity resolver moved from Chunk 02 into this
+  chunk, because the payload cannot be rendered without it. The api-contract §2.4 `source-key:` is a
+  digest of *(submitter identity, title+body)*, and the submitter is the filing repo — so the
+  resolver is an input to the preview, not only to check 3. Chunk 02 consumes
+  `upstream.resolve_self_identity` rather than writing a second one; a later chunk building its own
+  copy is the shadowed-duplicate failure, not a fresh implementation. `issuefmt.py` was **not**
+  touched: the title/body template fell out of composing sections directly, as the deliverable's own
+  conditional anticipated.
 - **Tests:** exact-byte pin of a rendered payload against a fixture; digest is stable across two
   renders of the same input and changes when any byte changes; `found_in:` reads the real version
   and degrades to `(unknown)` on an unreadable manifest rather than guessing; the trimmed block
@@ -204,8 +216,10 @@ citation, and `tests/test_norm_probes.py::TestSilentAgainstThisRepo` must pass w
 - **Depends on:** Chunk 01
 - **Artifacts consumed:** `documentation/backlog-service-upstream-filing.md` §5 (all five checks
   and the check-3 amendment); `documentation/backlog-service-requirements.md` XP5, XP7
-- **Deliverables:** `plugin/lib/backlog/upstream.py` (the five checks, the send path, two-signal
-  identity resolution), `plugin/lib/backlog/cli.py` (`--approve` handling), `plugin/lib/backlog/transport.py`
+- **Deliverables:** `plugin/lib/backlog/upstream.py` (the five checks and the send path; the
+  two-signal identity resolution landed in Chunk 01 as `resolve_self_identity` — consume it, do not
+  write a second one), `plugin/lib/backlog/cli.py` (`--approve` handling; `_EXIT_CLASS` gains the
+  four remaining refusal codes beside Chunk 01's `target-not-pinned`), `plugin/lib/backlog/transport.py`
   (the upstream write, reusing the existing `gh` seam — the adapter never manages a token),
   `tests/preferences/test_no_upstream_content_egress.py` (fill in checks 3–5), `tests/fakes/fake_github.py`
   (the upstream target seam)

@@ -3,6 +3,76 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-09-06: `file-upstream` previews the bytes that would cross the owner boundary
+
+<!-- prawduct: type=feature | scope=upstream-filing-adapter -->
+
+Wave A, Chunk 01 of BKL-7Q4M. The adapter gains one operation that writes into a **foreign, public**
+repo — prawduct's own tracker — and this chunk lands only the half that sends nothing: the pinned
+target, the exact outbound payload, its digest, and the contract test that replaces the interim
+egress guard. Design: `documentation/backlog-service-upstream-filing.md` §2 and §5.
+
+**The interim test and the surface it forbade had to land in one commit.**
+`tests/preferences/test_no_upstream_content_egress.py` asserted that the token `file-upstream`
+appears on no shipped surface and that `brookstalley/prawduct` appears nowhere in the backlog
+adapter. Design §5 check 2 requires the pinned target to be a plugin constant *inside* the adapter,
+so the keystone violates both assertions the moment it exists. The design's "the interim test stays
+live until the contract test lands" is therefore a same-commit constraint rather than a chunk
+ordering: splitting them leaves the suite red for the whole wave, and a red suite is what the
+release gate reads. The file keeps its name and its enforcement-row identity in
+`project-preferences.md`, and is rewritten to assert the contract. The swap is a strengthening,
+which is the only direction the § Direction norm permits — an absence proves nothing about a
+surface once the surface exists.
+
+**Two of the five §5 checks are live; three land with the send path.** Asserted now: the target is
+pinned (a `--repo` that disagrees is refused with `target-not-pinned`, and one that agrees changes
+no rendered byte), and nothing files without an approval. The second is structural rather than
+conditional — the handler takes no `transport` argument at all, so a preview cannot reach the seam
+whatever a later edit does to its body. Both were mutation-checked: breaking the pin, and wiring the
+handler to the seam, each fail the contract test. A contract test that cannot fail is the
+vacuous-pass class this repo has already paid for.
+
+**`source-key:` needs the running repo's identity, so the two-signal resolver landed here rather
+than with check 3.** The api-contract §2.4 idempotency key digests *(submitter identity, title +
+body)*, and the submitter is the filing repo — resolved from **both** `backlog_service_repo` and the
+`origin` remote, because either alone is fail-open in the state that matters most
+(`backlog_service_repo` is unset in every pre-cutover repo). Chunk 02's no-self-file check consumes
+this resolver rather than writing a second one. Identity crosses the boundary only as an input to a
+one-way digest; a GitLab or Enterprise `origin` resolves as no signal, which is the fail-closed
+direction. The remote is read out of `.git/config` rather than by shelling out to `git remote
+get-url`: `lib/backlog/`'s egress discipline gives `transport.py` the package's only subprocess, and
+that invariant is what makes "the adapter reaches out in exactly one place" checkable — not worth
+spending on a value sitting in a config file. The linked-worktree form (a `.git` *file* whose gitdir
+names a shared `commondir`) is resolved too, because reading only the plain case would leave every
+agent worktree with no identity signal, and a fail-closed check with no signal is a refusal nobody
+can explain.
+
+**What the payload is, exactly.** `[prawduct] <component>: <symptom>`, the two sourced sections
+(**Component**, **Found in**) ahead of the caller's L1-recomposed prose, and a `prawduct:` block
+trimmed to `v:`, `found_in:` and `source-key:`. The in-repo block's `provenance: {source: <product>}`
+is the product-name leak the trim exists to prevent, and it is absent by construction: the block is
+composed from three values with no path to a fourth. `found_in:` is read from the plugin manifest at
+call time and degrades to `(unknown)` on any unreadable manifest — never recalled, because a
+recalled version drifts silently as the plugin updates and sends triage to the wrong code. A body
+that opens an unterminated ```` ```prawduct ```` fence is refused, closing the same forgery route
+`file` already closes on its own body.
+
+**Adding the op silently widened a permission grant, and that is now a rule rather than a fix.** The
+backlog skill is model-invocable and granted `Bash(prawduct-hook backlog file*)` no-prompt. A Bash
+grant is a prefix match, so the attached star — the house form, adopted because it covers the bare
+call and every argument form at once — also conferred `file-upstream` the moment the op existed,
+with every grant test green. The `file` grant is narrowed to `file --*` (no legitimate call is lost:
+a bare `backlog file` is a validation error, and `--help` still matches), `file-upstream` joins
+`IRREVERSIBLE_OPS` so the rail binds every model-invocable skill rather than this one, and a new
+test asks the general question — no everyday-op grant may reach any *other* dispatched op — so the
+next op named `list-…` or `sync-…` cannot reopen it. All three checks were mutation-verified against
+the restored wildcard.
+
+The payload is pinned **byte for byte** against a fixture rather than by shape. "Sent == previewed"
+is the guarantee the digest exists to make, and a shape assertion passes unchanged while the bytes
+drift underneath it. The digest covers the whole payload including the target, so a payload approved
+for prawduct's tracker cannot be sent to a repo the reviewer never saw.
+
 ## 2026-09-02: four small backlog-adapter items, and two plans falsified by reading the code
 
 <!-- prawduct: type=fix | scope=small-batch-2026-09-02 -->

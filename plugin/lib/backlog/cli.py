@@ -38,7 +38,7 @@ from __future__ import annotations
 import json
 import sys
 
-from . import context, core, ids, query
+from . import context, core, encode, ids, query, upstream
 
 # GitHub-mutating ops — refused under an untrusted-triggered Actions run absent an
 # explicit triggering-actor authorization check (SEC-5). Reads, ``counts``,
@@ -46,8 +46,13 @@ from . import context, core, ids, query
 # read-only reporting under such triggers is fine (Security §1b). ``pick`` is a
 # read on every path now that it takes nothing: it revalidates the local store and
 # ranks, and mutates nothing on the provider.
+# ``file-upstream`` is here although its preview arm mutates nothing: the op is
+# attended-only by design (a human reviews the literal outbound bytes and approves
+# a digest), and an untrusted-triggered Actions run is the definition of no human
+# present. Withholding the whole op there costs a preview nobody could act on and
+# closes the arm that would otherwise send.
 _WRITE_OPS: frozenset[str] = frozenset(
-    {"file", "status", "update", "comment",
+    {"file", "file-upstream", "status", "update", "comment",
      "link", "unlink", "provision", "reconcile-labels", "import", "merge"}
 )
 
@@ -78,6 +83,12 @@ _EXIT_CLASS: dict[str, int] = {
     "auth": 5,
     "unavailable": 6,
     "rate_limited": 6,
+    # The upstream-filing refusals (design §5). They classify with `validation`
+    # because that is what they are — the caller asked for something the contract
+    # forbids — and a distinct code exists only so a caller can tell WHICH check
+    # refused without parsing prose. None is retryable: retrying an identical
+    # refused filing produces an identical refusal.
+    "target-not-pinned": 2,
 }
 
 #: Per-op usage, keyed by the op name — **the usage table**. It is the referent
@@ -180,6 +191,19 @@ _OP_USAGE: dict[str, str] = {
     "merge": (
         "  merge    <source-id> --into <target-id> [--repo owner/repo]   "
         "(fold A→B, redirect-before-close)\n"
+    ),
+    # Last in the table, away from `file`, deliberately: the two differ in the
+    # only way that matters — `file` writes into the product's own repo, this
+    # writes into a foreign public one — and a reader scanning adjacent rows for
+    # "how do I file a bug" must not pick this one by accident.
+    "file-upstream": (
+        "  file-upstream --title T --body B [--component C] [--repo owner/repo]   "
+        "(preview the outbound payload for prawduct's OWN public tracker; sends "
+        "nothing)\n"
+        "           prints {payload, payload_digest}; --repo, if given, must match "
+        "the pinned target\n"
+        "           the body crosses an owner boundary irreversibly — recompose it "
+        "in prawduct's terms first (no product names, paths, ids or excerpts)\n"
     ),
 }
 
@@ -300,7 +324,7 @@ def _unknown_op(op: str, *, json_mode: bool) -> int:
 #: by AST so this set cannot fall behind them.
 _VALUED_FLAG_NAMES: frozenset[str] = frozenset({
     "affected", "archive", "archive-scope", "area", "assignee", "body",
-    "closed-by", "direction", "edge", "effort", "from", "if-updated-at",
+    "closed-by", "component", "direction", "edge", "effort", "from", "if-updated-at",
     "impact", "into", "kind", "limit", "older-than", "out", "page", "per-page",
     "plan", "refs", "repo", "restructure", "revisit", "sort", "source", "stage",
     "state", "status", "tag", "tags", "title", "to", "working-branch",
@@ -404,6 +428,11 @@ def run(project_dir, argv: list[str], *, transport=None) -> int:
     try:
         if op == "file":
             result = _run_file(rest, transport, project_dir)
+        elif op == "file-upstream":
+            # No `transport` argument, and that is the guarantee rather than an
+            # omission: a preview that cannot reach the seam cannot send, whatever
+            # a later edit does to the body of the handler.
+            result = _run_file_upstream(rest, project_dir)
         elif op in ("get", "show"):
             result = _run_get(rest, transport)
         elif op == "status":
@@ -503,6 +532,69 @@ def _run_file(rest: list[str], transport, project_dir):
             absorb=absorb,
         ),
     )
+
+
+def _run_file_upstream(rest: list[str], project_dir):
+    """``file-upstream`` — render the outbound payload and its digest; send nothing.
+
+    The preview half of design §5. It takes no ``transport`` because the *only*
+    guarantee this arm makes is that nothing left the machine, and a handler with
+    no seam in scope cannot break that guarantee by accident. Sending is a second,
+    digest-bearing call.
+
+    Two of the five §5 checks are enforceable with no send path and are enforced
+    here: the target is **pinned** (a ``--repo`` that disagrees is refused, not
+    honored), and nothing files **without an approval** (there is no path from
+    this call to a write at all). The digest it returns is what a later
+    ``--approve`` is matched against, which is what makes "sent == previewed" a
+    property of the bytes rather than of the caller's intentions.
+    """
+    flags, _positionals, err = _parse_flags(
+        rest, valued={"repo", "title", "body", "component"}
+    )
+    if err:
+        return core.error("validation", err)
+
+    requested = flags.get("repo")
+    if requested is not None and requested.strip() != upstream.PINNED_TARGET:
+        return core.error(
+            "target-not-pinned",
+            f"--repo {requested.strip()!r} is not the pinned upstream target "
+            f"({upstream.PINNED_TARGET}); file-upstream files there or nowhere",
+            details={"pinned": upstream.PINNED_TARGET, "requested": requested.strip()},
+        )
+    if "title" not in flags:
+        return core.error("validation", "file-upstream requires --title")
+    if "body" not in flags:
+        return core.error("validation", "file-upstream requires --body")
+
+    # The same forgery route `file` closes on its own body: an unterminated
+    # ```prawduct opener in the authored prose swallows the marker appended after
+    # it, so a caller could dictate the provenance fields the receiving side reads.
+    body_err = encode.check_body_text(flags["body"])
+    if body_err:
+        return core.error("validation", body_err)
+
+    payload = upstream.build_payload(
+        title=flags["title"],
+        body=flags["body"],
+        component=flags.get("component", ""),
+        found_in=upstream.plugin_version(),
+        submitter=upstream.submitter_identity(project_dir),
+    )
+    result = core.ok(
+        {
+            "payload": payload,
+            "payload_digest": upstream.payload_digest(payload),
+            "sent": False,
+        }
+    )
+    # Budgets are REPORTED, never applied: silently truncating an outbound bug
+    # report would cut bytes the reviewer already approved.
+    findings = upstream.lint_payload(payload["title"], payload["body"])
+    if findings:
+        result["lint"] = [finding.as_dict() for finding in findings]
+    return result
 
 
 def _run_get(rest: list[str], transport):
@@ -1674,7 +1766,23 @@ def _print_human_ok(data) -> None:
     if not isinstance(data, dict):
         print(json.dumps(data))
         return
-    if "edge" in data and "target" in data:
+    if "payload_digest" in data:
+        # A `file-upstream` preview. First, and matched on a key no other result
+        # carries: this is the branch a reviewer reads before authorizing an
+        # irreversible cross-owner write, so it must never be shadowed into a
+        # summary line by a later branch that happens to share a key.
+        #
+        # It prints the payload VERBATIM — every byte that would leave — because
+        # approval given to a summary is not approval of what gets sent.
+        payload = data.get("payload", {})
+        print(f"target: {payload.get('repo')}")
+        print(f"title:  {payload.get('title')}")
+        print()
+        print(payload.get("body", ""))
+        print()
+        print(f"payload-digest: {data.get('payload_digest')}")
+        print("nothing was sent: this is a preview of what filing would send")
+    elif "edge" in data and "target" in data:
         # A link/unlink result.
         verb = "linked" if data.get("linked") else "unlinked"
         print(f"{verb} {data.get('item')} --{data.get('edge')}--> {data.get('target')}")
