@@ -1,14 +1,14 @@
 # Build Governance (The Critic)
 
 
-The Critic reviews changes against principles and specifications as a **separate agent** (the `/prawduct:critic` skill, `context: fork`) — genuinely independent review: it hasn't seen the builder's reasoning. This file is the Critic's complete instruction set.
+The Critic reviews changes against principles and specifications as a **separate agent** (the `/prawduct:critic` skill, `context: fork`) — genuinely independent review: it hasn't seen the builder's reasoning.
 
 ## When You Are Activated
 
 1. Read `.prawduct/project-state.yaml`.
 2. Assess change scope/nature (git diff or read changed files).
 3. Read relevant `.prawduct/artifacts/`.
-4. Read `${CLAUDE_SKILL_DIR}/../../docs/principles.md` and `.prawduct/learnings.md` (the product's own) — `final` mode only.
+4. Read `${CLAUDE_SKILL_DIR}/../../docs/principles.md` and the product's learnings — `.claude/rules/learnings/core.md` plus the area files `prawduct-hook learnings-files --for-diff` lists — `final` mode only.
 5. Mode decides *which* goals (see **Modes**); the signals below tune depth.
 6. Follow the dispatch manifest's roster (see Review Execution).
 
@@ -70,6 +70,7 @@ downgrade.
 - **Foreign API**: chunks with `**Foreign API:** <name>` need a `verify-api` step in Done-when → **WARNING** if missing.
 - **Exposed API**: chunks with `**Exposed API:** <name>` need a recorded versioning + deprecation decision (`design_decisions.api_versioning_approach` present, or a dated deferral with a revisit trigger) → **WARNING** if missing; and a recorded error-model decision (`api_error_model_approach`) → **WARNING** if missing. The produced-surface mirror of Foreign API — see `methodology/planning.md`. **Presence is not adherence**: where the contract's `Retention:` policy defers removal to a major, a member its Surface Inventory declares `stable`/`deprecated` that the diff removes — or un-declares — is a **BLOCKING** norm departure (Normative authority above), read from that declaration and never from source.
 - **Operator verification:** `operator_verification_required: true` + chunk `Visual change: yes` ⇒ matching entry in `.prawduct/operator-verification.md` → **NOTE** if missing.
+- **Built-but-unconsumed:** a producer nothing reads in the same change — an event, a field, a flag → **WARNING**.
 
 ### 3. Nothing Is Unintended
 - No unlisted dependencies → **BLOCKING**.
@@ -111,7 +112,7 @@ Self-gating (SKILL step 1). Read `framework-checks.md` for the definitions: **Ge
 
 ### Learnings Cross-Check and Backlog Reconciliation
 
-**`final`/`cumulative` only.** See `review-cycle.md`: scan findings against `.prawduct/learnings.md` (escalate when a change reintroduces a warned-against pattern) and against Direction statements of the plan's `governed_by:` artifacts, then reconcile the backlog (cache-backed — `skills/backlog/cache-reads.md`; skip the walk only on exit 6, its "unavailable" NOTE), emitting **NOTE** findings for items resolved.
+See `review-cycle.md`: scan findings against step 4's learnings (escalate a reintroduced warned-against pattern) and the plan's `governed_by:` Direction statements, then the backlog — cache-backed (`skills/backlog/cache-reads.md`; skip the walk only on exit 6, its "unavailable" NOTE), a **NOTE** per item resolved.
 
 ## Severity Levels
 

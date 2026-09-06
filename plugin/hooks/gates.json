@@ -5,7 +5,7 @@
       "id": "reflection",
       "name": "reflection",
       "since": "1.0.0",
-      "summary": "a session reflection must be captured before session end"
+      "summary": "a session that changed judgeable code must capture a shaped reflection before session end — what was expected vs. what was actual, and a root cause or \"no defect\""
     },
     {
       "id": "critic",
@@ -24,6 +24,24 @@
       "name": "trivial-declaration",
       "since": "1.5.0",
       "summary": "Type: trivial chunks must satisfy the fileset + rationale bounds"
+    },
+    {
+      "id": "learnings-unmigrated",
+      "name": "learnings-unmigrated",
+      "since": "3.5.0",
+      "summary": "a repo still holding the legacy learnings corpus must run learnings-migrate before code work ends the session"
+    },
+    {
+      "id": "learnings-over-budget",
+      "name": "learnings-over-budget",
+      "since": "3.5.0",
+      "summary": "a .claude/rules/learnings/ file over its byte budget and grown this session must pay from duplication or raise the budget with a reason"
+    },
+    {
+      "id": "learnings-budget-unreasoned",
+      "name": "learnings-budget-unreasoned",
+      "since": "3.5.0",
+      "summary": "a learnings_budgets: override in project-state.yaml must carry a reason"
     }
   ]
 }

@@ -3,9 +3,9 @@
 Extracted from ``bin/prawduct-hook`` (STH-9V4K, Chunk 7 — the final chunk). Holds
 the session-start surface the SessionStart (``clear``) hook renders: the
 content-based staleness scan, the structured session briefing (project identity,
-work-in-progress, other-branch WIP, worktree awareness, advisories, learnings,
-backlog), the subagent governance briefing, and the cross-``/clear`` session
-handoff. Plus the previous-session governance check ``cmd_clear`` warns on.
+work-in-progress, other-branch WIP, worktree awareness, advisories, the learnings
+layout state, backlog), the subagent governance briefing, and the
+cross-``/clear`` session handoff. Plus the previous-session governance check ``cmd_clear`` warns on.
 
 ``cmd_clear`` itself STAYS in the hook (it is the deliberately-inline hot-path
 SessionStart entry point that orchestrates session-marker hygiene, the advisory
@@ -41,14 +41,14 @@ import time
 from pathlib import Path
 from typing import NamedTuple
 
-from . import buildplan_refs, gates, gitstate, plan_index
+from . import buildplan_refs, gates, gitstate, learnings_files, plan_index
 from .backlog import legacy as backlog
 from .coverage import _resolve_base_branch
 from .core import (
     BUILD_PLAN_POINTER_KEY,
+    PRAWDUCT_VERSION,
     atomic_write_text,
     describe_branch_claim,
-    oversized_file_threshold,
     pointer_plan_path,
     read_str_yaml_key,
     resolve_branch_claim,
@@ -1079,48 +1079,17 @@ def assemble_session_briefing(
     # timing quip. Neither is actionable at session start — the canonical test
     # count lives in .test-evidence.json, and a past review's duration is noise.)
 
-    # Relevant learnings — show count + pointer so Claude knows rules exist
-    learnings_path = prawduct_dir / "learnings.md"
-    if learnings_path.is_file():
-        try:
-            learnings_content = learnings_path.read_text()
-            # One rule per `## ` entry (the documented learnings format). The
-            # bullet count is a fallback for legacy bullet-list files — counting
-            # bullets FIRST under-reported entry-format files as 0 rules, which
-            # silently dropped this line on any repo using the real format
-            # (found while landing the MET-6W3J size nudge below).
-            heading_count = sum(
-                1 for line in learnings_content.splitlines() if line.startswith("## ")
-            )
-            bullet_count = sum(
-                1 for line in learnings_content.splitlines() if line.strip().startswith("- ")
-            )
-            rule_count = heading_count or bullet_count
-            # Collapse to a count + pointer. The full topic index re-printed
-            # unchanged every session — a static table of contents is tax; the
-            # /prawduct:learnings skill is the intended lookup path.
-            if rule_count > 0:
-                lines.append(f"Learnings ({rule_count} rules): /prawduct:learnings <topic> or read .prawduct/learnings.md")
-            # Size nudge (MET-6W3J): every /prawduct:learnings lookup and
-            # Critic learnings cross-check reads the whole file, so size is a
-            # recurring per-session cost. The threshold is now the ONE the
-            # governance-file nudges share (`core.oversized_file_threshold`,
-            # repo-overridable) rather than a second hardcoded 40000 — the two
-            # copies were documented as "the same threshold" while being free to
-            # drift, and only one of them could be tuned. (An earlier 8KB
-            # clear-hook warning was retired when the fork-skill lookup landed;
-            # at ~80KB the lookup itself became the cost, so the nudge returns
-            # at the shared threshold.)
-            size = learnings_path.stat().st_size
-            threshold = oversized_file_threshold(prawduct_dir)
-            if size > threshold:
-                lines.append(
-                    f"learnings.md is large ({size // 1000}KB > {threshold // 1000}KB) — "
-                    "compact: keep each entry's When-X-do-Y-because-Z rule here, move "
-                    "narrative to learnings-detail.md (never delete it)"
-                )
-        except Exception:  # prawduct:allow prawduct/broad-except -- briefing must never block session start
-            pass
+    # Learnings — which layout this repo is in, and whether the harness is
+    # loading the rules. See _learnings_lines for why the two unmigrated
+    # states carry a directive rather than an advisory.
+    try:
+        lines.extend(_learnings_lines(project_dir))
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- briefing must never block session start
+        lines.append(
+            f"NOTE: the learnings layout could not be read ({type(exc).__name__}: {exc}) — "
+            "this session does not know whether its rules were loaded; "
+            "`prawduct-hook learnings-files` shows what is on disk"
+        )
 
     # Backlog — surface the count of outstanding items (cutover-aware; see
     # _backlog_pending_line for the adapter-vs-markdown routing).
@@ -1132,6 +1101,103 @@ def assemble_session_briefing(
         pass
 
     return "\n".join(lines)
+
+
+#: Appended to the learnings line when git would ignore the rules directory.
+#: The harness loads the files anyway — they are on disk — so this is not "your
+#: rules are off"; it is "your rules die with this checkout", which is invisible
+#: until someone clones the repo and finds a learnings corpus of nothing. A
+#: product that gitignores `.claude/` (common) hits this on its first session
+#: after migrating, and the resolver reports `new` for it either way.
+GITIGNORED_RULES_SUFFIX = (
+    " — GITIGNORED: the rules tree is not committed; unignore .claude/rules/"
+)
+
+#: The commit message the migration directive prescribes, so the fleet's
+#: migration commits are findable by one grep. The version is the plugin's, not
+#: the repo's: it says which plugin the layout was cut over FOR.
+_MIGRATE_COMMIT_MESSAGE = (
+    f"chore(learnings): migrate to {learnings_files.RULES_DIR_REL} "
+    f"(prawduct {PRAWDUCT_VERSION})"
+)
+
+
+def _core_kb(core: Path) -> int:
+    """``core.md``'s size to the nearest whole KiB, floor 1.
+
+    KiB rather than KB because the budget gate that blocks on this file is
+    denominated in KiB — a briefing that says 15KB about a file the gate calls
+    16KB is two numbers for one fact. The floor keeps a real, small corpus from
+    reading as "0KB", which looks like an empty file rather than a short one.
+    """
+    try:
+        size = core.stat().st_size
+    except OSError:
+        return 0
+    return max(1, round(size / 1024))
+
+
+def _learnings_lines(project_dir: Path) -> list[str]:
+    """The briefing's learnings block: one state line, sometimes a directive.
+
+    The four states come from the ONE resolver (:mod:`lib.learnings_files`);
+    nothing here looks for the files itself.
+
+    **`legacy` and `both` carry an `agent →` directive, not an advisory.** An
+    advisory can be dismissed, and the whole failure this guards against is a
+    repo whose rules the new plugin does not load: it reads exactly like a repo
+    that has no rules, silently, for as long as nobody looks. A dismissible nag
+    would be dismissed once and then never seen again by the sessions that most
+    need it. So: no id, no dismiss key, and the directive says what to run.
+    """
+    layout = learnings_files.resolve(project_dir)
+    if layout.state == learnings_files.STATE_NONE:
+        return []
+
+    out: list[str] = []
+    if layout.state == learnings_files.STATE_LEGACY:
+        # No rules directory at all: the harness loads nothing, so say that
+        # before saying anything about counts or sizes.
+        out.append("Learnings: UNMIGRATED — not loaded")
+        out.append(
+            "agent → run prawduct-hook learnings-migrate --propose-map > .prawduct/learnings-map.yaml (it prints the map), edit it, "
+            f'run --apply --map <file>, commit "{_MIGRATE_COMMIT_MESSAGE}" '
+            "— before other work"
+        )
+        return out
+
+    # `new` and `both`: the rules tree exists, so the harness is loading it.
+    # Describe what it holds, then (for `both`) name the leftover to fold in.
+    parts: list[str] = []
+    if layout.core is not None:
+        parts.append(f"{learnings_files.CORE_NAME} ({_core_kb(layout.core)}KB)")
+    areas = len(layout.areas)
+    parts.append(f"{areas} area file{'' if areas == 1 else 's'}")
+    line = (
+        "Learnings: "
+        + " + ".join(parts)
+        + " — loaded by the harness; rules apply, cite the one you applied"
+    )
+    if learnings_files.rules_dir_is_gitignored(project_dir):
+        line += GITIGNORED_RULES_SUFFIX
+    out.append(line)
+
+    if layout.state == learnings_files.STATE_BOTH:
+        # Two ways to arrive here and only one of them is a two-corpus repo. An
+        # interrupted `--apply` leaves exactly this shape on purpose, and
+        # `learnings_migrate._resume_state` can tell its own wreckage apart from
+        # a genuine `both` (every file on disk byte-identical to what the plan
+        # would write) — so the re-run comes FIRST: it is cheap, it refuses the
+        # case it cannot finish, and the hand-fold is unrecoverable if guessed at
+        # wrong. After a write that failed partway, the rules that never landed
+        # exist ONLY in the legacy file.
+        out.append(
+            "agent → if a `learnings-migrate --apply` was interrupted, re-run it — it "
+            "recognises and finishes a half-written tree; otherwise fold "
+            f"{learnings_files.LEGACY_REL} into {learnings_files.RULES_DIR_REL}/ "
+            "by hand and delete it"
+        )
+    return out
 
 
 def _backlog_pending_line(
@@ -1366,17 +1432,10 @@ def generate_subagent_briefing(project_dir: Path) -> None:
         except Exception:  # prawduct:allow prawduct/broad-except -- briefing generation is best-effort
             pass
 
-    # Active learnings
-    learnings_path = prawduct_dir / "learnings.md"
-    if learnings_path.is_file():
-        try:
-            learnings = learnings_path.read_text().strip()
-            if learnings:
-                sections.append("## Active Learnings\n")
-                sections.append(learnings + "\n")
-        except Exception:  # prawduct:allow prawduct/broad-except -- briefing generation is best-effort
-            pass
-
+    # No learnings section. The rules are `.claude/rules/` files, so the harness
+    # loads them for a subagent exactly as it does for the main agent — embedding
+    # a copy here would spend the subagent's context on text it already has, and
+    # would go stale the moment the corpus was edited.
     (prawduct_dir / ".subagent-briefing.md").write_text("\n".join(sections))
 
 
@@ -1532,15 +1591,29 @@ RESCUE_UNREADABLE = "unreadable"
 
 
 class HandoffResult(NamedTuple):
-    """Outcome of a handoff generation: was it written, and what became of the notes."""
+    """Outcome of a handoff generation: was it written, and what became of the
+    notes and of the reflection — the two agent-authored inputs the boundary
+    deletes, each only once its text is durably in the handoff."""
 
     written: bool
     notes_state: str
+    # Same vocabulary as the notes (absent / empty / carried / unreadable /
+    # undelivered), because the deletion site asks the same question of both.
+    reflection_state: str = NOTES_ABSENT
 
     @property
     def notes_consumed(self) -> bool:
         """True when the notes file may be deleted without losing anything."""
         return self.notes_state in (NOTES_CARRIED, NOTES_EMPTY)
+
+    @property
+    def reflection_consumed(self) -> bool:
+        """True when `.session-reflected` may be deleted without losing anything:
+        its text reached the written handoff, or there was no text to carry.
+        Unreadable and undelivered are NOT consumed — the handoff is the only
+        carrier now (no archive), so deleting on either loses the reflection
+        permanently and silently."""
+        return self.reflection_state in (NOTES_CARRIED, NOTES_EMPTY, NOTES_ABSENT)
 
 
 class HandoffRender(NamedTuple):
@@ -1556,6 +1629,7 @@ class HandoffRender(NamedTuple):
     text: str
     notes_state: str
     rescue_state: str
+    reflection_state: str = NOTES_ABSENT
 
 
 def _read_handoff_notes(prawduct_dir: Path) -> tuple[str, str]:
@@ -1700,7 +1774,9 @@ def render_session_handoff(project_dir: Path) -> HandoffRender:
         # read, so it cannot be folded in, so writing would destroy content that
         # may be the previous agent's only forward context. Rendering stops here
         # and reports the state; the writer declines and narrates it.
-        return HandoffRender("", notes_state, rescue_state)
+        return HandoffRender(
+            "", notes_state, rescue_state, _unread_reflection_state(prawduct_dir)
+        )
     if rescued:
         sections.append("## Preserved: Hand-Authored Handoff")
         sections.append(
@@ -1747,17 +1823,27 @@ def render_session_handoff(project_dir: Path) -> HandoffRender:
             sections.append(f"**Current chunk**: {wip['current_chunk']}")
         sections.append("")
 
-    # 2. Session reflection (from .session-reflected, before it gets archived)
+    # 2. Session reflection (from .session-reflected). This handoff is the ONLY
+    #    thing that carries it across a boundary — `_boundary_close_session`
+    #    generates the handoff and then unlinks the file, and nothing archives it.
+    #    The state is returned, not inferred from the text: "there was no
+    #    reflection" and "the reflection could not be read" demand opposite
+    #    handling at the deletion site (kept vs. removed), exactly as the notes.
     reflected_path = prawduct_dir / ".session-reflected"
+    reflection_state = NOTES_ABSENT
     if reflected_path.is_file():
         try:
-            reflection = reflected_path.read_text().strip()
+            reflection = reflected_path.read_text(encoding="utf-8").strip()
+        except (UnicodeDecodeError, OSError):
+            reflection_state = NOTES_UNREADABLE
+        else:
             if reflection:
                 sections.append("## Previous Session Reflection")
                 sections.append(reflection)
                 sections.append("")
-        except Exception:  # prawduct:allow prawduct/broad-except -- handoff generation is best-effort
-            pass
+                reflection_state = NOTES_CARRIED
+            else:
+                reflection_state = NOTES_EMPTY
 
     # 3. Critic findings summary
     critic_summary = _summarize_critic_findings(prawduct_dir)
@@ -1793,7 +1879,23 @@ def render_session_handoff(project_dir: Path) -> HandoffRender:
     # Non-empty notes always push past header_len, so an empty render can never
     # coincide with notes pending — nothing is dropped by returning "".
     text = "\n".join(sections) + "\n" if len(sections) > header_len else ""
-    return HandoffRender(text, notes_state, rescue_state)
+    return HandoffRender(text, notes_state, rescue_state, reflection_state)
+
+
+def _unread_reflection_state(prawduct_dir: Path) -> str:
+    """The reflection's state on a render that returned before reading it: a
+    file that exists was NOT delivered; no file is simply absent."""
+    return (
+        NOTES_UNDELIVERED
+        if (prawduct_dir / ".session-reflected").is_file()
+        else NOTES_ABSENT
+    )
+
+
+def _undelivered(state: str) -> str:
+    """A carried input whose handoff was never written is undelivered; every
+    other state already says what happened to it."""
+    return NOTES_UNDELIVERED if state == NOTES_CARRIED else state
 
 
 def generate_session_handoff(project_dir: Path) -> HandoffResult:
@@ -1813,7 +1915,7 @@ def generate_session_handoff(project_dir: Path) -> HandoffResult:
     """
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     if not prawduct_dir.is_dir():
-        return HandoffResult(False, NOTES_ABSENT)
+        return HandoffResult(False, NOTES_ABSENT, NOTES_ABSENT)
 
     rendered = render_session_handoff(project_dir)
     notes_state = rendered.notes_state
@@ -1830,7 +1932,7 @@ def generate_session_handoff(project_dir: Path) -> HandoffResult:
             f"that file, then write forward notes to `.prawduct/{HANDOFF_NOTES_NAME}`."
         )
         return HandoffResult(
-            False, NOTES_UNDELIVERED if notes_state == NOTES_CARRIED else notes_state
+            False, _undelivered(notes_state), _undelivered(rendered.reflection_state)
         )
 
     if rendered.text:
@@ -1838,7 +1940,7 @@ def generate_session_handoff(project_dir: Path) -> HandoffResult:
             # Atomic: the next session's briefing reads this file, and a torn
             # handoff silently loses cross-session context.
             atomic_write_text(prawduct_dir / ".session-handoff.md", rendered.text)
-            return HandoffResult(True, notes_state)
+            return HandoffResult(True, notes_state, rendered.reflection_state)
         except Exception as exc:  # prawduct:allow prawduct/broad-except -- handoff write must never block clear
             # Fails soft, but never silent — degrading gracefully and narrating
             # false success are not the same thing. This half is the operator's:
@@ -1857,9 +1959,9 @@ def generate_session_handoff(project_dir: Path) -> HandoffResult:
                 file=sys.stderr,
             )
             return HandoffResult(
-                False, NOTES_UNDELIVERED if notes_state == NOTES_CARRIED else notes_state
+                False, _undelivered(notes_state), _undelivered(rendered.reflection_state)
             )
-    return HandoffResult(False, notes_state)
+    return HandoffResult(False, notes_state, rendered.reflection_state)
 
 
 def handoff_cmd(project_dir: Path, argv: list[str]) -> int:
@@ -1958,26 +2060,39 @@ def _check_previous_session_gates(project_dir: Path) -> list[str]:
     # baseline-diff probes below (STH-6Q9D) instead of each re-spawning git.
     status_output = gitstate.git_status_output(project_dir)
 
-    # Was there a previous session with changes?
+    # Was there a previous session with changes? Two readers, because the two
+    # gates at session end read two spans: the reflection gate reads the
+    # session's WORK span (base tree -> working tree, committed work included)
+    # and the Critic gate reads porcelain. An advisory that asked only porcelain
+    # would stay silent at session start about a committed session the
+    # reflection gate blocks at session end — the divergence the comment on
+    # Gate 2 below promises cannot happen.
     had_changes = gitstate.git_has_session_changes(project_dir, status_output)
-    if not had_changes:
+    span = gates.session_work_span(project_dir, status_output)
+    if not had_changes and not span["judgeable"]:
         return warnings
 
     # Honor any waivers the previous session declared (file is deleted right
     # after this check runs, so waivers never carry past the gate they covered).
     waivers = gates._read_gates_waived(prawduct_dir)
 
-    # Gate 1: Reflection (skipped for doc-only changes or when waived).
-    # "Doc-only" = no judgeable session change (the one predicate, via gates —
-    # kernel-v3 chunk 04).
-    doc_only = gates.session_changes_all_non_judgeable(project_dir, status_output)
-    if not doc_only and "reflection" not in waivers:
+    # Gate 1: Reflection — the SAME predicate cmd_stop's Gate 1 blocks on:
+    # judgeable code in the session's work span, and a reflection graded by
+    # SHAPE (`gates.reflection_shape`), never by a character count. "Doc-only"
+    # for THIS gate is the span's own judgeability answer.
+    if span["judgeable"] and "reflection" not in waivers:
         reflected_file = prawduct_dir / ".session-reflected"
         try:
-            if not reflected_file.is_file() or len(reflected_file.read_text().strip()) < 50:
-                warnings.append("reflection not captured")
+            text = reflected_file.read_text() if reflected_file.is_file() else ""
         except (UnicodeDecodeError, OSError):
+            text = ""
+        shaped, _missing = gates.reflection_shape(text)
+        if not shaped:
             warnings.append("reflection not captured")
+
+    # Gate 2's "doc-only" stays the porcelain answer, because the Critic gate
+    # it mirrors still reads porcelain (the span flip for that gate is #304's).
+    doc_only = gates.session_changes_all_non_judgeable(project_dir, status_output)
 
     # Gate 2: Critic review (only when building against an active plan).
     # STH-4F7C: delegates to the shared lib/gates.py session gate — the same

@@ -27,6 +27,8 @@ from pathlib import Path
 
 import pytest
 
+from conftest import SHAPED_REFLECTION
+
 from lib import briefing, gates, gitstate
 
 
@@ -543,15 +545,45 @@ class TestExtractCriticalRules:
 # generate_subagent_briefing
 # --------------------------------------------------------------------------- #
 class TestGenerateSubagentBriefing:
-    def test_writes_file_with_name_rules_and_learnings(self, tmp_path):
+    def test_writes_file_with_name_and_rules(self, tmp_path):
         pr = _prawduct(tmp_path)
         (pr / "project-state.yaml").write_text("product_identity:\n  name: Widget\n")
-        (pr / "learnings.md").write_text("# Learnings\n- be careful\n")
         briefing.generate_subagent_briefing(tmp_path)
         text = (pr / ".subagent-briefing.md").read_text()
         assert "# Subagent Briefing — Widget" in text
         assert "## Governance Rules" in text
-        assert "## Active Learnings" in text and "be careful" in text
+
+    def test_no_learnings_section_even_when_a_corpus_is_present(self, tmp_path):
+        """The rules are `.claude/rules/` files the harness loads for a subagent
+        too, so the briefing embeds no copy of them.
+
+        Both corpora are written, because "absent" has to hold against the file
+        the embedding used to read (`.prawduct/learnings.md`) AND against the
+        one rules live in now — a briefing that quietly re-pointed at the new
+        home would still be spending a subagent's context on a duplicate. The
+        positive assertions are what keep the two negatives honest: without them
+        a generator that wrote nothing at all would pass.
+        """
+        pr = _prawduct(tmp_path)
+        (pr / "project-state.yaml").write_text("product_identity:\n  name: Widget\n")
+        (pr / "artifacts").mkdir(exist_ok=True)
+        (pr / "artifacts" / "project-preferences.md").write_text(
+            "# Preferences\n\n- **Testing**: pytest-marker-xyz\n"
+        )
+        (pr / "learnings.md").write_text("# Learnings\n- legacy-corpus-marker\n")
+        rules = tmp_path / ".claude" / "rules" / "learnings"
+        rules.mkdir(parents=True)
+        (rules / "core.md").write_text("# Learnings — core\n\n### new-corpus-marker\n")
+
+        briefing.generate_subagent_briefing(tmp_path)
+        text = (pr / ".subagent-briefing.md").read_text()
+
+        assert "# Subagent Briefing — Widget" in text
+        assert "## Governance Rules" in text
+        assert "## Project Preferences" in text and "pytest-marker-xyz" in text
+        assert "## Active Learnings" not in text
+        assert "legacy-corpus-marker" not in text
+        assert "new-corpus-marker" not in text
 
     def test_no_prawduct_dir_is_noop(self, tmp_path):
         # project dir has no .prawduct -> returns without writing
@@ -759,10 +791,19 @@ class TestGenerateSessionHandoff:
 # --------------------------------------------------------------------------- #
 class TestCheckPreviousSessionGates:
     def _patch(self, monkeypatch, *, changes=True, doc_only=False, code=True,
-               waivers=None, build_plan=True):
+               waivers=None, build_plan=True, judgeable=None):
         # Stubs accept the optional status_output param (STH-6Q9D) the real
         # signatures gained — the gate now captures porcelain once and threads it.
         monkeypatch.setattr(briefing.gitstate, "git_has_session_changes", lambda d, s=None: changes)
+        # The reflection half reads the session's WORK span (the same helper
+        # cmd_stop's Gate 1 reads); by default it agrees with the porcelain
+        # stubs, and a test that wants the two to disagree says so.
+        if judgeable is None:
+            judgeable = bool(changes) and not doc_only
+        monkeypatch.setattr(
+            briefing.gates, "session_work_span",
+            lambda d, s=None: {"changed": ["x.py"] if judgeable else [], "judgeable": judgeable, "source": "base-tree"},
+        )
         monkeypatch.setattr(briefing.gates, "session_changes_all_non_judgeable", lambda d, s=None: doc_only)
         monkeypatch.setattr(briefing.gitstate, "git_has_code_changes", lambda d, s=None: code)
         monkeypatch.setattr(briefing.gates, "_read_gates_waived", lambda d: waivers or {})
@@ -798,21 +839,37 @@ class TestCheckPreviousSessionGates:
         self._patch(monkeypatch, waivers={"reflection": "n/a"}, build_plan=False)
         assert briefing._check_previous_session_gates(tmp_path) == []
 
-    def test_sufficient_reflection_no_warning(self, tmp_path, monkeypatch):
+    def test_shaped_reflection_no_warning(self, tmp_path, monkeypatch):
         pr = _prawduct(tmp_path)
-        (pr / ".session-reflected").write_text("x" * 60)
+        (pr / ".session-reflected").write_text(SHAPED_REFLECTION)
         self._patch(monkeypatch, build_plan=False)
         assert briefing._check_previous_session_gates(tmp_path) == []
 
+    def test_a_shapeless_sixty_characters_warns(self, tmp_path, monkeypatch):
+        """The advisory grades SHAPE, as the Stop gate does — sixty characters
+        with no expected/actual and no root-cause line passed the old floor and
+        blocks at session end, which is the advisory/gate divergence this pins."""
+        pr = _prawduct(tmp_path)
+        (pr / ".session-reflected").write_text("x" * 60)
+        self._patch(monkeypatch, build_plan=False)
+        assert "reflection not captured" in briefing._check_previous_session_gates(tmp_path)
+
+    def test_committed_work_with_clean_porcelain_still_warns(self, tmp_path, monkeypatch):
+        """A session that committed its code has clean porcelain and a non-empty
+        work span; the Stop gate blocks on the span, so the advisory must too."""
+        _prawduct(tmp_path)
+        self._patch(monkeypatch, changes=False, judgeable=True, build_plan=False)
+        assert "reflection not captured" in briefing._check_previous_session_gates(tmp_path)
+
     def test_build_plan_with_code_and_no_findings_warns_critic(self, tmp_path, monkeypatch):
         pr = _prawduct(tmp_path)
-        (pr / ".session-reflected").write_text("x" * 60)  # silence reflection gate
+        (pr / ".session-reflected").write_text(SHAPED_REFLECTION)  # silence reflection gate
         self._patch(monkeypatch, build_plan=True, code=True)
         assert "Critic review not recorded" in briefing._check_previous_session_gates(tmp_path)
 
     def test_critic_waiver_skips_critic_gate(self, tmp_path, monkeypatch):
         pr = _prawduct(tmp_path)
-        (pr / ".session-reflected").write_text("x" * 60)
+        (pr / ".session-reflected").write_text(SHAPED_REFLECTION)
         self._patch(monkeypatch, build_plan=True, code=True, waivers={"critic": "n/a"})
         assert briefing._check_previous_session_gates(tmp_path) == []
 
@@ -965,12 +1022,10 @@ class TestAssembleSessionBriefingSections:
             assert "old)" not in pointer and "just now" not in pointer
         assert "predates THIS session" in briefing._handoff_pointer(gone, continuation=True)
 
-    def test_learnings_and_backlog_counts(self, tmp_path):
+    def test_backlog_count(self, tmp_path):
         pr = self._state(tmp_path, "")
-        (pr / "learnings.md").write_text("# L\n- rule one\n- rule two\n")
         (pr / "backlog.md").write_text("# Backlog\n## Open\n- [A-1] one\n- [A-2] two\n")
         out = briefing.assemble_session_briefing(tmp_path, [])
-        assert "Learnings (2 rules): /prawduct:learnings <topic>" in out
         assert "Backlog: 2 pending (/prawduct:backlog to triage)" in out
 
     def test_backlog_excludes_resolved_section_and_strikethrough(self, tmp_path):
@@ -980,31 +1035,6 @@ class TestAssembleSessionBriefingSections:
         )
         out = briefing.assemble_session_briefing(tmp_path, [])
         assert "Backlog: 1 pending" in out
-
-    def test_learnings_entry_format_counts_headings(self, tmp_path):
-        # The documented format is one rule per `## ` entry; bullet counting
-        # alone reported 0 rules and silently dropped the Learnings line.
-        pr = self._state(tmp_path, "")
-        (pr / "learnings.md").write_text(
-            "# L\n\n## Rule one\n\nBody.\n\n## Rule two\n\nBody with\n- an inner bullet\n"
-        )
-        out = briefing.assemble_session_briefing(tmp_path, [])
-        assert "Learnings (2 rules)" in out  # headings win; inner bullet not counted
-
-    def test_learnings_size_nudge_over_threshold(self, tmp_path):
-        # MET-6W3J: every lookup reads the whole file — nudge when oversized.
-        pr = self._state(tmp_path, "")
-        big = "# L\n" + ("- rule\n" + "x" * 100 + "\n") * 500  # > 40KB
-        (pr / "learnings.md").write_text(big)
-        out = briefing.assemble_session_briefing(tmp_path, [])
-        assert "learnings.md is large" in out
-        assert "learnings-detail.md" in out  # the fix is taught, not just the size
-
-    def test_learnings_size_nudge_silent_under_threshold(self, tmp_path):
-        pr = self._state(tmp_path, "")
-        (pr / "learnings.md").write_text("# L\n- rule one\n- rule two\n")
-        out = briefing.assemble_session_briefing(tmp_path, [])
-        assert "learnings.md is large" not in out
 
     def test_claude_md_size_warning_over_threshold(self, tmp_path):
         self._state(tmp_path, "")
@@ -1057,6 +1087,162 @@ class TestAssembleSessionBriefingSections:
         ]})
         out = briefing.assemble_session_briefing(tmp_path, [])
         assert f"owner → {briefing.OWNER_ACTION_FALLBACK}" in out
+
+
+#: An advisory id is ``<feature>-<probe>-v<n>-<hash6>`` (lib/advisory_store.compute_id);
+#: a prawduct-internal requirement/defect id is ``ABC-1D2E``. Neither may appear in
+#: operator-emitted text (observability-strategy: "no prawduct-internal ids"), and the
+#: learnings directive is the surface most likely to grow one, because the thing it
+#: replaced WAS an advisory.
+_ID_SHAPES = (
+    re.compile(r"-v\d+-[0-9a-f]{6}\b"),
+    re.compile(r"\b[A-Z]{3}-[A-Z0-9]{4}\b"),
+)
+
+
+def _assert_no_ids(lines) -> None:
+    for line in lines:
+        for shape in _ID_SHAPES:
+            assert not shape.search(line), f"id-shaped token in operator text: {line}"
+
+
+class TestLearningsLayoutLine:
+    """The briefing's learnings block — three states, and a directive, not an advisory.
+
+    The failure this block exists to make loud: a repo on the pre-cutover layout
+    gets NO rules loaded by the harness, and to every session that reads exactly
+    like a repo which has none. So `legacy` says UNMIGRATED before it says
+    anything else, and the follow-up is an `agent →` directive with no id and no
+    dismiss key — an advisory would be dismissed once and then never seen again
+    by the sessions that most need it (audit §8.7).
+    """
+
+    def _state(self, tmp_path: Path) -> Path:
+        pr = _prawduct(tmp_path)
+        (pr / "project-state.yaml").write_text("product_identity:\n  name: P\n")
+        return pr
+
+    def _rules(self, tmp_path: Path) -> Path:
+        d = tmp_path / ".claude" / "rules" / "learnings"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def _learnings_lines(self, out: str) -> list[str]:
+        return [
+            ln for ln in out.splitlines()
+            if ln.startswith("Learnings:") or ln.startswith("agent →")
+        ]
+
+    def test_none_state_says_nothing(self, tmp_path):
+        self._state(tmp_path)
+        out = briefing.assemble_session_briefing(tmp_path, [])
+        assert self._learnings_lines(out) == []
+
+    def test_new_state_names_the_files_and_the_obligation(self, tmp_path):
+        self._state(tmp_path)
+        rules = self._rules(tmp_path)
+        (rules / "core.md").write_text("# core\n" + "x" * 3000)
+        (rules / "critic.md").write_text('---\npaths: ["plugin/skills/critic/**"]\n---\n# c\n')
+        (rules / "gates.md").write_text('---\npaths: ["plugin/bin/**"]\n---\n# g\n')
+        out = briefing.assemble_session_briefing(tmp_path, [])
+        lines = self._learnings_lines(out)
+        assert lines == [
+            "Learnings: core.md (3KB) + 2 area files — loaded by the harness; "
+            "rules apply, cite the one you applied"
+        ]
+        _assert_no_ids(lines)
+
+    def test_one_area_file_is_singular(self, tmp_path):
+        self._state(tmp_path)
+        rules = self._rules(tmp_path)
+        (rules / "core.md").write_text("# core\n")
+        (rules / "one.md").write_text("# one\n")
+        out = briefing.assemble_session_briefing(tmp_path, [])
+        assert "+ 1 area file —" in out
+
+    def test_legacy_state_says_unmigrated_and_directs(self, tmp_path):
+        pr = self._state(tmp_path)
+        (pr / "learnings.md").write_text("# L\n\n## a rule\n")
+        out = briefing.assemble_session_briefing(tmp_path, [])
+        lines = self._learnings_lines(out)
+        assert lines[0] == "Learnings: UNMIGRATED — not loaded"
+        directive = lines[1]
+        # The whole recipe, in order: propose, edit, apply, commit — and the
+        # "before other work" that makes it a directive rather than a suggestion.
+        assert directive.startswith("agent → run prawduct-hook learnings-migrate --propose-map")
+        assert "--apply --map <file>" in directive
+        assert 'chore(learnings): migrate to .claude/rules/learnings (prawduct ' in directive
+        assert directive.endswith("— before other work")
+        _assert_no_ids(lines)
+
+    def test_the_directive_carries_no_dismiss_route(self, tmp_path):
+        # An advisory offers `/prawduct:advisory dismiss <id>`; this must not.
+        pr = self._state(tmp_path)
+        (pr / "learnings.md").write_text("# L\n\n## a rule\n")
+        out = "\n".join(self._learnings_lines(briefing.assemble_session_briefing(tmp_path, [])))
+        assert "dismiss" not in out
+
+    def test_both_state_keeps_the_layout_line_and_adds_the_fold(self, tmp_path):
+        pr = self._state(tmp_path)
+        (pr / "learnings.md").write_text("# L\n\n## a rule\n")
+        rules = self._rules(tmp_path)
+        (rules / "core.md").write_text("# core\n")
+        out = briefing.assemble_session_briefing(tmp_path, [])
+        lines = self._learnings_lines(out)
+        assert lines[0].startswith("Learnings: core.md (")
+        # The re-run comes first: an interrupted `--apply` leaves exactly this
+        # shape on purpose, and after a write that failed partway the rules that
+        # never landed exist ONLY in the legacy file — so "delete it" as the
+        # opening instruction is the destructive reading.
+        assert lines[1] == (
+            "agent → if a `learnings-migrate --apply` was interrupted, re-run it — it "
+            "recognises and finishes a half-written tree; otherwise fold "
+            ".prawduct/learnings.md into .claude/rules/learnings/ by hand and delete it"
+        )
+        _assert_no_ids(lines)
+
+    def test_gitignored_rules_tree_is_named(self, tmp_path):
+        # The harness still loads the tree; nothing survives a clone. Invisible
+        # until someone clones, which is why the briefing says it every session.
+        _init_git_repo(tmp_path)
+        self._state(tmp_path)
+        (tmp_path / ".gitignore").write_text(".claude/\n")
+        rules = self._rules(tmp_path)
+        (rules / "core.md").write_text("# core\n")
+        out = briefing.assemble_session_briefing(tmp_path, [])
+        line = self._learnings_lines(out)[0]
+        assert line.endswith(
+            " — GITIGNORED: the rules tree is not committed; unignore .claude/rules/"
+        )
+
+    def test_tracked_rules_tree_carries_no_gitignored_suffix(self, tmp_path):
+        _init_git_repo(tmp_path)
+        self._state(tmp_path)
+        rules = self._rules(tmp_path)
+        (rules / "core.md").write_text("# core\n")
+        out = briefing.assemble_session_briefing(tmp_path, [])
+        assert "GITIGNORED" not in out
+
+    def test_gitignored_suffix_also_fires_in_the_both_state(self, tmp_path):
+        _init_git_repo(tmp_path)
+        pr = self._state(tmp_path)
+        (pr / "learnings.md").write_text("# L\n\n## a rule\n")
+        (tmp_path / ".gitignore").write_text(".claude/\n")
+        rules = self._rules(tmp_path)
+        (rules / "core.md").write_text("# core\n")
+        lines = self._learnings_lines(briefing.assemble_session_briefing(tmp_path, []))
+        assert "GITIGNORED" in lines[0]
+        assert lines[1].startswith("agent → if a `learnings-migrate --apply` was interrupted")
+
+    def test_an_unreadable_tree_never_blocks_session_start(self, tmp_path, monkeypatch):
+        self._state(tmp_path)
+        monkeypatch.setattr(
+            briefing.learnings_files, "resolve",
+            lambda d: (_ for _ in ()).throw(OSError("boom")),
+        )
+        out = briefing.assemble_session_briefing(tmp_path, [])
+        assert "== SESSION BRIEFING ==" in out
+        assert self._learnings_lines(out) == []
 
 
 class TestAdvisoryRelayDirective:

@@ -4,8 +4,11 @@ The aggregation contract: per role × model × mode (and overall) — review
 count, total/median duration, findings by severity, actionable rate,
 findings-per-review; a findings-by-file rollup from per-finding ``files``
 attribution; per-``scope`` rollups. Skips are COUNTED, never silent: corrupt
-lines, non-``review.*`` event kinds (forward-compat with future producers),
-and unusable payloads each have their own counter pinned here.
+lines, event kinds it aggregates neither of (forward-compat with future
+producers), and unusable payloads each have their own counter pinned here.
+The ``learning.*`` kinds are TALLIED rather than skipped — they were bucketed
+under ``unknown_kinds`` while nothing read them, and the block that reads them
+is pinned below.
 
 The ``--json`` shape is the stable machine contract TEL-7A4X builds on, so
 its keys are pinned exactly — a key change must consciously bump
@@ -295,9 +298,13 @@ class TestJsonSchemaStability:
         assert list(report) == [
             "schema_version", "project", "generated_at", "events_total",
             "skipped", "overall", "by_role_model_mode", "by_scope",
-            "top_files", "files_attributed_total",
+            "top_files", "files_attributed_total", "learning",
         ]
-        assert report["schema_version"] == 1
+        # 1 -> 2 when the `learning` block arrived. A key change, so the
+        # version moves with it — that is the whole contract this class exists
+        # to hold, and a silent add would break TEL-7A4X's consumers quietly.
+        # 2 -> 3 on 2026-09-03: `learning` gained `units_uncited` (a key change).
+        assert report["schema_version"] == 3
         assert report["project"] == "repo"
 
     def test_group_entry_keys_pinned(self, tmp_path):
@@ -314,3 +321,135 @@ class TestJsonSchemaStability:
         assert list(report["by_role_model_mode"][0]) == ["role", "model", "mode", *stat_keys]
         assert list(report["by_scope"][0]) == ["scope", *stat_keys]
         assert list(report["top_files"][0]) == ["path", "actionable_findings", "findings"]
+
+
+def _learning(
+    *, kind: str = "learning.written", unit: str | None = "h1",
+    file: str = ".claude/rules/learnings/core.md", review_id: str | None = None,
+) -> dict:
+    payload: dict = {"file": file, "session": "2026-09-02T00:00:00Z",
+                     "review_id": review_id}
+    if unit is not None:
+        payload["unit_hash"] = unit
+    return {
+        "schema_version": 1, "event": kind, "ts": "2026-09-02T00:00:00Z",
+        "duration_seconds": None, "project": "p", "scope": None, "chunk": None,
+        "actor": {"role": "builder", "model": None},
+        "git": {"head": None, "base": None},
+        "learning": payload,
+    }
+
+
+class TestLearningLoopBlock:
+    """The reader the two learning events were produced for.
+
+    A channel produced and never consumed is a defect, not an inefficiency —
+    these events spent their first release counted as `unknown_kinds`, which is
+    indistinguishable from a kind nobody ever wired up.
+    """
+
+    def test_counts_events_and_distinct_rules(self, tmp_path):
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [
+            _learning(unit="h1"),
+            _learning(unit="h1"),                       # same rule, second session
+            _learning(unit="h2"),
+            _learning(kind="learning.fired", unit="h1", review_id="rev-1"),
+        ])
+        report = json.loads(_run(repo, "--json").stdout)
+        assert report["learning"] == {
+            "written": 3, "fired": 1, "units_written": 2, "units_fired": 1,
+            "units_uncited": 1,
+        }
+        # Tallied, not skipped — the defect this block closes.
+        assert report["skipped"]["unknown_kinds"] == 0
+        # ...and NOT folded into the review count, which means reviews.
+        assert report["events_total"] == 0
+
+    def test_uncited_is_a_set_difference_not_a_size_difference(self, tmp_path):
+        """A rule can FIRE without ever being WRITTEN — every rule authored
+        before the emitter shipped does — so the two sets are not nested, and
+        on a migrated fleet repo they are disjoint. A size subtraction clamped
+        at zero read 0 there forever; the true count is the written set minus
+        the fired set. Found live on this repo's own ledger (2 written, 3
+        fired, disjoint, printed 0)."""
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [
+            _learning(unit="w1"), _learning(unit="w2"),
+            _learning(kind="learning.fired", unit="f1", review_id="rev-1"),
+            _learning(kind="learning.fired", unit="f2", review_id="rev-1"),
+            _learning(kind="learning.fired", unit="f3", review_id="rev-1"),
+        ])
+        report = json.loads(_run(repo, "--json").stdout)
+        assert report["learning"]["units_written"] == 2
+        assert report["learning"]["units_fired"] == 3
+        assert report["learning"]["units_uncited"] == 2
+        assert "2 written rule(s) no review has cited" in _run(repo).stdout
+
+    def test_zeros_when_the_ledger_holds_none(self, tmp_path):
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_event()])
+        report = json.loads(_run(repo, "--json").stdout)
+        assert report["learning"] == {
+            "written": 0, "fired": 0, "units_written": 0, "units_fired": 0,
+            "units_uncited": 0,
+        }
+
+    def test_zeros_when_there_is_no_ledger_at_all(self, tmp_path):
+        """The missing-ledger branch builds the block by hand, so it is a
+        second place the key set can drift from the reader's."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / ".prawduct").mkdir()
+        report = json.loads(_run(repo, "--json").stdout)
+        assert report["learning"] == {
+            "written": 0, "fired": 0, "units_written": 0, "units_fired": 0,
+            "units_uncited": 0,
+        }
+
+    def test_a_corrupt_learning_line_is_still_corrupt(self, tmp_path):
+        repo = tmp_path / "repo"
+        _write_ledger(repo, ["{not json", _learning()])
+        report = json.loads(_run(repo, "--json").stdout)
+        assert report["skipped"]["corrupt_lines"] == 1
+        assert report["learning"]["written"] == 1
+
+    def test_a_learning_event_with_no_unit_hash_is_an_invalid_payload(self, tmp_path):
+        """Never a silent drop: such an event can answer none of the four
+        questions, so it is named the way an unusable review payload is."""
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_learning(unit=None), _learning(unit="   ")])
+        report = json.loads(_run(repo, "--json").stdout)
+        assert report["skipped"]["invalid_payloads"] == 2
+        assert report["learning"]["written"] == 0
+
+    def test_an_unrecognised_learning_kind_stays_an_unknown_kind(self, tmp_path):
+        """Exact kinds, not a `learning.` prefix: a future kind with no column
+        here must surface rather than be folded into `written`."""
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_learning(kind="learning.retired")])
+        report = json.loads(_run(repo, "--json").stdout)
+        assert report["skipped"]["unknown_kinds"] == 1
+        assert report["learning"]["written"] == 0
+
+    def test_the_review_block_is_unaffected(self, tmp_path):
+        """The control. A reader that swallowed learning events into the review
+        path would satisfy every assertion above and break the report."""
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_event(duration=50), _learning(), _event(duration=70)])
+        report = json.loads(_run(repo, "--json").stdout)
+        assert report["events_total"] == 2
+        assert report["overall"]["reviews"] == 2
+        assert report["overall"]["duration_total_seconds"] == 120
+        assert report["learning"]["written"] == 1
+
+    def test_the_human_rendering_names_the_uncited_rules(self, tmp_path):
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [
+            _learning(unit="h1"), _learning(unit="h2"), _learning(unit="h3"),
+            _learning(kind="learning.fired", unit="h1", review_id="rev-1"),
+        ])
+        out = _run(repo).stdout
+        assert "learning loop:" in out
+        # The DIFFERENCE, computed for the reader: 3 written, 1 cited.
+        assert "2 written rule(s) no review has cited" in out

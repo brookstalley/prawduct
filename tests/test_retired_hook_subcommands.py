@@ -299,20 +299,56 @@ class TestTheInertTierIsEphemeralWorktreeSafe:
     everywhere" true. Without it the two hook-invoked members reproduce the exact
     session-start hook error they were restored to remove, in the one environment
     prawduct itself creates. `regen-views` and `stamp-merged` carried the same
-    gap and the same false docstring claim, so all four are pinned together —
-    one classification, not four decisions.
+    gap and the same false docstring claim, so they are pinned together — one
+    classification, not one decision per command.
+
+    The three learnings verbs arrived from `_EPHEMERAL_APPLY_GATED_COMMANDS`,
+    which is the trap that makes this pin worth more than its size: an
+    apply-gated entry says "this writes under `--apply`", so an emptied
+    `audit-learnings --apply` would still have been refused with exit 1 inside a
+    disposable worktree — and a Critic reviewer, dispatched into exactly such a
+    worktree, is a caller that would meet it.
     """
 
-    INERT_TIER = ("build-index", "user-prompt-submit", "regen-views", "stamp-merged")
+    INERT_TIER = (
+        "build-index",
+        "user-prompt-submit",
+        "regen-views",
+        "stamp-merged",
+        "audit-learnings",
+        "learnings-obligation",
+        "check-learnings-pairing",
+    )
+
+    def _set_block(self, name: str) -> str:
+        source = _HOOK.read_text()
+        block = source.split(f"{name} = frozenset", 1)[1].split("})", 1)[0]
+        assert block.count('"') >= 4, f"{name} parsed as fewer than two entries"
+        return block
 
     def test_every_inert_command_is_ephemeral_safe(self) -> None:
-        source = _HOOK.read_text()
-        block = source.split("_EPHEMERAL_SAFE_COMMANDS = frozenset", 1)[1].split("})", 1)[0]
+        block = self._set_block("_EPHEMERAL_SAFE_COMMANDS")
         for command in self.INERT_TIER:
             assert f'"{command}"' in block, (
                 f"`{command}` is inert but missing from _EPHEMERAL_SAFE_COMMANDS "
                 f"— the fail-closed guard would refuse it with exit 1 inside a "
                 f"disposable worktree"
+            )
+
+    def test_no_inert_command_is_still_apply_gated(self) -> None:
+        """Membership in the safe set does not undo membership in the other one.
+
+        `_ephemeral_command_writes` checks the safe set first, so an entry left
+        behind in `_EPHEMERAL_APPLY_GATED_COMMANDS` is inert today — and that is
+        exactly why it survives review. It is a standing claim that the command
+        writes under `--apply`, and the next reader of either set believes it.
+        """
+        block = self._set_block("_EPHEMERAL_APPLY_GATED_COMMANDS")
+        for command in self.INERT_TIER:
+            assert f'"{command}"' not in block, (
+                f"`{command}` is inert but still listed in "
+                f"_EPHEMERAL_APPLY_GATED_COMMANDS, which says it writes under "
+                f"`--apply` — it has no `--apply` left to honour"
             )
 
 

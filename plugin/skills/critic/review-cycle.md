@@ -91,7 +91,7 @@ Every consolidated review appends a **fact** to the shared evidence store (`<git
 
 `uncovered` caused only by the **base advancing** transfers instead of buying a round, at BOTH gates: `coverage.diagnose_base_advance_transfer` grants it when the branch's own diff is byte-identical across both spans and a suite run has met the tree that gate vouches for. A denial on that condition alone says so: the remedy is a run, not a review.
 
-**Prep work before invoking cumulative.** A cumulative review takes ~4-10 minutes. Before invoking it, complete prep that doesn't depend on its findings — `/prawduct:learnings` for next topics, draft the PR description, audit the backlog, capture deferred reflections — so you integrate findings the moment it returns. This prep is also what keeps the wait cheap: a session that idles silently while reviewers run lets its prompt cache expire and re-reads its whole context when they land. If the prep runs out before the review does, emit a one-line progress note at least every 4 minutes rather than going quiet.
+**Prep work before invoking cumulative.** A cumulative review takes ~4-10 minutes. Before invoking it, complete prep that doesn't depend on its findings — `.claude/rules/learnings/` for next topics, draft the PR description, audit the backlog, capture deferred reflections — so you integrate findings the moment it returns. This prep is also what keeps the wait cheap: a session that idles silently while reviewers run lets its prompt cache expire and re-reads its whole context when they land. If the prep runs out before the review does, emit a one-line progress note at least every 4 minutes rather than going quiet.
 
 ### Verify-resolutions anchoring and demotion
 
@@ -299,7 +299,7 @@ from here.
 
 **Which writes are free while a review is in flight** — the question the builder actually has
 mid-review, answered by `coverage_algebra.is_judgeable_path`. Free: **everything under
-`.prawduct/`** (change-log, backlog, learnings, `project-state.yaml`, plan prose including its
+`.prawduct/`** (change-log, backlog, `project-state.yaml`, plan prose including its
 `## Status` boxes, and the gitignored session files), `.claude/settings.json`, and `.md` outside the protected
 set — README, `docs/**`, product prose. These are **non-judgeable**: a commit touching only those
 composes as a free edge, so it never needs new coverage and a fix confined to them cannot mandate
@@ -335,15 +335,15 @@ are ACCEPTs, and saying so takes a clause each.
 
 ## Final-Mode Cross-Checks
 
-After the goal-based review in `final` mode, run two additional passes that `chunk` mode skips. **`final`/`cumulative` is the owner of both cross-checks** — the PR reviewer does not re-run them (see `skills/pr/review-protocol.md`), so each runs once per PR:
+**`final`/`cumulative` is the owner of both cross-checks** — the PR reviewer does not re-run them (see `skills/pr/review-protocol.md`), so each runs once per PR:
 
 ### Learnings Cross-Check
 
-Scan your findings against active learnings. If a change reintroduces a pattern `.prawduct/learnings.md` explicitly warns against, escalate severity — tolerating regression undoes the learning. Conversely, if learnings reference patterns the changed code handles correctly, no finding is needed.
+Scan your findings against the rules the session actually had in context: `.claude/rules/learnings/core.md` plus each area file whose `paths:` intersect the diff. Read that list — `prawduct-hook learnings-files --for-diff` prints it — never guess at globs; an area file the harness loaded and no reviewer opened is this cross-check going dark. If a change reintroduces a pattern one of those rules warns against, escalate severity — tolerating regression undoes the learning. When a finding rests on a rule, quote that rule's opening words in the finding, so the citation is countable.
 
-**Learnings are ordered, not infallible — the later one wins.** Rules are undated `##` headings; the file is append-only, so **position is the ordering signal — later in the file is later in time**. Do not hunt for timestamps, and do not treat a date mentioned in a narrative body as the rule's own date. Two entries can disagree: a later rule may revoke an earlier one outright, narrow its scope, or soften it from a prohibition to a preference. When they conflict, the **later** rule governs, and a change conforming to it is not a regression no matter what the earlier rule says — do not escalate against a superseded rule.
+**Learnings are ordered, not infallible — the later one wins.** Rules are undated units — a `##`/`###` heading or a top-level bullet — and each file is append-only, so **position within a file is the ordering signal**; do not hunt for timestamps. A later rule may revoke an earlier one, narrow it, or soften it to a preference. Two outputs, kept apart: against the *change*, no finding — a change conforming to the later rule is not a regression; against the *corpus*, when the supersession is implicit rather than stated, a **NOTE** naming both rules, because the stale one reads as live to the next reviewer. Only the second produces a finding.
 
-Two different outputs, so keep them apart. Against the *change*: no finding. Against the *learnings file*, when the supersession is implicit rather than stated: a **NOTE** naming both entries, because the stale rule reads as live to the next reviewer and to every product that inherits the file. The second is about the record, not the code, and it is the only case here that produces a finding at all.
+**Rules added or changed this cycle get their own pass** — a duplicate of one already in the corpus, the wrong area file (globs that miss the code it governs, or parked in `core.md` where every session pays), or discipline/framework content belonging upstream in the methodology? Each is a **NOTE** naming the rule and which of the three.
 
 ### Backlog Reconciliation
 
@@ -367,32 +367,33 @@ These flag; they never adjudicate whether an item "really" closed (the builder's
 
 ### Record-Lint — the checks the machine already ran
 
-`prawduct-hook critic-begin` runs a deterministic pass over the changed **records** (markdown; the
-archive excluded) and writes the result into the dispatch manifest as `record_lint`. Read it. Do not
+`prawduct-hook critic-begin` runs a deterministic pass over the changed **records** and writes the result into the dispatch manifest as `record_lint`. Read it. Do not
 re-derive any of it, and do not recount anything it counted — re-deriving a machine-checked number
 is how a record defect buys a review round, which is the cost this exists to remove.
 
-The suite-total tripwire reads only the lines a change **added**, so a change-log with years of
-history in it reports on the entry just written and nothing else. Severity per check:
+Severity per check:
 
 | `check` | Means | Severity |
 |---|---|---|
 | `chunk-ref-missing` | A deliverable the reviewed chunk *declares* does not exist | **BLOCKING** |
 | `governed-by-gap` | A plan disposes of fewer norms than the cited artifact's `## Direction` carries, or cites an artifact that does not exist | **WARNING** (Goal 2 — the paperwork arm below) |
-| `suite-total-claim` | A suite-total test claim in durable prose — the store already records pass/fail per tree | **NOTE** |
-| `learnings-entry-shape` | A `learnings.md` entry carrying its evidence (rule over 400 chars) or a narrative body — both belong in `learnings-detail.md` | **NOTE** |
+| `suite-total-claim` | A suite-total test claim on an **added** line of durable prose — the store already records pass/fail per tree | **NOTE** |
+| `learnings-over-budget` | A `.claude/rules/learnings/` file over budget **and grown since the base tree** (sizes, not lines) | **BLOCKING** |
+| `learnings-budget-unreasoned` | A `learnings_budgets:` entry with no `reason:` | **BLOCKING** |
+| `learnings-area-dead` | An area file whose `paths:` globs match no tracked file | **WARNING** |
 
 **Under the coordinator pattern, whoever holds Goal 2 raises every one of these** — including the
 `suite-total-claim` NOTE, which would otherwise sit in Goal 4. The manifest is named in Goal 2 and
 only that reviewer reads it, so splitting the findings by their natural goal loses them.
 
-**The severities above are the other three modes'.** In `verify-resolutions` only `chunk-ref-missing`
-stays a finding; the WARNING and NOTE rows become observations like anything else rated below
-BLOCKING (see "A re-review does not manufacture work"). A record defect on a fix delta is precisely
-the non-gating work that buys the next round, so the general rule is not suspended for this table.
+**The severities above are the other three modes'.** In `verify-resolutions` only the **BLOCKING** rows
+stay findings; the WARNING and NOTE rows become observations like anything else rated below
+BLOCKING (see "A re-review does not manufacture work" — the general rule is not suspended for this
+table).
 
-**`unchecked` is not a pass, and the PREFIX decides the severity.** Each entry names a check that
-could not run, or an assumption made in place of one — told apart by the string, not by judgment.
+**`unchecked` is not a pass: an entry inherits one step below its check's severity** — BLOCKING
+→ **WARNING**, else **NOTE**. Each entry names a check that could not run, or an assumption made
+in place of one; the prefixes below are the exceptions.
 **A severity with no remedy is a false blocker**, and code, not the builder, decides a line's shape:
 
 - **`chunk-ref-missing unchecked — …` → BLOCKING.** A deliverable check that could not run is
@@ -402,15 +403,15 @@ could not run, or an assumption made in place of one — told apart by the strin
   deliverable check's severity, not as a generic NOTE.
 - **`chunk-ref-missing no-subject — …` → NOTE.** The scope names no plan *and* the change-log
   declares that scope: real, and deliberately plan-less — the ordinary shape of a framework-only fix,
-  which `building.md` says needs no plan. Nothing was skipped; there is no deliverable set to grade,
-  and no edit could clear it. A typo'd scope is declared nowhere and still arrives `unchecked`.
+  which `building.md` says needs no plan. Nothing was skipped and no edit could clear it. A typo'd scope is declared nowhere and still arrives `unchecked`.
 - **`chunk-ref-missing graded chunk … of <plan>: …` → NOTE.** An *assumption*, not a failure: the
   check ran (`chunk_graded` non-null), but one half of "whose deliverables" was inferred — the
   **chunk** inferred from build-plan Status (which names the first UNCHECKED chunk, so possibly the next one),
   or the **plan** from the `active_build_plan` pointer because the dispatch carried no scope. The
   line names which fired. Either means **no answer about this diff**, not clean; a branch that builds
   no chunk has no `--chunk` to supply.
-- **Every other `unchecked` entry → NOTE**, still stated in your summary.
+- **Every other entry takes the inherited severity above** — BLOCKING → WARNING, else NOTE — and
+  is stated either way.
 
 `goals-1-3.md` carries this same rule for the modes that read only that file; the two must agree.
 
@@ -427,8 +428,6 @@ is, so a subject and its tally can no longer disagree.
 Record-lint is **advice**: it reports to the builder and gates nothing. Its findings are yours to
 raise at the severities above, and its per-check counts ride into the review fact so the control's
 own yield stays measurable — which is also how a check that never catches anything gets retired.
-Two checks (`dangling-ref`, `unknown-backlog-id`) were built, measured at zero true positives, and
-removed before this shipped.
 
 ### Governing-Artifact Reconciliation
 
@@ -482,7 +481,7 @@ Every review cycle must produce a record — governance without an audit trail i
 
 ### The Governance-Event Ledger
 
-The ledger (`.prawduct/.governance-ledger.jsonl`, gitignored) is the append-only telemetry history: `critic-consolidate` appends one `review.critic` event per consolidated review (the PR skill appends `review.pr` the same way). `prawduct-hook ledger-append` is the **single writer** — it validates the record and computes the envelope; agents never hand-author JSONL. No gate reads the ledger; `prawduct-hook review-stats` aggregates it.
+The ledger (`.prawduct/.governance-ledger.jsonl`, gitignored) is the append-only telemetry history: `critic-consolidate` appends one `review.critic` event per consolidated review (the PR skill appends `review.pr` the same way). `lib.ledger` is the **single writer** (`ledger-append` for reviews, in-process for `learning.*`) — it validates the record and computes the envelope; agents never hand-author JSONL. No gate reads it; `review-stats` aggregates it.
 
 Its `scope` comes from the dispatch manifest, where `critic-begin` recorded it — **derived in code** from the branch name matched against the scopes build plans declare, or passed explicitly as an override. `active_build_plan` is only the last fallback. Do not derive scope yourself and pass it: an agent reading that pointer is what attributed manifests, review facts and ledger events to unrelated plans.
 

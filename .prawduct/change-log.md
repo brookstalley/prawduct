@@ -3,6 +3,101 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-09-03: learnings v2 docs — the guides say what the code does; the discipline corpus has a home; the program ships
+
+<!-- prawduct: type=feat | scope=learnings-v2-docs -->
+
+Wave 3 of the learning-system v2 program (#744; plan `build-plan-learnings-v2-docs.md`, serial).
+**Chunk 01 (R8, D2):** `methodology/reflection.md` rewritten to the four-route write path (episode /
+product rule with its instance inline / upstream friction / portable discipline not written) with the
+budget's payment rule and the lifecycle whose end state is a deletion; 5,003 → 2,780 tokens. The
+standing-block specification moved verbatim to the new `methodology/session-hygiene.md` (2,811
+tokens) with its own `/prawduct:methodology session-hygiene` topic at all four routing sites; every
+pin that named `reflection.md` as the carrier repointed; the lifecycle and cross-reference pins
+renegotiated to the rules directory; `docs/norms.md` stops naming `learnings.md`; the single-resolver
+allowlist is at its end state (`learnings_migrate.py` and `prawduct-hook`, both `none`). **Chunk 02
+(R10, R13):** one digest bullet — auto-memory holds no project state or product rules — raised both
+injected ceilings by declaration (+33 each; 9,455 of 10,000 characters); `api-contract.md` records
+`learnings-migrate` and `learnings-files`, the stable-tier footing of the latter, and the program's
+contract change in one paragraph, and its inert-tier count is relational; review-cycle's ordering
+rule states a rule unit from the writer (`rule_units`: a heading or a top-level bullet) and drops
+the stale narrative-body clause (net -5). **Chunk 03 (R12):** `docs/discipline.md` — ten rows, seven
+already homed; row 7 is a Goal 2 bullet in both protocol files (goals-1-3 and review-protocol raised by
+declaration; the removal-is-repo-wide row re-homed on Goal 4's existing drift bullet after the
+PR-boundary review found it re-owned that subject), row 1's clause extends `_GREEN_IS_EVIDENCE_DIRECTIVE`, row 9
+is one sentence in the post-fix step; `tests/test_discipline_table.py` pins each row against its
+surface and the two protocol files against each other. **Chunk 04:** the program's cumulative review
+and the PR to `develop`; at the base sync one rule develop had added to the legacy `learnings.md` was ported into
+`core.md` with its instance inline, and `learnings_budgets.core.md` was declared at 99 KB — just above the corpus, so the next addition pays — with its reason (the
+migrated corpus is over the default by construction; the port, not new authoring, is what the raise covers). **Chunk 05:** the release (version framed for the owner; the three learnings
+gate rows carry `since: 3.5.0`).
+
+Closes the program for #685 (the reflection gate), #347 (reflection.md's two stale limbs), #295 (the
+memory triple-track converges on `.session-reflected` + the rules files), and Wave 2's #661 by
+deletion; #343 gets its first entry (R12) and stays open for the mechanical-promotion half — its ruling's (a) read-at-query-time and (b) distinct-store halves stand as `docs/discipline.md` plus the surfaces it names, while (c)'s named reader `/prawduct:learnings` retired with the lookup model (audit §3.2); #304
+stays open holding the Critic gate's span flip.
+
+## 2026-09-02: learnings v2 delete — the lookup, audit and archive mechanisms retired; the reflection gate fires on the common case; the loop measures itself
+
+<!-- prawduct: type=feat | scope=learnings-v2-delete -->
+
+Wave 2 of the learning-system v2 program (#744; plan `build-plan-learnings-v2-delete.md`, five
+chunks, four opus delegates in isolated worktrees, one merged `final` review). **Chunk 01:**
+`audit-learnings`, `learnings-obligation` and `check-learnings-pairing` are deprecated-inert stubs
+(exit 0, stderr `WARNING:`, nothing written — the `regen-views` shape, pinned in
+`test_deprecated_inert_commands.py`) per the api-contract deprecation norm rather than dispatcher
+deletions; their modules (2,107 lines) and tests (4,222 lines) are deleted, with the record-lint
+`learnings-entry-shape` check, the `sentinel_command` template key, and doctor's checks 13/13a and
+audit flow. **Chunk 02:** the `/prawduct:learnings` skill, the `reflections.md` archive and its
+provenance header, the `.subagent-briefing.md` learnings embedding, and every instruction site
+(planning/building/reflection guides, the digest, pr/methodology/doctor skills, README, CLAUDE.md)
+are deleted or rewritten to the harness-loaded model; the single-resolver allowlist shrinks to four
+entries. **Chunk 03 (#685):** the Stop hook's reflection gate reads `gates.session_work_span` (base
+tree → working tree; porcelain when the marker is missing) and grades shape via
+`gates.reflection_shape` (expected/actual + root cause or "no defect"); the plan conjunct and the
+50-character floor are gone; the Critic gate keeps its porcelain guard (#304 holds that flip). The
+merge-only false fire is measured by a real `git merge` in `test_reflection_gate.py` and costs two
+lines once. The session-start advisory in `briefing.py` reads the same span and shape. **Chunk 04:**
+`learning.written` (Stop, one per new rule unit, idempotent by session+file+hash) and
+`learning.fired` (`critic-consolidate`, a finding containing a unit's opening eight words, joined
+by review id) — `lib.ledger` stays the one writer and the CLI refuses `learning.*`; a rule unit is a
+`##`/`###` heading or top-level bullet, hashed by `learnings_files.unit_hash`; units under three
+words cannot fire. This repo's core.md: 288 units, 288 distinct hashes. **Chunk 05:** the grep-clean
+re-derivation `grep -rnE "audit_learnings|learnings_obligation|learnings_pairing|learnings-entry-shape|_check_learnings_shape|prawduct:learnings|reflections\.md|reflection_provenance|sentinel_command|sentinel_ungraded|Active Learnings|learning_families" plugin tests README.md CLAUDE.md documentation .prawduct/cross-cutting-concerns.md .prawduct/artifacts .claude/rules/learnings`
+(widened after the review found the two governing corpora outside the first sweep) returns only the three stubs, plan/discovery/audit prose recording the retirement, test assertion strings that guard the absence, one budget-ledger
+comment, and `plugin/CHANGELOG.md` / `documentation/issues/` history.
+
+Token ceilings moved by declaration in Chunk 03 (`building.md` 4757→4788, digest framework
+3198→3214 / product 2086→2101: the gate's predicate changed on the one surface every session
+receives) and were ratcheted down by Chunks 01/02 (`review-cycle.md` 9600→9597 net of Chunk 04's
+citation sentence; `goals-1-3.md` 2280→2278). `learning.written` and the budget gate both read
+`gates.session_work_span` rather than the porcelain list, so a rule written AND committed in one
+turn is charged and recorded at that turn's Stop — one span, because the ceiling question and the
+written question are the same comparison against the same base.
+
+## 2026-09-02: learnings v2 core — the corpus moves to `.claude/rules/learnings/`, loaded by the harness
+
+<!-- prawduct: type=feat | scope=learnings-v2-core -->
+
+Wave 1 of the learning-system v2 program (#744; discovery `learning-system-v2-discovery.md`).
+The plugin stops re-reading `.prawduct/learnings.md` into context through a lookup skill and
+lets the harness load `.claude/rules/learnings/core.md` (every session) plus `<area>.md` files
+whose `paths:` frontmatter matches a file being read. Five chunks: the resolver every reader goes
+through (`lib/learnings_files.py`), `prawduct-hook learnings-migrate` (lossless relayout of the
+fleet's formats, byte-accounted against the written tree), a budget gate in record-lint AND at
+Stop (`learnings-over-budget`: over budget and grown — pay from duplication, never trim a rule),
+detection of an unmigrated repo (briefing directive + Stop floor `learnings-unmigrated`), and the
+Critic/PR cross-check repointed at `learnings-files --for-diff`.
+
+This repo migrated with its own command: 287 rules → one `core.md` of 100,181 bytes under
+`## Unsorted` (the corpus was paragraph-rules only, so the map proposal was empty — splitting it
+into area files is #343's content program). `learnings-detail.md` and `learnings-history.md` are
+deleted (owner-ruled 2026-09-02; git history is the archive). The budget check passes on this file
+because it is over budget and NOT grown; every future addition pays. Wave 2 (`learnings-v2-delete`)
+removes the lookup skill, the audit lifecycle and the obligation repair (the size nudge already
+went in Chunk 04); until
+then `/prawduct:learnings` and doctor #5/#13/#13a point at a file this repo no longer has.
+
 ## 2026-09-02: four small backlog-adapter items, and two plans falsified by reading the code
 
 <!-- prawduct: type=fix | scope=small-batch-2026-09-02 -->
@@ -542,6 +637,7 @@ still live work. They now point at the resolver rather than restating a rule wit
 the briefing's contested-claim line sat inside a broad `except: … pass`, which — with the
 fail-closed route deliberately gone — meant the only surface that ever says a branch is contested
 could vanish with no output at all. It is attributed now: advice fails soft, not silent.
+
 ## 2026-08-27: the version-delta headline renders as one sentence
 
 <!-- prawduct: type=fix | scope=silent-clear-checks -->
@@ -2929,6 +3025,7 @@ The `api-contract.md` sentence added mid-branch — "checked before dispatch, fo
 with three carve-outs named as "the only ones" — was false for two mutating commands when it shipped.
 Corrected, including which nine remain unverified. A written contract that overstates coverage is the
 same defect class as a check that cannot run: both read as assurance.
+
 ## 2026-08-18: the reopen version is guessed LOW, and that is a correctness rule
 
 <!-- prawduct: type=fix | scope=release-cut-checklist | release=v3.4.0 -->

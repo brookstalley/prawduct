@@ -72,6 +72,23 @@ V2_MANIFEST = {
 }
 
 
+#: A `.session-reflected` body that SATISFIES the Stop hook's reflection gate.
+#:
+#: The gate grades shape, not length (`lib/gates.reflection_shape`): the text
+#: must name what was expected and what was actual, plus a root cause or its
+#: explicit absence. Every fixture that wants the reflection gate quiet writes
+#: this string, from ONE definition — the shape is a governance decision that
+#: will move again, and forty hand-written variants of it is forty edits and
+#: thirty-nine chances to write one that no longer passes.
+#:
+#: A fixture that wants the gate to FIRE writes its own text and says why, so
+#: the two intents are never confused by a reader skimming for this name.
+SHAPED_REFLECTION = (
+    "Expected the chunk to land with the suite green; actual: it did, "
+    "no surprises. No defect.\n"
+)
+
+
 @pytest.fixture(autouse=True, scope="session")
 def _unpin_project_dir():
     """Remove `CLAUDE_PROJECT_DIR` from the environment for the whole session.

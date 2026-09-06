@@ -49,10 +49,10 @@ over-reported twenty non-defects during the census.
 line up.** ``_is_record`` exempts whole files, but the reason it gives — *narrates defects, quoting
 the paths they occurred at* — is a claim about a reference's role. It holds for
 ``learnings-detail.md``, which quotes stale invocations as evidence. It does not hold for every
-reference inside ``learnings.md``: that file also carries live instructions (one rule tells the
-reader to invoke ``python3 plugin/bin/prawduct-hook``, and ``/prawduct:learnings`` serves it as
-current guidance), so a future relocation strands them with the suite green — the exact defect
-class this test exists for. Scoping the exemption per reference rather than per file is not worth
+reference inside a rules corpus: those files also carry live instructions (one rule tells the
+reader to invoke ``python3 plugin/bin/prawduct-hook``, and the harness serves that rule to every
+session as current guidance), so a future relocation strands them with the suite green — the exact
+defect class this test exists for. Scoping the exemption per reference rather than per file is not worth
 building for one known instance; leaving the gap unnamed is what is not acceptable, since an
 exemption nobody has examined reads as one somebody has.
 """
@@ -112,11 +112,18 @@ _RECORD_FILES = frozenset(
         ".prawduct/learnings.md",        # narrates defects, quoting the paths they occurred at
         ".prawduct/learnings-detail.md",
         ".prawduct/learnings-history.md",   # the archive half of the same record
-        ".prawduct/reflections.md",
         ".prawduct/operator-verification.md",
     }
 )
-_RECORD_PREFIXES = (".prawduct/archive/",)
+_RECORD_PREFIXES = (
+    ".prawduct/archive/",
+    # The learnings corpus in its harness-loaded home plays the same role learnings.md did
+    # above: it narrates defects, quoting the paths they occurred at.
+    ".claude/rules/learnings/",
+    # A fixture corpus is DATA by construction — a legacy learnings file kept precisely so a
+    # migrator can be shown stripping its dead links — never an instruction a reader follows.
+    "tests/fixtures/",
+)
 # An archived build plan is a record of what was built, and its instructions were
 # true when written — `tools/product-hook` really was the entry point before the
 # plugin distribution. Grading one as a live instruction file demands editing
@@ -152,6 +159,14 @@ def _is_record(rel: str) -> bool:
 
 # Named exceptions that are neither records nor fixable. Kept tiny and reasoned on purpose.
 ALLOWLISTED_FILES = {
+    ".prawduct/artifacts/learning-system-audit-2026-09-01.md": (
+        "historical by construction: the audit of the legacy learnings layout, whose commands "
+        "name the file the migration it recommended then deleted"
+    ),
+    ".prawduct/artifacts/collapse-map-learnings-firing.md": (
+        "historical by construction: a pre-migration analysis of the legacy learnings.md; "
+        "kept as the record of what the v2 program replaced"
+    ),
     "documentation/prompt-management-requirements.md": (
         "requirements doc describing a config file that does not exist yet — a forward reference to "
         "a planned surface, not a stale reference to a removed one"
@@ -431,7 +446,7 @@ def test_relative_targets_resolve_against_the_containing_file():
     assert not _resolves("plugin/docs/principles.md", "../.prawduct/learnings.md", "md-link")
     # The same target from a file one level up DOES resolve — proving the base is the containing
     # file rather than a constant.
-    assert _resolves("plugin/principles.md", "../.prawduct/learnings.md", "md-link")
+    assert _resolves("plugin/principles.md", "../.prawduct/project-state.yaml", "md-link")
 
 
 # ---------------------------------------------------------------------------

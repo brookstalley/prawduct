@@ -33,7 +33,7 @@ to file findings that are worth what they cost.
 3. Read the commit log: `git log --oneline <base>..HEAD`
 4. **Read the Critic's judgment for context** — `.prawduct/.critic-findings.json` is a derived view of the newest review fact (its `fact_id` names the fact); `prawduct-hook evidence list` shows the full fact history when you need it. This is context for your release-readiness goals (what the Critic flagged, what was resolved), not something to re-verify — the gate already verified coverage structurally.
 5. Read relevant artifacts in `.prawduct/artifacts/` (especially any spec or build plan for the current work).
-6. Read `.prawduct/learnings.md` for project-specific patterns.
+6. Read the product's learnings for project-specific patterns — `.claude/rules/learnings/core.md` plus each area file whose `paths:` intersect the diff (`prawduct-hook learnings-files --for-diff` prints the list).
 7. Review against the goals below.
 
 **You may be skipped.** `/prawduct:pr create` skips this review only for a doc-only bundle (every file in `merge-base...HEAD` is `.md`). There is no code-side trivial fast-path — it was retired as unsound (rationale in `skills/pr/SKILL.md` Step 1b). If the caller invoked you anyway, run the full review — the fast-path is a caller-side optimization, not a reviewer-side waiver. Fail closed: when in doubt, review.
@@ -84,7 +84,7 @@ Your goals, in priority order — the release-specific concerns no Critic layer 
 
 ### Learnings Cross-Check
 
-The `final`/`cumulative` Critic owns this scan (`skills/critic/review-cycle.md` "Final-Mode Cross-Checks") — do **not** re-scan the diff against `.prawduct/learnings.md`; the same diff shouldn't be scanned twice. You read the learnings for context (step 6), and a reintroduced pattern you notice anyway while reading for your own goals is a WARNING at minimum.
+The `final`/`cumulative` Critic owns this scan (`skills/critic/review-cycle.md` "Final-Mode Cross-Checks") — do **not** re-scan the diff against those rules; the same diff shouldn't be scanned twice. You read the learnings for context (step 6), and a reintroduced pattern you notice anyway while reading for your own goals is a WARNING at minimum.
 
 ## Severity Levels
 

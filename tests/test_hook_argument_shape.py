@@ -157,6 +157,9 @@ _REFUSAL_NOT_WANTED = {
     "user-prompt-submit": "harness hook; must exit 0 for any argv or it blocks the session",
     "build-index": "inert — `del argv`; an ignored argument cannot act",
     "regen-views": "deprecated and inert; exit 0 for any input is its contract",
+    "audit-learnings": "deprecated and inert; exit 0 for any input is its contract",
+    "learnings-obligation": "deprecated and inert; exit 0 for any input is its contract",
+    "check-learnings-pairing": "deprecated and inert; exit 0 for any input is its contract",
     "infer-critic-mode": "takes free-form $ARGUMENTS by contract; an unrecognised mode "
                          "falling through to inference is the documented behaviour",
     "jurisdiction": "documented fail-open: a bad --file or any other error yields no "
@@ -526,6 +529,9 @@ def test_documented_invocations_are_not_refused(capsys):
         ("check-plugin-active", ["--context", "onboard"]),
         ("check-learnings-pairing", []),
         ("check-learnings-pairing", ["--json"]),
+        ("learnings-migrate", []),
+        ("learnings-migrate", ["--propose-map"]),
+        ("learnings-migrate", ["--apply", "--map", "/tmp/map.txt", "--json"]),
     ]
     for command, argv in documented:
         assert _hook._check_argument_shape(command, argv) == 0, (
@@ -548,12 +554,13 @@ def test_every_dispatched_command_appears_in_the_documented_list():
         "verify-operator-verification", "check-change-log-entry",
         "check-releasability", "archive-plan", "check-released", "check-pr-doc-only",
         "check-plugin-active",
-        "check-learnings-pairing",
+        "check-learnings-pairing", "learnings-migrate",
         "stamp-merged", "build-index", "user-prompt-submit", "regen-views",
         "infer-critic-mode", "resolve-base", "disposition", "render-dispositions",
         "evidence", "bug-inbox", "version", "print-install-reference", "advisory",
         "backlog", "coverage-status", "coverage-scaffold", "migrate-plugin",
         "init-product", "update-gitignore", "audit-learnings", "norm-index-scaffold",
+        "learnings-files",
         "learnings-obligation", "lifecycle-repair", "plan-backfill", "repo-disable",
     }
     assert set(_dispatch_branches()) == listed
@@ -659,8 +666,33 @@ class TestUpdateGitignoreDryRun:
 def test_an_argv_taking_command_still_refuses_its_own_unknown_flags(tmp_path: Path):
     """The dispatcher speaks only for commands that cannot speak for
     themselves; `_reject_unknown_args` is unchanged and still the guard for the
-    ones that can."""
-    proc = _run(tmp_path, ["audit-learnings", "--a-flag-that-never-existed"])
+    ones that can.
+
+    The subject must be a command with a live body. A deprecated-inert one
+    accepts every token by design (`tests/test_deprecated_inert_commands.py`),
+    so using one here would assert the opposite of what this file pins while
+    reading exactly the same.
+    """
+    proc = _run(tmp_path, ["norm-index-scaffold", "--a-flag-that-never-existed"])
 
     assert proc.returncode == 2
     assert "--a-flag-that-never-existed" in proc.stderr
+
+
+def test_learnings_files_takes_argv_and_refuses_what_it_cannot_read(tmp_path: Path):
+    """The new read-only verb, on both halves of this file's contract.
+
+    It is dispatched WITH `sys.argv[2:]` — so it is the wrapper's job, not the
+    pre-dispatch guard's, to refuse an unrecognised token — and its wrapper does
+    that job. The specific hazard is the one that reached a live `.gitignore`
+    rewrite: `--for-diff` is detected with `"--flag" in argv`, so a typo'd
+    `--fordiff` read as *absent* would silently print the WHOLE rules corpus to
+    a reviewer who asked for the diff's subset, which is a wider read that looks
+    exactly like a correct one.
+    """
+    branches = _dispatch_branches()
+    assert "sys.argv[2:]" in branches["learnings-files"]
+
+    proc = _run(tmp_path, ["learnings-files", "--fordiff"])
+    assert proc.returncode == 2
+    assert "--fordiff" in proc.stderr

@@ -10,11 +10,11 @@ A **work cycle** is one unit of work with its own governance: understand → pla
 
 **Context compaction** passes no governance checkpoint, so anything that must survive — plans, decisions, rationale, chunk definitions — must be written to a file first.
 
-**`/clear` between work cycles is recommended** (not required): it resets the git baseline so the next cycle's canary only sees its own changes, archives the previous reflection, and starts fresh context.
+**`/clear` between work cycles is recommended** (not required): it resets the git baseline so the next cycle's canary only sees its own changes, clears the previous reflection, and starts fresh context.
 
 **Working in a git worktree.** Run the work cycle (including `/prawduct:critic` and `/prawduct:pr`) *from the worktree*, where the gates resolve `.prawduct/` state to it. One edge: entering a worktree *mid*-cycle leaves the SessionStart markers in the primary checkout (gate readers fail safe) — launch, or `/clear`, in the worktree.
 
-The stop hook is a **final safety net**: reflection captured, Critic invoked if code was built against a plan, advisory **compliance canary** checks run. Per-work-cycle governance is the methodology's responsibility, not the hook's.
+The stop hook is a **final safety net**: a shaped reflection if judgeable code changed, Critic if it was built against a plan, advisory **compliance canary** checks run. Per-work-cycle governance is the methodology's responsibility, not the hook's.
 
 ## Work-Scaled Governance
 
@@ -71,7 +71,7 @@ retroactivity). Departing from a norm that already governs your change is a reco
 
 There is no "pre-existing" exception: every session starts clean.
 
-**Read the spec.** Read the chunk's entry in `.prawduct/artifacts/build-plan.md` and any referenced artifacts — what this chunk delivers, its acceptance criteria, its dependencies. Flag ambiguity before building; don't guess silently. Validate that referenced files and components still exist — plans go stale. Run `/prawduct:learnings [chunk focus]` for relevant rules before coding.
+**Read the spec.** Read the chunk's entry in `.prawduct/artifacts/build-plan.md` and any referenced artifacts — what this chunk delivers, its acceptance criteria, its dependencies. Flag ambiguity before building; don't guess silently. Validate that referenced files and components still exist — plans go stale. Open the `.claude/rules/learnings/` area files covering this chunk.
 
 **Persist plans immediately.** When scope evolves — new chunks, discovered gaps — update `build-plan.md` at once. *Writing* it is not enough before you delegate: a worktree-isolated subagent reads HEAD, so an uncommitted amendment is invisible to it (see "Delegating Work to Subagents").
 
@@ -104,7 +104,7 @@ Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 **Resolve findings.** Consolidate before reading `.critic-findings.json` where the digest says to; single-pass reviews consolidate themselves. **Disposition them ALL in ONE pass — fix everything in the working tree, then ONE `/prawduct:critic verify-resolutions`, then ONE commit** (in that order — committing first re-anchors the pass; `review-cycle.md`) — fix-commit-verify per finding multiplies rounds. **Once zero blocking remain the review is over — then fix, accept, or file** (`skills/critic/review-cycle.md`). Accept (won't-fix, reasoned) is the default. **Record it as a fact (`prawduct-hook disposition`), then `render-dispositions` into the entry — never hand-count.** Re-run the gate, don't infer a round from stale output. Document disagreements with rationale.
 
-**Reflect — now, not at session end.** Append to `.prawduct/.session-reflected`: what the chunk delivered, what the Critic caught, what surprised you. A paragraph is enough. Add a rule to `learnings.md` only if this cycle produced one.
+**Reflect — now, not at session end.** Append to `.prawduct/.session-reflected`: what you expected vs. what actually happened, and the root cause or "no defect" — the two lines the gate grades — then what the chunk delivered, what the Critic caught, what surprised you. A paragraph is enough. Add a rule under `.claude/rules/learnings/` only if this cycle produced one.
 
 **Operator verification (F10).** Visual / live-integration chunks: enqueue in `.prawduct/operator-verification.md` and mark `Visual change: yes`. `/prawduct:pr create` blocks on pending entries when `operator_verification_required: true`.
 
@@ -120,7 +120,7 @@ Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 1. **Commit** (tests passing). 2. **Critic** (if medium+ and not run yet) — resolve blocking findings. 3. **Persist** pending decisions/plans to artifact files. 4. **Backlog** — file/close affected items via `/prawduct:backlog`. 5. **Update build plan Status** (mark chunks, update Context). 6. **Reflection** — confirm `.prawduct/.session-reflected` has an entry for this chunk; add a synthesis only if a cross-cutting pattern emerged. 7. **Handoff notes** — **read `.prawduct/.handoff-notes.md` before rewriting it**, then reconcile to what the *next* session needs: where you stopped, what you'd do next, what would bite them. Never blind-append.
 
-**Then close the turn with the standing block — last, after every other word.** Say `SAFE TO CLEAR` only when steps 1-7 above are done **and nothing is outstanding, in flight included** — that binding is what this file owes the block. Its shape, trigger and failure modes are `methodology/reflection.md` "Work cycle boundary", and the session digest injects them into every session, so they reach you whether or not you opened this guide.
+**Then close the turn with the standing block — last, after every other word.** Say `SAFE TO CLEAR` only when steps 1-7 above are done **and nothing is outstanding, in flight included** — that binding is what this file owes the block. Its shape, trigger and failure modes are `methodology/session-hygiene.md`, and the session digest injects them into every session, so they reach you whether or not you opened this guide.
 
 The `/clear` hook regenerates `.prawduct/.session-handoff.md` — never hand-edit it — from your notes (first), build plan Status, reflection, Critic findings and changed files. `prawduct-hook handoff preview` shows what the next session would get.
 

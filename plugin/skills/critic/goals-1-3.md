@@ -39,9 +39,11 @@ reasons. Do not re-raise one absent material change in its cited files** — one
 = older answers dropped; `unavailable` = the join failed, so you know nothing.
 
 **Record checks are already answered — read the manifest's `record_lint`.** Never
-recount it: that is how a record defect buys a review round. Each entry carries its explanation — raise it. `chunk-ref-missing` → **BLOCKING**. `governed-by-gap` →
-**WARNING** under Goal 2. `suite-total-claim` and `learnings-entry-shape` → **NOTE**.
-**`unchecked` is not a pass, and only one shape blocks.**
+recount it: that is how a record defect buys a review round. Each entry carries its explanation — raise it. `chunk-ref-missing`, `learnings-budget-unreasoned` and `learnings-over-budget` → **BLOCKING**.
+`governed-by-gap`, `learnings-area-dead` → **WARNING** under Goal 2.
+`suite-total-claim` → **NOTE**.
+**`unchecked` is not a pass: an entry inherits one step below its check's severity** (BLOCKING
+→ **WARNING**, else **NOTE**), except the shapes below:
 `chunk-ref-missing unchecked — …` is
 **BLOCKING**: the check could not run — indistinguishable from passing. `chunk-ref-missing
 no-subject — …` is **NOTE**: the scope is real (the change-log declares it) but plan-less → nothing
@@ -51,7 +53,7 @@ graded chunk … of <plan>: …` is an **assumption, not a failure** — it DID 
 non-null), but half of "whose deliverables" was guessed — the chunk
 inferred from build-plan Status, or the plan from the `active_build_plan` pointer — the line names
 which → **NOTE**. Blocking it is a false blocker no `--chunk` can clear.
-Every other entry is a **NOTE** you must still state. `chunk_graded`/`plan_graded` name the subject.
+State every entry. `chunk_graded`/`plan_graded` name the subject.
 `null` there, or in any `counts` entry, means **no answer** — not a zero.
 
 ## 1. Nothing Is Broken
@@ -82,6 +84,7 @@ Every other entry is a **NOTE** you must still state. `chunk_graded`/`plan_grade
 - **Foreign API**: chunks with `**Foreign API:** <name>` need a `verify-api` step in Done-when → **WARNING** if missing.
 - **Exposed API**: chunks with `**Exposed API:** <name>` need a recorded versioning + deprecation decision (`design_decisions.api_versioning_approach`, or a dated deferral with a revisit trigger) → **WARNING** if missing; and a recorded error-model decision (`api_error_model_approach`) → **WARNING** if missing. Presence is not adherence: where the contract's `Retention:` policy defers removal to a major, a `stable`/`deprecated` member of its Surface Inventory the diff removes or un-declares → **BLOCKING** norm departure.
 - **Operator verification:** `operator_verification_required: true` + chunk `Visual change: yes` ⇒ matching entry in `.prawduct/operator-verification.md` → **NOTE** if missing.
+- **Built-but-unconsumed:** a producer nothing reads in the same change — an event, a field, a flag → **WARNING**.
 
 ## 3. Nothing Is Unintended
 

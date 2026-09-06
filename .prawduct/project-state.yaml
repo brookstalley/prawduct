@@ -59,13 +59,6 @@ base_branch: develop
 # Stdlib-only repo: the hook's python3 IS the project environment.
 test_command: python3 -m pytest tests/ --junit-xml={junit_xml} -q
 
-# How this repo runs ONE test file, for `audit-learnings` sentinel grading.
-# Separate from `test_command:` because that one names `tests/` and would grade
-# every sentinel by the whole suite's verdict. Declared here rather than assumed:
-# an undeclared sentinel is reported ungraded, and this repo being the framework's
-# own is exactly why it must not rely on a Python-shaped default.
-sentinel_command: python3 -m pytest {sentinel} -q
-
 # Files carrying the release version, read by `check-released` FROM THE TAG'S
 # TREE — which files carried a release's version is a fact about that release,
 # not about the checkout you happen to be standing in. Declaring them is what
@@ -653,3 +646,10 @@ deprecated_terms:
   - term: "concern dimensions"
     replacement: "structural characteristics"
     patterns: ["concern dimension"]
+
+# Per-file byte ceilings for the learnings rules (default 16 KB; see
+# plugin/templates/project-state.yaml). Raised with a reason, never silently.
+learnings_budgets:
+  core.md:
+    kb: 99
+    reason: "the 287-rule corpus migrated whole on 2026-09-02 at ~100 KB — over the default by construction until #343's content program splits it into area files; this ceiling sits just above the ported corpus so the over-and-grew gate sees the next addition; it covers rules ported from develop at the cutover merge (the one-way relayout left the legacy file on develop for a day). New authoring still pays: the next raise needs its own reason"

@@ -1,0 +1,11 @@
+# The code tree this corpus was written against, one repo-relative path per
+# line. Materialised by the test rather than committed, because these are
+# source-file NAMES and nothing else: `propose_map` matches a section title
+# against directory names and ranks top-level directories by file count, so
+# the contents are irrelevant — while committing stub `.py` files would put
+# them inside the suite's own preference scans, where they are not code
+# anyone wrote and cannot honestly answer for.
+discodon/eval/runner.py
+discodon/eval/report.py
+discodon/music/player.py
+web/src/App.tsx

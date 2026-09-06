@@ -17,6 +17,55 @@ says so wherever it appears, so a repo pinned to the develop ref can tell what i
 cached review verdict from the released plugin is not replayed against this one. Rolling release
 notes accumulate here, and this section is renamed to the release number at the cut.
 
+**The reflection guide is about the learning loop again, and the standing block has its own
+guide.** `methodology/reflection.md` halves: its Step 4 is now a routing decision with four
+destinations — an episode to `.session-reflected`, a product rule to `.claude/rules/learnings/`
+(with the instance that earned it inline), framework friction upstream through
+`/prawduct:report-bug`, and portable discipline written nowhere because the framework already
+carries it — plus the budget's payment rule in two sentences. The standing block, the clear
+verdict and the forward notes moved whole to `methodology/session-hygiene.md`, reachable as
+`/prawduct:methodology session-hygiene`. The session digest gains one default: the harness's
+auto-memory holds no project state or product rules; the repo's own files are authoritative.
+
+**Ten portable rules the fleet kept re-learning now live where rules fire.** `docs/discipline.md`
+records each one's delivery — seven already had a home, two become Critic Goal 2 bullets (a
+removal is repo-wide; built-but-unconsumed is not delivered), one extends the test-evidence
+directive (a mutation you did not watch go red applied nothing), one lands in the post-fix step (a
+reported cause is a hypothesis until reproduced). A test pins every row against its surface.
+
+**The reflection gate fires on the session that wrote code, plan or no plan, and asks for two
+lines.** It used to fire only with an active build plan and only while the working tree was dirty,
+so a session that committed its work with no plan was never asked to reflect — and a fifty-character
+note satisfied it. It now reads the session's work span (the tree at session start against the
+working tree, committed work included) and grades the reflection's shape: what you expected versus
+what actually happened, and the root cause or "no defect". The blocker names the two lines. A
+session whose only changes arrived by merge or pull pays those two lines once; a doc-only or
+metadata-only session pays nothing; a repo without the session marker behaves exactly as before.
+The session-start advisory reads the same span and shape, so it cannot go quiet about a session the
+gate would block.
+
+**The learnings lifecycle verbs are deprecated and inert.** `audit-learnings`,
+`learnings-obligation` and `check-learnings-pairing` graded a `.prawduct/learnings.md` that the
+harness-loaded layout replaced. Each still runs — exit 0, one `WARNING:` on stderr naming the
+replacement, nothing written — so a doctor skill on an older pin or a copied runbook does not break;
+removal waits for a major. The `/prawduct:learnings` lookup skill is gone: the harness loads
+`.claude/rules/learnings/core.md` every session and an area file when you read a file its `paths:`
+match, so there is nothing to look up. Doctor's learnings checks, the `sentinel_command` key and the
+record-lint `learnings-entry-shape` check go with them.
+
+**`reflections.md` is no longer written.** The per-clone archive of session reflections had no
+reader; `.session-reflected` is cleared at each `/clear` and the generated handoff is the one carrier
+of the previous session's reflection. Existing `reflections.md` files are untouched.
+
+**The learning loop measures itself.** Two governance-ledger events: `learning.written` when a rule
+appears in a rules file this session (one per rule, keyed by its heading's hash, recorded at Stop,
+and counted whether or not you have committed it yet),
+and `learning.fired` when a Critic finding quotes a rule's opening words (recorded at
+`critic-consolidate`, joined to the review). Both are written by the plugin, never by hand.
+`review-stats` reports them: a `learning` block counting writes, citations and the distinct
+rules behind each, closing with the number the corpus cannot ask itself — how many written
+rules no review has ever cited. Its `--json` `schema_version` moves to 3 (2 for the block, 3 for `units_uncited`, the set of written rules no review cited).
+
 **A stalled norm no longer expires in silence.** A `Stopgap:` field on an in-transition norm —
 the bounded exception that says "this half-finished state is deliberate until <date>" — was
 being written into governing artifacts but could not be read by the probe that watches them.
