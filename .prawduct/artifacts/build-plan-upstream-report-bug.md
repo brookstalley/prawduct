@@ -93,6 +93,15 @@ one reminder, both here because a handoff note is gitignored and this file is no
   replacement went live here and whose retirement is Wave C's own work. Recorded as the accepted
   disposition on `rev-20260907T223417Z-f6ec097a`.
 
+**One accepted observation is owed to the next commit that touches
+`tests/preferences/test_no_upstream_content_egress.py`**, and it is recorded here rather than only
+in the gitignored handoff because a deferral nothing durable names is a drop:
+`test_no_command_block_passes_a_composed_field_as_a_shell_literal`'s docstring summary and its
+assertion message both still enumerate "`--title`/`--component`" after `--body` joined the class.
+**The fix is deleting the enumeration from both, not extending it** — a list in prose beside a list
+in code is what went stale. It gates nothing and was not worth a review round of its own; it costs
+nothing riding a commit that file is getting anyway.
+
 **Chunk 01 complete, 2026-09-07.** The row ships in the template, so `init-product` writes
 it into every product it scaffolds, and `never-file` is reachable by editing a line. Review returned
 0 blocking; its two warnings and one note were all fixed in the same commit rather than dispositioned
