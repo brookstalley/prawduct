@@ -20,8 +20,10 @@ Two things carry that, and neither is optional:
   paths, no ids, no domain vocabulary. This is your judgment and nothing checks
   it mechanically — there is no redactor, and this skill does not pretend there is.
 - **A human reads the exact outbound bytes and approves them** (step 4). Not a
-  summary of them. The approval is a digest of the payload, and the adapter
-  re-renders and re-computes it at send, so what was approved is what is sent.
+  summary of them. The approval is a digest of the payload, and under the default
+  `ask-user` the adapter re-renders and re-computes it at send, so what was
+  approved is what is sent. Standing consent waives that comparison — see the
+  guarantees at the end of this file for what remains true there.
 
 Never let this skill error.
 
@@ -195,9 +197,15 @@ Repeat the command with the digest the preview printed, and **the same
 
 ```
 prawduct-hook backlog file-upstream \
-  --component "<surface>" --title "<symptom>" --body "$(cat <scratch>/report.md)" \
-  --approve sha256:<the digest from step 3>
+  --component "$(cat <scratch>/component.txt)" \
+  --title     "$(cat <scratch>/title.txt)" \
+  --body      "$(cat <scratch>/report.md)" \
+  --approve   sha256:<the digest from step 3>
 ```
+
+The files are why step 2 wrote them once. Retyping any of the three here is how a
+send refuses with `approval-mismatch` — or worse, under standing consent, how it
+files bytes nobody previewed.
 
 The adapter re-renders the payload from those flags, recomputes the digest, and
 refuses unless it matches — that is what makes "sent is what was previewed" a

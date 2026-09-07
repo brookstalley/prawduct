@@ -1073,6 +1073,8 @@ class TestTheChecksRefuseInIsolation:
 
     def test_only_never_file_disables_filing(self):
         assert upstream.check_preference(upstream.PREF_NEVER_FILE).code == "filing-disabled"
+        assert upstream.check_preference(upstream.PREF_ASK_USER) is None
+        assert upstream.check_preference(upstream.PREF_ALWAYS_FILE) is None
 
     def test_the_never_file_remedy_is_the_tracker_and_not_a_local_capture(self):
         """The mechanically checkable half of submit-or-nothing (design §5).
@@ -1090,8 +1092,6 @@ class TestTheChecksRefuseInIsolation:
             "the never-file refusal is instructing a local capture again — design §5 is "
             "submit-or-nothing, and the only fallback is the tracker pointer"
         )
-        assert upstream.check_preference(upstream.PREF_ASK_USER) is None
-        assert upstream.check_preference(upstream.PREF_ALWAYS_FILE) is None
 
     def test_naming_the_pin_is_allowed_and_selecting_a_target_is_not(self):
         assert upstream.check_target(None) is None

@@ -23,7 +23,8 @@ passed `--title` and `--component` as double-quoted shell literals, in a step th
 model to write both in prawduct's backticked vocabulary. `` `prawduct-hook version` `` runs; a
 symptom naming `$CLAUDE_SKILL_DIR` expands to nothing. The title would be composed, digested,
 approved and filed with the defect's own name deleted, into a repo where a non-collaborator cannot
-retitle it. All three fields now come from files.
+retitle it. All three fields now come from files — on **both** command blocks, which is the half
+this round's own review had to come back for.
 
 **A transport failure at create was routed to the one action that makes it worse.** It is not a
 refusal — whether the issue was written is unknowable from the caller's side — and the skill folded
@@ -57,6 +58,16 @@ plainly that issue-side triage is manual until Wave C repoints the advisory, and
 query; the PRD's MG5 bullet is marked superseded where the owner-approved design overrode it rather
 than rewritten in place; and the owner-boundary row in `cross-cutting-concerns.md` gains this
 bundle's two legs.
+
+**The round's own review came back blocking, on the half of its own fix that did not land.** R-2
+named two command blocks and the fix landed in one — step 5 kept its shell literals, two screens
+after step 2 explained why they are unsafe, and this entry asserted the job was done. Under standing
+consent the digest comparison is waived, so a title mangled there is filed rather than refused.
+Both blocks now read from files, and a guard asserts it over **every** line of the skill rather than
+the one that was wrong: `test_no_command_block_passes_a_composed_field_as_a_shell_literal`,
+mutation-checked. The same round's milder carrier of the approval claim (the intro's unqualified
+"what was approved is what is sent") is qualified too, and two assertions that had drifted into the
+neighbouring test are back where their name says they belong.
 
 Accepted, not fixed: the backlog-reconciliation note. It names no work owed here — #194 closes at
 Wave C, and #234 is the lockstep guard whose replacement is now live and whose retirement is Wave C.

@@ -1033,6 +1033,36 @@ class TestTheDropBoxReplacementIsLive:
                 "Give the skill a line saying what that code means and what to do about it"
             )
 
+    def test_no_command_block_passes_a_composed_field_as_a_shell_literal(self):
+        """Every `--title`/`--component` the skill shows must read from a file.
+
+        Inside double quotes bash still runs `` `…` `` and expands `$…`, and this
+        skill instructs both fields be written in prawduct's own backticked
+        vocabulary — so `` `prawduct-hook version` `` executes and a symptom
+        naming `$CLAUDE_SKILL_DIR` expands to nothing. The result is composed,
+        digested, approved and filed with the defect's own name deleted from it,
+        into a repo where a non-collaborator cannot retitle it. Under standing
+        consent the digest comparison is waived, so the mangling is not even
+        caught by an `approval-mismatch`.
+
+        Asserted over EVERY line rather than the one that was wrong: the skill
+        shows the command twice, the first fix landed on one block, and the round
+        that found it had to come back for the other. Command-substitution output
+        is not re-expanded, which is why `$(cat …)` is the shape required.
+        """
+        offenders = [
+            f"{n}: {line.strip()}"
+            for n, line in enumerate(self.SKILL.read_text(encoding="utf-8").splitlines(), 1)
+            if ("--title " in line or "--component " in line) and "$(cat" not in line
+        ]
+
+        assert not offenders, (
+            "a command block passes `--title` or `--component` as a shell literal — bash "
+            "expands backticks and `$` inside double quotes, and this skill tells the model "
+            "to write both fields in backticked prawduct vocabulary:\n  - "
+            + "\n  - ".join(offenders)
+        )
+
     def test_the_skill_names_no_drop_box_write_path(self):
         """The write, not the mention. The receiving-side section legitimately
         talks about `incoming-bugs/` — reports filed before the cutover are still

@@ -2686,3 +2686,67 @@ independence, distinct from a second opinion on the same evidence.
 
 **Generalizes:** any heuristic derived from a tool's output, carried forward as a rule, drifts into
 a replacement for the tool. When a learnings rule names a command, the rule is to RUN it.
+
+## When you change a MECHANISM, cascade-search the CLAIM, not just the code
+
+**The case that produced it.** Fixing the tag/publish order caught both runbooks and the process
+doc via the command strings `git tag` / `gh release create`. The Critic then found a stale "on
+every tag push" in `architecture.md`, a superseded command in a historical release plan, and one
+doc asserting flatly what another hedged — none of them reachable from any string that had been
+edited, because a sentence describing what the system does shares no token with the code that does
+it.
+
+**The amendment, 2026-09-07 — enumerate the claims first, and expect more than one.** Rewriting
+`/prawduct:report-bug` onto the upstream filing adapter falsified two claims, not one: *it writes a
+drop-box file* and *it otherwise captures the bug locally*. The build plan named the first, so the
+first is what got cascaded; the second kept its carriers — `prawduct-hook`'s `cmd_bug_inbox`
+docstring, which still published the exit-code contract of a caller that no longer existed and
+instructed the very local capture the new design forbids, and `architecture.md`'s Persistence
+Boundaries row, which still named the retired write path as the live one.
+
+What makes this worth recording rather than filing under carelessness: the same session had, one
+chunk earlier, written a reflection *about this rule* after a claim turned out to have four
+carriers. Knowing the rule and having just been burned by it were both insufficient, because the
+rule as written starts one step too late. The failure is not in the searching. It is that the set
+being searched for was assembled from the plan's sentence about the change rather than from the
+change itself — and a plan names the claim that motivated the work, not every claim the work
+happens to falsify.
+
+The cheap discipline: before cascading anything, write down what is no longer true, as a list. If
+the list has one item, ask what else the change made false. The enumeration takes a minute; a
+carrier that survives it reads as current until someone trips on it.
+
+## Instructions for driving code are sourced from the CODE's surface, with the design as a constraint on it
+
+**What happened.** `/prawduct:report-bug` was rewritten to drive the `file-upstream` adapter, and
+the rewrite was composed from the approved design: its payload section, its consent section, its
+five-check contract. The design is correct and the instructions matched it. Six of the cumulative
+review's eleven warnings were still the same defect — the skill under-specified against the
+adapter:
+
+- it branched on the `always-file` consent state, and no output carried that state, so the branch
+  could never be taken and a shipped preference did nothing on its only consumer;
+- it explained the `self-file` refusal as "you are in prawduct's own checkout", which is one of the
+  two situations that code covers — and the other one routed the reader into the exact write the
+  same skill forbids two sections later;
+- it summarized the approval guarantee unconditionally, on a surface whose stated purpose is to be
+  honest about what is and is not mechanical, when standing consent waives the byte comparison;
+- it reduced a successful send to "print the URL", when the success envelope can carry a warning
+  saying the idempotency check did not run — so a degraded filing reads as a clean one and the
+  operator makes the retry that creates the duplicate;
+- it treated a transport failure at create as a refusal, and answered it with "file by hand" —
+  the one action that converts an unknowable outcome into a duplicate in a public repo.
+
+**Why the design could not have prevented any of them.** A design states what must be guaranteed.
+It is silent, correctly, about the states a value can hold that no guarantee turns on, the error
+codes that distinguish two causes under one refusal, the fields an envelope carries besides the
+result, and the failure modes that are neither success nor refusal. Those are exactly the places a
+reader driving the code meets reality — and every one of the six lives there.
+
+**The discipline.** Read the handler. Enumerate every state, every returned field, every refusal
+code, every way it can fail, and give the reader a line for each — then check the design to see
+which of those lines it constrains. Design-first produces instructions that are true and
+incomplete; code-first produces instructions that are complete and then get checked for truth.
+
+**Related.** This is the sibling of the rule that a guardrail on an instruction surface must model
+the READER: that one is about testing the instructions, this one is about sourcing them.
