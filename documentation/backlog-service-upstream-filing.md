@@ -4,7 +4,7 @@
 
 **Parent:** `documentation/backlog-service-requirements.md` (Upstream bug reporting — **XP4–XP7**, settled 2026-07-23) and, through it, PRD §8.4/§8.9 (XP1/XP2, MG5). This doc fixes the *how*: the exact bytes that cross the boundary, the recomposition that minimizes them, the consent that authorizes them, and the adapter op that enforces all of it.
 
-**Governed by:** `.prawduct/artifacts/security-model.md` **§ Direction** — *"A governed product's content never leaves that product's own repository and owner … any cross-owner or public-plane filing surface is an owner decision, never an increment"* (`Status: in-transition`, tracking **BKL-7Q4M**). This design is the reviewed design the norm waits on; § *Governance & propagation* below records its disposition. Also governed by `architecture.md` § Direction (the adapter never manages a token — `gh` owns the credential).
+**Governed by:** `.prawduct/artifacts/security-model.md` **§ Direction** — the cross-owner egress norm, cited **by name rather than by quotation** so that the norm's own file stays the single home of its statement and its status. (It was quoted here, and the quotation outlived the norm: it carried the pre-build wording and `Status: in-transition` for as long as this design's §8 said the transition was discharged, so a reader consulting the header to learn whether the surface was blocked got the opposite answer from the same file. A relational citation cannot be stranded by the next amendment.) This design was the reviewed design that norm waited on; § *Governance & propagation* below records the discharge.
 
 **Related design docs this extends (not duplicates):** `backlog-service-api-contract.md` §2.4 (`file-upstream` op — this doc pins its preview/approve contract), `backlog-service-security-model.md` §1a (attended-only foreign filing) / §5 (non-collaborator intake) / §6 (PV3/PV4), `backlog-service-data-model.md` §5 (`source-key:` marker home).
 
@@ -62,7 +62,7 @@ found_in: 3.2.0
 source-key: sha256:<digest>          # opaque; = digest(submitter-identity, source-item-ref/title+body)
 ```
 
-The `source-key:` is the api-contract §2.4 idempotency key (a re-file with the same key **returns the existing issue, never a duplicate**). It is a one-way digest — it does **not** reveal the submitter or the source item; it only lets a retry collapse. The submitter's real GitHub identity is attached natively (public issue author) and unavoidably — that **agency/attribution** exposure is inherent, surfaced at consent (§4), not something minimization can remove.
+The `source-key:` is the api-contract §2.4 idempotency key, and **§2.4 states the guarantee's exact shape — bounded to the recent window the dedup scan reads, not absolute**; it is cited here, never restated. It is a one-way digest, and the honest statement of what that buys is narrower than "it does not reveal the submitter": the digest's other two inputs — title and body — are published verbatim on the public issue beside it, so the submitter `owner/repo` is the ONLY unknown, and it is unsalted and unkeyed. That makes the key a **confirmation oracle**: it does not disclose the repo, but anyone holding a candidate name can confirm or eliminate it by recomputing. Preimage resistance is not the property under attack — guessability of the one remaining input is. **Not closed here, and the reason is structural rather than an oversight:** a keyed digest needs a per-submitter secret, and the adapter deliberately manages no secret (`gh` owns the credential — architecture § Direction), so closing it means introducing secret storage, which is a decision with its own lock-in and not one to take inside a filing op — tracked as **#763** (`stage: design`, deliberately not `ready`). **The honest ceiling on that fix, so nobody spends the effort expecting more than it buys:** the submitter's real GitHub account is attached natively as the public issue author, so closing the oracle narrows the exposure from *confirmable by anyone* to *visible to anyone who reads the author field* — a real improvement, and not the difference between exposed and anonymous. **What holds regardless:** the key never reveals the *source item*, and it still only lets a retry collapse. The submitter's real GitHub identity is attached natively (public issue author) and unavoidably — that **agency/attribution** exposure is inherent, surfaced at consent (§4), not something minimization can remove.
 
 **Filed label-less; triage applies the taxonomy (XP6).** The issue lands with **no `stage:`/`status:`/`area:` labels** — a non-collaborator cannot set them, and consumers are never coupled to prawduct's taxonomy (GV6 is triage-side). Prawduct-side triage relabels from the intake set (§6). *(Load-bearing platform fact to confirm on a throwaway issue at build, per XP6: current GitHub non-collaborator label behavior — do not ship on recall.)*
 
@@ -122,8 +122,13 @@ prawduct-hook backlog file-upstream --title T --body B [--component C] --json
 
 **Call 2 — send (only on an explicit, matching approval):**
 ```
-prawduct-hook backlog file-upstream --approve sha256:<digest> --json
+prawduct-hook backlog file-upstream --title <title> --body <body> [--component <c>] \
+  --approve sha256:<digest> --json
 ```
+`--title`/`--body`/`--component` are required on **both** arms and must be the same values the
+preview was given: check 4 re-renders the payload from them and compares its own digest, which is
+what makes "sent == previewed" a property of the bytes. An `--approve` with no payload flags is
+refused, not treated as a reference to the previous call — the op holds no state between them.
 The adapter **refuses to file unless ALL hold** (any failure → structured error, files nothing):
 
 1. **Preference** ≠ `never-file`  → else `error: filing-disabled` *(non-retryable)*.
@@ -138,8 +143,9 @@ The adapter **refuses to file unless ALL hold** (any failure → structured erro
    The norm is amended toward its guarantee, never weakened (§ Direction). Second-order effect, recorded so the sequencing rationale does not outlive its reason: the *only* hard reason this design's build sat behind the real migration was that the migration is what made this check live. With identity resolved independently, that coupling is gone — though note the `[XP6 verify]` step (§9) still needs a live throwaway issue, so the chunk cannot complete entirely offline.
 4. **Approval matches the bytes** *(when preference = `ask-user`)* — re-render the payload, recompute the digest, refuse unless it equals `--approve`'s value → `error: approval-mismatch`. Guarantees **sent == previewed** (closes approved-A-sent-B). Waived under `always-file` (standing consent; L1 is then the safeguard, §4.1).
 5. **Authenticated** — resolve the session `gh` identity (never anonymous — GitHub issues are inherently authenticated; never a managed token, `architecture.md` § Direction) → else `error: auth`.
+6. **The rendered title conforms to the issue standard's §1 rules** → else a non-retryable refusal that files nothing (`upstream.py`'s `_title_refusal`, inside `send`). Added to this list 2026-09-07: it shipped with Chunk 02 as `data-model.md` § Direction's fourth bound write path, and the list said five. It binds *harder* here than on the in-repo write paths — a non-collaborator cannot retitle an upstream issue afterwards — and `adapter-mode.md` now names this section as the one home for the refusal set, so a reader building a caller off five would omit a refusal they could have predicted without a network call.
 
-On success: file the label-less issue (§2), stamp the trimmed `prawduct:` block + `source-key:` marker (idempotent re-file returns the existing issue, api-contract §2.4).
+On success: file the label-less issue (§2), stamp the trimmed `prawduct:` block + `source-key:` marker (idempotent re-file, bounded as api-contract §2.4 states).
 
 **Submit-or-nothing (XP7).** Declining files **nothing** — there is **no local backlog capture** of an upstream bug (a captured-but-unsubmitted upstream bug helps no one and clutters the product). The only no-op fallback is *pointing the user at the tracker URL* to file by hand — a pointer, not a capture (§7).
 
@@ -151,7 +157,9 @@ On success: file the label-less issue (§2), stamp the trimmed `prawduct:` block
 
 ## 6. Receiving side (referenced, not designed here)
 
-The intake/triage half is MG5's receiving end + Security §5, tracked separately (report-bug receiving side / BKL-6M4T); this doc only guarantees the outbound payload carries the signal it needs:
+The intake/triage half is MG5's receiving end + Security §5, tracked separately (report-bug receiving side — the alias here read `BKL-6M4T`, which resolves to
+`#233`, "run the live prawduct backlog migration", shipped and dead; the receiving-side item is the
+referent, and it is named by title until its alias is confirmed); this doc only guarantees the outbound payload carries the signal it needs:
 
 - **Intake query** = open issues whose title carries the `[prawduct]` convention and no triage label — works for both non-collaborator filings (Security §5's non-collaborator-authored-unlabeled set) and the collaborator dogfood case.
 - The `untriaged-upstream-reports` advisory (today: counts `incoming-bugs/*.md`) is repointed to **count that intake set** instead of drop-box files (MG5). *Exact query pinned on the receiving-side item, at build.*
@@ -172,8 +180,8 @@ The build (not this design pass) executes, in lockstep — the drop-box is retir
 
 ## 8. Governance & propagation
 
-- **§ Direction disposition:** `in-transition → (on build) steady-state`. This design *is* the reviewed design the norm waits on; it does not itself ship a surface, so the interim rule and its test stay live until §5/§7 land. The norm is **amended, never weakened** — the steady-state form asserts the XP7 contract (target-pinned, authenticated, refuses-without-approval, no-self-file).
-- **Coherence edits this design implies** (do at build, so nothing silently drifts — Principle 13): api-contract §2.4 gains the preview/`--approve`/digest contract and the five-check refusal set; security-model §1a/§5 gains the attended-only + intake reconciliation; data-model §5's `source-key:` gains the trimmed-upstream-block note; the api-contract error vocabulary gains `filing-disabled`, `target-not-pinned`, `self-file`, `approval-mismatch`.
+- **§ Direction disposition: DISCHARGED 2026-09-07** — the norm is `steady-state`. This design was the reviewed design it waited on, and the interim rule and its token-scan test stayed live exactly until §5/§7 landed, at which point the test was replaced in place by the contract assertions rather than deleted. The norm was **amended, never weakened**: the steady-state form asserts the XP7 contract (target-pinned, authenticated, refuses-without-approval, no-self-file), which is strictly stronger than the absence it replaced.
+- **Coherence edits this design implies** (**all applied 2026-09-07**; kept here as the derivation, since a reader checking whether an edit was ever made needs the list, not a gap): api-contract §2.4 gains the preview/`--approve`/digest contract and the five-check refusal set; security-model §1a/§5 gains the attended-only + intake reconciliation; data-model §5's `source-key:` gains the trimmed-upstream-block note; the api-contract error vocabulary gains `filing-disabled`, `target-not-pinned`, `self-file`, `approval-mismatch`.
 - **Blocked-by / adjacent:** BKL-2Q7F (target-repo binding — §5 check 2 is its durable form), BKL-8V3D (the `--apply`/dry-run contract — §5 is where it becomes real), BKL-5N9W (wildcard grant narrowing — defense-in-depth beside §5), BKL-6J2X (hold the migration advisory — unrelated but same release).
 
 ## 9. Open items handed to build

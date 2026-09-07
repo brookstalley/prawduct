@@ -224,7 +224,7 @@ state; it remains the interim supported path until the GitHub-issue path is buil
   op MUST: **pin the target** to the intended public repo (no unconstrained `--repo` owner —
   BKL-2Q7F); **authenticate** via the session's GitHub identity (no anonymous — gh issues are
   inherently authenticated); **refuse to execute without a recorded owner-approval** (XP4 L2); and
-  never let prawduct's **own** repo self-file upstream (it routes to its own backlog). This triple is
+  never let prawduct's **own** repo self-file upstream (it routes to its own backlog). These MUSTs are
   the durable enforcement that **replaces** the interim egress guard
   (`tests/preferences/test_no_upstream_content_egress.py`), which stays live until a design
   supersedes it. **Submit-or-nothing:** declining files nothing — there is no local backlog capture

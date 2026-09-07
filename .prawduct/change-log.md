@@ -3,6 +3,372 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-09-07: the review round that bought the merge — one blocking claim retracted
+
+<!-- prawduct: type=fix | scope=upstream-filing-adapter -->
+
+Round 10, spent on the one justification the coverage gate names: a merge. Six findings fixed.
+
+**The blocking one was a guarantee the docs claimed and the code does not make.** A reconciliation
+paragraph in `backlog-service-security-model.md` §1a had grown into asserting that the approval token
+is *the mechanism* closing unattended cross-owner filing — which reverses the owner's dated §4.3
+ruling (2026-07-23) that the gate is byte-pinned with an **honest limit** and does not detect a human.
+The code sides with §4.3: nothing on the send path consults `context.is_unattended()`, and this
+bundle's own test files with `--approve sha256:whatever` from a repo with no human in the call. §1a
+now states the mechanical floor (a token is required in every preference state; `ask-user` is the
+reachable default; `never-file` is the one hard guarantee) and names what is *not* mechanical — the
+`report-bug` skill's obligation. XP4's honesty MUST is why this was a block and not a wording nit.
+
+**A guard whose only test failed for the wrong reason.** `file-upstream`'s SEC-5 withhold was held in
+place solely by a partition test whose failure text is about the counts cache — so dropping the op
+from `_WRITE_OPS` had a suggested "fix" (delete a cache-map row) that re-opens the send arm under a
+pwn-request trigger with the suite green. It now has a send-arm test that reads the seam, verified by
+mutation.
+
+**One framing outlived its norm in six places.** "Network reachability is keyed on
+`backlog_service_repo`" was true until the same-day Local-first amendment and was copied into
+`architecture.md` (twice), `project-preferences.md` (twice, including a norm citation one amendment
+behind), `project-state.yaml` and `security-model.md`. All six now rest on the property that actually
+holds — nothing reaches the network unless a person acts — since `file-upstream` reaches the pinned
+upstream repo with that scalar unset.
+
+**The Local-first statement now distinguishes a *surface* from an egress *site*.** The count of two
+binds on paths by which product content leaves a product; the larger enumeration of sites (including
+`cmd_stop`'s `gh pr list`, which does run on the Stop hook) keeps its single home. This states what
+the count already meant and admits nothing new — flagged for owner veto, since the statement it
+clarifies was amended by owner ruling the same day.
+
+Also: XP-1's spec no longer requires the outbound payload to carry the `source:` + submitter pair the
+minimization exists to strip, and `file-upstream` gets its own `### file-upstream` block in
+`adapter-mode.md` instead of 1,400 characters buried in the write-discipline preamble.
+
+## 2026-09-07: the egress norm reaches steady-state, and every live surface describes the contract
+
+<!-- prawduct: type=feature | scope=upstream-filing-adapter -->
+
+Wave A, Chunk 03 of BKL-7Q4M — the records half, no module changes. The owner ruled the plan's open
+Local-first question **(a) amend**, which was this chunk's blocking input.
+
+**The egress norm is amended `in-transition` → `steady-state`** (`security-model.md` § Direction).
+The statement no longer says the upstream bug channel is filesystem-local — it says content leaves
+only through a surface the plugin pins and the owner approves against the exact outbound bytes.
+Amended toward the guarantee: the interim `Mechanism:` was a token scan asserting the surface did not
+exist, and an absence proves nothing once one does; what replaces it is five checks that each refuse
+independently and file nothing. Same file, same enforcement row — the mechanism was replaced in
+place, so nothing moved house. The statement's third sentence is untouched, so the next cross-owner
+surface is still a fresh owner decision and inherits no permission from this one.
+
+**The Local-first norm admits a second network surface** (`architecture.md` § Direction), recorded as
+a vetoable `[DECISION: …]`. Its prior scope sentence — "confined to backlog storage" — was literally
+broken by `file-upstream`, which targets the plugin's pinned repo rather than the product's own and
+is reachable with `backlog_service_repo` unset. The rejected alternative (gate the op on that scalar)
+reads as the smaller change and is not: it re-introduces the `backlog_service_repo`-keyed fail-open
+the filing design's own check-3 amendment removed. The `Why:` is repaired to rest on the guarantee
+that actually holds — neither surface is reached without a person acting.
+
+**`data-model.md` § Direction's title norm now says four write paths, not three**, with the ruling
+recorded on the entry: `file-upstream`'s send arm refuses a non-conforming title, its preview arm
+reports advisorily, and the upstream title convention takes the budget and placeholder rules but not
+the area-prefix expectation. The code already conformed; the norm's text was describing the world
+before the path existed.
+
+**Coherence, all named by the design's §8:** api-contract §2.4 gains the two-call preview/`--approve`
+contract and the five-check refusal set, and its error vocabulary gains `filing-disabled`,
+`target-not-pinned`, `self-file` and `approval-mismatch`; the design security-model §1a gains the
+attended-by-construction reconciliation (standing consent waives the digest comparison, never the
+token, so an unattended call refuses) and §5 the trimmed-block one (minimization protects the sender
+and says nothing about what a receiver may trust); design data-model §5's `source-key:` gains the
+trimmed-block note and its digest inputs corrected to what the code computes; `project-state.yaml`'s
+`egress_boundary` keeps its count of three and stops describing site 1 as only the backlog backend;
+the preferences enforcement row stops citing the retired interim rule; and the PRD's "ships with the
+migration" line becomes "is built", with the general cross-owner case still fenced to W3.
+
+**Two claims that went stale at Chunk 01 are corrected, and one deliberately is not.**
+`skills/backlog/SKILL.md` said an adapter-side pin existed "only in the design"; it is built, and the
+sentence now says so while keeping its real warning intact — no migration path reaches a line of it.
+`IMPLEMENTED_ADAPTER_GUARDS` **does not gain `target-pin`**, against the plan's expectation: the
+mechanism narrowed rather than arrived. `upstream.py` does compare repo identity, but only for
+`file-upstream`; `import`/`file`/`update` still reach none of it, so backing the name would let a
+migration surface cite a safety net that does not cover it — this file's own defect, one op over.
+
+**The wave's cumulative review found six things worth fixing, four of them in Chunk 02's code.**
+0 blocking; these were warnings, and they were fixed rather than accepted because each is real and
+the wave ships as one PR.
+
+- **A well-formed `prawduct` fence in `--body` crossed upstream intact.** `encode.check_body_text`
+  tolerates a *terminated* block on purpose — every in-repo caller pairs it with
+  `encode.compose_body`, which strips and merges the paste, so guard and transform are one
+  mechanism. `upstream.render_report` appends the body verbatim, so the guard was ported without
+  the transform and a terminated fence arrived as a second parseable block carrying the `source:`
+  field minimization exists to strip; the receiving side's first `merge_all_block_fields` would
+  fold it into the canonical block permanently. Closed with `encode.check_body_text_strict` — no
+  tolerance on the path that has no composer — and the escape the message names (indent the fence)
+  is now pinned by a test asserting against the **parser**, not a substring count.
+- **The `source-key:` dedup scan walked the whole tracker on every first-time filing.** Newest-first
+  was costed for the retry, which is the rare case; a fresh report matches nothing and paid for the
+  entire history, growing forever. Bounded to a 3-page window — and bounding it surfaced that the
+  shared paginator *raises* at its cap by design, so a bare cap would have turned every first filing
+  into a phantom transport failure. `transport.paginate` therefore gains `on_cap="stop"`, opt-in at
+  the call site, with the loud default untouched and an unreadable page still raising under both.
+- **The preview could not say which lint findings would refuse the send.** It hand-enumerated the
+  refusals it could predict, so Chunk 02's title refusal never joined the list and reached the
+  operator as an ordinary `lint:` line beside body budgets that never block. Replaced with one named
+  set, `upstream.previewable_refusals`, plus a test that reads the send arm's own source so a sixth
+  refusal cannot be added to one arm only.
+- **`adapter-mode.md`'s refusal set read exhaustive and omitted the title refusal.**
+- **`source-key:` is a confirmation oracle, and the design overclaimed.** Title and body are
+  published verbatim beside the digest, so the submitter repo is the only unknown and is guessable
+  by recomputation. The claim is corrected in place; the mechanism is not, and the reason is
+  structural rather than an oversight — a keyed digest needs a per-submitter secret and the adapter
+  deliberately manages none, so closing it means introducing secret storage. Filed rather than
+  dropped.
+- **Chunk 02's live-repo self-file criterion had no test.** Every case synthesized an identity under
+  `tmp_path`, so the one configuration a maintainer is actually in went unexercised. Now asserted
+  against the real checkout.
+
+**Round 8 — the first review that actually covered this chunk — found eight more, two of them
+defects this chunk introduced.** 0 blocking again; fixed for the same reason.
+
+- **An unreadable `project-preferences.md` demoted `never-file` to `ask-user`.** §4.3 calls
+  `never-file` a hard mechanical guarantee, and the fail-open left it enforced by the operator
+  reading a warning that, on the send arm, rides out on the **success** envelope after the
+  irreversible write. `read_filing_preference` now returns a distinct `PREF_UNREADABLE` that
+  `check_preference` refuses. The absent-file and unrecognised-value branches keep their `ask-user`
+  default deliberately: those establish that the row does not say `never-file`, and an unreadable
+  file establishes nothing. The pre-existing test had asserted the fail-open its own docstring
+  argued against.
+- **The absence guard could not see the two surfaces it was written for.** `LIVE_SURFACES` omitted
+  `skills/backlog/SKILL.md` — the instance named in the guard's own docstring — so re-introducing
+  that exact sentence passed green. Both instruction surfaces added; the guard was re-falsified
+  against the real regressed sentence rather than a paraphrase.
+- **The dedup bound was applied to the mechanism and not to the claim.** Three prose sites still
+  promised absolute retry-collapse after the scan became a window — the cascade-search-the-CLAIM
+  failure `learnings.md` already names, since prose describing old behaviour shares no token with
+  the code that changed. The guarantee is now relational at its home (api-contract §2.4), cited
+  rather than restated elsewhere, and **pinned against `upstream.DEDUP_SCAN_PAGES`** so the next
+  change to the window cannot strand the sentence. A fourth site outside the diff
+  (`backlog-service-test-specifications.md`) is corrected too — it is what a future test is written
+  from.
+- **The `previewable_refusals` pin was the enumeration it claimed to replace** — it read the send
+  arm's source only to confirm three remembered names. Now AST-derived, with exclusions carrying
+  their reasons. The derivation immediately surfaced a call the hardcoded list had missed.
+- **`paginate` refuses an unknown `on_cap`** rather than falling through to the safe default: a
+  caller who typed `"Stop"` wanting a window would otherwise get an unexplained truncation.
+- The design doc's governance header quoted the norm it governs, so the quotation outlived the
+  amendment and contradicted §8 of its own file — now a citation by name, which the next amendment
+  cannot strand. Its Call-2 snippet also omitted the `--title`/`--body` the shipped op requires.
+- The title-refusal write-path enumerations in `cli.py` and `issuefmt.py` are relational; the
+  `LintFinding` docstring now says to grep for the refusal sites rather than trusting a roster,
+  because a roster there is what a maintainer greps *instead of* the code.
+
+**Two findings declined on the evidence, not deferred.** `.prawduct/backlog.md` carries the retired
+norm quotation, and its own header declares it FROZEN HISTORY, "deliberately allowed to diverge —
+read as a snapshot of the moment of migration, never as live state"; correcting it is the one edit
+that file exists to forbid. And `paginate`'s unreadable-page branch is unreachable through
+`GhTransport`, which coerces a non-list to `[]` first — making it reachable would mean adding a
+failure mode to enable a test for it.
+
+**A Chunk 02 corpus defect surfaced here and is fixed rather than deferred.** `933cb290` added the
+"Defence in depth costs a test PER LAYER" narrative to `learnings-detail.md` with a heading whose
+casing did not prefix the index rule, so `check-learnings-pairing` had been red since that commit —
+the detail was reachable only by grep while every lookup paid to read it. The heading is realigned,
+per the finding's own prescribed remedy. It went unnoticed because the run that pronounced Chunk 02
+green was read off a pipeline, so it reported `tail`'s exit rather than pytest's; that is now a
+`learnings.md` rule, since the same mistake was repeated at this chunk's own baseline.
+
+**A new guard replaces the grep the acceptance criteria asked for:** a live governing surface may no
+longer describe `file-upstream` as unbuilt or deferred. Dated records are exempt by construction —
+a line must carry a date *and* a record marker — and the exemption is exercised by the norm's own
+birth-time inventory rather than by an exemption list that would grow until it meant nothing. Both
+legs falsified before being trusted: the guard fires on an injected claim, and the record path is
+reached by a real line.
+
+## 2026-09-06: the `file-upstream` send path refuses on all five checks, and identity fails closed
+
+<!-- prawduct: type=feature | scope=upstream-filing-adapter -->
+
+Wave A, Chunk 02 of BKL-7Q4M, closing `#329` (BKL-4T9C). `file-upstream --approve sha256:<digest>`
+sends, and refuses unless all five design §5 checks hold — each a distinct code, and every one of
+them files nothing: `filing-disabled`, `target-not-pinned`, `self-file`, `approval-mismatch`, `auth`.
+Chunk 01 shipped the two-signal identity resolver; this ships the check that consumes it, which is
+what closes the fail-open the item describes.
+
+**Check 3 is the one with the amendment, and the fail-closed leg is the one a naive implementation
+gets backwards.** Identity resolves from **both** `backlog_service_repo` and the `origin` remote,
+either match refuses, and an identity that resolves from *neither* refuses too — "we could not tell"
+is a refusal, not a pass. The refusal **routes** rather than merely erroring: XP7 reads "never let
+prawduct's own repo self-file upstream *(it routes to its own backlog)*", so the message names
+`prawduct-hook backlog file` and the test asserts that on the prose a human reads, not only on the
+code. The invariant behind the routing is worth keeping: this op's whole ceremony — recomposition,
+verbatim review, digest approval, the visible-word ceiling — exists because content crosses an
+*owner* boundary, and prawduct→prawduct crosses none, so minimizing prawduct's own bug reports would
+lose fidelity to protect prawduct from prawduct.
+
+**The send arm refuses a non-conforming title; the preview still only reports one.** `data-model.md`
+§ Direction binds the issue standard's §1 title rules on **every** adapter write path and names
+`file`/`update`/`import` — because `file-upstream` is the fourth and nobody had noticed. It binds
+harder upstream: the write is irreversible and a non-collaborator filer cannot retitle afterwards.
+The preview stays advisory because nothing is written there, and an advisory finding is exactly what
+lets an author fix a title *before* approving it. The **rendered** title is what is linted, since
+that is the string that lands; `[prawduct] <component>:` is not §1's `area: summary`, so `_split_area`
+reads it as no prefix and the budget, placeholder and atomicity rules are what remain.
+
+**`--approve` is the send trigger in every preference state; `always-file` waives only its value.**
+Design §4.1 says standing consent "files directly (no per-report digest)" and §5 waives check 4
+there, which left open whether a bare preview call *sends* under `always-file`. It does not: the
+token is the only thing separating rendering a payload from filing one, and a caller that previews
+must not discover it filed. So the presence of `--approve` is required always — an empty token is
+refused — and under `always-file` its value is simply not compared. Recorded as a decision because
+the design admits the other reading.
+
+**Every refusal carries the advisory payload the success envelope carries.** The payload is composed
+*before* the checks run, so `lint` findings and preference warnings ride out on all five refusals as
+well as on the ok envelope, and the human-mode error branch prints them — `core.error` is a
+different constructor from `core.ok` with no slot for either, which is how this repo has twice
+shipped a field that vanished on the failure path. A refused filing is precisely the moment an
+author is about to edit the report, so the findings are worth more there than on the success.
+
+**Idempotency reads the list endpoint, and degrades rather than blocks.** The api-contract §2.4
+`source-key:` marker makes a re-file return the existing issue instead of duplicating it; the lookup
+scans issues newest-first for the marker rather than asking GitHub's search API, because the key
+exists for retry safety and search is not read-your-writes — blind exactly in the seconds after a
+create, which is the case that matters. A lookup that *cannot run* files anyway with a loud warning:
+XP7 is submit-or-nothing and names a slow flow as what turns "submit" into "nothing", and the cost of
+proceeding is a duplicate a maintainer can close. The five checks are the guarantees, and none of
+them runs through that path.
+
+**The review caught the one thing every test was blind to: the send arm never resolved a transport.**
+`_run_file_upstream` was the only transport-consuming handler in `cli.py` that did not call
+`_resolve_transport`, and production enters through `run(project_dir, argv)` with no transport — so
+`None` reached `send`, died on `None.get_authenticated_user()`, and the CLI-boundary catch reported
+the whole op as a retryable `unavailable`. Every send test injected a fake, which is exactly why the
+suite was green over a deliverable that could not file at all. Resolution now happens **inside the
+send branch**, not at the top of the handler where its seventeen siblings put it: at the top it would
+construct a `GhTransport` on the preview path and dissolve the "the preview arm is handed no
+transport" guarantee. Both halves are pinned by tests that drive `cli.run` with no transport at all.
+
+Check 2 was likewise the one of five with no send-arm test — the CLI's pre-check short-circuits every
+call routed through `cli.run`, so `send`'s own `check_target` leg was a mutation survivor. It now has
+a class like the other four, plus one that asks `upstream.send` directly.
+
+All five checks are mutation-verified — neutering each fails its own class and nothing else — as are
+the title refusal, the advisory carry-through, the dedup lookup, and both halves of the transport
+wiring. Two warnings landed in the same pass: an unreadable (as opposed to absent)
+`project-preferences.md` now warns rather than silently downgrading a `never-file` standing no, and
+the preview warns on `filing-disabled` as it already did on `self-file`, so nobody reviews bytes and
+approves a digest for a send that was never going to happen. `--approve` had to be added to
+`_VALUED_FLAG_NAMES`; the union guard caught it, which is the guard working. `transport.py` and
+`tests/fakes/fake_github.py` were listed as deliverables and needed no change: `create_issue` and
+`list_issues` are the seam already, and the fake is keyed per repo, so the pinned target is just
+another repo to it.
+
+## 2026-09-06: `file-upstream` previews the bytes that would cross the owner boundary
+
+<!-- prawduct: type=feature | scope=upstream-filing-adapter -->
+
+Wave A, Chunk 01 of BKL-7Q4M. The adapter gains one operation that writes into a **foreign, public**
+repo — prawduct's own tracker — and this chunk lands only the half that sends nothing: the pinned
+target, the exact outbound payload, its digest, and the contract test that replaces the interim
+egress guard. Design: `documentation/backlog-service-upstream-filing.md` §2 and §5.
+
+**The interim test and the surface it forbade had to land in one commit.**
+`tests/preferences/test_no_upstream_content_egress.py` asserted that the token `file-upstream`
+appears on no shipped surface and that `brookstalley/prawduct` appears nowhere in the backlog
+adapter. Design §5 check 2 requires the pinned target to be a plugin constant *inside* the adapter,
+so the keystone violates both assertions the moment it exists. The design's "the interim test stays
+live until the contract test lands" is therefore a same-commit constraint rather than a chunk
+ordering: splitting them leaves the suite red for the whole wave, and a red suite is what the
+release gate reads. The file keeps its name and its enforcement-row identity in
+`project-preferences.md`, and is rewritten to assert the contract. The swap is a strengthening,
+which is the only direction the § Direction norm permits — an absence proves nothing about a
+surface once the surface exists.
+
+**Two of the five §5 checks are live; three land with the send path.** Asserted now: the target is
+pinned (a `--repo` that disagrees is refused with `target-not-pinned`, and one that agrees changes
+no rendered byte), and nothing files without an approval. The second is structural rather than
+conditional — the handler takes no `transport` argument at all, so a preview cannot reach the seam
+whatever a later edit does to its body. Both were mutation-checked: breaking the pin, and wiring the
+handler to the seam, each fail the contract test. A contract test that cannot fail is the
+vacuous-pass class this repo has already paid for.
+
+**`source-key:` needs the running repo's identity, so the two-signal resolver landed here rather
+than with check 3.** The api-contract §2.4 idempotency key digests *(submitter identity, title +
+body)*, and the submitter is the filing repo — resolved from **both** `backlog_service_repo` and the
+`origin` remote, because either alone is fail-open in the state that matters most
+(`backlog_service_repo` is unset in every pre-cutover repo). Chunk 02's no-self-file check consumes
+this resolver rather than writing a second one. Identity crosses the boundary only as an input to a
+one-way digest; a GitLab or Enterprise `origin` resolves as no signal, which is the fail-closed
+direction. The remote is read out of `.git/config` rather than by shelling out to `git remote
+get-url`: `lib/backlog/`'s egress discipline gives `transport.py` the package's only subprocess, and
+that invariant is what makes "the adapter reaches out in exactly one place" checkable — not worth
+spending on a value sitting in a config file. The linked-worktree form (a `.git` *file* whose gitdir
+names a shared `commondir`) is resolved too, because reading only the plain case would leave every
+agent worktree with no identity signal, and a fail-closed check with no signal is a refusal nobody
+can explain.
+
+The remote URL is matched as a **host**, not searched for as a substring, and the difference is
+reachable twice over: a prefix guard alone still accepts `https://evil.example.com/github.com/o/r`,
+where `github.com` sits in the *path* of a host the caller chose. The pattern is anchored over the
+whole URL — optional scheme, optional userinfo, then the host and nothing before it — and the test
+asks the property (no URL that merely *contains* the host resolves) rather than pinning two
+spellings. Git's config case-folding is honored on both halves of its own rule: case-insensitive on
+the `remote` section name and the `url` key, exact on the `"origin"` subsection, because handling
+only one half leaves a valid config silently yielding no identity at all.
+
+**What the payload is, exactly.** `[prawduct] <component>: <symptom>`, the two sourced sections
+(**Component**, **Found in**) ahead of the caller's L1-recomposed prose, and a `prawduct:` block
+trimmed to `v:`, `found_in:` and `source-key:`. The in-repo block's `provenance: {source: <product>}`
+is the product-name leak the trim exists to prevent, and it is absent by construction: the block is
+composed from three values with no path to a fourth. `found_in:` is read from the plugin manifest at
+call time and degrades to `(unknown)` on any unreadable manifest — never recalled, because a
+recalled version drifts silently as the plugin updates and sends triage to the wrong code. A body
+that opens an unterminated ```` ```prawduct ```` fence is refused, closing the same forgery route
+`file` already closes on its own body.
+
+**`--component` could forge the whole provenance block, and the guarding test could not see it.**
+The CLI ran the fence guard on `--body` alone; `--component` was interpolated verbatim into the body
+*ahead of* the marker, and `.strip()` removes surrounding whitespace, not an embedded newline. A
+component of ``stop-hook\n```prawduct\nsource: acme/widget`` put `source: acme/widget` — the
+product-name field the trim exists to strip — at the head of the parsed block, with the genuine
+`v:`/`found_in:`/`source-key:` swallowed inside it, irreversibly, on a public tracker. The test that
+should have caught it sliced the body with `rindex("```prawduct")`, so it inspected only the *last*
+opener while the parser reads from the *first*: it reported a clean marker on a forged body. It now
+asserts the fence appears exactly once and scans from the first.
+
+The guard moved into `upstream.check_payload_inputs` — every caller-supplied string that lands in
+the body, checked in the module that owns the bytes — and `build_payload` re-runs it and returns
+`None` rather than documenting it as a precondition, because a precondition a caller can skip is
+exactly what let this through. Title and component must also be single lines: both are structural
+fields of the §2 convention, and forbidding the newline is strictly narrower than policing what a
+value could spell once it reaches column 0. The shipped docstring claiming the block had "no path
+that could reach a fourth field" was corrected — composing three fields does not guarantee three
+arrive.
+
+Three more from the same review. Owner/repo names now compare **case-insensitively**, as GitHub's
+do: a case-sensitive compare produces divergent `source-key`s today and is fail-open in Chunk 02's
+no-self-file check tomorrow, on an input the caller picks. Preview and send now compose through one
+`upstream.render_preview`, because check 4 re-renders to validate `--approve` and two spellings of
+that recipe would make every `ask-user` filing refuse with `approval-mismatch` — reading to the
+operator as their own mistake. And a preview run *inside* the pinned target now warns that filing
+would refuse with `self-file` and names the in-repo `file` route: handing over an approval digest
+for a send that can only refuse is not a preview, it is a trap.
+
+**Adding the op silently widened a permission grant, and that is now a rule rather than a fix.** The
+backlog skill is model-invocable and granted `Bash(prawduct-hook backlog file*)` no-prompt. A Bash
+grant is a prefix match, so the attached star — the house form, adopted because it covers the bare
+call and every argument form at once — also conferred `file-upstream` the moment the op existed,
+with every grant test green. The `file` grant is narrowed to `file --*` (no legitimate call is lost:
+a bare `backlog file` is a validation error, and `--help` still matches), `file-upstream` joins
+`IRREVERSIBLE_OPS` so the rail binds every model-invocable skill rather than this one, and a new
+test asks the general question — no everyday-op grant may reach any *other* dispatched op — so the
+next op named `list-…` or `sync-…` cannot reopen it. All three checks were mutation-verified against
+the restored wildcard.
+
+The payload is pinned **byte for byte** against a fixture rather than by shape. "Sent == previewed"
+is the guarantee the digest exists to make, and a shape assertion passes unchanged while the bytes
+drift underneath it. The digest covers the whole payload including the target, so a payload approved
+for prawduct's tracker cannot be sent to a repo the reviewer never saw.
+
 ## 2026-09-02: four small backlog-adapter items, and two plans falsified by reading the code
 
 <!-- prawduct: type=fix | scope=small-batch-2026-09-02 -->

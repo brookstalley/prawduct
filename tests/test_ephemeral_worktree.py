@@ -660,8 +660,15 @@ class TestBacklogOpClassificationIsBound:
 
     #: Ops that only ever talk to the service — no local write, so they cannot
     #: strand and the service-backed allowance covers them correctly.
+    #: `file-upstream` is here on the same test — no local write, so it cannot
+    #: strand — even though its target is prawduct's own public tracker rather
+    #: than the product's service. The guard asks one question and that is it.
+    #: Whether an agent worktree should be filing upstream at all is a different
+    #: control with a different answer (the op is attended-only, and `cli._WRITE_OPS`
+    #: withholds it under an unattended trigger); classifying it as a local write
+    #: here to get that effect would misdescribe what it touches.
     SERVICE_ONLY = frozenset({
-        "file", "status", "update", "comment",
+        "file", "file-upstream", "status", "update", "comment",
         "link", "unlink", "provision", "reconcile-labels", "merge",
     })
 

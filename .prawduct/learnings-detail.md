@@ -2541,3 +2541,115 @@ carried prose gates instead. The gap is not a missing feature; it is a habit.
 **Corollary for triage.** Requiring one NAMED ANSWERABLE QUESTION from anything staying at
 `design` — with "needs design" rejected — is what exposed these. An item that cannot produce its
 blocking question in one sentence is not blocked; it is mislabelled, already done, or dead.
+
+## When every test INJECTS a dependency, green says nothing about how production OBTAINS it
+
+**From:** upstream-filing-adapter Chunk 02 (2026-09-06), Critic finding R-1, BLOCKING.
+
+`plugin/lib/backlog/cli.py`'s `_run_file_upstream` began life as the preview arm, whose defining
+property — stated in its docstring and asserted by the contract test — was that it takes **no**
+`transport`, so it cannot reach the network. Chunk 02 extended it into a send arm that needs one and
+threaded the parameter down from `run`. Every one of the seventeen sibling handlers calls
+`_resolve_transport(transport)` on its first line; this one did not, because the question "who
+supplies this in production?" never came up: `run`'s signature has `transport=None`, and every test
+in the suite passes a `FakeGitHub` or a `MagicMock`.
+
+Production enters at `plugin/bin/prawduct-hook` via `backlog_cli.run(project_dir, argv)` with no
+transport kwarg. So `None` travelled into `upstream.send`, which called
+`transport.get_authenticated_user()` and raised `AttributeError`. `run`'s CLI-boundary broad-except
+turned that into `core.error("unavailable", …)` at exit 6 — a code whose contract says *retryable*.
+The chunk's entire deliverable was non-functional for every real caller, and the failure presented
+as a transient GitHub outage that a caller would retry three times before giving up.
+
+Nothing was sent (checks 1–4 pass before the transport is touched), so this was non-function rather
+than a safety hole. But the suite was green over it, and would have stayed green through the PR
+gate: dependency injection at every call site makes the *acquisition* path untested by construction.
+
+**The remedy is two tests, not one.** Drive the new arm through `cli.run` with no transport and
+assert the seam is constructed (monkeypatch the module's `GhTransport`); and drive the arm that must
+NOT build one and assert construction never happens. The second is what forces the resolution to sit
+inside the send branch rather than at the top of the handler where the siblings put it — at the top
+it would build a `GhTransport` on the preview path, dissolving the scope guarantee that is the
+preview arm's whole point. Both mutations were verified: moving the call to the handler top fails the
+preview test, removing it fails the send test.
+
+Related: [[a-fixtures-world-is-narrower-than-the-requirement-it-certifies]].
+
+## Defence in depth costs a test PER LAYER, not per rule
+
+**From:** upstream-filing-adapter Chunk 02 (2026-09-06), Critic finding R-2, BLOCKING.
+
+Design §5 check 2 pins the upstream target. Chunk 01 built it on the preview arm and
+mutation-verified it there. Chunk 02 put the same check in two places on purpose: the CLI answers it
+first, ahead of even the required-flag checks, so a caller naming the wrong repo is not told about a
+missing `--title`; and `upstream.send` re-asks it, because `send` is a module entry point a caller
+can reach without the CLI.
+
+Four of the five checks got a send-arm class asserting refusal *and* that the fake recorded no
+write. Check 2 did not, on the reasoning that chunk 01 had already verified the pin — which was true
+of a different arm. The consequence: deleting `check_target(requested_repo)` from `send`'s refusal
+tuple failed nothing, because every test that reaches check 2 goes through `cli.run` and hits the
+pre-check first. The inner leg — the one that matters for the caller the redundancy exists for —
+was unverified while the coverage looked complete.
+
+The generalisation is about *where a mutation is observable*, not about redundancy being bad.
+Deliberate redundancy is right here; what it costs is one test per layer, each entering at that
+layer's own door. The send-arm class enters through the CLI; a second test calls `upstream.send`
+directly.
+
+Related: [[when-every-test-injects-a-dependency-green-says-nothing-about-how-production-obtains-it]].
+
+## Check WHICH interval the Critic mode takes
+
+The two modes read different trees, and the failure is silent in both directions.
+
+**`chunk`** takes HEAD-tree → working tree. Commit first and the interval is empty, so the review
+returns a normal-looking report whose findings are drawn from whatever scrap happens to be
+uncommitted.
+
+**`cumulative`** takes a commit range — merge-base → HEAD. This is the mirror failure: a dirty tree
+is *invisible* to it. Observed 2026-09-07 on `feat/upstream-filing-adapter`, dispatching a
+cumulative for Chunk 03 with 19 files uncommitted. `critic-begin` counted 3 judgeable files, all
+three reviewers read every file via `git show <HEAD>:<path>`, and the review covered Chunks 01–02 —
+the previous two chunks — while the chunk it was run for went entirely unreviewed. The report was
+sound and genuinely useful; it simply answered a different question than the one asked. It said so,
+in a scope caveat, *after* the findings — which is exactly where a reader who already believes the
+review covered their work will not re-read.
+
+The signal was available before dispatch and cost nothing to check: `git status` showed the dirty
+tree and `test-status` had just been recorded against it. What was missing was the question — the
+mode name came from the build plan's `Critic mode:` field, and a field naming a mode does not tell
+you what tree that mode will read.
+
+**So the rule is not "always commit first" or "never commit first"** — it is that the mode
+determines the tree, so pick the order from the mode rather than from habit. For a `cumulative`
+that must feed the PR gate, the work has to be committed first; for a `chunk` review it must not be.
+
+## A guard's TOLERANCES belong to the path it was written for
+
+`encode.check_body_text` rejects an *unterminated* ```` ```prawduct ```` opener and deliberately
+PASSES a well-formed one. That tolerance is correct in-repo and only there: every in-repo caller
+pairs it with `encode.compose_body`, which strips the pasted block and merges its fields into the
+real one. The guard and the transform are one mechanism, and the guard alone is not the rule.
+
+`upstream.render_report` reused the guard and appends the body verbatim instead. So a
+`--body '```prawduct\nsource: acme/widget\n```'` passed every check and would have landed upstream
+as a second parseable block carrying the exact field minimization exists to strip — and the
+receiving side's first `merge_all_block_fields` folds *every* block, so it would have become
+permanent in the issue's canonical block. Found by a cumulative reviewer, 2026-09-07; not by
+re-reading the diff, because the defect is not *in* the diff — it is in what the reused function
+does not do.
+
+**Why it is hard to see:** a guard's tolerances are invisible at the call site. `check_body_text(v)`
+reads as "the body is checked". Only the guard's own docstring says what it lets through and why,
+and the "why" names a caller-side obligation that the new path silently declines to meet.
+
+**The second-instance signal.** The same seam produced the `--component` forgery fixed at 67f00b61 —
+also an injection reaching the outbound block through an input guard's gap. One instance is a bug;
+two on one seam says the seam wants a different shape, which is why the fix here is a *distinct
+stricter function* (`check_body_text_strict`, no tolerance where there is no composer) rather than a
+third patch to the same predicate.
+
+**Generalizes past this codebase:** validators paired with normalizers (trim-then-validate,
+escape-then-render, canonicalize-then-compare). Reusing the validator without the normalizer is the
+same defect every time, and the validator will not complain.
