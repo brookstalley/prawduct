@@ -136,8 +136,22 @@ it exists.
 not been rewritten onto `file-upstream` and that nothing calls the op — true at Wave A's close and
 false the moment Wave B lands. The absence guard will not catch it (it keys on lines naming the op,
 and that sentence does not), and widening it to phrase-only matching across every governing document
-is how a guard starts crying wolf. So Wave B must correct that passage as part of its own work; this
-paragraph and `.prawduct/.handoff-notes.md` are the only things that will say so.
+is how a guard starts crying wolf. So Wave B must correct that passage as part of its own work, and **this paragraph
+is the durable record of that** — a co-record in `.prawduct/.handoff-notes.md` was cited here until
+2026-09-07 and removed: that file is gitignored and regenerated at every `/clear`, so naming it as a
+carrier meant the obligation had one real home while reading as though it had two.
+
+**Carried to Wave B's first commit, priced and deliberately not committed here.** Two docstrings
+anchor themselves to a chunk number — `plugin/lib/backlog/upstream.py:961` and
+`tests/test_backlog_upstream.py:463` both say "Chunk 02" — which is the decay `learnings.md` warns
+about: chunk ids renumber and name no plan, while the *why* beside them survives without the
+identifier. The fix is two deletions. It is not made here because `prawduct-hook cost-of-commit`
+prices those two paths as `costs-a-round` (~5 min) against a coverage gate that is currently
+`satisfied`, and buying a review round to delete two words is the trade this plan should not make.
+Wave B touches both files, so it rides that commit for free. **The same pricing corrected an error
+in the other direction the same day:** three doc fixes were withheld on an assumed cost, and
+`cost-of-commit` priced them `free` — ask the tool, in both directions, rather than reasoning about
+the gate.
 
 **Owed at the merge, and this is its durable home.** `#329` (BKL-4T9C) is satisfied in full by this
 plan's Chunk 02 — `upstream.resolve_self_identity` + `check_not_self` is its Expected — but it stays

@@ -679,7 +679,7 @@ Data Model §2)
   **idempotent** (already-applied items converge, the previously-rate-limited ones now apply); the mass
   grooming workload (TF3) is paced under the write caps (pacing constants are L3/S3, correctness here).
 
-**XP-1 — `file-upstream` provenance + submitted-landing + auth-by-target-owner + `source-key:` dedup** (→ XP1/XP2, API §2.4, Security §1)
+**XP-1 — `file-upstream` payload minimization + submitted-landing + session-identity auth + `source-key:` dedup** (→ XP1/XP2, API §2.4, Security §1)
 - Level: integration
 - Setup: a target project owned by a **different owner**; the caller has no local checkout of it.
 - Action: `file-upstream` into the target; then **re-file the same source item** (same submitter + source
@@ -883,7 +883,7 @@ duplicates (the same behavior stated in 4–5 docs) collapse to one row.
 | GV6/F7 non-prawduct issues out-of-scope | **PROV-2** |
 | GV3 closed_by authority + bidirectional drift sweep *(dropped in v1 — added)* | **GOV-1** |
 | AU2/TF3 batch per-item partial success *(mis-routed in v1 — added)* | **BATCH-1** |
-| XP1/XP2 file-upstream provenance/submitted/auth-by-owner *(mis-routed in v1 — added)* | **XP-1** |
+| XP1/XP2 file-upstream payload-minimization/submitted/session-identity-auth *(mis-routed in v1 — added)* | **XP-1** |
 | NF1/G4 cost O(1) in project count *(dangling pointer in v1 — added)* | **OPS-1** |
 | NFR §2 local-artifacts-disk-not-dollars | **OPS-2** |
 | NF2 no-server-for-correctness | **OPS-3** |
