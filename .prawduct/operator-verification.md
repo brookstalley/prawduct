@@ -415,10 +415,17 @@ correctly. Chunk 06's acceptance is the dogfood itself.
 **Drop-box retirement — verify the lockstep replacement (BKL-0QR1, resolved 2026-07-17 → option c):**
 `incoming-bugs/` is retired **only together with** its minimal same-repo replacement (PRD §8.9/MG5),
 never before it. Before/at the retirement, eyeball that the replacement is live:
-- `/prawduct:report-bug`, on the reachable-channel path, files an `untriaged-upstream`-labeled
-  **GitHub issue** into prawduct's own (public) repo via the adapter — no `incoming-bugs/` file write.
-- The `untriaged-upstream-reports` advisory counts those **labeled open issues**, not `incoming-bugs/*.md`.
-- The **no-channel fallback** still degrades cleanly to local capture + the canonical-tracker pointer.
+- `/prawduct:report-bug` files a **GitHub issue** into prawduct's own (public) repo via the
+  adapter — no `incoming-bugs/` file write. The issue lands **label-less**: a non-collaborator
+  filer cannot set labels, so the taxonomy is applied by triage on arrival, and the intake signal
+  is the `[prawduct]` title prefix (upstream-filing design §2/§6). An earlier draft of this bullet
+  expected an `untriaged-upstream` label on the filing; that would work for the collaborator
+  dogfood and fail for the case the channel exists to serve.
+- The `untriaged-upstream-reports` advisory counts that **intake set** — open issues carrying the
+  `[prawduct]` prefix and no triage label — not `incoming-bugs/*.md`.
+- The **no-channel fallback** degrades to the canonical-tracker pointer, and to **nothing else**:
+  design §5 is submit-or-nothing, so there is deliberately no local capture of an upstream bug.
+  An earlier draft of this bullet expected one.
 - Only *then* is `incoming-bugs/` retired (`legacy.py` is **not** — GV7/MG3, portfolio-wide only).
   The full XP1 cross-owner/foreign-identity
   plane stays **W3** — it is deliberately *not* in this slice.
@@ -1169,5 +1176,59 @@ different governance version).
 4. Confirm `main` is untouched throughout, and that no other repo on this machine changed track.
 5. Walk the documented way back off: delete the `prawduct-dev` block, re-enable `prawduct@prawduct`,
    restart, and confirm the briefing reports the released version again.
+
+**Verified by:** _(operator, date)_
+
+## VRF-018 — Wave B (upstream-report-bug) — what a non-collaborator can actually set on a filed issue
+
+**Status:** pending
+**Added:** 2026-09-07 (upstream-report-bug Chunk 02 — the `[XP6 verify]` item design §9 hands to build)
+
+> === 2026-09-07 — DRAIN DISPOSITION: STAYS PENDING — LIVE HARNESS, AND BLOCKED ON AN IDENTITY ===
+>
+> **What it turns on.** One filing attempt from a GitHub account that is not a collaborator on
+> `brookstalley/prawduct`, against a public repo it cannot write to. Nothing local answers it: the
+> behaviour under test is GitHub's own permission model for a foreign filer, and the fake transport
+> models the adapter's side of the call rather than the platform's.
+>
+> **It has no static half, and that is why it was not split.** The split rule (VRF-002's) turns half
+> a live check into a test you can write today. Here both halves are the same fact — *what can a
+> non-collaborator set* — and neither end of it is observable from this repo. What IS already
+> pinned by tests is the adapter's answer to it: the payload ships `labels: []` and
+> `test_backlog_upstream.py` asserts the filed issue carries none. So the code is already built to
+> the recalled answer; this entry exists to check the recall.
+>
+> **Blocked on the owner, who is the wrong identity.** The account that would run it is a
+> collaborator, which is precisely the case the check must exclude. It needs a second GitHub
+> account or a willing third party, and that is a lead-time item no session can shorten.
+>
+> **What it gates, and what it does not.** It does not gate Wave B: no answer changes a byte
+> `file-upstream` sends. It gates the **release**, because Wave C's `untriaged-upstream-reports`
+> repoint keys on the §6 intake query, and that query's shape ("the `[prawduct]` prefix and no
+> triage label") is only correct if a non-collaborator genuinely cannot apply one.
+
+**Blocked on the owner, and it cannot be done from this account.** The check needs a GitHub identity
+that is **not** a collaborator on `brookstalley/prawduct`, and the owner is one. Nothing in the
+agent's reach substitutes for it.
+
+**Why it does not gate the build.** The payload is already label-less by design §2, so this can only
+*confirm* that choice or *widen* the receiving-side intake query — it cannot change a byte that
+`file-upstream` sends. It gates the **release**, which is where a wrong answer would cost something:
+the `untriaged-upstream-reports` repoint (Wave C) keys on what this establishes.
+
+**Verify (owner, on a throwaway issue):**
+
+1. From a GitHub account with no collaborator access to `brookstalley/prawduct`, open an issue on a
+   public repo you do not have write access to. Note whether the compose form offers labels at all.
+2. Record what that account **can** set: title, body, and what else — assignees? labels? milestone?
+   The load-bearing answer is labels, but record the rest rather than inferring it.
+3. Close the throwaway issue.
+4. If labels turn out to be settable by a non-collaborator, say so plainly: §2's label-less choice
+   would then be a *deliberate* minimization rather than a platform constraint, and §6's intake
+   query — "the `[prawduct]` prefix and no triage label" — needs re-deriving rather than
+   re-confirming.
+
+**Do not ship on recall** (design §9 says so in as many words). Platform behaviour here has changed
+before and the whole receiving side is keyed on the answer.
 
 **Verified by:** _(operator, date)_

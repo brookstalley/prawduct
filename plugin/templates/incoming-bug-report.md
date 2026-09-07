@@ -1,3 +1,16 @@
+<!-- The DROP-BOX report format. Nothing writes this any more: `/prawduct:report-bug`
+     files upstream as a GitHub issue, and its payload is composed from
+     `documentation/backlog-service-upstream-filing.md` §2 — not from this file.
+
+     Do NOT use this as the shape of an upstream filing. Three of its fields are
+     exactly what must not cross an owner boundary: `Reporter`, `used from the
+     <product> repo`, and a `## Context` section that asks for the host repo's
+     particulars. They were safe when the report stayed on one machine.
+
+     Kept because reports already written in this shape are still sitting in
+     `incoming-bugs/` waiting to be triaged, and this is what they look like. It
+     retires with the drop-box. -->
+
 # <one-line title: the bug, stated as a symptom>
 
 - **Severity:** <low | medium | high> — <one phrase on impact / how much friction>

@@ -122,5 +122,5 @@ modeled as CI — a gate can legitimately block, and a block names itself.
 - `/prawduct:critic` · `/prawduct:pr` · `/prawduct:backlog` · `/prawduct:learnings` ·
   `/prawduct:janitor` · `/prawduct:doctor`
 
-**Hit a bug in prawduct itself?** `/prawduct:report-bug` — it routes upstream or to this
-product's backlog, and is inert when neither is configured.
+**Hit a bug in prawduct itself?** `/prawduct:report-bug` — it files the report upstream as an
+issue, showing you the exact outbound bytes first and sending nothing you have not approved.

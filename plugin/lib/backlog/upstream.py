@@ -629,8 +629,9 @@ def check_preference(state: str) -> Refusal | None:
     return Refusal(
         "filing-disabled",
         f"`{FILING_PREFERENCE_LABEL}` is {PREF_NEVER_FILE} in project-preferences.md — "
-        "upstream filing is disabled here and nothing was sent; report this bug in "
-        "your own backlog, or change the preference if that standing no was not meant",
+        "upstream filing is disabled here and nothing was sent; file it by hand at "
+        f"https://github.com/{PINNED_TARGET}/issues, or change the preference if that "
+        "standing no was not meant",
         {"preference": state},
     )
 

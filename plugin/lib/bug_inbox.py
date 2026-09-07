@@ -1,11 +1,16 @@
-"""Resolve the upstream bug-report inbox for ``/prawduct:report-bug``.
+"""Resolve the gitignored ``incoming-bugs/`` drop-box on a co-located checkout.
 
-A product that consumes prawduct can file bug reports about prawduct *itself*
-into the prawduct checkout's gitignored ``incoming-bugs/`` drop-box — but only
-when that checkout is on the same machine and the product knows where it is.
-This module resolves that location from local, machine-specific signals, so the
-mechanism is **active** for a co-located developer and silently **inert** for
-everyone who just installs the plugin (they configure neither signal).
+**Nothing calls this any more.** ``/prawduct:report-bug`` files upstream as a
+GitHub issue through the backlog adapter's ``file-upstream`` op, which needs no
+co-located checkout and no local pointer; this resolver is what routed a report
+to a directory back when the report was a file. It retires together with the
+drop-box itself, once the ``untriaged-upstream-reports`` advisory stops counting
+files there — the reports already sitting in that directory still need triaging,
+and retiring the drop-box before its replacement was live is the one ordering the
+design forbids.
+
+The resolution it performs is unchanged and is described below, because the
+directory it finds still holds real reports.
 
 Precedence (first usable hit wins):
   1. the ``PRAWDUCT_BUG_INBOX`` environment variable

@@ -838,6 +838,11 @@ class TestNoSurfaceStillDescribesTheAbsence:
         # contract, so a stale claim there reaches the same reader one hop later.
         "plugin/skills/backlog/SKILL.md",
         "plugin/skills/backlog/adapter-mode.md",
+        # The op's only caller. It is on this list for the same reason
+        # adapter-mode.md is, one step more directly: it is the surface a model
+        # reads when it has an actual prawduct bug in hand, so a sentence here
+        # saying the channel is unbuilt routes the report nowhere.
+        "plugin/skills/report-bug/SKILL.md",
     )
 
     #: Phrasings that assert the surface does not exist yet. Matched only on lines
@@ -920,3 +925,50 @@ def test_the_documented_dedup_bound_cites_the_symbol_that_sets_it():
         "sentence behind — which is exactly how this drifted the first time"
     )
 
+
+class TestTheDropBoxReplacementIsLive:
+    """Design §7's lockstep, from the replacement's side.
+
+    The drop-box is retired **only together with** a live replacement, never
+    before it — so the thing that must be mechanically true before anyone
+    retires `incoming-bugs/` is that `/prawduct:report-bug` reaches the adapter
+    and no longer writes a file. Asserted here rather than left to the retirement
+    itself, where "is the replacement live?" would be answered by the same person
+    doing the retiring, from memory.
+
+    **Two claims, both mechanical.** Everything else this skill owes — that the
+    report carries no product content, that a human actually read the bytes,
+    that a blocked filing captures nothing locally — is judgment about prose, and
+    a grep for it would pass on any text containing the right words. Those are
+    the Critic's (Goal 4), deliberately: a green test that cannot catch a real
+    violation is worse than no test.
+    """
+
+    SKILL = REPO_ROOT / "plugin/skills/report-bug/SKILL.md"
+
+    def test_the_skill_drives_both_arms_of_the_op(self):
+        """A skill describing the preview and not the send is a half-rewrite —
+        and it fails in the quiet direction, composing a payload nobody files."""
+        text = self.SKILL.read_text(encoding="utf-8")
+
+        for token in ("file-upstream", "--approve"):
+            assert token in text, (
+                f"`/prawduct:report-bug` no longer names `{token}` — it is the only caller of "
+                "the upstream filing op, and a report that never reaches the send arm is a "
+                "report nobody receives"
+            )
+
+    def test_the_skill_names_no_drop_box_write_path(self):
+        """The write, not the mention. The receiving-side section legitimately
+        talks about `incoming-bugs/` — reports filed before the cutover are still
+        sitting there waiting to be triaged. What must be gone is the machinery
+        for putting a NEW one there: the resolver that picked the directory, and
+        the path the report was written to."""
+        text = self.SKILL.read_text(encoding="utf-8")
+
+        for token in ("bug-inbox", "<inbox>/"):
+            assert token not in text, (
+                f"`/prawduct:report-bug` still names `{token}`, which is drop-box WRITE "
+                "machinery. Upstream reports file as issues; the drop-box holds only what "
+                "was filed before the cutover, and nothing may add to it"
+            )

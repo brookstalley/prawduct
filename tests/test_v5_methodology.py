@@ -1066,8 +1066,41 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # form a view on whether the work should happen. That is the gap: the most
     # expensive failure available here is building the wrong thing well, and it
     # is invisible to a check that only interrogates scope.
-    "framework": 3197,
-    "product": 2085,
+    #
+    # framework 3197 -> 3218, product 2085 -> 2095 on 2026-09-07
+    # (upstream-report-bug): A DECLARED RAISE, and the smallest true one I could
+    # write. Both members carried a sentence about `/prawduct:report-bug` that
+    # the same commit made FALSE. The digest said the skill "routes upstream or
+    # to this product's backlog, and is inert when neither is configured" --
+    # three claims, all now wrong: it files an issue, it never captures locally
+    # (submit-or-nothing), and nothing is configured. CLAUDE.md said upstream
+    # reports arrive in `incoming-bugs/`; they arrive as issues, and that
+    # directory now holds only pre-cutover ones.
+    #
+    # NOT PAID IN PLACE, and the reason is the rule rather than an exemption.
+    # There is no duplication between these two members to cut -- the last three
+    # entries above already spent it -- and the standing rule's other branch is
+    # to trim whichever clause is least defended, which is how a correction gets
+    # funded by deleting something nobody was watching. So: declared.
+    #
+    # What the 10 tokens on EVERY governed session buy (the product delta, the
+    # one that compounds): the digest sentence is the only place a model learns
+    # this skill exists, and the old one told it the channel was inert unless
+    # configured -- which is a reason not to reach for it. A routing line that
+    # routes nowhere costs more than it saves. The two clauses that remain are
+    # the two a reader needs to decide whether to reach for it at all: it files
+    # upstream, and it will show them the bytes before anything leaves. The
+    # recomposition clause was drafted and cut -- the skill carries it, and a
+    # reader who has not invoked it does not need it.
+    #
+    # The framework delta is 11 more, all CLAUDE.md, and it is a correction of
+    # the same falsified fact in the one file that is not shared.
+    #
+    # Character budget checked FIRST, as the note in the ceiling table below
+    # says to: the digest is at 9129 of its 9500-character budget, so the
+    # characters were there before this arithmetic was done.
+    "framework": 3218,
+    "product": 2095,
 }
 
 #: Ceilings. HARD, like the per-file prose ceilings in this module and
@@ -1152,8 +1185,13 @@ INJECTED_FOOTPRINT_CEILINGS = {
     # reserve is characters against a harness threshold that no ruling buys past
     # (`tests/test_plugin_methodology_digest.py`'s DIGEST_HEADROOM_RESERVE).
     # Banking headroom in a raisable budget would have protected nothing.
-    "framework": 3198,
-    "product": 2086,
+    #
+    # 3198 -> 3219, 2086 -> 2096 on 2026-09-07 (upstream-report-bug): ratcheted
+    # with the declared raise recorded in the reading table above, staying one
+    # over the reading with zero banked -- so the next addition meets the
+    # standing trim-or-relocate rule with nothing to collect silently.
+    "framework": 3219,
+    "product": 2096,
 }
 
 

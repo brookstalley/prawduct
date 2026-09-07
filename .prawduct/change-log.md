@@ -3,6 +3,60 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-09-07: `/prawduct:report-bug` stops writing a file on one machine and files an issue
+
+<!-- prawduct: type=feature | scope=upstream-report-bug -->
+
+Wave B, Chunk 02 of BKL-7Q4M. The skill is rewritten onto `file-upstream`: recompose the report in
+prawduct's terms, preview the exact outbound payload, show a human those bytes, send on their
+approval of the digest. Wave A built that data plane and nothing called it; this is the caller.
+
+**Three things the old skill did that it must not do any more.** It resolved a machine-local
+drop-box and wrote a file there — a report visible to one developer on one machine. It captured the
+bug in the *product's* backlog when no channel was reachable, which is the local capture design §5
+forbids by name: an upstream bug parked in a product's backlog reaches nobody who could fix it. And
+it composed the `Found in:` version itself; the adapter now sources that from the running manifest,
+so it is right on every filing rather than on a careful one.
+
+**Submit-or-nothing has a second, quieter home that contradicted it.** `check_preference`'s
+`never-file` refusal told the caller to "report this bug in your own backlog" — the exact fallback
+the design removes, in the message a caller reads at the moment of decision. It now points at the
+tracker. Found by walking the rewritten skill against the fake transport rather than by reading:
+the refusal text is not something the skill's own prose could contradict visibly.
+
+**The drop-box template is a trap while it survives, so it now says so.** `incoming-bugs/` and its
+report template retire with Wave C, in lockstep with the advisory repoint — but three of that
+template's fields (`Reporter`, "used from the `<product>` repo", a `## Context` section asking for
+the host repo's particulars) are exactly what must not cross an owner boundary. They were safe when
+the report stayed on one machine. A banner now says it is the drop-box shape, that nothing writes
+it, and where the upstream payload is actually specified.
+
+**Two mechanical assertions carry §7's lockstep from the replacement's side**
+(`tests/preferences/test_no_upstream_content_egress.py`): the skill drives both arms of the op, and
+it names no drop-box write machinery. Both mutation-checked. What is deliberately *not* asserted
+mechanically — that the report carries no product content, that a human read the bytes, that a
+blocked filing captures nothing — is judgment about prose, and a grep for it would pass on any text
+with the right words in it. Those stay the Critic's.
+
+**A pending operator verification, and an honest reason it is pending.** VRF-018 is design §9's
+`[XP6 verify]`: what a non-collaborator can actually set on an issue they file. It needs a GitHub
+account that is not a collaborator on this repo, and the owner is one — a lead-time item no session
+can shorten. It gates the release rather than the build, because the payload is already label-less
+and no answer changes a byte that gets sent; what it gates is Wave C's intake query, which is only
+correct if a non-collaborator genuinely cannot apply a label.
+
+**A declared token raise, not a trim.** The session digest and this repo's `CLAUDE.md` each carried
+a sentence this commit made false — the digest said the channel "is inert when neither is
+configured", which is a reason not to reach for a skill that now works. Correcting both costs +10
+tokens on every governed session and +21 on a framework one. There was no duplication left between
+those two files to pay it from, and the standing rule's other branch — trim whichever clause is
+least defended — is how a correction gets funded by deleting something nobody was watching. So it
+is declared, with the arithmetic and the character-budget check on the record.
+
+Also: `bug_inbox.py`'s docstring no longer calls itself the report-bug channel, `adapter-mode.md`
+no longer says the skill has not been rewritten, and `project-structure.md`'s tree line no longer
+describes `incoming-bugs/` as where products file today.
+
 ## 2026-09-07: the consent preference becomes a row somebody can write
 
 <!-- prawduct: type=feature | scope=upstream-report-bug -->
