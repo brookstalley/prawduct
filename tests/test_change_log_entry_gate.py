@@ -19,6 +19,7 @@ name-only diffs behave as in production.
 
 from __future__ import annotations
 
+import re
 import subprocess
 from pathlib import Path
 
@@ -405,3 +406,75 @@ def test_tracked_log_untouched_by_the_branch_still_says_no_entry(tmp_path):
     assert result.returncode == 1
     assert "no-entry" in result.stderr
     assert "untracked" not in result.stderr
+
+
+# ---------------------------------------------------------------------------
+# The probe's verdicts and Step 1c's enumeration must not drift apart
+#
+# Step 1c routes on the verdict NAME, so a verdict the prose does not list
+# falls into whichever row the reader generalises from — which is how
+# `entry-present-untracked` was first swallowed by a blanket "Exit 0: proceed",
+# reopening the very REL-6C3W failure this gate exists to prevent. Prose has no
+# compiler; this is the pin. Same shape as test_cutover_prose_coherence.py.
+# ---------------------------------------------------------------------------
+
+SOURCE = Path(__file__).resolve().parent.parent / "plugin"
+COVERAGE_PY = SOURCE / "lib" / "coverage.py"
+PR_SKILL = SOURCE / "skills" / "pr" / "SKILL.md"
+
+# A verdict is the hyphenated token a message opens with (`no-entry: ...`),
+# captured at a string-literal boundary so prose mentions do not count. Every
+# verdict this gate has ever emitted is hyphenated; a future single-word one
+# would slip past this and needs the pattern widened with it.
+_VERDICT_RE = re.compile(r"""["'](?:\s*)([a-z][a-z0-9]*(?:-[a-z0-9]+)+):\s""")
+
+
+def _probe_source() -> str:
+    """The two functions that emit this gate's verdicts, and nothing else."""
+    text = COVERAGE_PY.read_text(encoding="utf-8")
+    start = text.index("def _entry_check_without_history")
+    end = text.index("\ndef ", text.index("def check_change_log_entry"))
+    return text[start:end]
+
+
+def _step_1c() -> str:
+    text = PR_SKILL.read_text(encoding="utf-8")
+    start = text.index("### Step 1c:")
+    return text[start:text.index("### Step 1d:", start)]
+
+
+def test_every_verdict_the_probe_emits_is_routed_by_step_1c():
+    verdicts = set(_VERDICT_RE.findall(_probe_source()))
+    # Guard the extractor itself: a regex that silently matched nothing would
+    # make this test pass while pinning absolutely nothing.
+    assert len(verdicts) >= 6, f"verdict extraction looks broken: {verdicts}"
+
+    step = _step_1c()
+    missing = sorted(v for v in verdicts if f"`{v}`" not in step)
+    assert not missing, (
+        f"{PR_SKILL.name} Step 1c does not route these verdicts: {missing}. "
+        "An unlisted verdict is read under whichever row the agent generalises "
+        "from, which for an exit-0 verdict means proceeding on an unanswered check."
+    )
+
+
+def test_step_1c_does_not_route_a_verdict_the_probe_no_longer_emits():
+    """The other drift direction — prose outliving the code that fed it.
+
+    Reads only the ``- **Exit N with `x`, `y`**:`` bullet headers, so what it
+    compares is the routing table itself rather than every token Step 1c
+    happens to mention (paths, predicates and REL ids are all backticked too).
+    """
+    routed = set()
+    for line in _step_1c().splitlines():
+        if not line.startswith("- **Exit "):
+            continue
+        header = line.split("**:", 1)[0]
+        routed.update(re.findall(r"`([a-z][a-z0-9-]+)`", header))
+    assert routed, "no exit rows parsed out of Step 1c — the bullet shape moved"
+
+    stale = sorted(routed - set(_VERDICT_RE.findall(_probe_source())))
+    assert not stale, (
+        f"Step 1c routes verdicts the probe no longer emits: {stale}. A row for "
+        "a dead verdict is an instruction that can never fire."
+    )

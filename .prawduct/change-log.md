@@ -42,6 +42,18 @@ The message also carries the fix, including its trap: `.prawduct/*` plus `!.praw
 because a bare `.prawduct/` cannot be negated — git will not re-include a file under an excluded
 directory.
 
+**The consuming instruction moved with the code, which is the other half of the fix.** A new exit-0
+verdict is invisible to a flow that routes on `Exit 0: proceed`, so `skills/pr/SKILL.md` Step 1c now
+splits exit 0 and gives `entry-present-untracked` the manual-confirm treatment `no-base`/`git-failed`
+already had — in the repos this verdict exists for, an unconfirmed pass is REL-6C3W reopened through
+the door the fix just built. `record_lint`'s scope-witness premise ("a code-changing branch cannot
+open a PR without ADDING an entry") is qualified the same way: the witness still exists and is still
+read; what weakens is the guarantee it was written for THIS branch.
+
+Step 1c routes on the verdict NAME and prose has no compiler, so the enumeration is now pinned to the
+probe in both directions — a verdict the code emits and the step does not route, and a row for a
+verdict the code no longer emits, each fail a test.
+
 ## 2026-09-02: four small backlog-adapter items, and two plans falsified by reading the code
 
 <!-- prawduct: type=fix | scope=small-batch-2026-09-02 -->
