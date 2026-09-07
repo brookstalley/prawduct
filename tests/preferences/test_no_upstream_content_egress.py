@@ -1045,6 +1045,13 @@ class TestTheDropBoxReplacementIsLive:
         consent the digest comparison is waived, so the mangling is not even
         caught by an `approval-mismatch`.
 
+        **`--body` is in the class for a reason worth stating**, because the
+        obvious argument excludes it: the digest does not protect it. Both calls
+        expand identically, so a mangled body previews and sends as the same
+        bytes, the digests agree, and the check passes on content nobody wrote.
+        The trailing space in each match is load-bearing — it is what separates a
+        flag being *passed* from one being *named* in prose.
+
         Asserted over EVERY line rather than the one that was wrong: the skill
         shows the command twice, the first fix landed on one block, and the round
         that found it had to come back for the other. Command-substitution output
@@ -1053,7 +1060,8 @@ class TestTheDropBoxReplacementIsLive:
         offenders = [
             f"{n}: {line.strip()}"
             for n, line in enumerate(self.SKILL.read_text(encoding="utf-8").splitlines(), 1)
-            if ("--title " in line or "--component " in line) and "$(cat" not in line
+            if any(f"--{f} " in line for f in ("title", "component", "body"))
+            and "$(cat" not in line
         ]
 
         assert not offenders, (

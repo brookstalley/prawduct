@@ -69,6 +69,14 @@ mutation-checked. The same round's milder carrier of the approval claim (the int
 "what was approved is what is sent") is qualified too, and two assertions that had drifted into the
 neighbouring test are back where their name says they belong.
 
+**The verification round's own observation was dismissed on a false premise, and the check is
+cheap.** It rated widening the new guard to `--body` as not worth a commit because "the body is
+separately pinned by the digest". It is not: preview and send expand identically, so a mangled body
+previews and sends as the same bytes, the digests agree, and the check passes on content nobody
+wrote. `--body` is in the class for exactly the reason `--title` is, and the guard now covers it —
+mutation-checked, with the mutation asserted applied first, after an earlier check on this same
+guard passed only because its edit had silently failed to match.
+
 Accepted, not fixed: the backlog-reconciliation note. It names no work owed here — #194 closes at
 Wave C, and #234 is the lockstep guard whose replacement is now live and whose retirement is Wave C.
 
