@@ -491,11 +491,14 @@ def lint_payload(title: str, body: str) -> list[issuefmt.LintFinding]:
 
 # --- the consent preference (design §4.1) ------------------------------------
 
-#: The three consent states, design §4.1. ``ask-user`` is the default and the
-#: only state Wave A can reach: the preferences row is *authored* in Wave B, and
-#: until it exists every read here resolves to the default. An absent preference
-#: therefore has to mean "ask" and never "always" — the one direction in which
-#: guessing files something nobody approved.
+#: The three consent states, design §4.1. ``ask-user`` is the default, and the
+#: default is where a product lands whenever the row is absent, empty or spelled
+#: wrong — three cases a hand-edited seam produces routinely. It therefore has to
+#: mean "ask" and never "always", which is the one direction in which guessing
+#: files something nobody approved. ``templates/project-preferences.md`` ships
+#: the row reading ``ask-user`` for the same reason: what an onboarded product
+#: has authored and what it would fall back to agree, so an operator who deletes
+#: the row changes nothing.
 PREF_ASK_USER = "ask-user"
 PREF_NEVER_FILE = "never-file"
 PREF_ALWAYS_FILE = "always-file"
@@ -553,8 +556,9 @@ def read_filing_preference(project_dir) -> tuple[str, str | None]:
 
     The warning is non-empty whenever the operator could believe they have set
     something and have not: a row that does not parse, and a file that cannot be
-    read. An **absent** file is the genuinely ordinary case and stays silent: no
-    product has this row yet.
+    read. An **absent** file is the genuinely ordinary case and stays silent: it
+    resolves to the same state the shipped row names, so a repo predating the row
+    — or an operator who deleted it — has nothing to be told.
     """
     path = Path(project_dir) / ".prawduct" / "artifacts" / "project-preferences.md"
     try:
@@ -957,13 +961,13 @@ def _sent(payload: dict, digest: str, issue: dict, *, created: bool) -> dict:
 def previewable_refusals(project_dir, *, rendered_title: str, preference: str) -> list[tuple]:
     """Every reason the send arm would refuse that a PREVIEW can already know.
 
-    One list, consumed by the preview arm, because the alternative is what this
-    replaces: the preview hand-enumerated the refusals it could predict, so a
-    refusal added to the send arm later was absent from it **by default** — and
-    Chunk 02 added one. The title refusal reached the operator only as an
-    ordinary ``lint:`` line, indistinguishable from the body-budget findings that
-    never block, and ``issuefmt.LintFinding.severity`` is hardcoded ``"warn"``
-    with its own docstring saying not to read it as advisory.
+    One list, consumed by the preview arm, because the alternative is a preview
+    that hand-enumerates the refusals it can predict: a refusal added to the send
+    arm is then missing from the preview **by default**. The title refusal is the
+    case that shape gets wrong — without this list it reaches the operator only
+    as an ordinary ``lint:`` line, indistinguishable from the body-budget
+    findings that never block, and ``issuefmt.LintFinding.severity`` is hardcoded
+    ``"warn"`` with its own docstring saying not to read it as advisory.
 
     Why that costs more than a confusing line: the operator reviews bytes,
     approves a digest, and only then learns the send cannot succeed — a second

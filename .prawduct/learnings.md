@@ -621,3 +621,5 @@ never by dropping them.
 ## When every test INJECTS a dependency, green says nothing about how production OBTAINS it — drive a new consumer of an existing seam once with nothing injected, asserting the seam gets BUILT, because injection makes the acquisition path untested by construction. Tell: you threaded a dependency parameter through a new arm without asking who supplies it outside the tests — [learnings-detail.md]
 
 ## Defence in depth costs a test PER LAYER, not per rule — an outer pre-check short-circuits every call routed through it, so the inner copy of the same check is a mutation survivor that reads as covered; each layer needs a test entering at its own door. Tell: you skipped mutation-checking a rule because an earlier chunk verified it — on a different arm — [learnings-detail.md]
+
+## Withholding a fix to protect a review round is only correct if `cost-of-commit` PRICES it `costs-a-round` — run it on the fix's paths BEFORE deciding, because docs, artifacts and `.prawduct/` state price `free` and the round you are protecting was never owed. Tell: you are reasoning about which paths move coverage instead of asking the tool — [learnings-detail.md]

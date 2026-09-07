@@ -3,6 +3,40 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-09-07: the consent preference becomes a row somebody can write
+
+<!-- prawduct: type=feature | scope=upstream-report-bug -->
+
+Wave B, Chunk 01 of BKL-7Q4M. The `Upstream filing` preference has been readable since Wave A and
+authorable nowhere: `read_filing_preference` handles all three of design §4.1's states, and the only
+one production could reach was the absent-file default. `templates/project-preferences.md` now ships
+the row, so `init-product` writes it into every product it scaffolds, and `never-file` — the one
+state §4.3 calls a hard mechanical guarantee — is now reachable by editing a line instead of by
+writing a test fixture.
+
+**The shipped row reads as `ask-user`, which is also what its absence reads as.** Two spellings of
+one default, deliberately: an operator who deletes the row changes nothing, and the direction that
+would cost something — a row landing on `always-file` — cannot be reached by deleting anything.
+
+**This repo's own row stays at the default rather than `never-file`, and that is a decision.**
+Prawduct is the pinned upstream target, so `file-upstream` refuses here on the no-self-file check
+whatever the row says. Setting `never-file` would only *shadow* that refusal, because `send()`
+consults the preference first — and `self-file` is the better diagnostic, since it names the remedy
+(file it with `/prawduct:backlog add`). The mechanical guarantee is identical either way; only what
+a developer in this checkout reads changes.
+
+**The new test reads the shipped artifacts, not a fixture.** Both real inputs are pinned against the
+reader: the template `init-product` copies, and this repo's own authored row. The second asserts only
+that the row still *parses* — which state it names is the owner's to change, and a test asserting a
+particular value would quietly turn a preference into a rule.
+
+**The Local-first surface-vs-site clarification is ratified** (`architecture.md` § Direction). It was
+recorded 2026-09-07 flagged for owner veto because the builder wrote it while the amendment it sits
+under was the owner's; the veto was offered and withheld. Reverting it is now an ordinary amendment.
+
+Also: three comments that anchored to a chunk number or to Wave B's tense — a chunk id names no plan
+and renumbers, and "authored in Wave B" stopped being true in this commit.
+
 ## 2026-09-07: the review round that bought the merge — one blocking claim retracted
 
 <!-- prawduct: type=fix | scope=upstream-filing-adapter -->

@@ -369,8 +369,8 @@ class TestThePreferenceCanHardRefuse:
     def test_the_preview_says_filing_would_refuse(self, tmp_path, capsys):
         """The same wasted round the self-file warning exists to prevent: without
         this the operator reviews the bytes, approves the digest, and only then
-        learns filing is off. Unreachable until Wave B authors the row, which is
-        why it is asserted rather than left to be rediscovered there."""
+        learns filing is off — on the one preference state that can never be
+        talked out of refusing."""
         project = a_product_repo(tmp_path, preference="never-file")
 
         cli.run(

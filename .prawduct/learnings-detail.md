@@ -2653,3 +2653,36 @@ third patch to the same predicate.
 **Generalizes past this codebase:** validators paired with normalizers (trim-then-validate,
 escape-then-render, canonicalize-then-compare). Reusing the validator without the normalizer is the
 same defect every time, and the validator will not complain.
+
+## Withholding a fix to protect a review round is only correct if `cost-of-commit` PRICES it `costs-a-round`
+
+**What happened.** After a clean `verify-resolutions` closed the cumulative gate on
+`feat/upstream-filing-adapter`, three doc fixes from the round's demoted observations were left
+uncommitted on the reasoning that committing them would reopen the gate and cost another ~5 min
+round. The independent PR reviewer ran `prawduct-hook cost-of-commit` on those exact paths and got
+`free`. The round being protected was never owed, and the same command prices the genuinely
+expensive case correctly — two `.py` paths in the same batch returned `costs-a-round`.
+
+**Why the reasoning felt sound and was not.** The rule being applied came from the *previous*
+session on the same branch, which had committed four non-blocking fixes and only then run
+`cost-of-commit` — the one ordering that makes the answer useless. It recorded the correct lesson
+("separate-commit a non-blocking fix only when the branch needs coverage NOW") and the next session
+read it as a standing reason to WITHHOLD rather than as an instruction to ASK. A rule about a tool
+degraded into a heuristic that replaces the tool. **Both failures are the same failure**: deciding
+what a commit costs by reasoning about the coverage algebra, in a repo that ships a command which
+answers it in under a second, in both directions.
+
+**The second-order damage is the part worth remembering.** Believing the fixes were expensive routed
+three carried obligations into `.prawduct/.handoff-notes.md` — gitignored, consumed by the next
+`/clear` — and the committed build plan already cited that file as a co-record of a Wave B
+obligation. A durable artifact naming a path that exists on no other clone gives an obligation one
+real home while reading as though it has two. So the pricing error did not just cost accuracy; it
+degraded where the work was recorded.
+
+**Why an independent reviewer caught it.** Two Critic rounds and the builder all missed it, and the
+PR reviewer found it not by reading harder but by running a tool the builder had reasoned past. A
+fresh context had no reason to inherit the premise — which is the specific value of review
+independence, distinct from a second opinion on the same evidence.
+
+**Generalizes:** any heuristic derived from a tool's output, carried forward as a rule, drifts into
+a replacement for the tool. When a learnings rule names a command, the rule is to RUN it.
