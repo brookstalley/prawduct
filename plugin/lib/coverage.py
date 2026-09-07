@@ -36,7 +36,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from .change_log import CHANGE_LOG_REL_PATH
+from .change_log import CHANGE_LOG_REL_PATH, parse_change_log
 from .core import read_str_yaml_key
 
 _BASE_BRANCH_KEY = "base_branch"
@@ -936,6 +936,60 @@ def _pr_diff_is_doc_only(project_dir: Path) -> tuple[bool, str]:
     )
 
 
+
+def _entry_check_without_history(project_dir: Path) -> int:
+    """The weaker entry check available when the change-log is untracked.
+
+    The gate's real contract is "this branch ADDED an entry" — that is what the
+    ``+## `` scan enforces, and why ``entry-edited-not-added`` is a separate
+    failure. An untracked file has no merge-base version, so that question is
+    unanswerable here, and no substitute exists: a change-log entry carries
+    ``scope`` and ``release`` (:mod:`lib.change_log`) and nothing that records
+    which branch wrote it.
+
+    So this is a deliberate, *named* weakening rather than parity, and the
+    message says which check the caller actually got. It reads the log from
+    disk — the same way :mod:`lib.release_readiness` already reads it — and
+    passes only when at least one entry parses. Degrading the check must not
+    disarm it: a missing or entry-less log still fails, because those are the
+    states the gate exists to catch and they are visible from disk.
+
+    Parsing goes through :func:`lib.change_log.parse_change_log` rather than a
+    local ``## `` scan. A private classifier here would be the fifth reading of
+    this format, and the last four disagreeing is what made this gate's history.
+    """
+    path = project_dir / CHANGE_LOG_REL_PATH
+    try:
+        content = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        print(
+            f"no-entry: {CHANGE_LOG_REL_PATH} is untracked here (the repo "
+            f"gitignores it) and could not be read from disk either: {exc}. "
+            "Add the change-log before opening the PR.",
+            file=sys.stderr,
+        )
+        return 1
+
+    entries = parse_change_log(content)
+    if not entries:
+        print(
+            f"no-entry: {CHANGE_LOG_REL_PATH} is untracked here (the repo "
+            "gitignores it), and the copy on disk holds no entry at all. Add a "
+            "change-log entry for this work before opening the PR.",
+            file=sys.stderr,
+        )
+        return 1
+
+    print(
+        f"entry-present-untracked: {CHANGE_LOG_REL_PATH} is untracked here (the "
+        "repo gitignores it), so git cannot say whether THIS branch added an "
+        f"entry — only that the log on disk holds {len(entries)}. That weaker "
+        "check passed. To restore the real one, track the log: `.prawduct/*` "
+        "plus `!.prawduct/change-log.md` (a bare `.prawduct/` cannot be "
+        "negated — git will not re-include a file under an excluded directory)."
+    )
+    return 0
+
 def check_change_log_entry(project_dir: Path) -> int:
     """PR-boundary probe: a code-changing branch must add a change-log entry.
 
@@ -960,12 +1014,17 @@ def check_change_log_entry(project_dir: Path) -> int:
       * the diff is empty, or holds no judgeable file, or
       * a judgeable diff includes ``.prawduct/change-log.md`` AND that diff
         ADDS at least one entry header (a ``+## `` line) — merely editing an
-        existing entry's text does not vouch for new work.
+        existing entry's text does not vouch for new work, or
+      * the log is UNTRACKED and the copy on disk holds at least one entry
+        (``entry-present-untracked`` — the weaker check of
+        :func:`_entry_check_without_history`, which says so).
 
     Exit 1 otherwise, with a named reason on stderr (``no-entry``,
     ``entry-edited-not-added``, ``no-base``, ``git-failed``). Un-evaluable
     git state fails closed — the caller falls back to manual judgment rather
     than silently skipping the probe (same posture as ``check_pr_doc_only``).
+    An untracked log is not un-evaluable and must not be read as absent: the
+    diff simply cannot speak to a path git does not track.
     """
     base, base_note = _coverage_resolve_base(project_dir)
     if base is None:
@@ -1016,6 +1075,30 @@ def check_change_log_entry(project_dir: Path) -> int:
         return 0
 
     if CHANGE_LOG_REL_PATH not in files:
+        # A path git does not TRACK can never appear in a diff, so this silence
+        # is not evidence of a missing entry — it is the absence of a question
+        # git can answer. A repo that gitignores `.prawduct/` wholesale keeps a
+        # real change-log on disk that no diff can show, and the `no-entry`
+        # remedy below then tells the author to add an entry they already wrote:
+        # advice that cannot clear the gate however often it is followed. That is
+        # the same failure the block above describes — a wrong `no-entry` is
+        # worse than a spurious block because its remedy text is executable.
+        # `git_path_is_tracked` is three-valued precisely so a caller cannot
+        # collapse "untracked" into "absent"; collapsing them was the defect.
+        from . import gitstate  # noqa: PLC0415 — lazy keeps this module's import DAG light
+
+        tracked = gitstate.git_path_is_tracked(project_dir, CHANGE_LOG_REL_PATH)
+        if tracked is False:
+            return _entry_check_without_history(project_dir)
+        if tracked is None:
+            print(
+                "git-failed: could not ask git whether "
+                f"{CHANGE_LOG_REL_PATH} is tracked, so its absence from the "
+                "diff proves nothing either way. Check the change-log by hand.",
+                file=sys.stderr,
+            )
+            return 1
+
         sample = ", ".join(judgeable[:3])
         more = f" (+{len(judgeable) - 3} more)" if len(judgeable) > 3 else ""
         print(

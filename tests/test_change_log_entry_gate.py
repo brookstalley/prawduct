@@ -310,3 +310,98 @@ def test_plus_h2_in_body_prose_does_not_count(tmp_path):
     result = _run_probe(repo)
     assert result.returncode == 1
     assert "entry-edited-not-added" in result.stderr
+
+
+# ---------------------------------------------------------------------------
+# The log is UNTRACKED (repo gitignores `.prawduct/` wholesale)
+#
+# A path git does not track can never appear in a diff, so the diff's silence
+# is not evidence of a missing entry. Repos that ignore `.prawduct/` wholesale
+# kept a real change-log on disk and got `no-entry` anyway — with a remedy
+# ("add a change-log entry") that no amount of following could ever clear.
+# ---------------------------------------------------------------------------
+
+
+def _make_untracked_log_repo(tmp_path: Path, log_body: str | None) -> Path:
+    """A branched repo whose `.prawduct/` is gitignored wholesale.
+
+    ``log_body`` is written to disk (never committed — git cannot see it); pass
+    ``None`` to leave the repo with no change-log file at all.
+    """
+    repo = tmp_path / "repo"
+    repo.mkdir(parents=True)
+    _git(repo, "init", "--quiet", "-b", "main")
+    _git(repo, "config", "user.email", "test@example.com")
+    _git(repo, "config", "user.name", "Test")
+    _git(repo, "config", "commit.gpgsign", "false")
+    _commit_file(repo, ".gitignore", ".prawduct/\n", "ignore prawduct state")
+    _commit_file(repo, "app.py", "print(1)\n", "baseline code")
+    if log_body is not None:
+        log = repo / CHANGE_LOG
+        log.parent.mkdir(parents=True, exist_ok=True)
+        log.write_text(log_body)
+    _git(repo, "checkout", "-q", "-b", "feature/x")
+    return repo
+
+
+def test_untracked_log_with_entries_passes_on_the_weaker_check(tmp_path):
+    """The defect this family exists for: a real log, on disk, read as absent."""
+    repo = _make_untracked_log_repo(
+        tmp_path,
+        "# Change Log\n\n## 2026-06-10: this branch's work\n\nBody.\n"
+        "\n## 2026-06-01: baseline entry\n\nBody.\n",
+    )
+    _commit_file(repo, "app.py", "print(2)\n", "code change")
+    # The log really is invisible to git — the premise of the whole case.
+    assert not _git(repo, "log", "--all", "--", CHANGE_LOG).stdout.strip()
+
+    result = _run_probe(repo)
+    assert result.returncode == 0, result.stderr
+    assert "entry-present-untracked" in result.stdout
+    # The message must not claim the strong check ran, and must not repeat the
+    # unfollowable remedy.
+    assert "no-entry" not in result.stdout + result.stderr
+
+
+def test_untracked_log_missing_from_disk_still_fails(tmp_path):
+    """Degrading the check must not disarm it: no log at all is still no entry."""
+    repo = _make_untracked_log_repo(tmp_path, None)
+    _commit_file(repo, "app.py", "print(2)\n", "code change")
+    result = _run_probe(repo)
+    assert result.returncode == 1
+    assert "no-entry" in result.stderr
+
+
+def test_untracked_log_with_no_entries_still_fails(tmp_path):
+    """A stub log — a header and no `## ` entry — does not vouch for anything."""
+    repo = _make_untracked_log_repo(tmp_path, "# Change Log\n\nNothing yet.\n")
+    _commit_file(repo, "app.py", "print(2)\n", "code change")
+    result = _run_probe(repo)
+    assert result.returncode == 1
+    assert "no-entry" in result.stderr
+
+
+def test_untracked_log_does_not_rescue_a_doc_only_branch(tmp_path):
+    """The judgeability exemption still short-circuits first, unchanged."""
+    repo = _make_untracked_log_repo(
+        tmp_path, "# Change Log\n\n## 2026-06-10: work\n\nBody.\n"
+    )
+    _commit_file(repo, "docs/notes.md", "notes\n", "doc change")
+    result = _run_probe(repo)
+    assert result.returncode == 0, result.stderr
+    assert "doc-only" in result.stdout
+
+
+def test_tracked_log_untouched_by_the_branch_still_says_no_entry(tmp_path):
+    """The tracked path is untouched by the fix — pinned so it cannot drift.
+
+    `test_code_change_without_entry_fails` asserts the same outcome; this one
+    asserts it did NOT arrive via the untracked branch, which is the regression
+    that would silently pass every tracked repo.
+    """
+    repo = _make_branched_repo(tmp_path)
+    _commit_file(repo, "app.py", "print(2)\n", "code change")
+    result = _run_probe(repo)
+    assert result.returncode == 1
+    assert "no-entry" in result.stderr
+    assert "untracked" not in result.stderr
