@@ -891,7 +891,10 @@ class TestTheConsentPreferenceReads:
         state, warning = upstream.read_filing_preference(tmp_path)
 
         assert state == upstream.PREF_UNREADABLE
-        assert warning is not None
+        assert warning is not None and upstream.PREF_NEVER_FILE in warning, (
+            "the warning must still name the standing state at stake — it is what "
+            "tells an operator WHY an unreadable file refuses rather than defaults"
+        )
         refusal = upstream.check_preference(state)
         assert refusal is not None and refusal.code == "filing-disabled"
 

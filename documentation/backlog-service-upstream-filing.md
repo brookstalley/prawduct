@@ -144,7 +144,7 @@ The adapter **refuses to file unless ALL hold** (any failure → structured erro
 4. **Approval matches the bytes** *(when preference = `ask-user`)* — re-render the payload, recompute the digest, refuse unless it equals `--approve`'s value → `error: approval-mismatch`. Guarantees **sent == previewed** (closes approved-A-sent-B). Waived under `always-file` (standing consent; L1 is then the safeguard, §4.1).
 5. **Authenticated** — resolve the session `gh` identity (never anonymous — GitHub issues are inherently authenticated; never a managed token, `architecture.md` § Direction) → else `error: auth`.
 
-On success: file the label-less issue (§2), stamp the trimmed `prawduct:` block + `source-key:` marker (idempotent re-file returns the existing issue, api-contract §2.4).
+On success: file the label-less issue (§2), stamp the trimmed `prawduct:` block + `source-key:` marker (idempotent re-file, bounded as api-contract §2.4 states).
 
 **Submit-or-nothing (XP7).** Declining files **nothing** — there is **no local backlog capture** of an upstream bug (a captured-but-unsubmitted upstream bug helps no one and clutters the product). The only no-op fallback is *pointing the user at the tracker URL* to file by hand — a pointer, not a capture (§7).
 

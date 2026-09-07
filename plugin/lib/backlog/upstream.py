@@ -974,8 +974,16 @@ def previewable_refusals(project_dir, *, rendered_title: str, preference: str) -
     before anything is composed, and composing a payload aimed at the pin to lint
     it would report budget findings about bytes this caller never asked to send),
     ``check_approval`` (a preview has no token to compare and its absence is what
-    MAKES it a preview), and ``check_authenticated`` (it needs the transport this
-    function is defined never to touch).
+    MAKES it a preview), ``check_authenticated`` (it needs the transport this
+    function is defined never to touch), and ``check_payload_inputs`` (the preview
+    arm refuses on it directly, before there is a payload to hang a "would refuse"
+    note on — these inputs are what a payload is composed FROM).
+
+    That list is mirrored by the ``excluded`` set in
+    ``test_every_no_transport_refusal_the_send_arm_has_is_predicted``, which
+    derives the refusals from ``send``'s AST; the test is authoritative and this
+    prose is the readable copy, so a divergence between them is this docstring's
+    bug.
 
     Returns ``(code, message)`` pairs so a caller renders them; the send arm keeps
     returning its own structured errors, whose ``details`` differ per refusal.

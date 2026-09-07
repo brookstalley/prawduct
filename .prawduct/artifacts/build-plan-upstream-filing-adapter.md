@@ -132,6 +132,13 @@ the case it was written for. **What Wave B should take from that pattern:** ever
 claim about a PATH that was true of the codebase generally, so check what a guard covers, not that
 it exists.
 
+**Carried to Wave B, not dropped.** `skills/backlog/adapter-mode.md` states that `report-bug` has
+not been rewritten onto `file-upstream` and that nothing calls the op — true at Wave A's close and
+false the moment Wave B lands. The absence guard will not catch it (it keys on lines naming the op,
+and that sentence does not), and widening it to phrase-only matching across every governing document
+is how a guard starts crying wolf. So Wave B must correct that passage as part of its own work; this
+paragraph and `.prawduct/.handoff-notes.md` are the only things that will say so.
+
 **Chunk 02 complete, 2026-09-06.** The send arm, all five checks refusing independently and filing
 nothing, the title refusal on the fourth adapter write path, `source-key:` idempotency, and the
 advisory carry-through onto every refusal. `#329` (BKL-4T9C) is closed by it. Suite green.
