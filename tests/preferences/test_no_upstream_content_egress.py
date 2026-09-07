@@ -673,6 +673,53 @@ class TestFilingIsAuthenticated:
         assert_filed_nothing(fake)
 
 
+class TestTheSec5WithholdReachesTheSendArm:
+    """The SEC-5 withhold (Security §1b) refuses every GitHub-mutating op under an
+    untrusted-triggered Actions run, and `file-upstream` is in that set — including
+    its preview arm, which mutates nothing but which nobody could act on there.
+
+    **Why this reads the seam rather than the op table.** What holds the op in
+    `cli._WRITE_OPS` is a partition test whose failure text is about the *counts
+    cache*: drop `file-upstream` from the set and the "fix" that suite suggests is
+    deleting a cache-map row, which re-opens the send arm under a pwn-request
+    trigger with the whole suite green. This class fails instead, and says why.
+
+    Note what the withhold is NOT: it is not a human-present check. It fires on an
+    untrusted trigger with no authorized actor, and reaches neither
+    `PRAWDUCT_UNATTENDED=1` nor a trusted Actions event — see the send arm's honest
+    limit in the upstream-filing design §4.3.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _untrusted_actions(self, monkeypatch):
+        monkeypatch.setenv("GITHUB_ACTIONS", "true")
+        monkeypatch.setenv("GITHUB_EVENT_NAME", "pull_request_target")
+        monkeypatch.delenv("PRAWDUCT_ACTOR_AUTHORIZED", raising=False)
+
+    def test_the_send_arm_files_nothing_under_an_untrusted_trigger(self, tmp_path, capsys):
+        """A fully valid send — all five §5 checks hold, digest genuinely rendered
+        — still files nothing, because the withhold refuses before dispatch."""
+        fake = FakeGitHub()
+        project = a_product_repo(tmp_path)
+
+        code = cli.run(str(project), send_argv(project), transport=fake)
+
+        assert code == 5  # auth exit class
+        assert_filed_nothing(fake)
+
+    def test_an_authorized_actor_clears_it(self, tmp_path, capsys, monkeypatch):
+        """The withhold is the untrusted-trigger check, not a blanket Actions ban:
+        the explicit triggering-actor authorization clears it and the same call
+        files. Without this the test above would also pass if the op simply never
+        worked in Actions."""
+        monkeypatch.setenv("PRAWDUCT_ACTOR_AUTHORIZED", "1")
+        fake = FakeGitHub()
+        project = a_product_repo(tmp_path)
+
+        assert cli.run(str(project), send_argv(project), transport=fake) == 0
+        assert json.loads(capsys.readouterr().out)["data"]["created"] is True
+
+
 class TestTheOutboundTitleConforms:
     """`data-model.md` § Direction binds the issue standard's §1 title rules on
     every adapter write path, and `file-upstream` is the fourth. It binds harder

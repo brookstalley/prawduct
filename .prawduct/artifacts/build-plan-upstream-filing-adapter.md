@@ -139,6 +139,23 @@ and that sentence does not), and widening it to phrase-only matching across ever
 is how a guard starts crying wolf. So Wave B must correct that passage as part of its own work; this
 paragraph and `.prawduct/.handoff-notes.md` are the only things that will say so.
 
+**Owed at the merge, and this is its durable home.** `#329` (BKL-4T9C) is satisfied in full by this
+plan's Chunk 02 — `upstream.resolve_self_identity` + `check_not_self` is its Expected — but it stays
+OPEN until the PR merges, because on the Issues backend `status --to shipped` closes the remote issue
+the instant it runs, leaving it wrongly closed if this branch is reworked or dropped (the failure
+`#697` files, citing `#687` and `#688`). At merge, both calls are needed — `status` records no ship
+handle by itself:
+
+```
+prawduct-hook backlog status 329 --to shipped
+prawduct-hook backlog update 329 --closed-by upstream-filing-adapter
+```
+
+The handle is the branch scope, not a SHA and not a chunk id — a chunk id names no plan. **A
+`Closes #329` in the PR body will not stand in:** GitHub fires closing keywords only into the
+*default* branch, and this PR bases on `develop`. Recorded here rather than only in
+`.prawduct/.handoff-notes.md`, which is gitignored and consumed by the next `/clear`.
+
 **Chunk 02 complete, 2026-09-06.** The send arm, all five checks refusing independently and filing
 nothing, the title refusal on the fourth adapter write path, `source-key:` idempotency, and the
 advisory carry-through onto every refusal. `#329` (BKL-4T9C) is closed by it. Suite green.

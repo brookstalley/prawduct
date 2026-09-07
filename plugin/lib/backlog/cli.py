@@ -48,9 +48,15 @@ from . import context, core, ids, query, upstream
 # ranks, and mutates nothing on the provider.
 # ``file-upstream`` is here although its preview arm mutates nothing: the op is
 # attended-only by design (a human reviews the literal outbound bytes and approves
-# a digest), and an untrusted-triggered Actions run is the definition of no human
-# present. Withholding the whole op there costs a preview nobody could act on and
-# closes the arm that would otherwise send.
+# a digest), and an untrusted-triggered Actions run is a context where nobody has
+# vouched for the caller at all. Withholding the whole op there costs a preview
+# nobody could act on and closes the arm that would otherwise send.
+# This set is NOT the general "no human present" check and must not be read as one:
+# :func:`context.is_unattended` is also true under ``PRAWDUCT_UNATTENDED=1`` and for
+# every *trusted* Actions event, and :func:`context.writes_withheld` reaches none of
+# those. Attendance on the send path rests on the ``report-bug`` skill obligation
+# plus the honest limit the owner ruled for (upstream-filing design section 4.3),
+# never on membership here.
 _WRITE_OPS: frozenset[str] = frozenset(
     {"file", "file-upstream", "status", "update", "comment",
      "link", "unlink", "provision", "reconcile-labels", "import", "merge"}

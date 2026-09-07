@@ -70,7 +70,9 @@ decision, and prawduct's job is to be worthy of it. The posture we hold:
   spawn + local files + git. This shrinks the supply-chain surface to prawduct's own code plus git.
   **Three sites reach the network, and one of them IS on a hook path** — stated precisely because
   the first version of this paragraph said "neither on a hook path" and was wrong:
-  the opt-in backlog backend (`lib/backlog/transport.py`); `check-released`'s `gh` call
+  `lib/backlog/transport.py` (TWO callers — the opt-in backlog backend, and the owner-approved
+  `file-upstream` op, which reaches the pinned upstream repo with `backlog_service_repo` unset);
+  `check-released`'s `gh` call
   (`lib/release_verification.py`, 2026-08-04), operator/CI-invoked; and a `gh pr list` inside
   `cmd_stop` (`plugin/bin/prawduct-hook`), which runs on the **Stop hook**. The first two scrub
   credentials out of foreign-CLI stderr before echoing or serialising it; the Stop-hook call does

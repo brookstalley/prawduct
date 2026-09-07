@@ -684,10 +684,14 @@ Data Model §2)
 - Setup: a target project owned by a **different owner**; the caller has no local checkout of it.
 - Action: `file-upstream` into the target; then **re-file the same source item** (same submitter + source
   digest → same `source-key:`), simulating a retry; then a distinct source item.
-- Expected: the item is filed with **no upstream checkout and no drop-box**; it carries stamped
-  **provenance** (`source:` + submitter identity) and a **`source-key:<digest>`** marker (API §2.4, Data
-  Model §5), and lands in **`submitted`** (a triage state, not the working backlog); auth **resolves by
-  the target owner** (owned repo → session identity; foreign repo → user token, Security §1). The **retry
+- Expected: the item is filed with **no upstream checkout and no drop-box**; the outbound body carries
+  **exactly the fields the upstream-filing design §2 fixes and no others** — the in-repo
+  `provenance: {source: <product>, …}` pair is the field minimization exists to strip, so asserting its
+  presence here would specify the leak rather than the guarantee — including the **`source-key:<digest>`**
+  marker (API §2.4, Data Model §5); it lands in **`submitted`** (a triage state, not the working
+  backlog); auth **resolves the session's own `gh` login** and refuses when the answer names nobody
+  (§5 check 5, Security §1) — the op reaches one pinned target, so there is no by-target-owner arm to
+  select. The **retry
   returns the existing upstream item** (matched by `source-key:`) **when the prior filing is inside the
   dedup scan's window — api-contract §2.4 states the bound, and a test asserting the ABSOLUTE form would
   encode a guarantee the code does not make** — rather than creating a duplicate; the

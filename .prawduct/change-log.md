@@ -3,6 +3,45 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-09-07: the review round that bought the merge — one blocking claim retracted
+
+<!-- prawduct: type=fix | scope=upstream-filing-adapter -->
+
+Round 10, spent on the one justification the coverage gate names: a merge. Six findings fixed.
+
+**The blocking one was a guarantee the docs claimed and the code does not make.** A reconciliation
+paragraph in `backlog-service-security-model.md` §1a had grown into asserting that the approval token
+is *the mechanism* closing unattended cross-owner filing — which reverses the owner's dated §4.3
+ruling (2026-07-23) that the gate is byte-pinned with an **honest limit** and does not detect a human.
+The code sides with §4.3: nothing on the send path consults `context.is_unattended()`, and this
+bundle's own test files with `--approve sha256:whatever` from a repo with no human in the call. §1a
+now states the mechanical floor (a token is required in every preference state; `ask-user` is the
+reachable default; `never-file` is the one hard guarantee) and names what is *not* mechanical — the
+`report-bug` skill's obligation. XP4's honesty MUST is why this was a block and not a wording nit.
+
+**A guard whose only test failed for the wrong reason.** `file-upstream`'s SEC-5 withhold was held in
+place solely by a partition test whose failure text is about the counts cache — so dropping the op
+from `_WRITE_OPS` had a suggested "fix" (delete a cache-map row) that re-opens the send arm under a
+pwn-request trigger with the suite green. It now has a send-arm test that reads the seam, verified by
+mutation.
+
+**One framing outlived its norm in six places.** "Network reachability is keyed on
+`backlog_service_repo`" was true until the same-day Local-first amendment and was copied into
+`architecture.md` (twice), `project-preferences.md` (twice, including a norm citation one amendment
+behind), `project-state.yaml` and `security-model.md`. All six now rest on the property that actually
+holds — nothing reaches the network unless a person acts — since `file-upstream` reaches the pinned
+upstream repo with that scalar unset.
+
+**The Local-first statement now distinguishes a *surface* from an egress *site*.** The count of two
+binds on paths by which product content leaves a product; the larger enumeration of sites (including
+`cmd_stop`'s `gh pr list`, which does run on the Stop hook) keeps its single home. This states what
+the count already meant and admits nothing new — flagged for owner veto, since the statement it
+clarifies was amended by owner ruling the same day.
+
+Also: XP-1's spec no longer requires the outbound payload to carry the `source:` + submitter pair the
+minimization exists to strip, and `file-upstream` gets its own `### file-upstream` block in
+`adapter-mode.md` instead of 1,400 characters buried in the write-discipline preamble.
+
 ## 2026-09-07: the egress norm reaches steady-state, and every live surface describes the contract
 
 <!-- prawduct: type=feature | scope=upstream-filing-adapter -->

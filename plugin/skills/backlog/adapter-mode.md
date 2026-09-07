@@ -166,18 +166,8 @@ mutation path** — the adapter exposes exactly the ops in the usage table `praw
 prints, each with its own crash-safety
 contract (idempotent/resumable `import`, redirect-before-close `merge`). No generic preview-or-apply flag
 sits over those mutations: the two preview-before-write paths are op-specific. `restructure-preview`
-renders the deterministic before/after a bulk `import` would produce, approved in aggregate. And
-`file-upstream` is **preview-by-default** — it renders the exact outbound payload and a
-`payload_digest` and sends nothing, because it writes into a foreign public repo and that is
-irreversible. Sending is a second call, `--approve sha256:<the digest the preview printed>` with the
-same `--title`/`--body`/`--component`; it re-renders the payload and refuses unless the token covers
-*those* bytes, plus four more checks — `filing-disabled` (the `Upstream filing` preference is
-`never-file`), `target-not-pinned`, `self-file` (prawduct's own repo routes to `file` instead), and
-`auth`. It **also refuses a rendered title that fails the issue standard's §1 rules** — `file-upstream` is the fourth adapter write path under `data-model.md` § Direction, and the refusal binds harder here because a non-collaborator cannot retitle upstream afterwards. **Every one of those refusals files nothing**, and the preview names each one it can predict without a network call, so a `filing would refuse (…)` line in a preview means the send will not succeed until you fix what it names. Do not reach for it as a filing op: it is a data plane for
-`/prawduct:report-bug`, and that skill has not been rewritten onto it yet — it still writes a local
-drop-box file. Until it is, nothing calls this op, and calling it yourself skips the recomposition
-and the verbatim human review that are the whole reason the payload is safe to send. Filing a
-product's own work goes through `file`.
+renders the deterministic before/after a bulk `import` would produce, approved in aggregate; and
+`file-upstream` is preview-by-default — its own block below.
 
 ### Status vocabulary bridge
 The markdown skill's statuses are **not** the adapter's. Map before calling `status --to`:
@@ -289,6 +279,29 @@ The item envelope does **not** surface an `updated_at`, so the optional `--if-up
 optimistic-concurrency guard (exit **4 conflict** on a stale timestamp) is only usable when a caller
 already holds that timestamp from elsewhere; the skill's normal path omits it. It applies to the
 whole `update` op, not to any one field above.
+
+### file-upstream
+
+```
+prawduct-hook backlog file-upstream --title <t> --body <b> [--component <c>] [--approve <digest>]
+```
+
+**Do not call it.** It is the data plane for `/prawduct:report-bug`, and that skill has not been
+rewritten onto it yet — it still writes a local drop-box file, so nothing calls this op. Calling it
+yourself skips the recomposition and the verbatim human review that are the whole reason the payload
+is safe to send. **A product's own work is filed with `add`, never here** — this op writes into a
+foreign public repo and the write is irreversible.
+
+**Preview-by-default, send on a second call.** With no `--approve` it renders the exact outbound
+payload plus a `payload_digest` and sends nothing; sending repeats the call with
+`--approve sha256:<the digest the preview printed>` and the same payload flags. The full refusal set
+and the two-call recipe live in `documentation/backlog-service-upstream-filing.md` §5 — read them
+there rather than from a copy here, so the refusal vocabulary keeps one home.
+
+**Every refusal files nothing.** That is the guarantee to surface when you see one: an error from
+this op never leaves a partial upstream write behind. The preview names each refusal it can predict
+without a network call, so a `filing would refuse (…)` line means the send will not succeed until you
+fix what it names.
 
 ### pick
 `prawduct-hook backlog pick --repo <r> [--limit N] [--include-working]` → the adapter returns

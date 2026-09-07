@@ -75,15 +75,20 @@ re-authenticate or approve**:
 - **Self-limiting:** unattended writes self-pace under the ~500/hr content cap and are reversible
   (DM7). **Scope:** acts only where the runtime identity already has access — no unattended
   anonymous/foreign filing (PV3 is attended, human-supplied token).
-- **`file-upstream` is attended by construction, and it is the one cross-owner write, so state it
-  precisely rather than by category.** The op sends nothing without an `--approve` token, in *every*
-  preference state — standing consent (`always-file`) waives only the digest *comparison*, never the
-  token's presence, so a bare unattended call refuses rather than files. The default preference is
-  `ask-user`, and an absent or unrecognised value reads as `ask-user` too, so the reachable-by-default
-  state files nothing at all. What standing consent is, exactly: an owner's prior decision to stop
-  reading each payload — not a path by which an unattended worker acquires cross-owner filing. §1a's
-  "no unattended anonymous/foreign filing" therefore holds here with no exception, and the approval
-  token is the mechanism enforcing it rather than a convention around it.
+- **`file-upstream` is the one cross-owner write, and the bullet above does not cover it — so the
+  exception is stated here rather than absorbed.** *What the adapter mechanically enforces:* nothing
+  sends without an `--approve <digest>` token in *every* preference state — standing consent
+  (`always-file`) waives only the digest *comparison*, never the token's presence — and the
+  reachable-by-default state is `ask-user` (an absent or unrecognised value reads as `ask-user` too),
+  which files nothing on its own. *What it does **not** enforce: that a human is present.* Nothing on
+  the send path consults `context.is_unattended()`, by the owner's dated ruling
+  (`backlog-service-upstream-filing.md` §4.3, 2026-07-23) choosing a byte-pinned gate with an honest
+  limit over the stronger attendance gate — so a misbehaving unattended agent under `ask-user` could
+  feed a previewed digest straight back, and under `always-file` any token value passes. The
+  human-present half is the **`report-bug` skill's obligation**, not a mechanism; `never-file` remains
+  the one hard mechanical guarantee. **Read §4.3 before relying on this section's "no unattended
+  anonymous/foreign filing" for `file-upstream`:** it holds here by default and by policy, not by a
+  filter the code can back — and XP4's honesty MUST is why that is said rather than rounded up.
 
 ### 1b. GitHub Actions context — untrusted triggers (F1, load-bearing)
 

@@ -36,7 +36,7 @@ its own rather than only in company.
 **The trimmed block is the minimization.** An in-repo ``prawduct:`` block carries
 ``provenance: {source: <product>, …}`` — the product's own name. Upstream carries
 ``v:``, ``found_in:`` and ``source-key:``, and nothing else. The product name is
-precisely the field that must not cross (design §3).
+precisely the field that must not cross (design §2, which fixes the outbound field list).
 
 Composing only three fields is **not** by itself enough to guarantee only three
 arrive, and believing it was is how this shipped wrong once. The block is a fenced
