@@ -936,7 +936,6 @@ def _pr_diff_is_doc_only(project_dir: Path) -> tuple[bool, str]:
     )
 
 
-
 def _entry_check_without_history(project_dir: Path) -> int:
     """The weaker entry check available when the change-log is untracked.
 
@@ -989,6 +988,7 @@ def _entry_check_without_history(project_dir: Path) -> int:
         "negated — git will not re-include a file under an excluded directory)."
     )
     return 0
+
 
 def check_change_log_entry(project_dir: Path) -> int:
     """PR-boundary probe: a code-changing branch must add a change-log entry.

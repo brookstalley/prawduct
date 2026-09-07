@@ -481,7 +481,12 @@ def _scope_declared_in_change_log(prawduct_dir: Path, scope: "str | None") -> bo
     The change-log is the witness because a code-changing branch cannot open a
     PR without ADDING an entry (`check-change-log-entry`, enforced at the PR
     boundary), and the `scope=` tag on that entry is what the release flow
-    reads to enumerate what is still unshipped. So the declaration already
+    reads to enumerate what is still unshipped. That premise is exactly as
+    strong as the probe: where a repo gitignores `.prawduct/` the log is
+    untracked, git cannot see which branch added what, and the probe passes on
+    the weaker `entry-present-untracked` check — so there the entry is a
+    convention the PR flow asks an operator to confirm, not something the gate
+    forced out of the branch. So the declaration already
     exists by the time any review runs, and it lives in a durable, reviewed,
     release-tracked record.
 
