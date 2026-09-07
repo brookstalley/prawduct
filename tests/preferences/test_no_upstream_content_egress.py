@@ -782,6 +782,15 @@ class TestNoSurfaceStillDescribesTheAbsence:
         ".prawduct/artifacts/architecture.md",
         ".prawduct/artifacts/data-model.md",
         ".prawduct/artifacts/project-preferences.md",
+        # The two instruction surfaces, and the reason they are named explicitly:
+        # SKILL.md is the case in the docstring above — it went on saying the pin
+        # existed "only in the design" for two chunks after the pin shipped — and
+        # a list that omitted the file it was written about would have passed
+        # green while that exact sentence was re-introduced. adapter-mode.md is
+        # its sibling: it is the referent SKILL.md points a reader at for the op's
+        # contract, so a stale claim there reaches the same reader one hop later.
+        "plugin/skills/backlog/SKILL.md",
+        "plugin/skills/backlog/adapter-mode.md",
     )
 
     #: Phrasings that assert the surface does not exist yet. Matched only on lines
@@ -841,3 +850,26 @@ def _reads_as_a_record(low: str) -> bool:
     return bool(re.search(r"20\d\d-\d\d-\d\d", low)) and any(
         m in low for m in _RECORD_MARKERS
     )
+
+
+def test_the_documented_dedup_bound_cites_the_symbol_that_sets_it():
+    """The claim and the constant must not drift apart again.
+
+    The commit that BOUNDED the dedup scan left three prose sites still promising
+    absolute retry-collapse, because prose that merely describes old behaviour
+    shares no token with the code that changed — there was nothing to grep. This
+    pins the fix's shape: api-contract §2.4 is the claim's home and names the
+    symbol, so renaming or deleting the constant fails here rather than silently
+    stranding the sentence.
+    """
+    contract = (REPO_ROOT / "documentation" / "backlog-service-api-contract.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert isinstance(upstream.DEDUP_SCAN_PAGES, int) and upstream.DEDUP_SCAN_PAGES > 0
+    assert "DEDUP_SCAN_PAGES" in contract, (
+        "api-contract §2.4 states the retry-collapse guarantee but no longer cites "
+        "the symbol that bounds it, so the next change to the window leaves the "
+        "sentence behind — which is exactly how this drifted the first time"
+    )
+

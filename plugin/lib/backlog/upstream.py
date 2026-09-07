@@ -501,6 +501,20 @@ PREF_NEVER_FILE = "never-file"
 PREF_ALWAYS_FILE = "always-file"
 FILING_PREFERENCE_STATES = (PREF_ASK_USER, PREF_NEVER_FILE, PREF_ALWAYS_FILE)
 
+#: Not an authored value — the state of a preferences file that EXISTS and cannot
+#: be read. Deliberately outside :data:`FILING_PREFERENCE_STATES`, which is the set
+#: of things an operator can write in the row.
+#:
+#: It refuses rather than defaulting, and the asymmetry with the absent-file and
+#: unrecognised-value branches is the whole point: those two know the row does not
+#: say ``never-file``, and this one knows nothing at all. §4.3 calls ``never-file``
+#: a hard mechanical guarantee, and "authority fails closed" (architecture §
+#: Direction) is the posture for a check that cannot read its own input — the
+#: alternative enforces the guarantee by hoping the operator reads a warning that,
+#: on the send arm, rides out on the SUCCESS envelope after an irreversible
+#: cross-owner write.
+PREF_UNREADABLE = "unreadable"
+
 #: The ``project-preferences.md`` row this reads, as the row spells itself.
 FILING_PREFERENCE_LABEL = "Upstream filing"
 
@@ -518,22 +532,29 @@ _PREFERENCE_RE = re.compile(
 def read_filing_preference(project_dir) -> tuple[str, str | None]:
     """``(state, warning)`` — the §4.1 consent state, plus any reason it is not the row's.
 
-    Defaults to :data:`PREF_ASK_USER` on every path that does not yield one of
-    the three states: no preferences file, no row, an unreadable file, or a value
-    nobody defined. That default is the strictest state a caller can land in by
-    accident — it still requires an ``--approve`` whose digest matches the
-    re-rendered bytes — whereas defaulting toward ``always-file`` would turn a
-    typo into standing consent. A *recognised* ``never-file`` is stricter still,
-    but reaching it by mistake would refuse an author's legitimate report on a
-    misspelling, so it is honored only when it is what the row actually says.
+    Defaults to :data:`PREF_ASK_USER` where the row is knowably not ``never-file``:
+    no preferences file, no row, or a value nobody defined. That default is the
+    strictest state a caller can land in by accident — it still requires an
+    ``--approve`` whose digest matches the re-rendered bytes — whereas defaulting
+    toward ``always-file`` would turn a typo into standing consent. A *recognised*
+    ``never-file`` is stricter still, but reaching it by mistake would refuse an
+    author's legitimate report on a misspelling, so it is honored only when it is
+    what the row actually says.
+
+    **A file that exists and cannot be READ is the one branch that does not
+    default** — it returns :data:`PREF_UNREADABLE`, which :func:`check_preference`
+    refuses. It is a different question from the other three: they establish that
+    the row does not say ``never-file``, and this one establishes nothing. Since
+    §4.3 makes ``never-file`` a hard mechanical guarantee, a permissions or
+    encoding failure that downgraded it to ``ask-user`` would let a matching digest
+    file the very report the standing "no" forbade, with the warning as the only
+    thing standing in the way — and on the send arm that warning rides out on the
+    SUCCESS envelope, after the irreversible write.
 
     The warning is non-empty whenever the operator could believe they have set
-    something and have not: a row that does not parse, and a file that exists but
-    cannot be READ. Those two are the same event from the operator's chair —
-    ``never-file`` is design §4.3's "hard mechanical guarantee", and a permissions
-    or encoding failure silently downgrading it to ``ask-user`` lets a matching
-    digest file the very report that standing "no" forbade. An **absent** file is
-    the genuinely ordinary case and stays silent: no product has this row yet.
+    something and have not: a row that does not parse, and a file that cannot be
+    read. An **absent** file is the genuinely ordinary case and stays silent: no
+    product has this row yet.
     """
     path = Path(project_dir) / ".prawduct" / "artifacts" / "project-preferences.md"
     try:
@@ -541,11 +562,11 @@ def read_filing_preference(project_dir) -> tuple[str, str | None]:
     except FileNotFoundError:
         return PREF_ASK_USER, None
     except (OSError, UnicodeDecodeError) as exc:
-        return PREF_ASK_USER, (
+        return PREF_UNREADABLE, (
             f"project-preferences.md exists but could not be read ({exc}), so "
-            f"`{FILING_PREFERENCE_LABEL}` was never consulted — treating it as "
-            f"{PREF_ASK_USER}; if it says {PREF_NEVER_FILE}, that standing no is "
-            "NOT in force on this call"
+            f"`{FILING_PREFERENCE_LABEL}` could not be consulted — filing is "
+            f"refused rather than assumed, because a row reading {PREF_NEVER_FILE} "
+            "and a row nobody can read are indistinguishable from here"
         )
     match = _PREFERENCE_RE.search(text)
     if match is None:
@@ -583,7 +604,22 @@ def check_preference(state: str) -> Refusal | None:
     The only one of the five that holds regardless of what else is true: §4.3
     calls it "a hard mechanical guarantee", so it is evaluated first and no
     later check, digest or authentication can reach past it.
+
+    :data:`PREF_UNREADABLE` refuses under the same code and for the same reason
+    one rung back: a guarantee that can only be honored by reading a file is not
+    mechanical if an unreadable file means "proceed". The messages differ because
+    the remedies do — one is a standing decision, the other is a broken file.
     """
+    if state == PREF_UNREADABLE:
+        return Refusal(
+            "filing-disabled",
+            "project-preferences.md could not be read, so the "
+            f"`{FILING_PREFERENCE_LABEL}` preference could not be checked — filing "
+            f"is refused rather than assumed, because a standing {PREF_NEVER_FILE} "
+            "and an unreadable file look identical from here. Fix the file (or "
+            "remove it — an ABSENT file is the ordinary case and does not refuse)",
+            {"preference": state},
+        )
     if state != PREF_NEVER_FILE:
         return None
     return Refusal(

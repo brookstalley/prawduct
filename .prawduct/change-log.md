@@ -87,6 +87,48 @@ the wave ships as one PR.
   `tmp_path`, so the one configuration a maintainer is actually in went unexercised. Now asserted
   against the real checkout.
 
+**Round 8 — the first review that actually covered this chunk — found eight more, two of them
+defects this chunk introduced.** 0 blocking again; fixed for the same reason.
+
+- **An unreadable `project-preferences.md` demoted `never-file` to `ask-user`.** §4.3 calls
+  `never-file` a hard mechanical guarantee, and the fail-open left it enforced by the operator
+  reading a warning that, on the send arm, rides out on the **success** envelope after the
+  irreversible write. `read_filing_preference` now returns a distinct `PREF_UNREADABLE` that
+  `check_preference` refuses. The absent-file and unrecognised-value branches keep their `ask-user`
+  default deliberately: those establish that the row does not say `never-file`, and an unreadable
+  file establishes nothing. The pre-existing test had asserted the fail-open its own docstring
+  argued against.
+- **The absence guard could not see the two surfaces it was written for.** `LIVE_SURFACES` omitted
+  `skills/backlog/SKILL.md` — the instance named in the guard's own docstring — so re-introducing
+  that exact sentence passed green. Both instruction surfaces added; the guard was re-falsified
+  against the real regressed sentence rather than a paraphrase.
+- **The dedup bound was applied to the mechanism and not to the claim.** Three prose sites still
+  promised absolute retry-collapse after the scan became a window — the cascade-search-the-CLAIM
+  failure `learnings.md` already names, since prose describing old behaviour shares no token with
+  the code that changed. The guarantee is now relational at its home (api-contract §2.4), cited
+  rather than restated elsewhere, and **pinned against `upstream.DEDUP_SCAN_PAGES`** so the next
+  change to the window cannot strand the sentence. A fourth site outside the diff
+  (`backlog-service-test-specifications.md`) is corrected too — it is what a future test is written
+  from.
+- **The `previewable_refusals` pin was the enumeration it claimed to replace** — it read the send
+  arm's source only to confirm three remembered names. Now AST-derived, with exclusions carrying
+  their reasons. The derivation immediately surfaced a call the hardcoded list had missed.
+- **`paginate` refuses an unknown `on_cap`** rather than falling through to the safe default: a
+  caller who typed `"Stop"` wanting a window would otherwise get an unexplained truncation.
+- The design doc's governance header quoted the norm it governs, so the quotation outlived the
+  amendment and contradicted §8 of its own file — now a citation by name, which the next amendment
+  cannot strand. Its Call-2 snippet also omitted the `--title`/`--body` the shipped op requires.
+- The title-refusal write-path enumerations in `cli.py` and `issuefmt.py` are relational; the
+  `LintFinding` docstring now says to grep for the refusal sites rather than trusting a roster,
+  because a roster there is what a maintainer greps *instead of* the code.
+
+**Two findings declined on the evidence, not deferred.** `.prawduct/backlog.md` carries the retired
+norm quotation, and its own header declares it FROZEN HISTORY, "deliberately allowed to diverge —
+read as a snapshot of the moment of migration, never as live state"; correcting it is the one edit
+that file exists to forbid. And `paginate`'s unreadable-page branch is unreachable through
+`GhTransport`, which coerces a non-list to `[]` first — making it reachable would mean adding a
+failure mode to enable a test for it.
+
 **A Chunk 02 corpus defect surfaced here and is fixed rather than deferred.** `933cb290` added the
 "Defence in depth costs a test PER LAYER" narrative to `learnings-detail.md` with a heading whose
 casing did not prefix the index rule, so `check-learnings-pairing` had been red since that commit —

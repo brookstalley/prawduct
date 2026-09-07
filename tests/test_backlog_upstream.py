@@ -711,27 +711,59 @@ class TestThePreviewArm:
         )
 
     def test_every_no_transport_refusal_the_send_arm_has_is_predicted(self, tmp_path):
-        """The invariant behind `previewable_refusals`, pinned so a SIXTH refusal
-        cannot be added to one arm only — the defect this replaced, where the
-        preview hand-enumerated what it could predict and Chunk 02's title refusal
-        simply never joined the list.
+        """The invariant behind `previewable_refusals`, DERIVED rather than listed.
 
-        Read off the send arm's own source rather than restated, so adding a check
-        there and not here fails right here."""
+        An earlier cut of this test read the send arm's source and then iterated
+        three remembered names — which is the hand-enumeration it exists to
+        replace, one level up: a sixth refusal added to `send` matched no name and
+        the test stayed green while the preview silently regressed. So the names
+        come out of the AST.
+
+        The exclusions are the only hardcoded part, and each carries its reason,
+        because an exclusion is a claim about WHY a refusal is unpredictable and
+        that claim has to be readable."""
+        import ast
         import inspect
+        import textwrap
 
-        send_src = inspect.getsource(upstream.send)
+        excluded = {
+            # Answered by the CLI on both arms before anything is composed; and
+            # composing a payload aimed at the pin in order to lint it would report
+            # budget findings about bytes this caller never asked to send.
+            "check_target": "the CLI answers it ahead of both arms",
+            # A preview has no token to compare, and that absence is what MAKES it
+            # a preview rather than a send.
+            "check_approval": "a preview has no approval token by definition",
+            # Needs the transport this preview path is defined never to touch.
+            "check_authenticated": "requires the transport the preview never holds",
+            # Predicted, but not through this function: `_file_upstream_preview`
+            # calls it directly and returns its `validation` error before anything
+            # is composed — there is no payload to attach a "would refuse" note to
+            # yet, because these inputs are what a payload would be composed FROM.
+            # Surfaced by this derivation, which the hardcoded list it replaced had
+            # simply never noticed.
+            "check_payload_inputs": "the preview refuses on it directly, pre-compose",
+        }
+
+        send_tree = ast.parse(textwrap.dedent(inspect.getsource(upstream.send)))
+        called = {
+            node.func.id
+            for node in ast.walk(send_tree)
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+        }
+        refusals = {
+            name for name in called
+            if name.startswith("check_") or name.endswith("_refusal")
+        }
+        assert refusals, "no refusal-shaped call found in `send` — the derivation broke"
+
         predicted = inspect.getsource(upstream.previewable_refusals)
-
-        # Refusals the send arm reaches with no transport in hand. `check_target`
-        # and `check_approval` are excluded for reasons `previewable_refusals`
-        # states; `check_authenticated` needs the transport.
-        no_transport = ["check_preference", "check_not_self", "_title_refusal"]
-        for name in no_transport:
-            assert name in send_src, f"{name} is no longer a send-arm refusal — update this pin"
+        for name in sorted(refusals - set(excluded)):
             assert name in predicted, (
-                f"the send arm refuses via {name} and the preview cannot predict it, "
-                "so an operator can approve a digest for a filing that must refuse"
+                f"`send` refuses via {name}() and `previewable_refusals` does not "
+                "ask it, so an operator can approve a digest for a filing that can "
+                "only refuse. Either predict it, or add it to `excluded` above with "
+                "the reason it cannot be predicted."
             )
 
     def test_a_body_opening_a_prawduct_fence_is_refused(self, tmp_path, capsys):
@@ -843,20 +875,48 @@ class TestTheConsentPreferenceReads:
 
         assert upstream.read_filing_preference(tmp_path)[0] == upstream.PREF_NEVER_FILE
 
-    def test_a_file_that_cannot_be_read_falls_back_loudly(self, tmp_path):
-        """An absent file is ordinary — no product has this row yet. A file that
-        EXISTS and cannot be read is the same event as an unparseable value from
-        the operator's chair, and the stake is `never-file`: design §4.3 calls it
-        a hard mechanical guarantee, and a permissions or encoding failure that
-        silently downgrades it to `ask-user` lets a matching digest file the very
-        report that standing no forbade."""
+    def test_a_file_that_cannot_be_read_REFUSES_rather_than_defaulting(self, tmp_path):
+        """The stake is `never-file`, which §4.3 calls a hard mechanical guarantee.
+
+        An absent file is ordinary — no product has this row yet — and an
+        unparseable VALUE still establishes that the row does not say
+        `never-file`. A file that exists and cannot be read establishes nothing,
+        so defaulting it to `ask-user` enforced the guarantee by hoping the
+        operator read a warning which, on the send arm, rides out on the SUCCESS
+        envelope after the irreversible write. `authority fails closed` is the
+        recorded posture for a check that cannot read its own input."""
         artifacts = tmp_path / ".prawduct" / "artifacts"
         artifacts.mkdir(parents=True)
         artifacts.joinpath("project-preferences.md").write_bytes(b"\xff\xfe not utf-8")
         state, warning = upstream.read_filing_preference(tmp_path)
 
-        assert state == upstream.PREF_ASK_USER
-        assert warning is not None and upstream.PREF_NEVER_FILE in warning
+        assert state == upstream.PREF_UNREADABLE
+        assert warning is not None
+        refusal = upstream.check_preference(state)
+        assert refusal is not None and refusal.code == "filing-disabled"
+
+    def test_an_unreadable_preferences_file_stops_the_send_end_to_end(self, tmp_path, capsys):
+        """The unit above proves the state and the check; this proves they are
+        wired to each other on the arm that writes. A refusal nothing calls is
+        the shape this whole guard set exists to avoid."""
+        from tests.fakes.fake_github import FakeGitHub
+
+        artifacts = tmp_path / ".prawduct" / "artifacts"
+        artifacts.mkdir(parents=True)
+        artifacts.joinpath("project-preferences.md").write_bytes(b"\xff\xfe not utf-8")
+        fake = FakeGitHub()
+
+        code = cli.run(str(tmp_path), [
+            "file-upstream", "--title", _TITLE, "--body", _BODY,
+            "--component", _COMPONENT, "--approve", "sha256:" + "0" * 64, "--json",
+        ], transport=fake)
+        envelope = json.loads(capsys.readouterr().out)
+
+        assert code != 0
+        assert envelope["error"]["code"] == "filing-disabled"
+        assert fake.list_issues("brookstalley", "prawduct", state="all") == [], (
+            "an unreadable preference file did not stop the write"
+        )
 
     def test_a_value_nobody_defined_falls_back_loudly(self, tmp_path):
         """The one case worth interrupting over: the operator believes they set

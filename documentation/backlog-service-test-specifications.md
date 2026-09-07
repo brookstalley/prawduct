@@ -688,7 +688,9 @@ Data Model §2)
   **provenance** (`source:` + submitter identity) and a **`source-key:<digest>`** marker (API §2.4, Data
   Model §5), and lands in **`submitted`** (a triage state, not the working backlog); auth **resolves by
   the target owner** (owned repo → session identity; foreign repo → user token, Security §1). The **retry
-  returns the existing upstream item** (matched by `source-key:`) rather than creating a duplicate; the
+  returns the existing upstream item** (matched by `source-key:`) **when the prior filing is inside the
+  dedup scan's window — api-contract §2.4 states the bound, and a test asserting the ABSOLUTE form would
+  encode a guarantee the code does not make** — rather than creating a duplicate; the
   distinct source item creates a new one. Distinct from SEC-7 (the *anonymous/non-collaborator* path;
   this is *authenticated* cross-project filing) and from AG3 advisory dedup (this is deliberate
   retry-safety, not a similarity hint).

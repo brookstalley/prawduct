@@ -97,7 +97,7 @@ what makes the check meaningful. Recorded because a future fork of prawduct woul
 
 - [x] Chunk 01: The pinned target, the preview payload, and the contract test that replaces the interim guard
 - [x] Chunk 02: The send path refuses on all five checks, and identity fails closed
-- [ ] Chunk 03: The norm reaches steady-state, and every artifact that described the absence describes the contract
+- [x] Chunk 03: The norm reaches steady-state, and every artifact that described the absence describes the contract
 
 **Context:** Wave A of the BKL-7Q4M program (three waves; B = the `Upstream filing:` preference and
 the `report-bug` rewrite plus the live XP6 verification, C = the MG5 drop-box retirement and the
@@ -117,6 +117,20 @@ spec and the data-model disposition) and **changed what a (b) ruling costs** on 
 question (it adds a chunk rather than reshaping this one). Neither is optional and neither is in the
 design; both were surfaced by review rather than by the design doc, which is why they are recorded
 here rather than left to be rediscovered.
+
+**Chunk 03 complete, 2026-09-07 — Wave A is done.** The egress norm is `steady-state`, the
+Local-first norm admits a second network surface on the owner's (a) ruling, the title norm binds four
+write paths, and every coherence edit the design's §8 named is applied.
+
+Two reviews ran. The first was dispatched over a dirty tree and therefore covered Chunks 01–02, not
+this one — `cumulative` takes a commit range, so uncommitted work is invisible to it. That is now a
+`learnings.md` rule, and this chunk was committed before its own review. Both rounds returned 0
+blocking; fourteen findings were fixed across them, of which the sharpest were a `--body` fence that
+crossed the owner boundary intact (a guard reused without the transform it was paired with), an
+unreadable preferences file demoting `never-file`, and — twice — a guard of mine that could not see
+the case it was written for. **What Wave B should take from that pattern:** every one of those was a
+claim about a PATH that was true of the codebase generally, so check what a guard covers, not that
+it exists.
 
 **Chunk 02 complete, 2026-09-06.** The send arm, all five checks refusing independently and filing
 nothing, the title refusal on the fourth adapter write path, `source-key:` idempotency, and the

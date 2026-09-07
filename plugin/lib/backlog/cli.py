@@ -250,9 +250,10 @@ _RETRY_HELP = (
 
 _ISSUE_STANDARD_HELP = (
     "issue standard: `file` emits an `area:`-prefixed title and audits the issue.\n"
-    "  The four §1 TITLE checks BLOCK on every write path — `file`, `update` (on a\n"
-    "  title it is asked to write) and `import` (whole corpus, before the first\n"
-    "  write); body/label `lint` findings stay advisory. Author a scannable\n"
+    "  The four §1 TITLE checks BLOCK on EVERY op that writes a title — `file`,\n"
+    "  `update` (on a title it is asked to write), `import` (whole corpus,\n"
+    "  before the first write) and `file-upstream` (the rendered outbound\n"
+    "  title); body/label `lint` findings stay advisory. Author a scannable\n"
     "  `area: summary` title (15-72) + a sectioned body (bug:\n"
     "  Problem/Repro/Actual/Expected/Evidence; task: Problem/Proposed\n"
     "  change/Acceptance `- [ ]`/Scope-out) and set --kind.\n"

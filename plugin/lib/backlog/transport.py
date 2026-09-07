@@ -211,6 +211,14 @@ def paginate(
     it would silently drop every later page. So this yields raw items and the
     caller filters downstream, never the reverse.
     """
+    if on_cap not in ("raise", "stop"):
+        # A programming error, refused rather than defaulted. Falling through to
+        # "raise" would be the SAFE direction and still wrong: a caller who typed
+        # `on_cap="Stop"` wanting a window gets a truncation failure with nothing
+        # pointing at the typo — the same "a guard silently did something other
+        # than what the call site says" shape this parameter was added to fix.
+        raise ValueError(f"paginate: on_cap must be 'raise' or 'stop', not {on_cap!r}")
+
     page = 1
     while page <= max_pages:
         batch = fetch_page(page, per_page)

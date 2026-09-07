@@ -319,7 +319,9 @@ every call and decoded it all to rank, which measured ~12.4s at ~209 issues, ~6x
     stamped on each child so a resumed `split` skips children already made and creates only the missing.
   - **`source-key:<digest>`** — `digest` = `sha256` over *(submitter identity, title, body)*,
     NUL-separated so no two different triples can concatenate to the same bytes; stamped on a
-    `file-upstream` item so a re-file returns the existing item rather than duplicating. The submitter
+    `file-upstream` item so a re-file finds it rather than duplicating. **The guarantee's exact shape is
+    API contract §2.4's to state and is bounded to a recent window, not absolute** — cited here rather
+    than restated, because this section is the marker's field-home and not the lookup's. The submitter
     identity is exactly what minimization forbids *sending*, so it crosses only as an input to this
     one-way digest. **The outbound block this marker rides in is trimmed, and the trim is structural:**
     a `file-upstream` payload carries `v:`, `found_in:` and `source-key:` and nothing else — it is

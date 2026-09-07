@@ -169,6 +169,13 @@ class TestApiPaged:
         with pytest.raises(tp.TransportError):
             list(tp.paginate(lambda page, per_page: pages[page - 1], max_pages=3))
 
+    def test_an_unknown_on_cap_is_refused_rather_than_defaulted(self):
+        """Falling through to the safe default is still wrong: a caller who typed
+        `on_cap="Stop"` wanting a window would get a truncation failure with
+        nothing pointing at the typo."""
+        with pytest.raises(ValueError, match="on_cap"):
+            list(tp.paginate(lambda page, per_page: [], on_cap="Stop"))
+
     def test_on_cap_stop_still_raises_on_an_unreadable_page(self):
         """`stop` softens the CAP TRIP and nothing else. A window that swallowed
         transport failures would answer "nothing in the window" for an outage —
