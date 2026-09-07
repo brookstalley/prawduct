@@ -958,6 +958,81 @@ class TestTheDropBoxReplacementIsLive:
                 "report nobody receives"
             )
 
+    #: How to make each non-previewable refusal produce its code, so the CODES in
+    #: the assertion below come out of the adapter rather than out of memory. The
+    #: names are derived from `send`; only the inputs are written here, and a
+    #: refusal `send` gains that is missing from this map fails loudly rather than
+    #: being skipped — an unknown name is unbacked by default, which is the same
+    #: rule `IMPLEMENTED_ADAPTER_GUARDS` follows one file over.
+    #:
+    #: `check_payload_inputs` is deliberately absent: it rejects malformed FLAGS
+    #: before a payload exists, and the skill has nothing to branch on there — the
+    #: CLI's message names the flag.
+    REFUSAL_PROBES = {
+        "check_target": lambda: upstream.check_target("someone/else"),
+        "check_approval": lambda: upstream.check_approval(
+            "sha256:not-the-digest", "sha256:the-digest", preference=upstream.PREF_ASK_USER
+        ),
+        "check_authenticated": lambda: upstream.check_authenticated(None),
+    }
+
+    def test_the_skill_names_every_refusal_the_preview_cannot_predict(self):
+        """The skill keeps a copy of the codes, and this is what keeps it honest.
+
+        It is a justified copy — a model needs the codes to branch on an outcome
+        — but a copy with nothing pinning it goes stale silently: a seventh
+        refusal added to `send` would leave the skill's list incomplete, and the
+        first reader to learn that is an operator staring at a code the
+        instructions do not mention, on the one surface where the write is
+        foreign and irreversible.
+
+        Only the NON-predictable ones are required. The rest reach the operator
+        as `filing would refuse (…)` on the preview, which the skill does tell
+        the model to read and act on.
+        """
+        import ast
+        import inspect
+        import textwrap
+
+        def called_in(fn):
+            # CALLS, not mentions. `previewable_refusals`' docstring names every
+            # refusal it deliberately excludes, so a substring search over its
+            # source reports the whole set as predicted and this derivation
+            # silently finds nothing to check.
+            return {
+                node.func.id
+                for node in ast.walk(
+                    ast.parse(textwrap.dedent(inspect.getsource(fn)))
+                )
+                if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+            }
+
+        refusals = {n for n in called_in(upstream.send) if n.startswith("check_")}
+        assert refusals, "no refusal-shaped call found in `send` — the derivation broke"
+
+        predicted = called_in(upstream.previewable_refusals)
+        unpredictable = sorted(
+            n for n in refusals
+            if n not in predicted and n != "check_payload_inputs"
+        )
+        assert unpredictable, "every refusal is predictable — this derivation broke"
+
+        text = self.SKILL.read_text(encoding="utf-8")
+        for name in unpredictable:
+            probe = self.REFUSAL_PROBES.get(name)
+            assert probe is not None, (
+                f"`send` refuses via {name}() and REFUSAL_PROBES does not know how to make "
+                "it fire, so its code cannot be checked against the skill. Add a probe (or "
+                "say why the skill need not name it) — an unknown refusal is unbacked here "
+                "by default, on purpose"
+            )
+            code = probe().code
+            assert f"`{code}`" in text, (
+                f"`{code}` is a refusal the preview cannot predict, so the operator meets it "
+                "for the first time at send — and `/prawduct:report-bug` does not name it. "
+                "Give the skill a line saying what that code means and what to do about it"
+            )
+
     def test_the_skill_names_no_drop_box_write_path(self):
         """The write, not the mention. The receiving-side section legitimately
         talks about `incoming-bugs/` — reports filed before the cutover are still

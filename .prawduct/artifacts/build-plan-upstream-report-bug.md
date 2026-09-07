@@ -79,8 +79,21 @@ and is scheduled rather than assumed away.
 ## Status
 
 - [x] Chunk 01: The consent preference becomes authorable, and the code stops saying it isn't
-- [ ] Chunk 02: `/prawduct:report-bug` files upstream, and every surface describing the drop-box write stops
-Context: **Chunk 01 complete, 2026-09-07.** The row ships in the template, so `init-product` writes
+- [x] Chunk 02: `/prawduct:report-bug` files upstream, and every surface describing the drop-box write stops
+Context: **Wave B is complete, 2026-09-07 — both chunks built, reviewed and closed.** The cumulative
+review returned 0 blocking, 11 warnings and 3 notes; thirteen were fixed in one round and the
+backlog-reconciliation note was accepted. What Wave C inherits from that round is one obligation and
+one reminder, both here because a handoff note is gitignored and this file is not:
+
+- **The `untriaged-upstream-reports` repoint is now load-bearing, not just tidy.** Until it lands,
+  issue-side triage is manual and the skill says so in as many words — a framework session that
+  drains only the drop-box has drained the channel that no longer grows. The repoint's query shape
+  is design §6, and it is only correct if VRF-018 confirms a non-collaborator cannot apply a label.
+- **The Wave C commit closes #194 (BKL-7Q4M) and #234.** #234 is the drop-box lockstep guard whose
+  replacement went live here and whose retirement is Wave C's own work. Recorded as the accepted
+  disposition on `rev-20260907T223417Z-f6ec097a`.
+
+**Chunk 01 complete, 2026-09-07.** The row ships in the template, so `init-product` writes
 it into every product it scaffolds, and `never-file` is reachable by editing a line. Review returned
 0 blocking; its two warnings and one note were all fixed in the same commit rather than dispositioned
 — all three priced free or rode files already dirty. Two things Chunk 02 should not re-derive: the

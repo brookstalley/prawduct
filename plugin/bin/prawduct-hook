@@ -5424,12 +5424,14 @@ def cmd_resolve_base(project_dir: Path) -> int:
 def cmd_bug_inbox(project_dir: Path) -> int:
     """Resolve the upstream bug-report inbox and print it, or exit 1 when none.
 
-    The `/prawduct:report-bug` skill branches on the exit code: 0 = an inbox is
-    configured and reachable (file the report into the printed path); 1 = no
-    inbox (capture the bug in the product's own backlog + point at GitHub
-    issues). Inert by design for plugin-only users — they configure neither
-    ``PRAWDUCT_BUG_INBOX`` nor ``.prawduct/.bug-inbox``, so resolution returns
-    None and this exits 1.
+    **Caller-less.** `/prawduct:report-bug` files upstream as a GitHub issue
+    through the backlog adapter and branches on nothing here; this resolver is
+    what routed a report to a directory back when the report was a file. It
+    retires with the drop-box (see ``lib/bug_inbox``), which is held until the
+    ``untriaged-upstream-reports`` advisory stops counting files there — the
+    reports already in that directory still need triaging. Inert by design for
+    plugin-only users, who configure neither ``PRAWDUCT_BUG_INBOX`` nor
+    ``.prawduct/.bug-inbox``, so resolution returns None and this exits 1.
 
     Fail-soft: a missing/stale/unwritable inbox OR an incomplete plugin install
     (lib not importable) both resolve to exit 1, never a crash — the channel
@@ -5454,12 +5456,16 @@ def cmd_version() -> int:
     ``.claude-plugin/plugin.json``) and exit 0; exit 1 if the manifest is
     unreadable.
 
-    The **deterministic version source** consumers stamp into upstream bug reports
-    (the ``Found in: prawduct vX.Y.Z`` field — XP2 provenance / the MG5 report-bug
-    path) instead of *recalling* a version from the model. A recalled version
-    drifts silently as the plugin updates; this one is read from the manifest at
-    call time. Output is one bare line (``3.1.0``, no ``v`` prefix, no decoration)
-    so a skill or script can capture it and format ``prawduct v<version>`` itself.
+    The **deterministic version source** for anything that stamps a running version
+    instead of *recalling* one — a recalled version drifts silently as the plugin
+    updates, and this is read from the manifest at call time. Output is one bare
+    line (``3.1.0``, no ``v`` prefix, no decoration) so a caller can format
+    ``prawduct v<version>`` itself.
+
+    Not the route the upstream ``Found in:`` field takes: ``file-upstream``
+    composes that section itself from ``upstream.plugin_version``, so the
+    provenance is sourced on every filing rather than on a careful one, and
+    ``/prawduct:report-bug`` is told not to write the section at all.
     """
     version = _plugin_manifest_version()
     if not version:

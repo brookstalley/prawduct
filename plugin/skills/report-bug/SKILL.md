@@ -101,14 +101,26 @@ It is refused outright, because a second parseable block would fold into the
 provenance block permanently on the receiving side. A report that needs to *show*
 one indents it instead.
 
-**Write the body to a scratch file, once.** You will pass the identical bytes to
-two commands, and the second one is matched against a digest of the first — so
-retyping the body between them is how a filing refuses with `approval-mismatch`
-for no reason a reader can see:
+**Write all three to scratch files, once.** Two reasons, and they are different.
+
+The **body** must be byte-identical across two commands, because the second is
+matched against a digest of the first — retyping it is how a filing refuses with
+`approval-mismatch` for no reason a reader can see.
+
+The **title and component** must not go through the shell as literals. Inside
+double quotes bash still expands `$…` and `` `…` ``, and this skill has just told
+you to write both in prawduct's backticked vocabulary — so `` `prawduct-hook
+version` `` runs a command and a symptom naming `$CLAUDE_SKILL_DIR` expands to
+nothing. The title would then be composed, digested, approved and filed with the
+defect's own name deleted from it, into a repo where you cannot retitle it
+afterwards. Command-substitution output is not re-expanded, so reading each from
+a file closes it:
 
 ```
 prawduct-hook backlog file-upstream \
-  --component "<surface>" --title "<symptom>" --body "$(cat <scratch>/report.md)"
+  --component "$(cat <scratch>/component.txt)" \
+  --title     "$(cat <scratch>/title.txt)" \
+  --body      "$(cat <scratch>/report.md)"
 ```
 
 ## 3. Preview the exact outbound payload
@@ -124,13 +136,28 @@ costs one recomposition instead of a wasted human review:
 - `filing-disabled` — this product's `Upstream filing` preference is
   `never-file`. That is a standing no and the adapter honors it without
   exception. Go to step 6; do not ask the user to override it.
-- `self-file` — you are in prawduct's own checkout. See step 1.
+- `self-file` — **two different situations under one code, and the printed
+  message says which.** Either this *is* prawduct's own checkout (see step 1), or
+  neither `backlog_service_repo` nor an `origin` remote resolves, so the check
+  cannot prove this repo is not the target and refuses rather than guessing. The
+  second is an ordinary product with no remote configured, and its remedy is the
+  one the message names — set one of the two and retry. **Do not read it as
+  "this is prawduct" and route the bug into the product's backlog**; that is the
+  local capture step 6 forbids.
 - a title refusal — the composed title breaks an issue-standard §1 rule.
   Shorten the symptom and preview again. Fix this *before* step 4: upstream, a
   non-collaborator filer cannot retitle afterwards.
 
 `lint:` findings are advisory budget hints. They never block a filing. Fix them
 if the payload is genuinely bloated; ignore them otherwise.
+
+**A bare `warning:` line is neither of those, and always means something.** Relay
+it to the user verbatim; the adapter's wording is the instruction.
+
+**The preview also prints a `consent:` line** — the resolved `Upstream filing`
+state. Read it; it is the only place that state is observable, and step 4 branches
+on it. Do not go looking in `project-preferences.md` yourself: the file may be
+truncated out of your context, and the adapter has already resolved it.
 
 ## 4. Show the user the payload and get an explicit approval
 
@@ -152,10 +179,14 @@ Say the report is composed and waiting for a person. Do not supply the approval
 token yourself: the adapter cannot tell a fabricated approval from a real one,
 and that limit is exactly why this obligation is written down.
 
-Where the product's preference is `always-file`, the user has already given
-standing consent and this step's asking is waived — your recomposition in step 2
-is then the only thing between their session and a public issue, so hold it to a
-higher bar, not a lower one.
+**When the preview's `consent:` line reads `always-file`**, the user has already
+given standing consent and **this step's asking is waived — step 5 is not.** The
+token is still required in every preference state; what standing consent waives is
+the comparison of its value, never its presence, because that token is the only
+thing separating rendering a payload from filing one. So you still preview, and
+you still send with `--approve <the digest>`; you just do not stop to ask. Your
+recomposition in step 2 is then the only thing between their session and a public
+issue, so hold it to a higher bar, not a lower one.
 
 ## 5. Send
 
@@ -172,7 +203,27 @@ The adapter re-renders the payload from those flags, recomputes the digest, and
 refuses unless it matches — that is what makes "sent is what was previewed" a
 property of the bytes rather than a claim of yours.
 
-On success it prints the issue URL. Give the user that URL.
+On success it prints the issue URL. Give the user that URL — **and every
+`warning:` line beside it, verbatim.** A send can succeed in a degraded way, and
+the warnings are the only place that shows: the duplicate-risk one ("filed without
+the idempotency check, so look for a duplicate if this was a retry") means the
+adapter could not check whether this report was already filed, and it obliges you
+to say so. A degraded filing reported as a clean one is how the operator makes the
+retry that creates the duplicate.
+
+**`already filed` is a success, not a failure.** When the report's `source-key`
+matches an existing issue the adapter returns that issue's URL and creates
+nothing. Say that plainly — the bug is filed, and it was filed before.
+
+**A transport failure at create is the one outcome where nothing is known.** It is
+not a refusal, so "every refusal files nothing" does not cover it: whether the
+issue was written is genuinely unknowable from here. **Re-run the identical send
+command once** — same `--component`, `--title`, `--body` and `--approve`. The
+`source-key` is stable across an identical re-run, so the retry either files the
+report or comes back `already filed` with the URL of the first attempt. Only if
+that second attempt also fails does step 6 apply. Do not go to step 6 directly and
+tell the user to file by hand: that is how an ambiguous outcome becomes a
+duplicate in a public repo.
 
 **Every refusal files nothing** — that is the guarantee worth stating when you
 report one, because a caller's instinct is to wonder what got half-written.
@@ -211,14 +262,20 @@ That's it — nothing fails, and nothing was written.
 Worth being straight about, because a reader deciding whether to trust this
 channel deserves the real shape of it:
 
-- **Mechanically guaranteed.** The target is a plugin constant, not anything a
-  caller can name. Nothing sends without an approval token. The token is matched
-  against a re-render of the bytes. A filing is never anonymous. Prawduct's own
-  repo can never file to itself. `never-file` is a hard refusal in every case.
-- **Not mechanical, and carried by this skill instead.** That the report contains
-  no product content (step 2), that a human actually read the bytes (step 4), and
-  that a human was present at all. The adapter cannot detect attendance; the
-  owner chose that trade knowingly over a stricter attendance gate
+- **Mechanically guaranteed, in every state.** The target is a plugin constant,
+  not anything a caller can name. Nothing sends without an approval token.
+  A filing is never anonymous. Prawduct's own repo can never file to itself.
+  `never-file` is a hard refusal.
+- **Guaranteed under `ask-user` and `never-file` only.** That the token matches a
+  re-render of the bytes — so what was approved is what is sent. Standing consent
+  (`always-file`) waives the *comparison*: the token is still required, and any
+  non-empty one then sends whatever the current flags render. That is the trade an
+  owner makes when they choose to stop being asked, and it is why the design calls
+  the recomposition the operative safeguard there.
+- **Not mechanical at all, and carried by this skill instead.** That the report
+  contains no product content (step 2), that a human actually read the bytes
+  (step 4), and that a human was present at all. The adapter cannot detect
+  attendance; the owner chose that trade knowingly over a stricter attendance gate
   (`documentation/backlog-service-upstream-filing.md` §4.3).
 
 ## Receiving side — triage (when you ARE in the prawduct repo)
@@ -226,6 +283,14 @@ channel deserves the real shape of it:
 The other end of the channel. New reports arrive as **issues** on prawduct's own
 tracker, carrying the `[prawduct]` title prefix and no labels — a non-collaborator
 filer cannot set them, so triage applies the taxonomy on arrival.
+
+**Issue-side triage is manual until the advisory is repointed.** Nothing counts
+the issues yet — `untriaged-upstream-reports` still counts drop-box files, and
+repointing it is the next wave's work — so the intake set has to be asked for by
+hand: open issues whose title carries the `[prawduct]` convention and no triage
+label. Read them, and triage each as below. Until that repoint lands, a session
+that drains only the drop-box has drained the channel that no longer grows and
+left the one that does.
 
 A local `incoming-bugs/` drop-box also still exists, holding reports filed before
 this channel moved to issues. Nothing writes to it any more. While it has

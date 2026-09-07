@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import tempfile
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -989,12 +990,106 @@ class TestTheShippedRowsAreTheOnesRead:
         assert warning is None, warning
 
 
+class TestThePreviewReportsTheConsentState:
+    """The §4.1 state a caller cannot otherwise observe.
+
+    `never-file` announces itself through a refusal warning and `ask-user` is what
+    every unreadable path resolves to, so a caller can infer those two. Standing
+    consent can be inferred from nothing — and a caller that cannot read it stops
+    to ask on every report, which is the one behaviour `always-file` exists to
+    remove. A preference whose only consumer cannot see it is a shipped value that
+    does nothing.
+    """
+
+    def _repo(self, tmp_path, preference=None):
+        artifacts = tmp_path / ".prawduct" / "artifacts"
+        artifacts.mkdir(parents=True, exist_ok=True)
+        (tmp_path / ".prawduct" / "project-state.yaml").write_text(
+            "backlog_service_repo: acme/widget\n", encoding="utf-8"
+        )
+        if preference is not None:
+            artifacts.joinpath("project-preferences.md").write_text(
+                f"## Workflow\n\n- **Upstream filing**: {preference}\n", encoding="utf-8"
+            )
+        return tmp_path
+
+    @pytest.mark.parametrize(
+        "written,expected",
+        [
+            (None, upstream.PREF_ASK_USER),
+            ("ask-user", upstream.PREF_ASK_USER),
+            ("always-file", upstream.PREF_ALWAYS_FILE),
+            ("never-file", upstream.PREF_NEVER_FILE),
+        ],
+        ids=["absent", "ask-user", "always-file", "never-file"],
+    )
+    def test_every_state_reaches_the_json_envelope(self, tmp_path, capsys, written, expected):
+        project = self._repo(tmp_path, written)
+
+        cli.run(
+            str(project),
+            ["file-upstream", "--title", _TITLE, "--body", _BODY, "--json"],
+            transport=MagicMock(),
+        )
+        envelope = json.loads(capsys.readouterr().out)
+
+        assert envelope["data"]["preference"] == expected
+
+    def test_the_human_view_prints_it_too(self, tmp_path, capsys):
+        """The `--json` arm and the formatter are two consumers of one envelope,
+        and a `--json`-only test never runs the second."""
+        project = self._repo(tmp_path, "always-file")
+
+        cli.run(
+            str(project),
+            ["file-upstream", "--title", _TITLE, "--body", _BODY],
+            transport=MagicMock(),
+        )
+
+        assert "consent: always-file" in capsys.readouterr().out
+
+    def test_it_is_not_a_byte_of_the_payload(self, tmp_path, capsys):
+        """It rides beside the payload, never inside it. If the consent state
+        reached the digest, moving the preference would invalidate an approval
+        the operator had just given for bytes that did not change."""
+        digests = []
+        for preference in ("ask-user", "always-file"):
+            project = self._repo(Path(tempfile.mkdtemp()), preference)
+            cli.run(
+                str(project),
+                ["file-upstream", "--title", _TITLE, "--body", _BODY, "--json"],
+                transport=MagicMock(),
+            )
+            data = json.loads(capsys.readouterr().out)["data"]
+            digests.append(data["payload_digest"])
+            assert "preference" not in data["payload"]
+
+        assert digests[0] == digests[1]
+
+
 class TestTheChecksRefuseInIsolation:
     """Each §5 check as a function. The CLI-level assertions live in the contract
     test; these pin the edges a happy-path call never reaches."""
 
     def test_only_never_file_disables_filing(self):
         assert upstream.check_preference(upstream.PREF_NEVER_FILE).code == "filing-disabled"
+
+    def test_the_never_file_remedy_is_the_tracker_and_not_a_local_capture(self):
+        """The mechanically checkable half of submit-or-nothing (design §5).
+
+        A refused filing is the moment a caller decides what to do instead, and
+        this message is what it reads. Pointing it at the product's own backlog
+        instructs exactly the local capture the design forbids by name — an
+        upstream bug parked in a product's backlog reaches nobody who could fix
+        it — and the code alone cannot tell that regression from a correct one.
+        """
+        message = upstream.check_preference(upstream.PREF_NEVER_FILE).message.lower()
+
+        assert f"github.com/{upstream.PINNED_TARGET}/issues" in message
+        assert "backlog" not in message, (
+            "the never-file refusal is instructing a local capture again — design §5 is "
+            "submit-or-nothing, and the only fallback is the tracker pointer"
+        )
         assert upstream.check_preference(upstream.PREF_ASK_USER) is None
         assert upstream.check_preference(upstream.PREF_ALWAYS_FILE) is None
 

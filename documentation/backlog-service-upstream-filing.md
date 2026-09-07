@@ -117,7 +117,7 @@ Consequence, stated honestly: under `ask-user` the mechanical floor is that **no
 ```
 prawduct-hook backlog file-upstream --title T --body B [--component C] --json
   → renders the EXACT payload (§2), computes  payload-digest = sha256(canonical send-bytes),
-    prints {payload, payload_digest}, sends NOTHING.   exit 0
+    prints {payload, payload_digest, preference}, sends NOTHING.   exit 0
 ```
 
 **Call 2 — send (only on an explicit, matching approval):**
@@ -125,6 +125,8 @@ prawduct-hook backlog file-upstream --title T --body B [--component C] --json
 prawduct-hook backlog file-upstream --title <title> --body <body> [--component <c>] \
   --approve sha256:<digest> --json
 ```
+The `preference` it returns is the resolved §4.1 consent state — not part of the payload and not covered by the digest. It is there because a caller that cannot read the state asks for approval on every report, which makes `always-file` inert on its only consumer.
+
 `--title`/`--body`/`--component` are required on **both** arms and must be the same values the
 preview was given: check 4 re-renders the payload from them and compares its own digest, which is
 what makes "sent == previewed" a property of the bytes. An `--approve` with no payload flags is

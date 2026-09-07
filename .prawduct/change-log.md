@@ -3,6 +3,64 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-09-07: the cumulative round — a shipped preference that did nothing, and a shell that ate titles
+
+<!-- prawduct: type=fix | scope=upstream-report-bug -->
+
+Wave B's cumulative review: 0 blocking, 11 warnings, 3 notes. Thirteen fixed, one accepted.
+
+**`always-file` was inert on its only consumer.** The skill branched on the consent state and
+nothing could read it: the preview surfaces `never-file` through a refusal warning and `ask-user` is
+what every unreadable path falls back to, but standing consent is inferable from nothing — so a
+model asked for approval on every report, which is the one behaviour that preference exists to
+remove. The preview now returns and prints the resolved `preference`, and the skill branches on that
+line. It rides beside the payload and takes no part in the digest, asserted: moving the preference
+must not invalidate an approval given for bytes that did not change.
+
+**The skill's own command shape could mangle an irreversible title.** It reasoned carefully about
+the body — write it once, pass `"$(cat …)"`, because retyping causes `approval-mismatch` — and then
+passed `--title` and `--component` as double-quoted shell literals, in a step that had just told the
+model to write both in prawduct's backticked vocabulary. `` `prawduct-hook version` `` runs; a
+symptom naming `$CLAUDE_SKILL_DIR` expands to nothing. The title would be composed, digested,
+approved and filed with the defect's own name deleted, into a repo where a non-collaborator cannot
+retitle it. All three fields now come from files.
+
+**A transport failure at create was routed to the one action that makes it worse.** It is not a
+refusal — whether the issue was written is unknowable from the caller's side — and the skill folded
+it into "file by hand", which turns an ambiguous outcome into a duplicate in a public repo. The
+adapter already solves this and the skill named none of it: `source-key` is stable across an
+identical re-run and the dedup scan reads newest-first for exactly this window. The instruction is
+now to re-run the identical send once, which either files or answers `already filed`.
+
+**Three more the skill got wrong about the adapter.** `self-file` covers two situations, not one —
+the second is a product with no `origin` remote, and the skill's "you are in prawduct's own
+checkout" sent it to the product-backlog write the same skill forbids. The "mechanically guaranteed"
+list promised a byte-match that standing consent waives, on the surface that exists to be honest.
+And a successful send can carry `warning:` lines — including "filed without the idempotency check"
+— that nothing told the model to relay, so a degraded filing read as a clean one.
+
+**Two carriers of the falsified claim survived the sweep, which is the finding about the sweep.**
+`architecture.md`'s Persistence Boundaries row still named `incoming-bugs/` as where products file
+today (and called a gitignored directory "tracked"), and `prawduct-hook`'s `cmd_bug_inbox` docstring
+still published the exit-code contract of a caller that no longer exists — instructing the local
+capture the design forbids. Neither line names `file-upstream`, so the absence guard cannot see
+them. Both were carriers of the *claim*, and the claim was cascaded one short.
+
+**The refusal-code list in the skill is now pinned by construction.** It is a justified copy — a
+model needs the codes to branch — but nothing kept it in step. The derivation that already reads
+`send`'s AST for the preview arm now also asserts the skill names every refusal the preview cannot
+predict, with the codes produced by calling the checks rather than typed out. Mutation-checked.
+
+Also: the `never-file` remedy has an assertion on it (the message, not just the code — that
+sentence was where submit-or-nothing had a second, contradicting home); the receiving side says
+plainly that issue-side triage is manual until Wave C repoints the advisory, and names the intake
+query; the PRD's MG5 bullet is marked superseded where the owner-approved design overrode it rather
+than rewritten in place; and the owner-boundary row in `cross-cutting-concerns.md` gains this
+bundle's two legs.
+
+Accepted, not fixed: the backlog-reconciliation note. It names no work owed here — #194 closes at
+Wave C, and #234 is the lockstep guard whose replacement is now live and whose retirement is Wave C.
+
 ## 2026-09-07: `/prawduct:report-bug` stops writing a file on one machine and files an issue
 
 <!-- prawduct: type=feature | scope=upstream-report-bug -->
