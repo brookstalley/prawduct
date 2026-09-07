@@ -3,6 +3,105 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-09-07: the egress norm reaches steady-state, and every live surface describes the contract
+
+<!-- prawduct: type=feature | scope=upstream-filing-adapter -->
+
+Wave A, Chunk 03 of BKL-7Q4M — the records half, no module changes. The owner ruled the plan's open
+Local-first question **(a) amend**, which was this chunk's blocking input.
+
+**The egress norm is amended `in-transition` → `steady-state`** (`security-model.md` § Direction).
+The statement no longer says the upstream bug channel is filesystem-local — it says content leaves
+only through a surface the plugin pins and the owner approves against the exact outbound bytes.
+Amended toward the guarantee: the interim `Mechanism:` was a token scan asserting the surface did not
+exist, and an absence proves nothing once one does; what replaces it is five checks that each refuse
+independently and file nothing. Same file, same enforcement row — the mechanism was replaced in
+place, so nothing moved house. The statement's third sentence is untouched, so the next cross-owner
+surface is still a fresh owner decision and inherits no permission from this one.
+
+**The Local-first norm admits a second network surface** (`architecture.md` § Direction), recorded as
+a vetoable `[DECISION: …]`. Its prior scope sentence — "confined to backlog storage" — was literally
+broken by `file-upstream`, which targets the plugin's pinned repo rather than the product's own and
+is reachable with `backlog_service_repo` unset. The rejected alternative (gate the op on that scalar)
+reads as the smaller change and is not: it re-introduces the `backlog_service_repo`-keyed fail-open
+the filing design's own check-3 amendment removed. The `Why:` is repaired to rest on the guarantee
+that actually holds — neither surface is reached without a person acting.
+
+**`data-model.md` § Direction's title norm now says four write paths, not three**, with the ruling
+recorded on the entry: `file-upstream`'s send arm refuses a non-conforming title, its preview arm
+reports advisorily, and the upstream title convention takes the budget and placeholder rules but not
+the area-prefix expectation. The code already conformed; the norm's text was describing the world
+before the path existed.
+
+**Coherence, all named by the design's §8:** api-contract §2.4 gains the two-call preview/`--approve`
+contract and the five-check refusal set, and its error vocabulary gains `filing-disabled`,
+`target-not-pinned`, `self-file` and `approval-mismatch`; the design security-model §1a gains the
+attended-by-construction reconciliation (standing consent waives the digest comparison, never the
+token, so an unattended call refuses) and §5 the trimmed-block one (minimization protects the sender
+and says nothing about what a receiver may trust); design data-model §5's `source-key:` gains the
+trimmed-block note and its digest inputs corrected to what the code computes; `project-state.yaml`'s
+`egress_boundary` keeps its count of three and stops describing site 1 as only the backlog backend;
+the preferences enforcement row stops citing the retired interim rule; and the PRD's "ships with the
+migration" line becomes "is built", with the general cross-owner case still fenced to W3.
+
+**Two claims that went stale at Chunk 01 are corrected, and one deliberately is not.**
+`skills/backlog/SKILL.md` said an adapter-side pin existed "only in the design"; it is built, and the
+sentence now says so while keeping its real warning intact — no migration path reaches a line of it.
+`IMPLEMENTED_ADAPTER_GUARDS` **does not gain `target-pin`**, against the plan's expectation: the
+mechanism narrowed rather than arrived. `upstream.py` does compare repo identity, but only for
+`file-upstream`; `import`/`file`/`update` still reach none of it, so backing the name would let a
+migration surface cite a safety net that does not cover it — this file's own defect, one op over.
+
+**The wave's cumulative review found six things worth fixing, four of them in Chunk 02's code.**
+0 blocking; these were warnings, and they were fixed rather than accepted because each is real and
+the wave ships as one PR.
+
+- **A well-formed `prawduct` fence in `--body` crossed upstream intact.** `encode.check_body_text`
+  tolerates a *terminated* block on purpose — every in-repo caller pairs it with
+  `encode.compose_body`, which strips and merges the paste, so guard and transform are one
+  mechanism. `upstream.render_report` appends the body verbatim, so the guard was ported without
+  the transform and a terminated fence arrived as a second parseable block carrying the `source:`
+  field minimization exists to strip; the receiving side's first `merge_all_block_fields` would
+  fold it into the canonical block permanently. Closed with `encode.check_body_text_strict` — no
+  tolerance on the path that has no composer — and the escape the message names (indent the fence)
+  is now pinned by a test asserting against the **parser**, not a substring count.
+- **The `source-key:` dedup scan walked the whole tracker on every first-time filing.** Newest-first
+  was costed for the retry, which is the rare case; a fresh report matches nothing and paid for the
+  entire history, growing forever. Bounded to a 3-page window — and bounding it surfaced that the
+  shared paginator *raises* at its cap by design, so a bare cap would have turned every first filing
+  into a phantom transport failure. `transport.paginate` therefore gains `on_cap="stop"`, opt-in at
+  the call site, with the loud default untouched and an unreadable page still raising under both.
+- **The preview could not say which lint findings would refuse the send.** It hand-enumerated the
+  refusals it could predict, so Chunk 02's title refusal never joined the list and reached the
+  operator as an ordinary `lint:` line beside body budgets that never block. Replaced with one named
+  set, `upstream.previewable_refusals`, plus a test that reads the send arm's own source so a sixth
+  refusal cannot be added to one arm only.
+- **`adapter-mode.md`'s refusal set read exhaustive and omitted the title refusal.**
+- **`source-key:` is a confirmation oracle, and the design overclaimed.** Title and body are
+  published verbatim beside the digest, so the submitter repo is the only unknown and is guessable
+  by recomputation. The claim is corrected in place; the mechanism is not, and the reason is
+  structural rather than an oversight — a keyed digest needs a per-submitter secret and the adapter
+  deliberately manages none, so closing it means introducing secret storage. Filed rather than
+  dropped.
+- **Chunk 02's live-repo self-file criterion had no test.** Every case synthesized an identity under
+  `tmp_path`, so the one configuration a maintainer is actually in went unexercised. Now asserted
+  against the real checkout.
+
+**A Chunk 02 corpus defect surfaced here and is fixed rather than deferred.** `933cb290` added the
+"Defence in depth costs a test PER LAYER" narrative to `learnings-detail.md` with a heading whose
+casing did not prefix the index rule, so `check-learnings-pairing` had been red since that commit —
+the detail was reachable only by grep while every lookup paid to read it. The heading is realigned,
+per the finding's own prescribed remedy. It went unnoticed because the run that pronounced Chunk 02
+green was read off a pipeline, so it reported `tail`'s exit rather than pytest's; that is now a
+`learnings.md` rule, since the same mistake was repeated at this chunk's own baseline.
+
+**A new guard replaces the grep the acceptance criteria asked for:** a live governing surface may no
+longer describe `file-upstream` as unbuilt or deferred. Dated records are exempt by construction —
+a line must carry a date *and* a record marker — and the exemption is exercised by the norm's own
+birth-time inventory rather than by an exemption list that would grow until it meant nothing. Both
+legs falsified before being trusted: the guard fires on an injected claim, and the record path is
+reached by a real line.
+
 ## 2026-09-06: the `file-upstream` send path refuses on all five checks, and identity fails closed
 
 <!-- prawduct: type=feature | scope=upstream-filing-adapter -->

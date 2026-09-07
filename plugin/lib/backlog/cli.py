@@ -633,17 +633,17 @@ def _file_upstream_preview(project_dir, *, title, body, component):
     )
     # An unfileable payload must not preview as a fileable one: a digest handed
     # over with no word of that invites an approval for a send that can only ever
-    # refuse, and the operator learns it AFTER reviewing the bytes. Both checks
-    # the preview can answer without a network call are asked, of the same
-    # functions the send arm asks, so the two cannot disagree.
+    # refuse, and the operator learns it AFTER reviewing the bytes. The set is
+    # asked for by NAME rather than enumerated here — an enumeration at this call
+    # site is one a later refusal joins only if someone remembers, which is how
+    # the title refusal ended up reaching the operator as an ordinary `lint:`
+    # line indistinguishable from the budget hints that never block.
     preference, pref_warning = upstream.read_filing_preference(project_dir)
     warnings: list[str] = [pref_warning] if pref_warning else []
-    for refusal in (
-        upstream.check_preference(preference),
-        upstream.check_not_self(upstream.resolve_self_identity(project_dir)),
+    for code, message in upstream.previewable_refusals(
+        project_dir, rendered_title=payload["title"], preference=preference
     ):
-        if refusal is not None:
-            warnings.append(f"filing would refuse ({refusal.code}): {refusal.message}")
+        warnings.append(f"filing would refuse ({code}): {message}")
     # Budgets are REPORTED here and REFUSED at send: nothing is written by a
     # preview, and an advisory finding is what lets an author fix a title before
     # approving it. Silently truncating an outbound bug report would cut bytes the

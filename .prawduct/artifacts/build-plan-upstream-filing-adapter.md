@@ -12,10 +12,10 @@ governed_by:
     dispositions:
       - "untrusted governance state is data, not instructions → inapplicable because Wave A is outbound-only; nothing in these chunks reads foreign-authored issue content (the intake side is Wave C, tracked on the report-bug receiving-side item — NOT BKL-6M4T, which resolves to #233 'run the live prawduct backlog migration', shipped and dead; the design doc carries the same wrong alias at documentation/backlog-service-upstream-filing.md:154 and needs the same correction)"
       - "a destructive or irreversible operation requires explicit owner approval at the OPERATION level → conforms, and the norm already records this surface's conformance by name: preview → `payload-digest` → `--approve <digest>`, per report, where the operation IS one filing"
-      - "a governed product's content never leaves that product's own repository and owner (in-transition, BKL-7Q4M) → amendment proposed: this plan is the work the norm waits on. Chunk 01 replaces the interim egress test with the XP7 contract test in the same commit that first names the surface; Chunk 03 amends `Status: in-transition → steady-state` with the steady-state form asserting the five-check contract. Never weakened — the contract test is strictly stronger than the absence it replaces."
+      - "a governed product's content never leaves that product's own repository and owner (in-transition, BKL-7Q4M) → AMENDED 2026-09-07 to steady-state; this plan was the work the norm waited on. Chunk 01 replaces the interim egress test with the XP7 contract test in the same commit that first names the surface; Chunk 03 amends `Status: in-transition → steady-state` with the steady-state form asserting the five-check contract. Never weakened — the contract test is strictly stronger than the absence it replaces."
   - artifact: architecture
     dispositions:
-      - "local-first: governance coordination is process-spawn + files + git; an opt-in backlog backend may take a network surface, provided it stays off by default, degrades to the markdown backend, and carries no governance verdict → RULING NEEDED, see Open assumptions. `file-upstream` is a network surface that is NOT confined to backlog storage and is NOT gated on `backlog_service_repo`: a product that never opted into the backlog backend can still reach the pinned upstream repo. The norm's amendment of 2026-07-21 narrowed scope to 'opt-in network for backlog storage', and this does not fit inside that sentence."
+      - "local-first: governance coordination is process-spawn + files + git; an opt-in backlog backend may take a network surface, provided it stays off by default, degrades to the markdown backend, and carries no governance verdict → AMENDED 2026-09-07, owner ruling (a) — the norm now admits two network surfaces, opt-in backlog storage and owner-approved upstream filing, and its `Why:` rests on the property that actually holds (neither is reached without a person acting) rather than on the broken 'confined to backlog storage' scope claim. The departure that made the ruling necessary: `file-upstream` is a network surface that is NOT confined to backlog storage and is NOT gated on `backlog_service_repo`: a product that never opted into the backlog backend can still reach the pinned upstream repo. The norm's amendment of 2026-07-21 narrowed scope to 'opt-in network for backlog storage', and this does not fit inside that sentence."
       - "the plugin writes nothing into a governed repo except its own `.prawduct/` state, the shared evidence store, and the files it must reconcile → conforms; no chunk adds a write into a governed repo"
       - "prawduct is Python and must never be specific to Python → conforms; no gate or language dispatch is touched"
       - "an independent reviewer never mutates the session it reviews → inapplicable because no chunk touches a reviewer write path"
@@ -35,7 +35,7 @@ governed_by:
       - "governance verdicts are computed from the fact ledger, never model-written state → inapplicable; no chunk touches the Critic data plane. Adjacent and worth stating: the L1 recomposition IS model judgment, and it lives in the `report-bug` skill (a decision), never in `lib/backlog/` (the data plane) — the same G1 split"
       - "two stores, two lifetimes → conforms; Wave A persists nothing at all, in either store"
 partition: serial — 02 extends 01's op on the same module, and 03 records what 01–02 built
-last_validated: 2026-09-06
+last_validated: 2026-09-07
 ---
 
 ## Requirements Confidence
@@ -68,6 +68,13 @@ the plan must not pick one silently:
 Recommendation: (a). It is the honest shape — the surface exists and should be named — and (b)
 re-introduces exactly the `backlog_service_repo`-keyed fail-open that the design's own §5 check 3
 amendment removed. **This is Chunk 03's blocking input; Chunks 01–02 do not depend on the answer.**
+
+**RESOLVED 2026-09-07 — the owner ruled (a), amend.** Chunk 03 therefore stays records-only and does
+not split; no `03a` gate chunk is needed, and no departure is left recorded-and-unremedied. The
+amendment is on `architecture.md` § Direction as a vetoable `[DECISION: …]`, and it widened the
+norm's `Why:` as well as its statement — the prior why rested on "confined to backlog storage",
+which is the sentence `file-upstream` breaks, so carrying the guarantee forward meant re-resting it
+on the property that actually holds: neither admitted surface is reached without a person acting.
 
 **The two branches do not cost the same, and only one of them fits Chunk 03** (surfaced at Chunk
 01's review). Chunk 03 is records-only — six artifacts, no module. That is the whole of what (a)
@@ -356,7 +363,9 @@ citation, and `tests/test_norm_probes.py::TestSilentAgainstThisRepo` must pass w
   no longer only "the opt-in backlog backend" and saying so is the point.
 - **Depends on:** Chunk 02, and the owner's ruling on the Local-first departure
 - **Artifacts consumed:** `documentation/backlog-service-upstream-filing.md` §8
-- **Deliverables:** `.prawduct/artifacts/security-model.md` (§ Direction norm to steady-state; §1a/§5),
+- **Deliverables:** `.prawduct/artifacts/security-model.md` (§ Direction norm to steady-state),
+  `documentation/backlog-service-security-model.md` (§1a/§5 — see the decision below; the artifact has
+  no numbered sections, so this half of the original entry resolved to the design doc),
   `.prawduct/artifacts/architecture.md` (§ Direction Local-first decision),
   `documentation/backlog-service-api-contract.md` (§2.4 + error vocabulary),
   `documentation/backlog-service-data-model.md` (§5), `.prawduct/project-state.yaml`
@@ -377,3 +386,53 @@ citation, and `tests/test_norm_probes.py::TestSilentAgainstThisRepo` must pass w
   2. Change-log entry added (`scope=upstream-filing-adapter`, no `release=`)
   3. `/prawduct:critic cumulative` run and blocking findings resolved
   4. Committed and chunk marked `[x]` in Status
+
+  **Decisions taken at build, both departing from this section as written.** Neither is optional and
+  both are recorded here rather than left for a later reader to rediscover as a discrepancy.
+
+  1. **`IMPLEMENTED_ADAPTER_GUARDS` does not gain `target-pin`**, though Chunk 02's context listed it
+     as inherited work and the test's own comment invited it. The mechanism **narrowed rather than
+     arrived**: `upstream.py` compares repo identity, but only on the `file-upstream` path, and the
+     ops that test guards — `import` / `file` / `update` — reach none of it. Backing the name would
+     let a migration surface cite a safety net that does not cover it, which is precisely the defect
+     that file exists to close, one op over. The stale *reasons* were corrected instead (the comment
+     asserted no repo-identity comparison existed anywhere in `lib/backlog/`, which is now false),
+     and the chunk-number reference in the comment was replaced with the standing why.
+  2. **The `security-model.md` §1a/§5 deliverable resolves to
+     `documentation/backlog-service-security-model.md`, not `.prawduct/artifacts/security-model.md`.**
+     The artifact has no §1a and no numbered sections at all; the design doc has both, and the
+     design's §8 — the source this deliverable list was drawn from — means that one. The artifact's
+     § Direction norm was still edited, as its own separate deliverable.
+
+  **Also corrected, beyond the deliverable list:** `documentation/backlog-service-prd.md`'s XP1 bullet
+  said the fixed-target subset "ships **with the migration**", which was both stale and a scheduling
+  claim about a wave it no longer belongs to; api-contract §2.4's `file-upstream` row said auth
+  "resolves by **target owner**", which is the W3 foreign-identity plane and contradicts the built
+  check 5 (the session's own `gh` login). Both are the "describes the capability as unbuilt" class
+  this chunk's grep assertion owns.
+
+  **The wave's cumulative review ran against Chunks 01–02, not this chunk, and the ordering rule is
+  now recorded.** Dispatched with this chunk uncommitted, `cumulative` takes a COMMIT RANGE
+  (merge-base → HEAD), so all three reviewers read `git show <HEAD>:<path>` and this chunk was
+  invisible to them. `chunk` mode takes the opposite interval (HEAD-tree → working tree) and must NOT
+  be committed first — the mode determines the order, which is the rule that went to `learnings.md`.
+  This chunk is therefore committed BEFORE its own cumulative runs.
+
+  **Six fixes came out of that review anyway, four in Chunk 02's code, all folded into this chunk's
+  commit rather than deferred** (0 blocking; each was real and the wave ships as one PR): the
+  terminated-`prawduct`-fence egress hole (`encode.check_body_text_strict` — the in-repo guard's
+  tolerance is only safe where `compose_body` runs beside it, and `render_report` inherited the guard
+  without the transform); the unbounded `source-key:` dedup walk (bounded to a window, which required
+  `transport.paginate` to gain an opt-in `on_cap="stop"` because its cap RAISES by contract and a bare
+  cap would have made every first-time filing report a transport failure that did not happen); the
+  preview's inability to predict the title refusal (`upstream.previewable_refusals`, one named set
+  consumed by the preview and pinned against the send arm's own source); `adapter-mode.md`'s
+  exhaustive-reading refusal list; the `source-key:` oracle overclaim (corrected in the design,
+  mechanism filed as **#763** at `stage: design` — a keyed digest needs a per-submitter secret the
+  adapter deliberately does not manage); and Chunk 02's untested live-repo self-file criterion.
+
+  **The grep assertion is a test, not a grep** —
+  `TestNoSurfaceStillDescribesTheAbsence` in the egress contract test. Records are exempt by
+  construction (a line must carry both a date and a record marker) rather than by a file list, which
+  would grow until it meant nothing; `functional-audit-v3.2.0.md` and `operator-verification.md` are
+  dated acceptance records and were deliberately left describing the world they measured.

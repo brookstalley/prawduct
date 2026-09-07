@@ -2575,7 +2575,7 @@ preview test, removing it fails the send test.
 
 Related: [[a-fixtures-world-is-narrower-than-the-requirement-it-certifies]].
 
-## Defence in depth costs a test per layer, not per rule
+## Defence in depth costs a test PER LAYER, not per rule
 
 **From:** upstream-filing-adapter Chunk 02 (2026-09-06), Critic finding R-2, BLOCKING.
 
@@ -2598,3 +2598,58 @@ layer's own door. The send-arm class enters through the CLI; a second test calls
 directly.
 
 Related: [[when-every-test-injects-a-dependency-green-says-nothing-about-how-production-obtains-it]].
+
+## Check WHICH interval the Critic mode takes
+
+The two modes read different trees, and the failure is silent in both directions.
+
+**`chunk`** takes HEAD-tree → working tree. Commit first and the interval is empty, so the review
+returns a normal-looking report whose findings are drawn from whatever scrap happens to be
+uncommitted.
+
+**`cumulative`** takes a commit range — merge-base → HEAD. This is the mirror failure: a dirty tree
+is *invisible* to it. Observed 2026-09-07 on `feat/upstream-filing-adapter`, dispatching a
+cumulative for Chunk 03 with 19 files uncommitted. `critic-begin` counted 3 judgeable files, all
+three reviewers read every file via `git show <HEAD>:<path>`, and the review covered Chunks 01–02 —
+the previous two chunks — while the chunk it was run for went entirely unreviewed. The report was
+sound and genuinely useful; it simply answered a different question than the one asked. It said so,
+in a scope caveat, *after* the findings — which is exactly where a reader who already believes the
+review covered their work will not re-read.
+
+The signal was available before dispatch and cost nothing to check: `git status` showed the dirty
+tree and `test-status` had just been recorded against it. What was missing was the question — the
+mode name came from the build plan's `Critic mode:` field, and a field naming a mode does not tell
+you what tree that mode will read.
+
+**So the rule is not "always commit first" or "never commit first"** — it is that the mode
+determines the tree, so pick the order from the mode rather than from habit. For a `cumulative`
+that must feed the PR gate, the work has to be committed first; for a `chunk` review it must not be.
+
+## A guard's TOLERANCES belong to the path it was written for
+
+`encode.check_body_text` rejects an *unterminated* ```` ```prawduct ```` opener and deliberately
+PASSES a well-formed one. That tolerance is correct in-repo and only there: every in-repo caller
+pairs it with `encode.compose_body`, which strips the pasted block and merges its fields into the
+real one. The guard and the transform are one mechanism, and the guard alone is not the rule.
+
+`upstream.render_report` reused the guard and appends the body verbatim instead. So a
+`--body '```prawduct\nsource: acme/widget\n```'` passed every check and would have landed upstream
+as a second parseable block carrying the exact field minimization exists to strip — and the
+receiving side's first `merge_all_block_fields` folds *every* block, so it would have become
+permanent in the issue's canonical block. Found by a cumulative reviewer, 2026-09-07; not by
+re-reading the diff, because the defect is not *in* the diff — it is in what the reused function
+does not do.
+
+**Why it is hard to see:** a guard's tolerances are invisible at the call site. `check_body_text(v)`
+reads as "the body is checked". Only the guard's own docstring says what it lets through and why,
+and the "why" names a caller-side obligation that the new path silently declines to meet.
+
+**The second-instance signal.** The same seam produced the `--component` forgery fixed at 67f00b61 —
+also an injection reaching the outbound block through an input guard's gap. One instance is a bug;
+two on one seam says the seam wants a different shape, which is why the fix here is a *distinct
+stricter function* (`check_body_text_strict`, no tolerance where there is no composer) rather than a
+third patch to the same predicate.
+
+**Generalizes past this codebase:** validators paired with normalizers (trim-then-validate,
+escape-then-render, canonicalize-then-compare). Reusing the validator without the normalizer is the
+same defect every time, and the validator will not complain.

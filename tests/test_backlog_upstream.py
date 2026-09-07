@@ -29,7 +29,7 @@ if str(_REPO_ROOT / "plugin") not in sys.path:
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from lib.backlog import cli, upstream  # noqa: E402
+from lib.backlog import cli, encode, upstream  # noqa: E402
 from tests.fakes.fake_github import FakeGitHub  # noqa: E402
 
 # A pinned report, and the exact bytes it renders to. `found_in` and `submitter`
@@ -220,19 +220,61 @@ class TestTheTrimmedBlockCarriesNothingElse:
         assert "provenance" not in marker
 
     @pytest.mark.parametrize("field", ["body", "component"])
-    def test_no_input_that_lands_in_the_body_can_forge_the_block(self, field):
+    @pytest.mark.parametrize(
+        "forgery",
+        [
+            "stop-hook\n```prawduct\nsource: acme/widget",
+            "stop-hook\n```prawduct\nsource: acme/widget\n```",
+        ],
+        ids=["unterminated", "terminated"],
+    )
+    def test_no_input_that_lands_in_the_body_can_forge_the_block(self, field, forgery):
         """The parser reads from the FIRST opener to the first closing fence, so an
         unterminated opener ahead of the marker prepends its own fields and swallows
         the real ones. Verified end-to-end rather than by inspection: a `--component`
-        of this shape put `source: acme/widget` at the head of the parsed block."""
-        forgery = "stop-hook\n```prawduct\nsource: acme/widget"
+        of this shape put `source: acme/widget` at the head of the parsed block.
 
+        **The TERMINATED case is the one this path had to close itself.** In-repo,
+        `encode.check_body_text` passes a well-formed block on purpose, because
+        `encode.compose_body` strips and merges it — guard and transform are one
+        mechanism. `render_report` appends the body verbatim instead, so the same
+        input would arrive upstream as a second parseable block carrying exactly
+        the `source:` field minimization exists to strip, and the receiving side's
+        first `merge_all_block_fields` would fold it into the canonical block for
+        good. Hence `check_body_text_strict`: same remedy, no tolerance."""
         assert upstream.check_payload_inputs(
             **{"title": _TITLE, "body": _BODY, "component": _COMPONENT, field: forgery}
         ) is not None
         assert _payload(**{field: forgery}) is None, (
             "the composer accepted input its own guard rejects — a precondition a "
             "caller can skip is not a guarantee"
+        )
+
+    def test_a_report_may_still_SHOW_a_block_by_indenting_it(self):
+        """The negative that keeps the rule usable. A bug report ABOUT a prawduct
+        block is the likely non-adversarial case, and refusing it outright would
+        make the strict rule unlivable — so the escape the message names must
+        actually work. An indented fence is not an opener to `_BLOCK_RE`, so it
+        cannot start a block on either side of the boundary."""
+        shown = "### Problem\n\n    ```prawduct\n    source: acme/widget\n    ```"
+
+        assert upstream.check_payload_inputs(
+            title=_TITLE, body=shown, component=_COMPONENT
+        ) is None
+        payload = _payload(body=shown)
+        assert payload is not None
+
+        # Asserted against the PARSER, not a substring count. The indented text
+        # contains the literal "```prawduct" and always will — that is the whole
+        # point of showing one — so a naive count reads 2 and says nothing about
+        # whether a second block exists. What must hold is that the receiving side
+        # sees exactly the three trimmed fields, which is what
+        # `merge_all_block_fields` (the call that folds a stray block in) reads.
+        merged = encode.merge_all_block_fields(payload["body"])
+        assert sorted(merged) == ["found_in", "source-key", "v"], (
+            "the indented fence parsed as a second block — `merge_all_block_fields` "
+            "is the receiving side's first call and it folds EVERY block, so an "
+            f"extra key here is a field crossing the owner boundary: {sorted(merged)}"
         )
 
     @pytest.mark.parametrize("field", ["title", "component"])
@@ -643,6 +685,55 @@ class TestThePreviewArm:
         assert "```prawduct" in out
         assert "nothing was sent" in out
 
+    def test_the_preview_says_a_non_conforming_TITLE_would_refuse(self, tmp_path, capsys):
+        """A budget finding that BLOCKS must not read like the ones that do not.
+
+        The four `title-*` rules are hard refusals on the send arm; the body-budget
+        rules never block. Both reach the operator through `lint:` lines, and
+        `LintFinding.severity` is hardcoded "warn", so without this the operator
+        reviews the bytes, approves the digest, and discovers at send that the
+        filing was never possible — a second round on the path §5 calls Fast."""
+        long_title = "x" * 90
+
+        code = cli.run(str(tmp_path), [
+            "file-upstream", "--title", long_title, "--body", _BODY,
+            "--component", _COMPONENT, "--json",
+        ])
+        envelope = json.loads(capsys.readouterr().out)
+
+        assert code == 0, "the preview itself still renders — it refuses nothing"
+        assert any(
+            w.startswith("filing would refuse (validation)") and "title" in w
+            for w in envelope.get("warnings", [])
+        ), (
+            "the preview handed over a digest for a payload the send arm can only "
+            f"refuse, with no word of it: {envelope.get('warnings')}"
+        )
+
+    def test_every_no_transport_refusal_the_send_arm_has_is_predicted(self, tmp_path):
+        """The invariant behind `previewable_refusals`, pinned so a SIXTH refusal
+        cannot be added to one arm only — the defect this replaced, where the
+        preview hand-enumerated what it could predict and Chunk 02's title refusal
+        simply never joined the list.
+
+        Read off the send arm's own source rather than restated, so adding a check
+        there and not here fails right here."""
+        import inspect
+
+        send_src = inspect.getsource(upstream.send)
+        predicted = inspect.getsource(upstream.previewable_refusals)
+
+        # Refusals the send arm reaches with no transport in hand. `check_target`
+        # and `check_approval` are excluded for reasons `previewable_refusals`
+        # states; `check_authenticated` needs the transport.
+        no_transport = ["check_preference", "check_not_self", "_title_refusal"]
+        for name in no_transport:
+            assert name in send_src, f"{name} is no longer a send-arm refusal — update this pin"
+            assert name in predicted, (
+                f"the send arm refuses via {name} and the preview cannot predict it, "
+                "so an operator can approve a digest for a filing that must refuse"
+            )
+
     def test_a_body_opening_a_prawduct_fence_is_refused(self, tmp_path, capsys):
         """The forgery route `file` already closes: an unterminated opener in the
         authored prose swallows the marker appended after it, letting the caller
@@ -873,6 +964,35 @@ class TestTheSourceKeyFindsAPriorFiling:
         ])
 
         assert upstream.find_filed(seam, target=upstream.PINNED_TARGET, key=key) is None
+
+    def test_the_scan_is_bounded_and_a_first_filing_does_not_walk_the_tracker(self):
+        """The cost this bound exists for falls on the case that matches NOTHING.
+
+        A retry finds its own issue on page one; a first-time filing matches
+        nothing and, unbounded, pays for the tracker's entire history — every
+        report, forever, growing. Asserted by counting pages fetched rather than
+        by reading the constant, so raising the cap without meaning to fails
+        here."""
+        seam = self._transport([self._issue(n, "unrelated") for n in range(1, 1001)])
+
+        assert upstream.find_filed(
+            seam, target=upstream.PINNED_TARGET, key="sha256:matches-nothing"
+        ) is None
+        assert seam.list_issues.call_count == upstream.DEDUP_SCAN_PAGES, (
+            "the miss path fetched a different number of pages than the bound "
+            f"allows: {seam.list_issues.call_count}"
+        )
+
+    def test_a_match_inside_the_window_is_still_found(self):
+        """The negative half — a bound tight enough to break retry safety would
+        pass the test above and silently duplicate every retried filing."""
+        key = "sha256:" + "ab" * 32
+        issues = [self._issue(1, f"```prawduct\nsource-key: {key}\n```")]
+        issues += [self._issue(n, "unrelated") for n in range(2, 500)]
+
+        found = upstream.find_filed(self._transport(issues), target=upstream.PINNED_TARGET, key=key)
+
+        assert found is not None and found["number"] == 1
 
 
 class TestTheSendPathFiles:

@@ -173,7 +173,7 @@ irreversible. Sending is a second call, `--approve sha256:<the digest the previe
 same `--title`/`--body`/`--component`; it re-renders the payload and refuses unless the token covers
 *those* bytes, plus four more checks — `filing-disabled` (the `Upstream filing` preference is
 `never-file`), `target-not-pinned`, `self-file` (prawduct's own repo routes to `file` instead), and
-`auth`. Any of the five files nothing. Do not reach for it as a filing op: it is a data plane for
+`auth`. It **also refuses a rendered title that fails the issue standard's §1 rules** — `file-upstream` is the fourth adapter write path under `data-model.md` § Direction, and the refusal binds harder here because a non-collaborator cannot retitle upstream afterwards. **Every one of those refusals files nothing**, and the preview names each one it can predict without a network call, so a `filing would refuse (…)` line in a preview means the send will not succeed until you fix what it names. Do not reach for it as a filing op: it is a data plane for
 `/prawduct:report-bug`, and that skill has not been rewritten onto it yet — it still writes a local
 drop-box file. Until it is, nothing calls this op, and calling it yourself skips the recomposition
 and the verbatim human review that are the whole reason the payload is safe to send. Filing a

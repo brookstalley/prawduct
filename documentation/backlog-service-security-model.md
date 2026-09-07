@@ -75,6 +75,15 @@ re-authenticate or approve**:
 - **Self-limiting:** unattended writes self-pace under the ~500/hr content cap and are reversible
   (DM7). **Scope:** acts only where the runtime identity already has access — no unattended
   anonymous/foreign filing (PV3 is attended, human-supplied token).
+- **`file-upstream` is attended by construction, and it is the one cross-owner write, so state it
+  precisely rather than by category.** The op sends nothing without an `--approve` token, in *every*
+  preference state — standing consent (`always-file`) waives only the digest *comparison*, never the
+  token's presence, so a bare unattended call refuses rather than files. The default preference is
+  `ask-user`, and an absent or unrecognised value reads as `ask-user` too, so the reachable-by-default
+  state files nothing at all. What standing consent is, exactly: an owner's prior decision to stop
+  reading each payload — not a path by which an unattended worker acquires cross-owner filing. §1a's
+  "no unattended anonymous/foreign filing" therefore holds here with no exception, and the approval
+  token is the mechanism enforcing it rather than a convention around it.
 
 ### 1b. GitHub Actions context — untrusted triggers (F1, load-bearing)
 
@@ -182,6 +191,16 @@ and forgeable by any actor with write access** to the repo. So:
   hijacked by a forged `id:` label.
 - **Anonymous filers** (PV3) are attributed to their real GitHub account — "anonymous" = *no prior
   relationship*, not unattributed.
+- **The trimmed `file-upstream` block is self-asserted like every other one; its trim is a
+  minimization, never a trust claim (XP2).** The outbound payload carries exactly `v:`, `found_in:`
+  and `source-key:` — no paths, no product identity, no submitter name (the submitter crosses only as
+  an input to the `source-key:` one-way digest, Data Model §5). Those three fields are body text, so a
+  write-capable actor upstream can forge or edit them exactly as this section already says of every
+  `prawduct:` field; what stays trustworthy about a filed report is the **API identity that filed it**
+  (§1). The reconciliation worth naming, because the two are easy to conflate: minimization protects
+  the *sender* from over-disclosure and says nothing about what the *receiver* may trust — an arriving
+  report is untrusted content on exactly the terms this section sets, and the adapter's no-self-file
+  check is what keeps prawduct from ever standing on both ends of that boundary.
 
 ---
 

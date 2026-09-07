@@ -371,10 +371,17 @@ def check_payload_inputs(*, title: str, body: str, component: str) -> str | None
     CLI applied to ``--body`` alone left ``--component`` free to forge the whole
     provenance block, and a second entry point would have inherited the same gap.
 
-    Two rules. **No prawduct fence** in anything that lands in the body: the
-    injection route :func:`marker_block`'s framing cannot defend against, closed
-    the way ``file`` closes it on its own body — by refusing, never by escaping,
-    because a rewrite rule has to be exactly as clever as every future attacker.
+    Two rules. **No prawduct fence at all** in anything that lands in the body —
+    terminated or not, which is STRICTER than ``file``'s rule on its own body and
+    deliberately so. ``file`` tolerates a well-formed block because
+    ``encode.compose_body`` strips and merges it; guard and transform are one
+    mechanism. :func:`render_report` appends the body verbatim and
+    :func:`build_payload` then adds the real block, so a terminated fence would
+    cross the owner boundary as a SECOND parseable block and the receiving side's
+    first ``merge_all_block_fields`` would fold its fields into the canonical one
+    permanently. Closed by refusing, never by escaping, because a rewrite rule has
+    to be exactly as clever as every future attacker; a report that needs to SHOW
+    a block indents it, exactly as in-repo.
     **One line** for the title and the component: both are structural fields of
     the §2 convention rather than prose, an issue title is single-line anyway, and
     forbidding the newline is what stops a value from reaching column 0 of the
@@ -384,7 +391,7 @@ def check_payload_inputs(*, title: str, body: str, component: str) -> str | None
         if "\n" in (value or "") or "\r" in (value or ""):
             return f"{label} must be a single line"
     for value in (body, component):
-        problem = encode.check_body_text(value)
+        problem = encode.check_body_text_strict(value)
         if problem:
             return problem
     return None
@@ -703,6 +710,16 @@ def check_authenticated(actor: str | None) -> Refusal | None:
     )
 
 
+#: How far back the ``source-key:`` dedup scan looks, in pages.
+#:
+#: Sized to the window the key exists for — a retry seconds after a create, whose
+#: own issue is the newest one — not to the tracker. Unbounded, the scan's cost
+#: falls entirely on the FIRST-time filing, which matches nothing and therefore
+#: pays for the whole history every time; bounding it trades the ability to detect
+#: a duplicate nobody is creating for a cost that stops growing with the tracker.
+DEDUP_SCAN_PAGES = 3
+
+
 # --- the send path (design §5, call 2) ---------------------------------------
 
 
@@ -714,8 +731,23 @@ def find_filed(transport, *, target: str, key: str) -> dict | None:
     the lookup that matters most runs seconds after a create — and GitHub's search
     index is not read-your-writes, which makes it blind exactly then. The list
     endpoint is strongly consistent in practice, so a retry finds the issue its
-    predecessor filed. Newest-first, because a retry's own issue is the newest
-    one, so the common case reads one page.
+    predecessor filed. Newest-first, because a retry's own issue is the newest one.
+
+    **Bounded to :data:`DEDUP_SCAN_PAGES`, and the bound is the correction to an
+    earlier reading of "the common case reads one page".** That was true of the
+    RETRY and the retry is the rare case: a first-time filing matches nothing, so
+    an unbounded walk exhausts the entire tracker — every closed issue, PRs
+    interleaved — before it writes, once per report and growing monotonically
+    forever. The window this scan serves is measured in seconds by design §5, so
+    a few pages covers it and the pages beyond it were only ever buying the
+    ability to find a duplicate nobody is about to create.
+
+    So **"no duplicate" here means "no duplicate in the recent window"**, and that
+    is the honest reading of the return value. It is safe to bound precisely
+    because a miss is already non-fatal: :func:`_already_filed` catches a
+    transport failure and files anyway with a loud warning, since the cost of
+    proceeding blind is a duplicate a maintainer can close. None of the five
+    checks runs through this path — they are the guarantees, this is advice.
 
     Pull requests interleave the REST issues list and are skipped; a body with no
     ``prawduct:`` block parses to an empty one and matches nothing.
@@ -728,7 +760,13 @@ def find_filed(transport, *, target: str, key: str) -> dict | None:
             per_page=per_page, page=page,
         )
 
-    for issue in tx.paginate(fetch, what=f"{target} issues"):
+    # `on_cap="stop"` because reaching the window's edge IS this scan's answer,
+    # not a failed read. With the default, every first-time filing — which matches
+    # nothing by definition — would trip the cap and raise, and `_already_filed`
+    # would report a transport failure that did not happen.
+    for issue in tx.paginate(
+        fetch, max_pages=DEDUP_SCAN_PAGES, on_cap="stop", what=f"{target} issues"
+    ):
         if not isinstance(issue, dict) or "pull_request" in issue:
             continue
         if encode.parse_block(issue.get("body")).get("source-key") == key:
@@ -878,6 +916,46 @@ def _sent(payload: dict, digest: str, issue: dict, *, created: bool) -> dict:
             "state": issue.get("state"),
         },
     }
+
+
+def previewable_refusals(project_dir, *, rendered_title: str, preference: str) -> list[tuple]:
+    """Every reason the send arm would refuse that a PREVIEW can already know.
+
+    One list, consumed by the preview arm, because the alternative is what this
+    replaces: the preview hand-enumerated the refusals it could predict, so a
+    refusal added to the send arm later was absent from it **by default** — and
+    Chunk 02 added one. The title refusal reached the operator only as an
+    ordinary ``lint:`` line, indistinguishable from the body-budget findings that
+    never block, and ``issuefmt.LintFinding.severity`` is hardcoded ``"warn"``
+    with its own docstring saying not to read it as advisory.
+
+    Why that costs more than a confusing line: the operator reviews bytes,
+    approves a digest, and only then learns the send cannot succeed — a second
+    recomposition-and-approval round on the path design §5 calls *Fast*, and slow
+    is exactly what turns XP7's submit-or-nothing into nothing.
+
+    **Excluded on purpose:** ``check_target`` (the CLI answers it on both arms
+    before anything is composed, and composing a payload aimed at the pin to lint
+    it would report budget findings about bytes this caller never asked to send),
+    ``check_approval`` (a preview has no token to compare and its absence is what
+    MAKES it a preview), and ``check_authenticated`` (it needs the transport this
+    function is defined never to touch).
+
+    Returns ``(code, message)`` pairs so a caller renders them; the send arm keeps
+    returning its own structured errors, whose ``details`` differ per refusal.
+    """
+    refusals: list[tuple] = []
+    for refusal in (
+        check_preference(preference),
+        check_not_self(resolve_self_identity(project_dir)),
+    ):
+        if refusal is not None:
+            refusals.append((refusal.code, refusal.message))
+    title_refusal = _title_refusal(rendered_title)
+    if title_refusal is not None:
+        err = title_refusal["error"]
+        refusals.append((err["code"], err["message"]))
+    return refusals
 
 
 def _title_refusal(title: str) -> dict | None:

@@ -65,6 +65,10 @@ never by dropping them.
 
 ## Enumerate the sites answering a question by GREP, never by memory — and the grep is itself a site: it is a PREFIX of the real set wherever the code BUILDS the string rather than spelling it, or emits it somewhere the query cannot see. Widen it until it is falsifiable, then have someone else run it
 
+## A green read off a PIPELINE is the last stage's verdict, not the suite's — `pytest ... | tail` reports `tail`'s exit: 0 whether the run passed or failed. Redirect to a file and read the command's own `$?`. Tell: you called a baseline green from a piped run and never saw a count. It costs a cycle, because every later judgement rests on a baseline that certified nothing.
+
+## A guard's TOLERANCES belong to the path it was written for — when you reuse one on a new path, port what it was PAIRED with or re-derive whether it still holds. What it deliberately lets through is invisible at the call site and reads as safe. Tell: you reused a `check_*` and wrote no transform beside it. Second instance on one seam is a signal about the seam — [learnings-detail.md]
+
 ## A fix ships TWO artifacts that can independently be false — the change, and the evidence that it works. This branch put every defect in the second: a test that could not see the bug it pinned, then a comment asserting the rule its own assertion disproves. When you fix something, sweep the NEIGHBOURING PROSE in the same pass, or a reviewer finds it one comment at a time
 
 ## A mutant that SURVIVES on code you just wrote is a claim about the CODE, not the test — before writing a test to kill it, ask which existing branch already answers that case. Tell: no fixture makes the guarded and unguarded versions differ, which is unreachability, not coverage. Delete the guard; pin the GUARANTEE, not the mechanism — [learnings-detail.md]
@@ -88,7 +92,7 @@ never by dropping them.
 
 ## When a guard is about WHERE something may appear, assert the COUNT and scan from the end the PARSER reads — an assertion pointed at the other end finds the genuine structure sitting after the forgery and calls it clean. A marker test slicing `rindex(fence)` passed on a body whose FIRST opener had hijacked the parse. Tell: your guard says "first" and your test slices from the last
 
-## Run the Critic BEFORE committing a chunk — its interval is HEAD-tree → working tree, so a post-commit invocation reviews an EMPTY interval yet returns a normal report, its findings drawn from whatever scrap is uncommitted. A review covering nothing never announces itself; only the Signals interval line does. Tell: you committed, then invoked the Critic
+## Check WHICH interval the Critic mode takes — they differ and both fail silently. `chunk` is HEAD-tree → working tree, so committing first reviews an EMPTY interval; `cumulative` is a COMMIT RANGE, so NOT committing first reviews everything except your work. Only the Signals interval line says which. Tell: you took the mode from the plan without asking what tree it reads — [learnings-detail.md]
 
 ## Adding an op whose NAME EXTENDS an existing one silently widens every prefix-matching grant and guard naming the shorter one — Bash grants are prefix matches, so `file-upstream` inherited `Bash(... backlog file*)` no-prompt with all three grant tests green. Ask those guards by rule over the dispatcher's own op set, never over today's names. Tell: your new op shares a prefix with a granted one
 

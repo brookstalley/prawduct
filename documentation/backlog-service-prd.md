@@ -199,7 +199,7 @@ Priority = importance (P0 core / P1 important / P2 valuable / P3 nice-to-have), 
 
 ### 8.4 Cross-project flow
 *(Post-slice: these + anonymous filing ride the public/foreign identity plane (§8.5/O5) — not slice-1 content.)*
-- **[P1]** File upstream directly — no upstream checkout, no drop-box, no git (XP1). *The **general** case (arbitrary cross-owner targets, private repos, foreign-identity auth-by-target-owner) is **W3**. The **fixed-target, public-repo subset** — filing a prawduct bug into prawduct's own public issues — ships **with the migration** as the drop-box's 1:1 replacement (§8.9/MG5), since it needs no new auth plane. Retiring the `incoming-bugs/` drop-box is gated on that replacement being live, not on full XP1.*
+- **[P1]** File upstream directly — no upstream checkout, no drop-box, no git (XP1). *The **general** case (arbitrary cross-owner targets, private repos, foreign-identity auth-by-target-owner) remains **W3** — do not pull it forward. The **fixed-target, public-repo subset** — filing a prawduct bug into prawduct's own public issues — **is built** (BKL-7Q4M): it needed no new auth plane, and it files only through the plugin's pinned target under a per-filing owner approval. Retiring the `incoming-bugs/` drop-box is gated on that replacement being live rather than on full XP1, and it is the remaining leg.*
 - **[P1]** Provenance + `submitted` triage landing (XP2).
 - **[P2]** Anonymous filing on public projects (PV3) — **with abuse handling (PV4)**; enablement gated on the retro-governance path (`MET-6T4K`).
 - *XP3 (private submit-without-read) is **out** — owner-descoped.*

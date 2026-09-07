@@ -408,6 +408,38 @@ class TestNoSelfFile:
         git.mkdir(exist_ok=True)
         (git / "config").write_text(f'[remote "origin"]\n\turl = {url}\n', encoding="utf-8")
 
+    def test_THIS_repo_refuses_to_self_file(self):
+        """The live case, asserted against the real checkout rather than a fixture.
+
+        Every other case here synthesizes an identity under `tmp_path`, which
+        tests the comparison but not the thing the acceptance criterion actually
+        claims: that running `file-upstream` *in prawduct's own working copy*
+        refuses. That is exactly the configuration a maintainer is in when they
+        reach for the op, and it is the one no fixture can stand in for — the
+        `origin` remote and `backlog_service_repo` are real here, so a resolver
+        that silently stopped reading either would still pass every fixture case
+        above and fail only in the place nobody tests.
+
+        Deliberately calls the resolver + check rather than the CLI: this must not
+        depend on a transport, and the refusal is a pure function of identity."""
+        identities = upstream.resolve_self_identity(REPO_ROOT)
+
+        assert identities, (
+            "prawduct's own checkout resolved NO identity — the fail-closed leg "
+            "would refuse anyway, but for the wrong reason, and this repo is the "
+            "one place both signals are genuinely present"
+        )
+        refusal = upstream.check_not_self(identities)
+        assert refusal is not None and refusal.code == "self-file"
+        assert refusal.details["reason"] == "matched", (
+            "this repo refused as an UNRESOLVED identity rather than as a match — "
+            "the live self-file case is not being exercised"
+        )
+        assert "backlog file" in refusal.message, (
+            "XP7's parenthetical is that a self-file ROUTES to its own backlog; "
+            "the refusal must name that route, not merely report a wall"
+        )
+
     def test_the_configured_backlog_repo_alone_refuses(self, tmp_path, capsys):
         fake = FakeGitHub()
         project = a_product_repo(tmp_path, identity=UPSTREAM_TRACKER)
@@ -717,3 +749,95 @@ class TestEveryRefusalCarriesTheSameAdvisories:
         assert envelope["error"]["code"] == expected
         assert "body-too-long" in {f["rule"] for f in envelope["lint"]}
         assert_filed_nothing(fake)
+
+
+class TestNoSurfaceStillDescribesTheAbsence:
+    """The norm's other half: the surfaces agree the capability exists.
+
+    Enforcing the contract in code while a governing artifact still says the
+    capability is unbuilt is the failure this class exists to catch, and it is
+    quiet — nothing breaks, a model reading the artifact simply routes around a
+    surface that is right there. It happened once already inside this very work:
+    `skills/backlog/SKILL.md` went on saying an adapter-side pin existed "only in
+    the design" for two chunks after the pin shipped.
+
+    **Records are exempt, and the distinction is the point.** A dated audit, a
+    completed plan, a change-log entry and an archived artifact all describe a
+    world that was true when written; correcting them would falsify the record.
+    What must track reality is prose a reader consults to learn what the system
+    does *now*.
+    """
+
+    #: Prose a reader consults for current behaviour. Deliberately not a glob over
+    #: the repo: the exemptions below would then be doing the real work, and an
+    #: exemption list grows until it means nothing.
+    LIVE_SURFACES = (
+        "documentation/backlog-service-prd.md",
+        "documentation/backlog-service-api-contract.md",
+        "documentation/backlog-service-data-model.md",
+        "documentation/backlog-service-security-model.md",
+        "documentation/backlog-service-upstream-filing.md",
+        "documentation/backlog-service-requirements.md",
+        ".prawduct/artifacts/security-model.md",
+        ".prawduct/artifacts/architecture.md",
+        ".prawduct/artifacts/data-model.md",
+        ".prawduct/artifacts/project-preferences.md",
+    )
+
+    #: Phrasings that assert the surface does not exist yet. Matched only on lines
+    #: that also name the op, so ordinary uses of "deferred" and "W3" — both of
+    #: which describe things that ARE still deferred — do not fire.
+    ABSENCE_CLAIMS = (
+        "unbuilt",
+        "not built",
+        "still designed",
+        "designed but unbuilt",
+        "deferred to w3",
+        "stays w3",
+        "is w3",
+        "only in the design",
+        "only in the `file-upstream` design",
+        "filesystem-local",
+        "zero occurrences",
+        "when it lands",
+    )
+
+    def test_no_live_surface_says_the_capability_is_unbuilt(self):
+        offenders = []
+        for rel in self.LIVE_SURFACES:
+            path = REPO_ROOT / rel
+            assert path.exists(), f"{rel} moved — this guard is only as good as its list"
+            for lineno, line in enumerate(
+                path.read_text(encoding="utf-8").splitlines(), 1
+            ):
+                low = line.lower()
+                if "file-upstream" not in low and "file upstream" not in low:
+                    continue
+                # A line that dates itself is a record, not a claim about now.
+                if _reads_as_a_record(low):
+                    continue
+                hit = next((c for c in self.ABSENCE_CLAIMS if c in low), None)
+                if hit:
+                    offenders.append(f"{rel}:{lineno}: [{hit}] {line.strip()[:140]}")
+        assert not offenders, (
+            "A live governing surface still describes `file-upstream` as unbuilt or "
+            "deferred. The op ships: the five checks are enforced in "
+            "lib/backlog/upstream.py and asserted above. Update the surface, or — if "
+            "the line is a dated record of what was true then — say so on the line, "
+            "which is what makes it a record rather than a stale claim.\n  - "
+            + "\n  - ".join(offenders)
+        )
+
+
+#: Markers that make a line self-dating. A record says WHEN it was true; a stale
+#: claim just states it. Requiring the year on the line keeps the exemption
+#: narrow — "historically" alone would exempt anything that felt like prose.
+_RECORD_MARKERS = ("at birth", "birth-time", "amended", "prior form", "the prior")
+
+
+def _reads_as_a_record(low: str) -> bool:
+    import re
+
+    return bool(re.search(r"20\d\d-\d\d-\d\d", low)) and any(
+        m in low for m in _RECORD_MARKERS
+    )

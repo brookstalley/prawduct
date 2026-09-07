@@ -148,6 +148,35 @@ class TestApiPaged:
         assert "truncated" in exc.value.message
         assert exc.value.details["max_pages"] == tp.MAX_PAGES
 
+    def test_on_cap_stop_ends_the_walk_instead_of_raising(self):
+        """The opt-in windowed read. `find_upstream`-style callers look a bounded
+        distance back and treat "not in the window" as a real answer, so the cap
+        is their terminator rather than their failure."""
+        pages = [[{"n": i} for i in range(100)] for _ in range(10)]
+
+        out = list(tp.paginate(
+            lambda page, per_page: pages[page - 1], max_pages=3, on_cap="stop"
+        ))
+
+        assert len(out) == 300, "a windowed read returned something other than its window"
+
+    def test_the_default_still_raises_so_no_caller_gets_a_silent_prefix(self):
+        """The guarantee `on_cap` must not erode. Stated as its own test because
+        the failure mode is a DEFAULT quietly changing: every completeness-seeking
+        caller inherits this one, and none of them passes the flag."""
+        pages = [[{"n": i} for i in range(100)] for _ in range(10)]
+
+        with pytest.raises(tp.TransportError):
+            list(tp.paginate(lambda page, per_page: pages[page - 1], max_pages=3))
+
+    def test_on_cap_stop_still_raises_on_an_unreadable_page(self):
+        """`stop` softens the CAP TRIP and nothing else. A window that swallowed
+        transport failures would answer "nothing in the window" for an outage —
+        the same indistinguishable-prefix defect, one layer down."""
+        with pytest.raises(tp.TransportError) as exc:
+            list(tp.paginate(lambda page, per_page: None, max_pages=3, on_cap="stop"))
+        assert "could not be read" in exc.value.message
+
 
 # --- BKL-5T3J: raw pages + decode-layer PR filtering -------------------------
 
