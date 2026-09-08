@@ -81,8 +81,29 @@ scheduled as a release gate rather than assumed away.
 
 ## Status
 
-- [ ] Chunk 01: `untriaged-upstream-reports` counts the intake set instead of the drop-box
+- [x] Chunk 01: `untriaged-upstream-reports` counts the intake set instead of the drop-box
 - [ ] Chunk 02: the drop-box retires, and every surface still describing it stops
+
+**Chunk 01 complete, 2026-09-08.** The advisory counts the intake set; three constants compose the
+query and the probe spells none of them. Three review rounds, and the same test failed the first two:
+a no-network pin has to guard the **seam an absence would cross** and assert something **only the
+path under test can produce**. Round one did neither (a counter on a fake the probe never receives);
+round two guarded a seam that turned out to be the global `subprocess.Popen`, which broke the `git`
+call the probe legitimately makes and let the *degraded* branch satisfy a candidate count. What
+Chunk 02 should carry forward from that: when a reviewer's finding is about a test that cannot fail,
+the fix is not a better assertion, it is naming the seam.
+
+Two review premises were checked rather than deferred to, and one was wrong: the scope-spelling
+observation described a canonicalized lookup as reading "a scope with no rows", but `item` carries no
+scope column, so the count is identical and nothing downstream goes red. The fix stands on
+convention (`briefing.py` reads the raw scalar as scope; the cursor is keyed as declared) and its
+test says out loud that it is a contract test with no behaviour to assert yet.
+
+The commit's tree differs from the verified tree by the Status tick, this block, and two
+**note-level** test edits the final round demoted — a second `pytest.raises` so the docstring's
+"both interceptions are proved to bite" is true rather than half-true, and `monkeypatch.setattr` in
+place of a hand-rolled `try/finally`. Named here rather than left implicit: Chunk 02's `cumulative`
+spans `merge-base...HEAD` and is what covers them.
 
 Context: Wave C of the BKL-7Q4M program (A = the adapter, shipped at `40b772b2`; B =
 `build-plan-upstream-report-bug.md`, complete and unmerged on this branch; C = this). The owner ruled
@@ -213,16 +234,25 @@ green test proves the text exists rather than that it lands.
     produces.
   - `plugin/skills/report-bug/SKILL.md` — the drop-box triage steps (~`:303`–`:315`) go; the
     receiving-side section is the issue intake set alone.
-  - `CLAUDE.md` "Review product feedback" row — drops *"plus the pre-cutover ones in `incoming-bugs/`
-    that the `untriaged-upstream-reports` advisory nudges"* and the archive step.
-  - `documentation/project-structure.md` (~`:51`), `plugin/skills/backlog/migration-scrub.md`
-    (~`:559`, the lockstep clause that has now fired), and `documentation/post-sync-advisory-spec.md`
-    (~`:259`–`:317`, whose `prerequisite_of` worked example loses its live instance — it needs either
-    a live replacement or an explicit note that the example is historical; do not leave prose
-    asserting a live instance that no longer exists).
+  - `documentation/project-structure.md` (~`:51`) and `plugin/skills/backlog/migration-scrub.md`
+    (~`:559`, the lockstep clause that has now fired).
+  - **Not here any more, done in Chunk 01:** the `CLAUDE.md` product-feedback row and
+    `documentation/post-sync-advisory-spec.md`'s `prerequisite_of` example (§5 and §5.3). Both went
+    false when the probe was repointed rather than when the drop-box retires, so they were corrected
+    in the chunk that falsified them. Struck from this list rather than left standing, because the
+    cumulative review grades against it.
   - `tests/preferences/test_no_upstream_content_egress.py` — Wave B's owed observation: delete the
     stale `--title`/`--component` enumeration from the docstring summary and the assertion message of
     `test_no_command_block_passes_a_composed_field_as_a_shell_literal`.
+  - `documentation/backlog-service-requirements.md` (~`:182`) — deferred out of Chunk 01 and named
+    here so it cannot drop. It lists the `untriaged-upstream-reports` probe among the things "**to be
+    removed**", and calls the drop-box "the interim supported path until the GitHub-issue path is
+    built". Both clauses have expired: the path is built, and the design chose to **repoint** the
+    probe rather than remove it. Record the divergence the way §8 of the design records its others —
+    the requirement is the history of what was asked for, corrected in place with a dated note, never
+    rewritten to agree with the code.
+  - `documentation/backlog-service-upstream-filing.md` §7 — mark step 4 done, once it is. §6 was
+    settled in Chunk 01 and already carries the query it landed on.
   - `#194`, `#234` closed and `#217`'s taxonomy half settled, via `/prawduct:backlog`.
 - **Tests:** the suite's existing pins carry most of this — `test_hook_argument_shape.py`,
   `test_hook_session_file_registry.py`, `test_gitignore_probes.py`, `test_plugin_packaging.py` and

@@ -3,14 +3,12 @@
 **Nothing calls this any more.** ``/prawduct:report-bug`` files upstream as a
 GitHub issue through the backlog adapter's ``file-upstream`` op, which needs no
 co-located checkout and no local pointer; this resolver is what routed a report
-to a directory back when the report was a file. It retires together with the
-drop-box itself, once the ``untriaged-upstream-reports`` advisory stops counting
-files there — the reports already sitting in that directory still need triaging,
-and retiring the drop-box before its replacement was live is the one ordering the
-design forbids.
+to a directory back when the report was a file. ``untriaged-upstream-reports``
+now counts filed issues rather than files there, so the condition this module was
+held for is met and it retires with the drop-box.
 
 The resolution it performs is unchanged and is described below, because the
-directory it finds still holds real reports.
+directory it finds may still hold real reports on somebody's machine.
 
 Precedence (first usable hit wins):
   1. the ``PRAWDUCT_BUG_INBOX`` environment variable

@@ -5427,9 +5427,9 @@ def cmd_bug_inbox(project_dir: Path) -> int:
     **Caller-less.** `/prawduct:report-bug` files upstream as a GitHub issue
     through the backlog adapter and branches on nothing here; this resolver is
     what routed a report to a directory back when the report was a file. It
-    retires with the drop-box (see ``lib/bug_inbox``), which is held until the
-    ``untriaged-upstream-reports`` advisory stops counting files there — the
-    reports already in that directory still need triaging. Inert by design for
+    retires with the drop-box (see ``lib/bug_inbox``); the condition it was held
+    for is met, because ``untriaged-upstream-reports`` now counts filed issues
+    rather than files there. Inert by design for
     plugin-only users, who configure neither ``PRAWDUCT_BUG_INBOX`` nor
     ``.prawduct/.bug-inbox``, so resolution returns None and this exits 1.
 

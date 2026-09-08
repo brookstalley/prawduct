@@ -1099,7 +1099,12 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # Character budget checked FIRST, as the note in the ceiling table below
     # says to: the digest is at 9129 of its 9500-character budget, so the
     # characters were there before this arithmetic was done.
-    "framework": 3218,
+    # framework 3218 -> 3211, 2026-09-08 (upstream-intake-repoint): the product-
+    # feedback row stopped naming the retired drop-box and stopped restating the
+    # intake query, which has homes in the design and in the report-bug skill. A
+    # CUT at the duplication, not a relocation -- the row now points at both and
+    # states neither, and the 7 tokens are a return rather than headroom banked.
+    "framework": 3211,
     "product": 2095,
 }
 

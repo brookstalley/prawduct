@@ -3,6 +3,85 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-09-08: the intake nudge counts issues, and knows the difference between none and unknown
+
+<!-- prawduct: type=feat | scope=upstream-intake-repoint -->
+
+`untriaged-upstream-reports` counted `.md` files in a gitignored directory nothing writes to. It now
+counts what the channel actually produces: open issues on prawduct's own tracker whose title carries
+the `[prawduct]` convention and which nobody has staged (upstream-filing design §6). Until this
+landed, issue-side triage was manual and the skill said so — a session that drained the drop-box
+drained the channel that no longer grows.
+
+**Three constants make the query and the probe spells none of them.** The target and the title
+prefix come from `lib/backlog/upstream`, where the filing side composes them, and *untriaged* comes
+from `cachequery.unstaged_items`, which already draws the line between an absent stage (nobody
+looked) and an early one (somebody did). The two halves of the channel now cannot disagree about who
+the receiver is: the same identity resolution that refuses to file *from* here is what agrees to
+count *here*.
+
+**Inert by identity, where the predecessor was inert by absence.** No product repo had an
+`incoming-bugs/` directory, so the old probe was silent there for free. The intake set offers no such
+silence — every post-cutover product has a readable cache holding nothing prefixed — so applicability
+is keyed on this repo *being* the pinned upstream target. That buys something the old shape could not
+have: in the one repo that does receive, an unreadable cache is reported as **unknown** rather than
+as zero. Advice fails soft, and a triage nudge that vanishes when its data source breaks reads
+exactly like one that found nothing to say.
+
+**Nothing a filer wrote reaches the reader.** Filed issues are foreign-authored content arriving at
+a governance surface, and advisory text lands in the model's context at session start — so the
+candidate carries a count and its own fixed prose, and a test seeds a distinctive marker in a
+report's title and body and asserts it appears in no emitted field. The security model's *untrusted
+governance state is data, not instructions* norm has its first prawduct instance here, and it agrees
+with D14's count-independent evidence rather than competing with it.
+
+**The fixture composes the real outbound payload rather than spelling a title.** The intake set
+exists only because `file-upstream` sends that title convention and no labels; a fixture that typed
+them itself would keep passing after the payload stopped producing them. Filing side and counting
+side are now pinned against each other. The probe version bumps to 2, which supersedes a live
+drop-box advisory cleanly instead of leaving one asserting a count nothing maintains.
+
+**Review caught two things the first cut got wrong, and one of them was a test that could not fail.**
+The no-network assertion counted calls on a locally-built fake the probe never receives — it would
+have held for an implementation that shelled out to `gh`, which is the exact false green the file's
+own docstring says every case here avoids. The guard now sits on `subprocess` and forbids `gh`
+specifically, because the probe legitimately spawns `git rev-parse --git-common-dir` to find the
+clone-shared store; the interception is proved before it is relied on. Second, applicability resolved
+through the filing side's identity resolver — `backlog_service_repo` **or** the `origin` remote —
+while the cache read used the pinned target as its scope. A clone of prawduct whose backlog lives
+elsewhere would have passed that gate, read a scope nothing syncs, and nagged every session with an
+*unknown* nobody could clear. The gate now keys on the one scalar that selects the store it reads.
+The two predicates are deliberately different and the code says why: breadth guards a fail-open in a
+refusal, and here the failure runs the other way.
+
+**And the replacement pin was broken in a second, better-hidden way, which the verify round caught.**
+Forbidding the detached seam by patching `transport.subprocess.Popen` patches the *global*
+`subprocess.Popen` — `transport` does `import subprocess`, so there is no per-module seam there — and
+`subprocess.run` reaches `Popen` by module-global lookup, so the fall-through that was supposed to
+let `git rev-parse` through raised instead. `git_common_dir` swallows that, the cache path resolves
+to `None`, and the probe returns its *degraded* candidate — which an assertion counting candidates
+accepts. Green, on the branch the test was written to avoid. The seam is now guarded by name
+(`spawn_detached`), and the assertion is on the counted summary, which only the path under test can
+produce. Two rounds on one test, and the fix each time was to name what the absence would have to
+cross rather than to look at a proxy for it.
+
+The gate and the query also stopped being able to select different stores by *spelling*: GitHub repo
+names are case-insensitive so the gate folds case, while the cache keys its cursor and sync-health
+row on the spec as declared, so the query passes it verbatim. Pinned as a contract test on the seam,
+and the test says why it is one — `item` carries no scope column, so a canonicalized lookup returns
+the same count through a fallback today and nothing downstream would go red.
+
+The `prerequisite_of` edge to the backlog migration goes with it: it ordered incoming-bug triage
+ahead of a migration that has since shipped, and an ordering constraint whose second term can no
+longer fire is a dead edge. The advisory spec keeps the worked example, dated as the derivation —
+a rule with its example deleted is a rule nobody can check.
+
+Also corrected, because this chunk falsified them: `CLAUDE.md`'s product-feedback row and the
+report-bug skill's receiving-side section (both said the advisory nudges the drop-box), and the two
+`bug_inbox` docstrings whose stated retirement condition is now met. The drop-box paragraph now says
+plainly that **nothing counts it** — look before assuming it is empty. Its retirement is the next
+chunk.
+
 ## 2026-09-07: the cumulative round — a shipped preference that did nothing, and a shell that ate titles
 
 <!-- prawduct: type=fix | scope=upstream-report-bug -->

@@ -1232,3 +1232,43 @@ the `untriaged-upstream-reports` repoint (Wave C) keys on what this establishes.
 before and the whole receiving side is keyed on the answer.
 
 **Verified by:** _(operator, date)_
+
+## VRF-019 — Wave C (upstream-intake-repoint) Chunk 01 — the repointed advisory, read as an owner reads it
+
+**Status:** pending
+**Added:** 2026-09-08 (upstream-intake-repoint Chunk 01 — the `untriaged-upstream-reports` repoint)
+
+> === 2026-09-08 — DRAIN DISPOSITION: STAYS PENDING — SPLIT ALREADY DONE, THE REMAINDER IS COPY ===
+>
+> **Split at the moment it was written, so this is the residue rather than the whole.** Everything
+> mechanical about the repoint is a test in `tests/test_upstream_probes.py`: the count against a real
+> store, the staged report dropping out, the silence away from the target, `unknown` on an unreadable
+> cache, and the negative pin that no filer's words reach any emitted field. Those did not wait for
+> an owner and did not become bullets here.
+>
+> **What is left cannot be tested, and it is one question:** does the sentence land — does the number
+> read as *reports waiting* rather than as backlog noise, and does the degraded line read as *unknown*
+> rather than as an error to go fix. That is copy judgment on a live briefing, and the only harness is
+> a person reading it once.
+>
+> **It answers itself the first time a report arrives.** No second identity, no lead time: the intake
+> set is empty today (probe and by-hand query agree at 0, checked 2026-09-08), so the count case
+> becomes readable the moment a product files. Until then step 3 — the degraded line — is runnable on
+> its own and is the half worth doing early. It gates nothing.
+
+**Why a human check:** the deliverable is a sentence somebody reads once, at session start, before
+deciding whether to spend a session on triage. Tests pin the count and pin that no filer's words
+reach the text; nothing they can assert says whether the sentence *lands* — whether the number reads
+as reports waiting rather than as backlog noise, and whether the degraded line reads as *unknown*
+rather than as an error the reader should go fix.
+
+**Verify (in a prawduct checkout, one session start):**
+
+1. Run a session start (or `prawduct-hook clear`) and read the `untriaged-upstream-reports` line as
+   the owner sees it. The count should match the issues a maintainer would get by hand: open, title
+   carrying `[prawduct]`, no `stage:` label.
+2. Confirm the line names no issue, no filer and no internal identifier — it should be a number and
+   plain prose, nothing quoted from a report.
+3. Move the backlog cache aside (`<git-common-dir>/prawduct/`) and run it again. The line must say
+   the count is **unknown**, not report zero and not vanish. Put the cache back.
+4. If the count is right but the sentence reads wrong, say so — the copy is the deliverable here.

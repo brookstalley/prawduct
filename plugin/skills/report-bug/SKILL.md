@@ -292,25 +292,22 @@ The other end of the channel. New reports arrive as **issues** on prawduct's own
 tracker, carrying the `[prawduct]` title prefix and no labels — a non-collaborator
 filer cannot set them, so triage applies the taxonomy on arrival.
 
-**Issue-side triage is manual until the advisory is repointed.** Nothing counts
-the issues yet — `untriaged-upstream-reports` still counts drop-box files, and
-repointing it is the next wave's work — so the intake set has to be asked for by
-hand: open issues whose title carries the `[prawduct]` convention and no triage
-label. Read them, and triage each as below. Until that repoint lands, a session
-that drains only the drop-box has drained the channel that no longer grows and
-left the one that does.
+**The `untriaged-upstream-reports` advisory counts this set** — open issues whose
+title carries the `[prawduct]` convention and which nobody has staged. It surfaces
+a count at session start and points here; it never quotes a report, so the count
+is the signal and reading them is the work. Triage each as below, and staging one
+is what takes it out of the count.
 
 A local `incoming-bugs/` drop-box also still exists, holding reports filed before
-this channel moved to issues. Nothing writes to it any more. While it has
-untriaged reports, the `untriaged-upstream-reports` session-start advisory
-surfaces a count and points here. To triage one:
+this channel moved to issues. Nothing writes to it and **nothing counts it** — no
+advisory will tell you it has anything in it, so look before assuming it is empty.
+To triage one:
 
 1. Read each report in `incoming-bugs/`.
 2. For each, capture the durable record in the committed backlog:
    `/prawduct:backlog add` (set a real `area:`, and `refs:` the report if useful).
    The backlog item — not the gitignored report — is what survives.
-3. **Archive** the processed report: move it to `incoming-bugs/archive/`. The
-   advisory counts only top-level `*.md`, so archiving clears each report from the
-   nudge while keeping it locally for reference (git tracks neither — the drop-box
-   is gitignored; the backlog item is the record). `archive/` is reference-only —
-   prune it whenever it gets noisy; nothing depends on it.
+3. **Archive** the processed report: move it to `incoming-bugs/archive/`, which
+   keeps it locally for reference (git tracks neither — the drop-box is gitignored;
+   the backlog item is the record). `archive/` is reference-only — prune it whenever
+   it gets noisy; nothing depends on it.

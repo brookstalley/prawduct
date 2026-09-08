@@ -164,7 +164,7 @@ The intake/triage half is MG5's receiving end + Security §5, tracked separately
 referent, and it is named by title until its alias is confirmed); this doc only guarantees the outbound payload carries the signal it needs:
 
 - **Intake query** = open issues whose title carries the `[prawduct]` convention and no triage label — works for both non-collaborator filings (Security §5's non-collaborator-authored-unlabeled set) and the collaborator dogfood case.
-- The `untriaged-upstream-reports` advisory (today: counts `incoming-bugs/*.md`) is repointed to **count that intake set** instead of drop-box files (MG5). *Exact query pinned on the receiving-side item, at build.*
+- The `untriaged-upstream-reports` advisory is repointed to **count that intake set** instead of drop-box files (MG5). **Done 2026-09-08**, and the query it settled on: open items whose title carries the prefix and which carry no `stage:` label — this repo's triage ladder, so an absent stage is *nobody has looked* rather than *somebody decided*. It is keyed on this repo being the pinned target, so it stays silent in every product.
 
 ---
 
