@@ -258,7 +258,7 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   to `unknown` rather than a reassuring `free`).
 - **Repo lifecycle** — `migrate-plugin`, `init-product`, `update-gitignore [--dry-run]`,
   `audit-learnings`, `learnings-obligation`, `norm-index-scaffold`, `lifecycle-repair`,
-  `plan-backfill`, `repo-disable`, `bug-inbox` (dry-run-by-default where they mutate, with
+  `plan-backfill`, `repo-disable` (dry-run-by-default where they mutate, with
   one stated exception). **`update-gitignore` is the exception: it repairs by default and
   previews only under `--dry-run`.** It is called as a repair step by `/prawduct:doctor`,
   which is why the default is the mutating one — but a reader who assumed the blanket
@@ -394,7 +394,7 @@ raised as stack traces across the boundary.** The intended scheme:
 | Channel | 0 | 1 | 2 |
 |---|---|---|---|
 | **Harness hook** (`stop`, `clear` refusal) | allow / clean | — | **block** |
-| **CLI gate / query** (`test-status`, `verify-coverage`, `check-*`, `resolve-base`, `bug-inbox`) | satisfied / pass | not satisfied / fail | — |
+| **CLI gate / query** (`test-status`, `verify-coverage`, `check-*`, `resolve-base`) | satisfied / pass | not satisfied / fail | — |
 | **CLI advisory report** (`verify-records`) | ran — findings, if any, are on stdout | **could not run** (unresolvable interval, unreadable state) | usage error |
 | **State-mutating writer** (e.g. `disposition`) | written, or an idempotent no-op | **refused** — validation failed, nothing written | **usage error** |
 | **Usage / arg error** (any subcommand) | — | — | **usage error** |
@@ -538,8 +538,12 @@ Evolution rules we want to hold, so new versions stay rare:
   rather than hard-failing (evidence torn-tail repair; advisory corrupt-file quarantine).
 - **Deprecation is signalled, not silent.** The established pattern: mark the subcommand deprecated
   in its help, print a deprecation notice to stderr on use, keep it working, and defer removal to a
-  future **major** version. `stamp-merged` and `regen-views` are both in this state: each stays
-  callable, prints its notice, does nothing, and exits 0.
+  future **major** version. `stamp-merged`, `regen-views` and `bug-inbox` are all in this state:
+  each stays callable, prints its notice, does nothing, and exits 0. `bug-inbox` joined them
+  2026-09-08 with the upstream drop-box it resolved — and it is the member that shows the clause
+  binding rather than merely describing, because the 2026-08-11 departure below did **not** reach
+  it: that departure is scoped to a caller which is a stale hook registration, and this one's
+  caller is a person.
 
   **DEPARTURE, recorded not amended — 2026-08-11 (v3.3.3), pending owner ratification.**
   `build-index` and `user-prompt-submit` join the inert tier printing **nothing on either stream**,
@@ -588,16 +592,19 @@ Evolution rules we want to hold, so new versions stay rare:
   `/prawduct:backlog` skill and adopter agents rather than the harness, and § Direction's 2026-08-02
   ruling puts every subcommand outside the two published surfaces here. Unpromised, not unused —
   § Operations, "Backlog service", is the entry, and it names what would move it.
-- **Deprecated and inert** (callable, writes nothing, exits 0; removal deferred to a major). Four
-  members in two sub-shapes, split by **who calls them** — which decides whether they announce
-  themselves:
+- **Deprecated and inert** (callable, writes nothing, exits 0; removal deferred to a major). Two
+  sub-shapes, split by **who calls them** — which decides whether they announce themselves:
 
-  - *Announcing* — `stamp-merged`, `regen-views`. Notice on stderr. Both lost their bodies when
-    derived views were retired: `regen-views` had no views left to regenerate, and `stamp-merged`'s
-    only output (`status=`) had no reader left. **Prawduct's own release runbook no longer calls
-    either**, so the remaining reason to keep them callable is the one that cannot be audited from
-    here: a consumer's copied operator script, where a non-zero exit would break a pipeline
-    mid-release. The notice tells such a caller to drop the call.
+  - *Announcing* — `stamp-merged`, `regen-views`, `bug-inbox`. Notice on stderr. The first two lost
+    their bodies when derived views were retired: `regen-views` had no views left to regenerate, and
+    `stamp-merged`'s only output (`status=`) had no reader left. `bug-inbox` resolved the local
+    `incoming-bugs/` drop-box for `/prawduct:report-bug`, which files GitHub issues instead, so
+    there is no directory left to resolve. **Prawduct's own release runbook no longer calls any of
+    them**, so the remaining reason to keep them callable is the one that cannot be audited from
+    here: a consumer's copied operator script or a person's habit, where a non-zero exit would break
+    a pipeline mid-release. The notice tells such a caller to drop the call. `bug-inbox` also moved
+    its exit code, 1 → 0: the 1 meant *no inbox is configured*, a condition a caller could branch
+    on, and nothing can be configured now.
   - *Silent* — `build-index`, `user-prompt-submit` (inert since v3.3.3). **No output on either
     stream.** Their caller is a pre-3.3.2 `hooks.json` registration, not a person: a notice has no
     reader who can act on it, and the next plugin update replaces the registration anyway. On
@@ -608,8 +615,8 @@ Evolution rules we want to hold, so new versions stay rare:
 
   The split is a **recorded departure pending owner ratification**, not a settled rule — see
   § Deprecation & Compatibility, where the norm it departs from still stands unamended and the
-  proposed *silent-when-the-caller-is-a-registration* clause is the question put to the owner. All four are members of
-  `_EPHEMERAL_SAFE_COMMANDS` — without it the fail-closed disposable-worktree guard treats an
+  proposed *silent-when-the-caller-is-a-registration* clause is the question put to the owner.
+  Every member of the tier is in `_EPHEMERAL_SAFE_COMMANDS` — without it the fail-closed disposable-worktree guard treats an
   unlisted command as a write and exits 1, which would falsify "exits 0" exactly where a hook
   invokes it. Pinned in `tests/test_retired_hook_subcommands.py`.
 

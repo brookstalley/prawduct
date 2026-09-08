@@ -3,6 +3,65 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-09-08: the upstream bug drop-box retires, and every surface still describing it stops
+
+<!-- prawduct: type=refactor | scope=upstream-intake-repoint -->
+
+With `untriaged-upstream-reports` counting filed issues, the channel it replaced is retired
+(upstream-filing design §7.4). Reports about prawduct are GitHub issues; nothing routes one into a
+local directory any more, and nothing shipped says otherwise.
+
+**The retirement is one act per substrate, and the substrates do not take the same treatment.**
+`lib/bug_inbox.py` — the resolver that picked the directory — is deleted, and so is
+`templates/incoming-bug-report.md`, the scaffold for a report shape nothing produces. The
+`bug-inbox` **subcommand** is not: it is human-callable, and the 2026-08-11 harness-only-removal
+exception is scoped to subcommands the harness alone invokes, so
+[[deprecation-requires-an-inert-retention-window]] governs and it becomes inert — a `WARNING:` on
+stderr, exit 0, removal deferred to a major. It joins `regen-views` and `stamp-merged` in the
+*announcing* tier rather than the silent one, because its caller is a person who can act on being
+told to stop. Its exit code moves 1 → 0 deliberately: the 1 meant *no inbox is configured*, a
+condition a caller could branch on, and nothing can be configured now.
+
+**What is deliberately NOT deleted is an operator's `incoming-bugs/` tree.** It is gitignored, so
+anything still sitting in one has no git copy and `rm -rf` is unrecoverable — an owner-approval
+operation this build declined rather than sought approval for. Its `.gitignore` line stays,
+re-commented alongside the retired `.prawduct/.bug-inbox` pointer, so a machine that used the channel
+does not suddenly see untracked reports as git noise.
+
+**A grep is the only thing that quantifies over the prose, so a grep is what pins it.** Removing a
+mechanism requires removing its name too: a skill or guide that still says a report goes into a
+directory routes the next model into writing one where nothing reads it, and every such surface
+passes its own tests while doing so. The new sweep holds two rules of different shapes — write-path
+machinery (the env knob, the resolver, the pointer, the write-target template, the report scaffold,
+the archive destination) appears nowhere in the shipped tree, and the directory name appears in no
+instruction surface at all, `CLAUDE.md` included. Code stays exempt from the second: the inert
+subcommand names the directory to say the channel is over, which is a sentence addressed to a person.
+Both legs carry a positive control, because every assertion in them is an emptiness check and a
+corpus that silently came back empty would satisfy all of them.
+
+**Three worked examples that had quietly become archaeology were repointed rather than left.** The
+build-plan ref checker's "intentionally-gitignored managed path" example named the pointer file it no
+longer knows about, its angle-bracket write-target example named `<inbox>/`, and the advisory
+briefing's prerequisite-ordering docstring described the drop-box→migration edge in the present
+tense. The first two now name live paths; the third keeps the example — the advisory spec
+deliberately retains it as the only rendering of a prerequisite pair anyone has read — and states in
+the past tense that both ends are retired.
+
+**One requirement's expired clauses are corrected in place, not rewritten.**
+`backlog-service-requirements.md` still listed the `untriaged-upstream-reports` probe among things
+"to be removed" and called the drop-box "the interim supported path until the GitHub-issue path is
+built". Both expired: the path is built, and the design chose to **repoint** the probe rather than
+remove it, because the receiving side needs a nudge whatever the channel is. Recorded as a dated
+divergence beside the original text, the way the design records its own — a requirement is the record
+of what was asked for, and editing it to agree with the code is how the ask disappears.
+
+**And Wave B's owed observation is discharged here rather than waiting for a commit that file
+happens to get.** The egress test's docstring and assertion message still enumerated
+`--title`/`--component` after `--body` joined the shell-literal class; the fix was deleting the
+enumeration, not extending it. Its sibling test loses its carve-out in the same pass: it used to
+allow the skill to *mention* the drop-box because untriaged reports were still sitting in one, and
+with the channel retired the ban is total.
+
 ## 2026-09-08: the intake nudge counts issues, and knows the difference between none and unknown
 
 <!-- prawduct: type=feat | scope=upstream-intake-repoint -->

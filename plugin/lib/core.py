@@ -76,7 +76,6 @@ MANAGED_DIRS: dict[str, dict] = {
 # Session files that should be gitignored in product repos
 GITIGNORE_ENTRIES = [
     ".claude/settings.local.json",
-    ".prawduct/.bug-inbox",
     ".prawduct/.critic-active",
     ".prawduct/.critic-findings.json",
     ".prawduct/.critic-partials/",

@@ -1034,7 +1034,7 @@ class TestTheDropBoxReplacementIsLive:
             )
 
     def test_no_command_block_passes_a_composed_field_as_a_shell_literal(self):
-        """Every `--title`/`--component` the skill shows must read from a file.
+        """Every composed field the skill shows must be read from a file.
 
         Inside double quotes bash still runs `` `…` `` and expands `$…`, and this
         skill instructs both fields be written in prawduct's own backticked
@@ -1065,23 +1065,24 @@ class TestTheDropBoxReplacementIsLive:
         ]
 
         assert not offenders, (
-            "a command block passes `--title` or `--component` as a shell literal — bash "
+            "a command block passes a composed field as a shell literal — bash "
             "expands backticks and `$` inside double quotes, and this skill tells the model "
-            "to write both fields in backticked prawduct vocabulary:\n  - "
+            "to write these fields in backticked prawduct vocabulary:\n  - "
             + "\n  - ".join(offenders)
         )
 
-    def test_the_skill_names_no_drop_box_write_path(self):
-        """The write, not the mention. The receiving-side section legitimately
-        talks about `incoming-bugs/` — reports filed before the cutover are still
-        sitting there waiting to be triaged. What must be gone is the machinery
-        for putting a NEW one there: the resolver that picked the directory, and
-        the path the report was written to."""
+    def test_the_skill_names_no_drop_box_at_all(self):
+        """Was "the write, not the mention" while the drop-box still held
+        untriaged reports and the receiving-side section had to say so. The
+        channel is retired, so there is no mention left to carve out and the ban
+        is total: a directory nothing writes and nothing counts, named in the one
+        skill a model reads to decide where a report goes, is an instruction to
+        put one somewhere it will not be found."""
         text = self.SKILL.read_text(encoding="utf-8")
 
-        for token in ("bug-inbox", "<inbox>/"):
+        for token in ("bug-inbox", "<inbox>/", "incoming-bugs"):
             assert token not in text, (
-                f"`/prawduct:report-bug` still names `{token}`, which is drop-box WRITE "
-                "machinery. Upstream reports file as issues; the drop-box holds only what "
-                "was filed before the cutover, and nothing may add to it"
+                f"`/prawduct:report-bug` still names `{token}`. Upstream reports are "
+                "filed as GitHub issues; the local drop-box is retired, and naming it "
+                "here routes a report into a directory with no channel behind it"
             )

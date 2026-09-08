@@ -552,7 +552,6 @@ def _yaml_top_level_key_present(state_path: Path, key: str) -> bool:
 # prawduct:allow prawduct/duplication -- intentional inline mirror (import-light hot path); pinned by TestSessionGitignoreMirror
 _SESSION_GITIGNORED_PATHS = (
     ".claude/settings.local.json",
-    ".prawduct/.bug-inbox",
     ".prawduct/.critic-active",
     ".prawduct/.critic-findings.json",
     ".prawduct/.critic-partials",
@@ -5422,32 +5421,40 @@ def cmd_resolve_base(project_dir: Path) -> int:
 
 
 def cmd_bug_inbox(project_dir: Path) -> int:
-    """Resolve the upstream bug-report inbox and print it, or exit 1 when none.
+    """DEPRECATED and inert — prints a notice, resolves nothing, exits 0.
 
-    **Caller-less.** `/prawduct:report-bug` files upstream as a GitHub issue
-    through the backlog adapter and branches on nothing here; this resolver is
-    what routed a report to a directory back when the report was a file. It
-    retires with the drop-box (see ``lib/bug_inbox``); the condition it was held
-    for is met, because ``untriaged-upstream-reports`` now counts filed issues
-    rather than files there. Inert by design for
-    plugin-only users, who configure neither ``PRAWDUCT_BUG_INBOX`` nor
-    ``.prawduct/.bug-inbox``, so resolution returns None and this exits 1.
+    This resolved the gitignored ``incoming-bugs/`` drop-box on a co-located
+    checkout, so ``/prawduct:report-bug`` could write a report there as a file.
+    Reports are GitHub issues now: the skill files through the backlog adapter's
+    ``file-upstream``, which needs no co-located checkout and no local pointer,
+    and ``untriaged-upstream-reports`` counts that intake set. There is no
+    directory left to resolve and nothing that would route a report to one.
 
-    Fail-soft: a missing/stale/unwritable inbox OR an incomplete plugin install
-    (lib not importable) both resolve to exit 1, never a crash — the channel
-    must stay silent and harmless in a repo that does not use it.
+    **Why it is still callable.** ``api-contract.md``'s deprecation norm requires
+    a retired subcommand to be signalled rather than removed. The caller this
+    protects is a person — a hand-written script or a habit — so the notice goes
+    to stderr where ``regen-views`` and ``stamp-merged`` put theirs, rather than
+    into the silence ``build-index`` and ``user-prompt-submit`` keep for a stale
+    hook registration that cannot read one. Removal defers to a major.
+
+    **Exit 0, where the resolver exited 1 when it found nothing.** The old 1 meant
+    *no inbox is configured*, which a caller could branch on; nothing can be
+    configured now, so a 1 would report a condition rather than a retirement and
+    break a pipeline for a channel that no longer exists.
+
+    An operator's ``incoming-bugs/`` tree is untouched by any of this. It is
+    gitignored, so anything still sitting in it has no other copy.
     """
-    lib_root = _plugin_root()
-    if lib_root not in sys.path:
-        sys.path.insert(0, lib_root)
-    try:
-        from lib import bug_inbox  # noqa: PLC0415 — lazy keeps top-level lib-free
-    except ImportError:
-        return 1
-    inbox = bug_inbox.resolve_inbox(os.environ, project_dir)
-    if inbox is None:
-        return 1
-    print(inbox)
+    del project_dir  # kept so the dispatcher's call site is unchanged
+    print(
+        "WARNING: bug-inbox no longer does anything and will be removed in a "
+        "future major version. Upstream bug reports are filed as GitHub issues "
+        "by /prawduct:report-bug, not written to a local drop-box, so there is "
+        "no inbox to resolve. If a script or checklist still calls this command, "
+        "drop the call. Reports already sitting in a local `incoming-bugs/` are "
+        "untouched — triage them by hand into the backlog.",
+        file=sys.stderr,
+    )
     return 0
 
 
@@ -6456,6 +6463,7 @@ _USAGE = (
     "[--release vX.Y.Z] [--superseded-by <text>] [--dry-run]|"
     "check-released vX.Y.Z [--json] [--allow-unverifiable]|"
     "regen-views [deprecated, inert]|stamp-merged [deprecated, inert]|"
+    "bug-inbox [deprecated, inert]|"
     "build-index [deprecated, inert]|user-prompt-submit [deprecated, inert]|"
     "infer-critic-mode [args]|"
     "resolve-base|version|print-install-reference|"

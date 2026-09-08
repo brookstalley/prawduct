@@ -105,6 +105,47 @@ The commit's tree differs from the verified tree by the Status tick, this block,
 place of a hand-rolled `try/finally`. Named here rather than left implicit: Chunk 02's `cumulative`
 spans `merge-base...HEAD` and is what covers them.
 
+**Chunk 02 built 2026-09-08; the box is ticked after its `cumulative` review, per this plan's own
+step 5.** The retirement landed as designed on every substrate. Four things the build decided that
+this list did not, recorded here because the cumulative grades against it:
+
+1. **The inert notice is `WARNING:`, not `notice:`.** The `governed_by` disposition above claims
+   `notice:` is "the existing vocabulary"; it is not — the api-contract's declared vocabulary is
+   `CRITICAL:`/`WARNING:`/`NOTE:`/`PRAWDUCT:`/`BLOCKED —`, and the tier this joins (`regen-views`,
+   `stamp-merged`) prints `WARNING:`. Taking the plan's literal prefix would have invented a fifth
+   spelling for a command whose whole point is joining an existing tier.
+2. **The inert contract is pinned in `tests/test_deprecated_inert_commands.py`, not
+   `test_retired_hook_subcommands.py`.** The latter is scoped to commands a shipped `hooks.json`
+   registers and to the *silent* tier; the former is the *announcing* tier and already held
+   `regen-views`/`stamp-merged`. `bug-inbox` is human-callable, so it belongs with them —
+   `test_retired_hook_subcommands.py` gains only the cross-tier `_EPHEMERAL_SAFE_COMMANDS` pin,
+   which is the one claim that spans both.
+3. **The grep-shaped pin is two rules of different shapes**, in `tests/test_drop_box_retirement.py`.
+   A single token ban could not hold: write-path machinery (the env knob, resolver, pointer,
+   write-target template, report scaffold, archive destination) is illegal *everywhere* in the
+   shipped tree, while the directory NAME is legal in code that announces the retirement and illegal
+   in anything a model reads as instruction. Both legs carry a positive control, because every
+   assertion in them is an emptiness check.
+4. **Three worked examples were repointed, and they were not on the list.** `buildplan_refs`' and
+   `gitstate`'s gitignored-managed-path and angle-bracket-write-target examples named the retired
+   pointer and `<inbox>/`; `briefing.py`'s prerequisite-ordering docstring described the
+   drop-box→migration edge in the present tense. Same rule Chunk 01 paid for: a claim's home and its
+   truth-condition are different things, and these went false when the substrate did.
+
+5. **`#194` and `#234` do not close here, and step 3 above is corrected rather than followed.**
+   It was written against the markdown convention, where the archive is a file edit that rides in
+   the PR and is atomic with the merge. This repo is on the Issues backend, where a close is an
+   immediate API side effect — the exact drift `#697` shipped to stop. `#217`'s taxonomy note is
+   posted (a comment is additive and safe on a branch); the two closes are handed to the merge.
+   Worth naming in the closing note: `#234`'s stated acceptance ("the advisory counts *labeled*
+   issues") was superseded by §6's title-prefix query, so a reader diffing acceptance against the
+   code will trip on it. The item is done by the retirement; its checkbox is not what was built.
+
+`incoming-bugs/` itself is untouched, its `.gitignore` line re-commented beside the retired
+`.prawduct/.bug-inbox` pointer. `#234` closes on the retirement half; its `adopt` leg — the owner's
+2026-08-03 ruling that a loud arrival still needs a route out — is `#542`, open and `stage: ready`,
+so it is handed on rather than closed with the item.
+
 Context: Wave C of the BKL-7Q4M program (A = the adapter, shipped at `40b772b2`; B =
 `build-plan-upstream-report-bug.md`, complete and unmerged on this branch; C = this). The owner ruled
 2026-09-06 that **the release cuts after all three waves**, so this plan does not close the release
@@ -215,7 +256,7 @@ green test proves the text exists rather than that it lands.
 - **Artifacts consumed:** `documentation/backlog-service-upstream-filing.md` §7.4; `.prawduct/artifacts/api-contract.md`
   § Direction (the deprecation ruling that decides the subcommand's treatment)
 - **Deliverables:**
-  - `plugin/lib/bug_inbox.py` — **deleted.** Caller-less internal module, no CLI surface of its own.
+  - `plugin/lib/bug_inbox.py` deleted — caller-less internal module, no CLI surface of its own.
   - `plugin/bin/prawduct-hook` `cmd_bug_inbox` — **inert, not deleted.** `return 0`, a docstring
     saying what it was and when it goes, a `notice:` on stderr naming the retirement. It joins the
     warning tier (`regen-views`, `stamp-merged`), not the silent one: those two are silent because
@@ -230,7 +271,7 @@ green test proves the text exists rather than that it lands.
   - `.gitignore` — the `incoming-bugs/` line **stays**, re-commented as a retired local artifact.
     Removing it would surface an operator's untracked archive as git noise, and deleting the tree is
     an unrecoverable operation this plan declines (see the security disposition).
-  - `plugin/templates/incoming-bug-report.md` — **deleted.** A scaffold for a report shape nothing
+  - `plugin/templates/incoming-bug-report.md` deleted — a scaffold for a report shape nothing
     produces.
   - `plugin/skills/report-bug/SKILL.md` — the drop-box triage steps (~`:303`–`:315`) go; the
     receiving-side section is the issue intake set alone.
@@ -270,7 +311,13 @@ green test proves the text exists rather than that it lands.
 - **Done when:**
   1. Acceptance criteria met and tests pass
   2. Change-log entry added (`scope=upstream-intake-repoint`, no `release=`)
-  3. `#194`, `#234` closed and `#217` updated via `/prawduct:backlog update`
+  3. `#217` updated via `/prawduct:backlog` — on the branch, because a comment is additive.
+     `#194` and `#234` close **at the merge**, through `/prawduct:pr`'s Merge Flow, NOT here: on the
+     Issues backend `status --to shipped` closes over the API the moment it runs, with no branch to
+     be abandoned with, so a branch-time close leaves them wrongly closed if this PR is reworked
+     (#697, which records #687 and #688 as instances). `#234` closes as `upstream-intake-repoint`
+     and `#194` as `feat/upstream-report-bug` — the program spans three waves and no single scope
+     name is the honest handle for it
   4. Committed, then `/prawduct:critic cumulative` run once over `merge-base...HEAD` (it covers Wave
      B and Wave C together, which is what this branch ships as one PR) and blocking findings resolved
   5. Chunk marked `[x]` in Status
