@@ -174,8 +174,7 @@ fourth consumer named and its gap restated as observed (R-6), and two stale coun
 for the live set rather than trusting a figure written here, which is the shape this chunk kept
 tripping over. The standing session advisory asks for the whole file to be compacted into
 `learnings-detail.md`, and trimming whichever entries the lint happens to name is motion, not that
-job. It gates nothing. (The two rules this chunk added went in compact, and the corollary it hung on
-the ratcheting rule had its narrative moved to the detail file for the same reason.)
+job. It gates nothing.
 
 Context: Wave C of the BKL-7Q4M program (A = the adapter, shipped at `40b772b2`; B =
 `build-plan-upstream-report-bug.md`, complete and unmerged on this branch; C = this). The owner ruled
