@@ -82,7 +82,7 @@ scheduled as a release gate rather than assumed away.
 ## Status
 
 - [x] Chunk 01: `untriaged-upstream-reports` counts the intake set instead of the drop-box
-- [ ] Chunk 02: the drop-box retires, and every surface still describing it stops
+- [x] Chunk 02: the drop-box retires, and every surface still describing it stops
 
 **Chunk 01 complete, 2026-09-08.** The advisory counts the intake set; three constants compose the
 query and the probe spells none of them. Three review rounds, and the same test failed the first two:
@@ -105,8 +105,7 @@ The commit's tree differs from the verified tree by the Status tick, this block,
 place of a hand-rolled `try/finally`. Named here rather than left implicit: Chunk 02's `cumulative`
 spans `merge-base...HEAD` and is what covers them.
 
-**Chunk 02 built 2026-09-08; the box is ticked after its `cumulative` review, per this plan's own
-step 5.** The retirement landed as designed on every substrate. Four things the build decided that
+**Chunk 02 complete, 2026-09-08.** The retirement landed as designed on every substrate. Four things the build decided that
 this list did not, recorded here because the cumulative grades against it:
 
 1. **The inert notice is `WARNING:`, not `notice:`.** The `governed_by` disposition above claims
@@ -145,6 +144,36 @@ this list did not, recorded here because the cumulative grades against it:
 `.prawduct/.bug-inbox` pointer. `#234` closes on the retirement half; its `adopt` leg — the owner's
 2026-08-03 ruling that a loud arrival still needs a route out — is `#542`, open and `stage: ready`,
 so it is handed on rather than closed with the item.
+
+**The `cumulative` (`rev-20260908T220843Z-9c210bc4`, `40b772b2...b23a0ef6`) returned 0 blocking, and
+its sharpest warning was about Chunk 01's code.** `unstaged_items` answers `ok` for a store whose last
+sync FAILED, so *readable* and *current* are different questions and the probe asked only the first —
+a stalled feed with rows printed a bare count as current, and with none went silent, which is the
+false all-clear the chunk's own change-log paragraph claims to have avoided. Fixed, tested, and
+mutation-checked in both branches. **The one thing Chunk 03 of anything should carry forward:** the
+warning was not that a case was unhandled but that a *predicate was the wrong question*, and the
+tell was available in the code — the in-code comment reasoned about the failing-sync case for the
+counting branch only, and stopped one branch short.
+
+Two departures inside that fix, both deliberate. The reviewer proposed carrying `sync_error` into the
+copy; that string is a provider message relayed through `gh`, and advisory text is rendered into the
+model's context at session start, so the advisory says a sync is failing and never what the provider
+said. And hoisting the shared copy into module constants tripped `test_advisory_actionability.py`,
+which reads advisory text statically at each construction site — the evasion it exists to prevent.
+Copy is inlined and waived; the evidence string stays shared, because that is what makes the two
+stalled shapes one thing to dismiss.
+
+Six other findings, all fixed: the sweep's instruction class derived by exclusion rather than
+enumerated (R-1), the injected-footprint ceiling ratcheted with its cut **and the
+ceiling-is-reading-plus-one invariant now asserted** (R-3/R-5), the cross-cutting-concerns row's
+fourth consumer named and its gap restated as observed (R-6), and two stale counts made relational
+(R-2/R-7). R-4 and R-9 accepted with reasons — both are notes the reviewer marked no-action.
+
+**One thing left standing, flagged rather than fixed:** record-lint reports a 404-character rule at
+`.prawduct/learnings.md:391`, over the 400 ceiling. It is one of roughly seventy in that file, and
+the standing session advisory asks for the whole file to be compacted into `learnings-detail.md`
+rather than for one rule to be trimmed. Fixing the one the lint happened to name would be motion, not
+the fix. It gates nothing.
 
 Context: Wave C of the BKL-7Q4M program (A = the adapter, shipped at `40b772b2`; B =
 `build-plan-upstream-report-bug.md`, complete and unmerged on this branch; C = this). The owner ruled

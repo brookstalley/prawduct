@@ -18,6 +18,40 @@ redirect.
 
 ---
 
+## A comment reasoning about a CONDITION binds every branch that condition reaches
+
+`upstream_probes.py`'s intake count read the backlog cache and split degraded from healthy on
+`status != "ok"`. A store whose last sync FAILED still answers `ok` — it carries its rows plus a
+`sync_error` — so *readable* and *current* are two questions and only the first was being asked.
+
+The comment above the count knew this. It said, in as many words, that a failed sync still answers
+`ok`, and reasoned it through for the counting branch: stale rows can only under-report, a report
+filed since the failure is missing rather than invented, so "at least N are waiting" is the honest
+reading and silence would be the lie. Correct, and it stopped there. The zero branch — `if count ==
+0: return []` — sat four lines below, where the same staleness turns the reading into a false
+all-clear: nothing filed before the failure, nothing counted since, and no session-start signal at
+all while filed reports go unread.
+
+What makes this worth a rule rather than a shrug is that the same chunk's change-log paragraph
+asserted the opposite behaviour ("a triage nudge that vanishes when its data source breaks reads
+exactly like one that found nothing to say") and the plan's `governed_by` disposition cited the
+*advice fails soft is not advice fails silent* norm by name. Three carriers of the right answer, and
+the code did the wrong thing in the branch nobody wrote a sentence about. The defect was not a
+missing case; it was **reasoning scoped to the branch being written rather than to the condition
+being reasoned about**.
+
+The fix separated the two axes at the seam — `_intake_reading` returns `(count, sync_is_stuck)` —
+so a caller that collapses them fails in the helper's own test rather than in whichever branch
+happens to be exercised. Both branches now use the second axis, in opposite directions: a stale
+count is stated as a floor, a stale zero gets its own candidate with its own evidence (and therefore
+its own dismissal key, since evidence is what the advisory id hashes).
+
+**The cheap check that would have caught it:** after writing a comment that names a condition, grep
+the function for every other `if` the condition can reach. It costs one read of a thirty-line
+function.
+
+---
+
 ## When a long-lived branch syncs a base that moved a lot, diff the TESTS on both sides before resolving any hunk — a test states the rule the code only instantiates, so two sides that re-implemented one mechanism disagree visibly there. Tell: a hunk where both sides are coherent implementations of the same named thing
 
 **What happened (2026-08-27, PR #658 `fix/branch-claim-multiplicity`).** The branch had sat 251

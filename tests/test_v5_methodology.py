@@ -1195,7 +1195,19 @@ INJECTED_FOOTPRINT_CEILINGS = {
     # with the declared raise recorded in the reading table above, staying one
     # over the reading with zero banked -- so the next addition meets the
     # standing trim-or-relocate rule with nothing to collect silently.
-    "framework": 3219,
+    #
+    # framework 3219 -> 3212 on 2026-09-08 (upstream-intake-repoint): ratcheted
+    # with the drop-box cut in the reading table above, which returned 7 tokens
+    # and left them collectable here for a commit. That gap is the exact
+    # re-funding this comment's first paragraph forbids, and it is easy to make
+    # because the cut and the ratchet are two edits and only one of them is
+    # where the work is. `product` did not move and neither does its ceiling.
+    #
+    # INVARIANT, so the next reader does not have to re-derive it from the
+    # entries above: each ceiling is EXACTLY one over its reading unless an
+    # entry here declares otherwise and says why. Stated as a rule rather than
+    # left as a pattern, because a pattern is what this cut broke.
+    "framework": 3212,
     "product": 2096,
 }
 
@@ -1330,6 +1342,31 @@ def test_injected_footprint_under_ceiling(shape):
         f"ceiling. Trim a member, or move the content OUT of the injected set "
         f"into an on-demand guide -- moving it to the other member of this same "
         f"set buys nothing, because this assertion sums them."
+    )
+
+
+@pytest.mark.parametrize("shape", sorted(INJECTED_FOOTPRINT_CEILINGS))
+def test_each_ceiling_is_exactly_one_over_its_reading(shape):
+    """The ratchet, asserted instead of remembered.
+
+    `test_injected_footprint_under_ceiling` catches growth ABOVE a ceiling; it
+    cannot see a ceiling left above its reading after a cut, which silently
+    re-funds the growth the cut paid for and is the one thing the ceiling
+    comment's first paragraph forbids. That gap was reached in practice: a cut
+    landed in the reading table and its paired ratchet did not follow, leaving
+    seven tokens collectable with nothing red.
+
+    A DECLARED departure is still available — this is a rule about the two
+    tables agreeing, not a ban on raising one. Raise the reading with its
+    reason, and this follows for free.
+    """
+    reading = LAST_MEASURED_INJECTED_TOKENS[shape]
+    ceiling = INJECTED_FOOTPRINT_CEILINGS[shape]
+    assert ceiling == reading + 1, (
+        f"the {shape} ceiling is {ceiling} against a recorded reading of {reading}. "
+        f"Each ceiling sits exactly one over its reading, so nothing is banked -- "
+        f"set it to {reading + 1} in the same edit that moved the reading, or move "
+        f"the reading with a declared reason and let this follow."
     )
 
 

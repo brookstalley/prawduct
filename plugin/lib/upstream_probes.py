@@ -90,65 +90,144 @@ def _is_the_upstream_target(state: ProjectState) -> bool:
     return upstream.canonical_repo(_backlog_store(state)) == upstream.PINNED_TARGET
 
 
-def _untriaged_report_count(state: ProjectState, codebase: Codebase) -> int | None:
-    """How many filed reports are waiting, or ``None`` when the cache cannot say.
+def _intake_reading(state: ProjectState, codebase: Codebase) -> tuple[int | None, bool]:
+    """``(count, sync_is_stuck)`` — how many filed reports are waiting, and whether
+    the number is still being refreshed.
 
-    ``None`` is not zero and the caller must not flatten it: a store that has
-    never synced and a store holding no reports look identical from the outside,
-    and only one of them means there is nothing to do.
+    ``count`` is ``None`` when the cache cannot say, and the caller must not
+    flatten that to zero: a store that has never synced and a store holding no
+    reports look identical from the outside, and only one of them means there is
+    nothing to do.
+
+    ``sync_is_stuck`` is the second axis and it is separate for a reason. A store
+    whose last sync FAILED still answers ``ok``, carrying its rows plus
+    ``sync_error`` — so *readable* and *current* are different questions, and
+    reading only the first turns a week of failed syncs into a confident number.
+    Both branches need it, in opposite directions: a stale count can only
+    UNDER-report (a report filed since the failure is missing, never invented), so
+    a positive one is still worth saying as *at least N*; a stale ZERO is a false
+    all-clear, which is the one thing a triage nudge must never emit.
     """
     result = cachequery.unstaged_items(
         codebase.root, scope=_backlog_store(state), now=datetime.now(timezone.utc)
     )
     if result.get("status") != "ok":
-        return None
-    # A store whose last sync FAILED still answers ok, carrying its rows and a
-    # warning. The count is taken anyway and deliberately: stale rows can only
-    # under-report — a report filed since the failure is missing, never invented —
-    # and "at least N are waiting" is the honest reading of a nudge. Silence would
-    # be the lie.
-    items = result.get("data", {}).get("items", [])
-    return sum(
+        return None, False
+    data = result.get("data", {})
+    stuck = bool(data.get("sync_error"))
+    items = data.get("items", [])
+    count = sum(
         1 for item in items if str(item.get("title") or "").startswith(upstream.TITLE_PREFIX)
+    )
+    return count, stuck
+
+
+# The advisory says a sync is failing; it never says WHAT the failure was. The
+# reviewer's fix proposed carrying `sync_error` into the trigger summary, and the
+# text is free to vary (only `evidence` is hashed into the id, D14) — but that
+# string is a provider message relayed through `gh`, and advisory text is rendered
+# into the model's context at session start. The probe's whole posture is that no
+# provider-authored bytes cross that line; widening it for an error message would
+# trade the guarantee for a detail the operator gets by running the sync.
+#
+# EVIDENCE is shared between the two stalled shapes and the owner-facing COPY is
+# not, which looks inconsistent and is the point. Evidence is what the advisory id
+# hashes (D14), so one constant is what makes "your feed stopped" a single thing to
+# dismiss whether or not it currently has rows behind it. Copy is duplicated below
+# because `tests/test_advisory_actionability.py` reads advisory text statically at
+# each construction site and skips what it cannot read — hoisting the strings put
+# them out of the lint's reach, which is the evasion that test exists to make
+# impossible rather than merely unlikely.
+_SYNC_STUCK_EVIDENCE = (
+    "the local copy of this tracker has stopped refreshing — its last sync failed, "
+    "so any report filed since then is not counted below"
+)
+
+
+def _degraded_candidate() -> AdvisoryCandidate:
+    """The cache could not be read at all — no rows, no age, no count."""
+    return AdvisoryCandidate(
+        type="untriaged-upstream-reports",
+        evidence=(
+            "bug reports filed by downstream products cannot be counted — "
+            "the local backlog copy could not be read",
+        ),
+        trigger_summary=(
+            "reports filed by downstream products may be waiting, unread — the "
+            "local copy of this tracker could not be read, so this is unknown "
+            "rather than none"
+        ),
+        owner_action=(
+            "Nothing to approve — this is a heads-up that the usual count is "
+            "missing, not a claim that reports are piling up. Say go and the "
+            "local copy is refreshed and the reports read straight from the "
+            "tracker."
+        ),
+        recommended_action="/prawduct:backlog",
+        priority="info",
     )
 
 
 def probe_untriaged_upstream_reports(state: ProjectState, codebase: Codebase):
-    """Fire when ≥1 filed report is waiting, or when the count cannot be read.
+    """Fire when ≥1 filed report is waiting, or when the count cannot be trusted.
 
-    Inert everywhere but the upstream target. There, two shapes: a count, or a
-    statement that the count is unknown — *advice fails soft* is not *advice fails
-    silent*, and a triage nudge that vanishes when its data source breaks reads
-    exactly like a nudge that found nothing to say.
+    Inert everywhere but the upstream target. There, three shapes — a count, a
+    stalled feed, or a cache that could not be read at all — and the second is the
+    one that has to exist for the first to mean anything. *Advice fails soft* is
+    not *advice fails silent*, and a nudge that goes quiet because its data source
+    stopped reads exactly like a nudge that found nothing to say.
     """
     if not _is_the_upstream_target(state):
         return []
-    count = _untriaged_report_count(state, codebase)
+    count, stuck = _intake_reading(state, codebase)
     if count is None:
+        return [_degraded_candidate()]
+    # prawduct:allow prawduct/duplication -- advisory copy must be literal at each
+    # construction site or the actionability lint cannot read it (see above)
+    if count == 0:
+        if not stuck:
+            return []
+        # A stale zero is the false all-clear this probe exists to avoid. Distinct
+        # evidence from the unreadable case on purpose: the two are different
+        # states and the operator does different things about them, and evidence
+        # is what keys the advisory id.
         return [
             AdvisoryCandidate(
                 type="untriaged-upstream-reports",
-                evidence=(
-                    "bug reports filed by downstream products cannot be counted — "
-                    "the local backlog copy could not be read",
-                ),
+                evidence=(_SYNC_STUCK_EVIDENCE,),
                 trigger_summary=(
-                    "reports filed by downstream products may be waiting, unread — the "
-                    "local copy of this tracker could not be read, so this is unknown "
-                    "rather than none"
+                    "reports filed by downstream products may be waiting, unread — "
+                    "the local copy of this tracker stopped refreshing, so a count "
+                    "of none is not evidence that none arrived"
                 ),
                 owner_action=(
-                    "Nothing to approve — this is a heads-up that the usual count is "
-                    "missing, not a claim that reports are piling up. Say go and the "
-                    "local copy is refreshed and the reports read straight from the "
-                    "tracker."
+                    "Nothing to approve. The count you are being shown is not "
+                    "current and may be low; say go and the local copy is "
+                    "refreshed, which is also what surfaces why it stopped."
                 ),
                 recommended_action="/prawduct:backlog",
                 priority="info",
             )
         ]
-    if count == 0:
-        return []
+    if stuck:
+        return [
+            AdvisoryCandidate(
+                type="untriaged-upstream-reports",
+                evidence=(_SYNC_STUCK_EVIDENCE,),
+                trigger_summary=(
+                    f"at least {count} bug report(s) filed by downstream products are "
+                    "waiting to be read — at least, because the local copy of this "
+                    "tracker stopped refreshing and anything filed since is uncounted"
+                ),
+                owner_action=(
+                    "Nothing to approve. The count you are being shown is not "
+                    "current and may be low; say go and the local copy is "
+                    "refreshed, which is also what surfaces why it stopped."
+                ),
+                recommended_action="/prawduct:backlog",
+                priority="info",
+            )
+        ]
     return [
         AdvisoryCandidate(
             type="untriaged-upstream-reports",

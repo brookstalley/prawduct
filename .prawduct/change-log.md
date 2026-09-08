@@ -62,6 +62,43 @@ enumeration, not extending it. Its sibling test loses its carve-out in the same 
 allow the skill to *mention* the drop-box because untriaged reports were still sitting in one, and
 with the channel retired the ban is total.
 
+**The cumulative review (`rev-20260908T220843Z-9c210bc4`, Waves B + C over `40b772b2...b23a0ef6`)
+returned 0 blocking, and its sharpest warning was about Chunk 01's code rather than this chunk's.**
+`unstaged_items` answers `ok` for a store whose last sync FAILED — it carries the rows plus a
+`sync_error` — so *readable* and *current* are different questions and the probe was asking only the
+first. With rows behind a stalled feed it printed a bare count as if current; with none it went
+silent, which is the false all-clear a triage nudge cannot emit and the exact shape the paragraph
+above claims to have avoided. The reading is now two axes, and each branch uses the second in the
+opposite direction: a stale count is stated as a **floor** (stale rows can only under-report), and a
+stale **zero** gets its own candidate with its own evidence, so dismissing "the cache is unreadable"
+does not also dismiss "the cache is stale". Three states, three advisory ids.
+
+**One departure from the reviewer's own recommendation, taken deliberately.** It proposed carrying
+`sync_error` into the trigger summary, correctly noting the text is free to vary. But that string is
+a provider message relayed through `gh`, and advisory copy is rendered into the model's context at
+session start — the one class of bytes this probe's whole posture keeps off that path. The advisory
+says a sync is failing and never says what the provider said; the operator gets that by running the
+sync, which is what the advisory tells them to do. A test sweeps every emitted field for a marker
+seeded in the error.
+
+**And the fix tripped a guard that exists for exactly this.** Hoisting the shared copy into module
+constants put it out of reach of `test_advisory_actionability.py`, which reads advisory text
+statically at each construction site and skips what it cannot read — the evasion that test was
+written to make impossible rather than merely unlikely. The copy is inlined and duplicated on
+purpose, waived and explained; the evidence string stays shared, because that is what makes the two
+stalled shapes one thing to dismiss.
+
+The other findings were cheap and all fixed: the drop-box sweep's instruction class is now derived by
+**exclusion** from the code roots rather than enumerated (a shipped `agents/` prompt was already
+outside the list, and a self-check over a list cannot see what the list omits); the framework
+injected-footprint ceiling is ratcheted with the cut that moved its reading, and the
+ceiling-is-reading-plus-one invariant is now **asserted** rather than remembered, since the assertion
+that already existed watches growth above a ceiling and cannot see one left too high after a trim;
+and the cross-cutting-concerns row for untrusted provider content names its fourth consumer, whose
+treatment is a different shape from the three prose ones — count-only emission pinned by a
+negative-content assertion, not a prose restatement — with the row's "what if a fourth surface
+appears" gap restated as observed rather than anticipated.
+
 ## 2026-09-08: the intake nudge counts issues, and knows the difference between none and unknown
 
 <!-- prawduct: type=feat | scope=upstream-intake-repoint -->

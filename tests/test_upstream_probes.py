@@ -134,6 +134,30 @@ def _rebuild(fake, repo_dir, *, owner: str = OWNER, repo: str = REPO):
     return result
 
 
+def _stall_the_sync(repo_dir, *, scope: str = upstream.PINNED_TARGET, failure: str) -> None:
+    """Stamp a FAILED sync attempt on the store's existing cursor row.
+
+    Through ``cache.record_sync_attempt`` — the same writer the real sync path
+    uses — rather than by poking sqlite, so the fixture cannot drift from the
+    state it is imitating. It is an UPDATE by contract, so a store must already
+    have been rebuilt for it to land; the assertion below is what makes a fixture
+    that silently wrote nothing fail here instead of passing an emptier test.
+    """
+    conn = cache.open_store(repo_dir, create=False)
+    assert not isinstance(conn, dict), conn
+    try:
+        cache.record_sync_attempt(
+            conn, scope, attempted_at="2026-09-08T13:00:00Z", failure=failure
+        )
+        conn.commit()
+        assert cache.sync_health(conn, scope)[1] == failure, (
+            "the fixture did not actually stall the sync — every assertion that "
+            "depends on it would be vacuous"
+        )
+    finally:
+        conn.close()
+
+
 def _run(repo_dir):
     """The probe as the runtime calls it — state parsed from the repo's own file.
 
@@ -210,10 +234,11 @@ class TestItIsSilentAwayFromTheTarget:
 
         assert up._is_the_upstream_target(load_project_state(repo_dir)) is False
         assert _run(repo_dir) == []
-        assert up._untriaged_report_count(
+        assert up._intake_reading(
             load_project_state(repo_dir), Codebase(root=repo_dir)
-        ) == 1, (
-            "control: the cache the probe declined to read does hold a report"
+        ) == (1, False), (
+            "control: the cache the probe declined to read does hold a report, "
+            "and is current — so the silence is the identity check and nothing else"
         )
 
     def test_a_repo_with_no_backlog_store_is_inapplicable(self, fake, tmp_path):
@@ -291,6 +316,120 @@ class TestTheGateAndTheQuerySelectOneStore:
         assert len(out) == 1 and out[0].trigger_summary.startswith("1 ")
 
 
+class TestAStalledSyncIsNeverAnAllClear:
+    """A store whose last sync FAILED still answers ``ok``, so *readable* and
+    *current* are different questions — and the probe used to ask only the first.
+
+    That is the failure this repointed probe exists to announce arriving on the
+    healthy path: an expired ``gh`` credential or a week of failed warms leaves
+    filed reports unread while the briefing says nothing, or says a number as if
+    it were current. *Advice fails soft* is not *advice fails silent*.
+    """
+
+    PROVIDER_ERROR = "HTTP 401: Bad credentials (https://api.github.com/graphql)"
+
+    def test_a_stalled_sync_with_nothing_in_the_set_still_speaks(self, fake, tmp_path):
+        """The finding itself, and the case the old code got wrong.
+
+        A stale ZERO is a false all-clear: nothing filed *before* the failure, and
+        nothing counted since. Contrasted against the healthy-and-empty control in
+        the same test, so the candidate is attributable to the stall rather than to
+        the probe having become chatty.
+        """
+        repo_dir = _repo(tmp_path)
+        _own_item(fake, title="backlog: an item nobody has staged yet", area="backlog")
+        _rebuild(fake, repo_dir)
+        assert _run(repo_dir) == [], "control: healthy and empty is silent, and must stay so"
+
+        _stall_the_sync(repo_dir, failure=self.PROVIDER_ERROR)
+
+        out = _run(repo_dir)
+
+        assert len(out) == 1
+        assert _run(repo_dir)[0].evidence != ()
+        assert "not evidence that none arrived" in out[0].trigger_summary
+
+    def test_a_stalled_sync_reports_its_count_as_a_floor(self, fake, tmp_path):
+        """Stale rows can only UNDER-report — a report filed since the failure is
+        missing, never invented — so the count is still worth saying, as *at
+        least*. Silence here would be the lie; a bare number would be the other."""
+        repo_dir = _repo(tmp_path)
+        _filed_report(fake, component="pr", symptom="merge falls back to squash")
+        _rebuild(fake, repo_dir)
+        assert _run(repo_dir)[0].trigger_summary.startswith("1 "), "control: bare while healthy"
+
+        _stall_the_sync(repo_dir, failure=self.PROVIDER_ERROR)
+
+        out = _run(repo_dir)
+
+        assert len(out) == 1
+        assert out[0].trigger_summary.startswith("at least 1 ")
+
+    def test_the_reading_separates_readable_from_current(self, fake, tmp_path):
+        """The two axes at the seam, so a caller that collapses them fails here
+        rather than in whichever branch happens to be exercised."""
+        repo_dir = _repo(tmp_path)
+        _filed_report(fake, component="doctor", symptom="repair skips a gate")
+        _rebuild(fake, repo_dir)
+        state, codebase = load_project_state(repo_dir), Codebase(root=repo_dir)
+
+        assert up._intake_reading(state, codebase) == (1, False)
+        _stall_the_sync(repo_dir, failure=self.PROVIDER_ERROR)
+        assert up._intake_reading(state, codebase) == (1, True)
+
+    def test_a_stall_is_a_third_id_not_a_rename_of_either_other(self, fake, tmp_path):
+        """Three states, three ids: dismissing "the cache is unreadable" must not
+        also dismiss "the cache is stale", and neither may dismiss the count.
+
+        Through ``compute_id`` rather than through the evidence tuples it hashes —
+        the id is what a dismissal is keyed on, and two distinguishable tuples that
+        collided in the digest would satisfy the weaker claim while breaking the
+        one that matters.
+        """
+        repo_dir = _repo(tmp_path)
+        _filed_report(fake, component="critic", symptom="consolidate reads a stale file")
+        _rebuild(fake, repo_dir)
+        counted = _run(repo_dir)[0]
+
+        _stall_the_sync(repo_dir, failure=self.PROVIDER_ERROR)
+        stalled = _run(repo_dir)[0]
+
+        store = cache.cache_path(repo_dir)
+        assert store is not None
+        store.unlink()
+        unreadable = _run(repo_dir)[0]
+
+        ids = {
+            compute_id(up.FEATURE, c.type, up.PROBE_VERSION, c.evidence)
+            for c in (counted, stalled, unreadable)
+        }
+        assert len(ids) == 3, "two of the three states share a dismissal key"
+
+    def test_no_provider_error_text_reaches_the_briefing(self, fake, tmp_path):
+        """The stall is reported; the provider's message is not.
+
+        Advisory text is rendered into the model's context at session start, and a
+        ``sync_error`` is a message relayed from GitHub through ``gh`` — the one
+        class of bytes this probe's whole posture keeps off that path. The operator
+        gets the error by running the sync, which is what the advisory says to do.
+        Every field is swept, not just the one a fix would naturally touch.
+        """
+        repo_dir = _repo(tmp_path)
+        marker = "MARKER-8fd21c-provider-said-this"
+        _rebuild(fake, repo_dir)
+        _stall_the_sync(repo_dir, failure=f"HTTP 502: {marker}")
+
+        out = _run(repo_dir)
+
+        assert len(out) == 1, "control: the stall fired, so the sweep below has a subject"
+        rendered = " ".join(
+            [out[0].type, *out[0].evidence, out[0].trigger_summary,
+             out[0].owner_action, out[0].recommended_action or ""]
+        )
+        assert marker not in rendered, rendered
+        assert "HTTP" not in rendered and "502" not in rendered
+
+
 class TestUnknownIsNotNone:
     def test_an_unreadable_cache_fires_and_names_the_consequence(self, fake, tmp_path):
         """Advice fails soft, not silent — a broken count must not read as zero."""
@@ -306,9 +445,9 @@ class TestUnknownIsNotNone:
         out = _run(repo_dir)
 
         assert len(out) == 1
-        assert up._untriaged_report_count(
+        assert up._intake_reading(
             load_project_state(repo_dir), Codebase(root=repo_dir)
-        ) is None
+        ) == (None, False)
         assert "unknown" in out[0].trigger_summary
         assert out[0].evidence != ()
 

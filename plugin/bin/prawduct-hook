@@ -6798,7 +6798,7 @@ _EPHEMERAL_SAFE_COMMANDS = frozenset({
     # members is the very session-start hook error they were restored to remove
     # (v3.3.3). `regen-views` and `stamp-merged` carried the same gap and the
     # same false claim since they were emptied; this is one classification, not
-    # four decisions. Pinned in tests/test_retired_hook_subcommands.py.
+    # a decision per member. Pinned in tests/test_retired_hook_subcommands.py.
     "build-index",
     "user-prompt-submit",
     "regen-views",

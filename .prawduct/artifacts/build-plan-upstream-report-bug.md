@@ -89,9 +89,12 @@ one reminder, both here because a handoff note is gitignored and this file is no
   issue-side triage is manual and the skill says so in as many words — a framework session that
   drains only the drop-box has drained the channel that no longer grows. The repoint's query shape
   is design §6, and it is only correct if VRF-018 confirms a non-collaborator cannot apply a label.
-- **The Wave C commit closes #194 (BKL-7Q4M) and #234.** #234 is the drop-box lockstep guard whose
+- **#194 (BKL-7Q4M) and #234 close with this branch.** #234 is the drop-box lockstep guard whose
   replacement went live here and whose retirement is Wave C's own work. Recorded as the accepted
-  disposition on `rev-20260907T223417Z-f6ec097a`.
+  disposition on `rev-20260907T223417Z-f6ec097a`. **Corrected 2026-09-08:** the close happens *at
+  the merge*, not in the Wave C commit — this repo is on the Issues backend, where `status --to
+  shipped` closes over the API the moment it runs and leaves an item wrongly closed if the PR is
+  reworked (#697). `/prawduct:pr`'s Merge Flow is what runs it.
 
 **One accepted observation is owed to the next commit that touches
 `tests/preferences/test_no_upstream_content_egress.py`**, and it is recorded here rather than only
@@ -100,7 +103,10 @@ in the gitignored handoff because a deferral nothing durable names is a drop:
 assertion message both still enumerate "`--title`/`--component`" after `--body` joined the class.
 **The fix is deleting the enumeration from both, not extending it** — a list in prose beside a list
 in code is what went stale. It gates nothing and was not worth a review round of its own; it costs
-nothing riding a commit that file is getting anyway.
+nothing riding a commit that file is getting anyway. **Discharged 2026-09-08 in Wave C Chunk 02**,
+which took that file deliberately rather than waiting for a commit it happened to get — the enumeration
+is gone from both, and the sibling `test_the_skill_names_no_drop_box_write_path` lost its
+mention-vs-write carve-out in the same pass, since the channel it carved out for is retired.
 
 **Chunk 01 complete, 2026-09-07.** The row ships in the template, so `init-product` writes
 it into every product it scaffolds, and `never-file` is reachable by editing a line. Review returned

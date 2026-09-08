@@ -27,7 +27,10 @@ One file, no code — MSR5 already rules out any change to `plugin/lib/backlog/`
 
 **Directly after the paragraph ending "Everything else in this runbook is unaffected by that
 gate." (the last sentence of Step 6's `incoming-bugs/` note) and before the `**7. Apply the
-confirmed dispositions...**` header.** This is the one point in the file where Step 6 has fully
+confirmed dispositions...**` header.** *(Anchor note, 2026-09-08: that paragraph was rewritten when
+the drop-box retired and no longer ends in those words — the insertion described here shipped, and
+6b/6c/6d sit where it says. Recorded rather than restated, because the decision is what this section
+is for.)* This is the one point in the file where Step 6 has fully
 finished (gate passed, key recorded, banner written, retirement caveats stated) and Step 7 has
 not yet started — matching the requirements doc's Decision 1 ("three new lettered sub-steps after
 Step 6") and the file's own `3b`/`3c` precedent for inserting without renumbering the surrounding

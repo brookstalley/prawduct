@@ -22,11 +22,21 @@ Two rules, and they are deliberately different shapes:
   archive destination exist for one purpose — routing a report to a directory —
   so any survivor is a live write path, wherever it sits.
 * **The directory name appears in no instruction surface.** Code may still name it
-  in a retirement notice addressed to a person; a skill, template, methodology
-  guide or shipped doc may not name it at all, because a model reads those to
-  decide what to do and a retired destination read as an available one is exactly
-  the failure. ``CLAUDE.md`` is swept with them: it is this repo's own
-  always-loaded instruction file.
+  in a retirement notice addressed to a person; anything a model reads to decide
+  what to do may not name it at all, because a retired destination read as an
+  available one is exactly the failure. That class is derived by EXCLUSION — every
+  shipped file outside the code roots — because it is a property, and an
+  enumeration of containers is a smaller thing that goes stale the moment a root
+  is added. ``CLAUDE.md`` is swept with them: it is this repo's own always-loaded
+  instruction file.
+
+**``documentation/`` is deliberately out of both sweeps.** It holds this repo's
+requirements, PRDs and designs, which are records of *what was asked for* — they
+name retired things by their job, and `backlog-service-requirements.md` carries
+this very retirement as a dated divergence beside the original ask. Sweeping them
+token-free would be rewriting the record, which the same principle that keeps a
+requirement uncorrected-in-place forbids. Nothing there is shipped, and nothing
+there tells a model where to put a report.
 
 An operator's local ``incoming-bugs/`` tree is untouched by any of this. It is
 gitignored, so anything still in it has no other copy; retiring the channel is not
@@ -60,8 +70,13 @@ WRITE_PATH_TOKENS = (
 #: anything a model reads as instruction.
 DROP_BOX_DIR = "incoming-bugs"
 
-#: Surfaces a model reads to decide what to do.
-INSTRUCTION_ROOTS = ("skills", "templates", "methodology", "docs")
+#: The shipped tree's CODE roots. The instruction corpus is everything else,
+#: derived by exclusion rather than listed — the rule is a property ("prose a
+#: model reads as instruction"), and a list of containers is a different, smaller
+#: thing that goes stale the moment a root is added. `agents/` was already outside
+#: an enumerated list on the day it was written, and a self-check over the list
+#: cannot see what the list omits.
+CODE_ROOTS = ("bin", "lib", "hooks")
 
 #: Text extensions worth reading. Binary and cache files are skipped rather than
 #: decoded — a sweep that raises on a `.pyc` is a sweep somebody disables.
@@ -80,11 +95,16 @@ def _shipped_files() -> list[Path]:
 
 
 def _instruction_files() -> list[Path]:
-    """Shipped prose a model reads as instruction, plus this repo's CLAUDE.md."""
+    """Shipped prose a model reads as instruction, plus this repo's CLAUDE.md.
+
+    Everything shipped that is not under a code root. A new root — another
+    `agents/` file, a `commands/`, whatever comes next — is covered the day it
+    lands, which a list of remembered containers cannot promise.
+    """
     out = [
         path
         for path in _shipped_files()
-        if path.relative_to(PLUGIN).parts[0] in INSTRUCTION_ROOTS
+        if path.relative_to(PLUGIN).parts[0] not in CODE_ROOTS
     ]
     out.append(REPO_ROOT / "CLAUDE.md")
     return out
@@ -116,16 +136,41 @@ class TestTheSweepActuallyReads:
     def test_the_shipped_corpus_is_substantial(self):
         assert len(_shipped_files()) > 50, "the shipped sweep found almost nothing to read"
 
-    def test_the_instruction_corpus_covers_every_root(self):
+    def test_every_shipped_root_is_classified_as_code_or_instruction(self):
+        """The exclusion's own guard. A code root that stopped matching anything
+        would silently pull its files into the instruction corpus (harmless
+        direction), but a shipped root that IS code and is not listed would be
+        swept as instruction and produce a false failure — so pin the partition
+        rather than either half.
+        """
+        shipped_roots = {path.relative_to(PLUGIN).parts[0] for path in _shipped_files()}
+        instruction_roots = {
+            path.relative_to(PLUGIN).parts[0]
+            for path in _instruction_files()
+            if path.is_relative_to(PLUGIN)
+        }
+        assert set(CODE_ROOTS) <= shipped_roots, (
+            f"a declared code root matches nothing shipped: "
+            f"{sorted(set(CODE_ROOTS) - shipped_roots)}"
+        )
+        assert instruction_roots == shipped_roots - set(CODE_ROOTS)
+        assert instruction_roots, "the instruction sweep reads nothing"
+
+    def test_the_corpus_reaches_roots_no_enumeration_would_have_listed(self):
+        """The finding this exclusion closes, pinned by its own instance.
+
+        `agents/` holds a shipped subagent prompt — instruction by any reading —
+        and it was outside the enumerated list this sweep was first written with.
+        Naming it here is not a return to enumeration: the assertion is that the
+        derived corpus contains a root nobody thought to list, which is exactly
+        what a list cannot assert about itself.
+        """
         roots = {
             path.relative_to(PLUGIN).parts[0]
             for path in _instruction_files()
             if path.is_relative_to(PLUGIN)
         }
-        assert roots == set(INSTRUCTION_ROOTS), (
-            f"the instruction sweep reads {sorted(roots)}, not {sorted(INSTRUCTION_ROOTS)} "
-            "— a root that matches nothing is a root nobody is checking"
-        )
+        assert {"skills", "templates", "methodology", "docs", "agents"} <= roots
 
     def test_claude_md_is_in_the_instruction_corpus_and_readable(self):
         claude = REPO_ROOT / "CLAUDE.md"
@@ -158,9 +203,9 @@ def test_no_shipped_file_names_drop_box_write_machinery(token: str):
 def test_no_instruction_surface_names_the_drop_box():
     """The prose half, and the one a green suite would otherwise hide.
 
-    A skill, template, methodology guide, shipped doc or `CLAUDE.md` line naming
-    the directory tells the next model a report can go there. Nothing writes it
-    and nothing counts it, so a report that lands there is lost. Code is exempt —
+    Any shipped line outside the code roots — or a `CLAUDE.md` line — naming the
+    directory tells the next model a report can go there. Nothing writes it and
+    nothing counts it, so a report that lands there is lost. Code is exempt:
     `prawduct-hook bug-inbox` names it to say the channel is over, which is a
     sentence addressed to a person, not a destination offered to a model.
     """

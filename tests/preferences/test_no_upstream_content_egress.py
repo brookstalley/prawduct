@@ -936,7 +936,7 @@ class TestTheDropBoxReplacementIsLive:
     itself, where "is the replacement live?" would be answered by the same person
     doing the retiring, from memory.
 
-    **Two claims, both mechanical.** Everything else this skill owes — that the
+    **What is pinned here is mechanical; the rest is not.** Everything else this skill owes — that the
     report carries no product content, that a human actually read the bytes,
     that a blocked filing captures nothing locally — is judgment about prose, and
     a grep for it would pass on any text containing the right words. Those are
@@ -1037,7 +1037,7 @@ class TestTheDropBoxReplacementIsLive:
         """Every composed field the skill shows must be read from a file.
 
         Inside double quotes bash still runs `` `…` `` and expands `$…`, and this
-        skill instructs both fields be written in prawduct's own backticked
+        skill instructs these fields be written in prawduct's own backticked
         vocabulary — so `` `prawduct-hook version` `` executes and a symptom
         naming `$CLAUDE_SKILL_DIR` expands to nothing. The result is composed,
         digested, approved and filed with the defect's own name deleted from it,
