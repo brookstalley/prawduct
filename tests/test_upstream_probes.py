@@ -346,7 +346,7 @@ class TestAStalledSyncIsNeverAnAllClear:
         out = _run(repo_dir)
 
         assert len(out) == 1
-        assert _run(repo_dir)[0].evidence != ()
+        assert out[0].evidence != ()
         assert "not evidence that none arrived" in out[0].trigger_summary
 
     def test_a_stalled_sync_reports_its_count_as_a_floor(self, fake, tmp_path):

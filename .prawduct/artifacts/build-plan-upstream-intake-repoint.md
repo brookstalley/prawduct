@@ -169,11 +169,13 @@ ceiling-is-reading-plus-one invariant now asserted** (R-3/R-5), the cross-cuttin
 fourth consumer named and its gap restated as observed (R-6), and two stale counts made relational
 (R-2/R-7). R-4 and R-9 accepted with reasons — both are notes the reviewer marked no-action.
 
-**One thing left standing, flagged rather than fixed:** record-lint reports a 404-character rule at
-`.prawduct/learnings.md:391`, over the 400 ceiling. It is one of roughly seventy in that file, and
-the standing session advisory asks for the whole file to be compacted into `learnings-detail.md`
-rather than for one rule to be trimmed. Fixing the one the lint happened to name would be motion, not
-the fix. It gates nothing.
+**One thing left standing, flagged rather than fixed:** record-lint names whichever
+`.prawduct/learnings.md` rules currently exceed the 400-character ceiling. Dozens do — run the lint
+for the live set rather than trusting a figure written here, which is the shape this chunk kept
+tripping over. The standing session advisory asks for the whole file to be compacted into
+`learnings-detail.md`, and trimming whichever entries the lint happens to name is motion, not that
+job. It gates nothing. (The two rules this chunk added went in compact, and the corollary it hung on
+the ratcheting rule had its narrative moved to the detail file for the same reason.)
 
 Context: Wave C of the BKL-7Q4M program (A = the adapter, shipped at `40b772b2`; B =
 `build-plan-upstream-report-bug.md`, complete and unmerged on this branch; C = this). The owner ruled

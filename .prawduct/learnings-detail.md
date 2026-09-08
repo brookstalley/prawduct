@@ -18,6 +18,33 @@ redirect.
 
 ---
 
+## Ratcheting the ceiling is part of a cut, not a follow-up
+
+Broken again on 2026-09-08 by an author who had re-read this rule the same session and recorded it
+approvingly in the previous chunk's reflection. The framework injected-footprint reading moved
+3218 → 3211 (a genuine cut, at duplication, with its reason written beside it) and
+`INJECTED_FOOTPRINT_CEILINGS["framework"]` stayed at 3219 — eight tokens collectable silently, on
+every framework session, against the rule the same file states two dicts above.
+
+**Why prose could not have prevented it.** The cut and the ratchet are two edits in two tables and
+only one of them is where the work is; the comment beside the ceiling already said, at length, that
+a cut which does not ratchet is a departure needing a reason. It has now failed for people who knew
+it, which is the signal that a rule has exhausted what prose can do.
+
+**What the existing pin structurally could not see.** `test_injected_footprint_under_ceiling`
+asserts `actual < ceiling`. It catches growth ABOVE a ceiling and is blind, by construction, to a
+ceiling left too HIGH after a trim — the direction that silently re-funds the growth the cut paid
+for. Adding a case to it would not help: the two failures live in different relations.
+
+**The remedy generalises past this table.** `test_each_ceiling_is_exactly_one_over_its_reading`
+asserts the relation BETWEEN the two dicts, so a cut recorded in one and not the other fails with a
+message naming the number to set. A declared raise still works — move the reading with its reason
+and the ceiling follows. Whenever a rule requires two records to move together, the assertion
+belongs between them, not inside either; an assertion inside one record can only ever check that
+record against itself.
+
+---
+
 ## A comment reasoning about a CONDITION binds every branch that condition reaches
 
 `upstream_probes.py`'s intake count read the backlog cache and split degraded from healthy on
