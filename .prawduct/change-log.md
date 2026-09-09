@@ -3,6 +3,64 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-09-09: `/prawduct:pr` Step 2 stops promising a saving it cannot always deliver
+
+<!-- prawduct: type=docs | scope=gate-accuracy -->
+
+Step 2 told the builder *"run the pass on the dirty tree, then commit it whole, and there is one
+round instead of two."* Followed literally, it cost the round it promised: `verify-resolutions`
+refused with exit 3, reported that it had graded committed HEAD rather than the working tree, and
+named the uncommitted judgeable file as NOT REVIEWED.
+
+**The guidance was not wrong — it was unconditional about a conditional mechanism.**
+`critic_mode._verify_resolutions_fires` anchors on an uncommitted tree only while the uncommitted
+diff is a **subset of the prior review's file set**, and `critic_consolidate.begin_review`'s verify
+arm enforces the same `diff ⊆ scope` contract on the dispatch side. A fix touching a file the prior
+review never saw fails that check — which is the ordinary shape of a fix for a PR-reviewer finding,
+since the reviewer reads the whole branch and its findings land wherever they land. There the order
+inverts: commit first, then run the pass over the delta that appears.
+
+The sentence now carries its precondition and its else-branch. Nothing in the mechanism changed; it
+already behaved correctly and announced itself, and the refusal text is what a reader following the
+old sentence eventually hit. Cited by symbol rather than by line, because this repo has paid three
+times for durable prose riding a position that renumbers.
+
+## 2026-09-09: the freshness gate stops calling instruction prose untestable
+
+<!-- prawduct: type=fix | scope=gate-accuracy -->
+
+`affects_test_outcome` answers *can a change to this path change what the suite says*, and it
+answered **no** for every non-governance-protected `.md`. That is false here and false in general:
+`TestClosingKeywordClaims` sweeps `documentation/`, `test_no_governance_prose_cites_a_flow_step_by_NUMBER`
+sweeps governance prose, and both predate by two weeks the design doc that merged failing them.
+
+**The consequence was not theoretical.** Two `documentation/issues/*.md` files reached `develop` red;
+`_test_evidence_tree_valid` classified them as *only non-judgeable paths changed*; `test-status`
+reported day-old evidence as `current` over a tree whose suite was red; and the next branch to sync
+the base inherited it. The repo already held the correct reasoning one file over — the CI workflow
+refuses path filters in as many words, *"a docs-and-state change really can turn the suite red. A
+filter that calls those paths untestable would hide exactly that class of break."* This predicate was
+that filter.
+
+**Scoped to the instruction roots (`plugin/`, `documentation/`), not to every `.md`** — the bound
+`instruction_surfaces()` already draws, for the reason it states. The blanket read was the first
+design and it silently overturns two priced decisions: the residual named under `TEST_COUPLED_STATE`
+(bookkeeping held out **on cost**, whose sound close is hermetic tests, not a wider set) and the
+`README.md` / `docs/notes.md` line their tests pin. All three pins stay green unedited.
+
+**Review coverage did not widen, and that separation is the point.** `is_judgeable_path` is
+untouched, so the batch-fix directive's promise that `.prawduct/` and doc writes are free mid-review
+stays true. Only the suite question moved.
+
+**Residual, named rather than closed:** `_governance_prose()` sweeps every tracked non-record `.md`,
+which is wider still — `README.md`, `docs/*.md` and a live build plan can flip the suite while this
+predicate calls them free. Closing that means overturning the priced exclusions above, which is an
+owner cost decision, not a defect to fix in passing.
+
+**Also true, and not fixable in code:** the two red commits were pushed **directly to `develop`**,
+so no `/prawduct:pr` gate was ever reached and CI's failure on both pushes was read by nobody.
+`develop` has no branch protection; 5 of the last 50 runs on it failed. That is a repo setting.
+
 ## 2026-09-09: the scratch path a reader holds, and the fix that read as working code
 
 <!-- prawduct: type=fix | scope=upstream-report-bug -->
