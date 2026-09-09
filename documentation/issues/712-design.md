@@ -24,7 +24,8 @@ Re-verified against the current tree (2026-09-08):
 - **Nothing implements the sweep today.** Janitor Step 2.5 runs exactly 7 numbered checks
   (`plugin/skills/janitor/SKILL.md:225-238`); none is GV3. Check 5 ("neglected hygiene") is a
   different, still-dormant concept blocked on the `promoted` GH-Issues gap (#529), not this one.
-- **`/prawduct:pr` already names #712 as its own missing backstop.** Merge Flow step 5's closing call
+- **`/prawduct:pr` already names #712 as its own missing backstop.** Merge Flow's "Close the backlog
+  items this PR resolves" step
   (`plugin/skills/pr/SKILL.md:165`) and its "Honest limit" note (`:167`) point here by number: "If you
   merge through the GitHub UI, or the session ends at the merge, nothing downstream notices the close
   never fired… tracked as #712."
@@ -79,7 +80,8 @@ Re-verified against the current tree (2026-09-08):
 bodies.** A merged pull request's `closingIssuesReferences` field lists exactly the issues GitHub's
 own "Closes #N"/"Fixes #N"/"Resolves #N" parser recognized on that PR — populated the moment the
 keyword is parsed, independent of whether the PR's base branch made the auto-close fire (auto-close
-is base-branch-gated per GitHub's docs; keyword *recognition* is not). This is the "native PR↔issue
+fires only for merges into the repository's **default** branch, per GitHub's docs; keyword
+*recognition* is not gated that way). This is the "native PR↔issue
 link" #712's body asks to prefer: prawduct never inspects PR text itself, it reads the field GitHub's
 parser already populated, which is exactly the BLD-4K7P-avoiding property the issue names as a
 requirement, not a nicety.
@@ -255,7 +257,7 @@ identical to how check 5's `## Promoted` surfacing already works today (`SKILL.m
   common in practice; not assumed here.
 - Reviving check 5's `promoted` semantics (#529) — unrelated gap, unchanged.
 - Any change to how `/prawduct:pr` performs the close itself — this sweep is the backstop GV3 named,
-  not a replacement for Merge Flow step 5.
+  not a replacement for Merge Flow's "Close the backlog items this PR resolves" step.
 - An incremental cursor for `list_merged_pull_requests` (mirroring `sync.py`'s watermark pattern,
   `sync.py:399-465`) would cut the PR-side scan to "since last sweep" rather than a fixed lookback
   window — a real cost optimization, deliberately deferred to the build chunk rather than decided here,
