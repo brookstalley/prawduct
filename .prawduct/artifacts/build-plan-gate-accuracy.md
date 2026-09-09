@@ -27,7 +27,7 @@ last_validated: 2026-09-09
 **Level:** High
 
 **Why:** Both defects were reproduced in this session against the live repo rather than reasoned
-about: the red base was inherited and diagnosed to two named tests that predate it by two weeks, and
+about: the red base was inherited and diagnosed to two named tests that predate it by two weeks,
 and the verify-resolutions refusal was read from the dispatcher's own printed block. **Chunk 02's
 first draft then over-read that**, inferring a subset mechanism from a code comment; the Critic
 caught it and the chunk now claims only what the dispatcher observably does. Confidence is High for
@@ -90,6 +90,7 @@ is the declared suite; record through `prawduct-hook test-evidence record`.
   - **Why not blanket `.md`.** Three existing pins record the wider exclusions as DELIBERATE:
     `test_the_held_out_bookkeeping_files_are_recorded_as_a_residual` holds `.prawduct/change-log.md`,
     `learnings.md`, `backlog.md` and a live build plan out **on cost**, saying so in its docstring,
+    <!-- prawduct:allow prawduct/chunk-ref-missing -- a fixture path asserted inside that pin, quoted to name the exclusion this scope does not touch; a string in a test, not a file this repo carries -->
     and `test_ordinary_metadata_is_still_free_of_both` holds `README.md` and `docs/notes.md` out.
     Flipping those is an owner cost decision someone already made, not a defect to fix in passing —
     so the scope is chosen for **all three pins to stay green unedited.**
@@ -104,6 +105,7 @@ is the declared suite; record through `prawduct-hook test-evidence record`.
     `instruction_surfaces()` scans in `tests/test_pr_evidence_contract.py`, whose docstring says why
     `documentation/` belongs: it *"carries runbooks and requirements that instruct exactly as
     plugin/ does."* **Not identical to that sweep, and the difference is deliberate:** it also skips
+    <!-- prawduct:allow prawduct/chunk-ref-missing -- names a path COMPONENT that instruction_surfaces() skips, not a directory; none exists under the instruction roots and none is created -->
     record filenames and any `archive/` component, which a prefix test does not. Both skips would
     only ever move a verdict toward `stale`, which is the safe direction for an authority, so they
     buy nothing here and are not reimplemented — one predicate stays one predicate.
