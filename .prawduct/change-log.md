@@ -12,18 +12,22 @@ round instead of two."* Followed literally, it cost the round it promised: `veri
 refused with exit 3, reported that it had graded committed HEAD rather than the working tree, and
 named the uncommitted judgeable file as NOT REVIEWED.
 
-**The guidance was not wrong — it was unconditional about a conditional mechanism.**
-`critic_mode._verify_resolutions_fires` anchors on an uncommitted tree only while the uncommitted
-diff is a **subset of the prior review's file set**, and `critic_consolidate.begin_review`'s verify
-arm enforces the same `diff ⊆ scope` contract on the dispatch side. A fix touching a file the prior
-review never saw fails that check — which is the ordinary shape of a fix for a PR-reviewer finding,
-since the reviewer reads the whole branch and its findings land wherever they land. There the order
-inverts: commit first, then run the pass over the delta that appears.
+**The guidance was not wrong — it was unconditional about a conditional outcome.** The pass may
+instead anchor on a prior review and grade committed HEAD, in which case it refuses and names the
+uncommitted judgeable files. There the order inverts: commit first, then run the pass over the delta
+that appears — which is what the refusal itself says.
 
-The sentence now carries its precondition and its else-branch. Nothing in the mechanism changed; it
-already behaved correctly and announced itself, and the refusal text is what a reader following the
-old sentence eventually hit. Cited by symbol rather than by line, because this repo has paid three
-times for durable prose riding a position that renumbers.
+**The first attempt at this entry named a mechanism that does not exist**, and it is recorded here
+because the retraction is the lesson. That draft claimed a `diff ⊆ scope` contract enforced in
+`begin_review`'s verify arm and cited a symbol that is not defined; the arm's only refusal is
+cardinality, which one unseen file never trips. It was written from a code comment rather than from
+the handler. The shipped sentence therefore cites **no internal rule at all** — only what the
+dispatcher observably does — which is the honest scope of what was verified, and it tells the reader
+not to predict which case they are in, because dispatch is seconds and its own answer is
+authoritative.
+
+Nothing in the mechanism changed; it already behaved correctly and announced itself. Only the
+instruction was incomplete.
 
 ## 2026-09-09: the freshness gate stops calling instruction prose untestable
 

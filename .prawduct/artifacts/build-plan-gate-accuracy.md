@@ -46,7 +46,7 @@ abandoned design is the one a reader reaches for first.
 ## Status
 
 - [x] Chunk 01: `affects_test_outcome` stops calling docs untestable
-- [x] Chunk 02: `/prawduct:pr` Step 2's dirty-tree rule states its precondition
+- [x] Chunk 02: `/prawduct:pr` Step 2's dirty-tree rule states its else-branch
 Context: Plan written 2026-09-09, immediately after PR #769 merged. Both chunks come from that PR's
 own reflection, and the first one's diagnosis was WRONG on the first pass — the session reflection
 blamed the doc-only fast-path (`check-pr-doc-only`), and the actual cause is one predicate over, in
@@ -155,7 +155,7 @@ is the declared suite; record through `prawduct-hook test-evidence record`.
 - **Done when:** tests pass, acceptance criteria verified, `/prawduct:critic` run and blocking
   findings resolved, Status ticked.
 
-### Chunk 02: `/prawduct:pr` Step 2's dirty-tree rule states its precondition
+### Chunk 02: `/prawduct:pr` Step 2's dirty-tree rule states its else-branch
 
 - **Description:** Step 2 tells the builder *"Run the pass on the dirty tree, then commit it whole,
   and there is one round instead of two."* Followed literally in this session, it cost the round it
