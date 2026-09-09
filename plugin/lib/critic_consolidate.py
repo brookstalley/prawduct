@@ -1663,13 +1663,36 @@ def _dirty_anchor_note(mode_label: str, excluded: "list[str] | None") -> str:
     )
 
 
-def _round_budget_verdict(project_dir: Path, prawduct_dir: Path) -> dict:
-    """Has this branch's work already spent its full-round budget?
+def _round_budget_verdict(
+    project_dir: Path, prawduct_dir: Path, scope: "str | None"
+) -> dict:
+    """Has this body of work already spent its full-round budget?
 
     Returns ``{"status": "within", "spent", "budget", "review_ids"}``,
     ``{"status": "exhausted", "spent", "budget", "review_ids"}``,
     ``{"status": "disabled"}`` when the repo set the budget to ``null``, or
     ``{"status": "unavailable", "reason"}``.
+
+    **The unit is the SCOPE, not the branch, and the two are not the same
+    question.** The declared ceiling bounds one body of work, and a branch is
+    only sometimes that: it may carry two scopes, in which case one charges the
+    other, and on a trunk-based repo (which ``base_branch:`` supports) the
+    ``merge_base..HEAD`` span is zeroed by every push, so a default-ON stopping
+    rule could never fire — silently, which is the worst way for a control to be
+    absent. Every review fact already records its scope, so the store answers
+    the declared question directly and no new counter is added.
+
+    Lineage still bounds it: the count is the intersection of *this scope's*
+    facts with the rounds ``coverage.count_branch_rounds`` attributes to this
+    branch. Scope alone would sweep in a sibling worktree's rounds on the same
+    plan, and the store is shared by every worktree of the clone.
+
+    **An unresolved scope is UNAVAILABLE, never a fallback to the branch.**
+    Without a scope there is no body of work to bound, and answering a different
+    question than the one declared is how a control becomes a thing nobody can
+    predict. It also keeps sweep and census over one set — the refusal renders
+    the scope's census, so a scope that does not resolve has nothing to render
+    and must not be sweeping either.
 
     **Unavailable never refuses.** A stopping rule whose count cannot be derived
     must fail toward selling the round: the cost of a round that need not have
@@ -1677,17 +1700,18 @@ def _round_budget_verdict(project_dir: Path, prawduct_dir: Path) -> dict:
     work with no command that clears it. That is the opposite direction from the
     coverage gate beside it, and deliberately so — this control ends a loop, it
     does not vouch for a tree.
-
-    The count comes from ``coverage.count_branch_rounds``, which derives it from
-    the branch's own facts rather than a stored counter, so this adds no
-    persisted state: the budget is a policy over a number the store already
-    answers.
     """
     from . import core  # noqa: PLC0415 — lazy, matching this module's other lib imports
 
     budget = core.review_round_budget(prawduct_dir)
     if budget is None:
         return {"status": "disabled"}
+    if not scope:
+        return {
+            "status": "unavailable",
+            "reason": "this dispatch resolved no build-plan scope, and the "
+            "budget bounds one body of work rather than one branch",
+        }
 
     from . import coverage  # noqa: PLC0415 — lazy; coverage pulls git helpers
 
@@ -1697,32 +1721,31 @@ def _round_budget_verdict(project_dir: Path, prawduct_dir: Path) -> dict:
     store = evidence.read_facts(project_dir)
     if store["status"] == "error":
         return {"status": "unavailable", "reason": store["reason"]}
-    tally = coverage.count_branch_rounds(
-        project_dir, store.get("facts") or [], resolved["merge_base"]
-    )
+    facts = store.get("facts") or []
+    tally = coverage.count_branch_rounds(project_dir, facts, resolved["merge_base"])
     if tally.get("status") != "counted":
         return {"status": "unavailable", "reason": tally.get("reason", "unknown")}
 
-    full = [
-        r
-        for r in tally.get("reviews") or []
-        if mode_token_of(r.get("mode")) in FULL_ROUND_MODES
-    ]
-    spent = len(full)
+    scope_of = {
+        f.get("id"): (f.get("body") or {}).get("scope")
+        for f in facts
+        if f.get("kind") == "review"
+    }
+    in_scope = [r for r in tally.get("reviews") or [] if scope_of.get(r.get("id")) == scope]
+    spent = sum(1 for r in in_scope if mode_token_of(r.get("mode")) in FULL_ROUND_MODES)
     return {
         "status": "exhausted" if spent >= budget else "within",
         "spent": spent,
         "budget": budget,
-        # Every attributed round, not just the full ones: the findings a
-        # verify pass raised are as open as any other, and exhaustion has to
-        # answer all of them or the census it renders is not a census.
-        "review_ids": [r["id"] for r in tally.get("reviews") or [] if r.get("id")],
+        # Every round in scope, not just the full ones: the findings a verify
+        # pass raised are as open as any other, and exhaustion has to answer all
+        # of them or the census it renders is not a census.
+        "review_ids": [r["id"] for r in in_scope if r.get("id")],
     }
 
 
 def _refuse_over_budget(
     project_dir: Path,
-    prawduct_dir: Path,
     budget: dict,
     mode_token: str,
     scope: "str | None",
@@ -1754,13 +1777,16 @@ def _refuse_over_budget(
         f"review round(s) against a budget of {budget['budget']}"
     )
     swept = dispositions.auto_accept(project_dir, budget["review_ids"], reason=reason)
+    # Rendered over the SWEPT ids, not over the scope: those are the findings
+    # this refusal just answered, and the census is the answer's only trace
+    # outside the store. Selecting differently from the sweep is how a builder
+    # gets told to "re-disposition any of them" with no list of which.
     census = ""
-    if scope:
-        store = evidence.read_facts(project_dir)
-        if store["status"] != "error":
-            report = dispositions.census(store, scope=scope)
-            if report["status"] == "ok":
-                census = dispositions.render_markdown(report)
+    store = evidence.read_facts(project_dir)
+    if store["status"] != "error":
+        report = dispositions.census(store, review_ids=budget["review_ids"])
+        if report["status"] == "ok":
+            census = dispositions.render_markdown(report)
 
     recorded = evidence.append_guard_refusal(
         project_dir,
@@ -1969,31 +1995,6 @@ def begin_review(
             buildplan_refs.resolve_reviewed_plan(project_dir, prawduct_dir, scope).path,
         )
     )
-    # ROUND BUDGET — the terminating rule, checked before anything is written.
-    # Yield does not decay (13.5 → 15.4 → 15.5 → 18.4 findings per full round
-    # across this clone's store, 99% of them new), so a review loop has no
-    # natural fixed point and every "one more round" reads locally reasonable.
-    # A declared ceiling is the only principled stop: arbitrary-but-visible
-    # beats arbitrary-but-hidden.
-    #
-    # Only full rounds are counted AND only a full round is refused. A
-    # `verify-resolutions` pass is how a BLOCKING finding clears, so refusing
-    # one at exhaustion would strand it with no command that resolves it —
-    # the same deadlock the free-interval guard's second conjunct avoids.
-    if mode_token in FULL_ROUND_MODES and not force:
-        budget = _round_budget_verdict(project_dir, prawduct_dir)
-        if budget["status"] == "unavailable":
-            notes.append(
-                "the review round budget could not be derived "
-                f"({budget['reason']}) — this round was NOT counted against it, "
-                "so read the budget as not in force for this dispatch"
-            )
-        elif budget["status"] == "exhausted":
-            return _refuse_over_budget(
-                project_dir, prawduct_dir, budget, mode_token, scope, chunk,
-                dispatch_commit, notes,
-            )
-
     base_reviewed = None
     files_reviewed: list[str] | None = None
     prior_oracle: list[str] = []
@@ -2157,13 +2158,20 @@ def begin_review(
         # enough to skip: it is the fact's subject set, which since the
         # eligibility classifier admits deliverables and behaviour-governing
         # prose that this cost-based threshold must not count. Dropping either
-        # call inflates `prior_subject` and LOOSENS the widening bound, which
+        # call inflates `prior_priced` and LOOSENS the widening bound, which
         # fails open — a re-review that should have fallen back to a full one
-        # proceeds as a partial. Pinned by
-        # `TestWideningBoundCountsTheCostSubset`.
-        delta_subject = _ca.judgeable_files(delta)
-        prior_subject = _ca.judgeable_files(prior_files)
-        if _scope_widened(len(delta_subject), len(prior_subject)):
+        # proceeds as a partial.
+        #
+        # Named `_priced`, not `_subject`, because that is the question these two
+        # numbers answer and the old names said the opposite one — which is how a
+        # reader concludes the prior-side call is a no-op and deletes it.
+        # `TestWideningBoundCountsTheCostSubset` pins the arithmetic;
+        # `TestWideningBoundReachesTheDispatch` enters at THIS door, because a
+        # unit test over hand-built lists stays green against a call site that
+        # stopped making the call.
+        delta_priced = _ca.judgeable_files(delta)
+        prior_priced = _ca.judgeable_files(prior_files)
+        if _scope_widened(len(delta_priced), len(prior_priced)):
             fallback, why = _widened_fallback_mode(
                 project_dir, capture["head_tree"], committed_differs
             )
@@ -2175,9 +2183,9 @@ def begin_review(
                 # reason and nothing else, so there is no block to say it twice.
                 "notes": notes + ([dirty_note] if dirty_note else []),
                 "reason": (
-                    f"scope-widened: {len(delta_subject)} findings-eligible "
+                    f"scope-widened: {len(delta_priced)} coverage-priced "
                     f"file(s) changed since the prior review of "
-                    f"{len(prior_subject)} — a partial re-review would mislead. "
+                    f"{len(prior_priced)} — a partial re-review would mislead. "
                     f"Re-dispatch as `{fallback}`: {why}."
                 ),
             }
@@ -2215,6 +2223,18 @@ def begin_review(
                     "dispatch_commit": dispatch_commit,
                 },
             )
+            if recorded.get("status") != "appended":
+                # SOFT but never silent, the posture every guard in this class
+                # shares: the refusal is correct whether or not the record
+                # lands, and a firing that vanishes leaves the yield question
+                # looking answered at zero.
+                print(
+                    "critic-begin: the refusal is correct but was NOT recorded "
+                    f"({recorded.get('reason', 'unknown')}) — this firing is "
+                    "missing from `prawduct-hook evidence list --kind "
+                    "guard-refusal`, so read that query as a lower bound.",
+                    file=sys.stderr,
+                )
             return {
                 "status": "no-review-needed",
                 "reason": (
@@ -2359,6 +2379,40 @@ def begin_review(
             "notes": notes,
             "recorded": recorded.get("status") == "appended",
         }
+
+    # ROUND BUDGET — the terminating rule. Yield does not decay (13.5 → 15.4 →
+    # 15.5 → 18.4 findings per full round across this clone's store, 99% of them
+    # new), so a review loop has no natural fixed point and every "one more
+    # round" reads locally reasonable. A declared ceiling is the only principled
+    # stop: arbitrary-but-visible beats arbitrary-but-hidden.
+    #
+    # BELOW the free-interval refusal, and that ordering is load-bearing. "The
+    # loop is over" and "there was nothing to review" are different answers —
+    # which is why exit 4 is a separate code from exit 3 — and asking the second
+    # question is advertised as free (`skills/pr/SKILL.md`: "You do not have to
+    # work out whether that pass is needed — asking is free"). Checked first, an
+    # exhausted branch charged a records-only dispatch an auto-ACCEPT of every
+    # outstanding finding for asking a question the gate answers for nothing,
+    # and free dispatches are commonest on exactly the long branches that
+    # exhaust a budget (62 of 492 facts, by the exit-3 leg's own measurement).
+    #
+    # Only full rounds are counted AND only a full round is refused. A
+    # `verify-resolutions` pass is how a BLOCKING finding clears, so refusing
+    # one at exhaustion would strand it with no command that resolves it —
+    # the same deadlock the free-interval guard's second conjunct avoids.
+    if mode_token in FULL_ROUND_MODES and not force:
+        budget = _round_budget_verdict(project_dir, prawduct_dir, scope)
+        if budget["status"] == "unavailable":
+            notes.append(
+                "the review round budget could not be derived "
+                f"({budget['reason']}) — this round was NOT counted against it, "
+                "so read the budget as not in force for this dispatch"
+            )
+        elif budget["status"] == "exhausted":
+            return _refuse_over_budget(
+                project_dir, budget, mode_token, scope, chunk,
+                dispatch_commit, notes,
+            )
 
     if files_reviewed is None:
         files_reviewed = list(files_changed)

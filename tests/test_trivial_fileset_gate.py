@@ -4,11 +4,9 @@ This is the catastrophic-blast-radius guard: a chunk declaring `Type: trivial`
 (or `doc-only`) skips Critic review, so it must NOT be allowed to silently edit
 the framework-governance-defining files. Under plugin distribution those live in
 `skills/` (the critic/pr/etc. definitions + bundled protocols), `methodology/`,
-`templates/`, and `CLAUDE.md`. The pre-2.0 `agents/` tree was removed in the
-plugin cutover, so it is no longer a protected class.
+`templates/`, `agents/` (a subagent's own system prompt) and `CLAUDE.md`.
 
-These tests are the regression coverage the bound never had — the stale `agents/`
-literal had nothing pinning it.
+These tests are the regression coverage the bound never had.
 """
 
 from __future__ import annotations

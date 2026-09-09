@@ -438,7 +438,11 @@ LAST_MEASURED_TOKENS = {
     # ceiling. The last 9 of the first pass are a widened `governed-by-gap` definition: it now also
     # covers a plan frontmatter no parser can read, the defect class that
     # let THIS plan ship an invalid header past three regex-based readers.
-    "skills/critic/review-protocol.md": 4026,
+    # -4 on 2026-09-09 (Chunk 04's review): a refund. Two bar COUNTS became
+    # relational ("its bars"), which is the remedy for a count restated at four
+    # sites, and the Records-Pass precedence moved to its one home in
+    # `review-cycle.md` instead of being half-stated here.
+    "skills/critic/review-protocol.md": 4022,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -528,7 +532,18 @@ LAST_MEASURED_TOKENS = {
     # Paid down first: the replaced paragraph funds roughly half of (1), the
     # budget prose points at `project-state.yaml` for the knob rather than
     # restating its defaults, and the SKILL.md row stays a route, not a copy.
-    "skills/critic/review-cycle.md": 10429,
+    # Held at the ceiling on its own review: the exit-4 row's SECOND table (the
+    # verify-resolutions demotion table) still priced the nothing-to-verify
+    # refusal at exit 1 and routed it as a demotion — a reader following it
+    # spends a full cumulative on a bundle the gate already passes, which is the
+    # framework-manufactured round this chunk removes, shipping in the same
+    # commit. Corrected here, along with the Records-Pass precedence (bars decide
+    # WHETHER, Goal 4 decides WHICH — stated once instead of contradicted twice)
+    # and the coverage-priced labels the eligibility split left wrong. Paid for
+    # in place rather than by a second raise: the diminishing-returns paragraph
+    # stopped narrating what this file used to say (durable prose never narrates
+    # history), and four clauses that restated their own sentences went.
+    "skills/critic/review-cycle.md": 10433,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the

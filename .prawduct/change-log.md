@@ -14,7 +14,9 @@ else will. Across 728 review facts in this clone's store, findings per full roun
 point, so every "one more round" reads locally reasonable, and chains of twenty to thirty-four
 rounds are the result.
 
-**`review_round_budget` is the declared stop.** Six full rounds per body of work, on by default in
+**`review_round_budget` is the declared stop.** Six full rounds per build-plan scope — the unit is
+the scope and not the branch, because a branch may carry two scopes and a trunk-based repo's
+merge-base span is zeroed by every push. On by default in
 every governed repo, `null` to disable. Off-by-default was rejected for the reason #716 reports
 about `cost-of-commit` — a mechanism that works and that nobody knows exists. Six rather than four
 because it sits above every chain in the store that ever produced a late BLOCKING finding, so it
@@ -71,6 +73,19 @@ recorded live as `--fixed`.
 recordable answer against its own review — `--fixed` correctly refuses it and no verify pass was
 ever anchored there. Closing it needs a join between a finding and a later review fact whose
 interval contains the fixing commit, which is coverage-kernel work with its own lock-in question.
+
+**What the cumulative review changed, because two of its findings were about the chunk's own thesis.**
+The ordering was wrong: the budget was checked *above* the free-interval refusal, so on an exhausted
+scope a records-only dispatch — the question the framework advertises as free — was answered with
+exit 4 and an auto-ACCEPT of every outstanding finding. The two exits exist because "the loop is
+over" and "there was nothing to review" are different answers; the budget now sits below the free
+one. And the demotion table in `review-cycle.md`, the canonical explanation of `verify-resolutions`
+anchoring, still priced the nothing-to-verify refusal at exit 1 and routed it as a demotion — the
+manufactured round this chunk removes, shipping in the same commit.
+
+Also from the review: eight active learnings had lost their narrative blocks in the base-advance
+merge — present at both parents, absent at HEAD, every rule still citing a file that no longer held
+them, and one merge short of propagating to develop. Restored, with the rule that found it.
 
 ## 2026-09-09: review eligibility stops being the negation of review cost
 

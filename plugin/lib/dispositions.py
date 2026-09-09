@@ -585,7 +585,11 @@ def auto_accept(
 
 
 def census(
-    store: dict, *, review_id: str | None = None, scope: str | None = None
+    store: dict,
+    *,
+    review_id: str | None = None,
+    scope: str | None = None,
+    review_ids: "list[str] | None" = None,
 ) -> dict:
     """Derive the disposition census.
 
@@ -594,7 +598,12 @@ def census(
     or scope matches nothing — a renderer that silently prints an empty table
     for a typo'd id is worse than one that says so.
 
-    With neither selector, the newest review fact is rendered.
+    ``review_ids`` renders an explicit SET, which is what a caller that has
+    already computed which reviews it is talking about needs: selecting by scope
+    when the set was derived some other way makes the rendered table and the
+    caller's actual subject two different things.
+
+    With no selector, the newest review fact is rendered.
     """
     review_facts = evidence.facts_of_kind(store, "review")
     if not review_facts:
@@ -606,6 +615,15 @@ def census(
             return {
                 "status": "error",
                 "reason": f"no review fact {review_id!r} in the store",
+            }
+    elif review_ids is not None:
+        wanted = set(review_ids)
+        selected = [f for f in review_facts if f.get("id") in wanted]
+        if not selected:
+            return {
+                "status": "error",
+                "reason": f"none of the {len(wanted)} requested review id(s) is "
+                "in the store",
             }
     elif scope is not None:
         selected = [

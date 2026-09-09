@@ -478,7 +478,7 @@ Fail-direction is deliberate and per-purpose:
   the same reason — it used to fall out as a bare 1, which the skill's exit table routes to
   "re-dispatch per the demotion property", manufacturing a full round the gate did not want.
 
-  **`critic-begin` 4 — round budget exhausted.** This branch's work has already bought the full
+  **`critic-begin` 4 — round budget exhausted.** This build-plan SCOPE has already bought the full
   rounds `review_round_budget` allows (`.prawduct/project-state.yaml`, default 6, `null` disables).
   A distinct code rather than folded into 3: both refuse a dispatch, but a 3 says the *gate* does not
   want this round and a 4 says the *loop* has run out while the gate may still be unsatisfied, and
@@ -488,7 +488,12 @@ Fail-direction is deliberate and per-purpose:
   auto-ACCEPTs the outstanding **non-blocking** findings, renders the census to stdout, and appends
   one `guard-refusal` fact; `verify-resolutions` is never counted and never refused, and no BLOCKING
   finding is ever swept — so the budget can end a review loop and can never open a gate. `--force`
-  dispatches anyway. No session state is written, so a 4 needs no `critic-end`.
+  dispatches anyway. No session state is written, so a 4 needs no `critic-end`. It is checked
+  BELOW the free-interval refusal, so an interval that needs no review still answers 3: "the loop
+  is over" and "there was nothing to review" stay distinct, which is why they are two codes.
+  Rounds are counted per build-plan **scope** (intersected with this branch's lineage, since the
+  store is clone-wide); a dispatch that resolves no scope is not budgeted, because there is no
+  body of work to bound and the census the refusal renders is selected from the same set.
 
 **The `backlog` group carries its own exit-class set — a documented scheme, not an exception to the
 table above.** `lib/backlog/cli.py`'s `_EXIT_CLASS` maps every error `code` the group can return onto

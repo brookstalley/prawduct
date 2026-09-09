@@ -24,7 +24,7 @@ validates the partial and treats anything else as out of bounds.
 
 Your dispatch prompt carries: your **role** (`correctness` | `design` | `sustainability`),
 your **assigned goals**, the **project directory**, the **changed-files list** (subject and oracle
-sets alike — see step 4), a **signals**
+sets alike — the split is explained below), a **signals**
 summary, the **commit under review** (a SHA), the **review id**, and the **two paths you
 write** — your started marker and your partial. Those paths and the review id are recorded in
 `.prawduct/.critic-partials/manifest.json` as `rendezvous.<your role>` and `id`; read them there
@@ -51,7 +51,7 @@ The role → goal mapping
 - **sustainability** — Goals 5 (Decisions Were Deliberate), 6 (The System Can Be Understood);
   ALSO run the Learnings Cross-Check, Backlog Reconciliation and **Records Pass**
   (`review-cycle.md` "Final-Mode Cross-Checks") and emit their results in your partial —
-  the first two as NOTE findings, the Records Pass at whichever bar its two rules assign.
+  the first two as NOTE findings, the Records Pass at whichever of its bars applies.
 
 ## What to do
 

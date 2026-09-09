@@ -106,7 +106,7 @@ Deliberately not built here, each with why:
 - [x] Chunk 01: Cost-to-clear rendered on every finding
 - [x] Chunk 02: Judgeability governs review scope; Records Pass covers what it drops
 - [x] Chunk 03: The review-eligibility classifier
-- [ ] Chunk 04: Round budget, auto-accept at exhaustion, and the yield prose correction
+- [x] Chunk 04: Round budget, auto-accept at exhaustion, and the yield prose correction
 
 Context: Plan authored 2026-08-25 from `review-loop-nontermination-diagnosis.md`, owner-approved
 scope (options 1 + B + A of seven framed). **Chunk 01 complete** — `fix_cost` on every finding,
@@ -121,7 +121,7 @@ accepted, R-2/R-10 accepted and carried below; then two `verify-resolutions` rou
 returning one BLOCKING (my own regression in the frontmatter check) and the second clean at
 rev-20260825T143252Z-9b65d4f9. Coverage gate `satisfied`. **RC9 is absorbed into Chunk 03 by owner
 decision** — the `--fixed` disposition, guarded by the judgeability predicate at record time.
-Next: Chunk 03, whose budget (6 rounds, on by default, `null` disables) is already decided. **2026-09-09 — base advance and a split.** develop had moved 216 commits over the same Critic surfaces this plan edits; merged at `29116547`, eighteen conflict hunks resolved keeping both sides, suite green. Then the owner ruled on the R-2/R-10 class finding Chunk 03 was carrying: **build the classifier**, not the cheap `agents/` partial. That ruling makes the old Chunk 03 far too large for one Critic pass — the classifier alone moves the coverage kernel's consumers — so it is split. Chunk 03 is now the classifier; Chunk 04 is the budget bundle, unchanged in content, and keeps `Type: cumulative-final`. **Chunk 03 complete** — `coverage_algebra.is_review_subject` owns eligibility; measured at 4 points of Chunk 02's 36 before it was built. Reviewed `chunk` (rev-20260909T212902Z-e08d614e): 0 blocking, 3 warning, 2 note, all one class — prose still teaching the removed rule. All four actionable fixed in this chunk's own commit (free, no round bought); R-3's live half is now pinned by `TestWideningBoundCountsTheCostSubset`. The `agents/` COVERAGE question is open and stated in Chunk 04's carry. Next: Chunk 04.
+Next: Chunk 03, whose budget (6 rounds, on by default, `null` disables) is already decided. **2026-09-09 — base advance and a split.** develop had moved 216 commits over the same Critic surfaces this plan edits; merged at `29116547`, eighteen conflict hunks resolved keeping both sides, suite green. Then the owner ruled on the R-2/R-10 class finding Chunk 03 was carrying: **build the classifier**, not the cheap `agents/` partial. That ruling makes the old Chunk 03 far too large for one Critic pass — the classifier alone moves the coverage kernel's consumers — so it is split. Chunk 03 is now the classifier; Chunk 04 is the budget bundle, unchanged in content, and keeps `Type: cumulative-final`. **Chunk 03 complete** — `coverage_algebra.is_review_subject` owns eligibility; measured at 4 points of Chunk 02's 36 before it was built. Reviewed `chunk` (rev-20260909T212902Z-e08d614e): 0 blocking, 3 warning, 2 note, all one class — prose still teaching the removed rule. All four actionable fixed in this chunk's own commit (free, no round bought); R-3's live half is now pinned by `TestWideningBoundCountsTheCostSubset`. The `agents/` COVERAGE question is open and stated in Chunk 04's carry. **Chunk 04 complete** — the round budget (6 full rounds per build-plan scope, on by default, `null` disables; exit 4, auto-ACCEPT of outstanding non-blocking findings, census rendered), `--fixed`, the yield prose correction carried with its measurement, `agents/` made governance-protected, and the nothing-to-verify refusal moved to exit 3. Reviewed `cumulative` (rev-20260909T225302Z-9febbf5f): 1 blocking, 13 warning, 7 notes. The blocking one and eleven warnings fixed in one pass; R-9(a) accepted as an owner design question (chunk-mode reviews spend budget, so a 6+-chunk plan exhausts on cadence alone) and four notes accepted as no-action. Two verify passes: rev-20260909T233129Z-fcb7fdce recorded twelve resolutions and left R-2/R-9 out, rev-20260909T234347Z-8698be3b clean after R-2's second mirror was pinned. Two review findings were about this chunk's own thesis — the budget was checked ABOVE the free-interval exit (so a free dispatch was charged an auto-ACCEPT), and the demotion table still priced the nothing-to-verify refusal at exit 1. The Records Pass also found eight active learnings whose narrative blocks were lost in the base-advance merge; restored.
 
 ## Scaffolding
 
@@ -408,8 +408,11 @@ falsify the premise:
   `rev-20260825T125948Z-a43f7fae`, fixed inside Chunk 02's commit and covered by Chunk 02's own
   cumulative. Closing it needs a join between a finding and a later review fact whose interval
   contains the fixing commit — coverage-kernel work with its own lock-in question, so it is
-  **named and carried, not built here**; it belongs with the follow-on plan that already owns
-  `#768`, the `promise` disposition, and machine-checkable `do_not`.
+  **named and carried, not built here**; it belongs with the follow-on plan that carries the rest of
+  the disposition-vocabulary work (a `promise` disposition, machine-checkable `do_not`, and the
+  fail-closed-consolidation report). That plan is not written yet and its items are not all
+  filed, so no id is cited here — a durable artifact citing an id that resolves to nothing sends
+  the next reader hunting for an item that does not exist.
 - **No new persisted format.** Round count per scope is already derived from the evidence store
   (`plugin/lib/coverage.py` prints it in the gate's escalation NOTE), and auto-accept writes the
   existing `disposition` fact via `plugin/lib/dispositions.py`. The budget is a policy over a
@@ -423,6 +426,22 @@ falsify the premise:
   stands leaves two contradictory stopping rules, and the false one is the one an agent can
   check and therefore learn to distrust — which is the behavior this whole plan exists to fix.
   Replaced with the measured floor, carried with its number.
+- **Carried out of this chunk's own review, so it has a home that survives a `/clear`.** Two items,
+  both cheap, both deliberately not built here:
+  (a) **The exit-4 block's zero-swept wording.** When the sweep accepts nothing — an ordinary case,
+  a scope whose findings were all answered before the ceiling reached it — the CLI still prints
+  "0 outstanding non-blocking finding(s) were ACCEPTED … re-disposition any of them", which points
+  at nothing. The ~6-line branch was written and drill-verified, then reverted: it landed after a
+  verify pass had captured the tree, and a judgeable edit would have put the commit outside the
+  coverage it had just bought. Carry it into the next commit that touches
+  `plugin/bin/prawduct-hook` rather than buying a round for a message.
+  (b) **`Type: cumulative-final` is not a recognized chunk type.** This plan declares it, the
+  Critic's Type selector does not know it, and the documented fail-safe treats it as `code` — which
+  is the right protocol but a SILENT fallback rather than a declared choice, and `review-cycle.md`
+  teaches the value in prose ("Last chunk of a `Type: cumulative-final` plan"). So the framework
+  names a value its own selector rejects. Either the vocabulary gains it or the prose stops using
+  it; that is a decision about the Type axis, not a patch inside the chunk that surfaced it.
+
 - **Surfaces:** `review_round_budget` in `.prawduct/project-state.yaml` and
   `plugin/templates/project-state.yaml`; the refusal path in
   `plugin/lib/critic_consolidate.py`; the stopping rule and the corrected yield paragraph in

@@ -652,6 +652,11 @@ operator_verification_required: false
 # counted — it is how a BLOCKING finding clears, so a ceiling that ate it would
 # strand findings with no command that resolves them.
 #
+# The unit is the build-plan SCOPE, not the branch: a branch may carry two
+# scopes (one would charge the other), and on a trunk-based repo the
+# merge-base span is zeroed by every push, so a branch-counted rule could
+# never fire. A dispatch that resolves no scope is not budgeted at all.
+#
 # At exhaustion the outstanding NON-blocking findings are auto-accepted with the
 # budget as their recorded reason and a census is rendered. BLOCKING is never
 # swept: the budget can end a review loop, never open a gate.

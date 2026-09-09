@@ -2556,3 +2556,300 @@ widest-reaching one — a shipped pointer resolving only in the framework repo �
 about consumer repos, which the author was not. Corollary for the cheap case: where a separate
 context is not available, take the attack from a roster you did not author, so at least the
 *selection* is not yours.
+## A precondition recorded only in PROSE is never re-evaluated when it is discharged — wire it as the machine-readable dependency the tool already honours, because nothing revisits an item whose blocker quietly closed
+
+Found during the 2026-09-02 design-queue triage (50 items at `stage: design` against 51 at
+`ready`). The pass was framed as "advance or drop"; what it actually measured was how many items
+had stopped being true.
+
+**The three instances, all verified against the tree rather than the body.**
+
+*#237* ("modernize ~28 terse learnings headings") carried a scope-out forbidding the work "before
+the two guardrails land", plus a HAZARD naming 17 forwarding pointers and a pairing invariant that
+break silently. Both guardrails were discharged: #345 closed `not_planned` on 2026-08-01 carrying
+`superseded_by: #339`, and #339 closed COMPLETED on 2026-09-02. #339 absorbed #345 and shipped
+`check_learnings_pairing` (`audit_learnings_cmd.py:1563`), whose docstring grades "Unresolvable
+forwarding pointers in the archive" — precisely the #345 half. Running it returns `status: ok`.
+The item had been parked for a month on a condition met the day before, and the thing that would
+have told you is the thing that shipped.
+
+*The janitor* (`skills/janitor/SKILL.md:231`) skips its neglected-hygiene check because
+"the `promoted` status value has no GitHub-Issues equivalent … (blocked on #529)". Both clauses
+are false: `promoted` maps to `in-progress` (`migrate.py:671`), which is first-class in
+`encode.STATUS_VALUES`, and `backlog list --status in-progress` runs clean. #529 closed
+`not_planned` superseded by #729, which closed COMPLETED. Note the trap in reading this one: the
+skill's CONCLUSION ("would match nothing") is currently true — nothing is claimed — while its
+REASON is wrong. A stale reason under a coincidentally-true conclusion is the hardest kind to
+notice, and the reason is what the next reader will act on.
+
+*#677* described the evidence and review gates re-opening on a docs-only delta. Both halves had
+shipped in kernel-v3 chunk 04, before the item was filed. Worse, its proposed predicate
+(`is_executable_path`, False for every `.md`) would have made governance prose a free edge — the
+direction a prior revert already killed, with a do-not-reintroduce comment naming it.
+
+**Why prose preconditions rot specifically.** A blocker closing is an event at the BLOCKER. A prose
+precondition lives at the BLOCKED item, where that event never arrives. Nothing joins them, so the
+item's readiness is frozen at the moment someone last read it. The machine-readable form inverts
+this: `pick` re-evaluates every candidate's `blocked_by` on every call, so discharging the blocker
+un-gates the item with no one revisiting anything.
+
+**The measurement that makes the case.** Querying `dependencies/blocked_by` across all 131 open
+items returned exactly three edges (#164→#742, #167→#677, #641→#640-closed). The mechanism was
+built, tested and honoured by `pick`, and used on 2% of the corpus, while at least three items
+carried prose gates instead. The gap is not a missing feature; it is a habit.
+
+**Corollary for triage.** Requiring one NAMED ANSWERABLE QUESTION from anything staying at
+`design` — with "needs design" rejected — is what exposed these. An item that cannot produce its
+blocking question in one sentence is not blocked; it is mislabelled, already done, or dead.
+
+## When every test INJECTS a dependency, green says nothing about how production OBTAINS it
+
+**From:** upstream-filing-adapter Chunk 02 (2026-09-06), Critic finding R-1, BLOCKING.
+
+`plugin/lib/backlog/cli.py`'s `_run_file_upstream` began life as the preview arm, whose defining
+property — stated in its docstring and asserted by the contract test — was that it takes **no**
+`transport`, so it cannot reach the network. Chunk 02 extended it into a send arm that needs one and
+threaded the parameter down from `run`. Every one of the seventeen sibling handlers calls
+`_resolve_transport(transport)` on its first line; this one did not, because the question "who
+supplies this in production?" never came up: `run`'s signature has `transport=None`, and every test
+in the suite passes a `FakeGitHub` or a `MagicMock`.
+
+Production enters at `plugin/bin/prawduct-hook` via `backlog_cli.run(project_dir, argv)` with no
+transport kwarg. So `None` travelled into `upstream.send`, which called
+`transport.get_authenticated_user()` and raised `AttributeError`. `run`'s CLI-boundary broad-except
+turned that into `core.error("unavailable", …)` at exit 6 — a code whose contract says *retryable*.
+The chunk's entire deliverable was non-functional for every real caller, and the failure presented
+as a transient GitHub outage that a caller would retry three times before giving up.
+
+Nothing was sent (checks 1–4 pass before the transport is touched), so this was non-function rather
+than a safety hole. But the suite was green over it, and would have stayed green through the PR
+gate: dependency injection at every call site makes the *acquisition* path untested by construction.
+
+**The remedy is two tests, not one.** Drive the new arm through `cli.run` with no transport and
+assert the seam is constructed (monkeypatch the module's `GhTransport`); and drive the arm that must
+NOT build one and assert construction never happens. The second is what forces the resolution to sit
+inside the send branch rather than at the top of the handler where the siblings put it — at the top
+it would build a `GhTransport` on the preview path, dissolving the scope guarantee that is the
+preview arm's whole point. Both mutations were verified: moving the call to the handler top fails the
+preview test, removing it fails the send test.
+
+Related: [[a-fixtures-world-is-narrower-than-the-requirement-it-certifies]].
+
+## Defence in depth costs a test PER LAYER, not per rule
+
+**From:** upstream-filing-adapter Chunk 02 (2026-09-06), Critic finding R-2, BLOCKING.
+
+Design §5 check 2 pins the upstream target. Chunk 01 built it on the preview arm and
+mutation-verified it there. Chunk 02 put the same check in two places on purpose: the CLI answers it
+first, ahead of even the required-flag checks, so a caller naming the wrong repo is not told about a
+missing `--title`; and `upstream.send` re-asks it, because `send` is a module entry point a caller
+can reach without the CLI.
+
+Four of the five checks got a send-arm class asserting refusal *and* that the fake recorded no
+write. Check 2 did not, on the reasoning that chunk 01 had already verified the pin — which was true
+of a different arm. The consequence: deleting `check_target(requested_repo)` from `send`'s refusal
+tuple failed nothing, because every test that reaches check 2 goes through `cli.run` and hits the
+pre-check first. The inner leg — the one that matters for the caller the redundancy exists for —
+was unverified while the coverage looked complete.
+
+The generalisation is about *where a mutation is observable*, not about redundancy being bad.
+Deliberate redundancy is right here; what it costs is one test per layer, each entering at that
+layer's own door. The send-arm class enters through the CLI; a second test calls `upstream.send`
+directly.
+
+Related: [[when-every-test-injects-a-dependency-green-says-nothing-about-how-production-obtains-it]].
+
+## Check WHICH interval the Critic mode takes
+
+The two modes read different trees, and the failure is silent in both directions.
+
+**`chunk`** takes HEAD-tree → working tree. Commit first and the interval is empty, so the review
+returns a normal-looking report whose findings are drawn from whatever scrap happens to be
+uncommitted.
+
+**`cumulative`** takes a commit range — merge-base → HEAD. This is the mirror failure: a dirty tree
+is *invisible* to it. Observed 2026-09-07 on `feat/upstream-filing-adapter`, dispatching a
+cumulative for Chunk 03 with 19 files uncommitted. `critic-begin` counted 3 judgeable files, all
+three reviewers read every file via `git show <HEAD>:<path>`, and the review covered Chunks 01–02 —
+the previous two chunks — while the chunk it was run for went entirely unreviewed. The report was
+sound and genuinely useful; it simply answered a different question than the one asked. It said so,
+in a scope caveat, *after* the findings — which is exactly where a reader who already believes the
+review covered their work will not re-read.
+
+The signal was available before dispatch and cost nothing to check: `git status` showed the dirty
+tree and `test-status` had just been recorded against it. What was missing was the question — the
+mode name came from the build plan's `Critic mode:` field, and a field naming a mode does not tell
+you what tree that mode will read.
+
+**So the rule is not "always commit first" or "never commit first"** — it is that the mode
+determines the tree, so pick the order from the mode rather than from habit. For a `cumulative`
+that must feed the PR gate, the work has to be committed first; for a `chunk` review it must not be.
+
+## A guard's TOLERANCES belong to the path it was written for
+
+`encode.check_body_text` rejects an *unterminated* ```` ```prawduct ```` opener and deliberately
+PASSES a well-formed one. That tolerance is correct in-repo and only there: every in-repo caller
+pairs it with `encode.compose_body`, which strips the pasted block and merges its fields into the
+real one. The guard and the transform are one mechanism, and the guard alone is not the rule.
+
+`upstream.render_report` reused the guard and appends the body verbatim instead. So a
+`--body '```prawduct\nsource: acme/widget\n```'` passed every check and would have landed upstream
+as a second parseable block carrying the exact field minimization exists to strip — and the
+receiving side's first `merge_all_block_fields` folds *every* block, so it would have become
+permanent in the issue's canonical block. Found by a cumulative reviewer, 2026-09-07; not by
+re-reading the diff, because the defect is not *in* the diff — it is in what the reused function
+does not do.
+
+**Why it is hard to see:** a guard's tolerances are invisible at the call site. `check_body_text(v)`
+reads as "the body is checked". Only the guard's own docstring says what it lets through and why,
+and the "why" names a caller-side obligation that the new path silently declines to meet.
+
+**The second-instance signal.** The same seam produced the `--component` forgery fixed at 67f00b61 —
+also an injection reaching the outbound block through an input guard's gap. One instance is a bug;
+two on one seam says the seam wants a different shape, which is why the fix here is a *distinct
+stricter function* (`check_body_text_strict`, no tolerance where there is no composer) rather than a
+third patch to the same predicate.
+
+**Generalizes past this codebase:** validators paired with normalizers (trim-then-validate,
+escape-then-render, canonicalize-then-compare). Reusing the validator without the normalizer is the
+same defect every time, and the validator will not complain.
+
+## Withholding a fix to protect a review round is only correct if `cost-of-commit` PRICES it `costs-a-round`
+
+**What happened.** After a clean `verify-resolutions` closed the cumulative gate on
+`feat/upstream-filing-adapter`, three doc fixes from the round's demoted observations were left
+uncommitted on the reasoning that committing them would reopen the gate and cost another ~5 min
+round. The independent PR reviewer ran `prawduct-hook cost-of-commit` on those exact paths and got
+`free`. The round being protected was never owed, and the same command prices the genuinely
+expensive case correctly — two `.py` paths in the same batch returned `costs-a-round`.
+
+**Why the reasoning felt sound and was not.** The rule being applied came from the *previous*
+session on the same branch, which had committed four non-blocking fixes and only then run
+`cost-of-commit` — the one ordering that makes the answer useless. It recorded the correct lesson
+("separate-commit a non-blocking fix only when the branch needs coverage NOW") and the next session
+read it as a standing reason to WITHHOLD rather than as an instruction to ASK. A rule about a tool
+degraded into a heuristic that replaces the tool. **Both failures are the same failure**: deciding
+what a commit costs by reasoning about the coverage algebra, in a repo that ships a command which
+answers it in under a second, in both directions.
+
+**The second-order damage is the part worth remembering.** Believing the fixes were expensive routed
+three carried obligations into `.prawduct/.handoff-notes.md` — gitignored, consumed by the next
+`/clear` — and the committed build plan already cited that file as a co-record of a Wave B
+obligation. A durable artifact naming a path that exists on no other clone gives an obligation one
+real home while reading as though it has two. So the pricing error did not just cost accuracy; it
+degraded where the work was recorded.
+
+**Why an independent reviewer caught it.** Two Critic rounds and the builder all missed it, and the
+PR reviewer found it not by reading harder but by running a tool the builder had reasoned past. A
+fresh context had no reason to inherit the premise — which is the specific value of review
+independence, distinct from a second opinion on the same evidence.
+
+**Generalizes:** any heuristic derived from a tool's output, carried forward as a rule, drifts into
+a replacement for the tool. When a learnings rule names a command, the rule is to RUN it.
+
+## When you change a MECHANISM, cascade-search the CLAIM, not just the code
+
+**The case that produced it.** Fixing the tag/publish order caught both runbooks and the process
+doc via the command strings `git tag` / `gh release create`. The Critic then found a stale "on
+every tag push" in `architecture.md`, a superseded command in a historical release plan, and one
+doc asserting flatly what another hedged — none of them reachable from any string that had been
+edited, because a sentence describing what the system does shares no token with the code that does
+it.
+
+**The amendment, 2026-09-07 — enumerate the claims first, and expect more than one.** Rewriting
+`/prawduct:report-bug` onto the upstream filing adapter falsified two claims, not one: *it writes a
+drop-box file* and *it otherwise captures the bug locally*. The build plan named the first, so the
+first is what got cascaded; the second kept its carriers — `prawduct-hook`'s `cmd_bug_inbox`
+docstring, which still published the exit-code contract of a caller that no longer existed and
+instructed the very local capture the new design forbids, and `architecture.md`'s Persistence
+Boundaries row, which still named the retired write path as the live one.
+
+What makes this worth recording rather than filing under carelessness: the same session had, one
+chunk earlier, written a reflection *about this rule* after a claim turned out to have four
+carriers. Knowing the rule and having just been burned by it were both insufficient, because the
+rule as written starts one step too late. The failure is not in the searching. It is that the set
+being searched for was assembled from the plan's sentence about the change rather than from the
+change itself — and a plan names the claim that motivated the work, not every claim the work
+happens to falsify.
+
+The cheap discipline: before cascading anything, write down what is no longer true, as a list. If
+the list has one item, ask what else the change made false. The enumeration takes a minute; a
+carrier that survives it reads as current until someone trips on it.
+
+## Instructions for driving code are sourced from the CODE's surface, with the design as a constraint on it
+
+**What happened.** `/prawduct:report-bug` was rewritten to drive the `file-upstream` adapter, and
+the rewrite was composed from the approved design: its payload section, its consent section, its
+five-check contract. The design is correct and the instructions matched it. Six of the cumulative
+review's eleven warnings were still the same defect — the skill under-specified against the
+adapter:
+
+- it branched on the `always-file` consent state, and no output carried that state, so the branch
+  could never be taken and a shipped preference did nothing on its only consumer;
+- it explained the `self-file` refusal as "you are in prawduct's own checkout", which is one of the
+  two situations that code covers — and the other one routed the reader into the exact write the
+  same skill forbids two sections later;
+- it summarized the approval guarantee unconditionally, on a surface whose stated purpose is to be
+  honest about what is and is not mechanical, when standing consent waives the byte comparison;
+- it reduced a successful send to "print the URL", when the success envelope can carry a warning
+  saying the idempotency check did not run — so a degraded filing reads as a clean one and the
+  operator makes the retry that creates the duplicate;
+- it treated a transport failure at create as a refusal, and answered it with "file by hand" —
+  the one action that converts an unknowable outcome into a duplicate in a public repo.
+
+**Why the design could not have prevented any of them.** A design states what must be guaranteed.
+It is silent, correctly, about the states a value can hold that no guarantee turns on, the error
+codes that distinguish two causes under one refusal, the fields an envelope carries besides the
+result, and the failure modes that are neither success nor refusal. Those are exactly the places a
+reader driving the code meets reality — and every one of the six lives there.
+
+**The discipline.** Read the handler. Enumerate every state, every returned field, every refusal
+code, every way it can fail, and give the reader a line for each — then check the design to see
+which of those lines it constrains. Design-first produces instructions that are true and
+incomplete; code-first produces instructions that are complete and then get checked for truth.
+
+**Related.** This is the sibling of the rule that a guardrail on an instruction surface must model
+the READER: that one is about testing the instructions, this one is about sourcing them.
+
+## A "keep both sides" conflict resolution silently drops whatever the BASE grew in a region the branch also touched
+
+Found 2026-09-09 by the Records Pass of `review-loop-termination` Chunk 04's cumulative review, two
+chunks after the merge that caused it.
+
+`feat/review-loop-termination` advanced its base over 216 develop commits, eighteen conflict hunks,
+resolved by keeping both sides. The suite was green and the merge message recorded a deletion of four
+historical `learnings-detail.md` entries, verified present in the archive — an honest, checked
+record of an intended change.
+
+Eight *other* narrative blocks went with them. Each existed at the interval base AND at the merged
+develop commit; none existed at HEAD; all eight rules were still active in `learnings.md` and still
+ended `— [learnings-detail.md]`, so each had become a citation to a file that no longer held it. None
+had been moved to `learnings-history.md`.
+
+Why nothing caught it: the accounted-for deletion made the region look reviewed, `check-learnings-
+pairing` verifies index→detail in one direction only, and a merge diff shows conflicts rather than
+content the other side grew. The next merge would have propagated the loss to develop.
+
+The check that would have caught it is cheap and mechanical — after a large base advance, list the
+`##` headings of a long-lived append-only record at both parents and at the merged tree, and account
+for every heading present at either parent and absent at the result.
+
+## A test that pins the ARITHMETIC does not pin the CALL
+
+Found 2026-09-09, Chunk 04's cumulative review (R-2).
+
+`begin_review`'s scope-widening bound compares the coverage-priced subset of the delta against the
+coverage-priced subset of the prior review's SUBJECT set. Since the eligibility classifier landed, a
+subject set routinely holds non-judgeable paths, so the prior-side narrowing is load-bearing:
+dropping it inflates the prior count and loosens the bound, and a re-review that owed a full pass
+proceeds as a partial. That is the fail-open direction.
+
+A comment above the call site said "Pinned by `TestWideningBoundCountsTheCostSubset`". That class
+calls `_scope_widened` and the two predicates on hand-built lists; it never reaches `begin_review`.
+The one dispatch-level test used `.prawduct/**` paths, which BOTH predicates exclude, so it passed
+identically with the narrowing and without it. Replacing the narrowed call with the raw list kept the
+whole suite green.
+
+The shape that can tell them apart is an input the two forms answer differently — here a prior set of
+five subjects of which one is coverage-priced, and a delta of eight priced files: past `2*1+5`,
+inside `2*5+5`. `TestWideningBoundReachesTheDispatch` enters at `begin_review` with exactly that.

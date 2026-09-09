@@ -19,8 +19,9 @@ return the first that fires:
   1. ``verify-resolutions`` — prior ``.critic-findings.json`` has
      BLOCKING/WARNING findings + ``commit_reviewed`` anchor resolves **and is
      an ancestor of HEAD** + uncommitted diff is non-empty AND its judgeable
-     subset is within prior ``files_reviewed`` (the review's subject set, which
-     holds judgeable paths only). Signal: builder is in the middle of fixing
+     subset is within prior ``files_reviewed`` (the review's subject set,
+     which is re-narrowed here because it does NOT). Signal: builder is in the
+     middle of fixing
      findings from the last review.
   1b. ``verify-resolutions`` (post-cumulative fix, CRT-4J8W) — tree clean,
      prior record is a ``cumulative`` review, and the committed delta since
@@ -477,13 +478,19 @@ def _rule_verify_resolutions_fires(
     # ``critic_consolidate.begin_review``, whose verify arm anchors on
     # ``_prior_review_fact`` and refuses once ``_scope_widened`` trips.
     #
-    # Judgeable on the diff side because `files_reviewed` is the SUBJECT set —
-    # judgeable paths only — so comparing a raw diff against it would fail the
-    # subset the moment a fix touched a README or a doc, and send exactly the
-    # cheap prose-plus-code fix this framework steers toward into a full round
-    # instead of a verify pass. `_is_metadata_path` above drops `.prawduct/`,
-    # not every non-judgeable path; THE predicate is the one that agrees with
-    # what the manifest recorded.
+    # BOTH sides re-narrowed to the coverage-priced subset, and neither call
+    # is redundant. `files_reviewed` is the SUBJECT set, which since the
+    # eligibility classifier admits deliverables and behaviour-governing prose
+    # (`README.md`, `docs/*.md`) — so it is NOT already judgeable-only, and
+    # reading it as though it were is what makes the prior-side call look like a
+    # no-op to delete. Dropping either inflates a count and LOOSENS the bound,
+    # which fails open: a re-review that should have fallen back to a full one
+    # proceeds as a partial. The diff side is narrowed for the mirror reason —
+    # comparing a raw diff against a priced set would fail the subset the moment
+    # a fix touched a README, sending the cheap prose-plus-code fix this
+    # framework steers toward into a full round instead of a verify pass.
+    # `critic_consolidate._scope_widened` computes the identical bound and says
+    # the same thing; two implementations of one threshold have to agree.
     return set(coverage_algebra.judgeable_files(sorted(diff_files))).issubset(
         set(coverage_algebra.judgeable_files(sorted(prior_set)))
     )
@@ -579,7 +586,7 @@ def _rule_postfix_fix_fires(prawduct_dir: Path, project_dir: Path) -> str:
     if len(judgeable_delta) > 2 * len(judgeable_prior) + 5:
         return ""
     return (
-        f"committed delta of {len(judgeable_delta)} findings-eligible file(s) "
+        f"committed delta of {len(judgeable_delta)} coverage-priced file(s) "
         f"since the prior cumulative review ({commit_reviewed[:12]}); a verify "
         "pass extends the cumulative's vouching to HEAD at delta-review cost"
     )

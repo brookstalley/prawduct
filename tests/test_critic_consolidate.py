@@ -38,6 +38,7 @@ ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK = ROOT / "bin" / "prawduct-hook"
 sys.path.insert(0, str(ROOT))
 from lib import critic_consolidate as cc  # noqa: E402
+from lib import dispositions as _dispositions_mod  # noqa: E402
 from lib import coverage_algebra as ca_mod  # noqa: E402
 # The anchor predicates the dispatch guard is built on. Imported rather than
 # re-implemented so a test asserting "the OLD guard would have passed" is
@@ -4255,6 +4256,13 @@ class TestVerifyResolutionsDispatch:
         assert "nothing to verify" in result.stdout
         assert "the working tree" in result.stdout
         assert reviewed_tree[:12] in result.stdout
+        # And it reaches the yield query, like every other guard in its class.
+        # Its exit-3 sibling has recorded since the class got a sink; this site
+        # was added later and could have copied the append without it.
+        assert any(
+            (f.get("body") or {}).get("guard") == "critic-dispatch-nothing-to-verify"
+            for f in _store_facts(repo, "guard-refusal")
+        ), "the refusal fired but left no trace in the guard-refusal store"
 
     def test_a_non_ancestor_prior_anchor_refuses_for_demotion(self, tmp_path):
         """A sibling branch's review fact must not anchor this branch's pass.
@@ -5903,7 +5911,8 @@ CUMULATIVE_VERBOSE = cc.MODE_TOKEN_TO_VERBOSE["cumulative"]
 
 
 def _budget_repo(tmp_path: Path, rounds: int, *, mode: str = CUMULATIVE_VERBOSE,
-                 budget: "str | None" = None, findings=None) -> "tuple[Path, str]":
+                 budget: "str | None" = None, findings=None,
+                 branch_commit=("src/app.py", "x = 2\n", "work")) -> "tuple[Path, str]":
     """A feature branch off `main` carrying ``rounds`` recorded review facts.
 
     The facts are seeded rather than produced by real dispatches because what
@@ -5914,7 +5923,7 @@ def _budget_repo(tmp_path: Path, rounds: int, *, mode: str = CUMULATIVE_VERBOSE,
     _init_repo(repo)
     _commit_file(repo, "src/app.py", "x = 1\n", "init")
     _git(repo, "checkout", "--quiet", "-b", "feature")
-    head = _commit_file(repo, "src/app.py", "x = 2\n", "work")
+    head = _commit_file(repo, *branch_commit)
     prawduct = repo / ".prawduct"
     prawduct.mkdir(exist_ok=True)
     if budget is not None:
@@ -5936,7 +5945,7 @@ class TestRoundBudgetCounting:
 
     def test_it_does_not_fire_below_the_ceiling(self, tmp_path):
         repo, _ = _budget_repo(tmp_path, 5)
-        verdict = cc._round_budget_verdict(repo, repo / ".prawduct")
+        verdict = cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")
         assert verdict == {
             "status": "within", "spent": 5, "budget": 6,
             "review_ids": [f"rev-round-{i}" for i in range(5)],
@@ -5944,20 +5953,20 @@ class TestRoundBudgetCounting:
 
     def test_it_fires_at_the_ceiling(self, tmp_path):
         repo, _ = _budget_repo(tmp_path, 6)
-        assert cc._round_budget_verdict(repo, repo / ".prawduct")["status"] == "exhausted"
+        assert cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")["status"] == "exhausted"
 
     def test_the_default_is_six_with_no_declaration(self, tmp_path):
         repo, _ = _budget_repo(tmp_path, 0)
-        assert cc._round_budget_verdict(repo, repo / ".prawduct")["budget"] == 6
+        assert cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")["budget"] == 6
 
     def test_a_repo_override_wins_over_the_default(self, tmp_path):
         repo, _ = _budget_repo(tmp_path, 2, budget="2")
-        verdict = cc._round_budget_verdict(repo, repo / ".prawduct")
+        verdict = cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")
         assert verdict["budget"] == 2 and verdict["status"] == "exhausted"
 
     def test_null_disables_it_entirely(self, tmp_path):
         repo, _ = _budget_repo(tmp_path, 50, budget="null")
-        assert cc._round_budget_verdict(repo, repo / ".prawduct") == {"status": "disabled"}
+        assert cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted") == {"status": "disabled"}
 
     def test_verify_passes_are_not_counted(self, tmp_path):
         """The deadlock guard, stated as a count.
@@ -5969,7 +5978,7 @@ class TestRoundBudgetCounting:
         """
         repo, _ = _budget_repo(tmp_path, 20, mode=cc.MODE_TOKEN_TO_VERBOSE[
             "verify-resolutions"])
-        verdict = cc._round_budget_verdict(repo, repo / ".prawduct")
+        verdict = cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")
         assert verdict["status"] == "within" and verdict["spent"] == 0
         # ...and they are still ANSWERED at exhaustion: their findings are as
         # open as any other, so the sweep must see them.
@@ -5985,9 +5994,95 @@ class TestRoundBudgetCounting:
         _init_repo(repo)
         _commit_file(repo, "src/app.py", "x = 1\n", "init")
         (repo / ".prawduct").mkdir()
-        verdict = cc._round_budget_verdict(repo, repo / ".prawduct")
+        verdict = cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")
         assert verdict["status"] in ("unavailable", "within")
         assert verdict["status"] != "exhausted"
+
+    def test_another_scope_on_the_same_branch_is_not_charged(self, tmp_path):
+        """The declared unit is one BODY OF WORK, and a branch is only sometimes
+        that. Counting lineage let a branch carrying two scopes charge one to the
+        other, which sizes the ceiling against a number nobody declared."""
+        repo, head = _budget_repo(tmp_path, 6, budget="3")
+        for i in range(6):
+            evidence.append_fact(
+                repo, "review", f"rev-other-{i}",
+                {
+                    "base_tree": "a" * 40, "head_tree": "b" * 40,
+                    "mode": CUMULATIVE_VERBOSE, "head_commit": head,
+                    "scope": "some-other-plan", "findings": [],
+                },
+            )
+        verdict = cc._round_budget_verdict(repo, repo / ".prawduct", "some-other-plan")
+        assert verdict["spent"] == 6
+        assert [i for i in verdict["review_ids"] if i.startswith("rev-round-")] == []
+
+    def test_an_unresolved_scope_is_unavailable_rather_than_branch_counted(self, tmp_path):
+        """No scope means no body of work to bound. Falling back to the branch
+        would answer a different question than the one declared — and would
+        sweep findings the refusal could then not render, because the census is
+        selected from the same set."""
+        repo, _ = _budget_repo(tmp_path, 50, budget="1")
+        verdict = cc._round_budget_verdict(repo, repo / ".prawduct", None)
+        assert verdict["status"] == "unavailable"
+        assert "scope" in verdict["reason"]
+
+
+class TestRoundBudgetConfigFallsSoft:
+    """`review_round_budget`'s fail-soft direction is load-bearing: a typo in a
+    stopping rule must not silently REMOVE the rule. Only `null` disables."""
+
+    def _budget(self, tmp_path, declared):
+        d = tmp_path / ".prawduct"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "project-state.yaml").write_text(
+            "" if declared is None else f"review_round_budget: {declared}\n"
+        )
+        from lib import core as _core
+        return _core.review_round_budget(d)
+
+    def test_absent_is_the_default_and_null_is_off(self, tmp_path):
+        assert self._budget(tmp_path / "a", None) == 6
+        assert self._budget(tmp_path / "b", "null") is None
+        assert self._budget(tmp_path / "c", "~") is None
+
+    def test_an_unparseable_value_keeps_the_rule(self, tmp_path):
+        assert self._budget(tmp_path / "a", "six") == 6
+        assert self._budget(tmp_path / "b", "6.5") == 6
+
+    def test_zero_and_negative_keep_the_rule(self, tmp_path):
+        """Both would otherwise refuse a scope's very first round, which no repo
+        means by typing them."""
+        assert self._budget(tmp_path / "a", "0") == 6
+        assert self._budget(tmp_path / "b", "-1") == 6
+
+    def test_the_three_scalar_states_are_distinguishable(self, tmp_path):
+        """The whole `null disables, absent does not` contract rests on this
+        distinction, which `read_str_yaml_key` collapses."""
+        from lib import core as _core
+        d = tmp_path / "s"; d.mkdir()
+        state = d / "project-state.yaml"
+        state.write_text("other: 1\n")
+        assert _core.read_scalar_yaml_key(state, "k") == (_core.YAML_SCALAR_ABSENT, None)
+        state.write_text("k: null\n")
+        assert _core.read_scalar_yaml_key(state, "k") == (_core.YAML_SCALAR_NULL, None)
+        state.write_text("k:\n")
+        assert _core.read_scalar_yaml_key(state, "k") == (_core.YAML_SCALAR_NULL, None)
+        state.write_text("k: 4  # inline\n")
+        assert _core.read_scalar_yaml_key(state, "k") == (_core.YAML_SCALAR_VALUE, "4")
+        assert _core.read_str_yaml_key(state, "k") == "4"
+
+    def test_the_template_ships_the_code_default(self):
+        """Three declarations with nothing comparing them is the root cause
+        `core.OPT_IN_FLAGS` was created for, and its parity test is boolean-only
+        by construction, so a scalar knob escapes it silently."""
+        from lib import core as _core
+        template = (ROOT / "templates" / "project-state.yaml").read_text()
+        declared = next(
+            line.split(":", 1)[1].strip()
+            for line in template.splitlines()
+            if line.startswith("review_round_budget:")
+        )
+        assert int(declared) == _core.REVIEW_ROUND_BUDGET_DEFAULT
 
 
 class TestRoundBudgetRefusal:
@@ -6057,3 +6152,119 @@ class TestRoundBudgetRefusal:
         body = refusals[0]["body"]
         assert body["spent"] == 6 and body["budget"] == 1
         assert body["auto_accepted"] == 12 and body["blocking_left"] == 6
+
+
+class TestWideningBoundReachesTheDispatch:
+    """The bound is computed at TWO doors and pinned at one.
+
+    `TestWideningBoundCountsTheCostSubset` calls `_scope_widened` and the two
+    predicates on hand-built lists, so it stays green against a `begin_review`
+    that stopped narrowing — and the one existing dispatch-level test uses
+    `.prawduct/**` paths, which BOTH predicates exclude, so it passes either
+    way. This enters at the real door with a prior subject set the two
+    predicates answer DIFFERENTLY, which is the only shape that can tell them
+    apart.
+    """
+
+    #: 5 subjects, 1 of them coverage-priced. The gap between 5 and 1 is the
+    #: whole test: at 1 the bound refuses this delta, at 5 it admits it.
+    PRIOR_SUBJECTS = [
+        "plugin/lib/core.py",
+        "plugin/docs/norms.md",
+        "docs/a.md",
+        "docs/b.md",
+        "README.md",
+    ]
+
+    def _seed(self, repo: Path) -> None:
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        head_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        (repo / ".prawduct").mkdir(exist_ok=True)
+        _seed_prior_review_with_blocker(
+            repo, head, head_tree=head_tree, head_commit=head,
+            files_changed=list(self.PRIOR_SUBJECTS),
+            files_reviewed=list(self.PRIOR_SUBJECTS),
+        )
+
+    def test_the_dispatch_refuses_on_the_priced_count(self, tmp_path):
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        self._seed(repo)
+        _git(repo, "checkout", "--quiet", "-b", "feature/widen")
+        # 8 priced files: past 2*1+5, inside 2*5+5. Only the narrowed prior
+        # refuses, so this assertion fails the moment the call site stops
+        # narrowing — the fail-OPEN direction, where a re-review that owed a
+        # full pass proceeds as a partial.
+        for i in range(8):
+            _commit_file(repo, f"src/new_{i}.py", f"n = {i}\n", f"more {i}")
+        result = cc.begin_review(repo, "verify-resolutions")
+        assert result.get("kind") == "scope-widened", result
+        assert "8 coverage-priced" in result["reason"], result["reason"]
+        assert "prior review of 1" in result["reason"], result["reason"]
+
+    def test_the_premise_the_two_predicates_disagree_here(self):
+        """If these ever coincide the test above proves nothing."""
+        assert ca_mod.review_subjects(self.PRIOR_SUBJECTS) == self.PRIOR_SUBJECTS
+        assert ca_mod.judgeable_files(self.PRIOR_SUBJECTS) == ["plugin/lib/core.py"]
+
+
+class TestBudgetDoesNotPreemptTheFreeExit:
+    """"The loop is over" and "there was nothing to review" are different
+    answers — which is why exit 4 is a separate code from exit 3."""
+
+    def test_a_free_interval_still_takes_exit_3_on_an_exhausted_scope(self, tmp_path):
+        # The whole branch delta is records-only: the gate composes it as a free
+        # edge, and asking whether it needs a review is advertised as free.
+        # Checked before the free exit, the budget charged that question an
+        # auto-ACCEPT of every outstanding finding on the scope.
+        repo, _ = _budget_repo(
+            tmp_path, 6, budget="1",
+            branch_commit=(".prawduct/notes.md", "just a record\n", "records only"),
+            findings=[
+                {"fid": "R-1", "severity": "warning", "goal": "Nothing Is Broken",
+                 "title": "a warning", "files": ["src/app.py"]},
+            ],
+        )
+        result = _run_begin(repo, "--mode", "cumulative", "--scope", "budgeted")
+        assert result.returncode == 3, (result.stdout, result.stderr)
+        rows = {
+            row["fid"]: row["state"]
+            for review in _dispositions_mod.census(
+                evidence.read_facts(repo), review_id="rev-round-0"
+            )["reviews"]
+            for row in review["rows"]
+        }
+        assert rows["R-1"] == _dispositions_mod.STATE_OPEN, (
+            "asking a question the gate answers for free cost the builder every "
+            "outstanding finding"
+        )
+
+
+class TestGuardRefusalsReachTheirOwnQuery:
+    """`evidence list --kind guard-refusal` IS the yield query — the plan and the
+    change-log discharge the observable-yield obligation by naming it. A firing
+    it renders as a bare timestamped row cannot answer the retirement question,
+    so recording a field the lister drops only looks like emission."""
+
+    def _list(self, repo: Path) -> str:
+        proc = subprocess.run(
+            ["python3", str(HOOK), "evidence", "list", "--kind", "guard-refusal"],
+            cwd=str(repo), capture_output=True, text=True,
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
+        )
+        assert proc.returncode == 0, proc.stderr
+        return proc.stdout
+
+    def test_the_budget_refusal_lists_its_own_numbers(self, tmp_path):
+        repo, _ = _budget_repo(tmp_path, 6, budget="1", findings=[
+            {"fid": "R-1", "severity": "warning", "goal": "Nothing Is Broken",
+             "title": "a warning", "files": ["src/app.py"]},
+            {"fid": "R-2", "severity": "blocking", "goal": "Nothing Is Broken",
+             "title": "a blocker", "files": ["src/app.py"]},
+        ])
+        assert _run_begin(repo, "--mode", "cumulative", "--scope", "budgeted").returncode == 4
+        out = self._list(repo)
+        assert "guard=critic-dispatch-round-budget" in out
+        assert "rounds=6/1" in out, out
+        assert "accepted=6" in out, out
+        assert "blocking-left=6" in out, out

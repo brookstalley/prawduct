@@ -112,8 +112,11 @@ The anchor must also be an **ancestor of HEAD**. The findings cache is single-sl
 | No readable findings cache, no `fact_id` in it, or the fact is gone from the store (1) | Nothing to anchor against — fall back per the property above, record `mode_chosen_by: "fallback-no-prior-findings"`. |
 | The prior tree can't be diffed against the current tree (1) | Rewritten history — anchor unreliable; same fallback. **Committed.** |
 | The prior fact's anchor commit is not an ancestor of HEAD (1) | Another lineage — a branch switch, or rewritten history; the delta would span the divergence. Same fallback. **Committed.** |
-| Prior review has no BLOCKING/WARNING findings and the anchored tree is the one it reviewed (1) | Nothing to verify and no delta to review. The message names the anchor and both tree hashes — "nothing changed" alone is true of the anchor and says nothing about the repo. |
-| Subject-set delta > 2 × the prior subject set + 5 (2) | Scope widened beyond the prior surface — a partial review would mislead. Both counts are subject sets, so prose riding along on a fix cannot demote the pass. Re-dispatch in the mode the refusal names, recording `mode_chosen_by: "fallback-scope-widened"`. |
+| Delta > 2 × the prior count + 5 (2) | Scope widened beyond the prior surface — a partial review would mislead. Both counts are coverage-priced (the judgeable subset of each subject set, not the subject set), so prose riding along on a fix cannot demote the pass. Re-dispatch in the mode the refusal names, recording `mode_chosen_by: "fallback-scope-widened"`. |
+
+**Not a demotion.** Prior review has no BLOCKING/WARNING findings and the anchored tree is the one it
+reviewed: **exit 3, no review needed — stop.** There is no wider mode to fall back to, and
+re-dispatching one spends a full round on a bundle the gate already passes.
 
 **When NOT to use verify-resolutions.** Not as a chunk's first review (it's a re-review mode). Not after long drift unrelated to the original findings — the scope-widening threshold exists for exactly that.
 
@@ -142,8 +145,7 @@ one of three dispositions, and **FILE is the narrowest, never the default**:
 - **FIX** — take it now. Correct for anything cheap, and for anything touching a gate, a contract, or
   an operator-facing surface regardless of cost. Closing coverage afterwards costs **one**
   `verify-resolutions` pass — bounded, and not another full round. A fix confined to non-judgeable
-  surfaces costs nothing at all, and records as `--fixed <paths>` (below) rather than buying a round
-  to prove itself.
+  surfaces costs nothing at all, and records as `--fixed <paths>` (below).
 - **FILE** — only genuinely deferred work that someone will actually do, and the item says what
   triggers it. No trigger means it is an ACCEPT wearing a backlog id. **Two tests, and it must pass
   both:** the work is **large** — a chunk's worth or more, not an hour's — **and** you cannot
@@ -218,10 +220,8 @@ prawduct-hook disposition <review-id> <fid> --fixed <path>[,<path>…] # fixed f
 **`--fixed` exists because the cheapest correct action was the only one the record could not see.** A
 free fix buys no round, so no verify pass runs, no resolution fact is written, and the census reads
 `undispositioned` forever — leaving "don't fix it" and "spend ten minutes" as the visible answers.
-The paths you name are checked at record time against the predicate that prices the edit: **a set
-holding anything judgeable is refused**, so nothing launders a judgeable fix past a gate. BLOCKING is
-refused too — it clears only through a resolution fact, and the free-interval refusal lets that pass
-through for exactly this case.
+The paths you name are checked against the predicate that prices the edit: **a set
+holding anything judgeable is refused**, so nothing launders a judgeable fix past a gate. BLOCKING is refused too: it clears only through a resolution fact.
 
 The command validates that the finding exists before it records anything, and refuses to accept a
 BLOCKING finding without `--owner-ruling "<text>"` — the severity rule below, enforced in code rather
@@ -238,8 +238,7 @@ prawduct-hook render-dispositions [--review <id>|--scope <s>] [--json]
 
 Paste the rendered table into the change-log entry or PR body. It reports each finding's state
 (`fixed`, `waived`, `accepted`, `filed`, `fixed-unreviewed`) and — the number nothing measured before
-— how many findings are still **undispositioned**. `fixed-unreviewed` is deliberately not `fixed`:
-both say the defect is gone, and only one of them says an independent reviewer looked.
+— how many findings are still **undispositioned**. `fixed-unreviewed` is not `fixed`: both say the defect is gone, only one says a reviewer looked.
 
 **Why this stopped being prose.** Hand-written censuses drift, and their corrections re-enter review.
 Measured on this framework's own repo in a single day: one census asserted a count of accepted notes
@@ -323,14 +322,11 @@ fork-skill prose is behavioural logic here. When in doubt assume judgeable and l
 otherwise; it is the gate's answer that binds.
 
 **The reviewer's half of the same rule is a separate pass, not a severity floor.** A record is not a
-per-round subject at all — the two bars that decide when one is worth a finding, and the pass that
+per-round subject at all — the bars that decide when one is worth a finding, and the pass that
 applies them, are **Records Pass** below.
 
-**Yield does not decay — do not wait for it to.** This file used to say a round-3 pass finds less;
-the store says the opposite. Findings per full round *rise* — 13.5, 15.4, 15.5, 18.4 — and 99% are
-new, not re-raised. There is **no natural fixed point**, so "stop when the yield drops" never fires.
-Later rounds do increasingly find defects in the *record of the previous round*: true, confidently
-rated, worth less than the round costs — a signal to disposition what you have, never a bound. The
+**Yield does not decay — do not wait for it to.** Findings per full round *rise* — 13.5, 15.4, 15.5, 18.4 — 99% of them new. There is **no natural fixed point**: "stop when the yield drops" never fires.
+Later rounds do increasingly find defects in the *record of the previous round* — a signal to disposition what you have, never a bound. The
 bounds are zero BLOCKING above, and the budget below. Stopping is not filing: most of that round's
 findings are ACCEPTs, and saying so takes a clause each.
 
@@ -339,8 +335,7 @@ findings are ACCEPTs, and saying so takes a clause each.
 work may buy. At the ceiling `critic-begin` exits 4, auto-ACCEPTs the outstanding non-blocking
 findings with the budget as their reason, and renders the census. It never counts or refuses a
 `verify-resolutions` pass, and never sweeps a BLOCKING finding — so **it can end a review loop and
-can never open a gate**. `--force` buys one anyway; needing that every time means the number is
-wrong, and the number is the fix.
+can never open a gate**. `--force` buys one anyway; needing that every time means the number is wrong.
 
 **Last chunk of a `Type: cumulative-final` plan — one review, not two.** Commit the chunk, then run `/prawduct:critic cumulative` ONCE: that single review serves as both the chunk's review and the PR-gate evidence. Don't run a separate `final` first — cumulative runs the same 7 goals plus cross-checks over `merge-base...HEAD`, a scope that already contains the chunk's diff, so a preceding `final` re-pays 4-10 minutes for assurance the cumulative re-derives. Mode inference implements the sequencing: with the last chunk's work still uncommitted, `/prawduct:critic` infers `final` (the right mid-chunk look); once committed and clean, it infers `cumulative` — the at-commit review. Post-cumulative fixes take a `verify-resolutions` pass, not a second full one — its fact extends coverage over the fix delta.
 
@@ -409,6 +404,11 @@ three bars and **name the set you covered**, so the exclusion is visible rather 
   per round retired no severity: **54 of the store's 236 BLOCKING findings (23%) had a record as
   their only subject**, and this bar is where that class lands now. A ceiling of WARNING here would
   have traded them away silently.
+
+**The bars decide WHETHER, Goal 4 decides WHICH — in that order, and this is its one home.** An
+oracle record is a finding only once it clears a bar; then Goal 4's record severities assign which.
+Read the other way round, its stale-artifact WARNING makes every out-of-date narration a finding —
+the fix round this pass exists to stop buying.
 
 Everything else — an imprecise count, a narration one revision short, a phrasing that could be truer —
 clears no bar and is **not a finding**. Record-only findings were 36% of all findings across 728
