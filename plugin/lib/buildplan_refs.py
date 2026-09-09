@@ -1392,7 +1392,7 @@ def _looks_like_file_path(token: str, project_dir: "Path | None" = None) -> bool
     parser applies before calling this.
 
     Write-target templates with angle-bracket placeholders (e.g.
-    ``<inbox>/<kebab-slug>.md``) and URLs (e.g. ``https://example.com/x``) also
+    ``<target-repo>/<kebab-slug>.md``) and URLs (e.g. ``https://example.com/x``) also
     contain ``/`` but are not literal on-disk paths — a token carrying ``<``,
     ``>``, or ``://`` is a placeholder/URL to skip, not a missing file to flag
     (BLD-4K7P; same form-family as the glob carveout above).
@@ -2687,7 +2687,7 @@ def _verify_chunk_refs(project_dir: Path, refs: dict) -> list[dict]:
                 continue
             if gitstate.git_path_is_ignored(project_dir, ref):
                 # BLD-4K7P: an intentionally-gitignored managed path (e.g.
-                # `.prawduct/.bug-inbox`) is a generated/managed file,
+                # `.prawduct/.test-evidence.json`) is a generated/managed file,
                 # legitimately absent from a fresh checkout — not a missing
                 # deliverable. Skip rather than cry wolf.
                 continue

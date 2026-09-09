@@ -1,6 +1,5 @@
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
-.prawduct/.bug-inbox
 .prawduct/.critic-active
 .prawduct/.critic-findings.json
 .prawduct/.governance-ledger.jsonl
@@ -38,8 +37,14 @@ uv.lock
 # version bump never produces a tracked-file diff (the core no-noise guarantee).
 .prawduct/.prawduct-version
 
-# Untracked drop-box for externally-filed bug reports (triaged into .prawduct/backlog.md).
+# RETIRED local artifacts of the upstream bug drop-box. Upstream reports are GitHub
+# issues now, and nothing writes either of these — they are kept ignored because a
+# machine that used the channel still holds untracked reports under incoming-bugs/,
+# which have no git copy, and un-ignoring them would surface them as noise. Triage
+# anything left there into the backlog by hand; deleting the tree is the operator's
+# call, not prawduct's.
 incoming-bugs/
+.prawduct/.bug-inbox
 
 # Prawduct session files
 .prawduct/.critic-partials/

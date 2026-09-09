@@ -2582,10 +2582,10 @@ class TestTreeValidatedFreshness:
         assert _run_in(repo, "test-status").returncode == 0, \
             "a non-protected .md is not judgeable — must stay current"
 
-    def test_untracked_incoming_bug_note_is_current(self, tmp_path):
+    def test_untracked_scratch_note_is_current(self, tmp_path):
         repo = self._seed(tmp_path, "bug")
-        (repo / "incoming-bugs").mkdir()
-        (repo / "incoming-bugs" / "report.md").write_text("# bug report\n")
+        (repo / "scratch").mkdir()
+        (repo / "scratch" / "note.md").write_text("# scratch note\n")
         assert _run_in(repo, "test-status").returncode == 0, \
             "an untracked .md note is not judgeable — must stay current"
 

@@ -39,7 +39,7 @@ def _hook_module():
 
     SourceFileLoader because the script has a shebang and no ``.py`` extension;
     the module name is not ``__main__``, so its CLI dispatch does not run at
-    import. Same idiom as ``test_bug_inbox.py``.
+    import. Same idiom as ``test_hook_session_file_registry.py``.
     """
     loader = importlib.machinery.SourceFileLoader("prawduct_hook_ephemeral", str(HOOK))
     spec = importlib.util.spec_from_loader("prawduct_hook_ephemeral", loader)

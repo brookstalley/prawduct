@@ -117,7 +117,7 @@ Consequence, stated honestly: under `ask-user` the mechanical floor is that **no
 ```
 prawduct-hook backlog file-upstream --title T --body B [--component C] --json
   → renders the EXACT payload (§2), computes  payload-digest = sha256(canonical send-bytes),
-    prints {payload, payload_digest}, sends NOTHING.   exit 0
+    prints {payload, payload_digest, preference}, sends NOTHING.   exit 0
 ```
 
 **Call 2 — send (only on an explicit, matching approval):**
@@ -125,6 +125,8 @@ prawduct-hook backlog file-upstream --title T --body B [--component C] --json
 prawduct-hook backlog file-upstream --title <title> --body <body> [--component <c>] \
   --approve sha256:<digest> --json
 ```
+The `preference` it returns is the resolved §4.1 consent state — not part of the payload and not covered by the digest. It is there because a caller that cannot read the state asks for approval on every report, which makes `always-file` inert on its only consumer.
+
 `--title`/`--body`/`--component` are required on **both** arms and must be the same values the
 preview was given: check 4 re-renders the payload from them and compares its own digest, which is
 what makes "sent == previewed" a property of the bytes. An `--approve` with no payload flags is
@@ -162,7 +164,7 @@ The intake/triage half is MG5's receiving end + Security §5, tracked separately
 referent, and it is named by title until its alias is confirmed); this doc only guarantees the outbound payload carries the signal it needs:
 
 - **Intake query** = open issues whose title carries the `[prawduct]` convention and no triage label — works for both non-collaborator filings (Security §5's non-collaborator-authored-unlabeled set) and the collaborator dogfood case.
-- The `untriaged-upstream-reports` advisory (today: counts `incoming-bugs/*.md`) is repointed to **count that intake set** instead of drop-box files (MG5). *Exact query pinned on the receiving-side item, at build.*
+- The `untriaged-upstream-reports` advisory is repointed to **count that intake set** instead of drop-box files (MG5). **Done 2026-09-08**, and the query it settled on: open items whose title carries the prefix and which carry no `stage:` label — this repo's triage ladder, so an absent stage is *nobody has looked* rather than *somebody decided*. It is keyed on this repo being the pinned target, so it stays silent in every product.
 
 ---
 
@@ -173,7 +175,7 @@ The build (not this design pass) executes, in lockstep — the drop-box is retir
 1. **`report-bug` skill** — step 3 "write to `incoming-bugs/<slug>.md`" becomes "L1-recompose → `file-upstream` preview → (ask-user) show payload + confirm-synthetic → approve → send". The `Found in:` version step is unchanged (already sourced, not recalled). The **inert-fallback (step 4) changes**: submit-or-nothing removes the *local-capture* of an upstream bug; the "point at `github.com/brookstalley/prawduct/issues`" pointer stays as the no-reachable-path fallback.
 2. **Preference** — add `Upstream filing: ask-user | always-file | never-file` (default `ask-user`) to `project-preferences.md`, mirroring `PR merge strategy`.
 3. **Egress test → contract test** — `test_no_upstream_content_egress.py` is **replaced** by the XP7 five-check contract test (§5); the interim test stays live until that lands.
-4. **Drop-box + probe retirement** — retire `bug-inbox` resolver, `.bug-inbox` pointer, `incoming-bugs/`, and repoint the `untriaged-upstream-reports` probe to the §6 intake count.
+4. **Drop-box + probe retirement** — retire `bug-inbox` resolver, `.bug-inbox` pointer, `incoming-bugs/`, and repoint the `untriaged-upstream-reports` probe to the §6 intake count. **Done 2026-09-08**, in two chunks and in that order: the probe was repointed first, then the channel retired, because §7's lockstep forbids the reverse. Two departures from the wording, both deliberate. The `bug-inbox` **subcommand** is inert rather than deleted — the 2026-08-11 harness-only-removal exception covers subcommands the harness alone invokes, and this one is human-callable, so [[deprecation-requires-an-inert-retention-window]] governs and removal defers to a major (the `lib/bug_inbox.py` resolver it called *is* deleted). And **`incoming-bugs/` itself is not deleted**: it is gitignored, so anything in it has no git copy, and deleting an operator's only copy is an irreversible operation this build declined rather than sought approval for. Its `.gitignore` line stays, re-commented as a retired local artifact.
 5. **§ Direction norm** — amend `Status: in-transition → steady-state` once §5's contract test replaces the interim one (§8).
 
 ---

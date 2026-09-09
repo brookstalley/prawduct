@@ -655,8 +655,23 @@ def _file_upstream_preview(project_dir, *, title, body, component):
     # preview, and an advisory finding is what lets an author fix a title before
     # approving it. Silently truncating an outbound bug report would cut bytes the
     # reviewer already approved, so neither arm ever rewrites them.
+    # The resolved consent state rides out on BOTH views. It is not a byte of the
+    # payload and takes no part in the digest — it is the one §4.1 fact a caller
+    # cannot otherwise observe, and `always-file` is the state that needs it:
+    # standing consent means "never ask me", and a caller with no way to READ the
+    # state asks anyway, on every report, which makes the value inert on its only
+    # consumer. `never-file` announces itself through a refusal and `ask-user` is
+    # the default, so this line is what the third state is missing.
     return upstream.attach_advisories(
-        core.ok({"payload": payload, "payload_digest": digest, "sent": False}, warnings),
+        core.ok(
+            {
+                "payload": payload,
+                "payload_digest": digest,
+                "sent": False,
+                "preference": preference,
+            },
+            warnings,
+        ),
         findings=upstream.lint_payload(payload["title"], payload["body"]),
     )
 
@@ -1851,6 +1866,11 @@ def _print_human_ok(data) -> None:
         print(payload.get("body", ""))
         print()
         print(f"payload-digest: {data.get('payload_digest')}")
+        # Preview-only, and printed even though the human already knows what they
+        # set: the reader here is a model deciding whether design §4.1 obliges it
+        # to stop and ask, and it has no other way to see the answer.
+        if data.get("preference"):
+            print(f"consent: {data.get('preference')}")
         # The outcome line, last, because it is the one a reader scans for after
         # a wall of verbatim payload — and the payload is printed on BOTH arms so
         # the send's record shows what actually left, not a summary of it.

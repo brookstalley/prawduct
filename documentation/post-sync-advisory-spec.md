@@ -277,7 +277,9 @@ The per-entry `(id: …)` is what the block-level dismissal hint consumes — mo
 entry (§5.1) must not take the id with it, or the reader is told how to dismiss and not which one.
 (Every command inside this example block is the string the code actually emits, `/prawduct:advisory`
 included. The spec's *prose* elsewhere still carries the original `/prawduct-advisory` spelling from
-before the command became a plugin skill; an example that quotes output has to match the output.)
+before the command became a plugin skill; an example that quotes output has to match the output.
+The first entry and its `after →` edge are the **retired** drop-box instance — see §5.3 — kept
+because they are the only rendering of a prerequisite pair anyone has needed to read.)
 
 The briefing prints to stdout, which is the **agent-facing** channel
 (`observability-strategy.md` § Direction), so this block is data for the runtime, not copy for the
@@ -301,11 +303,15 @@ When no active advisories, omit the section entirely. Don't print "ADVISORIES: 0
 ### 5.3 Prerequisite ordering
 
 Priority ranks advisories by *severity*, which is not the same as *sequence*, and where the two
-disagree the briefing was recommending the wrong order. The live instance: triaging the incoming-bug
-drop-box files each report into the backlog, and migrating the markdown backlog to GitHub Issues is a
-one-shot reviewed bulk write — so triage belongs first, or the stragglers arrive afterward by a
-different path and outside the batch that was reviewed. Triage is `info`; the migration nudge is
-`warn`; so severity ordering printed them backwards, in every product carrying both.
+disagree the briefing was recommending the wrong order. The instance that motivated it, **retired
+2026-09-08 and kept here as the derivation**: triaging the incoming-bug drop-box filed each report
+into the backlog, and migrating the markdown backlog to GitHub Issues is a one-shot reviewed bulk
+write — so triage belonged first, or the stragglers arrived afterward by a different path and outside
+the batch that was reviewed. Triage was `info`; the migration nudge is `warn`; so severity ordering
+printed them backwards, in every product carrying both. The edge went when the drop-box did and the
+migration it sequenced against had shipped; the mechanism stays because the next pair of advisories
+that disagree this way will need it, and a rule with its worked example deleted is a rule nobody can
+check.
 
 A probe declares the edges as `(key, because)` pairs — the reason travels with the edge, because the
 probe that knows the work is the one that knows why it comes first:

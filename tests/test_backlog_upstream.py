@@ -16,7 +16,9 @@ approve one payload and a send transmit another.
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
+import tempfile
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -29,6 +31,7 @@ if str(_REPO_ROOT / "plugin") not in sys.path:
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from lib import core  # noqa: E402
 from lib.backlog import cli, encode, upstream  # noqa: E402
 from tests.fakes.fake_github import FakeGitHub  # noqa: E402
 
@@ -460,8 +463,8 @@ class TestIdentityResolvesFromTwoSignals:
 class TestRepoNamesCompareTheWayGitHubDoes:
     """GitHub owner/repo names are case-insensitive. Every comparison built on
     them is therefore about identity, not spelling — and the one that matters is
-    Chunk 02's no-self-file check, where a case-sensitive compare is fail-open on
-    an input the caller picks."""
+    the no-self-file check, where a case-sensitive compare is fail-open on an
+    input the caller picks."""
 
     @pytest.mark.parametrize(
         "spec,expected",
@@ -834,8 +837,9 @@ def _send_argv(project_dir, *, approve=None, json_mode=True):
 
 
 class TestTheConsentPreferenceReads:
-    """Design §4.1. The row is *authored* in Wave B, so every path this can take
-    today lands on the default — which is why the default has to be the safe one."""
+    """Design §4.1 — the row as a hand-edited seam, with fixtures for the values
+    the shipped rows do not carry. ``TestTheShippedRowsAreTheOnesRead`` below
+    covers the real artifacts, which is the input this reader actually gets."""
 
     def _write(self, tmp_path, text):
         artifacts = tmp_path / ".prawduct" / "artifacts"
@@ -878,8 +882,8 @@ class TestTheConsentPreferenceReads:
     def test_a_file_that_cannot_be_read_REFUSES_rather_than_defaulting(self, tmp_path):
         """The stake is `never-file`, which §4.3 calls a hard mechanical guarantee.
 
-        An absent file is ordinary — no product has this row yet — and an
-        unparseable VALUE still establishes that the row does not say
+        An absent file is ordinary — it resolves to the same state the shipped
+        row names — and an unparseable VALUE still establishes that the row does not say
         `never-file`. A file that exists and cannot be read establishes nothing,
         so defaulting it to `ask-user` enforced the guarantee by hoping the
         operator read a warning which, on the send arm, rides out on the SUCCESS
@@ -932,6 +936,137 @@ class TestTheConsentPreferenceReads:
         assert warning is not None and "never file" in warning
 
 
+class TestTheShippedRowsAreTheOnesRead:
+    """The reader and the artifacts it actually reads, pinned against each other.
+
+    Every other test here writes its own row, and a row you wrote encodes what
+    you believe the input looks like — so a suite made only of them is green
+    exactly where the belief is wrong. These two are the real inputs:
+    `templates/project-preferences.md` is what `init-product` copies into every
+    onboarded product, and this repo's own file is a governed product's authored
+    row. Either one drifting from the reader fails here rather than in somebody's
+    first filing.
+    """
+
+    def test_the_template_every_product_is_scaffolded_from_reads_as_ask_user(self, tmp_path):
+        """The shipped row and the absent-row fallback must agree (design §4.1).
+
+        They are two spellings of one default, so if they disagree an operator
+        who deletes the row changes behaviour without touching a value — and the
+        direction that costs something is the row reading as anything other than
+        `ask-user`, which is the only state that requires a matching approval.
+        """
+        artifacts = tmp_path / ".prawduct" / "artifacts"
+        artifacts.mkdir(parents=True)
+        shipped = core.TEMPLATES_DIR / "project-preferences.md"
+        shutil.copy(shipped, artifacts / "project-preferences.md")
+
+        # Asserted separately, because an ABSENT row also reads back as
+        # `(ask-user, None)` — so the parse assertion below passes just as
+        # happily against a template that ships no row at all, which is the one
+        # thing this test exists to stop.
+        assert f"- **{upstream.FILING_PREFERENCE_LABEL}**:" in shipped.read_text(
+            encoding="utf-8"
+        ), "the scaffolding template no longer ships an `Upstream filing` row"
+
+        assert upstream.read_filing_preference(tmp_path) == (upstream.PREF_ASK_USER, None), (
+            "the shipped `Upstream filing` row must read back as ask-user and warn about "
+            "nothing — a freshly onboarded product that warns on every filing teaches its "
+            "operator to ignore the warning that exists for a typo'd row"
+        )
+
+    def test_this_repos_own_row_parses_cleanly(self):
+        """What is pinned is that the row parses, not which state it names.
+
+        The value is the owner's to change at any time; a test asserting a
+        particular one would make a preference into a rule. What must hold is
+        that whatever they write still reaches the reader as a defined state,
+        silently — a warning here means the repo that defines the vocabulary has
+        a row nobody can read.
+        """
+        state, warning = upstream.read_filing_preference(_REPO_ROOT)
+
+        assert state in upstream.FILING_PREFERENCE_STATES, state
+        assert warning is None, warning
+
+
+class TestThePreviewReportsTheConsentState:
+    """The §4.1 state a caller cannot otherwise observe.
+
+    `never-file` announces itself through a refusal warning and `ask-user` is what
+    every unreadable path resolves to, so a caller can infer those two. Standing
+    consent can be inferred from nothing — and a caller that cannot read it stops
+    to ask on every report, which is the one behaviour `always-file` exists to
+    remove. A preference whose only consumer cannot see it is a shipped value that
+    does nothing.
+    """
+
+    def _repo(self, tmp_path, preference=None):
+        artifacts = tmp_path / ".prawduct" / "artifacts"
+        artifacts.mkdir(parents=True, exist_ok=True)
+        (tmp_path / ".prawduct" / "project-state.yaml").write_text(
+            "backlog_service_repo: acme/widget\n", encoding="utf-8"
+        )
+        if preference is not None:
+            artifacts.joinpath("project-preferences.md").write_text(
+                f"## Workflow\n\n- **Upstream filing**: {preference}\n", encoding="utf-8"
+            )
+        return tmp_path
+
+    @pytest.mark.parametrize(
+        "written,expected",
+        [
+            (None, upstream.PREF_ASK_USER),
+            ("ask-user", upstream.PREF_ASK_USER),
+            ("always-file", upstream.PREF_ALWAYS_FILE),
+            ("never-file", upstream.PREF_NEVER_FILE),
+        ],
+        ids=["absent", "ask-user", "always-file", "never-file"],
+    )
+    def test_every_state_reaches_the_json_envelope(self, tmp_path, capsys, written, expected):
+        project = self._repo(tmp_path, written)
+
+        cli.run(
+            str(project),
+            ["file-upstream", "--title", _TITLE, "--body", _BODY, "--json"],
+            transport=MagicMock(),
+        )
+        envelope = json.loads(capsys.readouterr().out)
+
+        assert envelope["data"]["preference"] == expected
+
+    def test_the_human_view_prints_it_too(self, tmp_path, capsys):
+        """The `--json` arm and the formatter are two consumers of one envelope,
+        and a `--json`-only test never runs the second."""
+        project = self._repo(tmp_path, "always-file")
+
+        cli.run(
+            str(project),
+            ["file-upstream", "--title", _TITLE, "--body", _BODY],
+            transport=MagicMock(),
+        )
+
+        assert "consent: always-file" in capsys.readouterr().out
+
+    def test_it_is_not_a_byte_of_the_payload(self, tmp_path, capsys):
+        """It rides beside the payload, never inside it. If the consent state
+        reached the digest, moving the preference would invalidate an approval
+        the operator had just given for bytes that did not change."""
+        digests = []
+        for preference in ("ask-user", "always-file"):
+            project = self._repo(Path(tempfile.mkdtemp()), preference)
+            cli.run(
+                str(project),
+                ["file-upstream", "--title", _TITLE, "--body", _BODY, "--json"],
+                transport=MagicMock(),
+            )
+            data = json.loads(capsys.readouterr().out)["data"]
+            digests.append(data["payload_digest"])
+            assert "preference" not in data["payload"]
+
+        assert digests[0] == digests[1]
+
+
 class TestTheChecksRefuseInIsolation:
     """Each §5 check as a function. The CLI-level assertions live in the contract
     test; these pin the edges a happy-path call never reaches."""
@@ -940,6 +1075,23 @@ class TestTheChecksRefuseInIsolation:
         assert upstream.check_preference(upstream.PREF_NEVER_FILE).code == "filing-disabled"
         assert upstream.check_preference(upstream.PREF_ASK_USER) is None
         assert upstream.check_preference(upstream.PREF_ALWAYS_FILE) is None
+
+    def test_the_never_file_remedy_is_the_tracker_and_not_a_local_capture(self):
+        """The mechanically checkable half of submit-or-nothing (design §5).
+
+        A refused filing is the moment a caller decides what to do instead, and
+        this message is what it reads. Pointing it at the product's own backlog
+        instructs exactly the local capture the design forbids by name — an
+        upstream bug parked in a product's backlog reaches nobody who could fix
+        it — and the code alone cannot tell that regression from a correct one.
+        """
+        message = upstream.check_preference(upstream.PREF_NEVER_FILE).message.lower()
+
+        assert f"github.com/{upstream.PINNED_TARGET}/issues" in message
+        assert "backlog" not in message, (
+            "the never-file refusal is instructing a local capture again — design §5 is "
+            "submit-or-nothing, and the only fallback is the tracker pointer"
+        )
 
     def test_naming_the_pin_is_allowed_and_selecting_a_target_is_not(self):
         assert upstream.check_target(None) is None

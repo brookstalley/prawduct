@@ -181,7 +181,17 @@ drop-box formalized in the retired `build-plan-upstream-bug-reporting.md` (that 
 `bug-inbox` resolver, `.bug-inbox` pointer, `incoming-bugs/` drop-box, the
 `untriaged-upstream-reports` probe, and the local-capture fallback — is **to be removed** (target
 state; it remains the interim supported path until the GitHub-issue path is built, per
-`security-model.md` § Direction), not carried forward). Tracked by **BKL-7Q4M** (content minimization — the artifact `security-model.md`
+`security-model.md` § Direction), not carried forward). *(**Two clauses here expired 2026-09-08**,
+when BKL-7Q4M's Wave C landed. Corrected here rather than in place, because a requirement is the
+record of what was asked for. **The interim clause has run out:** the GitHub-issue path is built,
+the drop-box is retired, and there is no supported local channel left — `bug-inbox` is inert, the
+`.bug-inbox` pointer and the `incoming-bugs/` template are gone, and an operator's untracked
+`incoming-bugs/` tree is a local archive with nothing behind it. **And the probe was not removed:**
+`untriaged-upstream-reports` was **repointed** to count the issue intake set — open items carrying
+the `[prawduct]` title prefix and no `stage:` label — because the receiving side needs a nudge
+whatever the channel is, and the asked-for removal would have deleted the mechanism along with the
+substrate. The reviewed design that made that choice is
+`documentation/backlog-service-upstream-filing.md` §6/§7.4, which outranks this bullet.)* Tracked by **BKL-7Q4M** (content minimization — the artifact `security-model.md`
 § Direction norm cites it by id) and **BKL-9XQ2** (consent / evidence / label taxonomy).
 
 - **XP4** Content minimization is a **two-layer guarantee, stated honestly**:

@@ -369,8 +369,8 @@ class TestThePreferenceCanHardRefuse:
     def test_the_preview_says_filing_would_refuse(self, tmp_path, capsys):
         """The same wasted round the self-file warning exists to prevent: without
         this the operator reviews the bytes, approves the digest, and only then
-        learns filing is off. Unreachable until Wave B authors the row, which is
-        why it is asserted rather than left to be rediscovered there."""
+        learns filing is off — on the one preference state that can never be
+        talked out of refusing."""
         project = a_product_repo(tmp_path, preference="never-file")
 
         cli.run(
@@ -838,6 +838,11 @@ class TestNoSurfaceStillDescribesTheAbsence:
         # contract, so a stale claim there reaches the same reader one hop later.
         "plugin/skills/backlog/SKILL.md",
         "plugin/skills/backlog/adapter-mode.md",
+        # The op's only caller. It is on this list for the same reason
+        # adapter-mode.md is, one step more directly: it is the surface a model
+        # reads when it has an actual prawduct bug in hand, so a sentence here
+        # saying the channel is unbuilt routes the report nowhere.
+        "plugin/skills/report-bug/SKILL.md",
     )
 
     #: Phrasings that assert the surface does not exist yet. Matched only on lines
@@ -920,3 +925,195 @@ def test_the_documented_dedup_bound_cites_the_symbol_that_sets_it():
         "sentence behind — which is exactly how this drifted the first time"
     )
 
+
+class TestTheDropBoxReplacementIsLive:
+    """Design §7's lockstep, from the replacement's side.
+
+    The drop-box is retired **only together with** a live replacement, never
+    before it — so the thing that must be mechanically true before anyone
+    retires `incoming-bugs/` is that `/prawduct:report-bug` reaches the adapter
+    and no longer writes a file. Asserted here rather than left to the retirement
+    itself, where "is the replacement live?" would be answered by the same person
+    doing the retiring, from memory.
+
+    **What is pinned here is mechanical; the rest is not.** Everything else this skill owes — that the
+    report carries no product content, that a human actually read the bytes,
+    that a blocked filing captures nothing locally — is judgment about prose, and
+    a grep for it would pass on any text containing the right words. Those are
+    the Critic's (Goal 4), deliberately: a green test that cannot catch a real
+    violation is worse than no test.
+    """
+
+    SKILL = REPO_ROOT / "plugin/skills/report-bug/SKILL.md"
+
+    def test_the_skill_drives_both_arms_of_the_op(self):
+        """A skill describing the preview and not the send is a half-rewrite —
+        and it fails in the quiet direction, composing a payload nobody files."""
+        text = self.SKILL.read_text(encoding="utf-8")
+
+        for token in ("file-upstream", "--approve"):
+            assert token in text, (
+                f"`/prawduct:report-bug` no longer names `{token}` — it is the only caller of "
+                "the upstream filing op, and a report that never reaches the send arm is a "
+                "report nobody receives"
+            )
+
+    #: How to make each non-previewable refusal produce its code, so the CODES in
+    #: the assertion below come out of the adapter rather than out of memory. The
+    #: names are derived from `send`; only the inputs are written here, and a
+    #: refusal `send` gains that is missing from this map fails loudly rather than
+    #: being skipped — an unknown name is unbacked by default, which is the same
+    #: rule `IMPLEMENTED_ADAPTER_GUARDS` follows one file over.
+    #:
+    #: `check_payload_inputs` is deliberately absent: it rejects malformed FLAGS
+    #: before a payload exists, and the skill has nothing to branch on there — the
+    #: CLI's message names the flag.
+    REFUSAL_PROBES = {
+        "check_target": lambda: upstream.check_target("someone/else"),
+        "check_approval": lambda: upstream.check_approval(
+            "sha256:not-the-digest", "sha256:the-digest", preference=upstream.PREF_ASK_USER
+        ),
+        "check_authenticated": lambda: upstream.check_authenticated(None),
+    }
+
+    def test_the_skill_names_every_refusal_the_preview_cannot_predict(self):
+        """The skill keeps a copy of the codes, and this is what keeps it honest.
+
+        It is a justified copy — a model needs the codes to branch on an outcome
+        — but a copy with nothing pinning it goes stale silently: a seventh
+        refusal added to `send` would leave the skill's list incomplete, and the
+        first reader to learn that is an operator staring at a code the
+        instructions do not mention, on the one surface where the write is
+        foreign and irreversible.
+
+        Only the NON-predictable ones are required. The rest reach the operator
+        as `filing would refuse (…)` on the preview, which the skill does tell
+        the model to read and act on.
+        """
+        import ast
+        import inspect
+        import textwrap
+
+        def called_in(fn):
+            # CALLS, not mentions. `previewable_refusals`' docstring names every
+            # refusal it deliberately excludes, so a substring search over its
+            # source reports the whole set as predicted and this derivation
+            # silently finds nothing to check.
+            return {
+                node.func.id
+                for node in ast.walk(
+                    ast.parse(textwrap.dedent(inspect.getsource(fn)))
+                )
+                if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+            }
+
+        refusals = {n for n in called_in(upstream.send) if n.startswith("check_")}
+        assert refusals, "no refusal-shaped call found in `send` — the derivation broke"
+
+        predicted = called_in(upstream.previewable_refusals)
+        unpredictable = sorted(
+            n for n in refusals
+            if n not in predicted and n != "check_payload_inputs"
+        )
+        assert unpredictable, "every refusal is predictable — this derivation broke"
+
+        text = self.SKILL.read_text(encoding="utf-8")
+        for name in unpredictable:
+            probe = self.REFUSAL_PROBES.get(name)
+            assert probe is not None, (
+                f"`send` refuses via {name}() and REFUSAL_PROBES does not know how to make "
+                "it fire, so its code cannot be checked against the skill. Add a probe (or "
+                "say why the skill need not name it) — an unknown refusal is unbacked here "
+                "by default, on purpose"
+            )
+            code = probe().code
+            assert f"`{code}`" in text, (
+                f"`{code}` is a refusal the preview cannot predict, so the operator meets it "
+                "for the first time at send — and `/prawduct:report-bug` does not name it. "
+                "Give the skill a line saying what that code means and what to do about it"
+            )
+
+    def test_no_command_block_passes_a_composed_field_as_a_shell_literal(self):
+        """Every composed field the skill shows must be read from a file.
+
+        Inside double quotes bash still runs `` `…` `` and expands `$…`, and this
+        skill instructs these fields be written in prawduct's own backticked
+        vocabulary — so `` `prawduct-hook version` `` executes and a symptom
+        naming `$CLAUDE_SKILL_DIR` expands to nothing. The result is composed,
+        digested, approved and filed with the defect's own name deleted from it,
+        into a repo where a non-collaborator cannot retitle it. Under standing
+        consent the digest comparison is waived, so the mangling is not even
+        caught by an `approval-mismatch`.
+
+        **`--body` is in the class for a reason worth stating**, because the
+        obvious argument excludes it: the digest does not protect it. Both calls
+        expand identically, so a mangled body previews and sends as the same
+        bytes, the digests agree, and the check passes on content nobody wrote.
+        The trailing space in each match is load-bearing — it is what separates a
+        flag being *passed* from one being *named* in prose.
+
+        Asserted over EVERY line rather than the one that was wrong: the skill
+        shows the command twice, the first fix landed on one block, and the round
+        that found it had to come back for the other. Command-substitution output
+        is not re-expanded, which is why `$(cat …)` is the shape required.
+        """
+        offenders = [
+            f"{n}: {line.strip()}"
+            for n, line in enumerate(self.SKILL.read_text(encoding="utf-8").splitlines(), 1)
+            if any(f"--{f} " in line for f in ("title", "component", "body"))
+            and "$(cat" not in line
+        ]
+
+        assert not offenders, (
+            "a command block passes a composed field as a shell literal — bash "
+            "expands backticks and `$` inside double quotes, and this skill tells the model "
+            "to write these fields in backticked prawduct vocabulary:\n  - "
+            + "\n  - ".join(offenders)
+        )
+
+    def test_no_command_block_reads_a_field_through_a_cross_call_shell_variable(self):
+        """The scratch path must be one the reader holds, not one a variable carries.
+
+        A round fixing the undefined `<scratch>` placeholder replaced it with
+        `SCRATCH="$(mktemp -d)"`, which reads as working code and is not: the
+        Bash tool does not persist env vars between calls, and preview and send
+        are necessarily separate ones. By the send `$SCRATCH` is empty, every
+        `$(cat …)` reads nothing, and `check_payload_inputs` bans only newlines
+        and fences while standing consent skips the digest — so an empty-bodied
+        issue files into a repo where it cannot be retitled or deleted.
+
+        The sibling above pins that the fields arrive via `$(cat …)`; it is
+        satisfied by a `$(cat …)` reading a path that does not exist. This pins
+        the other half. Asserted over every line for the same reason: the skill
+        shows the command twice and a one-block fix has already been shipped once.
+        """
+        offenders = [
+            f"{n}: {line.strip()}"
+            for n, line in enumerate(self.SKILL.read_text(encoding="utf-8").splitlines(), 1)
+            if any(f"--{f} " in line for f in ("title", "component", "body"))
+            and "$(cat" in line
+            and "$" in line.split("$(cat", 1)[1]
+        ]
+
+        assert not offenders, (
+            "a command block reads a composed field through a shell variable. Variables do "
+            "not survive between tool calls, so the send reads an empty path and files an "
+            "empty issue irreversibly. Name a path the reader pasted:\n  - "
+            + "\n  - ".join(offenders)
+        )
+
+    def test_the_skill_names_no_drop_box_at_all(self):
+        """Was "the write, not the mention" while the drop-box still held
+        untriaged reports and the receiving-side section had to say so. The
+        channel is retired, so there is no mention left to carve out and the ban
+        is total: a directory nothing writes and nothing counts, named in the one
+        skill a model reads to decide where a report goes, is an instruction to
+        put one somewhere it will not be found."""
+        text = self.SKILL.read_text(encoding="utf-8")
+
+        for token in ("bug-inbox", "<inbox>/", "incoming-bugs"):
+            assert token not in text, (
+                f"`/prawduct:report-bug` still names `{token}`. Upstream reports are "
+                "filed as GitHub issues; the local drop-box is retired, and naming it "
+                "here routes a report into a directory with no channel behind it"
+            )

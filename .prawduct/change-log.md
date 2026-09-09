@@ -3,6 +3,390 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-09-09: the scratch path a reader holds, and the fix that read as working code
+
+<!-- prawduct: type=fix | scope=upstream-report-bug -->
+
+Third round on one defect class in `/prawduct:report-bug`'s step 2, and the third is the one worth
+recording, because it was caused by the second.
+
+Round one: the three composed fields went through the shell as literals, so a backticked prawduct
+term ran as a command and a `$…` symptom expanded to nothing — the title filed with the defect's own
+name deleted from it. Fixed by reading each from a file via `$(cat …)`, whose output is not
+re-expanded. Round two: PR review found the file location was `<scratch>`, an undefined placeholder —
+the one placeholder in the skill naming a value the reader did not hold, in a skill whose whole
+subject is not writing into a governed product's tree. Round three is that fix: it named the
+directory with `SCRATCH="$(mktemp -d)"`, **which reads as working code and is not.** The Bash tool
+does not persist environment variables between calls, and the preview and the send are necessarily
+separate ones, so by the send `$SCRATCH` is empty and every `$(cat …)` reads nothing. Nothing
+downstream catches it — the flags are still present, `check_payload_inputs` bans only newlines and
+prawduct fences, and standing consent never compares the digest — so the skill would file an
+empty-bodied issue into a repo where it cannot be retitled or deleted.
+
+**The fix was a worse failure than the bug.** `<scratch>` was visibly a blank to fill; `"$SCRATCH"`
+looks like it works. `mktemp -d` now prints the path and the skill says to paste it, with the reason
+stated where the next editor will read it: a path you paste is a value you hold, a variable is not.
+
+**What the sibling test could not see, and now does.** The existing pin asserted that every composed
+field arrives via `$(cat …)` — which the broken form satisfied, being a `$(cat …)` over a path that
+does not exist. The new pin asserts the other half, that no such line carries a shell variable, and
+it ships with a positive control: it catches all six command lines of the variable form and none of
+the prose. A grep over `plugin/skills/`, `plugin/methodology/` and `plugin/templates/` finds no other
+cross-call shell variable, so the class is swept rather than assumed.
+
+## 2026-09-08: the upstream bug drop-box retires, and every surface still describing it stops
+
+<!-- prawduct: type=refactor | scope=upstream-intake-repoint -->
+
+With `untriaged-upstream-reports` counting filed issues, the channel it replaced is retired
+(upstream-filing design §7.4). Reports about prawduct are GitHub issues; nothing routes one into a
+local directory any more, and nothing shipped says otherwise.
+
+**The retirement is one act per substrate, and the substrates do not take the same treatment.**
+`lib/bug_inbox.py` — the resolver that picked the directory — is deleted, and so is
+`templates/incoming-bug-report.md`, the scaffold for a report shape nothing produces. The
+`bug-inbox` **subcommand** is not: it is human-callable, and the 2026-08-11 harness-only-removal
+exception is scoped to subcommands the harness alone invokes, so
+[[deprecation-requires-an-inert-retention-window]] governs and it becomes inert — a `WARNING:` on
+stderr, exit 0, removal deferred to a major. It joins `regen-views` and `stamp-merged` in the
+*announcing* tier rather than the silent one, because its caller is a person who can act on being
+told to stop. Its exit code moves 1 → 0 deliberately: the 1 meant *no inbox is configured*, a
+condition a caller could branch on, and nothing can be configured now.
+
+**What is deliberately NOT deleted is an operator's `incoming-bugs/` tree.** It is gitignored, so
+anything still sitting in one has no git copy and `rm -rf` is unrecoverable — an owner-approval
+operation this build declined rather than sought approval for. Its `.gitignore` line stays,
+re-commented alongside the retired `.prawduct/.bug-inbox` pointer, so a machine that used the channel
+does not suddenly see untracked reports as git noise.
+
+**The `.gitignore` propagation contract changed, and `RETIRED_GITIGNORE_ENTRIES` was declined
+deliberately.** `.prawduct/.bug-inbox` leaves `core.GITIGNORE_ENTRIES` and its `prawduct-hook`
+`_SESSION_GITIGNORED_PATHS` mirror, so a newly onboarded product never receives the line — but it is
+NOT added to `RETIRED_GITIGNORE_ENTRIES`, which means an already-onboarded product keeps its line
+forever, `update-gitignore` will not clear it, and `probe_gitignore_contract_drift` stays silent
+about the difference (an entry in neither `MANAGED_FILES` nor the retired set is invisible to
+`_contract_diff`). That asymmetry is the intended outcome, for the same reason this repo's own
+`.gitignore` keeps the line one file over: retiring the entry would un-ignore a directory that
+existing machines may still hold, turning an operator's archived reports into untracked git noise at
+the exact moment the channel stops explaining itself. New products get a clean contract; old ones
+get a harmless extra line. Recorded here because the two halves diverge silently otherwise, and the
+next reader would re-derive the reasoning from an absence.
+
+**A grep is the only thing that quantifies over the prose, so a grep is what pins it.** Removing a
+mechanism requires removing its name too: a skill or guide that still says a report goes into a
+directory routes the next model into writing one where nothing reads it, and every such surface
+passes its own tests while doing so. The new sweep holds two rules of different shapes — write-path
+machinery (the env knob, the resolver, the pointer, the write-target template, the report scaffold,
+the archive destination) appears nowhere in the shipped tree, and the directory name appears in no
+instruction surface at all, `CLAUDE.md` included. Code stays exempt from the second: the inert
+subcommand names the directory to say the channel is over, which is a sentence addressed to a person.
+Both legs carry a positive control, because every assertion in them is an emptiness check and a
+corpus that silently came back empty would satisfy all of them.
+
+**Three worked examples that had quietly become archaeology were repointed rather than left.** The
+build-plan ref checker's "intentionally-gitignored managed path" example named the pointer file it no
+longer knows about, its angle-bracket write-target example named `<inbox>/`, and the advisory
+briefing's prerequisite-ordering docstring described the drop-box→migration edge in the present
+tense. The first two now name live paths; the third keeps the example — the advisory spec
+deliberately retains it as the only rendering of a prerequisite pair anyone has read — and states in
+the past tense that both ends are retired.
+
+**One requirement's expired clauses are corrected in place, not rewritten.**
+`backlog-service-requirements.md` still listed the `untriaged-upstream-reports` probe among things
+"to be removed" and called the drop-box "the interim supported path until the GitHub-issue path is
+built". Both expired: the path is built, and the design chose to **repoint** the probe rather than
+remove it, because the receiving side needs a nudge whatever the channel is. Recorded as a dated
+divergence beside the original text, the way the design records its own — a requirement is the record
+of what was asked for, and editing it to agree with the code is how the ask disappears.
+
+**And Wave B's owed observation is discharged here rather than waiting for a commit that file
+happens to get.** The egress test's docstring and assertion message still enumerated
+`--title`/`--component` after `--body` joined the shell-literal class; the fix was deleting the
+enumeration, not extending it. Its sibling test loses its carve-out in the same pass: it used to
+allow the skill to *mention* the drop-box because untriaged reports were still sitting in one, and
+with the channel retired the ban is total.
+
+**The cumulative review (`rev-20260908T220843Z-9c210bc4`, Waves B + C over `40b772b2...b23a0ef6`)
+returned 0 blocking, and its sharpest warning was about Chunk 01's code rather than this chunk's.**
+`unstaged_items` answers `ok` for a store whose last sync FAILED — it carries the rows plus a
+`sync_error` — so *readable* and *current* are different questions and the probe was asking only the
+first. With rows behind a stalled feed it printed a bare count as if current; with none it went
+silent, which is the false all-clear a triage nudge cannot emit and the exact shape the paragraph
+above claims to have avoided. The reading is now two axes, and each branch uses the second in the
+opposite direction: a stale count is stated as a **floor** (stale rows can only under-report), and a
+stale **zero** gets its own candidate with its own evidence, so dismissing "the cache is unreadable"
+does not also dismiss "the cache is stale". Three states, three advisory ids.
+
+**One departure from the reviewer's own recommendation, taken deliberately.** It proposed carrying
+`sync_error` into the trigger summary, correctly noting the text is free to vary. But that string is
+a provider message relayed through `gh`, and advisory copy is rendered into the model's context at
+session start — the one class of bytes this probe's whole posture keeps off that path. The advisory
+says a sync is failing and never says what the provider said; the operator gets that by running the
+sync, which is what the advisory tells them to do. A test sweeps every emitted field for a marker
+seeded in the error.
+
+**And the fix tripped a guard that exists for exactly this.** Hoisting the shared copy into module
+constants put it out of reach of `test_advisory_actionability.py`, which reads advisory text
+statically at each construction site and skips what it cannot read — the evasion that test was
+written to make impossible rather than merely unlikely. The copy is inlined and duplicated on
+purpose, waived and explained; the evidence string stays shared, because that is what makes the two
+stalled shapes one thing to dismiss.
+
+The other findings were cheap and all fixed: the drop-box sweep's instruction class is now derived by
+**exclusion** from the code roots rather than enumerated (a shipped `agents/` prompt was already
+outside the list, and a self-check over a list cannot see what the list omits); the framework
+injected-footprint ceiling is ratcheted with the cut that moved its reading, and the
+ceiling-is-reading-plus-one invariant is now **asserted** rather than remembered, since the assertion
+that already existed watches growth above a ceiling and cannot see one left too high after a trim;
+and the cross-cutting-concerns row for untrusted provider content names its fourth consumer, whose
+treatment is a different shape from the three prose ones — count-only emission pinned by a
+negative-content assertion, not a prose restatement — with the row's "what if a fourth surface
+appears" gap restated as observed rather than anticipated.
+
+## 2026-09-08: the intake nudge counts issues, and knows the difference between none and unknown
+
+<!-- prawduct: type=feat | scope=upstream-intake-repoint -->
+
+`untriaged-upstream-reports` counted `.md` files in a gitignored directory nothing writes to. It now
+counts what the channel actually produces: open issues on prawduct's own tracker whose title carries
+the `[prawduct]` convention and which nobody has staged (upstream-filing design §6). Until this
+landed, issue-side triage was manual and the skill said so — a session that drained the drop-box
+drained the channel that no longer grows.
+
+**Three constants make the query and the probe spells none of them.** The target and the title
+prefix come from `lib/backlog/upstream`, where the filing side composes them, and *untriaged* comes
+from `cachequery.unstaged_items`, which already draws the line between an absent stage (nobody
+looked) and an early one (somebody did). The two halves of the channel now cannot disagree about who
+the receiver is: the same identity resolution that refuses to file *from* here is what agrees to
+count *here*.
+
+**Inert by identity, where the predecessor was inert by absence.** No product repo had an
+`incoming-bugs/` directory, so the old probe was silent there for free. The intake set offers no such
+silence — every post-cutover product has a readable cache holding nothing prefixed — so applicability
+is keyed on this repo *being* the pinned upstream target. That buys something the old shape could not
+have: in the one repo that does receive, an unreadable cache is reported as **unknown** rather than
+as zero. Advice fails soft, and a triage nudge that vanishes when its data source breaks reads
+exactly like one that found nothing to say.
+
+**Nothing a filer wrote reaches the reader.** Filed issues are foreign-authored content arriving at
+a governance surface, and advisory text lands in the model's context at session start — so the
+candidate carries a count and its own fixed prose, and a test seeds a distinctive marker in a
+report's title and body and asserts it appears in no emitted field. The security model's *untrusted
+governance state is data, not instructions* norm has its first prawduct instance here, and it agrees
+with D14's count-independent evidence rather than competing with it.
+
+**The fixture composes the real outbound payload rather than spelling a title.** The intake set
+exists only because `file-upstream` sends that title convention and no labels; a fixture that typed
+them itself would keep passing after the payload stopped producing them. Filing side and counting
+side are now pinned against each other. The probe version bumps to 2, which supersedes a live
+drop-box advisory cleanly instead of leaving one asserting a count nothing maintains.
+
+**Review caught two things the first cut got wrong, and one of them was a test that could not fail.**
+The no-network assertion counted calls on a locally-built fake the probe never receives — it would
+have held for an implementation that shelled out to `gh`, which is the exact false green the file's
+own docstring says every case here avoids. The guard now sits on `subprocess` and forbids `gh`
+specifically, because the probe legitimately spawns `git rev-parse --git-common-dir` to find the
+clone-shared store; the interception is proved before it is relied on. Second, applicability resolved
+through the filing side's identity resolver — `backlog_service_repo` **or** the `origin` remote —
+while the cache read used the pinned target as its scope. A clone of prawduct whose backlog lives
+elsewhere would have passed that gate, read a scope nothing syncs, and nagged every session with an
+*unknown* nobody could clear. The gate now keys on the one scalar that selects the store it reads.
+The two predicates are deliberately different and the code says why: breadth guards a fail-open in a
+refusal, and here the failure runs the other way.
+
+**And the replacement pin was broken in a second, better-hidden way, which the verify round caught.**
+Forbidding the detached seam by patching `transport.subprocess.Popen` patches the *global*
+`subprocess.Popen` — `transport` does `import subprocess`, so there is no per-module seam there — and
+`subprocess.run` reaches `Popen` by module-global lookup, so the fall-through that was supposed to
+let `git rev-parse` through raised instead. `git_common_dir` swallows that, the cache path resolves
+to `None`, and the probe returns its *degraded* candidate — which an assertion counting candidates
+accepts. Green, on the branch the test was written to avoid. The seam is now guarded by name
+(`spawn_detached`), and the assertion is on the counted summary, which only the path under test can
+produce. Two rounds on one test, and the fix each time was to name what the absence would have to
+cross rather than to look at a proxy for it.
+
+The gate and the query also stopped being able to select different stores by *spelling*: GitHub repo
+names are case-insensitive so the gate folds case, while the cache keys its cursor and sync-health
+row on the spec as declared, so the query passes it verbatim. Pinned as a contract test on the seam,
+and the test says why it is one — `item` carries no scope column, so a canonicalized lookup returns
+the same count through a fallback today and nothing downstream would go red.
+
+The `prerequisite_of` edge to the backlog migration goes with it: it ordered incoming-bug triage
+ahead of a migration that has since shipped, and an ordering constraint whose second term can no
+longer fire is a dead edge. The advisory spec keeps the worked example, dated as the derivation —
+a rule with its example deleted is a rule nobody can check.
+
+Also corrected, because this chunk falsified them: `CLAUDE.md`'s product-feedback row and the
+report-bug skill's receiving-side section (both said the advisory nudges the drop-box), and the two
+`bug_inbox` docstrings whose stated retirement condition is now met. The drop-box paragraph now says
+plainly that **nothing counts it** — look before assuming it is empty. Its retirement is the next
+chunk.
+
+## 2026-09-07: the cumulative round — a shipped preference that did nothing, and a shell that ate titles
+
+<!-- prawduct: type=fix | scope=upstream-report-bug -->
+
+Wave B's cumulative review: 0 blocking, 11 warnings, 3 notes. Thirteen fixed, one accepted.
+
+**`always-file` was inert on its only consumer.** The skill branched on the consent state and
+nothing could read it: the preview surfaces `never-file` through a refusal warning and `ask-user` is
+what every unreadable path falls back to, but standing consent is inferable from nothing — so a
+model asked for approval on every report, which is the one behaviour that preference exists to
+remove. The preview now returns and prints the resolved `preference`, and the skill branches on that
+line. It rides beside the payload and takes no part in the digest, asserted: moving the preference
+must not invalidate an approval given for bytes that did not change.
+
+**The skill's own command shape could mangle an irreversible title.** It reasoned carefully about
+the body — write it once, pass `"$(cat …)"`, because retyping causes `approval-mismatch` — and then
+passed `--title` and `--component` as double-quoted shell literals, in a step that had just told the
+model to write both in prawduct's backticked vocabulary. `` `prawduct-hook version` `` runs; a
+symptom naming `$CLAUDE_SKILL_DIR` expands to nothing. The title would be composed, digested,
+approved and filed with the defect's own name deleted, into a repo where a non-collaborator cannot
+retitle it. All three fields now come from files — on **both** command blocks, which is the half
+this round's own review had to come back for.
+
+**A transport failure at create was routed to the one action that makes it worse.** It is not a
+refusal — whether the issue was written is unknowable from the caller's side — and the skill folded
+it into "file by hand", which turns an ambiguous outcome into a duplicate in a public repo. The
+adapter already solves this and the skill named none of it: `source-key` is stable across an
+identical re-run and the dedup scan reads newest-first for exactly this window. The instruction is
+now to re-run the identical send once, which either files or answers `already filed`.
+
+**Three more the skill got wrong about the adapter.** `self-file` covers two situations, not one —
+the second is a product with no `origin` remote, and the skill's "you are in prawduct's own
+checkout" sent it to the product-backlog write the same skill forbids. The "mechanically guaranteed"
+list promised a byte-match that standing consent waives, on the surface that exists to be honest.
+And a successful send can carry `warning:` lines — including "filed without the idempotency check"
+— that nothing told the model to relay, so a degraded filing read as a clean one.
+
+**Two carriers of the falsified claim survived the sweep, which is the finding about the sweep.**
+`architecture.md`'s Persistence Boundaries row still named `incoming-bugs/` as where products file
+today (and called a gitignored directory "tracked"), and `prawduct-hook`'s `cmd_bug_inbox` docstring
+still published the exit-code contract of a caller that no longer exists — instructing the local
+capture the design forbids. Neither line names `file-upstream`, so the absence guard cannot see
+them. Both were carriers of the *claim*, and the claim was cascaded one short.
+
+**The refusal-code list in the skill is now pinned by construction.** It is a justified copy — a
+model needs the codes to branch — but nothing kept it in step. The derivation that already reads
+`send`'s AST for the preview arm now also asserts the skill names every refusal the preview cannot
+predict, with the codes produced by calling the checks rather than typed out. Mutation-checked.
+
+Also: the `never-file` remedy has an assertion on it (the message, not just the code — that
+sentence was where submit-or-nothing had a second, contradicting home); the receiving side says
+plainly that issue-side triage is manual until Wave C repoints the advisory, and names the intake
+query; the PRD's MG5 bullet is marked superseded where the owner-approved design overrode it rather
+than rewritten in place; and the owner-boundary row in `cross-cutting-concerns.md` gains this
+bundle's two legs.
+
+**The round's own review came back blocking, on the half of its own fix that did not land.** R-2
+named two command blocks and the fix landed in one — step 5 kept its shell literals, two screens
+after step 2 explained why they are unsafe, and this entry asserted the job was done. Under standing
+consent the digest comparison is waived, so a title mangled there is filed rather than refused.
+Both blocks now read from files, and a guard asserts it over **every** line of the skill rather than
+the one that was wrong: `test_no_command_block_passes_a_composed_field_as_a_shell_literal`,
+mutation-checked. The same round's milder carrier of the approval claim (the intro's unqualified
+"what was approved is what is sent") is qualified too, and two assertions that had drifted into the
+neighbouring test are back where their name says they belong.
+
+**The verification round's own observation was dismissed on a false premise, and the check is
+cheap.** It rated widening the new guard to `--body` as not worth a commit because "the body is
+separately pinned by the digest". It is not: preview and send expand identically, so a mangled body
+previews and sends as the same bytes, the digests agree, and the check passes on content nobody
+wrote. `--body` is in the class for exactly the reason `--title` is, and the guard now covers it —
+mutation-checked, with the mutation asserted applied first, after an earlier check on this same
+guard passed only because its edit had silently failed to match.
+
+Accepted, not fixed: the backlog-reconciliation note. It names no work owed here — #194 closes at
+Wave C, and #234 is the lockstep guard whose replacement is now live and whose retirement is Wave C.
+
+## 2026-09-07: `/prawduct:report-bug` stops writing a file on one machine and files an issue
+
+<!-- prawduct: type=feature | scope=upstream-report-bug -->
+
+Wave B, Chunk 02 of BKL-7Q4M. The skill is rewritten onto `file-upstream`: recompose the report in
+prawduct's terms, preview the exact outbound payload, show a human those bytes, send on their
+approval of the digest. Wave A built that data plane and nothing called it; this is the caller.
+
+**Three things the old skill did that it must not do any more.** It resolved a machine-local
+drop-box and wrote a file there — a report visible to one developer on one machine. It captured the
+bug in the *product's* backlog when no channel was reachable, which is the local capture design §5
+forbids by name: an upstream bug parked in a product's backlog reaches nobody who could fix it. And
+it composed the `Found in:` version itself; the adapter now sources that from the running manifest,
+so it is right on every filing rather than on a careful one.
+
+**Submit-or-nothing has a second, quieter home that contradicted it.** `check_preference`'s
+`never-file` refusal told the caller to "report this bug in your own backlog" — the exact fallback
+the design removes, in the message a caller reads at the moment of decision. It now points at the
+tracker. Found by walking the rewritten skill against the fake transport rather than by reading:
+the refusal text is not something the skill's own prose could contradict visibly.
+
+**The drop-box template is a trap while it survives, so it now says so.** `incoming-bugs/` and its
+report template retire with Wave C, in lockstep with the advisory repoint — but three of that
+template's fields (`Reporter`, "used from the `<product>` repo", a `## Context` section asking for
+the host repo's particulars) are exactly what must not cross an owner boundary. They were safe when
+the report stayed on one machine. A banner now says it is the drop-box shape, that nothing writes
+it, and where the upstream payload is actually specified.
+
+**Two mechanical assertions carry §7's lockstep from the replacement's side**
+(`tests/preferences/test_no_upstream_content_egress.py`): the skill drives both arms of the op, and
+it names no drop-box write machinery. Both mutation-checked. What is deliberately *not* asserted
+mechanically — that the report carries no product content, that a human read the bytes, that a
+blocked filing captures nothing — is judgment about prose, and a grep for it would pass on any text
+with the right words in it. Those stay the Critic's.
+
+**A pending operator verification, and an honest reason it is pending.** VRF-018 is design §9's
+`[XP6 verify]`: what a non-collaborator can actually set on an issue they file. It needs a GitHub
+account that is not a collaborator on this repo, and the owner is one — a lead-time item no session
+can shorten. It gates the release rather than the build, because the payload is already label-less
+and no answer changes a byte that gets sent; what it gates is Wave C's intake query, which is only
+correct if a non-collaborator genuinely cannot apply a label.
+
+**A declared token raise, not a trim.** The session digest and this repo's `CLAUDE.md` each carried
+a sentence this commit made false — the digest said the channel "is inert when neither is
+configured", which is a reason not to reach for a skill that now works. Correcting both costs +10
+tokens on every governed session and +21 on a framework one. There was no duplication left between
+those two files to pay it from, and the standing rule's other branch — trim whichever clause is
+least defended — is how a correction gets funded by deleting something nobody was watching. So it
+is declared, with the arithmetic and the character-budget check on the record.
+
+Also: `bug_inbox.py`'s docstring no longer calls itself the report-bug channel, `adapter-mode.md`
+no longer says the skill has not been rewritten, and `project-structure.md`'s tree line no longer
+describes `incoming-bugs/` as where products file today.
+
+## 2026-09-07: the consent preference becomes a row somebody can write
+
+<!-- prawduct: type=feature | scope=upstream-report-bug -->
+
+Wave B, Chunk 01 of BKL-7Q4M. The `Upstream filing` preference has been readable since Wave A and
+authorable nowhere: `read_filing_preference` handles all three of design §4.1's states, and the only
+one production could reach was the absent-file default. `templates/project-preferences.md` now ships
+the row, so `init-product` writes it into every product it scaffolds, and `never-file` — the one
+state §4.3 calls a hard mechanical guarantee — is now reachable by editing a line instead of by
+writing a test fixture.
+
+**The shipped row reads as `ask-user`, which is also what its absence reads as.** Two spellings of
+one default, deliberately: an operator who deletes the row changes nothing, and the direction that
+would cost something — a row landing on `always-file` — cannot be reached by deleting anything.
+
+**This repo's own row stays at the default rather than `never-file`, and that is a decision.**
+Prawduct is the pinned upstream target, so `file-upstream` refuses here on the no-self-file check
+whatever the row says. Setting `never-file` would only *shadow* that refusal, because `send()`
+consults the preference first — and `self-file` is the better diagnostic, since it names the remedy
+(file it with `/prawduct:backlog add`). The mechanical guarantee is identical either way; only what
+a developer in this checkout reads changes.
+
+**The new test reads the shipped artifacts, not a fixture.** Both real inputs are pinned against the
+reader: the template `init-product` copies, and this repo's own authored row. The second asserts only
+that the row still *parses* — which state it names is the owner's to change, and a test asserting a
+particular value would quietly turn a preference into a rule.
+
+**The Local-first surface-vs-site clarification is ratified** (`architecture.md` § Direction). It was
+recorded 2026-09-07 flagged for owner veto because the builder wrote it while the amendment it sits
+under was the owner's; the veto was offered and withheld. Reverting it is now an ordinary amendment.
+
+Also: three comments that anchored to a chunk number or to Wave B's tense — a chunk id names no plan
+and renumbers, and "authored in Wave B" stopped being true in this commit.
+
 ## 2026-09-07: the review round that bought the merge — one blocking claim retracted
 
 <!-- prawduct: type=fix | scope=upstream-filing-adapter -->

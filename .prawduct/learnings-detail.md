@@ -18,6 +18,67 @@ redirect.
 
 ---
 
+## Ratcheting the ceiling is part of a cut, not a follow-up
+
+Broken again on 2026-09-08 by an author who had re-read this rule the same session and recorded it
+approvingly in the previous chunk's reflection. The framework injected-footprint reading moved
+3218 → 3211 (a genuine cut, at duplication, with its reason written beside it) and
+`INJECTED_FOOTPRINT_CEILINGS["framework"]` stayed at 3219 — eight tokens collectable silently, on
+every framework session, against the rule the same file states two dicts above.
+
+**Why prose could not have prevented it.** The cut and the ratchet are two edits in two tables and
+only one of them is where the work is; the comment beside the ceiling already said, at length, that
+a cut which does not ratchet is a departure needing a reason. It has now failed for people who knew
+it, which is the signal that a rule has exhausted what prose can do.
+
+**What the existing pin structurally could not see.** `test_injected_footprint_under_ceiling`
+asserts `actual < ceiling`. It catches growth ABOVE a ceiling and is blind, by construction, to a
+ceiling left too HIGH after a trim — the direction that silently re-funds the growth the cut paid
+for. Adding a case to it would not help: the two failures live in different relations.
+
+**The remedy generalises past this table.** `test_each_ceiling_is_exactly_one_over_its_reading`
+asserts the relation BETWEEN the two dicts, so a cut recorded in one and not the other fails with a
+message naming the number to set. A declared raise still works — move the reading with its reason
+and the ceiling follows. Whenever a rule requires two records to move together, the assertion
+belongs between them, not inside either; an assertion inside one record can only ever check that
+record against itself.
+
+---
+
+## A comment reasoning about a CONDITION binds every branch that condition reaches
+
+`upstream_probes.py`'s intake count read the backlog cache and split degraded from healthy on
+`status != "ok"`. A store whose last sync FAILED still answers `ok` — it carries its rows plus a
+`sync_error` — so *readable* and *current* are two questions and only the first was being asked.
+
+The comment above the count knew this. It said, in as many words, that a failed sync still answers
+`ok`, and reasoned it through for the counting branch: stale rows can only under-report, a report
+filed since the failure is missing rather than invented, so "at least N are waiting" is the honest
+reading and silence would be the lie. Correct, and it stopped there. The zero branch — `if count ==
+0: return []` — sat four lines below, where the same staleness turns the reading into a false
+all-clear: nothing filed before the failure, nothing counted since, and no session-start signal at
+all while filed reports go unread.
+
+What makes this worth a rule rather than a shrug is that the same chunk's change-log paragraph
+asserted the opposite behaviour ("a triage nudge that vanishes when its data source breaks reads
+exactly like one that found nothing to say") and the plan's `governed_by` disposition cited the
+*advice fails soft is not advice fails silent* norm by name. Three carriers of the right answer, and
+the code did the wrong thing in the branch nobody wrote a sentence about. The defect was not a
+missing case; it was **reasoning scoped to the branch being written rather than to the condition
+being reasoned about**.
+
+The fix separated the two axes at the seam — `_intake_reading` returns `(count, sync_is_stuck)` —
+so a caller that collapses them fails in the helper's own test rather than in whichever branch
+happens to be exercised. Both branches now use the second axis, in opposite directions: a stale
+count is stated as a floor, a stale zero gets its own candidate with its own evidence (and therefore
+its own dismissal key, since evidence is what the advisory id hashes).
+
+**The cheap check that would have caught it:** after writing a comment that names a condition, grep
+the function for every other `if` the condition can reach. It costs one read of a thirty-line
+function.
+
+---
+
 ## When a long-lived branch syncs a base that moved a lot, diff the TESTS on both sides before resolving any hunk — a test states the rule the code only instantiates, so two sides that re-implemented one mechanism disagree visibly there. Tell: a hunk where both sides are coherent implementations of the same named thing
 
 **What happened (2026-08-27, PR #658 `fix/branch-claim-multiplicity`).** The branch had sat 251
@@ -2653,3 +2714,100 @@ third patch to the same predicate.
 **Generalizes past this codebase:** validators paired with normalizers (trim-then-validate,
 escape-then-render, canonicalize-then-compare). Reusing the validator without the normalizer is the
 same defect every time, and the validator will not complain.
+
+## Withholding a fix to protect a review round is only correct if `cost-of-commit` PRICES it `costs-a-round`
+
+**What happened.** After a clean `verify-resolutions` closed the cumulative gate on
+`feat/upstream-filing-adapter`, three doc fixes from the round's demoted observations were left
+uncommitted on the reasoning that committing them would reopen the gate and cost another ~5 min
+round. The independent PR reviewer ran `prawduct-hook cost-of-commit` on those exact paths and got
+`free`. The round being protected was never owed, and the same command prices the genuinely
+expensive case correctly — two `.py` paths in the same batch returned `costs-a-round`.
+
+**Why the reasoning felt sound and was not.** The rule being applied came from the *previous*
+session on the same branch, which had committed four non-blocking fixes and only then run
+`cost-of-commit` — the one ordering that makes the answer useless. It recorded the correct lesson
+("separate-commit a non-blocking fix only when the branch needs coverage NOW") and the next session
+read it as a standing reason to WITHHOLD rather than as an instruction to ASK. A rule about a tool
+degraded into a heuristic that replaces the tool. **Both failures are the same failure**: deciding
+what a commit costs by reasoning about the coverage algebra, in a repo that ships a command which
+answers it in under a second, in both directions.
+
+**The second-order damage is the part worth remembering.** Believing the fixes were expensive routed
+three carried obligations into `.prawduct/.handoff-notes.md` — gitignored, consumed by the next
+`/clear` — and the committed build plan already cited that file as a co-record of a Wave B
+obligation. A durable artifact naming a path that exists on no other clone gives an obligation one
+real home while reading as though it has two. So the pricing error did not just cost accuracy; it
+degraded where the work was recorded.
+
+**Why an independent reviewer caught it.** Two Critic rounds and the builder all missed it, and the
+PR reviewer found it not by reading harder but by running a tool the builder had reasoned past. A
+fresh context had no reason to inherit the premise — which is the specific value of review
+independence, distinct from a second opinion on the same evidence.
+
+**Generalizes:** any heuristic derived from a tool's output, carried forward as a rule, drifts into
+a replacement for the tool. When a learnings rule names a command, the rule is to RUN it.
+
+## When you change a MECHANISM, cascade-search the CLAIM, not just the code
+
+**The case that produced it.** Fixing the tag/publish order caught both runbooks and the process
+doc via the command strings `git tag` / `gh release create`. The Critic then found a stale "on
+every tag push" in `architecture.md`, a superseded command in a historical release plan, and one
+doc asserting flatly what another hedged — none of them reachable from any string that had been
+edited, because a sentence describing what the system does shares no token with the code that does
+it.
+
+**The amendment, 2026-09-07 — enumerate the claims first, and expect more than one.** Rewriting
+`/prawduct:report-bug` onto the upstream filing adapter falsified two claims, not one: *it writes a
+drop-box file* and *it otherwise captures the bug locally*. The build plan named the first, so the
+first is what got cascaded; the second kept its carriers — `prawduct-hook`'s `cmd_bug_inbox`
+docstring, which still published the exit-code contract of a caller that no longer existed and
+instructed the very local capture the new design forbids, and `architecture.md`'s Persistence
+Boundaries row, which still named the retired write path as the live one.
+
+What makes this worth recording rather than filing under carelessness: the same session had, one
+chunk earlier, written a reflection *about this rule* after a claim turned out to have four
+carriers. Knowing the rule and having just been burned by it were both insufficient, because the
+rule as written starts one step too late. The failure is not in the searching. It is that the set
+being searched for was assembled from the plan's sentence about the change rather than from the
+change itself — and a plan names the claim that motivated the work, not every claim the work
+happens to falsify.
+
+The cheap discipline: before cascading anything, write down what is no longer true, as a list. If
+the list has one item, ask what else the change made false. The enumeration takes a minute; a
+carrier that survives it reads as current until someone trips on it.
+
+## Instructions for driving code are sourced from the CODE's surface, with the design as a constraint on it
+
+**What happened.** `/prawduct:report-bug` was rewritten to drive the `file-upstream` adapter, and
+the rewrite was composed from the approved design: its payload section, its consent section, its
+five-check contract. The design is correct and the instructions matched it. Six of the cumulative
+review's eleven warnings were still the same defect — the skill under-specified against the
+adapter:
+
+- it branched on the `always-file` consent state, and no output carried that state, so the branch
+  could never be taken and a shipped preference did nothing on its only consumer;
+- it explained the `self-file` refusal as "you are in prawduct's own checkout", which is one of the
+  two situations that code covers — and the other one routed the reader into the exact write the
+  same skill forbids two sections later;
+- it summarized the approval guarantee unconditionally, on a surface whose stated purpose is to be
+  honest about what is and is not mechanical, when standing consent waives the byte comparison;
+- it reduced a successful send to "print the URL", when the success envelope can carry a warning
+  saying the idempotency check did not run — so a degraded filing reads as a clean one and the
+  operator makes the retry that creates the duplicate;
+- it treated a transport failure at create as a refusal, and answered it with "file by hand" —
+  the one action that converts an unknowable outcome into a duplicate in a public repo.
+
+**Why the design could not have prevented any of them.** A design states what must be guaranteed.
+It is silent, correctly, about the states a value can hold that no guarantee turns on, the error
+codes that distinguish two causes under one refusal, the fields an envelope carries besides the
+result, and the failure modes that are neither success nor refusal. Those are exactly the places a
+reader driving the code meets reality — and every one of the six lives there.
+
+**The discipline.** Read the handler. Enumerate every state, every returned field, every refusal
+code, every way it can fail, and give the reader a line for each — then check the design to see
+which of those lines it constrains. Design-first produces instructions that are true and
+incomplete; code-first produces instructions that are complete and then get checked for truth.
+
+**Related.** This is the sibling of the rule that a guardrail on an instruction surface must model
+the READER: that one is about testing the instructions, this one is about sourcing them.

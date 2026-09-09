@@ -286,11 +286,11 @@ whole `update` op, not to any one field above.
 prawduct-hook backlog file-upstream --title <t> --body <b> [--component <c>] [--approve <digest>]
 ```
 
-**Do not call it.** It is the data plane for `/prawduct:report-bug`, and that skill has not been
-rewritten onto it yet — it still writes a local drop-box file, so nothing calls this op. Calling it
-yourself skips the recomposition and the verbatim human review that are the whole reason the payload
-is safe to send. **A product's own work is filed with `add`, never here** — this op writes into a
-foreign public repo and the write is irreversible.
+**Do not call it from here.** It is the data plane for `/prawduct:report-bug`, which is its only
+caller: that skill carries the recomposition and the verbatim human review that are the whole reason
+the payload is safe to send, and calling the op directly skips both. Route a prawduct bug to
+`/prawduct:report-bug` instead. **A product's own work is filed with `add`, never here** — this op
+writes into a foreign public repo and the write is irreversible.
 
 **Preview-by-default, send on a second call.** With no `--approve` it renders the exact outbound
 payload plus a `payload_digest` and sends nothing; sending repeats the call with

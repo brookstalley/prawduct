@@ -1,11 +1,20 @@
-"""`regen-views` and `stamp-merged`: deprecated, callable, and inert.
+"""The **announcing** inert tier: deprecated, callable, and loud on stderr.
 
-Both commands lost their bodies when derived views were retired — `regen-views`
-had no views left to regenerate, and `stamp-merged`'s only output (`status=`) had
-no reader left. Neither was DELETED, because `api-contract.md`'s deprecation norm
+`regen-views` and `stamp-merged` lost their bodies when derived views were retired
+— `regen-views` had no views left to regenerate, and `stamp-merged`'s only output
+(`status=`) had no reader left. `bug-inbox` joined them when the upstream bug
+drop-box retired: it resolved a local directory for `/prawduct:report-bug` to
+write a report into, and reports are GitHub issues now, so there is no directory
+left to resolve. None was DELETED, because `api-contract.md`'s deprecation norm
 requires a retired subcommand to stay callable, announce itself on stderr, and
 defer removal to a major: prawduct's own release runbook called `regen-views`, and
 a non-zero exit in a copied operator script would break a pipeline mid-release.
+
+**Announcing is the half of the tier that has a reader.** `build-index` and
+`user-prompt-submit` are inert too and say *nothing* on either stream, because
+their caller is a stale `hooks.json` registration rather than a person — pinned in
+`tests/test_retired_hook_subcommands.py`. Membership here means a human or a
+script calls the command and can act on being told to stop.
 
 **That inert-but-callable shape is a promise to those scripts, and this file is
 the only thing holding it.** The ~20 tests that covered these commands lived in
@@ -36,18 +45,28 @@ HOOK = REPO_ROOT / "bin" / "prawduct-hook"
 # Both commands, and the argument forms an old script might still pass. `--check`
 # is here because it was `regen-views`' own previously-deprecated flag: a script
 # pinned before that deprecation passes it, and must not now hit a usage error.
+#
+# `bug-inbox` appears bare only: it never accepted a flag, so no pinned script
+# passes one, and it stays in the hook's `_NO_ARGUMENT_COMMANDS` refusal set
+# where a mistyped argument is still worth reporting as a usage error.
 INERT_INVOCATIONS = [
     ("regen-views",),
     ("regen-views", "--check"),
     ("regen-views", "--a-flag-that-never-existed"),
     ("stamp-merged",),
+    ("bug-inbox",),
 ]
+
+#: Derived, not transcribed — a command added above is covered below too.
+ANNOUNCING_TIER = tuple(dict.fromkeys(argv[0] for argv in INERT_INVOCATIONS))
 
 
 def _repo(tmp_path: Path) -> Path:
     """A minimal governed repo with a change log and a half-done build plan —
-    the state in which both commands used to WRITE, so a command that still
-    wrote something would have something to write."""
+    the state in which `regen-views` and `stamp-merged` used to WRITE, so a
+    command that still wrote something would have something to write. It is the
+    fixture for the whole tier: `bug-inbox` never wrote here, and a repo that
+    would notice a write is a strictly stronger place to prove it does not."""
     repo = tmp_path / "repo"
     (repo / ".prawduct" / "artifacts").mkdir(parents=True)
     (repo / ".prawduct" / "project-state.yaml").write_text(
@@ -108,10 +127,10 @@ class TestInertContract:
     def test_the_notice_says_what_to_do_instead(
         self, tmp_path: Path, argv: tuple[str, ...]
     ):
-        """A deprecation notice that only says "stop" strands its reader. Both
-        notices must name the replacement — and neither may name a
-        prawduct-internal identifier (the observability norm), which is why the
-        assertion is on plain words rather than a requirement or chunk id."""
+        """A deprecation notice that only says "stop" strands its reader. Every
+        notice must name the replacement — and none may name a prawduct-internal
+        identifier (the observability norm), which is why the assertion is on
+        plain words rather than a requirement or chunk id."""
         proc = _run(_repo(tmp_path), argv)
         assert "drop the call" in proc.stderr, proc.stderr
         for internal in ("DV7", "DECISION-", "Chunk 0", "#629"):
@@ -141,7 +160,7 @@ def test_the_fixture_would_notice_a_write(tmp_path: Path):
     Every assertion there is an equality between two snapshots, and equality is
     also what a `_tree` that silently stopped reading files would report. So
     perturb the same fixture through the same comparison and require it to be
-    SEEN — otherwise a broken snapshot helper makes all four cases vacuous.
+    SEEN — otherwise a broken snapshot helper makes every case above vacuous.
     """
     repo = _repo(tmp_path)
     before = _tree(repo)
@@ -152,8 +171,8 @@ def test_the_fixture_would_notice_a_write(tmp_path: Path):
     assert _tree(repo) != before
 
 
-def test_both_commands_are_still_dispatched(tmp_path: Path):
-    """The deprecation's whole point: neither name may become unrecognized.
+def test_every_announcing_command_is_still_dispatched(tmp_path: Path):
+    """The deprecation's whole point: no name may become unrecognized.
 
     An unknown command exits non-zero with a usage error, which is precisely the
     break a copied release script would hit — and it is a different failure from
@@ -161,7 +180,36 @@ def test_both_commands_are_still_dispatched(tmp_path: Path):
     to a generic handler that happened to print a warning.
     """
     repo = _repo(tmp_path)
-    for name in ("regen-views", "stamp-merged"):
+    for name in ANNOUNCING_TIER:
         proc = _run(repo, (name,))
         assert proc.returncode == 0
         assert "unknown command" not in (proc.stdout + proc.stderr).lower()
+
+
+def test_the_usage_text_advertises_every_announcing_command(tmp_path: Path):
+    """A reader running `prawduct-hook` bare must be told these exist and do
+    nothing. Without it the only way to learn a command is retired is to call it,
+    which is the discovery path a copied script never takes."""
+    usage = _run(tmp_path, ()).stderr
+    for name in ANNOUNCING_TIER:
+        assert f"{name} [deprecated, inert]" in usage, (
+            f"`{name}` is inert but the usage text does not say so:\n{usage}"
+        )
+
+
+def test_no_announcing_command_reports_a_condition_it_can_no_longer_have(
+    tmp_path: Path,
+):
+    """`bug-inbox` is why this exists, and it generalises.
+
+    It used to exit **1** to mean *no inbox is configured* — a real condition a
+    caller could branch on. Nothing can be configured now, so a surviving 1 would
+    report a state rather than a retirement, and a script branching on it would
+    take the not-configured arm forever. Exit 0 is asserted above for a repo
+    carrying prawduct state; assert it too for a bare directory, which is the
+    shape that used to produce the 1.
+    """
+    for name in ANNOUNCING_TIER:
+        proc = _run(tmp_path, (name,))
+        assert proc.returncode == 0, f"{name}: {proc.stdout + proc.stderr}"
+        assert proc.stdout == "", f"{name} wrote to stdout: {proc.stdout!r}"
