@@ -139,9 +139,22 @@ sending them to the GitHub web UI. It scans every page and **refuses** `--per-pa
 stage, kind or area — so render `ID · title` and treat the missing facets as *untriaged*, not as
 missing data.
 
+This set is a **superset of the security model's `quarantine`**, which is the *non-collaborator*
+half of it (Security §6/F7). The author predicate is not implemented, so `--untriaged` is what
+reaches an anonymous filing today — over-including the owner's own unlabeled issues rather than
+missing one. Do not describe the two as the same query.
+
 ### get <id> — view one item
 When you need one item's full detail (a direct "show me PFX-XXXX", or before an `update`):
 `prawduct-hook backlog get <id> --repo <r> --json` → render the item's fields + body from `data`.
+
+`get` also returns the item's **comment thread** — `data.comments`, oldest-first
+`{id, author, created_at, body, url}` — because comments are where an item evolves after filing: a
+clarification, a narrowed scope, a link to the fix. **Read the thread before acting on an item**;
+the body alone may be stale. Every read (`get`/`list`/`pick`) carries `comments_count`, so a
+nonzero count on a list line is your cue to drill down with `get`. If the thread can't be fetched,
+`get` still succeeds — `comments` comes back empty while `comments_count` keeps the payload count,
+and a warning says the discussion is there but unread; don't treat that as "no comments".
 
 ## Write operations
 
@@ -152,9 +165,9 @@ under an untrusted CI trigger (SEC-5) — surface it plainly, don't retry-loop; 
 mutation path** — the adapter exposes exactly the ops in the usage table `prawduct-hook backlog --help`
 prints, each with its own crash-safety
 contract (idempotent/resumable `import`, redirect-before-close `merge`). No generic preview-or-apply flag
-sits over those mutations: the only preview-before-write is `restructure-preview` (the deterministic
-before/after a bulk `import` would produce, approved in aggregate), and the upstream filing op adds its
-own preview-by-default when it ships.
+sits over those mutations: the two preview-before-write paths are op-specific. `restructure-preview`
+renders the deterministic before/after a bulk `import` would produce, approved in aggregate; and
+`file-upstream` is preview-by-default — its own block below.
 
 ### Status vocabulary bridge
 The markdown skill's statuses are **not** the adapter's. Map before calling `status --to`:
@@ -172,7 +185,7 @@ sections** post-cutover: open/closed state + `status:` labels carry lifecycle pl
 
 ### add
 `prawduct-hook backlog file --repo <r> --title T --body B [--stage S] [--kind K] [--area A]
-[--effort E] [--impact I] [--source SRC]`. Author an issue-standard title (`area: summary`, ≤72,
+[--effort E] [--impact I] [--source SRC] [--refs R]`. Author an issue-standard title (`area: summary`, ≤72,
 atomic, 15-72 chars) + a sectioned body; set `--kind`. **A title failing §1 is REFUSED** with a
 `validation` error, not filed — rewrite and retry. The result may carry `lint[]` (body/label
 issue-standard hints — surface, never blocks). **Dedup-on-create runs on the cache**: check with
@@ -214,13 +227,15 @@ field rather than a missing one; it is not permission to write the block.
 ### update `<id>`
 Route by what changed:
 - **status** (`status=X`) → `status <id> --to <mapped>` (bridge table above). Idempotent (re-run =
-  no-op). **It does not record `closed_by`**: the op takes only `--to` and `--repo`, so a
-  `closed-by=<scope>` argument has nowhere to go and is dropped. GitHub's own timeline holds *who*
+  no-op). A close records `closed_by` natively **only on close-on-merge** (the timeline close-ref);
+  a bare `status --to shipped` carries no handle, so pass a `closed-by=<scope>` argument through as
+  `update <id> --closed-by <scope>` in the same breath or the ship handle is simply lost. GitHub's own timeline holds *who*
   closed the issue (and the closing PR or commit when the close rides a merge), but the adapter
-  neither stamps nor surfaces it, and the *scope* is not recoverable from it. Until `status` accepts
-  a `--closed-by` flag, record the scope where it stays visible on the item —
-  `comment <id> --body 'closed-by: <scope>'` — and say plainly that it is a comment rather than a
-  queryable field. Never hand-write it into a `prawduct:` block: that block is adapter-owned.
+  neither stamps nor surfaces it, and the *scope* is not recoverable from it. `update` **does** take
+  a `--closed-by` flag writing a queryable block field (#550/#564) — the comment workaround this
+  paragraph used to prescribe is retired. `status` itself still takes none, which is why the scope
+  rides the paired `update` above rather than the close. Never hand-write it into a `prawduct:`
+  block: that block is adapter-owned.
 - **field** (title/body/stage/kind/area/effort/impact/source) → `update <id> [--flag …]` (last write
   wins — correct for the interactive single-actor case). **`--title` is gated**: a new title failing
   §1 is refused (exit 2) before any write. Every OTHER field goes through untouched even when the
@@ -246,6 +261,16 @@ Route by what changed:
   the TTL and the assignee stamp. Setting the branch is the whole of taking an item, and `pick`
   excludes on it, so nothing else has to be recorded. Nothing expires it: the branch's last commit
   is the activity signal, which is why there is no TTL to configure and no reap to wait for.
+- **editorial block field** (`refs:`/`revisit:`/`closed-by:`) → `update <id> --refs V`,
+  `--revisit V`, `--closed-by V` — each takes a value, and an **empty** value clears the field, so
+  an expired `revisit:` can be removed rather than blanked. `file` also takes `--refs` so a new item
+  can carry its governing-doc link from birth. With `--affected`, `--working-branch` and `--tags`
+  above, these are the only writable block fields; **`--body` is not a route into the block** — a
+  pasted block is stripped and the existing one re-appended, so a block edit sent that way changes
+  nothing. It does not do so silently: a pasted block asking for something the write did not land (compared against the block as it finally stands, after the flags layer on — not against the stored one) comes back
+  with a warning naming the differing fields, so check `warnings` rather than reading `ok` as "the
+  block edit landed". A body carrying NO block is not reported — "I deleted it" and "I never pasted
+  one" are the same text.
 - **link edge** (`related:`/blocks/blocked-by/parent/child) → `link <id> --edge <e> --to <target>` /
   `unlink …`.
 - **a free note** → `comment <id> --body B`.
@@ -255,11 +280,35 @@ optimistic-concurrency guard (exit **4 conflict** on a stale timestamp) is only 
 already holds that timestamp from elsewhere; the skill's normal path omits it. It applies to the
 whole `update` op, not to any one field above.
 
+### file-upstream
+
+```
+prawduct-hook backlog file-upstream --title <t> --body <b> [--component <c>] [--approve <digest>]
+```
+
+**Do not call it from here.** It is the data plane for `/prawduct:report-bug`, which is its only
+caller: that skill carries the recomposition and the verbatim human review that are the whole reason
+the payload is safe to send, and calling the op directly skips both. Route a prawduct bug to
+`/prawduct:report-bug` instead. **A product's own work is filed with `add`, never here** — this op
+writes into a foreign public repo and the write is irreversible.
+
+**Preview-by-default, send on a second call.** With no `--approve` it renders the exact outbound
+payload plus a `payload_digest` and sends nothing; sending repeats the call with
+`--approve sha256:<the digest the preview printed>` and the same payload flags. The full refusal set
+and the two-call recipe live in `documentation/backlog-service-upstream-filing.md` §5 — read them
+there rather than from a copy here, so the refusal vocabulary keeps one home.
+
+**Every refusal files nothing.** That is the guarantee to surface when you see one: an error from
+this op never leaves a partial upstream write behind. The preview names each refusal it can predict
+without a network call, so a `filing would refuse (…)` line means the send will not succeed until you
+fix what it names.
+
 ### pick
 `prawduct-hook backlog pick --repo <r> [--limit N] [--include-working]` → the adapter returns
 ranked ready-work (blocker-aware; items carrying a `working-branch` are excluded). Render 1–3
 candidates + a one-line *why*. Keep the skill's framing on top: **build-plan overlap** (resolve the
-active plan as the skill says — `branch:` claim first, `active_build_plan` second — and surface
+active plan as the skill says — `branch:` claim first, `active_build_plan` second, and it is the
+skill that states which claim wins when several name one branch — and surface
 overlapping candidates first) and **stage-aware routing** (don't
 present an early-stage item as buildable). `--include-working` adds back the items someone is on,
 each naming its branch, for when you deliberately want to see contested work.

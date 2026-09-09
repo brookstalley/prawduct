@@ -13,7 +13,25 @@ Produces the F4a fields of `.test-evidence.json`:
                              informationally instead of gating on them — a
                              gate must never block on a file its evidence
                              producer structurally cannot vouch for.
+    - `changes_unchecked`  — the subset of `changes_unjudged` that is present on
+                             disk and written in a language this verifier has no
+                             analyser for. **Not the same fact as unjudged, and
+                             that is the whole point (#164).** A deleted file and
+                             a symbol-less `__init__.py` WERE analysed and found
+                             to hold nothing to reference; a `.swift` file was
+                             never looked at. Collapsing the two lets a BLOCKING
+                             Goal 1 gate read as satisfied on a Swift, Rust or C#
+                             repo having inspected nothing — the norm's "reported
+                             unchecked, never silently passed" clause.
     - `tests_executed`     — test files discovered under the tests directory
+
+`changes_unchecked` deliberately carries NO opinion about whether a file matters:
+a `README.md` and a `Foo.swift` both land in it, because from here they are the
+same fact — this mechanism did not analyse them. Deciding which of them is
+*expected* to go unanalysed (prose and non-code config) and which is a real hole
+(product code in an unsupported language) needs the judgeable-path vocabulary the
+consumer already owns, and doing it here would put a second, weaker copy of that
+classification in the producer.
 
 The mechanism is deliberately naive: extract function/class names from each
 changed Python file, then grep across the tests tree for those names. A
@@ -229,20 +247,27 @@ def _build_evidence_fields(
 
     referenced: list[str] = []
     unjudged: list[str] = []
+    unchecked: list[str] = []
     judgeable = 0
     for f in changed:
         fp = cwd / f
         if not fp.is_file():
             # Deleted in the diff — nothing on disk to test, nothing to judge.
+            # NOT unchecked: there is no file here to have failed to analyse.
             unjudged.append(f)
             continue
         if not _is_python_file(fp):
-            # Symbol-grep has no signal for non-Python files.
+            # Symbol-grep has no signal for non-Python files. This is the
+            # unchecked case — the file exists and was never analysed, which a
+            # consumer must be able to tell apart from "analysed, nothing found".
             unjudged.append(f)
+            unchecked.append(f)
             continue
         symbols = _extract_symbols(fp)
         if not symbols:
-            # Symbol-less Python (re-export __init__, constants module).
+            # Symbol-less Python (re-export __init__, constants module). The file
+            # WAS analysed and declares nothing to reference, so it is unjudged
+            # but not unchecked.
             unjudged.append(f)
             continue
         judgeable += 1
@@ -268,12 +293,29 @@ def _build_evidence_fields(
             file=sys.stderr,
         )
 
+    # A run that analysed NOTHING while files were sitting there unanalysed is the
+    # vacuous pass this field exists to make impossible to miss. It is the same
+    # shape as the warning above — loud on stderr, no exit-code change, because
+    # emitting evidence is this script's only job and the gate decides.
+    if unchecked and not judgeable:
+        preview = ", ".join(sorted(unchecked)[:3])
+        print(
+            f"warning: {len(unchecked)} changed file(s) are in a language this "
+            f"verifier cannot analyse and NONE was judgeable — this run inspected "
+            f"nothing ({preview}). The evidence reports them as changes_unchecked; "
+            "an empty changes_referenced here means 'not looked at', not 'nothing "
+            "to cover'. Supply a language-native verifier emitting "
+            "coverage_level: executed.",
+            file=sys.stderr,
+        )
+
     return {
         "verifier": VERIFIER_NAME,
         "coverage_level": "referenced",
         "tests_executed": test_file_paths,
         "changes_referenced": referenced,
         "changes_unjudged": sorted(unjudged),
+        "changes_unchecked": sorted(unchecked),
     }
 
 

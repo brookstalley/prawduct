@@ -282,7 +282,10 @@ class TestRenderPreview:
     def test_preview_carries_before_after_flags_and_lint(self):
         text = restructure.render_preview(self._applied(), source_label="s.md", blocking=[])
         assert "### DIS-0001" in text
-        assert "`Add the harbor map overlay`" in text  # title before
+        # The "before" is what the import WOULD create without the plan — which
+        # since #728 is the normalized title, not the raw source line. That is
+        # the string the owner is deciding whether to override.
+        assert "`ui: Add the harbor map overlay`" in text  # title before
         assert "body before" in text and "**body after:**" in text
         assert "Flagged non-atomic" in text and "DIS-0002" in text
 
@@ -343,16 +346,36 @@ class TestImportWithPlan:
         assert result["error"]["code"] == "validation"
         assert fake.list_issues(OWNER, REPO, state="all") == []
 
-    def test_unplanned_items_import_verbatim(self, fake):
+    def test_unplanned_items_are_still_normalized_and_otherwise_untouched(self, fake):
+        """#728 — an item the plan does not name keeps its substance verbatim but
+        still gains the `area:` prefix, so a partial restructure plan can no longer
+        produce a half-prefixed issue list. Its body is untouched, which is what
+        "the plan did not name it" has to keep meaning."""
         plan = _plan({"DIS-0001": {"kind": "feature"}})
         result = self._import(fake, plan)
         created = {e["pfx"]: e for e in result["data"]["created"] if e.get("pfx")}
         number = int(created["DIS-0002"]["id"].rsplit("#", 1)[1])
         issue = fake.get_issue(OWNER, REPO, number)
         assert "Bursts of trades exceed the upstream cap." in issue["body"]
+        assert issue["title"] == "backend: Rate-limit the trade API"
         block = encode.parse_block(issue["body"])
         assert block.get("original_body") is None
-        assert block.get("original_title") is None
+        # The prefix is a change to the title, so MG6 provenance records it —
+        # the source string comes back verbatim.
+        assert block.get("original_title") == "Rate-limit the trade API"
+
+    def test_a_planned_retitle_does_not_clobber_the_importers_original(self, fake):
+        """Write-once means the FIRST writer wins. The importer holds the true
+        pre-migration string; a later plan retitle overwriting it would leave the
+        block asserting prawduct's own normalization as the author's words."""
+        plan = _plan({"DIS-0002": {"title": "Cap the trade API burst rate"}})
+        result = self._import(fake, plan)
+        created = {e["pfx"]: e for e in result["data"]["created"] if e.get("pfx")}
+        number = int(created["DIS-0002"]["id"].rsplit("#", 1)[1])
+        issue = fake.get_issue(OWNER, REPO, number)
+        assert issue["title"] == "backend: Cap the trade API burst rate"
+        block = encode.parse_block(issue["body"])
+        assert block.get("original_title") == "Rate-limit the trade API"
 
     def test_run_key_varies_with_plan(self):
         base = migrate.run_key(DISCODON_MINI)

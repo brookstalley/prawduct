@@ -589,10 +589,47 @@ class TestPrReviewSkillContent:
         assert "release process" in content, (
             "the guard must still hand a release promotion back to a release process"
         )
-        # The redirect must be tied to being on develop/main (release surfaces),
-        # not a feature branch — that's the discriminator.
+        # The redirect must be tied to being on the integration base or the
+        # release surface, not a feature branch — that's the discriminator.
         assert "release surface" in content or "release/integration context" in content, (
             "the guard must key off the release/integration branch context"
+        )
+
+    def test_the_release_guard_derives_the_branches_it_compares(self):
+        """The guard names its branches by asking, not by listing them (#267).
+
+        Every other step in this skill calls `resolve-base` so that no one
+        hardcodes a base branch; the guard alone tested three literals. A repo
+        integrating on `trunk` or `next` — one that had configured
+        `base_branch:` correctly — fell through it and ran the feature-PR gates
+        on its own release, which is the exact failure the guard exists to
+        prevent.
+
+        Asserted on the guard paragraph rather than the file, because
+        `develop`/`main` legitimately appear elsewhere in this skill as
+        narrative examples.
+        """
+        content = (FRAMEWORK_DIR / "skills" / "pr" / "SKILL.md").read_text()
+        guard = content.split("**Release-promotion guard", 1)[1].split(
+            "\nThe user can override", 1
+        )[0]
+        assert "prawduct-hook resolve-base" in guard, (
+            "the guard must resolve the integration base with `resolve-base`, the "
+            "same resolver the rest of this skill keys off"
+        )
+        assert "defaultBranchRef" in guard or "refs/remotes/origin/HEAD" in guard, (
+            "the guard must ask the repo for its release surface (default branch) "
+            "rather than assuming main/master"
+        )
+        assert "git branch --show-current" in guard, (
+            "the guard must compare the CURRENT branch against what it resolved"
+        )
+        # It must also be honest about what it inherits: resolve-base does not
+        # consult origin/HEAD and defaults to main when `base_branch:` is unset,
+        # so an unconfigured gitflow repo still slips half the guard.
+        assert "#254" in guard, (
+            "the guard must state that it inherits resolve-base's behaviour "
+            "(#254) rather than silently moving the wrong-answer case"
         )
 
     def test_release_process_documents_benign_cumulative_exit(self):
@@ -686,7 +723,10 @@ class TestPrReviewerScoping:
         content = self.skill
         assert "ledger-append --event review.pr" in content
         frontmatter = content.split("---", 2)[1]
-        assert "Bash(prawduct-hook ledger-append *)" in frontmatter, (
+        # The house grant form: star attached, no space — a spaced star does not
+        # cover a bare call, and one line covers both shapes
+        # (`tests/test_skill_command_grants.py` defines the form).
+        assert "Bash(prawduct-hook ledger-append*)" in frontmatter, (
             "skills/pr/SKILL.md allowed-tools is missing ledger-append — "
             "the skill cannot append the review.pr event."
         )

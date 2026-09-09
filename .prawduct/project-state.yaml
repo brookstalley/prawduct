@@ -37,7 +37,7 @@ backlog_service_repo: brookstalley/prawduct
 # Last full backlog grooming (stamped by /prawduct:backlog list/pick/groom).
 # Timestamp, not a count — counts are always re-derived (D14). Resolves the
 # backlog-overdue-grooming advisory.
-backlog_last_groomed_at: 2026-08-19
+backlog_last_groomed_at: 2026-09-02
 
 # Distribution model. `plugin` = this repo is governed by the Prawduct plugin
 # (v2.0.0), not file-sync. Set in Chunk 13 when the repo cut over to dogfood its
@@ -58,6 +58,30 @@ base_branch: develop
 # record on-ramp prescribes — the interpreter fallback is deprecated-by-nudge).
 # Stdlib-only repo: the hook's python3 IS the project environment.
 test_command: python3 -m pytest tests/ --junit-xml={junit_xml} -q
+
+# How this repo runs ONE test file, for `audit-learnings` sentinel grading.
+# Separate from `test_command:` because that one names `tests/` and would grade
+# every sentinel by the whole suite's verdict. Declared here rather than assumed:
+# an undeclared sentinel is reported ungraded, and this repo being the framework's
+# own is exactly why it must not rely on a Python-shaped default.
+sentinel_command: python3 -m pytest {sentinel} -q
+
+# Path prefixes whose files a NON-HERMETIC test in THIS repo reads. Absent means
+# empty, which is exactly the behaviour every repo had before the key existed.
+#
+# Declared because two of this repo's guards scan prose BY DIRECTORY:
+# `TestClosingKeywordClaims` sweeps `documentation/`, and
+# `test_no_governance_prose_cites_a_flow_step_by_NUMBER` sweeps governance prose.
+# A change under either root really can turn the suite red, so evidence recorded
+# before it does not vouch for the tree after it — on 2026-09-08 a design doc
+# merged to `develop` failing both while `test-status` still read `current`, and
+# the next branch to sync the base inherited the red tree.
+#
+# Read ONLY by the evidence-freshness clause, never by the doc-only PR gate: this
+# says "re-run the suite", not "buy a review". Trailing slashes are significant.
+suite_coupled_prefixes:
+  - documentation/
+  - plugin/
 
 # Files carrying the release version, read by `check-released` FROM THE TAG'S
 # TREE — which files carried a release's version is a fact about that release,
@@ -153,6 +177,13 @@ dependency_graph:
 # scalar (below, near the opt-in flags) is the advisory-probe resolution signal.
 
 design_decisions:
+  integration_branch_protection:
+    scheme: "none — `develop` accepts direct pushes, and CI on it is advisory rather than gating"
+    status: active
+    rationale: "owner ruling 2026-09-09, asked directly and answered directly: branch protection is not wanted here. The cost is known and was named when the decision was made — on 2026-09-08 two commits were pushed straight to `develop` failing two contract tests, CI failed on both pushes, nothing read the result, and the red sat a day until a feature branch's base sync inherited it (5 of the last 50 `develop` runs had failed). Recorded so this is not re-litigated every time a red base is found: the answer is that the owner accepts red reaching `develop` and relies on it being caught downstream."
+    mitigation: "detection moved downstream instead. `suite_coupled_prefixes` (2026-09-09) makes a branch that syncs a red base see `test-status: stale` and run the suite, rather than reading day-old evidence as current — so an inherited red surfaces at the next PR's Step 1 instead of at an unrelated branch's review."
+    revisit_trigger: "a red `develop` that reaches a RELEASE rather than being caught at a feature branch's base sync — the downstream mitigation catches inheritance, not shipping"
+    date: 2026-09-09
   api_versioning_approach:
     scheme: "plugin semantic versioning (whole-surface; the auto-update cache key) plus independent evidence-store schema versioning for persisted facts"
     granularity: "whole-surface for the plugin; per-store integer schema version for the evidence store"
@@ -172,9 +203,9 @@ design_decisions:
     services:
       - name: "GitHub Issues REST API"
         client: "the `gh` CLI, driven as a subprocess (list-form args, never a shell)"
-        scope: "opt-in per product — reached only when `backlog_service_repo` is set; unset means the markdown backend and zero network calls"
+        scope: "two callers, neither reached unless a person acts: the backlog backend, opt-in per product (`backlog_service_repo` unset means the markdown backend), and the owner-approved `file-upstream` op, which targets the plugin's PINNED upstream repo and is therefore reachable with that scalar unset. Reachability is keyed on a person acting, never on the scalar — see `egress_boundary` below"
         credential: "`gh` owns it (`~/.config/gh`); the adapter never reads, stores, or forwards a token, and redacts token-shaped patterns from all surfaced output (SEC-1)"
-        egress_boundary: "three egress sites: lib/backlog/transport.py (opt-in backlog backend); lib/release_verification.py (check-released shells to gh for the Releases page, operator/CI-invoked, added 2026-08-04); and a gh pr list in cmd_stop in bin/prawduct-hook, which DOES run on the Stop hook path. The first two scrub secrets from foreign-CLI stderr before echoing it"
+        egress_boundary: "three egress sites: lib/backlog/transport.py (TWO callers, both off unless a person acts: the opt-in backlog backend, and the owner-approved file-upstream op, which rides the same gh seam out to the plugin's PINNED upstream repo rather than to the product's own — so it is reachable with backlog_service_repo unset, which is why the site is no longer describable as just the backlog backend); lib/release_verification.py (check-released shells to gh for the Releases page, operator/CI-invoked, added 2026-08-04); and a gh pr list in cmd_stop in bin/prawduct-hook, which DOES run on the Stop hook path. The first two scrub secrets from foreign-CLI stderr before echoing it"
     mock_boundary: "tests/fakes/fake_github.py implements the transport seam for the offline suite"
     integration_test_strategy: "offline suite runs entirely against the fake; the rest of the L5 smoke set queued in build-plan-backlog-service.md stays deferred by owner decision to an owner-run session. The relationship/timeline shapes (`list_blocked_by`, `list_sub_issues`, `list_timeline`) are NO LONGER fake-verified only — VRF-010 ran all three against real GitHub on 2026-07-28 and the fake's shapes matched; the evidence has one home, `.prawduct/operator-verification.md` VRF-010. BKL-3N8Q, cited here by a stable id that must not be renumbered, was reconciled to shipped on that evidence 2026-07-31 and is now an archived item — a weaker pointer than it was, kept because the id is the citation."
     status: active
@@ -508,13 +539,21 @@ build_state:
 # (rev-20260813T042938Z-81decaea): plan-backfill refuses names already in archive/.
 #
 # DEMOTED TO SECOND 2026-08-13 (tactical-efficiency Chunk 06). A build plan may
-# now declare `branch: <name>` in its frontmatter, and resolution takes the live
+# now declare `branch: <name>` in its frontmatter, and resolution takes a live
 # plan claiming the checked-out branch BEFORE this scalar, falling back to
-# artifacts/build-plan.md after it. The plan below declares this branch and is
-# the repo's first opt-in, so on feat/tactical-efficiency-pass it is resolved by
-# its own frontmatter and this line is not consulted. The scalar is deliberately
-# kept and kept current: it is the answer on every other branch, and retiring it
-# is out of that pass's scope.
+# artifacts/build-plan.md after it. Several plans may claim one branch; the
+# scalar's remaining job is to break that tie, which is why it is kept.
+#
+# CLEARED 2026-08-13, and the null is the state rather than an oversight. It
+# named build-plan-tactical-efficiency.md, which declares its own (now merged
+# and deleted) branch. Keeping it aimed there put a finished plan back in force
+# on every branch with no plan of its own — including develop — where governance
+# then advised archiving a plan the gitflow RETAIN rule says to keep until the
+# release. That advisory had no correct action, which is the state a
+# branch-declaring plan exists to avoid; the /prawduct:pr Merge Flow's "Confirm
+# the bookkeeping merged WITH the PR" step now says to clear the pointer for
+# this case. The plan is untouched: still live, still findable, archived by
+# scope at the release.
 active_build_plan: null
 
 # =============================================================================

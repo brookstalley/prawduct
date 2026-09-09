@@ -457,6 +457,8 @@ class TestEveryWriteOpIsClassified:
         "provision": "repo label definitions, not items",
         "reconcile-labels": "the alias index derives from the block body, not from the "
                             "`id:PFX` labels this restores",
+        "file-upstream": "files into prawduct's own tracker, which is a FOREIGN repo — the "
+                         "cache holds this product's backlog and never holds a row there",
     }
 
     def test_the_partition_covers_every_write_op(self):

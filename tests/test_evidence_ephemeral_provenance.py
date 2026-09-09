@@ -371,6 +371,73 @@ class TestObservationalKindsRenderHonestly:
         assert "free=[docs/a.md, docs/b.md, docs/c.md +1]" in line, (
             f"the free-file list (with +N truncation) is missing: {line}"
         )
+        # No excluded set on this fact, so nothing claims one.
+        assert "excluded=[" not in line, (
+            f"a refusal that excluded nothing was listed as excluding work: {line}"
+        )
+
+    def test_list_shows_what_a_refusal_excluded(self, tmp_path, capsys):
+        """The same retirement question, one step harder.
+
+        A refusal taken over a committed-tree anchor while judgeable work sat
+        uncommitted is a different event from one over a clean tree: the guard
+        was still right — reviewing that interval would not have covered those
+        files either — but it is the firing most likely to have been unwanted,
+        which is precisely what this query is asked to settle. `free_files`
+        alone cannot tell the two apart.
+        """
+        repo = _make_repo(tmp_path)
+        fact = _fact(str(repo), "guard-y", kind="guard-refusal")
+        fact["body"] = {
+            "guard": "critic-dispatch-free-interval",
+            "interval": {"base_tree": "aaaa1111aaaa", "head_tree": "bbbb2222bbbb"},
+            "free_files": ["docs/a.md"],
+            "excluded_wip": ["src/a.py", "src/b.py", "src/c.py", "src/d.py"],
+        }
+        _seed_store(repo, [fact])
+
+        assert evidence._cmd_list(repo, ["--kind", "guard-refusal"]) == 0
+        out = capsys.readouterr().out
+        line = next((ln for ln in out.splitlines() if "guard-y" in ln), None)
+        assert line is not None, f"the guard-refusal row never printed:\n{out}"
+
+        assert "excluded=[src/a.py, src/b.py, src/c.py +1]" in line, (
+            f"the excluded-work list (with +N truncation) is missing: {line}"
+        )
+
+    def test_list_marks_an_unknown_exclusion_as_unknown(self, tmp_path, capsys):
+        """A recorded `null` means the writer could not compute the uncommitted
+        diff. Rendering it as silence tells this query the refusal excluded
+        nothing — the fail-open the writer already refused to take, reintroduced
+        one layer up. A fact with no key at all is a different case: it predates
+        any anchor that could exclude, and correctly shows nothing."""
+        repo = _make_repo(tmp_path)
+        unknown = _fact(str(repo), "guard-z", kind="guard-refusal")
+        unknown["body"] = {
+            "guard": "critic-dispatch-free-interval",
+            "interval": {"base_tree": "aaaa1111aaaa", "head_tree": "bbbb2222bbbb"},
+            "free_files": ["docs/a.md"],
+            "excluded_wip": None,
+        }
+        legacy = _fact(str(repo), "guard-old", kind="guard-refusal")
+        legacy["body"] = {
+            "guard": "critic-dispatch-free-interval",
+            "interval": {"base_tree": "aaaa1111aaaa", "head_tree": "bbbb2222bbbb"},
+            "free_files": ["docs/a.md"],
+        }
+        _seed_store(repo, [unknown, legacy])
+
+        assert evidence._cmd_list(repo, ["--kind", "guard-refusal"]) == 0
+        out = capsys.readouterr().out
+        rows = {name: next(ln for ln in out.splitlines() if name in ln)
+                for name in ("guard-z", "guard-old")}
+
+        assert "excluded=?" in rows["guard-z"], (
+            f"a check that could not run was listed as clean: {rows['guard-z']}"
+        )
+        assert "excluded=" not in rows["guard-old"], (
+            f"a fact predating the field claimed an answer: {rows['guard-old']}"
+        )
 
     def test_list_leaves_a_review_row_unchanged(self, tmp_path, capsys):
         """The new columns are keyed off body fields a review fact does not
@@ -386,6 +453,7 @@ class TestObservationalKindsRenderHonestly:
 
         assert "tree=nnnn2222nnnn" in line
         assert "guard=" not in line and "free=[" not in line, line
+        assert "excluded=[" not in line, line
 
 
 class TestSchemaUnchanged:

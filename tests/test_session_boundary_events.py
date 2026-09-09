@@ -184,6 +184,22 @@ class TestBriefOnlyStillOrients:
             "repeated observation — a continuation must still receive it"
         )
 
+    def test_the_handoff_pointer_knows_it_is_speaking_to_a_continuation(self, tmp_path):
+        # Chunk 02 (SCN-5B8Q): `brief_only` is the continuation fact and cmd_clear
+        # must actually HAND it to the briefing. The unit test pins the wording;
+        # this pins the wiring, which is the half that was missing.
+        prawduct = _seed_session(tmp_path)
+        (prawduct / ".session-handoff.md").write_text("the previous boundary's note\n")
+        cont = run_plugin_hook("clear", tmp_path, "--session-start", "--brief-only")
+        assert "predates THIS session" in cont.stdout, cont.stdout
+
+    def test_the_handoff_pointer_at_a_boundary_still_reads_as_news(self, tmp_path):
+        prawduct = _seed_session(tmp_path)
+        (prawduct / ".session-handoff.md").write_text("the previous boundary's note\n")
+        boundary = run_plugin_hook("clear", tmp_path, "--session-start")
+        assert "Previous session context available" in boundary.stdout, boundary.stdout
+        assert "predates THIS session" not in boundary.stdout
+
     def test_resume_refreshes_advisories(self, tmp_path):
         prawduct = _seed_session(tmp_path)
         res = run_plugin_hook("clear", tmp_path, "--session-start", "--brief-only")
@@ -288,6 +304,97 @@ class TestBoundaryDependentInterpretation:
         # And it is still a continuation in every other respect.
         assert (prawduct / ".handoff-notes.md").is_file()
         assert not (prawduct / ".session-handoff.md").is_file()
+
+    def test_a_bare_brief_only_is_exempt_from_the_guard_and_earns_it(self, tmp_path):
+        """The exemption CRT-7N4B named, now pinned rather than incidental.
+
+        A bare `clear --brief-only` — no `--session-start` — classifies as
+        CONTINUATION and so neither sweeps nor refuses. `hooks.json` never issues
+        this shape (both its `clear` registrations carry `--session-start`), so it
+        is reachable ONLY by hand, which is precisely the CRT-3X9D vector: an
+        agent or a reviewer subagent typing `clear`.
+
+        **The exemption is kept, not closed, and this test is the argument for
+        it.** Requiring `--session-start` for the CONTINUATION classification
+        would leave a reviewer subagent unable to orient itself at all, and would
+        give up `--brief-only`'s orthogonality to `--session-start` — a deliberate
+        design property — to refuse a path that touches none of the reviewed
+        session's evidence. What licenses that is the enumeration below, not the
+        word "read-only": the continuation path DOES write `.advisories.json`,
+        regenerate the subagent briefing, and run `git rm --cached` on
+        accidentally-committed session files. None of those is the reviewed
+        session's evidence, and that is the whole of the invariant.
+
+        Nothing asserted this for this argv shape before — the existing test seeds
+        no marker and checks only the exit code, so the guard was never exercised
+        here and a future edit could have made this path sweep with nothing
+        failing.
+        """
+        prawduct = _seed_session(tmp_path)
+        marker = prawduct / ".critic-active"
+        # Stamped NOW, unlike the deliberately-hours-old markers above: the
+        # sweep tests want a marker the TTL has RELEASED (the harder case for
+        # "does not sweep"), while this one wants a review that is genuinely
+        # LIVE — an expired marker would exempt itself and the guard would never
+        # be reached, which is the vacuity #185 filed this to prevent.
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        marker.write_text(json.dumps({"started_at": now}))
+        before = _snapshot(prawduct)
+
+        res = run_plugin_hook("clear", tmp_path, "--brief-only")
+
+        assert res.returncode == 0, res.stderr
+        assert marker.is_file(), (
+            "a bare --brief-only must not sweep a live marker: it is the CRT-3X9D "
+            "vector, and the reviewing process may still be running"
+        )
+        assert _snapshot(prawduct) == before, (
+            "the exemption rests on the reviewed session's evidence being untouched "
+            "— if that stops holding, the classification has to change, not this test"
+        )
+        assert not (prawduct / ".session-handoff.md").is_file(), (
+            "no handoff is generated: this is a continuation, not a boundary"
+        )
+
+    def test_force_does_not_promote_a_bare_brief_only_either(self, tmp_path):
+        """`--force` overrides the GUARDED refusal, and a bare `--brief-only` is
+        not GUARDED — so the combination must not sweep. The flags recombining
+        into a different boolean per site is exactly how the flagged shape came to
+        sweep once already (R-5)."""
+        prawduct = _seed_session(tmp_path)
+        marker = prawduct / ".critic-active"
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        marker.write_text(json.dumps({"started_at": now}))
+        before = _snapshot(prawduct)
+
+        res = run_plugin_hook("clear", tmp_path, "--brief-only", "--force")
+
+        assert res.returncode == 0, res.stderr
+        assert marker.is_file()
+        assert _snapshot(prawduct) == before
+
+    def test_the_exemption_is_scoped_to_the_flag_not_to_hand_invocation(self, tmp_path):
+        """The discriminating case for the pair above: drop `--brief-only` and the
+        same hand-issued `clear` is refused. The exemption follows the flag's
+        MEANING (orientation only), not the fact that a person typed it.
+
+        The marker is stamped NOW for the reason
+        `test_bare_clear_still_refuses_while_a_review_is_live` records: an
+        hours-old marker is correctly past the TTL, so a fixed timestamp would
+        make this assert the TTL rather than the refusal.
+        """
+        prawduct = _seed_session(tmp_path)
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        (prawduct / ".critic-active").write_text(json.dumps({"started_at": now}))
+
+        res = run_plugin_hook("clear", tmp_path)
+        assert res.returncode == 2, res.stdout + res.stderr
+
+        # ...and the SAME live marker, with the flag, passes — so the pair really
+        # does isolate the flag as the thing the exemption turns on.
+        res = run_plugin_hook("clear", tmp_path, "--brief-only")
+        assert res.returncode == 0, res.stderr
+        assert (prawduct / ".critic-active").is_file()
 
     def test_force_still_overrides_the_guarded_refusal(self, tmp_path):
         """The discriminating half — `--force` keeps the job it exists for."""

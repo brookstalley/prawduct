@@ -403,6 +403,43 @@ class TestRunDispatcher:
         assert "/synthetic other-route" in out
         assert "rm -rf nothing" in out
 
+    def test_list_labels_both_audiences(self, tmp_path, capsys):
+        # The CLI is the drill-down surface for the same two-audience split the
+        # briefing renders. Before it, `list` printed only the runtime's line, so
+        # an owner-only advisory reached this surface as a summary with no route
+        # out of it at all.
+        entry = _active("synthetic-synthetic-condition-v1-aaa111", "synthetic")
+        entry["owner_action"] = "Decide whether the synthetic condition is wanted."
+        _seed_store(tmp_path, [entry])
+        assert _cmd.run(str(tmp_path), ["list"]) == 0
+        out = capsys.readouterr().out
+        assert "owner → Decide whether the synthetic condition is wanted." in out
+        assert "agent → /synthetic fix" in out
+
+    def test_an_owner_only_advisory_still_states_a_route(self, tmp_path, capsys):
+        entry = _active("synthetic-synthetic-condition-v1-aaa111", "synthetic")
+        entry["owner_action"] = "Add the line yourself and commit it."
+        entry["recommended_action"] = ""  # no command exists for this one
+        _seed_store(tmp_path, [entry])
+        assert _cmd.run(str(tmp_path), ["list"]) == 0
+        out = capsys.readouterr().out
+        assert "owner → Add the line yourself and commit it." in out
+        assert "agent →" not in out
+
+    def test_an_entry_predating_the_two_audience_schema_gets_the_fallback(
+        self, tmp_path, capsys
+    ):
+        # `.advisories.json` is a live per-clone store across the fleet, so entries
+        # written before `owner_action` existed are the normal case for a while. A
+        # missing line would read as "this advisory has no owner" — the inverse of
+        # the truth — so the fallback is printed, never omitted.
+        from lib import advisory_store
+
+        _seed_store(tmp_path, [_active("synthetic-synthetic-condition-v1-aaa111", "synthetic")])
+        assert _cmd.run(str(tmp_path), ["show", "synthetic-synthetic-condition-v1-aaa111"]) == 0
+        out = capsys.readouterr().out
+        assert f"owner action:      {advisory_store.OWNER_ACTION_FALLBACK}" in out
+
     def test_dismiss_with_reason_separate_token(self, tmp_path):
         _seed_store(tmp_path, [_active("synthetic-synthetic-condition-v1-aaa111", "synthetic")])
         assert _cmd.run(str(tmp_path), ["dismiss", "synthetic-synthetic-condition-v1-aaa111", "--reason", "later"]) == 0

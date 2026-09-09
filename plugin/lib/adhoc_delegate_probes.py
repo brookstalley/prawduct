@@ -211,9 +211,23 @@ def probe_unintegrated_delegate_worktree(state: ProjectState, codebase: Codebase
                     "remembers it; integrate it (you own the merge, live "
                     "verification and the Critic) or abandon it and record why"
                 ),
-                recommended_action=(
-                    f"git log --oneline HEAD..{label}" if label else f"git log --oneline HEAD..{sha[:12]}"
+                # Two calls the owner has to make and nobody else can: whether the
+                # work is worth keeping, and — if it is — that the merge, the live
+                # verification and the Critic are theirs. Naming the second here is
+                # not decoration; the whole failure mode is a delegate's output
+                # being absorbed as done because a worktree looked tidy.
+                owner_action=(
+                    f"Decide what becomes of the work on {subject}: keep it, and the merge, "
+                    "the live verification and the review are yours to own, not something "
+                    "this integrates on your behalf; or abandon it, in which case say why so "
+                    "the next person does not spend the same compute twice."
                 ),
+                # One f-string over a pre-resolved revision rather than a
+                # conditional over two: the actionability lint reads construction
+                # sites statically, and a conditional expression is a value it
+                # declines to guess at — which would exempt this field's copy from
+                # every rule the lint applies.
+                recommended_action=f"git log --oneline HEAD..{label or sha[:12]}",
                 alternative_actions=(f"git worktree remove {shown}",),
                 priority="warn",
             )

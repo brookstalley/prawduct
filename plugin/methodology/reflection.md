@@ -32,7 +32,11 @@ Don't fix the symptom — ask "what about the system allowed this?" and chain th
 
 - The test was wrong → Why was the wrong test written? → The spec was ambiguous → Why wasn't the ambiguity caught? → Spec review didn't apply the Skeptic perspective → Why not? → ...
 
-Stop when you reach something you can change. Fixing a shallow cause patches one instance; fixing a deep cause prevents a class of problems.
+Fixing a shallow cause patches one instance; fixing a deep cause prevents a class of problems.
+
+**The stopping rule, stated so it survives being applied in a hurry.** Stop at the *shallowest* cause that satisfies all three: (1) you can change it **here**, in this repo, with the access you have; (2) changing it would have prevented **this** instance; (3) changing it would prevent instances that **do not look like this one**. Two of three is not a stop. Fail (3) and you have the symptom's parent rather than the class — keep chaining. Fail (1) and you have a cause you can only report: record it as a learning or a backlog item, and take the deepest cause you *can* change as the fix.
+
+Three whys is typical, and the chain is short by default because most chains are. What signals it stopped **early** is a terminal that restates the failure instead of explaining it — "the model made a mistake", "we were in a hurry", "nobody reviewed it". None of those is something you can change, so none of them is a stop.
 
 ### Step 4: Capture
 Two targets, two purposes:

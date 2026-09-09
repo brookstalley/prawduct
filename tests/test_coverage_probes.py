@@ -729,3 +729,40 @@ def test_layer0_probe_registered_in_roster(tmp_path):
     assert any(c.type == "discovery-not-captured" for c in results)
     # staging: the layer-1 probe held back while layer 0 speaks
     assert not any(c.type == "strategy-artifact-missing" for c in results)
+
+
+class TestTheExpectationTableIsBackedByTemplates:
+    """The table names artifacts the probe tells a product to create. Every one
+    has to be creatable — meaning a template ships under `plugin/templates/`.
+
+    Nothing bound the two before: the constants live in `lib/coverage_probes.py`
+    and the templates on disk, and a rename or deletion on either side leaves a
+    green suite and a probe that nags for a file the product has no way to
+    scaffold. The advice is the deliverable here, so a broken pointer is a
+    defect in the probe, not a cosmetic mismatch.
+    """
+
+    _TEMPLATES = Path(__file__).resolve().parent.parent / "plugin" / "templates"
+
+    def test_every_strategy_class_artifact_has_a_template(self):
+        missing = [
+            name for name in cp.STRATEGY_CLASS_ARTIFACTS
+            if not (self._TEMPLATES / name).is_file()
+        ]
+        assert missing == [], (
+            f"STRATEGY_CLASS_ARTIFACTS names {missing}, which has no template "
+            f"under {self._TEMPLATES.name}/ — the probe would tell a product to "
+            "create a file nothing can scaffold. Ship the template or drop the "
+            "expectation; do not leave the advice pointing at nothing."
+        )
+
+    def test_the_table_is_the_union_it_claims_to_be(self):
+        """Guards the direction the file check cannot see: an artifact dropped
+        from one of the two source tuples still has its template on disk, so
+        the check above stays green while the expectation silently narrows."""
+        assert cp.STRATEGY_CLASS_ARTIFACTS == cp.UNIVERSAL_ARTIFACTS + tuple(
+            name for name, _ in cp.TRIGGERED_ARTIFACTS
+        )
+        assert len(set(cp.STRATEGY_CLASS_ARTIFACTS)) == len(
+            cp.STRATEGY_CLASS_ARTIFACTS
+        ), "a duplicate would make one artifact expected twice and reported twice"

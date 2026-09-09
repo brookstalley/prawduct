@@ -23,11 +23,11 @@ The stop hook enforces review for code changes when a build plan exists: it asks
 
 Four modes: `chunk`, `final`, `cumulative`, `verify-resolutions`. The canonical caller is `/prawduct:critic` (no args) — the SKILL forwards any invocation arguments verbatim to `prawduct-hook infer-critic-mode`, which owns the full precedence and records `mode_chosen_by` as its verbatim rationale string. Three precedence layers, highest first, all implemented inside the helper:
 
-1. **Per-invocation override** — an explicit mode argument (`/prawduct:critic chunk` etc.). Rationale: `"explicit-args"`. The skill must forward, never parse (Skill-tool invocation of a fork-context skill does not substitute `$ARGUMENTS`; SKILL step 1 collects arguments from whichever delivery path carried them).
+1. **Per-invocation override** — an explicit mode argument (`/prawduct:critic chunk` etc.). Rationale: `"explicit-args"` — except a named `chunk`/`final` on a clean tree, whose interval is provably empty: the helper answers `cumulative`, rationale `explicit-args <token> redirected: …` — the operator's word survives into `mode_chosen_by`.
 2. **Plan-level override** — the active build plan's current chunk's `Critic mode:` field (the current chunk is the first unticked `## Status` box). A valid value wins over inference with rationale `plan-override: <mode>`; an absent, blank, or unrecognized value is ignored.
 3. **Inference** — the four rules (`verify-resolutions > cumulative > final > chunk`).
 
-See `methodology/planning.md` "Critic Mode Per Chunk" for the authoring heuristic — what inference will pick per plan shape, and when an explicit declaration is worth the override.
+Authoring heuristic (what inference picks per plan shape, when an explicit declaration earns the override): `methodology/planning.md` "Critic Mode Per Chunk".
 
 **Fail-safe default (canonical statement):** If the mode is missing, unrecognized, or inference cannot make a confident call, run `final`. Every layer — the build cycle, the inference helper, and the Critic itself — fails safe to thoroughness.
 
