@@ -28,6 +28,19 @@ operation this build declined rather than sought approval for. Its `.gitignore` 
 re-commented alongside the retired `.prawduct/.bug-inbox` pointer, so a machine that used the channel
 does not suddenly see untracked reports as git noise.
 
+**The `.gitignore` propagation contract changed, and `RETIRED_GITIGNORE_ENTRIES` was declined
+deliberately.** `.prawduct/.bug-inbox` leaves `core.GITIGNORE_ENTRIES` and its `prawduct-hook`
+`_SESSION_GITIGNORED_PATHS` mirror, so a newly onboarded product never receives the line — but it is
+NOT added to `RETIRED_GITIGNORE_ENTRIES`, which means an already-onboarded product keeps its line
+forever, `update-gitignore` will not clear it, and `probe_gitignore_contract_drift` stays silent
+about the difference (an entry in neither `MANAGED_FILES` nor the retired set is invisible to
+`_contract_diff`). That asymmetry is the intended outcome, for the same reason this repo's own
+`.gitignore` keeps the line one file over: retiring the entry would un-ignore a directory that
+existing machines may still hold, turning an operator's archived reports into untracked git noise at
+the exact moment the channel stops explaining itself. New products get a clean contract; old ones
+get a harmless extra line. Recorded here because the two halves diverge silently otherwise, and the
+next reader would re-derive the reasoning from an absence.
+
 **A grep is the only thing that quantifies over the prose, so a grep is what pins it.** Removing a
 mechanism requires removing its name too: a skill or guide that still says a report goes into a
 directory routes the next model into writing one where nothing reads it, and every such surface

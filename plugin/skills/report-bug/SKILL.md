@@ -103,7 +103,18 @@ It is refused outright, because a second parseable block would fold into the
 provenance block permanently on the receiving side. A report that needs to *show*
 one indents it instead.
 
-**Write all three to scratch files, once.** Two reasons, and they are different.
+**Write all three to scratch files, once — outside the repo.** This skill runs in
+a governed product's clone, and the plugin writes nothing into one except its own
+`.prawduct/` state; a report drafted into the working tree is untracked noise at
+best and a committed leak at worst. Make one temp directory and use it for all
+three — the commands below assume it — then discard it once the send in step 5
+succeeds (`rm -rf "$SCRATCH"`), because nothing downstream reads those files:
+
+```
+SCRATCH="$(mktemp -d)"
+```
+
+Writing them at all has two reasons, and they are different.
 
 The **body** must be byte-identical across two commands, because the second is
 matched against a digest of the first — retyping it is how a filing refuses with
@@ -120,9 +131,9 @@ a file closes it:
 
 ```
 prawduct-hook backlog file-upstream \
-  --component "$(cat <scratch>/component.txt)" \
-  --title     "$(cat <scratch>/title.txt)" \
-  --body      "$(cat <scratch>/report.md)"
+  --component "$(cat "$SCRATCH"/component.txt)" \
+  --title     "$(cat "$SCRATCH"/title.txt)" \
+  --body      "$(cat "$SCRATCH"/report.md)"
 ```
 
 ## 3. Preview the exact outbound payload
@@ -197,9 +208,9 @@ Repeat the command with the digest the preview printed, and **the same
 
 ```
 prawduct-hook backlog file-upstream \
-  --component "$(cat <scratch>/component.txt)" \
-  --title     "$(cat <scratch>/title.txt)" \
-  --body      "$(cat <scratch>/report.md)" \
+  --component "$(cat "$SCRATCH"/component.txt)" \
+  --title     "$(cat "$SCRATCH"/title.txt)" \
+  --body      "$(cat "$SCRATCH"/report.md)" \
   --approve   sha256:<the digest from step 3>
 ```
 
