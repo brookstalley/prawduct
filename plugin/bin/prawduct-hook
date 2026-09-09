@@ -1719,6 +1719,51 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
 
     consolidate = _critic_consolidate()
     result = consolidate.begin_review(project_dir, **opts)
+    if result["status"] == "budget-exhausted":
+        # Exit 4, not 3: both refuse a dispatch, but they answer different
+        # questions and have different remedies. A 3 says the gate does not want
+        # this round; a 4 says the loop has run out of budget while the gate may
+        # still be unsatisfied — and the reader's next move differs accordingly.
+        # Stdout, because like a 3 this is a normal outcome the caller acts on.
+        swept = result.get("swept") or {}
+        print(
+            f"PRAWDUCT: {result['reason']}.\n"
+            f"  The loop ends here. {swept.get('accepted', 0)} outstanding "
+            "non-blocking finding(s) were ACCEPTED against the budget — a "
+            "reviewable answer, not a drop: re-disposition any of them with "
+            "`prawduct-hook disposition <review-id> <fid> ...`."
+        )
+        if swept.get("skipped_blocking"):
+            print(
+                f"  {swept['skipped_blocking']} BLOCKING finding(s) were NOT "
+                "swept and still block the gate. The budget can end a review "
+                "loop; it can never open a gate. Fix them and run "
+                "`/prawduct:critic verify-resolutions` — that mode is never "
+                "refused by the budget, so this route always exists."
+            )
+        for failure in swept.get("failed") or []:
+            print(
+                f"  NOT ACCEPTED: {failure['fid']} of {failure['review_id']} — "
+                f"{failure['reason']}",
+                file=sys.stderr,
+            )
+        if swept.get("status") == "error":
+            print(
+                f"  NOT SWEPT: {swept['reason']} — the refusal stands, but the "
+                "outstanding findings are still open. Disposition them by hand.",
+                file=sys.stderr,
+            )
+        if result.get("census"):
+            print(f"\n{result['census']}\n")
+        print(
+            "  To buy another round anyway: `/prawduct:critic <mode> --force`. "
+            "Prefer raising or clearing `review_round_budget` in "
+            ".prawduct/project-state.yaml if this scope genuinely needs more — "
+            "a budget forced past every time is a budget set wrong."
+        )
+        for note in result.get("notes") or []:
+            print(f"PRAWDUCT NOTE: {note}", file=sys.stderr)
+        return 4
     if result["status"] == "no-review-needed":
         # Exit 3, not 0: 0 means "dispatched, go review", and the skill would
         # proceed to spawn a reviewer against a manifest that was never

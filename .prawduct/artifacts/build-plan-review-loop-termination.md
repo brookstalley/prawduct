@@ -374,21 +374,42 @@ falsify the premise:
   branch exit 3 with its existing message, and check whether the table needs anything said. Rides
   this chunk's commit; standalone it re-opens the gate for no behavioural gain.
 
-- **The open residue Chunk 03 left, stated so it stays tracked.** `plugin/agents/critic-reviewer.md`
-  is now a review **subject** — a finding may be about it — but it is still **non-judgeable**, so a
-  commit touching only a review subagent's system prompt is a free edge and merges with zero
-  coverage, and `cost-of-commit` prices it `free`. Eligibility and cost are different questions and
-  Chunk 03 answered only the first, deliberately. This chunk decides the second: either add
-  `("agents/", False, "agent-file-edited")` to `buildplan_refs._TRIVIAL_PROTECTED_PATHS` — which
-  makes agent prose judgeable and moves every consumer of the coverage predicate with it — or record
-  a ruling that a subagent prompt is genuinely free to edit unreviewed. **What is not available is
-  leaving it unstated**, which is what "discharged" would have done.
+- **The open residue Chunk 03 left — DECIDED HERE, and the decision is the first option.**
+  `plugin/agents/critic-reviewer.md` was a review **subject** after Chunk 03 but still
+  **non-judgeable**, so a commit touching only a review subagent's system prompt was a free edge that
+  merged with zero coverage. `("agents/", False, "agent-file-edited")` is now in
+  `buildplan_refs._TRIVIAL_PROTECTED_PATHS`, so agent prose is judgeable and every consumer of the
+  coverage predicate moves with it. **Why this rather than the ruling that a subagent prompt is free
+  to edit:** the argument that makes `skills/` protected is that fork-skill prose is behavioural
+  logic, and a subagent's system prompt is that argument's strongest case — this particular file
+  decides what an independent review looks at and how hard, so an unreviewed narrowing there
+  compounds across every review that follows. The direction is also the fail-closed one
+  `protected_path_violation` already states for its own bounds. The one contract this reverses is
+  `TestAgentsNoLongerSpecial`, which recorded the omission as intentional when the pre-2.0 `agents/`
+  tree was deleted; the tree came back, so its premise is gone rather than overruled.
 
 - **Yield emission is a deliverable, not a nicety** (`nonfunctional-requirements.md` § Direction:
   a new control must emit its yield observably, or it can never be retired on evidence). The
-  budget records each firing as a countable fact so `prawduct-hook review-stats` can answer how
-  often it fired and what it suppressed. A budget whose firings are only printed satisfies the
-  letter of the norm and defeats its point.
+  budget records each firing as a countable fact. A budget whose firings are only printed satisfies
+  the letter of the norm and defeats its point. **Built against `evidence.append_guard_refusal`
+  rather than the `review-stats` reader this plan first named** — that is the ruled sink for the
+  whole pre-dispatch-guard class (`#596`'s four reasons: the ledger lives inside a worktree these
+  guards fire in and that is then deleted; a reader already exists; the ledger's envelope is
+  review-cost-shaped and a refusal has no reviewer, model or duration). Query:
+  `prawduct-hook evidence list --kind guard-refusal`. The plan's route was its best guess and the
+  goal binds, not the method.
+
+- **A requirement that surfaced mid-build, written here rather than designed in chat.** A fix that
+  rode a LATER round-buying commit has no recordable answer against its own review. `--fixed`
+  correctly refuses it — the paths are judgeable — and no `verify-resolutions` pass was ever
+  anchored to that review, so the census reports it `undispositioned` with no available action.
+  This is RC9's sibling, one step over: RC9 was the FREE fix with no trace, this is the PAID fix
+  whose payment landed against a different review id. Live instance: R-1 of
+  `rev-20260825T125948Z-a43f7fae`, fixed inside Chunk 02's commit and covered by Chunk 02's own
+  cumulative. Closing it needs a join between a finding and a later review fact whose interval
+  contains the fixing commit — coverage-kernel work with its own lock-in question, so it is
+  **named and carried, not built here**; it belongs with the follow-on plan that already owns
+  `#768`, the `promise` disposition, and machine-checkable `do_not`.
 - **No new persisted format.** Round count per scope is already derived from the evidence store
   (`plugin/lib/coverage.py` prints it in the gate's escalation NOTE), and auto-accept writes the
   existing `disposition` fact via `plugin/lib/dispositions.py`. The budget is a policy over a

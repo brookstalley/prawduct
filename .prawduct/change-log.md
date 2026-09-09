@@ -3,6 +3,75 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-09-09: the review loop gets a stopping rule
+
+<!-- prawduct: type=feat | chunks=04 | scope=review-loop-termination -->
+
+Every control this plan shipped prices a review round, refuses a wasteful one, or shrinks what one
+produces. None of them ever says *stop* — and the measurement this plan was built on says nothing
+else will. Across 728 review facts in this clone's store, findings per full round **rise**: 13.5,
+15.4, 15.5, 18.4, with 99% of them new rather than re-raised. A review loop has no natural fixed
+point, so every "one more round" reads locally reasonable, and chains of twenty to thirty-four
+rounds are the result.
+
+**`review_round_budget` is the declared stop.** Six full rounds per body of work, on by default in
+every governed repo, `null` to disable. Off-by-default was rejected for the reason #716 reports
+about `cost-of-commit` — a mechanism that works and that nobody knows exists. Six rather than four
+because it sits above every chain in the store that ever produced a late BLOCKING finding, so it
+costs close to nothing in missed defects while still catching the chains whose round count is
+indefensible on any reading.
+
+At the ceiling `critic-begin` exits **4** — a new documented sentinel, not an overload of exit 3,
+because a 3 says the gate does not want this round and a 4 says the loop has run out while the gate
+may still be unsatisfied, and the caller's next move differs. The refusal auto-ACCEPTs the
+outstanding non-blocking findings with the budget as their recorded reason, renders the census, and
+writes no session state.
+
+**Two bounds carry the whole safety argument, and both are pinned by tests.** A
+`verify-resolutions` pass is neither counted nor refused — it is how a BLOCKING finding clears, so a
+ceiling that ate it would strand findings with no command that resolves them. And no BLOCKING
+finding is ever swept, guarded twice: filtered in the sweep, and independently refused by
+`dispositions.record`, which demands an owner ruling the automatic path never supplies. **The budget
+can end a review loop and can never open a gate.** Its firings append a `guard-refusal` fact under
+the sink the whole pre-dispatch-guard class already uses, which is what keeps the six falsifiable.
+
+**`--fixed` closes the hole where the cheapest correct action sat.** A fix confined to non-judgeable
+paths buys no round, so no verify pass runs, no resolution fact is written, and the census reported
+it undispositioned forever — leaving "don't fix it" and "spend ten minutes" as the only visible
+answers. `prawduct-hook disposition <review> <fid> --fixed <paths>` records it, and the paths are
+checked at record time against the same predicate that prices the edit: a set holding anything
+judgeable is refused, so nothing launders a judgeable fix past a gate. BLOCKING is refused too. The
+census state is `fixed-unreviewed`, deliberately not `fixed` — both say the defect is gone, and only
+one says a reviewer looked.
+
+**The prose correction is the load-bearing half.** `review-cycle.md` asserted that by round 3 a pass
+finds defects in the record of round 2 and that this is the signal to stop. The store says the
+opposite. Shipping a budget while that stood would leave two stopping rules, and the false one is
+the one an agent can check against the store and therefore learn to distrust — which is the
+behaviour this whole plan exists to fix. Replaced with the measured rise, carried with its numbers.
+
+**`agents/` becomes governance-protected**, closing the half Chunk 03 left open. A subagent's system
+prompt is behavioural logic by exactly the argument that protects skill prose, and the reviewer's is
+that argument's strongest case: it decides what an independent review looks at, so an unreviewed
+narrowing there compounds across every review after it. `TestAgentsNoLongerSpecial` recorded the
+omission as intentional when the pre-2.0 `agents/` tree was deleted; the tree came back, so its
+premise is gone rather than overruled.
+
+**And a refusal stops manufacturing the round it refuses.** `begin_review`'s "nothing to verify"
+branch returned a bare error, surfacing as exit 1 — which `SKILL.md`'s exit table routes to
+"re-dispatch per the demotion property", meaning a full `cumulative` on a bundle the gate already
+reports satisfied. It is a no-review-needed and now takes exit 3.
+
+Exercised end-to-end against this branch's real review history in a scratch clone: the refusal
+fires at the ceiling, the census renders across all five of the scope's reviews, no BLOCKING finding
+is swept, and the firing lands as a countable fact. The two WARNINGs Chunk 01 fixed for free are
+recorded live as `--fixed`.
+
+**Named gap, carried rather than built:** a fix that rode a *later* round-buying commit still has no
+recordable answer against its own review — `--fixed` correctly refuses it and no verify pass was
+ever anchored there. Closing it needs a join between a finding and a later review fact whose
+interval contains the fixing commit, which is coverage-kernel work with its own lock-in question.
+
 ## 2026-09-09: review eligibility stops being the negation of review cost
 
 <!-- prawduct: type=fix | chunks=03 | scope=review-loop-termination -->

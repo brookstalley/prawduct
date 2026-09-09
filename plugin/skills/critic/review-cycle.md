@@ -142,7 +142,8 @@ one of three dispositions, and **FILE is the narrowest, never the default**:
 - **FIX** — take it now. Correct for anything cheap, and for anything touching a gate, a contract, or
   an operator-facing surface regardless of cost. Closing coverage afterwards costs **one**
   `verify-resolutions` pass — bounded, and not another full round. A fix confined to non-judgeable
-  surfaces costs nothing at all.
+  surfaces costs nothing at all, and records as `--fixed <paths>` (below) rather than buying a round
+  to prove itself.
 - **FILE** — only genuinely deferred work that someone will actually do, and the item says what
   triggers it. No trigger means it is an ACCEPT wearing a backlog id. **Two tests, and it must pass
   both:** the work is **large** — a chunk's worth or more, not an hour's — **and** you cannot
@@ -204,13 +205,23 @@ persisted format is lock-in) and filed.
 
 ### Record the disposition; render the census
 
-**A disposition is a fact, not a sentence you write.** FIX already left a machine-readable trace — the
-resolution fact a `verify-resolutions` pass records. ACCEPT and FILE now do too:
+**A disposition is a fact, not a sentence you write.** A FIX that bought a round already left a
+machine-readable trace — the resolution fact a `verify-resolutions` pass records. ACCEPT, FILE, and
+the FIX that bought *no* round now do too:
 
 ```
 prawduct-hook disposition <review-id> <fid> --accept "<reason>"      # won't fix, reason recorded
 prawduct-hook disposition <review-id> <fid> --file <backlog-id>      # deferred, item carries the work
+prawduct-hook disposition <review-id> <fid> --fixed <path>[,<path>…] # fixed for free, no round bought
 ```
+
+**`--fixed` exists because the cheapest correct action was the only one the record could not see.** A
+free fix buys no round, so no verify pass runs, no resolution fact is written, and the census reads
+`undispositioned` forever — leaving "don't fix it" and "spend ten minutes" as the visible answers.
+The paths you name are checked at record time against the predicate that prices the edit: **a set
+holding anything judgeable is refused**, so nothing launders a judgeable fix past a gate. BLOCKING is
+refused too — it clears only through a resolution fact, and the free-interval refusal lets that pass
+through for exactly this case.
 
 The command validates that the finding exists before it records anything, and refuses to accept a
 BLOCKING finding without `--owner-ruling "<text>"` — the severity rule below, enforced in code rather
@@ -226,8 +237,9 @@ prawduct-hook render-dispositions [--review <id>|--scope <s>] [--json]
 ```
 
 Paste the rendered table into the change-log entry or PR body. It reports each finding's state
-(`fixed`, `waived`, `accepted`, `filed`) and — the number nothing measured before — how many findings
-are still **undispositioned**.
+(`fixed`, `waived`, `accepted`, `filed`, `fixed-unreviewed`) and — the number nothing measured before
+— how many findings are still **undispositioned**. `fixed-unreviewed` is deliberately not `fixed`:
+both say the defect is gone, and only one of them says an independent reviewer looked.
 
 **Why this stopped being prose.** Hand-written censuses drift, and their corrections re-enter review.
 Measured on this framework's own repo in a single day: one census asserted a count of accepted notes
@@ -314,12 +326,21 @@ otherwise; it is the gate's answer that binds.
 per-round subject at all — the two bars that decide when one is worth a finding, and the pass that
 applies them, are **Records Pass** below.
 
-**Diminishing-returns signal.** Round 1 finds defects in the *work*. By round 3 a pass is typically
-finding defects in the *record of round 2* — true, confidently rated, and worth less than the round
-costs. When every finding is about prose written to close the previous pass's findings, that is the
-signal to **stop reviewing** — disposition what you have and end the loop, rather than writing a
-better paragraph for the next pass to find. Stopping is not filing: most of that round's findings
-are ACCEPTs, and saying so takes a clause each.
+**Yield does not decay — do not wait for it to.** This file used to say a round-3 pass finds less;
+the store says the opposite. Findings per full round *rise* — 13.5, 15.4, 15.5, 18.4 — and 99% are
+new, not re-raised. There is **no natural fixed point**, so "stop when the yield drops" never fires.
+Later rounds do increasingly find defects in the *record of the previous round*: true, confidently
+rated, worth less than the round costs — a signal to disposition what you have, never a bound. The
+bounds are zero BLOCKING above, and the budget below. Stopping is not filing: most of that round's
+findings are ACCEPTs, and saying so takes a clause each.
+
+**The round budget is the backstop, and it is on.** `review_round_budget`
+(`.prawduct/project-state.yaml`, 6 by default, `null` disables) caps the **full** rounds one body of
+work may buy. At the ceiling `critic-begin` exits 4, auto-ACCEPTs the outstanding non-blocking
+findings with the budget as their reason, and renders the census. It never counts or refuses a
+`verify-resolutions` pass, and never sweeps a BLOCKING finding — so **it can end a review loop and
+can never open a gate**. `--force` buys one anyway; needing that every time means the number is
+wrong, and the number is the fix.
 
 **Last chunk of a `Type: cumulative-final` plan — one review, not two.** Commit the chunk, then run `/prawduct:critic cumulative` ONCE: that single review serves as both the chunk's review and the PR-gate evidence. Don't run a separate `final` first — cumulative runs the same 7 goals plus cross-checks over `merge-base...HEAD`, a scope that already contains the chunk's diff, so a preceding `final` re-pays 4-10 minutes for assurance the cumulative re-derives. Mode inference implements the sequencing: with the last chunk's work still uncommitted, `/prawduct:critic` infers `final` (the right mid-chunk look); once committed and clean, it infers `cumulative` — the at-commit review. Post-cumulative fixes take a `verify-resolutions` pass, not a second full one — its fact extends coverage over the fix delta.
 

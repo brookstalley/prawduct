@@ -4230,13 +4230,19 @@ class TestVerifyResolutionsDispatch:
         )
         assert vouching  # the commit exists; it simply does not move the anchor
 
-    def test_nothing_to_verify_names_the_tree_it_compared(self, tmp_path):
-        """The genuine no-op still refuses — with a message that says what it read.
+    def test_nothing_to_verify_is_no_review_needed_not_a_failure(self, tmp_path):
+        """The genuine no-op takes exit 3 — with a message that says what it read.
 
         Under the tree-inequality anchor an empty delta means the tree really is
         unchanged, so this refusal is honest. It names the anchor and both tree
         hashes anyway: the previous wording was true of the anchor and false of
         the repo, and nothing in it let a builder tell which.
+
+        **Exit 3, and the code is the point of the test.** As a bare exit 1 this
+        outcome hit the skill's exit table at "1 on verify-resolutions →
+        re-dispatch per the demotion property", which spends a full `cumulative`
+        on a bundle the gate already reports satisfied — a review round
+        manufactured by the routing rather than by the work.
         """
         repo = tmp_path / "r"
         _init_repo(repo)
@@ -4245,10 +4251,10 @@ class TestVerifyResolutionsDispatch:
                      "commit the reviewed tree")
 
         result = _run_begin(repo, "--mode", "verify-resolutions")
-        assert result.returncode == 1
-        assert "nothing to verify" in result.stderr
-        assert "the working tree" in result.stderr
-        assert reviewed_tree[:12] in result.stderr
+        assert result.returncode == 3
+        assert "nothing to verify" in result.stdout
+        assert "the working tree" in result.stdout
+        assert reviewed_tree[:12] in result.stdout
 
     def test_a_non_ancestor_prior_anchor_refuses_for_demotion(self, tmp_path):
         """A sibling branch's review fact must not anchor this branch's pass.
@@ -5862,7 +5868,7 @@ class TestWideningBoundCountsTheCostSubset:
 
     def test_a_prior_subject_set_is_not_already_the_cost_subset(self):
         """The premise. If these ever coincide the test below proves nothing."""
-        prior = ["plugin/lib/core.py", "plugin/agents/critic-reviewer.md"]
+        prior = ["plugin/lib/core.py", "plugin/docs/norms.md"]
         assert ca_mod.review_subjects(prior) == prior
         assert ca_mod.judgeable_files(prior) == ["plugin/lib/core.py"]
 
@@ -5871,7 +5877,7 @@ class TestWideningBoundCountsTheCostSubset:
         subject set admits. The gap is exactly what the second call closes."""
         prior_subject_set = [
             "plugin/lib/core.py",
-            "plugin/agents/critic-reviewer.md",
+            "plugin/docs/norms.md",
             "docs/a.md",
             "docs/b.md",
             "README.md",
@@ -5886,3 +5892,168 @@ class TestWideningBoundCountsTheCostSubset:
             "counting the raw subject set admits the same delta — dropping the "
             "re-narrowing fails OPEN, which is why the call is not redundant"
         )
+
+
+# ---------------------------------------------------------------------------
+# The round budget — the terminating rule
+# ---------------------------------------------------------------------------
+
+
+CUMULATIVE_VERBOSE = cc.MODE_TOKEN_TO_VERBOSE["cumulative"]
+
+
+def _budget_repo(tmp_path: Path, rounds: int, *, mode: str = CUMULATIVE_VERBOSE,
+                 budget: "str | None" = None, findings=None) -> "tuple[Path, str]":
+    """A feature branch off `main` carrying ``rounds`` recorded review facts.
+
+    The facts are seeded rather than produced by real dispatches because what
+    is under test is the POLICY over a count, not the counting — which
+    `count_branch_rounds` owns and `test_cumulative_gate` already pins.
+    """
+    repo = tmp_path / "r"
+    _init_repo(repo)
+    _commit_file(repo, "src/app.py", "x = 1\n", "init")
+    _git(repo, "checkout", "--quiet", "-b", "feature")
+    head = _commit_file(repo, "src/app.py", "x = 2\n", "work")
+    prawduct = repo / ".prawduct"
+    prawduct.mkdir(exist_ok=True)
+    if budget is not None:
+        (prawduct / "project-state.yaml").write_text(f"review_round_budget: {budget}\n")
+    for i in range(rounds):
+        evidence.append_fact(
+            repo, "review", f"rev-round-{i}",
+            {
+                "base_tree": "a" * 40, "head_tree": "b" * 40, "mode": mode,
+                "head_commit": head, "scope": "budgeted",
+                "findings": list(findings or []),
+            },
+        )
+    return repo, head
+
+
+class TestRoundBudgetCounting:
+    """The ceiling is a policy over full rounds — which is not every review."""
+
+    def test_it_does_not_fire_below_the_ceiling(self, tmp_path):
+        repo, _ = _budget_repo(tmp_path, 5)
+        verdict = cc._round_budget_verdict(repo, repo / ".prawduct")
+        assert verdict == {
+            "status": "within", "spent": 5, "budget": 6,
+            "review_ids": [f"rev-round-{i}" for i in range(5)],
+        }
+
+    def test_it_fires_at_the_ceiling(self, tmp_path):
+        repo, _ = _budget_repo(tmp_path, 6)
+        assert cc._round_budget_verdict(repo, repo / ".prawduct")["status"] == "exhausted"
+
+    def test_the_default_is_six_with_no_declaration(self, tmp_path):
+        repo, _ = _budget_repo(tmp_path, 0)
+        assert cc._round_budget_verdict(repo, repo / ".prawduct")["budget"] == 6
+
+    def test_a_repo_override_wins_over_the_default(self, tmp_path):
+        repo, _ = _budget_repo(tmp_path, 2, budget="2")
+        verdict = cc._round_budget_verdict(repo, repo / ".prawduct")
+        assert verdict["budget"] == 2 and verdict["status"] == "exhausted"
+
+    def test_null_disables_it_entirely(self, tmp_path):
+        repo, _ = _budget_repo(tmp_path, 50, budget="null")
+        assert cc._round_budget_verdict(repo, repo / ".prawduct") == {"status": "disabled"}
+
+    def test_verify_passes_are_not_counted(self, tmp_path):
+        """The deadlock guard, stated as a count.
+
+        A `verify-resolutions` pass is how a BLOCKING finding clears. If those
+        spent budget, a branch could exhaust itself on the very passes that
+        resolve its blockers and be left with a blocked gate and no command
+        that opens it.
+        """
+        repo, _ = _budget_repo(tmp_path, 20, mode=cc.MODE_TOKEN_TO_VERBOSE[
+            "verify-resolutions"])
+        verdict = cc._round_budget_verdict(repo, repo / ".prawduct")
+        assert verdict["status"] == "within" and verdict["spent"] == 0
+        # ...and they are still ANSWERED at exhaustion: their findings are as
+        # open as any other, so the sweep must see them.
+        assert len(verdict["review_ids"]) == 20
+
+    def test_an_underivable_count_never_refuses(self, tmp_path):
+        """Fail-soft, and in the opposite direction from the coverage gate.
+
+        A round that need not have run costs minutes; refusing one that WAS
+        needed leaves unreviewed work with no command that clears it.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        (repo / ".prawduct").mkdir()
+        verdict = cc._round_budget_verdict(repo, repo / ".prawduct")
+        assert verdict["status"] in ("unavailable", "within")
+        assert verdict["status"] != "exhausted"
+
+
+class TestRoundBudgetRefusal:
+    """What exhaustion DOES — the half that makes the refusal an answer."""
+
+    _FINDINGS = [
+        {"fid": "R-1", "severity": "warning", "goal": "Nothing Is Broken",
+         "title": "a warning", "files": ["src/app.py"]},
+        {"fid": "R-2", "severity": "note", "goal": "The Design Is Sound",
+         "title": "a note", "files": ["src/app.py"]},
+        {"fid": "R-3", "severity": "blocking", "goal": "Nothing Is Broken",
+         "title": "a blocker", "files": ["src/app.py"]},
+    ]
+
+    def test_exhaustion_exits_4_sweeps_non_blocking_and_spares_blocking(self, tmp_path):
+        from lib import dispositions as _d
+
+        repo, _ = _budget_repo(tmp_path, 6, budget="1", findings=self._FINDINGS)
+        result = _run_begin(repo, "--mode", "cumulative", "--scope", "budgeted")
+
+        assert result.returncode == 4, (result.stdout, result.stderr)
+        assert "round budget exhausted" in result.stdout
+        assert not (repo / PARTIALS_REL / "manifest.json").exists(), (
+            "a budget refusal writes no session state, like a no-review-needed"
+        )
+
+        store = evidence.read_facts(repo)
+        rows = {
+            row["fid"]: row["state"]
+            for review in _d.census(store, review_id="rev-round-0")["reviews"]
+            for row in review["rows"]
+        }
+        assert rows["R-1"] == _d.STATE_ACCEPTED
+        assert rows["R-2"] == _d.STATE_ACCEPTED
+        assert rows["R-3"] == _d.STATE_OPEN, (
+            "a BLOCKING finding was swept — the budget may end a review loop "
+            "and may NEVER open a gate"
+        )
+        assert "verify-resolutions" in result.stdout
+
+    def test_force_buys_the_round_anyway(self, tmp_path):
+        repo, _ = _budget_repo(tmp_path, 6, budget="1", findings=self._FINDINGS)
+        result = _run_begin(repo, "--mode", "cumulative", "--scope", "budgeted",
+                            "--force")
+        assert result.returncode != 4, (result.stdout, result.stderr)
+
+    def test_verify_resolutions_is_never_refused(self, tmp_path):
+        """The route that clears a blocker stays open at exhaustion. Whatever
+        this dispatch does next, it must not be the budget that stops it."""
+        repo, _ = _budget_repo(tmp_path, 6, budget="1", findings=self._FINDINGS)
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode != 4, (result.stdout, result.stderr)
+
+    def test_the_firing_is_recorded_as_a_countable_fact(self, tmp_path):
+        """A control ships under `name the yield you expect and emit it
+        observably`. The yield argument for six rests on a measurement taken
+        before the budget existed; only a record of real firings can falsify it
+        or retire the control."""
+        repo, _ = _budget_repo(tmp_path, 6, budget="1", findings=self._FINDINGS)
+        _run_begin(repo, "--mode", "cumulative", "--scope", "budgeted")
+        refusals = [
+            f for f in evidence.read_facts(repo)["facts"]
+            if f.get("kind") == "guard-refusal"
+            and (f.get("body") or {}).get("guard") == "critic-dispatch-round-budget"
+        ]
+        assert len(refusals) == 1, refusals
+        body = refusals[0]["body"]
+        assert body["spent"] == 6 and body["budget"] == 1
+        assert body["auto_accepted"] == 12 and body["blocking_left"] == 6

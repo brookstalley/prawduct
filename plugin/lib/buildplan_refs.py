@@ -2502,12 +2502,19 @@ def _parse_build_plan_chunk_trivial_rationale(
 #                   as operating instructions; a "trivial" rewrite is never trivial.
 #   templates/    — the artifact templates every product's specs are generated
 #                   from; a silent change propagates to all downstream output.
+#   agents/       — a subagent's own system prompt IS its behaviour, by exactly
+#                   the argument ``skills/`` makes for fork-skill prose. The
+#                   sharp case is the reviewer's: ``agents/critic-reviewer.md``
+#                   decides what an independent review looks at and how hard,
+#                   so an unreviewed edit there can quietly narrow every review
+#                   that follows — the one file where "free to edit" compounds.
 #   CLAUDE.md     — the project's top-level operating contract (exact match —
 #                   a nested ``foo/CLAUDE.md`` is ordinary product doc).
 _TRIVIAL_PROTECTED_PATHS: frozenset[tuple[str, bool, str]] = frozenset({
     ("skills/", False, "skill-file-edited"),
     ("methodology/", False, "methodology-edited"),
     ("templates/", False, "template-edited"),
+    ("agents/", False, "agent-file-edited"),
     ("CLAUDE.md", True, "claude-md-edited"),
 })
 
@@ -2515,7 +2522,7 @@ _TRIVIAL_PROTECTED_PATHS: frozenset[tuple[str, bool, str]] = frozenset({
 def protected_path_violation(path: str) -> str | None:
     """Return the violation label (``"<reason_label>: <path>"``) when *path*
     falls under a governance-protected bound (``skills/``, ``methodology/``,
-    ``templates/``, root ``CLAUDE.md``), else ``None``.
+    ``templates/``, ``agents/``, root ``CLAUDE.md``), else ``None``.
 
     Shared by the ``Type: trivial`` gate (via ``_classify_trivial_change``)
     and the PR-boundary doc-only gate (``lib/coverage.py``, PR-5K8D): fork-

@@ -516,7 +516,19 @@ LAST_MEASURED_TOKENS = {
     # was asserting a timing that is false on the Issues backend, so the routing
     # replaced prose rather than adding to it, and the "why" the routing would
     # have restated stayed at the owner where the reader is already being sent.
-    "skills/critic/review-cycle.md": 10058,
+    # +371 on 2026-09-09 (review-loop-termination Chunk 04). Three additions,
+    # each a rule this file must state or teach falsely. (1) The
+    # diminishing-returns paragraph asserted that yield decays; the store says it
+    # rises (13.5 -> 18.4 per full round, 99% new), so it was replaced with the
+    # measured floor and its number — shipping a budget beside a contradictory
+    # stopping rule leaves an agent two rules, one of which it can check and
+    # therefore learn to distrust. (2) The round budget itself. (3) `--fixed`,
+    # which is a new disposition verb: the three-way ACCEPT/FIX/FILE vocabulary
+    # this file owns had a hole exactly where the cheapest correct action sat.
+    # Paid down first: the replaced paragraph funds roughly half of (1), the
+    # budget prose points at `project-state.yaml` for the knob rather than
+    # restating its defaults, and the SKILL.md row stays a route, not a copy.
+    "skills/critic/review-cycle.md": 10429,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -592,7 +604,13 @@ LAST_MEASURED_TOKENS = {
     # explicitly rules out. Collapsing the pair and attaching the stars removed a
     # duplicate grant line, so the saving is duplication going away rather than
     # any rule being shortened. (#160's +2 from the same burndown is included.)
-    "skills/critic/SKILL.md": 3451,
+    # +20 on 2026-09-09 (review-loop-termination Chunk 04): the exit-4 row, for
+    # the round budget. A new exit code with no row is an exit code the skill
+    # cannot route, and an unrouted refusal is read as a failure and retried in
+    # another mode — the round the budget exists to refuse. Funded by dropping
+    # exit 3's guard-refusal parenthetical: it named a fact no gate reads and
+    # nothing here acts on, and `api-contract.md` § Error Model is its home.
+    "skills/critic/SKILL.md": 3471,
     "skills/critic/framework-checks.md": 1116,
     # The on-demand class, first recorded 2026-08-19 (#688) — readings, no
     # ceilings; the block above this dict is the decision and its reasoning.
@@ -4353,7 +4371,19 @@ class TestCriticSkillRoutesByMode:
         # to buy that, and the trade is checkable in both directions from the
         # store. Funded first where it could be: nothing here — step 5 is one line and
         # the +9 is the split it now names.
-        assert tokens < 3457, f"SKILL.md is ~{tokens} tokens, should be <3457"
+        #
+        # RAISED 3457 -> 3475 (2026-09-09, review-loop-termination Chunk 04).
+        # The same allowed raise, for the same reason: a control that removes
+        # more review work than it costs. The round budget ends a loop the
+        # measured store says has no natural fixed point — yield per full round
+        # RISES (13.5 -> 18.4, 99% of findings new), so nothing else stops it —
+        # and its refusal needs a row here or the skill cannot route the exit
+        # code, which is worse than not having one: an unrouted refusal reads as
+        # a dispatch failure and gets retried in another mode, buying the round.
+        # Funded first: exit 3's guard-refusal parenthetical went (a fact no gate
+        # reads, documented in `api-contract.md`), and the row is a route rather
+        # than a copy of `review-cycle.md`'s explanation.
+        assert tokens < 3475, f"SKILL.md is ~{tokens} tokens, should be <3475"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))
@@ -4604,7 +4634,20 @@ class TestReviewCycle:
         # here and pointing at `coverage_algebra.is_review_subject` for the
         # case, per one-home: the first draft restated both worked examples and
         # cost 116; this costs 78.
-        assert tokens < 10065, f"review-cycle.md is ~{tokens} tokens, should be <10065"
+        # RAISED 10065 -> 10435 (2026-09-09, Chunk 04). Two mechanisms and one
+        # correction, and the correction is why the raise is not optional: this
+        # file asserted that review yield decays by round 3, and the store it is
+        # written against says it rises (13.5 -> 15.4 -> 15.5 -> 18.4 per full
+        # round, 99% of findings new). Shipping a round budget while that
+        # paragraph stood would leave two stopping rules, and the false one is
+        # the one an agent can check — which is how a protocol file teaches
+        # itself to be distrusted. The mechanisms are the budget (exit 4,
+        # auto-accept, BLOCKING untouchable) and `--fixed`, a third disposition
+        # verb closing the hole where a free fix had no recordable answer. Paid
+        # down first: the replaced paragraph funds about half of the correction,
+        # the budget prose points at `project-state.yaml` for its knob instead
+        # of restating it, and SKILL.md's row routes rather than duplicates.
+        assert tokens < 10435, f"review-cycle.md is ~{tokens} tokens, should be <10435"
 
     def test_framework_checks_token_budget(self):
         # Ceiling 1150. This file is `final`/`cumulative` payload: SKILL.md's
@@ -4667,6 +4710,32 @@ class TestReviewCycle:
             "the table no longer distinguishes the narrowed mode from the "
             "three that rate every severity"
         )
+
+    def test_the_stopping_rule_carries_its_measured_figure(self):
+        """The paragraph this replaces said review yield DECAYS by round 3. The
+        store it is written against says it rises, and shipping a round budget
+        beside a contradictory stopping rule leaves an agent two rules — one of
+        which it can check, and therefore learn to distrust.
+
+        Asserting the parts of the argument, not its wording: that the claim is
+        the rising one, that it carries the measurement rather than asserting a
+        direction, and that the budget it hands off to names its own bounds.
+        """
+        content = read_file("skills/critic/review-cycle.md")
+        assert "no natural fixed point" in content, (
+            "the stopping rule no longer states WHY a declared budget is needed "
+            "— without it the budget reads as an arbitrary cap"
+        )
+        assert "18.4" in content and "13.5" in content, (
+            "the yield correction lost its measurement, which is the only thing "
+            "that makes it checkable against the store"
+        )
+        assert "review_round_budget" in content
+        for bound in ("verify-resolutions", "BLOCKING"):
+            assert bound in content.split("round budget is the backstop", 1)[1][:900], (
+                f"the budget paragraph never states the {bound} bound — those "
+                "two are what keep it from being able to open a gate"
+            )
 
     def test_the_supply_side_section_states_the_cost(self):
         """A rule that removes review output has to name what it gives up, or

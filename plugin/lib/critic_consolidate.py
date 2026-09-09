@@ -95,6 +95,29 @@ MODE_TOKEN_TO_VERBOSE = {
 }
 _VERBOSE_VERIFY_RESOLUTIONS = MODE_TOKEN_TO_VERBOSE["verify-resolutions"]
 
+
+def mode_token_of(mode: object) -> str:
+    """The mode TOKEN behind a persisted verbose mode string —
+    ``"final (full review, ready for push)"`` → ``"final"``; ``"unknown"`` for
+    anything unparseable.
+
+    Facts persist the verbose form, so every reader that wants to ask *which
+    mode was this* has to undo the rendering. That parse lives here, beside
+    :data:`MODE_TOKEN_TO_VERBOSE` which defines the shape it undoes, so the
+    vocabulary has one home — a second copy elsewhere is one edit away from
+    two vocabularies that agree until they don't.
+    """
+    if not isinstance(mode, str) or not mode.strip():
+        return "unknown"
+    return mode.split(" (", 1)[0].strip()
+
+
+#: Modes that spend a *full* review round. ``verify-resolutions`` is
+#: deliberately absent: it is the pass that CLEARS a blocking finding, so a
+#: ceiling that counted or refused one would deadlock the very gate the budget
+#: is allowed to end a loop in front of but never to open.
+FULL_ROUND_MODES = tuple(t for t in MODE_TOKEN_TO_VERBOSE if t != "verify-resolutions")
+
 # Roster config (D8): protocol roles per execution shape. chunk and
 # verify-resolutions are always single-pass; final/cumulative go coordinator
 # when the change touches a risk surface, or when it is large in JUDGEABLE
@@ -1640,6 +1663,143 @@ def _dirty_anchor_note(mode_label: str, excluded: "list[str] | None") -> str:
     )
 
 
+def _round_budget_verdict(project_dir: Path, prawduct_dir: Path) -> dict:
+    """Has this branch's work already spent its full-round budget?
+
+    Returns ``{"status": "within", "spent", "budget", "review_ids"}``,
+    ``{"status": "exhausted", "spent", "budget", "review_ids"}``,
+    ``{"status": "disabled"}`` when the repo set the budget to ``null``, or
+    ``{"status": "unavailable", "reason"}``.
+
+    **Unavailable never refuses.** A stopping rule whose count cannot be derived
+    must fail toward selling the round: the cost of a round that need not have
+    run is minutes, and the cost of refusing one that was needed is unreviewed
+    work with no command that clears it. That is the opposite direction from the
+    coverage gate beside it, and deliberately so — this control ends a loop, it
+    does not vouch for a tree.
+
+    The count comes from ``coverage.count_branch_rounds``, which derives it from
+    the branch's own facts rather than a stored counter, so this adds no
+    persisted state: the budget is a policy over a number the store already
+    answers.
+    """
+    from . import core  # noqa: PLC0415 — lazy, matching this module's other lib imports
+
+    budget = core.review_round_budget(prawduct_dir)
+    if budget is None:
+        return {"status": "disabled"}
+
+    from . import coverage  # noqa: PLC0415 — lazy; coverage pulls git helpers
+
+    resolved = coverage.resolve_merge_base_tree(project_dir)
+    if resolved["status"] != "ok":
+        return {"status": "unavailable", "reason": resolved["reason"]}
+    store = evidence.read_facts(project_dir)
+    if store["status"] == "error":
+        return {"status": "unavailable", "reason": store["reason"]}
+    tally = coverage.count_branch_rounds(
+        project_dir, store.get("facts") or [], resolved["merge_base"]
+    )
+    if tally.get("status") != "counted":
+        return {"status": "unavailable", "reason": tally.get("reason", "unknown")}
+
+    full = [
+        r
+        for r in tally.get("reviews") or []
+        if mode_token_of(r.get("mode")) in FULL_ROUND_MODES
+    ]
+    spent = len(full)
+    return {
+        "status": "exhausted" if spent >= budget else "within",
+        "spent": spent,
+        "budget": budget,
+        # Every attributed round, not just the full ones: the findings a
+        # verify pass raised are as open as any other, and exhaustion has to
+        # answer all of them or the census it renders is not a census.
+        "review_ids": [r["id"] for r in tally.get("reviews") or [] if r.get("id")],
+    }
+
+
+def _refuse_over_budget(
+    project_dir: Path,
+    prawduct_dir: Path,
+    budget: dict,
+    mode_token: str,
+    scope: "str | None",
+    chunk: "str | None",
+    dispatch_commit: "str | None",
+    notes: list,
+) -> dict:
+    """End the loop: sweep the open non-blocking findings, render the census,
+    and refuse the round.
+
+    The sweep is what makes the refusal an ANSWER rather than an abandonment —
+    the loop that would have dispositioned those findings is the loop being
+    ended, so exhaustion has to disposition them itself. Every accept carries
+    the budget as its reason, which is reviewable and re-dispositionable; none
+    of them can touch a BLOCKING finding (:func:`dispositions.auto_accept`).
+
+    The firing is recorded as a fact for the same reason its sibling guard's is:
+    a control ships under the norm *name the yield you expect and emit it
+    observably*, and the yield argument here rests on a measurement taken before
+    the budget existed. Only a record of actual firings can ever falsify it — or
+    retire the control by answering "did it ever refuse a round that turned out
+    to be needed?". Same sink as every other pre-dispatch guard
+    (``evidence.append_guard_refusal``), so one query answers the class.
+    """
+    from . import dispositions  # noqa: PLC0415 — lazy; keeps the import graph flat
+
+    reason = (
+        f"round budget exhausted — this work bought {budget['spent']} full "
+        f"review round(s) against a budget of {budget['budget']}"
+    )
+    swept = dispositions.auto_accept(project_dir, budget["review_ids"], reason=reason)
+    census = ""
+    if scope:
+        store = evidence.read_facts(project_dir)
+        if store["status"] != "error":
+            report = dispositions.census(store, scope=scope)
+            if report["status"] == "ok":
+                census = dispositions.render_markdown(report)
+
+    recorded = evidence.append_guard_refusal(
+        project_dir,
+        "critic-dispatch-round-budget",
+        {
+            "mode": mode_token,
+            "spent": budget["spent"],
+            "budget": budget["budget"],
+            "auto_accepted": swept.get("accepted"),
+            "blocking_left": swept.get("skipped_blocking"),
+            "scope": scope,
+            "chunk": chunk,
+            "branch": gitstate.current_branch(project_dir),
+            "dispatch_commit": dispatch_commit,
+        },
+    )
+    if recorded.get("status") != "appended":
+        # SOFT, like the free-interval guard beside it: the refusal is correct
+        # whether or not the record lands. Not silent, though — a firing that
+        # vanishes leaves the yield question looking answered at zero.
+        print(
+            "critic-begin: the budget refusal is correct but was NOT recorded "
+            f"({recorded.get('reason', 'unknown')}) — this firing is missing "
+            "from `prawduct-hook evidence list --kind guard-refusal`, so read "
+            "that query as a lower bound.",
+            file=sys.stderr,
+        )
+    return {
+        "status": "budget-exhausted",
+        "reason": reason,
+        "spent": budget["spent"],
+        "budget": budget["budget"],
+        "swept": swept,
+        "census": census,
+        "notes": notes,
+        "recorded": recorded.get("status") == "appended",
+    }
+
+
 def begin_review(
     project_dir: Path,
     mode_token: str,
@@ -1659,6 +1819,15 @@ def begin_review(
     judgeable file and no finding this mode could resolve — the CLI exits 3.
     That is a NO-OP, not a failure: the coverage gate already composes such an
     interval as a free edge, so the review would record a fact nothing needs.
+    A ``verify-resolutions`` anchored to an unchanged tree with nothing
+    outstanding takes the same answer, for the same reason.
+
+    ``{"status": "budget-exhausted", ...}`` — the CLI exits 4 — when this
+    branch's work has already bought its declared full-round budget. The
+    outstanding non-blocking findings are auto-accepted and a census is rendered
+    with the refusal; BLOCKING is untouched and still blocks, and
+    ``verify-resolutions`` is never refused, so the loop can end but the gate
+    can never be opened by ending it.
     ``force=True`` dispatches anyway. A refusal also carries ``anchor`` (the tree
     it graded, in words) and ``excluded_wip`` (judgeable uncommitted files that
     tree does not contain) — without them "no judgeable file" is true of the
@@ -1800,6 +1969,31 @@ def begin_review(
             buildplan_refs.resolve_reviewed_plan(project_dir, prawduct_dir, scope).path,
         )
     )
+    # ROUND BUDGET — the terminating rule, checked before anything is written.
+    # Yield does not decay (13.5 → 15.4 → 15.5 → 18.4 findings per full round
+    # across this clone's store, 99% of them new), so a review loop has no
+    # natural fixed point and every "one more round" reads locally reasonable.
+    # A declared ceiling is the only principled stop: arbitrary-but-visible
+    # beats arbitrary-but-hidden.
+    #
+    # Only full rounds are counted AND only a full round is refused. A
+    # `verify-resolutions` pass is how a BLOCKING finding clears, so refusing
+    # one at exhaustion would strand it with no command that resolves it —
+    # the same deadlock the free-interval guard's second conjunct avoids.
+    if mode_token in FULL_ROUND_MODES and not force:
+        budget = _round_budget_verdict(project_dir, prawduct_dir)
+        if budget["status"] == "unavailable":
+            notes.append(
+                "the review round budget could not be derived "
+                f"({budget['reason']}) — this round was NOT counted against it, "
+                "so read the budget as not in force for this dispatch"
+            )
+        elif budget["status"] == "exhausted":
+            return _refuse_over_budget(
+                project_dir, prawduct_dir, budget, mode_token, scope, chunk,
+                dispatch_commit, notes,
+            )
+
     base_reviewed = None
     files_reviewed: list[str] | None = None
     prior_oracle: list[str] = []
@@ -1999,13 +2193,40 @@ def begin_review(
             # "nothing changed". The message says which tree it read anyway,
             # because the previous wording was true of the anchor and false of
             # the repo, and nothing in it let a builder tell the difference.
+            #
+            # NO REVIEW NEEDED, not an error — and the distinction costs a round
+            # when it is got wrong. Semantically this is the same answer as the
+            # free-interval refusal below: nothing here needs a review. It sat
+            # above that path and fell out as a bare error, so it surfaced as
+            # exit 1 — and `SKILL.md`'s exit table routes a 1 on
+            # `verify-resolutions` to "re-dispatch per the demotion property",
+            # which here means spending a full `cumulative` on a bundle the gate
+            # already reports satisfied. That is a review round manufactured by
+            # the framework's own routing.
+            recorded = evidence.append_guard_refusal(
+                project_dir,
+                "critic-dispatch-nothing-to-verify",
+                {
+                    "interval": {"base_tree": base_tree, "head_tree": head_tree},
+                    "mode": mode_token,
+                    "scope": scope,
+                    "chunk": chunk,
+                    "branch": gitstate.current_branch(project_dir),
+                    "dispatch_commit": dispatch_commit,
+                },
+            )
             return {
-                "status": "error",
+                "status": "no-review-needed",
                 "reason": (
                     "nothing to verify: the prior review has no blocking/warning "
                     f"findings, and {head_anchor} ({head_tree[:12]}) is the same "
                     f"tree it reviewed ({base_tree[:12]})"
                 ),
+                "free_files": [],
+                "anchor": head_anchor,
+                "excluded_wip": None if excluded_wip is None else list(excluded_wip),
+                "notes": notes,
+                "recorded": recorded.get("status") == "appended",
             }
         files_reviewed = list(prior_files)
         for f in delta:

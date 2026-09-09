@@ -871,8 +871,12 @@ class TestReviewEligibilityIsItsOwnQuestion:
     """
 
     def test_behaviour_governing_prose_is_a_subject_though_not_judgeable(self):
+        # `plugin/agents/**` was the original exemplar here and is deliberately
+        # gone: it is now governance-PROTECTED, so it is judgeable too, which is
+        # a different (and stronger) answer than this test's premise. The
+        # `docs/` tree still carries the case — behaviour-governing prose that
+        # no protected bound covers.
         for path in (
-            "plugin/agents/critic-reviewer.md",
             "plugin/docs/norms.md",
             "plugin/docs/principles.md",
             "plugin/docs/waivers.md",

@@ -148,13 +148,16 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `stop` (session-end gate), `subagent-stop` (consolidate, mutating). Called
   by the harness, not by humans.
 - **Critic data plane** — `critic-begin [--force]` (write dispatch manifest, mutating; `--force`
-  overrides the exit-3 no-review-needed refusal — see § Error Model), `critic-consolidate`
+  overrides both pre-dispatch refusals, exit-3 no-review-needed and exit-4 budget-exhausted — see
+  § Error Model), `critic-consolidate`
   (merge partials → evidence fact, mutating), `critic-end`, `critic-discard` (archive-then-remove a
   stranded review's partials, mutating), `critic-restore <review-id>` (copy an archived review's
   manifest + partials back so it consolidates under its own id, mutating — `critic-discard`'s
   inverse), `evidence status|list`, `ledger-append`
-  (single-writer, mutating), `review-stats`, `disposition` (append a finding's ACCEPT/FILE
-  disposition fact, mutating), `render-dispositions` (derive the disposition census), plus the
+  (single-writer, mutating), `review-stats`, `disposition` (append a finding's ACCEPT/FILE/FIXED
+  disposition fact, mutating — `--fixed <paths>` records a fix that bought no round and is refused
+  on any judgeable path or any BLOCKING finding), `render-dispositions` (derive the disposition
+  census), plus the
   coverage/mode gate wrappers (`verify-coverage`, `check-cumulative-critic`, `infer-critic-mode`,
   `classify-diff-risk`, `verify-chunk-refs`), plus `verify-records` (the deterministic record
   checks, read-only and advisory — `critic-begin` runs the same pass into the manifest).
@@ -451,6 +454,7 @@ Fail-direction is deliberate and per-purpose:
   appears per check as the `unchecked` list rather than a silently absent result.
 - **Special sentinels** (documented, not general): `critic-begin` **2** = scope-widened;
   `critic-begin` **3** = no review needed (added 2026-08-06);
+  `critic-begin` **4** = round budget exhausted (added 2026-09-09);
   `evidence status` **2** = schema-ahead records present (gates can't be trusted until update).
   (`regen-views` **2** and **3** are RETIRED, not repurposed: the command is inert and exits 0
   unconditionally, so those two meanings were removed rather than given new ones. Retiring a
@@ -469,7 +473,22 @@ Fail-direction is deliberate and per-purpose:
   critic-active marker, and the partials directory is not swept — so a 3 needs no `critic-end`. It is
   not a silent no-op, though: since 2026-08-06 a 3 appends exactly one `guard-refusal` fact to the
   clone-shared evidence store, which is what makes the guard's own yield falsifiable. That fact is
-  inert by construction (no gate reads a non-`review` kind), so it changes no verdict.
+  inert by construction (no gate reads a non-`review` kind), so it changes no verdict. A
+  `verify-resolutions` anchored to an unchanged tree with nothing outstanding takes the same 3, for
+  the same reason — it used to fall out as a bare 1, which the skill's exit table routes to
+  "re-dispatch per the demotion property", manufacturing a full round the gate did not want.
+
+  **`critic-begin` 4 — round budget exhausted.** This branch's work has already bought the full
+  rounds `review_round_budget` allows (`.prawduct/project-state.yaml`, default 6, `null` disables).
+  A distinct code rather than folded into 3: both refuse a dispatch, but a 3 says the *gate* does not
+  want this round and a 4 says the *loop* has run out while the gate may still be unsatisfied, and
+  the caller's next move differs — a 3 is "you are done", a 4 is "you are done buying rounds, and any
+  BLOCKING findings still need `verify-resolutions`". Folded into 1 it would read as a dispatch
+  failure and invite a retry in another mode, which is the round it exists to refuse. The refusal
+  auto-ACCEPTs the outstanding **non-blocking** findings, renders the census to stdout, and appends
+  one `guard-refusal` fact; `verify-resolutions` is never counted and never refused, and no BLOCKING
+  finding is ever swept — so the budget can end a review loop and can never open a gate. `--force`
+  dispatches anyway. No session state is written, so a 4 needs no `critic-end`.
 
 **The `backlog` group carries its own exit-class set — a documented scheme, not an exception to the
 table above.** `lib/backlog/cli.py`'s `_EXIT_CLASS` maps every error `code` the group can return onto

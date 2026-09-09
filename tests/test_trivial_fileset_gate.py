@@ -53,14 +53,27 @@ class TestProtectedPaths:
         assert _classify("CLAUDE.md") == "claude-md-edited: CLAUDE.md"
 
 
-class TestAgentsNoLongerSpecial:
-    """The pre-2.0 `agents/` tree was removed; it is no longer a protected class.
-    (Kept as an explicit contract so a future reader knows the omission is
-    intentional, not an oversight.)"""
+class TestAgentsAreProtected:
+    """`agents/` is a protected class again, because the tree came back.
 
-    def test_agents_path_is_not_blocked(self):
-        # A hypothetical agents/ .md edit is now an ordinary doc edit (eligible).
-        assert _classify("agents/critic/SKILL.md") is None
+    It was dropped when the pre-2.0 `agents/` tree was removed, and the
+    contract recorded then said so. The plugin now ships `agents/` again, and
+    what is in it is a review subagent's own system prompt — behavioural logic
+    by exactly the argument `skills/` makes for fork-skill prose, and the one
+    whose unreviewed edit compounds, since it decides what every later review
+    looks at.
+    """
+
+    def test_agents_path_is_blocked(self):
+        assert (
+            _classify("agents/critic-reviewer.md")
+            == "agent-file-edited: agents/critic-reviewer.md"
+        )
+
+    def test_a_nested_plugin_agents_path_is_blocked(self):
+        # Segment match, like every other directory bound: a repo that keeps its
+        # plugin under `plugin/` is the ordinary layout, not an escape.
+        assert _classify("plugin/agents/critic-reviewer.md") is not None
 
 
 class TestNonProtectedChanges:
