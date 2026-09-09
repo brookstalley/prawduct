@@ -78,7 +78,19 @@ is the declared suite; record through `prawduct-hook test-evidence record`.
   class of break."* `affects_test_outcome` is that filter.
 - **Depends on:** none
 - **Artifacts consumed:** `.prawduct/artifacts/architecture.md` § Direction (authority fails closed;
-  every fact has one home)
+  every fact has one home; gates never assume the governed product's shape)
+- **Design decisions, recorded here rather than inside Deliverables** (these cite existing files;
+  they do not produce them):
+  - **Why not blanket `.md`.** Three existing pins record the wider exclusions as DELIBERATE:
+    `test_the_held_out_bookkeeping_files_are_recorded_as_a_residual` holds `.prawduct/change-log.md`,
+    `learnings.md`, `backlog.md` and a live build plan out **on cost**, saying so in its docstring,
+    and `test_ordinary_metadata_is_still_free_of_both` holds `README.md` and `docs/notes.md` out.
+    Flipping those is an owner cost decision someone already made, not a defect to fix in passing —
+    so the scope is chosen for **all three pins to stay green unedited.**
+  - **Why the prefixes are a parameter and not a default.** The doc-only PR gate
+    (`coverage.check_pr_doc_only`) also consults `suite_coupled_files`, so widening the predicate's
+    DEFAULT would make a documentation-only PR buy a full cumulative Critic and PR review — a review
+    cost nothing priced. Freshness callers pass the declaration; review callers do not.
 - **Deliverables:**
   - `plugin/lib/coverage_algebra.py` — `affects_test_outcome` gains one clause: markdown under the
     **instruction roots** (`plugin/`, `documentation/`) is suite-coupled, excluding archived paths.
@@ -86,13 +98,10 @@ is the declared suite; record through `prawduct-hook test-evidence record`.
     `instruction_surfaces()` already draws in `tests/test_pr_evidence_contract.py`, whose docstring
     says why: *"documentation/ carries runbooks and requirements that instruct exactly as plugin/
     does; excluding it would have left the class open at the container boundary."*
-    **Why not blanket `.md`, which was the first design:** three existing pins record the wider
-    exclusions as DELIBERATE. `test_the_held_out_bookkeeping_files_are_recorded_as_a_residual` holds
-    `.prawduct/change-log.md`, `learnings.md`, `backlog.md` and a live build plan out **on cost**,
-    saying so in its docstring; `test_ordinary_metadata_is_still_free_of_both` holds `README.md` and
-    `docs/notes.md` out. Flipping those is an owner-level cost decision someone already made and
-    pinned, not a defect to fix in passing — and this chunk's scope is chosen so that **all three
-    pins stay green unedited.**
+    The roots are **declared by the repo**, not carried by the framework: `plugin/` exists in no
+    product repo, so a hardcoded root is inert everywhere it ships while taxing any product that
+    happens to match. `core.suite_coupled_prefixes` reads them from `project-state.yaml` and the
+    default is empty, so an undeclaring repo is byte-for-byte unchanged.
   - The same function's docstring — it currently explains the `is_judgeable_path` split using
     COV-4H7N (a state-only PR that skipped the suite and read its stale evidence as current). This
     chunk adds the sibling that just recurred one boundary over, in the present tense, with no

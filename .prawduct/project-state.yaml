@@ -66,6 +66,23 @@ test_command: python3 -m pytest tests/ --junit-xml={junit_xml} -q
 # own is exactly why it must not rely on a Python-shaped default.
 sentinel_command: python3 -m pytest {sentinel} -q
 
+# Path prefixes whose files a NON-HERMETIC test in THIS repo reads. Absent means
+# empty, which is exactly the behaviour every repo had before the key existed.
+#
+# Declared because two of this repo's guards scan prose BY DIRECTORY:
+# `TestClosingKeywordClaims` sweeps `documentation/`, and
+# `test_no_governance_prose_cites_a_flow_step_by_NUMBER` sweeps governance prose.
+# A change under either root really can turn the suite red, so evidence recorded
+# before it does not vouch for the tree after it — on 2026-09-08 a design doc
+# merged to `develop` failing both while `test-status` still read `current`, and
+# the next branch to sync the base inherited the red tree.
+#
+# Read ONLY by the evidence-freshness clause, never by the doc-only PR gate: this
+# says "re-run the suite", not "buy a review". Trailing slashes are significant.
+suite_coupled_prefixes:
+  - documentation/
+  - plugin/
+
 # Files carrying the release version, read by `check-released` FROM THE TAG'S
 # TREE — which files carried a release's version is a fact about that release,
 # not about the checkout you happen to be standing in. Declaring them is what

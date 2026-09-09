@@ -42,15 +42,32 @@ refuses path filters in as many words, *"a docs-and-state change really can turn
 filter that calls those paths untestable would hide exactly that class of break."* This predicate was
 that filter.
 
-**Scoped to the instruction roots (`plugin/`, `documentation/`), not to every `.md`** — the bound
-`instruction_surfaces()` already draws, for the reason it states. The blanket read was the first
-design and it silently overturns two priced decisions: the residual named under `TEST_COUPLED_STATE`
-(bookkeeping held out **on cost**, whose sound close is hermetic tests, not a wider set) and the
-`README.md` / `docs/notes.md` line their tests pin. All three pins stay green unedited.
+**The roots are declared by the repo, not carried by the framework.** `suite_coupled_prefixes:` in
+`project-state.yaml` names them and `core.suite_coupled_prefixes` reads them; the default is empty,
+so an undeclaring product is byte-for-byte unchanged. Hardcoding `plugin/` and `documentation/` into
+the shipped predicate was the first cut and it is wrong in both directions at once: no product repo
+has a `plugin/` directory, so the rule would be inert exactly where it shipped, while any product
+that happens to name a directory `documentation/` would start paying for prawduct's tests. Which
+directories hold prose a test scans is a fact about one repo's layout, so it lives where the layout
+does.
 
-**Review coverage did not widen, and that separation is the point.** `is_judgeable_path` is
-untouched, so the batch-fix directive's promise that `.prawduct/` and doc writes are free mid-review
-stays true. Only the suite question moved.
+**Blanket `.md` was the other rejected design**, and it silently overturns two priced decisions: the
+residual named under `TEST_COUPLED_STATE` (bookkeeping held out **on cost**, whose sound close is
+hermetic tests, not a wider set) and the `README.md` / `docs/notes.md` line their tests pin. All
+three pins stay green unedited.
+
+**Review coverage did not widen, and keeping it that way took a deliberate choice rather than an
+absence.** `coverage.check_pr_doc_only` consults `suite_coupled_files` too, so making the roots a
+DEFAULT would have retired the doc-only fast path — a documentation-only PR would have started
+buying a full cumulative Critic and PR reviewer, a cost nothing priced. The declaration is therefore
+a parameter passed at the freshness call site and withheld at the review one: this says *re-run the
+suite*, never *buy a review*. `is_judgeable_path` is untouched, so the batch-fix directive's promise
+that `.prawduct/` and doc writes are free mid-review stays true.
+
+**This is the docs half of `#238`** — *"gates: a doc-only PR can silently break a repo-coupled
+test"* — which was closed when its state half shipped as `TEST_COUPLED_STATE`. The class stayed open
+for prose, and the 2026-09-08 incident is that remainder arriving. Recorded rather than reopened: the
+issue's own subject is now true again only in the residual below.
 
 **Residual, named rather than closed:** `_governance_prose()` sweeps every tracked non-record `.md`,
 which is wider still — `README.md`, `docs/*.md` and a live build plan can flip the suite while this

@@ -2814,7 +2814,7 @@ class TestDocsCanStaleTestEvidence:
         red tree through."""
         ca = self._algebra()
         changed = ["documentation/issues/712-design.md"]
-        assert ca.suite_coupled_files(changed) == changed
+        assert ca.suite_coupled_files(changed, ("documentation/",)) == changed
 
     def test_a_mixed_diff_keeps_the_doc_and_drops_the_bookkeeping(self):
         """Both directions in one assertion, because the fix is worthless if it
@@ -2826,7 +2826,9 @@ class TestDocsCanStaleTestEvidence:
             "documentation/release-process.md",
             ".prawduct/learnings.md",
         ]
-        assert ca.suite_coupled_files(changed) == ["documentation/release-process.md"]
+        assert ca.suite_coupled_files(changed, ("documentation/",)) == [
+            "documentation/release-process.md"
+        ]
 
 
 class TestTestEvidenceKnobs:
