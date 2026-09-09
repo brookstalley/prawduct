@@ -857,3 +857,85 @@ class TestSubjectSetEdges:
             reviewed=["lib/gates.py"],
         )
         assert ca.review_edges([fact]) == []
+
+
+class TestReviewEligibilityIsItsOwnQuestion:
+    """`is_review_subject` answers *may a finding be about this file?*;
+    `is_judgeable_path` answers *does an edit here re-open the gate?*
+
+    They are separate predicates on purpose. Eligibility used to be derived by
+    negating the cost predicate, which silently dropped two things: prose that
+    governs behaviour but is not governance-protected, and — the case no path
+    list reaches — the entire output of a product whose deliverable is
+    markdown.
+    """
+
+    def test_behaviour_governing_prose_is_a_subject_though_not_judgeable(self):
+        for path in (
+            "plugin/agents/critic-reviewer.md",
+            "plugin/docs/norms.md",
+            "plugin/docs/principles.md",
+            "plugin/docs/waivers.md",
+        ):
+            assert ca.is_review_subject(path), path
+            assert not ca.is_judgeable_path(path), (
+                f"{path} became judgeable — this test's premise is that it is "
+                "NOT, which is exactly why the negation dropped it"
+            )
+
+    def test_a_markdown_deliverable_product_keeps_its_whole_output(self):
+        """The general case, and the one no path list closes.
+
+        Every product file here is non-judgeable, so under the negation one
+        incidental `.py` in the interval left the product's real output
+        read-but-never-rated for all seven goals.
+        """
+        product = ["site/index.md", "site/guides/install.md", "CHANGELOG.md"]
+        assert ca.review_subjects(product + ["tool.py"]) == product + ["tool.py"]
+
+    def test_records_about_the_work_are_not_subjects(self):
+        for path in (
+            ".prawduct/change-log.md",
+            ".prawduct/learnings.md",
+            ".prawduct/artifacts/build-plan-x.md",
+            ".prawduct/artifacts/archive/old-plan.md",
+            ".prawduct/project-state.yaml",
+        ):
+            assert not ca.is_review_subject(path), path
+
+    def test_eligibility_is_not_implemented_as_the_negation_of_cost(self):
+        """The pin for the defect itself, not merely for today's answers.
+
+        A future edit that reunites the two predicates would keep every other
+        assertion in this class green only by coincidence of the corpus. This
+        one fails the moment they agree everywhere, which is the shape of the
+        regression.
+        """
+        corpus = [
+            "plugin/agents/critic-reviewer.md",   # subject, not judgeable
+            "plugin/docs/norms.md",               # subject, not judgeable
+            "README.md",                          # subject, not judgeable
+            "docs/guide.md",                      # subject, not judgeable
+            "plugin/lib/core.py",                 # subject AND judgeable
+            "plugin/skills/critic/SKILL.md",      # subject AND judgeable
+            ".prawduct/change-log.md",            # neither
+        ]
+        disagree = [
+            p for p in corpus
+            if ca.is_review_subject(p) is not (not ca.is_judgeable_path(p))
+        ]
+        assert disagree, (
+            "is_review_subject agrees with `not is_judgeable_path` on every "
+            "path here — the two questions have been collapsed back into one, "
+            "which is the defect this classifier was built to close"
+        )
+
+    def test_an_unplaceable_path_fails_closed_to_subject(self):
+        assert ca.is_review_subject("weird-thing-with-no-extension")
+        assert ca.is_review_subject(".claude/settings.json")
+
+    def test_review_subjects_is_none_safe_and_order_preserving(self):
+        assert ca.review_subjects(None) == []
+        assert ca.review_subjects(
+            ["b.py", ".prawduct/x.md", "a.py"]
+        ) == ["b.py", "a.py"]

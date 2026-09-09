@@ -38,6 +38,7 @@ ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK = ROOT / "bin" / "prawduct-hook"
 sys.path.insert(0, str(ROOT))
 from lib import critic_consolidate as cc  # noqa: E402
+from lib import coverage_algebra as ca_mod  # noqa: E402
 # The anchor predicates the dispatch guard is built on. Imported rather than
 # re-implemented so a test asserting "the OLD guard would have passed" is
 # asserting it about the real one.
@@ -5521,8 +5522,12 @@ class TestPartialBelongsToItsReview:
 
 
 class TestSubjectAndOracleSets:
-    """Non-judgeable files stop being SUBJECTS of a per-round review; they do
-    not stop being the records the code is judged AGAINST.
+    """Records about the work stop being SUBJECTS of a per-round review; they
+    do not stop being what the code is judged AGAINST.
+
+    What narrows is decided by `coverage_algebra.is_review_subject`, not by
+    negating the coverage price — a deliverable and behaviour-governing prose
+    stay subjects however the gate charges for them.
 
     Both halves need pinning, and only one of them is visible in the metric the
     narrowing was built to move. Withholding the specs and narrowing the
@@ -5531,12 +5536,21 @@ class TestSubjectAndOracleSets:
     finding count is not evidence this worked.
     """
 
-    def test_the_subject_set_drops_non_judgeable_paths(self):
+    def test_the_subject_set_drops_records_about_the_work(self):
+        """What narrows is the RECORD set, not the non-judgeable set.
+
+        This asserted `docs/guide.md` as an oracle while eligibility was
+        derived by negating the coverage predicate. It is a deliverable — a
+        finding may be about it — and the negation was dropping it, along with
+        behaviour-governing prose and the whole output of any product that
+        ships markdown. The correction moves it INTO the subject set: strictly
+        more review, which is the direction over-inclusion is allowed to err.
+        """
         subject, oracle = cc.split_subject_oracle(
             ["lib/gates.py", ".prawduct/change-log.md", "docs/guide.md"]
         )
-        assert subject == ["lib/gates.py"]
-        assert oracle == [".prawduct/change-log.md", "docs/guide.md"]
+        assert subject == ["lib/gates.py", "docs/guide.md"]
+        assert oracle == [".prawduct/change-log.md"]
 
     def test_a_governance_protected_md_stays_a_subject(self):
         """The predicate is the gate's, not a private notion of "docs": skill
@@ -5831,3 +5845,44 @@ class TestCarriedBlockersReachTheirReaders:
 
         assert result.returncode == 0, f"stderr={result.stderr!r}"
         assert "NOT DONE" not in result.stdout
+
+
+class TestWideningBoundCountsTheCostSubset:
+    """The scope-widening threshold counts the COST subset on both sides, and
+    the prior side must be re-narrowed even though it is already a subject set.
+
+    Since the eligibility classifier, a fact's `files_reviewed` admits
+    deliverables and behaviour-governing prose — files that are subjects but
+    are not judgeable. This threshold asks the cost question, so it filters
+    both sides again. The re-narrowing therefore LOOKS redundant at the call
+    site and is not: dropping it inflates the prior count and loosens the
+    bound, so a delta that should force a full review slips through as a
+    partial. That failure is open, silent, and untested until this class.
+    """
+
+    def test_a_prior_subject_set_is_not_already_the_cost_subset(self):
+        """The premise. If these ever coincide the test below proves nothing."""
+        prior = ["plugin/lib/core.py", "plugin/agents/critic-reviewer.md"]
+        assert ca_mod.review_subjects(prior) == prior
+        assert ca_mod.judgeable_files(prior) == ["plugin/lib/core.py"]
+
+    def test_dropping_the_prior_re_narrowing_would_loosen_the_bound(self):
+        """Same delta, two prior counts: the cost subset refuses, the raw
+        subject set admits. The gap is exactly what the second call closes."""
+        prior_subject_set = [
+            "plugin/lib/core.py",
+            "plugin/agents/critic-reviewer.md",
+            "docs/a.md",
+            "docs/b.md",
+            "README.md",
+        ]
+        delta = [f"plugin/lib/m{i}.py" for i in range(8)]
+
+        narrowed = len(ca_mod.judgeable_files(prior_subject_set))
+        assert cc._scope_widened(len(delta), narrowed), (
+            "with the prior re-narrowed to the cost subset the bound refuses"
+        )
+        assert not cc._scope_widened(len(delta), len(prior_subject_set)), (
+            "counting the raw subject set admits the same delta — dropping the "
+            "re-narrowing fails OPEN, which is why the call is not redundant"
+        )

@@ -105,7 +105,7 @@ Deliberately not built here, each with why:
 
 - [x] Chunk 01: Cost-to-clear rendered on every finding
 - [x] Chunk 02: Judgeability governs review scope; Records Pass covers what it drops
-- [ ] Chunk 03: The review-eligibility classifier
+- [x] Chunk 03: The review-eligibility classifier
 - [ ] Chunk 04: Round budget, auto-accept at exhaustion, and the yield prose correction
 
 Context: Plan authored 2026-08-25 from `review-loop-nontermination-diagnosis.md`, owner-approved
@@ -121,7 +121,7 @@ accepted, R-2/R-10 accepted and carried below; then two `verify-resolutions` rou
 returning one BLOCKING (my own regression in the frontmatter check) and the second clean at
 rev-20260825T143252Z-9b65d4f9. Coverage gate `satisfied`. **RC9 is absorbed into Chunk 03 by owner
 decision** — the `--fixed` disposition, guarded by the judgeability predicate at record time.
-Next: Chunk 03, whose budget (6 rounds, on by default, `null` disables) is already decided. **2026-09-09 — base advance and a split.** develop had moved 216 commits over the same Critic surfaces this plan edits; merged at `29116547`, eighteen conflict hunks resolved keeping both sides, suite green. Then the owner ruled on the R-2/R-10 class finding Chunk 03 was carrying: **build the classifier**, not the cheap `agents/` partial. That ruling makes the old Chunk 03 far too large for one Critic pass — the classifier alone moves the coverage kernel's consumers — so it is split. Chunk 03 is now the classifier; Chunk 04 is the budget bundle, unchanged in content, and keeps `Type: cumulative-final`. Next: Chunk 03.
+Next: Chunk 03, whose budget (6 rounds, on by default, `null` disables) is already decided. **2026-09-09 — base advance and a split.** develop had moved 216 commits over the same Critic surfaces this plan edits; merged at `29116547`, eighteen conflict hunks resolved keeping both sides, suite green. Then the owner ruled on the R-2/R-10 class finding Chunk 03 was carrying: **build the classifier**, not the cheap `agents/` partial. That ruling makes the old Chunk 03 far too large for one Critic pass — the classifier alone moves the coverage kernel's consumers — so it is split. Chunk 03 is now the classifier; Chunk 04 is the budget bundle, unchanged in content, and keeps `Type: cumulative-final`. **Chunk 03 complete** — `coverage_algebra.is_review_subject` owns eligibility; measured at 4 points of Chunk 02's 36 before it was built. Reviewed `chunk` (rev-20260909T212902Z-e08d614e): 0 blocking, 3 warning, 2 note, all one class — prose still teaching the removed rule. All four actionable fixed in this chunk's own commit (free, no round bought); R-3's live half is now pinned by `TestWideningBoundCountsTheCostSubset`. The `agents/` COVERAGE question is open and stated in Chunk 04's carry. Next: Chunk 04.
 
 ## Scaffolding
 
@@ -326,7 +326,7 @@ falsify the premise:
   gate; a BLOCKING finding still clears only through a real resolution fact, and nothing about gating
   changes. It rides this chunk because this chunk is already inside `dispositions.py`. Owner asked
   for the bundling explicitly; it is a scope increase, taken deliberately.
-- **DISCHARGED BY CHUNK 03, kept for its reasoning** (was: carried in from Chunk 02, ride-along route — lands in this chunk's commit, which touches
+- **HALF-DISCHARGED BY CHUNK 03 — the ELIGIBILITY half only; the COVERAGE half is this chunk's to decide** (was: carried in from Chunk 02, ride-along route — lands in this chunk's commit, which touches
   judgeable code anyway, so it buys no round of its own): **`agents/` is missing from the
   governance-protected path set.** `buildplan_refs._TRIVIAL_PROTECTED_PATHS` holds `skills/`,
   `methodology/`, `templates/` and root `CLAUDE.md`, so `plugin/agents/critic-reviewer.md` — a
@@ -373,6 +373,16 @@ falsify the premise:
   is this plan's whole subject; it belongs beside the budget rather than after it. Fix: give the
   branch exit 3 with its existing message, and check whether the table needs anything said. Rides
   this chunk's commit; standalone it re-opens the gate for no behavioural gain.
+
+- **The open residue Chunk 03 left, stated so it stays tracked.** `plugin/agents/critic-reviewer.md`
+  is now a review **subject** — a finding may be about it — but it is still **non-judgeable**, so a
+  commit touching only a review subagent's system prompt is a free edge and merges with zero
+  coverage, and `cost-of-commit` prices it `free`. Eligibility and cost are different questions and
+  Chunk 03 answered only the first, deliberately. This chunk decides the second: either add
+  `("agents/", False, "agent-file-edited")` to `buildplan_refs._TRIVIAL_PROTECTED_PATHS` — which
+  makes agent prose judgeable and moves every consumer of the coverage predicate with it — or record
+  a ruling that a subagent prompt is genuinely free to edit unreviewed. **What is not available is
+  leaving it unstated**, which is what "discharged" would have done.
 
 - **Yield emission is a deliverable, not a nicety** (`nonfunctional-requirements.md` § Direction:
   a new control must emit its yield observably, or it can never be retired on evidence). The

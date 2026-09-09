@@ -76,7 +76,7 @@ When chunk type is `designer-handoff` and the Critic is invoked anyway, output a
 
 ### Evidence and Composition
 
-Every consolidated review appends a **fact** to the shared evidence store (`<git-common-dir>/prawduct/evidence.jsonl` — shared by all worktrees of a clone, inspectable via `prawduct-hook evidence status|list`). A fact records the trees it actually saw: `base_tree → head_tree`, plus `files_reviewed` (the findings-eligible **subject** set — judgeable paths only), `files_oracle` (what the round read and did not rate) and the findings. Gates answer by **composition**: coverage of A → B exists when review facts (and free edges over intervals touching only non-judgeable files) form a path from tree(A) to tree(B), and the verdict passes when no blocking finding on the path lacks a resolution fact. Consequences worth knowing:
+Every consolidated review appends a **fact** to the shared evidence store (`<git-common-dir>/prawduct/evidence.jsonl` — shared by all worktrees of a clone, inspectable via `prawduct-hook evidence status|list`). A fact records the trees it actually saw: `base_tree → head_tree`, plus `files_reviewed` (the findings-eligible **subject** set — everything but the records *about* the work), `files_oracle` (what the round read and did not rate) and the findings. Gates answer by **composition**: coverage of A → B exists when review facts (and free edges over intervals touching only non-judgeable files) form a path from tree(A) to tree(B), and the verdict passes when no blocking finding on the path lacks a resolution fact. Consequences worth knowing:
 
 - A review of the dirty working tree **vouches for the subsequent commit** when the commit is made verbatim — the commit carries the reviewed tree. Any worktree or later session can then compose over it; nothing expires by time or session.
 - A rebase or amend changes the tree → a gap composition cannot close (the transfer below closes one case). A squash-merge preserves the tree, so squashed PRs stay covered.
@@ -357,11 +357,14 @@ These flag; they never adjudicate whether an item "really" closed (the builder's
 
 ### Records Pass
 
-**Judgeability governs review SCOPE, not review READING.** A non-judgeable file plays two parts and
-only one narrows: it can be *wrong* (**subject**), and it is what the code is judged *against*
-(**oracle**). Every spec here is non-judgeable and Goal 2 and Goal 3 both need one in hand, both
-rating BLOCKING — so `critic-begin` narrows `files_reviewed` to judgeable paths and hands what it
-sheds over as `files_oracle`, read and not rated. *"The code violates this spec"* has the **code** as
+**Records govern review SCOPE, not review READING.** A file plays two parts and only one narrows:
+it can be *wrong* (**subject**), and it is what the code is judged *against* (**oracle**). Every spec
+here is a record and Goal 2 and Goal 3 both need one in hand, both rating BLOCKING — so `critic-begin`
+narrows `files_reviewed` to the **subjects** and hands what it sheds over as `files_oracle`, read and
+not rated. **The subject test is its own question — *may a finding be about this file?* — and is NOT "is it
+judgeable", which prices a round instead.** A deliverable, and prose that governs behaviour, are
+subjects however the gate prices them; only a record *about* the work (`.prawduct/**`) is an oracle
+(`coverage_algebra.is_review_subject`, whose docstring carries why the two must not be one). *"The code violates this spec"* has the **code** as
 its subject; nothing here touches it.
 
 **Three passes own oracle findings and are NOT narrowed** — the subject rule governs what a reviewer

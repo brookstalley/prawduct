@@ -745,9 +745,13 @@ _RESOLUTION_DISPOSITIONS = frozenset({"fixed", "waived"})
 def split_subject_oracle(files: "list[str]") -> "tuple[list[str], list[str]]":
     """Split an interval's files into the review's SUBJECT set and its ORACLE set.
 
-    A non-judgeable file plays two parts in a review, and only one of them
-    narrows. It is a thing that can be *wrong* (subject), and it is the
-    authority the code is judged *against* (oracle). Every spec this repo has
+    A file plays two parts in a review, and only one of them narrows. It is a
+    thing that can be *wrong* (subject), and it is the authority the code is
+    judged *against* (oracle). Which part it plays is
+    ``coverage_algebra.is_review_subject`` — NOT the negation of
+    ``is_judgeable_path``, which asks the cost question rather than the
+    eligibility one and, used here, silently drops behaviour-governing prose
+    and any product whose deliverable is markdown. Every spec this repo has
     is non-judgeable — the build plan, every `.prawduct/artifacts/*.md`,
     `project-preferences.md`, `cross-cutting-concerns.md` — and the reviewer is
     sent to exactly those for the requirement-coverage and norm-departure
@@ -759,7 +763,7 @@ def split_subject_oracle(files: "list[str]") -> "tuple[list[str], list[str]]":
     narrowing is trying to produce. A measurement that moves the right way for
     the wrong reason cannot tell them apart; only delivering the oracle can.
 
-    FLOOR — an interval holding no judgeable file at all keeps its whole list
+    FLOOR — an interval holding no subject file at all keeps its whole list
     as the subject. ``validate_manifest`` requires a non-empty
     ``files_reviewed``, and the only two dispatches that reach here on an
     all-prose interval are the ones that must not be refused: a ``--force``
@@ -769,7 +773,7 @@ def split_subject_oracle(files: "list[str]") -> "tuple[list[str], list[str]]":
     """
     from . import coverage_algebra  # noqa: PLC0415 — lazy; keeps the import graph flat
 
-    subject = coverage_algebra.judgeable_files(files)
+    subject = coverage_algebra.review_subjects(files)
     if not subject:
         return list(files), []
     in_subject = set(subject)
@@ -781,7 +785,9 @@ def split_subject_oracle(files: "list[str]") -> "tuple[list[str], list[str]]":
 # partial re-review would mislead — fall back to a full review.
 #
 # BOTH counts are subject-set counts, and they have to be: `files_reviewed` on
-# a fact is the judgeable subset, so measuring an unnarrowed delta against a
+# a fact is a NARROWED set (the judgeable subset on facts written before the
+# eligibility classifier, the subject subset since), so measuring an unnarrowed
+# delta against a
 # narrowed prior would tighten this threshold by exactly the prose that rode
 # along on the previous round — refusing a re-review for growth in files no
 # finding can be about.
@@ -1953,6 +1959,14 @@ def begin_review(
         # nothing had narrowed. `critic_mode._rule_postfix_fix_fires` computes the
         # identical bound the same way; two implementations of one threshold have
         # to agree on the edge case or the bound is not one threshold.
+        # BOTH sides re-narrowed here, and `prior_files` is NOT already narrow
+        # enough to skip: it is the fact's subject set, which since the
+        # eligibility classifier admits deliverables and behaviour-governing
+        # prose that this cost-based threshold must not count. Dropping either
+        # call inflates `prior_subject` and LOOSENS the widening bound, which
+        # fails open — a re-review that should have fallen back to a full one
+        # proceeds as a partial. Pinned by
+        # `TestWideningBoundCountsTheCostSubset`.
         delta_subject = _ca.judgeable_files(delta)
         prior_subject = _ca.judgeable_files(prior_files)
         if _scope_widened(len(delta_subject), len(prior_subject)):
@@ -1998,7 +2012,7 @@ def begin_review(
             if f not in files_reviewed:
                 files_reviewed.append(f)
         # The prior fact's ORACLE carries forward too. `prior_files` is that
-        # review's subject set — judgeable paths only — so rebuilding the oracle
+        # review's subject set — never the whole diff — so rebuilding the oracle
         # from it alone yields `[]` whenever the fix touched no record, and the
         # reviewer is told in the same breath that the manifest is authoritative
         # and that `files_oracle` is what the code is judged against. A verify
@@ -2127,8 +2141,9 @@ def begin_review(
 
     if files_reviewed is None:
         files_reviewed = list(files_changed)
-    # Judgeability governs review SCOPE, not review READING. `files_reviewed`
-    # becomes the findings-eligible subject set; what it sheds is handed over
+    # Records govern review SCOPE, not review READING — eligibility is its own
+    # predicate (`coverage_algebra.is_review_subject`), not the negation of the
+    # coverage price. `files_reviewed` becomes the findings-eligible subject set; what it sheds is handed over
     # as `files_oracle` rather than dropped, because the reviewer is judging
     # the code against exactly those records. `files_changed` stays whole — it
     # is the interval, and `coverage_algebra.review_edges` validates an edge by

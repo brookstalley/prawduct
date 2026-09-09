@@ -109,6 +109,45 @@ def judgeable_files(paths: "list[str] | None") -> list[str]:
     return [p for p in (paths or []) if is_judgeable_path(p)]
 
 
+#: Records ABOUT the work, as opposed to the work itself: governance state,
+#: specs, plans, the change log, learnings, reflections. A review READS these
+#: to judge by; it does not rate them.
+RECORD_PREFIXES = (".prawduct/",)
+
+
+def is_review_subject(path: str) -> bool:
+    """True if a finding may be *about* ``path``.
+
+    **This is not the complement of :func:`is_judgeable_path`, and implementing
+    it as one is the defect it exists to close.** The two answer different
+    questions. ``is_judgeable_path`` asks *does an edit here re-open the
+    coverage gate?* — a cost question, whose answer excludes every ``.md`` that
+    is not governance-protected. This asks *may a finding be about this file?*
+    — an eligibility question. They coincided until the subject/oracle split
+    gave the cost predicate a second job, and its exclusions were never
+    re-vetted against the second one.
+
+    Where the negation got it wrong, in this repo: a review subagent's own
+    system prompt under ``agents/`` and the norm/principle/waiver references
+    under a ``docs/`` tree are behaviour-governing prose that no finding could
+    be about. The general case is sharper and no path list reaches it — for a
+    governed product whose **deliverable is markdown** (a docs site, a spec
+    repo, a prompt library) every product file is non-judgeable, so the whole
+    product output would be read-but-never-rated for all seven goals.
+
+    **Fails closed toward subject.** A path this cannot place is reviewable:
+    over-inclusion costs reviewer attention, while under-inclusion ships an
+    unrated deliverable, and only one of those is recoverable. That is the same
+    direction ``protected_path_violation`` already states for its own bounds.
+    """
+    return not any(path.startswith(p) for p in RECORD_PREFIXES)
+
+
+def review_subjects(paths: "list[str] | None") -> list[str]:
+    """The subject subset of ``paths`` (order preserved, None-safe)."""
+    return [p for p in (paths or []) if is_review_subject(p)]
+
+
 #: Live repo state that a NON-HERMETIC test in this repo reads (COV-4H7N).
 #:
 #: A named inventory, deliberately not a ``.prawduct/**`` rule. These paths are

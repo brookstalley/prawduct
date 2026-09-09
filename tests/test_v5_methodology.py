@@ -438,7 +438,7 @@ LAST_MEASURED_TOKENS = {
     # ceiling. The last 9 of the first pass are a widened `governed-by-gap` definition: it now also
     # covers a plan frontmatter no parser can read, the defect class that
     # let THIS plan ship an invalid header past three regex-based readers.
-    "skills/critic/review-protocol.md": 3991,
+    "skills/critic/review-protocol.md": 4026,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -516,7 +516,7 @@ LAST_MEASURED_TOKENS = {
     # was asserting a timing that is false on the Issues backend, so the routing
     # replaced prose rather than adding to it, and the "why" the routing would
     # have restated stayed at the owner where the reader is already being sent.
-    "skills/critic/review-cycle.md": 9972,
+    "skills/critic/review-cycle.md": 10058,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -3902,7 +3902,16 @@ class TestCriticSkill:
         # the other pays for, so there is nothing to pay in place with — the sum
         # is the honest number. The one trim available WAS taken, in
         # goals-1-3.md: see the raise recorded there.
-        assert tokens < 3995, f"review-protocol.md is ~{tokens} tokens, should be <3995"
+        # RAISED AGAIN 3995 -> 4035 (2026-09-09, Chunk 03's own review, R-1).
+        # This file is the final/cumulative reviewer's protocol and it still
+        # taught eligibility as "findings-eligible, judgeable paths only" — the
+        # exact rule Chunk 03 removed from the code. A reviewer reading it would
+        # apply the removed rule, which is the load-bearing-prose bar, not a
+        # wording preference. Paid down first: the draft spelled out the
+        # question and why judgeability answers a different one and cost 50;
+        # naming the predicate and leaving the case to
+        # `coverage_algebra.is_review_subject` costs 31.
+        assert tokens < 4035, f"review-protocol.md is ~{tokens} tokens, should be <4035"
 
 
 # =============================================================================
@@ -4584,7 +4593,18 @@ class TestReviewCycle:
         # trading it away silently. Corrections to a rule this file introduced
         # two commits ago, not new scope — but they are a real cost the first
         # estimate missed, and recording that is the point of this dict.
-        assert tokens < 9980, f"review-cycle.md is ~{tokens} tokens, should be <9980"
+        # RAISED 9980 -> 10065 (2026-09-09, Chunk 03). The Records Pass taught
+        # eligibility as "is it judgeable", which is the defect Chunk 03 closes:
+        # judgeability prices a round, eligibility decides what a finding may be
+        # ABOUT, and deriving the second by negating the first left a review
+        # subagent's own prompt unrateable and, for a markdown-deliverable
+        # product, its whole output. Correcting a rule this file states is not
+        # optional — leaving it would have the skill teaching the negation the
+        # code no longer implements. Paid down first by keeping only the RULE
+        # here and pointing at `coverage_algebra.is_review_subject` for the
+        # case, per one-home: the first draft restated both worked examples and
+        # cost 116; this costs 78.
+        assert tokens < 10065, f"review-cycle.md is ~{tokens} tokens, should be <10065"
 
     def test_framework_checks_token_budget(self):
         # Ceiling 1150. This file is `final`/`cumulative` payload: SKILL.md's

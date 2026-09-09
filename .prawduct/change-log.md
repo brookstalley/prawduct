@@ -3,6 +3,69 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-09-09: review eligibility stops being the negation of review cost
+
+<!-- prawduct: type=fix | chunks=03 | scope=review-loop-termination -->
+
+The subject/oracle split shipped in August asked `is_judgeable_path` which files a finding could be
+about. That predicate answers a different question — *does an edit here re-open the coverage gate?*
+— and it had only ever been asked the cost question until the split gave it a second job. Its
+exclusions were never re-vetted against the new one.
+
+Two things fell through. A review subagent's own system prompt (`plugin/agents/critic-reviewer.md`)
+is behavioural logic by exactly the argument that protects skill prose, and it classified as an
+oracle — read, never rated. So did the norm, principle and waiver references under `plugin/docs/`.
+Both are one directory each, and a longer path list would have closed both.
+
+The general case is what a path list cannot reach, and it is not this repo's. For a governed product
+whose **deliverable is markdown** — a docs site, a spec repo, a prompt library — every product file
+is non-judgeable, so a single incidental `.py` in the interval defeated the all-prose floor and the
+product's entire output became read-but-never-rated against all seven goals. `is_judgeable_path` is
+not product-configurable, and this plan's `governed_by:` dispositions covered language-independence
+but never this shape.
+
+`coverage_algebra.is_review_subject` now owns eligibility as its own question: a **deliverable, or
+prose that governs behaviour**, is a subject however the gate prices it; only a record *about* the
+work (`.prawduct/**`) is an oracle. It fails closed toward subject — a path it cannot place is
+reviewable, because over-inclusion costs reviewer attention while under-inclusion ships an unrated
+deliverable, and only one of those is recoverable.
+
+**It costs 4 points of the 36 the narrowing bought.** Measured over the 3,542 findings in this
+clone's store that name files: the judgeable-only rule made 65% of them subjects, the classifier
+makes 68%, and the 32% that are pure `.prawduct/` records — the bulk of what August removed — stay
+out. What returns is `documentation/` (88 findings), `docs/` (29), `plugin/` prose (17), `README.md`
+(9), `CHANGELOG.md` (2) and `agents/` (1).
+
+A test fails if the two predicates are ever reunited, rather than only checking today's answers: a
+future edit that re-derives one from the other would keep every other assertion green by coincidence
+of the corpus. Chunk 02's own `test_the_subject_set_drops_non_judgeable_paths` asserted
+`docs/guide.md` as an oracle and is rewritten to the corrected rule — the file moves INTO the subject
+set, which is strictly more review.
+
+Prose: the Records Pass in `review-cycle.md` taught eligibility as "is it judgeable" and now teaches
+the rule, pointing at the classifier's docstring for the case rather than restating it. Its ceiling
+rose 9980 → 10065, declared with that reason at the assertion.
+
+The chunk's own review returned **0 blocking, 3 warning, 2 note**, and every actionable one was the
+same class: prose that still taught the rule the code had stopped implementing. `review-protocol.md`
+— the `final`/`cumulative` reviewer's own protocol — still said "findings-eligible, judgeable paths
+only", so a reviewer reading it would have applied the removed rule; its ceiling rose 3995 → 4035
+after paying down the first draft. Three comments in `critic_consolidate.py` asserted the
+conflation, and **one had teeth**: the justification above `_scope_widened` claimed a fact's
+`files_reviewed` IS the judgeable subset, which made the live re-narrowing of `prior_files` look
+redundant. It is not — since the classifier, a subject set admits deliverables and behaviour-
+governing prose that this cost-based threshold must not count, so dropping the call would inflate
+the prior count and LOOSEN the widening bound, failing open and silently. Nothing pinned that path;
+`TestWideningBoundCountsTheCostSubset` now does, asserting first that the two sets genuinely differ
+so the pin cannot pass vacuously.
+
+The review also caught that the plan recorded Chunk 04's `agents/` carry as discharged. It is
+half-discharged: `plugin/agents/critic-reviewer.md` is now a review subject, but it stays
+non-judgeable, so a commit touching only a review subagent's system prompt is still a free edge.
+Eligibility and cost are different questions and this chunk answered only the first — deliberately.
+The plan now states the residue and hands the second question to Chunk 04 rather than closing it on
+paper.
+
 ## 2026-08-25: judgeability decides what a review RATES, not what it READS
 
 <!-- prawduct: type=feature | scope=review-loop-termination -->
