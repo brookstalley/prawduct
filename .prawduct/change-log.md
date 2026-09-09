@@ -3,6 +3,37 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-09-09: the scratch path a reader holds, and the fix that read as working code
+
+<!-- prawduct: type=fix | scope=upstream-report-bug -->
+
+Third round on one defect class in `/prawduct:report-bug`'s step 2, and the third is the one worth
+recording, because it was caused by the second.
+
+Round one: the three composed fields went through the shell as literals, so a backticked prawduct
+term ran as a command and a `$…` symptom expanded to nothing — the title filed with the defect's own
+name deleted from it. Fixed by reading each from a file via `$(cat …)`, whose output is not
+re-expanded. Round two: PR review found the file location was `<scratch>`, an undefined placeholder —
+the one placeholder in the skill naming a value the reader did not hold, in a skill whose whole
+subject is not writing into a governed product's tree. Round three is that fix: it named the
+directory with `SCRATCH="$(mktemp -d)"`, **which reads as working code and is not.** The Bash tool
+does not persist environment variables between calls, and the preview and the send are necessarily
+separate ones, so by the send `$SCRATCH` is empty and every `$(cat …)` reads nothing. Nothing
+downstream catches it — the flags are still present, `check_payload_inputs` bans only newlines and
+prawduct fences, and standing consent never compares the digest — so the skill would file an
+empty-bodied issue into a repo where it cannot be retitled or deleted.
+
+**The fix was a worse failure than the bug.** `<scratch>` was visibly a blank to fill; `"$SCRATCH"`
+looks like it works. `mktemp -d` now prints the path and the skill says to paste it, with the reason
+stated where the next editor will read it: a path you paste is a value you hold, a variable is not.
+
+**What the sibling test could not see, and now does.** The existing pin asserted that every composed
+field arrives via `$(cat …)` — which the broken form satisfied, being a `$(cat …)` over a path that
+does not exist. The new pin asserts the other half, that no such line carries a shell variable, and
+it ships with a positive control: it catches all six command lines of the variable form and none of
+the prose. A grep over `plugin/skills/`, `plugin/methodology/` and `plugin/templates/` finds no other
+cross-call shell variable, so the class is swept rather than assumed.
+
 ## 2026-09-08: the upstream bug drop-box retires, and every surface still describing it stops
 
 <!-- prawduct: type=refactor | scope=upstream-intake-repoint -->
