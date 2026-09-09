@@ -150,6 +150,18 @@ TEST_COUPLED_STATE = frozenset(
 )
 
 
+#: Roots whose markdown INSTRUCTS rather than records, and which this repo's
+#: suite therefore reads for content.
+#:
+#: The same bound ``instruction_surfaces()`` draws in
+#: ``tests/test_pr_evidence_contract.py``, for the reason stated there:
+#: ``documentation/`` carries runbooks and requirements that instruct exactly as
+#: ``plugin/`` does, so excluding it leaves the class open at the container
+#: boundary. Two roots rather than a suffix rule, because "every ``.md``" is a
+#: different and more expensive claim — see :func:`affects_test_outcome`.
+INSTRUCTION_PROSE_ROOTS = ("plugin/", "documentation/")
+
+
 def affects_test_outcome(path: str) -> bool:
     """True if a change to ``path`` can change what the test suite says.
 
@@ -164,8 +176,31 @@ def affects_test_outcome(path: str) -> bool:
     :func:`is_judgeable_path` because review coverage must NOT widen here: the
     ``_BATCH_FIX_DIRECTIVE`` tells a builder that ``.prawduct/`` writes are
     free mid-review, and that promise stays true.
+
+    **Instruction prose is suite-coupled, and only SOME of it is judgeable.**
+    Governance protection makes ``skills/``, ``methodology/``, ``templates/``
+    and root ``CLAUDE.md`` review-worthy; nothing made ``documentation/``
+    review-worthy, and a non-hermetic test reads it anyway. The prose guards
+    sweep by the property that justifies them — prose that tells an agent what
+    to do — so ``documentation/issues/*.md`` is inside them while sitting
+    outside judgeability. A design doc merged straight to ``develop`` failing
+    two of those guards, and this predicate reported day-old evidence as
+    current over the red tree; the next branch to sync the base inherited it.
+
+    **Scoped to the instruction roots, not to every ``.md``.** The wider read
+    is tempting and would silently overturn two priced decisions: the residual
+    named under :data:`TEST_COUPLED_STATE` (bookkeeping held out on cost, whose
+    sound close is hermetic tests) and the ``README.md`` / ``docs/notes.md``
+    line those tests pin. Both remain out. ``_governance_prose()`` sweeps wider
+    still — every tracked non-record ``.md``, a live build plan included — so a
+    residual survives here by choice rather than by oversight, and closing it
+    is a cost question for the owner.
     """
-    return is_judgeable_path(path) or path in TEST_COUPLED_STATE
+    return (
+        is_judgeable_path(path)
+        or path in TEST_COUPLED_STATE
+        or (path.endswith(".md") and path.startswith(INSTRUCTION_PROSE_ROOTS))
+    )
 
 
 def suite_coupled_files(paths: "list[str] | None") -> list[str]:

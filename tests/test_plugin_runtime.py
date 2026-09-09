@@ -2786,6 +2786,49 @@ class TestTreeValidHelperFailsToStale:
         assert ok is False and "diff" in reason.lower()
 
 
+class TestDocsCanStaleTestEvidence:
+    """The 2026-09-08 incident, reconstructed at the gate that missed it.
+
+    Two `documentation/issues/*.md` files were pushed straight to `develop`
+    failing `TestClosingKeywordClaims` and
+    `test_no_governance_prose_cites_a_flow_step_by_NUMBER` — both of which
+    predate them by two weeks. `_test_evidence_tree_valid` classified the pair
+    as "only non-judgeable paths changed", `test-status` reported day-old
+    evidence as *current*, and the next branch to sync the base inherited a red
+    tree with a gate saying it was fine.
+
+    Driven through `suite_coupled_files` rather than the git-backed capture,
+    because the defect was never in the diffing — it was in the classification
+    of what the diff returned.
+    """
+
+    def _algebra(self):
+        if str(ROOT) not in sys.path:
+            sys.path.insert(0, str(ROOT))
+        from lib import coverage_algebra  # noqa: PLC0415 — mirrors the other lib unit tests
+        return coverage_algebra
+
+    def test_a_documentation_only_diff_is_not_dismissed_as_free(self):
+        """The positive control for the fix: against the pre-change predicate
+        this list came back EMPTY, which is precisely the answer that let the
+        red tree through."""
+        ca = self._algebra()
+        changed = ["documentation/issues/712-design.md"]
+        assert ca.suite_coupled_files(changed) == changed
+
+    def test_a_mixed_diff_keeps_the_doc_and_drops_the_bookkeeping(self):
+        """Both directions in one assertion, because the fix is worthless if it
+        widened to everything: the doc is retained, and the priced exclusions
+        (`change-log.md`, `learnings.md`) are still dropped."""
+        ca = self._algebra()
+        changed = [
+            ".prawduct/change-log.md",
+            "documentation/release-process.md",
+            ".prawduct/learnings.md",
+        ]
+        assert ca.suite_coupled_files(changed) == ["documentation/release-process.md"]
+
+
 class TestTestEvidenceKnobs:
     """Gate-soundness ch.2: `test_command:` / `tests_dirs:` in
     project-state.yaml replace the hardcoded `sys.executable -m pytest`-from-
