@@ -105,7 +105,8 @@ Deliberately not built here, each with why:
 
 - [x] Chunk 01: Cost-to-clear rendered on every finding
 - [x] Chunk 02: Judgeability governs review scope; Records Pass covers what it drops
-- [ ] Chunk 03: Round budget, auto-accept at exhaustion, and the yield prose correction
+- [ ] Chunk 03: The review-eligibility classifier
+- [ ] Chunk 04: Round budget, auto-accept at exhaustion, and the yield prose correction
 
 Context: Plan authored 2026-08-25 from `review-loop-nontermination-diagnosis.md`, owner-approved
 scope (options 1 + B + A of seven framed). **Chunk 01 complete** — `fix_cost` on every finding,
@@ -120,7 +121,7 @@ accepted, R-2/R-10 accepted and carried below; then two `verify-resolutions` rou
 returning one BLOCKING (my own regression in the frontmatter check) and the second clean at
 rev-20260825T143252Z-9b65d4f9. Coverage gate `satisfied`. **RC9 is absorbed into Chunk 03 by owner
 decision** — the `--fixed` disposition, guarded by the judgeability predicate at record time.
-Next: Chunk 03, whose budget (6 rounds, on by default, `null` disables) is already decided.
+Next: Chunk 03, whose budget (6 rounds, on by default, `null` disables) is already decided. **2026-09-09 — base advance and a split.** develop had moved 216 commits over the same Critic surfaces this plan edits; merged at `29116547`, eighteen conflict hunks resolved keeping both sides, suite green. Then the owner ruled on the R-2/R-10 class finding Chunk 03 was carrying: **build the classifier**, not the cheap `agents/` partial. That ruling makes the old Chunk 03 far too large for one Critic pass — the classifier alone moves the coverage kernel's consumers — so it is split. Chunk 03 is now the classifier; Chunk 04 is the budget bundle, unchanged in content, and keeps `Type: cumulative-final`. Next: Chunk 03.
 
 ## Scaffolding
 
@@ -251,7 +252,60 @@ falsify the premise:
   3. `/prawduct:critic` run and blocking findings resolved
   4. Committed and chunk marked `[x]` in Status
 
-### Chunk 03: Round budget, auto-accept at exhaustion, and the yield prose correction
+### Chunk 03: The review-eligibility classifier
+
+- **Description:** Review **eligibility** stops being derived by negating the **coverage**
+  predicate. `is_judgeable_path` answers *does an edit to this path re-open the gate?*;
+  the subject set needs *may a finding be about this file?* The two coincided until Chunk 02 gave
+  the predicate a second meaning, and its excluded paths were never re-vetted against it. This
+  chunk gives the split its own classifier, owned in one place, so it cannot drift from the
+  coverage predicate while answering a different question.
+- **[DECISION: build the classifier rather than the cheap `agents/` path-list partial | owner
+  ruling 2026-09-09, on the R-2/R-10 class finding Chunk 02's cumulative raised | user can veto]**
+  The partial closes one member — `plugin/agents/critic-reviewer.md`, a review subagent's own
+  system prompt, classifying non-judgeable — and leaves the class open. The generality case is
+  the sharp one and it is not this repo's: for a governed product whose **deliverable is
+  markdown** (a docs site, a spec repo, a prompt library) every product file is non-judgeable, so
+  one incidental `.py` in the interval defeats the all-prose floor and the product's actual
+  output becomes read-but-never-rated for all seven goals. `is_judgeable_path` is not
+  product-configurable, and this plan's `governed_by:` dispositions cover language-independence
+  but never this shape.
+- **Depends on:** Chunk 02
+- **Artifacts consumed:** `.prawduct/artifacts/review-loop-nontermination-diagnosis.md`
+  (root cause RC6); Chunk 02's cumulative findings R-2 / R-10
+- **The classifier:** subject = a **deliverable, or prose that governs behaviour**; oracle = a
+  record *about* the work (`.prawduct/**`, archived artifacts). It is a separate function from
+  `is_judgeable_path` and neither may be defined in terms of the other's negation — that
+  identity is the defect. Known members the current negation gets wrong: `plugin/agents/`
+  (behaviour-governing) and `plugin/docs/norms.md`, `plugin/docs/principles.md` and `plugin/docs/waivers.md` (behaviour-governing).
+- **Surfaces this concept touches** (the count is the chunk's real size — every consumer of the
+  coverage predicate must be checked for which of the two questions it is actually asking):
+  `plugin/lib/coverage_algebra.py`, `plugin/lib/buildplan_refs.py`
+  (`_TRIVIAL_PROTECTED_PATHS`), the subject/oracle split in `plugin/lib/critic_consolidate.py`,
+  and the consumers the plan's Chunk 02 carry-in enumerates — `cost-of-commit`, free-edge
+  composition, the dispatch guard, the trivial gate, and the doc-only PR gate. Prose carriers:
+  `plugin/skills/critic/review-cycle.md` (the Records Pass carve-out) and
+  `plugin/skills/critic/goals-1-3.md`. Both carry token accounting in `LAST_MEASURED_TOKENS` —
+  update the readings in the **same** commit.
+- **Fail-closed direction:** strictly more review, which is the posture
+  `protected_path_violation` already states for over-inclusion. A file the classifier cannot
+  place is a subject, never an oracle.
+- **Tests:** `tests/test_coverage_algebra.py` — the classifier places each known member, and a
+  test **fails if it is ever implemented as the negation of `is_judgeable_path`** (the defect
+  this chunk exists to close, so it needs its own pin, not just correct answers today);
+  a markdown-deliverable product's files are subjects even when one `.py` is in the interval.
+  `tests/test_critic_consolidate.py` — the subject/oracle split routes through the classifier,
+  and the oracle set still carries the build plan and cited artifacts.
+- **Acceptance criteria:** `pytest tests/ -q` green; a live review on this branch shows
+  `plugin/agents/critic-reviewer.md` in the SUBJECT set, and `cost-of-commit` still prices a
+  `.prawduct/` batch `free` — the two questions answered differently by the two predicates, which
+  is the whole point.
+- **Done when:**
+  1. Acceptance criteria met and tests pass
+  2. `/prawduct:critic` run and blocking findings resolved
+  3. Committed and chunk marked `[x]` in Status
+
+### Chunk 04: Round budget, auto-accept at exhaustion, and the yield prose correction
 
 - **Type:** cumulative-final
 - **Description:** A declared per-scope ceiling on full review rounds — **6 by default, on in every
@@ -262,7 +316,7 @@ falsify the premise:
   the measured data says nothing else supplies: finding yield does not decay (13.5 → 15.4 →
   15.5 → 18.4 findings per full round, 99% of them new), so there is no natural fixed point and
   the only principled stop is a declared budget.
-- **Depends on:** Chunk 02
+- **Depends on:** Chunk 03
 - **Artifacts consumed:** `.prawduct/artifacts/review-loop-nontermination-diagnosis.md`
   (Option A; root cause RC2)
 - **Absorbed by owner decision, 2026-08-25:** RC9 in the diagnosis — a FIX confined to free paths
@@ -272,7 +326,7 @@ falsify the premise:
   gate; a BLOCKING finding still clears only through a real resolution fact, and nothing about gating
   changes. It rides this chunk because this chunk is already inside `dispositions.py`. Owner asked
   for the bundling explicitly; it is a scope increase, taken deliberately.
-- **Carried in from Chunk 02** (ride-along route — lands in this chunk's commit, which touches
+- **DISCHARGED BY CHUNK 03, kept for its reasoning** (was: carried in from Chunk 02, ride-along route — lands in this chunk's commit, which touches
   judgeable code anyway, so it buys no round of its own): **`agents/` is missing from the
   governance-protected path set.** `buildplan_refs._TRIVIAL_PROTECTED_PATHS` holds `skills/`,
   `methodology/`, `templates/` and root `CLAUDE.md`, so `plugin/agents/critic-reviewer.md` — a
