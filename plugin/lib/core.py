@@ -394,6 +394,51 @@ OVERSIZED_FILE_KB = 40
 OVERSIZED_FILE_THRESHOLD_KEY = "oversized_file_threshold_kb"
 
 
+#: Path prefixes whose files a NON-HERMETIC test in THIS repo reads, declared by
+#: the repo rather than assumed by the framework.
+#:
+#: :data:`coverage_algebra.TEST_COUPLED_STATE` is the shipped half — files like
+#: ``project-state.yaml`` that every governed product has. This is the half that
+#: cannot be shipped: which directories hold prose a test scans is a fact about
+#: one repo's layout, and hardcoding any of it into the runtime makes the rule
+#: inert for every product that names its directories differently while taxing
+#: every product that happens to match. Absent means empty, so a product that
+#: declares nothing behaves exactly as before.
+SUITE_COUPLED_PREFIXES_KEY = "suite_coupled_prefixes"
+
+
+def suite_coupled_prefixes(prawduct_dir: Path) -> tuple[str, ...]:
+    """Path prefixes this repo declares its non-hermetic tests read.
+
+    Reads :data:`SUITE_COUPLED_PREFIXES_KEY` from ``project-state.yaml`` as a
+    YAML list. Fail-soft to ``()`` on a missing file, an absent key, or an
+    unparseable block — the empty answer is the pre-declaration behaviour, so a
+    typo here can only fail toward running the suite's freshness check as it
+    always did, never toward a false-fresh verdict.
+
+    Entries are plain path prefixes against repo-relative paths, so a trailing
+    slash matters and is the caller's to write: ``doc/`` must not match
+    ``documentation/``. They are NOT restricted to ``.md`` — declaring a root
+    couples every file under it, which is the fail-safe direction.
+    """
+    state = prawduct_dir / "project-state.yaml"
+    try:
+        text = state.read_text(encoding="utf-8")
+    except OSError:
+        return ()
+    status, lines = read_yaml_block(text, SUITE_COUPLED_PREFIXES_KEY)
+    if status != YAML_DECLARED:
+        return ()
+    out = []
+    for line in lines:
+        if not line.startswith("- "):
+            continue
+        value = line[2:].strip().strip("'\"")
+        if value:
+            out.append(value)
+    return tuple(out)
+
+
 def oversized_file_threshold(prawduct_dir: Path) -> int:
     """Bytes above which a governance file earns a size nudge, for this repo.
 

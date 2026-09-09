@@ -2786,6 +2786,138 @@ class TestTreeValidHelperFailsToStale:
         assert ok is False and "diff" in reason.lower()
 
 
+class TestSuiteCoupledPrefixesDeclaration:
+    """The repo declaration the freshness gate reads, and the wiring that reads it.
+
+    Both halves are pinned because neither was, and their absence reopened the
+    class this work exists to close: with the roots moved out of the predicate's
+    default and into `project-state.yaml`, deleting the declaration — or reverting
+    the gate to the bare `suite_coupled_files(changed)` — left the whole suite
+    green while `test-status` reported `current` over a red tree. Literal-argument
+    tests could not see it, because production had stopped taking the literal.
+    """
+
+    def _core(self):
+        if str(ROOT) not in sys.path:
+            sys.path.insert(0, str(ROOT))
+        from lib import core  # noqa: PLC0415 — mirrors the other lib unit tests
+        return core
+
+    def _state(self, tmp_path: Path, body: str) -> Path:
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir(parents=True, exist_ok=True)
+        (prawduct / "project-state.yaml").write_text(body, encoding="utf-8")
+        return prawduct
+
+    def test_a_declared_block_is_read(self, tmp_path):
+        core = self._core()
+        prawduct = self._state(tmp_path, "suite_coupled_prefixes:\n  - documentation/\n  - plugin/\n")
+        assert core.suite_coupled_prefixes(prawduct) == ("documentation/", "plugin/")
+
+    def test_quotes_are_stripped(self, tmp_path):
+        core = self._core()
+        prawduct = self._state(tmp_path, "suite_coupled_prefixes:\n  - 'documentation/'\n")
+        assert core.suite_coupled_prefixes(prawduct) == ("documentation/",)
+
+    def test_absent_key_missing_file_and_empty_list_all_read_as_none(self, tmp_path):
+        """Three different ways to say nothing, one answer — and it must be the
+        pre-declaration behaviour, so a typo can only fail toward running the
+        freshness check as it always did, never toward a false-fresh verdict."""
+        core = self._core()
+        assert core.suite_coupled_prefixes(self._state(tmp_path / "a", "other_key: 1\n")) == ()
+        assert core.suite_coupled_prefixes(tmp_path / "nonexistent") == ()
+        assert core.suite_coupled_prefixes(
+            self._state(tmp_path / "c", "suite_coupled_prefixes: []\n")
+        ) == ()
+
+    def test_this_repo_declares_the_roots_its_guards_sweep(self):
+        """The declaration is live state, not an example. Deleting it is what
+        the blocking finding described, and this is what notices."""
+        core = self._core()
+        # ROOT is the plugin directory; the declaration lives in the repo's own
+        # `.prawduct/`, one level up.
+        repo_root = Path(__file__).resolve().parents[1]
+        declared = core.suite_coupled_prefixes(repo_root / ".prawduct")
+        assert "documentation/" in declared, declared
+        assert "plugin/" in declared, declared
+
+    def test_the_freshness_gate_actually_reads_the_declaration(self, tmp_path, monkeypatch):
+        """The wiring, end to end through `_test_evidence_tree_valid`.
+
+        The same doc diff must read NOT-valid for a repo that declares the root
+        and valid for one that does not — which is the assertion that fails if
+        `gates.py` ever goes back to calling `suite_coupled_files(changed)` bare.
+        """
+        if str(ROOT) not in sys.path:
+            sys.path.insert(0, str(ROOT))
+        from lib import gates  # noqa: PLC0415
+
+        monkeypatch.setattr(
+            gates.evidence, "capture_tree",
+            lambda project_dir: {"status": "ok", "tree": "1111111111111111"},
+        )
+        monkeypatch.setattr(
+            gates.evidence, "tree_diff",
+            lambda project_dir, a, b: ["documentation/issues/712-design.md"],
+        )
+
+        declaring = tmp_path / "declaring"
+        self._state(declaring, "suite_coupled_prefixes:\n  - documentation/\n")
+        ok, reason = gates._test_evidence_tree_valid(declaring, "2222222222222222")
+        assert ok is False, reason
+        assert "suite-coupled" in reason
+
+        silent = tmp_path / "silent"
+        self._state(silent, "other_key: 1\n")
+        ok, reason = gates._test_evidence_tree_valid(silent, "2222222222222222")
+        assert ok is True, reason
+
+
+class TestDocsCanStaleTestEvidence:
+    """The 2026-09-08 incident, reconstructed at the gate that missed it.
+
+    Two `documentation/issues/*.md` files were pushed straight to `develop`
+    failing `TestClosingKeywordClaims` and
+    `test_no_governance_prose_cites_a_flow_step_by_NUMBER` — both of which
+    predate them by two weeks. `_test_evidence_tree_valid` classified the pair
+    as "only non-judgeable paths changed", `test-status` reported day-old
+    evidence as *current*, and the next branch to sync the base inherited a red
+    tree with a gate saying it was fine.
+
+    Driven through `suite_coupled_files` rather than the git-backed capture,
+    because the defect was never in the diffing — it was in the classification
+    of what the diff returned.
+    """
+
+    def _algebra(self):
+        if str(ROOT) not in sys.path:
+            sys.path.insert(0, str(ROOT))
+        from lib import coverage_algebra  # noqa: PLC0415 — mirrors the other lib unit tests
+        return coverage_algebra
+
+    def test_a_documentation_only_diff_is_not_dismissed_as_free(self):
+        """The positive control for the fix: against the pre-change predicate
+        this list came back EMPTY, which is precisely the answer that let the
+        red tree through."""
+        ca = self._algebra()
+        changed = ["documentation/issues/712-design.md"]
+        assert ca.suite_coupled_files(changed, ("documentation/",)) == changed
+
+    def test_a_mixed_diff_keeps_the_doc_and_drops_the_bookkeeping(self):
+        """Both directions in one assertion, because the fix is worthless if it
+        widened to everything: the doc is retained, and the priced exclusions
+        (`change-log.md`, `learnings.md`) are still dropped."""
+        ca = self._algebra()
+        changed = [
+            ".prawduct/change-log.md",
+            "documentation/release-process.md",
+            ".prawduct/learnings.md",
+        ]
+        assert ca.suite_coupled_files(changed, ("documentation/",)) == [
+            "documentation/release-process.md"
+        ]
+
+
 class TestTestEvidenceKnobs:
     """Gate-soundness ch.2: `test_command:` / `tests_dirs:` in
     project-state.yaml replace the hardcoded `sys.executable -m pytest`-from-

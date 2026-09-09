@@ -50,7 +50,7 @@ from . import (
     gitstate,
     verdict_cache,
 )
-from .core import read_bool_yaml_key
+from .core import read_bool_yaml_key, suite_coupled_prefixes
 
 
 _EVIDENCE_REQUIRED_FIELDS: dict[str, tuple[type, ...]] = {
@@ -298,7 +298,11 @@ def _test_evidence_tree_valid(
     changed = evidence.tree_diff(project_dir, recorded_tree, target_tree)
     if changed is None:
         return False, "tree diff unavailable (missing object or git failure)"
-    coupled = coverage_algebra.suite_coupled_files(changed)
+    # The repo's own declaration is passed HERE and NOT at the doc-only PR
+    # gate: this is the freshness question. See `affects_test_outcome`.
+    coupled = coverage_algebra.suite_coupled_files(
+        changed, suite_coupled_prefixes(project_dir / ".prawduct")
+    )
     if coupled:
         preview = ", ".join(coupled[:3]) + ("…" if len(coupled) > 3 else "")
         return False, f"{len(coupled)} suite-coupled path(s) {differ} ({preview})"

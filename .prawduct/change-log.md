@@ -3,6 +3,85 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-09-09: `/prawduct:pr` Step 2 stops promising a saving it cannot always deliver
+
+<!-- prawduct: type=docs | scope=gate-accuracy -->
+
+Step 2 told the builder *"run the pass on the dirty tree, then commit it whole, and there is one
+round instead of two."* Followed literally, it cost the round it promised: `verify-resolutions`
+refused with exit 3, reported that it had graded committed HEAD rather than the working tree, and
+named the uncommitted judgeable file as NOT REVIEWED.
+
+**The guidance was not wrong — it was unconditional about a conditional outcome.** The pass may
+instead anchor on a prior review and grade committed HEAD, in which case it refuses and names the
+uncommitted judgeable files. There the order inverts: commit first, then run the pass over the delta
+that appears — which is what the refusal itself says.
+
+**The first attempt at this entry named a mechanism that does not exist**, and it is recorded here
+because the retraction is the lesson. That draft claimed a `diff ⊆ scope` contract enforced in
+`begin_review`'s verify arm and cited a symbol that is not defined; the arm's only refusal is
+cardinality, which one unseen file never trips. It was written from a code comment rather than from
+the handler. The shipped sentence therefore cites **no internal rule at all** — only what the
+dispatcher observably does — which is the honest scope of what was verified, and it tells the reader
+not to predict which case they are in, because dispatch is seconds and its own answer is
+authoritative.
+
+Nothing in the mechanism changed; it already behaved correctly and announced itself. Only the
+instruction was incomplete.
+
+## 2026-09-09: the freshness gate stops calling instruction prose untestable
+
+<!-- prawduct: type=fix | scope=gate-accuracy -->
+
+`affects_test_outcome` answers *can a change to this path change what the suite says*, and it
+answered **no** for every non-governance-protected `.md`. That is false here and false in general:
+`TestClosingKeywordClaims` sweeps `documentation/`, `test_no_governance_prose_cites_a_flow_step_by_NUMBER`
+sweeps governance prose, and both predate by two weeks the design doc that merged failing them.
+
+**The consequence was not theoretical.** Two `documentation/issues/*.md` files reached `develop` red;
+`_test_evidence_tree_valid` classified them as *only non-judgeable paths changed*; `test-status`
+reported day-old evidence as `current` over a tree whose suite was red; and the next branch to sync
+the base inherited it. The repo already held the correct reasoning one file over — the CI workflow
+refuses path filters in as many words, *"a docs-and-state change really can turn the suite red. A
+filter that calls those paths untestable would hide exactly that class of break."* This predicate was
+that filter.
+
+**The roots are declared by the repo, not carried by the framework.** `suite_coupled_prefixes:` in
+`project-state.yaml` names them and `core.suite_coupled_prefixes` reads them; the default is empty,
+so an undeclaring product is byte-for-byte unchanged. Hardcoding `plugin/` and `documentation/` into
+the shipped predicate was the first cut and it is wrong in both directions at once: no product repo
+has a `plugin/` directory, so the rule would be inert exactly where it shipped, while any product
+that happens to name a directory `documentation/` would start paying for prawduct's tests. Which
+directories hold prose a test scans is a fact about one repo's layout, so it lives where the layout
+does.
+
+**Blanket `.md` was the other rejected design**, and it silently overturns two priced decisions: the
+residual named under `TEST_COUPLED_STATE` (bookkeeping held out **on cost**, whose sound close is
+hermetic tests, not a wider set) and the `README.md` / `docs/notes.md` line their tests pin. All
+three pins stay green unedited.
+
+**Review coverage did not widen, and keeping it that way took a deliberate choice rather than an
+absence.** `coverage.check_pr_doc_only` consults `suite_coupled_files` too, so making the roots a
+DEFAULT would have retired the doc-only fast path — a documentation-only PR would have started
+buying a full cumulative Critic and PR reviewer, a cost nothing priced. The declaration is therefore
+a parameter passed at the freshness call site and withheld at the review one: this says *re-run the
+suite*, never *buy a review*. `is_judgeable_path` is untouched, so the batch-fix directive's promise
+that `.prawduct/` and doc writes are free mid-review stays true.
+
+**This is the docs half of `#238`** — *"gates: a doc-only PR can silently break a repo-coupled
+test"* — which was closed when its state half shipped as `TEST_COUPLED_STATE`. The class stayed open
+for prose, and the 2026-09-08 incident is that remainder arriving. Recorded rather than reopened: the
+issue's own subject is now true again only in the residual below.
+
+**Residual, named rather than closed:** `_governance_prose()` sweeps every tracked non-record `.md`,
+which is wider still — `README.md`, `docs/*.md` and a live build plan can flip the suite while this
+predicate calls them free. Closing that means overturning the priced exclusions above, which is an
+owner cost decision, not a defect to fix in passing.
+
+**Also true, and not fixable in code:** the two red commits were pushed **directly to `develop`**,
+so no `/prawduct:pr` gate was ever reached and CI's failure on both pushes was read by nobody.
+`develop` has no branch protection; 5 of the last 50 runs on it failed. That is a repo setting.
+
 ## 2026-09-09: the scratch path a reader holds, and the fix that read as working code
 
 <!-- prawduct: type=fix | scope=upstream-report-bug -->

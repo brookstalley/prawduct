@@ -165,6 +165,72 @@ class TestSuiteCoupledState:
                      ".prawduct/artifacts/build-plan-x.md"):
             assert ca.affects_test_outcome(path) is False, path
 
+    #: What THIS repo declares in `project-state.yaml`; passed explicitly rather
+    #: than read, so the test states its own input instead of depending on the
+    #: file it is meant to be independent of.
+    DECLARED = ("documentation/", "plugin/")
+
+    def test_declared_prefixes_are_suite_coupled_though_not_judgeable(self):
+        """A `documentation/**.md` change really can turn this suite red.
+
+        `TestClosingKeywordClaims` sweeps `documentation/` and
+        `test_no_governance_prose_cites_a_flow_step_by_NUMBER` sweeps governance
+        prose. Both predate 2026-09-08, and on that date a design doc merged
+        straight to `develop` failing both — while `test-status` reported
+        day-old evidence as *current*, because this predicate called the file
+        untestable. The next branch to sync the base inherited the red.
+
+        The two halves are asserted together because they must DISAGREE here:
+        such a doc needs no reviewer and can still flip a test.
+        """
+        for path in ("documentation/issues/712-design.md",
+                     "documentation/release-process.md",
+                     "plugin/docs/principles.md"):
+            assert ca.is_judgeable_path(path) is False, path
+            assert ca.affects_test_outcome(path, self.DECLARED) is True, path
+
+    def test_an_undeclaring_repo_is_unchanged(self):
+        """The default is `()`, so a product that declares nothing behaves
+        exactly as it did before the parameter existed. This is the half that
+        makes the knob shippable: the framework carries no repo's layout."""
+        for path in ("documentation/issues/712-design.md",
+                     "plugin/docs/principles.md"):
+            assert ca.affects_test_outcome(path) is False, path
+
+    def test_prefixes_are_not_substring_matches(self):
+        """Trailing slashes are significant and the docs say so — `doc/` must
+        not reach `documentation/`, or a repo's declaration silently widens."""
+        assert ca.affects_test_outcome("documentation/a.md", ("doc/",)) is False
+        assert ca.affects_test_outcome("documentation/a.md", ("documentation/",)) is True
+
+    def test_governance_protected_prose_stays_both(self):
+        """Unchanged by the instruction-root clause, and worth pinning: these
+        were already suite-coupled through judgeability, so a clause that
+        somehow replaced rather than widened would show up here."""
+        for path in ("plugin/skills/pr/SKILL.md",
+                     "plugin/methodology/building.md",
+                     "CLAUDE.md"):
+            assert ca.is_judgeable_path(path) is True, path
+            assert ca.affects_test_outcome(path) is True, path
+            assert ca.affects_test_outcome(path, self.DECLARED) is True, path
+
+    def test_the_instruction_root_clause_does_not_reach_the_priced_exclusions(self):
+        """The scope is `plugin/` and `documentation/` — the bound
+        `instruction_surfaces()` already draws — and NOT every `.md`.
+
+        Blanket `.md` was the first design and it silently overturns two
+        recorded cost decisions: the bookkeeping residual above, and the
+        `README.md` / `docs/notes.md` line in
+        `test_ordinary_metadata_is_still_free_of_both`. Those exclusions were
+        priced (`TEST_COUPLED_STATE`'s docstring: held out on cost, not on
+        principle, and the sound close is hermetic tests). This asserts the
+        clause stops where they begin, so widening it stays a deliberate edit.
+        """
+        for path in ("README.md", "docs/notes.md",
+                     ".prawduct/change-log.md", ".prawduct/learnings.md",
+                     ".prawduct/artifacts/build-plan-x.md"):
+            assert ca.affects_test_outcome(path, self.DECLARED) is False, path
+
     def test_the_inventory_names_files_that_exist(self):
         """An entry naming a path this repo does not have is a rule guarding
         nothing, and reads as coverage while providing none."""

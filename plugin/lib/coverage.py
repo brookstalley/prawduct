@@ -1059,11 +1059,18 @@ def check_change_log_entry(project_dir: Path) -> int:
 def check_pr_doc_only(project_dir: Path) -> int:
     """Fast-path gate for `/prawduct:pr create`: report whether the PR diff is doc-only.
 
-    Exit 0 when the diff in ``merge-base...HEAD`` is non-empty and contains
-    no judgeable file (``coverage_algebra.is_judgeable_path`` — the one
-    predicate) — the `/prawduct:pr` skill uses this to skip the cumulative-
-    Critic and PR-reviewer gates, mirroring the session-end stop-hook
-    carveout (`gates.session_changes_all_non_judgeable`) at the PR boundary.
+    Exit 0 when the diff in ``merge-base...HEAD`` is non-empty, contains no
+    judgeable file (``coverage_algebra.is_judgeable_path`` — the one predicate)
+    AND names no shipped suite-coupled state (``TEST_COUPLED_STATE``, via
+    ``suite_coupled_files``). **The repo's declared ``suite_coupled_prefixes``
+    are deliberately NOT passed here.** They answer a freshness question — re-run
+    the suite — and forwarding them would make a documentation-only PR buy a full
+    cumulative Critic and PR review, a review cost nothing prices. The freshness
+    gate (``gates._test_evidence_tree_valid``) is the caller that passes them.
+
+    The `/prawduct:pr` skill uses this to skip the cumulative-Critic and
+    PR-reviewer gates, mirroring the session-end stop-hook carveout
+    (`gates.session_changes_all_non_judgeable`) at the PR boundary.
     The stop hook's PR-review evidence gate (Gate 3) consults the same
     helper so a doc-only PR doesn't get blocked at session end for missing
     evidence — symmetric behavior across both gates.

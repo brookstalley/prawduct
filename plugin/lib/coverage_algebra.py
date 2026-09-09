@@ -150,7 +150,7 @@ TEST_COUPLED_STATE = frozenset(
 )
 
 
-def affects_test_outcome(path: str) -> bool:
+def affects_test_outcome(path: str, extra_prefixes: "tuple[str, ...]" = ()) -> bool:
     """True if a change to ``path`` can change what the test suite says.
 
     A strict superset of :func:`is_judgeable_path`, and the distinction is the
@@ -164,14 +164,49 @@ def affects_test_outcome(path: str) -> bool:
     :func:`is_judgeable_path` because review coverage must NOT widen here: the
     ``_BATCH_FIX_DIRECTIVE`` tells a builder that ``.prawduct/`` writes are
     free mid-review, and that promise stays true.
+
+    ``extra_prefixes`` carries the half that CANNOT ship: path prefixes a repo
+    declares its own non-hermetic tests read. **Prefixes, not a prose rule** —
+    they are not restricted to ``.md``, so declaring a root couples every file
+    under it. That is the fail-safe direction (a superset can only cost a suite
+    run) and it keeps the clause one comparison rather than two (``core.suite_coupled_prefixes``,
+    from ``project-state.yaml``). Which directories hold prose a test scans is a
+    fact about one repo's layout — this repo's guards sweep ``documentation/``
+    and ``plugin/`` markdown, and a design doc merged straight to ``develop``
+    failing two of them while this predicate reported day-old evidence as
+    *current* over the red tree. Baking those names in would make the rule inert
+    for every product that names its directories differently and would tax every
+    product that happens to match, so the names live where the layout does.
+    Default ``()`` — a product that declares nothing behaves exactly as before.
+
+    **A parameter rather than a wider default rule.** "Every ``.md``" was the
+    obvious alternative and it silently overturns two priced decisions: the
+    residual named under :data:`TEST_COUPLED_STATE` (bookkeeping held out on
+    cost, whose sound close is hermetic tests) and the ``README.md`` /
+    ``docs/notes.md`` line those tests pin. Both remain out at every call site.
+
+    **Callers pass prefixes only where the question is FRESHNESS.** The
+    doc-only PR fast path asks a review question and must not inherit them:
+    widening it there would make a documentation-only PR buy a full Critic and
+    PR review, which nothing priced. Passing them is therefore a deliberate act
+    at each site, not a default the predicate applies on its own.
     """
-    return is_judgeable_path(path) or path in TEST_COUPLED_STATE
+    return (
+        is_judgeable_path(path)
+        or path in TEST_COUPLED_STATE
+        or bool(extra_prefixes) and path.startswith(tuple(extra_prefixes))
+    )
 
 
-def suite_coupled_files(paths: "list[str] | None") -> list[str]:
+def suite_coupled_files(
+    paths: "list[str] | None", extra_prefixes: "tuple[str, ...]" = ()
+) -> list[str]:
     """The subset of ``paths`` a test outcome can depend on (order preserved,
-    None-safe) — :func:`affects_test_outcome` over :func:`judgeable_files`."""
-    return [p for p in (paths or []) if affects_test_outcome(p)]
+    None-safe) — :func:`affects_test_outcome` over :func:`judgeable_files`.
+
+    ``extra_prefixes`` is forwarded unchanged; see that function for why the
+    freshness callers pass it and the review callers must not."""
+    return [p for p in (paths or []) if affects_test_outcome(p, extra_prefixes)]
 
 
 def is_executable_path(path: str) -> bool:
