@@ -30,17 +30,19 @@ about: the red base was inherited and diagnosed to two named tests that predate 
 the verify-resolutions refusal was read out of `critic_mode.py:478` after the dispatcher printed it.
 Problem, success and scope are each one sentence.
 
-**Open assumptions / unknowns:** none material. [ASSUMPTION: making every `.md` suite-coupled is
-proportionate rather than over-broad | MED impact | owner can override by narrowing the clause to a
-declared doc-path list] — recorded because it is the one place a reasonable person could pick
-differently, and the cost it buys is stated in Chunk 01's Visible Costs line.
+**Open assumptions / unknowns:** none material. The plan-time assumption — that a blanket `.md`
+rule would be proportionate — was **resolved during the build and against the plan**: three existing
+pins record the wider exclusions as priced decisions, and the Critic then showed a hardcoded root set
+is inert in every product repo besides. The built design is a repo-declared prefix list read from
+`project-state.yaml`, defaulting to empty. Recorded here rather than quietly replaced, because the
+abandoned design is the one a reader reaches for first.
 
 **What would raise confidence:** N/A
 
 ## Status
 
-- [ ] Chunk 01: `affects_test_outcome` stops calling docs untestable
-- [ ] Chunk 02: `/prawduct:pr` Step 2's dirty-tree rule states its precondition
+- [x] Chunk 01: `affects_test_outcome` stops calling docs untestable
+- [x] Chunk 02: `/prawduct:pr` Step 2's dirty-tree rule states its precondition
 Context: Plan written 2026-09-09, immediately after PR #769 merged. Both chunks come from that PR's
 own reflection, and the first one's diagnosis was WRONG on the first pass — the session reflection
 blamed the doc-only fast-path (`check-pr-doc-only`), and the actual cause is one predicate over, in
@@ -93,11 +95,14 @@ is the declared suite; record through `prawduct-hook test-evidence record`.
     cost nothing priced. Freshness callers pass the declaration; review callers do not.
 - **Deliverables:**
   - `plugin/lib/coverage_algebra.py` — `affects_test_outcome` gains one clause: markdown under the
-    **instruction roots** (`plugin/`, `documentation/`) is suite-coupled, excluding archived paths.
-    **Scoped, not blanket, and the scope is not a guess** — it is the bound
-    `instruction_surfaces()` already draws in `tests/test_pr_evidence_contract.py`, whose docstring
-    says why: *"documentation/ carries runbooks and requirements that instruct exactly as plugin/
-    does; excluding it would have left the class open at the container boundary."*
+    **instruction roots** the repo declares is suite-coupled.
+    **Scoped, not blanket, and the scope is not a guess** — the roots are the ones
+    `instruction_surfaces()` scans in `tests/test_pr_evidence_contract.py`, whose docstring says why
+    `documentation/` belongs: it *"carries runbooks and requirements that instruct exactly as
+    plugin/ does."* **Not identical to that sweep, and the difference is deliberate:** it also skips
+    record filenames and any `archive/` component, which a prefix test does not. Both skips would
+    only ever move a verdict toward `stale`, which is the safe direction for an authority, so they
+    buy nothing here and are not reimplemented — one predicate stays one predicate.
     The roots are **declared by the repo**, not carried by the framework: `plugin/` exists in no
     product repo, so a hardcoded root is inert everywhere it ships while taxing any product that
     happens to match. `core.suite_coupled_prefixes` reads them from `project-state.yaml` and the
@@ -118,7 +123,8 @@ is the declared suite; record through `prawduct-hook test-evidence record`.
   both; **and a regression pin that reconstructs the incident** — `_test_evidence_tree_valid` over a
   recorded tree and a target tree differing only by a `documentation/**.md` file returns *not valid*.
   That last one is the test whose absence let this ship, so it carries a positive control: it must
-  fail against the pre-change predicate.
+  fail against the pre-change predicate. (Verified by restoring the old predicate and watching all
+  three new pins go red.)
 - **Acceptance criteria:** suite green via the declared command. `test-status` reports `stale` for a
   tree whose only change since the run is a `documentation/**.md` edit, and still reports `current`
   for a priced-exclusion edit — verified by making both and reading the verdict, not by reasoning
