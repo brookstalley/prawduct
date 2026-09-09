@@ -416,9 +416,10 @@ def suite_coupled_prefixes(prawduct_dir: Path) -> tuple[str, ...]:
     typo here can only fail toward running the suite's freshness check as it
     always did, never toward a false-fresh verdict.
 
-    Entries are used as plain path prefixes against repo-relative paths, so a
-    trailing slash matters and is the caller's to write: ``doc/`` must not match
-    ``documentation/``.
+    Entries are plain path prefixes against repo-relative paths, so a trailing
+    slash matters and is the caller's to write: ``doc/`` must not match
+    ``documentation/``. They are NOT restricted to ``.md`` — declaring a root
+    couples every file under it, which is the fail-safe direction.
     """
     state = prawduct_dir / "project-state.yaml"
     try:

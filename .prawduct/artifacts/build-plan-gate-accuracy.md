@@ -9,9 +9,10 @@ depends_on:
 governed_by:
   - artifact: architecture
     dispositions:
+      - "goals and verification bind; prescribed method is advice → conforms, and Chunk 02 is where this plan's own prescribed method was WRONG: its Description named a `diff ⊆ scope` mechanism that does not exist, and the build corrected the plan rather than conforming to it."
       - "authority fails closed; advice fails soft → conforms, and it is the norm that picks the direction of Chunk 01. `test-status` is an AUTHORITY (the PR flow and the Stop gates read its verdict), so the only safe error is toward `stale`. The change adds paths to the suite-coupled set and never removes one, so every verdict it changes moves from `current` to `stale` — a suite run, never a skipped one."
       - "local-first: governance coordination is process-spawn + files + git, no network → conforms; nothing here reaches the network. The tempting fix for the observed incident — a session-start probe asking GitHub whether the integration branch is red — is REFUSED by this norm, and that refusal is why Chunk 01 fixes the local predicate instead. Recorded because the rejected design is the more obvious one."
-      - "every fact has one home → conforms. `affects_test_outcome` remains the single answer to *can this path change what the suite says*; Chunk 01 edits that predicate and nothing else, and Chunk 02 cites `critic_mode._verify_resolutions_fires`'s subset rule rather than restating it."
+      - "every fact has one home → conforms, and Chunk 02 is where it was nearly broken. `affects_test_outcome` remains the single answer to *can this path change what the suite says*; the WHICH-paths half moves to `project-state.yaml`, which is the only place a repo's own layout can live. Chunk 02 originally restated an internal rule it had read from a comment rather than the handler — a second home for a fact that turned out not to exist — and now states only the dispatcher's observable behaviour."
       - "goals and verification bind; prescribed method is advice → conforms; the Deliverables below name call sites read from the code, not guessed."
       - "prawduct guides and reviews; it never implements → inapplicable; both chunks change prawduct's own governance runtime, which is this repo's product."
   - artifact: data-model
@@ -27,7 +28,10 @@ last_validated: 2026-09-09
 
 **Why:** Both defects were reproduced in this session against the live repo rather than reasoned
 about: the red base was inherited and diagnosed to two named tests that predate it by two weeks, and
-the verify-resolutions refusal was read out of `critic_mode.py:478` after the dispatcher printed it.
+and the verify-resolutions refusal was read from the dispatcher's own printed block. **Chunk 02's
+first draft then over-read that**, inferring a subset mechanism from a code comment; the Critic
+caught it and the chunk now claims only what the dispatcher observably does. Confidence is High for
+what shipped, not for that first reading.
 Problem, success and scope are each one sentence.
 
 **Open assumptions / unknowns:** none material. The plan-time assumption — that a blanket `.md`
@@ -119,7 +123,7 @@ is the declared suite; record through `prawduct-hook test-evidence record`.
   by reading, not by assuming the filename). Cases, each asserting the subject is REACHED rather than
   that nothing fired: a `documentation/issues/*.md` path is suite-coupled and NOT judgeable (the two
   predicates must disagree, which is the whole design); `.prawduct/learnings.md` and
-  `.prawduct/change-log.md` are suite-coupled; a governance-protected `.md` stays both; a `.py` stays
+  `.prawduct/change-log.md` are **NOT** suite-coupled, which is the priced exclusion holding; a governance-protected `.md` stays both; a `.py` stays
   both; **and a regression pin that reconstructs the incident** — `_test_evidence_tree_valid` over a
   recorded tree and a target tree differing only by a `documentation/**.md` file returns *not valid*.
   That last one is the test whose absence let this ship, so it carries a positive control: it must
@@ -140,11 +144,11 @@ is the declared suite; record through `prawduct-hook test-evidence record`.
   the suite while this predicate calls them free. That exposure survives this chunk deliberately:
   closing it means overturning the two pins above, whose exclusions were priced and recorded. Raised
   to the owner as a cost question, not decided here.
-- **Visible Costs:** a doc-only edit under `plugin/` or `documentation/` now stales test evidence and
-  buys a suite run (~4 min here).
-  That is a real, recurring cost paid by every governed product, not just this repo, and it is the
-  deliberate trade: the alternative is a gate that reports green over a red tree. CI already pays the
-  same cost on every push by explicit choice.
+- **Visible Costs:** in a repo that DECLARES prefixes, a doc-only edit under one of them stales test
+  evidence and buys a suite run (~4 min here). **No other product pays anything until it declares** —
+  the default is empty, so this is a cost this repo chose for itself rather than one the framework
+  imposes. The trade is deliberate: the alternative is a gate that reports green over a red tree, and
+  CI already pays the same cost on every push by explicit choice.
 - **Critic mode:** chunk
 - **Done when:** tests pass, acceptance criteria verified, `/prawduct:critic` run and blocking
   findings resolved, Status ticked.
@@ -155,23 +159,32 @@ is the declared suite; record through `prawduct-hook test-evidence record`.
   and there is one round instead of two."* Followed literally in this session, it cost the round it
   promised to save: `verify-resolutions` refused with exit 3, reported that it had graded committed
   HEAD rather than the working tree, and named the uncommitted judgeable file as NOT REVIEWED. The
-  guidance is not wrong — it is **unconditional about a conditional mechanism.**
-  `critic_mode._verify_resolutions_fires` requires the uncommitted diff to be a **subset of the prior
-  review's file set** (`critic_mode.py:478`, and `critic_consolidate.begin_review`'s verify arm
-  enforces the same `diff ⊆ scope` contract on the dispatch side). A fix touching a file that review
-  never saw fails the subset check, so the pass cannot anchor on the dirty tree and grades HEAD
-  instead. That is exactly the shape of a fix for a PR-reviewer finding, which is the case Step 2 is
-  written for.
+  guidance is not wrong — it is **unconditional about a conditional outcome.**
+
+  **The plan's first draft named a mechanism that does not exist**, and the Critic caught it: there
+  is no `diff ⊆ scope` refusal in `begin_review`'s verify arm — `_scope_widened` is pure cardinality
+  (`delta > 2 * prior + 5`), which one unseen file never trips — and the symbol it cited was
+  misspelled besides (`_rule_verify_resolutions_fires` is the real one, and it only picks a
+  *recommended* mode). That draft was written from a code comment rather than from the handler,
+  which is the failure this repo's learnings already name. Recorded rather than quietly replaced,
+  because the wrong mechanism is the one a reader reaches for first.
+
+  What is actually true is narrower and observable: the pass may anchor on a prior review and grade
+  **committed HEAD** rather than the working tree, in which case it refuses (exit 3) and names the
+  uncommitted judgeable files as NOT REVIEWED. The remedy is to commit and re-run over the delta —
+  which the refusal itself says.
 - **Depends on:** none — prose about a mechanism Chunk 01 does not change.
 - **Artifacts consumed:** `plugin/skills/critic/review-cycle.md` § Verify-resolutions anchoring and
   demotion (the derivation Step 2 already cites)
 - **Deliverables:**
-  - `plugin/skills/pr/SKILL.md` Step 2 — the dirty-tree sentence gains its precondition and its
-    else-branch: the one-round saving holds when the fix touches only files the prior review already
-    saw; a fix touching a new file must be committed first, and the dispatcher says so itself rather
-    than failing silently. Cites the subset rule by symbol, never by line number — this repo has paid
-    three times for durable prose riding a position that renumbers, and
-    `test_no_governance_prose_cites_a_flow_step_by_NUMBER` exists because of it.
+  - `plugin/skills/pr/SKILL.md` Step 2 — the dirty-tree sentence gains its else-branch: the pass may
+    instead anchor on a prior review and grade committed HEAD, refusing and naming the uncommitted
+    judgeable files, and there the reader commits first and re-runs over the delta. It tells the
+    reader **not to predict which case they are in** — dispatch is seconds and its own answer is
+    authoritative. **It cites no internal rule at all**, which is the honest scope of what was
+    verified, and no line number — this repo has paid three times for durable prose riding a
+    position that renumbers, and `test_no_governance_prose_cites_a_flow_step_by_NUMBER` exists
+    because of it.
   - **No new rule is invented.** The mechanism already behaves correctly and announces itself; only
     the instruction was incomplete. Nothing in `critic_mode.py` or `critic_consolidate.py` changes.
 - **Tests:** the governance-prose contract tests already sweep `plugin/skills/` and must stay green

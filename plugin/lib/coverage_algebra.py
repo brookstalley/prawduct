@@ -166,7 +166,10 @@ def affects_test_outcome(path: str, extra_prefixes: "tuple[str, ...]" = ()) -> b
     free mid-review, and that promise stays true.
 
     ``extra_prefixes`` carries the half that CANNOT ship: path prefixes a repo
-    declares its own non-hermetic tests read (``core.suite_coupled_prefixes``,
+    declares its own non-hermetic tests read. **Prefixes, not a prose rule** —
+    they are not restricted to ``.md``, so declaring a root couples every file
+    under it. That is the fail-safe direction (a superset can only cost a suite
+    run) and it keeps the clause one comparison rather than two (``core.suite_coupled_prefixes``,
     from ``project-state.yaml``). Which directories hold prose a test scans is a
     fact about one repo's layout — this repo's guards sweep ``documentation/``
     and ``plugin/`` markdown, and a design doc merged straight to ``develop``

@@ -1066,9 +1066,11 @@ def check_pr_doc_only(project_dir: Path) -> int:
     are deliberately NOT passed here.** They answer a freshness question — re-run
     the suite — and forwarding them would make a documentation-only PR buy a full
     cumulative Critic and PR review, a review cost nothing prices. The freshness
-    gate (``gates._test_evidence_tree_valid``) is the caller that passes them — the `/prawduct:pr` skill uses this to skip the cumulative-
-    Critic and PR-reviewer gates, mirroring the session-end stop-hook
-    carveout (`gates.session_changes_all_non_judgeable`) at the PR boundary.
+    gate (``gates._test_evidence_tree_valid``) is the caller that passes them.
+
+    The `/prawduct:pr` skill uses this to skip the cumulative-Critic and
+    PR-reviewer gates, mirroring the session-end stop-hook carveout
+    (`gates.session_changes_all_non_judgeable`) at the PR boundary.
     The stop hook's PR-review evidence gate (Gate 3) consults the same
     helper so a doc-only PR doesn't get blocked at session end for missing
     evidence — symmetric behavior across both gates.
