@@ -26,7 +26,7 @@ Re-verified against the current tree (2026-09-08):
   different, still-dormant concept blocked on the `promoted` GH-Issues gap (#529), not this one.
 - **`/prawduct:pr` already names #712 as its own missing backstop.** Merge Flow's "Close the backlog
   items this PR resolves" step
-  (`plugin/skills/pr/SKILL.md:165`) and its "Honest limit" note (`:167`) point here by number: "If you
+  (`plugin/skills/pr/SKILL.md`, Merge Flow) and its "Honest limit" note point here by number: "If you
   merge through the GitHub UI, or the session ends at the merge, nothing downstream notices the close
   never fired… tracked as #712."
 - **`closed_by` is not a cache column.** `cachequery.py`'s `_FULL_COLUMNS`

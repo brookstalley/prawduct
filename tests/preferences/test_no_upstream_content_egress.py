@@ -1071,6 +1071,37 @@ class TestTheDropBoxReplacementIsLive:
             + "\n  - ".join(offenders)
         )
 
+    def test_no_command_block_reads_a_field_through_a_cross_call_shell_variable(self):
+        """The scratch path must be one the reader holds, not one a variable carries.
+
+        A round fixing the undefined `<scratch>` placeholder replaced it with
+        `SCRATCH="$(mktemp -d)"`, which reads as working code and is not: the
+        Bash tool does not persist env vars between calls, and preview and send
+        are necessarily separate ones. By the send `$SCRATCH` is empty, every
+        `$(cat …)` reads nothing, and `check_payload_inputs` bans only newlines
+        and fences while standing consent skips the digest — so an empty-bodied
+        issue files into a repo where it cannot be retitled or deleted.
+
+        The sibling above pins that the fields arrive via `$(cat …)`; it is
+        satisfied by a `$(cat …)` reading a path that does not exist. This pins
+        the other half. Asserted over every line for the same reason: the skill
+        shows the command twice and a one-block fix has already been shipped once.
+        """
+        offenders = [
+            f"{n}: {line.strip()}"
+            for n, line in enumerate(self.SKILL.read_text(encoding="utf-8").splitlines(), 1)
+            if any(f"--{f} " in line for f in ("title", "component", "body"))
+            and "$(cat" in line
+            and "$" in line.split("$(cat", 1)[1]
+        ]
+
+        assert not offenders, (
+            "a command block reads a composed field through a shell variable. Variables do "
+            "not survive between tool calls, so the send reads an empty path and files an "
+            "empty issue irreversibly. Name a path the reader pasted:\n  - "
+            + "\n  - ".join(offenders)
+        )
+
     def test_the_skill_names_no_drop_box_at_all(self):
         """Was "the write, not the mention" while the drop-box still held
         untriaged reports and the receiving-side section had to say so. The

@@ -106,13 +106,22 @@ one indents it instead.
 **Write all three to scratch files, once — outside the repo.** This skill runs in
 a governed product's clone, and the plugin writes nothing into one except its own
 `.prawduct/` state; a report drafted into the working tree is untracked noise at
-best and a committed leak at worst. Make one temp directory and use it for all
-three — the commands below assume it — then discard it once the send in step 5
-succeeds (`rm -rf "$SCRATCH"`), because nothing downstream reads those files:
+best and a committed leak at worst. Make one temp directory and print its path:
 
 ```
-SCRATCH="$(mktemp -d)"
+mktemp -d
 ```
+
+**Paste that printed absolute path in place of `<scratch-dir>` everywhere below —
+do not carry a shell variable.** A variable does not survive between tool calls,
+and the preview and the send are necessarily separate ones, so by the send it
+would be empty and each `$(cat …)` would read nothing. Nothing downstream catches
+that: the flags are still present, `check_payload_inputs` bans only newlines and
+prawduct fences, and under standing consent the digest is never compared — so you
+would file an empty-bodied issue into a repo where you cannot retitle or delete
+it. A path you paste is a value you hold; a variable is not.
+
+Delete the directory once the send succeeds; nothing downstream reads those files.
 
 Writing them at all has two reasons, and they are different.
 
@@ -131,9 +140,9 @@ a file closes it:
 
 ```
 prawduct-hook backlog file-upstream \
-  --component "$(cat "$SCRATCH"/component.txt)" \
-  --title     "$(cat "$SCRATCH"/title.txt)" \
-  --body      "$(cat "$SCRATCH"/report.md)"
+  --component "$(cat <scratch-dir>/component.txt)" \
+  --title     "$(cat <scratch-dir>/title.txt)" \
+  --body      "$(cat <scratch-dir>/report.md)"
 ```
 
 ## 3. Preview the exact outbound payload
@@ -208,9 +217,9 @@ Repeat the command with the digest the preview printed, and **the same
 
 ```
 prawduct-hook backlog file-upstream \
-  --component "$(cat "$SCRATCH"/component.txt)" \
-  --title     "$(cat "$SCRATCH"/title.txt)" \
-  --body      "$(cat "$SCRATCH"/report.md)" \
+  --component "$(cat <scratch-dir>/component.txt)" \
+  --title     "$(cat <scratch-dir>/title.txt)" \
+  --body      "$(cat <scratch-dir>/report.md)" \
   --approve   sha256:<the digest from step 3>
 ```
 
