@@ -108,13 +108,34 @@ _VALID_ARG_MODES = frozenset({
     "verify-resolutions",
 })
 
-# Matches a chunk's ``- **Critic mode:** <value>`` build-plan field.
-# Mirrors ``bin/prawduct-hook``'s ``_BUILD_PLAN_TYPE_RE`` shape (leading
-# list-item / bold markers tolerated). The value token is hyphen-aware so
-# ``verify-resolutions`` is captured whole.
-_BUILD_PLAN_CRITIC_MODE_RE = re.compile(
-    r"^[\s\-\*]*\*\*Critic mode:\*\*\s*([A-Za-z][\w\-]*)"
-)
+# Matches a chunk's ``**Critic mode:** <value>`` build-plan field. The value
+# token is hyphen-aware so ``verify-resolutions`` is captured whole, and its
+# opening backtick is optional — the closing one falls outside the token class.
+#
+# Unanchored, and applied with ``.search``, because the field is not reliably
+# the first thing on its line. Authors compose chunk headers
+# (``**Type:** code · **Critic mode:** final``) and backtick the value
+# (``**Critic mode:** `chunk` ``); an anchored read finds neither, and finding
+# nothing is indistinguishable from a chunk that declares no mode — a
+# plan-mandated `final` runs as an inferred `chunk` with no one told. That
+# silent demotion is the one thing this field's reader exists to prevent.
+#
+# The cost of searching is that a line merely *discussing* the field parses as
+# declaring it. Fail-open absorbs it: the worst case is a mode the author can
+# see named in the rationale, not a review that did not happen.
+_BUILD_PLAN_CRITIC_MODE_RE = re.compile(r"\*\*Critic mode:\*\*\s*`?([A-Za-z][\w\-]*)")
+
+# The same field with something after it that no mode token can be read out of
+# — ``**Critic mode:** (inferred — `chunk`)``, say. Silence is not available
+# here: it would say "this chunk declares no mode", and the author wrote one.
+# Blank stays silent, since a field with nothing after it carries no intent to
+# contradict.
+_BUILD_PLAN_CRITIC_MODE_FIELD_RE = re.compile(r"\*\*Critic mode:\*\*\s*(\S.*?)\s*$")
+
+#: How much of an unparseable value the note quotes. The field takes a
+#: one-word token, so anything past this is prose that will not help the author
+#: find their own line any faster.
+_UNPARSEABLE_VALUE_QUOTE_LIMIT = 60
 
 
 def _unrecognized_mode_note(token: str) -> str:
@@ -897,10 +918,19 @@ def _critic_mode_for_chunk(
     if buildplan_refs.chunk_section_gap(chunk_id, section):
         return ChunkModeRead(None, None)
     for _line_num, line in section.lines:
-        m = _BUILD_PLAN_CRITIC_MODE_RE.match(line)
+        m = _BUILD_PLAN_CRITIC_MODE_RE.search(line)
         if m:
             token = m.group(1)
             if token in _VALID_ARG_MODES:
                 return ChunkModeRead(token, None)
             return ChunkModeRead(None, None, token)
+        # No token, but the field is here carrying *something*. Reported for the
+        # same reason a typo'd mode is: the author declared an intent and it is
+        # not being honored, and the only way they learn that today is by
+        # noticing the review was shallower than they asked for.
+        field = _BUILD_PLAN_CRITIC_MODE_FIELD_RE.search(line)
+        if field:
+            return ChunkModeRead(
+                None, None, field.group(1)[:_UNPARSEABLE_VALUE_QUOTE_LIMIT]
+            )
     return ChunkModeRead(None, None)

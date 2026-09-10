@@ -2075,6 +2075,27 @@ def test_chunk_mode_read_defaults_unrecognized_so_existing_callers_are_unchanged
     assert read.unrecognized is None
 
 
+def _repo_with_mode_field(tmp_path: Path, field_line: str) -> Path:
+    """A one-chunk plan whose chunk section carries ``field_line`` verbatim."""
+    _init_repo(tmp_path)
+    _write(tmp_path, "README.md", "x\n")
+    _commit(tmp_path, "initial")
+    prawduct = tmp_path / ".prawduct"
+    (prawduct / "artifacts").mkdir(parents=True, exist_ok=True)
+    (prawduct / "project-state.yaml").write_text(
+        "active_build_plan: artifacts/build-plan.md\n"
+    )
+    (prawduct / "artifacts" / "build-plan.md").write_text(
+        "# Build Plan\n\n## Status\n\n- [ ] Chunk 01: a thing\n\n"
+        "### Chunk 01: a thing\n\n"
+        "- **Description:** work\n"
+        f"{field_line}"
+        "- **Done when:** it is done\n"
+    )
+    _write(tmp_path, "src/work.py", "# chunk work\n")
+    return tmp_path
+
+
 class TestUnrecognizedCriticModeIsAnnounced:
     """The emission, not just the wording.
 
@@ -2087,29 +2108,10 @@ class TestUnrecognizedCriticModeIsAnnounced:
     ordinary plans and train its reader to ignore it.
     """
 
-    def _repo_with_mode_field(self, tmp_path: Path, field_line: str) -> Path:
-        _init_repo(tmp_path)
-        _write(tmp_path, "README.md", "x\n")
-        _commit(tmp_path, "initial")
-        prawduct = tmp_path / ".prawduct"
-        (prawduct / "artifacts").mkdir(parents=True, exist_ok=True)
-        (prawduct / "project-state.yaml").write_text(
-            "active_build_plan: artifacts/build-plan.md\n"
-        )
-        (prawduct / "artifacts" / "build-plan.md").write_text(
-            "# Build Plan\n\n## Status\n\n- [ ] Chunk 01: a thing\n\n"
-            "### Chunk 01: a thing\n\n"
-            "- **Description:** work\n"
-            f"{field_line}"
-            "- **Done when:** it is done\n"
-        )
-        _write(tmp_path, "src/work.py", "# chunk work\n")
-        return tmp_path
-
     def test_an_unrecognized_value_emits_one_line_and_inference_still_runs(
         self, tmp_path: Path, capsys
     ):
-        repo = self._repo_with_mode_field(tmp_path, "- **Critic mode:** cumluative\n")
+        repo = _repo_with_mode_field(tmp_path, "- **Critic mode:** cumluative\n")
 
         mode, rationale = infer_mode(repo, None)
 
@@ -2125,7 +2127,7 @@ class TestUnrecognizedCriticModeIsAnnounced:
         self, tmp_path: Path, capsys
     ):
         """The natural trap: `cumulative-final` is a Type that reads like a mode."""
-        repo = self._repo_with_mode_field(
+        repo = _repo_with_mode_field(
             tmp_path, "- **Critic mode:** cumulative-final\n"
         )
 
@@ -2138,7 +2140,7 @@ class TestUnrecognizedCriticModeIsAnnounced:
     def test_a_recognized_value_is_honoured_and_says_nothing(
         self, tmp_path: Path, capsys
     ):
-        repo = self._repo_with_mode_field(tmp_path, "- **Critic mode:** cumulative\n")
+        repo = _repo_with_mode_field(tmp_path, "- **Critic mode:** cumulative\n")
 
         mode, rationale = infer_mode(repo, None)
 
@@ -2147,7 +2149,7 @@ class TestUnrecognizedCriticModeIsAnnounced:
         assert "NOTE: chunk's `Critic mode:`" not in capsys.readouterr().err
 
     def test_an_absent_field_says_nothing(self, tmp_path: Path, capsys):
-        repo = self._repo_with_mode_field(tmp_path, "")
+        repo = _repo_with_mode_field(tmp_path, "")
 
         infer_mode(repo, None)
 
@@ -2155,11 +2157,106 @@ class TestUnrecognizedCriticModeIsAnnounced:
 
     def test_a_blank_field_says_nothing(self, tmp_path: Path, capsys):
         """Blank carries no intent either — only a typed value does."""
-        repo = self._repo_with_mode_field(tmp_path, "- **Critic mode:**\n")
+        repo = _repo_with_mode_field(tmp_path, "- **Critic mode:**\n")
 
         infer_mode(repo, None)
 
         assert "NOTE: chunk's `Critic mode:`" not in capsys.readouterr().err
+
+
+class TestTheModeFieldIsFoundWhereAuthorsWriteIt:
+    """The field binds in the forms real build plans use, not one canonical form.
+
+    Every case here is copied from a plan in this repo. Each one used to read as
+    *no field at all*, and that is worse than a wrong answer: the override is
+    what a plan uses to demand a heavier review than inference would pick, so
+    losing it downgrades the review silently — no note, no rationale, nothing but
+    a pass that covered less than the author asked for.
+
+    ``cumulative`` is the pinned value throughout on purpose. ``final`` is also
+    what an unreadable plan falls back to, so a test asserting ``final`` cannot
+    tell "the field was honoured" from "the field was lost and the fail-safe
+    caught it" — the exact confusion these cases are about.
+    """
+
+    def test_a_field_sharing_its_line_with_another_binds(
+        self, tmp_path: Path, capsys
+    ):
+        """Chunk headers compose fields on one line, separated by `·`."""
+        repo = _repo_with_mode_field(
+            tmp_path, "- **Type:** doc-only · **Critic mode:** cumulative\n"
+        )
+
+        mode, rationale = infer_mode(repo, None)
+
+        assert mode == "cumulative"
+        assert rationale.startswith("plan-override")
+        assert "NOTE: chunk's `Critic mode:`" not in capsys.readouterr().err
+
+    def test_a_backticked_value_binds(self, tmp_path: Path, capsys):
+        repo = _repo_with_mode_field(
+            tmp_path, "- **Critic mode:** `cumulative`\n"
+        )
+
+        mode, rationale = infer_mode(repo, None)
+
+        assert mode == "cumulative"
+        assert rationale.startswith("plan-override")
+        assert "NOTE: chunk's `Critic mode:`" not in capsys.readouterr().err
+
+    def test_a_wholly_backticked_field_binds(self, tmp_path: Path, capsys):
+        repo = _repo_with_mode_field(
+            tmp_path, "- `**Critic mode:** cumulative`\n"
+        )
+
+        mode, rationale = infer_mode(repo, None)
+
+        assert mode == "cumulative"
+        assert rationale.startswith("plan-override")
+        assert "NOTE: chunk's `Critic mode:`" not in capsys.readouterr().err
+
+    def test_a_value_trailed_by_its_rationale_binds(self, tmp_path: Path):
+        """Authors justify the override inline; the token still ends at the space."""
+        repo = _repo_with_mode_field(
+            tmp_path,
+            "- **Depends on:** —  ·  **Critic mode:** cumulative (keystone chunk)\n",
+        )
+
+        mode, rationale = infer_mode(repo, None)
+
+        assert mode == "cumulative"
+        assert rationale.startswith("plan-override")
+
+    def test_a_value_no_token_can_be_read_out_of_says_so(
+        self, tmp_path: Path, capsys
+    ):
+        """The declared-but-unhonoured case, which silence would hide entirely."""
+        repo = _repo_with_mode_field(
+            tmp_path, "- **Critic mode:** (inferred — `chunk`)\n"
+        )
+
+        mode, rationale = infer_mode(repo, None)
+
+        err = capsys.readouterr().err
+        assert err.count("NOTE: chunk's `Critic mode:`") == 1, err
+        assert "inferred" in err
+        assert "nothing was skipped" in err
+        assert mode in critic_mode._VALID_ARG_MODES
+        assert "plan-override" not in rationale
+
+    def test_an_unparseable_value_is_quoted_only_as_far_as_it_helps(
+        self, tmp_path: Path, capsys
+    ):
+        """A whole paragraph in the field is still a pointer, not a transcript."""
+        repo = _repo_with_mode_field(
+            tmp_path, f"- **Critic mode:** ({'x' * 500})\n"
+        )
+
+        infer_mode(repo, None)
+
+        err = capsys.readouterr().err
+        assert "NOTE: chunk's `Critic mode:`" in err
+        assert "x" * 500 not in err
 
 
 class TestExplicitTokenReachesTheCleanTreeRedirect:

@@ -3,6 +3,35 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-09-10: a build plan's `Critic mode:` binds in the forms authors write
+
+<!-- prawduct: type=fix | scope=critic-mode-field-parse -->
+
+The plan-level `Critic mode:` override was read line-anchored and unbackticked, so two forms real
+build plans use were invisible to it: the field sharing a line (`**Type:** doc-only · **Critic
+mode:** final`) and a backticked value (``**Critic mode:** `chunk` ``). Neither raised anything —
+`_unrecognized_mode_note` fires only for a token that matched and is not a mode, and a non-match
+emits nothing — so a plan-mandated `final` ran as an inferred `chunk` with a rationale that never
+mentioned the plan. That is the silent demotion the field's reader exists to prevent, reached
+through a different door, and its blast radius is every build plan in every governed product,
+where the symptom is a shallower review that looks like a normal one.
+
+The read is now unanchored, `.search`-applied, with an optional backtick before the value. The
+cost is that a line merely discussing the field parses as declaring it; fail-open absorbs that,
+because the worst case is a mode the author can see named in the rationale rather than a review
+that did not happen.
+
+**The missing signal was the larger half of the defect.** A field carrying something no mode token
+can be read out of — `**Critic mode:** (inferred — `chunk`)` — now earns the same one-line NOTE a
+typo'd mode does, quoted to the first 60 characters. Silence there said *this chunk declares no
+mode*, and the author had written one. Absent and blank stay silent, unchanged: they carry no
+intent to contradict.
+
+`buildplan_refs`'s `**Type:**` and `**Trivial because:**` readers still match line-anchored and
+carry the same defect. Left alone deliberately — broadening them would let a mid-line `**Type:**
+trivial` start binding, which lightens a gate rather than restoring one, and that direction is an
+owner's call rather than a bug fix's.
+
 ## 2026-09-09: the review loop gets a stopping rule
 
 <!-- prawduct: type=feat | scope=review-loop-termination -->
