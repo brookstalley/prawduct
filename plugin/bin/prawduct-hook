@@ -4615,7 +4615,7 @@ def cmd_archive_change_log(project_dir: Path, args: list[str] | None = None) -> 
         return 2
 
     archive = _change_log_archive()
-    change_log_path = project_dir / archive.change_log_mod.CHANGE_LOG_REL_PATH
+    change_log_path = project_dir / archive.CHANGE_LOG_REL_PATH
     history_path = project_dir / archive.HISTORY_REL_PATH
 
     if keep_minor_arg is not None:
@@ -4666,40 +4666,55 @@ def cmd_archive_change_log(project_dir: Path, args: list[str] | None = None) -> 
         return 1
     new_live, new_history, moved = result.new_live, result.new_history, result.moved
 
+    saved = (len(live_content) - len(new_live)) / 1024
+    written = False
+    if moved and apply_changes:
+        # Both files or neither: entries MOVE between them, so a half-applied
+        # pair holds every entry twice and re-running duplicates them into an
+        # append-only record.
+        _core().write_all_or_none(
+            [(history_path, new_history), (change_log_path, new_live)]
+        )
+        written = True
+
     if json_output:
+        # Reported AFTER the write, so `applied` says what happened rather than
+        # what was asked for. It read the flag, so a failed write printed
+        # `"applied": true` on its way to raising.
         print(
             json.dumps(
                 {
                     "keep_from": str(keep_from),
                     "moved": len(moved),
-                    "applied": apply_changes,
+                    "applied": written,
                     "titles": [entry.title for entry, _text in moved],
                 },
                 indent=2,
             )
         )
+        return 0
+
     if not moved:
-        if not json_output:
-            print(f"nothing to archive: every entry is release-pending or on v{keep_from}.x")
-        return 0
-
-    if not apply_changes:
-        if not json_output:
-            saved = (len(live_content) - len(new_live)) / 1024
-            print(
-                f"would archive {len(moved)} entr(ies) below v{keep_from}.0 "
-                f"({saved:.0f}KB) into {archive.HISTORY_REL_PATH} — re-run with --apply"
-            )
-        return 0
-
-    history_path.write_text(new_history, encoding="utf-8")
-    change_log_path.write_text(new_live, encoding="utf-8")
-    if not json_output:
-        saved = (len(live_content) - len(new_live)) / 1024
+        # Names all three ways an entry stays, because a reader who expected a
+        # move needs to know which one caught theirs — an unparseable `release=`
+        # is the one they can act on.
         print(
-            f"archived: {len(moved)} entr(ies) below v{keep_from}.0 "
-            f"({saved:.0f}KB) -> {archive.HISTORY_REL_PATH}"
+            f"nothing to archive: every entry is release-pending, on v{keep_from}.x, "
+            "or carries a release= this reader will not parse"
         )
+        return 0
+
+    if not written:
+        print(
+            f"would archive {len(moved)} entr(ies) below v{keep_from}.0 "
+            f"({saved:.0f}KB) into {archive.HISTORY_REL_PATH} — re-run with --apply"
+        )
+        return 0
+
+    print(
+        f"archived: {len(moved)} entr(ies) below v{keep_from}.0 "
+        f"({saved:.0f}KB) -> {archive.HISTORY_REL_PATH}"
+    )
     return 0
 
 

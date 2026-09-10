@@ -36,6 +36,19 @@ from .release_readiness import (
     unclassifiable_pending_entries,
 )
 
+
+def _release_verification():
+    """Lazy — `release_verification` imports `json`/`tomllib` machinery this
+    module needs only to answer which release line is open."""
+    from . import release_verification  # noqa: PLC0415
+
+    return release_verification
+
+#: The two files this module moves entries between, both named here so a caller
+#: reaches them by one route. The hook used to read the live path through this
+#: module's private import alias for `change_log`, which is a second way in to a
+#: fact with a home.
+CHANGE_LOG_REL_PATH = change_log_mod.CHANGE_LOG_REL_PATH
 HISTORY_REL_PATH = ".prawduct/change-log-history.md"
 
 #: Leading text of the history file, written once when it is created. It says
@@ -52,10 +65,12 @@ HISTORY_HEADER = """# Change Log — History
      holds release-pending work and the current release line. -->
 """
 
-#: A release value this module is willing to act on. Anything else — a
-#: placeholder, a range, an empty string — is refused rather than guessed at,
-#: because guessing wrong here moves an entry nobody meant to move.
-_VERSION_RE = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$")
+#: What counts as a shipped ``release=`` — **the change-log's own definition**,
+#: reused rather than restated. A second regex here accepted `3.2.0` and
+#: `v3.2.0+b`, which `validate_change_log_tags` rejects: the archiver would have
+#: moved entries the release gate calls malformed, on the strength of its own
+#: laxer reading of a value neither of them owns.
+_RELEASE_VALUE_RE = change_log_mod.RELEASE_VALUE_RE
 
 
 @dataclass(frozen=True)
@@ -97,24 +112,51 @@ def release_minor_line(release_value: object) -> MinorLine | None:
     """
     if not isinstance(release_value, str):
         return None
-    if not _VERSION_RE.match(release_value.strip()):
+    if not _RELEASE_VALUE_RE.match(release_value.strip()):
         return None
     return parse_minor_line(release_value)
 
 
 def current_minor_line(project_dir: Path) -> MinorLine | None:
-    """The line this repo is currently on, read from ``plugin/VERSION``.
+    """The release line this product is currently on, or ``None``.
 
-    The same file ``check-releasability`` falls back to, and read for the same
-    reason: it is prawduct's version source of truth. A ``-dev`` suffix is fine
-    here where it is a poor answer there — this asks which LINE is open, and
-    ``3.4.1-dev.2`` answers that exactly.
+    **Read from the product's own ``release_version_files:`` declaration**, not
+    from a layout. This module ships to every governed product and none of them
+    has a ``plugin/`` directory; reading ``plugin/VERSION`` here would make the
+    documented default refuse in every repo but this one, while naming a path
+    that repo does not contain. Which files carry the version is the product's
+    to state — the same rule ``release_verification`` follows, through the same
+    reader, so a product declares it once.
+
+    Prawduct's own layout remains as a labelled fallback for a product that has
+    declared nothing, and it is a guess: it can supply a default, and a wrong
+    guess here costs a dry run rather than a bad write, because nothing is
+    archived without ``--apply``.
+
+    A ``-dev`` suffix is fine and is the common case — this asks which LINE is
+    open, and ``3.4.1-dev.2`` answers that exactly.
     """
+    verification = _release_verification()
     try:
-        raw = (project_dir / "plugin" / "VERSION").read_text(encoding="utf-8").strip()
+        state_text = (project_dir / ".prawduct" / "project-state.yaml").read_text(
+            encoding="utf-8"
+        )
     except OSError:
-        return None
-    return parse_minor_line(raw)
+        state_text = ""
+    declared = verification._read_declaration(state_text) if state_text else None
+    specs = declared if declared else list(verification._FALLBACK_VERSION_FILES)
+
+    for spec in specs:
+        try:
+            content = (project_dir / spec.path).read_text(encoding="utf-8")
+        except OSError:
+            continue
+        read = verification._read_version(spec, content)
+        if read.value:
+            line = parse_minor_line(read.value)
+            if line is not None:
+                return line
+    return None
 
 
 def split_entries(content: str) -> tuple[str, list[tuple[object, str]]]:
@@ -168,24 +210,43 @@ def select_for_archive(
 
 
 def pending_fingerprint(content: str) -> tuple:
-    """What must not change across an archive run.
+    """The release-pending sets a log yields — computed by the gate's own readers.
 
-    The release-pending set, the unclassifiable-pending subset, and the tag
-    validation verdict — computed from the same functions the release gate uses,
-    never re-derived here. Comparing this before and after is what turns "only
-    shipped entries move" from a claim in a docstring into something the command
-    refuses to violate.
+    Two sets, both keyed by title, and both must be IDENTICAL across a run:
+    an entry leaving either is work that stops being release-pending with no
+    error anywhere downstream.
+
+    Tag diagnostics are deliberately not here; :func:`new_diagnostics` carries
+    them, and the difference is direction. A warning attached to an entry that
+    legitimately archives leaves with it, so requiring equality would refuse a
+    correct run — and prawduct's own log contains that case: a 2026-08-13 entry
+    carries two tag lines and a `release=`, so it becomes eligible at the first
+    3.5 release and would have refused the archiver on its own corpus.
     """
     entries = change_log_mod.parse_change_log(content)
     pending = tuple(sorted(e.title for e in release_pending_entries(entries)))
     unclassifiable = tuple(
         sorted(e.title for e in unclassifiable_pending_entries(entries))
     )
-    errors, warnings = change_log_mod.validate_change_log_tags(entries)
-    return pending, unclassifiable, tuple(errors), tuple(warnings)
+    return pending, unclassifiable
 
 
-def compose(
+def new_diagnostics(before_content: str, after_content: str) -> list[str]:
+    """Tag errors/warnings the run would CREATE, which is the direction that matters.
+
+    Diagnostics disappearing is expected — they ride the entries that archive.
+    A diagnostic appearing means the rewrite changed how the remaining log
+    parses, which is the one thing a move of whole entries must never do.
+    """
+    def _diags(content: str) -> set[str]:
+        entries = change_log_mod.parse_change_log(content)
+        errors, warnings = change_log_mod.validate_change_log_tags(entries)
+        return set(errors) | set(warnings)
+
+    return sorted(_diags(after_content) - _diags(before_content))
+
+
+def _compose(
     live_content: str,
     history_content: str | None,
     keep_from: MinorLine,
@@ -215,11 +276,13 @@ def compose(
 class ArchiveResult:
     """What an archive run WOULD do, and whether it is allowed to.
 
-    The decision lives here rather than in the command for one reason: a guard
-    that only exists inside a CLI branch can only be tested through a
-    subprocess, and the failure it guards against — a selection that also takes
-    release-pending entries — cannot be provoked through one. So the command
-    prints this and the tests provoke it.
+    The decision lives here rather than in the command because the state it
+    guards against — a selection that also takes release-pending entries — is
+    unreachable from any input, by construction: `select_for_archive` is what
+    makes it so. A guard living inside a CLI branch could then only be reached
+    across a subprocess boundary that no fixture can drive, so it would ship
+    ungraded. Here the tests provoke it directly, and a second test drives the
+    command in-process to prove it ACTS on the refusal rather than printing it.
 
     ``refused_titles`` non-empty means write NOTHING. It is not a warning to
     print beside a successful write; the entries it names are work that would
@@ -244,14 +307,16 @@ def archive_or_refuse(
     rule against itself is how a selection bug proves its own correctness; this
     asks the release gate's own readers whether anything it can see has moved.
     """
-    new_live, new_history, moved = compose(live_content, history_content, keep_from)
+    new_live, new_history, moved = _compose(live_content, history_content, keep_from)
     before = pending_fingerprint(live_content)
     after = pending_fingerprint(new_live)
-    if before == after:
-        return ArchiveResult(new_live, new_history, moved, [])
-    lost = sorted(set(before[0]) - set(after[0]))
-    # A fingerprint can differ without an entry LEAVING the pending set — a tag
-    # validation warning could change, say. Both are refusals: the invariant is
-    # that the gate's whole answer is untouched, and a run that alters any part
-    # of it is a run nobody sanctioned.
-    return ArchiveResult(new_live, new_history, moved, lost or ["<pending-set changed>"])
+    refused: list[str] = []
+    if before != after:
+        # Named individually where they can be — the operator's next question is
+        # always "which entry" — and reported as a set change when the two
+        # differ in a way no title diff explains.
+        refused = sorted(set(before[0]) - set(after[0])) or ["<pending-set changed>"]
+    refused.extend(
+        f"new diagnostic: {d}" for d in new_diagnostics(live_content, new_live)
+    )
+    return ArchiveResult(new_live, new_history, moved, refused)

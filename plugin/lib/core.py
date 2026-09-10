@@ -17,6 +17,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
+from collections.abc import Sequence
 from typing import NamedTuple
 
 # The plugin root: ``<root>/lib/core.py`` → ``<root>``. The previous
@@ -171,6 +172,50 @@ def atomic_write_text(
     with tmp.open("w", encoding=encoding, newline=newline) as handle:
         handle.write(text)
     os.replace(tmp, path)
+
+
+def write_all_or_none(writes: "Sequence[tuple[Path, str]]") -> None:
+    """Write every ``(path, text)`` pair, or leave every one of them untouched.
+
+    :func:`atomic_write_text` makes ONE file's write all-or-nothing. It says
+    nothing about two, and a command that rewrites a pair of files has a failure
+    mode neither call can see: the first write lands, the second raises, and the
+    two files now disagree in a way no reader can detect. Where the pair is a
+    record and its archive — entries MOVED from one to the other — that state
+    holds every entry twice, and the natural recovery (run it again) duplicates
+    them into an append-only file.
+
+    Each write still goes through the atomic writer, so no reader ever sees a
+    partial file. What this adds is the rollback ACROSS them: prior contents are
+    captured first, and a failure restores every file already written — deleting
+    the ones that did not exist before — then re-raises so the caller's failure
+    policy is unchanged.
+
+    Rollback is best-effort by construction: if restoring also fails there is
+    nothing left to try, and the original exception is the one worth raising, so
+    a restore failure is suppressed rather than masking it.
+    """
+    written: list[tuple[Path, str | None]] = []
+    try:
+        for path, text in writes:
+            prior = None
+            if path.exists():
+                try:
+                    prior = path.read_text(encoding="utf-8")
+                except OSError:
+                    prior = None
+            atomic_write_text(path, text)
+            written.append((path, prior))
+    except Exception:
+        for path, prior in reversed(written):
+            try:
+                if prior is None:
+                    path.unlink(missing_ok=True)
+                else:
+                    atomic_write_text(path, prior)
+            except OSError:  # prawduct:allow prawduct/broad-except -- see docstring
+                pass
+        raise
 
 
 # Optional project-state pointer naming the active build plan (relative to the

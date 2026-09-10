@@ -67,6 +67,27 @@ def _run_hook(project: Path, *args: str) -> subprocess.CompletedProcess:
     )
 
 
+def _load_hook():
+    """`prawduct-hook` as a module.
+
+    The script has a shebang and no `.py` extension; SourceFileLoader is how the
+    rest of the suite reaches its internals. Needed here because the refusal
+    this command prints cannot be provoked across a subprocess boundary — the
+    selection rule makes the state unreachable from any input, which is the
+    point of the rule and the reason the branch would otherwise ship ungraded.
+    """
+    import importlib.machinery
+    import importlib.util
+
+    loader = importlib.machinery.SourceFileLoader(
+        "prawduct_hook_archive", str(_HOOK_PATH)
+    )
+    spec = importlib.util.spec_from_loader("prawduct_hook_archive", loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
 def _live(project: Path) -> str:
     return (project / ".prawduct" / "change-log.md").read_text(encoding="utf-8")
 
@@ -184,10 +205,12 @@ class TestPendingSetIsPreserved:
             _entry("2026-02-01: pending", "scope=b"),
             _entry("2026-02-02: untagged", None),
         )
-        new_live, _h, moved = change_log_archive.compose(
+        result = change_log_archive.archive_or_refuse(
             content, None, change_log_archive.MinorLine(3, 4)
         )
+        new_live, moved = result.new_live, result.moved
         assert len(moved) == 1
+        assert result.refused_titles == []
         assert change_log_archive.pending_fingerprint(
             content
         ) == change_log_archive.pending_fingerprint(new_live)
@@ -198,9 +221,9 @@ class TestPendingSetIsPreserved:
             _entry("2026-01-01: shipped", "scope=a | release=v3.3.4"),
             _entry("2026-02-01: pending", "scope=b"),
         )
-        new_live, _h, _m = change_log_archive.compose(
+        new_live = change_log_archive.archive_or_refuse(
             content, None, change_log_archive.MinorLine(3, 4)
-        )
+        ).new_live
         titles = [
             e.title
             for e in release_pending_entries(change_log.parse_change_log(new_live))
@@ -220,9 +243,10 @@ class TestNothingIsLost:
             _entry("2026-01-02: b", "scope=b | release=v3.3.0"),
             _entry("2026-02-01: c", "scope=c"),
         )
-        new_live, new_history, _m = change_log_archive.compose(
+        result = change_log_archive.archive_or_refuse(
             content, None, change_log_archive.MinorLine(3, 4)
         )
+        new_live, new_history = result.new_live, result.new_history
         titles = {e.title for e in change_log.parse_change_log(content)}
         after = {e.title for e in change_log.parse_change_log(new_live)} | {
             e.title for e in change_log.parse_change_log(new_history)
@@ -232,22 +256,22 @@ class TestNothingIsLost:
     def test_a_moved_entry_keeps_its_tag_line(self):
         """History is a redirect: an entry arrives whole, tag included."""
         content = _log(_entry("2026-01-01: a", "scope=a | release=v3.2.0"))
-        _live_after, new_history, _m = change_log_archive.compose(
+        new_history = change_log_archive.archive_or_refuse(
             content, None, change_log_archive.MinorLine(3, 4)
-        )
+        ).new_history
         moved = change_log.parse_change_log(new_history)
         assert moved[0].tags["release"] == "v3.2.0"
         assert moved[0].tags["scope"] == "a"
 
     def test_a_second_run_appends_rather_than_replacing(self):
         first = _log(_entry("2026-01-01: a", "scope=a | release=v3.2.0"))
-        _l1, history, _m = change_log_archive.compose(
+        history = change_log_archive.archive_or_refuse(
             first, None, change_log_archive.MinorLine(3, 4)
-        )
+        ).new_history
         second = _log(_entry("2026-01-02: b", "scope=b | release=v3.3.0"))
-        _l2, history2, _m2 = change_log_archive.compose(
+        history2 = change_log_archive.archive_or_refuse(
             second, history, change_log_archive.MinorLine(3, 4)
-        )
+        ).new_history
         assert [e.title for e in change_log.parse_change_log(history2)] == [
             "2026-01-02: b",
             "2026-01-01: a",
@@ -255,9 +279,10 @@ class TestNothingIsLost:
 
     def test_the_live_header_is_not_carried_into_history(self):
         content = _log(_entry("2026-01-01: a", "scope=a | release=v3.2.0"))
-        new_live, new_history, _m = change_log_archive.compose(
+        result = change_log_archive.archive_or_refuse(
             content, None, change_log_archive.MinorLine(3, 4)
         )
+        new_live, new_history = result.new_live, result.new_history
         assert new_live.startswith("# Change Log — Demo")
         assert "Change Log — History" in new_history
         assert "# Change Log — Demo" not in new_history
@@ -334,6 +359,86 @@ class TestCommand:
         assert result.returncode == 2
         assert "unreadable --keep-minor" in result.stderr
 
+    def test_the_refusal_reaches_the_operator_and_writes_nothing(
+        self, tmp_path: Path, monkeypatch, capsys
+    ):
+        """The CLI half of the guard, driven in-process.
+
+        The library refusing is tested above; this asserts the command ACTS on
+        it — exit 1, the entry named, and neither file touched. A guard whose
+        caller ignores it is not a guard, and no input can reach this branch
+        from outside, so a subprocess test would be asserting nothing.
+        """
+        content = _log(
+            _entry("2026-01-01: shipped", "scope=a | release=v3.3.4"),
+            _entry("2026-02-01: pending", "scope=b"),
+        )
+        project = _project(tmp_path, content)
+        hook = _load_hook()
+        archive = hook._change_log_archive()
+        monkeypatch.setattr(
+            archive,
+            "archive_or_refuse",
+            lambda live, hist, keep: archive.ArchiveResult(
+                "", "", [], ["2026-02-01: pending"]
+            ),
+        )
+
+        code = hook.cmd_archive_change_log(project, ["--apply"])
+
+        assert code == 1
+        assert "refused" in capsys.readouterr().err
+        assert _live(project) == content
+        assert not (project / ".prawduct" / "change-log-history.md").exists()
+
+    def test_json_reports_what_happened_not_what_was_asked(self, tmp_path: Path):
+        """`applied` is read after the write, so a dry run cannot claim one."""
+        import json as json_mod
+
+        content = _log(_entry("2026-01-01: a", "scope=a | release=v3.2.0"))
+        project = _project(tmp_path, content)
+
+        dry = json_mod.loads(_run_hook(project, "--json").stdout)
+        assert dry["applied"] is False
+        assert dry["moved"] == 1
+        assert dry["titles"] == ["2026-01-01: a"]
+        assert _live(project) == content
+
+        wet = json_mod.loads(_run_hook(project, "--json", "--apply").stdout)
+        assert wet["applied"] is True
+        assert "2026-01-01: a" in _history(project)
+
+    def test_a_failed_second_write_leaves_both_files_untouched(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """Entries MOVE between the two files, so a half-applied pair holds
+        every entry twice — and re-running duplicates them into an append-only
+        record. Write both or neither."""
+        content = _log(
+            _entry("2026-01-01: a", "scope=a | release=v3.2.0"),
+            _entry("2026-02-01: b", "scope=b"),
+        )
+        project = _project(tmp_path, content)
+        hook = _load_hook()
+        core = hook._core()
+
+        real_write = core.atomic_write_text
+        calls = {"n": 0}
+
+        def _explode(path, text, **kwargs):
+            calls["n"] += 1
+            if calls["n"] == 2:
+                raise OSError("disk full")
+            return real_write(path, text, **kwargs)
+
+        monkeypatch.setattr(core, "atomic_write_text", _explode)
+
+        with pytest.raises(OSError):
+            hook.cmd_archive_change_log(project, ["--apply"])
+
+        assert _live(project) == content
+        assert not (project / ".prawduct" / "change-log-history.md").exists()
+
     def test_an_unknown_flag_is_a_usage_error(self, tmp_path: Path):
         project = _project(tmp_path, _log(_entry("2026-01-01: a", "scope=a")))
         result = _run_hook(project, "--force")
@@ -349,32 +454,66 @@ class TestCommand:
 def test_this_repos_own_change_log_archives_without_moving_a_pending_entry():
     """The corpus, not a fixture.
 
-    Every case above is a shape someone thought of. This one is the 387 entries
-    that actually exist, and the property it asserts is the one the run must not
-    break: the release-pending set the release gate would enumerate is the same
-    before and after. A fixture cannot prove that about a file whose tag lines
-    were written by hand over six months.
+    Every case above is a shape someone thought of. This one is the entries that
+    actually exist, with tag lines written by hand over six months.
+
+    **The kept line is derived from the corpus, never from today's version.**
+    Asserting against `current_minor_line` would pin the repo's current PHASE:
+    this plan's next chunk archives everything below v3.4, and a test demanding
+    that something below v3.4 remains eligible goes red the moment the work it
+    is supposed to protect actually happens. One minor above the highest release
+    the log mentions keeps every shipped entry eligible in every phase, which is
+    the property — not the number.
     """
     repo = Path(__file__).resolve().parent.parent
     live = (repo / ".prawduct" / "change-log.md").read_text(encoding="utf-8")
-    keep_from = change_log_archive.current_minor_line(repo)
-    assert keep_from is not None, "plugin/VERSION did not yield a release line"
+    entries = change_log.parse_change_log(live)
 
-    new_live, new_history, moved = change_log_archive.compose(live, None, keep_from)
+    lines = [
+        line
+        for line in (
+            change_log_archive.release_minor_line(e.tags.get("release"))
+            for e in entries
+        )
+        if line is not None
+    ]
+    assert lines, "no entry carries a parseable release= — the corpus moved"
+    highest = max(lines)
+    keep_from = change_log_archive.MinorLine(highest.major, highest.minor + 1)
 
-    assert moved, "no entry was eligible — the corpus moved, or selection broke"
+    result = change_log_archive.archive_or_refuse(live, None, keep_from)
+
+    assert result.refused_titles == [], result.refused_titles
+    assert result.moved, "every shipped entry was ineligible — selection broke"
     assert change_log_archive.pending_fingerprint(
         live
-    ) == change_log_archive.pending_fingerprint(new_live)
+    ) == change_log_archive.pending_fingerprint(result.new_live)
 
-    before = {e.title for e in change_log.parse_change_log(live)}
-    after = {e.title for e in change_log.parse_change_log(new_live)} | {
-        e.title for e in change_log.parse_change_log(new_history)
+    before = {e.title for e in entries}
+    after = {e.title for e in change_log.parse_change_log(result.new_live)} | {
+        e.title for e in change_log.parse_change_log(result.new_history)
     }
     assert after == before, "an entry was neither kept nor archived"
 
-    for entry in change_log.parse_change_log(new_history):
+    for entry in change_log.parse_change_log(result.new_history):
         assert entry.tags.get("release"), (
             f"{entry.title!r} reached history with no release= — only shipped "
             "entries may leave the live log"
         )
+
+
+def test_the_live_log_still_parses_after_this_repos_entries_are_archived():
+    """The rewrite must not change how what REMAINS reads.
+
+    Moving whole entries cannot alter the diagnostics of the ones left behind —
+    if it does, the split found a boundary the parser disagrees with, and the
+    guard says so rather than the next release gate.
+    """
+    repo = Path(__file__).resolve().parent.parent
+    live = (repo / ".prawduct" / "change-log.md").read_text(encoding="utf-8")
+    keep_from = change_log_archive.current_minor_line(repo)
+    assert keep_from is not None
+
+    result = change_log_archive.archive_or_refuse(live, None, keep_from)
+
+    assert change_log_archive.new_diagnostics(live, result.new_live) == []

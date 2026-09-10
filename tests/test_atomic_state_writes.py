@@ -278,3 +278,99 @@ class TestClearSurvivesReadOnlyPrawduct:
         assert (pr / ".session-start").is_file()
         assert not (pr / ".session-start.tmp").exists()
         assert not (pr / ".session-git-baseline.tmp").exists()
+
+
+# ---------------------------------------------------------------------------
+# `write_all_or_none` — atomicity ACROSS a pair of files
+# ---------------------------------------------------------------------------
+
+
+class TestWriteAllOrNone:
+    """One file's write is already all-or-nothing; two files' was not.
+
+    The shape this closes is a record and its archive, where entries MOVE from
+    one to the other: a first write landing and a second raising leaves every
+    moved entry in both files, and the natural recovery — run it again —
+    duplicates them into an append-only record. Three modules reach for this
+    shape (`change_log_archive`, `plan_archive`, `audit_learnings_cmd`); this is
+    the one implementation rather than a third hand-rolled rollback.
+    """
+
+    def _core(self):
+        import sys
+        from pathlib import Path as _Path
+
+        root = _Path(__file__).resolve().parent.parent / "plugin"
+        if str(root) not in sys.path:
+            sys.path.insert(0, str(root))
+        from lib import core
+
+        return core
+
+    def test_both_files_are_written_on_success(self, tmp_path):
+        core = self._core()
+        a, b = tmp_path / "a.md", tmp_path / "b.md"
+        core.write_all_or_none([(a, "A"), (b, "B")])
+        assert a.read_text(encoding="utf-8") == "A"
+        assert b.read_text(encoding="utf-8") == "B"
+
+    def test_a_failure_restores_prior_content(self, tmp_path, monkeypatch):
+        core = self._core()
+        a, b = tmp_path / "a.md", tmp_path / "b.md"
+        a.write_text("original A", encoding="utf-8")
+        b.write_text("original B", encoding="utf-8")
+
+        real = core.atomic_write_text
+        seen = {"n": 0}
+
+        def _explode(path, text, **kwargs):
+            seen["n"] += 1
+            if seen["n"] == 2:
+                raise OSError("disk full")
+            return real(path, text, **kwargs)
+
+        monkeypatch.setattr(core, "atomic_write_text", _explode)
+        with pytest.raises(OSError):
+            core.write_all_or_none([(a, "new A"), (b, "new B")])
+
+        assert a.read_text(encoding="utf-8") == "original A"
+        assert b.read_text(encoding="utf-8") == "original B"
+
+    def test_a_file_that_did_not_exist_is_removed_again(self, tmp_path, monkeypatch):
+        """Restoring "as it was" includes not existing — a leftover half-written
+        archive is exactly the duplicate-on-retry state this prevents."""
+        core = self._core()
+        a, b = tmp_path / "a.md", tmp_path / "b.md"
+
+        real = core.atomic_write_text
+        seen = {"n": 0}
+
+        def _explode(path, text, **kwargs):
+            seen["n"] += 1
+            if seen["n"] == 2:
+                raise OSError("disk full")
+            return real(path, text, **kwargs)
+
+        monkeypatch.setattr(core, "atomic_write_text", _explode)
+        with pytest.raises(OSError):
+            core.write_all_or_none([(a, "new A"), (b, "new B")])
+
+        assert not a.exists()
+        assert not b.exists()
+
+    def test_the_original_error_survives_a_failing_rollback(
+        self, tmp_path, monkeypatch
+    ):
+        """A restore that also fails must not replace the exception worth
+        reporting — there is nothing left to try, and the first failure is the
+        one that explains the state."""
+        core = self._core()
+        a, b = tmp_path / "a.md", tmp_path / "b.md"
+        a.write_text("original A", encoding="utf-8")
+
+        def _always_explode(path, text, **kwargs):
+            raise OSError("disk full")
+
+        monkeypatch.setattr(core, "atomic_write_text", _always_explode)
+        with pytest.raises(OSError, match="disk full"):
+            core.write_all_or_none([(a, "new A"), (b, "new B")])
