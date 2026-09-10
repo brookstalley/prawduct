@@ -363,14 +363,28 @@ class TestWriteAllOrNone:
     ):
         """A restore that also fails must not replace the exception worth
         reporting — there is nothing left to try, and the first failure is the
-        one that explains the state."""
+        one that explains the state.
+
+        The first write must SUCCEED for this to test anything: with nothing
+        written there is no restore to fail, and an earlier version of this test
+        raised on write one and asserted its way past the branch it named.
+        """
         core = self._core()
         a, b = tmp_path / "a.md", tmp_path / "b.md"
         a.write_text("original A", encoding="utf-8")
 
-        def _always_explode(path, text, **kwargs):
-            raise OSError("disk full")
+        real = core.atomic_write_text
+        seen = {"n": 0}
 
-        monkeypatch.setattr(core, "atomic_write_text", _always_explode)
+        def _explode_after_the_first(path, text, **kwargs):
+            seen["n"] += 1
+            if seen["n"] == 1:
+                return real(path, text, **kwargs)
+            # The second write AND every restore attempt.
+            raise OSError("disk full" if seen["n"] == 2 else "rollback failed too")
+
+        monkeypatch.setattr(core, "atomic_write_text", _explode_after_the_first)
         with pytest.raises(OSError, match="disk full"):
             core.write_all_or_none([(a, "new A"), (b, "new B")])
+
+        assert seen["n"] >= 3, "the restore was never attempted — branch ungraded"

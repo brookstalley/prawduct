@@ -4632,8 +4632,8 @@ def cmd_archive_change_log(project_dir: Path, args: list[str] | None = None) -> 
             # Refusal, not a default. Guessing a line here decides how much of
             # the log leaves, which is the one thing the operator came to say.
             print(
-                "no-version: cannot read the current release line from "
-                "plugin/VERSION — pass --keep-minor X.Y",
+                "no-version: cannot determine the current release line from the "
+                "declared version files — pass --keep-minor X.Y",
                 file=sys.stderr,
             )
             return 1
@@ -4695,12 +4695,14 @@ def cmd_archive_change_log(project_dir: Path, args: list[str] | None = None) -> 
         return 0
 
     if not moved:
-        # Names all three ways an entry stays, because a reader who expected a
-        # move needs to know which one caught theirs — an unparseable `release=`
-        # is the one they can act on.
+        # The PREDICATE, not a list of the ways to fail it. An enumeration here
+        # was wrong twice — it omitted untagged entries both times, which are 21
+        # of this log's own — and a list is wrong again the moment a fourth way
+        # exists. What an operator needs is the one rule they can check their
+        # entry against.
         print(
-            f"nothing to archive: every entry is release-pending, on v{keep_from}.x, "
-            "or carries a release= this reader will not parse"
+            f"nothing to archive: no entry carries a release= below v{keep_from}.0 "
+            "(an entry with no release= tag has not shipped, and never archives)"
         )
         return 0
 

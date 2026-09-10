@@ -57,6 +57,27 @@ def _project(tmp_path: Path, content: str, version: str = "3.4.1-dev.2") -> Path
     return tmp_path
 
 
+def _product(
+    tmp_path: Path, content: str, declaration: str, version_files: dict[str, str]
+) -> Path:
+    """A repo shaped like a governed PRODUCT, not like prawduct.
+
+    `_project` writes `plugin/VERSION`, which is prawduct's own layout — so
+    every test using it goes down the fallback and the declaration read, which
+    is the thing that makes this command portable, is never exercised.
+    """
+    (tmp_path / ".prawduct").mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".prawduct" / "change-log.md").write_text(content, encoding="utf-8")
+    (tmp_path / ".prawduct" / "project-state.yaml").write_text(
+        declaration, encoding="utf-8"
+    )
+    for rel, text in version_files.items():
+        path = tmp_path / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+    return tmp_path
+
+
 def _run_hook(project: Path, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
         [sys.executable, str(_HOOK_PATH), "archive-change-log", *args],
@@ -135,6 +156,12 @@ class TestSelection:
             "scope=b | release=unreleased",  # a placeholder, not a version
             "scope=b | release=",  # empty
             "scope=b | release=v3",  # not a version this module will parse
+            # The two that separate this module's reading from the change-log's
+            # own. Both moved before the readings were unified; both are values
+            # `validate_change_log_tags` calls malformed, and archiving on a
+            # laxer reading of a value neither owns is how the two drift apart.
+            "scope=b | release=3.2.0",  # no `v` — the validator rejects it
+            "scope=b | release=v3.2.0+b",  # build metadata — likewise
         ],
     )
     def test_everything_that_is_not_a_shipped_version_stays(self, tag):
@@ -198,6 +225,40 @@ class TestPendingSetIsPreserved:
         )
         assert result.refused_titles == []
         assert len(result.moved) == 1
+
+    def test_a_run_that_would_CREATE_a_diagnostic_is_refused(self, monkeypatch):
+        """The other half of the guard, and the half no input can reach.
+
+        Moving whole entries cannot change how the ones left behind parse — so
+        if it ever does, the split found a boundary the parser disagrees with,
+        and the remaining log is now malformed in a way the next release gate
+        discovers instead of this command. Provoked the same way its sibling is,
+        because `_compose` is what makes it unreachable.
+        """
+        content = _log(
+            _entry("2026-01-01: shipped", "scope=a | release=v3.3.4"),
+            _entry("2026-02-01: pending", "scope=b"),
+        )
+
+        real = change_log_archive._compose
+
+        def _corrupting(live, hist, keep):
+            new_live, new_history, moved = real(live, hist, keep)
+            # A second tag line under the surviving entry: parseable, and a
+            # diagnostic the original log did not carry.
+            return (
+                new_live + "\n<!-- prawduct: scope=b | release=v9.9.9 -->\n",
+                new_history,
+                moved,
+            )
+
+        monkeypatch.setattr(change_log_archive, "_compose", _corrupting)
+        result = change_log_archive.archive_or_refuse(
+            content, None, change_log_archive.MinorLine(3, 4)
+        )
+
+        assert result.refused_titles, "a created diagnostic did not refuse the run"
+        assert any("new diagnostic" in r for r in result.refused_titles)
 
     def test_the_real_selection_preserves_the_fingerprint(self):
         content = _log(
@@ -343,6 +404,54 @@ class TestCommand:
         assert result.returncode == 0, result.stderr
         assert "2026-01-01: a" in _history(project)
         assert "2026-02-01: b" in _live(project)
+
+    def test_a_products_own_declaration_is_what_is_read(self, tmp_path: Path):
+        """The portability property, on a repo with no `plugin/` directory."""
+        content = _log(
+            _entry("2026-01-01: a", "scope=a | release=v2.0.9"),
+            _entry("2026-02-01: b", "scope=b | release=v2.1.3"),
+        )
+        project = _product(
+            tmp_path,
+            content,
+            "release_version_files:\n  - path: src/version.txt\n    format: bare\n",
+            {"src/version.txt": "2.1.3\n"},
+        )
+        result = _run_hook(project, "--apply")
+        assert result.returncode == 0, result.stderr
+        assert "2026-01-01: a" in _history(project)
+        assert "2026-02-01: b" in _live(project)
+
+    def test_a_declared_empty_list_is_honoured_rather_than_guessed_past(
+        self, tmp_path: Path
+    ):
+        """`[]` is a product saying it ships no version file — a DECLARATION.
+
+        Falling back to prawduct's layout here is the layout-over-declaration
+        defect wearing the fix for itself: the repo below carries a
+        `plugin/VERSION` that would answer, and it must not be consulted.
+        """
+        content = _log(_entry("2026-01-01: a", "scope=a | release=v2.0.9"))
+        project = _product(
+            tmp_path,
+            content,
+            "release_version_files: []\n",
+            {"plugin/VERSION": "3.4.1\n"},
+        )
+        result = _run_hook(project, "--apply")
+        assert result.returncode == 1, result.stdout
+        assert "no-version" in result.stderr
+        assert _live(project) == content
+
+    def test_an_undeclared_product_falls_back_to_the_guess(self, tmp_path: Path):
+        """The third outcome, and the only one the guess is for."""
+        content = _log(_entry("2026-01-01: a", "scope=a | release=v2.0.9"))
+        project = _product(
+            tmp_path, content, "some_other_key: 1\n", {"plugin/VERSION": "3.4.1\n"}
+        )
+        result = _run_hook(project, "--apply")
+        assert result.returncode == 0, result.stderr
+        assert "2026-01-01: a" in _history(project)
 
     def test_an_unreadable_version_refuses_rather_than_guessing(self, tmp_path: Path):
         content = _log(_entry("2026-01-01: a", "scope=a | release=v3.2.0"))

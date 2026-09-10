@@ -138,13 +138,23 @@ def current_minor_line(project_dir: Path) -> MinorLine | None:
     """
     verification = _release_verification()
     try:
-        state_text = (project_dir / ".prawduct" / "project-state.yaml").read_text(
+        state_text = (project_dir / verification._STATE_PATH).read_text(
             encoding="utf-8"
         )
     except OSError:
         state_text = ""
     declared = verification._read_declaration(state_text) if state_text else None
-    specs = declared if declared else list(verification._FALLBACK_VERSION_FILES)
+    # `is not None`, never truthiness. `_read_declaration` returns THREE
+    # outcomes and its docstring turns on the distinction: `None` is undeclared
+    # (the guess applies) and `[]` is declared-empty or flow-style, which is
+    # honoured exclusively. Reading `[]` as "nothing declared" hands a product
+    # that wrote a real declaration prawduct's layout instead — the same
+    # layout-over-declaration defect this function was rewritten to close,
+    # re-entered through its own fix. `release_verification` spells it
+    # `is not None` at its own call site for this reason.
+    specs = declared if declared is not None else list(
+        verification._FALLBACK_VERSION_FILES
+    )
 
     for spec in specs:
         try:

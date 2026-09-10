@@ -193,7 +193,9 @@ def write_all_or_none(writes: "Sequence[tuple[Path, str]]") -> None:
 
     Rollback is best-effort by construction: if restoring also fails there is
     nothing left to try, and the original exception is the one worth raising, so
-    a restore failure is suppressed rather than masking it.
+    an ``OSError`` from a restore is suppressed rather than masking it. Only
+    ``OSError`` — anything else escaping a restore is a bug in this function,
+    not a disk that filled, and swallowing it would hide it forever.
     """
     written: list[tuple[Path, str | None]] = []
     try:
@@ -213,7 +215,7 @@ def write_all_or_none(writes: "Sequence[tuple[Path, str]]") -> None:
                     path.unlink(missing_ok=True)
                 else:
                     atomic_write_text(path, prior)
-            except OSError:  # prawduct:allow prawduct/broad-except -- see docstring
+            except OSError:
                 pass
         raise
 
