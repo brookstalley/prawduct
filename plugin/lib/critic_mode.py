@@ -852,11 +852,19 @@ def _critic_mode_for_chunk(
     """Return ``chunk_id``'s declared mode and whether its plan could be read.
 
     Finds that chunk's ``### Chunk <id>:`` detail section and reads its
-    ``- **Critic mode:** <value>`` field. Returns the short-token value
-    only when it is one of the recognized modes; an absent, blank, or
-    unrecognized value yields ``ChunkModeRead(None, None)`` (fall through to inference rather
-    than honoring a typo as a mode override — same fail-open-to-inference
-    posture the methodology's "optional field" contract implies).
+    ``**Critic mode:** <value>`` field, wherever on its line it sits and
+    whether or not its value is backticked. Returns the short-token value
+    only when it is one of the recognized modes; anything else falls through
+    to inference rather than honoring a typo as a mode override — the same
+    fail-open posture the methodology's "optional field" contract implies.
+
+    What "anything else" carries differs, and the third field is why. An absent
+    or blank value yields ``ChunkModeRead(None, None)`` and says nothing. A
+    value someone typed that no mode can be read out of — a typo, or prose
+    where a token belongs — yields ``ChunkModeRead(None, None, <value>)``, and
+    the caller notes it: inference proceeds either way, but only one of the two
+    is an author being quietly overruled. The whole section is scanned, so a
+    real declaration always beats an unhonorable value above it.
 
     ``chunk_id`` is resolved by the caller via
     ``buildplan_refs`` — git-aware on a views-enabled feature branch
@@ -917,20 +925,29 @@ def _critic_mode_for_chunk(
         return ChunkModeRead(None, unparsed)
     if buildplan_refs.chunk_section_gap(chunk_id, section):
         return ChunkModeRead(None, None)
+    # The whole section is scanned, and a valid token anywhere in it beats
+    # anything unhonorable found above it. Returning on first sight is what an
+    # unanchored read cannot afford: the marker appears in prose too — a
+    # Description line discussing the field is indistinguishable from a line
+    # declaring it — so first-sight would let a sentence *about* the field
+    # suppress the declaration below it. That is a lost declaration reported as
+    # a typo, which is the silent demotion this reader exists to prevent
+    # wearing a note that misdirects the author away from it.
+    unhonored: str | None = None
     for _line_num, line in section.lines:
         m = _BUILD_PLAN_CRITIC_MODE_RE.search(line)
         if m:
             token = m.group(1)
             if token in _VALID_ARG_MODES:
                 return ChunkModeRead(token, None)
-            return ChunkModeRead(None, None, token)
+            if unhonored is None:
+                unhonored = token
+            continue
         # No token, but the field is here carrying *something*. Reported for the
         # same reason a typo'd mode is: the author declared an intent and it is
         # not being honored, and the only way they learn that today is by
         # noticing the review was shallower than they asked for.
         field = _BUILD_PLAN_CRITIC_MODE_FIELD_RE.search(line)
-        if field:
-            return ChunkModeRead(
-                None, None, field.group(1)[:_UNPARSEABLE_VALUE_QUOTE_LIMIT]
-            )
-    return ChunkModeRead(None, None)
+        if field and unhonored is None:
+            unhonored = field.group(1)[:_UNPARSEABLE_VALUE_QUOTE_LIMIT]
+    return ChunkModeRead(None, None, unhonored)

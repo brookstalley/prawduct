@@ -19,7 +19,14 @@ where the symptom is a shallower review that looks like a normal one.
 The read is now unanchored, `.search`-applied, with an optional backtick before the value. The
 cost is that a line merely discussing the field parses as declaring it; fail-open absorbs that,
 because the worst case is a mode the author can see named in the rationale rather than a review
-that did not happen.
+that did not happen. **The whole chunk section is scanned**, and a valid token anywhere in it beats
+anything unhonorable above it — answering on first sight would let a sentence *about* the field
+bury the declaration below it and report the loss as a typo, pointing the author at the wrong line.
+
+101 `**Critic mode:**` lines across this repo's 103 build plans are now a test corpus, asserted to
+be honoured or reported and never silently nothing. The hand-written form list can only contain
+forms someone thought of; that is what missed these two for as long as it did. `.prawduct/artifacts/`
+joins `suite_coupled_prefixes` as a consequence — those plans can turn the suite red now.
 
 **The missing signal was the larger half of the defect.** A field carrying something no mode token
 can be read out of — `**Critic mode:** (inferred — `chunk`)` — now earns the same one-line NOTE a
@@ -28,9 +35,14 @@ mode*, and the author had written one. Absent and blank stay silent, unchanged: 
 intent to contradict.
 
 `buildplan_refs`'s `**Type:**` and `**Trivial because:**` readers still match line-anchored and
-carry the same defect. Left alone deliberately — broadening them would let a mid-line `**Type:**
-trivial` start binding, which lightens a gate rather than restoring one, and that direction is an
-owner's call rather than a bug fix's.
+carry the same defect — the same lines lose both fields at once, since an author composing
+`**Type:** code (bugfix) · **Critic mode:** chunk` is writing both mid-line. Left alone
+deliberately, and **not** on the grounds that this change only ever restores a heavier review: it
+does not. Binding a mid-line `**Critic mode:** chunk` that inference would have called `final`
+lightens that review, and honouring the author in both directions is precisely the field's
+contract. `**Type:**` is a different lever — it decides which plans qualify for a bounded gate at
+all — so widening what binds there is an owner's call, not a bug fix's, and it gets its own
+decision rather than riding this one.
 
 ## 2026-09-09: the review loop gets a stopping rule
 

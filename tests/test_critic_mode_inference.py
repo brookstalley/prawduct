@@ -2244,6 +2244,44 @@ class TestTheModeFieldIsFoundWhereAuthorsWriteIt:
         assert mode in critic_mode._VALID_ARG_MODES
         assert "plan-override" not in rationale
 
+    def test_prose_about_the_field_does_not_suppress_the_declaration_below_it(
+        self, tmp_path: Path, capsys
+    ):
+        """The cost of searching, paid where it actually lands.
+
+        A line *discussing* the field looks exactly like a line declaring it, so
+        a reader that answered on first sight would let a sentence bury the real
+        override — and report it as a typo, pointing the author at the wrong
+        line. The whole section is scanned instead.
+        """
+        repo = _repo_with_mode_field(
+            tmp_path,
+            "- **Notes:** the reader finds `**Critic mode:**` mid-line now\n"
+            "- **Critic mode:** cumulative\n",
+        )
+
+        mode, rationale = infer_mode(repo, None)
+
+        assert mode == "cumulative"
+        assert rationale.startswith("plan-override")
+        assert "NOTE: chunk's `Critic mode:`" not in capsys.readouterr().err
+
+    def test_an_unhonorable_token_above_the_declaration_does_not_win(
+        self, tmp_path: Path, capsys
+    ):
+        """Same rule for the branch that DOES capture a token, just an invalid one."""
+        repo = _repo_with_mode_field(
+            tmp_path,
+            "- **Notes:** the old reader took **Critic mode:** anything as a value\n"
+            "- **Critic mode:** cumulative\n",
+        )
+
+        mode, rationale = infer_mode(repo, None)
+
+        assert mode == "cumulative"
+        assert rationale.startswith("plan-override")
+        assert "NOTE: chunk's `Critic mode:`" not in capsys.readouterr().err
+
     def test_an_unparseable_value_is_quoted_only_as_far_as_it_helps(
         self, tmp_path: Path, capsys
     ):
@@ -2395,3 +2433,40 @@ class TestExplicitTokenReachesTheCleanTreeRedirect:
         mode, rationale = infer_mode(tmp_path, "ultra-thorough")
         assert mode == "cumulative"
         assert rationale.startswith("rule-"), rationale
+
+
+def test_every_critic_mode_line_in_this_repo_is_honoured_or_reported():
+    """The corpus, against a form list that was transcribed by hand.
+
+    Every other test here contains a form someone thought of. This one contains
+    the forms authors actually wrote, and asserts the property that matters for
+    all of them: each line is honoured, or reported back to its author, and
+    never silently nothing. Reading as *no field at all* is the whole defect —
+    it looks identical to a chunk that declared no mode, so it produces a
+    shallower review and no signal that anything was lost.
+
+    Deliberately NOT asserting the token is valid: `cumulative-final` appears in
+    a real plan as a genuine mistake, and it is reported, which is the contract.
+    """
+    artifacts = Path(__file__).resolve().parent.parent / ".prawduct" / "artifacts"
+    plans = sorted(artifacts.rglob("build-plan*.md"))
+    assert plans, f"no build plans under {artifacts} — this test proves nothing"
+
+    marker = "**Critic mode:**"
+    unreadable = []
+    seen = 0
+    for plan in plans:
+        for lineno, line in enumerate(
+            plan.read_text(encoding="utf-8").splitlines(), start=1
+        ):
+            if marker not in line:
+                continue
+            seen += 1
+            honoured = critic_mode._BUILD_PLAN_CRITIC_MODE_RE.search(line)
+            reported = critic_mode._BUILD_PLAN_CRITIC_MODE_FIELD_RE.search(line)
+            blank = line.rstrip().endswith(marker)
+            if not (honoured or reported or blank):
+                unreadable.append(f"{plan.name}:{lineno}: {line.strip()!r}")
+
+    assert seen, f"no `{marker}` field in any of {len(plans)} plans"
+    assert not unreadable, "\n".join(unreadable)
