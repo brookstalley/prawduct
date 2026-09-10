@@ -175,6 +175,18 @@ def _plan_archive():
     return plan_archive
 
 
+def _change_log_archive():
+    """Lazy-import the change-log end-of-life operation (lib/change_log_archive).
+    Same lazy idiom as _plan_archive() — seeds sys.path so the hook's top level
+    stays lib-free."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    from lib import change_log_archive  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+
+    return change_log_archive
+
+
 def _release_readiness():
     """Lazy-import the Phase 0 releasability gate (lib/release_readiness).
     Same lazy idiom as _coverage() — seeds sys.path so the hook's top level
@@ -4557,6 +4569,140 @@ def cmd_check_releasability(project_dir: Path, args: list[str] | None = None) ->
     return _release_readiness().check_releasability(project_dir, release)
 
 
+def cmd_archive_change_log(project_dir: Path, args: list[str] | None = None) -> int:
+    """Retire shipped change-log entries into `.prawduct/change-log-history.md`.
+
+    A repo-wide lifecycle command, so it takes that row of the error-model
+    table: a DRY RUN by default, `--apply` to write. 0 reported or written, 1
+    refused with nothing written, 2 usage error.
+
+    **The refusal is the feature.** Before writing, it compares the
+    release-pending fingerprint of the log it would leave behind against the one
+    it started with, and writes nothing if they differ. Only `release=`-carrying
+    entries are eligible in the first place, so a difference means the selection
+    is wrong — and a wrong selection here unships work with no error anywhere
+    downstream, which is what `check-releasability` would otherwise report as a
+    clean smaller number.
+
+    Thin wrapper; the body lives in ``lib.change_log_archive``.
+    """
+    usage = (
+        "usage: prawduct-hook archive-change-log [--keep-minor X.Y] [--apply] [--json]"
+    )
+    keep_minor_arg: str | None = None
+    apply_changes = False
+    json_output = False
+    argv = list(args or [])
+    i = 0
+    while i < len(argv):
+        token = argv[i]
+        if token == "--apply":
+            apply_changes, i = True, i + 1
+            continue
+        if token == "--json":
+            json_output, i = True, i + 1
+            continue
+        if token == "--keep-minor":
+            if i + 1 >= len(argv):
+                print(f"{usage}\n--keep-minor requires an argument", file=sys.stderr)
+                return 2
+            keep_minor_arg, i = argv[i + 1], i + 2
+            continue
+        if token.startswith("--keep-minor="):
+            keep_minor_arg, i = token.split("=", 1)[1], i + 1
+            continue
+        print(f"unknown argument: {token}\n{usage}", file=sys.stderr)
+        return 2
+
+    archive = _change_log_archive()
+    change_log_path = project_dir / archive.change_log_mod.CHANGE_LOG_REL_PATH
+    history_path = project_dir / archive.HISTORY_REL_PATH
+
+    if keep_minor_arg is not None:
+        keep_from = archive.parse_minor_line(keep_minor_arg)
+        if keep_from is None:
+            print(
+                f"unreadable --keep-minor {keep_minor_arg!r} (expected X.Y)\n{usage}",
+                file=sys.stderr,
+            )
+            return 2
+    else:
+        keep_from = archive.current_minor_line(project_dir)
+        if keep_from is None:
+            # Refusal, not a default. Guessing a line here decides how much of
+            # the log leaves, which is the one thing the operator came to say.
+            print(
+                "no-version: cannot read the current release line from "
+                "plugin/VERSION — pass --keep-minor X.Y",
+                file=sys.stderr,
+            )
+            return 1
+
+    try:
+        live_content = change_log_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        print(f"no-change-log: cannot read {change_log_path}: {exc}", file=sys.stderr)
+        return 1
+    history_content: str | None = None
+    if history_path.is_file():
+        try:
+            history_content = history_path.read_text(encoding="utf-8")
+        except OSError as exc:
+            print(f"unreadable-history: {history_path}: {exc}", file=sys.stderr)
+            return 1
+
+    result = archive.archive_or_refuse(live_content, history_content, keep_from)
+    if result.refused_titles:
+        # Names what changed rather than only that something did: the operator's
+        # next question is always "which entry", and a list of titles answers it
+        # without them reading 387 entries.
+        print(
+            "refused: archiving would change the release-pending set — "
+            f"{len(result.refused_titles)} entr(ies) would leave it",
+            file=sys.stderr,
+        )
+        for title in result.refused_titles[:10]:
+            print(f"  - {title}", file=sys.stderr)
+        return 1
+    new_live, new_history, moved = result.new_live, result.new_history, result.moved
+
+    if json_output:
+        print(
+            json.dumps(
+                {
+                    "keep_from": str(keep_from),
+                    "moved": len(moved),
+                    "applied": apply_changes,
+                    "titles": [entry.title for entry, _text in moved],
+                },
+                indent=2,
+            )
+        )
+    if not moved:
+        if not json_output:
+            print(f"nothing to archive: every entry is release-pending or on v{keep_from}.x")
+        return 0
+
+    if not apply_changes:
+        if not json_output:
+            saved = (len(live_content) - len(new_live)) / 1024
+            print(
+                f"would archive {len(moved)} entr(ies) below v{keep_from}.0 "
+                f"({saved:.0f}KB) into {archive.HISTORY_REL_PATH} — re-run with --apply"
+            )
+        return 0
+
+    history_path.write_text(new_history, encoding="utf-8")
+    change_log_path.write_text(new_live, encoding="utf-8")
+    if not json_output:
+        saved = (len(live_content) - len(new_live)) / 1024
+        print(
+            f"archived: {len(moved)} entr(ies) below v{keep_from}.0 "
+            f"({saved:.0f}KB) -> {archive.HISTORY_REL_PATH}"
+        )
+    return 0
+
+
 def cmd_archive_plan(project_dir: Path, args: list[str] | None = None) -> int:
     """Give a build plan its end of life: stamp it, then move it into `archive/`.
 
@@ -6506,6 +6652,7 @@ _USAGE = (
     "check-learnings-pairing [--json]|"
     "archive-plan <path> [--state completed|superseded] [--date YYYY-MM-DD] "
     "[--release vX.Y.Z] [--superseded-by <text>] [--dry-run]|"
+    "archive-change-log [--keep-minor X.Y] [--apply] [--json]|"
     "check-released vX.Y.Z [--json] [--allow-unverifiable]|"
     "regen-views [deprecated, inert]|stamp-merged [deprecated, inert]|"
     "bug-inbox [deprecated, inert]|"
@@ -7402,6 +7549,8 @@ def _dispatch() -> int:
         return cmd_check_change_log_entry(project_dir)
     elif command == "check-releasability":
         return cmd_check_releasability(project_dir, sys.argv[2:])
+    elif command == "archive-change-log":
+        return cmd_archive_change_log(project_dir, sys.argv[2:])
     elif command == "archive-plan":
         return cmd_archive_plan(project_dir, sys.argv[2:])
     elif command == "check-released":
