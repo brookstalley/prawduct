@@ -18,6 +18,33 @@ redirect.
 
 ---
 
+## Copying a fix into a sibling procedure or reader is a NEW change needing its own analysis
+
+Two documents share a paragraph, not their invariants, so one edit can repair one and break the
+other. The 2026-09-10 instance widened the rule from documents to any parallel implementation, and
+supplied the missing question: **what does a WRONG value cost at each site?**
+
+`**Critic mode:**` and `**Type:**` are the same field grammar read by two modules. The mode reader
+was fixed first: search the whole chunk section, bind the first VALID token, and prose is harmless
+because only one of four words can win. Transcribed to `**Type:**` that is a hole. An unknown mode
+earns a NOTE; an unknown type FAILS the chunk. And three of the six types *buy* something —
+`designer-handoff` makes the stop hook set `designer_handoff_skip` and the Critic skill exit before
+`critic-begin`. So a Description sentence naming `**Type:** designer-handoff`, in a chunk declaring
+no type at all, would have switched review off silently in every governed product. Same regex, same
+widening, opposite blast radius.
+
+The fix was a construction rather than a longer list of shapes: one predicate deciding DECLARATION
+vs mention (the marker opens its line, follows a `·`, or opens a sentence), shared by both readers
+and spent only on BINDING — neither reports from it, because position is a heuristic and a
+heuristic must not be what fails someone's chunk. The grammar moved to one factory in
+`buildplan_refs` at the same time; the two hand-copied delimiter classes had already drifted, one
+binding `<br>` and one reading the same line as declaring no field.
+
+**The tell that the analysis was skipped**: the sibling's code open in one window, and a first
+draft that was its loop with the label swapped.
+
+---
+
 ## Ratcheting the ceiling is part of a cut, not a follow-up
 
 Broken again on 2026-09-08 by an author who had re-read this rule the same session and recorded it

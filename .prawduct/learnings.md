@@ -566,7 +566,7 @@ never by dropping them.
 
 ## When a re-measurement CORRECTS a prior test, run it against the QUESTION, not the prior test's conclusion — otherwise each new instrument re-grades the last one's output and a wrong verdict survives every correction. Ask what the check is a fact ABOUT, then pick the unit that carries it. Tell: your re-measurement reuses the previous framing — [learnings-detail.md]
 
-## Copying a fix into a sibling procedure or reader is a NEW change needing its own analysis — two of them share a paragraph or a regex, not their invariants, so one edit can repair one and break the other. Ask which invariant made the original wrong, and what a WRONG value costs at each site — a note, a block, a carveout — because that cost, not the shape of the change, decides the fix's shape next door. Tell: you fixed one file and grep found the same lines elsewhere — [learnings-detail.md]
+## Copying a fix into a sibling procedure or reader is a NEW change needing its own analysis — two of them share a paragraph or a regex, not their invariants, so ask what a WRONG value COSTS at each site, because that decides the fix's shape next door. Tell: you fixed one file and grep found the same lines elsewhere — [learnings-detail.md]
 
 ## A rule that LOWERS a severity outranks every rule that raises one unless you say so — state the floor with the ceiling, in one sentence, or the suppression quietly becomes the file's highest authority. The exits that LIFT a ceiling are not the severities it must never touch. Tell: your new rule caps a severity and all you wrote next was how to escape the cap — [learnings-detail.md]
 

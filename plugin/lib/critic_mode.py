@@ -80,7 +80,6 @@ consumes them.
 from __future__ import annotations
 
 import json
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -108,51 +107,38 @@ _VALID_ARG_MODES = frozenset({
     "verify-resolutions",
 })
 
-# Matches a chunk's ``**Critic mode:** <value>`` build-plan field. The value
-# token is hyphen-aware so ``verify-resolutions`` is captured whole, its opening
-# backtick is optional, and it must END at a delimiter — without that,
-# ``n/a (verification only)`` reads as the mode ``n``, and a note quoting ``'n'``
-# names a string that appears nowhere in the author's plan.
+# The chunk field this module reads, built from the shared field grammar in
+# ``buildplan_refs`` — the same factories the ``**Type:**`` reader uses. Hand
+# copying the shape into a second module is how the two delimiter sets came to
+# disagree about ``<br>``, with nothing to tell anyone they had.
 #
-# Unanchored, and applied with ``.search``, because the field is not reliably
-# the first thing on its line. Authors compose chunk headers
+# Why the field is searched mid-line at all: authors compose chunk headers
 # (``**Type:** code · **Critic mode:** final``) and backtick the value
 # (``**Critic mode:** `chunk` ``); an anchored read finds neither, and finding
 # nothing is indistinguishable from a chunk that declares no mode — a
 # plan-mandated `final` runs as an inferred `chunk` with no one told. That
 # silent demotion is the one thing this field's reader exists to prevent.
-#
-# The cost of searching is that a line merely *discussing* the field reads as
-# declaring it. Bounded two ways: only a VALID mode binds here, and the
-# unparseable report below refuses to speak for a line like that at all.
-_BUILD_PLAN_CRITIC_MODE_RE = re.compile(
-    r"\*\*Critic mode:\*\*\s*`?([A-Za-z][\w\-]*)(?=[\s`.,;)<]|$)"
-)
+_BUILD_PLAN_CRITIC_MODE_RE = buildplan_refs.field_token_re("Critic mode")
 
-# The same field with something after it that no mode token can be read out of
-# — ``**Critic mode:** (inferred — `chunk`)``, say. Silence is not available
+# The same field carrying something no mode token can be read out of —
+# ``**Critic mode:** (inferred — `chunk`)``, say. Silence is not available
 # there: it would say "this chunk declares no mode", and the author wrote one.
 #
-# Anchored where the search pattern above is not, and that asymmetry is the
-# whole point. Binding a mode is safe to do from anywhere on a line, because
-# only one of four words can win and the plan's author wrote every one of them.
-# REPORTING is not: a Description sentence discussing the field would be
-# announced as an ignored declaration, on chunks that declare no mode at all,
-# which is precisely how a note trains its reader to skip it. So a value is
-# reported only from FIELD POSITION — the line opens with it, modulo list and
-# bold markers. A mid-line unparseable value goes unreported; that is the
-# silence this field had before, kept only where speaking would cost more.
-#
-# Blank stays silent too: a field with nothing after it carries no intent to
-# contradict.
-_BUILD_PLAN_CRITIC_MODE_FIELD_RE = re.compile(
-    r"^[\s\-\*]*\*\*Critic mode:\*\*\s*(\S.*?)\s*$"
-)
+# Read only from FIELD POSITION, where binding is not, and that asymmetry is the
+# whole point. Binding is bounded twice over — only a VALID mode wins, and only
+# from a declaration position rather than a sentence mentioning the field.
+# REPORTING gets neither bound's benefit: it speaks about a value it could NOT
+# read, so it cannot check the value, and position is a heuristic. A note firing
+# on a Description line is one its reader learns to skip — and then skips on the
+# chunk that needed it. A mid-line unparseable value therefore goes unreported;
+# that is the silence this field had before, kept only where speaking would cost
+# more. Blank stays silent too: a field with nothing after it carries no intent
+# to contradict.
+_BUILD_PLAN_CRITIC_MODE_FIELD_RE = buildplan_refs.field_value_re("Critic mode")
 
-#: How much of an unparseable value the note quotes. The field takes a
-#: one-word token, so anything past this is prose that will not help the author
-#: find their own line any faster.
-_UNPARSEABLE_VALUE_QUOTE_LIMIT = 60
+#: How much of an unparseable value the note quotes — shared with the other
+#: field readers, since every one of them takes a one-word token.
+_UNPARSEABLE_VALUE_QUOTE_LIMIT = buildplan_refs.FIELD_VALUE_QUOTE_LIMIT
 
 
 def _unrecognized_mode_note(token: str, line_num: int | None = None) -> str:
@@ -962,9 +948,11 @@ def _critic_mode_for_chunk(
     unhonored: str | None = None
     unhonored_line: int | None = None
     for line_num, line in section.lines:
-        m = _BUILD_PLAN_CRITIC_MODE_RE.search(line)
-        if m and m.group(1) in _VALID_ARG_MODES:
-            return ChunkModeRead(m.group(1), None)
+        for match in buildplan_refs.iter_field_declarations(
+            line, _BUILD_PLAN_CRITIC_MODE_RE
+        ):
+            if match.group(1) in _VALID_ARG_MODES:
+                return ChunkModeRead(match.group(1), None)
         if unhonored is not None:
             continue
         # Nothing bound, and this line puts the field in field position with a

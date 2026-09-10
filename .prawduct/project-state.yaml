@@ -90,10 +90,17 @@ suite_coupled_prefixes:
   # not vouch for the tree after it.
   #
   # `build-plan` and not `.prawduct/artifacts/`, because these are plain
-  # `startswith` prefixes and the wider one taxes EVERY artifact edit with a
-  # four-minute suite re-run — including ticking a Status box, which happens
-  # several times a chunk. Both spellings are listed: the walk is an `rglob`,
-  # so an archived plan is corpus too.
+  # `startswith` prefixes and the wider one taxes EVERY artifact edit —
+  # architecture.md, api-contract.md, requirements — with a four-minute suite
+  # re-run. Both spellings are listed: the walk is an `rglob`, so an archived
+  # plan is corpus too.
+  #
+  # The tax this does NOT avoid, accepted knowingly: `## Status` lives inside
+  # `build-plan-*.md`, so ticking a chunk box marks evidence stale and the next
+  # review re-runs the suite. A prefix cannot tell a Status tick from an edit to
+  # a `**Type:**` line, and the alternative — evidence that vouches for a tree
+  # whose corpus changed under it — is the failure this coupling exists to
+  # prevent. Price it before widening the prefix, not after.
   - .prawduct/artifacts/build-plan
   - .prawduct/artifacts/archive/build-plan
 

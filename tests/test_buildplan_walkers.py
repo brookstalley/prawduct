@@ -686,6 +686,29 @@ class TestConsolidationPins:
             assert '"## Status"' not in src, f"lib/{mod} regrew a Status walk"
             assert '"### Chunk "' not in src, f"lib/{mod} regrew a chunk-section walk"
 
+    def test_field_patterns_are_built_from_the_shared_factory(self):
+        """Every chunk field is written the same way and misread the same way.
+
+        Two hand-copied delimiter classes is how the `Critic mode:` and `Type:`
+        readers came to disagree about `<br>` — one bound it, one read the line
+        as declaring no field at all — with nothing to tell anyone. The readers
+        keep their reporting POLICY, which genuinely differs; the grammar is one
+        object.
+        """
+        assert (
+            critic_mode._BUILD_PLAN_CRITIC_MODE_RE.pattern
+            == buildplan_refs.field_token_re("Critic mode").pattern
+        )
+        assert (
+            critic_mode._BUILD_PLAN_CRITIC_MODE_FIELD_RE.pattern
+            == buildplan_refs.field_value_re("Critic mode").pattern
+        )
+        src = (LIB_DIR / "critic_mode.py").read_text()
+        assert "\\*\\*" not in src, (
+            "lib/critic_mode.py hand-compiles a build-plan field pattern again; "
+            "build it with buildplan_refs.field_token_re / field_value_re"
+        )
+
     def test_canonical_helpers_are_what_consumers_reach(self):
         # The names critic_mode now resolves are the canonical objects.
         assert critic_mode.buildplan_refs is buildplan_refs
@@ -1413,6 +1436,78 @@ class TestTheTypeFieldIsFoundWhereAuthorsWriteIt:
             prawduct, "01", plan_path=plan
         ) == ("code", None)
 
+    @pytest.mark.parametrize(
+        "lightening_type", ["designer-handoff", "trivial", "doc-only"]
+    )
+    def test_prose_naming_a_gate_lightening_type_binds_nothing(
+        self, tmp_path: Path, lightening_type: str
+    ):
+        """The other half of the cost, and the expensive one.
+
+        A chunk that declares no type at all, whose Description happens to
+        mention one, must still be `code`. Each of these BUYS something:
+        `designer-handoff` makes the stop hook skip the Critic gate outright, so
+        a sentence about the field would switch review off — silently, in every
+        governed product. Binding is therefore bounded by position as well as by
+        the allowed set.
+        """
+        prawduct, plan = _plan_with_chunk_body(
+            tmp_path,
+            f"- **Description:** unlike a **Type:** {lightening_type} chunk, "
+            "this one earns the full protocol\n",
+        )
+        assert buildplan_refs._parse_build_plan_chunk_type(
+            prawduct, "01", plan_path=plan
+        ) == ("code", None)
+
+    def test_a_declaration_after_a_sentence_on_the_same_line_binds(
+        self, tmp_path: Path
+    ):
+        """A real corpus form: two fields joined by a full stop, not a `·`."""
+        prawduct, plan = _plan_with_chunk_body(
+            tmp_path,
+            "**Covers:** CRT-8N5V (instruction half). **Type:** doc-only "
+            "(governance prose).\n",
+        )
+        assert buildplan_refs._parse_build_plan_chunk_type(
+            prawduct, "01", plan_path=plan
+        ) == ("doc-only", None)
+
+    def test_a_value_no_token_can_be_read_out_of_is_reported_verbatim(
+        self, tmp_path: Path
+    ):
+        """Field position, unreadable value: the one case silence would hide.
+
+        `n/a (docs only)` is a declaration. Falling through to the `code`
+        default says *this chunk declared no type*, and the author would learn
+        otherwise only by noticing the review was heavier than they asked for.
+        The whole value is quoted — the readable prefix `n` names a string that
+        appears nowhere in their plan.
+        """
+        prawduct, plan = _plan_with_chunk_body(
+            tmp_path, "- **Type:** n/a (docs only)\n"
+        )
+        chunk_type, error = buildplan_refs._parse_build_plan_chunk_type(
+            prawduct, "01", plan_path=plan
+        )
+        assert chunk_type is None
+        assert error and "'n/a (docs only)'" in error, error
+
+    def test_an_unreadable_value_in_field_position_is_not_overridden_by_prose(
+        self, tmp_path: Path
+    ):
+        """Pass one's answer is final — that is what keeps pass two honest."""
+        prawduct, plan = _plan_with_chunk_body(
+            tmp_path,
+            "- **Type:** (see Chunk 03)\n"
+            "- **Description:** a **Type:** trivial chunk would skip this\n",
+        )
+        chunk_type, error = buildplan_refs._parse_build_plan_chunk_type(
+            prawduct, "01", plan_path=plan
+        )
+        assert chunk_type is None
+        assert error and "(see Chunk 03)" in error, error
+
     def test_prose_about_the_field_does_not_suppress_the_declaration_below_it(
         self, tmp_path: Path
     ):
@@ -1532,14 +1627,15 @@ def test_every_type_line_in_this_repo_is_honoured_or_reported():
     `doc-only` to any human and read as *no field at all* to the anchored
     reader, which then ran the chunk as `code`.
 
-    **A value in FIELD POSITION is never silently nothing** — bound, or read as
-    a token its author can be told about. Not asserted: that every such value IS
+    **A value in FIELD POSITION is never silently nothing** — bound, or read
+    verbatim so its author can be told. Not asserted: that every such value IS
     a type. At least one is not, and correctly so.
 
-    The refusal half of the contract — prose must never fail a chunk — is not
-    asserted here: it needs a chunk section whose only mention of the field is
-    prose, which this corpus does not reliably contain. The fixture cases above
-    carry it.
+    The refusal half of the contract — prose must neither fail a chunk nor
+    lighten one — is not asserted here: it needs a chunk section whose only
+    mention of the field is prose, which this corpus does not reliably contain.
+    The fixture cases above carry it, and that is where a regression in it would
+    show.
     """
     artifacts = Path(__file__).resolve().parent.parent / ".prawduct" / "artifacts"
     plans = sorted(artifacts.rglob("build-plan*.md"))
@@ -1557,7 +1653,12 @@ def test_every_type_line_in_this_repo_is_honoured_or_reported():
                 continue
             where = f"{plan.name}:{lineno}: {line.strip()!r}"
 
-            m = buildplan_refs._BUILD_PLAN_TYPE_RE.search(line)
+            m = next(
+                buildplan_refs.iter_field_declarations(
+                    line, buildplan_refs._BUILD_PLAN_TYPE_RE
+                ),
+                None,
+            )
             token = m.group(1) if m else None
 
             after = line.split(marker, 1)[1].split()
@@ -1566,7 +1667,8 @@ def test_every_type_line_in_this_repo_is_honoured_or_reported():
                 bound += 1
                 if token != reads_as:
                     misread.append(f"{where} reads as {reads_as!r}, read as {token!r}")
-            if field_position.match(line) and after and token is None:
+            reported = buildplan_refs._BUILD_PLAN_TYPE_VALUE_RE.search(line)
+            if field_position.match(line) and after and not (token or reported):
                 lost.append(where)
 
     assert not misread, "a type a human reads off the line was read as something else:\n" + "\n".join(misread)

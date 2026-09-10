@@ -1200,40 +1200,95 @@ _PLAN_FIELD_RE = re.compile(r"^\S")
 # token is a code-location citation (`lib/critic_mode.py:452`, `lib/foo.py:5-8`,
 # the editor-style `lib/foo.py:12:34`), not part of the filename.
 _BUILD_PLAN_LINE_SUFFIX_RE = re.compile(r":\d+(?::\d+)?(?:-\d+)?$")
+# ---------------------------------------------------------------------------
+# The shared grammar of a build-plan chunk FIELD (`**Type:**`, `**Critic
+# mode:**`, …). Every chunk field is written the same way and misread the same
+# way, so the shapes live here once and each reader keeps only what genuinely
+# differs — what it does with a value it cannot honour. `critic_mode` builds its
+# own patterns from these factories; two hand-copied delimiter classes is how
+# they came to disagree about `<br>`.
+# ---------------------------------------------------------------------------
+
+
+def field_token_re(label: str) -> "re.Pattern[str]":
+    """The one-word VALUE of a ``**<label>:**`` field, wherever it sits.
+
+    Hyphen-aware, so ``doc-only`` and ``verify-resolutions`` are captured whole.
+    The opening backtick is optional — authors backtick values. And the token
+    must END at a delimiter: read up to the first non-word character instead,
+    ``n/a (verification only)`` reports the value ``'n'``, a string that appears
+    nowhere in the author's plan.
+
+    Unanchored on purpose, because the field is not reliably the first thing on
+    its line — authors compose chunk headers (``**Depends on:** — · **Type:**
+    code · **Critic mode:** chunk``). Apply it through
+    :func:`iter_field_declarations`, never with a bare ``.search``: the marker
+    appears in PROSE too, and a sentence discussing a field must not be read as
+    declaring it.
+    """
+    return re.compile(
+        rf"\*\*{re.escape(label)}:\*\*\s*`?([A-Za-z][\w\-]*)(?=[\s`.,;)<·|]|$)"
+    )
+
+
+def field_value_re(label: str) -> "re.Pattern[str]":
+    """Everything after a ``**<label>:**`` that OPENS its line, verbatim.
+
+    Field position — the line starts with the field, modulo list and bold
+    markers — is what earns a value the right to be reported back to its author
+    when no token can be read out of it. A value further along a line does not:
+    see :func:`iter_field_declarations` for why position is a heuristic there,
+    and a heuristic must not be the thing that fails someone's chunk.
+
+    Blank matches nothing, deliberately: a field with nothing after it carries
+    no intent to contradict.
+    """
+    return re.compile(rf"^[\s\-\*]*\*\*{re.escape(label)}:\*\*\s*(\S.*?)\s*$")
+
+
+#: How much of an unreadable value a report quotes. Fields take a one-word
+#: token, so anything past this is prose that will not help the author find
+#: their own line any faster.
+FIELD_VALUE_QUOTE_LIMIT = 60
+
+#: What a field declaration may FOLLOW on its line, and the whole of what
+#: separates a declaration from a mention. A field opens the line (modulo list,
+#: bold and backtick markers), follows a composition separator, or opens a new
+#: sentence — those three are how every composed chunk header in this repo is
+#: written. Anything else in front of the marker is a sentence *about* the
+#: field: `- **Notes:** the old reader took **Type:** anything as a value`.
+_FIELD_DECLARATION_PREFIX_RE = re.compile(r"(?:^[\s\-\*`]*|[·•|]\s*|\.\s+)$")
+
+
+def iter_field_declarations(
+    line: str, token_re: "re.Pattern[str]"
+) -> "Iterator[re.Match[str]]":
+    """Yield the matches of ``token_re`` on ``line`` that DECLARE the field.
+
+    Searching for a field mid-line is what makes composed headers readable, and
+    the cost is that a line merely discussing the field reads as declaring it.
+    That cost is not payable: a chunk field decides how much review the chunk
+    gets, and `Type: designer-handoff` skips it entirely — so a sentence
+    mentioning a field would switch the gate off in every governed product, with
+    nothing said. Position is what separates the two, and
+    ``_FIELD_DECLARATION_PREFIX_RE`` is the whole of that rule.
+
+    It is a heuristic, and it is used only to BIND — the readers report an
+    unhonourable value only from field position, where the judgement is not a
+    heuristic at all.
+    """
+    for match in token_re.finditer(line):
+        if _FIELD_DECLARATION_PREFIX_RE.search(line[: match.start()]):
+            yield match
+
+
 # Per-chunk Type declaration (v1.4 F6 — proportional Critic via chunk type).
-# The value token is hyphen-aware so `doc-only` is captured whole, its opening
-# backtick is optional, and it must END at a delimiter — a token read up to the
-# first non-word character reports half a value, which the author cannot find in
-# their own plan.
-#
-# Unanchored, and applied with `.search`, because the field is not reliably the
-# first thing on its line. Authors compose chunk headers
-# (`**Depends on:** — · **Type:** code · **Critic mode:** chunk`) and backtick
-# the value (`**Type:** `doc-only``); an anchored read finds neither, and finding
-# nothing here is indistinguishable from a chunk that declared no type at all —
-# so the `code` default fires and the chunk runs a protocol its author had
-# already said it did not need.
-#
-# The cost of searching is that a line merely *discussing* the field reads as
-# declaring it, and this field cannot absorb that the way its `Critic mode:`
-# sibling can — an unknown value fails the chunk, and `trivial` / `doc-only` buy
-# a bounded review. So the reader spends this pattern in two passes: a value in
-# FIELD POSITION (below) is read first and is final, typo included, and only a
-# section that declares nothing there is searched at large, where an ALLOWED
-# type is the only thing that can bind.
-_BUILD_PLAN_TYPE_RE = re.compile(
-    r"\*\*Type:\*\*\s*`?([A-Za-z][\w\-]*)(?=[\s`.,;)]|$)"
-)
-# The same field at the START of its line, modulo list and bold markers, which
-# is where a value earns the right to be REPORTED as an unknown type. That
-# asymmetry is deliberate. Binding is safe from anywhere on a line, because only
-# one of six allowed words can win there and the plan's author wrote it.
-# Reporting is not: an unknown token from a Description sentence *about* the
-# field would fail the chunk's gate outright, on a chunk that declares no type
-# at all. So a mid-line value no type can be read out of stays silent and takes
-# the `code` default — the same fail-closed answer it got before this field was
-# searchable.
-_BUILD_PLAN_TYPE_FIELD_RE = re.compile(r"^[\s\-\*]*\*\*Type:\*\*")
+# Two passes over the section, and their order is what keeps prose out of a
+# gate: a value in FIELD POSITION is read first and is final, typo included;
+# only a section declaring nothing there is searched at large, where an ALLOWED
+# type at a declaration position is the only thing that can bind.
+_BUILD_PLAN_TYPE_RE = field_token_re("Type")
+_BUILD_PLAN_TYPE_VALUE_RE = field_value_re("Type")
 # v1.5 Chunk 04 — `trivial` joins the allowed set. File-set bounds (no
 # edits under skills/, methodology/, templates/; no CLAUDE.md edit; no
 # test deletion; no new files) + required `**Trivial because:**`
@@ -2413,10 +2468,11 @@ def _parse_build_plan_chunk_type(
     (learnings: "escape hatches in classification create silent failures").
     Unknown values surface as ``(None, "unknown type: <value>")`` so the
     author fixes the typo instead of getting silent fall-through — but only
-    from a field in FIELD POSITION. A type binds from anywhere on its line,
-    backticked or sharing the line with the other chunk fields; an unknown
-    token found mid-line takes the ``code`` default in silence rather than
-    failing a chunk on a word someone wrote in a sentence.
+    from a field in FIELD POSITION. A type binds from further along its line
+    too, backticked or sharing the line with the other chunk fields, provided
+    it sits at a DECLARATION position (:func:`iter_field_declarations`); a
+    sentence mentioning the field binds nothing and reports nothing, because
+    it can neither be trusted to fail a chunk nor to lighten one.
 
     Section discovery is the shared ``_chunk_section_lines`` walker —
     name-anchored on ``### Chunk <chunk_id>:`` with leading-zero tolerance;
@@ -2439,30 +2495,40 @@ def _parse_build_plan_chunk_type(
     if gap:
         return None, gap
 
-    # Two passes, and their order is the safety. Pass one reads a declaration in
-    # FIELD POSITION — the line opens with the field, modulo list and bold
-    # markers — and its answer is final, typo included: an author who put a type
-    # on its own line is told when it is not one.
+    # Pass one: a value in FIELD POSITION, and its answer is final. A token no
+    # type can be read out of is REPORTED here rather than defaulted — the
+    # author declared an intent, and silence would spend their chunk's review
+    # depth on their typo. The verbatim value is what carries: quoting the
+    # readable prefix of `n/a (docs only)` names a value appearing nowhere in
+    # their plan.
     declared: str | None = None
     for _line_num, line in section.lines:
-        if not _BUILD_PLAN_TYPE_FIELD_RE.match(line):
+        value = _BUILD_PLAN_TYPE_VALUE_RE.search(line)
+        if value is None:
             continue
-        m = _BUILD_PLAN_TYPE_RE.search(line)
-        if m:
-            declared = m.group(1)
-            break
+        token = _BUILD_PLAN_TYPE_RE.search(line)
+        declared = (
+            token.group(1)
+            if token
+            else value.group(1)[:FIELD_VALUE_QUOTE_LIMIT]
+        )
+        break
 
     # Pass two runs only when the section declares nothing there, and reads the
-    # composed-header form (`**Depends on:** — · **Type:** code · …`). It can
-    # only ever BIND an allowed type: the marker appears in prose too, and a
-    # sentence *about* the field must not fail a chunk on a word from it. So an
-    # unreadable value found here takes the `code` default in silence — exactly
-    # what it took before the field was searchable at all.
+    # composed-header form (`**Depends on:** — · **Type:** code · …`). Two
+    # bounds, and this field needs both: only an ALLOWED type binds, and only
+    # from a DECLARATION position. Position is a heuristic, so it is spent only
+    # on binding — an unreadable value out here takes the `code` default in
+    # silence, exactly what it took before the field was searchable at all.
+    # Without the position bound a Description sentence naming
+    # `**Type:** designer-handoff` would switch the chunk's Critic gate off.
     if declared is None:
         for _line_num, line in section.lines:
-            m = _BUILD_PLAN_TYPE_RE.search(line)
-            if m and m.group(1) in _BUILD_PLAN_ALLOWED_TYPES:
-                declared = m.group(1)
+            for match in iter_field_declarations(line, _BUILD_PLAN_TYPE_RE):
+                if match.group(1) in _BUILD_PLAN_ALLOWED_TYPES:
+                    declared = match.group(1)
+                    break
+            if declared is not None:
                 break
 
     if declared is None:

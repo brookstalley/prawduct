@@ -55,17 +55,28 @@ protocol under the `code` default against a `doc-only` their author had declared
 This lever is the one that decides which plans qualify for a bounded gate, so it was held for a
 ruling rather than folded into a bug fix: widening it can lighten a gate, not only restore one.
 
-**Field position is read first here, where `Critic mode:` reads the whole section at once**, and
-the difference is what each field can cost. An unknown `Critic mode:` value is a note; an unknown
-`**Type:**` fails the chunk, and `trivial` / `doc-only` buy a bounded review. So the type reader
-takes a declaration in field position as final — typo included, which keeps the existing
-unknown-type report exactly as it was — and only when the section declares nothing there does it
-read the composed-header form, where **only an allowed type can bind**. A sentence mentioning the
-field can therefore neither fail a chunk nor lighten one. `**Trivial because:**` is two passes for
-the sharper version of the same reason: its capture runs until the next field, so one permissive
-pass would start at a line *discussing* the field and hand the gate that sentence instead of the
-rationale declared below it — a rationale silently ungraded, which is worse than the missing-field
-block it was meant to prevent.
+**Field position is read first here, and it is read differently, because what a wrong value costs
+differs per field.** An unknown `Critic mode:` earns a note; an unknown `**Type:**` fails the
+chunk, and `trivial` / `doc-only` / `designer-handoff` *buy* something — the last of them skips the
+Critic gate outright. So the type reader takes a declaration in field position as final, typo
+included, and a value there that no token can be read out of (`**Type:** n/a (docs only)`) is now
+reported verbatim rather than defaulted: that was a real silence, and quoting the readable prefix
+`n` would name a string appearing nowhere in the author's plan.
+
+**What separates a declaration from a mention is POSITION, and it is one predicate now, shared.**
+Searching a line for a field makes composed headers readable and makes every prose line a
+declaration site — so a Description sentence naming `**Type:** designer-handoff` would have
+switched review off, silently, in every governed product. A field declaration is one that opens its
+line, follows a composition separator (`·`), or opens a sentence; anything else in front of the
+marker is prose *about* the field. Both readers bind through that predicate, and neither reports
+from it — position is a heuristic, and a heuristic must not be the thing that fails someone's
+chunk. The field grammar itself is now one factory in `buildplan_refs` rather than a shape copied
+reader to reader, which is how the two delimiter sets had already come to disagree about `<br>`.
+
+`**Trivial because:**` is two passes for a sharper version of the same reason: its capture runs
+until the next field, so one permissive pass would start at a line *discussing* the field and hand
+the gate that sentence instead of the rationale declared below it — a rationale silently ungraded,
+which is worse than the missing-field block it was meant to prevent.
 
 ## 2026-09-09: the review loop gets a stopping rule
 

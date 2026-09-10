@@ -2324,7 +2324,19 @@ class TestTheModeFieldIsFoundWhereAuthorsWriteIt:
         infer_mode(repo, None)
 
         err = capsys.readouterr().err
-        assert "plan line " in err, err
+        # The fixture's field is the tenth line of the plan. Asserting the
+        # SUBSTRING alone passes for a section-relative or 0-based number, which
+        # is a note sending the author to a line that is not theirs — the exact
+        # misdirection the whole-section scan exists to prevent.
+        plan = repo / ".prawduct" / "artifacts" / "build-plan.md"
+        expected = next(
+            num
+            for num, text in enumerate(
+                plan.read_text(encoding="utf-8").splitlines(), start=1
+            )
+            if "**Critic mode:**" in text
+        )
+        assert f"plan line {expected}" in err, err
 
     def test_an_unparseable_value_is_quoted_only_as_far_as_it_helps(
         self, tmp_path: Path, capsys
@@ -2522,7 +2534,12 @@ def test_every_critic_mode_line_in_this_repo_is_honoured_or_reported():
                 continue
             where = f"{plan.name}:{lineno}: {line.strip()!r}"
 
-            honoured = critic_mode._BUILD_PLAN_CRITIC_MODE_RE.search(line)
+            honoured = next(
+                buildplan_refs.iter_field_declarations(
+                    line, critic_mode._BUILD_PLAN_CRITIC_MODE_RE
+                ),
+                None,
+            )
             token = honoured.group(1) if honoured else None
             reported = critic_mode._BUILD_PLAN_CRITIC_MODE_FIELD_RE.search(line)
 
