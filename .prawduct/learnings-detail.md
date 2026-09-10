@@ -18,6 +18,36 @@ redirect.
 
 ---
 
+## Copying a fix into a sibling procedure or reader is a NEW change needing its own analysis
+
+Two documents share a paragraph, not their invariants, so one edit can repair one and break the
+other. The 2026-09-10 instance widened the rule from documents to any parallel implementation, and
+supplied the missing question: **what does a WRONG value cost at each site?**
+
+`**Critic mode:**` and `**Type:**` are the same field grammar read by two modules. The mode reader
+was fixed first: search the whole chunk section, bind the first VALID token, and prose is harmless
+because only one of four words can win. Transcribed to `**Type:**` that is a hole. An unknown mode
+earns a NOTE; an unknown type FAILS the chunk. And three of the six types *buy* something —
+`designer-handoff` makes the stop hook set `designer_handoff_skip` and the Critic skill exit before
+`critic-begin`. So a Description sentence naming `**Type:** designer-handoff`, in a chunk declaring
+no type at all, would have switched review off silently in every governed product. Same regex, same
+widening, opposite blast radius.
+
+The fix was a construction rather than a longer list of shapes: one predicate deciding DECLARATION
+vs mention (the marker opens its line, follows a `·`, or opens a sentence), shared by both readers
+and spent only on BINDING — neither reports from it, because position is a heuristic and a
+heuristic must not be what fails someone's chunk. **The sentence-opening arm is a knowing
+residual**: real plans separate composed fields with a period, so a sentence that BEGINS with the
+marker still binds, and the bound on that is prose in `methodology/planning.md` rather than code.
+Narrowing the predicate would drop the composed forms the readers exist to find. The grammar moved to one factory in
+`buildplan_refs` at the same time; the two hand-copied delimiter classes had already drifted, one
+binding `<br>` and one reading the same line as declaring no field.
+
+**The tell that the analysis was skipped**: the sibling's code open in one window, and a first
+draft that was its loop with the label swapped.
+
+---
+
 ## Ratcheting the ceiling is part of a cut, not a follow-up
 
 Broken again on 2026-09-08 by an author who had re-read this rule the same session and recorded it
@@ -2853,3 +2883,34 @@ whole suite green.
 The shape that can tell them apart is an input the two forms answer differently — here a prior set of
 five subjects of which one is coverage-priced, and a delta of eight priced files: past `2*1+5`,
 inside `2*5+5`. `TestWideningBoundReachesTheDispatch` enters at `begin_review` with exactly that.
+
+## When a predicate's job is to classify REAL artifacts, at least one test must read the real artifact
+
+Widening a norm-detection guard, I wrote TWO over-fire fixtures aimed at exactly the failure that
+shipped, and never opened `templates/project-preferences.md`. It ships illustrative rows whose cells
+are non-empty placeholders, which `init_product` copies verbatim, so the guard fired on every
+freshly-onboarded repo while both fixtures passed. Read the artifact through `core.TEMPLATES_DIR` so
+the two are pinned against each other. Mutation testing does not cover this — it probes the line you
+wrote, and says nothing about inputs you never supplied.
+
+Second instance, and the one that sharpened the tell: fixing the build-plan `**Critic mode:**`
+reader, I grepped this repo's 103 plans to find the real forms, hand-copied twelve of them into a
+scratch script, and built six tests from that list. The grep was already proof the corpus was
+walkable. Walking it in the test instead — and asserting a property over all 101 field lines rather
+than the members I noticed — is both cheaper and strictly stronger, and it is what the independent
+review asked for. A hand-copied sample of a corpus you can walk is a choice to test your own
+imagination.
+
+## A comment that NAMES a new failure mode owes a test in the same commit
+
+Widening that same reader from `.match` to `.search`, I wrote the sentence "the cost is that a line
+merely *discussing* the field parses as declaring it", judged it absorbed by the fail-open posture,
+and shipped it. It was absorbed in the branch I was looking at and not in the fallback three lines
+below, where first-sight return let prose bury a real declaration and report the loss as a typo —
+strictly worse than the bug being fixed, because the original said nothing rather than something
+misleading. The review caught it; the comment had already described it.
+
+The general shape is that widening what an input may BE is never confined to the line you edit. Every
+branch downstream of it now receives inputs it was written before. Re-read the function, not the
+diff — and when a comment in that diff names a case, that sentence is a test specification someone
+has already written for you.

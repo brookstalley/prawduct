@@ -3,6 +3,96 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-09-10: a build plan's chunk fields bind in the forms authors write
+
+<!-- prawduct: type=fix | scope=critic-mode-field-parse -->
+
+The plan-level `Critic mode:` override was read line-anchored and unbackticked, so two forms real
+build plans use were invisible to it: the field sharing a line (`**Type:** doc-only · **Critic
+mode:** final`) and a backticked value (``**Critic mode:** `chunk` ``). Neither raised anything —
+`_unrecognized_mode_note` fires only for a token that matched and is not a mode, and a non-match
+emits nothing — so a plan-mandated `final` ran as an inferred `chunk` with a rationale that never
+mentioned the plan. That is the silent demotion the field's reader exists to prevent, reached
+through a different door, and its blast radius is every build plan in every governed product,
+where the symptom is a shallower review that looks like a normal one.
+
+The read is now unanchored, with an optional backtick before the value, and bounded by position —
+what counts as a declaration rather than a mention is the shared predicate described below. **The
+whole chunk section is scanned**, and a valid token anywhere in it beats anything unhonorable above
+it — answering on first sight would let a sentence *about* the field bury the declaration below it
+and report the loss as a typo, pointing the author at the wrong line.
+
+101 `**Critic mode:**` lines across this repo's 103 build plans are now a test corpus. The
+hand-written form list can only contain forms someone thought of; that is what missed these for as
+long as it did. Its oracle is built independently of the reader — text after the marker, first
+word, punctuation stripped — because one built out of the reader's own regex can only agree with
+it. Measured against the old anchored read, lines were being lost outright in every plan that
+composes its chunk header — re-derive with the corpus walker rather than trusting a number here. The
+`build-plan` prefixes join `suite_coupled_prefixes` as a consequence, spelled narrowly on purpose:
+`.prawduct/artifacts/` would have taxed every Status-box tick with a four-minute suite re-run.
+
+**The missing signal was the larger half of the defect.** A field carrying something no mode token
+can be read out of — `**Critic mode:** (inferred — `chunk`)` — now earns the same one-line NOTE a
+typo'd mode does, quoting the value verbatim and naming the plan line it sits on. Silence there said
+*this chunk declares no mode*, and the author had written one. Absent and blank stay silent,
+unchanged: they carry no intent to contradict.
+
+**Reporting is anchored where binding is not, and the asymmetry is the design.** Binding a mode is
+safe from anywhere on a line — only one of four words can win, and the plan's author wrote it.
+Reporting is not: an unanchored report announces a Description sentence *discussing* the field as an
+ignored declaration, which it did on ten chunk sections in this repo before the anchor went back on
+the report alone. A note that fires on ordinary plans is not a warning, it is something its reader
+learns to skip — and then skips on the chunk that needed it. The sections that still earn one are exactly
+those carrying a real field-position value that names no mode. The token must also end at a delimiter now, so
+`n/a (verification only — nothing to review)` is quoted whole rather than reported as the mode
+`'n'`, a string appearing nowhere in the author's plan.
+
+**`**Type:**` and `**Trivial because:**` carried the same defect and are fixed with it**, on the
+owner's ruling — they are the same lines, since an author composing `**Depends on:** — · **Type:**
+code · **Critic mode:** chunk` is writing every one of those fields mid-line. Nine live lines in
+this repo's plans were losing their type outright; two chunk sections were running the full
+protocol under the `code` default against a `doc-only` their author had declared and backticked.
+This lever is the one that decides which plans qualify for a bounded gate, so it was held for a
+ruling rather than folded into a bug fix: widening it can lighten a gate, not only restore one.
+
+**Field position is read first here, and it is read differently, because what a wrong value costs
+differs per field.** An unknown `Critic mode:` earns a note; an unknown `**Type:**` fails the
+chunk, and `trivial` / `doc-only` / `designer-handoff` *buy* something — the last of them skips the
+Critic gate outright. So the type reader takes a declaration in field position as final, typo
+included, and a value there that no token can be read out of (`**Type:** n/a (docs only)`) is now
+reported verbatim rather than defaulted: that was a real silence, and quoting the readable prefix
+`n` would name a string appearing nowhere in the author's plan.
+
+**What separates a declaration from a mention is POSITION, and it is one predicate now, shared.**
+Searching a line for a field makes composed headers readable and makes every prose line a
+declaration site — so a Description sentence naming `**Type:** designer-handoff` would have
+switched review off, silently, in every governed product. A field declaration is one that opens its
+line, follows a composition separator (`·`), or opens a sentence; anything else in front of the
+marker is prose *about* the field. **All three field reads go through it**, and a source-scan test
+says so rather than the prose alone — the `**Trivial because:**` fallback was written with a bare
+`.search` and let a Description sentence supply the rationale that buys `Type: trivial` its bounded
+review, on a section that declared none. A claim that a rule is shared is worth what enumerates it.
+
+**Sentence-initial is the residual, and it is a real one.** A period separates composed fields in
+this corpus as freely as a `·` does (`**Type:** doc-only. **Critic mode:** final`), so the
+predicate has to accept it — and the cost is that a Description sentence *beginning*
+`**Type:** designer-handoff chunks skip review…` still binds. Mid-sentence mentions, which is what
+prose about a field overwhelmingly is, do not. The bound that remains is the author's:
+`methodology/planning.md` now says not to open a LINE or a sentence with a field marker, and to
+write about one by keeping the marker inside the sentence or dropping the asterisks. **Backticking
+is not an escape** — the line-opening class allows it deliberately, because line-initial
+``` `**Critic mode:** chunk` ``` is a live declaration form here, and a first draft of that guidance
+recommended it anyway. Narrowing the predicate instead would cost the composed forms real plans
+use, which is the defect this whole entry is about. Both readers bind through that predicate, and neither reports
+from it — position is a heuristic, and a heuristic must not be the thing that fails someone's
+chunk. The field grammar itself is now one factory in `buildplan_refs` rather than a shape copied
+reader to reader, which is how the two delimiter sets had already come to disagree about `<br>`.
+
+`**Trivial because:**` is two passes for a sharper version of the same reason: its capture runs
+until the next field, so one permissive pass would start at a line *discussing* the field and hand
+the gate that sentence instead of the rationale declared below it — a rationale silently ungraded,
+which is worse than the missing-field block it was meant to prevent.
+
 ## 2026-09-09: the review loop gets a stopping rule
 
 <!-- prawduct: type=feat | scope=review-loop-termination -->

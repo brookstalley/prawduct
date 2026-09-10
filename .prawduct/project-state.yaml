@@ -82,6 +82,27 @@ sentinel_command: python3 -m pytest {sentinel} -q
 suite_coupled_prefixes:
   - documentation/
   - plugin/
+  # This repo's own build plans are a test CORPUS, not just records: the
+  # chunk-field readers (`**Critic mode:**`, `**Type:**`) are pinned by tests
+  # that WALK these plans, so each reader is graded against the forms authors
+  # really write rather than a hand-transcribed list. A plan added here can
+  # therefore turn the suite red, which means evidence recorded before it does
+  # not vouch for the tree after it.
+  #
+  # `build-plan` and not `.prawduct/artifacts/`, because these are plain
+  # `startswith` prefixes and the wider one taxes EVERY artifact edit —
+  # architecture.md, api-contract.md, requirements — with a four-minute suite
+  # re-run. Both spellings are listed: the walk is an `rglob`, so an archived
+  # plan is corpus too.
+  #
+  # The tax this does NOT avoid, accepted knowingly: `## Status` lives inside
+  # `build-plan-*.md`, so ticking a chunk box marks evidence stale and the next
+  # review re-runs the suite. A prefix cannot tell a Status tick from an edit to
+  # a `**Type:**` line, and the alternative — evidence that vouches for a tree
+  # whose corpus changed under it — is the failure this coupling exists to
+  # prevent. Price it before widening the prefix, not after.
+  - .prawduct/artifacts/build-plan
+  - .prawduct/artifacts/archive/build-plan
 
 # Files carrying the release version, read by `check-released` FROM THE TAG'S
 # TREE — which files carried a release's version is a fact about that release,
