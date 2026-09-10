@@ -1627,9 +1627,11 @@ def test_every_type_line_in_this_repo_is_honoured_or_reported():
     `doc-only` to any human and read as *no field at all* to the anchored
     reader, which then ran the chunk as `code`.
 
-    **A value in FIELD POSITION is never silently nothing** — bound, or read
-    verbatim so its author can be told. Not asserted: that every such value IS
-    a type. At least one is not, and correctly so.
+    **A chunk declaring a value in FIELD POSITION never takes the `code` default
+    in silence** — it binds, or it reports. Asked of the reader's return value,
+    because asking it of a regex the reader uses is how the assertion goes
+    inert. Not asserted: that every such value IS a type. At least one is not,
+    and correctly so — that one reports, which is the contract.
 
     The refusal half of the contract — prose must neither fail a chunk nor
     lighten one — is not asserted here: it needs a chunk section whose only
@@ -1643,8 +1645,9 @@ def test_every_type_line_in_this_repo_is_honoured_or_reported():
 
     marker = "**Type:**"
     field_position = re.compile(r"^[\s\-\*]*" + re.escape(marker))
-    misread, lost = [], []
-    bound = 0
+    misread, silent = [], []
+    declared_at: dict[Path, dict[int, str]] = {plan: {} for plan in plans}
+    bound = graded = 0
     for plan in plans:
         for lineno, line in enumerate(
             plan.read_text(encoding="utf-8").splitlines(), start=1
@@ -1667,10 +1670,44 @@ def test_every_type_line_in_this_repo_is_honoured_or_reported():
                 bound += 1
                 if token != reads_as:
                     misread.append(f"{where} reads as {reads_as!r}, read as {token!r}")
-            reported = buildplan_refs._BUILD_PLAN_TYPE_VALUE_RE.search(line)
-            if field_position.match(line) and after and not (token or reported):
-                lost.append(where)
+            if field_position.match(line) and after:
+                declared_at[plan][lineno] = reads_as
+
+    # The second property, asked of the READER rather than of a regex the reader
+    # happens to use. Phrasing it as "some pattern matches this line" is how it
+    # goes inert: `_BUILD_PLAN_TYPE_VALUE_RE` matches every line the field-position
+    # check just matched, so `bound or reported` was true by construction and the
+    # assertion could not fail. What the contract is actually about is what the
+    # chunk's read RETURNS.
+    for plan, linenos in declared_at.items():
+        content = plan.read_text(encoding="utf-8")
+        roster = (
+            _chunk_id_from_item_text(text)
+            for _checked, text in _iter_status_section_items(content)
+        )
+        for chunk_id in filter(None, roster):
+            section = _chunk_section_lines(content, chunk_id)
+            if buildplan_refs.chunk_section_gap(chunk_id, section):
+                continue
+            declared = [
+                linenos[num] for num, _text in section.lines if num in linenos
+            ]
+            if not declared:
+                continue
+            chunk_type, error = buildplan_refs._parse_build_plan_chunk_type(
+                plan.parent, chunk_id, plan_path=plan
+            )
+            graded += 1
+            # `code` is the default AND a declarable type, so it is the one
+            # answer that cannot distinguish "honoured" from "fell through" —
+            # unless the section is one whose author wrote `code`.
+            if (chunk_type, error) == ("code", None) and "code" not in declared:
+                silent.append(f"{plan.name} Chunk {chunk_id}: declared {declared}")
 
     assert not misread, "a type a human reads off the line was read as something else:\n" + "\n".join(misread)
-    assert not lost, "a value in field position read as no field at all:\n" + "\n".join(lost)
+    assert not silent, (
+        "a chunk declaring a type in field position took the `code` default with "
+        "nothing said:\n" + "\n".join(silent)
+    )
     assert bound >= 10, f"only {bound} bindable Type: lines found — the corpus moved"
+    assert graded >= 10, f"only {graded} chunk sections graded — the corpus moved"
