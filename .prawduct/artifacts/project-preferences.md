@@ -17,6 +17,45 @@ Developer preferences for how code is written in this project. Captured during d
 - **Linting**: ruff, configured in `pyproject.toml` `[tool.ruff]` and installable via the `dev` extra — but **not yet gating**: `ruff check` is not clean (149 `prawduct:allow` pragmas it cannot read) and no CI job runs it. Treat it as groundwork, not as a check you can rely on; the Critic still owns this ground (#164)
 - **Type annotations**: Used throughout — function signatures use `str | None`, `list[str]`, `dict[str, str]` style (PEP 604)
 - **Imports**: `from __future__ import annotations` at top of every implementation file in `lib/`, `tests/`, and `hooks/`, plus the plugin runtime scripts `bin/prawduct-hook` and `bin/test-reference-verify` (`__init__.py` and `tests/conftest.py` excepted); grouped by stdlib / third-party / local
+- **Comment content**: interface before rationale — see the norm below (#774)
+
+### Norm — interface before rationale
+
+**Statement.** A comment or doc-comment **leads with what a reader needs in order to use or change
+the thing it documents.** Design rationale, alternatives weighed, and recorded rulings follow it,
+clearly separated. A reader who needs only the interface must not have to read the rationale to
+find it.
+
+Deliberately phrased as *what a reader needs*, not *what it does for its caller*: the norm covers
+plain `#` blocks as well as docstrings, and a block documenting a config stanza has no caller. The
+predicate that generalizes is the reader's first question, which for a callable is the signature
+and for `pyproject.toml`'s ruff stanza is "is this gating yet?" — which that stanza already answers
+in its first sentence.
+
+**Why.** A comment's first reader almost always needs to *use* the thing, not redesign it. Making
+that reader page through a design essay to reach what they came for taxes the common case to serve
+the rare one. Rationale placed *after* loses nothing — the reader who needs it reads on.
+
+**Scope: ordering and separation, not volume.** This norm never asks anyone to delete rationale and
+cannot be satisfied or violated by a line count. Two consequences worth stating, because both are
+ways it gets restated wrong:
+
+- It does **not** license cutting recorded reasoning. The oversized-file advisory's warning holds —
+  recorded reasoning is the methodology working, and is not the thing to cut.
+- A do-not-reintroduce comment — a recorded ruling against a rejected approach, such as
+  `lib/coverage_algebra.py`'s `is_judgeable_path` docstring or the ruff stanza in `pyproject.toml` —
+  keeps its full length. It moves below the interface at most.
+
+**Status:** `in-transition` — tracked by brookstalley/prawduct#772.
+
+**Retroactivity:** `migrate: #772`. Existing sites converge on #772's schedule, riding commits that
+open those files for other reasons; no standalone sweep. Chosen over Grandfather deliberately —
+Grandfather means never intending to converge, which would exempt already-compliant files and
+invite the next editor to add more.
+
+**Not this norm, and already governed:** comments that *narrate history* or ride on an id that
+changes under them. `methodology/building.md` states that rule and three review protocols enforce
+it as a **deletion** finding. Not restated here.
 
 ## Testing
 
@@ -102,6 +141,7 @@ This is the product's **norm index** (`docs/norms.md`): each row assigns an enfo
 | Backlog filing: fix, don't file — file only when orthogonal AND medium+ (Workflow) | Critic | Goal 4 (Norms), and `final` mode's existing backlog reconciliation | Critic + janitor | the failure is an agent filing small in-scope work that it should simply have done, which no mechanical check can see — it needs a reader who knows what the current work was. Session config alone would make it aspirational: nothing would ever notice a wrong call |
 | Branching / PR creation / PR merge / PR merge strategy (Workflow) | Session config | Read by `building.md`, `/pr`, etc. at decision points | user-observed | workflow decisions, read at session boundaries |
 | Model floor and coherence pass (Workflow) | Session config | Operator picks the session model (`/model`) or sets a subagent's model at spawn; `/pr` and `/critic` record which model actually ran | user-observed | deliberately not a Test: the runtime cannot observe which model it is, so a test could only pin prose, and any mechanical model selector would reopen the "no intelligent model switching" pin two rows up. The coherence pass is audited by the operator seeing it run, and by the ledger's recorded model |
+| Comment content — interface before rationale (Code Style) | Critic | Reviewer reads the diff against the norm above | Critic + janitor | no linter can tell an interface paragraph from a rationale one; judgment-required by construction, which is also why it needs no per-language comment grammar |
 | All others (Language, Version, Style, Type annotations, Testing strategy, File organization) | Critic | Reviewer reads diff against this preference | Critic | style/structure conventions |
 
 ### Direction norms (architectural — ratified 2026-07-17)
