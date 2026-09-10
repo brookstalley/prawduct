@@ -1305,12 +1305,15 @@ _BUILD_PLAN_TRIVIAL_RATIONALE_RE = re.compile(
     r"^[\s\-\*]*\*\*Trivial because:\*\*\s*(.*)$"
 )
 # The same field wherever it sits on its line, for the composed-header form
-# (`**Type:** trivial · **Trivial because:** it renames a constant`). Read ONLY
-# as a fallback, after the anchored pass above has found no field at all: a
-# mid-line marker in prose would otherwise start the capture, and the capture
-# stops at the next `- **` line — so a sentence discussing the field would eat
-# the rationale declared below it and hand the gate the prose instead. A
-# declaration in field position always wins.
+# (`**Type:** trivial · **Trivial because:** it renames a constant`). Bounded
+# twice, and this field needs both. Read ONLY as a fallback, after the anchored
+# pass above has found no field at all: a mid-line marker in prose would
+# otherwise start the capture, and the capture stops at the next `- **` line —
+# so a sentence discussing the field would eat the rationale declared below it
+# and hand the gate the prose instead. And read only from a DECLARATION
+# position, so a section with no rationale at all cannot have one supplied by a
+# sentence mentioning the field — that sentence would buy `Type: trivial` its
+# bounded review, which is the whole thing the field is asked for.
 _BUILD_PLAN_TRIVIAL_RATIONALE_ANYWHERE_RE = re.compile(
     r"\*\*Trivial because:\*\*\s*(.*)$"
 )
@@ -2506,7 +2509,11 @@ def _parse_build_plan_chunk_type(
         value = _BUILD_PLAN_TYPE_VALUE_RE.search(line)
         if value is None:
             continue
-        token = _BUILD_PLAN_TYPE_RE.search(line)
+        # Through the predicate here too, though the line is already known to
+        # open with the field: a second marker further along it —
+        # `- **Type:** n/a (unlike a **Type:** doc-only chunk)` — is prose, and
+        # a bare search would take it as this chunk's type.
+        token = next(iter_field_declarations(line, _BUILD_PLAN_TYPE_RE), None)
         declared = (
             token.group(1)
             if token
@@ -2553,12 +2560,20 @@ def _capture_trivial_rationale(
     header. Two passes rather than one permissive pass, so a declaration always
     beats prose — see the ``_ANYWHERE_`` pattern's comment for what one pass
     would eat.
+
+    Either way the match goes through :func:`iter_field_declarations`, the same
+    predicate the other two chunk fields bind through. It is what stops the
+    composed-header pass from reading a SENTENCE about the field: this rationale
+    is what buys ``Type: trivial`` its bounded review, so prose satisfying it
+    silently is worse than the missing-field block it would replace. (On the
+    anchored pattern the predicate is a no-op — a match there starts at column
+    zero — which is the point: one rule, no second spelling of it.)
     """
     capturing = False
     rationale_lines: list[str] = []
     for _line_num, line in section.lines:
         stripped = line.strip()
-        m = pattern.search(line)
+        m = next(iter_field_declarations(line, pattern), None)
         if m:
             capturing = True
             first = m.group(1).strip()

@@ -709,6 +709,30 @@ class TestConsolidationPins:
             "build it with buildplan_refs.field_token_re / field_value_re"
         )
 
+    def test_every_field_bind_goes_through_the_one_position_predicate(self):
+        """"Shared" has to mean all of them, or the records are describing two
+        readers and a third that quietly is not.
+
+        A bare `.search` bind is the defect: it makes every prose line in a
+        chunk section a declaration site for that field. The `Trivial because:`
+        fallback shipped that way once — a Description sentence could supply the
+        rationale that buys `Type: trivial` its bounded review, on a section
+        that declared none.
+        """
+        for mod in ("buildplan_refs.py", "critic_mode.py"):
+            src = (LIB_DIR / mod).read_text()
+            for name in (
+                "_BUILD_PLAN_TYPE_RE",
+                "_BUILD_PLAN_CRITIC_MODE_RE",
+                "_BUILD_PLAN_TRIVIAL_RATIONALE_RE",
+                "_BUILD_PLAN_TRIVIAL_RATIONALE_ANYWHERE_RE",
+            ):
+                assert f"{name}.search(" not in src, (
+                    f"lib/{mod} binds {name} with a bare .search; route it "
+                    "through buildplan_refs.iter_field_declarations so prose "
+                    "cannot declare a chunk field"
+                )
+
     def test_canonical_helpers_are_what_consumers_reach(self):
         # The names critic_mode now resolves are the canonical objects.
         assert critic_mode.buildplan_refs is buildplan_refs
@@ -1633,6 +1657,31 @@ class TestTheTrivialRationaleIsFoundWhereAuthorsWriteIt:
         assert buildplan_refs._parse_build_plan_chunk_trivial_rationale(
             prawduct, "01", plan_path=plan
         ) == ("it renames one constant", None)
+
+    def test_prose_alone_cannot_supply_a_rationale_that_is_absent(
+        self, tmp_path: Path
+    ):
+        """The hole the composed-header fallback would otherwise open.
+
+        `Type: trivial` buys a bounded review, and this field is the price. A
+        section that declares no rationale at all, whose Description merely
+        mentions the field, must still block — prose satisfying the gate
+        silently is worse than the missing-field block it replaces, because the
+        author never learns their chunk was never graded. Distinct from the
+        suppression case above, which pins prose losing to a real declaration;
+        here there is nothing for it to lose to.
+        """
+        prawduct, plan = _plan_with_chunk_body(
+            tmp_path,
+            "- **Type:** trivial\n"
+            "- **Description:** every trivial chunk needs a **Trivial because:** "
+            "line, and this one has none\n",
+        )
+        rationale, error = buildplan_refs._parse_build_plan_chunk_trivial_rationale(
+            prawduct, "01", plan_path=plan
+        )
+        assert rationale is None
+        assert error and error.startswith("missing-rationale:")
 
     def test_an_absent_field_is_still_missing_rationale(self, tmp_path: Path):
         prawduct, plan = _plan_with_chunk_body(tmp_path, "- **Type:** trivial\n")

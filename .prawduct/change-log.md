@@ -69,7 +69,10 @@ Searching a line for a field makes composed headers readable and makes every pro
 declaration site — so a Description sentence naming `**Type:** designer-handoff` would have
 switched review off, silently, in every governed product. A field declaration is one that opens its
 line, follows a composition separator (`·`), or opens a sentence; anything else in front of the
-marker is prose *about* the field.
+marker is prose *about* the field. **All three field reads go through it**, and a source-scan test
+says so rather than the prose alone — the `**Trivial because:**` fallback was written with a bare
+`.search` and let a Description sentence supply the rationale that buys `Type: trivial` its bounded
+review, on a section that declared none. A claim that a rule is shared is worth what enumerates it.
 
 **Sentence-initial is the residual, and it is a real one.** A period separates composed fields in
 this corpus as freely as a `·` does (`**Type:** doc-only. **Critic mode:** final`), so the
