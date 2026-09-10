@@ -1603,11 +1603,11 @@ class TestTheTypeFieldIsFoundWhereAuthorsWriteIt:
         """Backticking is not an escape, and that is deliberate.
 
         Plans write line-initial ``` `**Critic mode:** chunk` ``` and mean it,
-        so the line-opening class allows the backtick. Pinned because the
-        authoring guidance in `methodology/planning.md` has to agree with it:
-        a first draft of that guidance told authors to backtick a marker they
-        did not mean to declare, which is advice that binds the thing it says
-        it escapes.
+        so the line-opening class allows the backtick. Pinned because
+        `methodology/planning.md` tells authors that backticking a marker does
+        NOT stop it declaring — guidance that is true only while this binds, and
+        that would otherwise send someone to hide a field behind backticks and
+        declare it instead.
         """
         prawduct, plan = _plan_with_chunk_body(
             tmp_path, "`**Type:** doc-only` for the prose half of this chunk\n"

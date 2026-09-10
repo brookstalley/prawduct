@@ -16,12 +16,11 @@ mentioned the plan. That is the silent demotion the field's reader exists to pre
 through a different door, and its blast radius is every build plan in every governed product,
 where the symptom is a shallower review that looks like a normal one.
 
-The read is now unanchored, `.search`-applied, with an optional backtick before the value. The
-cost is that a line merely discussing the field parses as declaring it; fail-open absorbs that,
-because the worst case is a mode the author can see named in the rationale rather than a review
-that did not happen. **The whole chunk section is scanned**, and a valid token anywhere in it beats
-anything unhonorable above it — answering on first sight would let a sentence *about* the field
-bury the declaration below it and report the loss as a typo, pointing the author at the wrong line.
+The read is now unanchored, with an optional backtick before the value, and bounded by position —
+what counts as a declaration rather than a mention is the shared predicate described below. **The
+whole chunk section is scanned**, and a valid token anywhere in it beats anything unhonorable above
+it — answering on first sight would let a sentence *about* the field bury the declaration below it
+and report the loss as a typo, pointing the author at the wrong line.
 
 101 `**Critic mode:**` lines across this repo's 103 build plans are now a test corpus. The
 hand-written form list can only contain forms someone thought of; that is what missed these for as
