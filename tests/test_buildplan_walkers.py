@@ -719,16 +719,21 @@ class TestConsolidationPins:
         rationale that buys `Type: trivial` its bounded review, on a section
         that declared none.
         """
+        binds = (
+            "_BUILD_PLAN_TYPE_RE.search(",
+            "_BUILD_PLAN_CRITIC_MODE_RE.search(",
+            "_BUILD_PLAN_TRIVIAL_RATIONALE_RE.search(",
+            "_BUILD_PLAN_TRIVIAL_RATIONALE_ANYWHERE_RE.search(",
+            # The alias the fallback is passed under. Without it the scan misses
+            # the exact defect this test names: the pattern arrives as a
+            # PARAMETER, so the module never spells its own constant's name.
+            "pattern.search(",
+        )
         for mod in ("buildplan_refs.py", "critic_mode.py"):
             src = (LIB_DIR / mod).read_text()
-            for name in (
-                "_BUILD_PLAN_TYPE_RE",
-                "_BUILD_PLAN_CRITIC_MODE_RE",
-                "_BUILD_PLAN_TRIVIAL_RATIONALE_RE",
-                "_BUILD_PLAN_TRIVIAL_RATIONALE_ANYWHERE_RE",
-            ):
-                assert f"{name}.search(" not in src, (
-                    f"lib/{mod} binds {name} with a bare .search; route it "
+            for bind in binds:
+                assert bind not in src, (
+                    f"lib/{mod} binds a chunk field with `{bind}`; route it "
                     "through buildplan_refs.iter_field_declarations so prose "
                     "cannot declare a chunk field"
                 )
@@ -1525,6 +1530,27 @@ class TestTheTypeFieldIsFoundWhereAuthorsWriteIt:
         )
         assert chunk_type is None
         assert error and "'n/a (docs only)'" in error, error
+
+    def test_a_second_marker_on_the_declaration_line_is_prose_too(
+        self, tmp_path: Path
+    ):
+        """Field position is where the line STARTS, not anywhere on it.
+
+        `n/a` breaks the token lookahead, so a search across the whole line
+        finds the second marker and grades the chunk `doc-only` — off a
+        parenthetical, on the author's own declaration line, with the value they
+        actually wrote never reported. The declaration position predicate is
+        what makes the first marker the only candidate here.
+        """
+        prawduct, plan = _plan_with_chunk_body(
+            tmp_path,
+            "- **Type:** n/a (unlike a **Type:** doc-only chunk)\n",
+        )
+        chunk_type, error = buildplan_refs._parse_build_plan_chunk_type(
+            prawduct, "01", plan_path=plan
+        )
+        assert chunk_type is None
+        assert error and "'n/a (unlike a **Type:** doc-only chunk)'" in error, error
 
     def test_an_unreadable_value_in_field_position_is_not_overridden_by_prose(
         self, tmp_path: Path
