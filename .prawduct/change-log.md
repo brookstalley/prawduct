@@ -42,8 +42,8 @@ safe from anywhere on a line — only one of four words can win, and the plan's 
 Reporting is not: an unanchored report announces a Description sentence *discussing* the field as an
 ignored declaration, which it did on ten chunk sections in this repo before the anchor went back on
 the report alone. A note that fires on ordinary plans is not a warning, it is something its reader
-learns to skip — and then skips on the chunk that needed it. Six sections still earn one, every one
-of them a real field-position value naming no mode. The token must also end at a delimiter now, so
+learns to skip — and then skips on the chunk that needed it. The sections that still earn one are exactly
+those carrying a real field-position value that names no mode. The token must also end at a delimiter now, so
 `n/a (verification only — nothing to review)` is quoted whole rather than reported as the mode
 `'n'`, a string appearing nowhere in the author's plan.
 
