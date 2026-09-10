@@ -76,9 +76,12 @@ this corpus as freely as a `·` does (`**Type:** doc-only. **Critic mode:** fina
 predicate has to accept it — and the cost is that a Description sentence *beginning*
 `**Type:** designer-handoff chunks skip review…` still binds. Mid-sentence mentions, which is what
 prose about a field overwhelmingly is, do not. The bound that remains is the author's:
-`methodology/planning.md` now says not to open a sentence with a field marker, and to backtick it
-when naming one. Narrowing the predicate instead would cost the composed forms real plans use,
-which is the defect this whole entry is about. Both readers bind through that predicate, and neither reports
+`methodology/planning.md` now says not to open a LINE or a sentence with a field marker, and to
+write about one by keeping the marker inside the sentence or dropping the asterisks. **Backticking
+is not an escape** — the line-opening class allows it deliberately, because line-initial
+``` `**Critic mode:** chunk` ``` is a live declaration form here, and a first draft of that guidance
+recommended it anyway. Narrowing the predicate instead would cost the composed forms real plans
+use, which is the defect this whole entry is about. Both readers bind through that predicate, and neither reports
 from it — position is a heuristic, and a heuristic must not be the thing that fails someone's
 chunk. The field grammar itself is now one factory in `buildplan_refs` rather than a shape copied
 reader to reader, which is how the two delimiter sets had already come to disagree about `<br>`.
