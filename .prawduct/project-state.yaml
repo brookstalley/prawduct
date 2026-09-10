@@ -82,9 +82,9 @@ sentinel_command: python3 -m pytest {sentinel} -q
 suite_coupled_prefixes:
   - documentation/
   - plugin/
-  # This repo's own build plans are a test CORPUS, not just records:
-  # `test_every_critic_mode_line_in_this_repo_is_honoured_or_reported` walks
-  # them so the `**Critic mode:**` reader is pinned against the forms authors
+  # This repo's own build plans are a test CORPUS, not just records: the
+  # chunk-field readers (`**Critic mode:**`, `**Type:**`) are pinned by tests
+  # that WALK these plans, so each reader is graded against the forms authors
   # really write rather than a hand-transcribed list. A plan added here can
   # therefore turn the suite red, which means evidence recorded before it does
   # not vouch for the tree after it.

@@ -3,7 +3,7 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
-## 2026-09-10: a build plan's `Critic mode:` binds in the forms authors write
+## 2026-09-10: a build plan's chunk fields bind in the forms authors write
 
 <!-- prawduct: type=fix | scope=critic-mode-field-parse -->
 
@@ -47,16 +47,25 @@ those carrying a real field-position value that names no mode. The token must al
 `n/a (verification only — nothing to review)` is quoted whole rather than reported as the mode
 `'n'`, a string appearing nowhere in the author's plan.
 
-`buildplan_refs`'s `**Type:**` and `**Trivial because:**` readers still match line-anchored and
-carry the same defect — the same lines lose both fields at once, since an author composing
-`**Type:** code (bugfix) · **Critic mode:** chunk` is writing both mid-line. Left alone
-deliberately, and **not** on the grounds that this change only ever restores a heavier review: it
-does not. Binding a mid-line `**Critic mode:** chunk` that inference would have called `final`
-lightens that review, and honouring the author in both directions is precisely the field's
-contract. `**Type:**` is a different lever — it decides which plans qualify for a bounded gate at
-all — so widening what binds there is an owner's call, not a bug fix's, and it gets its own
-decision rather than riding this one. Ten live instances in this repo's plans are affected, all
-failing closed, so nothing is open while it waits.
+**`**Type:**` and `**Trivial because:**` carried the same defect and are fixed with it**, on the
+owner's ruling — they are the same lines, since an author composing `**Depends on:** — · **Type:**
+code · **Critic mode:** chunk` is writing every one of those fields mid-line. Nine live lines in
+this repo's plans were losing their type outright; two chunk sections were running the full
+protocol under the `code` default against a `doc-only` their author had declared and backticked.
+This lever is the one that decides which plans qualify for a bounded gate, so it was held for a
+ruling rather than folded into a bug fix: widening it can lighten a gate, not only restore one.
+
+**Field position is read first here, where `Critic mode:` reads the whole section at once**, and
+the difference is what each field can cost. An unknown `Critic mode:` value is a note; an unknown
+`**Type:**` fails the chunk, and `trivial` / `doc-only` buy a bounded review. So the type reader
+takes a declaration in field position as final — typo included, which keeps the existing
+unknown-type report exactly as it was — and only when the section declares nothing there does it
+read the composed-header form, where **only an allowed type can bind**. A sentence mentioning the
+field can therefore neither fail a chunk nor lighten one. `**Trivial because:**` is two passes for
+the sharper version of the same reason: its capture runs until the next field, so one permissive
+pass would start at a line *discussing* the field and hand the gate that sentence instead of the
+rationale declared below it — a rationale silently ungraded, which is worse than the missing-field
+block it was meant to prevent.
 
 ## 2026-09-09: the review loop gets a stopping rule
 

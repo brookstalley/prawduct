@@ -1201,9 +1201,39 @@ _PLAN_FIELD_RE = re.compile(r"^\S")
 # the editor-style `lib/foo.py:12:34`), not part of the filename.
 _BUILD_PLAN_LINE_SUFFIX_RE = re.compile(r":\d+(?::\d+)?(?:-\d+)?$")
 # Per-chunk Type declaration (v1.4 F6 — proportional Critic via chunk type).
-# Matches `- **Type:** <token>` or `**Type:** <token>` as a list item; trailing
-# parenthetical prose is allowed and ignored.
-_BUILD_PLAN_TYPE_RE = re.compile(r"^[\s\-\*]*\*\*Type:\*\*\s*([A-Za-z][\w\-]*)")
+# The value token is hyphen-aware so `doc-only` is captured whole, its opening
+# backtick is optional, and it must END at a delimiter — a token read up to the
+# first non-word character reports half a value, which the author cannot find in
+# their own plan.
+#
+# Unanchored, and applied with `.search`, because the field is not reliably the
+# first thing on its line. Authors compose chunk headers
+# (`**Depends on:** — · **Type:** code · **Critic mode:** chunk`) and backtick
+# the value (`**Type:** `doc-only``); an anchored read finds neither, and finding
+# nothing here is indistinguishable from a chunk that declared no type at all —
+# so the `code` default fires and the chunk runs a protocol its author had
+# already said it did not need.
+#
+# The cost of searching is that a line merely *discussing* the field reads as
+# declaring it, and this field cannot absorb that the way its `Critic mode:`
+# sibling can — an unknown value fails the chunk, and `trivial` / `doc-only` buy
+# a bounded review. So the reader spends this pattern in two passes: a value in
+# FIELD POSITION (below) is read first and is final, typo included, and only a
+# section that declares nothing there is searched at large, where an ALLOWED
+# type is the only thing that can bind.
+_BUILD_PLAN_TYPE_RE = re.compile(
+    r"\*\*Type:\*\*\s*`?([A-Za-z][\w\-]*)(?=[\s`.,;)]|$)"
+)
+# The same field at the START of its line, modulo list and bold markers, which
+# is where a value earns the right to be REPORTED as an unknown type. That
+# asymmetry is deliberate. Binding is safe from anywhere on a line, because only
+# one of six allowed words can win there and the plan's author wrote it.
+# Reporting is not: an unknown token from a Description sentence *about* the
+# field would fail the chunk's gate outright, on a chunk that declares no type
+# at all. So a mid-line value no type can be read out of stays silent and takes
+# the `code` default — the same fail-closed answer it got before this field was
+# searchable.
+_BUILD_PLAN_TYPE_FIELD_RE = re.compile(r"^[\s\-\*]*\*\*Type:\*\*")
 # v1.5 Chunk 04 — `trivial` joins the allowed set. File-set bounds (no
 # edits under skills/, methodology/, templates/; no CLAUDE.md edit; no
 # test deletion; no new files) + required `**Trivial because:**`
@@ -1218,6 +1248,16 @@ _BUILD_PLAN_ALLOWED_TYPES = frozenset(
 # field. Empty after the colon → missing-rationale.
 _BUILD_PLAN_TRIVIAL_RATIONALE_RE = re.compile(
     r"^[\s\-\*]*\*\*Trivial because:\*\*\s*(.*)$"
+)
+# The same field wherever it sits on its line, for the composed-header form
+# (`**Type:** trivial · **Trivial because:** it renames a constant`). Read ONLY
+# as a fallback, after the anchored pass above has found no field at all: a
+# mid-line marker in prose would otherwise start the capture, and the capture
+# stops at the next `- **` line — so a sentence discussing the field would eat
+# the rationale declared below it and hand the gate the prose instead. A
+# declaration in field position always wins.
+_BUILD_PLAN_TRIVIAL_RATIONALE_ANYWHERE_RE = re.compile(
+    r"\*\*Trivial because:\*\*\s*(.*)$"
 )
 
 # Git branch/ref names (`feature/backlog-service-relayout`, `origin/develop`) are
@@ -2372,7 +2412,11 @@ def _parse_build_plan_chunk_type(
     runs the full Critic protocol rather than silently triggering a carveout
     (learnings: "escape hatches in classification create silent failures").
     Unknown values surface as ``(None, "unknown type: <value>")`` so the
-    author fixes the typo instead of getting silent fall-through.
+    author fixes the typo instead of getting silent fall-through — but only
+    from a field in FIELD POSITION. A type binds from anywhere on its line,
+    backticked or sharing the line with the other chunk fields; an unknown
+    token found mid-line takes the ``code`` default in silence rather than
+    failing a chunk on a word someone wrote in a sentence.
 
     Section discovery is the shared ``_chunk_section_lines`` walker —
     name-anchored on ``### Chunk <chunk_id>:`` with leading-zero tolerance;
@@ -2395,12 +2439,31 @@ def _parse_build_plan_chunk_type(
     if gap:
         return None, gap
 
+    # Two passes, and their order is the safety. Pass one reads a declaration in
+    # FIELD POSITION — the line opens with the field, modulo list and bold
+    # markers — and its answer is final, typo included: an author who put a type
+    # on its own line is told when it is not one.
     declared: str | None = None
     for _line_num, line in section.lines:
-        m = _BUILD_PLAN_TYPE_RE.match(line)
+        if not _BUILD_PLAN_TYPE_FIELD_RE.match(line):
+            continue
+        m = _BUILD_PLAN_TYPE_RE.search(line)
         if m:
             declared = m.group(1)
             break
+
+    # Pass two runs only when the section declares nothing there, and reads the
+    # composed-header form (`**Depends on:** — · **Type:** code · …`). It can
+    # only ever BIND an allowed type: the marker appears in prose too, and a
+    # sentence *about* the field must not fail a chunk on a word from it. So an
+    # unreadable value found here takes the `code` default in silence — exactly
+    # what it took before the field was searchable at all.
+    if declared is None:
+        for _line_num, line in section.lines:
+            m = _BUILD_PLAN_TYPE_RE.search(line)
+            if m and m.group(1) in _BUILD_PLAN_ALLOWED_TYPES:
+                declared = m.group(1)
+                break
 
     if declared is None:
         return "code", None  # fail-closed default
@@ -2408,6 +2471,46 @@ def _parse_build_plan_chunk_type(
         allowed = ", ".join(sorted(_BUILD_PLAN_ALLOWED_TYPES))
         return None, f"{UNKNOWN_TYPE_PREFIX} {declared!r} (allowed: {allowed})"
     return declared, None
+
+
+def _capture_trivial_rationale(
+    section: "ChunkSection", pattern: "re.Pattern[str]"
+) -> tuple[bool, list[str]]:
+    """Read a ``**Trivial because:**`` rationale out of ``section``.
+
+    Returns ``(found, lines)`` — ``found`` says the field was present at all,
+    which is a different question from whether it carried anything, because an
+    empty field and an absent one earn the same block for different reasons.
+
+    ``pattern`` decides WHERE the field may sit: the anchored pattern reads a
+    declaration in field position, the ``_ANYWHERE_`` one reads the composed
+    header. Two passes rather than one permissive pass, so a declaration always
+    beats prose — see the ``_ANYWHERE_`` pattern's comment for what one pass
+    would eat.
+    """
+    capturing = False
+    rationale_lines: list[str] = []
+    for _line_num, line in section.lines:
+        stripped = line.strip()
+        m = pattern.search(line)
+        if m:
+            capturing = True
+            first = m.group(1).strip()
+            if first:
+                rationale_lines.append(first)
+            continue
+        if capturing:
+            # Stop at the next list-item field, bolded label, or sub-heading.
+            if (
+                stripped.startswith("- **")
+                or stripped.startswith("* **")
+                or stripped.startswith("**")
+                or stripped.startswith("#")
+            ):
+                break
+            if stripped:
+                rationale_lines.append(stripped)
+    return capturing, rationale_lines
 
 
 def _parse_build_plan_chunk_trivial_rationale(
@@ -2419,7 +2522,10 @@ def _parse_build_plan_chunk_trivial_rationale(
     "missing-rationale: Type: trivial requires non-empty **Trivial
     because:** field")``. Multi-line rationale (continuation lines without
     a list-item / heading prefix) is joined into a single string until the
-    next field.
+    next field. A field in field position is read first; only when the
+    section has none is the composed-header form (``**Type:** trivial ·
+    **Trivial because:** …``) read, so a rationale the author did write
+    cannot be blocked as missing.
 
     Section discovery is the shared ``_chunk_section_lines`` walker —
     name-anchored on ``### Chunk <chunk_id>:`` with leading-zero tolerance;
@@ -2449,28 +2555,16 @@ def _parse_build_plan_chunk_trivial_rationale(
     if gap:
         return None, gap
 
-    capturing = False
-    rationale_lines: list[str] = []
-    for _line_num, line in section.lines:
-        stripped = line.strip()
-        m = _BUILD_PLAN_TRIVIAL_RATIONALE_RE.match(line)
-        if m:
-            capturing = True
-            first = m.group(1).strip()
-            if first:
-                rationale_lines.append(first)
-            continue
-        if capturing:
-            # Stop at the next list-item field, bolded label, or sub-heading.
-            if (
-                stripped.startswith("- **")
-                or stripped.startswith("* **")
-                or stripped.startswith("**")
-                or stripped.startswith("#")
-            ):
-                break
-            if stripped:
-                rationale_lines.append(stripped)
+    capturing, rationale_lines = _capture_trivial_rationale(
+        section, _BUILD_PLAN_TRIVIAL_RATIONALE_RE
+    )
+    if not capturing:
+        # No field in field position anywhere in the section. Before blocking,
+        # look for the composed-header form — the author may have written the
+        # rationale on the same line as the type it justifies.
+        capturing, rationale_lines = _capture_trivial_rationale(
+            section, _BUILD_PLAN_TRIVIAL_RATIONALE_ANYWHERE_RE
+        )
 
     if not capturing:
         return None, (
