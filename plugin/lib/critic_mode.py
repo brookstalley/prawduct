@@ -109,8 +109,10 @@ _VALID_ARG_MODES = frozenset({
 })
 
 # Matches a chunk's ``**Critic mode:** <value>`` build-plan field. The value
-# token is hyphen-aware so ``verify-resolutions`` is captured whole, and its
-# opening backtick is optional — the closing one falls outside the token class.
+# token is hyphen-aware so ``verify-resolutions`` is captured whole, its opening
+# backtick is optional, and it must END at a delimiter — without that,
+# ``n/a (verification only)`` reads as the mode ``n``, and a note quoting ``'n'``
+# names a string that appears nowhere in the author's plan.
 #
 # Unanchored, and applied with ``.search``, because the field is not reliably
 # the first thing on its line. Authors compose chunk headers
@@ -120,17 +122,32 @@ _VALID_ARG_MODES = frozenset({
 # plan-mandated `final` runs as an inferred `chunk` with no one told. That
 # silent demotion is the one thing this field's reader exists to prevent.
 #
-# The cost of searching is that a line merely *discussing* the field parses as
-# declaring it. Fail-open absorbs it: the worst case is a mode the author can
-# see named in the rationale, not a review that did not happen.
-_BUILD_PLAN_CRITIC_MODE_RE = re.compile(r"\*\*Critic mode:\*\*\s*`?([A-Za-z][\w\-]*)")
+# The cost of searching is that a line merely *discussing* the field reads as
+# declaring it. Bounded two ways: only a VALID mode binds here, and the
+# unparseable report below refuses to speak for a line like that at all.
+_BUILD_PLAN_CRITIC_MODE_RE = re.compile(
+    r"\*\*Critic mode:\*\*\s*`?([A-Za-z][\w\-]*)(?=[\s`.,;)<]|$)"
+)
 
 # The same field with something after it that no mode token can be read out of
 # — ``**Critic mode:** (inferred — `chunk`)``, say. Silence is not available
-# here: it would say "this chunk declares no mode", and the author wrote one.
-# Blank stays silent, since a field with nothing after it carries no intent to
+# there: it would say "this chunk declares no mode", and the author wrote one.
+#
+# Anchored where the search pattern above is not, and that asymmetry is the
+# whole point. Binding a mode is safe to do from anywhere on a line, because
+# only one of four words can win and the plan's author wrote every one of them.
+# REPORTING is not: a Description sentence discussing the field would be
+# announced as an ignored declaration, on chunks that declare no mode at all,
+# which is precisely how a note trains its reader to skip it. So a value is
+# reported only from FIELD POSITION — the line opens with it, modulo list and
+# bold markers. A mid-line unparseable value goes unreported; that is the
+# silence this field had before, kept only where speaking would cost more.
+#
+# Blank stays silent too: a field with nothing after it carries no intent to
 # contradict.
-_BUILD_PLAN_CRITIC_MODE_FIELD_RE = re.compile(r"\*\*Critic mode:\*\*\s*(\S.*?)\s*$")
+_BUILD_PLAN_CRITIC_MODE_FIELD_RE = re.compile(
+    r"^[\s\-\*]*\*\*Critic mode:\*\*\s*(\S.*?)\s*$"
+)
 
 #: How much of an unparseable value the note quotes. The field takes a
 #: one-word token, so anything past this is prose that will not help the author
@@ -138,7 +155,7 @@ _BUILD_PLAN_CRITIC_MODE_FIELD_RE = re.compile(r"\*\*Critic mode:\*\*\s*(\S.*?)\s
 _UNPARSEABLE_VALUE_QUOTE_LIMIT = 60
 
 
-def _unrecognized_mode_note(token: str) -> str:
+def _unrecognized_mode_note(token: str, line_num: int | None = None) -> str:
     """The one line an ignored ``Critic mode:`` value earns.
 
     Fail-open-to-inference is correct and is NOT changing: a typo'd mode must
@@ -157,8 +174,9 @@ def _unrecognized_mode_note(token: str) -> str:
     ``buildplan_refs._BUILD_PLAN_ALLOWED_TYPES`` rather than a copy, so a Type
     added later keeps routing authors correctly.
     """
+    where = f" (plan line {line_num})" if line_num is not None else ""
     note = (
-        f"NOTE: chunk's `Critic mode:` is {token!r}, which is not one of "
+        f"NOTE: chunk's `Critic mode:`{where} is {token!r}, which is not one of "
         f"{', '.join(sorted(_VALID_ARG_MODES))}. Ignoring it and inferring the "
         "mode instead — nothing was skipped."
     )
@@ -259,7 +277,12 @@ def infer_mode(
     # proceeds — documented, correct, and not changing — but the ignore says so
     # once. Unlike its escalating sibling above, this changes no verdict.
     if plan_read.unrecognized:
-        print(_unrecognized_mode_note(plan_read.unrecognized), file=sys.stderr)
+        print(
+            _unrecognized_mode_note(
+                plan_read.unrecognized, plan_read.unrecognized_line
+            ),
+            file=sys.stderr,
+        )
 
     if _rule_verify_resolutions_fires(prawduct_dir, project_dir):
         return "verify-resolutions", (
@@ -837,13 +860,16 @@ class ChunkModeRead(NamedTuple):
 
     mode: str | None
     unreadable: str | None
-    #: The token found where a mode was expected, when it matched none of them.
-    #: A THIRD state, for the same reason ``unreadable`` is a second: absent and
-    #: blank carry no intent to contradict, but a value someone typed does. It
-    #: must not escalate the way ``unreadable`` does — a typo'd mode is no
-    #: reason to spend a heavier review, and inference proceeding is correct —
-    #: so it changes no verdict and earns only a line saying it was ignored.
+    #: The value found where a mode was expected, when no mode could be read
+    #: out of it. A THIRD state, for the same reason ``unreadable`` is a second:
+    #: absent and blank carry no intent to contradict, but a value someone typed
+    #: does. It must not escalate the way ``unreadable`` does — a typo'd mode is
+    #: no reason to spend a heavier review, and inference proceeding is correct
+    #: — so it changes no verdict and earns only a line saying it was ignored.
     unrecognized: str | None = None
+    #: Which line of the plan carried it, so the note can point at it rather
+    #: than describe it. Set together with ``unrecognized``, never alone.
+    unrecognized_line: int | None = None
 
 
 def _critic_mode_for_chunk(
@@ -934,20 +960,22 @@ def _critic_mode_for_chunk(
     # a typo, which is the silent demotion this reader exists to prevent
     # wearing a note that misdirects the author away from it.
     unhonored: str | None = None
-    for _line_num, line in section.lines:
+    unhonored_line: int | None = None
+    for line_num, line in section.lines:
         m = _BUILD_PLAN_CRITIC_MODE_RE.search(line)
-        if m:
-            token = m.group(1)
-            if token in _VALID_ARG_MODES:
-                return ChunkModeRead(token, None)
-            if unhonored is None:
-                unhonored = token
+        if m and m.group(1) in _VALID_ARG_MODES:
+            return ChunkModeRead(m.group(1), None)
+        if unhonored is not None:
             continue
-        # No token, but the field is here carrying *something*. Reported for the
-        # same reason a typo'd mode is: the author declared an intent and it is
-        # not being honored, and the only way they learn that today is by
-        # noticing the review was shallower than they asked for.
-        field = _BUILD_PLAN_CRITIC_MODE_FIELD_RE.search(line)
-        if field and unhonored is None:
-            unhonored = field.group(1)[:_UNPARSEABLE_VALUE_QUOTE_LIMIT]
-    return ChunkModeRead(None, None, unhonored)
+        # Nothing bound, and this line puts the field in field position with a
+        # value after it. Reported for the reason a typo'd mode is: the author
+        # declared an intent, it is not being honored, and the only way they
+        # learn that today is by noticing the review came out shallower than
+        # they asked for. The VERBATIM value is what carries, truncated only
+        # where it stops being a value — a paraphrase they cannot grep for is
+        # a note that costs them the search it was supposed to save.
+        declared = _BUILD_PLAN_CRITIC_MODE_FIELD_RE.search(line)
+        if declared:
+            unhonored = declared.group(1)[:_UNPARSEABLE_VALUE_QUOTE_LIMIT]
+            unhonored_line = line_num
+    return ChunkModeRead(None, None, unhonored, unhonored_line)

@@ -23,16 +23,29 @@ that did not happen. **The whole chunk section is scanned**, and a valid token a
 anything unhonorable above it — answering on first sight would let a sentence *about* the field
 bury the declaration below it and report the loss as a typo, pointing the author at the wrong line.
 
-101 `**Critic mode:**` lines across this repo's 103 build plans are now a test corpus, asserted to
-be honoured or reported and never silently nothing. The hand-written form list can only contain
-forms someone thought of; that is what missed these two for as long as it did. `.prawduct/artifacts/`
-joins `suite_coupled_prefixes` as a consequence — those plans can turn the suite red now.
+101 `**Critic mode:**` lines across this repo's 103 build plans are now a test corpus. The
+hand-written form list can only contain forms someone thought of; that is what missed these for as
+long as it did. Its oracle is built independently of the reader — text after the marker, first
+word, punctuation stripped — because one built out of the reader's own regex can only agree with
+it. Measured against the old anchored read, **27 of those lines were being lost outright**. The
+`build-plan` prefixes join `suite_coupled_prefixes` as a consequence, spelled narrowly on purpose:
+`.prawduct/artifacts/` would have taxed every Status-box tick with a four-minute suite re-run.
 
 **The missing signal was the larger half of the defect.** A field carrying something no mode token
 can be read out of — `**Critic mode:** (inferred — `chunk`)` — now earns the same one-line NOTE a
-typo'd mode does, quoted to the first 60 characters. Silence there said *this chunk declares no
-mode*, and the author had written one. Absent and blank stay silent, unchanged: they carry no
-intent to contradict.
+typo'd mode does, quoting the value verbatim and naming the plan line it sits on. Silence there said
+*this chunk declares no mode*, and the author had written one. Absent and blank stay silent,
+unchanged: they carry no intent to contradict.
+
+**Reporting is anchored where binding is not, and the asymmetry is the design.** Binding a mode is
+safe from anywhere on a line — only one of four words can win, and the plan's author wrote it.
+Reporting is not: an unanchored report announces a Description sentence *discussing* the field as an
+ignored declaration, which it did on ten chunk sections in this repo before the anchor went back on
+the report alone. A note that fires on ordinary plans is not a warning, it is something its reader
+learns to skip — and then skips on the chunk that needed it. Six sections still earn one, every one
+of them a real field-position value naming no mode. The token must also end at a delimiter now, so
+`n/a (verification only — nothing to review)` is quoted whole rather than reported as the mode
+`'n'`, a string appearing nowhere in the author's plan.
 
 `buildplan_refs`'s `**Type:**` and `**Trivial because:**` readers still match line-anchored and
 carry the same defect — the same lines lose both fields at once, since an author composing
@@ -42,7 +55,8 @@ does not. Binding a mid-line `**Critic mode:** chunk` that inference would have 
 lightens that review, and honouring the author in both directions is precisely the field's
 contract. `**Type:**` is a different lever — it decides which plans qualify for a bounded gate at
 all — so widening what binds there is an owner's call, not a bug fix's, and it gets its own
-decision rather than riding this one.
+decision rather than riding this one. Ten live instances in this repo's plans are affected, all
+failing closed, so nothing is open while it waits.
 
 ## 2026-09-09: the review loop gets a stopping rule
 

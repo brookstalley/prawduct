@@ -2282,6 +2282,50 @@ class TestTheModeFieldIsFoundWhereAuthorsWriteIt:
         assert rationale.startswith("plan-override")
         assert "NOTE: chunk's `Critic mode:`" not in capsys.readouterr().err
 
+    def test_prose_about_the_field_in_a_chunk_that_declares_nothing_stays_silent(
+        self, tmp_path: Path, capsys
+    ):
+        """The note's own precondition: it must not fire on ordinary plans.
+
+        Ten chunk sections in this repo mention the field in a Description and
+        declare no mode. A note on each is not a warning, it is a thing the
+        reader learns to skip — and then skips on the chunk that needed it.
+        """
+        repo = _repo_with_mode_field(
+            tmp_path,
+            "- **Notes:** the reader finds `**Critic mode:**` mid-line now\n",
+        )
+
+        infer_mode(repo, None)
+
+        assert "NOTE: chunk's `Critic mode:`" not in capsys.readouterr().err
+
+    def test_a_value_that_is_not_a_word_is_quoted_whole(self, tmp_path: Path, capsys):
+        """A note must quote a string the author can find in their own plan.
+
+        `n/a (verification only …)` is a real declaration in this repo. Reading
+        the token up to the first non-word character reported it as `'n'` — a
+        value that appears nowhere, sending the author looking for it.
+        """
+        repo = _repo_with_mode_field(
+            tmp_path, "- **Critic mode:** n/a (verification only — nothing to review)\n"
+        )
+
+        infer_mode(repo, None)
+
+        err = capsys.readouterr().err
+        assert "'n/a (verification only — nothing to review)'" in err, err
+
+    def test_the_note_points_at_the_line_that_carried_the_value(
+        self, tmp_path: Path, capsys
+    ):
+        repo = _repo_with_mode_field(tmp_path, "- **Critic mode:** cumluative\n")
+
+        infer_mode(repo, None)
+
+        err = capsys.readouterr().err
+        assert "plan line " in err, err
+
     def test_an_unparseable_value_is_quoted_only_as_far_as_it_helps(
         self, tmp_path: Path, capsys
     ):
@@ -2439,45 +2483,48 @@ def test_every_critic_mode_line_in_this_repo_is_honoured_or_reported():
     """The corpus, against a form list that was transcribed by hand.
 
     Every other test here contains a form someone thought of. This one contains
-    the forms authors actually wrote, and asserts two properties over all of
-    them.
+    the forms authors actually wrote, and asserts the three properties the
+    reader's asymmetry rests on.
 
-    **A line whose value reads as a mode must bind that mode.** The oracle is
-    deliberately crude — take the text after the marker, take its first word,
-    strip the punctuation authors decorate it with — because an oracle built out
-    of the reader's own regex can only agree with it. This is the property the
-    defect broke: `**Type:** doc-only · **Critic mode:** chunk` reads as `chunk`
-    to any human and read as *no field at all* to the anchored reader.
+    **A line whose value reads as a mode binds that mode.** The oracle is
+    deliberately crude — text after the marker, first word, punctuation
+    stripped — because an oracle built out of the reader's own regex can only
+    ever agree with it. This is the property the defect broke:
+    `**Type:** doc-only · **Critic mode:** chunk` reads as `chunk` to any human
+    and read as *no field at all* to the anchored reader.
 
-    **And no line is silently nothing.** Honoured, or reported back to its
-    author, never dropped — reading as no field looks identical to a chunk that
-    declared no mode, so it produces a shallower review and no signal that
-    anything was lost. Not asserted: that every value IS a mode. Twelve lines
-    here are not, and correctly so — `cumulative-final` typed into the wrong
-    field, `n/a (verification only)`, and prose in a Description discussing the
-    field. Each is reported, which is the contract.
+    **A value in FIELD POSITION is never silently nothing** — honoured, or
+    reported to its author. Reading as no field looks identical to a chunk that
+    declared no mode, so it buys a shallower review with no signal anything was
+    lost. Not asserted: that every such value IS a mode. Several are not, and
+    correctly so — `cumulative-final` typed into the wrong field, `n/a
+    (verification only …)`. Each is reported, which is the contract.
+
+    **A value NOT in field position is never reported.** Prose discussing the
+    field lives in real Description lines here, and announcing those as ignored
+    declarations — on chunks that declare no mode at all — is how a note teaches
+    its reader to skip it. Binding from mid-line is still fine: only one of four
+    words can win there, and the plan's author wrote it.
     """
     artifacts = Path(__file__).resolve().parent.parent / ".prawduct" / "artifacts"
     plans = sorted(artifacts.rglob("build-plan*.md"))
     assert plans, f"no build plans under {artifacts} — this test proves nothing"
 
     marker = "**Critic mode:**"
-    lost, misread = [], []
-    seen = bound = 0
+    field_position = re.compile(r"^[\s\-\*]*" + re.escape(marker))
+    lost, misread, noisy = [], [], []
+    bound = declared = prose = 0
     for plan in plans:
         for lineno, line in enumerate(
             plan.read_text(encoding="utf-8").splitlines(), start=1
         ):
             if marker not in line:
                 continue
-            seen += 1
             where = f"{plan.name}:{lineno}: {line.strip()!r}"
 
             honoured = critic_mode._BUILD_PLAN_CRITIC_MODE_RE.search(line)
             token = honoured.group(1) if honoured else None
             reported = critic_mode._BUILD_PLAN_CRITIC_MODE_FIELD_RE.search(line)
-            if not (honoured or reported or line.rstrip().endswith(marker)):
-                lost.append(where)
 
             after = line.split(marker, 1)[1].split()
             reads_as = after[0].strip("`.,;*") if after else ""
@@ -2486,7 +2533,18 @@ def test_every_critic_mode_line_in_this_repo_is_honoured_or_reported():
                 if token != reads_as:
                     misread.append(f"{where} reads as {reads_as!r}, read as {token!r}")
 
-    assert seen, f"no `{marker}` field in any of {len(plans)} plans"
+            if field_position.match(line):
+                declared += 1
+                if after and not (token or reported):
+                    lost.append(where)
+            else:
+                prose += 1
+                if reported:
+                    noisy.append(where)
+
     assert bound, "no corpus line names a mode — the binding half proves nothing"
+    assert declared, "no corpus line puts the field in field position"
+    assert prose, "no corpus line mentions the field mid-line — the quiet half proves nothing"
     assert not misread, "\n".join(misread)
     assert not lost, "\n".join(lost)
+    assert not noisy, "\n".join(noisy)

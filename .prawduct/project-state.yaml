@@ -88,7 +88,14 @@ suite_coupled_prefixes:
   # really write rather than a hand-transcribed list. A plan added here can
   # therefore turn the suite red, which means evidence recorded before it does
   # not vouch for the tree after it.
-  - .prawduct/artifacts/
+  #
+  # `build-plan` and not `.prawduct/artifacts/`, because these are plain
+  # `startswith` prefixes and the wider one taxes EVERY artifact edit with a
+  # four-minute suite re-run — including ticking a Status box, which happens
+  # several times a chunk. Both spellings are listed: the walk is an `rglob`,
+  # so an archived plan is corpus too.
+  - .prawduct/artifacts/build-plan
+  - .prawduct/artifacts/archive/build-plan
 
 # Files carrying the release version, read by `check-released` FROM THE TAG'S
 # TREE — which files carried a release's version is a fact about that release,
