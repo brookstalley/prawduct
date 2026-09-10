@@ -724,7 +724,16 @@ LAST_MEASURED_TOKENS = {
     # is a plan handed over with no position on it. Distinct from the Plan Shape
     # pushback above, which is one specific take (this plan is too big); this is
     # the general obligation that take is an instance of.
-    "methodology/planning.md": 5466,
+    # +82 on 2026-09-10: an authoring rule the readers now REQUIRE. The chunk
+    # fields are read mid-line, and a period separates composed fields as
+    # freely as a `·` does — so a Description sentence that OPENS with
+    # `**Type:** designer-handoff` declares the one Type that bypasses the
+    # Critic. Narrowing the reader instead would drop the composed forms real
+    # plans use, so the bound is here, where the plan's author is. Part-paid in
+    # place: the orthogonality paragraph re-listed what over-declaring
+    # `designer-handoff` and `trivial` each cost, six lines under the bullets
+    # that state both, and now points at them.
+    "methodology/planning.md": 5548,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger

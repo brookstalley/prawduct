@@ -196,9 +196,9 @@ Allowed values: `code` | `doc-only` | `cleanup` | `designer-handoff` | `cumulati
 
   **Over-declaration is unsafe and BLOCKING**: a `Type: trivial` chunk violating either bound is treated as `code` AND the stop-hook emits a named blocker (e.g., `skill-file-edited: …`) — fix the violation or change the Type, never both quietly.
 
-**Type vs. mode orthogonality.** A `doc-only` chunk can be `Critic mode: final`; a `code` chunk can be `chunk`. Declare each on its own merits. Under-declaring Type is safe (worst case: redundant Critic work); over-declaring is unsafe (`designer-handoff` on a code chunk silently skips review; `trivial` on a non-eligible chunk produces a named blocker).
+**Type vs. mode orthogonality.** A `doc-only` chunk can be `Critic mode: final`; a `code` chunk can be `chunk`. Declare each on its own merits. Under-declaring Type is safe (worst case: redundant Critic work); over-declaring is unsafe, per each Type's own bullet above.
 
-**Don't OPEN a sentence with a field marker unless you mean to declare it.** The readers find these fields mid-line, because chunk headers compose them (`**Depends on:** — · **Type:** code · **Critic mode:** chunk`) and a period is a separator authors use as freely as a `·`. What follows is that a Description sentence *starting* `**Type:** designer-handoff chunks skip review…` declares that type, and `designer-handoff` is the one value that bypasses the Critic entirely. Writing *about* a field mid-sentence is safe (`unlike a **Type:** trivial chunk`) — it is sentence-INITIAL that binds. Backtick the marker when you mean to name it at the start of one.
+**Don't OPEN a sentence with a field marker unless you mean to declare it.** These fields are read mid-line — chunk headers compose them, and a period separates them as freely as a `·` — so a Description sentence *starting* `**Type:** designer-handoff …` declares that type, the one that bypasses the Critic entirely. Mentions *inside* a sentence are safe (`unlike a **Type:** trivial chunk`); backtick the marker to name one at a sentence start.
 
 ### Forward-References to Not-Yet-Created Files
 
