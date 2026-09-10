@@ -27,7 +27,8 @@ bury the declaration below it and report the loss as a typo, pointing the author
 hand-written form list can only contain forms someone thought of; that is what missed these for as
 long as it did. Its oracle is built independently of the reader — text after the marker, first
 word, punctuation stripped — because one built out of the reader's own regex can only agree with
-it. Measured against the old anchored read, **27 of those lines were being lost outright**. The
+it. Measured against the old anchored read, lines were being lost outright in every plan that
+composes its chunk header — re-derive with the corpus walker rather than trusting a number here. The
 `build-plan` prefixes join `suite_coupled_prefixes` as a consequence, spelled narrowly on purpose:
 `.prawduct/artifacts/` would have taxed every Status-box tick with a four-minute suite re-run.
 
@@ -68,7 +69,16 @@ Searching a line for a field makes composed headers readable and makes every pro
 declaration site — so a Description sentence naming `**Type:** designer-handoff` would have
 switched review off, silently, in every governed product. A field declaration is one that opens its
 line, follows a composition separator (`·`), or opens a sentence; anything else in front of the
-marker is prose *about* the field. Both readers bind through that predicate, and neither reports
+marker is prose *about* the field.
+
+**Sentence-initial is the residual, and it is a real one.** A period separates composed fields in
+this corpus as freely as a `·` does (`**Type:** doc-only. **Critic mode:** final`), so the
+predicate has to accept it — and the cost is that a Description sentence *beginning*
+`**Type:** designer-handoff chunks skip review…` still binds. Mid-sentence mentions, which is what
+prose about a field overwhelmingly is, do not. The bound that remains is the author's:
+`methodology/planning.md` now says not to open a sentence with a field marker, and to backtick it
+when naming one. Narrowing the predicate instead would cost the composed forms real plans use,
+which is the defect this whole entry is about. Both readers bind through that predicate, and neither reports
 from it — position is a heuristic, and a heuristic must not be the thing that fails someone's
 chunk. The field grammar itself is now one factory in `buildplan_refs` rather than a shape copied
 reader to reader, which is how the two delimiter sets had already come to disagree about `<br>`.

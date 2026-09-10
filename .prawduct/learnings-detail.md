@@ -36,7 +36,10 @@ widening, opposite blast radius.
 The fix was a construction rather than a longer list of shapes: one predicate deciding DECLARATION
 vs mention (the marker opens its line, follows a `·`, or opens a sentence), shared by both readers
 and spent only on BINDING — neither reports from it, because position is a heuristic and a
-heuristic must not be what fails someone's chunk. The grammar moved to one factory in
+heuristic must not be what fails someone's chunk. **The sentence-opening arm is a knowing
+residual**: real plans separate composed fields with a period, so a sentence that BEGINS with the
+marker still binds, and the bound on that is prose in `methodology/planning.md` rather than code.
+Narrowing the predicate would drop the composed forms the readers exist to find. The grammar moved to one factory in
 `buildplan_refs` at the same time; the two hand-copied delimiter classes had already drifted, one
 binding `<br>` and one reading the same line as declaring no field.
 

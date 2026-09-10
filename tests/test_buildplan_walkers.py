@@ -1463,7 +1463,16 @@ class TestTheTypeFieldIsFoundWhereAuthorsWriteIt:
     def test_a_declaration_after_a_sentence_on_the_same_line_binds(
         self, tmp_path: Path
     ):
-        """A real corpus form: two fields joined by a full stop, not a `·`."""
+        """A real corpus form: two fields joined by a full stop, not a `·`.
+
+        This arm is also the predicate's knowing residual, pinned here so it is
+        not mistaken for an accident: a period separates composed fields as
+        freely as a `·` does, so a Description sentence that BEGINS with the
+        marker binds too. Mid-sentence mentions — what prose about a field
+        overwhelmingly is — do not. The bound on the residual is authoring
+        guidance in `methodology/planning.md`; narrowing the predicate would
+        drop the composed forms this reader exists to find.
+        """
         prawduct, plan = _plan_with_chunk_body(
             tmp_path,
             "**Covers:** CRT-8N5V (instruction half). **Type:** doc-only "

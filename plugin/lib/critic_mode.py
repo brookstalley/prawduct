@@ -136,9 +136,6 @@ _BUILD_PLAN_CRITIC_MODE_RE = buildplan_refs.field_token_re("Critic mode")
 # to contradict.
 _BUILD_PLAN_CRITIC_MODE_FIELD_RE = buildplan_refs.field_value_re("Critic mode")
 
-#: How much of an unparseable value the note quotes — shared with the other
-#: field readers, since every one of them takes a one-word token.
-_UNPARSEABLE_VALUE_QUOTE_LIMIT = buildplan_refs.FIELD_VALUE_QUOTE_LIMIT
 
 
 def _unrecognized_mode_note(token: str, line_num: int | None = None) -> str:
@@ -964,6 +961,6 @@ def _critic_mode_for_chunk(
         # a note that costs them the search it was supposed to save.
         declared = _BUILD_PLAN_CRITIC_MODE_FIELD_RE.search(line)
         if declared:
-            unhonored = declared.group(1)[:_UNPARSEABLE_VALUE_QUOTE_LIMIT]
+            unhonored = declared.group(1)[: buildplan_refs.FIELD_VALUE_QUOTE_LIMIT]
             unhonored_line = line_num
     return ChunkModeRead(None, None, unhonored, unhonored_line)

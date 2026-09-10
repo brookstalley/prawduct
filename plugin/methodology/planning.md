@@ -198,6 +198,8 @@ Allowed values: `code` | `doc-only` | `cleanup` | `designer-handoff` | `cumulati
 
 **Type vs. mode orthogonality.** A `doc-only` chunk can be `Critic mode: final`; a `code` chunk can be `chunk`. Declare each on its own merits. Under-declaring Type is safe (worst case: redundant Critic work); over-declaring is unsafe (`designer-handoff` on a code chunk silently skips review; `trivial` on a non-eligible chunk produces a named blocker).
 
+**Don't OPEN a sentence with a field marker unless you mean to declare it.** The readers find these fields mid-line, because chunk headers compose them (`**Depends on:** — · **Type:** code · **Critic mode:** chunk`) and a period is a separator authors use as freely as a `·`. What follows is that a Description sentence *starting* `**Type:** designer-handoff chunks skip review…` declares that type, and `designer-handoff` is the one value that bypasses the Critic entirely. Writing *about* a field mid-sentence is safe (`unlike a **Type:** trivial chunk`) — it is sentence-INITIAL that binds. Backtick the marker when you mean to name it at the start of one.
+
 ### Forward-References to Not-Yet-Created Files
 
 The Critic's ref-drift check (Goal 2) verifies backticked file paths in the current chunk's section exist on disk. A chunk that *creates* a file legitimately names a nonexistent path — prefix it with the word **`new`** on the same line ("new `skills/foo/bar.md`") and the verifier skips the existence check for it. Paths in future-chunk sections are never checked. Omit the prefix on a created file and you'll get a spurious BLOCKING ref-drift finding; the fix is the one-word prefix, not weakening the check.
