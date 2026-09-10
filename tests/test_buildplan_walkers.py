@@ -1549,6 +1549,36 @@ class TestTheTypeFieldIsFoundWhereAuthorsWriteIt:
         assert chunk_type is None
         assert error and "nonsense-value" in error
 
+    def test_a_line_opening_with_a_backticked_field_binds(self, tmp_path: Path):
+        """Backticking is not an escape, and that is deliberate.
+
+        Plans write line-initial ``` `**Critic mode:** chunk` ``` and mean it,
+        so the line-opening class allows the backtick. Pinned because the
+        authoring guidance in `methodology/planning.md` has to agree with it:
+        a first draft of that guidance told authors to backtick a marker they
+        did not mean to declare, which is advice that binds the thing it says
+        it escapes.
+        """
+        prawduct, plan = _plan_with_chunk_body(
+            tmp_path, "`**Type:** doc-only` for the prose half of this chunk\n"
+        )
+        assert buildplan_refs._parse_build_plan_chunk_type(
+            prawduct, "01", plan_path=plan
+        ) == ("doc-only", None)
+
+    def test_a_backticked_mention_inside_a_sentence_binds_nothing(
+        self, tmp_path: Path
+    ):
+        """The form the guidance actually recommends for writing ABOUT a field."""
+        prawduct, plan = _plan_with_chunk_body(
+            tmp_path,
+            "- **Description:** unlike a `**Type:** designer-handoff` chunk, "
+            "this one is reviewed\n",
+        )
+        assert buildplan_refs._parse_build_plan_chunk_type(
+            prawduct, "01", plan_path=plan
+        ) == ("code", None)
+
     def test_an_absent_field_still_defaults_to_code(self, tmp_path: Path):
         prawduct, plan = _plan_with_chunk_body(tmp_path, "- **Done when:** done\n")
         assert buildplan_refs._parse_build_plan_chunk_type(

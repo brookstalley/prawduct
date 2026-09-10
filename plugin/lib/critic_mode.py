@@ -137,7 +137,6 @@ _BUILD_PLAN_CRITIC_MODE_RE = buildplan_refs.field_token_re("Critic mode")
 _BUILD_PLAN_CRITIC_MODE_FIELD_RE = buildplan_refs.field_value_re("Critic mode")
 
 
-
 def _unrecognized_mode_note(token: str, line_num: int | None = None) -> str:
     """The one line an ignored ``Critic mode:`` value earns.
 
