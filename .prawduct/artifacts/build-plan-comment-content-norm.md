@@ -174,6 +174,13 @@ The only mechanism that reaches an already-onboarded repo. Fires once, never rec
 - Names the rule and the ratification path. Where no density figure exists — every repo without its
   own comment tooling — it says so rather than rendering zero.
 
+**Carried in from Chunk 01's review** (`rev-20260910T160639Z-7acc99d9`, accepted not deferred):
+the norm block in `.prawduct/artifacts/project-preferences.md` and the Axis B statement in
+`documentation/issues/774-requirements.md` both say `pyproject.toml`'s ruff stanza answers "is this
+gating yet?" in its *opening sentence*. It does not — the opening sentence names ruff as the linter,
+and the groundwork answer is the stanza's third bolded paragraph. Tighten to "answers plainly,
+above the selection rationale" on this chunk's commit. Illustrative prose only; no gate reads it.
+
 **Done when**
 1. **No per-language comment grammar, prefix table or lexer appears in the diff.** The measurement
    script that produced this work's evidence stays in the scratchpad. This is the norm redirect's
@@ -222,6 +229,6 @@ been applied to something.
 
 ## Status
 
-- [ ] Chunk 01 — The Axis B norm, its home, and the floor's reach
+- [x] Chunk 01 — The Axis B norm, its home, and the floor's reach
 - [ ] Chunk 02 — The one-shot ratification invitation
 - [ ] Chunk 03 — Dogfood: prawduct adopts its own norm
