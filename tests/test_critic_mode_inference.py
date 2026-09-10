@@ -2439,22 +2439,31 @@ def test_every_critic_mode_line_in_this_repo_is_honoured_or_reported():
     """The corpus, against a form list that was transcribed by hand.
 
     Every other test here contains a form someone thought of. This one contains
-    the forms authors actually wrote, and asserts the property that matters for
-    all of them: each line is honoured, or reported back to its author, and
-    never silently nothing. Reading as *no field at all* is the whole defect —
-    it looks identical to a chunk that declared no mode, so it produces a
-    shallower review and no signal that anything was lost.
+    the forms authors actually wrote, and asserts two properties over all of
+    them.
 
-    Deliberately NOT asserting the token is valid: `cumulative-final` appears in
-    a real plan as a genuine mistake, and it is reported, which is the contract.
+    **A line whose value reads as a mode must bind that mode.** The oracle is
+    deliberately crude — take the text after the marker, take its first word,
+    strip the punctuation authors decorate it with — because an oracle built out
+    of the reader's own regex can only agree with it. This is the property the
+    defect broke: `**Type:** doc-only · **Critic mode:** chunk` reads as `chunk`
+    to any human and read as *no field at all* to the anchored reader.
+
+    **And no line is silently nothing.** Honoured, or reported back to its
+    author, never dropped — reading as no field looks identical to a chunk that
+    declared no mode, so it produces a shallower review and no signal that
+    anything was lost. Not asserted: that every value IS a mode. Twelve lines
+    here are not, and correctly so — `cumulative-final` typed into the wrong
+    field, `n/a (verification only)`, and prose in a Description discussing the
+    field. Each is reported, which is the contract.
     """
     artifacts = Path(__file__).resolve().parent.parent / ".prawduct" / "artifacts"
     plans = sorted(artifacts.rglob("build-plan*.md"))
     assert plans, f"no build plans under {artifacts} — this test proves nothing"
 
     marker = "**Critic mode:**"
-    unreadable = []
-    seen = 0
+    lost, misread = [], []
+    seen = bound = 0
     for plan in plans:
         for lineno, line in enumerate(
             plan.read_text(encoding="utf-8").splitlines(), start=1
@@ -2462,11 +2471,22 @@ def test_every_critic_mode_line_in_this_repo_is_honoured_or_reported():
             if marker not in line:
                 continue
             seen += 1
+            where = f"{plan.name}:{lineno}: {line.strip()!r}"
+
             honoured = critic_mode._BUILD_PLAN_CRITIC_MODE_RE.search(line)
+            token = honoured.group(1) if honoured else None
             reported = critic_mode._BUILD_PLAN_CRITIC_MODE_FIELD_RE.search(line)
-            blank = line.rstrip().endswith(marker)
-            if not (honoured or reported or blank):
-                unreadable.append(f"{plan.name}:{lineno}: {line.strip()!r}")
+            if not (honoured or reported or line.rstrip().endswith(marker)):
+                lost.append(where)
+
+            after = line.split(marker, 1)[1].split()
+            reads_as = after[0].strip("`.,;*") if after else ""
+            if reads_as in critic_mode._VALID_ARG_MODES:
+                bound += 1
+                if token != reads_as:
+                    misread.append(f"{where} reads as {reads_as!r}, read as {token!r}")
 
     assert seen, f"no `{marker}` field in any of {len(plans)} plans"
-    assert not unreadable, "\n".join(unreadable)
+    assert bound, "no corpus line names a mode — the binding half proves nothing"
+    assert not misread, "\n".join(misread)
+    assert not lost, "\n".join(lost)
