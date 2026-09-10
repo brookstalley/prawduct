@@ -177,6 +177,13 @@ dependency_graph:
 # scalar (below, near the opt-in flags) is the advisory-probe resolution signal.
 
 design_decisions:
+  integration_branch_protection:
+    scheme: "none — `develop` accepts direct pushes, and CI on it is advisory rather than gating"
+    status: active
+    rationale: "owner ruling 2026-09-09, asked directly and answered directly: branch protection is not wanted here. The cost is known and was named when the decision was made — on 2026-09-08 two commits were pushed straight to `develop` failing two contract tests, CI failed on both pushes, nothing read the result, and the red sat a day until a feature branch's base sync inherited it (5 of the last 50 `develop` runs had failed). Recorded so this is not re-litigated every time a red base is found: the answer is that the owner accepts red reaching `develop` and relies on it being caught downstream."
+    mitigation: "detection moved downstream instead. `suite_coupled_prefixes` (2026-09-09) makes a branch that syncs a red base see `test-status: stale` and run the suite, rather than reading day-old evidence as current — so an inherited red surfaces at the next PR's Step 1 instead of at an unrelated branch's review."
+    revisit_trigger: "a red `develop` that reaches a RELEASE rather than being caught at a feature branch's base sync — the downstream mitigation catches inheritance, not shipping"
+    date: 2026-09-09
   api_versioning_approach:
     scheme: "plugin semantic versioning (whole-surface; the auto-update cache key) plus independent evidence-store schema versioning for persisted facts"
     granularity: "whole-surface for the plugin; per-store integer schema version for the evidence store"
@@ -636,6 +643,33 @@ coverage_required: false
 # setting `operator_verification_required: true`.
 
 operator_verification_required: false
+
+# =============================================================================
+# REVIEW ROUND BUDGET (on by default)
+# =============================================================================
+# The most full review rounds one body of work may buy before `critic-begin`
+# refuses another (exit 4). `verify-resolutions` is never refused and never
+# counted — it is how a BLOCKING finding clears, so a ceiling that ate it would
+# strand findings with no command that resolves them.
+#
+# The unit is the build-plan SCOPE, not the branch: a branch may carry two
+# scopes (one would charge the other), and on a trunk-based repo the
+# merge-base span is zeroed by every push, so a branch-counted rule could
+# never fire. A dispatch that resolves no scope is not budgeted at all.
+#
+# At exhaustion the outstanding NON-blocking findings are auto-accepted with the
+# budget as their recorded reason and a census is rendered. BLOCKING is never
+# swept: the budget can end a review loop, never open a gate.
+#
+# ON by default, at 6 — an off-by-default terminating rule is a mechanism that
+# works and that nobody knows exists. Six because it sits above every measured
+# chain that ever produced a late BLOCKING finding, while still catching the
+# 20-to-34-round chains whose count is indefensible on any reading.
+#
+# Set to `null` to disable it entirely; raise it if this repo genuinely reviews
+# more. A budget that gets `--force`d past every time is a budget set wrong.
+
+review_round_budget: 6
 
 # =============================================================================
 # API VERSIONING DECISION (advisory-probe resolution signal)

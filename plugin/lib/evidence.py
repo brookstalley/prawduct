@@ -1239,6 +1239,22 @@ def _cmd_list(project_dir: Path, argv: list[str]) -> int:
             # tells this query the refusal excluded nothing — the fail-open the
             # writer already refused to take.
             guard_note += " excluded=?"
+        # What the ROUND-BUDGET refusal carries, for the same reason as
+        # `free=`/`excluded=` above: without its own columns this guard lists as
+        # a bare timestamped `guard=` row, and the retirement question ("did it
+        # ever end a loop that turned out to need another round?") is answerable
+        # only from how many rounds had been spent and what the refusal
+        # suppressed. `blocking_left` is the safety property's own reading — a
+        # nonzero there is a refusal that correctly left a gate blocked.
+        spent, ceiling = body.get("spent"), body.get("budget")
+        if isinstance(spent, int) and isinstance(ceiling, int):
+            guard_note += f" rounds={spent}/{ceiling}"
+        accepted = body.get("auto_accepted")
+        if isinstance(accepted, int):
+            guard_note += f" accepted={accepted}"
+        blocking_left = body.get("blocking_left")
+        if isinstance(blocking_left, int) and blocking_left:
+            guard_note += f" blocking-left={blocking_left}"
         # Marked inline rather than filtered: the fact is real and stays listed;
         # what it does not do is cover a branch.
         origin = " [ephemeral — covers no branch]" if is_ephemeral_fact(fact) else ""

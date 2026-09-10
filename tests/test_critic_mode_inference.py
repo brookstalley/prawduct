@@ -27,7 +27,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent / "plugin"
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from lib import buildplan_refs, core, critic_mode, infer_mode  # noqa: E402 — sys.path mutated above
+from lib import buildplan_refs, core, coverage_algebra, critic_mode, infer_mode  # noqa: E402 — sys.path mutated above
 
 
 # ---------------------------------------------------------------------------
@@ -1906,6 +1906,111 @@ class TestBranchProgressCRT7B4M:
 # then deleted that copy's multi-link ``extends_cumulative`` arm — the
 # stays-deleted guards live in TestRule1bPostCumulativeFix and the rule-2
 # class above.)
+
+
+class TestInferenceMeasuresTheSubjectSet:
+    """`files_reviewed` is the review's SUBJECT set, which is NOT judgeable-only
+    — so every comparison against it must narrow BOTH sides.
+
+    Left raw on the delta side, a fix that touched a README alongside the code
+    would fall out of rule 1's subset and out of rule 1b's widening bound,
+    sending exactly the cheap batched fix the framework tells the builder to
+    make into a full round instead of a verify pass. Left raw on the PRIOR side,
+    the bound loosens instead — the fail-open direction, where a re-review that
+    owed a full pass proceeds as a partial. `_is_metadata_path` drops
+    `.prawduct/`, not every non-judgeable path.
+    """
+
+    def test_rule_1_ignores_a_non_judgeable_file_beside_the_fix(
+        self, tmp_path: Path
+    ):
+        _init_repo(tmp_path)
+        _write(tmp_path, "src/app.py", "# v1\n")
+        _write(tmp_path, "README.md", "# hi\n")
+        prior_sha = _commit(tmp_path, "v1")
+
+        _write(tmp_path, "src/app.py", "# v2\n")
+        _write(tmp_path, "README.md", "# hi there\n")  # doc touch-up, riding along
+
+        _write_findings(
+            tmp_path / ".prawduct",
+            commit_reviewed=prior_sha,
+            files_reviewed=["src/app.py"],
+            severity="blocking",
+        )
+
+        mode, rationale = infer_mode(tmp_path, None)
+        assert mode == "verify-resolutions", (
+            f"a README beside the fix demoted the verify pass: {rationale}"
+        )
+
+    def test_rule_1_still_demotes_on_judgeable_work_outside_the_surface(
+        self, tmp_path: Path
+    ):
+        """The direction the subset check exists for is unchanged: new
+        judgeable work alongside a fix is a chunk/final case."""
+        _init_repo(tmp_path)
+        _write(tmp_path, "src/app.py", "# v1\n")
+        prior_sha = _commit(tmp_path, "v1")
+
+        _write(tmp_path, "src/app.py", "# v2\n")
+        _write(tmp_path, "src/brand_new.py", "# new chunk work\n")
+
+        _write_findings(
+            tmp_path / ".prawduct",
+            commit_reviewed=prior_sha,
+            files_reviewed=["src/app.py"],
+            severity="blocking",
+        )
+
+        mode, _ = infer_mode(tmp_path, None)
+        assert mode != "verify-resolutions"
+
+    #: 5 subjects, 1 of them coverage-priced. The gap between 5 and 1 is what
+    #: makes the prior-side narrowing observable: at 1 the bound refuses this
+    #: delta, at 5 it admits it.
+    PRIOR_SUBJECTS = [
+        "src/app.py",
+        "docs/norms.md",
+        "docs/a.md",
+        "docs/b.md",
+        "README.md",
+    ]
+
+    def test_rule_1b_measures_the_prior_side_on_the_priced_subset(
+        self, tmp_path: Path
+    ):
+        """The second mirror of the widening bound, entered at its own door.
+
+        `critic_consolidate._scope_widened` and `_rule_postfix_fix_fires`
+        compute one threshold in two places, and a unit test over hand-built
+        lists cannot tell either call site from a deleted narrowing. This uses a
+        prior set the two predicates answer 5-vs-1, so dropping
+        `judgeable_files(prior_set)` here flips the assertion — the fail-open
+        direction, in which a widened delta is recommended as a partial pass.
+        """
+        assert coverage_algebra.review_subjects(self.PRIOR_SUBJECTS) == self.PRIOR_SUBJECTS
+        assert coverage_algebra.judgeable_files(self.PRIOR_SUBJECTS) == ["src/app.py"]
+
+        _init_repo(tmp_path)
+        _write(tmp_path, "src/app.py", "# v1\n")
+        prior_sha = _commit(tmp_path, "v1")
+        # 8 priced files: past 2*1+5, inside 2*5+5.
+        for i in range(8):
+            _write(tmp_path, f"src/new_{i}.py", f"n = {i}\n")
+        _commit(tmp_path, "more work")
+
+        _write_findings(
+            tmp_path / ".prawduct",
+            mode="cumulative (bundle review, ready for merge)",
+            commit_reviewed=prior_sha,
+            files_reviewed=list(self.PRIOR_SUBJECTS),
+            include_finding=False,
+        )
+
+        assert critic_mode._rule_postfix_fix_fires(
+            tmp_path / ".prawduct", tmp_path
+        ) == "", "the prior side was counted raw, so the bound admitted a widened delta"
 
 
 # ---------------------------------------------------------------------------

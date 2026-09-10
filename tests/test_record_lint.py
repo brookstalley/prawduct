@@ -1459,3 +1459,136 @@ class TestEveryCheckCarriesASeverity:
                 f"{rel} does not tell the reviewer that a `null` count differs "
                 "from a `0` — the reading a quoted tally invites."
             )
+
+
+# ---------------------------------------------------------------------------
+# A frontmatter no parser can read
+# ---------------------------------------------------------------------------
+
+
+class TestFrontmatterBreak:
+    """A machine-read header that no machine can read.
+
+    This repo's own build plan carried an unterminated double-quoted scalar for
+    two commits and every reader passed it, because `record_lint`,
+    `resolve_branch_plan` and `verify-chunk-refs` all match line patterns rather
+    than parsing. That is the same failure shape as `governed_by:` citing a file
+    nobody can open, which is why the finding is that check: the header presents
+    as *more* governed than an absent one.
+    """
+
+    fb = staticmethod(record_lint._frontmatter_break)
+
+    def test_a_stranded_line_after_a_late_close_is_a_break(self):
+        """The real shape. An unterminated scalar does not run to end-of-file —
+        it swallows the next line and closes on ITS opening quote, leaving that
+        line's content stranded after the close."""
+        text = (
+            "---\n"
+            'a: "value one\n'
+            '- "value two"\n'
+            "---\n"
+        )
+        assert self.fb(text) == (
+            2,
+            "a double-quoted value opens here and closes only on a later line, "
+            "stranding that line's content after it, so no YAML reader can parse "
+            "this frontmatter",
+        )
+
+    def test_an_unclosed_fence_is_a_break(self):
+        line, why = self.fb("---\nfoo: bar\n\n# Body\n")
+        assert line == 1 and "never closed" in why
+
+    def test_a_well_formed_frontmatter_is_quiet(self):
+        assert self.fb(_plan(3)) is None
+
+    def test_a_multi_line_quoted_scalar_is_quiet(self):
+        """Legitimate and common in this repo's plans — a disposition wrapped
+        across two lines."""
+        assert self.fb('---\nmsg: "line one\n  line two"\nx: 1\n---\n') is None
+
+    def test_a_quote_inside_a_plain_scalar_is_quiet(self):
+        """A `"` only opens a scalar at the START of a value; anywhere else in a
+        plain scalar it is an ordinary character. Treating every quote as an
+        opener is how this check would cry wolf on ordinary prose."""
+        assert self.fb('---\nmsg: he said "hi" loudly\nx: 1\n---\n') is None
+
+    def test_a_block_scalar_carrying_quotes_is_quiet(self):
+        """`>-` and `|` content is literal text, quotes included. A real archived
+        plan in this repo quotes `"inapplicable, because —"` inside a `>-` note;
+        without this the check reported that as a broken header."""
+        text = (
+            "---\n"
+            "governed_by:\n"
+            "  - norm: \"a norm\"\n"
+            "    note: >-\n"
+            '      Recorded rather than omitted: "inapplicable, because —" is a\n'
+            "      disposition, and an absent entry reads as unconsidered.\n"
+            "x: 1\n"
+            "---\n"
+        )
+        assert self.fb(text) is None
+
+    def test_a_quoted_key_is_quiet(self):
+        """`- "a b": 1` opens a scalar at a value position, closes it, and leaves
+        a colon. The ONLY legal shape that still reaches the trailing-content
+        branch — which is why `:` is in `_LEGAL_AFTER_CLOSING_QUOTE` and the flow
+        punctuation is not."""
+        assert self.fb('---\n- "a b": 1\nx: 2\n---\n') is None
+
+    def test_a_quote_initial_continuation_of_a_plain_scalar_is_quiet(self):
+        """A wrapped plain scalar whose second line begins with a quote opens
+        nothing — it carries no `- `/`key: ` marker. Reading it as an opener
+        reported legal YAML as broken."""
+        text = '---\nnote: the rule says\n  "the thing" is true\nx: 1\n---\n'
+        assert self.fb(text) is None
+
+    def test_a_flow_collection_continuation_is_quiet(self):
+        """Same marker rule closes the multi-line `[...]` case, which is why the
+        trailing-content branch never needs to admit `,`/`]`/`}`."""
+        assert self.fb('---\nk: ["a",\n  "b"]\nx: 1\n---\n') is None
+
+    def test_a_stranded_fragment_beginning_with_a_comma_is_still_a_break(self):
+        """THE REGRESSION GUARD. Admitting flow punctuation after a closing quote
+        looks harmless — the shapes it was meant for are already excluded by the
+        marker rule — but it is reachable with a scalar ALREADY OPEN, which is
+        the break case. Here the unterminated scalar on line 2 swallows line 3
+        and closes on its quote, stranding `, two"`. Genuinely unparseable YAML,
+        and a false negative here is silent by construction: `governed-by-gap` is
+        the machine-answered channel a reviewer relays verbatim."""
+        line, why = self.fb('---\na: "one\nb: ", two"\n---\n')
+        assert line == 2
+        assert "closes only on a later line" in why
+
+    def test_no_frontmatter_at_all_is_not_a_break(self):
+        """A missing header is a different (and lesser) thing than a broken one;
+        `governed-by-gap` already grades the absence via its own rules."""
+        assert self.fb("# Plan\n\n## Status\n") is None
+
+    def test_the_break_reaches_the_lint_as_a_governed_by_gap(self, tmp_path):
+        repo = _make_repo(tmp_path, name="brokenheader")
+        arts = repo / ".prawduct" / "artifacts"
+        (arts / "security-model.md").write_text(THREE_NORM_ARTIFACT)
+        base = _commit(repo, "seed artifact")
+        # UNDER-disposed *and* broken: the fixture has to be able to produce the
+        # spurious second finding, or "exactly one" passes against an
+        # append-and-continue implementation too and pins nothing. One
+        # disposition against a three-norm artifact is a real `governed-by-gap`
+        # that the line-based parser still reports from the broken block.
+        broken = _plan(1).replace('      - "norm 0 → conforms"\n',
+                                  '      - "norm 0 → conforms\n')
+        (arts / "build-plan-demo.md").write_text(broken)
+        head = _commit(repo, "add plan")
+        found = _checks(
+            _lint(repo, [".prawduct/artifacts/build-plan-demo.md"], base, head),
+            "governed-by-gap",
+        )
+        assert any("structurally broken" in f["detail"] for f in found), found
+        # ONE structural defect, ONE finding. The line-based parser still yields
+        # entries from a broken block, and they are entries no YAML reader would
+        # agree with — a stranded fragment reads as an artifact name and renders
+        # a spurious "cites an artifact that does not exist" beside the break.
+        # Grading a block the same function just called untrustworthy is the
+        # contradiction the early return exists to prevent.
+        assert len(found) == 1, f"the broken block was graded anyway: {found}"

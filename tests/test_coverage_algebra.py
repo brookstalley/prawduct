@@ -809,3 +809,137 @@ class TestReproScenarios:
         table = {(T1, T2): [".prawduct/artifacts/build-plan-x.md"]}
         verdict = ca.coverage_verdict(facts, T0, T2, _diff(table))
         assert verdict["status"] == "covered"
+
+
+# ---------------------------------------------------------------------------
+# A subject-set `files_reviewed` still validates an edge
+# ---------------------------------------------------------------------------
+
+
+class TestSubjectSetEdges:
+    """`files_reviewed` narrowed to the judgeable subset cannot invalidate an
+    edge — the claim the review-scope narrowing rests on.
+
+    `review_edges` quantifies its coverage check only over
+    `judgeable_files(files_changed)`, so a reviewed set that drops
+    non-judgeable paths drops nothing the check asks about. Pinned here rather
+    than trusted: if this ever stops holding, narrowing the reviewed set
+    silently un-covers every interval that carried prose, and the reading is a
+    gate that reopens long after the change that opened it.
+    """
+
+    CHANGED = ["lib/gates.py", ".prawduct/change-log.md", "docs/guide.md"]
+
+    def test_the_judgeable_subset_is_a_valid_edge(self):
+        fact = _review("r1", T0, T1, self.CHANGED, reviewed=["lib/gates.py"])
+        edges = ca.review_edges([fact])
+        assert [(e["src"], e["dst"]) for e in edges] == [(T0, T1)]
+
+    def test_the_whole_set_is_the_same_edge(self):
+        """The narrowing is behaviour-preserving at this seam: the wide set and
+        the subject set yield the identical edge, so no historical fact written
+        before the narrowing composes differently after it."""
+        wide = ca.review_edges([_review("r1", T0, T1, self.CHANGED)])
+        narrow = ca.review_edges(
+            [_review("r1", T0, T1, self.CHANGED, reviewed=["lib/gates.py"])]
+        )
+        assert [(e["src"], e["dst"]) for e in wide] == [
+            (e["src"], e["dst"]) for e in narrow
+        ]
+
+    def test_a_missing_judgeable_file_still_yields_no_edge(self):
+        """The other direction, and the one that matters: narrowing must not
+        become a way to under-review code. A reviewed set missing a judgeable
+        changed file is not an edge, exactly as before."""
+        fact = _review(
+            "r1", T0, T1,
+            ["lib/gates.py", "lib/other.py", ".prawduct/change-log.md"],
+            reviewed=["lib/gates.py"],
+        )
+        assert ca.review_edges([fact]) == []
+
+
+class TestReviewEligibilityIsItsOwnQuestion:
+    """`is_review_subject` answers *may a finding be about this file?*;
+    `is_judgeable_path` answers *does an edit here re-open the gate?*
+
+    They are separate predicates on purpose. Eligibility used to be derived by
+    negating the cost predicate, which silently dropped two things: prose that
+    governs behaviour but is not governance-protected, and — the case no path
+    list reaches — the entire output of a product whose deliverable is
+    markdown.
+    """
+
+    def test_behaviour_governing_prose_is_a_subject_though_not_judgeable(self):
+        # `plugin/agents/**` was the original exemplar here and is deliberately
+        # gone: it is now governance-PROTECTED, so it is judgeable too, which is
+        # a different (and stronger) answer than this test's premise. The
+        # `docs/` tree still carries the case — behaviour-governing prose that
+        # no protected bound covers.
+        for path in (
+            "plugin/docs/norms.md",
+            "plugin/docs/principles.md",
+            "plugin/docs/waivers.md",
+        ):
+            assert ca.is_review_subject(path), path
+            assert not ca.is_judgeable_path(path), (
+                f"{path} became judgeable — this test's premise is that it is "
+                "NOT, which is exactly why the negation dropped it"
+            )
+
+    def test_a_markdown_deliverable_product_keeps_its_whole_output(self):
+        """The general case, and the one no path list closes.
+
+        Every product file here is non-judgeable, so under the negation one
+        incidental `.py` in the interval left the product's real output
+        read-but-never-rated for all seven goals.
+        """
+        product = ["site/index.md", "site/guides/install.md", "CHANGELOG.md"]
+        assert ca.review_subjects(product + ["tool.py"]) == product + ["tool.py"]
+
+    def test_records_about_the_work_are_not_subjects(self):
+        for path in (
+            ".prawduct/change-log.md",
+            ".prawduct/learnings.md",
+            ".prawduct/artifacts/build-plan-x.md",
+            ".prawduct/artifacts/archive/old-plan.md",
+            ".prawduct/project-state.yaml",
+        ):
+            assert not ca.is_review_subject(path), path
+
+    def test_eligibility_is_not_implemented_as_the_negation_of_cost(self):
+        """The pin for the defect itself, not merely for today's answers.
+
+        A future edit that reunites the two predicates would keep every other
+        assertion in this class green only by coincidence of the corpus. This
+        one fails the moment they agree everywhere, which is the shape of the
+        regression.
+        """
+        corpus = [
+            "plugin/agents/critic-reviewer.md",   # subject, not judgeable
+            "plugin/docs/norms.md",               # subject, not judgeable
+            "README.md",                          # subject, not judgeable
+            "docs/guide.md",                      # subject, not judgeable
+            "plugin/lib/core.py",                 # subject AND judgeable
+            "plugin/skills/critic/SKILL.md",      # subject AND judgeable
+            ".prawduct/change-log.md",            # neither
+        ]
+        disagree = [
+            p for p in corpus
+            if ca.is_review_subject(p) is not (not ca.is_judgeable_path(p))
+        ]
+        assert disagree, (
+            "is_review_subject agrees with `not is_judgeable_path` on every "
+            "path here — the two questions have been collapsed back into one, "
+            "which is the defect this classifier was built to close"
+        )
+
+    def test_an_unplaceable_path_fails_closed_to_subject(self):
+        assert ca.is_review_subject("weird-thing-with-no-extension")
+        assert ca.is_review_subject(".claude/settings.json")
+
+    def test_review_subjects_is_none_safe_and_order_preserving(self):
+        assert ca.review_subjects(None) == []
+        assert ca.review_subjects(
+            ["b.py", ".prawduct/x.md", "a.py"]
+        ) == ["b.py", "a.py"]

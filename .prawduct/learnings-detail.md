@@ -2556,7 +2556,6 @@ widest-reaching one — a shipped pointer resolving only in the framework repo �
 about consumer repos, which the author was not. Corollary for the cheap case: where a separate
 context is not available, take the attack from a roster you did not author, so at least the
 *selection* is not yours.
-
 ## A precondition recorded only in PROSE is never re-evaluated when it is discharged — wire it as the machine-readable dependency the tool already honours, because nothing revisits an item whose blocker quietly closed
 
 Found during the 2026-09-02 design-queue triage (50 items at `stage: design` against 51 at
@@ -2811,3 +2810,46 @@ incomplete; code-first produces instructions that are complete and then get chec
 
 **Related.** This is the sibling of the rule that a guardrail on an instruction surface must model
 the READER: that one is about testing the instructions, this one is about sourcing them.
+
+## A "keep both sides" conflict resolution silently drops whatever the BASE grew in a region the branch also touched
+
+Found 2026-09-09 by the Records Pass of `review-loop-termination` Chunk 04's cumulative review, two
+chunks after the merge that caused it.
+
+`feat/review-loop-termination` advanced its base over 216 develop commits, eighteen conflict hunks,
+resolved by keeping both sides. The suite was green and the merge message recorded a deletion of four
+historical `learnings-detail.md` entries, verified present in the archive — an honest, checked
+record of an intended change.
+
+Eight *other* narrative blocks went with them. Each existed at the interval base AND at the merged
+develop commit; none existed at HEAD; all eight rules were still active in `learnings.md` and still
+ended `— [learnings-detail.md]`, so each had become a citation to a file that no longer held it. None
+had been moved to `learnings-history.md`.
+
+Why nothing caught it: the accounted-for deletion made the region look reviewed, `check-learnings-
+pairing` verifies index→detail in one direction only, and a merge diff shows conflicts rather than
+content the other side grew. The next merge would have propagated the loss to develop.
+
+The check that would have caught it is cheap and mechanical — after a large base advance, list the
+`##` headings of a long-lived append-only record at both parents and at the merged tree, and account
+for every heading present at either parent and absent at the result.
+
+## A test that pins the ARITHMETIC does not pin the CALL
+
+Found 2026-09-09, Chunk 04's cumulative review (R-2).
+
+`begin_review`'s scope-widening bound compares the coverage-priced subset of the delta against the
+coverage-priced subset of the prior review's SUBJECT set. Since the eligibility classifier landed, a
+subject set routinely holds non-judgeable paths, so the prior-side narrowing is load-bearing:
+dropping it inflates the prior count and loosens the bound, and a re-review that owed a full pass
+proceeds as a partial. That is the fail-open direction.
+
+A comment above the call site said "Pinned by `TestWideningBoundCountsTheCostSubset`". That class
+calls `_scope_widened` and the two predicates on hand-built lists; it never reaches `begin_review`.
+The one dispatch-level test used `.prawduct/**` paths, which BOTH predicates exclude, so it passed
+identically with the narrowing and without it. Replacing the narrowed call with the raw list kept the
+whole suite green.
+
+The shape that can tell them apart is an input the two forms answer differently — here a prior set of
+five subjects of which one is coverage-priced, and a delta of eight priced files: past `2*1+5`,
+inside `2*5+5`. `TestWideningBoundReachesTheDispatch` enters at `begin_review` with exactly that.

@@ -3,6 +3,260 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-09-09: the review loop gets a stopping rule
+
+<!-- prawduct: type=feat | scope=review-loop-termination -->
+
+Every control this plan shipped prices a review round, refuses a wasteful one, or shrinks what one
+produces. None of them ever says *stop* — and the measurement this plan was built on says nothing
+else will. Across 728 review facts in this clone's store, findings per full round **rise**: 13.5,
+15.4, 15.5, 18.4, with 99% of them new rather than re-raised. A review loop has no natural fixed
+point, so every "one more round" reads locally reasonable, and chains of twenty to thirty-four
+rounds are the result.
+
+**`review_round_budget` is the declared stop.** Six full rounds per build-plan scope — the unit is
+the scope and not the branch, because a branch may carry two scopes and a trunk-based repo's
+merge-base span is zeroed by every push. On by default in
+every governed repo, `null` to disable. Off-by-default was rejected for the reason #716 reports
+about `cost-of-commit` — a mechanism that works and that nobody knows exists. Six rather than four
+because it sits above every chain in the store that ever produced a late BLOCKING finding, so it
+costs close to nothing in missed defects while still catching the chains whose round count is
+indefensible on any reading.
+
+At the ceiling `critic-begin` exits **4** — a new documented sentinel, not an overload of exit 3,
+because a 3 says the gate does not want this round and a 4 says the loop has run out while the gate
+may still be unsatisfied, and the caller's next move differs. The refusal auto-ACCEPTs the
+outstanding non-blocking findings with the budget as their recorded reason, renders the census, and
+writes no session state.
+
+**Two bounds carry the whole safety argument, and both are pinned by tests.** A
+`verify-resolutions` pass is neither counted nor refused — it is how a BLOCKING finding clears, so a
+ceiling that ate it would strand findings with no command that resolves them. And no BLOCKING
+finding is ever swept, guarded twice: filtered in the sweep, and independently refused by
+`dispositions.record`, which demands an owner ruling the automatic path never supplies. **The budget
+can end a review loop and can never open a gate.** Its firings append a `guard-refusal` fact under
+the sink the whole pre-dispatch-guard class already uses, which is what keeps the six falsifiable.
+
+**`--fixed` closes the hole where the cheapest correct action sat.** A fix confined to non-judgeable
+paths buys no round, so no verify pass runs, no resolution fact is written, and the census reported
+it undispositioned forever — leaving "don't fix it" and "spend ten minutes" as the only visible
+answers. `prawduct-hook disposition <review> <fid> --fixed <paths>` records it, and the paths are
+checked at record time against the same predicate that prices the edit: a set holding anything
+judgeable is refused, so nothing launders a judgeable fix past a gate. BLOCKING is refused too. The
+census state is `fixed-unreviewed`, deliberately not `fixed` — both say the defect is gone, and only
+one says a reviewer looked.
+
+**The prose correction is the load-bearing half.** `review-cycle.md` asserted that by round 3 a pass
+finds defects in the record of round 2 and that this is the signal to stop. The store says the
+opposite. Shipping a budget while that stood would leave two stopping rules, and the false one is
+the one an agent can check against the store and therefore learn to distrust — which is the
+behaviour this whole plan exists to fix. Replaced with the measured rise, carried with its numbers.
+
+**`agents/` becomes governance-protected**, closing the half Chunk 03 left open. A subagent's system
+prompt is behavioural logic by exactly the argument that protects skill prose, and the reviewer's is
+that argument's strongest case: it decides what an independent review looks at, so an unreviewed
+narrowing there compounds across every review after it. `TestAgentsNoLongerSpecial` recorded the
+omission as intentional when the pre-2.0 `agents/` tree was deleted; the tree came back, so its
+premise is gone rather than overruled.
+
+**And a refusal stops manufacturing the round it refuses.** `begin_review`'s "nothing to verify"
+branch returned a bare error, surfacing as exit 1 — which `SKILL.md`'s exit table routes to
+"re-dispatch per the demotion property", meaning a full `cumulative` on a bundle the gate already
+reports satisfied. It is a no-review-needed and now takes exit 3.
+
+Exercised end-to-end against this branch's real review history in a scratch clone: the refusal
+fires at the ceiling, the census renders across all five of the scope's reviews, no BLOCKING finding
+is swept, and the firing lands as a countable fact. The two WARNINGs Chunk 01 fixed for free are
+recorded live as `--fixed`.
+
+**Named gap, carried rather than built:** a fix that rode a *later* round-buying commit still has no
+recordable answer against its own review — `--fixed` correctly refuses it and no verify pass was
+ever anchored there. Closing it needs a join between a finding and a later review fact whose
+interval contains the fixing commit, which is coverage-kernel work with its own lock-in question.
+
+**What the cumulative review changed, because two of its findings were about the chunk's own thesis.**
+The ordering was wrong: the budget was checked *above* the free-interval refusal, so on an exhausted
+scope a records-only dispatch — the question the framework advertises as free — was answered with
+exit 4 and an auto-ACCEPT of every outstanding finding. The two exits exist because "the loop is
+over" and "there was nothing to review" are different answers; the budget now sits below the free
+one. And the demotion table in `review-cycle.md`, the canonical explanation of `verify-resolutions`
+anchoring, still priced the nothing-to-verify refusal at exit 1 and routed it as a demotion — the
+manufactured round this chunk removes, shipping in the same commit.
+
+Also from the review: eight active learnings had lost their narrative blocks in the base-advance
+merge — present at both parents, absent at HEAD, every rule still citing a file that no longer held
+them, and one merge short of propagating to develop. Restored, with the rule that found it.
+
+## 2026-09-09: review eligibility stops being the negation of review cost
+
+<!-- prawduct: type=fix | scope=review-loop-termination -->
+
+The subject/oracle split shipped in August asked `is_judgeable_path` which files a finding could be
+about. That predicate answers a different question — *does an edit here re-open the coverage gate?*
+— and it had only ever been asked the cost question until the split gave it a second job. Its
+exclusions were never re-vetted against the new one.
+
+Two things fell through. A review subagent's own system prompt (`plugin/agents/critic-reviewer.md`)
+is behavioural logic by exactly the argument that protects skill prose, and it classified as an
+oracle — read, never rated. So did the norm, principle and waiver references under `plugin/docs/`.
+Both are one directory each, and a longer path list would have closed both.
+
+The general case is what a path list cannot reach, and it is not this repo's. For a governed product
+whose **deliverable is markdown** — a docs site, a spec repo, a prompt library — every product file
+is non-judgeable, so a single incidental `.py` in the interval defeated the all-prose floor and the
+product's entire output became read-but-never-rated against all seven goals. `is_judgeable_path` is
+not product-configurable, and this plan's `governed_by:` dispositions covered language-independence
+but never this shape.
+
+`coverage_algebra.is_review_subject` now owns eligibility as its own question: a **deliverable, or
+prose that governs behaviour**, is a subject however the gate prices it; only a record *about* the
+work (`.prawduct/**`) is an oracle. It fails closed toward subject — a path it cannot place is
+reviewable, because over-inclusion costs reviewer attention while under-inclusion ships an unrated
+deliverable, and only one of those is recoverable.
+
+**It costs 4 points of the 36 the narrowing bought.** Measured over the 3,542 findings in this
+clone's store that name files: the judgeable-only rule made 65% of them subjects, the classifier
+makes 68%, and the 32% that are pure `.prawduct/` records — the bulk of what August removed — stay
+out. What returns is `documentation/` (88 findings), `docs/` (29), `plugin/` prose (17), `README.md`
+(9), `CHANGELOG.md` (2) and `agents/` (1).
+
+A test fails if the two predicates are ever reunited, rather than only checking today's answers: a
+future edit that re-derives one from the other would keep every other assertion green by coincidence
+of the corpus. Chunk 02's own `test_the_subject_set_drops_non_judgeable_paths` asserted
+`docs/guide.md` as an oracle and is rewritten to the corrected rule — the file moves INTO the subject
+set, which is strictly more review.
+
+Prose: the Records Pass in `review-cycle.md` taught eligibility as "is it judgeable" and now teaches
+the rule, pointing at the classifier's docstring for the case rather than restating it. Its ceiling
+rose 9980 → 10065, declared with that reason at the assertion.
+
+The chunk's own review returned **0 blocking, 3 warning, 2 note**, and every actionable one was the
+same class: prose that still taught the rule the code had stopped implementing. `review-protocol.md`
+— the `final`/`cumulative` reviewer's own protocol — still said "findings-eligible, judgeable paths
+only", so a reviewer reading it would have applied the removed rule; its ceiling rose 3995 → 4035
+after paying down the first draft. Three comments in `critic_consolidate.py` asserted the
+conflation, and **one had teeth**: the justification above `_scope_widened` claimed a fact's
+`files_reviewed` IS the judgeable subset, which made the live re-narrowing of `prior_files` look
+redundant. It is not — since the classifier, a subject set admits deliverables and behaviour-
+governing prose that this cost-based threshold must not count, so dropping the call would inflate
+the prior count and LOOSEN the widening bound, failing open and silently. Nothing pinned that path;
+`TestWideningBoundCountsTheCostSubset` now does, asserting first that the two sets genuinely differ
+so the pin cannot pass vacuously.
+
+The review also caught that the plan recorded Chunk 04's `agents/` carry as discharged. It is
+half-discharged: `plugin/agents/critic-reviewer.md` is now a review subject, but it stays
+non-judgeable, so a commit touching only a review subagent's system prompt is still a free edge.
+Eligibility and cost are different questions and this chunk answered only the first — deliberately.
+The plan now states the residue and hands the second question to Chunk 04 rather than closing it on
+paper.
+
+## 2026-08-25: judgeability decides what a review RATES, not what it READS
+
+<!-- prawduct: type=feature | scope=review-loop-termination -->
+
+Non-judgeable files were 39% of every file-slot handed to a reviewer (5,869 of 14,860) and 36% of
+every finding returned (1,372 of 3,826). Those findings are correct — the measured false-positive
+rate across this class is zero — and almost none of them are worth what clearing one costs: a fix on
+a record buys nothing at a gate, and a builder who fixes it anyway moves the tree and buys a round.
+
+`critic-begin` now splits an interval into two sets. `files_reviewed` is the **subject** set —
+judgeable paths only, the sole files a finding may be *about*. What it sheds rides as
+`files_oracle`, delivered to every reviewer to read and rate by none.
+
+**Only the subject role narrows, and the distinction is the whole design.** A non-judgeable file
+plays two parts: it can be *wrong*, and it is the authority the code is judged *against*. Every spec
+in this repo is non-judgeable — the build plan, every artifact, `project-preferences.md`,
+`cross-cutting-concerns.md` — and the reviewer is sent to exactly those for Goal 2's
+requirement-coverage check and Goal 3's norm-departure check, both of which rate BLOCKING. Narrowing
+what a reviewer may *read* would have removed its oracle while looking, on every metric this change
+is measured by, exactly like the narrowing working: fewer findings, less reader load. A guard test
+now fails when the oracle is withheld, because the success metric cannot tell the two apart.
+
+`coverage_algebra.review_edges` validates an edge by quantifying only over
+`judgeable_files(files_changed)`, so a subject-set `files_reviewed` still covers every file an edge
+asks about — re-verified against the code before a line changed, and pinned by a test in both
+directions. The verify-resolutions scope-widening threshold now measures subject sets on both sides;
+prose riding along on a fix can no longer demote a re-review.
+
+**The window this opens has one cover: the Records Pass**, a third final-mode cross-check (the
+`sustainability` role) that rates the excluded set against the two bars the severity contract
+already defined — *it ships*, *it misleads into action* — and names the set it covered. Those bars
+moved out of the builder-facing severity paragraph rather than being restated beside it: two
+stopping rules where one is false is the failure this whole plan exists to fix. The review fact
+records `files_oracle`, so an exclusion is auditable rather than indistinguishable from a reviewer
+that simply found less.
+
+Two items rode this commit rather than buying a round of their own. **The `fix_cost` FREE phrase is
+now relational** — a finding's `files` is where the reviewer *saw* the problem, not where a remedy
+lands, so the phrase prices an edit confined to the cited files, says so, and routes the real batch
+to `cost-of-commit`. And **`governed-by-gap` now grades a frontmatter no parser can read**: this
+plan's own YAML header was invalid for two commits and three regex-based readers passed it, which
+presents as *more* governed than no header at all. There is no YAML dependency to reach for, so the
+check grades the one structural break the line-based readers are blind to and reports nothing it
+cannot see.
+
+`## Directional Change Review` was cut from `review-cycle.md` — three bullets restating Goals 1, 4
+and 5 under a trigger condition that is just `cumulative` mode, referenced by nothing.
+
+**The chunk's own review corrected the rule it shipped, and the correction matters more than the
+rule.** The subject restriction went out as an *absolute* — "a finding may only be about a
+`files_reviewed` path" — while the protocol eleven lines below it still ordered `chunk-ref-missing`
+to BLOCKING on a record, which is an oracle path by construction. The review proved it by producing
+one: its single `record_lint` finding sits on `.prawduct/learnings.md`. A reviewer obeying the
+absolute in `chunk` or `verify-resolutions` — modes with no Records Pass to route it to — would have
+swallowed a machine-detected BLOCKING. Closed by construction rather than by a longer list: three
+passes own oracle findings and are exempt (the record-lint relay, the Learnings Cross-Check, the
+Records Pass), stated once in `review-cycle.md` with every other surface pointing at it.
+
+**Record-only BLOCKING is still reachable, and that is now a decision rather than an oversight.** The
+narrowing was justified from a table bucketed by finding count; the row of that same table measuring
+severity cost was never disposed. **54 of 236 BLOCKING findings (23%) had a record as their only
+subject**, and a Records Pass whose bars both read WARNING would have traded that class away in
+silence. It has a third bar: an instruction that actively misleads — a wrong command, a deleted
+config reference — is BLOCKING there, exactly as Goal 4 has always rated it.
+
+**And the verify pass caught the fix's own regression, which is the sharpest thing in this entry.**
+Widening what may follow a closing quote to admit flow punctuation (`,`, `]`, `}`) looked free: the
+shapes it was meant for — a scalar inside a multi-line `[...]` — are already excluded by the marker
+rule, because a flow continuation line carries no `- `/`key: `. But those characters are reachable
+with a scalar **already open**, which is the break case. In `a: "one` / `b: ", two"` the unterminated
+scalar swallows the next line and closes on its quote, stranding `, two"` — unparseable YAML that the
+check reported before the fix and passed after it. A false negative on `governed-by-gap` is silent by
+construction: it is the machine-answered channel a reviewer relays verbatim. The allowance is back to
+`#` and `:`, and each of the three boundaries that moved now has a test that fails when it moves back.
+
+Also from that review: `_scope_widened` counted through the all-prose floor and so reinstated the
+prose it means to discount; the verify-resolutions arm rebuilt its oracle from the prior *subject*
+set and dropped the plan a verify pass must be handed; `critic_mode` asserted `files_reviewed` holds
+judgeable paths only, which is false of every fact written before this commit; and
+`_frontmatter_break` reported three legal YAML shapes as broken (a quoted key, and continuation lines
+of flow and plain scalars that begin with a quote).
+
+## 2026-08-25: every finding says what acting on it costs
+
+<!-- prawduct: type=feature | scope=review-loop-termination -->
+
+The disposition menu is priced backwards from the intuition, and nothing said so at the point of
+decision. ACCEPT is always free. FIX is free on a non-judgeable surface and costs a whole review
+round on a judgeable one — coverage is keyed on the tree, so any judgeable edit re-opens the gate
+that same round was run to close. A builder told to "fix anything cheap" reads *cheap* as *small*,
+and the smallest fixes — a change-log sentence, a stale count — are exactly the ones where the
+surface, not the size, sets the price.
+
+Measured on this repo's evidence store: of 3,826 findings across 728 reviews, **1,372 cite only
+non-judgeable files** and were free to fix all along, while 2,361 buy a round and 93 cite no file at
+all. Nothing at the decision point told those three classes apart.
+
+`.critic-findings.json` now carries a `fix_cost` on every finding. The predicate is
+`coverage_algebra.is_judgeable_path` — the same one the gate charges by, so the price quoted to the
+builder and the price charged at the gate cannot drift. It states only *whether* a round is bought;
+`telemetry.round_price` still owns what a round costs and the record's `next_action` already carries
+that sentence, so no figure is restated per finding.
+
+**It fails closed toward charged.** A finding citing no file reads `unknown`, never `free` — a wrong
+"free" is the reading that spends an unbudgeted round, while a wrong "charged" only declines a
+saving. The key is additive and the schema validator checks required fields only, so no existing
+reader breaks.
 ## 2026-09-09: `/prawduct:pr` Step 2 stops promising a saving it cannot always deliver
 
 <!-- prawduct: type=docs | scope=gate-accuracy -->

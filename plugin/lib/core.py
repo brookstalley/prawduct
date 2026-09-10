@@ -221,6 +221,54 @@ class BranchClaim(NamedTuple):
         return len(self.claimants) > 1
 
 
+#: The three answers a column-0 scalar read can give. ``read_str_yaml_key``
+#: collapses the last two, which is right for every key whose absence and whose
+#: explicit ``null`` mean the same thing. Where they mean DIFFERENT things — a
+#: control that is on unless a repo turns it off — the collapse is the bug, so
+#: the distinction gets a reader rather than each such key re-scanning the file.
+YAML_SCALAR_ABSENT = "absent"
+YAML_SCALAR_NULL = "null"
+YAML_SCALAR_VALUE = "value"
+
+
+def read_scalar_yaml_key(state_path: Path, key: str) -> "tuple[str, str | None]":
+    """``(state, value)`` for a top-level (column-0) ``key: value`` scalar.
+
+    ``state`` is :data:`YAML_SCALAR_ABSENT` (no such key, or the file is
+    missing/unreadable), :data:`YAML_SCALAR_NULL` (declared with an empty value
+    or the YAML null literal ``null`` / ``~``, case-insensitive), or
+    :data:`YAML_SCALAR_VALUE` with the value carried alongside. Surrounding
+    quotes and inline ``#`` comments are stripped; indented and commented-out
+    occurrences are ignored.
+
+    THE column-0 scanner: :func:`read_str_yaml_key` is a thin wrapper that
+    collapses the two unset states, so there is one parser to be wrong.
+    """
+    try:
+        content = state_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        # A file that is not decodable text is *unreadable*, which is what this
+        # promises to fail soft on. `UnicodeDecodeError` is a `ValueError`, so
+        # catching only `OSError` let it escape — and every caller reads this
+        # through a guard shaped for the absent answer, so the raise surfaced
+        # far from here. `already_migrated` is the sharp case: it calls this
+        # first, so an undecodable state file aborted the cutover before any of
+        # the later steps could reach their own decode guards.
+        return YAML_SCALAR_ABSENT, None
+    needle = f"{key}:"
+    for raw in content.splitlines():
+        if raw[:1] in (" ", "\t"):
+            continue
+        line = raw.split("#", 1)[0].rstrip()
+        if not line.startswith(needle):
+            continue
+        value = line.split(":", 1)[1].strip().strip("\"'")
+        if not value or value.lower() in ("null", "~"):
+            return YAML_SCALAR_NULL, None
+        return YAML_SCALAR_VALUE, value
+    return YAML_SCALAR_ABSENT, None
+
+
 def read_str_yaml_key(state_path: Path, key: str) -> str | None:
     """Value of a top-level (column-0) ``key: value`` scalar, or None.
 
@@ -233,29 +281,7 @@ def read_str_yaml_key(state_path: Path, key: str) -> str | None:
     already honors for ``scope:`` (VWS-7N3K). Without this, a literal ``null``
     survived as the truthy string ``"null"`` and resolved to ``.prawduct/null``.
     """
-    try:
-        content = state_path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        # A file that is not decodable text is *unreadable*, which is what this
-        # promises to fail soft on. `UnicodeDecodeError` is a `ValueError`, so
-        # catching only `OSError` let it escape — and every caller reads this
-        # through a guard shaped for None, so the raise surfaced far from here.
-        # `already_migrated` is the sharp case: it calls this first, so an
-        # undecodable state file aborted the cutover before any of the later
-        # steps could reach their own decode guards.
-        return None
-    needle = f"{key}:"
-    for raw in content.splitlines():
-        if raw[:1] in (" ", "\t"):
-            continue
-        line = raw.split("#", 1)[0].rstrip()
-        if not line.startswith(needle):
-            continue
-        value = line.split(":", 1)[1].strip().strip("\"'")
-        if not value or value.lower() in ("null", "~"):
-            return None
-        return value
-    return None
+    return read_scalar_yaml_key(state_path, key)[1]
 
 
 # =============================================================================
@@ -461,6 +487,54 @@ def oversized_file_threshold(prawduct_dir: Path) -> int:
         if configured > 0:
             kilobytes = configured
     return kilobytes * 1000
+
+
+REVIEW_ROUND_BUDGET_KEY = "review_round_budget"
+
+#: Full review rounds one body of work may buy before the framework stops
+#: selling them. **On by default in every governed repo**, unlike the opt-in
+#: flags below — an off-by-default terminating rule is a mechanism that works
+#: and that nobody knows exists (#716 reports exactly that about
+#: ``cost-of-commit``), and the loop this ends is one the data says has no
+#: natural fixed point: measured across this clone's evidence store, finding
+#: yield per full round rises rather than decays (13.5 → 15.4 → 15.5 → 18.4),
+#: 99% of them new. Where nothing decays, the only principled stop is a
+#: declared one.
+#:
+#: Six rather than four: it sits above every chain in the measured store that
+#: ever produced a late BLOCKING finding, so it costs close to nothing in
+#: missed defects, while still catching the 20-to-34-round chains whose round
+#: count is indefensible on any reading.
+REVIEW_ROUND_BUDGET_DEFAULT = 6
+
+
+def review_round_budget(prawduct_dir: Path) -> "int | None":
+    """This repo's full-round ceiling, or ``None`` when it is disabled.
+
+    :data:`REVIEW_ROUND_BUDGET_DEFAULT` unless ``project-state.yaml`` declares
+    :data:`REVIEW_ROUND_BUDGET_KEY`. **An explicit ``null`` disables the budget
+    and an absent key does not** — which is why this reads through
+    :func:`read_scalar_yaml_key` rather than :func:`read_str_yaml_key`, whose
+    collapse of those two states would make "off" unexpressible.
+
+    Fail-soft in the direction that keeps working: a value that is not a
+    positive integer falls back to the default rather than to disabled, because
+    a typo in a stopping rule must not silently remove it — and 0 or a negative
+    would refuse a scope's very first round, which no repo means.
+    """
+    state, raw = read_scalar_yaml_key(
+        prawduct_dir / "project-state.yaml", REVIEW_ROUND_BUDGET_KEY
+    )
+    if state == YAML_SCALAR_NULL:
+        return None
+    if state == YAML_SCALAR_VALUE:
+        try:
+            configured = int(raw)
+        except ValueError:
+            return REVIEW_ROUND_BUDGET_DEFAULT
+        if configured > 0:
+            return configured
+    return REVIEW_ROUND_BUDGET_DEFAULT
 
 
 #: Every boolean opt-in flag a product may set in ``project-state.yaml``.
