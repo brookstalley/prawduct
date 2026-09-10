@@ -435,12 +435,12 @@ falsify the premise:
   verify pass had captured the tree, and a judgeable edit would have put the commit outside the
   coverage it had just bought. Carry it into the next commit that touches
   `plugin/bin/prawduct-hook` rather than buying a round for a message.
-  (b) **`Type: cumulative-final` is not a recognized chunk type.** This plan declares it, the
-  Critic's Type selector does not know it, and the documented fail-safe treats it as `code` — which
-  is the right protocol but a SILENT fallback rather than a declared choice, and `review-cycle.md`
-  teaches the value in prose ("Last chunk of a `Type: cumulative-final` plan"). So the framework
-  names a value its own selector rejects. Either the vocabulary gains it or the prose stops using
-  it; that is a decision about the Type axis, not a patch inside the chunk that surfaced it.
+  (b) ~~**`Type: cumulative-final` is not a recognized chunk type.**~~ **Withdrawn 2026-09-10 — the
+  claim was false and both remedies it proposed would have been wrong actions.** `cumulative-final`
+  IS in the vocabulary: `buildplan_refs._BUILD_PLAN_ALLOWED_TYPES`, named in `critic_mode`,
+  documented twice in `planning.md`, and used in `templates/build-plan.md`. Nothing falls back
+  silently and no selector rejects it. Recorded rather than deleted because the PR review caught it
+  in a durable artifact, and a carry that reads as an open decision is what a later reader acts on.
 
 - **Surfaces:** `review_round_budget` in `.prawduct/project-state.yaml` and
   `plugin/templates/project-state.yaml`; the refusal path in

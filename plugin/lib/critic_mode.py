@@ -20,9 +20,10 @@ return the first that fires:
      BLOCKING/WARNING findings + ``commit_reviewed`` anchor resolves **and is
      an ancestor of HEAD** + uncommitted diff is non-empty AND its judgeable
      subset is within prior ``files_reviewed`` (the review's subject set,
-     which is re-narrowed here because it does NOT). Signal: builder is in the
-     middle of fixing
-     findings from the last review.
+     which is re-narrowed here because it is not already judgeable-only —
+     the eligibility classifier admits behaviour-governing prose into a
+     subject set). Signal: builder is in the middle of fixing findings from
+     the last review.
   1b. ``verify-resolutions`` (post-cumulative fix, CRT-4J8W) — tree clean,
      prior record is a ``cumulative`` review, and the committed delta since
      its ``commit_reviewed`` holds ≥1 judgeable file under the widening

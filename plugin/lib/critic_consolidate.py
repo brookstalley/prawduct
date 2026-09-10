@@ -807,13 +807,9 @@ def split_subject_oracle(files: "list[str]") -> "tuple[list[str], list[str]]":
 # canonical helper): a delta this much larger than the prior surface means a
 # partial re-review would mislead — fall back to a full review.
 #
-# BOTH counts are subject-set counts, and they have to be: `files_reviewed` on
-# a fact is a NARROWED set (the judgeable subset on facts written before the
-# eligibility classifier, the subject subset since), so measuring an unnarrowed
-# delta against a
-# narrowed prior would tighten this threshold by exactly the prose that rode
-# along on the previous round — refusing a re-review for growth in files no
-# finding can be about.
+# Both counts arrive already narrowed; what they are narrowed TO, and why
+# dropping either call fails open, is stated once at the call site below rather
+# than restated here. This function only compares two numbers.
 def _scope_widened(delta_count: int, prior_count: int) -> bool:
     return delta_count > 2 * prior_count + 5
 

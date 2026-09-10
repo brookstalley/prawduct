@@ -5,7 +5,7 @@
 
 ## 2026-09-09: the review loop gets a stopping rule
 
-<!-- prawduct: type=feat | chunks=04 | scope=review-loop-termination -->
+<!-- prawduct: type=feat | scope=review-loop-termination -->
 
 Every control this plan shipped prices a review round, refuses a wasteful one, or shrinks what one
 produces. None of them ever says *stop* — and the measurement this plan was built on says nothing
@@ -89,7 +89,7 @@ them, and one merge short of propagating to develop. Restored, with the rule tha
 
 ## 2026-09-09: review eligibility stops being the negation of review cost
 
-<!-- prawduct: type=fix | chunks=03 | scope=review-loop-termination -->
+<!-- prawduct: type=fix | scope=review-loop-termination -->
 
 The subject/oracle split shipped in August asked `is_judgeable_path` which files a finding could be
 about. That predicate answers a different question — *does an edit here re-open the coverage gate?*
