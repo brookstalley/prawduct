@@ -56,10 +56,19 @@ lifecycle a caller needs and carries the CRT-3X9D incident below it, at full len
 lines became 93, which is the whole point. #772 carries the Migrate relationship, so the norm's
 `in-transition` status names a live item and the stall advisory watches it.
 
+Giving the flow that capability is the thing § Decision's structural argument had bought the
+*absence* of — "no framework-offered candidate concept has to be invented, built and reviewed on a
+risk surface" — so it ships as a recorded `[DECISION: … | user can veto/override]` with the
+overturned half of that argument corrected beside it, not as an amendment nobody voted on. Six
+additive lines; the revert is one commit, and what it costs is an advisory whose own route lands the
+owner in a flow that proposes nothing.
+
 One defect fell out of the exercise and is **not** fixed here: `load_project_state` truncates a
 scalar at the first `#`, quoted or not, so an answer naming its tracking item `#772` is read back
-truncated. This entry's values spell it `issue 772` and the flow's instruction says why; the parser
-is orthogonal to this norm and belongs in its own branch.
+truncated. Filed as #790. This entry's values spell it `issue 772` and the flow's instruction says
+why; the parser is orthogonal to this norm and belongs in its own branch. Two stale comments in
+`norm_probes.py` and its tests — both claiming no surface renders `alternative_actions`, false since
+#705 — are corrected here, which is the ride-the-commit half of #785.
 
 ## 2026-09-10: an audit of develop, and the three findings that could not wait for the cut
 

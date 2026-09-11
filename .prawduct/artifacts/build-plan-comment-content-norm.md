@@ -264,11 +264,18 @@ this plan assumed.
 - **`norm_registry_ratified` is deliberately NOT re-stamped to today.** Its value seeds the Norm
   Health sweep baseline, so re-dating it for a pass that considered one norm would silently reset a
   60-day clock measuring something else. It stays at 2026-07-17, and the sweep falls due on schedule.
+- **The flow change is a recorded, vetoable decision, not a silent one.** It is the capability
+  § Decision's "what this buys structurally" paragraph bought the *absence* of, and it was added
+  mid-chunk on a declared risk surface — so it is written as a `[DECISION: … | user can
+  veto/override]` in `documentation/issues/774-requirements.md`, the argument it overturns is
+  corrected beside it, and the revert is six additive lines. Without it the shipped probe points
+  at a flow that proposes nothing, which is the aspirational mechanism #167 names.
 - **One defect found outside the flow.** `advisory_store.load_project_state` truncates a scalar at
   the first `#`, quoted or not, so `comment_norm_answered: "… migrate:#772"` was read back as
   `2026-09-10 — ratified (`. Worked around here (the value and the flow's instruction both spell a
-  tracking item `issue 772`) and left orthogonal: the parser fix is small and unrelated to this
-  norm, so it belongs in its own branch, not folded into this diff.
+  tracking item `issue 772`) and left orthogonal and **filed** as
+  brookstalley/prawduct#790: the parser fix is small and unrelated to this norm, so it belongs in
+  its own branch rather than folded into this diff.
 
 ## Governance checkpoints
 
@@ -280,5 +287,5 @@ this plan assumed.
 ## Status
 
 - [x] Chunk 01 — The Axis B norm, its home, and the floor's reach
-- [ ] Chunk 02 — The one-shot ratification invitation
-- [ ] Chunk 03 — Dogfood: prawduct adopts its own norm
+- [x] Chunk 02 — The one-shot ratification invitation
+- [x] Chunk 03 — Dogfood: prawduct adopts its own norm

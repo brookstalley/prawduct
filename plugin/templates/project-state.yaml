@@ -471,18 +471,21 @@ review_round_budget: 6
 # api_versioning_decided:
 
 # =============================================================================
-# COMMENT CONTENT NORM (advisory resolution fact, v2.4+)
+# COMMENT CONTENT NORM (advisory resolution fact)
 # =============================================================================
 # The committed answer the `comment-norm-unanswered` sync probe consults. Prawduct
-# offers one comment-content norm — a comment or doc-comment leads with what a
-# reader needs in order to use or change the thing it documents, with design
-# rationale below it — and a product may take it or leave it. Record either answer
-# here (`2026-01-31 - ratified` / `2026-01-31 - declined`) and the one-shot
+# offers one comment-content norm and a product may take it or leave it; the
+# advisory itself carries the statement, so it is not restated here. Record either
+# answer (`2026-01-31 — ratified` / `2026-01-31 — declined`) and the one-shot
 # invitation stops for everyone on next sync. Unset/absent = unanswered.
 #
 # Separate from the norm-registry ratification fact deliberately: that one records
 # that this product ratified its OWN registry, possibly long before this norm
 # existed, and reusing it would silence an offer nobody ever saw.
+#
+# NO `#` IN ANY VALUE IN THIS FILE: the reader these probes use truncates a scalar
+# at the first one, quoted or not (brookstalley/prawduct#790). Spell a tracking
+# item `issue 772`.
 #
 # comment_norm_answered:
 

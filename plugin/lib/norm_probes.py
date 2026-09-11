@@ -1,6 +1,6 @@
 """Post-sync advisory probes for the norm-lifecycle feature (``docs/norms.md``).
 
-Six deterministic ``ProbeFn(state, codebase)`` probes surfacing the *time-domain,
+Deterministic ``ProbeFn(state, codebase)`` probes surfacing the *time-domain,
 cheap* enforcement row of ``docs/norms.md`` § Enforcement — the Session-sync
 contract. Each reads only **machine-readable hooks** (dated ``revisit:`` values,
 backlog-item citations on norm ``Why:``/``Status:`` lines, the ``Status:
@@ -13,7 +13,7 @@ changes; the live list lives in ``trigger_summary``). Rare-and-high-signal is a
 hard bar: when a signal is missing or ambiguous, the probe fails toward silence.
 
 Probes are read-only. Resolution is a *fact* the consumer records — a committed
-answer-store scalar (``norm_registry_ratified``, ``norm_health_last_run``) or a
+answer-store scalar (each probe's Design note names its own) or a
 committed change to the norms themselves (a ``## Direction`` section appearing, a
 backlog item's status flipping) — so a teammate's commit clears the advisory for
 everyone on next sync. Nag/dismissal state stays in the gitignored advisory store
@@ -38,7 +38,7 @@ Design note — per-probe lock-in (fires / clears / reader-action)
   **Markdown-backend only**, and unlike its two siblings that is not dormancy the
   cache can end — see the function.
 
-**Two of the five read the LIVE backlog, and which backlog depends on the product.**
+**Two of these probes read the LIVE backlog, and which backlog depends on the product.**
 ``dead-why`` and ``stalled-transition`` both need to know whether a cited item is
 live and when it last moved. Pre-cutover they read ``.prawduct/backlog.md``;
 post-cutover they resolve through the backlog cache, which holds the live store
@@ -1307,7 +1307,10 @@ def probe_comment_norm_unanswered(state: ProjectState, codebase: Codebase):
         return []
     if not _preferences_lines(codebase):
         return []
-    density = str(state.get(COMMENT_DENSITY_FACT) or "").strip() or "unchecked"
+    recorded = state.get(COMMENT_DENSITY_FACT)
+    # Absence is None-or-blank, not falsiness: a product whose tooling genuinely
+    # reports 0 has measured, and `_coerce_scalar` hands a bare 0 back as an int.
+    density = "unchecked" if recorded is None or not str(recorded).strip() else str(recorded).strip()
     return [
         AdvisoryCandidate(
             type="comment-norm-unanswered",
@@ -1322,11 +1325,12 @@ def probe_comment_norm_unanswered(state: ProjectState, codebase: Codebase):
                 "Comment norm unanswered: prawduct offers the rule that a comment or doc-comment "
                 "leads with what a reader needs in order to use or change the thing it documents, "
                 "with design rationale below it, clearly separated. It is about ordering, not "
-                f"volume — nothing is deleted to comply. Comment density here: {density} (read "
-                "from this product's own tooling; prawduct measures none). Ratify it into the "
-                "preferences Enforcement index or decline it, then record "
-                f"`{COMMENT_NORM_FACT}: <date> — ratified|declined` in project-state.yaml so the "
-                "answer clears this for everyone."
+                f"volume — nothing is deleted to comply. Comment density here: {density} — prawduct "
+                "measures none, so the figure is whatever this product's own tooling reports, "
+                f"recorded as `{COMMENT_DENSITY_FACT}:` in project-state.yaml. Ratify the norm into "
+                "the preferences Enforcement index or decline it, then record "
+                f"`{COMMENT_NORM_FACT}: <date> — ratified|declined` there too so the answer clears "
+                "this for everyone."
             ),
             owner_action=(
                 "Prawduct suggests one rule for the comments in this product: put what a reader "
@@ -1381,10 +1385,12 @@ def probe_norm_health_sweep_overdue(state: ProjectState, codebase: Codebase):
             # `trigger_summary` (which is id-free) and, when the wording must change,
             # bump PROBE_VERSION so the supersession is deliberate.
             evidence=("norms exist (`## Direction` sections) but the janitor Norm Health sweep is overdue or never run",),
-            # The route lives HERE, not only in `alternative_actions`: no surface
-            # renders that field — briefing, `advisory list` and `advisory show`
-            # all print `trigger_summary` + `recommended_action` — so setting it
-            # alone left the reader still sent to a sweep over an empty registry.
+            # The route lives HERE, not only in `alternative_actions`: the
+            # briefing and `advisory list` print `trigger_summary` +
+            # `recommended_action` and nothing else, so setting the other field
+            # alone left most readers still sent to a sweep over an empty
+            # registry. `advisory show` does render it (#705), which is one
+            # surface out of three and not the one a session starts at.
             # `trigger_summary` is rendered AND is not part of `compute_id`, so
             # it is the one place this can be said without minting a new id.
             trigger_summary=(

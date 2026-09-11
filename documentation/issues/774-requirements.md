@@ -304,6 +304,25 @@ to be invented, built and reviewed on a risk surface before anything installs. T
 layer then rides the *existing* flow unchanged — a product ratifies its own density norm the same
 way it ratifies any other, from its own declared direction.
 
+**The dogfood overturned that second half, and the record says so rather than leaving the argument
+standing against the tree.** The floor's half holds untouched. The layer's half does not: walking
+the flow against this repo showed it *cannot* ride unchanged, because steps 1-3 propose candidates
+only from the product's own artifacts, and a norm the framework offers is in none of them — so the
+owner the advisory sends there is told there is nothing to ratify. The concept the argument hoped
+to avoid therefore had to be built after all, small and on a risk surface. What it cost, what was
+considered instead, and the veto are the decision below; the walk that found it is the build plan's
+Chunk 03 *Outcome of the dogfood run*.
+
+`[DECISION: /prawduct:doctor's Norm Ratification Flow gains a framework-offered candidate — one
+candidate source in steps 2-3, one clause at the thesis, one line in step 4's write, one more scalar
+in step 5, plus the routing row and the two norms.md sentences that sanction the shape | the
+alternative is to revert those six lines and file the gap: the probe still ships and still names the
+norm, but its own `recommended_action` then lands the owner in a flow that proposes nothing, which
+is the aspirational mechanism this repo names by name (#167 — a norm alone does not install). The
+change is additive, touches no code path, and reverts in one commit; it is recorded here rather than
+absorbed because `plugin/skills/` is a declared risk surface and because the paragraph above bought
+its absence | user can veto/override]`
+
 **Two routes considered and rejected for the existing-repo case.** Shipping the norm as a filled
 row in `templates/project-preferences.md` fails twice: the table ships empty by design, and
 `init-product` copies templates only into destinations that do not exist — so a template fix
@@ -313,7 +332,10 @@ leftover-scaffold finding, and it is the migration failure this item exists to a
 ## Acceptance
 
 - [x] The Axis B norm is stated with full anatomy (statement, Why, scope, Status, Retroactivity)
-      and an Enforcement row naming mechanism `Critic` and audit home `janitor`
+      and an Enforcement row naming mechanism `Critic` and audit home `Critic + janitor` — the
+      shipped value is a superset of the `janitor` this document specified, and matches the house
+      shape of the sibling Critic-mechanism rows: the reviewer audits it per change, the sweep
+      audits it over time. The reason `advisory` was refused is unchanged (no mechanical hook)
 - [x] Axis A gains **no** second copy — verified by diff; `building.md:88` is unchanged and nothing
       restates it. The reach half (one digest sentence) is **descoped**, not delivered: it does not
       fit the injected ceiling and the owner's ruling is outstanding (R1a)

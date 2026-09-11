@@ -952,9 +952,10 @@ class TestNormHealthSweepOverdueProbe:
     def test_the_advisory_names_the_repair_route_not_only_the_sweep(self, tmp_path):
         """The pointer to Health Check #14 must live where a surface renders it.
 
-        It was first set on `alternative_actions`, which briefing, `advisory
-        list` and `advisory show` all ignore — so the fix was inert while
-        looking complete. `trigger_summary` is rendered AND is not hashed into
+        It was first set on `alternative_actions`, which the briefing and
+        `advisory list` both ignore — so the fix was inert for the surface a
+        session actually starts at while looking complete. (`advisory show`
+        renders that field since #705; the other two still do not.) `trigger_summary` is rendered AND is not hashed into
         `compute_id`, so it is the one field that can carry this without
         resurrecting the advisory in every repo that dismissed it. Without this
         test a reword silently deletes the only rendered pointer to the repair.
@@ -1050,6 +1051,34 @@ class TestCommentNormUnansweredProbe:
         state = ProjectState({np.COMMENT_DENSITY_FACT: "   "})
         out = np.probe_comment_norm_unanswered(state, _cb(tmp_path))
         assert "Comment density here: unchecked" in out[0].trigger_summary
+
+    def test_a_recorded_zero_is_a_measurement_not_an_absence(self, tmp_path):
+        """0 is a figure a linter can genuinely report, and it is not `unchecked`.
+
+        The distinction runs the other way from R4a: an unmeasured repo must never
+        render a clean-looking zero, and a repo that DID measure zero must not be
+        told its tooling said nothing. `_coerce_scalar` hands a bare `0` back as an
+        int, so a truthiness test collapses the two.
+        """
+        _write_artifact(tmp_path, "project-preferences.md", _PREFS_WITH_NORM_COLUMNS)
+        state = ProjectState({np.COMMENT_DENSITY_FACT: 0})
+        out = np.probe_comment_norm_unanswered(state, _cb(tmp_path))
+        assert "Comment density here: 0 " in out[0].trigger_summary
+        assert "unchecked" not in out[0].trigger_summary
+
+    def test_the_offer_names_the_scalar_its_figure_comes_from(self, tmp_path):
+        """An owner whose linter reports the figure needs to know where to put it.
+
+        The scalar is documented only in `templates/project-state.yaml`, which
+        `init-product` copies into destinations that do not exist — so no
+        already-onboarded repo, which is this probe's entire population, ever
+        receives that comment. The rendered advisory is the only surface that
+        reaches them.
+        """
+        _write_artifact(tmp_path, "project-preferences.md", _PREFS_WITH_NORM_COLUMNS)
+        out = np.probe_comment_norm_unanswered(ProjectState({}), _cb(tmp_path))
+        assert np.COMMENT_DENSITY_FACT in out[0].trigger_summary
+        assert np.COMMENT_NORM_FACT in out[0].trigger_summary
 
     def test_the_advisory_id_survives_the_figure_appearing(self, tmp_path):
         """One offer, one id, however the density reads.
