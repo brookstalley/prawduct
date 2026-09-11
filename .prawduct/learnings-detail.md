@@ -3011,3 +3011,39 @@ status as forbidden (`assert STATUS_STALE not in result.stdout`), not merely the
 present. Both precedents in this family (`learnings_obligation`, `norm_index_scaffold`) return their
 OK status on success, so copying the precedent's TEST file — not just its shape — would also have
 caught it.
+
+## An explanation is falsified by a case where its stated cause is ABSENT and the behaviour survives
+
+`origin/develop` was red: a requirements document wrote "adjacent to the closed #422" and the
+closing-keyword guard read the participle as an instruction to GitHub. Repairing the classifier
+rather than reflowing the prose was correct, and the first cut worked — every case I probed
+returned the right answer.
+
+The comment explaining it did not. It said the backticked ``the `Closes #N` keyword`` survived the
+new determiner exclusion because the character immediately before `Closes` is a backtick rather
+than a space. The lookbehinds were `(?<!\bthe )(?<!\ba )(?<!\ban )` attached ONLY to the
+`closed|fixed|resolved` alternation, so `Closes` was never eligible for exclusion at all — with or
+without backticks. `the Closes #N` matched, and always would have.
+
+**Why the suite could not catch it.** My must-match list held `Closes #123`, `Fixes #7`,
+``a `Closes #N` line``, ``the `Closes #N` keyword``. Every entry either had no determiner in front
+(so the exclusion was irrelevant) or had one with a backtick between (so both explanations predicted
+a match). The discriminating case — a determiner, no backtick, non-participle form — was the one
+case my false model told me was already covered. A wrong explanation does not merely fail to be
+tested; it actively suppresses the test that would falsify it, because the test looks redundant
+from inside the wrong model.
+
+The same commit carried a second instance in milder form: the rule was stated as "a determiner
+before a past-participle form" while the code implemented three articles plus one literal space, so
+`this closed #422`, `every closed #422` and — in a repo that hard-wraps at ~100 columns — a
+line-broken `the\nclosed #422` all still matched. The triggering sentence had tripped the guard only
+because both words happened to land on one line, which means the narrow version would have returned
+as the same red under a different wrap.
+
+**The repair that holds.** Lookbehinds gave way to a named predicate (`names_closing_keyword`) whose
+determiner set and whitespace handling are readable and extensible, and the must-match list gained
+`the Closes #N keyword` (no backticks) and `was closed #422` — the two cases that discriminate
+between the real rule and the plausible wrong ones. Related: the docstring-as-assertion rule and
+"a correct decision defended by an unread mechanism is still a defect" — this is their test-design
+consequence, and the sharpest tell is that behaviour was correct throughout, so nothing but the
+prose was ever wrong.
