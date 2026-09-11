@@ -55,7 +55,7 @@ not address that (see Out of Scope) — but it is why the fix cannot be "get und
 
 ## Status
 
-- [ ] Chunk 01: The archiver, and the invariant that makes it safe
+- [x] Chunk 01: The archiver, and the invariant that makes it safe
 - [ ] Chunk 02: Run it — the one-time cut, and the live log's own lifecycle statement
 - [ ] Chunk 03: A threshold that means something, and a release step that runs the archiver
 
