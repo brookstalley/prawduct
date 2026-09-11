@@ -682,12 +682,21 @@ def count_branch_rounds(
     ``/prawduct:pr create`` path against a store holding every review the clone
     has ever recorded.
 
-    Returns ``{"status": "counted", "rounds", "seconds", "timed"}`` — with
-    ``seconds`` ``None`` when no attributed round recorded a duration — or
-    ``{"status": "unavailable", "reason"}``. Never raises: this is advice, and
+    Returns ``{"status": "counted", "rounds", "seconds", "timed", "reviews"}``
+    — with ``seconds`` ``None`` when no attributed round recorded a duration —
+    or ``{"status": "unavailable", "reason"}``. Never raises: this is advice, and
     advice fails soft. It is deliberately not silent, because a tally that
     vanishes when it breaks reads as "round one" to the builder it exists to
     warn (``learnings.md``: "'advice fails soft' is not 'advice fails silent'").
+
+    ``reviews`` is ``[{"id", "mode"}]`` for the attributed rounds, in store
+    order, and it exists so a caller can ask a NARROWER question than "how many
+    reviews" without re-walking the lineage: the round budget counts only *full*
+    rounds, since a ``verify-resolutions`` pass is what clears a blocking
+    finding and a ceiling that ate those would deadlock the gate it protects.
+    The mode strings are handed over verbatim rather than parsed here — the
+    token vocabulary belongs to ``critic_consolidate``, and a second parse of it
+    living in the counter is how one vocabulary becomes two.
     """
     from . import evidence  # noqa: PLC0415 -- lazy: mirrors diagnose_fix_churn's import posture; avoids an import cycle at module load
 
@@ -705,6 +714,7 @@ def count_branch_rounds(
 
     rounds = 0
     durations: list[float] = []
+    reviews: list[dict] = []
     for fact in facts:
         if fact.get("kind") != "review":
             continue
@@ -713,6 +723,7 @@ def count_branch_rounds(
         if not isinstance(commit, str) or commit not in on_branch:
             continue
         rounds += 1
+        reviews.append({"id": fact.get("id"), "mode": body.get("mode")})
         seconds = body.get("duration_seconds")
         if isinstance(seconds, (int, float)) and not isinstance(seconds, bool):
             durations.append(float(seconds))
@@ -721,6 +732,7 @@ def count_branch_rounds(
         "rounds": rounds,
         "seconds": round(sum(durations), 1) if durations else None,
         "timed": len(durations),
+        "reviews": reviews,
     }
 
 
@@ -1059,11 +1071,18 @@ def check_change_log_entry(project_dir: Path) -> int:
 def check_pr_doc_only(project_dir: Path) -> int:
     """Fast-path gate for `/prawduct:pr create`: report whether the PR diff is doc-only.
 
-    Exit 0 when the diff in ``merge-base...HEAD`` is non-empty and contains
-    no judgeable file (``coverage_algebra.is_judgeable_path`` — the one
-    predicate) — the `/prawduct:pr` skill uses this to skip the cumulative-
-    Critic and PR-reviewer gates, mirroring the session-end stop-hook
-    carveout (`gates.session_changes_all_non_judgeable`) at the PR boundary.
+    Exit 0 when the diff in ``merge-base...HEAD`` is non-empty, contains no
+    judgeable file (``coverage_algebra.is_judgeable_path`` — the one predicate)
+    AND names no shipped suite-coupled state (``TEST_COUPLED_STATE``, via
+    ``suite_coupled_files``). **The repo's declared ``suite_coupled_prefixes``
+    are deliberately NOT passed here.** They answer a freshness question — re-run
+    the suite — and forwarding them would make a documentation-only PR buy a full
+    cumulative Critic and PR review, a review cost nothing prices. The freshness
+    gate (``gates._test_evidence_tree_valid``) is the caller that passes them.
+
+    The `/prawduct:pr` skill uses this to skip the cumulative-Critic and
+    PR-reviewer gates, mirroring the session-end stop-hook carveout
+    (`gates.session_changes_all_non_judgeable`) at the PR boundary.
     The stop hook's PR-review evidence gate (Gate 3) consults the same
     helper so a doc-only PR doesn't get blocked at session end for missing
     evidence — symmetric behavior across both gates.

@@ -299,11 +299,19 @@ class TestTheInertTierIsEphemeralWorktreeSafe:
     everywhere" true. Without it the two hook-invoked members reproduce the exact
     session-start hook error they were restored to remove, in the one environment
     prawduct itself creates. `regen-views` and `stamp-merged` carried the same
-    gap and the same false docstring claim, so all four are pinned together —
-    one classification, not four decisions.
+    gap and the same false docstring claim, so the whole tier is pinned together
+    — one classification, not a decision per member. `bug-inbox` joined it
+    2026-09-08 when the upstream bug drop-box retired, and inherits the same
+    requirement for the same reason.
     """
 
-    INERT_TIER = ("build-index", "user-prompt-submit", "regen-views", "stamp-merged")
+    INERT_TIER = (
+        "build-index",
+        "user-prompt-submit",
+        "regen-views",
+        "stamp-merged",
+        "bug-inbox",
+    )
 
     def test_every_inert_command_is_ephemeral_safe(self) -> None:
         source = _HOOK.read_text()

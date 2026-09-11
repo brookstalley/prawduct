@@ -32,7 +32,9 @@ Two defect families die here rather than being patched:
   (``base_commit``/``base_tree`` → ``head_tree``/``head_commit``, D3 tree
   keying via ``evidence.capture_tree``), the ``files_changed`` snapshot
   (``git diff`` between exactly those trees, so the recorded set and the
-  D6 edge-validity check agree by construction), ``files_reviewed``,
+  D6 edge-validity check agree by construction), the subject/oracle split of
+  that snapshot (``files_reviewed`` — findings-eligible — and
+  ``files_oracle``, delivered to read and not to rate),
   ``rendezvous`` (each role's resolved partial + started paths — see below),
   and telemetry/attribution (``tier``, ``scope``, ``chunk``).
 - One partial per roster role, written by that reviewer, at the path
@@ -92,6 +94,29 @@ MODE_TOKEN_TO_VERBOSE = {
     "verify-resolutions": "verify-resolutions (delta review, prior findings only)",
 }
 _VERBOSE_VERIFY_RESOLUTIONS = MODE_TOKEN_TO_VERBOSE["verify-resolutions"]
+
+
+def mode_token_of(mode: object) -> str:
+    """The mode TOKEN behind a persisted verbose mode string —
+    ``"final (full review, ready for push)"`` → ``"final"``; ``"unknown"`` for
+    anything unparseable.
+
+    Facts persist the verbose form, so every reader that wants to ask *which
+    mode was this* has to undo the rendering. That parse lives here, beside
+    :data:`MODE_TOKEN_TO_VERBOSE` which defines the shape it undoes, so the
+    vocabulary has one home — a second copy elsewhere is one edit away from
+    two vocabularies that agree until they don't.
+    """
+    if not isinstance(mode, str) or not mode.strip():
+        return "unknown"
+    return mode.split(" (", 1)[0].strip()
+
+
+#: Modes that spend a *full* review round. ``verify-resolutions`` is
+#: deliberately absent: it is the pass that CLEARS a blocking finding, so a
+#: ceiling that counted or refused one would deadlock the very gate the budget
+#: is allowed to end a loop in front of but never to open.
+FULL_ROUND_MODES = tuple(t for t in MODE_TOKEN_TO_VERBOSE if t != "verify-resolutions")
 
 # Roster config (D8): protocol roles per execution shape. chunk and
 # verify-resolutions are always single-pass; final/cumulative go coordinator
@@ -739,9 +764,52 @@ def mint_review_id() -> str:
 
 _RESOLUTION_DISPOSITIONS = frozenset({"fixed", "waived"})
 
+
+def split_subject_oracle(files: "list[str]") -> "tuple[list[str], list[str]]":
+    """Split an interval's files into the review's SUBJECT set and its ORACLE set.
+
+    A file plays two parts in a review, and only one of them narrows. It is a
+    thing that can be *wrong* (subject), and it is the authority the code is
+    judged *against* (oracle). Which part it plays is
+    ``coverage_algebra.is_review_subject`` — NOT the negation of
+    ``is_judgeable_path``, which asks the cost question rather than the
+    eligibility one and, used here, silently drops behaviour-governing prose
+    and any product whose deliverable is markdown. Every spec this repo has
+    is non-judgeable — the build plan, every `.prawduct/artifacts/*.md`,
+    `project-preferences.md`, `cross-cutting-concerns.md` — and the reviewer is
+    sent to exactly those for the requirement-coverage and norm-departure
+    checks, both of which rate BLOCKING. So the oracle set is RETURNED for
+    delivery, never discarded: dropping the subject role removes findings whose
+    only remedy costs a review round, while dropping the oracle role blinds the
+    reviewer, and the two are indistinguishable from outside — both read as
+    fewer findings and less reader load, which is the very reading the
+    narrowing is trying to produce. A measurement that moves the right way for
+    the wrong reason cannot tell them apart; only delivering the oracle can.
+
+    FLOOR — an interval holding no subject file at all keeps its whole list
+    as the subject. ``validate_manifest`` requires a non-empty
+    ``files_reviewed``, and the only two dispatches that reach here on an
+    all-prose interval are the ones that must not be refused: a ``--force``
+    run, and a ``verify-resolutions`` pass clearing findings raised on prose,
+    whose sole remedy is that pass. Returning an empty subject would fail
+    consolidation closed and leave those findings unclearable.
+    """
+    from . import coverage_algebra  # noqa: PLC0415 — lazy; keeps the import graph flat
+
+    subject = coverage_algebra.review_subjects(files)
+    if not subject:
+        return list(files), []
+    in_subject = set(subject)
+    return subject, [f for f in files if f not in in_subject]
+
+
 # verify-resolutions scope-widening demotion threshold (unchanged from v2's
 # canonical helper): a delta this much larger than the prior surface means a
 # partial re-review would mislead — fall back to a full review.
+#
+# Both counts arrive already narrowed; what they are narrowed TO, and why
+# dropping either call fails open, is stated once at the call site below rather
+# than restated here. This function only compares two numbers.
 def _scope_widened(delta_count: int, prior_count: int) -> bool:
     return delta_count > 2 * prior_count + 5
 
@@ -1591,6 +1659,169 @@ def _dirty_anchor_note(mode_label: str, excluded: "list[str] | None") -> str:
     )
 
 
+def _round_budget_verdict(
+    project_dir: Path, prawduct_dir: Path, scope: "str | None"
+) -> dict:
+    """Has this body of work already spent its full-round budget?
+
+    Returns ``{"status": "within", "spent", "budget", "review_ids"}``,
+    ``{"status": "exhausted", "spent", "budget", "review_ids"}``,
+    ``{"status": "disabled"}`` when the repo set the budget to ``null``, or
+    ``{"status": "unavailable", "reason"}``.
+
+    **The unit is the SCOPE, not the branch, and the two are not the same
+    question.** The declared ceiling bounds one body of work, and a branch is
+    only sometimes that: it may carry two scopes, in which case one charges the
+    other, and on a trunk-based repo (which ``base_branch:`` supports) the
+    ``merge_base..HEAD`` span is zeroed by every push, so a default-ON stopping
+    rule could never fire — silently, which is the worst way for a control to be
+    absent. Every review fact already records its scope, so the store answers
+    the declared question directly and no new counter is added.
+
+    Lineage still bounds it: the count is the intersection of *this scope's*
+    facts with the rounds ``coverage.count_branch_rounds`` attributes to this
+    branch. Scope alone would sweep in a sibling worktree's rounds on the same
+    plan, and the store is shared by every worktree of the clone.
+
+    **An unresolved scope is UNAVAILABLE, never a fallback to the branch.**
+    Without a scope there is no body of work to bound, and answering a different
+    question than the one declared is how a control becomes a thing nobody can
+    predict. It also keeps sweep and census over one set — the refusal renders
+    the scope's census, so a scope that does not resolve has nothing to render
+    and must not be sweeping either.
+
+    **Unavailable never refuses.** A stopping rule whose count cannot be derived
+    must fail toward selling the round: the cost of a round that need not have
+    run is minutes, and the cost of refusing one that was needed is unreviewed
+    work with no command that clears it. That is the opposite direction from the
+    coverage gate beside it, and deliberately so — this control ends a loop, it
+    does not vouch for a tree.
+    """
+    from . import core  # noqa: PLC0415 — lazy, matching this module's other lib imports
+
+    budget = core.review_round_budget(prawduct_dir)
+    if budget is None:
+        return {"status": "disabled"}
+    if not scope:
+        return {
+            "status": "unavailable",
+            "reason": "this dispatch resolved no build-plan scope, and the "
+            "budget bounds one body of work rather than one branch",
+        }
+
+    from . import coverage  # noqa: PLC0415 — lazy; coverage pulls git helpers
+
+    resolved = coverage.resolve_merge_base_tree(project_dir)
+    if resolved["status"] != "ok":
+        return {"status": "unavailable", "reason": resolved["reason"]}
+    store = evidence.read_facts(project_dir)
+    if store["status"] == "error":
+        return {"status": "unavailable", "reason": store["reason"]}
+    facts = store.get("facts") or []
+    tally = coverage.count_branch_rounds(project_dir, facts, resolved["merge_base"])
+    if tally.get("status") != "counted":
+        return {"status": "unavailable", "reason": tally.get("reason", "unknown")}
+
+    scope_of = {
+        f.get("id"): (f.get("body") or {}).get("scope")
+        for f in facts
+        if f.get("kind") == "review"
+    }
+    in_scope = [r for r in tally.get("reviews") or [] if scope_of.get(r.get("id")) == scope]
+    spent = sum(1 for r in in_scope if mode_token_of(r.get("mode")) in FULL_ROUND_MODES)
+    return {
+        "status": "exhausted" if spent >= budget else "within",
+        "spent": spent,
+        "budget": budget,
+        # Every round in scope, not just the full ones: the findings a verify
+        # pass raised are as open as any other, and exhaustion has to answer all
+        # of them or the census it renders is not a census.
+        "review_ids": [r["id"] for r in in_scope if r.get("id")],
+    }
+
+
+def _refuse_over_budget(
+    project_dir: Path,
+    budget: dict,
+    mode_token: str,
+    scope: "str | None",
+    chunk: "str | None",
+    dispatch_commit: "str | None",
+    notes: list,
+) -> dict:
+    """End the loop: sweep the open non-blocking findings, render the census,
+    and refuse the round.
+
+    The sweep is what makes the refusal an ANSWER rather than an abandonment —
+    the loop that would have dispositioned those findings is the loop being
+    ended, so exhaustion has to disposition them itself. Every accept carries
+    the budget as its reason, which is reviewable and re-dispositionable; none
+    of them can touch a BLOCKING finding (:func:`dispositions.auto_accept`).
+
+    The firing is recorded as a fact for the same reason its sibling guard's is:
+    a control ships under the norm *name the yield you expect and emit it
+    observably*, and the yield argument here rests on a measurement taken before
+    the budget existed. Only a record of actual firings can ever falsify it — or
+    retire the control by answering "did it ever refuse a round that turned out
+    to be needed?". Same sink as every other pre-dispatch guard
+    (``evidence.append_guard_refusal``), so one query answers the class.
+    """
+    from . import dispositions  # noqa: PLC0415 — lazy; keeps the import graph flat
+
+    reason = (
+        f"round budget exhausted — this work bought {budget['spent']} full "
+        f"review round(s) against a budget of {budget['budget']}"
+    )
+    swept = dispositions.auto_accept(project_dir, budget["review_ids"], reason=reason)
+    # Rendered over the SWEPT ids, not over the scope: those are the findings
+    # this refusal just answered, and the census is the answer's only trace
+    # outside the store. Selecting differently from the sweep is how a builder
+    # gets told to "re-disposition any of them" with no list of which.
+    census = ""
+    store = evidence.read_facts(project_dir)
+    if store["status"] != "error":
+        report = dispositions.census(store, review_ids=budget["review_ids"])
+        if report["status"] == "ok":
+            census = dispositions.render_markdown(report)
+
+    recorded = evidence.append_guard_refusal(
+        project_dir,
+        "critic-dispatch-round-budget",
+        {
+            "mode": mode_token,
+            "spent": budget["spent"],
+            "budget": budget["budget"],
+            "auto_accepted": swept.get("accepted"),
+            "blocking_left": swept.get("skipped_blocking"),
+            "scope": scope,
+            "chunk": chunk,
+            "branch": gitstate.current_branch(project_dir),
+            "dispatch_commit": dispatch_commit,
+        },
+    )
+    if recorded.get("status") != "appended":
+        # SOFT, like the free-interval guard beside it: the refusal is correct
+        # whether or not the record lands. Not silent, though — a firing that
+        # vanishes leaves the yield question looking answered at zero.
+        print(
+            "critic-begin: the budget refusal is correct but was NOT recorded "
+            f"({recorded.get('reason', 'unknown')}) — this firing is missing "
+            "from `prawduct-hook evidence list --kind guard-refusal`, so read "
+            "that query as a lower bound.",
+            file=sys.stderr,
+        )
+    return {
+        "status": "budget-exhausted",
+        "reason": reason,
+        "spent": budget["spent"],
+        "budget": budget["budget"],
+        "swept": swept,
+        "census": census,
+        "notes": notes,
+        "recorded": recorded.get("status") == "appended",
+    }
+
+
 def begin_review(
     project_dir: Path,
     mode_token: str,
@@ -1610,6 +1841,15 @@ def begin_review(
     judgeable file and no finding this mode could resolve — the CLI exits 3.
     That is a NO-OP, not a failure: the coverage gate already composes such an
     interval as a free edge, so the review would record a fact nothing needs.
+    A ``verify-resolutions`` anchored to an unchanged tree with nothing
+    outstanding takes the same answer, for the same reason.
+
+    ``{"status": "budget-exhausted", ...}`` — the CLI exits 4 — when this
+    branch's work has already bought its declared full-round budget. The
+    outstanding non-blocking findings are auto-accepted and a census is rendered
+    with the refusal; BLOCKING is untouched and still blocks, and
+    ``verify-resolutions`` is never refused, so the loop can end but the gate
+    can never be opened by ending it.
     ``force=True`` dispatches anyway. A refusal also carries ``anchor`` (the tree
     it graded, in words) and ``excluded_wip`` (judgeable uncommitted files that
     tree does not contain) — without them "no judgeable file" is true of the
@@ -1753,6 +1993,7 @@ def begin_review(
     )
     base_reviewed = None
     files_reviewed: list[str] | None = None
+    prior_oracle: list[str] = []
     # Findings a THIS-mode review could still resolve. Only verify-resolutions
     # records resolution facts, so it is the only mode that can carry a nonzero
     # value; for every other mode there is nothing outstanding that running it
@@ -1900,7 +2141,33 @@ def begin_review(
         prior_files = [
             f for f in (prior_body.get("files_reviewed") or []) if isinstance(f, str)
         ]
-        if _scope_widened(len(delta), len(prior_files)):
+        from . import coverage_algebra as _ca  # noqa: PLC0415 — lazy; import graph
+        # `judgeable_files` directly, NOT through `split_subject_oracle`: that
+        # function's all-prose FLOOR returns the whole list, which exists only so
+        # `validate_manifest`'s non-empty `files_reviewed` is satisfiable. Counting
+        # through it reinstates every prose file on exactly the interval this
+        # threshold means to discount — an all-prose delta would refuse as though
+        # nothing had narrowed. `critic_mode._rule_postfix_fix_fires` computes the
+        # identical bound the same way; two implementations of one threshold have
+        # to agree on the edge case or the bound is not one threshold.
+        # BOTH sides re-narrowed here, and `prior_files` is NOT already narrow
+        # enough to skip: it is the fact's subject set, which since the
+        # eligibility classifier admits deliverables and behaviour-governing
+        # prose that this cost-based threshold must not count. Dropping either
+        # call inflates `prior_priced` and LOOSENS the widening bound, which
+        # fails open — a re-review that should have fallen back to a full one
+        # proceeds as a partial.
+        #
+        # Named `_priced`, not `_subject`, because that is the question these two
+        # numbers answer and the old names said the opposite one — which is how a
+        # reader concludes the prior-side call is a no-op and deletes it.
+        # `TestWideningBoundCountsTheCostSubset` pins the arithmetic;
+        # `TestWideningBoundReachesTheDispatch` enters at THIS door, because a
+        # unit test over hand-built lists stays green against a call site that
+        # stopped making the call.
+        delta_priced = _ca.judgeable_files(delta)
+        prior_priced = _ca.judgeable_files(prior_files)
+        if _scope_widened(len(delta_priced), len(prior_priced)):
             fallback, why = _widened_fallback_mode(
                 project_dir, capture["head_tree"], committed_differs
             )
@@ -1912,9 +2179,10 @@ def begin_review(
                 # reason and nothing else, so there is no block to say it twice.
                 "notes": notes + ([dirty_note] if dirty_note else []),
                 "reason": (
-                    f"scope-widened: {len(delta)} files changed since the prior "
-                    f"review of {len(prior_files)} — a partial re-review would "
-                    f"mislead. Re-dispatch as `{fallback}`: {why}."
+                    f"scope-widened: {len(delta_priced)} coverage-priced "
+                    f"file(s) changed since the prior review of "
+                    f"{len(prior_priced)} — a partial re-review would mislead. "
+                    f"Re-dispatch as `{fallback}`: {why}."
                 ),
             }
         prior_counts = prior_body.get("counts") or {}
@@ -1929,18 +2197,66 @@ def begin_review(
             # "nothing changed". The message says which tree it read anyway,
             # because the previous wording was true of the anchor and false of
             # the repo, and nothing in it let a builder tell the difference.
+            #
+            # NO REVIEW NEEDED, not an error — and the distinction costs a round
+            # when it is got wrong. Semantically this is the same answer as the
+            # free-interval refusal below: nothing here needs a review. It sat
+            # above that path and fell out as a bare error, so it surfaced as
+            # exit 1 — and `SKILL.md`'s exit table routes a 1 on
+            # `verify-resolutions` to "re-dispatch per the demotion property",
+            # which here means spending a full `cumulative` on a bundle the gate
+            # already reports satisfied. That is a review round manufactured by
+            # the framework's own routing.
+            recorded = evidence.append_guard_refusal(
+                project_dir,
+                "critic-dispatch-nothing-to-verify",
+                {
+                    "interval": {"base_tree": base_tree, "head_tree": head_tree},
+                    "mode": mode_token,
+                    "scope": scope,
+                    "chunk": chunk,
+                    "branch": gitstate.current_branch(project_dir),
+                    "dispatch_commit": dispatch_commit,
+                },
+            )
+            if recorded.get("status") != "appended":
+                # SOFT but never silent, the posture every guard in this class
+                # shares: the refusal is correct whether or not the record
+                # lands, and a firing that vanishes leaves the yield question
+                # looking answered at zero.
+                print(
+                    "critic-begin: the refusal is correct but was NOT recorded "
+                    f"({recorded.get('reason', 'unknown')}) — this firing is "
+                    "missing from `prawduct-hook evidence list --kind "
+                    "guard-refusal`, so read that query as a lower bound.",
+                    file=sys.stderr,
+                )
             return {
-                "status": "error",
+                "status": "no-review-needed",
                 "reason": (
                     "nothing to verify: the prior review has no blocking/warning "
                     f"findings, and {head_anchor} ({head_tree[:12]}) is the same "
                     f"tree it reviewed ({base_tree[:12]})"
                 ),
+                "free_files": [],
+                "anchor": head_anchor,
+                "excluded_wip": None if excluded_wip is None else list(excluded_wip),
+                "notes": notes,
+                "recorded": recorded.get("status") == "appended",
             }
         files_reviewed = list(prior_files)
         for f in delta:
             if f not in files_reviewed:
                 files_reviewed.append(f)
+        # The prior fact's ORACLE carries forward too. `prior_files` is that
+        # review's subject set — never the whole diff — so rebuilding the oracle
+        # from it alone yields `[]` whenever the fix touched no record, and the
+        # reviewer is told in the same breath that the manifest is authoritative
+        # and that `files_oracle` is what the code is judged against. A verify
+        # pass anchored to a review that read the plan must be handed the plan.
+        prior_oracle = [
+            f for f in (prior_body.get("files_oracle") or []) if isinstance(f, str)
+        ]
 
     files_changed = evidence.tree_diff(project_dir, base_tree, head_tree)
     if files_changed is None:
@@ -2060,8 +2376,54 @@ def begin_review(
             "recorded": recorded.get("status") == "appended",
         }
 
+    # ROUND BUDGET — the terminating rule. Yield does not decay (13.5 → 15.4 →
+    # 15.5 → 18.4 findings per full round across this clone's store, 99% of them
+    # new), so a review loop has no natural fixed point and every "one more
+    # round" reads locally reasonable. A declared ceiling is the only principled
+    # stop: arbitrary-but-visible beats arbitrary-but-hidden.
+    #
+    # BELOW the free-interval refusal, and that ordering is load-bearing. "The
+    # loop is over" and "there was nothing to review" are different answers —
+    # which is why exit 4 is a separate code from exit 3 — and asking the second
+    # question is advertised as free (`skills/pr/SKILL.md`: "You do not have to
+    # work out whether that pass is needed — asking is free"). Checked first, an
+    # exhausted branch charged a records-only dispatch an auto-ACCEPT of every
+    # outstanding finding for asking a question the gate answers for nothing,
+    # and free dispatches are commonest on exactly the long branches that
+    # exhaust a budget (62 of 492 facts, by the exit-3 leg's own measurement).
+    #
+    # Only full rounds are counted AND only a full round is refused. A
+    # `verify-resolutions` pass is how a BLOCKING finding clears, so refusing
+    # one at exhaustion would strand it with no command that resolves it —
+    # the same deadlock the free-interval guard's second conjunct avoids.
+    if mode_token in FULL_ROUND_MODES and not force:
+        budget = _round_budget_verdict(project_dir, prawduct_dir, scope)
+        if budget["status"] == "unavailable":
+            notes.append(
+                "the review round budget could not be derived "
+                f"({budget['reason']}) — this round was NOT counted against it, "
+                "so read the budget as not in force for this dispatch"
+            )
+        elif budget["status"] == "exhausted":
+            return _refuse_over_budget(
+                project_dir, budget, mode_token, scope, chunk,
+                dispatch_commit, notes,
+            )
+
     if files_reviewed is None:
         files_reviewed = list(files_changed)
+    # Records govern review SCOPE, not review READING — eligibility is its own
+    # predicate (`coverage_algebra.is_review_subject`), not the negation of the
+    # coverage price. `files_reviewed` becomes the findings-eligible subject set; what it sheds is handed over
+    # as `files_oracle` rather than dropped, because the reviewer is judging
+    # the code against exactly those records. `files_changed` stays whole — it
+    # is the interval, and `coverage_algebra.review_edges` validates an edge by
+    # quantifying only over `judgeable_files(files_changed)`, so a subject-set
+    # `files_reviewed` still covers every file an edge asks about.
+    files_reviewed, files_oracle = split_subject_oracle(files_reviewed)
+    for f in prior_oracle:
+        if f not in files_oracle and f not in files_reviewed:
+            files_oracle.append(f)
 
     roster, roster_chosen_by = _derive_roster(mode_token, files_changed, prawduct_dir)
     review_id = mint_review_id()
@@ -2116,6 +2478,11 @@ def begin_review(
         "head_commit": head_commit,
         "files_changed": files_changed,
         "files_reviewed": files_reviewed,
+        # Delivered to the reviewer to READ; never findings-eligible per round.
+        # The Records Pass at `final`/`cumulative` is what rates this set, and
+        # it can only do so because the set is named here rather than silently
+        # subtracted.
+        "files_oracle": files_oracle,
         "tier": tier,
         "scope": scope,
         "scope_chosen_by": scope_chosen_by,
@@ -2372,6 +2739,12 @@ def validate_manifest(data) -> tuple[bool, str]:
         return False, "missing 'files_reviewed' (non-empty list)"
     if not _str_list(data.get("files_changed")):
         return False, "'files_changed' must be a list of non-empty strings"
+    # Optional, not required: a manifest restored from before the subject/oracle
+    # split carries no oracle set, and refusing it would strand a review that
+    # can still be consolidated honestly. Typed when present, because it reaches
+    # the fact and a reader that walks it must not meet a non-string.
+    if data.get("files_oracle") is not None and not _str_list(data.get("files_oracle")):
+        return False, "'files_oracle' must be a list of non-empty strings or null"
     for opt in ("base_commit", "head_commit", "tier", "scope", "scope_chosen_by",
                 "chunk", "model", "base_reviewed", "worktree", "branch"):
         val = data.get(opt)
@@ -3140,6 +3513,10 @@ def build_fact_body(manifest: dict, partials: list[dict]) -> dict:
         ],
         "files_reviewed": list(manifest["files_reviewed"]),
         "files_changed": list(manifest["files_changed"]),
+        # The set the per-round review did NOT rate, recorded so the exclusion
+        # is auditable. A narrowing that leaves no trace of what it dropped is
+        # indistinguishable from a reviewer that simply found less.
+        "files_oracle": list(manifest.get("files_oracle") or []),
         "findings": findings,
         "counts": {"blocking": blocking, "warning": warning, "note": note},
         "duration_seconds": max(durations) if durations else None,
@@ -3159,6 +3536,71 @@ def build_fact_body(manifest: dict, partials: list[dict]) -> dict:
         # move a verdict, and no gate reads it.
         "record_lint": manifest.get("record_lint"),
     }
+
+
+#: The three readings :func:`finding_fix_cost` can return. Phrases rather than
+#: tokens because the reader is a model deciding what to do with the finding,
+#: and a token would need a legend it will not open.
+FIX_COST_FREE = (
+    "FIX is free WHERE THIS FINDING POINTS — every file it cites is non-judgeable, "
+    "so an edit confined to those moves no coverage and buys no round. If the real "
+    "correction lands elsewhere, price the actual batch with `cost-of-commit` first."
+)
+FIX_COST_CHARGED = (
+    "FIX buys a review round — this finding cites a judgeable file, so the fix "
+    "moves the tree and re-opens coverage."
+)
+FIX_COST_UNKNOWN = (
+    "FIX cost unknown — this finding cites no file; assume it buys a review round."
+)
+
+
+def finding_fix_cost(files: "list | None") -> str:
+    """What acting on one finding costs the builder, from the paths it cites.
+
+    **Why the findings view carries this.** The disposition menu is priced
+    backwards from the intuition and nothing said so: ACCEPT is always free,
+    while FIX is free on some surfaces and costs a whole round on others —
+    coverage is keyed on the tree, so any judgeable edit re-opens the gate that
+    the same round was run to close. A builder told to "fix anything cheap"
+    reads cheap as *small*, and the smallest fixes (a change-log sentence, a
+    stale count) are exactly the ones whose surface decides the price. Measured
+    on this repo's evidence store, 36% of all findings cite only non-judgeable
+    files — free to fix — and nothing at the decision point distinguished them
+    from the rest.
+
+    The predicate is :func:`coverage_algebra.is_judgeable_path`, the same one
+    the gate charges by, so the price quoted here and the price charged there
+    cannot drift. This function decides only *whether* a round is bought;
+    :func:`telemetry.round_price` owns what a round costs, and the record's
+    ``next_action`` already carries that sentence — the two are not restated
+    per finding.
+
+    **Fails closed toward charged.** An absent or empty ``files`` list reads
+    UNKNOWN, never FREE: a wrong "free" is precisely the reading that spends an
+    unbudgeted round, while a wrong "charged" only declines a saving.
+
+    **What it prices, and what it cannot.** ``files`` is the finding's
+    ATTRIBUTION — where the reviewer saw the problem — and that is not the set a
+    remedy lands in. A finding about a record whose real correction is in code
+    cites only the record, and this function can see nothing else. So the FREE
+    phrase is deliberately relational: it prices an edit *confined to the cited
+    files* and says so, rather than asserting the fix is free. Asserting the
+    stronger thing would emit exactly the wrong-``free`` the paragraph above
+    says must never be emitted, from the one input that cannot detect it.
+    ``prawduct-hook cost-of-commit <paths>`` prices the real batch, and the
+    phrase routes there.
+    """
+    from . import coverage_algebra  # noqa: PLC0415 — lazy; keeps the import graph flat
+
+    if not files or not isinstance(files, list):
+        return FIX_COST_UNKNOWN
+    paths = [f for f in files if isinstance(f, str) and f]
+    if not paths:
+        return FIX_COST_UNKNOWN
+    if any(coverage_algebra.is_judgeable_path(f) for f in paths):
+        return FIX_COST_CHARGED
+    return FIX_COST_FREE
 
 
 def fact_to_cache_record(
@@ -3188,6 +3630,9 @@ def fact_to_cache_record(
         }
         if f.get("files"):
             entry["files"] = list(f["files"])
+        # Additive key; the schema validator checks required fields only and
+        # `--json` readers tolerate unknown ones (api-contract § Direction).
+        entry["fix_cost"] = finding_fix_cost(f.get("files"))
         findings.append(entry)
     counts = body.get("counts") or {}
     blocking = counts.get("blocking", 0)

@@ -123,14 +123,24 @@ PROSE_MUTATION_CLAIMS = (
 # shipping a real mechanism requires deliberately adding it here — which is
 # exactly the review moment that should exist.
 #
-# Add a name here only when the mechanism is genuinely implemented in
-# lib/backlog/. Chunk 08's file-upstream pin belongs here when it lands.
+# Add a name here only when the mechanism is genuinely implemented AND covers the
+# ops the naming surface is describing. Scope is half of any guard claim: a real
+# mechanism cited for an op it does not run on is as misleading as one that does
+# not exist, and reads more convincingly.
 IMPLEMENTED_ADAPTER_GUARDS: frozenset[str] = frozenset({"restructure-preview"})
 
 # Guard-mechanism names that appear in prose. Anything here that is not in
-# IMPLEMENTED_ADAPTER_GUARDS is a phantom claim. `target-pin` is the one that
-# shipped: no repo-identity comparison exists anywhere in lib/backlog/
-# (`ids.parse_repo` is shape-only at all ten call sites).
+# IMPLEMENTED_ADAPTER_GUARDS is a phantom claim. `target-pin` stays phantom, and
+# the reason NARROWED rather than expired: lib/backlog/upstream.py does now
+# compare repo identity, but only for `file-upstream`, where it refuses an
+# unpinned target and refuses a self-file. The ops this module guards —
+# `import`/`file`/`update` — reach none of it: `ids.parse_repo` is shape-only at
+# all ten call sites and no op on that path consults `backlog_service_repo` to
+# validate a `--repo`, so the runbook's Step 0 owner confirmation is still the
+# only thing standing between a typo'd slug and 250 issues in a stranger's repo.
+# Backing the name on the strength of the upstream op would re-open this file's
+# own defect one op over, so it is not added — and a surface describing the
+# upstream pin says so without spelling it `target-pin`.
 NAMED_ADAPTER_GUARDS = ("target-pin", "target pin", "restructure-preview")
 
 # A claim is only a claim if it is asserted. Lines that *deny* the mechanism —
@@ -263,19 +273,20 @@ def test_surfaces_claim_no_unbacked_adapter_guard():
     """Evasion 4 — the blocking finding's class: a named *mechanism*, not a flag.
 
     `skills/backlog/SKILL.md` claimed the migration's primary guard was "the
-    adapter's target-pin". No adapter code compares repo identity, so the claim
-    pointed a model at a safety net that would not catch it — the same defect
-    class this whole file exists to close, one abstraction level up.
+    adapter's target-pin". No op on the migration path compares repo identity, so
+    the claim pointed a model at a safety net that would not catch it — the same
+    defect class this whole file exists to close, one abstraction level up.
     """
     unbacked = [n for n in NAMED_ADAPTER_GUARDS if n not in IMPLEMENTED_ADAPTER_GUARDS]
     offenders = _offending_lines(lambda line: _first_offset(line.lower(), unbacked))
     assert not offenders, (
         "A backlog instruction surface names an adapter-side guard mechanism that "
-        "lib/backlog/ does not implement. `ids.parse_repo` is shape-only at every "
-        "call site and no adapter op consults `backlog_service_repo`, so there is "
-        "no target pin to rely on — the runbook's Step 0 owner confirmation is the "
-        "guard. Either build the mechanism or stop naming it (BKL-8V3D / "
-        "BKL-2Q7F).\n  - " + "\n  - ".join(offenders)
+        "the migration ops do not implement. `ids.parse_repo` is shape-only at "
+        "every call site and no op on that path consults `backlog_service_repo`, "
+        "so there is nothing pinning the target — the runbook's Step 0 owner "
+        "confirmation is the guard. `file-upstream`'s pin does not back this "
+        "claim: it is a different op and no migration path reaches it. Either "
+        "build the mechanism or stop naming it (BKL-8V3D / BKL-2Q7F).\n  - " + "\n  - ".join(offenders)
     )
 
 

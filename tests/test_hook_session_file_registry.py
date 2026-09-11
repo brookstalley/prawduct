@@ -85,9 +85,6 @@ _BOUNDARY_SURVIVORS = {
     ".claude/settings.local.json":
         "the user's own harness settings — not prawduct state at all, gitignored so a "
         "local permission grant is never committed",
-    ".prawduct/.bug-inbox":
-        "the upstream drop-box's marker; its contents are triaged by a person, on their "
-        "own schedule, not by a session ending",
     ".prawduct/.critic-active":
         "swept by its OWN boundary step, not this loop — the sweep has to weigh the "
         "marker's TTL and announce a retained one, which a blind unlink cannot do",

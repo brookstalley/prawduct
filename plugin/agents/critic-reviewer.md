@@ -23,7 +23,8 @@ validates the partial and treats anything else as out of bounds.
 ## What the coordinator gives you
 
 Your dispatch prompt carries: your **role** (`correctness` | `design` | `sustainability`),
-your **assigned goals**, the **project directory**, the **changed-files list**, a **signals**
+your **assigned goals**, the **project directory**, the **changed-files list** (subject and oracle
+sets alike — the split is explained below), a **signals**
 summary, the **commit under review** (a SHA), the **review id**, and the **two paths you
 write** — your started marker and your partial. Those paths and the review id are recorded in
 `.prawduct/.critic-partials/manifest.json` as `rendezvous.<your role>` and `id`; read them there
@@ -48,8 +49,9 @@ The role → goal mapping
   Framework-Specific Checks (`review-protocol.md`) when the diff touches framework
   instruction files or templates.
 - **sustainability** — Goals 5 (Decisions Were Deliberate), 6 (The System Can Be Understood);
-  ALSO run the Learnings Cross-Check and Backlog Reconciliation (`review-cycle.md`
-  "Final-Mode Cross-Checks") and emit their results as NOTE findings in your partial.
+  ALSO run the Learnings Cross-Check, Backlog Reconciliation and **Records Pass**
+  (`review-cycle.md` "Final-Mode Cross-Checks") and emit their results in your partial —
+  the first two as NOTE findings, the Records Pass at whichever of its bars applies.
 
 ## What to do
 
@@ -85,6 +87,13 @@ The role → goal mapping
 6. Read the changed files and inspect the diff (`git -C <project dir> …`). Do NOT run tests or
    builds — the Goal 1 `test-status` and `verify-coverage` probes report what a previous run
    recorded and are the only commands your goals ever ask you to issue.
+   **The manifest splits them: `files_reviewed` is your SUBJECT set — a finding you DERIVE is
+   *about* a file in it — and `files_oracle` is what the code is judged *against*, read by every
+   role. Three passes own oracle findings and are not narrowed (`review-cycle.md` "Records Pass"
+   states the carve-out): the record-lint relay, the Learnings Cross-Check, and the Records Pass,
+   all `sustainability`'s under this roster. Narrowing what a finding may be about is never a
+   licence to read less.** *"The code violates this spec"* has the code as its subject, at full
+   severity.
 7. Assess your goals and gather findings, each with a severity: `blocking`, `warning`, or `note`
    (definitions in `review-protocol.md`). A clean pass has zero findings — that is normal and
    correct; do not invent findings to fill space.

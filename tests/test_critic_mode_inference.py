@@ -27,7 +27,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent / "plugin"
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from lib import buildplan_refs, core, critic_mode, infer_mode  # noqa: E402 — sys.path mutated above
+from lib import buildplan_refs, core, coverage_algebra, critic_mode, infer_mode  # noqa: E402 — sys.path mutated above
 
 
 # ---------------------------------------------------------------------------
@@ -1908,6 +1908,111 @@ class TestBranchProgressCRT7B4M:
 # class above.)
 
 
+class TestInferenceMeasuresTheSubjectSet:
+    """`files_reviewed` is the review's SUBJECT set, which is NOT judgeable-only
+    — so every comparison against it must narrow BOTH sides.
+
+    Left raw on the delta side, a fix that touched a README alongside the code
+    would fall out of rule 1's subset and out of rule 1b's widening bound,
+    sending exactly the cheap batched fix the framework tells the builder to
+    make into a full round instead of a verify pass. Left raw on the PRIOR side,
+    the bound loosens instead — the fail-open direction, where a re-review that
+    owed a full pass proceeds as a partial. `_is_metadata_path` drops
+    `.prawduct/`, not every non-judgeable path.
+    """
+
+    def test_rule_1_ignores_a_non_judgeable_file_beside_the_fix(
+        self, tmp_path: Path
+    ):
+        _init_repo(tmp_path)
+        _write(tmp_path, "src/app.py", "# v1\n")
+        _write(tmp_path, "README.md", "# hi\n")
+        prior_sha = _commit(tmp_path, "v1")
+
+        _write(tmp_path, "src/app.py", "# v2\n")
+        _write(tmp_path, "README.md", "# hi there\n")  # doc touch-up, riding along
+
+        _write_findings(
+            tmp_path / ".prawduct",
+            commit_reviewed=prior_sha,
+            files_reviewed=["src/app.py"],
+            severity="blocking",
+        )
+
+        mode, rationale = infer_mode(tmp_path, None)
+        assert mode == "verify-resolutions", (
+            f"a README beside the fix demoted the verify pass: {rationale}"
+        )
+
+    def test_rule_1_still_demotes_on_judgeable_work_outside_the_surface(
+        self, tmp_path: Path
+    ):
+        """The direction the subset check exists for is unchanged: new
+        judgeable work alongside a fix is a chunk/final case."""
+        _init_repo(tmp_path)
+        _write(tmp_path, "src/app.py", "# v1\n")
+        prior_sha = _commit(tmp_path, "v1")
+
+        _write(tmp_path, "src/app.py", "# v2\n")
+        _write(tmp_path, "src/brand_new.py", "# new chunk work\n")
+
+        _write_findings(
+            tmp_path / ".prawduct",
+            commit_reviewed=prior_sha,
+            files_reviewed=["src/app.py"],
+            severity="blocking",
+        )
+
+        mode, _ = infer_mode(tmp_path, None)
+        assert mode != "verify-resolutions"
+
+    #: 5 subjects, 1 of them coverage-priced. The gap between 5 and 1 is what
+    #: makes the prior-side narrowing observable: at 1 the bound refuses this
+    #: delta, at 5 it admits it.
+    PRIOR_SUBJECTS = [
+        "src/app.py",
+        "docs/norms.md",
+        "docs/a.md",
+        "docs/b.md",
+        "README.md",
+    ]
+
+    def test_rule_1b_measures_the_prior_side_on_the_priced_subset(
+        self, tmp_path: Path
+    ):
+        """The second mirror of the widening bound, entered at its own door.
+
+        `critic_consolidate._scope_widened` and `_rule_postfix_fix_fires`
+        compute one threshold in two places, and a unit test over hand-built
+        lists cannot tell either call site from a deleted narrowing. This uses a
+        prior set the two predicates answer 5-vs-1, so dropping
+        `judgeable_files(prior_set)` here flips the assertion — the fail-open
+        direction, in which a widened delta is recommended as a partial pass.
+        """
+        assert coverage_algebra.review_subjects(self.PRIOR_SUBJECTS) == self.PRIOR_SUBJECTS
+        assert coverage_algebra.judgeable_files(self.PRIOR_SUBJECTS) == ["src/app.py"]
+
+        _init_repo(tmp_path)
+        _write(tmp_path, "src/app.py", "# v1\n")
+        prior_sha = _commit(tmp_path, "v1")
+        # 8 priced files: past 2*1+5, inside 2*5+5.
+        for i in range(8):
+            _write(tmp_path, f"src/new_{i}.py", f"n = {i}\n")
+        _commit(tmp_path, "more work")
+
+        _write_findings(
+            tmp_path / ".prawduct",
+            mode="cumulative (bundle review, ready for merge)",
+            commit_reviewed=prior_sha,
+            files_reviewed=list(self.PRIOR_SUBJECTS),
+            include_finding=False,
+        )
+
+        assert critic_mode._rule_postfix_fix_fires(
+            tmp_path / ".prawduct", tmp_path
+        ) == "", "the prior side was counted raw, so the bound admitted a widened delta"
+
+
 # ---------------------------------------------------------------------------
 # An unrecognised `Critic mode:` value says so once, then inference proceeds.
 #
@@ -1970,6 +2075,27 @@ def test_chunk_mode_read_defaults_unrecognized_so_existing_callers_are_unchanged
     assert read.unrecognized is None
 
 
+def _repo_with_mode_field(tmp_path: Path, field_line: str) -> Path:
+    """A one-chunk plan whose chunk section carries ``field_line`` verbatim."""
+    _init_repo(tmp_path)
+    _write(tmp_path, "README.md", "x\n")
+    _commit(tmp_path, "initial")
+    prawduct = tmp_path / ".prawduct"
+    (prawduct / "artifacts").mkdir(parents=True, exist_ok=True)
+    (prawduct / "project-state.yaml").write_text(
+        "active_build_plan: artifacts/build-plan.md\n"
+    )
+    (prawduct / "artifacts" / "build-plan.md").write_text(
+        "# Build Plan\n\n## Status\n\n- [ ] Chunk 01: a thing\n\n"
+        "### Chunk 01: a thing\n\n"
+        "- **Description:** work\n"
+        f"{field_line}"
+        "- **Done when:** it is done\n"
+    )
+    _write(tmp_path, "src/work.py", "# chunk work\n")
+    return tmp_path
+
+
 class TestUnrecognizedCriticModeIsAnnounced:
     """The emission, not just the wording.
 
@@ -1982,29 +2108,10 @@ class TestUnrecognizedCriticModeIsAnnounced:
     ordinary plans and train its reader to ignore it.
     """
 
-    def _repo_with_mode_field(self, tmp_path: Path, field_line: str) -> Path:
-        _init_repo(tmp_path)
-        _write(tmp_path, "README.md", "x\n")
-        _commit(tmp_path, "initial")
-        prawduct = tmp_path / ".prawduct"
-        (prawduct / "artifacts").mkdir(parents=True, exist_ok=True)
-        (prawduct / "project-state.yaml").write_text(
-            "active_build_plan: artifacts/build-plan.md\n"
-        )
-        (prawduct / "artifacts" / "build-plan.md").write_text(
-            "# Build Plan\n\n## Status\n\n- [ ] Chunk 01: a thing\n\n"
-            "### Chunk 01: a thing\n\n"
-            "- **Description:** work\n"
-            f"{field_line}"
-            "- **Done when:** it is done\n"
-        )
-        _write(tmp_path, "src/work.py", "# chunk work\n")
-        return tmp_path
-
     def test_an_unrecognized_value_emits_one_line_and_inference_still_runs(
         self, tmp_path: Path, capsys
     ):
-        repo = self._repo_with_mode_field(tmp_path, "- **Critic mode:** cumluative\n")
+        repo = _repo_with_mode_field(tmp_path, "- **Critic mode:** cumluative\n")
 
         mode, rationale = infer_mode(repo, None)
 
@@ -2020,7 +2127,7 @@ class TestUnrecognizedCriticModeIsAnnounced:
         self, tmp_path: Path, capsys
     ):
         """The natural trap: `cumulative-final` is a Type that reads like a mode."""
-        repo = self._repo_with_mode_field(
+        repo = _repo_with_mode_field(
             tmp_path, "- **Critic mode:** cumulative-final\n"
         )
 
@@ -2033,7 +2140,7 @@ class TestUnrecognizedCriticModeIsAnnounced:
     def test_a_recognized_value_is_honoured_and_says_nothing(
         self, tmp_path: Path, capsys
     ):
-        repo = self._repo_with_mode_field(tmp_path, "- **Critic mode:** cumulative\n")
+        repo = _repo_with_mode_field(tmp_path, "- **Critic mode:** cumulative\n")
 
         mode, rationale = infer_mode(repo, None)
 
@@ -2042,7 +2149,7 @@ class TestUnrecognizedCriticModeIsAnnounced:
         assert "NOTE: chunk's `Critic mode:`" not in capsys.readouterr().err
 
     def test_an_absent_field_says_nothing(self, tmp_path: Path, capsys):
-        repo = self._repo_with_mode_field(tmp_path, "")
+        repo = _repo_with_mode_field(tmp_path, "")
 
         infer_mode(repo, None)
 
@@ -2050,11 +2157,200 @@ class TestUnrecognizedCriticModeIsAnnounced:
 
     def test_a_blank_field_says_nothing(self, tmp_path: Path, capsys):
         """Blank carries no intent either — only a typed value does."""
-        repo = self._repo_with_mode_field(tmp_path, "- **Critic mode:**\n")
+        repo = _repo_with_mode_field(tmp_path, "- **Critic mode:**\n")
 
         infer_mode(repo, None)
 
         assert "NOTE: chunk's `Critic mode:`" not in capsys.readouterr().err
+
+
+class TestTheModeFieldIsFoundWhereAuthorsWriteIt:
+    """The field binds in the forms real build plans use, not one canonical form.
+
+    Every case here is copied from a plan in this repo. Each one used to read as
+    *no field at all*, and that is worse than a wrong answer: the override is
+    what a plan uses to demand a heavier review than inference would pick, so
+    losing it downgrades the review silently — no note, no rationale, nothing but
+    a pass that covered less than the author asked for.
+
+    ``cumulative`` is the pinned value throughout on purpose. ``final`` is also
+    what an unreadable plan falls back to, so a test asserting ``final`` cannot
+    tell "the field was honoured" from "the field was lost and the fail-safe
+    caught it" — the exact confusion these cases are about.
+    """
+
+    def test_a_field_sharing_its_line_with_another_binds(
+        self, tmp_path: Path, capsys
+    ):
+        """Chunk headers compose fields on one line, separated by `·`."""
+        repo = _repo_with_mode_field(
+            tmp_path, "- **Type:** doc-only · **Critic mode:** cumulative\n"
+        )
+
+        mode, rationale = infer_mode(repo, None)
+
+        assert mode == "cumulative"
+        assert rationale.startswith("plan-override")
+        assert "NOTE: chunk's `Critic mode:`" not in capsys.readouterr().err
+
+    def test_a_backticked_value_binds(self, tmp_path: Path, capsys):
+        repo = _repo_with_mode_field(
+            tmp_path, "- **Critic mode:** `cumulative`\n"
+        )
+
+        mode, rationale = infer_mode(repo, None)
+
+        assert mode == "cumulative"
+        assert rationale.startswith("plan-override")
+        assert "NOTE: chunk's `Critic mode:`" not in capsys.readouterr().err
+
+    def test_a_wholly_backticked_field_binds(self, tmp_path: Path, capsys):
+        repo = _repo_with_mode_field(
+            tmp_path, "- `**Critic mode:** cumulative`\n"
+        )
+
+        mode, rationale = infer_mode(repo, None)
+
+        assert mode == "cumulative"
+        assert rationale.startswith("plan-override")
+        assert "NOTE: chunk's `Critic mode:`" not in capsys.readouterr().err
+
+    def test_a_value_trailed_by_its_rationale_binds(self, tmp_path: Path):
+        """Authors justify the override inline; the token still ends at the space."""
+        repo = _repo_with_mode_field(
+            tmp_path,
+            "- **Depends on:** —  ·  **Critic mode:** cumulative (keystone chunk)\n",
+        )
+
+        mode, rationale = infer_mode(repo, None)
+
+        assert mode == "cumulative"
+        assert rationale.startswith("plan-override")
+
+    def test_a_value_no_token_can_be_read_out_of_says_so(
+        self, tmp_path: Path, capsys
+    ):
+        """The declared-but-unhonoured case, which silence would hide entirely."""
+        repo = _repo_with_mode_field(
+            tmp_path, "- **Critic mode:** (inferred — `chunk`)\n"
+        )
+
+        mode, rationale = infer_mode(repo, None)
+
+        err = capsys.readouterr().err
+        assert err.count("NOTE: chunk's `Critic mode:`") == 1, err
+        assert "inferred" in err
+        assert "nothing was skipped" in err
+        assert mode in critic_mode._VALID_ARG_MODES
+        assert "plan-override" not in rationale
+
+    def test_prose_about_the_field_does_not_suppress_the_declaration_below_it(
+        self, tmp_path: Path, capsys
+    ):
+        """The cost of searching, paid where it actually lands.
+
+        A line *discussing* the field looks exactly like a line declaring it, so
+        a reader that answered on first sight would let a sentence bury the real
+        override — and report it as a typo, pointing the author at the wrong
+        line. The whole section is scanned instead.
+        """
+        repo = _repo_with_mode_field(
+            tmp_path,
+            "- **Notes:** the reader finds `**Critic mode:**` mid-line now\n"
+            "- **Critic mode:** cumulative\n",
+        )
+
+        mode, rationale = infer_mode(repo, None)
+
+        assert mode == "cumulative"
+        assert rationale.startswith("plan-override")
+        assert "NOTE: chunk's `Critic mode:`" not in capsys.readouterr().err
+
+    def test_an_unhonorable_token_above_the_declaration_does_not_win(
+        self, tmp_path: Path, capsys
+    ):
+        """Same rule for the branch that DOES capture a token, just an invalid one."""
+        repo = _repo_with_mode_field(
+            tmp_path,
+            "- **Notes:** the old reader took **Critic mode:** anything as a value\n"
+            "- **Critic mode:** cumulative\n",
+        )
+
+        mode, rationale = infer_mode(repo, None)
+
+        assert mode == "cumulative"
+        assert rationale.startswith("plan-override")
+        assert "NOTE: chunk's `Critic mode:`" not in capsys.readouterr().err
+
+    def test_prose_about_the_field_in_a_chunk_that_declares_nothing_stays_silent(
+        self, tmp_path: Path, capsys
+    ):
+        """The note's own precondition: it must not fire on ordinary plans.
+
+        Ten chunk sections in this repo mention the field in a Description and
+        declare no mode. A note on each is not a warning, it is a thing the
+        reader learns to skip — and then skips on the chunk that needed it.
+        """
+        repo = _repo_with_mode_field(
+            tmp_path,
+            "- **Notes:** the reader finds `**Critic mode:**` mid-line now\n",
+        )
+
+        infer_mode(repo, None)
+
+        assert "NOTE: chunk's `Critic mode:`" not in capsys.readouterr().err
+
+    def test_a_value_that_is_not_a_word_is_quoted_whole(self, tmp_path: Path, capsys):
+        """A note must quote a string the author can find in their own plan.
+
+        `n/a (verification only …)` is a real declaration in this repo. Reading
+        the token up to the first non-word character reported it as `'n'` — a
+        value that appears nowhere, sending the author looking for it.
+        """
+        repo = _repo_with_mode_field(
+            tmp_path, "- **Critic mode:** n/a (verification only — nothing to review)\n"
+        )
+
+        infer_mode(repo, None)
+
+        err = capsys.readouterr().err
+        assert "'n/a (verification only — nothing to review)'" in err, err
+
+    def test_the_note_points_at_the_line_that_carried_the_value(
+        self, tmp_path: Path, capsys
+    ):
+        repo = _repo_with_mode_field(tmp_path, "- **Critic mode:** cumluative\n")
+
+        infer_mode(repo, None)
+
+        err = capsys.readouterr().err
+        # The fixture's field is the tenth line of the plan. Asserting the
+        # SUBSTRING alone passes for a section-relative or 0-based number, which
+        # is a note sending the author to a line that is not theirs — the exact
+        # misdirection the whole-section scan exists to prevent.
+        plan = repo / ".prawduct" / "artifacts" / "build-plan.md"
+        expected = next(
+            num
+            for num, text in enumerate(
+                plan.read_text(encoding="utf-8").splitlines(), start=1
+            )
+            if "**Critic mode:**" in text
+        )
+        assert f"plan line {expected}" in err, err
+
+    def test_an_unparseable_value_is_quoted_only_as_far_as_it_helps(
+        self, tmp_path: Path, capsys
+    ):
+        """A whole paragraph in the field is still a pointer, not a transcript."""
+        repo = _repo_with_mode_field(
+            tmp_path, f"- **Critic mode:** ({'x' * 500})\n"
+        )
+
+        infer_mode(repo, None)
+
+        err = capsys.readouterr().err
+        assert "NOTE: chunk's `Critic mode:`" in err
+        assert "x" * 500 not in err
 
 
 class TestExplicitTokenReachesTheCleanTreeRedirect:
@@ -2193,3 +2489,79 @@ class TestExplicitTokenReachesTheCleanTreeRedirect:
         mode, rationale = infer_mode(tmp_path, "ultra-thorough")
         assert mode == "cumulative"
         assert rationale.startswith("rule-"), rationale
+
+
+def test_every_critic_mode_line_in_this_repo_is_honoured_or_reported():
+    """The corpus, against a form list that was transcribed by hand.
+
+    Every other test here contains a form someone thought of. This one contains
+    the forms authors actually wrote, and asserts the three properties the
+    reader's asymmetry rests on.
+
+    **A line whose value reads as a mode binds that mode.** The oracle is
+    deliberately crude — text after the marker, first word, punctuation
+    stripped — because an oracle built out of the reader's own regex can only
+    ever agree with it. This is the property the defect broke:
+    `**Type:** doc-only · **Critic mode:** chunk` reads as `chunk` to any human
+    and read as *no field at all* to the anchored reader.
+
+    **A value in FIELD POSITION is never silently nothing** — honoured, or
+    reported to its author. Reading as no field looks identical to a chunk that
+    declared no mode, so it buys a shallower review with no signal anything was
+    lost. Not asserted: that every such value IS a mode. Several are not, and
+    correctly so — `cumulative-final` typed into the wrong field, `n/a
+    (verification only …)`. Each is reported, which is the contract.
+
+    **A value NOT in field position is never reported.** Prose discussing the
+    field lives in real Description lines here, and announcing those as ignored
+    declarations — on chunks that declare no mode at all — is how a note teaches
+    its reader to skip it. Binding from mid-line is still fine: only one of four
+    words can win there, and the plan's author wrote it.
+    """
+    artifacts = Path(__file__).resolve().parent.parent / ".prawduct" / "artifacts"
+    plans = sorted(artifacts.rglob("build-plan*.md"))
+    assert plans, f"no build plans under {artifacts} — this test proves nothing"
+
+    marker = "**Critic mode:**"
+    field_position = re.compile(r"^[\s\-\*]*" + re.escape(marker))
+    lost, misread, noisy = [], [], []
+    bound = declared = prose = 0
+    for plan in plans:
+        for lineno, line in enumerate(
+            plan.read_text(encoding="utf-8").splitlines(), start=1
+        ):
+            if marker not in line:
+                continue
+            where = f"{plan.name}:{lineno}: {line.strip()!r}"
+
+            honoured = next(
+                buildplan_refs.iter_field_declarations(
+                    line, critic_mode._BUILD_PLAN_CRITIC_MODE_RE
+                ),
+                None,
+            )
+            token = honoured.group(1) if honoured else None
+            reported = critic_mode._BUILD_PLAN_CRITIC_MODE_FIELD_RE.search(line)
+
+            after = line.split(marker, 1)[1].split()
+            reads_as = after[0].strip("`.,;*") if after else ""
+            if reads_as in critic_mode._VALID_ARG_MODES:
+                bound += 1
+                if token != reads_as:
+                    misread.append(f"{where} reads as {reads_as!r}, read as {token!r}")
+
+            if field_position.match(line):
+                declared += 1
+                if after and not (token or reported):
+                    lost.append(where)
+            else:
+                prose += 1
+                if reported:
+                    noisy.append(where)
+
+    assert bound, "no corpus line names a mode — the binding half proves nothing"
+    assert declared, "no corpus line puts the field in field position"
+    assert prose, "no corpus line mentions the field mid-line — the quiet half proves nothing"
+    assert not misread, "\n".join(misread)
+    assert not lost, "\n".join(lost)
+    assert not noisy, "\n".join(noisy)
