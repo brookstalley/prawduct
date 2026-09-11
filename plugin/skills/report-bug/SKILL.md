@@ -115,11 +115,11 @@ mktemp -d
 **Paste that printed absolute path in place of `<scratch-dir>` everywhere below —
 do not carry a shell variable.** A variable does not survive between tool calls,
 and the preview and the send are necessarily separate ones, so by the send it
-would be empty and each `$(cat …)` would read nothing. Nothing downstream catches
-that: the flags are still present, `check_payload_inputs` bans only newlines and
-prawduct fences, and under standing consent the digest is never compared — so you
-would file an empty-bodied issue into a repo where you cannot retitle or delete
-it. A path you paste is a value you hold; a variable is not.
+would be empty and each `$(cat …)` would read nothing. The adapter refuses an
+empty title or body on both arms, so that mistake costs you a round rather than
+an empty issue in a repo where you cannot retitle or delete one — but the refusal
+names the flag, not the path, so the round is spent finding which paste was wrong.
+A path you paste is a value you hold; a variable is not.
 
 Delete the directory once the send succeeds; nothing downstream reads those files.
 
