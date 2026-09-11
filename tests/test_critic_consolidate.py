@@ -38,6 +38,8 @@ ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK = ROOT / "bin" / "prawduct-hook"
 sys.path.insert(0, str(ROOT))
 from lib import critic_consolidate as cc  # noqa: E402
+from lib import dispositions as _dispositions_mod  # noqa: E402
+from lib import coverage_algebra as ca_mod  # noqa: E402
 # The anchor predicates the dispatch guard is built on. Imported rather than
 # re-implemented so a test asserting "the OLD guard would have passed" is
 # asserting it about the real one.
@@ -398,6 +400,20 @@ class TestValidateManifest:
         ok, reason = cc.validate_manifest(_manifest_dict())
         assert ok, reason
 
+    def test_files_oracle_rejected_when_not_a_string_list(self):
+        """The optional-but-typed branch. It is optional so a manifest restored
+        from before the subject/oracle split still consolidates; it is typed
+        because the value reaches the review fact, where a reader walking it
+        must not meet a non-string."""
+        ok, reason = cc.validate_manifest(_manifest_dict(files_oracle=[1, 2]))
+        assert not ok
+        assert "files_oracle" in reason
+
+    def test_files_oracle_absent_is_valid(self):
+        assert "files_oracle" not in _manifest_dict()
+        ok, reason = cc.validate_manifest(_manifest_dict())
+        assert ok, reason
+
     def test_bare_mode_token_rejected(self):
         ok, reason = cc.validate_manifest(_manifest_dict(mode="final"))
         assert not ok
@@ -728,6 +744,114 @@ class TestNextActionLine:
         assert "<review-id>" in line
 
 
+class TestFindingFixCost:
+    """The disposition menu is priced backwards from the intuition, and until
+    now nothing said so at the point of decision.
+
+    ACCEPT is always free. FIX is free on a non-judgeable surface and costs a
+    whole review round on a judgeable one, because coverage is keyed on the tree
+    and any judgeable edit re-opens the gate the round was run to close. A
+    builder told to "fix anything cheap" reads cheap as *small*, and the
+    smallest fixes are exactly the ones whose surface decides the price.
+
+    The predicate is the gate's own (``coverage_algebra.is_judgeable_path``), so
+    what is quoted here and what is charged there cannot drift.
+    """
+
+    def test_records_only_finding_is_free(self):
+        # 36% of findings in this repo's evidence store cite only files like
+        # these — the class the builder was paying full price to fix.
+        assert cc.finding_fix_cost([".prawduct/change-log.md"]) == cc.FIX_COST_FREE
+        assert cc.finding_fix_cost(
+            [".prawduct/backlog.md", ".prawduct/learnings.md"]
+        ) == cc.FIX_COST_FREE
+
+    def test_code_finding_buys_a_round(self):
+        assert cc.finding_fix_cost(["lib/gates.py"]) == cc.FIX_COST_CHARGED
+
+    def test_governance_prose_buys_a_round(self):
+        # Fork-skill prose is behavioural logic here, so it is judgeable even
+        # though it is Markdown. Pricing it free would be the unsafe direction.
+        assert cc.finding_fix_cost(
+            ["skills/critic/review-cycle.md"]
+        ) == cc.FIX_COST_CHARGED
+
+    def test_mixed_finding_buys_a_round(self):
+        # One judgeable path in the set is enough: the fix moves the tree.
+        assert cc.finding_fix_cost(
+            [".prawduct/change-log.md", "lib/gates.py"]
+        ) == cc.FIX_COST_CHARGED
+
+    def test_no_files_is_unknown_never_free(self):
+        # Fails closed. 93 findings in the store cite no file at all, and a
+        # wrong "free" is the reading that spends an unbudgeted round, while a
+        # wrong "charged" only declines a saving.
+        for empty in (None, [], [""], ["", None]):
+            assert cc.finding_fix_cost(empty) == cc.FIX_COST_UNKNOWN
+
+    def test_non_list_is_unknown_never_free(self):
+        assert cc.finding_fix_cost("lib/gates.py") == cc.FIX_COST_UNKNOWN
+
+    def test_every_finding_in_the_record_carries_a_cost(self, tmp_path):
+        # The view is where the builder meets the finding, so the price has to
+        # ride on every entry — not on a summary line they may not read.
+        manifest = _manifest_dict(roster=["correctness"])
+        body = cc.build_fact_body(manifest, [_partial(
+            "correctness", "abc123", findings=[
+                {"name": "Stale count", "goal": "Nothing Is Missing",
+                 "severity": "note", "recommendation": "r",
+                 "files": [".prawduct/change-log.md"]},
+                {"name": "Broken guard", "goal": "Nothing Is Broken",
+                 "severity": "blocking", "recommendation": "r",
+                 "files": ["lib/gates.py"]},
+                {"name": "Unsited", "goal": "Nothing Unintended",
+                 "severity": "note", "recommendation": "r"},
+            ])])
+        fact = {"schema": 1, "kind": "review", "id": manifest["id"],
+                "ts": "2026-07-13T00:00:00Z", "body": body}
+        record = cc.fact_to_cache_record(fact)
+        costs = [f["fix_cost"] for f in record["findings"]]
+        assert costs == [cc.FIX_COST_FREE, cc.FIX_COST_CHARGED, cc.FIX_COST_UNKNOWN]
+        # Additive only: the record must still satisfy the schema its readers
+        # trust (api-contract § Direction — `--json` readers tolerate unknown
+        # keys, so a new one may never break an old reader).
+        path = tmp_path / "f.json"
+        path.write_text(json.dumps(record))
+        assert gates.validate_critic_findings(path)
+
+    def test_cost_does_not_restate_what_a_round_costs(self):
+        # `telemetry.round_price` owns the minutes and the record's
+        # `next_action` already carries them. Restating a number per finding is
+        # how a figure drifts from the mechanism that derives it.
+        for phrase in (cc.FIX_COST_FREE, cc.FIX_COST_CHARGED, cc.FIX_COST_UNKNOWN):
+            assert "minute" not in phrase and "median" not in phrase
+
+    def test_the_free_phrase_prices_what_it_measured_and_no_more(self):
+        """`files` is ATTRIBUTION — where the reviewer saw it — not the set the
+        remedy lands in. A finding about a record whose real correction is in
+        code cites only the record, and the function can see nothing else. So
+        the phrase must scope its claim to the cited files and route the real
+        batch to `cost-of-commit`; asserting the FIX itself is free would emit
+        the wrong-`free` this function's own fail-closed rule forbids, from the
+        one input that cannot detect it."""
+        assert "WHERE THIS FINDING POINTS" in cc.FIX_COST_FREE
+        assert "cost-of-commit" in cc.FIX_COST_FREE
+        assert "FIX is free —" not in cc.FIX_COST_FREE
+
+    def test_predicate_is_the_gates_own(self):
+        # If these ever diverge, the price quoted to the builder stops matching
+        # the price the gate charges, which is worse than quoting nothing.
+        from lib import coverage_algebra
+
+        for path in (".prawduct/change-log.md", "lib/gates.py", "README.md",
+                     "skills/critic/SKILL.md", "docs/waivers.md"):
+            expected = (
+                cc.FIX_COST_CHARGED if coverage_algebra.is_judgeable_path(path)
+                else cc.FIX_COST_FREE
+            )
+            assert cc.finding_fix_cost([path]) == expected, path
+
+
 class TestNextLineRelayContract:
     """`NEXT-ACTION:` is code-owned and relay-only — the design that made this
     affordable inside two files at their token ceilings.
@@ -770,12 +894,20 @@ class TestNextLineRelayContract:
         it is not the same as the instruction having effect."""
         text = self._text("goals-1-3.md")
         shorthand = text.index("No issues found")
-        relay = text.index("your last line is consolidate's")
+        # Pin the STRUCTURE, not the sentence. This pin used to name the
+        # clause verbatim ("your last line is consolidate's" / "Either way"),
+        # and #166's rewrite of the surrounding paragraph broke it while
+        # strengthening the very thing it guards -- the false failure this
+        # class's own `_text` docstring warns gets a pin deleted rather than
+        # fixed. What must hold is that the carrier is re-asserted AFTER the
+        # shorthand, in whatever words; a reader who stops at "No issues
+        # found." must still meet the NEXT-ACTION obligation below it.
+        relay = text.find("NEXT-ACTION:", shorthand)
         assert relay > shorthand, (
-            "the relay order precedes the no-findings shorthand, so the "
-            "shorthand reads as a total replacement and drops the carrier"
+            "goals-1-3.md states the no-findings shorthand (\"No issues found\") "
+            "with no NEXT-ACTION re-assertion after it, so the shorthand reads "
+            "as a total replacement for the report and drops the relay carrier"
         )
-        assert "Either way" in text
 
     def test_both_protocols_say_why_the_relay_is_not_optional(self):
         # Without the reason, a token-diet pass reads the order as redundant
@@ -4099,13 +4231,19 @@ class TestVerifyResolutionsDispatch:
         )
         assert vouching  # the commit exists; it simply does not move the anchor
 
-    def test_nothing_to_verify_names_the_tree_it_compared(self, tmp_path):
-        """The genuine no-op still refuses — with a message that says what it read.
+    def test_nothing_to_verify_is_no_review_needed_not_a_failure(self, tmp_path):
+        """The genuine no-op takes exit 3 — with a message that says what it read.
 
         Under the tree-inequality anchor an empty delta means the tree really is
         unchanged, so this refusal is honest. It names the anchor and both tree
         hashes anyway: the previous wording was true of the anchor and false of
         the repo, and nothing in it let a builder tell which.
+
+        **Exit 3, and the code is the point of the test.** As a bare exit 1 this
+        outcome hit the skill's exit table at "1 on verify-resolutions →
+        re-dispatch per the demotion property", which spends a full `cumulative`
+        on a bundle the gate already reports satisfied — a review round
+        manufactured by the routing rather than by the work.
         """
         repo = tmp_path / "r"
         _init_repo(repo)
@@ -4114,10 +4252,17 @@ class TestVerifyResolutionsDispatch:
                      "commit the reviewed tree")
 
         result = _run_begin(repo, "--mode", "verify-resolutions")
-        assert result.returncode == 1
-        assert "nothing to verify" in result.stderr
-        assert "the working tree" in result.stderr
-        assert reviewed_tree[:12] in result.stderr
+        assert result.returncode == 3
+        assert "nothing to verify" in result.stdout
+        assert "the working tree" in result.stdout
+        assert reviewed_tree[:12] in result.stdout
+        # And it reaches the yield query, like every other guard in its class.
+        # Its exit-3 sibling has recorded since the class got a sink; this site
+        # was added later and could have copied the append without it.
+        assert any(
+            (f.get("body") or {}).get("guard") == "critic-dispatch-nothing-to-verify"
+            for f in _store_facts(repo, "guard-refusal")
+        ), "the refusal fired but left no trace in the guard-refusal store"
 
     def test_a_non_ancestor_prior_anchor_refuses_for_demotion(self, tmp_path):
         """A sibling branch's review fact must not anchor this branch's pass.
@@ -5383,3 +5528,743 @@ class TestPartialBelongsToItsReview:
             "an instruction surface spells a partial filename — the shape must "
             f"come from the manifest's `rendezvous` entry: {offenders}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Judgeability governs review SCOPE — subject set vs oracle set
+# ---------------------------------------------------------------------------
+
+
+class TestSubjectAndOracleSets:
+    """Records about the work stop being SUBJECTS of a per-round review; they
+    do not stop being what the code is judged AGAINST.
+
+    What narrows is decided by `coverage_algebra.is_review_subject`, not by
+    negating the coverage price — a deliverable and behaviour-governing prose
+    stay subjects however the gate charges for them.
+
+    Both halves need pinning, and only one of them is visible in the metric the
+    narrowing was built to move. Withholding the specs and narrowing the
+    findings-eligible set produce the same reading — fewer findings, less
+    reader load — so the guard below is what tells them apart. A falling
+    finding count is not evidence this worked.
+    """
+
+    def test_the_subject_set_drops_records_about_the_work(self):
+        """What narrows is the RECORD set, not the non-judgeable set.
+
+        This asserted `docs/guide.md` as an oracle while eligibility was
+        derived by negating the coverage predicate. It is a deliverable — a
+        finding may be about it — and the negation was dropping it, along with
+        behaviour-governing prose and the whole output of any product that
+        ships markdown. The correction moves it INTO the subject set: strictly
+        more review, which is the direction over-inclusion is allowed to err.
+        """
+        subject, oracle = cc.split_subject_oracle(
+            ["lib/gates.py", ".prawduct/change-log.md", "docs/guide.md"]
+        )
+        assert subject == ["lib/gates.py", "docs/guide.md"]
+        assert oracle == [".prawduct/change-log.md"]
+
+    def test_a_governance_protected_md_stays_a_subject(self):
+        """The predicate is the gate's, not a private notion of "docs": skill
+        and methodology prose is behavioural logic here, so it is findings-
+        eligible like any other code."""
+        subject, oracle = cc.split_subject_oracle(
+            ["skills/critic/SKILL.md", ".prawduct/artifacts/architecture.md"]
+        )
+        assert subject == ["skills/critic/SKILL.md"]
+        assert oracle == [".prawduct/artifacts/architecture.md"]
+
+    def test_an_all_prose_interval_keeps_its_whole_subject_set(self):
+        """THE FLOOR. `validate_manifest` requires a non-empty `files_reviewed`,
+        and a `--force` run or a verify pass clearing prose findings is exactly
+        the dispatch that must not be refused — that pass is the only thing
+        that can clear them."""
+        subject, oracle = cc.split_subject_oracle(
+            [".prawduct/change-log.md", ".prawduct/backlog.md"]
+        )
+        assert subject == [".prawduct/change-log.md", ".prawduct/backlog.md"]
+        assert oracle == []
+
+    def test_dispatch_narrows_the_subject_and_delivers_the_oracle(self, tmp_path):
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        (repo / ".prawduct").mkdir(exist_ok=True)
+        (repo / "src/app.py").write_text("x = 2\n")
+        (repo / ".prawduct/change-log.md").write_text("## entry\n")
+        result = _run_begin(repo, "--mode", "chunk", "--chosen-by", "test")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        ok, reason = cc.validate_manifest(manifest)
+        assert ok, reason
+        assert manifest["files_reviewed"] == ["src/app.py"]
+        assert manifest["files_oracle"] == [".prawduct/change-log.md"]
+        # The interval itself is untouched — it is what the coverage edge is
+        # validated against, and narrowing it would move coverage.
+        assert set(manifest["files_changed"]) == {"src/app.py", ".prawduct/change-log.md"}
+
+    def test_the_oracle_set_still_carries_the_build_plan(self, tmp_path):
+        """THE GUARD. Every spec this repo has is non-judgeable, and the
+        reviewer is sent to exactly those for the requirement-coverage and
+        norm-departure checks — both BLOCKING. If the narrowing ever starts
+        subtracting the plan instead of handing it over, this fails; the
+        finding count would not."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        (repo / ".prawduct").mkdir(exist_ok=True)
+        (repo / "src/app.py").write_text("x = 2\n")
+        plan = repo / ".prawduct/artifacts/build-plan-demo.md"
+        plan.parent.mkdir(parents=True, exist_ok=True)
+        plan.write_text("# Plan\n\n## Status\n\n- [ ] Chunk 01: demo\n")
+        result = _run_begin(repo, "--mode", "final")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        assert ".prawduct/artifacts/build-plan-demo.md" in manifest["files_oracle"], (
+            "the build plan was dropped, not delivered — the reviewer has no "
+            "oracle for Goal 2 or Goal 3"
+        )
+        assert manifest["files_reviewed"] == ["src/app.py"]
+
+    def test_the_fact_records_the_set_the_round_did_not_rate(self, tmp_path):
+        """The exclusion is auditable. A narrowing that leaves no trace of what
+        it dropped is indistinguishable from a reviewer that found less."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        (repo / ".prawduct").mkdir(exist_ok=True)
+        (repo / "src/app.py").write_text("x = 2\n")
+        (repo / ".prawduct/change-log.md").write_text("## entry\n")
+        assert _run_begin(repo, "--mode", "chunk", "--chosen-by", "t").returncode == 0
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        _write_partial(
+            repo, "reviewer", manifest["commit_reviewed"],
+            dispatch_id=manifest["id"], findings=[],
+        )
+        assert _run_consolidate(repo).returncode == 0
+        fact = _store_facts(repo, "review")[-1]
+        assert fact["body"]["files_oracle"] == [".prawduct/change-log.md"]
+        assert fact["body"]["files_reviewed"] == ["src/app.py"]
+
+    def test_an_all_prose_delta_does_not_widen_through_the_floor(self):
+        """R-3: `split_subject_oracle`'s floor exists only so a manifest stays
+        valid; counting the widening threshold through it would hand back every
+        prose file and refuse exactly the interval the threshold means to
+        discount. The two call sites of this one bound must agree here."""
+        prose = [f".prawduct/notes_{i}.md" for i in range(20)]
+        floored, _ = cc.split_subject_oracle(prose)
+        assert floored == prose, "the floor still guards manifest validity"
+        from lib import coverage_algebra
+        assert coverage_algebra.judgeable_files(prose) == [], (
+            "the counting path must see zero, not the floor's whole list"
+        )
+
+    def test_the_verify_arm_carries_the_prior_oracle_forward(self, tmp_path):
+        """R-5: a verify pass anchored to a review that read the plan must be
+        handed the plan. Rebuilding the oracle from the prior SUBJECT set alone
+        yields `[]` whenever the fix touched no record — the reviewer told in the
+        same breath that the manifest is authoritative and that `files_oracle` is
+        what the code is judged against."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        head_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        (repo / ".prawduct").mkdir(exist_ok=True)
+        prior_id = _seed_prior_review_with_blocker(
+            repo, head, head_tree=head_tree, head_commit=head
+        )
+        # Teach the prior fact an oracle, as a post-narrowing fact carries one.
+        path = evidence.store_path(repo)
+        lines = [ln for ln in path.read_text().splitlines() if ln.strip()]
+        out = []
+        for ln in lines:
+            fact = json.loads(ln)
+            if fact.get("id") == prior_id:
+                fact["body"]["files_oracle"] = [
+                    ".prawduct/artifacts/build-plan-demo.md"
+                ]
+            out.append(json.dumps(fact))
+        path.write_text("\n".join(out) + "\n")
+
+        (repo / "src/app.py").write_text("x = 2  # fixed\n")  # code-only fix
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        assert ".prawduct/artifacts/build-plan-demo.md" in manifest["files_oracle"], (
+            "the verify pass lost the plan the review it anchors to was reading"
+        )
+
+    def test_scope_widening_is_measured_on_the_subject_sets(self, tmp_path):
+        """Prose riding along on a fix must not demote the re-review. Both
+        counts are subject-set counts, so growth in files no finding can be
+        about cannot trip the threshold."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        TestVerifyResolutionsDispatch()._seed_and_fix(repo)
+        for i in range(2 * 1 + 6):
+            p = repo / f".prawduct/notes_{i}.md"
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(f"note {i}\n")
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 0, (
+            f"prose growth demoted the verify pass: {result.stderr!r}"
+        )
+
+
+class TestCarriedBlockersReachTheirReaders:
+    """End-to-end: both new sentences must ARRIVE, not merely be constructible.
+
+    The chunk's acceptance criterion is met entirely by two sentences reaching a
+    reader, so unit tests on the formatters prove nothing about delivery. Three
+    one-line regressions passed the whole suite green before these existed:
+    deleting the `print(roll_call)` at the dispatch site, dropping `carried` at
+    the `fact_to_cache_record` call, and hoisting the `carried` computation
+    above the resolution-append loop — the last of which invents blockers on a
+    clean pass, which is worse than the bug being fixed.
+
+    The prior round asked for a wiring test and got a unit test one level up;
+    the roll-call then shipped with the same gap. These reach the real call
+    sites through `_run_begin` / `_run_consolidate`.
+    """
+
+    def _seed_two_blockers(self, repo: Path) -> tuple[str, str]:
+        """Prior review carrying TWO blocking findings at the real tree, then a
+        fix in the working tree. Returns (head, prior review id)."""
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        head_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        (repo / ".prawduct").mkdir(exist_ok=True)
+        _set_marker(repo)
+        _write_manifest(
+            repo, head, id="rev-prior-0001",
+            head_tree=head_tree, head_commit=head,
+        )
+        _full_roster_partials(repo, head, findings_by_role={
+            "correctness": [
+                {"name": "First half", "goal": "Nothing Is Broken",
+                 "severity": "blocking", "recommendation": "fix",
+                 "files": ["src/app.py"]},
+                {"name": "Second half", "goal": "Nothing Is Broken",
+                 "severity": "blocking", "recommendation": "fix",
+                 "files": ["src/app.py"]},
+            ],
+        })
+        assert _run_consolidate(repo).returncode == 0
+        (repo / "src/app.py").write_text("x = 2  # fixed\n")
+        return head, "rev-prior-0001"
+
+    def test_dispatch_prints_the_roll_call_naming_every_inherited_blocker(
+        self, tmp_path
+    ):
+        """R-2's whole point: the reviewer must hold these ids BEFORE it writes
+        `resolutions`. Deleting the print at the dispatch site fails here."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _, prior_id = self._seed_two_blockers(repo)
+
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert "must come back with a verdict" in result.stdout
+        assert f"{prior_id}/R-1" in result.stdout
+        assert f"{prior_id}/R-2" in result.stdout
+
+    def test_the_roll_call_precedes_the_claim_directive(self, tmp_path):
+        """Order is a deliverable. The claim directive governs the only output
+        that can WEAKEN a gate and must keep the last word; a roll-call read
+        last pushes toward naming every id on it."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        self._seed_two_blockers(repo)
+
+        out = _run_begin(repo, "--mode", "verify-resolutions").stdout
+
+        assert out.index("must come back with a verdict") < out.index(
+            cc.RESOLUTION_IS_A_CLAIM_DIRECTIVE.strip()[:60]
+        )
+
+    def test_a_pass_naming_only_one_of_two_cannot_report_the_review_over(
+        self, tmp_path
+    ):
+        """#711 exactly: two blockers, one fix, one resolution named.
+
+        Dropping `carried` at the `fact_to_cache_record` call fails here.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head, prior_id = self._seed_two_blockers(repo)
+
+        _set_marker(repo)
+        _write_manifest(
+            repo, head, id="rev-verify-0002", mode=VERIFY_MODE,
+            roster=["reviewer"],
+            base_tree=_store_facts(repo, "review")[0]["body"]["head_tree"],
+        )
+        _write_partial(repo, "reviewer", head, resolutions=[
+            {"review_id": prior_id, "fid": "R-1", "disposition": "fixed"}
+        ])
+        result = _run_consolidate(repo)
+
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        record = json.loads(
+            (repo / ".prawduct" / ".critic-findings.json").read_text()
+        )
+        assert "THE REVIEW IS OVER" not in record["next_action"]
+        assert f"{prior_id}/R-2" in record["next_action"]
+        # The one it DID name must not be reported as outstanding.
+        assert f"{prior_id}/R-1" not in record["next_action"]
+        assert "NOT DONE" in result.stdout
+
+    def test_a_pass_naming_both_reports_the_review_over(self, tmp_path):
+        """The negative that keeps the check honest.
+
+        Hoisting the `carried` computation above the resolution-append loop
+        fails HERE — it would count findings this very pass just resolved and
+        report blockers on a clean pass.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head, prior_id = self._seed_two_blockers(repo)
+
+        _set_marker(repo)
+        _write_manifest(
+            repo, head, id="rev-verify-0002", mode=VERIFY_MODE,
+            roster=["reviewer"],
+            base_tree=_store_facts(repo, "review")[0]["body"]["head_tree"],
+        )
+        _write_partial(repo, "reviewer", head, resolutions=[
+            {"review_id": prior_id, "fid": "R-1", "disposition": "fixed"},
+            {"review_id": prior_id, "fid": "R-2", "disposition": "fixed"},
+        ])
+        result = _run_consolidate(repo)
+
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        record = json.loads(
+            (repo / ".prawduct" / ".critic-findings.json").read_text()
+        )
+        assert "THE REVIEW IS OVER" in record["next_action"]
+        assert "NOT DONE" not in result.stdout
+
+    def test_a_non_verify_consolidation_carries_nothing(self, tmp_path):
+        """The `is_verify` guard. A chunk review must not inherit blockers."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head, _ = self._seed_two_blockers(repo)
+
+        _set_marker(repo)
+        _write_manifest(repo, head, id="rev-chunk-0003")
+        _full_roster_partials(repo, head, findings_by_role={})
+        result = _run_consolidate(repo)
+
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert "NOT DONE" not in result.stdout
+
+
+class TestWideningBoundCountsTheCostSubset:
+    """The scope-widening threshold counts the COST subset on both sides, and
+    the prior side must be re-narrowed even though it is already a subject set.
+
+    Since the eligibility classifier, a fact's `files_reviewed` admits
+    deliverables and behaviour-governing prose — files that are subjects but
+    are not judgeable. This threshold asks the cost question, so it filters
+    both sides again. The re-narrowing therefore LOOKS redundant at the call
+    site and is not: dropping it inflates the prior count and loosens the
+    bound, so a delta that should force a full review slips through as a
+    partial. That failure is open, silent, and untested until this class.
+    """
+
+    def test_a_prior_subject_set_is_not_already_the_cost_subset(self):
+        """The premise. If these ever coincide the test below proves nothing."""
+        prior = ["plugin/lib/core.py", "plugin/docs/norms.md"]
+        assert ca_mod.review_subjects(prior) == prior
+        assert ca_mod.judgeable_files(prior) == ["plugin/lib/core.py"]
+
+    def test_dropping_the_prior_re_narrowing_would_loosen_the_bound(self):
+        """Same delta, two prior counts: the cost subset refuses, the raw
+        subject set admits. The gap is exactly what the second call closes."""
+        prior_subject_set = [
+            "plugin/lib/core.py",
+            "plugin/docs/norms.md",
+            "docs/a.md",
+            "docs/b.md",
+            "README.md",
+        ]
+        delta = [f"plugin/lib/m{i}.py" for i in range(8)]
+
+        narrowed = len(ca_mod.judgeable_files(prior_subject_set))
+        assert cc._scope_widened(len(delta), narrowed), (
+            "with the prior re-narrowed to the cost subset the bound refuses"
+        )
+        assert not cc._scope_widened(len(delta), len(prior_subject_set)), (
+            "counting the raw subject set admits the same delta — dropping the "
+            "re-narrowing fails OPEN, which is why the call is not redundant"
+        )
+
+
+# ---------------------------------------------------------------------------
+# The round budget — the terminating rule
+# ---------------------------------------------------------------------------
+
+
+CUMULATIVE_VERBOSE = cc.MODE_TOKEN_TO_VERBOSE["cumulative"]
+
+
+def _budget_repo(tmp_path: Path, rounds: int, *, mode: str = CUMULATIVE_VERBOSE,
+                 budget: "str | None" = None, findings=None,
+                 branch_commit=("src/app.py", "x = 2\n", "work")) -> "tuple[Path, str]":
+    """A feature branch off `main` carrying ``rounds`` recorded review facts.
+
+    The facts are seeded rather than produced by real dispatches because what
+    is under test is the POLICY over a count, not the counting — which
+    `count_branch_rounds` owns and `test_cumulative_gate` already pins.
+    """
+    repo = tmp_path / "r"
+    _init_repo(repo)
+    _commit_file(repo, "src/app.py", "x = 1\n", "init")
+    _git(repo, "checkout", "--quiet", "-b", "feature")
+    head = _commit_file(repo, *branch_commit)
+    prawduct = repo / ".prawduct"
+    prawduct.mkdir(exist_ok=True)
+    if budget is not None:
+        (prawduct / "project-state.yaml").write_text(f"review_round_budget: {budget}\n")
+    for i in range(rounds):
+        evidence.append_fact(
+            repo, "review", f"rev-round-{i}",
+            {
+                "base_tree": "a" * 40, "head_tree": "b" * 40, "mode": mode,
+                "head_commit": head, "scope": "budgeted",
+                "findings": list(findings or []),
+            },
+        )
+    return repo, head
+
+
+class TestRoundBudgetCounting:
+    """The ceiling is a policy over full rounds — which is not every review."""
+
+    def test_it_does_not_fire_below_the_ceiling(self, tmp_path):
+        repo, _ = _budget_repo(tmp_path, 5)
+        verdict = cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")
+        assert verdict == {
+            "status": "within", "spent": 5, "budget": 6,
+            "review_ids": [f"rev-round-{i}" for i in range(5)],
+        }
+
+    def test_it_fires_at_the_ceiling(self, tmp_path):
+        repo, _ = _budget_repo(tmp_path, 6)
+        assert cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")["status"] == "exhausted"
+
+    def test_the_default_is_six_with_no_declaration(self, tmp_path):
+        repo, _ = _budget_repo(tmp_path, 0)
+        assert cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")["budget"] == 6
+
+    def test_a_repo_override_wins_over_the_default(self, tmp_path):
+        repo, _ = _budget_repo(tmp_path, 2, budget="2")
+        verdict = cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")
+        assert verdict["budget"] == 2 and verdict["status"] == "exhausted"
+
+    def test_null_disables_it_entirely(self, tmp_path):
+        repo, _ = _budget_repo(tmp_path, 50, budget="null")
+        assert cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted") == {"status": "disabled"}
+
+    def test_verify_passes_are_not_counted(self, tmp_path):
+        """The deadlock guard, stated as a count.
+
+        A `verify-resolutions` pass is how a BLOCKING finding clears. If those
+        spent budget, a branch could exhaust itself on the very passes that
+        resolve its blockers and be left with a blocked gate and no command
+        that opens it.
+        """
+        repo, _ = _budget_repo(tmp_path, 20, mode=cc.MODE_TOKEN_TO_VERBOSE[
+            "verify-resolutions"])
+        verdict = cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")
+        assert verdict["status"] == "within" and verdict["spent"] == 0
+        # ...and they are still ANSWERED at exhaustion: their findings are as
+        # open as any other, so the sweep must see them.
+        assert len(verdict["review_ids"]) == 20
+
+    def test_an_underivable_count_never_refuses(self, tmp_path):
+        """Fail-soft, and in the opposite direction from the coverage gate.
+
+        A round that need not have run costs minutes; refusing one that WAS
+        needed leaves unreviewed work with no command that clears it.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        (repo / ".prawduct").mkdir()
+        verdict = cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")
+        assert verdict["status"] in ("unavailable", "within")
+        assert verdict["status"] != "exhausted"
+
+    def test_another_scope_on_the_same_branch_is_not_charged(self, tmp_path):
+        """The declared unit is one BODY OF WORK, and a branch is only sometimes
+        that. Counting lineage let a branch carrying two scopes charge one to the
+        other, which sizes the ceiling against a number nobody declared."""
+        repo, head = _budget_repo(tmp_path, 6, budget="3")
+        for i in range(6):
+            evidence.append_fact(
+                repo, "review", f"rev-other-{i}",
+                {
+                    "base_tree": "a" * 40, "head_tree": "b" * 40,
+                    "mode": CUMULATIVE_VERBOSE, "head_commit": head,
+                    "scope": "some-other-plan", "findings": [],
+                },
+            )
+        verdict = cc._round_budget_verdict(repo, repo / ".prawduct", "some-other-plan")
+        assert verdict["spent"] == 6
+        assert [i for i in verdict["review_ids"] if i.startswith("rev-round-")] == []
+
+    def test_an_unresolved_scope_is_unavailable_rather_than_branch_counted(self, tmp_path):
+        """No scope means no body of work to bound. Falling back to the branch
+        would answer a different question than the one declared — and would
+        sweep findings the refusal could then not render, because the census is
+        selected from the same set."""
+        repo, _ = _budget_repo(tmp_path, 50, budget="1")
+        verdict = cc._round_budget_verdict(repo, repo / ".prawduct", None)
+        assert verdict["status"] == "unavailable"
+        assert "scope" in verdict["reason"]
+
+
+class TestRoundBudgetConfigFallsSoft:
+    """`review_round_budget`'s fail-soft direction is load-bearing: a typo in a
+    stopping rule must not silently REMOVE the rule. Only `null` disables."""
+
+    def _budget(self, tmp_path, declared):
+        d = tmp_path / ".prawduct"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "project-state.yaml").write_text(
+            "" if declared is None else f"review_round_budget: {declared}\n"
+        )
+        from lib import core as _core
+        return _core.review_round_budget(d)
+
+    def test_absent_is_the_default_and_null_is_off(self, tmp_path):
+        assert self._budget(tmp_path / "a", None) == 6
+        assert self._budget(tmp_path / "b", "null") is None
+        assert self._budget(tmp_path / "c", "~") is None
+
+    def test_an_unparseable_value_keeps_the_rule(self, tmp_path):
+        assert self._budget(tmp_path / "a", "six") == 6
+        assert self._budget(tmp_path / "b", "6.5") == 6
+
+    def test_zero_and_negative_keep_the_rule(self, tmp_path):
+        """Both would otherwise refuse a scope's very first round, which no repo
+        means by typing them."""
+        assert self._budget(tmp_path / "a", "0") == 6
+        assert self._budget(tmp_path / "b", "-1") == 6
+
+    def test_the_three_scalar_states_are_distinguishable(self, tmp_path):
+        """The whole `null disables, absent does not` contract rests on this
+        distinction, which `read_str_yaml_key` collapses."""
+        from lib import core as _core
+        d = tmp_path / "s"; d.mkdir()
+        state = d / "project-state.yaml"
+        state.write_text("other: 1\n")
+        assert _core.read_scalar_yaml_key(state, "k") == (_core.YAML_SCALAR_ABSENT, None)
+        state.write_text("k: null\n")
+        assert _core.read_scalar_yaml_key(state, "k") == (_core.YAML_SCALAR_NULL, None)
+        state.write_text("k:\n")
+        assert _core.read_scalar_yaml_key(state, "k") == (_core.YAML_SCALAR_NULL, None)
+        state.write_text("k: 4  # inline\n")
+        assert _core.read_scalar_yaml_key(state, "k") == (_core.YAML_SCALAR_VALUE, "4")
+        assert _core.read_str_yaml_key(state, "k") == "4"
+
+    def test_the_template_ships_the_code_default(self):
+        """Three declarations with nothing comparing them is the root cause
+        `core.OPT_IN_FLAGS` was created for, and its parity test is boolean-only
+        by construction, so a scalar knob escapes it silently."""
+        from lib import core as _core
+        template = (ROOT / "templates" / "project-state.yaml").read_text()
+        declared = next(
+            line.split(":", 1)[1].strip()
+            for line in template.splitlines()
+            if line.startswith("review_round_budget:")
+        )
+        assert int(declared) == _core.REVIEW_ROUND_BUDGET_DEFAULT
+
+
+class TestRoundBudgetRefusal:
+    """What exhaustion DOES — the half that makes the refusal an answer."""
+
+    _FINDINGS = [
+        {"fid": "R-1", "severity": "warning", "goal": "Nothing Is Broken",
+         "title": "a warning", "files": ["src/app.py"]},
+        {"fid": "R-2", "severity": "note", "goal": "The Design Is Sound",
+         "title": "a note", "files": ["src/app.py"]},
+        {"fid": "R-3", "severity": "blocking", "goal": "Nothing Is Broken",
+         "title": "a blocker", "files": ["src/app.py"]},
+    ]
+
+    def test_exhaustion_exits_4_sweeps_non_blocking_and_spares_blocking(self, tmp_path):
+        from lib import dispositions as _d
+
+        repo, _ = _budget_repo(tmp_path, 6, budget="1", findings=self._FINDINGS)
+        result = _run_begin(repo, "--mode", "cumulative", "--scope", "budgeted")
+
+        assert result.returncode == 4, (result.stdout, result.stderr)
+        assert "round budget exhausted" in result.stdout
+        assert not (repo / PARTIALS_REL / "manifest.json").exists(), (
+            "a budget refusal writes no session state, like a no-review-needed"
+        )
+
+        store = evidence.read_facts(repo)
+        rows = {
+            row["fid"]: row["state"]
+            for review in _d.census(store, review_id="rev-round-0")["reviews"]
+            for row in review["rows"]
+        }
+        assert rows["R-1"] == _d.STATE_ACCEPTED
+        assert rows["R-2"] == _d.STATE_ACCEPTED
+        assert rows["R-3"] == _d.STATE_OPEN, (
+            "a BLOCKING finding was swept — the budget may end a review loop "
+            "and may NEVER open a gate"
+        )
+        assert "verify-resolutions" in result.stdout
+
+    def test_force_buys_the_round_anyway(self, tmp_path):
+        repo, _ = _budget_repo(tmp_path, 6, budget="1", findings=self._FINDINGS)
+        result = _run_begin(repo, "--mode", "cumulative", "--scope", "budgeted",
+                            "--force")
+        assert result.returncode != 4, (result.stdout, result.stderr)
+
+    def test_verify_resolutions_is_never_refused(self, tmp_path):
+        """The route that clears a blocker stays open at exhaustion. Whatever
+        this dispatch does next, it must not be the budget that stops it."""
+        repo, _ = _budget_repo(tmp_path, 6, budget="1", findings=self._FINDINGS)
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode != 4, (result.stdout, result.stderr)
+
+    def test_the_firing_is_recorded_as_a_countable_fact(self, tmp_path):
+        """A control ships under `name the yield you expect and emit it
+        observably`. The yield argument for six rests on a measurement taken
+        before the budget existed; only a record of real firings can falsify it
+        or retire the control."""
+        repo, _ = _budget_repo(tmp_path, 6, budget="1", findings=self._FINDINGS)
+        _run_begin(repo, "--mode", "cumulative", "--scope", "budgeted")
+        refusals = [
+            f for f in evidence.read_facts(repo)["facts"]
+            if f.get("kind") == "guard-refusal"
+            and (f.get("body") or {}).get("guard") == "critic-dispatch-round-budget"
+        ]
+        assert len(refusals) == 1, refusals
+        body = refusals[0]["body"]
+        assert body["spent"] == 6 and body["budget"] == 1
+        assert body["auto_accepted"] == 12 and body["blocking_left"] == 6
+
+
+class TestWideningBoundReachesTheDispatch:
+    """The bound is computed at TWO doors and pinned at one.
+
+    `TestWideningBoundCountsTheCostSubset` calls `_scope_widened` and the two
+    predicates on hand-built lists, so it stays green against a `begin_review`
+    that stopped narrowing — and the one existing dispatch-level test uses
+    `.prawduct/**` paths, which BOTH predicates exclude, so it passes either
+    way. This enters at the real door with a prior subject set the two
+    predicates answer DIFFERENTLY, which is the only shape that can tell them
+    apart.
+    """
+
+    #: 5 subjects, 1 of them coverage-priced. The gap between 5 and 1 is the
+    #: whole test: at 1 the bound refuses this delta, at 5 it admits it.
+    PRIOR_SUBJECTS = [
+        "plugin/lib/core.py",
+        "plugin/docs/norms.md",
+        "docs/a.md",
+        "docs/b.md",
+        "README.md",
+    ]
+
+    def _seed(self, repo: Path) -> None:
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        head_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        (repo / ".prawduct").mkdir(exist_ok=True)
+        _seed_prior_review_with_blocker(
+            repo, head, head_tree=head_tree, head_commit=head,
+            files_changed=list(self.PRIOR_SUBJECTS),
+            files_reviewed=list(self.PRIOR_SUBJECTS),
+        )
+
+    def test_the_dispatch_refuses_on_the_priced_count(self, tmp_path):
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        self._seed(repo)
+        _git(repo, "checkout", "--quiet", "-b", "feature/widen")
+        # 8 priced files: past 2*1+5, inside 2*5+5. Only the narrowed prior
+        # refuses, so this assertion fails the moment the call site stops
+        # narrowing — the fail-OPEN direction, where a re-review that owed a
+        # full pass proceeds as a partial.
+        for i in range(8):
+            _commit_file(repo, f"src/new_{i}.py", f"n = {i}\n", f"more {i}")
+        result = cc.begin_review(repo, "verify-resolutions")
+        assert result.get("kind") == "scope-widened", result
+        assert "8 coverage-priced" in result["reason"], result["reason"]
+        assert "prior review of 1" in result["reason"], result["reason"]
+
+    def test_the_premise_the_two_predicates_disagree_here(self):
+        """If these ever coincide the test above proves nothing."""
+        assert ca_mod.review_subjects(self.PRIOR_SUBJECTS) == self.PRIOR_SUBJECTS
+        assert ca_mod.judgeable_files(self.PRIOR_SUBJECTS) == ["plugin/lib/core.py"]
+
+
+class TestBudgetDoesNotPreemptTheFreeExit:
+    """"The loop is over" and "there was nothing to review" are different
+    answers — which is why exit 4 is a separate code from exit 3."""
+
+    def test_a_free_interval_still_takes_exit_3_on_an_exhausted_scope(self, tmp_path):
+        # The whole branch delta is records-only: the gate composes it as a free
+        # edge, and asking whether it needs a review is advertised as free.
+        # Checked before the free exit, the budget charged that question an
+        # auto-ACCEPT of every outstanding finding on the scope.
+        repo, _ = _budget_repo(
+            tmp_path, 6, budget="1",
+            branch_commit=(".prawduct/notes.md", "just a record\n", "records only"),
+            findings=[
+                {"fid": "R-1", "severity": "warning", "goal": "Nothing Is Broken",
+                 "title": "a warning", "files": ["src/app.py"]},
+            ],
+        )
+        result = _run_begin(repo, "--mode", "cumulative", "--scope", "budgeted")
+        assert result.returncode == 3, (result.stdout, result.stderr)
+        rows = {
+            row["fid"]: row["state"]
+            for review in _dispositions_mod.census(
+                evidence.read_facts(repo), review_id="rev-round-0"
+            )["reviews"]
+            for row in review["rows"]
+        }
+        assert rows["R-1"] == _dispositions_mod.STATE_OPEN, (
+            "asking a question the gate answers for free cost the builder every "
+            "outstanding finding"
+        )
+
+
+class TestGuardRefusalsReachTheirOwnQuery:
+    """`evidence list --kind guard-refusal` IS the yield query — the plan and the
+    change-log discharge the observable-yield obligation by naming it. A firing
+    it renders as a bare timestamped row cannot answer the retirement question,
+    so recording a field the lister drops only looks like emission."""
+
+    def _list(self, repo: Path) -> str:
+        proc = subprocess.run(
+            ["python3", str(HOOK), "evidence", "list", "--kind", "guard-refusal"],
+            cwd=str(repo), capture_output=True, text=True,
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
+        )
+        assert proc.returncode == 0, proc.stderr
+        return proc.stdout
+
+    def test_the_budget_refusal_lists_its_own_numbers(self, tmp_path):
+        repo, _ = _budget_repo(tmp_path, 6, budget="1", findings=[
+            {"fid": "R-1", "severity": "warning", "goal": "Nothing Is Broken",
+             "title": "a warning", "files": ["src/app.py"]},
+            {"fid": "R-2", "severity": "blocking", "goal": "Nothing Is Broken",
+             "title": "a blocker", "files": ["src/app.py"]},
+        ])
+        assert _run_begin(repo, "--mode", "cumulative", "--scope", "budgeted").returncode == 4
+        out = self._list(repo)
+        assert "guard=critic-dispatch-round-budget" in out
+        assert "rounds=6/1" in out, out
+        assert "accepted=6" in out, out
+        assert "blocking-left=6" in out, out

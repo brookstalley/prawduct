@@ -3,7 +3,7 @@ description: Onboard a repo to Prawduct — scaffold a new or existing repo onto
 argument-hint: "[target-path]"
 user-invocable: true
 disable-model-invocation: false
-allowed-tools: Bash(prawduct-hook init-product *), Bash(prawduct-hook coverage-scaffold *), Bash(prawduct-hook backlog provision *), Bash(python3 plugin/bin/prawduct-hook backlog provision *), Read, Glob
+allowed-tools: Bash(prawduct-hook init-product*), Bash(prawduct-hook coverage-scaffold*), Bash(prawduct-hook backlog provision*), Bash(python3 plugin/bin/prawduct-hook backlog provision*), Bash(prawduct-hook check-plugin-active*), Bash(python3 plugin/bin/prawduct-hook check-plugin-active*), Read, Glob
 ---
 
 You are onboarding a repo onto Prawduct under the **plugin** distribution model. Prawduct is installed as a Claude Code plugin (dev-time governance); a product commits only the install *reference* plus its own `.prawduct/` state — no framework files. Onboarding is the same whether the repo is brand-new or an existing codebase, and it operates on the consumer's own repo — there is no framework checkout to call back to.
@@ -50,8 +50,34 @@ When they do want it, onboard **owns provisioning for this entry path** (scrub o
   }
   ```
   On first trusted open, Claude Code adds the marketplace from this reference without prompting — but it **does not install the plugin**, because it never auto-installs one sourced from a repository. So tell the owner plainly: **every contributor runs `claude plugin install prawduct@prawduct` once**, and until they do, their clone runs with no hooks, no `/prawduct:*` and no gates, and Claude Code says nothing about it. The `CLAUDE.md` anchor is what tells such a session to raise it — do not describe onboarding as making governance automatic for the next person, because it does not.
+- **Integration base branch.** When the target's `origin/HEAD` names a branch outside `main`/`master` — a repo whose remote default is `develop` — the scaffold (and `/prawduct:migrate`) records `base_branch: <b>` in `project-state.yaml`, and reports it as `base_branch` in the JSON result. That scalar is what every diff-base gate anchors to: coverage, the cumulative Critic, and the PR gates. A trunk repo gets no key and needs none; a branch the remote names but has never fetched is deliberately not recorded (an unresolvable `base_branch:` fails those gates closed). **The remote's default is a good guess, not the truth.** If features merge onto a branch the remote does not default to — `origin/HEAD` says `main` while the team integrates on `develop`, the case detection cannot see — say so and have the owner set `base_branch:` by hand. Unset, the gates guess `main`, and a gitflow repo then reviews the whole `develop..main` promotion delta on every feature.
 - Governance activates only in the target's OWN session: **"Open `<target>` in a new Claude Code session — the hooks and the session briefing won't fire until then."**
 - After onboarding, run **`/prawduct:doctor`** in the repo anytime to health-check the install.
+
+### Last step: prove the plugin will actually load there — MANDATORY
+
+**Run `prawduct-hook check-plugin-active --path <target>` before you report success.**
+
+Writing the install reference is *not* what loads the plugin. The harness also needs a
+`prawduct@prawduct` record whose `projectPath` is the target, and a repo missing one starts every
+session with **no banner, no `/prawduct:*` skills, and no Stop-hook gates** — while its `CLAUDE.md`
+tells the agent that enforcement is structural. The agent reads that stanza, believes it, and
+proceeds ungoverned. This is the one failure the target repo cannot detect about itself: the probes
+and `/prawduct:doctor` that would report it are delivered by the plugin that did not load. **This
+session is the only one that can ask**, which is why the check is here and not in `doctor`.
+
+Route on the status, not on the exit code alone — there are three answers, and two of them exit 0:
+
+| Status | What to do |
+|---|---|
+| `active` | Report onboarding complete as usual. |
+| `inactive` (exit 1) | **Do not report success.** Relay the command's own output — it names the consequence, the exact `claude plugin install` line, and which other paths the plugin *is* installed for. The operator runs it; onboarding is not finished until they do. |
+| `unknown` (exit 3) | The check could not run — a harness-internal file was missing or unreadable. Say that it **was not established**, never that it passed. Tell them to confirm by opening the target and looking for the prawduct session briefing. |
+
+**Exit 3 is not a failure of onboarding** — it is the same *unverified* sentinel `check-released`
+carries, and it means the question went unanswered rather than answered badly. Do not treat it as
+`inactive` and do not treat it as `active`; relay the command's own text, which says both what was
+attempted and what remains unknown.
 
 ## Next: capture discovery
 

@@ -21,14 +21,24 @@ prawduct command precisely because ``.gitignore`` *is* in the reconcile set.
 conflicts, so a genuine two-sided edit to the *same* entry survives as both
 versions of the line rather than as a conflict to resolve: stamping ``release=``
 on one side while the other side edits the same tag line yields two tag lines.
-That shape is surfaced downstream rather than silently believed: the release
-gate runs ``change_log.validate_change_log_tags``, which fails closed when two
-tag lines set one key to different values and warns when an entry merely carries
-two. For a log whose normal traffic is "each branch prepends its own entry,"
-that trade is worth taking — verified, not assumed: two branches prepending
-tagged entries merge with each entry's tag line still under its own header,
-because the union driver concatenates whole hunks and never crosses them. A file
-with genuine concurrent in-place edits would not want this attribute at all.
+What it does NOT do is duplicate the entry: identical hunks are not conflicting,
+so an entry that lands on both sides is kept once.
+
+**Both halves are measured, and measuring them corrected this paragraph**
+(``tests/test_gitattributes_probes.py``). It used to claim the two-tag-line shape
+was surfaced downstream by ``change_log.validate_change_log_tags``. It was not:
+the driver concatenates whole HUNKS, so the second version lands *after* the
+first version's prose, and entry parsing stops its tag block at the first prose
+line — the second version was metadata to nobody and no validator ever saw it. A
+``release=`` could vanish in a merge under a caveat asserting it was caught.
+Parsing now counts tag lines past the prose (``ChangeLogEntry.unconsumed_tag_lines``)
+and the validator warns that they are read by nothing, which is what makes the
+sentence above true rather than reassuring.
+
+For a log whose normal traffic is "each branch prepends its own entry," that
+trade is worth taking: two branches prepending tagged entries merge with each
+entry's tag line still under its own header. A file with genuine concurrent
+in-place edits would not want this attribute at all.
 
 **Self-resolving, and resolution reads git's own answer.** The trigger and the
 resolution are the same observable state — ``git check-attr merge`` — so adding
@@ -122,7 +132,21 @@ def probe_change_log_union_merge(state: ProjectState, codebase: Codebase):
                 "advanced base conflicts there every time; union-merge keeps both "
                 "sides' entries instead"
             ),
-            recommended_action=f"add `{UNION_MERGE_LINE}` to .gitattributes and commit it",
+            # Addressed to the owner because it is genuinely theirs: `.gitattributes`
+            # is outside the plugin's write set, and that exclusion is part of what
+            # makes running prawduct a safe trust decision. So the concrete line
+            # lives here rather than in an agent field that can never act on it.
+            owner_action=(
+                f"Add the line `{UNION_MERGE_LINE}` to `.gitattributes` and commit it. It "
+                "is one line, and it changes nothing the log says — it only stops every "
+                "branch's entry from colliding on the same first lines at merge time. "
+                "Prawduct never writes that file itself, which is why this one is yours."
+            ),
+            # Empty, deliberately. This field means "the command the runtime
+            # executes", and there is none — the repair is a file edit the plugin
+            # is not allowed to make. It previously held the prose above, which the
+            # briefing rendered behind a literal "Run" prefix, instructing nobody.
+            recommended_action="",
             alternative_actions=("/prawduct:doctor",),
             priority="info",
         )

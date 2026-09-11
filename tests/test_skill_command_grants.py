@@ -22,6 +22,30 @@ careful.
 able to run pytest — `test_critic_skill_metadata.py`). This is the other
 direction, and the two are not substitutes: a skill that cannot run what it
 instructs fails silently, by prompting, at the moment a consumer needs it.
+
+## The house grant form
+
+Grants are matched as a literal PREFIX of the command string, so where the star
+sits decides what a grant covers. This repo writes ONE form, and this module is
+where it is defined:
+
+    Bash(prawduct-hook <command words>*)
+
+— the star **attached to the last command word, with no space before it**, and
+exactly one grant line per command. It covers the bare call and every argument
+form at once. `Bash(prawduct-hook <cmd> *)` — a SPACED star — does not cover a
+bare call: its prefix carries the trailing space, so something has to follow it,
+and `run prawduct-hook <cmd>` falls through to a permission prompt that nothing
+in an unattended run can answer. The old workaround was to write both spellings;
+the house form replaces the pair with one line that cannot fall out of step.
+
+The one exception is a command that takes **no arguments at all**
+(`test-status`, `resolve-base`, `check-pr-doc-only`): those are granted bare,
+`Bash(prawduct-hook <cmd>)`, because a star there would widen the grant past
+anything the command can do.
+
+`_covers` enforces the difference, so a starred-only grant paired with a bare
+call is now a red test rather than a silent runtime prompt (#730).
 """
 
 from __future__ import annotations
@@ -66,6 +90,33 @@ _BARE_GRANT_RE = re.compile(r"(?<![\w/-])prawduct-hook\s+([a-z][a-z0-9-]*)")
 #: failing.
 _SUBCOMMAND_WORD = re.compile(r"^[a-z][a-z0-9-]*$")
 
+#: The HOUSE GRANT FORM: the star is attached to the last command word, with no
+#: space before it — ``Bash(prawduct-hook lifecycle-repair*)``. A Bash grant is
+#: matched as a literal PREFIX of the command string, so where the star sits is the
+#: whole rule:
+#:
+#:   * attached — ``lifecycle-repair*`` — the prefix ends at the command name, so the
+#:     bare call AND every argument form match. One grant, both shapes.
+#:   * spaced — ``lifecycle-repair *`` — the prefix carries the trailing space, so
+#:     something must follow it. A **bare** call does not match, and falls through to
+#:     a runtime permission prompt that nothing in a headless run can answer.
+#:
+#: The tree used to demonstrate both remedies — the spaced star plus a second bare
+#: grant (``classify-diff-risk`` + ``classify-diff-risk *``), and the attached star
+#: (``review-stats*``) — which is how the class regrew after each instance was fixed.
+#: One form is now the house form, and it is the attached star: it is a single grant
+#: line per command instead of two that have to be kept in step.
+_STAR_ATTACHED = "*"
+_STAR_SPACED = " *"
+
+#: Command names that are a FAMILY rather than a command — the binary refuses them
+#: without an op, so writing one bare is a reference to the group, not an invocation.
+#: Anything not listed here is a leaf: ``prawduct-hook coverage-status`` is a whole
+#: command, and a grant that cannot run it bare is a real gap. Conflating the two is
+#: what let a starred-only grant read as covering a bare call — every single-word
+#: call was treated as an unrunnable group reference and waved through.
+_COMMAND_GROUPS = frozenset({"backlog", "advisory", "evidence", "test-evidence", "handoff"})
+
 
 def _hook_call_key(text: str, start: int) -> tuple[str, ...]:
     """The command words following a ``prawduct-hook`` match at ``start``.
@@ -79,11 +130,35 @@ def _hook_call_key(text: str, start: int) -> tuple[str, ...]:
     A ``--flag`` IS kept, as the second element and the last. That is what makes a
     group-level call distinguishable from the group: ``backlog --help`` is a command
     a skill must be granted, and a grant naming thirteen sub-ops does not confer it.
+
+    **A trailing star is PRESERVED**, as a final element that is one of
+    ``_STAR_ATTACHED`` / ``_STAR_SPACED`` — never folded into the command words. The
+    key used to end with ``.rstrip("*")``, which erased the one character the
+    starred-vs-bare defect turns on: ``Bash(prawduct-hook coverage-status *)`` and
+    the instruction ``prawduct-hook coverage-status`` reduced to the identical key,
+    so no amount of grant data could make the guard fire on this axis.
     """
     key: list[str] = []
-    for raw in text[start:].split()[:2]:
+    star = ""
+    #: Three tokens, not two, because a spaced star is a third token after two
+    #: command words (``backlog cache-query *``). The two-word ceiling on the KEY
+    #: itself is unchanged — the third token is only ever read for a star.
+    for raw in text[start:].split()[:3]:
         ended = "`" in raw
-        token = raw.split("`")[0].strip(",.;:)").rstrip("*")
+        token = raw.split("`")[0].strip(",.;:)")
+        if token == _STAR_ATTACHED:
+            star = _STAR_SPACED
+            break
+        stripped = token.rstrip("*")
+        if stripped != token:
+            star = _STAR_ATTACHED
+            token = stripped
+            if token.startswith("--") or _SUBCOMMAND_WORD.match(token):
+                if len(key) < 2:
+                    key.append(token)
+            break
+        if len(key) == 2:
+            break
         if token.startswith("--"):
             key.append(token)
             break
@@ -92,7 +167,14 @@ def _hook_call_key(text: str, start: int) -> tuple[str, ...]:
         key.append(token)
         if ended:
             break
-    return tuple(key)
+    return tuple(key) + ((star,) if star else ())
+
+
+def _split_star(key: tuple[str, ...]) -> tuple[tuple[str, ...], str]:
+    """A key as (command words, star) — the star being "" where there is none."""
+    if key and key[-1] in (_STAR_ATTACHED, _STAR_SPACED):
+        return key[:-1], key[-1]
+    return key, ""
 
 
 def _covers(grant_key: tuple[str, ...], call_key: tuple[str, ...]) -> bool:
@@ -100,13 +182,35 @@ def _covers(grant_key: tuple[str, ...], call_key: tuple[str, ...]) -> bool:
 
     A broader grant covers a narrower call (``backlog *`` covers ``backlog list``);
     the reverse is the defect — ``backlog list *`` does not confer a bare
-    ``backlog --help``. A call naming only a group is a REFERENCE rather than an
-    invocation (the binary refuses it without an op), so it is satisfied by any
-    grant into that group and this rule only bites where a second token is written.
+    ``backlog --help``.
+
+    **A spaced star does not cover a bare call.** ``Bash(prawduct-hook coverage-status *)``
+    is the prefix ``prawduct-hook coverage-status `` — trailing space included — and
+    the instruction ``run prawduct-hook coverage-status`` does not carry it. Only the
+    attached star (the house form) covers both shapes from one line.
+
+    A call naming only a FAMILY (`_COMMAND_GROUPS`) is a REFERENCE rather than an
+    invocation — the binary refuses it without an op — so it is satisfied by any
+    grant into that group. A single-word LEAF command is a real invocation and gets
+    no such pass; that distinction is the whole fix.
+
+    The converse direction — a bare-only grant against a call that takes arguments —
+    is deliberately left lenient here (#730 scopes it out, and sizes it at
+    ``pr/SKILL.md``'s ``test-status`` / ``check-cumulative-critic`` / ``resolve-base``).
     """
-    if len(call_key) == 1:
-        return bool(grant_key) and grant_key[0] == call_key[0]
-    return len(grant_key) <= len(call_key) and call_key[: len(grant_key)] == grant_key
+    grant_words, grant_star = _split_star(grant_key)
+    call_words, _ = _split_star(call_key)
+    if not grant_words or not call_words:
+        return False
+    if len(call_words) == 1 and call_words[0] in _COMMAND_GROUPS:
+        return grant_words[0] == call_words[0]
+    if len(grant_words) > len(call_words):
+        return False
+    if call_words[: len(grant_words)] != grant_words:
+        return False
+    if grant_star == _STAR_SPACED and len(call_words) == len(grant_words):
+        return False
+    return True
 
 
 #: The self-hosted spelling: reaches the hook through the in-tree checkout. Optional
@@ -210,6 +314,73 @@ def test_the_sweep_has_subjects() -> None:
     files = _skill_files()
     assert len(files) >= 8, f"only {len(files)} skills found"
     assert any(_frontmatter_grant(p.read_text(encoding="utf-8")) for p in files)
+
+
+def _key(spelling: str) -> tuple[str, ...]:
+    """The key for one written ``prawduct-hook …`` spelling, grant or call."""
+    match = re.search(r"prawduct-hook(?=\s)", spelling)
+    assert match is not None, spelling
+    return _hook_call_key(spelling, match.end())
+
+
+def test_a_spaced_star_does_not_cover_a_bare_call() -> None:
+    """The rule the house grant form exists to make true (#730).
+
+    This is asserted directly on the predicate rather than by reverting a real
+    grant line, because the members are the churn and the rule is the thing. A
+    guard that only fires on today's tree passes the day someone writes the
+    ninth instance.
+
+    Each row is (grant spelling, call spelling, covered?), and every one of them
+    is a shape the tree has actually carried.
+    """
+    cases = [
+        # The defect: the grant's prefix ends in a space, the call does not.
+        ("Bash(prawduct-hook coverage-status *)", "prawduct-hook coverage-status", False),
+        ("Bash(prawduct-hook backlog cache-query *)", "prawduct-hook backlog cache-query", False),
+        # The house form: one line, both shapes.
+        ("Bash(prawduct-hook coverage-status*)", "prawduct-hook coverage-status", True),
+        ("Bash(prawduct-hook coverage-status*)", "prawduct-hook coverage-status --json", True),
+        ("Bash(prawduct-hook backlog cache-query*)", "prawduct-hook backlog cache-query", True),
+        # A spaced star still covers what it always covered — an argument form.
+        ("Bash(prawduct-hook coverage-status *)", "prawduct-hook coverage-status --json", True),
+        # An argument-less command granted bare covers its bare call.
+        ("Bash(prawduct-hook resolve-base)", "prawduct-hook resolve-base", True),
+        # A grant into a family does not confer a DIFFERENT op in that family.
+        ("Bash(prawduct-hook backlog list*)", "prawduct-hook backlog pick", False),
+        # …but a bare family name is a reference, not an invocation: the binary
+        # refuses it without an op, so any grant into the family satisfies it.
+        ("Bash(prawduct-hook backlog list*)", "prawduct-hook backlog", True),
+    ]
+    wrong = [
+        (grant, call, expected)
+        for grant, call, expected in cases
+        if _covers(_key(grant), _key(call)) is not expected
+    ]
+    assert not wrong, (
+        f"star-aware coverage is wrong for: {wrong}. A grant is a literal prefix "
+        f"match, so `<cmd> *` requires a trailing space plus an argument and the "
+        f"bare call prompts; only the attached star covers both."
+    )
+
+
+def test_the_star_survives_the_key() -> None:
+    """``_hook_call_key`` must not erase the character the rule turns on.
+
+    The predicate above can only be right if the two spellings reach it as
+    different keys. They did not: the key was built with ``.rstrip("*")``, which
+    made ``coverage-status *`` and a bare ``coverage-status`` identical before
+    anything compared them — so no grant data could have made the guard fire.
+    """
+    starred = _key("Bash(prawduct-hook coverage-status *)")
+    attached = _key("Bash(prawduct-hook coverage-status*)")
+    bare = _key("prawduct-hook coverage-status")
+    assert len({starred, attached, bare}) == 3, (
+        f"the three spellings must be three keys, got {starred}, {attached}, {bare}"
+    )
+    # And a bare call in prose is still just its command words — a trailing
+    # sentence must not become a star or a second command word.
+    assert _key("run `prawduct-hook coverage-status` and read the chain") == ("coverage-status",)
 
 
 @pytest.mark.parametrize("skill_path", _skill_files(), ids=lambda p: p.parent.name)

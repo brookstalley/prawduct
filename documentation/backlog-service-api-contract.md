@@ -1,6 +1,6 @@
 # Backlog Service — API Contract
 
-`status: draft v3 — build-plan coherence sweep (2026-07-16, from the §16(6) Build-plan drill-down review): §1 canonical CLI pinned to `prawduct-hook backlog` (one entry point, O5; `prawduct backlog` established as doc-shorthand); §2.5 MG4 scrub `search --like` demoted to a post-cache accelerator (not a slice dependency — model-surfaced dedup over `list` in the cacheless slice). Prior v3 — coherence touch-up (2026-07-16, §12b), folded from the §16(5) Test-Specs drill-down review: split idempotency pinned (`split-op:` token — was an undecidable "by link"); file-upstream idempotency pinned (`source-key:` marker — was "keyed" with no key); the v2 "semantic hybrid-search-enablement-gate" corrected (no such gate — semantic issue search is GA/on-by-default; `--semantic` `unsupported` is a capability probe); "never deletes issues" tightened to the load-bearing "never reuses numbers." Prior v2 — independent-review fold (2026-07-16): a fresh-eyes design critic + a gh/GitHub-fact verifier reviewed v1. Folded — C1: GV3 given a home (new §2.6) — closed_by is native-timeline-authoritative on close-on-merge, an optional handle on manual close, and the bidirectional drift sweep is a janitor workflow (coherence: closed_by added to Data Model §1.1 v3); C2: merge/split crash-safe recovery write-order specified (redirect-before-close, parallel to set-status); C3: retryable disentangled from the G2 never-block obligation (never-block = degrade on ALL errors, never retry-loop; retryable = orthogonal transient-vs-permanent hint for retry-drivers); C4: PV3/PV4 public-filing noted as native + delegated to Security §6; C5: "semantic pre-GA" corrected (semantic search is GA — the gate is per-repo hybrid-search enablement); C6: the "plugin semver IS the handle" claim scoped to the bundled CLI (MCP skew covered by its experimental tier); C7: verify/attach idempotency keys named; F2: list read-your-writes softened to strongly-consistent-in-practice; C10: gh exit 4 → auth mapping added; plus the offline-queue provisional-ID envelope state. The fact-verifier confirmed every load-bearing platform fact (80/min + ~500/hr caps, ETag/304, since-cursor, search-not-read-your-writes, MCP isError mapping, per-install lockstep, no-number-reuse). Prior v1: initial drill-down from PRD §16(4) — operation surface across three fronts + the two recorded decisions. · source: planning session · stage: design`
+`status: draft v3 — DM5 read side (2026-08-02, from the backlog-comments-read cycle): §2.1 `get` now returns the item's comment thread (the drill-down channel had a write op but no read — a clarifying comment was invisible to every adapter consumer); every read carries `comments_count` (Data Model §1.1/§1.3). Prior v3 — build-plan coherence sweep (2026-07-16, from the §16(6) Build-plan drill-down review): §1 canonical CLI pinned to `prawduct-hook backlog` (one entry point, O5; `prawduct backlog` established as doc-shorthand); §2.5 MG4 scrub `search --like` demoted to a post-cache accelerator (not a slice dependency — model-surfaced dedup over `list` in the cacheless slice). Prior v3 — coherence touch-up (2026-07-16, §12b), folded from the §16(5) Test-Specs drill-down review: split idempotency pinned (`split-op:` token — was an undecidable "by link"); file-upstream idempotency pinned (`source-key:` marker — was "keyed" with no key); the v2 "semantic hybrid-search-enablement-gate" corrected (no such gate — semantic issue search is GA/on-by-default; `--semantic` `unsupported` is a capability probe); "never deletes issues" tightened to the load-bearing "never reuses numbers." Prior v2 — independent-review fold (2026-07-16): a fresh-eyes design critic + a gh/GitHub-fact verifier reviewed v1. Folded — C1: GV3 given a home (new §2.6) — closed_by is native-timeline-authoritative on close-on-merge, an optional handle on manual close, and the bidirectional drift sweep is a janitor workflow (coherence: closed_by added to Data Model §1.1 v3); C2: merge/split crash-safe recovery write-order specified (redirect-before-close, parallel to set-status); C3: retryable disentangled from the G2 never-block obligation (never-block = degrade on ALL errors, never retry-loop; retryable = orthogonal transient-vs-permanent hint for retry-drivers); C4: PV3/PV4 public-filing noted as native + delegated to Security §6; C5: "semantic pre-GA" corrected (semantic search is GA — the gate is per-repo hybrid-search enablement); C6: the "plugin semver IS the handle" claim scoped to the bundled CLI (MCP skew covered by its experimental tier); C7: verify/attach idempotency keys named; F2: list read-your-writes softened to strongly-consistent-in-practice; C10: gh exit 4 → auth mapping added; plus the offline-queue provisional-ID envelope state. The fact-verifier confirmed every load-bearing platform fact (80/min + ~500/hr caps, ETag/304, since-cursor, search-not-read-your-writes, MCP isError mapping, per-install lockstep, no-number-reuse). Prior v1: initial drill-down from PRD §16(4) — operation surface across three fronts + the two recorded decisions. · source: planning session · stage: design`
 
 **Parent:** `documentation/backlog-service-prd.md` (PRD v4 — esp. AG1–6, G1–G5, O5/D8),
 `documentation/backlog-service-data-model.md` (entities, `set-status`, ready-work fan-out, IDs),
@@ -73,7 +73,7 @@ tier (§7).
 | Op | Acts on | Safe | Idem | Purpose | Parent |
 |---|---|---|---|---|---|
 | `file` (create) | new Item | – | **no** (unless keyed) | one-call create: `title`+`body` suffice, every other field defaultable; returns the ID **immediately**, dedup candidates **advisory-async** | AG2, AG3 |
-| `get` / `show` | one Item | ✓ | – | fetch one item (live; or cache w/ visible age) | Q1, TF1 |
+| `get` / `show` | one Item | ✓ | – | fetch one item (live; or cache w/ visible age) **with its comment thread** — the DM5 drill-down read (oldest-first `{id, author, created_at, body, url}`; `id` is the native comment id, the stable handle should comment-level ops ever exist); a failed thread fetch **degrades** — payload `comments_count` + a warning, never a failed get (G2) | Q1, TF1, DM5 |
 | `update` | one Item | – | field-wise | field-wise edit; **optimistic CAS** on state/`updated_at` → `conflict` for retry | CC2 |
 | `status` (set) | one Item | – | **yes** | the crash-safe two-axis transition — maps to the Data Model's idempotent **`set-status`** primitive (re-run = no-op); a close also records **`closed_by`** (§2.6) | DM2, CC1, GV3 |
 | ~~`claim` / `unclaim`~~ | — | — | — | **Retired in W1, whole**: the ops, the `claim_conflict` code, the staleness TTL and the `claimed_at` stamp. Taking an item is now `update <id> --working-branch owner/repo@branch` — a field like any other. It is a REMOVAL from a released CLI surface, and the additive-first norm does not cover one, so the argument is recorded rather than assumed: no removed name is reused for anything, `claimed_at` keys already written in issue bodies stay readable as unknown block keys forever (§7), `working-branch` ships in the SAME release, and every in-tree consumer was retired in the same change. An out-of-tree caller scripting `prawduct-hook backlog claim` breaks with no deprecation window — accepted, because the op was release-current rather than long-established | CC3 (superseded) |
@@ -114,7 +114,7 @@ relationship ops (marker field-home: Data Model §5).
 ### 2.4 Cross-project & automation
 | Op | Idem | Purpose | Parent |
 |---|---|---|---|
-| `file-upstream` | **keyed** | file into **another project's** backlog — no upstream checkout; stamps provenance; lands **`submitted`**; auth resolves by **target owner** (Security §1). **Keyed on a `source-key:` marker** = a digest of *(submitter identity, source item ref / title+body digest)*; a re-file with the same key **returns the existing upstream item, never a duplicate** (the A3/N2 retry-safety made concrete — distinct from the AG3 *advisory* dedup; marker field-home: Data Model §5) | XP1, XP2 |
+| `file-upstream` | **keyed** | file into **another project's** backlog — no upstream checkout; stamps provenance; lands **`submitted`**. **Two calls, never one:** a preview call renders the payload and returns a `payload-digest`, and the send call takes `--approve sha256:<digest>` — the digest is recomputed here from a **re-render**, never trusted from the caller, which is what makes "sent == previewed" a fact rather than a claim. **Five checks, each refusing independently and filing nothing:** the `Upstream filing` preference is not `never-file` (`filing-disabled`); the target is the plugin's own pinned constant and a caller-supplied `--repo` naming anything else is refused rather than honoured (`target-not-pinned`); the running repo is not the target, so nothing ever self-files (`self-file` — the refusal names the in-repo `file` route); the approval matches the re-rendered bytes (`approval-mismatch`, waived only under standing consent, which waives the digest *comparison* and never the token's presence); and the session carries a resolved `gh` login, so a filing is never anonymous (`auth`). None is retryable — an identical refused filing refuses identically. Identity for the self-file check resolves from **both** `backlog_service_repo` and the `origin` remote and **fails closed when neither resolves**. The §1 title rules are *enforced* on the send arm (the fourth adapter write path, Data Model § Direction) and reported advisorily on the preview, where nothing is written. **Keyed on a `source-key:` marker** = a digest of *(submitter identity, title+body)*; a re-file with the same key **returns the existing upstream item rather than duplicating it, within the recent window the dedup scan reads** — the lookup pages back a bounded distance (`upstream.DEDUP_SCAN_PAGES`), because the window this key exists for is a retry seconds after a create, and an unbounded walk would make every FIRST-time filing pay for the tracker's whole history. **This is the home of that claim; other surfaces cite it rather than restating it.** So "no duplicate" means "no duplicate in the window", and a re-file long after the fact can duplicate — the miss path is non-fatal by design (a duplicate a maintainer can close), and none of the five refusal checks runs through it. The A3/N2 retry-safety made concrete — distinct from the AG3 *advisory* dedup; marker field-home: Data Model §5 | XP1, XP2 |
 | `batch` | **per-item** | apply N idempotent mutations in few paced calls; **not transactional** — returns a **per-item result array** (partial success is real: some `ok`, some `rate_limited`); safe to re-run | AU2, TF3 |
 | `sync` | **yes** | warm the optional cache via the **changed-since cursor** (Q2); no-op when the cache is off | Q2, AG4 |
 | `refresh-counts` | **yes** | write the `briefing_counts` snapshot (degenerate cache, visible age) so session start never waits | GV2 |
@@ -174,8 +174,16 @@ field home.)*
 **Item shape = the Data Model entity** (§1.1), not restated here. Contract-level rules:
 
 - **Inputs.** Only `title`+`body` are required to `file` (AG2); every other field is optional and
-  backfillable. IDs accept `owner/repo#number` · `repo#number` · `repo-number` · `repo/number` and
-  **normalize** to canonical (D4). Soft-enum values (`stage:`,`kind:`,…) are **advisory** — an unknown
+  backfillable. IDs accept `owner/repo#number` · `repo#number` · `repo-number` · `repo/number` ·
+  bare `number`/`#number` and **normalize** to canonical (D4). The short and shell forms need a
+  `--repo` owner; the bare forms carry no repo either and need the full `--repo`, so an owner alone
+  will not resolve one. Bare forms are accepted from OPERATOR INPUT only — a ref parsed out of issue
+  body text (`superseded_by`) resolves canonically or not at all, since body text is writable by
+  anyone who can file an issue. Normalization also enforces **one canonical form per item**: the
+  number is re-rendered from its integer value, so `#007` and `#7` are one id, and the digit class is
+  ASCII `[0-9]` only, so a non-ASCII decimal digit is rejected rather than normalized into a canonical
+  id GitHub cannot resolve. The grammar's home is Data Model §5; the list above is a summary of it.
+  Soft-enum values (`stage:`,`kind:`,…) are **advisory** — an unknown
   value is *flagged, not rejected* (DM1); the hard reject is reserved for genuine ambiguity (unknown
   *status*, malformed ID). A digit-suffix token (`ADR-12`) matches both `repo-number` and the
   migrated-PFX alias grammar; precedence is fixed (Data Model §5): with `--repo` present the
@@ -267,6 +275,12 @@ restate the numbers, correctly, because a third copy is a third drift source.
 | `unavailable` | backend unreachable — the G2 floor, degrade to cache-or-"unavailable" | **yes** | G2, AG4 |
 | `rate_limited` | hit 80/min or the ~500/hr content cap | **yes** (backoff) | NF3 |
 | `unsupported` | op needs an absent layer (fulltext w/o cache; `search --semantic` where the capability is **genuinely absent** — e.g. a GHES instance without semantic issue search). On GitHub.com semantic search is **GA and on by default**, so this is a **capability probe, not a per-repo enable-gate** (that gate does not exist); exceeding the ~10/min budget is `rate_limited`, not this | no | §6 |
+| `filing-disabled` | `file-upstream` check 1: the product's `Upstream filing` preference is `never-file` | no | XP7 |
+| `target-not-pinned` | `file-upstream` check 2: `--repo` names something other than the plugin's pinned upstream constant. Refusing beats honouring — a caller-chosen target is the trust boundary this op exists to hold | no | XP7 |
+| `self-file` | `file-upstream` check 3: the running repo resolves to the pinned target, so the filing would be prawduct reporting to itself through the minimized path. The message names the in-repo `file` route; the check **fails closed** when identity resolves from neither `backlog_service_repo` nor the `origin` remote | no | XP7 |
+| `approval-mismatch` | `file-upstream` check 4: `--approve` does not match a digest re-rendered here, so the owner approved bytes other than the ones about to be sent | no | XP7 |
+
+**The four `file-upstream` refusals classify with `validation` at the exit code** (the caller asked for something the contract forbids), and exist as distinct codes only so a caller can tell *which* check refused without parsing prose. The fifth check refuses with `auth` above, which already means what it needs to mean. None is retryable, and none of the five writes anything before refusing — "an error was returned" and "nothing was filed" are different guarantees, and this contract promises the second.
 
 **Security binding (Security §4).** Errors are built from **known fields, never by echoing raw
 `gh`/subprocess/HTTP output** — that is how a token leaks into an error string; the denylist scrub is
@@ -350,7 +364,10 @@ never as *published*.
 Small choices expensive to reverse once consumers depend on them:
 
 - **IDs (D4):** canonical `owner/repo#number`; short `repo#number` **same-owner only** (else
-  `ambiguous_id`). Accept the four spellings (§3), normalize on the way in.
+  `ambiguous_id`); bare `number`/`#number` **same-repo only, and from operator input only**. Accept
+  the spellings listed in §3, normalize on the way in — re-rendering the number from its integer value
+  (`#007` and `#7` are one id) and rejecting non-ASCII decimal digits, so one item never carries two
+  canonical forms. Data Model §5 is the grammar's home.
 - **Timestamps:** **ISO-8601, UTC** — matches the Data Model's `verified.on`.
 - **Enums:** named string values, never magic ints; **soft** (unknown → `warning`, not reject; DM1).
 - **null vs. absent:** absence = "unset / use default"; explicit `null` = "clear this field." A
@@ -381,6 +398,16 @@ Authn/authz live in the Security Model; this names the **API-boundary** failure 
   partial exception is **`working_branch`**, whose *referent* is checked at the write (the branch
   must exist on the named repo) — so it cannot point at nothing, though who claims it and why
   remains self-asserted like every other block field.
+  `update` writes `title`, `body`, the soft-enum facets, `tags`, the block-authoritative
+  `--affected`/`--working-branch`, and the **editorial** block fields
+  `--refs`/`--revisit`/`--closed-by` (each valued; an empty value clears); `file` additionally
+  accepts `--refs`. Every other block field is import-only or owned by the op holding its invariant
+  (Data Model §1.2) and is **rejected by name**, never silently ignored, so a typo and a
+  mass-assignment attempt are equally visible.
+  **The allowlist binds keys; a second guard binds values.** Block values are body text in a
+  line-based format, so a value carrying any `str.splitlines()` separator injects sibling fields —
+  reaching the very keys the allowlist just rejected. Such values are rejected at the op boundary,
+  by a predicate derived from the parser rather than an enumerated separator set.
 - **Excessive data exposure.** JSON returns **item fields only** — never tokens, auth state, or the
   cache path (§4).
 - **Resource / rate bounds.** Caller-drivable cost is bounded: `batch`/`import` **pace under the 80/min
@@ -393,6 +420,16 @@ Authn/authz live in the Security Model; this names the **API-boundary** failure 
   not by a bespoke endpoint. Abuse handling (PV4) is **native GitHub controls + the quarantine**, gated
   structurally on the governed-intake path. The mechanism and trust boundary are the **Security Model's
   (§6/F6/F7)** — this surface only exposes the `list` triage query over it.
+- **`quarantine` and `--untriaged` are not the same set, and the difference is an unbuilt predicate.**
+  Quarantine is defined by AUTHOR — a *non-collaborator's* unlabeled filing (Security §6/F7).
+  `list --untriaged` selects by LABEL only: every unlabeled issue, whoever filed it, the owner's own
+  hand-filed drafts included (`query.py`, the PROV-2 scope inversion). So quarantine is a strict
+  subset, and today it is served by its superset because the author predicate is not implemented.
+  That direction is deliberate to record: the standing query returns MORE than quarantine, never
+  less, so triage over-includes rather than missing an anonymous filing. Narrowing it to the
+  specified set is tracked, not assumed — see the backlog item on the author predicate. Neither
+  name is retired; they denote different things and collapsing them would lose the author boundary
+  that makes quarantine a security concept rather than a hygiene one.
 
 ## 10. Conditional patterns
 

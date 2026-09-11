@@ -177,7 +177,12 @@ def _apply_one(record, entry: dict) -> tuple[object, dict, list[str]]:
     if entry.get("title") is not None:
         proposed = issuefmt.normalize_title(entry["title"].strip(), area)
         if proposed != record.title:
-            block["original_title"] = record.title
+            # `setdefault`, not assignment: the importer may already have stashed
+            # the true pre-migration title when it applied the `area:` prefix
+            # (#728). Overwriting it here would replace the source string with
+            # prawduct's own normalization of it — write-once means the FIRST
+            # writer wins, which is the only one holding the original.
+            block.setdefault("original_title", record.title)
             title = proposed
 
     body = record.body

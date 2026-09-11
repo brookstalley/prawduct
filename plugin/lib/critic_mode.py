@@ -18,9 +18,12 @@ return the first that fires:
 
   1. ``verify-resolutions`` — prior ``.critic-findings.json`` has
      BLOCKING/WARNING findings + ``commit_reviewed`` anchor resolves **and is
-     an ancestor of HEAD** + uncommitted diff is non-empty AND is a subset of
-     prior ``files_reviewed``. Signal: builder is in the middle of fixing
-     findings from the last review.
+     an ancestor of HEAD** + uncommitted diff is non-empty AND its judgeable
+     subset is within prior ``files_reviewed`` (the review's subject set,
+     which is re-narrowed here because it is not already judgeable-only —
+     the eligibility classifier admits behaviour-governing prose into a
+     subject set). Signal: builder is in the middle of fixing findings from
+     the last review.
   1b. ``verify-resolutions`` (post-cumulative fix, CRT-4J8W) — tree clean,
      prior record is a ``cumulative`` review, and the committed delta since
      its ``commit_reviewed`` holds ≥1 judgeable file under the widening
@@ -77,8 +80,8 @@ consumes them.
 from __future__ import annotations
 
 import json
-import re
 import subprocess
+import sys
 from pathlib import Path
 from typing import NamedTuple
 
@@ -104,13 +107,74 @@ _VALID_ARG_MODES = frozenset({
     "verify-resolutions",
 })
 
-# Matches a chunk's ``- **Critic mode:** <value>`` build-plan field.
-# Mirrors ``bin/prawduct-hook``'s ``_BUILD_PLAN_TYPE_RE`` shape (leading
-# list-item / bold markers tolerated). The value token is hyphen-aware so
-# ``verify-resolutions`` is captured whole.
-_BUILD_PLAN_CRITIC_MODE_RE = re.compile(
-    r"^[\s\-\*]*\*\*Critic mode:\*\*\s*([A-Za-z][\w\-]*)"
-)
+# The chunk field this module reads, built from the shared field grammar in
+# ``buildplan_refs`` — the same factories the ``**Type:**`` reader uses. Hand
+# copying the shape into a second module is how the two delimiter sets came to
+# disagree about ``<br>``, with nothing to tell anyone they had.
+#
+# Why the field is searched mid-line at all: authors compose chunk headers
+# (``**Type:** code · **Critic mode:** final``) and backtick the value
+# (``**Critic mode:** `chunk` ``); an anchored read finds neither, and finding
+# nothing is indistinguishable from a chunk that declares no mode — a
+# plan-mandated `final` runs as an inferred `chunk` with no one told. That
+# silent demotion is the one thing this field's reader exists to prevent.
+_BUILD_PLAN_CRITIC_MODE_RE = buildplan_refs.field_token_re("Critic mode")
+
+# The same field carrying something no mode token can be read out of —
+# ``**Critic mode:** (inferred — `chunk`)``, say. Silence is not available
+# there: it would say "this chunk declares no mode", and the author wrote one.
+#
+# Read only from FIELD POSITION, where binding is not, and that asymmetry is the
+# whole point. Binding is bounded twice over — only a VALID mode wins, and only
+# from a declaration position rather than a sentence mentioning the field.
+# REPORTING gets neither bound's benefit: it speaks about a value it could NOT
+# read, so it cannot check the value, and position is a heuristic. A note firing
+# on a Description line is one its reader learns to skip — and then skips on the
+# chunk that needed it. A mid-line unparseable value therefore goes unreported;
+# that is the silence this field had before, kept only where speaking would cost
+# more. Blank stays silent too: a field with nothing after it carries no intent
+# to contradict.
+_BUILD_PLAN_CRITIC_MODE_FIELD_RE = buildplan_refs.field_value_re("Critic mode")
+
+
+def _unrecognized_mode_note(token: str, line_num: int | None = None) -> str:
+    """The one line an ignored ``Critic mode:`` value earns.
+
+    Fail-open-to-inference is correct and is NOT changing: a typo'd mode must
+    not block a review, and nothing is skipped — inference runs and a mode is
+    chosen. What was missing is that the ignore never said so. Absent and blank
+    stay silent because they carry no intent to contradict; a value someone
+    typed does, and swallowing it let an author believe a mode was pinned when
+    it was not, discover otherwise from surprising behaviour, and file that as a
+    defect against prawduct.
+
+    The ``Type:`` hint is the specific trap worth naming: ``cumulative-final``
+    is a valid ``Type:`` and reads like a mode, so an author reaching for
+    "cumulative, and it's the final one" reaches for the field that takes
+    ``cumulative``. Naming the right field lands the correction where the
+    confusion actually is. The membership test reads
+    ``buildplan_refs._BUILD_PLAN_ALLOWED_TYPES`` rather than a copy, so a Type
+    added later keeps routing authors correctly.
+    """
+    where = f" (plan line {line_num})" if line_num is not None else ""
+    note = (
+        f"NOTE: chunk's `Critic mode:`{where} is {token!r}, which is not one of "
+        f"{', '.join(sorted(_VALID_ARG_MODES))}. Ignoring it and inferring the "
+        "mode instead — nothing was skipped."
+    )
+    if token in buildplan_refs._BUILD_PLAN_ALLOWED_TYPES:
+        note += (
+            f" {token!r} IS a valid `Type:` value — if that was the intent it "
+            "belongs in that field, which is an orthogonal axis."
+        )
+    return note
+
+
+#: The two modes whose interval is HEAD-tree → working-tree, and therefore the
+#: only two an explicit token can name into a provably empty review. `cumulative`
+#: reviews the committed bundle and `verify-resolutions` the delta since a prior
+#: review fact; neither goes empty because the working tree is clean.
+_WORKING_TREE_MODES = frozenset({"chunk", "final"})
 
 
 def infer_mode(
@@ -126,8 +190,9 @@ def infer_mode(
     args : str | None
         The ``$ARGUMENTS`` string passed to ``/critic``. When non-empty
         and parseable as one of the recognized mode tokens, that token
-        wins outright (rationale ``"explicit-args"``). Empty / None /
-        unrecognized → trigger inference.
+        wins (rationale ``"explicit-args"``) — except where its interval
+        is provably empty, see below. Empty / None / unrecognized →
+        trigger inference.
 
     Returns
     -------
@@ -138,15 +203,15 @@ def infer_mode(
         ``mode_chosen_by`` field in ``.critic-findings.json``.
     """
     project_dir = Path(project_dir)
+    prawduct_dir = project_dir / ".prawduct"
 
     if args is not None:
         stripped = args.strip()
         if stripped:
             token = stripped.split()[0]
             if token in _VALID_ARG_MODES:
-                return token, "explicit-args"
+                return _explicit_mode(token, prawduct_dir, project_dir)
 
-    prawduct_dir = project_dir / ".prawduct"
 
     # Resolve chunk progress ONCE, through the one owner of the question.
     # Re-deriving "which chunk is current" locally is what let the original
@@ -189,6 +254,17 @@ def infer_mode(
     # reporting a confident `chunk`.
     if plan_read.unreadable:
         return "final", f"rule-0 final (plan unreadable): {plan_read.unreadable}"
+
+    # A value was typed into `Critic mode:` and matched nothing. Inference
+    # proceeds — documented, correct, and not changing — but the ignore says so
+    # once. Unlike its escalating sibling above, this changes no verdict.
+    if plan_read.unrecognized:
+        print(
+            _unrecognized_mode_note(
+                plan_read.unrecognized, plan_read.unrecognized_line
+            ),
+            file=sys.stderr,
+        )
 
     if _rule_verify_resolutions_fires(prawduct_dir, project_dir):
         return "verify-resolutions", (
@@ -238,6 +314,44 @@ def infer_mode(
         "rule-4 final: no active build plan and no other rule fired — "
         "fail-safe to thoroughness"
     )
+
+
+def _explicit_mode(
+    token: str, prawduct_dir: Path, project_dir: Path
+) -> tuple[str, str]:
+    """Answer a named mode, redirecting only the two whose interval can be empty.
+
+    An explicit token is an operator instruction and the ladder does not
+    second-guess it: `cumulative` and `verify-resolutions` come back exactly as
+    typed, and so do `chunk` and `final` in every case but one.
+
+    That case is the defect (#684). `chunk` and `final` share the interval
+    HEAD-tree → working-tree, so on a clean tree it is EMPTY and `critic-begin`
+    refuses — after the operator has spent the dispatch. Rule 4 already declines
+    to *infer* a mode that cannot review anything (:func:`_clean_tree_redirect`),
+    but the explicit-args return sat above the whole ladder, so naming the mode
+    was the one way to reach the refusal the redirect exists to prevent.
+
+    **Redirect, not refuse, and say whose token moved.** `cumulative` is not a
+    downgrade of `final` here — it is the mode whose interval can SEE work that
+    is already committed, which is the demotion property the SKILL states for
+    every other refusal. The rationale therefore carries the original token, so
+    `mode_chosen_by` — a durable field of the review fact — records that the
+    operator asked for `final` and what moved it, rather than claiming the
+    operator chose `cumulative`. "Never silently downgrade" forbids the silence;
+    this is the opposite of silent.
+
+    **Only where the redirect works.** :func:`_clean_tree_redirect` returns ""
+    when `cumulative` would refuse in its own way (no resolvable base, nothing
+    committed beyond it, or a fresh cumulative record already covering HEAD).
+    Then the token stands and the operator gets the honest empty-interval
+    refusal instead of a redirect to a second one — the same rule rule 4 keeps.
+    """
+    if token in _WORKING_TREE_MODES and _working_tree_is_empty(project_dir):
+        redirect = _clean_tree_redirect(prawduct_dir, project_dir)
+        if redirect:
+            return "cumulative", f"explicit-args {token} redirected: {redirect}"
+    return token, "explicit-args"
 
 
 def _clean_tree_redirect(prawduct_dir: Path, project_dir: Path) -> str:
@@ -384,13 +498,29 @@ def _rule_verify_resolutions_fires(
     if not diff_files:
         return False
 
-    # Subset check: every uncommitted file must be in the prior review's
-    # surface. Even one file outside scope means the builder added new
-    # work alongside the fix — that's a chunk/final case, not a verify
-    # pass. The dispatch side enforces the same "diff ⊆ scope" contract in
+    # Subset check: every uncommitted JUDGEABLE file must be in the prior
+    # review's surface. Even one such file outside scope means the builder added
+    # new work alongside the fix — that's a chunk/final case, not a verify pass.
+    # The dispatch side enforces the same "diff ⊆ scope" contract in
     # ``critic_consolidate.begin_review``, whose verify arm anchors on
     # ``_prior_review_fact`` and refuses once ``_scope_widened`` trips.
-    return diff_files.issubset(prior_set)
+    #
+    # BOTH sides re-narrowed to the coverage-priced subset, and neither call
+    # is redundant. `files_reviewed` is the SUBJECT set, which since the
+    # eligibility classifier admits deliverables and behaviour-governing prose
+    # (`README.md`, `docs/*.md`) — so it is NOT already judgeable-only, and
+    # reading it as though it were is what makes the prior-side call look like a
+    # no-op to delete. Dropping either inflates a count and LOOSENS the bound,
+    # which fails open: a re-review that should have fallen back to a full one
+    # proceeds as a partial. The diff side is narrowed for the mirror reason —
+    # comparing a raw diff against a priced set would fail the subset the moment
+    # a fix touched a README, sending the cheap prose-plus-code fix this
+    # framework steers toward into a full round instead of a verify pass.
+    # `critic_consolidate._scope_widened` computes the identical bound and says
+    # the same thing; two implementations of one threshold have to agree.
+    return set(coverage_algebra.judgeable_files(sorted(diff_files))).issubset(
+        set(coverage_algebra.judgeable_files(sorted(prior_set)))
+    )
 
 
 def _cumulative_anchor(data: dict) -> str | None:
@@ -419,8 +549,9 @@ def _rule_postfix_fix_fires(prawduct_dir: Path, project_dir: Path) -> str:
     ``cumulative`` review (see :func:`_cumulative_anchor`), its
     ``commit_reviewed`` resolves, and the committed delta since it holds at
     least one judgeable file while staying under the verify-resolutions
-    widening threshold (``len(delta) > 2 * prior + 5`` — mirrored so the
-    rule never recommends a mode that would immediately demote). Without
+    widening threshold, measured on the judgeable subset of both sides —
+    mirroring ``critic_consolidate._scope_widened`` exactly, so the rule never
+    recommends a mode that would immediately demote. Without
     this rule the canonical no-args ``/prawduct:critic`` after a
     post-cumulative fix falls through to rule 2 and recommends a FULL
     bundle re-review — the run-count treadmill this rule exists to kill
@@ -469,14 +600,22 @@ def _rule_postfix_fix_fires(prawduct_dir: Path, project_dir: Path) -> str:
     # protected prose (`skills/`, `methodology/`, `templates/`, root CLAUDE.md)
     # IS judgeable, so a committed delta of only skill prose used to suppress the
     # verify-resolutions suggestion as though nothing reviewable had landed.
-    if not coverage_algebra.judgeable_files(list(delta)):
+    judgeable_delta = coverage_algebra.judgeable_files(sorted(delta))
+    if not judgeable_delta:
         return ""
-    if len(delta) > 2 * len(prior_set) + 5:
+    # BOTH sides through the predicate, matching `critic_consolidate`'s
+    # `_scope_widened`. `files_reviewed` is the subject set only on facts written
+    # since that narrowing shipped; every older one carries its whole diff, and
+    # this reader meets both. Narrowing the delta alone would measure a subject
+    # count against a raw one on exactly those older records — the same
+    # like-for-unlike comparison the narrowing itself introduced, inverted.
+    judgeable_prior = coverage_algebra.judgeable_files(sorted(prior_set))
+    if len(judgeable_delta) > 2 * len(judgeable_prior) + 5:
         return ""
     return (
-        f"committed delta of {len(delta)} file(s) since the prior "
-        f"cumulative review ({commit_reviewed[:12]}); a verify pass "
-        "extends the cumulative's vouching to HEAD at delta-review cost"
+        f"committed delta of {len(judgeable_delta)} coverage-priced file(s) "
+        f"since the prior cumulative review ({commit_reviewed[:12]}); a verify "
+        "pass extends the cumulative's vouching to HEAD at delta-review cost"
     )
 
 
@@ -703,6 +842,16 @@ class ChunkModeRead(NamedTuple):
 
     mode: str | None
     unreadable: str | None
+    #: The value found where a mode was expected, when no mode could be read
+    #: out of it. A THIRD state, for the same reason ``unreadable`` is a second:
+    #: absent and blank carry no intent to contradict, but a value someone typed
+    #: does. It must not escalate the way ``unreadable`` does — a typo'd mode is
+    #: no reason to spend a heavier review, and inference proceeding is correct
+    #: — so it changes no verdict and earns only a line saying it was ignored.
+    unrecognized: str | None = None
+    #: Which line of the plan carried it, so the note can point at it rather
+    #: than describe it. Set together with ``unrecognized``, never alone.
+    unrecognized_line: int | None = None
 
 
 def _critic_mode_for_chunk(
@@ -711,11 +860,19 @@ def _critic_mode_for_chunk(
     """Return ``chunk_id``'s declared mode and whether its plan could be read.
 
     Finds that chunk's ``### Chunk <id>:`` detail section and reads its
-    ``- **Critic mode:** <value>`` field. Returns the short-token value
-    only when it is one of the recognized modes; an absent, blank, or
-    unrecognized value yields ``ChunkModeRead(None, None)`` (fall through to inference rather
-    than honoring a typo as a mode override — same fail-open-to-inference
-    posture the methodology's "optional field" contract implies).
+    ``**Critic mode:** <value>`` field, wherever on its line it sits and
+    whether or not its value is backticked. Returns the short-token value
+    only when it is one of the recognized modes; anything else falls through
+    to inference rather than honoring a typo as a mode override — the same
+    fail-open posture the methodology's "optional field" contract implies.
+
+    What "anything else" carries differs, and the third field is why. An absent
+    or blank value yields ``ChunkModeRead(None, None)`` and says nothing. A
+    value someone typed that no mode can be read out of — a typo, or prose
+    where a token belongs — yields ``ChunkModeRead(None, None, <value>)``, and
+    the caller notes it: inference proceeds either way, but only one of the two
+    is an author being quietly overruled. The whole section is scanned, so a
+    real declaration always beats an unhonorable value above it.
 
     ``chunk_id`` is resolved by the caller via
     ``buildplan_refs`` — git-aware on a views-enabled feature branch
@@ -776,9 +933,33 @@ def _critic_mode_for_chunk(
         return ChunkModeRead(None, unparsed)
     if buildplan_refs.chunk_section_gap(chunk_id, section):
         return ChunkModeRead(None, None)
-    for _line_num, line in section.lines:
-        m = _BUILD_PLAN_CRITIC_MODE_RE.match(line)
-        if m:
-            token = m.group(1)
-            return ChunkModeRead(token if token in _VALID_ARG_MODES else None, None)
-    return ChunkModeRead(None, None)
+    # The whole section is scanned, and a valid token anywhere in it beats
+    # anything unhonorable found above it. Returning on first sight is what an
+    # unanchored read cannot afford: the marker appears in prose too — a
+    # Description line discussing the field is indistinguishable from a line
+    # declaring it — so first-sight would let a sentence *about* the field
+    # suppress the declaration below it. That is a lost declaration reported as
+    # a typo, which is the silent demotion this reader exists to prevent
+    # wearing a note that misdirects the author away from it.
+    unhonored: str | None = None
+    unhonored_line: int | None = None
+    for line_num, line in section.lines:
+        for match in buildplan_refs.iter_field_declarations(
+            line, _BUILD_PLAN_CRITIC_MODE_RE
+        ):
+            if match.group(1) in _VALID_ARG_MODES:
+                return ChunkModeRead(match.group(1), None)
+        if unhonored is not None:
+            continue
+        # Nothing bound, and this line puts the field in field position with a
+        # value after it. Reported for the reason a typo'd mode is: the author
+        # declared an intent, it is not being honored, and the only way they
+        # learn that today is by noticing the review came out shallower than
+        # they asked for. The VERBATIM value is what carries, truncated only
+        # where it stops being a value — a paraphrase they cannot grep for is
+        # a note that costs them the search it was supposed to save.
+        declared = _BUILD_PLAN_CRITIC_MODE_FIELD_RE.search(line)
+        if declared:
+            unhonored = declared.group(1)[: buildplan_refs.FIELD_VALUE_QUOTE_LIMIT]
+            unhonored_line = line_num
+    return ChunkModeRead(None, None, unhonored, unhonored_line)

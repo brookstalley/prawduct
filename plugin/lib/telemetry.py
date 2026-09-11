@@ -57,10 +57,15 @@ TOP_FILES_LIMIT = 10
 
 def _short_mode(mode) -> str:
     """Grouping key from the persisted verbose mode string —
-    ``"final (full review, ready for push)"`` -> ``"final"``."""
-    if not isinstance(mode, str) or not mode.strip():
-        return "unknown"
-    return mode.split(" (", 1)[0].strip()
+    ``"final (full review, ready for push)"`` -> ``"final"``.
+
+    Delegated, not reimplemented: the token vocabulary and the rendering this
+    undoes both live in ``critic_consolidate``. Lazy, because this fires only
+    inside ``review-stats`` and importing the dispatcher for the sake of a
+    string split would tax every other caller of this module."""
+    from . import critic_consolidate  # noqa: PLC0415 — lazy; see the docstring
+
+    return critic_consolidate.mode_token_of(mode)
 
 
 # Model-id families. The dispatcher records whatever model string it passed, so

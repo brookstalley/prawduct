@@ -188,11 +188,19 @@ class TestLegacyEvidenceCompat:
         self, gated_repo: Path
     ):
         """Product-authored evidence predating the field: absent ⇒ empty, so
-        an on-disk doc file not in changes_referenced still blocks — the
-        producer that doesn't declare unjudged files gets the old contract."""
-        (gated_repo / "NOTES.md").write_text("notes\n")
+        an on-disk file not in changes_referenced still blocks — the producer
+        that doesn't declare unjudged files gets the old contract.
+
+        **Re-anchored from `NOTES.md` to a `.py` (COV-8R2K).** The old subject
+        proved the legacy contract through a file the gate should never have
+        been gating in the first place: prose is not executable, so a
+        missing-coverage line on it was the defect, not the contract. The
+        contract this case is named for — absent field means empty, not
+        lenient — needs a subject the gate legitimately owns.
+        """
+        (gated_repo / "src" / "legacy.py").write_text("def legacy():\n    return 0\n")
         _git(gated_repo, "add", ".")
-        _git(gated_repo, "commit", "-q", "-m", "doc only")
+        _git(gated_repo, "commit", "-q", "-m", "undeclared code")
         _write_evidence(gated_repo, changes_referenced=[])
         # Strip the new field to simulate a legacy/product writer.
         evidence_path = gated_repo / ".prawduct" / ".test-evidence.json"
@@ -203,7 +211,7 @@ class TestLegacyEvidenceCompat:
         result = _run_gate(gated_repo)
 
         assert result.returncode == 1
-        assert "missing-coverage: NOTES.md" in result.stderr
+        assert "missing-coverage: src/legacy.py" in result.stderr
 
     def test_wrong_typed_unjudged_field_is_schema_violation(
         self, gated_repo: Path
@@ -221,3 +229,131 @@ class TestLegacyEvidenceCompat:
 
         assert result.returncode == 1
         assert "changes_unjudged" in result.stderr
+
+
+class TestNonExecutableFilesAreNotGated:
+    """COV-8R2K — the floor measures whether a test REFERENCES a file, so it
+    may only be applied to files a test could execute.
+
+    The floor is a symbol grep. Applied to prose it demands a reference that
+    can only be satisfied by a token test naming the file, and
+    `review-protocol.md` Goal 1 records a missing-coverage line as BLOCKING per
+    file with no softening — so a chunk whose deliverables legitimately include
+    a `.md` had no honest way through.
+
+    **Reachable, despite looking dormant.** A freshly-run stock
+    `bin/test-reference-verify` routes non-Python into `changes_unjudged`,
+    which masks the symptom. The gate recomputes `changed` at gate time,
+    independently of when the evidence was written, so any misalignment reopens
+    it: evidence written before a doc edit, product-authored evidence, legacy
+    evidence with no field, or a `coverage_level: executed` verifier. These
+    fixtures reproduce that window by declaring nothing unjudged.
+    """
+
+    def test_a_prose_file_is_a_note_not_a_blocker(self, gated_repo: Path):
+        (gated_repo / "NOTES.md").write_text("notes\n")
+        _git(gated_repo, "add", ".")
+        _git(gated_repo, "commit", "-q", "-m", "doc only")
+        _write_evidence(gated_repo, changes_referenced=[], changes_unjudged=[])
+
+        result = _run_gate(gated_repo)
+
+        assert result.returncode == 0, result.stderr
+        assert "missing-coverage" not in result.stderr
+        assert "no test can execute" in result.stdout
+        assert "NOTES.md" in result.stdout, (
+            "reported, not gated — a silent exemption teaches the operator "
+            "nothing about why the file was let through"
+        )
+
+    def test_framework_state_is_a_note_not_a_blocker(self, gated_repo: Path):
+        """The item's second repro: a branch editing `project-state.yaml` on an
+        otherwise-clean tree exited 1 with a missing-coverage line."""
+        (gated_repo / ".prawduct" / "project-state.yaml").write_text(
+            "coverage_required: true\nproject_name: x\n"
+        )
+        _git(gated_repo, "add", ".")
+        _git(gated_repo, "commit", "-q", "-m", "state edit")
+        _write_evidence(gated_repo, changes_referenced=[], changes_unjudged=[])
+
+        result = _run_gate(gated_repo)
+
+        assert result.returncode == 0, result.stderr
+        assert "missing-coverage" not in result.stderr
+
+    def test_a_governance_protected_md_is_also_not_executable(
+        self, gated_repo: Path
+    ):
+        """Protection makes fork-skill prose review-worthy, which is a
+        different claim from testable. A second suffix table would have had to
+        answer this one way; deriving it from `is_judgeable_path` plus the
+        single `.md` clause answers it correctly."""
+        (gated_repo / "methodology").mkdir()
+        (gated_repo / "methodology" / "building.md").write_text("# build\n")
+        _git(gated_repo, "add", ".")
+        _git(gated_repo, "commit", "-q", "-m", "governance prose")
+        _write_evidence(gated_repo, changes_referenced=[], changes_unjudged=[])
+
+        result = _run_gate(gated_repo)
+
+        assert result.returncode == 0, result.stderr
+        assert "missing-coverage" not in result.stderr
+
+    def test_the_gate_keeps_its_teeth_on_a_mixed_change(self, gated_repo: Path):
+        """The true-positive guard. Without it the exemption above could be a
+        gate that stopped gating: an uncovered `.py` shipped beside the prose
+        must still block, and must still be named."""
+        (gated_repo / "NOTES.md").write_text("notes\n")
+        (gated_repo / "src" / "untested.py").write_text("def lonely():\n    return 1\n")
+        _git(gated_repo, "add", ".")
+        _git(gated_repo, "commit", "-q", "-m", "prose + untested code")
+        _write_evidence(gated_repo, changes_referenced=[], changes_unjudged=[])
+
+        result = _run_gate(gated_repo)
+
+        assert result.returncode == 1
+        assert "missing-coverage: src/untested.py" in result.stderr
+        assert "missing-coverage: NOTES.md" not in result.stderr
+
+    def test_a_product_owned_config_file_still_gates(self, gated_repo: Path):
+        """The recorded residual, pinned so it is a decision and not a silent
+        gap: a non-code config OUTSIDE the metadata boundary is still
+        executable by this reading and still blocks. Closing it needs the
+        `coverage_exempt_paths:` knob COV-6T3P asks the owner for."""
+        (gated_repo / "config").mkdir()
+        (gated_repo / "config" / "app.yaml").write_text("debug: true\n")
+        _git(gated_repo, "add", ".")
+        _git(gated_repo, "commit", "-q", "-m", "config")
+        _write_evidence(gated_repo, changes_referenced=[], changes_unjudged=[])
+
+        result = _run_gate(gated_repo)
+
+        assert result.returncode == 1
+        assert "missing-coverage: config/app.yaml" in result.stderr
+
+    def test_the_unjudged_declaration_still_takes_precedence(
+        self, gated_repo: Path
+    ):
+        """Bucket order is asserted rather than assumed: a file the verifier
+        disclaimed is out of jurisdiction whatever its suffix, so it is
+        reported by the `skipped` note and counted once, not twice."""
+        (gated_repo / "NOTES.md").write_text("notes\n")
+        _git(gated_repo, "add", ".")
+        _git(gated_repo, "commit", "-q", "-m", "doc only")
+        _write_evidence(
+            gated_repo, changes_referenced=[], changes_unjudged=["NOTES.md"]
+        )
+
+        result = _run_gate(gated_repo)
+
+        assert result.returncode == 0, result.stderr
+        assert "outside the verifier's judgment" in result.stdout
+        nonexec_lines = [
+            line for line in result.stdout.splitlines()
+            if "no test can execute" in line
+        ]
+        assert all("NOTES.md" not in line for line in nonexec_lines), (
+            "a disclaimed file counted in both buckets would be reported twice "
+            "and subtracted twice from the covered count"
+        )
+        assert "ok: 0 judged changed file(s) covered" in result.stdout

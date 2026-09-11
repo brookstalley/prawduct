@@ -75,8 +75,14 @@ PROBE_TYPE = "retired-test-tracking"
 #: definition stays in one place.
 RETIRED_KEY = f"{lifecycle_repair.TEST_TRACKING_PARENT}.{lifecycle_repair.TEST_TRACKING_KEY}"
 
-#: The remedy, verbatim. One string so the recommendation and its test cannot
-#: recommend two different commands.
+#: The remedy, verbatim.
+#:
+#: Spelled out again at the construction site below rather than interpolated
+#: there. ``tests/test_advisory_actionability.py`` reads every
+#: ``AdvisoryCandidate`` construction *statically*, so a field holding a bare name
+#: is copy the lint cannot see — and a field it cannot see is one every rule
+#: silently skips. A literal at the site is the price of the field being checked
+#: at all; this constant stays as the canonical spelling for the prose around it.
 REPAIR_COMMAND = "prawduct-hook lifecycle-repair --apply"
 
 
@@ -139,10 +145,20 @@ def probe_retired_test_tracking(state: ProjectState, codebase: Codebase):
                 "round every time. Read `prawduct-hook test-status` for the real "
                 "result, and remove the block"
             ),
-            recommended_action=(
-                f"{REPAIR_COMMAND} (previews first without `--apply`); "
-                "`/prawduct:doctor` walks it with you"
+            # The block is hand-kept and load-bearing for nobody, so the decision is
+            # small — but it is still a deletion from a committed file, and the
+            # owner is the one who knows whether anything of theirs reads it.
+            owner_action=(
+                "Say go and the retired block comes out of project-state.yaml. It is a "
+                "hand-kept copy of a number the test evidence store already holds, nothing "
+                "in the runtime reads it, and no template creates it — so removing it costs "
+                "nothing and stops the correcting-it-forever tax. You see the diff first."
             ),
+            # One command, no prose. The preview-first affordance and the guided
+            # route used to ride along here behind a semicolon, which made the
+            # field unrunnable as written; both are facts about the route, not the
+            # route itself.
+            recommended_action="prawduct-hook lifecycle-repair --apply",
             # Named because the route genuinely differs: a repo that has not yet
             # cut over to the plugin gets this removed by `/prawduct:migrate`,
             # and `lifecycle-repair` is not its path. Recommending only the
@@ -151,6 +167,9 @@ def probe_retired_test_tracking(state: ProjectState, codebase: Codebase):
             alternative_actions=(
                 "/prawduct:migrate — if this repo has not yet cut over to the plugin, "
                 "the cutover removes it on the way through",
+                "/prawduct:doctor — walks the same repair with you, a step at a time",
+                f"{REPAIR_COMMAND.removesuffix(' --apply')} — the same command without "
+                "`--apply`, which previews the removal and writes nothing",
             ),
             priority="info",
         )

@@ -17,6 +17,68 @@ says so wherever it appears, so a repo pinned to the develop ref can tell what i
 cached review verdict from the released plugin is not replayed against this one. Rolling release
 notes accumulate here, and this section is renamed to the release number at the cut.
 
+**A stalled norm no longer expires in silence.** A `Stopgap:` field on an in-transition norm —
+the bounded exception that says "this half-finished state is deliberate until <date>" — was
+being written into governing artifacts but could not be read by the probe that watches them.
+Five live exceptions were sitting behind a clock nothing would ever fire. The probe now parses
+the field, stays quiet while the bound holds, and raises the transition once it lapses, naming
+each artifact and tracking item. The companion tripwire that was meant to catch this had been
+passing vacuously — it resolved none of this repo's norm citations and reported success — and
+now fails, or skips with a stated reason, instead of passing on an empty evaluation.
+
+**Coverage verdicts stop passing on a zero-length interval.** A blocking finding recorded where
+the base tree equals the target tree gated nothing, so a review could be composed *through* the
+node carrying it. The verdict now sweeps every review fact standing on the found path — self-loops
+included — before returning `covered`.
+
+**`resolve-base` asks the remote before guessing `main`.** An unset `base_branch:` fell back to a
+candidate list headed by `main`, so a gitflow repo that never recorded the knob had its feature
+branches scoped against the wrong base. It now consults `origin/HEAD` and prefers it when the
+remote names a non-main-family branch; onboarding and migration record the knob when the remote
+earns it. A repo whose remote default is `main` but which integrates on `develop` still sets it
+by hand — nothing can infer that.
+
+**Your learnings file has a route out.** The detail file was an unbounded sink with nothing ever
+leaving it; retired and superseded entries now move to a third file that the lookup skill reads
+only on a miss, so the working set stays small. Nothing is deleted. The index/detail pairing
+convention is now stated truthfully (a detail heading is a *prefix* of its index entry) and
+graded, which found four forwarding pointers resolving nowhere.
+
+**The advisory line now separates what you decide from what the agent runs.** Advisories carry an
+`owner_action` distinct from the runnable `recommended_action`, and the briefing orders them by
+triage sequence rather than severity alone — so a nudge that needs your ruling reads differently
+from one the agent can discharge itself. The oversized-state note also stops prescribing cuts it
+never inspected: each bullet is now gated on the content class actually being present in the file
+it names.
+
+**Smaller edges:** the session briefing's handoff pointer says when a note predates your session
+rather than only how old it is; `list` reports truncation in human output, not only in JSON; a
+doctor health check previews its `.gitignore` reconciliation instead of writing during a
+read-only check; and a `prawduct-hook` grant written with a spaced star no longer silently fails
+to cover the bare call the skill actually makes.
+
+**Your release now refuses to proceed on a suite nothing has said passes.**
+`check-releasability` — the Phase 0 gate — reads your saved test evidence and stops with
+`unproven-suite:` when there is none, when the saved run reports failures, when it predates the
+session and can no longer be matched to the tree, or when it reported itself degraded. Run the
+suite and record it, then re-run. It asks the same question `test-status` asks, so a repo cannot
+be green for the builder and stale for the release; and it is a check on the tree you have *now*,
+not on the tree you will tag. This exists because a prawduct release once shipped on a red suite:
+nothing on the release path read a test result, so the redness was visible only to whoever
+happened to run the tests.
+
+**A release-pending change-log entry with no `scope=` now stops the release instead of
+disappearing.** Such an entry belongs to no scope, so it reaches no row of a release
+classification table and can be neither shipped nor withheld — the gate was certifying releases
+over work it had never enumerated. It now refuses with `unclassifiable-pending-entry:` and names
+every offending entry with its line number, so the fix is one `scope=` per entry. **If you carry
+tagged, release-pending entries that never got a `scope=`, your next release will newly refuse**;
+an entry with no tag line at all is untouched, because the gate has never claimed authority over
+untagged history. That is the intended cost, and naming each entry is how it stays a minute's work
+rather than a hunt. The gate also now says what it looked at on every run — entries scanned, how
+many are release-pending, the scopes they enumerate — so a verdict can be audited against its own
+denominator.
+
 **Delegation has a guide, a default, and a place to record what your project decided.**
 `/prawduct:methodology delegation` opens it: when to delegate and when to stay serial, what
 a delegate verifies (what proves its own change, and nothing beyond it) while you keep integration
@@ -32,10 +94,49 @@ whether delegating is pre-approved. `off` is a complete answer and is honoured w
 names, citing the file each came from, and proposing nothing where it finds nothing. It never grades
 you on this.
 
+**A learnings sentinel is graded by your project's own test runner, or not graded at all.**
+Prawduct used to run every `sentinel=` learning under `python -m pytest`. In a project that does not
+use pytest that reported **failing** — against tests that were green — and the audit then argued to
+retire rules that were still enforced. There is now no default: declare `sentinel_command:` in
+`.prawduct/project-state.yaml` with a `{sentinel}` placeholder for the file to grade
+(`sentinel_command: npx vitest run {sentinel}`). **If you have `sentinel=` learnings and do not
+declare it, those sentinels report `ungraded` from this version on** — a verdict nobody took retires
+nothing, where the old default retired rules on a verdict it invented. `/prawduct:doctor` names the
+key when it sees the gap.
+
 **A verification record can say it was degraded.** A contended run can exit 0 having silently
 dropped part of your suite, and nothing in the counts separates that from a clean pass.
 `test-evidence record --degraded "<what did not report>"` says so, and the gates read it as stale
 rather than as a pass.
+
+**A build plan can declare the branch it governs.** Add `branch: <name>` to a build plan's
+frontmatter and every governance surface resolves that plan while that branch is checked out, ahead
+of `active_build_plan`. Two concurrent branches stop fighting over one line in `project-state.yaml`,
+and archiving the plan (or deleting the merged branch) ends the claim with nothing to un-point.
+
+**Several plans may declare one branch** — a release branch carrying two workstreams is ordinary.
+Governance picks the sole claimant, else the one with chunks left, else the plan `active_build_plan`
+names, else path order; the session briefing tells you which it chose, why, and what else claimed
+the branch. The scalar keeps a job: it is how you break that tie. **Nothing migrates and nothing is
+required** — a plan that declares no `branch:` resolves exactly as it did before, and a `branch:`
+field written as documentation simply becomes meaningful, inert wherever its value is not a real
+branch name.
+
+**One new advisory, and how to make it stop.** Every branch writes its change-log entry at the top
+of the same file, so merging an advanced base conflicts there every time while the two sides never
+actually disagree. A session-start advisory now recommends one line:
+
+```
+.prawduct/change-log.md merge=union
+```
+
+It recommends and never writes — `.gitattributes` is your committed configuration, not the
+plugin's. Add the line and commit it; the advisory resolves itself on the next sync. Declining is a
+legitimate answer and `/prawduct:doctor` will not grade your repo degraded for it. The trade is
+stated because it is real: union never conflicts, so a genuine two-sided edit to one entry's tag
+line survives as both versions. A twice-landed entry is *not* duplicated. Entry parsing now counts
+tag lines that end up past an entry's prose — where a union merge puts the second version — and
+warns that nothing reads them, so a merged-away `release=` cannot disappear quietly.
 
 ## v3.4.0
 

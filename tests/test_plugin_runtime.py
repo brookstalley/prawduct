@@ -1028,6 +1028,251 @@ class TestGitflowBaseResolution:
         assert "nonexistent-branch" in r.stderr
 
 
+class TestOriginHeadBaseResolution:
+    """#254 — an unset knob asks the remote before it guesses.
+
+    `_DEFAULT_BASE_CANDIDATES` is main-first, so a gitflow repo that never ran
+    `/prawduct:doctor` had every gate anchored to `merge-base(main, HEAD)` —
+    the whole `develop..main` promotion delta — with nothing saying so.
+    `refs/remotes/origin/HEAD` is the one place a clone records what the REMOTE
+    integrates onto, so it is consulted first.
+    """
+
+    def _repo(self, tmp_path, *, origin_head: "str | None", knob: str = "") -> Path:
+        """main + develop, with remote-tracking refs for both.
+
+        The remote refs are written with `update-ref` rather than by cloning: the
+        point under test is which ref base resolution PREFERS, and a real clone
+        would add a network-shaped fixture without changing that question.
+        """
+        repo = tmp_path / "oh"
+        repo.mkdir()
+        (repo / ".prawduct").mkdir()
+        if knob:
+            (repo / ".prawduct" / "project-state.yaml").write_text(knob)
+        _git(repo, "init", "-b", "main")
+        (repo / "code.py").write_text("x = 0\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "M1")
+        _git(repo, "checkout", "-b", "develop")
+        (repo / "code.py").write_text("x = 1\n")
+        _git(repo, "commit", "-am", "D1")
+        _git(repo, "checkout", "-b", "feature/x")
+        (repo / "code.py").write_text("x = 2\n")
+        _git(repo, "commit", "-am", "F1")
+        for branch in ("main", "develop"):
+            sha = _git(repo, "rev-parse", branch).stdout.strip()
+            _git(repo, "update-ref", f"refs/remotes/origin/{branch}", sha)
+        if origin_head:
+            _git(repo, "symbolic-ref", "refs/remotes/origin/HEAD", origin_head)
+        return repo
+
+    def test_origin_head_naming_develop_beats_the_main_first_guess(self, tmp_path):
+        repo = self._repo(tmp_path, origin_head="refs/remotes/origin/develop")
+        r = _run_in(repo, "resolve-base")
+        assert r.returncode == 0, r.stderr
+        assert r.stdout.strip() == "origin/develop", (
+            "the remote says it integrates onto develop; guessing main here is "
+            "the silent wrong range this fixes"
+        )
+
+    def test_a_trunk_origin_head_resolves_exactly_what_it_always_did(self, tmp_path):
+        """The consultation is additive. Where origin/HEAD says main the
+        historical list already answers the same ref, so it must not be
+        preferred — a trunk repo's base is byte-for-byte unchanged."""
+        repo = self._repo(tmp_path, origin_head="refs/remotes/origin/main")
+        r = _run_in(repo, "resolve-base")
+        assert r.returncode == 0, r.stderr
+        assert r.stdout.strip() == "origin/main"
+
+    def test_an_absent_origin_head_falls_through_to_the_candidate_list(self, tmp_path):
+        """Frequently absent — an `init` + `remote add` repo, an older clone, a
+        fetch-only mirror. Every failure degrades to the previous behaviour."""
+        repo = self._repo(tmp_path, origin_head=None)
+        r = _run_in(repo, "resolve-base")
+        assert r.returncode == 0, r.stderr
+        assert r.stdout.strip() == "origin/main"
+
+    def test_a_dangling_origin_head_falls_through(self, tmp_path):
+        """`symbolic-ref` reports a pointer without resolving it, so a stale
+        origin/HEAD left behind by a deleted branch reads as a name that names
+        nothing. Preferring it would fail every gate closed on a repo whose
+        candidate list still works."""
+        repo = self._repo(tmp_path, origin_head=None)
+        _git(repo, "symbolic-ref", "refs/remotes/origin/HEAD",
+             "refs/remotes/origin/deleted-branch")
+        r = _run_in(repo, "resolve-base")
+        assert r.returncode == 0, r.stderr
+        assert r.stdout.strip() == "origin/main"
+
+    def test_the_configured_knob_still_outranks_the_remote(self, tmp_path):
+        """origin/HEAD is a fallback for a MISSING knob, never an override of a
+        present one: the remote's default and the product's integration branch
+        are allowed to differ, and the knob is the one the owner wrote down."""
+        repo = self._repo(
+            tmp_path,
+            origin_head="refs/remotes/origin/develop",
+            knob="backlog_format_version: 2\nbase_branch: main\n",
+        )
+        r = _run_in(repo, "resolve-base")
+        assert r.returncode == 0, r.stderr
+        assert r.stdout.strip() == "origin/main"
+
+
+class TestTheRemoteBaseStaysTheBaseWhenLocalIsAhead:
+    """#311, decided NO — base resolution keeps `origin/<b>` even when local
+    `<b>` is ahead of it AND an ancestor of HEAD.
+
+    The case is real: anchoring to the stale remote makes a feature built on
+    unpushed integration commits read as spanning the whole unshipped range, so
+    `check_cumulative_critic` can report `uncovered` over work whose every
+    commit carries a clean review fact (COV-7K4N). Returning local `<b>` would
+    remove that at the root. It is refused on two counts, and the tests below
+    pin the decision so a future reader sees a choice rather than an omission:
+
+    - **Fail-open.** The commits in `origin/<b>..<b>` are inside the span today
+      and out of it under the change. A commit made straight onto local develop
+      -- no branch, no review fact -- would stop being audited by every gate
+      that resolves a base. A gate may not narrow what it audits on the strength
+      of where an operator's unpushed work happens to sit.
+    - **Stability.** `origin/<b>` is the same value in every clone and every
+      worktree of the clone; local `<b>` is not. Two agents on one branch would
+      resolve different bases and get different verdicts, and the verdict cache
+      keys on the base tree, so a per-worktree base also un-shares the cache.
+
+    What pays for the case instead is already shipped and is the cheaper half:
+    `diagnose_stale_remote_base` names the condition and `stale_base_probes`
+    nudges before the gate is hit, both prescribing `push origin <b>` -- a
+    required release step anyway, which fast-forwards the remote and re-anchors
+    the merge-base without any gate learning a second rule.
+    """
+
+    def _repo(self, tmp_path) -> Path:
+        repo = tmp_path / "ahead"
+        repo.mkdir()
+        (repo / ".prawduct").mkdir()
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            "backlog_format_version: 2\nbase_branch: develop\n"
+        )
+        _git(repo, "init", "-b", "main")
+        (repo / "code.py").write_text("x = 0\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "M1")
+        _git(repo, "checkout", "-b", "develop")
+        (repo / "code.py").write_text("x = 1\n")
+        _git(repo, "commit", "-am", "D1")
+        # The remote is pinned HERE; develop then advances locally.
+        sha = _git(repo, "rev-parse", "develop").stdout.strip()
+        _git(repo, "update-ref", "refs/remotes/origin/develop", sha)
+        (repo / "code.py").write_text("x = 2\n")
+        _git(repo, "commit", "-am", "release-prep(v9.9.9): unpushed integration commit")
+        _git(repo, "checkout", "-b", "feature/x")
+        (repo / "code.py").write_text("x = 3\n")
+        _git(repo, "commit", "-am", "F1")
+        return repo
+
+    def _coverage(self):
+        if str(ROOT) not in sys.path:
+            sys.path.insert(0, str(ROOT))
+        from lib import coverage  # noqa: PLC0415 — in-process import, mirrors other lib unit tests
+        return coverage
+
+    def test_the_base_stays_on_the_remote(self, tmp_path):
+        repo = self._repo(tmp_path)
+        r = _run_in(repo, "resolve-base")
+        assert r.returncode == 0, r.stderr
+        assert r.stdout.strip() == "origin/develop", (
+            "#311 decided NO — a nearer local base would narrow what every gate "
+            "audits based on where unpushed work happens to sit"
+        )
+
+    def test_the_condition_the_decision_declines_is_really_present(self, tmp_path):
+        """Without this the case above proves nothing: it would pass just as
+        well on a repo where local develop was not ahead at all."""
+        coverage = self._coverage()
+        repo = self._repo(tmp_path)
+        diagnosis = coverage.diagnose_stale_remote_base(repo, "origin/develop")
+        assert diagnosis is not None
+        assert diagnosis["local"] == "develop"
+        assert diagnosis["commits_ahead"] == 1
+        assert diagnosis["ancestor_of_head"] is True, (
+            "ancestor-of-HEAD is the exact condition #311 proposed to switch on"
+        )
+
+    def test_the_declined_case_is_answered_by_a_remedy_instead(self, tmp_path):
+        """The decision is only defensible because the operator is told what to
+        do. The diagnosis names the unpushed release-prep the advisory keys on."""
+        coverage = self._coverage()
+        repo = self._repo(tmp_path)
+        diagnosis = coverage.diagnose_stale_remote_base(repo, "origin/develop")
+        assert diagnosis["release_prep_subject"].startswith("release-prep(")
+
+    def test_pushing_is_what_moves_the_base(self, tmp_path):
+        """The remedy's EFFECT, with the un-pushed state as the control: once
+        the remote is fast-forwarded, the merge-base is the nearer tree the
+        rejected change would have chosen — so nothing is lost, only deferred
+        to an action the release flow already requires."""
+        coverage = self._coverage()
+        repo = self._repo(tmp_path)
+        assert coverage.diagnose_stale_remote_base(repo, "origin/develop") is not None
+        sha = _git(repo, "rev-parse", "develop").stdout.strip()
+        _git(repo, "update-ref", "refs/remotes/origin/develop", sha)  # the push
+        assert coverage.diagnose_stale_remote_base(repo, "origin/develop") is None
+        merge_base = _git(repo, "merge-base", "origin/develop", "HEAD").stdout.strip()
+        assert merge_base == sha
+
+
+class TestDocOnlyAndSuiteCoupledState:
+    """COV-4H7N — the doc-only fast path skips the Critic, the PR review AND
+    the suite in one move, so it has to clear the suite's question too.
+
+    The live case: PR #125 changed only `.prawduct/*.md` plus
+    `project-state.yaml`, rode this path, and broke
+    `tests/test_norm_probes.py::TestSilentAgainstThisRepo` on develop, where it
+    sat until an unrelated branch happened to run the suite.
+    """
+
+    @staticmethod
+    def _use_develop_base(repo):
+        # Uncommitted, so the knob itself never enters the develop...HEAD diff
+        # under test — same posture as TestDocOnlyProtectedPaths.
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            "backlog_format_version: 2\nbase_branch: develop\n"
+        )
+
+    def test_a_state_only_pr_is_refused_and_the_reason_names_the_coupling(
+        self, gitflow_repo
+    ):
+        self._use_develop_base(gitflow_repo)
+        _git(gitflow_repo, "add", ".prawduct/project-state.yaml")
+        _git(gitflow_repo, "commit", "-m", "F3 ratify the registry")
+
+        r = _run_in(gitflow_repo, "check-pr-doc-only")
+        assert r.returncode == 1, (r.stdout, r.stderr)
+        out = r.stdout + r.stderr
+        assert "not-doc-only" in out
+        assert "non-hermetic" in out, (
+            "the refusal must say WHY — the remedy for a suite coupling is a "
+            "suite run, not a review, and 'review-needing' sends the reader to "
+            "the wrong one"
+        )
+        assert ".prawduct/project-state.yaml" in out
+
+    def test_an_ordinary_bookkeeping_pr_still_takes_the_fast_path(
+        self, gitflow_repo
+    ):
+        """The inventory is named, not a `.prawduct/**` rule. A backlog- or
+        change-log-only branch keeps its fast path — widening to the prefix is
+        what this fix deliberately did not do."""
+        (gitflow_repo / ".prawduct" / "backlog.md").write_text("# Backlog\n\n## Open\n")
+        _git(gitflow_repo, "add", ".prawduct/backlog.md")
+        _git(gitflow_repo, "commit", "-m", "F3 file an item")
+        self._use_develop_base(gitflow_repo)
+
+        r = _run_in(gitflow_repo, "check-pr-doc-only")
+        assert r.returncode == 0, (r.stdout, r.stderr)
+
+
 class TestDocOnlyProtectedPaths:
     """PR-5K8D: governance-protected paths are never doc-only, even as .md.
 
@@ -2306,11 +2551,30 @@ class TestTreeValidatedFreshness:
         assert _run_in(repo, "test-status").returncode == 0, \
             "unchanged tree must read current despite predating the session"
 
-    def test_metadata_yaml_edit_is_current(self, tmp_path):
+    def test_metadata_edit_is_current(self, tmp_path):
+        """Bookkeeping churn is still free.
+
+        This used to write `.prawduct/project-state.yaml`, which COV-4H7N moved
+        into `TEST_COUPLED_STATE` — a non-hermetic test reads that one, so it
+        now correctly re-stales (pinned in `test_suite_coupled_state_edit_is_stale`
+        below). The property this case is named for is unchanged and is now
+        asserted on a file that really is inert to the suite.
+        """
         repo = self._seed(tmp_path, "meta")
-        (repo / ".prawduct" / "project-state.yaml").write_text("coverage_required: false\n")
+        (repo / ".prawduct" / "backlog.md").write_text("# Backlog\n\n## Open\n")
         assert _run_in(repo, "test-status").returncode == 0, \
-            ".prawduct/*.yaml is not judgeable — must stay current"
+            "ordinary .prawduct/ bookkeeping is not judgeable — must stay current"
+
+    def test_suite_coupled_state_edit_is_stale(self, tmp_path):
+        """COV-4H7N — the tree clause asks the SUITE's question, not the
+        reviewer's. `tests/test_norm_probes.py::TestSilentAgainstThisRepo` reads
+        the live `project-state.yaml`, so a run recorded before an edit to it
+        does not vouch for the tree after it. PR #125 is the live case: that
+        edit read `current` and broke develop."""
+        repo = self._seed(tmp_path, "coupled")
+        (repo / ".prawduct" / "project-state.yaml").write_text("coverage_required: false\n")
+        assert _run_in(repo, "test-status").returncode == 1, \
+            "a non-hermetic test reads project-state.yaml — editing it must re-stale"
 
     def test_non_protected_md_edit_is_current(self, tmp_path):
         repo = self._seed(tmp_path, "doc")
@@ -2318,10 +2582,10 @@ class TestTreeValidatedFreshness:
         assert _run_in(repo, "test-status").returncode == 0, \
             "a non-protected .md is not judgeable — must stay current"
 
-    def test_untracked_incoming_bug_note_is_current(self, tmp_path):
+    def test_untracked_scratch_note_is_current(self, tmp_path):
         repo = self._seed(tmp_path, "bug")
-        (repo / "incoming-bugs").mkdir()
-        (repo / "incoming-bugs" / "report.md").write_text("# bug report\n")
+        (repo / "scratch").mkdir()
+        (repo / "scratch" / "note.md").write_text("# scratch note\n")
         assert _run_in(repo, "test-status").returncode == 0, \
             "an untracked .md note is not judgeable — must stay current"
 
@@ -2395,6 +2659,95 @@ class TestTreeValidatedFreshness:
             "backdated --from-counts is stale (timestamp-only; no tree clause)"
 
 
+class TestUnanchoredFreshnessFailsClosed:
+    """STH-6D4Q — with no `.session-start`, the tree clause is the ONLY clause.
+
+    The no-marker path used to return `current` unconditionally: a schema
+    check, `failed == 0`, and the presence of a timestamp bought arbitrarily
+    old evidence a pass, with no tree check anywhere on that branch. It was
+    survivable only while the old boundary reset accidentally re-anchored an
+    unanchored worktree through `resume`; that repair is gone by design, so
+    the path is reachable indefinitely. An absent anchor now degrades the way
+    the plan committed to — closed — and the tree clause supplies the answer
+    a missing clock cannot.
+    """
+
+    def _seed(self, tmp_path, name: str, *, from_counts: bool = False) -> Path:
+        """A repo with recorded, backdated, passing evidence and NO marker."""
+        repo = tmp_path / name
+        repo.mkdir()
+        (repo / ".prawduct").mkdir()
+        (repo / "src").mkdir()
+        (repo / "src" / "app.py").write_text("def add(a, b):\n    return a + b\n")
+        (repo / "test_app.py").write_text("def test_ok():\n    assert True\n")
+        _git(repo, "init", "-b", "main")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "c1")
+        # The marker has to exist for `record` to run in a governed shape; it
+        # is removed below so the assertions run on the unanchored path.
+        _make_session_start(repo / ".prawduct", offset_seconds=-60)
+        if from_counts:
+            assert _run_in(repo, "test-evidence", "record", "--from-counts",
+                           "passed=1", "failed=0").returncode == 0
+        else:
+            assert _run_in(repo, "test-evidence", "record").returncode == 0
+        ev_path = repo / ".prawduct" / ".test-evidence.json"
+        ev = json.loads(ev_path.read_text())
+        ev["timestamp"] = "2000-01-01T00:00:00Z"
+        ev_path.write_text(json.dumps(ev))
+        (repo / ".prawduct" / ".session-start").unlink()
+        return repo
+
+    def test_untied_evidence_with_no_marker_reads_stale(self, tmp_path):
+        """The regression: `--from-counts` carries no `evidence_tree`, so with
+        no marker there is nothing left that can vouch for it. Old code said
+        `current` on a record timestamped in the year 2000."""
+        repo = self._seed(tmp_path, "untied", from_counts=True)
+        assert "evidence_tree" not in json.loads(
+            (repo / ".prawduct" / ".test-evidence.json").read_text()
+        )
+        result = _run_in(repo, "test-status")
+        assert result.returncode == 1, \
+            "no marker and no tree — nothing can vouch, must read stale"
+        assert "no session marker" in (result.stdout + result.stderr)
+
+    def test_unchanged_tree_with_no_marker_still_reads_current(self, tmp_path):
+        """The clause is hoisted, not tightened into a blanket refusal: an
+        unanchored worktree whose judgeable tree is byte-identical to the
+        recorded run's is still current. This is what keeps the change from
+        forcing a re-run on every ungoverned checkout."""
+        repo = self._seed(tmp_path, "unchanged")
+        assert _run_in(repo, "test-status").returncode == 0, \
+            "no marker but an unchanged judgeable tree — the tree vouches"
+
+    def test_judgeable_change_with_no_marker_reads_stale(self, tmp_path):
+        repo = self._seed(tmp_path, "changed")
+        (repo / "src" / "app.py").write_text("def add(a, b):\n    return a + b + 1\n")
+        assert _run_in(repo, "test-status").returncode == 1, \
+            "no marker and a judgeable edit — must read stale"
+
+    def test_non_judgeable_change_with_no_marker_stays_current(self, tmp_path):
+        """The unanchored path uses the SAME judgeability predicate as the
+        anchored one — a doc edit is not a reason to re-run either way."""
+        repo = self._seed(tmp_path, "docedit")
+        (repo / "README.md").write_text("# notes\nchanged\n")
+        assert _run_in(repo, "test-status").returncode == 0, \
+            "a non-protected .md is not judgeable on the unanchored path either"
+
+    def test_a_marker_still_makes_session_freshness_sufficient(self, tmp_path):
+        """Clause 1 is untouched: with a marker, session-fresh evidence passes
+        without the tree ever being consulted."""
+        repo = self._seed(tmp_path, "anchored")
+        _make_session_start(repo / ".prawduct", offset_seconds=-60)
+        ev_path = repo / ".prawduct" / ".test-evidence.json"
+        ev = json.loads(ev_path.read_text())
+        ev["timestamp"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        ev["evidence_tree"] = "0" * 40  # a tree that cannot possibly validate
+        ev_path.write_text(json.dumps(ev))
+        assert _run_in(repo, "test-status").returncode == 0, \
+            "session-fresh evidence passes on clause 1 alone"
+
+
 class TestTreeValidHelperFailsToStale:
     """The tree-validity clause must FAIL TOWARD STALE on any git error: a
     capture or diff failure can only leave evidence stale, never flip it fresh
@@ -2431,6 +2784,138 @@ class TestTreeValidHelperFailsToStale:
         )
         ok, reason = gates._test_evidence_tree_valid(ROOT, "2222222222222222")
         assert ok is False and "diff" in reason.lower()
+
+
+class TestSuiteCoupledPrefixesDeclaration:
+    """The repo declaration the freshness gate reads, and the wiring that reads it.
+
+    Both halves are pinned because neither was, and their absence reopened the
+    class this work exists to close: with the roots moved out of the predicate's
+    default and into `project-state.yaml`, deleting the declaration — or reverting
+    the gate to the bare `suite_coupled_files(changed)` — left the whole suite
+    green while `test-status` reported `current` over a red tree. Literal-argument
+    tests could not see it, because production had stopped taking the literal.
+    """
+
+    def _core(self):
+        if str(ROOT) not in sys.path:
+            sys.path.insert(0, str(ROOT))
+        from lib import core  # noqa: PLC0415 — mirrors the other lib unit tests
+        return core
+
+    def _state(self, tmp_path: Path, body: str) -> Path:
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir(parents=True, exist_ok=True)
+        (prawduct / "project-state.yaml").write_text(body, encoding="utf-8")
+        return prawduct
+
+    def test_a_declared_block_is_read(self, tmp_path):
+        core = self._core()
+        prawduct = self._state(tmp_path, "suite_coupled_prefixes:\n  - documentation/\n  - plugin/\n")
+        assert core.suite_coupled_prefixes(prawduct) == ("documentation/", "plugin/")
+
+    def test_quotes_are_stripped(self, tmp_path):
+        core = self._core()
+        prawduct = self._state(tmp_path, "suite_coupled_prefixes:\n  - 'documentation/'\n")
+        assert core.suite_coupled_prefixes(prawduct) == ("documentation/",)
+
+    def test_absent_key_missing_file_and_empty_list_all_read_as_none(self, tmp_path):
+        """Three different ways to say nothing, one answer — and it must be the
+        pre-declaration behaviour, so a typo can only fail toward running the
+        freshness check as it always did, never toward a false-fresh verdict."""
+        core = self._core()
+        assert core.suite_coupled_prefixes(self._state(tmp_path / "a", "other_key: 1\n")) == ()
+        assert core.suite_coupled_prefixes(tmp_path / "nonexistent") == ()
+        assert core.suite_coupled_prefixes(
+            self._state(tmp_path / "c", "suite_coupled_prefixes: []\n")
+        ) == ()
+
+    def test_this_repo_declares_the_roots_its_guards_sweep(self):
+        """The declaration is live state, not an example. Deleting it is what
+        the blocking finding described, and this is what notices."""
+        core = self._core()
+        # ROOT is the plugin directory; the declaration lives in the repo's own
+        # `.prawduct/`, one level up.
+        repo_root = Path(__file__).resolve().parents[1]
+        declared = core.suite_coupled_prefixes(repo_root / ".prawduct")
+        assert "documentation/" in declared, declared
+        assert "plugin/" in declared, declared
+
+    def test_the_freshness_gate_actually_reads_the_declaration(self, tmp_path, monkeypatch):
+        """The wiring, end to end through `_test_evidence_tree_valid`.
+
+        The same doc diff must read NOT-valid for a repo that declares the root
+        and valid for one that does not — which is the assertion that fails if
+        `gates.py` ever goes back to calling `suite_coupled_files(changed)` bare.
+        """
+        if str(ROOT) not in sys.path:
+            sys.path.insert(0, str(ROOT))
+        from lib import gates  # noqa: PLC0415
+
+        monkeypatch.setattr(
+            gates.evidence, "capture_tree",
+            lambda project_dir: {"status": "ok", "tree": "1111111111111111"},
+        )
+        monkeypatch.setattr(
+            gates.evidence, "tree_diff",
+            lambda project_dir, a, b: ["documentation/issues/712-design.md"],
+        )
+
+        declaring = tmp_path / "declaring"
+        self._state(declaring, "suite_coupled_prefixes:\n  - documentation/\n")
+        ok, reason = gates._test_evidence_tree_valid(declaring, "2222222222222222")
+        assert ok is False, reason
+        assert "suite-coupled" in reason
+
+        silent = tmp_path / "silent"
+        self._state(silent, "other_key: 1\n")
+        ok, reason = gates._test_evidence_tree_valid(silent, "2222222222222222")
+        assert ok is True, reason
+
+
+class TestDocsCanStaleTestEvidence:
+    """The 2026-09-08 incident, reconstructed at the gate that missed it.
+
+    Two `documentation/issues/*.md` files were pushed straight to `develop`
+    failing `TestClosingKeywordClaims` and
+    `test_no_governance_prose_cites_a_flow_step_by_NUMBER` — both of which
+    predate them by two weeks. `_test_evidence_tree_valid` classified the pair
+    as "only non-judgeable paths changed", `test-status` reported day-old
+    evidence as *current*, and the next branch to sync the base inherited a red
+    tree with a gate saying it was fine.
+
+    Driven through `suite_coupled_files` rather than the git-backed capture,
+    because the defect was never in the diffing — it was in the classification
+    of what the diff returned.
+    """
+
+    def _algebra(self):
+        if str(ROOT) not in sys.path:
+            sys.path.insert(0, str(ROOT))
+        from lib import coverage_algebra  # noqa: PLC0415 — mirrors the other lib unit tests
+        return coverage_algebra
+
+    def test_a_documentation_only_diff_is_not_dismissed_as_free(self):
+        """The positive control for the fix: against the pre-change predicate
+        this list came back EMPTY, which is precisely the answer that let the
+        red tree through."""
+        ca = self._algebra()
+        changed = ["documentation/issues/712-design.md"]
+        assert ca.suite_coupled_files(changed, ("documentation/",)) == changed
+
+    def test_a_mixed_diff_keeps_the_doc_and_drops_the_bookkeeping(self):
+        """Both directions in one assertion, because the fix is worthless if it
+        widened to everything: the doc is retained, and the priced exclusions
+        (`change-log.md`, `learnings.md`) are still dropped."""
+        ca = self._algebra()
+        changed = [
+            ".prawduct/change-log.md",
+            "documentation/release-process.md",
+            ".prawduct/learnings.md",
+        ]
+        assert ca.suite_coupled_files(changed, ("documentation/",)) == [
+            "documentation/release-process.md"
+        ]
 
 
 class TestTestEvidenceKnobs:

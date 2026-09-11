@@ -220,10 +220,7 @@ def _core():
     session markers (STH-8M3V) — each call site is wrapped in an OSError
     guard, so an import or write failure degrades to a stderr NOTE and never
     blocks session start. After the ch.1 __init__ slim this loads only
-    core.py (stdlib-only), isolated.
-
-    Also the route to ``AmbiguousPlanBranchError`` — the one thing the hook needs
-    from core by NAME rather than by behaviour (:func:`_is_plan_refusal`)."""
+    core.py (stdlib-only), isolated."""
     lib_root = _plugin_root()
     if lib_root not in sys.path:
         sys.path.insert(0, lib_root)
@@ -461,8 +458,15 @@ def _read_str_yaml_key(state_path: Path, key: str) -> str | None:
     return None
 
 
+# prawduct:allow prawduct/duplication -- intentional inline mirror (import-light hot path); pinned by TestHookYamlListReaderParity
 def _read_str_list_yaml_key(state_path: Path, key: str) -> list[str] | None:
     """Items of a top-level ``key:`` block sequence of strings, or None.
+
+    Inline mirror of ``lib.core.read_block_sequence`` narrowed to this call
+    site's ``list | None`` shape (parity-pinned by
+    ``TestHookYamlListReaderParity``). It sat here UNPINNED while its scalar
+    sibling above was pinned, which is how the four readers drifted (#590) — and
+    it is the copy that was RIGHT, so its contract is the one `lib` adopted.
 
     Parses only the shape the docstrings prescribe (``test_commands:`` — a
     column-0 ``key:`` line followed by indented ``- item`` lines); flow style
@@ -470,8 +474,9 @@ def _read_str_list_yaml_key(state_path: Path, key: str) -> list[str] | None:
     lines, and an empty sequence ALL read as None — any in-block anomaly makes
     the WHOLE declaration unparseable, never a partial list (callers convert
     None-but-present to a loud refusal via ``_yaml_top_level_key_present``).
-    Comment stripping matches the scalar sibling (``_read_str_yaml_key``):
-    everything after ``#`` is dropped."""
+    Comments and blank lines are inert at ANY indent, column 0 included: breaking
+    on a column-0 comment silently truncates the list, so some environments would
+    never run while the record claimed full evidence."""
     try:
         content = state_path.read_text(encoding="utf-8")
     except OSError:
@@ -479,10 +484,6 @@ def _read_str_list_yaml_key(state_path: Path, key: str) -> list[str] | None:
     items: list[str] = []
     in_block = False
     for raw in content.splitlines():
-        # Blank and comment-only lines are inert at ANY indent — including
-        # column 0 inside the block, where breaking instead would silently
-        # truncate the list (some environments would never run while the
-        # record claimed full evidence).
         stripped = raw.split("#", 1)[0].strip()
         if not stripped:
             continue
@@ -495,9 +496,6 @@ def _read_str_list_yaml_key(state_path: Path, key: str) -> list[str] | None:
         if raw[:1] not in (" ", "\t"):
             break  # next top-level key ends the block cleanly
         if not stripped.startswith("- "):
-            # Nested mapping, bare dash, or a wrapped command's continuation
-            # line: the whole declaration is unparseable — a partial list
-            # would silently skip environments while claiming full evidence.
             return None
         value = stripped[2:].strip().strip("\"'")
         if not value:
@@ -538,10 +536,22 @@ def _yaml_top_level_key_present(state_path: Path, key: str) -> bool:
 # `__pycache__/` and a trailing slash on `.pr-reviews/` for its `.gitignore`
 # writer, while this list uses bare paths for `git ls-files` untracking. Keep the
 # shared session-file set in sync when adding entries.
+#
+# THE MIRROR IS TWO OF FOUR SITES, and saying only "keep the two in sync"
+# understates the fan-out to whoever finds this comment (#324). Adding one
+# session file touches:
+#   1. `core.GITIGNORE_ENTRIES`         — the canonical set
+#   2. this list                        — the untrack set
+#   3. this repo's own `.gitignore`     — nothing writes prawduct's copy for it
+#   4. `_boundary_close_session`        — deleted at the boundary, or a recorded
+#                                         reason it must outlive one
+# 1↔2 are pinned by `TestSessionGitignoreMirror`; 3 and 4 by
+# `tests/test_hook_session_file_registry.py`, which forces every new entry to
+# declare its boundary disposition rather than defaulting to "never deleted" —
+# the default that leaks state into the next session.
 # prawduct:allow prawduct/duplication -- intentional inline mirror (import-light hot path); pinned by TestSessionGitignoreMirror
 _SESSION_GITIGNORED_PATHS = (
     ".claude/settings.local.json",
-    ".prawduct/.bug-inbox",
     ".prawduct/.critic-active",
     ".prawduct/.critic-findings.json",
     ".prawduct/.critic-partials",
@@ -1288,6 +1298,23 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
     cannot clobber the session it is reviewing. A continuation neither sweeps nor
     refuses — it mutates no session state, so the guard has nothing to protect.
 
+    **That exemption reaches a BARE ``clear --brief-only`` too, deliberately, and
+    the sentence above is the whole of its licence — so read it exactly.** "No
+    session state" is not "nothing": a continuation writes ``.advisories.json``,
+    regenerates ``.subagent-briefing.md``, and can ``git rm --cached`` an
+    accidentally-committed session file, which mutates the git index. None of
+    those is the *reviewed* session's evidence, which is the only thing CRT-3X9D
+    protects. ``hooks.json`` never issues this shape — both its ``clear``
+    registrations carry ``--session-start`` — so it is reachable only by hand,
+    i.e. exclusively by the CRT-3X9D vector; requiring ``--session-start`` for the
+    CONTINUATION classification was weighed and rejected, because it would leave a
+    reviewer subagent unable to ORIENT itself and would give up ``--brief-only``'s
+    orthogonality, to refuse a path that touches none of what the guard defends.
+    Pinned by ``TestBoundaryDependentInterpretation`` — a live marker plus a bare
+    ``--brief-only``, asserting the marker and every evidence file survive
+    (CRT-7N4B). If that stops holding, this classification changes; the pin is not
+    a licence to start mutating here.
+
     ``--brief-only`` exists because the SessionStart matcher is the only thing
     that knows whether this invocation ends a session or continues one, and
     ``startup|resume|clear`` threw that fact away: `resume`, `compact` and `fork`
@@ -1491,20 +1518,13 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
     # Agent-facing messages go to stdout (SessionStart hooks show stdout to the model).
     # stderr is only visible to the user in the terminal, not to the agent.
 
-    # Warn if project-state.yaml is oversized
-    state_path = prawduct_dir / "project-state.yaml"
-    if state_path.is_file():
-        try:
-            size = state_path.stat().st_size
-            if size > 40000:  # ~10K tokens ≈ ~40KB
-                print(
-                    f"NOTE: .prawduct/project-state.yaml is {size // 1024}KB — recommend compacting.\n"
-                    f"  Completed build plan chunks: keep only id, name, status (remove deliverables/acceptance_criteria).\n"
-                    f"  Test history: keep only the current count, remove per-chunk history.\n"
-                    f"  Change log: keep the last ~10 entries, remove older ones (git has the history)."
-                )
-        except Exception:  # prawduct:allow prawduct/broad-except -- size check must not block session start
-            pass
+    # The oversized-governance-file note used to live here as a bare `print`. It
+    # is now `lib/oversized_state_probes`, raised through the advisory system by
+    # the probe step above, for three reasons the print could not meet: its
+    # bullets are gated on content actually present in the file it measured (it
+    # prescribed cuts to two files it never inspected), the file it names is the
+    # file to edit, and it can be DISMISSED — a repo that has correctly decided
+    # not to compact was otherwise nagged every session forever.
 
     # Check for missing or unfilled project-preferences.md
     prefs_path = prawduct_dir / "artifacts" / "project-preferences.md"
@@ -1588,7 +1608,12 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
     # v5: Staleness scan + session briefing + subagent briefing
     try:
         staleness = _briefing().staleness_scan(project_dir)
-        briefing = _briefing().assemble_session_briefing(project_dir, staleness)
+        # `brief_only` IS the continuation fact (SCN-5B8Q): the handoff pointer
+        # is boundary-scoped, so a continuation must be told the handoff predates
+        # its own session rather than pointed at it as news.
+        briefing = _briefing().assemble_session_briefing(
+            project_dir, staleness, continuation=brief_only
+        )
         print(briefing)
     except Exception as e:  # prawduct:allow prawduct/broad-except -- briefing must never block session start
         print(f"NOTE: Session briefing failed: {e}", file=sys.stderr)
@@ -1694,6 +1719,51 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
 
     consolidate = _critic_consolidate()
     result = consolidate.begin_review(project_dir, **opts)
+    if result["status"] == "budget-exhausted":
+        # Exit 4, not 3: both refuse a dispatch, but they answer different
+        # questions and have different remedies. A 3 says the gate does not want
+        # this round; a 4 says the loop has run out of budget while the gate may
+        # still be unsatisfied — and the reader's next move differs accordingly.
+        # Stdout, because like a 3 this is a normal outcome the caller acts on.
+        swept = result.get("swept") or {}
+        print(
+            f"PRAWDUCT: {result['reason']}.\n"
+            f"  The loop ends here. {swept.get('accepted', 0)} outstanding "
+            "non-blocking finding(s) were ACCEPTED against the budget — a "
+            "reviewable answer, not a drop: re-disposition any of them with "
+            "`prawduct-hook disposition <review-id> <fid> ...`."
+        )
+        if swept.get("skipped_blocking"):
+            print(
+                f"  {swept['skipped_blocking']} BLOCKING finding(s) were NOT "
+                "swept and still block the gate. The budget can end a review "
+                "loop; it can never open a gate. Fix them and run "
+                "`/prawduct:critic verify-resolutions` — that mode is never "
+                "refused by the budget, so this route always exists."
+            )
+        for failure in swept.get("failed") or []:
+            print(
+                f"  NOT ACCEPTED: {failure['fid']} of {failure['review_id']} — "
+                f"{failure['reason']}",
+                file=sys.stderr,
+            )
+        if swept.get("status") == "error":
+            print(
+                f"  NOT SWEPT: {swept['reason']} — the refusal stands, but the "
+                "outstanding findings are still open. Disposition them by hand.",
+                file=sys.stderr,
+            )
+        if result.get("census"):
+            print(f"\n{result['census']}\n")
+        print(
+            "  To buy another round anyway: `/prawduct:critic <mode> --force`. "
+            "Prefer raising or clearing `review_round_budget` in "
+            ".prawduct/project-state.yaml if this scope genuinely needs more — "
+            "a budget forced past every time is a budget set wrong."
+        )
+        for note in result.get("notes") or []:
+            print(f"PRAWDUCT NOTE: {note}", file=sys.stderr)
+        return 4
     if result["status"] == "no-review-needed":
         # Exit 3, not 0: 0 means "dispatched, go review", and the skill would
         # proceed to spawn a reviewer against a manifest that was never
@@ -1701,18 +1771,63 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
         # here needs a review", which is the whole point of asking it first.
         # Goes to STDOUT because it is a normal, correct outcome.
         free = result.get("free_files") or []
-        shown = ", ".join(free[:5]) + (f" (+{len(free) - 5} more)" if len(free) > 5 else "")
+        # Three answers, not two. A default of `[]` means an OLD result without
+        # the key reads as "nothing excluded" (true — it predates any anchor that
+        # could exclude), while an explicit `None` means the uncommitted diff
+        # could not be computed and nothing here may claim either way.
+        excluded = result.get("excluded_wip", [])
+        excluded_unknown = excluded is None
+        excluded = excluded or []
+        anchored = result.get("anchor", "the anchored tree")
         print(
             f"PRAWDUCT: no review needed — {result['reason']}.\n"
-            f"  free files: {shown}\n"
-            "  Nothing to do: the coverage gate already passes this interval.\n"
+            f"  free files: {consolidate.name_paths(free)}"
+        )
+        if not excluded and not excluded_unknown:
+            # Withheld when work sits outside the graded interval, and equally
+            # when nobody could tell: this line is an all-clear, and only a check
+            # that actually ran can issue one.
+            print("  Nothing to do: the coverage gate already passes this interval.")
+        print(
             "  To review anyway: `/prawduct:critic <mode> --force`. Prefer that over a "
             "raw `critic-begin --force` — a hand-run dispatch sets the critic-active "
             "marker with no reviewer behind it, and the next `/prawduct:critic` then "
             "refuses as if a review were live (clear it with `prawduct-hook critic-end`)."
         )
+        # LAST, deliberately. A reader of a multi-line block acts on the final
+        # imperative, and above it that imperative is `--force` — which reviews
+        # the same interval that already excluded these files and would change
+        # nothing. The correction has to be the last word.
+        if excluded:
+            print(
+                f"  NOT REVIEWED: {len(excluded)} judgeable uncommitted file(s) sit "
+                f"outside the graded interval — {consolidate.name_paths(excluded)}\n"
+                f"  This dispatch graded {anchored}, not your working tree, so those "
+                "files are still unreviewed and still uncovered. The refusal above "
+                "does NOT mean they are clean.\n"
+                "  Commit them, then run `/prawduct:critic verify-resolutions` again — "
+                "the delta that appears is the one this run could not see."
+            )
+        elif excluded_unknown:
+            print(
+                "  UNVERIFIED: the uncommitted diff could not be computed, so whether "
+                f"judgeable work sits outside this interval is UNKNOWN.\n"
+                f"  This dispatch graded {anchored}. If your working tree is dirty, "
+                "nothing here has vouched for it — commit and re-run rather than "
+                "reading the refusal above as an all-clear."
+            )
+        for note in result.get("notes") or []:
+            print(f"PRAWDUCT NOTE: {note}", file=sys.stderr)
         return 3
     if result["status"] != "ok":
+        # Notes first, then the reason: a failed dispatch still learned things
+        # about the tree, and the reason is what the reader acts on. Most error
+        # returns carry none — they fire before `notes` is populated — but
+        # `scope-widened` reaches here with the dirty-tree note in hand, and
+        # dropping it repeats the defect this change exists to fix one return
+        # statement over.
+        for note in result.get("notes") or []:
+            print(f"PRAWDUCT NOTE: {note}", file=sys.stderr)
         print(f"critic-begin: {result['reason']}", file=sys.stderr)
         return 2 if result.get("kind") == "scope-widened" else 1
 
@@ -1817,10 +1932,33 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
     #
     # ORDER IS DELIBERATE, and a future edit must not flip it: the reviewer
     # rates the delta BEFORE it judges the prior findings, so the severity
-    # narrowing comes first and the resolution warning stays adjacent to the
-    # claim it governs — the only one of the two that can weaken a gate.
+    # narrowing comes first; then the roll-call of ids that must be accounted
+    # for; and the resolution warning stays LAST, adjacent to the claim it
+    # governs — the only one of the three that can weaken a gate, and therefore
+    # the one the reader must still be holding. Both halves of the order are
+    # pinned: `TestResolutionDirectiveDelivery` for the claim directive's last
+    # place, `TestCarriedBlockersReachTheirReaders` for the roll-call's slot
+    # between the other two.
     if manifest["mode"] == consolidate.MODE_TOKEN_TO_VERBOSE["verify-resolutions"]:
         print(consolidate.VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE)
+        # The roll-call sets the AGENDA — which finding ids must come back with
+        # a verdict — and the claim directive below sets the STANDARD each
+        # verdict has to meet. The standard gets the last word, deliberately:
+        # it governs the only reviewer output that can WEAKEN a gate, and a
+        # roll-call read last would push toward naming every id on it, which is
+        # the over-claiming the standard exists to prevent. Empty when there is
+        # nothing to account for.
+        from lib import evidence as _ev  # noqa: PLC0415 — lazy, as elsewhere here
+
+        roll_call = consolidate.account_for_prior_blockers_directive(
+            consolidate.carried_blocking(
+                _ev.read_facts(project_dir).get("facts") or [],
+                manifest.get("base_tree"),
+                manifest.get("id"),
+            )
+        )
+        if roll_call:
+            print(roll_call)
         print(consolidate.RESOLUTION_IS_A_CLAIM_DIRECTIVE)
     return 0
 
@@ -2213,36 +2351,6 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
 
     def _attributed(gate_id: str, body: str) -> str:
         return f"{_gate_attribution(gate_id, _gate_registry, _plugin_ver)}\n{body}"
-
-    # Plan resolution REFUSES when two live plans declare the same `branch:`.
-    # Probed ONCE here, before a single gate runs, and answered by returning the
-    # harness block code.
-    #
-    # Three things force this shape. It must not escape to `main`, which renders
-    # every refusal as exit 1: this is a harness hook, `api-contract.md` § Error
-    # Model gives its row exactly two outcomes (0 clean, 2 block), and 1 is
-    # neither — so the session would end CLEAN with the reflection, coverage and
-    # PR gates never having fired, the fail-OPEN inverse of the refusal's whole
-    # purpose. It must be here rather than at the call sites, because the refusal
-    # is reachable from every one of them — the resolve below, its
-    # `_has_active_build_plan_file` fallback, and `_critic_session_satisfies_gate`
-    # each resolve independently, and guarding them one at a time simply moved
-    # which line raised. And it must precede the deferral, which returns 0: no
-    # amount of background work resolves two plans claiming one branch.
-    try:
-        _core().resolve_build_plan_path(prawduct_dir)
-    except Exception as exc:  # prawduct:allow prawduct/broad-except -- classified immediately; anything else re-raises untouched
-        if not _is_plan_refusal(exc):
-            raise
-        print("", file=sys.stderr)
-        print("BLOCKED — resolve before ending session:", file=sys.stderr)
-        print("", file=sys.stderr)
-        print(_attributed("critic",
-            f"BUILD PLAN (resolution refused): {exc}\n"
-            "  Every gate resolves a plan, so none of them ran this session — this\n"
-            "  is not a coverage verdict, and the next Stop does not clear it.\n"
-        ), file=sys.stderr)
-        return 2
 
     # v5: Compliance canary (informational)
     try:
@@ -4262,6 +4370,21 @@ def cmd_check_operator_verification(project_dir: Path) -> int:
     result = ov.run_check_operator_verification(project_dir)
     if not result["required"]:
         return 0
+    # Order matters: an unreadable queue reports `pending: 0` because nothing
+    # was parsed, so testing pending first would let the exact failure this
+    # branch exists for fall through as a pass.
+    #
+    # Exit **3**, not 1. Both block — 3 is non-zero, so `/prawduct:pr` Step 2b stops
+    # either way and the gate still fails closed. What 3 buys is that the
+    # blocking REASON is readable from the code: 1 has always meant "there are
+    # pending entries, here is the first ID, drain or override it", and both of
+    # those remedies are inapplicable to a queue nobody could parse. Reusing 1
+    # would be a new meaning wearing an old number, and it would send an agent
+    # to the two remedies that cannot work — ending at the queue file, which is
+    # the one move this refusal exists to prevent.
+    if result.get("queue_status") == ov.QUEUE_UNREADABLE:
+        print(result["message"], file=sys.stderr)
+        return 3
     if result["pending"] == 0:
         print(result["message"])
         return 0
@@ -4593,8 +4716,9 @@ def cmd_archive_plan(project_dir: Path, args: list[str] | None = None) -> int:
     pointer = _read_str_yaml_key(
         project_dir / ".prawduct" / "project-state.yaml", "active_build_plan"
     )
-    if pointer:
-        pointed_at = (project_dir / ".prawduct" / pointer.removeprefix(".prawduct/")).resolve()
+    pointed_at = _core().pointer_plan_path(project_dir / ".prawduct")
+    if pointer and pointed_at is not None:
+        pointed_at = pointed_at.resolve()
         if pointed_at == Path(result["source"]).resolve():
             print(
                 "NOTE: active_build_plan still names the plan just archived "
@@ -4783,6 +4907,99 @@ def cmd_review_stats(project_dir: Path, argv: list[str]) -> int:
         return 1
 
     return telemetry.review_stats(project_dir, argv)
+
+
+def cmd_check_plugin_active(project_dir: Path, argv: list[str]) -> int:
+    """Is the prawduct plugin actually LOADED for a repo? Thin wrapper — body
+    lives in ``lib.plugin_activation``.
+
+    ``--path P`` names the repo to ask about, defaulting to the current project.
+    The flag is what makes this useful: the failure it detects makes the target
+    repo unable to run any prawduct command at all, so the only session that can
+    ask the question is one running somewhere else — the onboarding session.
+
+    **Exit codes: 0 active, 1 inactive, 3 unknown** — the same three-outcome
+    shape, and for the same stated reason, as ``check-released``'s *unverified*
+    3. Both foldings of "could not run" are wrong here. Folded into 1 it reports
+    a broken install because a harness file was unreadable, sending an operator
+    to reinstall something that works. Folded into 0 it reports a clean bill off
+    a check that never ran — which is the entire class this command exists to
+    close, so spending it on the command's own error path would be the joke
+    writing itself.
+
+    The ratified *fail-open, exit 0* rule for an unevaluable advisory is a
+    different case and is honoured below: it covers the **plugin's own lib**
+    failing to import, where prawduct is broken and must not block the caller.
+    A subject that could not be read is not that.
+
+    ``--context doctor`` selects the wording for a caller running INSIDE a
+    session the plugin loaded, where ``inactive`` cannot mean "ungoverned".
+    """
+    flags = {"--json"}
+    rest = []
+    target = None
+    context = "onboard"
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg in ("--path", "--context"):
+            if i + 1 >= len(argv):
+                print(
+                    f"check-plugin-active: {arg} needs a value",
+                    file=sys.stderr,
+                )
+                return 2
+            if arg == "--path":
+                target = argv[i + 1]
+            else:
+                if argv[i + 1] not in ("onboard", "doctor"):
+                    print(
+                        f"check-plugin-active: unknown --context "
+                        f"{argv[i + 1]!r} (expected 'onboard' or 'doctor')",
+                        file=sys.stderr,
+                    )
+                    return 2
+                context = argv[i + 1]
+            i += 2
+            continue
+        rest.append(arg)
+        i += 1
+    rejected = _reject_unknown_args("check-plugin-active", rest, flags)
+    if rejected is not None:
+        return rejected
+
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import plugin_activation  # noqa: PLC0415 — lazy import
+    except ImportError:
+        # Fail OPEN, and say what was not established. An advisory that cannot
+        # run must not read as a pass — the whole point of the check.
+        print(
+            "NOTE: check-plugin-active could not import the plugin lib/ from "
+            "${CLAUDE_PLUGIN_ROOT}; whether the plugin is installed for this "
+            "project was NOT established.",
+            file=sys.stderr,
+        )
+        return 0
+
+    result = plugin_activation.plugin_activation_status(
+        target if target is not None else project_dir
+    )
+    if "--json" in rest:
+        print(json.dumps(result, indent=2))
+    else:
+        text = "\n".join(
+            plugin_activation.report_lines(result, context=context)
+        )
+        stream = sys.stdout if result["status"] == plugin_activation.ACTIVE else sys.stderr
+        print(text, file=stream)
+    if result["status"] == plugin_activation.INACTIVE:
+        return 1
+    if result["status"] == plugin_activation.UNKNOWN:
+        return 3
+    return 0
 
 
 def cmd_cost_of_commit(project_dir: Path, argv: list[str]) -> int:
@@ -5249,30 +5466,40 @@ def cmd_resolve_base(project_dir: Path) -> int:
 
 
 def cmd_bug_inbox(project_dir: Path) -> int:
-    """Resolve the upstream bug-report inbox and print it, or exit 1 when none.
+    """DEPRECATED and inert — prints a notice, resolves nothing, exits 0.
 
-    The `/prawduct:report-bug` skill branches on the exit code: 0 = an inbox is
-    configured and reachable (file the report into the printed path); 1 = no
-    inbox (capture the bug in the product's own backlog + point at GitHub
-    issues). Inert by design for plugin-only users — they configure neither
-    ``PRAWDUCT_BUG_INBOX`` nor ``.prawduct/.bug-inbox``, so resolution returns
-    None and this exits 1.
+    This resolved the gitignored ``incoming-bugs/`` drop-box on a co-located
+    checkout, so ``/prawduct:report-bug`` could write a report there as a file.
+    Reports are GitHub issues now: the skill files through the backlog adapter's
+    ``file-upstream``, which needs no co-located checkout and no local pointer,
+    and ``untriaged-upstream-reports`` counts that intake set. There is no
+    directory left to resolve and nothing that would route a report to one.
 
-    Fail-soft: a missing/stale/unwritable inbox OR an incomplete plugin install
-    (lib not importable) both resolve to exit 1, never a crash — the channel
-    must stay silent and harmless in a repo that does not use it.
+    **Why it is still callable.** ``api-contract.md``'s deprecation norm requires
+    a retired subcommand to be signalled rather than removed. The caller this
+    protects is a person — a hand-written script or a habit — so the notice goes
+    to stderr where ``regen-views`` and ``stamp-merged`` put theirs, rather than
+    into the silence ``build-index`` and ``user-prompt-submit`` keep for a stale
+    hook registration that cannot read one. Removal defers to a major.
+
+    **Exit 0, where the resolver exited 1 when it found nothing.** The old 1 meant
+    *no inbox is configured*, which a caller could branch on; nothing can be
+    configured now, so a 1 would report a condition rather than a retirement and
+    break a pipeline for a channel that no longer exists.
+
+    An operator's ``incoming-bugs/`` tree is untouched by any of this. It is
+    gitignored, so anything still sitting in it has no other copy.
     """
-    lib_root = _plugin_root()
-    if lib_root not in sys.path:
-        sys.path.insert(0, lib_root)
-    try:
-        from lib import bug_inbox  # noqa: PLC0415 — lazy keeps top-level lib-free
-    except ImportError:
-        return 1
-    inbox = bug_inbox.resolve_inbox(os.environ, project_dir)
-    if inbox is None:
-        return 1
-    print(inbox)
+    del project_dir  # kept so the dispatcher's call site is unchanged
+    print(
+        "WARNING: bug-inbox no longer does anything and will be removed in a "
+        "future major version. Upstream bug reports are filed as GitHub issues "
+        "by /prawduct:report-bug, not written to a local drop-box, so there is "
+        "no inbox to resolve. If a script or checklist still calls this command, "
+        "drop the call. Reports already sitting in a local `incoming-bugs/` are "
+        "untouched — triage them by hand into the backlog.",
+        file=sys.stderr,
+    )
     return 0
 
 
@@ -5281,12 +5508,16 @@ def cmd_version() -> int:
     ``.claude-plugin/plugin.json``) and exit 0; exit 1 if the manifest is
     unreadable.
 
-    The **deterministic version source** consumers stamp into upstream bug reports
-    (the ``Found in: prawduct vX.Y.Z`` field — XP2 provenance / the MG5 report-bug
-    path) instead of *recalling* a version from the model. A recalled version
-    drifts silently as the plugin updates; this one is read from the manifest at
-    call time. Output is one bare line (``3.1.0``, no ``v`` prefix, no decoration)
-    so a skill or script can capture it and format ``prawduct v<version>`` itself.
+    The **deterministic version source** for anything that stamps a running version
+    instead of *recalling* one — a recalled version drifts silently as the plugin
+    updates, and this is read from the manifest at call time. Output is one bare
+    line (``3.1.0``, no ``v`` prefix, no decoration) so a caller can format
+    ``prawduct v<version>`` itself.
+
+    Not the route the upstream ``Found in:`` field takes: ``file-upstream``
+    composes that section itself from ``upstream.plugin_version``, so the
+    provenance is sourced on every filing rather than on a careful one, and
+    ``/prawduct:report-bug`` is told not to write the section at all.
     """
     version = _plugin_manifest_version()
     if not version:
@@ -6048,8 +6279,8 @@ def cmd_plan_backfill(project_dir: Path, argv: list[str]) -> int:
     pointer = _read_str_yaml_key(
         project_dir / ".prawduct" / "project-state.yaml", "active_build_plan"
     )
-    if pointer:
-        pointed_at = project_dir / ".prawduct" / pointer.removeprefix(".prawduct/")
+    pointed_at = _core().pointer_plan_path(project_dir / ".prawduct")
+    if pointer and pointed_at is not None:
         if not pointed_at.is_file():
             print(
                 f"NOTE: active_build_plan names {pointer}, which is not there. "
@@ -6072,6 +6303,47 @@ def cmd_plan_backfill(project_dir: Path, argv: list[str]) -> int:
     # noise the release checklist would learn to ignore.
     incomplete = result["refused"] or (apply and result["blocked"])
     return 1 if incomplete else 0
+
+
+def cmd_check_learnings_pairing(project_dir: Path, argv: list[str]) -> int:
+    """Grade `learnings.md` against `learnings-detail.md`. Read-only.
+
+    Exit 0 when there is nothing to report, 1 on a duplicate heading, **3** when
+    the pair could not be read — the standing third-outcome rule for a check
+    whose subject is unreadable (api-contract § Error Model). Reporting a clean
+    pair off a file that would not decode is the failure this whole scope is
+    about.
+    """
+    rejected = _reject_unknown_args("check-learnings-pairing", argv, {"--json"})
+    if rejected is not None:
+        return rejected
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import audit_learnings_cmd  # noqa: PLC0415 — lazy import
+    except ImportError:
+        print(
+            "NOTE: check-learnings-pairing could not import the plugin lib/; "
+            "the learnings pair was NOT graded.",
+            file=sys.stderr,
+        )
+        return 0
+
+    result = audit_learnings_cmd.check_learnings_pairing(project_dir)
+    if "--json" in argv:
+        print(json.dumps(result, indent=2))
+    elif result["status"] == "ok":
+        print(f"ok: {result['reason']}")
+    else:
+        print(f"{result['status']}: {result['reason']}", file=sys.stderr)
+        for finding in result["findings"]:
+            print(f"  - {finding['detail']}", file=sys.stderr)
+    if result["status"] == "findings":
+        return 1
+    if result["status"] == "unchecked":
+        return 3
+    return 0
 
 
 def cmd_audit_learnings(project_dir: Path, argv: list[str]) -> int:
@@ -6109,9 +6381,31 @@ def cmd_audit_learnings(project_dir: Path, argv: list[str]) -> int:
 
     result = run_audit_learnings(str(project_dir), apply=apply)
 
+    # The ungraded notice goes to STDERR, before either renderer, so it reaches
+    # BOTH. On the `--json` path stdout is a machine payload, so a notice
+    # printed there would either corrupt it or (as shipped) be omitted entirely
+    # — leaving the sole `--json` consumer, the doctor skill, with no signal at
+    # all where the pre-fix code at least printed something loud and wrong.
+    ungraded = [
+        r for r in result.get("retirements", []) if r.get("unevaluated_reason")
+    ]
+    if ungraded:
+        print(
+            f"notice: {len(ungraded)} sentinel(s) could not be graded and were "
+            "left active — no rule is retired on a verdict nobody took. "
+            f"First: {ungraded[0]['title']}: {ungraded[0]['unevaluated_reason']}",
+            file=sys.stderr,
+        )
+
     if as_json:
         print(json.dumps(result, indent=2))
-        return 1 if "error" in result else 0
+        # A refusal lands in `errors`, not `error`, and `applied: false` after a
+        # requested `--apply` means the writer refused and wrote nothing —
+        # api-contract gives a refusing writer exit 1. Reporting 0 there tells
+        # the caller the retirement happened.
+        if "error" in result:
+            return 1
+        return 1 if (apply and result.get("applied") is False) else 0
 
     if "error" in result:
         print(f"error: {result['error']}", file=sys.stderr)
@@ -6134,18 +6428,39 @@ def cmd_audit_learnings(project_dir: Path, argv: list[str]) -> int:
         # when its pointer resolved. Reading `passed` for both would report
         # every resolvable supersession as "blocked" (its `passed` is None by
         # construction) — a clean candidate rendered as a problem.
+        ungraded = False
         if r.get("reason") == "superseded-by":
             ready = r.get("resolved_to") is not None
             why = f"superseded-by={r.get('resolved_to') or r.get('superseded_by')}"
         else:
-            ready = bool(r.get("passed"))
+            # Three-valued, and `bool()` would flatten it: an UNGRADED sentinel
+            # (`passed is None`) is not a blocked one. Rendering it "blocked"
+            # tells the operator a test is failing when prawduct never ran one,
+            # which is the same false accusation in the report that the runner
+            # stopped making.
+            ready = r.get("passed") is True
+            ungraded = r.get("passed") is None
             why = f"sentinel={r['sentinel']}"
-        state = "retired" if r.get("applied") else ("ready" if ready else "blocked")
+        if r.get("applied"):
+            state = "retired"
+        elif ungraded:
+            state = "ungraded"
+        elif ready:
+            state = "ready"
+        else:
+            state = "blocked"
         print(f"  retire[{state}]: {r['title']} ({why})")
+        if r.get("unevaluated_reason"):
+            print(f"    not graded: {r['unevaluated_reason']}")
     for s in stale:
         print(f"  stale: {s['title']} ({s['age_days']}d, confirmations={s['confirmations']})")
     for e in errors:
         print(f"  error: {e['title']}: {e['error']}")
+    # Same rule as the `--json` path above: a requested `--apply` that came back
+    # `applied: false` refused and wrote nothing, and a writer that refused
+    # exits 1.
+    if apply and result.get("applied") is False:
+        return 1
     return 0
 
 
@@ -6247,10 +6562,13 @@ _USAGE = (
     "check-operator-verification|accept-operator-verification <rationale>|"
     "verify-operator-verification <vrf-id>|"
     "check-pr-doc-only|check-change-log-entry|check-releasability [--release vX.Y.Z]|"
+    "check-plugin-active [--path P] [--context onboard|doctor] [--json]|"
+    "check-learnings-pairing [--json]|"
     "archive-plan <path> [--state completed|superseded] [--date YYYY-MM-DD] "
     "[--release vX.Y.Z] [--superseded-by <text>] [--dry-run]|"
     "check-released vX.Y.Z [--json] [--allow-unverifiable]|"
     "regen-views [deprecated, inert]|stamp-merged [deprecated, inert]|"
+    "bug-inbox [deprecated, inert]|"
     "build-index [deprecated, inert]|user-prompt-submit [deprecated, inert]|"
     "infer-critic-mode [args]|"
     "resolve-base|version|print-install-reference|"
@@ -6585,7 +6903,7 @@ _EPHEMERAL_SAFE_COMMANDS = frozenset({
     # members is the very session-start hook error they were restored to remove
     # (v3.3.3). `regen-views` and `stamp-merged` carried the same gap and the
     # same false claim since they were emptied; this is one classification, not
-    # four decisions. Pinned in tests/test_retired_hook_subcommands.py.
+    # a decision per member. Pinned in tests/test_retired_hook_subcommands.py.
     "build-index",
     "user-prompt-submit",
     "regen-views",
@@ -6594,6 +6912,8 @@ _EPHEMERAL_SAFE_COMMANDS = frozenset({
     "check-change-log-entry",
     "check-cumulative-critic",
     "check-operator-verification",
+    "check-learnings-pairing",
+    "check-plugin-active",
     "check-pr-doc-only",
     "check-releasability",
     "check-released",
@@ -6933,43 +7253,17 @@ def _check_binary_skew(command: str, project_dir: Path) -> int:
 
 
 def main() -> int:
-    """Dispatch, converting a fail-closed plan-resolution refusal into a clean exit.
+    """Dispatch. ``_dispatch`` is where the command table lives.
 
-    ``_dispatch`` is where the command table lives. This wrapper exists for the
-    one error every command can hit before doing anything: two live build plans
-    declaring the same ``branch:``, which ``core.resolve_build_plan_path``
-    refuses to resolve rather than guess between. A traceback would be loud but
-    unreadable, and the refusal names its own remedy, so print it and exit
-    non-zero — a refused gate is a blocked gate, which is the intended posture.
-
-    Classification happens after the catch rather than in the ``except`` clause,
-    so the ordinary run never imports lib to get here and a *failed* lookup can
-    never displace the error it was meant to classify — see
-    :func:`_is_plan_refusal`. Anything that is not the refusal is re-raised
-    untouched, which keeps every other traceback exactly as it was.
+    Plain, and worth a line on why: this wrapper used to classify a fail-closed
+    plan-resolution refusal (two live plans declaring one ``branch:``) into a
+    clean exit. Nothing raises that any more — several plans on one branch is an
+    ordinary arrangement that ``core.resolve_branch_claim`` resolves and
+    attributes — so the classifier, and the ``cmd_stop`` probe that converted it
+    into the harness block code, went with it rather than staying as handling
+    for a condition no code can produce.
     """
-    try:
-        return _dispatch()
-    except Exception as exc:  # prawduct:allow prawduct/broad-except -- classified immediately; anything else re-raises untouched
-        if not _is_plan_refusal(exc):
-            raise
-        print(f"REFUSING: {exc}", file=sys.stderr)
-        return 1
-
-
-def _is_plan_refusal(exc: BaseException) -> bool:
-    """Whether ``exc`` is core's fail-closed plan-resolution refusal.
-
-    Asked by class rather than by name, but the lookup is GUARDED, because it
-    runs while another exception is already propagating: on an incomplete
-    install ``lib`` may be unimportable, and an ImportError raised here would
-    replace whatever actually went wrong with a confusing chain. ``False`` is
-    the safe answer in that case — if core cannot be imported, nothing in this
-    process raised core's exception."""
-    try:
-        return isinstance(exc, _core().AmbiguousPlanBranchError)
-    except Exception:  # prawduct:allow prawduct/broad-except -- an unimportable lib must not mask the error being classified
-        return False
+    return _dispatch()
 
 
 # --- Pre-dispatch argument shape --------------------------------------------
@@ -7153,6 +7447,10 @@ def _dispatch() -> int:
         return cmd_classify_diff_risk(project_dir, sys.argv[2:])
     elif command == "cost-of-commit":
         return cmd_cost_of_commit(project_dir, sys.argv[2:])
+    elif command == "check-plugin-active":
+        return cmd_check_plugin_active(project_dir, sys.argv[2:])
+    elif command == "check-learnings-pairing":
+        return cmd_check_learnings_pairing(project_dir, sys.argv[2:])
     elif command == "check-operator-verification":
         return cmd_check_operator_verification(project_dir)
     elif command == "accept-operator-verification":
