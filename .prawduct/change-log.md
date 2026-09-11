@@ -314,6 +314,30 @@ Eligibility and cost are different questions and this chunk answered only the fi
 The plan now states the residue and hands the second question to Chunk 04 rather than closing it on
 paper.
 
+## 2026-09-03: the Issues-backend close says how to establish the merge it waits for
+
+<!-- prawduct: type=fix | scope=shipped-merge-check -->
+
+The backlog skill's timing rule defers an Issues-backend `status=shipped` to the merge — correctly,
+because closing an issue is an immediate remote side effect with no branch to be abandoned with —
+but it never said how a caller establishes that the merge happened. Inside `/prawduct:pr` that costs
+nothing: the merge flow has just merged and holds the result. Invoked directly, the caller has to
+work it out, and the check that comes to hand is `git merge-base --is-ancestor HEAD origin/<base>`,
+which answers from the last fetch rather than from the remote.
+
+Found by being one step from it. Closing `#625` after PR #758 merged, the check said `HEAD NOT in
+origin/develop` on a ref fetched before the merge; `gh pr list` showed the PR merged minutes
+earlier. A correctly timed close was about to be refused, and the refusal would have read as the
+gate misfiring rather than as a stale ref — which is the expensive part, because the next reader
+repairs the rule instead of the check.
+
+The bullet now names the wrong check explicitly, names the forge (`gh pr view`) as the route that
+answers under every merge strategy — the ancestry test, even freshly fetched, is valid only where
+the repo merges with merge commits — and records the asymmetry that makes the remedy unambiguous: a stale local ref can only ever produce a **false refusal**, never a false
+permit, since a ref cannot contain a merge that has not happened. So the answer is always to
+re-derive, never to skip the check. Pinned on the rule's own bullet rather than file-wide — guidance
+that drifts out of the bullet stops being read by the caller the obligation lands on — and the pin mutation-checked: it goes red with the forge route removed.
+
 ## 2026-09-07: an untracked change-log no longer reads as a missing one
 
 <!-- prawduct: type=fix | scope=change-log-gate -->
