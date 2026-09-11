@@ -3,6 +3,34 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-09-10: the four-socket epic's missing first document lands
+
+<!-- prawduct: type=docs | scope=coverage-socket-1-docs -->
+
+The change-evidence contract is four sockets, and three of them — #618 blast radius, #619
+diff-scoped mutation, #620 API diff — have carried both a requirements and a design document on
+`develop` for weeks. Socket 1, #249, is the one the shared artifact calls the instrument for the
+most serious Python-specificity violation in the tree (`test-reference-verify` feeds
+`verify_coverage`, a BLOCKING Goal 1 check, and understands only `def`/`class`), and its two
+documents existed only on an unmerged remote branch. Every other commit from that branch is
+already on `develop` by sha; these two files were the residue.
+
+So this lands them unchanged: `documentation/issues/249-requirements.md` (CE1-1..CE1-10, the eight
+decisions, grounded against `develop` at `7583fb29`) and `249-design.md` (the `coverage_producer`
+key, `--executed-command` on `test-reference-verify`, the additive `uncovered_lines` field, and a
+nine-case test plan). Nothing is implemented by this change and nothing is meant to be — the epic
+gets its fourth pair of documents, which is what makes the set readable as a set.
+
+Re-checked against `develop` before landing rather than trusted from the branch's own date stamp:
+`coverage_producer` still exists nowhere, `"executed"` is still assigned as a `coverage_level` by
+no shipped code path, `KNOWN_KINDS` still has no coverage slot, `test-reference-verify` is still
+present and still the floor, and #249 and #556 are both still open. The documents' claims about
+what is *absent* are the load-bearing ones, and all of them still hold. What has drifted since
+2026-08-31 is line citations into `gates.py` — `verify_coverage`'s severity branch moved from
+`:1868` to `:1916` — which is the ordinary decay of a document that stamps the commit it was
+verified against. Rewriting them would restate a grounding pass rather than record one, so the
+stamp stands and the drift is named here instead.
+
 ## 2026-09-10: an audit of develop, and the three findings that could not wait for the cut
 
 <!-- prawduct: type=fix | scope=audit-followups -->
@@ -310,6 +338,57 @@ permit, since a ref cannot contain a merge that has not happened. So the answer 
 re-derive, never to skip the check. Pinned on the rule's own bullet rather than file-wide — guidance
 that drifts out of the bullet stops being read by the caller the obligation lands on — and both
 halves of the pin mutation-checked.
+## 2026-09-07: an untracked change-log no longer reads as a missing one
+
+<!-- prawduct: type=fix | scope=change-log-gate -->
+
+`check-change-log-entry` decided whether a branch added an entry entirely from
+`git diff --name-only <base>...HEAD`. A repo that gitignores `.prawduct/` wholesale never tracks
+`.prawduct/change-log.md`, so the path could not appear in any diff, so the probe returned
+`no-entry` no matter what the log contained — and told the author to "add a change-log entry for
+this work" they had already written. Following that advice could not clear the gate, so no branch
+in such a repo could pass `/prawduct:pr` Create Step 1c at all. Reported from a consuming product
+(#760), reproduced from the `.gitignore` pattern alone.
+
+It is the failure the block above `no-entry` already names — a wrong `no-entry` is worse than a
+spurious block because its remedy text is executable advice — recurring on a new axis, and the
+plugin had already answered this question correctly three times elsewhere: `is_judgeable_path`
+short-circuits every `.prawduct/` path, `release_readiness` reads this same log **from disk**, and
+`gitattributes_probes` already asks `git_path_is_tracked` about this exact file. That helper is
+three-valued (`gitstate.py`: "a caller that collapses them turns a failed probe into a confident
+claim about the repository") and collapsing *untracked* into *absent* is precisely what this gate
+did.
+
+The probe now asks whether the log is tracked before reading the diff's silence as an answer.
+Tracked is unchanged. Git-unaskable fails closed under `git-failed` with the honest reason instead
+of a false `no-entry`. Untracked degrades to a **named** weaker check, `entry-present-untracked`,
+which reads the log from disk and passes only when an entry parses.
+
+The weakening is deliberate and the message says so rather than implying parity: the gate's real
+contract is "this branch **ADDED** an entry" — what the `+## ` scan enforces and why
+`entry-edited-not-added` is a separate failure — and an untracked file has no merge-base version,
+so that question is unanswerable. No substitute exists: an entry carries `scope` and `release` and
+nothing recording which branch wrote it. Degrading did not disarm — a missing or entry-less log
+still fails, since those are visible from disk. Parsing goes through `change_log.parse_change_log`;
+a local `## ` scan would have been the fifth reading of this format, and the last four disagreeing
+is this gate's history.
+
+The message also carries the fix, including its trap: `.prawduct/*` plus `!.prawduct/change-log.md`,
+because a bare `.prawduct/` cannot be negated — git will not re-include a file under an excluded
+directory.
+
+**The consuming instruction moved with the code, which is the other half of the fix.** A new exit-0
+verdict is invisible to a flow that routes on `Exit 0: proceed`, so `skills/pr/SKILL.md` Step 1c now
+splits exit 0 and gives `entry-present-untracked` the manual-confirm treatment `no-base`/`git-failed`
+already had — in the repos this verdict exists for, an unconfirmed pass is REL-6C3W reopened through
+the door the fix just built. `record_lint`'s scope-witness premise ("a code-changing branch cannot
+open a PR without ADDING an entry") is qualified the same way: the witness still exists and is still
+read; what weakens is the guarantee it was written for THIS branch.
+
+Step 1c routes on the verdict NAME and prose has no compiler, so the enumeration is now pinned to the
+probe in both directions — a verdict the code emits and the step does not route, and a row for a
+verdict the code no longer emits, each fail a test.
+
 ## 2026-08-25: judgeability decides what a review RATES, not what it READS
 
 <!-- prawduct: type=feature | scope=review-loop-termination -->
