@@ -3,6 +3,34 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-09-10: the four-socket epic's missing first document lands
+
+<!-- prawduct: type=docs | scope=coverage-socket-1-docs -->
+
+The change-evidence contract is four sockets, and three of them — #618 blast radius, #619
+diff-scoped mutation, #620 API diff — have carried both a requirements and a design document on
+`develop` for weeks. Socket 1, #249, is the one the shared artifact calls the instrument for the
+most serious Python-specificity violation in the tree (`test-reference-verify` feeds
+`verify_coverage`, a BLOCKING Goal 1 check, and understands only `def`/`class`), and its two
+documents existed only on an unmerged remote branch. Every other commit from that branch is
+already on `develop` by sha; these two files were the residue.
+
+So this lands them unchanged: `documentation/issues/249-requirements.md` (CE1-1..CE1-10, the eight
+decisions, grounded against `develop` at `7583fb29`) and `249-design.md` (the `coverage_producer`
+key, `--executed-command` on `test-reference-verify`, the additive `uncovered_lines` field, and a
+nine-case test plan). Nothing is implemented by this change and nothing is meant to be — the epic
+gets its fourth pair of documents, which is what makes the set readable as a set.
+
+Re-checked against `develop` before landing rather than trusted from the branch's own date stamp:
+`coverage_producer` still exists nowhere, `"executed"` is still assigned as a `coverage_level` by
+no shipped code path, `KNOWN_KINDS` still has no coverage slot, `test-reference-verify` is still
+present and still the floor, and #249 and #556 are both still open. The documents' claims about
+what is *absent* are the load-bearing ones, and all of them still hold. What has drifted since
+2026-08-31 is line citations into `gates.py` — `verify_coverage`'s severity branch moved from
+`:1868` to `:1916` — which is the ordinary decay of a document that stamps the commit it was
+verified against. Rewriting them would restate a grounding pass rather than record one, so the
+stamp stands and the drift is named here instead.
+
 ## 2026-09-10: an audit of develop, and the three findings that could not wait for the cut
 
 <!-- prawduct: type=fix | scope=audit-followups -->
