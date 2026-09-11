@@ -331,9 +331,9 @@ earlier. A correctly timed close was about to be refused, and the refusal would 
 gate misfiring rather than as a stale ref — which is the expensive part, because the next reader
 repairs the rule instead of the check.
 
-The bullet now names the wrong check explicitly and points at two routes that read the remote (`gh
-pr view`, or a `git fetch` before the ancestry test), and records the asymmetry that makes the
-remedy unambiguous: a stale local ref can only ever produce a **false refusal**, never a false
+The bullet now names the wrong check explicitly, names the forge (`gh pr view`) as the route that
+answers under every merge strategy — the ancestry test, even freshly fetched, is valid only where
+the repo merges with merge commits — and records the asymmetry that makes the remedy unambiguous: a stale local ref can only ever produce a **false refusal**, never a false
 permit, since a ref cannot contain a merge that has not happened. So the answer is always to
 re-derive, never to skip the check. Pinned on the rule's own bullet rather than file-wide — guidance
 that drifts out of the bullet stops being read by the caller the obligation lands on — and both
