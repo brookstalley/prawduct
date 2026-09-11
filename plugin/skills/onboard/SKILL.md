@@ -60,9 +60,10 @@ When they do want it, onboard **owns provisioning for this entry path** (scrub o
 
 Writing the install reference is *not* what loads the plugin. The harness also needs a
 `prawduct@prawduct` record whose `projectPath` is the target, and a repo missing one starts every
-session with **no banner, no `/prawduct:*` skills, and no Stop-hook gates** — while its `CLAUDE.md`
-tells the agent that enforcement is structural. The agent reads that stanza, believes it, and
-proceeds ungoverned. This is the one failure the target repo cannot detect about itself: the probes
+session with **no banner, no `/prawduct:*` skills, and no Stop-hook gates** — and unless its
+`CLAUDE.md` anchor carries the plugin-absent notice (`prawduct-hook reanchor` brings an older one up
+to date), nothing tells the agent so and it proceeds ungoverned. This is the one failure the target
+repo cannot detect about itself: the probes
 and `/prawduct:doctor` that would report it are delivered by the plugin that did not load. **This
 session is the only one that can ask**, which is why the check is here and not in `doctor`.
 

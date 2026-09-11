@@ -45,7 +45,8 @@ repos all carry a correct reference produces no advisory here, because the
 stranding is not in anything this probe can see. What a drifted committed
 reference does cost is the *next* clone — it is what a fresh checkout or a new
 machine seeds from, which is `/prawduct:doctor` Health Check #1's own stated
-rationale ("contributors won't get governance on clone"). That is why the
+rationale (the next clone seeds from it and has nothing to resolve the
+install against). That is why the
 advisory still routes to doctor, which is model-side and *can* read the
 machine-level file: the two halves are complementary checks, not two ends of
 one loop.

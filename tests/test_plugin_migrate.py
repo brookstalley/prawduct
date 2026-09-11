@@ -1125,3 +1125,21 @@ def test_human_output_names_the_recorded_base_branch(tmp_path: Path):
     )
     assert proc.returncode == 0, proc.stderr
     assert "base_branch: develop" in proc.stdout
+
+
+def test_the_anchor_insert_does_not_leave_a_bare_cr_on_a_crlf_file(tmp_path: Path):
+    """A CRLF file ending in a blank line stripped only its `\\n`, leaving a `\\r`
+    that read as an extra blank line before the anchor. Endings stay uniform
+    and the blank-line run stays what the insert intends."""
+    import sys as _sys
+
+    _sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "plugin"))
+    from lib import migrate_plugin
+
+    (tmp_path / ".prawduct").mkdir()
+    target = tmp_path / "CLAUDE.md"
+    target.write_bytes(b"# Product\r\n\r\nSome prose.\r\n\r\n")
+    migrate_plugin.apply_claude_anchor(tmp_path)
+    raw = target.read_bytes()
+    assert b"\r\r" not in raw
+    assert b"\r\n\r\n\r\n" not in raw

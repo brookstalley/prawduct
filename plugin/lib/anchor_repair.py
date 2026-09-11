@@ -157,12 +157,14 @@ def _record_success(result: dict, verb: str) -> None:
     )
 
 
-def _read(path: Path) -> str | None:
-    """The file's text, or ``None`` when it is not decodable as UTF-8.
+def _read(path: Path) -> tuple[str | None, str | None]:
+    """``(text, None)``, or ``(None, cause)`` when the file cannot be read.
 
-    A binary or mis-encoded ``CLAUDE.md`` is reported rather than crashed on, and
-    reported as its own status: a check that could not run must never be
-    indistinguishable from one that ran and found nothing.
+    A binary, mis-encoded or unreadable ``CLAUDE.md`` is reported rather than
+    crashed on, and reported as its own status WITH its cause: a check that
+    could not run must never be indistinguishable from one that ran and found
+    nothing — and "not decodable" sends an owner to fix an encoding when the
+    file was merely unreadable, so the two are not folded into one word.
     """
     try:
         # newline="" — read the file's OWN line endings rather than translating
@@ -170,9 +172,11 @@ def _read(path: Path) -> str | None:
         # back reformats every line of a document this module promises to leave
         # untouched outside one swapped region.
         with path.open(encoding="utf-8", newline="") as fh:
-            return fh.read()
-    except (UnicodeDecodeError, OSError):
-        return None
+            return fh.read(), None
+    except UnicodeDecodeError as exc:
+        return None, f"is not decodable as UTF-8 ({exc.reason} at byte {exc.start})"
+    except OSError as exc:
+        return None, f"could not be read ({exc.strerror or exc})"
 
 
 def _match_superseded(text: str) -> tuple[str, str] | None:
@@ -217,14 +221,14 @@ def check(project_dir: Path) -> dict:
             ),
         }
 
-    text = _read(path)
+    text, cause = _read(path)
     if text is None:
         return {
             "status": STATUS_UNREADABLE,
             "path": CLAUDE_REL,
             "repairable": False,
             "detail": (
-                f"{CLAUDE_REL} is not decodable as UTF-8 — the anchor could not be "
+                f"{CLAUDE_REL} {cause} — the anchor could not be "
                 "graded, which is not the same as grading it healthy"
             ),
         }
@@ -345,7 +349,7 @@ def repair(project_dir: Path, apply: bool = False) -> dict:
         return result
 
     path = project_dir / CLAUDE_REL
-    text = _read(path)
+    text, _cause = _read(path)
     if text is None:  # pragma: no cover — check() already graded it readable
         result["status"] = STATUS_UNREADABLE
         result["repairable"] = False

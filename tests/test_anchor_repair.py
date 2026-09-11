@@ -24,6 +24,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import os
+
 import pytest
 
 # Self-sufficient on sys.path — don't depend on another test module having
@@ -328,6 +330,25 @@ def test_undecodable_claude_md_is_ungraded_not_healthy(tmp_path: Path):
     result = ar.check(root)
     assert result["status"] == ar.STATUS_UNREADABLE
     assert result["repairable"] is False
+    assert "not decodable" in result["detail"]
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root reads a mode-000 file")
+def test_an_unreadable_claude_md_names_its_cause_not_an_encoding(tmp_path: Path):
+    """"Not decodable" sends the owner to fix an encoding; a permission problem
+    is a different remedy, and doctor relays this detail verbatim."""
+    root = tmp_path / "locked"
+    root.mkdir()
+    target = root / "CLAUDE.md"
+    target.write_text("# Product\n", encoding="utf-8")
+    target.chmod(0)
+    try:
+        result = ar.check(root)
+    finally:
+        target.chmod(0o644)
+    assert result["status"] == ar.STATUS_UNREADABLE
+    assert "could not be read" in result["detail"]
+    assert "UTF-8" not in result["detail"]
 
 
 # =============================================================================

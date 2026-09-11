@@ -68,6 +68,7 @@ _CLONE_SURFACES = (
     "documentation/MIGRATION.md",
 )
 
+
 #: Claims that were true before Claude Code v2.1.195 and are false now. Matched as
 #: patterns rather than exact sentences: the defect is the CLAIM, and a reworded
 #: copy of a false claim is the same defect. Each pattern is anchored on the verb
@@ -85,6 +86,11 @@ _RETIRED_CLAIMS = {
     ),
     "no setup step for the next person": re.compile(
         r"no\s+setup\s+step\s+for\s+the\s+next\s+person", re.I
+    ),
+    # A drifted install reference costs the next clone its seed, not its
+    # governance: nothing the reference carries installs the plugin.
+    "a clone gets governance from the install reference": re.compile(
+        r"get\s+governance\s+on\s+clone", re.I
     ),
 }
 
@@ -200,3 +206,24 @@ def test_doctor_grades_the_anchor_by_running_the_command():
             "return it, so a doctor session meeting it has no rubric"
         )
     assert "--apply" in check4, "the repair must be offered explicitly, not implied"
+
+
+#: Surfaces that never described activation but did state the CONSEQUENCE of
+#: a drifted install reference as lost governance — the claim Health Check #4
+#: retires five lines below Check #1. Only the retired-claim scan applies here:
+#: these files use "clone" in other senses, so the paragraph-level discharge
+#: rule the three surfaces above carry would misfire on them.
+_CONSEQUENCE_SURFACES = (
+    "plugin/skills/doctor/SKILL.md",
+    "plugin/lib/install_reference_probes.py",
+)
+
+
+@pytest.mark.parametrize("rel", _CONSEQUENCE_SURFACES)
+@pytest.mark.parametrize("claim", sorted(_RETIRED_CLAIMS))
+def test_no_consequence_surface_says_a_clone_gets_governance(rel, claim):
+    text = (_REPO_ROOT / rel).read_text(encoding="utf-8")
+    assert not _RETIRED_CLAIMS[claim].search(text), (
+        f"{rel} still says {claim!r}; what a drifted reference costs the next clone "
+        "is its seed, and the install is the clone's own to run (Check #4)"
+    )

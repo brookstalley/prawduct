@@ -426,7 +426,7 @@ def apply_claude_anchor(project_dir: Path) -> bool:
     elif ANCHOR_SENTINEL in original:
         return False  # already-migrated CLAUDE.md: anchor present, no block
     else:
-        base = original.rstrip("\n")
+        base = original.rstrip("\r\n")
         new = f"{base}\n\n{anchor}\n" if base else f"{anchor}\n"
 
     # Match the file's OWN endings before writing. Reading with newline="" keeps
