@@ -46,7 +46,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .advisory_store import AdvisoryCandidate, Codebase, ProjectState, register_probe
-from .core import oversized_file_threshold, resolve_build_plan_path
+from .core import oversized_file_threshold_for, resolve_build_plan_path
 
 FEATURE = "governance"
 PROBE_VERSION = 1
@@ -146,6 +146,9 @@ _MEASURED: tuple[_Measured, ...] = (
             _Advice(
                 present=_PRAWDUCT_TAG,
                 text=(
+                    "shipped entries leave this file by `prawduct-hook archive-change-log "
+                    "--apply` (the release process runs it; a live log over its own ceiling "
+                    "means the archiver has not run for a release or more) — by hand, "
                     "older entries can go, but NEVER one carrying a `<!-- prawduct: … -->` "
                     "tag line — `scope=` and `release=` tags are what derive the "
                     "release-pending set, and a deleted tagged entry drops out of it silently"
@@ -189,12 +192,15 @@ def probe_oversized_governance_file(state: ProjectState, codebase: Codebase):
     is not a file anyone is being asked to compact.
     """
     root = Path(codebase.root)
-    threshold = oversized_file_threshold(root / ".prawduct")
     candidates = []
     for measured in _MEASURED:
         path = _measured_path(measured, root)
         if path is None or not path.is_file():
             continue
+        # Per file, because the files have different lifecycles: the change-log
+        # is bounded by release cadence and its honest ceiling is a minor line's
+        # worth of entries, which the repo-wide number was never going to fit.
+        threshold = oversized_file_threshold_for(root / ".prawduct", measured.rel)
         try:
             size = path.stat().st_size
             if size <= threshold:
@@ -242,7 +248,8 @@ def probe_oversized_governance_file(state: ProjectState, codebase: Codebase):
                     "costs more than the size does, and dismissing this is how that "
                     "decision gets recorded rather than re-litigated every session. If the "
                     "ceiling itself is wrong for this repo, raise "
-                    "`oversized_file_threshold_kb` in project-state.yaml instead."
+                    "`oversized_file_threshold_kb` in project-state.yaml instead — or give "
+                    "this one file its own under `oversized_file_thresholds_kb`."
                 ),
                 # Empty, deliberately: choosing what to cut from a governance file
                 # is a judgement about content, and there is no command that makes

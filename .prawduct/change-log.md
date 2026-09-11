@@ -39,9 +39,22 @@ back the first.
 **The cut has been made.** 270 entries below v3.4.0 are in history; the live log holds the
 release-pending set, the untagged entries and the v3.4.x line, and its header now states the
 lifecycle — what stays, what leaves, what moves it, and that history is a redirect. The
-releasability verdict was captured before the run and is identical after it. What is still owed
-by this scope: a per-file threshold the bounded live log can meet, and the release checklist step
-that runs the archiver, so this happens again without anyone deciding to.
+releasability verdict was captured before the run and is identical after it.
+
+**And it does not come back.** The release checklist (step 4, beside the plan sweep) and the
+runbook now run the archiver — after `plan-backfill`, never before, because the sweep decides
+"shipped" from the very `release=` tags the archiver moves out. And the size nudge gets a
+ceiling this file can meet: `oversized_file_thresholds_kb:` in `project-state.yaml` gives one
+governance file its own threshold (this repo sets the change-log's at 768KB, about a month of
+entries with no release), a file with no entry keeps the repo-wide value, and the nudge's advice
+names the archiver instead of telling the reader to delete old entries by hand. Both keys are
+now documented in the template, which the repo-wide one never was. Two archiver defects the
+cumulative review found ride along: a staying entry's pre-existing diagnostic no longer reads as
+a new one when its line number moves (a refusal on a correct run), and every piece of the two
+files is joined on a line boundary, so a live log with no trailing newline cannot glue history's
+newest header onto its last line. `core.write_all_or_none` reads every prior before the first
+write, refusing an unreadable file rather than deleting it on rollback, and rolls back on
+`BaseException` so a Ctrl-C between the two replaces cannot leave the pair half-applied.
 
 ## 2026-09-10: an audit of develop, and the three findings that could not wait for the cut
 

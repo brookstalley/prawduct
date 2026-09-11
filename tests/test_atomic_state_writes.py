@@ -358,6 +358,53 @@ class TestWriteAllOrNone:
         assert not a.exists()
         assert not b.exists()
 
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root reads a mode-000 file")
+    def test_an_existing_file_it_cannot_read_refuses_before_any_write(self, tmp_path):
+        """A prior the rollback cannot restore is a prior it would only delete.
+
+        The old shape read each prior just before its own write and turned an
+        `OSError` into "no prior" — so an unreadable file was written over, and
+        when a LATER write failed the rollback deleted it: unreadable became
+        gone. Reading every prior BEFORE the first write turns the same
+        condition into a refusal with nothing touched."""
+        core = self._core()
+        a = tmp_path / "a.md"
+        b = tmp_path / "b.md"
+        a.write_text("old A", encoding="utf-8")
+        a.chmod(0)
+        try:
+            with pytest.raises(PermissionError):
+                core.write_all_or_none([(a, "new A"), (b, "B")])
+            assert not b.exists()
+        finally:
+            a.chmod(stat.S_IRUSR | stat.S_IWUSR)
+        assert a.read_text(encoding="utf-8") == "old A"
+
+    def test_an_interrupt_between_the_two_writes_rolls_the_first_back(
+        self, tmp_path, monkeypatch
+    ):
+        """Ctrl-C is not an `Exception`, and it is exactly the moment the pair is
+        half-applied — a re-run would then duplicate every moved entry into the
+        append-only file. The rollback runs and the interrupt is re-raised."""
+        core = self._core()
+        a = tmp_path / "a.md"
+        b = tmp_path / "b.md"
+        a.write_text("old A", encoding="utf-8")
+        real = core.atomic_write_text
+        calls: list = []
+
+        def _interrupted(path, text, *args, **kwargs):
+            calls.append(path)
+            if len(calls) == 2:
+                raise KeyboardInterrupt
+            return real(path, text, *args, **kwargs)
+
+        monkeypatch.setattr(core, "atomic_write_text", _interrupted)
+        with pytest.raises(KeyboardInterrupt):
+            core.write_all_or_none([(a, "new A"), (b, "B")])
+        assert a.read_text(encoding="utf-8") == "old A"
+        assert not b.exists()
+
     def test_the_original_error_survives_a_failing_rollback(
         self, tmp_path, monkeypatch
     ):

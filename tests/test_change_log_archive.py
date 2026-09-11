@@ -226,6 +226,26 @@ class TestPendingSetIsPreserved:
         assert result.refused_titles == []
         assert len(result.moved) == 1
 
+    def test_a_staying_entrys_diagnostic_keeps_its_identity_when_its_line_moves(self):
+        """A pre-existing diagnostic is not a NEW one because the entry moved up.
+
+        The validator names each entry with its line number. Archive the shipped
+        entry ABOVE a malformed one and the malformed entry keeps its error and
+        loses its line, so a comparison of raw strings reads the same fact as a
+        diagnostic the run created — and refuses a run that changed nothing it
+        should not have. The malformed entry stays either way: `3.2.0` is not a
+        version, so it is never selected.
+        """
+        content = _log(
+            _entry("2026-02-01: shipped", "scope=a | release=v3.3.4"),
+            _entry("2026-01-01: malformed", "scope=b | release=3.2.0"),
+        )
+        result = change_log_archive.archive_or_refuse(
+            content, None, change_log_archive.MinorLine(3, 4)
+        )
+        assert result.refused_titles == [], result.refused_titles
+        assert [e.title for e, _t in result.moved] == ["2026-02-01: shipped"]
+
     def test_a_run_that_would_CREATE_a_diagnostic_is_refused(self, monkeypatch):
         """The other half of the guard, and the half no input can reach.
 
@@ -337,6 +357,26 @@ class TestNothingIsLost:
             "2026-01-02: b",
             "2026-01-01: a",
         ]
+
+    def test_a_live_file_without_a_trailing_newline_does_not_glue_history(self):
+        """The last entry of a file with no trailing newline has none either, and
+        `_compose` once joined it straight onto history's newest `## ` header —
+        which the parser then read as the tail of the previous entry, folding a
+        moved entry away. No fixture reached it because every fixture ended in a
+        newline."""
+        live = _log(
+            _entry("2026-03-01: pending", "scope=b"),
+            _entry("2026-02-01: shipped", "scope=a | release=v3.3.4"),
+        ).rstrip("\n")
+        history = change_log_archive.HISTORY_HEADER + "\n" + _entry(
+            "2025-12-01: older", "scope=z | release=v3.2.0"
+        )
+        _live, new_history, moved = change_log_archive._compose(
+            live, history, change_log_archive.MinorLine(3, 4)
+        )
+        assert [e.title for e, _t in moved] == ["2026-02-01: shipped"]
+        _pre, pairs = change_log_archive.split_entries(new_history)
+        assert [e.title for e, _t in pairs] == ["2026-02-01: shipped", "2025-12-01: older"]
 
     def test_the_live_header_is_not_carried_into_history(self):
         content = _log(_entry("2026-01-01: a", "scope=a | release=v3.2.0"))

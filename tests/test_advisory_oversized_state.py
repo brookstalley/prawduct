@@ -250,3 +250,67 @@ def test_the_default_threshold_is_the_constant_the_old_note_used():
     # it always did, or this refactor moves a nag it was only meant to make
     # tunable.
     assert core.OVERSIZED_FILE_KB * 1000 == 40000
+
+
+class TestPerFileThreshold:
+    """One ceiling per file, because the files have different lifecycles.
+
+    The live change-log is bounded by release cadence — shipped entries leave it
+    at each release — so its honest size is a minor line's worth of entries,
+    which a 40KB repo-wide ceiling can never fit. Under that ceiling the nudge
+    fires forever and is learned as noise; under a ceiling the file can MEET, the
+    same nudge says the one thing worth saying: the archiver has not run.
+    """
+
+    _TAGGED = "# Change Log\n\n## 2026-01-01: x\n\n<!-- prawduct: scope=x -->\n\n" + _FILLER
+
+    def test_a_per_file_ceiling_is_read_where_the_global_one_was(self, tmp_path):
+        repo = _repo(tmp_path)
+        _write(repo, ".prawduct/change-log.md", _FILLER)
+        _write(repo, ".prawduct/project-state.yaml",
+               "project: demo\noversized_file_thresholds_kb:\n  .prawduct/change-log.md: 200\n")
+        assert _by_type(repo, "oversized-change-log") is None
+
+    def test_a_file_with_no_per_file_entry_still_uses_the_global(self, tmp_path):
+        repo = _repo(tmp_path)
+        _write(repo, ".prawduct/change-log.md", _FILLER)
+        _write(repo, ".prawduct/project-state.yaml",
+               "project: demo\noversized_file_thresholds_kb:\n  .prawduct/learnings.md: 200\n")
+        assert _by_type(repo, "oversized-change-log") is not None
+
+    def test_the_change_log_fires_above_its_own_ceiling_and_not_below(self, tmp_path):
+        repo = _repo(tmp_path)
+        _write(repo, ".prawduct/change-log.md", _FILLER)  # ~57KB
+        state = ("project: demo\noversized_file_threshold_kb: 100\n"
+                 "oversized_file_thresholds_kb:\n  .prawduct/change-log.md: 50\n")
+        _write(repo, ".prawduct/project-state.yaml", state)
+        assert _by_type(repo, "oversized-change-log") is not None, "57KB is over its own 50KB"
+        _write(repo, ".prawduct/project-state.yaml", state.replace(": 50\n", ": 60\n"))
+        assert _by_type(repo, "oversized-change-log") is None, "57KB is under its own 60KB"
+
+    @pytest.mark.parametrize("junk", ["lots", "0", "-5", ""])
+    def test_a_malformed_per_file_value_falls_through_to_the_global(self, tmp_path, junk):
+        repo = _repo(tmp_path)
+        _write(repo, ".prawduct/change-log.md", _FILLER)
+        _write(repo, ".prawduct/project-state.yaml",
+               f"project: demo\noversized_file_thresholds_kb:\n  .prawduct/change-log.md: {junk}\n")
+        assert _by_type(repo, "oversized-change-log") is not None
+
+    def test_the_reader_itself_falls_through_in_order(self, tmp_path):
+        repo = _repo(tmp_path)
+        state = repo / ".prawduct"
+        _write(repo, ".prawduct/project-state.yaml",
+               "oversized_file_threshold_kb: 100\noversized_file_thresholds_kb:\n"
+               "  .prawduct/change-log.md: 768\n")
+        assert core.oversized_file_threshold_for(state, ".prawduct/change-log.md") == 768_000
+        assert core.oversized_file_threshold_for(state, ".prawduct/learnings.md") == 100_000
+        _write(repo, ".prawduct/project-state.yaml", "project: demo\n")
+        assert core.oversized_file_threshold_for(state, ".prawduct/change-log.md") == core.OVERSIZED_FILE_KB * 1000
+
+    def test_the_tagged_advice_names_the_archiver_and_the_per_file_knob(self, tmp_path):
+        repo = _repo(tmp_path)
+        _write(repo, ".prawduct/change-log.md", self._TAGGED)
+        cand = _by_type(repo, "oversized-change-log")
+        assert cand is not None
+        assert "archive-change-log" in cand.trigger_summary
+        assert "oversized_file_thresholds_kb" in cand.owner_action

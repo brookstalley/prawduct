@@ -196,19 +196,25 @@ def write_all_or_none(writes: "Sequence[tuple[Path, str]]") -> None:
     an ``OSError`` from a restore is suppressed rather than masking it. Only
     ``OSError`` — anything else escaping a restore is a bug in this function,
     not a disk that filled, and swallowing it would hide it forever.
+
+    Two edges the rollback cannot cover are refused up front instead. Every prior
+    is read BEFORE the first write: a file that exists but cannot be read is one
+    the rollback could only delete, and turning "unreadable" into "gone" is a
+    worse state than the one it started in. And the rollback runs on
+    ``BaseException``, not ``Exception``: an operator's Ctrl-C between the two
+    replaces is exactly the half-applied pair this function exists to prevent,
+    and it is not an error in the ordinary sense — but it is still the moment to
+    restore, and the interrupt is re-raised unchanged.
     """
+    priors: list[str | None] = []
+    for path, _text in writes:
+        priors.append(path.read_text(encoding="utf-8") if path.exists() else None)
     written: list[tuple[Path, str | None]] = []
     try:
-        for path, text in writes:
-            prior = None
-            if path.exists():
-                try:
-                    prior = path.read_text(encoding="utf-8")
-                except OSError:
-                    prior = None
+        for (path, text), prior in zip(writes, priors):
             atomic_write_text(path, text)
             written.append((path, prior))
-    except Exception:
+    except BaseException:
         for path, prior in reversed(written):
             try:
                 if prior is None:
@@ -466,6 +472,21 @@ OVERSIZED_FILE_KB = 40
 #: of living with a nag it has correctly decided not to act on.
 OVERSIZED_FILE_THRESHOLD_KEY = "oversized_file_threshold_kb"
 
+#: ``project-state.yaml`` block giving ONE governance file its own ceiling, in KB,
+#: keyed by the file's repo-relative path::
+#:
+#:     oversized_file_thresholds_kb:
+#:       .prawduct/change-log.md: 768
+#:
+#: A single repo-wide number cannot fit files with different lifecycles: the
+#: live change-log is bounded by release cadence (shipped entries leave it at
+#: each release), so its natural size is a minor line's worth of entries — far
+#: over the 40KB that fits the others — and a ceiling it can never meet is a
+#: nudge that fires forever and teaches everyone to ignore it. A per-file ceiling
+#: it CAN meet turns the same nudge into the one signal worth having: the
+#: lifecycle has stopped running.
+OVERSIZED_FILE_THRESHOLDS_KEY = "oversized_file_thresholds_kb"
+
 
 #: Path prefixes whose files a NON-HERMETIC test in THIS repo reads, declared by
 #: the repo rather than assumed by the framework.
@@ -534,6 +555,41 @@ def oversized_file_threshold(prawduct_dir: Path) -> int:
         if configured > 0:
             kilobytes = configured
     return kilobytes * 1000
+
+
+def oversized_file_threshold_for(prawduct_dir: Path, rel: str) -> int:
+    """Bytes above which the governance file at ``rel`` earns a size nudge.
+
+    Three readers in order, each falling through to the next: this file's own
+    entry under :data:`OVERSIZED_FILE_THRESHOLDS_KEY`, then the repo-wide
+    :data:`OVERSIZED_FILE_THRESHOLD_KEY`, then :data:`OVERSIZED_FILE_KB`. The
+    fail-soft rule is the sibling's: a missing block, an entry for some other
+    file, or a value that is not a positive integer all fall through rather than
+    silencing or inflating the nudge.
+
+    ``rel`` is matched exactly against the block's keys as written, so a repo
+    declares the path the probe reports (``.prawduct/change-log.md``), not a
+    basename.
+    """
+    state = prawduct_dir / "project-state.yaml"
+    try:
+        text = state.read_text(encoding="utf-8")
+    except OSError:
+        return oversized_file_threshold(prawduct_dir)
+    status, lines = read_yaml_block(text, OVERSIZED_FILE_THRESHOLDS_KEY)
+    if status == YAML_DECLARED:
+        for line in lines:
+            key, sep, value = line.partition(":")
+            if not sep or key.strip().strip("'\"") != rel:
+                continue
+            try:
+                configured = int(value.split("#", 1)[0].strip().strip("'\""))
+            except ValueError:
+                configured = 0
+            if configured > 0:
+                return configured * 1000
+            break
+    return oversized_file_threshold(prawduct_dir)
 
 
 REVIEW_ROUND_BUDGET_KEY = "review_round_budget"

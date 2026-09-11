@@ -205,6 +205,18 @@ same set in executable running order, and is the document to work from when actu
    A plan whose work was **descoped** rather than shipped has no `release=` tag and is not
    swept; give it its end of life by hand, naming what replaced it:
    `prawduct-hook archive-plan <path> --state superseded --superseded-by "<what/why>"`.
+
+   **Then archive the shipped change-log entries** — after the plan sweep and never before
+   it, because `plan-backfill` decides "shipped" from the `release=` tags the archiver moves
+   out of the live log:
+   ```
+   prawduct-hook archive-change-log            # preview: how many entries, below which line
+   prawduct-hook archive-change-log --apply    # moves them into .prawduct/change-log-history.md
+   ```
+   It keeps the current minor line and everything release-pending, refuses to write if any
+   gate's answer would change, and is a no-op when nothing has shipped below the line. This
+   step is what bounds the live log: skipping it is how the file reached 1.5 MB before the
+   lifecycle existed. The first run creates the history file — `git add` it.
 5. **Write the consumer-facing narrative — two files, not one.** `plugin/CHANGELOG.md` gets a
    `## vX.Y.Z` section every release; `README.md`'s `## Recent Changes` gets refreshed on a
    **minor or major bump only**. Both are written at **Phase 1 step 10** of

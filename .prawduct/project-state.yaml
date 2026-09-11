@@ -79,6 +79,15 @@ sentinel_command: python3 -m pytest {sentinel} -q
 #
 # Read ONLY by the evidence-freshness clause, never by the doc-only PR gate: this
 # says "re-run the suite", not "buy a review". Trailing slashes are significant.
+# The live change-log is bounded by release cadence, not by editing: shipped entries leave it
+# at each release (`archive-change-log`, release checklist step 4). After the 2026-09-10 cut it
+# holds the v3.4.x line plus the release-pending set (~435KB) and grows roughly a release's
+# worth of entries between cuts, so this ceiling is about a month with no release — the size
+# that means the lifecycle has stopped running, which is the only thing the nudge should say
+# about this file. The repo-wide 40KB default still governs everything else.
+oversized_file_thresholds_kb:
+  .prawduct/change-log.md: 768
+
 suite_coupled_prefixes:
   - documentation/
   - plugin/

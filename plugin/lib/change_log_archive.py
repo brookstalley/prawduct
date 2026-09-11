@@ -251,7 +251,11 @@ def new_diagnostics(before_content: str, after_content: str) -> list[str]:
     def _diags(content: str) -> set[str]:
         entries = change_log_mod.parse_change_log(content)
         errors, warnings = change_log_mod.validate_change_log_tags(entries)
-        return set(errors) | set(warnings)
+        # The validator names each entry with its line number. A staying entry
+        # below a moved one keeps its diagnostic and loses its line, so the same
+        # fact would read as a NEW diagnostic and refuse a correct run. Compare
+        # the fact, not the position.
+        return {re.sub(r"\(line \d+\)", "(line ?)", d) for d in (*errors, *warnings)}
 
     return sorted(_diags(after_content) - _diags(before_content))
 
@@ -270,16 +274,25 @@ def _compose(
     preamble, pairs = split_entries(live_content)
     moving, staying = select_for_archive(pairs, keep_from)
 
-    new_live = preamble + "".join(text for _entry, text in staying)
-    moved_text = "".join(text for _entry, text in moving)
+    # Every piece is joined on a line boundary. The last entry of a file with no
+    # trailing newline has none, and gluing history's newest `## ` header onto
+    # its final line is how the parser loses an entry — the one thing a move of
+    # whole entries must never do.
+    new_live = _nl(preamble) + "".join(_nl(text) for _entry, text in staying)
+    moved_text = "".join(_nl(text) for _entry, text in moving)
 
     if history_content is None:
         new_history = HISTORY_HEADER + "\n" + moved_text
     else:
         h_preamble, h_pairs = split_entries(history_content)
-        existing = "".join(text for _entry, text in h_pairs)
-        new_history = h_preamble + moved_text + existing
+        existing = "".join(_nl(text) for _entry, text in h_pairs)
+        new_history = _nl(h_preamble) + moved_text + existing
     return new_live, new_history, moving
+
+
+def _nl(text: str) -> str:
+    """``text`` ending in a newline, unless it is empty."""
+    return text if not text or text.endswith("\n") else text + "\n"
 
 
 @dataclass(frozen=True)

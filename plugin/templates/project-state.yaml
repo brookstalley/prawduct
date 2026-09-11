@@ -402,6 +402,20 @@ coverage_required: false
 #   Whitespace-separated test trees for the coverage verifier (default:
 #   `tests`). One verifier run unions discovery across all of them.
 #
+# oversized_file_threshold_kb: 40
+#   The size, in KB, above which a governance file (`project-state.yaml`, the
+#   active build plan, `change-log.md`) earns a once-per-session nudge. Raise it
+#   when the bulk is recorded reasoning you meant to keep.
+#
+# oversized_file_thresholds_kb:
+#   .prawduct/change-log.md: 768
+#   The same ceiling for ONE file, keyed by its repo-relative path; a file with
+#   no entry uses the repo-wide value. The live change-log is bounded by release
+#   cadence (`prawduct-hook archive-change-log` moves shipped entries out at each
+#   release), so its honest ceiling is a minor line's worth of entries — give it
+#   one it can meet, and the nudge becomes the signal that the archiver has not
+#   run, instead of a fact about the file that fires forever.
+#
 # sentinel_command: npx vitest run {sentinel}
 #   How this product runs ONE test file, for `prawduct-hook audit-learnings`.
 #   A learning may declare `sentinel=<path>`, meaning "the failure mode this

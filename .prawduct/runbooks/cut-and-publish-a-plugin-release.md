@@ -588,6 +588,22 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
     not swept. Give it its end of life by hand, naming what replaced it:
     `prawduct-hook archive-plan <path> --state superseded --superseded-by "<what/why>"`.
 
+    **Then, with the plans archived, archive the shipped change-log entries.** After the
+    sweep and never before it: `plan-backfill` decides "shipped" from the `release=` tags
+    the archiver moves out of the live log.
+
+    ```
+    prawduct-hook archive-change-log            # preview: how many entries, below which line
+    prawduct-hook archive-change-log --apply    # moves them into .prawduct/change-log-history.md
+    ```
+
+    **Expected:** `archived: N entr(ies) below vX.Y.0 (…KB) -> .prawduct/change-log-history.md`,
+    or `nothing to archive`. It keeps the current minor line and everything release-pending,
+    and refuses (exit 1, writing nothing) if the release-pending set would change — that
+    refusal is a malformed entry to fix, never a reason to `--force` anything. On a repo's
+    first cut the history file is new: `git add .prawduct/change-log-history.md` before the
+    commit below, because `-am` stages only tracked files.
+
 12. Commit the prep:
 
     ```

@@ -72,7 +72,8 @@ prawduct/
 │   ├── learnings.md                   # Accumulated wisdom (surfaced via /prawduct:learnings)
 │   ├── learnings-detail.md            # Full learning context
 │   ├── learnings-history.md           # Retired/superseded entries, read only on a miss
-│   ├── change-log.md                  # what shipped, per scope, with its release= tag
+│   ├── change-log.md                  # release-pending entries and the current minor line
+│   ├── change-log-history.md          # shipped entries below that line, moved by archive-change-log
 │   ├── cross-cutting-concerns.md      # Concern-to-pipeline coverage registry
 │   ├── artifacts/                     # this repo's own specs and plans (+ archive/)
 │   ├── runbooks/                      # operational procedures (release cut, pruned promotion)
@@ -100,7 +101,8 @@ my-product/
 │   ├── learnings-detail.md            # full learning context
 │   ├── learnings-history.md           # retired/superseded entries, read only on a miss
 │   ├── backlog.md                     # deferred work items (out-of-scope captures)
-│   ├── change-log.md                  # change log
+│   ├── change-log.md                  # change log: release-pending + the current minor line
+│   ├── change-log-history.md          # shipped entries the release moved out (archive-change-log)
 │   ├── artifacts/                     # generated specifications
 │   │   ├── boundary-patterns.md       # contract surfaces between components
 │   │   ├── project-preferences.md     # developer preferences (language, testing, style)
