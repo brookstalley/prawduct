@@ -314,3 +314,29 @@ class TestPerFileThreshold:
         assert cand is not None
         assert "archive-change-log" in cand.trigger_summary
         assert "oversized_file_thresholds_kb" in cand.owner_action
+
+    def test_the_build_plan_is_keyed_by_its_resolved_path_not_its_label(self, tmp_path):
+        """The probe reports the build plan by its real path, so that is the key a
+        repo writes — the measured-file table's label is not a path anyone can
+        declare a ceiling under."""
+        repo = _repo(tmp_path)
+        _write(repo, ".prawduct/artifacts/build-plan-foo.md", _FILLER)
+        state = "project: demo\nactive_build_plan: artifacts/build-plan-foo.md\n"
+        _write(repo, ".prawduct/project-state.yaml", state)
+        assert _by_type(repo, "oversized-build-plan") is not None
+        _write(repo, ".prawduct/project-state.yaml",
+               state + "oversized_file_thresholds_kb:\n  .prawduct/artifacts/build-plan-foo.md: 200\n")
+        assert _by_type(repo, "oversized-build-plan") is None
+
+    def test_the_learnings_nudge_reads_the_same_per_file_ceiling(self, tmp_path):
+        """One reader for every governance-file nudge, or the key's documentation
+        ("every governance file") is a lie for the one nudge that lives elsewhere."""
+        from lib import briefing
+
+        repo = _repo(tmp_path)
+        _write(repo, ".prawduct/learnings.md", _FILLER)
+        _write(repo, ".prawduct/project-state.yaml", "project: demo\n")
+        assert "learnings.md is large" in briefing.assemble_session_briefing(repo, [])
+        _write(repo, ".prawduct/project-state.yaml",
+               "project: demo\noversized_file_thresholds_kb:\n  .prawduct/learnings.md: 200\n")
+        assert "learnings.md is large" not in briefing.assemble_session_briefing(repo, [])

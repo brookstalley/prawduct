@@ -7,8 +7,9 @@
 
      LIFECYCLE. Entries whose `release=` falls below the current minor line leave this file:
      `prawduct-hook archive-change-log` moves them whole into `.prawduct/change-log-history.md`,
-     newest first, and refuses to write if any gate's answer would change. The release process
-     runs it, so the live log stays bounded by release cadence rather than by anyone's diligence.
+     newest first, and refuses to write if the release-pending set would change or a tag
+     diagnostic would appear. The release process runs it, so the live log stays bounded by
+     release cadence rather than by anyone's diligence.
      History is a redirect, not a hole: nothing is deleted anywhere. (Entries before 2026-03-22
      were hand-moved into project-state.yaml under change_log_history before this lifecycle
      existed; that block is a relocation, not this mechanism.) -->

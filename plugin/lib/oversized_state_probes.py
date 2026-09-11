@@ -197,10 +197,18 @@ def probe_oversized_governance_file(state: ProjectState, codebase: Codebase):
         path = _measured_path(measured, root)
         if path is None or not path.is_file():
             continue
+        shown = measured.rel
+        if measured.type == "oversized-build-plan":
+            try:
+                shown = str(path.relative_to(root))
+            except ValueError:
+                shown = str(path)
         # Per file, because the files have different lifecycles: the change-log
         # is bounded by release cadence and its honest ceiling is a minor line's
         # worth of entries, which the repo-wide number was never going to fit.
-        threshold = oversized_file_threshold_for(root / ".prawduct", measured.rel)
+        # Keyed by the path the nudge REPORTS — for the build plan that is the
+        # resolved file, not the "the active build plan" label.
+        threshold = oversized_file_threshold_for(root / ".prawduct", shown)
         try:
             size = path.stat().st_size
             if size <= threshold:
@@ -208,13 +216,6 @@ def probe_oversized_governance_file(state: ProjectState, codebase: Codebase):
             text = path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
             continue
-
-        shown = measured.rel
-        if measured.type == "oversized-build-plan":
-            try:
-                shown = str(path.relative_to(root))
-            except ValueError:
-                shown = str(path)
 
         bullets = [advice.text for advice in measured.advice if advice.applies_to(text)]
         reasoning = bool(_REASONING_SECTIONS.search(text))

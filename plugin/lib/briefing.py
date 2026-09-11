@@ -48,7 +48,7 @@ from .core import (
     BUILD_PLAN_POINTER_KEY,
     atomic_write_text,
     describe_branch_claim,
-    oversized_file_threshold,
+    oversized_file_threshold_for,
     pointer_plan_path,
     read_str_yaml_key,
     resolve_branch_claim,
@@ -1106,16 +1106,16 @@ def assemble_session_briefing(
                 lines.append(f"Learnings ({rule_count} rules): /prawduct:learnings <topic> or read .prawduct/learnings.md")
             # Size nudge (MET-6W3J): every /prawduct:learnings lookup and
             # Critic learnings cross-check reads the whole file, so size is a
-            # recurring per-session cost. The threshold is now the ONE the
-            # governance-file nudges share (`core.oversized_file_threshold`,
-            # repo-overridable) rather than a second hardcoded 40000 — the two
-            # copies were documented as "the same threshold" while being free to
-            # drift, and only one of them could be tuned. (An earlier 8KB
-            # clear-hook warning was retired when the fork-skill lookup landed;
-            # at ~80KB the lookup itself became the cost, so the nudge returns
-            # at the shared threshold.)
+            # recurring per-session cost. The threshold is the ONE every
+            # governance-file nudge reads (`core.oversized_file_threshold_for`:
+            # this file's own ceiling, else the repo-wide one, else the default)
+            # rather than a second hardcoded 40000 — two copies documented as
+            # "the same threshold" were free to drift, and only one could be
+            # tuned. (An earlier 8KB clear-hook warning was retired when the
+            # fork-skill lookup landed; at ~80KB the lookup itself became the
+            # cost, so the nudge returns at the shared threshold.)
             size = learnings_path.stat().st_size
-            threshold = oversized_file_threshold(prawduct_dir)
+            threshold = oversized_file_threshold_for(prawduct_dir, ".prawduct/learnings.md")
             if size > threshold:
                 lines.append(
                     f"learnings.md is large ({size // 1000}KB > {threshold // 1000}KB) — "

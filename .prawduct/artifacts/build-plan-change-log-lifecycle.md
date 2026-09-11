@@ -34,9 +34,9 @@ not address that (see Out of Scope) — but it is why the fix cannot be "get und
 
 1. `prawduct-hook archive-change-log` exists and moves shipped entries out of the live log into
    `.prawduct/change-log-history.md`, leaving a forwarding pointer. Re-runnable, `--apply`-gated.
-2. **No gate's answer changes.** The release-pending set, the unclassifiable-pending set, and the
-   tag-validation verdict are identical before and after an archive run — asserted by the command
-   itself, which refuses rather than reports when they differ.
+2. **No gate's answer changes.** The release-pending set and the unclassifiable-pending set are
+   identical before and after an archive run, and no tag diagnostic APPEARS (one disappearing
+   rides the entry that left) — asserted by the command itself, which refuses rather than reports.
 3. The live log holds release-pending + untagged + the current minor line (v3.4.x); v1.x–v3.3.x is
    in history. ~1.1 MB moves.
 4. The change-log has a **per-file threshold** that a bounded live file can meet, so the advisory

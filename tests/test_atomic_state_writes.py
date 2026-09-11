@@ -405,6 +405,34 @@ class TestWriteAllOrNone:
         assert a.read_text(encoding="utf-8") == "old A"
         assert not b.exists()
 
+    def test_a_rollback_that_cannot_restore_names_the_file_it_left_behind(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """Best-effort rollback is not silent rollback. ENOSPC after the first
+        write lands, then again on the restore, leaves the pair half-applied —
+        and the documented recovery (run it again) would duplicate every moved
+        entry. The original error is still the one raised; the path the
+        rollback could not restore is named on stderr."""
+        core = self._core()
+        a = tmp_path / "a.md"
+        b = tmp_path / "b.md"
+        a.write_text("old A", encoding="utf-8")
+        real = core.atomic_write_text
+        calls: list = []
+
+        def _full(path, text, *args, **kwargs):
+            calls.append(path)
+            if len(calls) == 1:
+                return real(path, text, *args, **kwargs)
+            raise OSError(28, "No space left on device")
+
+        monkeypatch.setattr(core, "atomic_write_text", _full)
+        with pytest.raises(OSError, match="No space left"):
+            core.write_all_or_none([(a, "new A"), (b, "B")])
+        err = capsys.readouterr().err
+        assert "ROLLBACK FAILED" in err and str(a) in err
+        assert a.read_text(encoding="utf-8") == "new A"  # the state it names
+
     def test_the_original_error_survives_a_failing_rollback(
         self, tmp_path, monkeypatch
     ):

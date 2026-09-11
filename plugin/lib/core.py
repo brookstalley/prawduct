@@ -193,9 +193,12 @@ def write_all_or_none(writes: "Sequence[tuple[Path, str]]") -> None:
 
     Rollback is best-effort by construction: if restoring also fails there is
     nothing left to try, and the original exception is the one worth raising, so
-    an ``OSError`` from a restore is suppressed rather than masking it. Only
-    ``OSError`` — anything else escaping a restore is a bug in this function,
-    not a disk that filled, and swallowing it would hide it forever.
+    an ``OSError`` from a restore does not mask it — but it is NOT silent: every
+    path the rollback could not restore is named on stderr, because the pair is
+    then half-applied and the documented recovery (run it again) would duplicate
+    every moved entry into an append-only file. Only ``OSError`` is caught there
+    — anything else escaping a restore is a bug in this function, not a disk
+    that filled, and swallowing it would hide it forever.
 
     Two edges the rollback cannot cover are refused up front instead. Every prior
     is read BEFORE the first write: a file that exists but cannot be read is one
@@ -221,8 +224,13 @@ def write_all_or_none(writes: "Sequence[tuple[Path, str]]") -> None:
                     path.unlink(missing_ok=True)
                 else:
                     atomic_write_text(path, prior)
-            except OSError:
-                pass
+            except OSError as restore_exc:
+                print(
+                    f"ROLLBACK FAILED for {path}: {restore_exc} — this file kept its NEW "
+                    "content while the others were restored; do not re-run until it is "
+                    "reconciled by hand",
+                    file=sys.stderr,
+                )
         raise
 
 
