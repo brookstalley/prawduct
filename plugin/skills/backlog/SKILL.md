@@ -48,10 +48,12 @@ than pointing here for it, so a reader that loads one file still gets the whole 
   wrong. `git merge-base --is-ancestor HEAD origin/<base>` answers from whenever you last
   fetched, so a PR merged minutes ago reads as unmerged and a correct close is refused, which
   reads as the framework misfiring when it is the ref that is stale. Ask the forge (`gh pr view
-  <n> --json state,mergedAt`, or `gh pr list --state merged`), or put a `git fetch` immediately
-  before the ancestry test. Staleness here only ever produces a **false refusal**, never a false
-  permit — a local ref cannot contain a merge that has not happened — so the remedy is always to
-  re-derive the answer, never to skip the check.
+  <n> --json state,mergedAt`, or `gh pr list --state merged`) — it answers under every merge
+  strategy. The ancestry test, even after a `git fetch`, is valid only where the repo merges
+  with merge commits: under a squash or rebase merge the branch tip is never an ancestor of the
+  merged base, so it refuses a merge that happened. Staleness here only ever produces a **false
+  refusal**, never a false permit — a local ref cannot contain a merge that has not happened —
+  so the remedy is always to re-derive the answer, never to skip the check.
 
 Either way the call is **explicit** — D4 requires it, never inferred from a view — and **no status change ever needs a post-merge commit on the integration branch**: the markdown archive rides the PR, and the Issues close is an API call that touches no branch at all. Backlog `shipped` = *the item's work is merged to the integration base* (the item's single terminal state) — distinct from a **change-log** entry's `status=shipped`, which means *released to consumers* (`main`) and legitimately batches at the `develop→main` release. Don't conflate them: the backlog archive belongs in the feature PR; the change-log `shipped` flip belongs to release-prep (gitflow) — or rides in the closing PR itself when the PR's base IS the release surface (trunk; `/prawduct:pr` create-flow Step 1d).
 
