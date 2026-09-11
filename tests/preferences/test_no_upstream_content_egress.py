@@ -646,6 +646,52 @@ class TestTheApprovalCoversTheBytes:
         assert_filed_nothing(fake)
 
 
+
+class TestAnEmptyPayloadNeverFiles:
+    """The failure the skill's own third round named and closed only in prose:
+    every composed field arrives via `$(cat <path>)`, and a path the reader did
+    not hold reads as nothing. Both flags are present, so the presence check
+    passes; the title prefix alone clears the length floor; and under standing
+    consent nothing compares bytes. The guard has to be in the module that owns
+    the bytes, refusing on BOTH arms, or an empty issue lands where it cannot be
+    retitled or deleted."""
+
+    @pytest.mark.parametrize("field", ["--title", "--body"])
+    def test_the_preview_refuses_an_empty_field_outright(self, tmp_path, capsys, field):
+        project = a_product_repo(tmp_path)
+        argv = ["file-upstream", "--title", FILEABLE_TITLE, "--body", FILEABLE_BODY, "--json"]
+        argv[argv.index(field) + 1] = "   "
+
+        code = cli.run(str(project), argv, transport=MagicMock())
+        envelope = json.loads(capsys.readouterr().out)
+
+        assert code != 0
+        assert envelope["status"] == "error"
+        assert field in envelope["error"]["message"]
+
+    @pytest.mark.parametrize("field", ["--title", "--body"])
+    def test_always_file_does_not_waive_it(self, tmp_path, capsys, field):
+        """Standing consent waives the digest comparison — the one check that would
+        otherwise have noticed the bytes changed between preview and send. It must
+        not waive this, and the transport must see no call at all."""
+        fake = FakeGitHub()
+        project = a_product_repo(tmp_path, preference="always-file")
+        argv = send_argv(project, approve="sha256:whatever")
+        argv[argv.index(field) + 1] = ""
+
+        # Run directly rather than through `refuse`, whose own "nothing filed"
+        # check reads the fake afterwards: the claim here is that the SEND made no
+        # transport call at all, which only an untouched call list can show.
+        code = cli.run(str(project), argv, transport=fake)
+        envelope = json.loads(capsys.readouterr().out)
+
+        assert code != 0
+        assert envelope["status"] == "error"
+        assert envelope["error"]["retryable"] is False
+        assert field in envelope["error"]["message"]
+        assert fake.calls == []
+
+
 class TestFilingIsAuthenticated:
     """§5 check 5. GitHub issues are inherently authenticated; upstream filing is
     never anonymous, and the token is the session's own — the adapter manages none."""
@@ -1077,10 +1123,11 @@ class TestTheDropBoxReplacementIsLive:
         A round fixing the undefined `<scratch>` placeholder replaced it with
         `SCRATCH="$(mktemp -d)"`, which reads as working code and is not: the
         Bash tool does not persist env vars between calls, and preview and send
-        are necessarily separate ones. By the send `$SCRATCH` is empty, every
-        `$(cat …)` reads nothing, and `check_payload_inputs` bans only newlines
-        and fences while standing consent skips the digest — so an empty-bodied
-        issue files into a repo where it cannot be retitled or deleted.
+        are necessarily separate ones. By the send `$SCRATCH` is empty and every
+        `$(cat …)` reads nothing. `check_payload_inputs` now refuses an empty
+        title or body on both arms (`TestAnEmptyPayloadNeverFiles`), so the
+        variable form costs a wasted round rather than an empty issue — this pin
+        is what makes the round not happen.
 
         The sibling above pins that the fields arrive via `$(cat …)`; it is
         satisfied by a `$(cat …)` reading a path that does not exist. This pins

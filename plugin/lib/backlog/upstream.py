@@ -386,7 +386,21 @@ def check_payload_inputs(*, title: str, body: str, component: str) -> str | None
     the §2 convention rather than prose, an issue title is single-line anyway, and
     forbidding the newline is what stops a value from reaching column 0 of the
     body at all — a strictly narrower thing to check than what it can spell there.
+    **Something in the title and the body.** The skill composes both through
+    ``$(cat <path>)``, and a path the reader did not actually hold reads as nothing
+    — the flag is present, so a presence check passes, and the ``[prawduct]``
+    prefix alone clears the title floor. Under ``always-file`` nothing later
+    compares bytes, so the empty payload would file as an issue that cannot be
+    retitled or deleted. Refused here, where every composition runs, rather than
+    in the skill prose that first noticed it. The component may be empty: it is
+    optional by signature, and an absent component is a legitimate report.
     """
+    for label, value in (("--title", title), ("--body", body)):
+        if not (value or "").strip():
+            return (
+                f"{label} is empty — a `$(cat …)` over a path that was never written "
+                "reads as nothing, and an empty issue cannot be retitled or deleted upstream"
+            )
     for label, value in (("--title", title), ("--component", component)):
         if "\n" in (value or "") or "\r" in (value or ""):
             return f"{label} must be a single line"
