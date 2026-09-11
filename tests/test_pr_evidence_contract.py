@@ -82,11 +82,25 @@ CLOSING_KEYWORDS = re.compile(
     # require one -- a bare "closes the loop" is not a closing keyword. This
     # narrows the match; it does not make it exact. "suggested fix #2" still
     # matches, because the shape is genuinely ambiguous in prose. That residual is
-    # accepted rather than chased: the surface set excludes append-only records,
-    # and every live hit today carries the qualification. Narrowing further would
-    # start missing the instruction prose this exists to catch, and a guard that
-    # misfires trains its reader to ignore the one real catch.
-    r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(?:\d+|N)\b",
+    # accepted rather than chased: the surface set excludes append-only records.
+    # Narrowing further would start missing the instruction prose this exists to
+    # catch, and a guard that misfires trains its reader to ignore the one real
+    # catch.
+    #
+    # The one narrowing that IS made: a past-participle form behind a determiner
+    # ("the closed #422", "a fixed #19") is an adjective describing an issue's
+    # state, never an instruction to GitHub -- the determiner is what makes it
+    # unambiguous, and it is the only shape in the family that admits no verb
+    # reading. This was accepted as residual until a live surface hit it, which
+    # is the condition the acceptance rested on: the note above once read "every
+    # live hit today carries the qualification", and a requirements document
+    # writing ordinary English about an already-closed issue made that false.
+    # Reflowing correct prose to satisfy a guard is the wrong repair. Only the
+    # -ed forms take the exclusion, so "the `Closes #N` keyword" -- the shape
+    # instruction prose actually uses -- keeps matching and still owes its
+    # default-branch qualification.
+    r"(?:(?<!\bthe )(?<!\ba )(?<!\ban )\b(?:closed|fixed|resolved)"
+    r"|\b(?:closes?|fix(?:es)?|resolves?))\s+#(?:\d+|N)\b",
     re.IGNORECASE,
 )
 
@@ -180,6 +194,48 @@ class TestClosingKeywordClaims:
                 "gitflow base the keyword is inert and the item silently stays open.\n\n"
                 f"Paragraph:\n{para[:400]}"
             )
+
+    @pytest.mark.parametrize(
+        "prose",
+        [
+            "Closes #123",
+            "Fixes #7",
+            "Resolves #9",
+            "Closes #N",
+            "Closed #55 by hand",
+            "a `Closes #N` line for each item",
+            "the `Closes #N` keyword",
+        ],
+    )
+    def test_the_keyword_shapes_instruction_prose_uses_still_match(self, prose: str):
+        """The guard's reach, pinned against a narrowing that quietly un-covers
+        the prose it exists for. The backticked forms are here because the
+        determiner exclusion below sits one character away from swallowing them:
+        the char before `Closes` in "the `Closes #N`" is a backtick, not a
+        space, which is the whole reason "the closed #422" can be excluded
+        without excluding these."""
+        assert CLOSING_KEYWORDS.search(prose), (
+            f"{prose!r} no longer reads as a closing keyword, so a paragraph "
+            "containing it would skip the default-branch check. That check is "
+            "what stops a gitflow PR promising a close the merge never fires."
+        )
+
+    @pytest.mark.parametrize(
+        "prose",
+        ["adjacent to the closed #422", "a fixed #19", "an resolved #5"],
+    )
+    def test_a_participle_behind_a_determiner_is_not_a_keyword(self, prose: str):
+        """An issue described as closed is not an instruction to close one, and
+        the determiner is what settles it. Live prose hit this and reddened the
+        suite; the repair belongs in the classifier, because the alternative is
+        reflowing correct English to satisfy a guard — which teaches every later
+        author that the guard, not the sentence, decides how they write."""
+        assert not CLOSING_KEYWORDS.search(prose), (
+            f"{prose!r} matches as a GitHub closing keyword, but the determiner "
+            "makes it adjectival — no verb reading exists. A false positive here "
+            "trains readers to ignore the one real catch."
+        )
+
 
 class TestIssuesBackendCloseIsDeferred:
     """The remedy this bugfix installs, pinned. Without these, deleting the
