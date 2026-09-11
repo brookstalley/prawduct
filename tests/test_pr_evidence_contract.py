@@ -96,12 +96,14 @@ CLOSING_KEYWORD_CANDIDATE = re.compile(
 # keyword" matching: `Closes` is not in this set, so no determiner can excuse it.
 _PARTICIPLES = frozenset({"closed", "fixed", "resolved"})
 
-# A determiner immediately before a participle makes it adjectival -- "the closed
-# #422" describes an issue's state and cannot be read as an instruction to
-# GitHub. The list is open on purpose: this is a guard over English prose, and a
-# writer reaching for "every closed #19" means exactly what one reaching for "the
-# closed #19" means. Add to it rather than letting a true adjective redden the
-# suite.
+# A determiner immediately before a participle makes the adjectival reading the
+# natural one -- "the closed #422" describes an issue's state. Not every member
+# forecloses a verb reading in the abstract ("one closed #5" can parse as subject
+# plus verb); what makes the exclusion safe is narrower and empirical -- prose
+# giving GitHub an instruction reaches for `Closes #N`, never for these shapes.
+# The list is open on purpose: a writer reaching for "every closed #19" means
+# what one reaching for "the closed #19" means. Add to it rather than letting a
+# true adjective redden the suite.
 _DETERMINERS = frozenset(
     """the a an this that these those its their his her our your my
     every each any some no one both either neither""".split()
@@ -119,8 +121,8 @@ def names_closing_keyword(text: str) -> bool:
     """True when `text` uses a GitHub closing keyword as an INSTRUCTION.
 
     An issue described as closed is not an instruction to close one. Every
-    candidate survives unless it is a participle behind a determiner, which is
-    the one shape in the family that admits no verb reading."""
+    candidate survives unless it is a participle behind a determiner -- the one
+    shape in the family that instruction prose never uses."""
     for match in CLOSING_KEYWORD_CANDIDATE.finditer(text):
         if match.group(1).lower() not in _PARTICIPLES:
             return True
@@ -275,7 +277,8 @@ class TestClosingKeywordClaims:
         tripped it only because they happened to."""
         assert not names_closing_keyword(prose), (
             f"{prose!r} matches as a GitHub closing keyword, but the determiner "
-            "makes it adjectival -- no verb reading exists. A false positive here "
+            "makes the adjectival reading the natural one, and no instruction prose "
+            "uses that shape. A false positive here "
             "trains readers to ignore the one real catch."
         )
 
