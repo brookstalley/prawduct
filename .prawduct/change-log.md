@@ -336,8 +336,7 @@ answers under every merge strategy — the ancestry test, even freshly fetched, 
 the repo merges with merge commits — and records the asymmetry that makes the remedy unambiguous: a stale local ref can only ever produce a **false refusal**, never a false
 permit, since a ref cannot contain a merge that has not happened. So the answer is always to
 re-derive, never to skip the check. Pinned on the rule's own bullet rather than file-wide — guidance
-that drifts out of the bullet stops being read by the caller the obligation lands on — and both
-halves of the pin mutation-checked.
+that drifts out of the bullet stops being read by the caller the obligation lands on — and the pin mutation-checked: it goes red with the forge route removed.
 
 ## 2026-09-07: an untracked change-log no longer reads as a missing one
 
