@@ -71,7 +71,8 @@ Verify on a feature branch (not main/master/develop). Verify commits ahead of ba
 
 > **Judgeable is the same predicate Step 1b uses** (`coverage_algebra.is_judgeable_path`), not "is it `.md`" — so `.prawduct/` session metadata is exempt even though it is not `.md`, and governance-protected prose (`skills/`, `methodology/`, `templates/`, root `CLAUDE.md`) needs an entry even though it *is* `.md`. The two gates at this boundary once classified with different rules and returned opposite verdicts on the same file; they now ask one predicate, and the tests assert that they **agree** rather than pinning each verdict separately.
 
-- **Exit 0**: proceed.
+- **Exit 0 with `entry-present`, `doc-only` or `empty-diff`**: proceed.
+- **Exit 0 with `entry-present-untracked`**: the log is untracked (gitignored, or never added), so git cannot say whether **this branch** added an entry — only that the copy on disk holds a release-pending one. That is a weaker check and it passed; the gate's real question went unanswered. **Confirm by hand that this branch's work has an entry, and note the manual check in the PR description** — the same treatment `no-base`/`git-failed` get below, for the same reason. REL-6C3W is precisely a branch merging with no entry, so an unconfirmed pass here reopens it in the repos this verdict exists for. To restore the real check, track the log: `.prawduct/*` plus `!.prawduct/change-log.md` — a bare `.prawduct/` cannot be negated, because git will not re-include a file under an excluded directory.
 - **Exit 1 with `no-entry` or `entry-edited-not-added`**: **STOP** — write the change-log entry for this branch's work (tag line with `scope=` and no `release=` — that absence IS the release-pending state), commit it, then re-run the probe.
 - **Exit 1 with `no-base` or `git-failed`**: the probe couldn't evaluate — check the change-log by hand and note the manual check in the PR description.
 
