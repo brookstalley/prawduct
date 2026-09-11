@@ -48,6 +48,14 @@ def _hook_module():
     return module
 
 
+#: The apply-gated family, read from the hook's OWN table rather than listed here.
+#: A transcribed copy is what this file carried before, and it had drifted by
+#: three commands (`lifecycle-repair`, `plan-backfill`, `reanchor`) while its
+#: docstring still said "these four" — a green suite over an unpinned classifier,
+#: whose failure mode is a read-only dry run refused inside a worktree.
+_APPLY_GATED = frozenset(_hook_module()._EPHEMERAL_APPLY_GATED_COMMANDS)
+
+
 # ---------------------------------------------------------------------------
 # Helpers (real git, sterile env)
 # ---------------------------------------------------------------------------
@@ -584,17 +592,9 @@ class TestGuardAllowsReads:
         wt = _agent_worktree(primary)
         assert "BLOCKED" not in _run(wt, *argv).stderr
 
-    @pytest.mark.parametrize(
-        "command",
-        [
-            "audit-learnings",
-            "coverage-scaffold",
-            "learnings-obligation",
-            "norm-index-scaffold",
-        ],
-    )
+    @pytest.mark.parametrize("command", sorted(_APPLY_GATED))
     def test_read_only_flag_form_proceeds(self, tmp_path, command):
-        """These four mutate only under `--apply`; the dry run is a report.
+        """Every apply-gated command mutates only under `--apply`; the dry run is a report.
 
         Parametrized over the whole family because two of them shipped missing
         from the allowlist: their dry runs were refused with a message asserting
@@ -608,15 +608,7 @@ class TestGuardAllowsReads:
         wt = _agent_worktree(primary)
         assert "BLOCKED" not in _run(wt, command).stderr
 
-    @pytest.mark.parametrize(
-        "command",
-        [
-            "audit-learnings",
-            "coverage-scaffold",
-            "learnings-obligation",
-            "norm-index-scaffold",
-        ],
-    )
+    @pytest.mark.parametrize("command", sorted(_APPLY_GATED))
     def test_apply_form_still_refuses(self, tmp_path, command):
         """The other half of the same branch — `--apply` is the writing form."""
         primary = tmp_path / "primary"

@@ -5900,6 +5900,66 @@ def cmd_norm_index_scaffold(project_dir: Path, argv: list[str]) -> int:
     return 1 if status == norm_index_scaffold.STATUS_UNREADABLE else 0
 
 
+def cmd_reanchor(project_dir: Path, argv: list[str]) -> int:
+    """Detect — and on ``--apply`` replace — a governance anchor that predates the
+    plugin-absent notice.
+
+    ``apply_claude_anchor`` returns the moment it sees the sentinel, so it converges
+    repos that have NO anchor and never repairs one that is merely old. That was
+    harmless while the anchor's text was advisory and stopped being harmless when it
+    became the only thing a plugin-less clone reads: every anchor shipped before the
+    notice tells such a session a Stop hook will block it, and never names the one
+    command that would make that true.
+
+    Exit codes follow ``artifacts/api-contract.md`` § Error Model, matching
+    ``learnings-obligation`` exactly. **Dry run is an advisory report:** 0 when it
+    ran — a finding is not a failure — and 1 only when it could not run (lib not
+    importable, file undecodable). **``--apply`` is a state-mutating writer:** 0 when
+    it wrote or was an idempotent no-op, 1 when it refused (nothing written).
+    Unknown flags are 2.
+    """
+    rejected = _reject_unknown_args("reanchor", argv, {"--apply", "--json"})
+    if rejected is not None:
+        return rejected
+    apply = "--apply" in argv
+    as_json = "--json" in argv
+
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import anchor_repair  # noqa: PLC0415 — lazy keeps top-level cheap
+    except ImportError as exc:
+        # Both directions are 1 here ("could not run"): fail-open on the writer
+        # would report a success that never happened, and the dry run cannot run
+        # either.
+        print(f"error: reanchor could not import the plugin lib/ ({exc})", file=sys.stderr)
+        return 1
+
+    result = anchor_repair.repair(project_dir, apply=apply)
+    status = result["status"]
+
+    if as_json:
+        print(json.dumps(result, indent=2))
+    else:
+        # Labelled from the MODE the operator asked for, not from whether a write
+        # happened — an `--apply` run against a refused status writes nothing, and
+        # calling that "dry-run" invites them to conclude they forgot the flag.
+        print(f"reanchor ({'apply' if apply else 'dry-run'}): {status}")
+        print(f"  {result['detail']}")
+        if result["repairable"] and not result["applied"]:
+            # The informed confirmation: the whole replacement, so `--apply` is a
+            # yes to text the owner has actually read. One approval covers the act.
+            verb = "insert into" if status == anchor_repair.STATUS_ABSENT else "rewrite"
+            print(f"  Would {verb} {result['path']} (--apply to write it):")
+            for line in (result["replacement"] or "").split("\n"):
+                print(f"    | {line}")
+
+    if apply:
+        return 0 if result["applied"] or status == anchor_repair.STATUS_OK else 1
+    return 1 if status == anchor_repair.STATUS_UNREADABLE else 0
+
+
 def _plan_label(plan_path: Path, prawduct_dir: Path) -> str:
     """A plan named so the operator can tell it from its siblings.
 
@@ -6519,7 +6579,7 @@ _USAGE = (
     "migrate-plugin [--apply] [--json]|init-product <target> --name <name> [--backlog-repo owner/repo] [--apply] [--json]|"
     "update-gitignore [--dry-run]|"
     "audit-learnings [--apply] [--json]|learnings-obligation [--apply] [--json]|"
-    "norm-index-scaffold [--apply] [--json]|"
+    "norm-index-scaffold [--apply] [--json]|reanchor [--apply] [--json]|"
     "lifecycle-repair [--apply] [--json]|"
     "plan-backfill [--apply] [--json] [--date YYYY-MM-DD]|"
     "repo-disable [--local] [--apply] [--json]}"
@@ -6885,6 +6945,7 @@ _EPHEMERAL_APPLY_GATED_COMMANDS = frozenset({
     "lifecycle-repair",
     "norm-index-scaffold",
     "plan-backfill",
+    "reanchor",
 })
 
 # Commands whose first positional argument selects a read or a write.
@@ -7454,6 +7515,8 @@ def _dispatch() -> int:
         return cmd_audit_learnings(project_dir, sys.argv[2:])
     elif command == "norm-index-scaffold":
         return cmd_norm_index_scaffold(project_dir, sys.argv[2:])
+    elif command == "reanchor":
+        return cmd_reanchor(project_dir, sys.argv[2:])
     elif command == "learnings-obligation":
         return cmd_learnings_obligation(project_dir, sys.argv[2:])
     elif command == "lifecycle-repair":

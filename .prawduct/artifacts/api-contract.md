@@ -260,8 +260,8 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   cannot disagree with the gate that charges afterwards; verdict token leads on stdout, degrades
   to `unknown` rather than a reassuring `free`).
 - **Repo lifecycle** — `migrate-plugin`, `init-product`, `update-gitignore [--dry-run]`,
-  `audit-learnings`, `learnings-obligation`, `norm-index-scaffold`, `lifecycle-repair`,
-  `plan-backfill`, `repo-disable` (dry-run-by-default where they mutate, with
+  `audit-learnings`, `learnings-obligation`, `norm-index-scaffold`, `reanchor`,
+  `lifecycle-repair`, `plan-backfill`, `repo-disable` (dry-run-by-default where they mutate, with
   one stated exception). **`update-gitignore` is the exception: it repairs by default and
   previews only under `--dry-run`.** It is called as a repair step by `/prawduct:doctor`,
   which is why the default is the mutating one — but a reader who assumed the blanket
@@ -321,7 +321,7 @@ allowlist; `#667` carries the audit.
 Safe/idempotent notes: consolidation and fact-appends are **idempotent** (identity fixed at
 dispatch); state-mutating lifecycle commands (`migrate-plugin`, `init-product`, `coverage-scaffold`,
 `repo-disable`, `audit-learnings`, `learnings-obligation`, `norm-index-scaffold`,
-`lifecycle-repair`, `plan-backfill`) default to a
+`reanchor`, `lifecycle-repair`, `plan-backfill`) default to a
 **dry run** and require
 `--apply` to write. The split is **scope, not danger**: a command acting on one file the operator
 named writes on invocation (`archive-plan`), one that walks a tree and decides for itself which
@@ -338,7 +338,10 @@ files to touch previews first. That framing is descriptive — the binding rule 
   their **exit codes**, not parsed text.
 - **Machine-readable output (`--json`):** a defined subset emits structured JSON on stdout, each with
   a documented key set, consumed by a specific skill:
-  - `coverage-status --json` / `coverage-scaffold --json` → doctor (`structural_recorded`,
+  - `coverage-status --json` → doctor, **partly**: Health Check #11 runs the bare command and
+    relays its human form, reaching for `--json` only to distinguish `discovery_expected` false from
+    null. **`coverage-scaffold --json` has no consumer** — #11 runs it bare and with `--apply`.
+    Keys (`structural_recorded`,
     `discovery_expected`, `missing_artifacts[]`, `norms_unratified`, `active_layer`, `fix` /
     `applied`, `created[]`). `discovery_expected` is the layer-0 staging half, and it has **three**
     states, not two. **False** = no product work *this scan recognises* — it reads source by suffix
@@ -347,10 +350,25 @@ files to touch previews first. That framing is descriptive — the binding rule 
     `discovery_expected` or `structural_recorded` = the staging check **could not run**, and in that
     state `missing_artifacts: []` means *nothing was looked at*, not *nothing is missing* — a
     consumer must not read it as a clean layer 1.
-  - `norm-index-scaffold --json` → consumed by `/prawduct:doctor` Health Check #14 (`status` —
-    one of `ok` / `leftover` / `absent` / `unreadable` / `unwritable`; plus `rows`, `path`, `detail`, `applied`,
-    `removed`). Dry run exits 0 when it ran and 1 only when it could not; `--apply` exits 0 on a
+  - `norm-index-scaffold --json` → **no JSON consumer today** — Health Check #14 runs the command
+    and relays its human form, the same as #4. The shape is published for programmatic consumers:
+    `status` — one of `ok` / `leftover` / `absent` / `unreadable` / `unwritable` — plus `rows`,
+    `path`, `detail`, `applied`, `removed`. Dry run exits 0 when it ran and 1 only when it could not; `--apply` exits 0 on a
     write or idempotent no-op and 1 on refusal.
+  - `reanchor --json` → **no JSON consumer today.** `/prawduct:doctor` Health Check #4 runs the
+    command and relays its human form; the `--json` shape is published for programmatic consumers
+    and carries `status` — one of `ok` / `stale` / `stale-modified` / `legacy-block` / `absent` /
+    `unreadable` / `unwritable` — plus `path`, `repairable`, `detail`, `applied`, `replacement`.
+    **A successful `--apply` returns `ok`**, not the status it repaired: a graded status describes
+    the state on the way IN, and a consumer reading it back after a write would report the condition
+    that was just fixed.
+    **HC#4 is not the JSON consumer** — it parses nothing, and a contract asserting a consumer it
+    does not have is how a `--json` shape drifts from the command that emits it.
+    Dry run exits 0 when it ran and 1 only when it could not; `--apply`
+    exits 0 on a write or idempotent no-op and 1 on refusal. **`stale` and `stale-modified` are
+    separate statuses on purpose** and a consumer must not collapse them: the first is prawduct's
+    to repair, the second is an anchor the owner has edited, which this command reports and
+    declines to overwrite.
   - `learnings-obligation --json` → **no skill consumer today** (`status` — one of `ok` / `missing` /
     `misplaced` / `absent` / `unreadable` — plus `path`, `marker`, `marker_lines[]`,
     `first_rule_line`, `detail`, `repairable`, `applied`, `insert_before_line`, `insert_text`).
@@ -376,7 +394,10 @@ files to touch previews first. That framing is descriptive — the binding rule 
     code is deliberately NOT the contract here: 0 means "answered", including `unknown`, because
     the command gates nothing; 1 is reserved for bad arguments.
   - `migrate-plugin --json` → migrate skill; `init-product --json` → onboard skill;
-    `audit-learnings --json` → doctor; `repo-disable --json` → repo-disable skill.
+    `audit-learnings --json` → doctor. **`repo-disable --json` has no consumer** — the
+    repo-disable skill documents and runs only the bare form. A row naming a consumer that parses
+    nothing is inert, which is exactly why it does not fail — so this list is checked by re-running
+    its own premise against each row, not by reading it.
   - `review-stats --json` → the cross-project telemetry aggregator, carrying a top-level
     `schema_version` (see Versioning).
   - `render-dispositions --json` → the disposition census, for a change-log entry, a PR body, or any

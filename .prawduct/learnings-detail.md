@@ -2914,3 +2914,100 @@ The general shape is that widening what an input may BE is never confined to the
 branch downstream of it now receives inputs it was written before. Re-read the function, not the
 diff — and when a comment in that diff names a case, that sentence is a test specification someone
 has already written for you.
+
+## Verify a chunk against the PLAN's deliverable list, not against the files you actually edited
+
+**The instance (2026-08-25, plugin-absent-governance-anchor Chunk 01).** The chunk's Tests line named
+two files: `tests/test_plugin_migrate.py` and `tests/test_plugin_init.py`. Three tests went into the
+first, none into the second, and the chunk was declared to have met its acceptance criteria with a
+full green suite behind it. The Critic found it.
+
+**Why green said nothing.** `init_product` imports `apply_claude_anchor`, so the scaffold path was
+in fact rendering the new anchor correctly — nothing was broken, and no test could have gone red.
+What was missing was a test that *would* go red if that path ever stopped rendering it. Green is
+evidence about what could have made it red, and no assertion reached this path at all.
+
+**Why this particular omission bit harder than most.** The unpinned path was the scaffold one, and
+the same plan's next chunk was a repair that converges *already-onboarded* repos. New onboards are
+precisely the population that repair can never reach, so the untested path was the one with no
+second line of defence behind it.
+
+**Root cause, and it is not carelessness about testing.** Verification ran against *what had been
+edited* rather than against *what the plan said was owed*. The plan is the checklist, and it was not
+re-read at the step that exists to check it — the "acceptance criteria met" step. The tell is
+mechanical and available before the work starts: a Tests or Deliverables line naming more than one
+file, where the editing will naturally concentrate in one of them.
+
+## A CLASS finding closed at the site where it was NOTICED is not closed
+
+**Two instances in one verify round (2026-08-25, plugin-absent-governance-anchor).** Both findings
+said, in their own text, that they covered more than one site. Both were fixed at one.
+
+* **R-12 (blocking)** named two owners: `anchor_repair.repair`'s swap branch, and
+  `migrate_plugin.apply_claude_anchor`'s writes *"that the `absent` branch delegates to"*. The fix
+  wrapped the swap. `repair()`'s `absent` branch calls `apply_claude_anchor` outside that `try`, and
+  `core.atomic_write_text`'s contract is explicitly that OSErrors propagate to the caller — so an
+  unwritable `CLAUDE.md` still raised `PermissionError` out of a doctor session. Worse than a random
+  miss: `absent` is the status Health Check #4 *advertises* ("the repair inserts one"), so the branch
+  left unguarded was the advertised one.
+* **R-4 (warning)** asked that *every* `--json` row be checked. Only the row it named was fixed, and
+  the sibling row went on claiming a JSON consumer that parses nothing.
+
+**Why the tests did not catch either.** The new test for R-12 used a `stale` fixture, because that
+was the branch being fixed — so it exercised the guarded path and asserted the guard worked. A test
+written from the fix inherits the fix's blind spot; parametrizing it over both writing branches is
+what closes that, and it is the same shape as "tests written from the same mental model inherit its
+blind spot".
+
+**A fourth instance, and a sharper sub-shape: the CODE was fixed at both sites and only one was
+PINNED.** `repair`'s success report was corrected on both write branches, but both new assertions
+started from a `stale` fixture — so deleting the `absent` branch's two success lines shipped green,
+reinstating the defect on the one status Health Check #4 advertises as repairable. The test file had
+*already learned this shape one round earlier*: `test_an_unwritable_claude_md_is_reported_not_raised`
+is parametrized over these same two branches for exactly this reason, and the next test written
+against those same branches was not.
+
+So the rule has two halves, and the second is the one that keeps recurring: **fix every site the
+finding names, then check that a test fails for each of them.** A fix verified only where it was
+noticed is a fix that can be deleted anywhere else.
+
+**Root cause.** Reading a finding for *what to change* rather than for *what it says is in scope*.
+The severity and the recommendation get read; the sentence enumerating the owners is skimmed,
+because by then the fix already feels identified. The cheap counter is mechanical: before committing
+a fix, re-read the finding's own text and list the sites it names — the words are right there
+("two owners", "every row", "both writers", "re-sweep all three").
+
+**A second, smaller lesson from the same round.** The verify review's `NEXT-ACTION` line said "0
+blocking, 0 findings — THE REVIEW IS OVER" while its own body said R-12 survived. The body was
+right, and it took three lines of running the code to confirm. A summary line is not evidence about
+the analysis above it; when they disagree, the specific and checkable half wins.
+
+## Checking the STATE after a repair does not verify what the repair REPORTED
+
+**The instance (2026-08-25, `prawduct-hook reanchor`).** `repair()` built its result by copying
+`check()`'s dict and setting only `applied`. A successful `--apply` therefore returned `status:
+stale` and the detail prose describing an anchor that lies to plugin-less clones — the condition it
+had just removed. The CLI prints status and detail and stops (its confirmation block is gated on
+`not applied`), `--json` published the same false state, and doctor maps every non-`ok` status to
+degraded. A repair that worked reported itself as the problem.
+
+**How it survived a product verification that ran the exact command.** The check was: seed a stale
+repo, run `--apply`, run again, confirm `ok`. The transcript literally read
+
+    reanchor (apply): stale        <- the wrong report, looked straight at
+    reanchor (dry-run): ok         <- the re-run, which is what got believed
+
+The second line answered the question being asked ("did the repair work?") and in doing so supplied
+a plausible reading for the first. Idempotency checks are especially good at this: the follow-up run
+is *designed* to print the healthy state, so it will always be there to explain away whatever the
+writing run said.
+
+**The rule is about which run you read, not about testing more.** A repair has two observable
+outputs — the state afterwards, and the report it made while getting there — and only the second
+reaches an operator in the moment. Verifying the first is not evidence about the second.
+
+**What closes it mechanically:** an assertion on the WRITING run's output that names the pre-fix
+status as forbidden (`assert STATUS_STALE not in result.stdout`), not merely the post state as
+present. Both precedents in this family (`learnings_obligation`, `norm_index_scaffold`) return their
+OK status on success, so copying the precedent's TEST file — not just its shape — would also have
+caught it.

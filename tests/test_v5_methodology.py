@@ -1166,8 +1166,24 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # intake query, which has homes in the design and in the report-bug skill. A
     # CUT at the duplication, not a relocation -- the row now points at both and
     # states neither, and the 7 tokens are a return rather than headroom banked.
+    #
+    # product 2095 -> 2091 on 2026-09-10 (plugin-absent-governance-anchor), and
+    # `framework` does not move because the static anchor is not one of its
+    # members -- the CLAUDE.md-edit case in reverse. The anchor gained the notice
+    # a plugin-less clone needs -- that `/prawduct:*` being unavailable means
+    # governance is OFF, and the one command that ends it -- and came out SMALLER
+    # than it went in.
+    #
+    # The +76 the notice cost was funded IN PLACE, and by cutting restatements
+    # rather than words: the marker restated the version-free rule that the block
+    # comment above it already owns (and that no session pays for); the opening
+    # paragraph said "lives in the plugin" and "never copied into this repo",
+    # which are one fact; and the enforcement paragraph closed by restating "no
+    # hook and no gate" two paragraphs after the new check says "no Stop gate, no
+    # Critic, nothing below enforced". The conditional in its heading is what
+    # carries that fact now, so the sentence was a third copy.
     "framework": 3211,
-    "product": 2095,
+    "product": 2091,
 }
 
 #: Ceilings. HARD, like the per-file prose ceilings in this module and
@@ -1269,8 +1285,14 @@ INJECTED_FOOTPRINT_CEILINGS = {
     # entries above: each ceiling is EXACTLY one over its reading unless an
     # entry here declares otherwise and says why. Stated as a rule rather than
     # left as a pattern, because a pattern is what this cut broke.
+    #
+    # 2096 -> 2092 on 2026-09-10, `product` only: ratcheted with the reading, per
+    # the invariant above. The anchor's plugin-absent notice was paid for by more
+    # trim than it cost, and leaving the ceiling at 2096 would bank that
+    # difference as headroom for the next addition -- the re-funding this
+    # comment's first paragraph forbids. NOT a declared raise: nothing here grew.
     "framework": 3212,
-    "product": 2096,
+    "product": 2092,
 }
 
 

@@ -59,9 +59,15 @@ framework files in your tree. Then describe what you want:
 > add OAuth login to the existing API
 ```
 
-Anyone who clones the repo gets the same governance (the plugin auto-installs on first trusted
-open). Already onboarded? `/prawduct:doctor` health-checks the repo. Moving a pre-2.0 file-sync
-repo? `/prawduct:onboard` routes it to [`/prawduct:migrate`](documentation/MIGRATION.md).
+**Each contributor installs the plugin once** — step 1 above, in any repo. The committed install
+reference registers the marketplace for them automatically on first trusted open, but Claude Code
+does not auto-install a plugin sourced from a repository, so a clone on a machine that has never
+installed prawduct runs **ungoverned and silent about it**: no hooks, no `/prawduct:*`, no gates,
+and no message saying so. The repo's `CLAUDE.md` anchor tells that session to say so and names the
+install command; `/prawduct:doctor` Health Check #4 keeps the anchor current.
+
+Already onboarded? `/prawduct:doctor` health-checks the repo. Moving a pre-2.0 file-sync repo?
+`/prawduct:onboard` routes it to [`/prawduct:migrate`](documentation/MIGRATION.md).
 
 ### Turn Prawduct off in a specific repo
 

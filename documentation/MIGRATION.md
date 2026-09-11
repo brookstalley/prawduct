@@ -19,8 +19,9 @@ claude plugin install prawduct@prawduct
 ```
 
 This gives *you* the `/prawduct:*` skills (needed for step 2). Step 2 then commits a per-repo
-install reference, so everyone who clones the repo gets the plugin automatically — no flags, no
-framework files in the tree.
+install reference, which registers the marketplace for everyone who clones the repo — no flags, no
+framework files in the tree. **It does not install the plugin for them**: each contributor runs the
+two commands above once, on their own machine, exactly as you just did.
 
 > **Developing the framework itself?** Skip the install and load your working copy instead:
 > `claude --plugin-dir /path/to/prawduct/plugin --add-dir /path/to/prawduct`. The `--add-dir` (same
@@ -81,7 +82,8 @@ prawduct ever placed," only known framework files.
   product-specific instructions, above and below the block, are untouched.
 - `.claude/settings.json` — the prawduct hook wiring and framework banner are removed and the
   plugin install reference is merged in. Your own keys, hooks, and marketplaces are preserved.
-  This is the per-repo reference that auto-activates the plugin for everyone who clones the repo:
+  This is the per-repo reference that registers the marketplace for everyone who clones the repo —
+  the marketplace, not the plugin; each contributor still installs that once:
   ```jsonc
   {
     "extraKnownMarketplaces": {
@@ -113,8 +115,12 @@ prawduct ever placed," only known framework files.
   SessionStart briefing + banner + guidance digest. Skills are `/prawduct:*`.
 - **Updates** arrive via the marketplace with zero repo diff. The version banner shows the
   current version and, on a bump, what changed.
-- **Fresh clones** auto-activate the plugin on first trusted open, thanks to the committed
-  install reference — no setup step for the next person.
+- **Fresh clones** get the marketplace from the committed install reference on first trusted open,
+  and **not the plugin** — Claude Code does not auto-install a repository-sourced plugin. There IS
+  a setup step for the next person: `claude plugin install prawduct@prawduct`, once per machine.
+  Until they run it their clone has no hooks, no `/prawduct:*` and no gates, with nothing said
+  about it; the `CLAUDE.md` anchor is the one surface that reaches that session, and
+  `/prawduct:doctor` Health Check #4 keeps it current.
 
 ## Rollback
 
