@@ -1065,7 +1065,7 @@ class TestRule4ChunkDefault:
         scope-declaring. Without this, a branch named after any of them
         attributes its review to a plan that shipped long ago — and record-lint
         would then raise a BLOCKING `chunk-ref-missing` about deliverables that
-        shipped with it. Deleting `has_unfinished_chunk` must not leave a green
+        shipped with it. Deleting `_has_unfinished_chunk` must not leave a green
         suite, which is why the fully-ticked plan here is otherwise identical to
         the one the sibling test matches on.
         """
@@ -1260,12 +1260,12 @@ class TestRule4ChunkDefault:
         """
         plan = tmp_path / "p.md"
         plan.write_text("# Plan\n\nNo Status section at all.\n")
-        assert buildplan_refs.has_unfinished_chunk(plan) is True
+        assert buildplan_refs._has_unfinished_chunk(plan) is True
 
         plan.write_text("# Plan\n\n## Status\n\n- [x] Chunk 01: done\n")
-        assert buildplan_refs.has_unfinished_chunk(plan) is False
+        assert buildplan_refs._has_unfinished_chunk(plan) is False
 
-        assert buildplan_refs.has_unfinished_chunk(tmp_path / "absent.md") is False
+        assert buildplan_refs._has_unfinished_chunk(tmp_path / "absent.md") is False
 
     def test_an_unconfirmable_pointer_is_named_as_an_assumption(self, tmp_path: Path):
         """A branch matching no declared scope cannot be shown related OR

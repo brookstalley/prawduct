@@ -144,7 +144,7 @@ any gate and before the background-work deferral (which returns 0, and which not
 background work could ever clear). Guarding the individual call sites was tried first and only moved
 which line raised: three resolve independently, which is the finding's own point.
 
-The second verify pass caught the fix's own fix untested — the one-line `has_unfinished_chunk`
+The second verify pass caught the fix's own fix untested — the one-line `_has_unfinished_chunk`
 filter that silences the new advisory across the gitflow retention window, where all six sibling
 tests used an unfinished plan and so passed with it deleted.
 

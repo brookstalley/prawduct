@@ -263,7 +263,7 @@ def staleness_scan(project_dir: Path) -> list[str]:
     # the remedy is the frontmatter — never "archive the plan".
     try:
         claims = plan_index.branch_claiming_plans(prawduct_dir / "artifacts")
-        claims = [c for c in claims if buildplan_refs.has_unfinished_chunk(c[0])]
+        claims = [c for c in claims if buildplan_refs._has_unfinished_chunk(c[0])]
         # The checked-out branch demonstrably exists, so claims naming it need
         # no lookup — which is the ordinary case (you are on the branch your
         # plan claims) and keeps a ~70 ms subprocess off the common path.

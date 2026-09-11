@@ -2510,7 +2510,7 @@ def begin_review(
         # join failed would be told something false. This catches an unexpected
         # shape; the two DEGRADED store states are returned rather than raised,
         # so `prior_dispositions` answers those itself, in the same words.
-        priors = dispositions.unavailable_block(f"{type(exc).__name__}: {exc}")
+        priors = dispositions._unavailable(f"{type(exc).__name__}: {exc}")
 
     manifest = {
         "id": review_id,

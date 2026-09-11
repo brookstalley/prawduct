@@ -267,7 +267,7 @@ def incompleteness_reason(content: str) -> "str | None":
       question that silence is the dangerous answer: a plan predating the Status
       convention, or one whose roster failed to parse, would read as complete
       and be filed away as done. Same rule as
-      :func:`has_unfinished_chunk` — an unparseable plan is not evidence of
+      :func:`_has_unfinished_chunk` — an unparseable plan is not evidence of
       completion — and the same rule the Critic applies when it rates
       ``chunk-ref-missing unchecked`` at BLOCKING: a check that could not run is
       indistinguishable from one that passed, so it must not read as a pass.
@@ -668,7 +668,7 @@ def infer_scope_from_branch(
         candidates.append(branch.rsplit("/", 1)[1])
     for candidate in candidates:
         plan_path = known.get(candidate)
-        if plan_path is not None and has_unfinished_chunk(plan_path):
+        if plan_path is not None and _has_unfinished_chunk(plan_path):
             return candidate
     return None
 
@@ -700,7 +700,7 @@ def _scope_of_branch_claiming_plan(
     return None
 
 
-def has_unfinished_chunk(plan_path: Path) -> bool:
+def _has_unfinished_chunk(plan_path: Path) -> bool:
     """True when ``plan_path``'s Status section still holds an unchecked chunk.
 
     **Read this before tuning it: it now decides which plan GOVERNS.**

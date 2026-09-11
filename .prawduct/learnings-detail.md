@@ -2914,3 +2914,30 @@ The general shape is that widening what an input may BE is never confined to the
 branch downstream of it now receives inputs it was written before. Re-read the function, not the
 diff — and when a comment in that diff names a case, that sentence is a test specification someone
 has already written for you.
+
+## A "never raises" contract is a claim about EVERY input
+
+`evidence.read_facts` promises that a degraded store comes back as a status dict. It delivered one
+for `OSError` and let `UnicodeDecodeError` — a `ValueError` — escape, so a store that was not
+decodable as UTF-8 raised straight out of a function whose whole contract is that it does not. The
+promise was load-bearing and was being cited: `dispositions.prior_dispositions` documents that a
+caller's `except` cannot catch these states, and `critic_consolidate.begin_review` reaches the store
+on a path with no guard at all. The durable record repeated it too — `learnings-history.md`'s
+`try/except` entry wrote "never raises" into prose, which is the shape that stops the next reader
+from looking. So the hole was asserted twice and checked never.
+
+Two moves come out of it. First: a record that asserts what a callee does on its bad paths is doing
+the reader's reading for them, and doing it from memory. State it only after opening the callee, or
+send them to look instead. Second: a fix whose *reason* names an exception class is a class-wide
+finding, not a site-local one. `core.read_str_yaml_key` and `core.read_bool_yaml_key` were both
+fixed for this exact class earlier in the same release, under the reason "`UnicodeDecodeError` is a
+`ValueError`, so catching only `OSError` let it escape" — and the sweep stopped at `core.py` while
+their sibling reader in `evidence.py` had the identical hole. `_plugin_version` had it too, and
+that one is sharper than it looks: `verdict_cache._key` derives the memo key from it, so a raise
+there crashes the gate rather than nulling a field. Three instances of one bug in one release.
+
+The tell is cheap to check and it is in your own words: your commit message or finding states a
+general rule ("X is a subclass of Y"), and your diff touches only the call sites that were already
+in front of you. Grep the class across every sibling reader in the same pass, or you ship the third
+instance in the release that fixed the first two.
+
