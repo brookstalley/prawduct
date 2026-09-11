@@ -8,19 +8,25 @@ user-invocable: true
 # behind a prompt. An allow-list cannot fence an op when the skill legitimately
 # needs the interpreter, so the model-initiated path is closed here instead.
 #
-# `cache-query` and `archive-plan` are granted explicitly despite that interpreter
+# Every hook subcommand the body instructs — `backlog cache-query`, `archive-plan`,
+# `review-stats` — is granted explicitly in BOTH spellings, despite that interpreter
 # grant, because the interpreter grant does NOT cover them where it matters:
-# `Bash(python3 *)` only reaches `python3 plugin/bin/prawduct-hook` in THIS repo,
-# where the plugin is in the tree. In a governed product the plugin is installed
-# elsewhere and the bare `prawduct-hook` spelling is the only one that works.
+# `Bash(python3 *)` only reaches `python3 plugin/bin/prawduct-hook` in a repo that
+# carries the plugin in its own tree. In a governed product the plugin is installed
+# elsewhere and the bare `prawduct-hook` spelling is the only one that works, so the
+# bare grant is the load-bearing one; the `python3 plugin/bin/` sibling states the
+# self-hosted spelling on the line instead of leaving it to ride on an interpreter
+# grant that a later narrowing could take away.
 # Without `cache-query`, Step 2.5's Backlog Health queries prompt — and a prompt a
 # janitor declines looks to it exactly like the unreadable store it is scripted to
 # report, so the block would render "unavailable" and never run. Read-only: no
 # network, no writes. Without `archive-plan`, Past Work's stale-plan cleanup can
 # name the command it is told to run and not run it — and the failure is quiet in
 # the same way: an unarchived plan is indistinguishable from a repo that had none.
+# Without `review-stats`, the Step 1 context read loses the review-cost history and
+# the survey grades maintenance signals it never saw.
 disable-model-invocation: true
-allowed-tools: Bash(git *), Bash(npm *), Bash(python3 *), Bash(prawduct-hook backlog cache-query *), Bash(prawduct-hook archive-plan *), Bash(prawduct-hook review-stats), Read, Write, Edit, Glob, Grep, Agent
+allowed-tools: Bash(git *), Bash(npm *), Bash(python3 *), Bash(prawduct-hook backlog cache-query*), Bash(python3 plugin/bin/prawduct-hook backlog cache-query*), Bash(prawduct-hook archive-plan*), Bash(python3 plugin/bin/prawduct-hook archive-plan*), Bash(prawduct-hook review-stats*), Bash(python3 plugin/bin/prawduct-hook review-stats*), Read, Write, Edit, Glob, Grep, Agent
 ---
 
 You are performing periodic codebase maintenance — a systematic health check that surfaces what day-to-day development overlooks. This is not a feature task. Your goal is to find what has drifted, accumulated, or been missed, then fix it through the standard Prawduct build cycle.
@@ -92,15 +98,15 @@ Do all forms of documentation — comments, READMEs, specs, configs, generated d
 
 Have product artifacts kept pace with framework template improvements?
 
-When the session briefing shows template drift advisories, or when running a full survey, compare the product's artifacts against the current framework templates the plugin ships at `${CLAUDE_PLUGIN_ROOT}/templates/`. The product's artifacts were created from these templates at onboarding; the plugin's templates evolve over time, so a product can fall behind.
+When the session briefing shows template drift advisories, or when running a full survey, compare the product's artifacts against the current framework templates the plugin ships at `${CLAUDE_SKILL_DIR}/../../templates/`. The product's artifacts were created from these templates at onboarding; the plugin's templates evolve over time, so a product can fall behind.
 
 - project-preferences.md — Are there new preference fields the product hasn't declared?
 - conftest.py — Are there new test infrastructure patterns available?
 - boundary-patterns.md — Are there new contract surface types to consider?
-- test-specifications.md — Are there new testing strategies (e.g., property-based testing) in the template that this product's specs don't address? Compare by reading the plugin template directly at `${CLAUDE_PLUGIN_ROOT}/templates/test-specifications.md`.
+- test-specifications.md — Are there new testing strategies (e.g., property-based testing) in the template that this product's specs don't address? Compare by reading the plugin template directly at `${CLAUDE_SKILL_DIR}/../../templates/test-specifications.md`.
 
 For each difference between the template and the product's version:
-1. Read the current framework template from `${CLAUDE_PLUGIN_ROOT}/templates/<file>`
+1. Read the current framework template from `${CLAUDE_SKILL_DIR}/../../templates/<file>`
 2. Read the product's version of the file
 3. Identify sections or fields in the template that are absent from the product's version
 4. Assess whether each missing section is relevant to this product's domain and structural characteristics
@@ -195,7 +201,7 @@ Understand the project before investigating. Read `project-state.yaml` to learn 
 
 Also read `project-preferences.md` (if present in `.prawduct/artifacts/`) to understand the project's declared conventions — language idioms, code style, testing approach, architecture patterns, and workflow preferences. These preferences are the project's stated standards, but they may not reflect current practice. Note them for comparison during the survey.
 
-**Framework health pre-check.** Confirm the plugin runtime is reachable — `${CLAUDE_PLUGIN_ROOT}` is set and `${CLAUDE_PLUGIN_ROOT}/templates/` is readable. The plugin ships templates read-only; there is no per-product sync manifest. If the plugin root or its templates are unreachable, the janitor is running outside the plugin runtime — advise checking the plugin install (and `/prawduct:doctor`) before relying on Template Currency checks.
+**Framework health pre-check.** Confirm the plugin runtime is reachable — `${CLAUDE_SKILL_DIR}/../../templates/` is readable. The plugin ships templates read-only; there is no per-product sync manifest. If the plugin root or its templates are unreachable, the janitor is running outside the plugin runtime — advise checking the plugin install (and `/prawduct:doctor`) before relying on Template Currency checks.
 
 Run `prawduct-hook review-stats` for the project's review cost / actionable-finding history (`docs/governance-telemetry.md`) — findings-dense paths and low-yield review tiers are maintenance signals.
 
@@ -249,7 +255,21 @@ You cannot determine which without the user. For each divergence, use the infer-
 3. **Recommend** a resolution: "I'd update preferences to note this exception rather than renaming 47 functions"
 4. **Confirm**: "Does that match your intent?"
 
-Batch related divergences — don't ask one per message. Group by theme and present as a single confirm-or-correct block. Read fatigue signals: if the user starts answering with just "yes" or "sounds good," compress remaining questions into a single batch or infer more aggressively.
+**Surface by exception — never a flat confirm-or-correct wall.** A single grouped block was the whole instruction here, and on a real survey it is a wall: a mature codebase yields dozens of divergences, most of them obvious, and a flat dump buries the two that carry a real decision under the twenty that do not. The owner bounces off it or answers "yes" to the lot — and a blanket yes to a list they did not read is indistinguishable from having asked nothing. This is the same taxonomy `/prawduct:doctor`'s **Norm Ratification Flow** uses, under the same names on purpose: one vocabulary, so a reader who has met it once recognises it here.
+
+Tag every reconcilable finding into one of two tiers **before** presenting anything:
+
+- **clear-to-ratify** — your inference is plainly right: the divergence is unambiguous, the evidence is one-sided (git history, scope, how deliberate it looks), and the recommendation follows from it. Confirmed in bulk, never discussed one by one.
+- **needs-a-ruling** — the finding carries a fork only the owner can settle. The recurring kinds: **drift-or-evolution genuinely unclear** (both readings fit the evidence); **scope fork** (fix the twelve sites, or narrow the stated preference); **cost fork** (the right answer is expensive enough that the owner should choose to pay it); **collision** (two preferences or two norms point opposite ways). Each is surfaced individually with its fork and your recommendation.
+
+Then present the two tiers **asymmetrically**:
+
+- **needs-a-ruling: individually**, each with its fork and a recommendation. These are the point of the step.
+- **clear-to-ratify: one bulk-confirm line, and it must carry the count** — "these N divergences where the reading is unambiguous", named compactly, with a single "confirm, or veto any". **The count is not decoration:** it is what tells an owner whether they are agreeing to three things or thirty, and a bulk confirm without one asks for a yes to an unstated quantity. Never expand the tier into a per-finding interrogation.
+- **Above ~6 total reconcilable findings the flat block is banned** — surface-by-exception becomes mandatory, not a nicety. At or below ~6 a single grouped block is fine, provided every needs-a-ruling item still shows its own fork; the cap governs when exception-surfacing is *required*, never whether a real ruling may be bundled away.
+- **The guard: a bulk confirm is still an explicit confirm.** A tier presented and not affirmed is not resolved — silence resolves nothing. And read fatigue signals: if the user starts answering with just "yes" or "sounds good," that is a signal to *infer more aggressively and ask less*, not to widen the bulk tier — moving a real ruling into the bulk line to shorten the exchange is how a decision gets made by nobody.
+
+**When the user cannot confirm, the finding becomes a backlog item — it does not evaporate.** "I don't know", "ask me later", an owner who isn't around, or a fork that needs a conversation this session cannot have: file it via `/prawduct:backlog` with what you found, both readings, and your recommendation, and say in the findings report that you did. An unresolved divergence dropped at the end of a janitor run is the worst of the three outcomes — the survey paid to find it, and the next run pays again to find it a second time, with nothing recording that anyone has already looked. This closes the same loop Step 7 closes for Step 2.5's Backlog Health findings.
 
 **This pattern extends beyond preferences.** Any finding where "drift or evolution?" is genuinely unclear should be reconciled: architectural patterns that don't match stated conventions, test approaches that diverge from declared strategy, documentation that contradicts implementation. When in doubt about intent, infer and confirm — don't interrogate.
 
@@ -301,7 +321,7 @@ Review the build cycle in this project's CLAUDE.md before writing any code. Foll
 
 After all approved work is complete:
 - Summarize what was changed, what was deferred, and why
-- If template drift advisories were addressed, record in `.prawduct/change-log.md` which artifacts were brought up to the current plugin templates. Plugin templates are read-only and there is no per-product hash store to write back — Template Currency is a live comparison against `${CLAUDE_PLUGIN_ROOT}/templates/`, so updating the product artifact is itself the resolution.
+- If template drift advisories were addressed, record in `.prawduct/change-log.md` which artifacts were brought up to the current plugin templates. Plugin templates are read-only and there is no per-product hash store to write back — Template Currency is a live comparison against `${CLAUDE_SKILL_DIR}/../../templates/`, so updating the product artifact is itself the resolution.
 - Reconcile the backlog via `/prawduct:backlog` — which routes to whichever backend is live, so this step runs on both: `update status=shipped` items maintenance resolved (on the markdown backend that moves them to Archive — never delete, never strikethrough), and `add` items discovered. Status is always an explicit `/prawduct:backlog update` call, never inferred (D4). The stale/dedup/stage findings come from Step 2.5, so there are none to action when that block reported the cache unreadable — closing the loop on findings that were never produced is not a gap.
 - Capture learnings in `.prawduct/learnings.md` if the maintenance surfaced patterns worth remembering
 - Reflect: did the maintenance reveal systemic issues that suggest process changes, new tooling, or methodology updates?

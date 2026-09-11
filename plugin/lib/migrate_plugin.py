@@ -46,6 +46,12 @@ INSTALL_REFERENCE: dict[str, dict] = {
 DISTRIBUTION_KEY = "distribution"
 DISTRIBUTION_VALUE = "plugin"
 
+# The gitflow integration-base knob every gate that resolves a diff base reads
+# (``coverage._resolve_base_branch``). Written at onboard/cutover ONLY when the
+# remote's own default branch names something outside the main family — see
+# ``detect_base_branch``.
+BASE_BRANCH_KEY = "base_branch"
+
 # Per-repo last-seen version marker (Chunk 7 banner). Gitignored at migration so
 # a plugin version bump never produces a tracked-file diff (the Chunk 9 deferral
 # from Chunk 7 — adding it to the frozen 1.x gitignore lists was rejected).
@@ -481,13 +487,30 @@ def record_distribution(project_dir: Path) -> bool:
     path = Path(project_dir) / ".prawduct" / "project-state.yaml"
     if core.read_str_yaml_key(path, DISTRIBUTION_KEY) is not None:
         return False
-    # `newline=""` disables universal-newline translation, and the block below
-    # is rewritten to match. Without both, appending one key to a CRLF product
-    # file rewrote every line in it to LF — so the surgical edit this promises
-    # to be landed as a whole-file reformat with the real change buried inside.
-    # `lib.lifecycle_repair` carries the same contract for the same reason, and
-    # this function runs immediately after its removal on the same file: the
-    # removal preserved the endings and this call flattened them right back.
+    return _append_state_block(
+        path,
+        "\n# Distribution mode — set by /prawduct:migrate (v2.0.0 plugin cutover).\n"
+        "# `plugin` tells the legacy file-sync hook to stand down (Chunk 8).\n"
+        f"{DISTRIBUTION_KEY}: {DISTRIBUTION_VALUE}\n",
+    )
+
+
+def _append_state_block(path: Path, block: str) -> bool:
+    """Append one comment+key block to ``project-state.yaml``, preserving endings.
+
+    `newline=""` disables universal-newline translation, and the block is
+    rewritten to match. Without both, appending one key to a CRLF product file
+    rewrote every line in it to LF — so the surgical edit this promises to be
+    landed as a whole-file reformat with the real change buried inside.
+    `lib.lifecycle_repair` carries the same contract for the same reason, and
+    the distribution append runs immediately after its removal on the same file:
+    the removal preserved the endings and this call flattened them right back.
+
+    Returns True when the block was written. Shared by every additive key this
+    module records (``distribution``, ``base_branch``) so one ending-preserving
+    writer covers them all — a second appender written by hand is how the CRLF
+    flattening got in the first time.
+    """
     content = ""
     if path.is_file():
         try:
@@ -499,11 +522,6 @@ def record_distribution(project_dir: Path) -> bool:
             # this, because a cutover that silently skips the distribution
             # marker looks migrated and is not.
             return False
-    block = (
-        "\n# Distribution mode — set by /prawduct:migrate (v2.0.0 plugin cutover).\n"
-        "# `plugin` tells the legacy file-sync hook to stand down (Chunk 8).\n"
-        f"{DISTRIBUTION_KEY}: {DISTRIBUTION_VALUE}\n"
-    )
     if "\r\n" in content:
         block = block.replace("\n", "\r\n")
     if content and not content.endswith(("\n", "\r")):
@@ -511,6 +529,91 @@ def record_distribution(project_dir: Path) -> bool:
     path.parent.mkdir(parents=True, exist_ok=True)
     core.atomic_write_text(path, content + block, encoding="utf-8", newline="")
     return True
+
+
+def detect_base_branch(project_dir: Path) -> "str | None":
+    """The remote's default branch when it is NOT ``main``/``master``, else None.
+
+    The write half of #254. ``coverage._resolve_base_branch`` consults
+    ``refs/remotes/origin/HEAD`` when no ``base_branch:`` is recorded, but that
+    fallback is blind to the repo whose remote default is ``main`` while its
+    integration branch is ``develop`` — only the written knob can see that one,
+    and onboarding is where it is cheap to write. (Prawduct's own repo is
+    exactly that case.)
+
+    The decision is deliberately the SAME predicate the resolver applies, read
+    from the resolver itself rather than restated here: ``origin/HEAD``
+    resolving, naming ``origin/<b>`` with ``<b>`` outside ``coverage._MAIN_FAMILY``,
+    and that ref existing. Two copies of "non-main-family" would drift, and the
+    knob would then disagree with the gate it exists to steer.
+
+    Three reasons this stays silent rather than guessing:
+
+    * **A trunk repo gets no key.** Where the remote default IS ``main`` /
+      ``master``, the resolver's own candidate list already answers correctly,
+      so writing the knob would add a line to every ordinary repo that says
+      only what the default already says — noise that later readers must
+      maintain and reconcile.
+    * **An absent ``origin/HEAD`` writes nothing.** A fresh ``git init``, an
+      ``init`` + ``remote add``, a non-repo directory: onboarding must scaffold
+      anyway, so every failure here degrades to ``None``.
+    * **A dangling ``origin/HEAD`` writes nothing.** ``symbolic-ref`` happily
+      names a branch that was never fetched, and a configured-but-unresolvable
+      ``base_branch:`` fails the gates CLOSED. Writing an unverified name would
+      convert a working repo into a broken one, so the ref must exist.
+
+    Returns the bare branch name (``"develop"``), never ``origin/develop`` —
+    the knob is a branch name and the resolver prefixes ``origin/`` itself.
+    """
+    project_dir = Path(project_dir)
+    if not project_dir.is_dir():
+        return None
+    # Lazily imported: `coverage` is the runtime's git-inspection layer, and the
+    # cutover engine has no other reason to pull it in. Reached through the
+    # module (`coverage._x`) as `ledger`, `risk` and `stale_base_probes` reach
+    # the same layer's internals — the resolver owns this vocabulary.
+    from . import coverage
+
+    try:
+        origin_head = coverage._origin_head_ref(project_dir)
+        if not origin_head:
+            return None
+        branch = origin_head[len("origin/") :]
+        if branch in coverage._MAIN_FAMILY:
+            return None
+        if not coverage._git_ref_exists(project_dir, origin_head):
+            return None
+    except (OSError, subprocess.SubprocessError):
+        # No git on PATH, a timeout, an unreadable git dir: onboarding a repo
+        # must never fail because the knob could not be inferred.
+        return None
+    return branch
+
+
+def record_base_branch(project_dir: Path) -> "str | None":
+    """Append ``base_branch: <b>`` when the remote default is non-main-family.
+
+    Returns the recorded branch name, or ``None`` when nothing was written —
+    the key is already present (never a clobber of an operator's own choice),
+    the remote says ``main``/``master``/nothing, or the state file could not be
+    read. See :func:`detect_base_branch` for the decision itself.
+    """
+    path = Path(project_dir) / ".prawduct" / "project-state.yaml"
+    if core.read_str_yaml_key(path, BASE_BRANCH_KEY) is not None:
+        return None
+    branch = detect_base_branch(Path(project_dir))
+    if branch is None:
+        return None
+    written = _append_state_block(
+        path,
+        "\n# Integration base branch — the branch feature work merges into. Every\n"
+        "# gate that resolves a diff base (coverage, cumulative Critic, PR) anchors\n"
+        "# here; without it they guess `main` and a gitflow repo reviews the whole\n"
+        "# develop..main promotion delta. Written at onboard because origin/HEAD\n"
+        f"# named `{branch}`. Change it if this repo integrates somewhere else.\n"
+        f"{BASE_BRANCH_KEY}: {branch}\n",
+    )
+    return branch if written else None
 
 
 def ensure_marker_gitignored(project_dir: Path) -> bool:
@@ -588,6 +691,9 @@ def migrate_to_plugin(project_dir: str | Path, *, apply: bool = False) -> dict:
         "state_keys_removed": [],
         "gitignored": [],
         "untracked": [],
+        # The gitflow knob, when the remote's default branch earns one (#254).
+        # None in every ordinary trunk repo — see `detect_base_branch`.
+        "base_branch": None,
         "notes": [],
     }
 
@@ -615,16 +721,25 @@ def migrate_to_plugin(project_dir: str | Path, *, apply: bool = False) -> dict:
     # safe direction, but the preview is what the operator's single confirmation
     # is given against, so it should describe the act that will actually happen.
     state_unreadable = _state_file_unreadable(project_dir)
+    state_path = project_dir / ".prawduct" / "project-state.yaml"
+    # Predicted the same way the apply decides it: only when the key is absent
+    # AND the remote names a non-main-family default. Pure git inspection — a
+    # dry run stays read-only.
+    planned_base = (
+        detect_base_branch(project_dir)
+        if not state_unreadable
+        and core.read_str_yaml_key(state_path, BASE_BRANCH_KEY) is None
+        else None
+    )
     if not state_unreadable and (
         planned_state_keys
-        or core.read_str_yaml_key(
-            project_dir / ".prawduct" / "project-state.yaml", DISTRIBUTION_KEY
-        )
-        is None
+        or planned_base
+        or core.read_str_yaml_key(state_path, DISTRIBUTION_KEY) is None
     ):
         planned_edits.append(".prawduct/project-state.yaml")
 
     if not apply:
+        result["base_branch"] = planned_base
         result["removed"] = removals
         result["removed_dirs"] = sorted(skill_dirs + managed_dirs)
         result["edited"] = planned_edits
@@ -670,7 +785,9 @@ def migrate_to_plugin(project_dir: str | Path, *, apply: bool = False) -> dict:
     # Before the append, so the distribution marker lands at the end of a state
     # file that has already shed its retired keys rather than above them.
     state_keys_removed = strip_retired_state(project_dir)
-    if record_distribution(project_dir) or state_keys_removed:
+    distribution_recorded = record_distribution(project_dir)
+    base_branch = record_base_branch(project_dir)
+    if distribution_recorded or state_keys_removed or base_branch:
         edited.append(".prawduct/project-state.yaml")
     else:
         unreadable = _state_file_unreadable(project_dir)
@@ -693,6 +810,7 @@ def migrate_to_plugin(project_dir: str | Path, *, apply: bool = False) -> dict:
     result["removed_dirs"] = removed_dirs
     result["edited"] = edited
     result["state_keys_removed"] = state_keys_removed
+    result["base_branch"] = base_branch
     result["gitignored"] = gitignored
     result["untracked"] = untracked
     result["notes"].append(
@@ -742,6 +860,15 @@ def run(project_dir: str | Path, argv: list[str]) -> int:
         # diff. `--json` carried it from the start; the human path did not.
         keys = ", ".join(result["state_keys_removed"])
         print(f"{'Removed' if apply else 'Would remove'} retired state key(s): {keys}")
+    if result["base_branch"]:
+        # Named, not folded into "edited": it changes what every diff-base gate
+        # measures against, and the operator is the one who knows whether this
+        # repo really integrates on that branch.
+        print(
+            f"{'Recorded' if apply else 'Would record'} "
+            f"base_branch: {result['base_branch']} (origin/HEAD names it — every "
+            "diff-base gate will anchor here)"
+        )
     if result["gitignored"]:
         print(f"Gitignored: {', '.join(result['gitignored'])}")
     for note in result["notes"]:

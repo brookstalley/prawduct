@@ -609,6 +609,31 @@ def findings_index(read_result: dict) -> dict[tuple[str, str], dict]:
     return index
 
 
+def finding_title(finding: dict, default: str = "") -> str:
+    """A finding's one-line statement, whichever layer's name it is carrying.
+
+    The same sentence travels under three keys: ``name`` in a reviewer's
+    partial, ``title`` once consolidation writes the review fact, and
+    ``summary`` again in the derived `.critic-findings.json` a human reads.
+    Every reader downstream of a rename used to re-derive the chain itself, and
+    the compensations were the only thing carrying the contract — five of them,
+    each a comment pointing at the last. That is not a redundancy, it is a
+    countdown: the reader that forgets writes ``title: null`` into the record
+    someone checks a disposition against, which it has already done once.
+
+    This is the one place the aliases are known. Deliberately additive rather
+    than a schema fix — keeping the key stable at the projection would have been
+    the deeper repair, but `.critic-findings.json`'s ``summary`` is a published
+    shape with consumers outside this module, so the accessor closes the class
+    without moving anything a consumer reads.
+    """
+    for key in ("title", "summary", "name"):
+        value = finding.get(key)
+        if isinstance(value, str) and value.strip():
+            return value
+    return default
+
+
 def has_fact(project_dir: Path, kind: str, fact_id: str) -> bool:
     """True if a fact with this (kind, id) is already in the store — the
     idempotency probe consolidation uses before appending (CRT-4B7X)."""
@@ -1197,6 +1222,39 @@ def _cmd_list(project_dir: Path, argv: list[str]) -> int:
             shown = ", ".join(str(p) for p in free[:3])
             more = f" +{len(free) - 3}" if len(free) > 3 else ""
             guard_note += f" free=[{shown}{more}]"
+        # What the interval EXCLUDED, beside what it waved through. A refusal
+        # taken over a committed-tree anchor while judgeable work sat
+        # uncommitted is a different event from one over a clean tree — the
+        # guard was still right, but the round it saved is the one most likely
+        # to have been wanted, which is exactly what this query is asked to
+        # settle. Recorded and unlisted, it could not settle it.
+        excluded = body.get("excluded_wip") if isinstance(body, dict) else None
+        if isinstance(excluded, list) and excluded:
+            shown = ", ".join(str(p) for p in excluded[:3])
+            more = f" +{len(excluded) - 3}" if len(excluded) > 3 else ""
+            guard_note += f" excluded=[{shown}{more}]"
+        elif isinstance(body, dict) and "excluded_wip" in body and excluded is None:
+            # A recorded null means the check could not run, which is a third
+            # answer and not the empty one. A row that renders it as silence
+            # tells this query the refusal excluded nothing — the fail-open the
+            # writer already refused to take.
+            guard_note += " excluded=?"
+        # What the ROUND-BUDGET refusal carries, for the same reason as
+        # `free=`/`excluded=` above: without its own columns this guard lists as
+        # a bare timestamped `guard=` row, and the retirement question ("did it
+        # ever end a loop that turned out to need another round?") is answerable
+        # only from how many rounds had been spent and what the refusal
+        # suppressed. `blocking_left` is the safety property's own reading — a
+        # nonzero there is a refusal that correctly left a gate blocked.
+        spent, ceiling = body.get("spent"), body.get("budget")
+        if isinstance(spent, int) and isinstance(ceiling, int):
+            guard_note += f" rounds={spent}/{ceiling}"
+        accepted = body.get("auto_accepted")
+        if isinstance(accepted, int):
+            guard_note += f" accepted={accepted}"
+        blocking_left = body.get("blocking_left")
+        if isinstance(blocking_left, int) and blocking_left:
+            guard_note += f" blocking-left={blocking_left}"
         # Marked inline rather than filtered: the fact is real and stays listed;
         # what it does not do is cover a branch.
         origin = " [ephemeral — covers no branch]" if is_ephemeral_fact(fact) else ""

@@ -79,6 +79,15 @@ def _repo(tmp_path: Path) -> Path:
 
 class TestBundledData:
     def test_changelog_has_current_version_entry(self, banner):
+        """The shipped version's headline must exist, keyed by the EXACT manifest
+        string — a prerelease included.
+
+        Not the release it is a prerelease of. `develop` runs on `X.Y.Z-dev.N` and
+        accumulates that cycle's notes under `## vX.Y.Z-dev.N`, which the cut renames
+        to `## vX.Y.Z`. Stripping the suffix here would look for a section describing
+        a release that has not happened, and would pass on a file carrying no notes
+        for the build actually running.
+        """
         pairs = dict(banner.parse_changelog(ROOT))
         assert PLUGIN_VERSION in pairs, f"CHANGELOG.md must carry the current version {PLUGIN_VERSION}"
         assert pairs[PLUGIN_VERSION], "the current version's changelog headline must be non-empty"
@@ -626,3 +635,126 @@ class TestBannerIdentityLine:
         first = out.splitlines()[0]
         assert first.startswith("═══ Prawduct v9.9.9 (plugin · develop@")
         assert first.endswith(") ═══")
+
+
+class TestHeadlineEmphasisStripping:
+    """A bolded lead-in must not leave its closing marker mid-sentence.
+
+    `lstrip("-* ")` removed the leading bullet AND the opening `**` of a bolded
+    lead-in — they share a character — so the closing marker had nothing to pair
+    against and survived into every rendered headline:
+    `…fewer rounds in review.** Gate checks stop timing out…`. Cosmetic, but it
+    lands on the single most-read line prawduct emits, and it rendered that way
+    from at least v3.3.2.
+
+    The preservation tests are the load-bearing half. Emphasis the author put
+    mid-sentence is theirs and carries meaning, so a blanket `replace("**", "")`
+    would fix the symptom by flattening the feature.
+    """
+
+    def test_a_bolded_lead_in_leaves_no_marker(self, banner):
+        assert banner._strip_list_and_emphasis(
+            "**Less waiting on the gates.** Gate checks stop timing out."
+        ) == "Less waiting on the gates. Gate checks stop timing out."
+
+    def test_a_bulleted_bolded_lead_in_leaves_no_marker(self, banner):
+        assert banner._strip_list_and_emphasis(
+            "- **Lead-in.** The rest."
+        ) == "Lead-in. The rest."
+
+    @pytest.mark.parametrize("bullet", ["- ", "* ", "+ ", ""])
+    def test_every_bullet_form_is_removed(self, banner, bullet):
+        assert banner._strip_list_and_emphasis(f"{bullet}Plain sentence.") == "Plain sentence."
+
+    def test_a_star_bullet_is_not_confused_with_emphasis(self, banner):
+        """A bullet is a marker followed by WHITESPACE; anything else opening
+        with a marker is emphasis. Sharing a character is the whole reason the
+        original strip set was wrong, and testing only "is the next character
+        another star" fixed `**` while leaving single `*` broken."""
+        assert banner._strip_list_and_emphasis("* **Lead-in.** Rest.") == "Lead-in. Rest."
+
+    def test_mid_sentence_emphasis_is_preserved(self, banner):
+        """The author's markup, not punctuation to strip."""
+        line = "A sentence with **emphasis** in the middle."
+        assert banner._strip_list_and_emphasis(line) == line
+
+    def test_only_the_leading_pair_is_removed(self, banner):
+        assert banner._strip_list_and_emphasis(
+            "**Lead-in.** Rest with **more** emphasis."
+        ) == "Lead-in. Rest with **more** emphasis."
+
+    def test_an_unclosed_marker_is_left_alone(self, banner):
+        """Nothing to pair with, so nothing is a matched wrapper — guessing
+        here would delete a character the author typed."""
+        line = "**An unclosed lead-in with no partner"
+        assert banner._strip_list_and_emphasis(line) == line
+
+    def test_underscore_emphasis_is_handled_too(self, banner):
+        assert banner._strip_list_and_emphasis("__Lead-in.__ Rest.") == "Lead-in. Rest."
+
+    def test_a_plain_headline_is_unchanged(self, banner):
+        assert banner._strip_list_and_emphasis("Just a sentence.") == "Just a sentence."
+
+    def test_no_live_headline_begins_with_an_emphasis_marker(self, banner):
+        """The real artifact, and the property the function actually promises.
+
+        Two weaker guards were tried first and both were wrong, in the same
+        direction — they asserted a GLOBAL parity of markers across the whole
+        headline. Changelog prose is full of markers that are not emphasis: a
+        snake_case identifier (`unbuilt_at_archive`) makes the `_` count odd,
+        and a shell glob inside a code span (`~/.claude*/plugins/…`) makes the
+        `*` count odd. Both fired on healthy entries.
+
+        What the stripper guarantees is narrower and is exactly the reported
+        symptom's inverse: after stripping, a headline does not START with an
+        emphasis marker. A bolded lead-in has been unwrapped; anything left
+        leading is text. Markers deeper in the line are the author's and are
+        none of this function's business.
+        """
+        plugin_root = Path(__file__).resolve().parent.parent / "plugin"
+        rows = banner.parse_changelog(plugin_root)
+
+        assert rows, "the live CHANGELOG should parse"
+        for version, headline in rows:
+            assert not headline.startswith(("**", "__", "*", "_")), (
+                version, headline[:90],
+            )
+
+    def test_no_live_headline_opens_with_a_stray_closing_marker(self, banner):
+        """The reported symptom, stated as the shape a reader would notice.
+
+        The stray always landed at the END of the lead-in clause — before any
+        other marker — so the test is whether the FIRST `**` has a partner
+        after it. That is scoped to the first occurrence precisely so a later
+        legitimate pair cannot mask a leading orphan.
+        """
+        plugin_root = Path(__file__).resolve().parent.parent / "plugin"
+
+        for version, headline in banner.parse_changelog(plugin_root):
+            first = headline.find("**")
+            if first == -1:
+                continue
+            assert headline.find("**", first + 2) != -1, (
+                f"{version}: an opening marker with no partner — {headline[:90]}"
+            )
+
+    @pytest.mark.parametrize("line,expected", [
+        ("*Single.* Rest.", "Single. Rest."),
+        ("_Single._ Rest.", "Single. Rest."),
+        ("- *Single.* Rest.", "Single. Rest."),
+        ("* **Bold.** Rest.", "Bold. Rest."),
+    ])
+    def test_single_marker_emphasis_is_unwrapped_too(self, banner, line, expected):
+        """`**` was handled and `*` was not, so the reported symptom survived one
+        marker narrower — and the bullet test ate the opening `*` outright."""
+        assert banner._strip_list_and_emphasis(line) == expected
+
+    def test_a_bullet_needs_the_space_that_distinguishes_it_from_emphasis(self, banner):
+        """The discriminator, stated as the two cases it separates."""
+        assert banner._strip_list_and_emphasis("* item") == "item"
+        assert banner._strip_list_and_emphasis("*emphasis* rest") == "emphasis rest"
+
+    def test_a_bolded_lead_in_is_not_unwrapped_one_marker_at_a_time(self, banner):
+        """`**` must be tried before `*`, or the pair loop strips the inner
+        markers and strands their partners."""
+        assert banner._strip_list_and_emphasis("**Bold.** Rest.") == "Bold. Rest."

@@ -16,6 +16,68 @@ is invisible to them. Pinning `main` explicitly — rather than the bare repo �
 footgun: a bare repo silently follows GitHub's *default-branch* setting, which would ship
 `develop` if that default ever changed.
 
+## Dogfooding the develop track (without shipping anything)
+
+`develop` reaches consumers through nothing — but you can put **one** repo of your own on it, to
+run unreleased governance against real work before promoting. Nothing is pushed to `main` and no
+other repo is affected.
+
+A marketplace is keyed by **name** in `~/.claude/plugins/known_marketplaces.json`, each with its
+own checkout, so a second entry pointing at the same repo on a different ref coexists with the
+released one. Put it in the sibling repo's **`.claude/settings.local.json`** — per-machine and
+gitignored, so it never lands in the repo's committed install reference:
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "prawduct-dev": {
+      "source": { "source": "github", "repo": "brookstalley/prawduct", "ref": "develop" },
+      "autoUpdate": true
+    }
+  },
+  "enabledPlugins": { "prawduct@prawduct-dev": true, "prawduct@prawduct": false }
+}
+```
+
+**`develop` must carry a prerelease version, or the track does nothing.** The plugin cache is laid
+out one directory per version (`~/.claude/plugins/cache/prawduct/prawduct/<version>/`), so a
+`develop` whose `version` still matches the released string resolves to the *released* cache entry
+and you dogfood nothing while believing otherwise. Keep `develop` on a prerelease of the version it
+is heading for — `3.4.1-dev.2` — bumping the `.N` as you promote work into it. The release then sets
+the final version in the same three files (below), which is a new cache key again.
+
+**An intra-cycle `.N` bump moves FOUR files, not three** — rename the open `## vX.Y.Z-dev.N`
+heading in `plugin/CHANGELOG.md` in the same commit. `test_changelog_has_current_version_entry`
+requires a section keyed by the **exact** manifest string, prerelease suffix included, so bumping
+the three version files alone turns `develop` red on the next push. This is the one version move
+the runbook does not cover: it has the cut (Phase 1 step 10) and the reopen (Phase 3 step 22), and
+the bump between them happens here.
+
+**`-dev` / `-dev.N` is the only prerelease form this project permits**, and that is enforced, not
+convention: `banner.version_tuple` parses exactly that shape and returns the malformed sentinel for
+anything else, and `test_version_is_semver` refuses a manifest carrying any other suffix. An `-rc.N`
+or `-alpha` would sort below every real version — no banner at all on the dogfooding repo, and the
+next real release replaying every headline in the changelog. Bump the `.N`; do not invent a track.
+
+**The prerelease must be re-opened at the release, or the track goes quietly dead.** Promotion sets
+the final `3.4.0` on `main` — and `develop`, having been promoted, now carries `3.4.0` too. That is
+the *same string* the released plugin uses, so every dogfooding repo silently resolves the released
+cache entry and runs `main`'s code while believing it is on develop: the exact failure the
+prerelease exists to prevent, arriving at the moment nobody is looking for it. **The release itself re-opens the next
+prerelease** (`3.4.1-dev`, then `-dev.1`, `-dev.2` as work lands) in the same three files — that is
+the runbook's Phase 3, and it is unconditional. Do not read "nobody is on the track right now" as
+licence to skip it: leaving `develop` on the released string is what lets the verdict cache replay
+a `covered` verdict across a judgeability change, and a repo joining the track later inherits the
+collision with nothing to signal it.
+
+**Getting back off the track:** delete the `prawduct-dev` block from `settings.local.json` and
+re-enable `prawduct@prawduct`. Nothing else is touched — the repo's committed `.claude/settings.json`
+never changed, so any other clone of it was always on `main`.
+
+**Do not put a shared repo on the develop track** without saying so: the marketplace entry is
+per-machine, so a collaborator on the same repo silently runs a different governance version than
+you do, and a gate that behaves differently between two people is worse than one that is behind.
+
 ## The version is the release trigger — not cosmetic
 
 Claude Code resolves a plugin's version from `plugin.json` `version` first. With
@@ -66,10 +128,19 @@ not ship.** Always bump `version` in `plugin/.claude-plugin/plugin.json` (and `p
 
 When `develop` is ready to release as `vX.Y.Z`:
 
+**The numbering below is the checklist's order, not the running order.** Every prep item in it —
+the version bump across the three files, the `release=` tags, the `active_build_plan` clear and
+the plan sweep, the `plugin/CHANGELOG.md` section rename — is committed on `develop` **before**
+the promotion, not edited onto `main` after it; the reason is in the ordering note that closes
+"Step 1 mechanics" below. `.prawduct/runbooks/cut-and-publish-a-plugin-release.md` Phase 1 is the
+same set in executable running order, and is the document to work from when actually cutting.
+
 0. **Confirm it is fit to ship**, not merely that something is unreleased:
    `./plugin/bin/prawduct-hook check-releasability --release vX.Y.Z`. Every release-pending scope
    must be classified `ships`, or `withheld` behind a **named open** blocker, in the
-   `## Release classification` table of `.prawduct/artifacts/release-plan-vX.Y.Z.md`. The gate fails
+   `## Release classification` table of `.prawduct/artifacts/release-plan-vX.Y.Z.md` — **and the
+   saved suite run must be green and current**, since v2.1.6 shipped on a red suite for want of
+   anything on this path reading a test result. The gate fails
    closed; its withheld count also selects the promotion shape at step 1. Full branch-by-branch
    handling is Phase 0 of `.prawduct/runbooks/cut-and-publish-a-plugin-release.md`.
 1. **Merge `develop` → `main`.**
@@ -207,13 +278,25 @@ When `develop` is ready to release as `vX.Y.Z`:
   commit forced consumers with protected integration branches into a second,
   bookkeeping-only PR, so it was retired). `check-releasability` enumerates the entry's
   `scope=` as pending and advises when that scope resolves to no plan file — work shipping
-  with nothing describing it. The plan and the `active_build_plan` pointer are **retained**
-  until the release, because that pairing is what the gate reads; the `/prawduct:pr` merge
-  flow honors this (a feature→`develop` merge retains both — merge-flow step 7), while on a
-  trunk repo the closing PR itself carries the `release=`-tagged entry and the plan
-  retirement (create-flow Step 1d).
+  with nothing describing it. **The PLAN is retained until the release**; what happens to the
+  `active_build_plan` pointer depends on how the plan resolves, and `/prawduct:pr`’s Merge Flow
+  *"Confirm the bookkeeping merged WITH the PR"* step owns that split — a plan declaring `branch:` has its pointer cleared at the merge
+  (its branch is gone, so it resolves for nobody and reads live-but-inactive), while a
+  pointer-resolved plan keeps it, because clearing that one is what makes governance blind.
+  The gate reads the plan by scope either way, which is why it does not depend on the
+  pointer. On a trunk repo the closing PR itself carries the `release=`-tagged entry and the
+  plan retirement (create-flow Step 1d).
 - **Shipped** — `release=vX.Y.Z` present. Step 3 adds it, and adding it is the whole
   transition.
+
+**A tagged entry carrying neither key is not a third state — it is a refusal.** `scope=` is what
+makes release-pending work classifiable, so an entry whose `prawduct:` tag line sets neither
+`scope=` nor `release=` enumerates as no scope, reaches no row of the release plan's classification
+table, and can be neither shipped nor withheld. (An entry with **no tag line at all** is untagged
+history, not a malformed entry, and the gate has never claimed authority over it.) `check-releasability` refuses it — exit 1 with an `unclassifiable-pending-entry:` line
+naming each offending entry and its change-log line number — rather than certify a release over
+work it never enumerated. The remedy is one `scope=` per entry, matching the `scope:` of the build
+plan the work belongs to.
 
 **A legacy `status=` tag is inert.** Older logs carry `status=merged` and `status=shipped`
 from the retired derived-views mechanism. Nothing reads them, no value of them means
@@ -242,8 +325,11 @@ the derived-views regenerator, which a release did not run — which is why the 
 reached a release at all: the guard existed and nothing on the release path called it. Rehoming
 it onto the gate that acts on the field is the durable fix, and it is the reason this validator
 survived the retirement of the five around it. The gate also
-reports two **advisories** that do not change its exit code — a release-pending scope with no
-build-plan file (work shipping with nothing describing it), and two plans declaring one scope.
+reports **advisories** that do not change its exit code — work shipping with nothing describing
+it, and work shipping with nothing written *for consumers* about it. They are enumerated where a
+release operator meets them, in Phase 0 of
+`.prawduct/runbooks/cut-and-publish-a-plugin-release.md`; a count here goes stale every time one
+is added, and this sentence already had.
 
 Entries with multiple non-conflicting tag lines are unioned with a stderr WARNING
 (VWS-4D8J) — fix the format, but the reading is correct. Run `check-releasability` before

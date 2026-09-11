@@ -24,8 +24,11 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+from conftest import V2_MANIFEST
 
 ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK = ROOT / "bin" / "prawduct-hook"
@@ -390,9 +393,15 @@ class TestChunk05ConsolidateOrBlock:
         assert "/prawduct:critic" in result.stderr
         assert not (prawduct / ".critic-findings.json").is_file()
 
-    def test_unreadable_manifest_blocks_with_accurate_cause(self, tmp_path):
+    def test_corrupt_manifest_blocks_with_accurate_cause(self, tmp_path):
         """Marker + corrupt manifest → block, but the message must not claim
-        'no manifest is present' (the manifest exists; it is unreadable)."""
+        'no manifest is present' (the manifest exists; it is unreadable).
+
+        The cause used to read "unreadable or schema-invalid" — one sentence
+        for two disks, because this surface computed the distinction itself and
+        the refusal surface computed a different (and false) one. Both now read
+        `critic_consolidate.manifest_condition`, so this asserts the specific
+        cause rather than the disjunction (#676)."""
         prawduct = _active_plan_repo(tmp_path)
         _set_marker(prawduct)
         d = prawduct / ".critic-partials"
@@ -401,8 +410,52 @@ class TestChunk05ConsolidateOrBlock:
         result = _run_stop(tmp_path, status=_CODE_DIFF)
         assert result.returncode == 2
         assert "not completed" in result.stderr.lower()
-        assert "unreadable or schema-invalid" in result.stderr
+        assert "not valid JSON" in result.stderr
+        assert "OLDER PRAWDUCT" not in result.stderr
         assert "no coordinator manifest is present" not in result.stderr
+
+    def test_stale_schema_manifest_names_the_version_skew(self, tmp_path):
+        """The case the source report actually hit (#676): a manifest written by
+        a pre-3.3.4 prawduct. It parses; it is not corrupt; and the operator
+        must be told which of the two they have, because the remedies differ in
+        how much they should trust the partials sitting beside it."""
+        prawduct = _active_plan_repo(tmp_path)
+        _set_marker(prawduct)
+        d = prawduct / ".critic-partials"
+        d.mkdir()
+        (d / "manifest.json").write_text(json.dumps(V2_MANIFEST))
+        result = _run_stop(tmp_path, status=_CODE_DIFF)
+        assert result.returncode == 2
+        assert "OLDER PRAWDUCT" in result.stderr
+        assert "not valid JSON" not in result.stderr
+        assert "no coordinator manifest is present" not in result.stderr
+        # This fixture plants the manifest ALONE, so the honest verdict is that
+        # there is nothing to preserve. Asserting "are NOT lost" here would pin
+        # a claim that is false in the very disk this fixture builds.
+        assert "No reviewer output is on disk" in result.stderr
+        # Scoped to the preservation clause, not to the whole message: the
+        # escape-hatch text below it names `critic-restore` on every branch and
+        # is right to, so a bare "critic-restore not in stderr" tests the wrong
+        # sentence.
+        assert "reviewer partial(s) ARE on disk" not in result.stderr
+        assert "critic-restore" in result.stderr
+
+    def test_stale_schema_with_partials_says_they_are_preserved(self, tmp_path):
+        """The other half of the same disk — and the half that matters, because
+        an operator told nothing is attached will not run `critic-restore`
+        before the archive ring evicts real reviewer output."""
+        prawduct = _active_plan_repo(tmp_path)
+        _set_marker(prawduct)
+        d = prawduct / ".critic-partials"
+        d.mkdir()
+        (d / "manifest.json").write_text(json.dumps(V2_MANIFEST))
+        (d / "correctness.rev-old.json").write_text('{"role": "correctness"}')
+        result = _run_stop(tmp_path, status=_CODE_DIFF)
+        assert result.returncode == 2
+        assert "OLDER PRAWDUCT" in result.stderr
+        assert "1 reviewer partial(s)" in result.stderr
+        assert "critic-restore" in result.stderr
+        assert "No reviewer output is on disk" not in result.stderr
 
     def test_self_heal_still_no_sweep_on_incomplete(self, tmp_path):
         """The incomplete-block path must not sweep the marker it reads (the
@@ -591,7 +644,7 @@ class TestNoShippedSurfaceSanctionsTheBareDelete:
     #: The act, not its spellings: an `rm` (any flags) reaching either file.
     #: Backticks are allowed through — a prohibition often quotes the command
     #: it forbids, and relying on punctuation to tell those apart is what made
-    #: the first cut of this pin fire on the sentence doing the forbidding.
+    #: an earlier version of this pin fire on the sentence doing the forbidding.
     _NAMES_THE_ACT = re.compile(
         r"\brm\b[^\n]{0,40}?\.(?:prawduct/\.)?critic-(?:active|partials)"
     )
@@ -692,3 +745,103 @@ class TestNoShippedSurfaceSanctionsTheBareDelete:
                 f"the pattern fires on {innocent!r} — a pin that cries wolf gets "
                 "waived, which is how the class reopens"
             )
+
+
+class TestTheBlockerComposesSharedProse:
+    """What `cmd_stop`'s abandoned-review blocker SAYS, as distinct from when
+    it fires. `TestChunk05ConsolidateOrBlock` is about consolidate-or-block and
+    these two are about prose the blocker borrows from shared homes — the long
+    validation reason it must not smuggle, and the keep/discard verdict it must
+    not paraphrase (#676)."""
+
+    def test_the_long_validation_reason_is_not_smuggled_into_the_blocker(self, tmp_path):
+        """The reason's SECOND interpolation site, pinned where it composes.
+
+        Every other Stop-hook fixture plants `V2_MANIFEST`, whose invalid `mode`
+        short-circuits validation into a one-line reason — so `short_detail()`
+        is a no-op there and reverting it to the raw `detail` stays green. The
+        only reason that matters is the `missing 'rendezvous'` branch: the shape
+        a pre-3.3.4 archive actually has, and a ~700-character paragraph
+        prescribing its OWN recovery ("/reload-plugins … then `critic-end` …
+        then dispatch again"). Printed above this surface's "Re-run the review:
+        /prawduct:critic", that is one disk with two recovery stories — which is
+        the whole defect #676 is about, arriving through a borrowed string.
+        """
+        prawduct = _active_plan_repo(tmp_path)
+        _set_marker(prawduct)
+        _write_manifest(prawduct)
+        mpath = prawduct / ".critic-partials" / "manifest.json"
+        manifest = json.loads(mpath.read_text())
+        manifest.pop("rendezvous")
+        mpath.write_text(json.dumps(manifest))
+
+        # Fixture guard: this must be the LONG reason, or the test proves nothing.
+        sys.path.insert(0, str(ROOT))
+        from lib.critic_consolidate import validate_manifest  # noqa: PLC0415
+        ok, reason = validate_manifest(manifest)
+        assert not ok and "rendezvous" in reason
+        assert len(reason) > 200, "fixture guard: expected the remedy-bearing paragraph"
+
+        result = _run_stop(tmp_path, status=_CODE_DIFF)
+        assert result.returncode == 2
+        assert "OLDER PRAWDUCT" in result.stderr
+        assert "rendezvous" in result.stderr, "the cause still has to be named"
+        # The borrowed reason must not bring its own competing remedy along.
+        assert "/reload-plugins" not in result.stderr
+        assert "restart the session" not in result.stderr
+        # A third strand of the same borrowed paragraph. `critic-end` is not in
+        # this surface's own message, so its presence could only come from the
+        # reason — which makes it a clean signal rather than a false positive.
+        assert "critic-end" not in result.stderr
+
+    def test_orphaned_partials_with_no_manifest_are_not_declared_a_crash(self, tmp_path):
+        """The disk `_archive_leftovers` documents: a late reviewer re-creates
+        the partials directory after consolidation, so there are partials and no
+        manifest. The absent branch used to assert a cause for that ("a
+        dispatch crashed before writing") and, alone among the four, skipped the
+        preservation clause — telling an operator nothing was attached on the
+        one disk where reviewer output is all there is."""
+        prawduct = _active_plan_repo(tmp_path)
+        _set_marker(prawduct)
+        d = prawduct / ".critic-partials"
+        d.mkdir()
+        (d / "correctness.rev-old.json").write_text('{"role": "correctness"}')
+
+        sys.path.insert(0, str(ROOT))
+        from lib.critic_consolidate import anything_worth_keeping  # noqa: PLC0415
+        keep, clause = anything_worth_keeping(prawduct)
+        assert keep is True, "fixture guard: this disk HAS reviewer output"
+
+        result = _run_stop(tmp_path, status=_CODE_DIFF)
+        assert result.returncode == 2
+        assert clause in result.stderr, (
+            "the absent branch must take the shared verdict too. Expected:\n"
+            f"{clause}\nGot:\n{result.stderr}"
+        )
+        assert "crashed before writing.\n" not in result.stderr, (
+            "and must not assert a cause it cannot know"
+        )
+
+    def test_the_stop_blocker_carries_the_shared_keep_verdict(self, tmp_path):
+        """The fifth `anything_worth_keeping` call site.
+
+        `TestNoSurfacePairsPreservationWithDiscard` composes the other four
+        in-process; `cmd_stop`'s is reachable only through the CLI, so it is
+        pinned here rather than left to a docstring's claim of "every surface"."""
+        prawduct = _active_plan_repo(tmp_path)
+        _set_marker(prawduct)
+        d = prawduct / ".critic-partials"
+        d.mkdir()
+        (d / "manifest.json").write_text(json.dumps(V2_MANIFEST))
+        (d / "correctness.rev-old.json").write_text('{"role": "correctness"}')
+
+        sys.path.insert(0, str(ROOT))
+        from lib.critic_consolidate import anything_worth_keeping  # noqa: PLC0415
+        _keep, clause = anything_worth_keeping(prawduct)
+
+        result = _run_stop(tmp_path, status=_CODE_DIFF)
+        assert result.returncode == 2
+        assert clause in result.stderr, (
+            "the blocker must carry the SHARED verdict verbatim, not a local "
+            f"paraphrase of it. Expected:\n{clause}\nGot:\n{result.stderr}"
+        )

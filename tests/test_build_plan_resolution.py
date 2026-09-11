@@ -119,7 +119,7 @@ def _branch_repo(tmp_path: Path, branch: str, state: str = "") -> Path:
     the detached-HEAD and no-work-tree cases only exist in git.
     """
     repo = tmp_path / "repo"
-    repo.mkdir()
+    repo.mkdir(parents=True)
     _git(repo, "init", "-q", "-b", branch)
     _git(repo, "config", "user.email", "t@example.com")
     _git(repo, "config", "user.name", "T")
@@ -132,7 +132,14 @@ def _branch_repo(tmp_path: Path, branch: str, state: str = "") -> Path:
     return repo
 
 
-def _plan(prawduct: Path, rel: str, *, branch: str | None = None, artifact: str | None = "build-plan") -> Path:
+def _plan(
+    prawduct: Path,
+    rel: str,
+    *,
+    branch: str | None = None,
+    artifact: str | None = "build-plan",
+    chunks: str = "- [ ] Chunk 01: a chunk\n",
+) -> Path:
     path = prawduct / "artifacts" / rel
     path.parent.mkdir(parents=True, exist_ok=True)
     fm = ["---"]
@@ -141,7 +148,7 @@ def _plan(prawduct: Path, rel: str, *, branch: str | None = None, artifact: str 
     if branch is not None:
         fm.append(f"branch: {branch}")
     fm.append("---")
-    path.write_text("\n".join(fm) + "\n\n## Status\n\n- [ ] Chunk 01: a chunk\n")
+    path.write_text("\n".join(fm) + f"\n\n## Status\n\n{chunks}")
     return path
 
 
@@ -193,22 +200,240 @@ class TestBranchScopedResolution:
         _plan(prawduct, "pointed-plan.md")
         assert resolve_build_plan_path(prawduct) == prawduct / "artifacts" / "pointed-plan.md"
 
-    def test_two_live_plans_claiming_one_branch_is_a_loud_error(self, tmp_path: Path):
+    def test_several_plans_may_claim_one_branch(self, tmp_path: Path):
+        # A branch can legitimately carry several plans — a release branch with a
+        # telemetry plan and a documentation plan, or the three plans one consumer
+        # repo built on a single fix branch. Resolution picks among them and names
+        # what it passed over; it never refuses, and it never falls back to a
+        # scalar pointing OUTSIDE the branch's own plans.
         repo = _branch_repo(
             tmp_path, "feat/x", "active_build_plan: artifacts/other-plan.md\n"
         )
         prawduct = repo / ".prawduct"
         _plan(prawduct, "other-plan.md")
-        _plan(prawduct, "a-plan.md", branch="feat/x")
-        _plan(prawduct, "b-plan.md", branch="feat/x")
-        with pytest.raises(_mod.AmbiguousPlanBranchError) as excinfo:
-            resolve_build_plan_path(prawduct)
-        # It must name BOTH candidates and the branch: an operator cannot act on
-        # "ambiguous" alone, and falling back to the scalar here would be the
-        # silent wrong-plan pick the refusal exists to prevent.
-        message = str(excinfo.value)
-        assert "feat/x" in message
-        assert "a-plan.md" in message and "b-plan.md" in message
+        _plan(prawduct, "a-plan.md", branch="feat/x", chunks="- [ ] Chunk 01: open\n")
+        _plan(prawduct, "b-plan.md", branch="feat/x", chunks="- [ ] Chunk 01: open\n")
+        claim = _mod.resolve_branch_claim(prawduct)
+        assert claim.contested
+        assert claim.branch == "feat/x"
+        assert {p.name for p in claim.claimants} == {"a-plan.md", "b-plan.md"}
+        assert claim.chosen in claim.claimants
+        assert resolve_build_plan_path(prawduct) == claim.chosen
+        # Nothing distinguishes the two, so the basis says so rather than
+        # implying a judgement was made.
+        assert claim.basis == "order"
+        described = _mod.describe_branch_claim(claim, prawduct / "artifacts")
+        assert "a-plan.md" in described and "b-plan.md" in described
+        assert "feat/x" in described
+        # BOTH plans have chunks left here, so the sentence must not claim
+        # otherwise — and it must name the act that would decide it.
+        assert "2 of them still hold open work" in described
+        assert "none of them has chunks left" not in described
+        assert "point the scalar" in described
+
+    def test_the_order_sentence_tracks_the_state_it_describes(self, tmp_path: Path):
+        # The `order` basis is reached from two opposite states, and one sentence
+        # for both tells half its readers something false about their own repo.
+        # This is the other state: every claimant ticked.
+        repo = _branch_repo(tmp_path, "feat/x")
+        prawduct = repo / ".prawduct"
+        _plan(prawduct, "a-plan.md", branch="feat/x", chunks="- [x] Chunk 01: shipped\n")
+        _plan(prawduct, "b-plan.md", branch="feat/x", chunks="- [x] Chunk 01: shipped\n")
+        claim = _mod.resolve_branch_claim(prawduct)
+        described = _mod.describe_branch_claim(claim, prawduct / "artifacts")
+        assert claim.basis == "order"
+        assert "none of them has chunks left" in described
+        assert "still hold open work" not in described
+
+    def test_the_order_sentence_derives_the_pointer_clause_in_every_state(
+        self, tmp_path: Path
+    ):
+        """The `order` sentence has TWO derived clauses, and each has its own
+        states. This is the class that had to be fixed twice: the first fix
+        derived the open-work count and left the pointer clause asserted, which
+        then read "names none of them" on a repo whose scalar named one. Every
+        combination the basis can be reached in is enumerated here so a third
+        state cannot be added without a failing test.
+        """
+        def _claim(case: str, state: str, plans: dict) -> tuple:
+            repo = _branch_repo(tmp_path / case, "feat/x", state)
+            prawduct = repo / ".prawduct"
+            for name, chunks in plans.items():
+                _plan(prawduct, name, branch="feat/x", chunks=chunks)
+            claim = _mod.resolve_branch_claim(prawduct)
+            return claim, _mod.describe_branch_claim(claim, prawduct / "artifacts")
+
+        open_, done = "- [ ] Chunk 01: open\n", "- [x] Chunk 01: shipped\n"
+
+        # (a) two open, scalar unset.
+        claim, text = _claim("a", "", {"a-plan.md": open_, "b-plan.md": open_})
+        assert claim.basis == "order"
+        assert "2 of them still hold open work" in text
+        assert "`active_build_plan` is unset" in text
+
+        # (b) two open, scalar names something that is not on this branch.
+        claim, text = _claim(
+            "b",
+            "active_build_plan: artifacts/elsewhere.md\n",
+            {"a-plan.md": open_, "b-plan.md": open_},
+        )
+        assert claim.basis == "order"
+        assert "names no plan on this branch" in text
+
+        # (c) THE RECURRENCE: two open, scalar names a claimant that is finished.
+        # Step 3 rules it out (it is not in the pool), so the basis is `order` —
+        # and the sentence must not then claim the scalar names nothing.
+        claim, text = _claim(
+            "c",
+            "active_build_plan: artifacts/c-plan.md\n",
+            {"a-plan.md": open_, "b-plan.md": open_, "c-plan.md": done},
+        )
+        assert claim.basis == "order"
+        assert claim.chosen.name in ("a-plan.md", "b-plan.md")
+        assert "c-plan.md" in text and "its chunks are all ticked" in text
+        assert "names none of them" not in text
+        assert "names no plan on this branch" not in text
+
+        # (d) none open, scalar unset — the post-tick window.
+        claim, text = _claim("d", "", {"a-plan.md": done, "b-plan.md": done})
+        assert claim.basis == "order"
+        assert "none of them has chunks left" in text
+
+    def test_the_pointer_does_not_resurrect_a_finished_plan(self, tmp_path: Path):
+        """Step 3's narrowing, as behaviour rather than as wording. The scalar is
+        the operator's choice among plans still in contention; a plan whose boxes
+        are all ticked is not in contention, and live evidence outranks a stale
+        scalar."""
+        repo = _branch_repo(
+            tmp_path, "feat/x", "active_build_plan: artifacts/done-plan.md\n"
+        )
+        prawduct = repo / ".prawduct"
+        _plan(prawduct, "done-plan.md", branch="feat/x", chunks="- [x] Chunk 01: shipped\n")
+        _plan(prawduct, "open-a.md", branch="feat/x", chunks="- [ ] Chunk 01: open\n")
+        _plan(prawduct, "open-b.md", branch="feat/x", chunks="- [ ] Chunk 01: open\n")
+        claim = _mod.resolve_branch_claim(prawduct)
+        assert claim.chosen.name != "done-plan.md"
+        assert claim.basis == "order"
+
+    def test_each_basis_renders_its_own_reason(self, tmp_path: Path):
+        # The whole replacement for the deleted refusal is this sentence, so each
+        # branch of it is pinned — otherwise the wordings can be swapped or
+        # falsified and the suite stays green.
+        repo = _branch_repo(
+            tmp_path, "feat/x", "active_build_plan: artifacts/b-plan.md\n"
+        )
+        prawduct = repo / ".prawduct"
+        _plan(prawduct, "a-plan.md", branch="feat/x", chunks="- [ ] Chunk 01: open\n")
+        _plan(prawduct, "b-plan.md", branch="feat/x", chunks="- [ ] Chunk 01: open\n")
+        pointer_claim = _mod.resolve_branch_claim(prawduct)
+        assert "`active_build_plan` names it" in _mod.describe_branch_claim(
+            pointer_claim, prawduct / "artifacts"
+        )
+
+        # ...and the unfinished basis, on the same repo, once one plan is ticked.
+        _plan(prawduct, "b-plan.md", branch="feat/x", chunks="- [x] Chunk 01: shipped\n")
+        open_claim = _mod.resolve_branch_claim(prawduct)
+        assert open_claim.basis == "unfinished"
+        assert "the only one with chunks left" in _mod.describe_branch_claim(
+            open_claim, prawduct / "artifacts"
+        )
+
+    def test_three_claimants_are_all_named(self, tmp_path: Path):
+        # The plan's acceptance criterion, asserted rather than assumed: three
+        # plans claiming one branch resolve to one, and the reader is told about
+        # the other two by name.
+        repo = _branch_repo(tmp_path, "feat/x")
+        prawduct = repo / ".prawduct"
+        for name in ("a", "b", "c"):
+            _plan(prawduct, f"{name}-plan.md", branch="feat/x",
+                  chunks="- [ ] Chunk 01: open\n")
+        claim = _mod.resolve_branch_claim(prawduct)
+        described = _mod.describe_branch_claim(claim, prawduct / "artifacts")
+        assert "3 live plans declare `branch: feat/x`" in described
+        for name in ("a", "b", "c"):
+            assert f"{name}-plan.md" in described
+        assert "3 of them still hold open work" in described
+
+    def test_the_claimant_with_open_chunks_wins(self, tmp_path: Path):
+        repo = _branch_repo(tmp_path, "feat/x")
+        prawduct = repo / ".prawduct"
+        _plan(prawduct, "done-plan.md", branch="feat/x", chunks="- [x] Chunk 01: shipped\n")
+        _plan(prawduct, "live-plan.md", branch="feat/x", chunks="- [ ] Chunk 01: open\n")
+        claim = _mod.resolve_branch_claim(prawduct)
+        assert claim.chosen.name == "live-plan.md"
+        assert claim.basis == "unfinished"
+
+    def test_the_pointer_breaks_a_tie_within_the_branch(self, tmp_path: Path):
+        # The scalar's job once branches carry their own plans: the operator's
+        # explicit choice among THIS branch's plans, not a product-wide singleton.
+        repo = _branch_repo(
+            tmp_path, "feat/x", "active_build_plan: artifacts/b-plan.md\n"
+        )
+        prawduct = repo / ".prawduct"
+        _plan(prawduct, "a-plan.md", branch="feat/x", chunks="- [ ] Chunk 01: open\n")
+        _plan(prawduct, "b-plan.md", branch="feat/x", chunks="- [ ] Chunk 01: open\n")
+        claim = _mod.resolve_branch_claim(prawduct)
+        assert claim.chosen.name == "b-plan.md"
+        assert claim.basis == "pointer"
+
+    def test_a_sole_claimant_governs_after_its_last_box_is_ticked(self, tmp_path: Path):
+        # The closing-PR case. The unfinished-chunk signal goes false the moment
+        # the last box is ticked — which happens BEFORE the merge — so a sole
+        # claimant must not stop governing between its final review and its PR.
+        repo = _branch_repo(
+            tmp_path, "feat/x", "active_build_plan: artifacts/other-plan.md\n"
+        )
+        prawduct = repo / ".prawduct"
+        _plan(prawduct, "other-plan.md")
+        _plan(prawduct, "the-plan.md", branch="feat/x", chunks="- [x] Chunk 01: shipped\n")
+        claim = _mod.resolve_branch_claim(prawduct)
+        assert claim.chosen.name == "the-plan.md"
+        assert claim.basis == "sole"
+        assert not claim.contested
+        # And an uncontested claim has nothing to disambiguate, so it says nothing.
+        assert _mod.describe_branch_claim(claim, prawduct / "artifacts") == ""
+
+    def test_all_claimants_complete_still_resolves_within_the_branch(self, tmp_path: Path):
+        # Every claimant ticked is the post-tick window, not an absence of
+        # candidates: resolution stays among the branch's own plans rather than
+        # falling through to a scalar naming something else entirely.
+        repo = _branch_repo(
+            tmp_path, "feat/x", "active_build_plan: artifacts/other-plan.md\n"
+        )
+        prawduct = repo / ".prawduct"
+        _plan(prawduct, "other-plan.md")
+        _plan(prawduct, "a-plan.md", branch="feat/x", chunks="- [x] Chunk 01: shipped\n")
+        _plan(prawduct, "b-plan.md", branch="feat/x", chunks="- [x] Chunk 01: shipped\n")
+        claim = _mod.resolve_branch_claim(prawduct)
+        assert claim.chosen.name in ("a-plan.md", "b-plan.md")
+        assert claim.chosen != prawduct / "artifacts" / "other-plan.md"
+
+    def test_the_consumer_shape_that_found_this_resolves(self, tmp_path: Path):
+        # The population that produced the defect: a repo carrying five plans
+        # that declare `branch:` as free-text documentation, three of them naming
+        # one branch, one of them naming something that is not a branch name at
+        # all. Every one of those branches must resolve without raising.
+        shapes = {
+            "prompt-type-registry": "fix/research-forced-synthesis-never-empty",
+            "research-forced-synthesis": "fix/research-forced-synthesis-never-empty",
+            "research-budget-transparency": "fix/research-forced-synthesis-never-empty",
+            "eval-context-observability": "feature/eval-context-observability",
+            "reasoning-token-telemetry": "feature/reasoning-token-telemetry (off develop)",
+        }
+        prose = "feature/reasoning-token-telemetry (off develop)"
+        for branch in sorted({v for v in shapes.values() if v != prose}):
+            repo = _branch_repo(tmp_path / branch.replace("/", "_"), branch)
+            prawduct = repo / ".prawduct"
+            for name, claimed in shapes.items():
+                _plan(prawduct, f"build-plan-{name}.md", branch=claimed,
+                      chunks="- [x] Chunk 01: shipped\n")
+            claim = _mod.resolve_branch_claim(prawduct)
+            assert claim is not None and claim.branch == branch
+            assert resolve_build_plan_path(prawduct) == claim.chosen
+            # The prose-valued claim is inert wherever it appears: git cannot
+            # name a branch that, so nothing ever matches it.
+            assert all(p.name != "build-plan-reasoning-token-telemetry.md"
+                       for p in claim.claimants)
 
     def test_an_archived_plan_claims_nothing(self, tmp_path: Path):
         # Archiving ends the claim, which is what makes the move the whole
@@ -299,13 +524,13 @@ class TestBranchScopedResolution:
         assert resolve_build_plan_path(prawduct) == prawduct / "artifacts" / "build-plan.md"
 
 
-class TestTheCliRefusesRatherThanGuessing:
-    """The fail-closed posture, through the real binary.
+class TestTheCliResolvesRatherThanRefusing:
+    """A contested branch is ordinary, through the real binary.
 
-    A refused gate is a blocked gate — the intended end state — but a traceback
-    would be loud and unreadable, and the refusal already names its own remedy.
-    Subprocess because ``main``'s wrapper and the lazy ``_core()`` lookup in its
-    ``except`` clause exist only when the script is actually run.
+    Resolution used to refuse when a second plan claimed the branch, which
+    blocked the arrangement the declaration exists to serve. Subprocess because
+    the whole point is what the operator's command actually does — a command
+    that exits non-zero on a legitimate repo shape is the defect.
     """
 
     _HOOK = Path(__file__).resolve().parent.parent / "plugin" / "bin" / "prawduct-hook"
@@ -316,28 +541,25 @@ class TestTheCliRefusesRatherThanGuessing:
             cwd=str(repo), capture_output=True, text=True,
         )
 
-    def test_a_contested_branch_exits_nonzero_with_the_remedy(self, tmp_path: Path):
+    def test_a_contested_branch_answers_instead_of_refusing(self, tmp_path: Path):
         repo = _branch_repo(tmp_path, "feat/x")
         prawduct = repo / ".prawduct"
         _plan(prawduct, "a-plan.md", branch="feat/x")
         _plan(prawduct, "b-plan.md", branch="feat/x")
         result = self._run(repo, "infer-critic-mode")
-        assert result.returncode == 1, result.stdout
-        assert "REFUSING" in result.stderr
-        assert "a-plan.md" in result.stderr and "b-plan.md" in result.stderr
-        # No traceback: the refusal is a message, not a crash.
+        assert result.returncode == 0, result.stderr
+        assert "REFUSING" not in result.stderr
         assert "Traceback" not in result.stderr
 
-    def test_the_same_command_succeeds_once_one_claim_is_withdrawn(self, tmp_path: Path):
+    def test_one_claim_and_two_claims_reach_the_same_exit(self, tmp_path: Path):
         # The control. Without it the assertion above is satisfied by any repo
-        # shape that makes the command exit 1.
+        # shape that makes the command exit 0 for unrelated reasons.
         repo = _branch_repo(tmp_path, "feat/x")
         prawduct = repo / ".prawduct"
         _plan(prawduct, "a-plan.md", branch="feat/x")
         _plan(prawduct, "b-plan.md")
         result = self._run(repo, "infer-critic-mode")
         assert result.returncode == 0, result.stderr
-        assert "REFUSING" not in result.stderr
 
 
 class TestBranchClaimParsing:
@@ -1088,10 +1310,18 @@ class TestRemovalQualifier:
 
     def test_narrative_prose_does_not_exempt(self, tmp_path: Path):
         """Same narrowing as `new`, for the same reason: one sentence mentioning
-        a deletion must not exempt a real deliverable for the whole chunk."""
+        a deletion must not exempt a real deliverable for the whole chunk.
+
+        And the same #552 restatement as its `new` sibling — the property is
+        asserted about the DECLARED deliverable, since the narrative mention is
+        a citation that now contributes nothing on its own. Both halves matter:
+        the prose does not exempt, and the prose is not itself reported.
+        """
         _project, prawduct = _project_with_chunk(
             tmp_path,
-            "Context: this follows the run that deleted `lib/gone.py` last week.\n",
+            "Context: this follows the run that deleted `lib/gone.py` last week.\n"
+            "\n"
+            "- **Deliverables:** `lib/gone.py` lands here\n",
         )
         refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
         assert [e["ref"] for e in refs["file_paths"]] == ["lib/gone.py"]
@@ -1162,9 +1392,19 @@ class TestNewQualifierScope:
     def test_narrative_prose_does_not_exempt(self, tmp_path: Path):
         # The defect: one adjectival sentence in a paragraph silently exempted a
         # real path from verification for the WHOLE chunk section.
+        #
+        # Asserted against a DECLARED deliverable since #552, because the prose
+        # occurrence is now a citation and contributes no ref of its own. That
+        # is the stronger form of the same property rather than a weaker one: it
+        # pins both rules at once — the narrative `new` exempts nothing, AND the
+        # deliverable it sits above is still verified. Asserting on the prose
+        # occurrence alone would have made this test's subject the citation, and
+        # a citation being reported is the defect #552 is about.
         _project, prawduct = _project_with_chunk(
             tmp_path,
-            "Context: this reworks the new `lib/created.py` behaviour.\n",
+            "Context: this reworks the new `lib/created.py` behaviour.\n"
+            "\n"
+            "- **Deliverables:** `lib/created.py`\n",
         )
         refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
         assert [r["ref"] for r in refs["file_paths"]] == ["lib/created.py"]
@@ -1179,6 +1419,161 @@ class TestNewQualifierScope:
         assert _bpr._parse_build_plan_chunk_refs(prawduct, "01")["file_paths"] == []
 
 
+class TestCitationsAreNotDeclarations:
+    """#552: a path the chunk DISCUSSES is not a path the chunk owes.
+
+    The reported case: a plan enumerating broken paths by name as its
+    adversarial evidence drew eight BLOCKING `chunk-ref-missing` findings
+    against a record that was correct *because* those paths were absent. Two
+    extractors then disagreed about one tree — `test_path_reference_resolution`
+    had already moved to form-based extraction and called the same references
+    clean — with the naive one holding the veto.
+
+    Position decides and command position overrides. These pin both halves,
+    and the second half is not garnish: a rule that only ever *removes* refs
+    can be made to pass by removing all of them, so every test here that
+    asserts a citation is dropped has a sibling asserting a declaration is not.
+    """
+
+    def test_a_path_in_a_narrative_paragraph_is_not_a_deliverable(self, tmp_path: Path):
+        _project, prawduct = _project_with_chunk(
+            tmp_path,
+            "The defect was a scan root that never existed on any branch:\n"
+            "`plugin/tests` is named here because it is missing.\n",
+        )
+        assert _bpr._parse_build_plan_chunk_refs(prawduct, "01")["file_paths"] == []
+
+    def test_a_path_in_the_description_field_is_not_a_deliverable(self, tmp_path: Path):
+        # A `Description` bullet IS a list item, so the list-item scoping the
+        # `new` qualifier uses does not reach it. The label rule does.
+        _project, prawduct = _project_with_chunk(
+            tmp_path,
+            "- **Description:** the old reader looked in `plugin/nowhere/gone.py`,\n"
+            "  which is the whole reason this chunk exists.\n",
+        )
+        assert _bpr._parse_build_plan_chunk_refs(prawduct, "01")["file_paths"] == []
+
+    def test_a_deliverable_beside_a_description_is_still_verified(self, tmp_path: Path):
+        # The sibling that stops the rule from being satisfiable by extracting
+        # nothing: one bullet is dropped and the next is not.
+        _project, prawduct = _project_with_chunk(
+            tmp_path,
+            "- **Description:** the old reader looked in `plugin/nowhere/gone.py`.\n"
+            "- **Deliverables:** `plugin/lib/replacement.py`\n",
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert [r["ref"] for r in refs["file_paths"]] == ["plugin/lib/replacement.py"]
+
+    def test_a_wrapped_description_continuation_stays_excluded(self, tmp_path: Path):
+        # This repo's plans wrap a Description across many indented lines. If the
+        # label's scope ended at its first newline, most of the prose #552 is
+        # about would still be extracted and the fix would look like it worked.
+        _project, prawduct = _project_with_chunk(
+            tmp_path,
+            "- **Description:** the reader is wrong. It resolves against\n"
+            "  `plugin/nowhere/one.py` and then falls back to\n"
+            "  `plugin/nowhere/two.py`, neither of which exists.\n"
+            "- **Deliverables:** `plugin/lib/replacement.py`\n",
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert [r["ref"] for r in refs["file_paths"]] == ["plugin/lib/replacement.py"]
+
+    @pytest.mark.parametrize(
+        "label", ["Tests", "Artifacts consumed", "Done when", "Acceptance criteria"]
+    )
+    def test_every_other_declaration_field_stays_checked(self, tmp_path: Path, label: str):
+        # `_LIST_ITEM_RE` already argues against scoping to Deliverables alone,
+        # and the corpus agrees: plans name load-bearing paths in all four of
+        # these. A denylist of prose labels keeps them; an allowlist of
+        # declaration labels would have to enumerate them and would miss the
+        # long tail of ad-hoc ones authors actually write.
+        _project, prawduct = _project_with_chunk(
+            tmp_path, f"- **{label}:** `plugin/lib/target.py`\n"
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert [r["ref"] for r in refs["file_paths"]] == ["plugin/lib/target.py"]
+
+    def test_an_invented_declaration_label_stays_checked(self, tmp_path: Path):
+        # The reason the rule is a denylist. Real plans in this repo carry
+        # `Surfaces this touches`, `Delivers`, `Deliverable files`,
+        # `Scope — delete`. None of those would survive an allowlist.
+        _project, prawduct = _project_with_chunk(
+            tmp_path, "- **Surfaces this touches:** `plugin/lib/target.py`\n"
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert [r["ref"] for r in refs["file_paths"]] == ["plugin/lib/target.py"]
+
+    def test_command_position_in_prose_is_still_an_instruction(self, tmp_path: Path):
+        # Form overrides position. A Description that tells the reader to run
+        # something names a path a relocation would strand, and prose is where
+        # that instruction legitimately lives.
+        _project, prawduct = _project_with_chunk(
+            tmp_path,
+            "- **Description:** confirm with `grep -rn installed_plugins plugin/lib/gone.py`\n"
+            "  before starting.\n",
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert [r["ref"] for r in refs["file_paths"]] == ["plugin/lib/gone.py"]
+
+    def test_a_bare_citation_beside_a_command_is_still_dropped(self, tmp_path: Path):
+        # The grant is per-PATH, not per-line: one instruction in a Description
+        # must not re-admit every other path in it.
+        _project, prawduct = _project_with_chunk(
+            tmp_path,
+            "- **Description:** run `python3 plugin/lib/runner.py` — the old\n"
+            "  `plugin/nowhere/gone.py` is what it replaces.\n",
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert [r["ref"] for r in refs["file_paths"]] == ["plugin/lib/runner.py"]
+
+    def test_the_waiver_still_works_inside_a_declaration(self, tmp_path: Path):
+        # The residue the position rule cannot reach: a citation inside a
+        # Deliverables bullet. The pragma stays the honest answer there, which
+        # is why #552 narrows the waiver's job rather than retiring it.
+        _project, prawduct = _project_with_chunk(
+            tmp_path,
+            "  <!-- prawduct:allow prawduct/chunk-ref-missing -- naming the removed file -->\n"
+            "- **Deliverables:** `plugin/nowhere/gone.py` is what we are removing\n",
+        )
+        assert _bpr._parse_build_plan_chunk_refs(prawduct, "01")["file_paths"] == []
+
+
+class TestInstructionFormsHaveOneHome:
+    """#552's other half: the form vocabulary is a library function, not a test's.
+
+    It shipped inside `tests/test_path_reference_resolution.py` and stayed
+    there while the extractor wired to the BLOCKING gate read by shape. Sharing
+    the matcher is not enough on its own — the norm registry learned that one
+    module over — so this pins the exported surface the test module now imports.
+    """
+
+    def test_a_bare_backticked_path_is_not_an_instruction(self):
+        assert _bpr.instruction_references("the reader consults `plugin/lib/x.py`") == []
+
+    def test_command_position_inline_and_fenced(self):
+        inline = _bpr.instruction_references("run `python3 plugin/lib/x.py --json`")
+        fenced = _bpr.instruction_references("```\npytest tests/test_x.py -q\n```")
+        assert inline == [("command", "plugin/lib/x.py")]
+        assert fenced == [("command", "tests/test_x.py")]
+
+    def test_an_allowed_tools_grant_is_a_reference(self):
+        text = "---\nallowed-tools: Read, Bash(python3 plugin/bin/prawduct-hook stop *)\n---\nbody\n"
+        assert ("allowed-tools", "plugin/bin/prawduct-hook") in _bpr.instruction_references(text)
+
+    def test_a_repository_argument_is_not_a_path(self):
+        # `owner/repo` is path-shaped, sits in command position, and names
+        # nothing on disk. It is the reason `is_repo_path_token` exists.
+        text = "run `prawduct-hook backlog list --repo brookstalley/prawduct`"
+        assert _bpr.instruction_references(text) == []
+
+    def test_a_quoted_markdown_link_is_a_citation(self):
+        # A link inside backticks is being quoted as evidence, not offered.
+        assert _bpr.instruction_references("it links to `[x](../nowhere/absent.md)`") == []
+
+    def test_invocation_forms_are_the_two_that_run_something(self):
+        assert _bpr.INVOCATION_FORMS == frozenset({"command", "allowed-tools"})
+
+
 class TestVerifyChunkRefsPathSymbol:
     def test_existing_path_symbol_reports_no_missing(self, tmp_path: Path):
         project, prawduct = _project_with_chunk(
@@ -1191,6 +1586,43 @@ class TestVerifyChunkRefsPathSymbol:
         # The stored ref is the PATH portion only — not the full `path::symbol`.
         assert [e["ref"] for e in refs["file_paths"]] == ["lib/gone.py"]
         assert _bpr._verify_chunk_refs(project, refs) == []
+
+    def test_a_broken_symlink_is_diagnosed_as_escaping_the_worktree(
+        self, tmp_path: Path
+    ):
+        """#147: the deliverable WAS written — just not reachably from here.
+
+        A review dispatched into a linked worktree whose `.prawduct/artifacts`
+        is symlinked back at the primary checkout hits this: `Path.exists()`
+        follows the link and returns False, so the ref reported as plainly
+        absent and sent the reader hunting for a file that exists. The verdict
+        is unchanged (it IS missing at this ref); only the diagnosis moves.
+        """
+        project, prawduct = _project_with_chunk(
+            tmp_path, "- touches `lib/linked.py`\n"
+        )
+        (project / "lib").mkdir()
+        (project / "lib" / "linked.py").symlink_to(
+            tmp_path / "elsewhere" / "linked.py"
+        )
+        assert (project / "lib" / "linked.py").is_symlink()
+        assert not (project / "lib" / "linked.py").exists()
+
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        missing = _bpr._verify_chunk_refs(project, refs)
+        assert len(missing) == 1
+        assert missing[0]["ref"] == "lib/linked.py"
+        assert missing[0]["reason"] == "symlink escapes the worktree"
+
+    def test_a_plainly_absent_file_keeps_the_ordinary_reason(self, tmp_path: Path):
+        """The negative control for the branch above: no symlink, no rewording."""
+        project, prawduct = _project_with_chunk(
+            tmp_path, "- touches `lib/absent.py`\n"
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        missing = _bpr._verify_chunk_refs(project, refs)
+        assert len(missing) == 1
+        assert missing[0]["reason"] == "file does not exist"
 
     def test_missing_path_symbol_reports_path_portion_only(self, tmp_path: Path):
         project, prawduct = _project_with_chunk(
@@ -1370,17 +1802,150 @@ class TestVerifyChunkRefsGitRefs:
         assert [e["ref"] for e in refs["file_paths"]] == ["release/notes.v2.md"]
 
 
+class TestGitAnswersTheBranchQuestion:
+    """#537: the repo classifies its own branch names; the allowlist is history.
+
+    `_GIT_REF_PREFIXES` was a guess about other teams' branch naming, extended
+    once already (#333) and still missing `epic/`, `spike/`, `deps/` and
+    `PROJ-123/` — every one of which is a real convention, and every one of
+    which drew a BLOCKING `missing-ref:` for a branch named in plan prose. An
+    allowlist of naming conventions cannot finish, because the conventions
+    belong to the consuming team.
+
+    So the primary question goes to git. The allowlist stays for the one thing
+    git cannot answer — a branch that has since been deleted, which is every
+    archived plan naming the branch it shipped on — and a NEGATIVE from git is
+    deliberately not evidence, or the whole archive would redden.
+    """
+
+    def _repo_with_branch(self, tmp_path: Path, branch: str, body: str):
+        project, prawduct = _project_with_chunk(tmp_path, body)
+        _git(project, "init", "-q", "-b", "main")
+        _git(project, "config", "user.email", "t@example.com")
+        _git(project, "config", "user.name", "T")
+        _git(project, "add", "-A")
+        _git(project, "commit", "-qm", "seed")
+        _git(project, "branch", branch)
+        return project, prawduct
+
+    @pytest.mark.parametrize(
+        "branch",
+        ["epic/observability", "spike/cache-shape", "deps/bump-ruff", "PROJ-123/adapter"],
+    )
+    def test_a_live_branch_outside_the_allowlist_is_a_ref(self, tmp_path: Path, branch: str):
+        # None of these prefixes is in `_GIT_REF_PREFIXES`, and none should have
+        # to be. Before #537 each drew a BLOCKING missing-ref against a plan
+        # that was simply naming the branch it was built on.
+        project, prawduct = self._repo_with_branch(
+            tmp_path, branch, f"- **Deliverables:** landed on `{branch}`\n"
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert refs["error"] is None
+        assert refs["file_paths"] == []
+        assert _bpr._verify_chunk_refs(project, refs) == []
+
+    def test_a_deleted_branch_still_falls_back_to_the_allowlist(self, tmp_path: Path):
+        # The reason the allowlist is kept rather than narrowed. This repo has a
+        # git checkout that answers fine — it simply has never heard of the
+        # branch, which is the permanent state of every archived plan.
+        project, prawduct = self._repo_with_branch(
+            tmp_path, "epic/live", "- **Deliverables:** built on `feature/long-since-merged`\n"
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert refs["file_paths"] == []
+        assert _bpr._verify_chunk_refs(project, refs) == []
+
+    def test_a_negative_from_git_does_not_reclassify_an_unknown_prefix(self, tmp_path: Path):
+        # The corollary, and the one that decides whether this change is safe to
+        # ship: git saying "not a ref" must leave the verdict exactly where the
+        # shape rule puts it. `epic/gone` has no allowlisted prefix and no
+        # extension, so it stays a path and stays reported — the pre-#537
+        # verdict, unchanged. Narrowing on a negative is what would redden the
+        # archive.
+        project, prawduct = self._repo_with_branch(
+            tmp_path, "epic/live", "- **Deliverables:** `epic/gone`\n"
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert [r["ref"] for r in refs["file_paths"]] == ["epic/gone"]
+        assert [m["ref"] for m in _bpr._verify_chunk_refs(project, refs)] == ["epic/gone"]
+
+    def test_a_real_file_shadowed_by_a_branch_name_is_still_checked(self, tmp_path: Path):
+        # The risk the git arm introduces: a branch and a path can collide. The
+        # extension guard is what keeps the collision from blinding the verifier
+        # — a real path keeps its suffix, and `epic/thing.py` is checked even
+        # while a branch literally named `epic/thing.py` exists.
+        project, prawduct = self._repo_with_branch(
+            tmp_path, "epic/live", "- **Deliverables:** `plugin/lib/absent.py`\n"
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert [m["ref"] for m in _bpr._verify_chunk_refs(project, refs)] == [
+            "plugin/lib/absent.py"
+        ]
+
+    def test_both_ref_spellings_answer_the_same(self, tmp_path: Path):
+        # `refs/heads/epic/x` and `epic/x` are one object written two ways. A
+        # classifier that knew only the short form would answer differently
+        # about the same ref depending on how the plan wrote it.
+        project, prawduct = self._repo_with_branch(tmp_path, "epic/x", "- x\n")
+        names = _bpr._git_ref_names(project)
+        assert names is not None
+        assert {"epic/x", "refs/heads/epic/x"} <= names
+
+    def test_a_non_checkout_falls_back_rather_than_reclassifying(self, tmp_path: Path):
+        # `None` means COULD NOT ASK, and every caller must read it that way.
+        # Reading it as "there are no refs" would make an unavailable git
+        # silently turn every branch name in every plan into a missing file.
+        not_a_repo = tmp_path / "bare"
+        not_a_repo.mkdir()
+        assert _bpr._git_ref_names(not_a_repo) is None
+        assert not _bpr._names_a_live_git_ref("feature/x", not_a_repo)
+        # …and the shape rule still carries the verdict it always did.
+        assert not _bpr._looks_like_file_path("feature/x", not_a_repo)
+        assert _bpr._looks_like_file_path("feature/x.py", not_a_repo)
+
+    def test_the_predicate_still_works_with_no_repo_at_all(self):
+        # `lib.risk` shares this predicate to classify tokens in a diff, where
+        # there is no plan and no repo question to ask. Omitting `project_dir`
+        # must be the pre-#537 behaviour exactly, or #537 breaks a second caller.
+        assert not _bpr._looks_like_file_path("feature/backlog-relayout")
+        assert _bpr._looks_like_file_path("plugin/lib/gates.py")
+        assert not _bpr._looks_like_file_path("epic/observability") is False
+
+    def test_git_is_asked_once_per_repo_not_once_per_token(self, tmp_path: Path, monkeypatch):
+        # A gate reads every backticked token of every chunk of every plan. One
+        # `git rev-parse` per token turns one gate into hundreds of process
+        # spawns, which is why the whole ref namespace is fetched once.
+        project, prawduct = self._repo_with_branch(
+            tmp_path,
+            "epic/live",
+            "- **Deliverables:** `epic/live`, `epic/live`, `feature/a`, `plugin/lib/x.py`\n"
+            "- **Tests:** `epic/live` and `refs/heads/epic/live`\n",
+        )
+        _bpr._GIT_REF_NAMES_CACHE.clear()
+        calls = []
+        real = _bpr.subprocess.run
+
+        def counting(cmd, *a, **kw):
+            if isinstance(cmd, list) and "for-each-ref" in cmd:
+                calls.append(cmd)
+            return real(cmd, *a, **kw)
+
+        monkeypatch.setattr(_bpr.subprocess, "run", counting)
+        _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert len(calls) == 1, f"{len(calls)} for-each-ref calls for one chunk"
+
+
 class TestVerifyChunkRefsNonPathTokens:
     """BLD-4K7P: backticked tokens that aren't literal on-disk paths must not
     produce false `missing-ref` positives — angle-bracket write-target templates
-    (`<inbox>/<slug>.md`) and URLs (`https://…`) are skipped at parse (same
+    (`<target-repo>/<slug>.md`) and URLs (`https://…`) are skipped at parse (same
     form-family as the glob carveout), and an intentionally-gitignored managed
-    path (`.prawduct/.bug-inbox`) is captured but skipped at verification because
+    path (`.prawduct/.test-evidence.json`) is captured but skipped at verification because
     it's a generated/managed file, legitimately absent from a fresh checkout."""
 
     def test_angle_bracket_template_is_skipped(self, tmp_path: Path):
         project, prawduct = _project_with_chunk(
-            tmp_path, "- writes `<inbox>/<kebab-slug>.md` per report\n"
+            tmp_path, "- writes `<target-repo>/<kebab-slug>.md` per report\n"
         )
         refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
         assert refs["error"] is None
@@ -1396,13 +1961,13 @@ class TestVerifyChunkRefsNonPathTokens:
 
     def test_gitignored_managed_path_not_flagged_missing(self, tmp_path: Path):
         project, prawduct = _project_with_chunk(
-            tmp_path, "- the resolver writes to `.prawduct/.bug-inbox`\n"
+            tmp_path, "- the run is recorded in `.prawduct/.test-evidence.json`\n"
         )
         subprocess.run(["git", "init", "-q"], cwd=project, check=True)
-        (project / ".gitignore").write_text(".prawduct/.bug-inbox\n")
+        (project / ".gitignore").write_text(".prawduct/.test-evidence.json\n")
         refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
         # It IS a path-shaped token (captured), but verification skips it.
-        assert [e["ref"] for e in refs["file_paths"]] == [".prawduct/.bug-inbox"]
+        assert [e["ref"] for e in refs["file_paths"]] == [".prawduct/.test-evidence.json"]
         assert _bpr._verify_chunk_refs(project, refs) == []
 
     def test_non_ignored_missing_path_still_flagged(self, tmp_path: Path):
@@ -1412,7 +1977,7 @@ class TestVerifyChunkRefsNonPathTokens:
             tmp_path, "- touches `lib/does_not_exist.py`\n"
         )
         subprocess.run(["git", "init", "-q"], cwd=project, check=True)
-        (project / ".gitignore").write_text(".prawduct/.bug-inbox\n")
+        (project / ".gitignore").write_text(".prawduct/.test-evidence.json\n")
         refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
         missing = _bpr._verify_chunk_refs(project, refs)
         assert [m["ref"] for m in missing] == ["lib/does_not_exist.py"]
