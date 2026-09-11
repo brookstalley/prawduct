@@ -1064,10 +1064,10 @@ def test_the_issues_close_says_how_to_establish_the_merge_it_waits_for():
         "ancestry check as the wrong way to establish it — the caller invents it "
         "again and refuses a correctly timed close"
     )
-    # The authority has to be something that reads the remote NOW. Either route
-    # is acceptable; requiring both would pin a remedy rather than the property.
-    reaches_remote = "gh pr" in bullet or "git fetch" in bullet
+    # The authority has to be the forge: a fetched local ref answers only under
+    # merge-commit merges, so it is not a route the bullet may offer as equal.
+    reaches_remote = "gh pr" in bullet
     assert reaches_remote, (
-        "the bullet rules out the local-ref check but names no route that reads "
-        "the remote — `gh pr ...` or a `git fetch` before the ancestry test"
+        "the bullet rules out the local-ref check but names no route that asks "
+        "the forge — `gh pr ...` is the one that answers under every merge strategy"
     )

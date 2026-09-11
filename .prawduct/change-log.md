@@ -338,6 +338,7 @@ permit, since a ref cannot contain a merge that has not happened. So the answer 
 re-derive, never to skip the check. Pinned on the rule's own bullet rather than file-wide — guidance
 that drifts out of the bullet stops being read by the caller the obligation lands on — and both
 halves of the pin mutation-checked.
+
 ## 2026-09-07: an untracked change-log no longer reads as a missing one
 
 <!-- prawduct: type=fix | scope=change-log-gate -->
