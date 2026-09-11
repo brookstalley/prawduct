@@ -3,6 +3,52 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-09-10: an audit of develop, and the three findings that could not wait for the cut
+
+<!-- prawduct: type=fix | scope=audit-followups -->
+
+Twenty-three scopes were release-pending on `develop` since v3.4.0. Five independent read-only
+auditors, one per cluster of related PRs, graded each scope's claims against its code, its tests
+against `main`'s modules, its plan against its Status boxes, and its stated problem against what
+actually ships. The report is `.prawduct/artifacts/audit-develop-since-v3.4.0.md`: five scopes
+complete, sixteen complete with nits, two incomplete, none defective, and every scope's tests
+confirmed red against v3.4.0. The recurring shape is the one worth naming — each fix closes the
+instance it named and leaves the same class open one frame up, and the durable prose claims a
+little more than the code carries. Three findings were fixed here because each would fail or
+degrade the next release cut; the rest are filed as #776–#787, each citing the report, plus a
+comment on #164 whose body still describes a retirement the burndown reverted.
+
+**`file-upstream` filed an empty title or body without a warning, under every consent state.** The
+skill composes both fields through `$(cat <path>)`, and a path the reader did not actually hold
+reads as nothing: the flag is present, so the presence check passed; the `[prawduct]` prefix alone
+cleared the title floor; and under `always-file` nothing later compares bytes. The 2026-09-08 entry
+named this exact failure and closed it in skill prose. It is now refused in `check_payload_inputs`,
+where every composition runs, on both arms — a whitespace-only title or body is a validation
+error naming the flag, the component stays optional, and the transport sees no call. The skill
+text and the test docstring that said "nothing downstream catches that" are corrected. One more
+record correction rides here rather than being rewritten in place: that same entry said the
+cross-call shell-variable pin "ships with a positive control that catches all six command lines
+of the variable form". No such control exists — the pin scans the live skill and nothing else. The
+pin is still the right one; the claim about it was not true.
+
+**The release step would have refused to archive the review-loop-termination plan.** A v3.2.0
+plan of the same scope already sat in `archive/` under the same filename, and `archive-plan`
+refuses to overwrite an earlier plan — so `plan-backfill --apply` would have exited 1 at the cut.
+The archived one now carries its release in its name. Scope resolution reads frontmatter, not
+filenames, so nothing that looks the scope up changes its answer; a live plan beats an archived
+one of the same scope, as before.
+
+**branch-claim-multiplicity's Chunk 04 stays unticked, and the reason is now a finding instead of
+a wait.** Its live half — a sibling repo actually running the develop track through the documented
+`settings.local.json` recipe — became runnable when PR #658 merged on 2026-08-27 and was never
+run; `operator_verification_required: false` means no gate was ever going to raise it. It was run
+from an agent session on a governed sibling, and the recipe did not take: in print mode the
+settings-declared marketplace was neither registered nor installed, and because the same block
+disables the released plugin, that session ran with no prawduct governance at all. Whether an
+interactive start registers it is what only an operator at a terminal can see, and VRF-017 now
+says so, with the block left in place for that check. The cut's `plan-backfill` refusal therefore
+stands, deliberately: ticking the box would say the track works, and nobody has yet seen it work.
+
 ## 2026-09-10: a build plan's chunk fields bind in the forms authors write
 
 <!-- prawduct: type=fix | scope=critic-mode-field-parse -->
