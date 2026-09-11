@@ -371,7 +371,7 @@ def check_payload_inputs(*, title: str, body: str, component: str) -> str | None
     CLI applied to ``--body`` alone left ``--component`` free to forge the whole
     provenance block, and a second entry point would have inherited the same gap.
 
-    Two rules. **No prawduct fence at all** in anything that lands in the body —
+    Three rules. **No prawduct fence at all** in anything that lands in the body —
     terminated or not, which is STRICTER than ``file``'s rule on its own body and
     deliberately so. ``file`` tolerates a well-formed block because
     ``encode.compose_body`` strips and merges it; guard and transform are one

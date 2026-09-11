@@ -648,8 +648,7 @@ class TestTheApprovalCoversTheBytes:
 
 
 class TestAnEmptyPayloadNeverFiles:
-    """The failure the skill's own third round named and closed only in prose:
-    every composed field arrives via `$(cat <path>)`, and a path the reader did
+    """Every composed field arrives via `$(cat <path>)`, and a path the reader did
     not hold reads as nothing. Both flags are present, so the presence check
     passes; the title prefix alone clears the length floor; and under standing
     consent nothing compares bytes. The guard has to be in the module that owns

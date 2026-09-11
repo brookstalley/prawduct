@@ -3,7 +3,7 @@
 Read-only audit of the 23 release-pending scopes on `develop` (`b4d63cb3`) against `main`
 (v3.4.0, `9526ec84`). Five independent auditors, one per cluster of related PRs, each grading
 claims against code, test strength, plan completeness, and whether the stated problem is solved.
-The full test suite on a clean develop checkout: 6531 passed, 17 skipped, 0 failed.
+The full test suite on a clean develop checkout was green (0 failed); the evidence store carries the run.
 
 ## Verdicts
 
