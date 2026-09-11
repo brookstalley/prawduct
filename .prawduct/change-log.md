@@ -3,6 +3,29 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-09-11: a participle behind a determiner stops reading as a closing keyword
+
+<!-- prawduct: type=fix | scope=closing-keyword-classifier -->
+
+The closing-keyword guard reddened the suite on ordinary English. A requirements document wrote
+"adjacent to the closed #422" — an adjective describing an issue's state — and the guard read it as
+an instruction to GitHub, then demanded the default-branch qualification that a requirements
+document has no reason to carry.
+
+**The classifier was wrong, so the classifier is what changed.** Reflowing correct prose to satisfy a
+guard is the repair that teaches every later author that the guard, not the sentence, decides how
+they write. A determiner before a past-participle form admits no verb reading, and it is the only
+shape in the keyword family that doesn't — so the exclusion is scoped to the `-ed` forms alone.
+``the `Closes #N` keyword`` still matches and still owes its qualification, because the character
+before `Closes` there is a backtick rather than a space; the exclusion sits one character from
+swallowing the instruction prose it exists to catch, and doesn't.
+
+The note above the regex had recorded the false-positive residual as accepted, resting on the
+premise that "every live hit today carries the qualification". A live hit stopped carrying it, so
+the premise left the note rather than standing as a description of a tree that no longer matched it.
+Both directions are pinned — the shapes that must still match, and the shapes that must not — so a
+later re-widening fails a test instead of going quiet.
+
 ## 2026-08-25: a clone without the plugin is told so, instead of being told a gate is watching
 
 <!-- prawduct: type=fix | scope=plugin-absent-governance-anchor -->
