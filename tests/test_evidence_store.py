@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import tempfile
 import threading
 from pathlib import Path
 
@@ -387,6 +388,158 @@ class TestCaptureTree:
         assert result["status"] == "error"
         assert result["reason"]  # attributed, never a silent empty dict
 
+    def test_seed_copies_the_repo_index_when_it_exists(self, tmp_path, monkeypatch):
+        """The stat-data seed, asserted at the mechanism rather than the clock.
+
+        A timing assertion would be flaky on a loaded machine; what actually
+        makes the capture cheap is that the temp index STARTS as a byte-for-
+        byte copy of the repo's own, carrying its stat data, so ``add -A``
+        can skip files whose stat still matches."""
+        repo = _make_repo(tmp_path)
+        seen = {}
+        real_copy2 = evidence.shutil.copy2
+
+        def spy(src, dst, *a, **k):
+            seen["src"] = Path(src)
+            return real_copy2(src, dst, *a, **k)
+
+        monkeypatch.setattr(evidence.shutil, "copy2", spy)
+        result = evidence.capture_tree(repo)
+        assert result["status"] == "ok"
+        assert result["seed"] == "index-copy"
+        assert seen["src"] == Path(_git(repo, "rev-parse", "--absolute-git-dir")) / "index"
+
+    def test_seed_falls_back_when_index_is_unreadable(self, tmp_path, monkeypatch, capsys):
+        """A copy that cannot happen degrades to `read-tree HEAD` — slower,
+        never wrong. Same tree either way."""
+        repo = _make_repo(tmp_path)
+        (repo / "code.py").write_text("x = 9\n")
+        (repo / "extra.py").write_text("e = 1\n")
+        expected = evidence.capture_tree(repo)["tree"]
+
+        def refuse(src, dst, *a, **k):
+            raise OSError("index unreadable")
+
+        monkeypatch.setattr(evidence.shutil, "copy2", refuse)
+        result = evidence.capture_tree(repo)
+        assert result["status"] == "ok"
+        assert result["tree"] == expected
+        # The degradation is NOT silent: it is named in the result and on stderr,
+        # so a capture that fell back is distinguishable from one that never had
+        # a fast seed to lose.
+        assert result["seed"] == "read-tree"
+        assert "read-tree" in capsys.readouterr().err
+
+    def test_seed_falls_back_when_a_partial_copy_is_left_behind(self, tmp_path, monkeypatch):
+        """A copy that dies PART-way would leave a truncated index that git
+        rejects as corrupt. The fallback must start from a clean slot."""
+        repo = _make_repo(tmp_path)
+        (repo / "extra.py").write_text("e = 1\n")
+
+        def truncate_then_fail(src, dst, *a, **k):
+            Path(dst).write_bytes(b"DIRC\x00garbage")
+            raise OSError("disk full mid-copy")
+
+        monkeypatch.setattr(evidence.shutil, "copy2", truncate_then_fail)
+        result = evidence.capture_tree(repo)
+        assert result["status"] == "ok"
+        names = _git(repo, "ls-tree", "-r", "--name-only", result["tree"])
+        assert "extra.py" in names.splitlines()
+
+    def test_same_second_same_size_edit_is_still_captured(self, tmp_path):
+        """The seed's sharpest failure mode, pinned with fixed timestamps
+        rather than left to a race.
+
+        Git's stat cache skips re-reading a file whose size and mtime still
+        match the index entry. Its racily-clean rule is the escape hatch: an
+        entry whose mtime is not older than the INDEX FILE's own may have been
+        edited within the same timestamp tick, so git re-reads it. A copy of
+        the index stamped with the CURRENT time silences that rule — and a
+        same-second, same-size edit then vanishes from the captured tree,
+        which would make a review vouch for a tree that never existed.
+
+        Every timestamp here is forced equal because on a real clock the race
+        lands only sometimes; the defect it exposes is permanent."""
+        import os as _os
+
+        stamp = 1_600_000_000  # any fixed epoch second — the point is they all MATCH
+        repo = tmp_path / "racy"
+        repo.mkdir()
+        _git(repo, "init", "-q")
+        # `utime` cannot move ctime, and git's default `core.trustctime` would
+        # then re-read the file for the wrong reason, masking the very miss
+        # under test.
+        _git(repo, "config", "core.trustctime", "false")
+        (repo / "code.py").write_text("x = 1\n")
+        _os.utime(repo / "code.py", (stamp, stamp))
+        _git(repo, "add", "-A")  # the entry records mtime == stamp
+        _git(repo, "commit", "-q", "-m", "c1")
+
+        (repo / "code.py").write_text("x = 9\n")  # same byte length as "x = 1\n"
+        _os.utime(repo / "code.py", (stamp, stamp))
+        _os.utime(Path(_git(repo, "rev-parse", "--absolute-git-dir")) / "index", (stamp, stamp))
+
+        result = evidence.capture_tree(repo)
+        assert result["status"] == "ok"
+        blob = _git(repo, "ls-tree", "-r", result["tree"], "--", "code.py").split()[2]
+        assert _git(repo, "cat-file", "-p", blob) == "x = 9"
+
+    def test_capture_during_a_merge_conflict_resolves_to_the_working_tree(self, tmp_path):
+        """The third case where the seeds differ going in and agree coming out.
+
+        A copied index carries stage 1/2/3 entries that `read-tree HEAD` would
+        have flattened. `add -A` re-stages an unmerged path from the working
+        tree either way, so the capture is the conflicted file AS IT SITS ON
+        DISK — markers included. `_seed_temp_index` says so in prose; this is
+        the carrier for that claim, which otherwise rested on argument."""
+        repo = _make_repo(tmp_path)
+        _git(repo, "checkout", "-q", "-b", "other")
+        (repo / "code.py").write_text("x = 2\n")
+        _git(repo, "commit", "-q", "-am", "other")
+        _git(repo, "checkout", "-q", "-")
+        (repo / "code.py").write_text("x = 3\n")
+        _git(repo, "commit", "-q", "-am", "mine")
+        merge = subprocess.run(
+            ["git", "-c", "user.email=t@t", "-c", "user.name=t", "merge", "other"],
+            cwd=str(repo), capture_output=True, text=True, timeout=15,
+        )
+        assert merge.returncode != 0, "fixture must actually conflict"
+        assert _git(repo, "status", "--porcelain").startswith("UU"), "index must be unmerged"
+
+        result = evidence.capture_tree(repo)
+        assert result["status"] == "ok"
+        assert result["seed"] == "index-copy"
+        blob = _git(repo, "ls-tree", "-r", result["tree"], "--", "code.py").split()[2]
+        assert "<<<<<<<" in _git(repo, "cat-file", "-p", blob)
+
+    def test_capture_agrees_with_a_verbatim_commit_under_skip_worktree(self, tmp_path):
+        """The one case where the two seeds genuinely disagree.
+
+        ``--skip-worktree`` (what sparse checkout sets) tells ``add -A`` to
+        leave a path alone. Copying the index preserves the flag, so the
+        captured tree is what the user's own ``git add -A && git commit``
+        would write — which is precisely the invariant `capture_tree`
+        promises. A `read-tree HEAD` seed drops the flag and would stage a
+        deletion for every file the checkout does not materialise."""
+        repo = _make_repo(tmp_path)
+        (repo / "sparse.py").write_text("s = 1\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "c2")
+        _git(repo, "update-index", "--skip-worktree", "sparse.py")
+        (repo / "sparse.py").unlink()  # outside the cone: not materialised
+
+        result = evidence.capture_tree(repo)
+        assert result["status"] == "ok"
+        assert "sparse.py" in _git(
+            repo, "ls-tree", "-r", "--name-only", result["tree"]
+        ).splitlines()
+        # And the user's own `add -A` agrees: nothing to stage, so a verbatim
+        # commit of this state carries exactly the tree that was captured.
+        _git(repo, "add", "-A")
+        assert _git(repo, "status", "--porcelain") == ""
+        assert result["tree"] == _git(repo, "rev-parse", "HEAD^{tree}")
+        assert result["clean"] is True
+
     def test_capture_on_unborn_head(self, tmp_path):
         repo = tmp_path / "fresh"
         repo.mkdir()
@@ -398,6 +551,96 @@ class TestCaptureTree:
         assert result["clean"] is False
         names = _git(repo, "ls-tree", "-r", "--name-only", result["tree"])
         assert names.splitlines() == ["first.py"]
+
+
+class TestGitTimeoutBudget:
+    """The per-call git budget, and what a capture that runs out of it leaves
+    behind. A working tree reached over a network or bind mount pays mount
+    latency per file, so the budget has to be raisable from outside — and the
+    message that reports the overrun has to say so."""
+
+    def test_default_applies_when_unset(self, monkeypatch):
+        monkeypatch.delenv(evidence._GIT_TIMEOUT_ENV, raising=False)
+        assert evidence._git_timeout() == (evidence._GIT_TIMEOUT_DEFAULT, None)
+
+    def test_blank_is_treated_as_unset(self, monkeypatch):
+        monkeypatch.setenv(evidence._GIT_TIMEOUT_ENV, "   ")
+        assert evidence._git_timeout() == (evidence._GIT_TIMEOUT_DEFAULT, None)
+
+    def test_override_reaches_the_subprocess_call(self, tmp_path, monkeypatch):
+        repo = _make_repo(tmp_path)
+        monkeypatch.setenv(evidence._GIT_TIMEOUT_ENV, "120")
+        seen = []
+        real_run = evidence.subprocess.run
+
+        def spy(*args, **kwargs):
+            seen.append(kwargs.get("timeout"))
+            return real_run(*args, **kwargs)
+
+        monkeypatch.setattr(evidence.subprocess, "run", spy)
+        assert evidence.capture_tree(repo)["status"] == "ok"
+        assert seen and set(seen) == {120}
+
+    @pytest.mark.parametrize("bad", ["1O", "ten", "5.5", "0", "-3"])
+    def test_malformed_override_is_refused_not_silently_defaulted(
+        self, tmp_path, monkeypatch, bad
+    ):
+        """Someone who set the variable wanted a different budget. Quietly
+        restoring the default hands them back the timeout they were trying to
+        escape, with nothing on screen to say why."""
+        repo = _make_repo(tmp_path)
+        monkeypatch.setenv(evidence._GIT_TIMEOUT_ENV, bad)
+        result = evidence.capture_tree(repo)
+        assert result["status"] == "error"
+        assert evidence._GIT_TIMEOUT_ENV in result["reason"]
+
+    def test_a_refused_override_says_so_on_stderr(self, tmp_path, monkeypatch, capsys):
+        """A refusal has to be visible at the SOURCE. Every `run_git` call fails
+        while the variable is malformed, and not every caller reports the reason
+        — `coverage` and `record_lint` both read a nonzero rc as an honest 'no
+        answer' and go quiet, which is right for a real git failure and wrong
+        for a typo in the operator's own environment."""
+        monkeypatch.setattr(evidence, "_ATTRIBUTED_BAD_TIMEOUTS", set())
+        monkeypatch.setenv(evidence._GIT_TIMEOUT_ENV, "1O")
+        evidence.capture_tree(_make_repo(tmp_path))
+        err = capsys.readouterr().err
+        # Deduped AT THE SOURCE: the variable is read on every git call and
+        # capture_tree makes several, so the refusal announces itself once.
+        announcement = f"evidence: {evidence._GIT_TIMEOUT_ENV}"
+        assert err.count(announcement) == 1
+        # Downstream attribution may quote the refusal as the CAUSE of what it
+        # is reporting — that is the knock-on being traceable, not a repeat.
+        assert "seeding the capture with" in err
+
+    def test_timeout_names_the_remedy_and_leaves_no_lock(self, tmp_path, monkeypatch):
+        """`GIT_INDEX_FILE` moves git's index lock alongside the temp index,
+        so a capture killed mid-`add` litters the temp dir — never
+        `.git/index.lock`. Both the litter and the silence about the remedy
+        are cleaned up here."""
+        repo = _make_repo(tmp_path)
+        real_run = evidence.subprocess.run
+
+        def die_on_add(cmd, **kwargs):
+            if "add" in cmd:
+                # what a killed `git add` leaves: the lock it had taken out
+                Path(kwargs["env"]["GIT_INDEX_FILE"] + ".lock").write_text("")
+                raise subprocess.TimeoutExpired(cmd, kwargs.get("timeout", 0))
+            return real_run(cmd, **kwargs)
+
+        monkeypatch.setattr(evidence.subprocess, "run", die_on_add)
+        # A PRIVATE temp dir, because the assertion below is about what THIS
+        # capture left behind. `capture_tree` names its temp index from the
+        # process-wide temp dir, and the suite runs workers in parallel — so a
+        # snapshot of the shared one catches another worker's in-flight index
+        # and fails on litter this test never created.
+        private_tmp = tmp_path / "idxtmp"
+        private_tmp.mkdir()
+        monkeypatch.setattr(tempfile, "tempdir", str(private_tmp))
+        result = evidence.capture_tree(repo)
+        assert result["status"] == "error"
+        assert evidence._GIT_TIMEOUT_ENV in result["reason"]
+        assert list(private_tmp.iterdir()) == []
+        assert list(Path(_git(repo, "rev-parse", "--absolute-git-dir")).glob("*.lock")) == []
 
 
 # ---------------------------------------------------------------------------
@@ -420,6 +663,37 @@ def _run_hook(repo: Path, *args: str) -> subprocess.CompletedProcess:
             "CLAUDE_PROJECT_DIR": str(repo),
         },
     )
+
+
+class TestSeedReachesTheDurableRecord:
+    """The seed answers a question asked AFTER the fact, on someone else's
+    machine: did the fast seed engage, or is a slow capture still slow? A stderr
+    line lives in scrollback only, so the dispatch manifest — the record
+    `critic-begin` already writes — carries it."""
+
+    def test_the_dispatch_manifest_records_which_seed_the_capture_used(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        (repo / ".prawduct").mkdir()
+        (repo / "app.py").write_text("x = 2\n")  # a dirty diff to dispatch against
+        result = subprocess.run(
+            [sys.executable, str(HOOK), "critic-begin", "--mode", "chunk"],
+            cwd=str(repo), capture_output=True, text=True, timeout=30,
+            env={
+                "HOME": str(tmp_path / "_home2"),
+                "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
+                "CLAUDE_PROJECT_DIR": str(repo),
+                "CLAUDE_PLUGIN_ROOT": str(Path(HOOK).resolve().parent.parent),
+            },
+        )
+        assert result.returncode == 0, result.stderr
+        manifest = json.loads(
+            (repo / ".prawduct" / ".critic-partials" / "manifest.json").read_text()
+        )
+        assert manifest["seed"] == "index-copy", (
+            "a healthy repo seeds from its own index; recording the slow seed here "
+            "is what lets a verifier tell 'the fix did not engage' from 'the fix "
+            "was not enough' without the original terminal"
+        )
 
 
 class TestEvidenceCli:
@@ -696,3 +970,119 @@ class TestStoreGrowthAdvisory:
         monkeypatch.setattr(evidence, "TREE_COUNT_ADVISORY", 3)
         assert evidence._cmd_status(repo) == 0
         assert "NOTE:" not in capsys.readouterr().out
+
+
+class TestDedupedGuardRefusal:
+    """A guard on a POLLED path records the EVENT, not the observation.
+
+    ``critic-begin`` fires once per dispatch, so its default id (timestamp +
+    uuid) counts firings correctly. A gate is re-asked several times a session
+    about an unchanged repo, and the composed-verdict memo keys on a content
+    hash of this whole store — so a record per poll would both miscount the
+    event and evict every memoized verdict on every poll. ``dedupe_key`` is the
+    answer: a deterministic id, and a second observation that writes nothing.
+    """
+
+    def test_the_id_is_a_function_of_guard_and_key_only(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        first = evidence.append_guard_refusal(
+            repo, "polled-guard", {"n": 1}, dedupe_key="span-A"
+        )
+        assert first["status"] == "appended", first
+        other = _make_repo(tmp_path, name="repo2")
+        again = evidence.append_guard_refusal(
+            other, "polled-guard", {"n": 2}, dedupe_key="span-A"
+        )
+        # Same guard + same key ⇒ same id in a different clone at a different
+        # moment: nothing about *when* or *where* is in the digest, which is
+        # what makes the dedupe hold across the polls of one session.
+        assert again["id"] == first["id"]
+        assert first["id"].startswith("guard-polled-guard-")
+
+    def test_a_different_key_is_a_different_event(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        a = evidence.append_guard_refusal(repo, "g", {}, dedupe_key="span-A")
+        b = evidence.append_guard_refusal(repo, "g", {}, dedupe_key="span-B")
+        assert a["id"] != b["id"]
+        assert b["status"] == "appended"
+
+    def test_a_second_observation_leaves_the_store_byte_identical(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        assert (
+            evidence.append_guard_refusal(repo, "g", {"n": 1}, dedupe_key="k")["status"]
+            == "appended"
+        )
+        before = _store_file(repo).read_bytes()
+        second = evidence.append_guard_refusal(repo, "g", {"n": 1}, dedupe_key="k")
+        assert second["status"] == "duplicate"
+        assert _store_file(repo).read_bytes() == before
+
+    def test_known_facts_answers_the_probe_without_a_second_read(
+        self, tmp_path, monkeypatch
+    ):
+        # The whole point of the parameter: a gate has already read the store,
+        # and on a large one that read is a real slice of its budget. Passing
+        # the read it is acting on must make the probe free — and keep it right.
+        repo = _make_repo(tmp_path)
+        first = evidence.append_guard_refusal(repo, "g", {}, dedupe_key="k")
+        assert first["status"] == "appended"
+        facts = evidence.read_facts(repo)["facts"]
+
+        def _forbidden(*_args, **_kwargs):
+            raise AssertionError("known_facts must answer the probe by itself")
+
+        monkeypatch.setattr(evidence, "has_fact", _forbidden)
+        assert (
+            evidence.append_guard_refusal(
+                repo, "g", {}, dedupe_key="k", known_facts=facts
+            )["status"]
+            == "duplicate"
+        )
+
+    def test_a_stale_known_facts_list_re_appends_rather_than_dropping(self, tmp_path):
+        # The failure direction the parameter accepts: a caller whose read
+        # predates the record writes a redundant line. `read_facts` dedupes
+        # (kind, id) on the way out, so the store stays one event — never zero.
+        repo = _make_repo(tmp_path)
+        stale = evidence.read_facts(repo)["facts"]
+        evidence.append_guard_refusal(repo, "g", {}, dedupe_key="k")
+        again = evidence.append_guard_refusal(
+            repo, "g", {}, dedupe_key="k", known_facts=stale
+        )
+        assert again["status"] == "appended"
+        read = evidence.read_facts(repo)
+        assert read["duplicates"] == 1
+        assert sum(1 for f in read["facts"] if f["kind"] == "guard-refusal") == 1
+
+    def test_a_review_fact_with_the_same_id_never_answers_the_probe(self, tmp_path):
+        # The probe is (kind, id), not id: kinds are separate namespaces, and a
+        # guard record silently skipped because some other kind squats its id
+        # would lose the firing this whole mechanism exists to count.
+        repo = _make_repo(tmp_path)
+        minted = evidence.append_guard_refusal(repo, "g", {}, dedupe_key="k")
+        _store_file(repo).write_text("")
+        evidence.append_fact(
+            repo, "review", minted["id"],
+            {"base_tree": "a", "head_tree": "b", "files_changed": [],
+             "files_reviewed": [], "findings": []},
+        )
+        assert (
+            evidence.append_guard_refusal(repo, "g", {}, dedupe_key="k")["status"]
+            == "appended"
+        )
+
+    def test_an_empty_key_is_rejected_rather_than_silently_undeduped(self, tmp_path):
+        # Falling back to the random-id form here would be the worst outcome:
+        # the caller asked for one-record-per-event and would get one per poll,
+        # with nothing saying so.
+        repo = _make_repo(tmp_path)
+        result = evidence.append_guard_refusal(repo, "g", {}, dedupe_key="  ")
+        assert result["status"] == "error"
+        assert "dedupe key" in result["reason"]
+
+    def test_the_undeduped_form_is_unchanged(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        a = evidence.append_guard_refusal(repo, "g", {})
+        b = evidence.append_guard_refusal(repo, "g", {})
+        assert a["status"] == b["status"] == "appended"
+        assert a["id"] != b["id"]

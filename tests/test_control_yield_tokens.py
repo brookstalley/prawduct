@@ -214,8 +214,9 @@ class TestRuleUnenforcedToken:
         # `final`/`cumulative` fork reads review-cycle.md, NOT the agent
         # definition — SKILL.md routes it to four protocol files and that is not
         # one of them. So this pointer is the ONLY way the rule reaches that
-        # fork. Its file sits at 9597 against `assert tokens < 9600` under a
-        # standing "the next addition trims or relocates" rule, which means
+        # fork. Its file sits AT its ceiling under a standing "the next addition
+        # trims or relocates" rule (`test_v5_methodology.py` owns both numbers),
+        # which means
         # deleting this sentence and lowering LAST_MEASURED_TOKENS is a green
         # suite. That is precisely why presence is asserted here rather than
         # left to the token record.

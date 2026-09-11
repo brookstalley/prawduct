@@ -29,8 +29,11 @@ in a consuming repo at migration (Chunk 9), where the cutover gitignores it and
 the plugin runtime auto-untracks it. (It is deliberately NOT added to the legacy
 1.x ``GITIGNORE_ENTRIES``/``_SESSION_GITIGNORED_PATHS`` lists — that would touch
 the frozen 1.x runtime and push a gratuitous ``.gitignore`` diff into pure
-file-sync repos that never create the marker.) The changelog + gate registry
-live inside the plugin, out of every consumer's tree.
+file-sync repos that never create the marker. Naming those two is naming half
+the registry: a session file that *is* added there touches four sites in
+lockstep, enumerated at ``_SESSION_GITIGNORED_PATHS`` and pinned by
+``tests/test_hook_session_file_registry.py`` — #324.) The changelog + gate
+registry live inside the plugin, out of every consumer's tree.
 
 Load provenance: ``VERSION``/``plugin.json`` only move at release-prep, so an
 integration branch carrying unreleased work reports the same version as the
@@ -56,7 +59,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-_SEMVER_HEADER = re.compile(r"^##\s+v(\d+\.\d+\.\d+)\b")
+_SEMVER_HEADER = re.compile(r"^##\s+v(\d+\.\d+\.\d+(?:-dev(?:\.\d+)?)?)\b")
 
 # Bound the provenance git call. It runs only for a local checkout (never for a
 # managed install), but a wedged git must not hold up session start.
@@ -217,15 +220,29 @@ def read_version(root: Path) -> str:
 def version_tuple(v: str) -> tuple:
     """Parse a semver string into a comparable tuple. Tolerant: a non-numeric
     or malformed value sorts below any real version so it never wins a range
-    comparison (an unparseable marker is treated as 'older than everything')."""
-    parts = v.strip().lstrip("v").split(".")
+    comparison (an unparseable marker is treated as 'older than everything').
+
+    The one permitted prerelease form, ``X.Y.Z-dev`` / ``X.Y.Z-dev.N`` (what
+    develop carries between releases), sorts just below its bare release:
+    a release gets a trailing 1, a ``-dev`` a trailing 0 — so the banner picks
+    the prerelease's own changelog entry, and crossing ``-dev`` → release
+    highlights only that release rather than replaying history."""
+    base, dash, prerelease = v.strip().lstrip("v").partition("-")
+    parts = base.split(".")
     out: list[int] = []
     for p in parts:
         if p.isdigit():
             out.append(int(p))
         else:
             return (-1,)
-    return tuple(out) if out else (-1,)
+    if not out:
+        return (-1,)
+    if not dash:
+        return tuple(out) + (1,)
+    m = re.fullmatch(r"dev(?:\.(\d+))?", prerelease)
+    if not m:
+        return (-1,)
+    return tuple(out) + (0, int(m.group(1) or 0))
 
 
 def read_marker(prawduct_dir: Path) -> str | None:
@@ -245,6 +262,61 @@ def write_marker(prawduct_dir: Path, version: str) -> None:
         (prawduct_dir / ".prawduct-version").write_text(version + "\n", encoding="utf-8")
     except OSError as exc:
         print(f"NOTE: Prawduct banner could not update version marker: {exc}", file=sys.stderr)
+
+
+def _strip_list_and_emphasis(line: str) -> str:
+    """A changelog line reduced to its sentence.
+
+    ``lstrip("-* ")`` removed the leading list bullet and the opening ``**`` of
+    a bolded lead-in, and left the CLOSING ``**`` sitting mid-sentence: every
+    rendered headline read ``…fewer rounds in review.** Gate checks stop…``.
+    Cosmetic, but it lands on the single most-read line prawduct emits — the one
+    every upgrading repo sees — and it had rendered that way since at least
+    v3.3.2.
+
+    Strips the bullet first, then removes emphasis markers ONLY as a matched
+    pair wrapping a leading run: `**Lead-in.** rest` becomes `Lead-in. rest`,
+    while a headline using emphasis mid-sentence keeps it, because there the
+    markers are the author's and carry meaning. A blanket `replace("**", "")`
+    would flatten both and is why this is a function rather than one more
+    argument to `lstrip`.
+
+    **The bullet and the emphasis marker share a character, so they cannot
+    share a strip set** — which is precisely how the original defect arose.
+    `lstrip("-* ")` consumed the OPENING `**` as though it were bullet
+    punctuation, leaving the closing one with nothing to pair against.
+
+    The discriminator is the FOLLOWING WHITESPACE, not the following character:
+    a bullet is `- `, `+ ` or `* `, while `*text*` and `**text**` are emphasis.
+    Testing "is the next character another star" gets `**` right and single `*`
+    wrong — it eats the opening marker of `*Lead-in.* Rest.` and reproduces the
+    same stray one marker narrower.
+    """
+    text = line.strip()
+    # A bullet is a marker followed by WHITESPACE. That is the discriminator,
+    # and requiring the space is what separates it from emphasis: `* ` opens a
+    # list item, `*text*` and `**text**` open emphasis. Testing only "is the
+    # next character another star" got `**` right and single `*` wrong, eating
+    # the opening marker of `*Lead-in.* Rest.` and leaving the same stray this
+    # function exists to remove, one marker narrower.
+    if text[:1] in ("-", "+", "*") and text[1:2] in (" ", "\t"):
+        text = text[1:].lstrip()
+    # Longest first: `**` must be tried before `*`, or a bolded lead-in is
+    # unwrapped one marker at a time and leaves its partners behind. And a
+    # single-char marker must not apply to text opening with the DOUBLED form —
+    # otherwise an unclosed `**lead-in` falls through to the `*` rule, which
+    # finds the second star of that very pair and unwraps a marker the author
+    # left deliberately open.
+    for marker in ("**", "__", "*", "_"):
+        if not text.startswith(marker):
+            continue
+        if len(marker) == 1 and text.startswith(marker * 2):
+            continue
+        end = text.find(marker, len(marker))
+        if end == -1:
+            continue
+        return (text[len(marker):end] + text[end + len(marker):]).strip()
+    return text
 
 
 def parse_changelog(root: Path) -> list[tuple[str, str]]:
@@ -277,7 +349,7 @@ def parse_changelog(root: Path) -> list[tuple[str, str]]:
                 continue
             if stripped.startswith("#"):
                 break
-            headline = stripped.lstrip("-* ").strip()
+            headline = _strip_list_and_emphasis(stripped)
             break
         out.append((version, headline))
         i += 1

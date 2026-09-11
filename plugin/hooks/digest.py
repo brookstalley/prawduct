@@ -16,6 +16,13 @@ the ``prawduct-hook clear`` briefing (plain stdout) still render alongside this
 JSON form. additionalContext over ~10,000 characters is spilled to a file by
 Claude Code, so the digest is deliberately kept well under that.
 
+The same output carries ``reloadSkills`` — but only when the governed repo is
+the checkout this plugin ships from (``ships_from_this_repo``). Skill bodies are
+cached per session and ``/clear`` does not refresh them, so in THIS repo a
+session that edits a skill and then exercises it tests the previous version
+while believing it tests the new one. Product repos never edit the plugin, so
+they pay nothing for the re-scan.
+
 Governing invariant (design §2): the plugin ships immutable, read-only code.
 This script reads ONLY the plugin-bundled digest via ``${CLAUDE_PLUGIN_ROOT}``
 (the whole plugin tree is copied into the cache on install, so a plugin-root
@@ -29,18 +36,17 @@ import os
 import sys
 from pathlib import Path
 
-# Source of truth for the digest text — one canonical document per variant,
-# bundled at the plugin root. This is the distilled session-start dose; the
+# Source of truth for the digest text — one canonical document, bundled at the
+# plugin root. This is the distilled session-start dose; the
 # /prawduct:methodology reader skills serve the full guides on demand.
 #
-# Two variants (review-fixes Chunk 4): the FULL digest is the only carrier of
-# framework defaults for product repos (thin-anchor CLAUDE.md), but in the
-# prawduct framework repo itself it duplicated 40-50% of the always-loaded
-# CLAUDE.md nearly 1:1. The SLIM variant — pointers to CLAUDE.md plus only the
-# rules CLAUDE.md does not restate — is emitted when the governed repo IS the
-# framework (see is_framework_repo); every product repo keeps the full digest.
+# ONE digest, no per-repo variants: every governed repo receives this file, the
+# framework repo included. When a repo's own always-loaded CLAUDE.md overlaps
+# this digest, the fix is to trim that CLAUDE.md, never to ship a second variant
+# here — a variant duplicates every rule it carries into a shipped artifact all
+# sessions pay for, and each duplicated rule then needs a must-agree pin to stop
+# the two copies drifting.
 DIGEST_RELPATH = ("methodology", "session-digest.md")
-SLIM_DIGEST_RELPATH = ("methodology", "session-digest-slim.md")
 
 
 def plugin_root() -> Path:
@@ -56,20 +62,8 @@ def plugin_root() -> Path:
     return Path(__file__).resolve().parent.parent
 
 
-def read_digest(root: Path, slim: bool = False) -> str:
-    """Read the bundled session-start guidance digest.
-
-    With ``slim=True``, prefer the slim variant; fall back to the full digest
-    when the slim file is missing or empty (an older cached plugin copy may not
-    bundle it yet — a framework session must still get *a* digest, never none).
-    """
-    if slim:
-        try:
-            text = root.joinpath(*SLIM_DIGEST_RELPATH).read_text(encoding="utf-8").strip()
-            if text:
-                return text
-        except OSError:
-            pass  # stale plugin cache without the slim variant -> full digest
+def read_digest(root: Path) -> str:
+    """Read the bundled session-start guidance digest."""
     return (root.joinpath(*DIGEST_RELPATH)).read_text(encoding="utf-8").strip()
 
 
@@ -93,43 +87,33 @@ def in_prawduct_repo() -> bool:
     return (project_dir() / ".prawduct").is_dir()
 
 
-def is_framework_repo(proj: Path) -> bool:
-    """True when the governed repo IS the prawduct framework itself.
+def ships_from_this_repo() -> bool:
+    """True when the governed repo IS the checkout this plugin ships from.
 
-    Marker: a ``.claude-plugin`` manifest naming ``prawduct`` — only the framework
-    repo carries one (product repos install the plugin from the marketplace cache;
-    their repo roots have no ``.claude-plugin/``).
+    Claude Code caches skill bodies per session, and `/clear` does not refresh
+    them. So a session that edits `skills/*/SKILL.md` and then exercises that
+    skill runs the PRE-EDIT body while believing it tests the new one — a
+    silent-wrong-answer failure, not a slow one, because the work looks
+    validated. Only this repo has that problem: it is the framework, so editing
+    a skill and exercising it is the ordinary shape of a session here.
 
-    Three candidate locations are checked, because the framework repo's own layout
-    has moved and a stale checkout must still classify correctly:
+    A product repo has nothing to gain and a directory re-scan to pay, so the
+    refresh is gated on the answer to "did this plugin come out of the repo I
+    am governing?" — asked structurally rather than by name, because a repo
+    called `prawduct` that installed the plugin from the marketplace is a
+    product session, and a fork under any other name is not.
 
-    * ``.claude-plugin/marketplace.json`` — the repo root, current layout (v3.1.1+).
-      The plugin manifest moved into ``plugin/`` when distribution was curated
-      (GOV-4H7T); the *marketplace* manifest stayed at the root and is now the
-      most reliable root-level marker.
-    * ``plugin/.claude-plugin/plugin.json`` — the relocated plugin manifest.
-    * ``.claude-plugin/plugin.json`` — the pre-v3.1.1 location, kept so an older
-      checkout of this repo is still recognised.
-
-    Fail-safe: any read or parse anomaly classifies as NOT the framework — the full
-    digest is the safe default, never a crash and never a silently slimmed product
-    session. This matters concretely: when the plugin manifest moved, this check
-    silently began classifying the framework repo as a product repo, which swapped
-    the digest variant with no error anywhere.
+    Read-only: two path resolutions and a parent walk, no filesystem writes and
+    no stat beyond what `resolve()` does.
     """
-    candidates = (
-        proj / ".claude-plugin" / "marketplace.json",
-        proj / "plugin" / ".claude-plugin" / "plugin.json",
-        proj / ".claude-plugin" / "plugin.json",
-    )
-    for manifest in candidates:
-        try:
-            data = json.loads(manifest.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
-        if isinstance(data, dict) and data.get("name") == "prawduct":
-            return True
-    return False
+    try:
+        root = plugin_root().resolve()
+        project = project_dir()
+    except OSError:
+        # A resolvable-path failure must never break session start, and the
+        # conservative answer is the one that costs a product repo nothing.
+        return False
+    return root == project or project in root.parents
 
 
 def main() -> int:
@@ -140,19 +124,23 @@ def main() -> int:
     if not in_prawduct_repo():
         return 0
     try:
-        digest = read_digest(plugin_root(), slim=is_framework_repo(project_dir()))
+        digest = read_digest(plugin_root())
     except Exception as exc:  # prawduct:allow prawduct/broad-except -- a digest failure must never break session start
         print(f"NOTE: Prawduct could not read the session digest: {exc}", file=sys.stderr)
         return 0
     if not digest:
         return 0
-    payload = {
-        "hookSpecificOutput": {
-            "hookEventName": "SessionStart",
-            "additionalContext": digest,
-        }
+    hook_output = {
+        "hookEventName": "SessionStart",
+        "additionalContext": digest,
     }
-    print(json.dumps(payload))
+    if ships_from_this_repo():
+        # Re-scan the skill directories so an edited skill body is the one this
+        # session's forks load. Additive and ignored by any Claude Code that
+        # does not know the key, so an older harness degrades to today's
+        # behaviour rather than failing.
+        hook_output["reloadSkills"] = True
+    print(json.dumps({"hookSpecificOutput": hook_output}))
     return 0
 
 

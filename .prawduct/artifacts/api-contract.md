@@ -2,7 +2,7 @@
 artifact: api-contract
 version: 1
 depends_on:
-  - artifact: product-brief   # vision lives in README.md + CLAUDE.md
+  - artifact: product-brief   # purpose lives in documentation/purpose.md
   - artifact: data-model
   - artifact: security-model
 last_validated: null
@@ -22,7 +22,7 @@ Prawduct exposes **two related programmatic surfaces**, both local:
 - **A CLI** — `prawduct-hook <subcommand>`: flags, stdin JSON, exit codes, and stdout/stderr format
   are the contract.
 - **A platform↔app hook interface** — the Claude Code harness invokes a fixed set of subcommands on
-  lifecycle events (SessionStart, UserPromptSubmit, Stop, SubagentStop), passing event payloads as
+  lifecycle events (SessionStart, Stop, SubagentStop), passing event payloads as
   JSON on stdin and consuming the exit code and stdout.
 
 **Consumers: both.** The **harness** (external) calls the hook subcommands via the repo's
@@ -59,22 +59,105 @@ in `docs/governance-telemetry.md`.
 - **Additive-first evolution: new subcommands and flags are added; existing flag names, exit-code meanings, and `--json` keys are never repurposed, and `--json` readers tolerate unknown keys.**
   Why: additive-first plus tolerant readers is what keeps new versions rare and keeps a skill shipped at version N from breaking when the CLI grows at N+1; deprecation is signalled (stderr notice, kept working, removal deferred to a major), never silent.
   Status: steady-state.
+  Rulings: [[harness-only-removal-is-not-a-major]] — **owner exception, 2026-08-11 (v3.3.2): the
+  major-deferral clause governs the *externally-callable* surface, not the harness-only one.**
+  (Taken in session on a direct question about THIS clause — distinct from the 2026-07-12 #257
+  ruling, which authorized the deletion itself and says nothing about the deprecation posture.) `build-index` and `user-prompt-submit`
+  were removed outright in a patch. The clause's Why is protecting *callers* across versions, and
+  these two had exactly one caller — `hooks.json`, which ships inside the same plugin at the same
+  version and was updated in the same commit, so no caller could observe the gap. This artifact
+  already classes them "called by the harness, not by humans" (§ Operations) and already records,
+  as a dated decision, that there is **no supported external consumer** of the subcommand surface
+  (§ Versioning). Honouring the letter would have spent a major version number on a change that
+  breaks nothing for anyone, and would set the precedent that harness-internal cleanup is a major.
+  **Scope of the exception:** removal without deprecation is in-bounds at any tier *only* for
+  subcommands the harness alone invokes. The deprecate-then-remove path still governs everything a
+  human or a skill can call — `stamp-merged` and `regen-views` remain inert-and-deferred exactly
+  as before, which is the contrast that keeps this exception narrow rather than a loophole.
+  Recorded rather than amended deliberately: editing the norm's own text to permit this change is
+  the shape `docs/norms.md` warns against, and the departure is better carried as a ruling the next
+  reader meets beside the rule.
+  **Premise falsified 2026-08-11 (v3.3.3), same day — this is a fact, not a re-decision.** The
+  sentence "no caller could observe the gap" is false, and the field disproved it within hours: every
+  product repo running a pre-3.3.2 `hooks.json` against the 3.3.2 binary printed usage text and
+  exited 1 at session start and on every prompt. The error is in treating "ships in the same plugin
+  at the same version, updated in the same commit" as implying the caller updates atomically. It does
+  not: the **harness pins a plugin version per project and updates those pins lazily**, then resolves
+  the binary independently of the registration — so a hooks.json caller is the one caller that
+  *routinely* observes a version gap, rather than the one that cannot. Same shape as
+  [[install-reference-is-published]] above: a premise falsified without the decision necessarily
+  becoming wrong.
+  **What survives.** Untouched: that harness-only removal need not spend a major (the tier question
+  the owner actually ruled on), and the narrowness that keeps `stamp-merged`/`regen-views` deferred.
+  **Ruled 2026-08-11 (v3.3.4) — the exception requires an inert-retention window.** Put to the owner
+  as the open question this paragraph previously carried, and answered: **unregistering a hook is
+  free and immediate; deleting its subcommand waits until no supported install still registers it.**
+  The two halves are separable and their costs are not alike — dropping the registration costs a
+  line and takes effect at the consumer's next resolve, while dropping the dispatch branch breaks
+  every pin that has not yet caught up. So the exception permits the first half at any tier and
+  defers the second, which is precisely the shape the falsified atomic-update warrant used to stand
+  in for: what made the deletion look safe was the belief that the caller updates with the binary,
+  and the retention window is what actually delivers the safety that belief assumed.
+  **What "no supported install" means in practice:** the window closes when no version a consumer
+  could still be pinned to registers the command — in this repo's `directory:` marketplace that is
+  bounded by how lazily pins update, so the honest floor is *at least one release after the
+  registration is dropped*, and longer if any evidence says a pin is older. Cheap to hold: an inert
+  subcommand is a `return 0` and a docstring.
+  This ratifies the reading v3.3.3 restored both commands under — that release was the repair, and
+  this is the ratification it explicitly said it lacked. The tier permission stands unchanged; the
+  atomic-update warrant stays withdrawn, replaced rather than restored.
+  Case law: [[deprecation-requires-an-inert-retention-window]]. The rule this makes fully written is
+  what unblocks #644's conformance leg from `stage: requirements`.
+
+  **Ruled 2026-08-26 (v3.4.1-dev) — a default that violates a higher norm is withdrawn outright, not
+  retained inertly.** `audit-learnings`' sentinel runner hardcoded `sys.executable -m pytest`, an
+  uninventoried instance of `architecture.md`'s **"never be specific to Python"** norm. Products now
+  declare `sentinel_command:`, and the pytest fallback was **deleted rather than deprecated** —
+  withdrawing working behaviour, which this clause normally defers to a major.
+  Owner decision, stated directly on a direct question about this fix: *"NEVER python specific, never
+  requiring a specific implementation of testing or anything else. We provide absolute business
+  requirements, consuming repos decide the best way to implement for their project."*
+  `[DECISION: withdraw the implicit pytest runner immediately rather than holding it through an
+  inert-retention window | the clause's Why is protecting callers from breakage, and this withdrawal
+  fails CLOSED — an ungraded sentinel withholds a retirement and destroys nothing, where the
+  harness-only case it is modelled on broke every session at startup; and the retention window's own
+  remedy is unavailable here, because what would be retained IS the violation | user can veto/override]`
+  **Why this does not follow [[deprecation-requires-an-inert-retention-window]]**, which is live and
+  governs the neighbouring case: that ruling's bargain is that inert retention is *cheap* — "an inert
+  subcommand is a `return 0` and a docstring" — and costs nothing to hold. Here the thing to hold is
+  a Python-specific default, so every day of the window is a day the architecture norm is still
+  violated. The two norms cannot both be satisfied by waiting, and the retention window is the one
+  whose cost changed. Signalled rather than silent, per this clause's own requirement: an ungraded
+  sentinel prints a `notice:` to stderr naming the knob, and reports `ungraded` rather than the
+  pre-fix loud-and-false `failed`.
+  **Scope of the exception, kept narrow:** immediate withdrawal is in-bounds only where the retained
+  behaviour would itself perpetuate a ratified norm violation AND its removal fails closed. A default
+  that is merely *unfashionable*, or whose removal fails open, still takes the window.
+  Category-level: **an inert-retention window is a courtesy the deprecating norm extends, not one it
+  can extend on another norm's behalf** — when two norms collide the question is not which is senior,
+  but which one's stated *warrant* has stopped holding.
+  Case law: [[inert-retention-cannot-be-extended-across-norms]]. Qualifies, and does not retire,
+  [[deprecation-requires-an-inert-retention-window]] — that ruling still governs every retirement
+  whose retained behaviour is inert rather than itself non-conforming.
 
 ## Operations
 
 The CLI groups by responsibility. Every subcommand is read-only unless marked mutating.
 
-- **Hook lifecycle** — `clear` (orientation always; session reset only at a boundary — `--brief-only` skips it, mutating), `build-index`,
-  `user-prompt-submit`, `stop` (session-end gate), `subagent-stop` (consolidate, mutating). Called
+- **Hook lifecycle** — `clear` (orientation always; session reset only at a boundary — `--brief-only` skips it, mutating),
+  `stop` (session-end gate), `subagent-stop` (consolidate, mutating). Called
   by the harness, not by humans.
 - **Critic data plane** — `critic-begin [--force]` (write dispatch manifest, mutating; `--force`
-  overrides the exit-3 no-review-needed refusal — see § Error Model), `critic-consolidate`
+  overrides both pre-dispatch refusals, exit-3 no-review-needed and exit-4 budget-exhausted — see
+  § Error Model), `critic-consolidate`
   (merge partials → evidence fact, mutating), `critic-end`, `critic-discard` (archive-then-remove a
   stranded review's partials, mutating), `critic-restore <review-id>` (copy an archived review's
   manifest + partials back so it consolidates under its own id, mutating — `critic-discard`'s
   inverse), `evidence status|list`, `ledger-append`
-  (single-writer, mutating), `review-stats`, `disposition` (append a finding's ACCEPT/FILE
-  disposition fact, mutating), `render-dispositions` (derive the disposition census), plus the
+  (single-writer, mutating), `review-stats`, `disposition` (append a finding's ACCEPT/FILE/FIXED
+  disposition fact, mutating — `--fixed <paths>` records a fix that bought no round and is refused
+  on any judgeable path or any BLOCKING finding), `render-dispositions` (derive the disposition
+  census), plus the
   coverage/mode gate wrappers (`verify-coverage`, `check-cumulative-critic`, `infer-critic-mode`,
   `classify-diff-risk`, `verify-chunk-refs`), plus `verify-records` (the deterministic record
   checks, read-only and advisory — `critic-begin` runs the same pass into the manifest).
@@ -85,6 +168,11 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `check-releasability [--release vX.Y.Z]`, `check-released vX.Y.Z [--json] [--allow-unverifiable]`,
   `resolve-base`,
   `regen-views` (deprecated, inert), `stamp-merged` (deprecated, inert).
+- **Retired hook subcommands** — `build-index`, `user-prompt-submit` (deprecated, inert since
+  v3.3.3). No longer registered in `hooks.json`; kept dispatchable because a pre-3.3.2 registration
+  still invokes them and plugin version pins update per project. Silent on **both** streams, unlike
+  the two inert commands above: a hook's stdout is injected into the model's context on exit 0, and
+  their caller is a stale registration with no reader to address.
 - **Build-plan lifecycle** — `archive-plan <path> [--state completed|superseded] [--date YYYY-MM-DD]
   [--release vX.Y.Z] [--superseded-by <text>] [--dry-run]` (mutating): stamps a plan with its
   terminal state and moves it into `archive/`. Writes on invocation rather than defaulting to a dry
@@ -97,7 +185,10 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   **The one disclosed exception:** if that rollback ALSO fails, the stamped copy survives and the
   reason says so by name — two failing filesystem operations cannot be undone by a third, and a
   refusal that quietly left an orphan would be the worse answer. The live plan is intact either way.
-  Status checkboxes are never touched.
+  Status checkboxes are never touched — but since v3.3.4 what they *said* is recorded, as an
+  additive `unbuilt_at_archive:` frontmatter key naming the chunks a build plan had not finished
+  (absence means clean; a document declaring a non-build-plan `artifact:` type is never stamped,
+  having no roster to read). `--dry-run` previews it, so the preview and the write agree.
   `plan-backfill [--apply] [--json] [--date YYYY-MM-DD]` (mutating with `--apply`) is the
   repo-wide counterpart the sentence above points at: it archives every live plan whose `scope=`
   carries a `release=` tag in the change log, so it decides for itself which files to touch and
@@ -122,16 +213,103 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   plan could be reported converged — the "path that cannot answer, reporting as one that answered"
   shape this command was written to end.
 - **Operator verification** — `check-operator-verification`, `accept-operator-verification`,
-  `verify-operator-verification` (both mutating).
+  `verify-operator-verification` (both mutating). The check is three-way: 0 satisfied, 1 pending
+  entries, **3** the queue could not be parsed (see the third-outcome rule under § Error Model).
+  `accept-operator-verification` refuses on that same unparsed queue rather than recording a bypass
+  that covers no entries — an override reached by a different door must not inherit the defect the
+  check just closed.
+- **Plugin activation** — `check-plugin-active [--path P] [--context onboard|doctor] [--json]`
+  (read-only). Answers whether the harness will actually LOAD the plugin for a repo, which
+  project-scope enablement in `.claude/settings.json` does not settle on its own. **Three-way by
+  construction**: `active` exit 0, `inactive` exit 1, `unknown` exit **3** — the third-outcome
+  shape below, for the reason given there. `--context` selects the WORDING, not the verdict: the
+  same `inactive` means "this repo loads nothing" to an onboarding session and "the manifest
+  record does not name this path" to a doctor run, which by construction executes inside a
+  session where the plugin did load. `--json` carries `status` for a caller that must branch.
+- **Learnings pairing** — `check-learnings-pairing [--json]` (read-only). Grades `learnings.md`
+  against `learnings-detail.md`. Exit 0 clean, 1 a duplicate active heading, **3** the pair could
+  not be read — the third-outcome rule below. Only duplicates are graded; counterpart and ordering
+  drift ride `counts` as measurements, because the two files pair by PREFIX rather than exact title
+  and the mirror-exactly invariant does not hold in practice (270 index vs 179 detail active
+  entries on this repo). `audit-learnings --apply` refuses on the same duplicate state and exits
+  **1** — a writer that refused and wrote nothing, per the fail-direction rules below.
 - **Advisory** — `advisory list|show|dismiss|undismiss|resolve`.
+- **Backlog service** — `backlog <op>`: a subcommand *group*, not a single command. The op set is
+  `_ALL_OPS` in `lib/backlog/cli.py` — the same tuple the CLI builds its unknown-op message from, so
+  the enumeration cannot drift from what dispatches — and `_WRITE_OPS` inside it is the
+  provider-mutating half; the rest read, some writing only the local cache (`sync`).
+  **This artifact deliberately restates none of the ops, the `--json` envelope, or the error
+  vocabulary.** `documentation/backlog-service-api-contract.md` is the operational contract for all
+  three (§ 2 the operations, § 3 inputs and outputs, § 4 the error model), and
+  `skills/backlog/adapter-mode.md` is the form an agent binds to. A copy here would be a second
+  thing to drift. What this entry owes instead is the **promise**, which neither of those documents
+  can settle for the product: a surface described in detail elsewhere and unnamed here still leaves
+  the reader who asks "what does prawduct expose, and under what promise?" a confidently incomplete
+  answer, and that silence is the drift nobody can see.
+  **The promise is the one this artifact already makes for the rest of the CLI.** `backlog` is
+  internal/unstable (§ Surface Inventory), carried at the plugin version like its skill callers, and
+  outside the two-member stable tier § Direction's 2026-08-02 ruling enumerates. Adopter agents do
+  call it — a real dependency, and still not a promise: a request to bind a third party to its
+  `--json` envelope is exactly the second of the two conditions that ruling names as its next
+  revisit trigger, and it has not been made. Where the feature-local contract's own stability
+  language is more generous than that, **this artifact governs the tier and that document governs
+  the operational detail.** Exit classes: § Error Model.
 - **Coverage & jurisdiction** — `coverage-status`, `coverage-scaffold` (mutating with `--apply`),
   `jurisdiction`, `cost-of-commit [--json] [<paths>...]` (does committing these paths — the
   working tree by default — buy a review round? Asks the gates' own `is_judgeable_path`, so it
   cannot disagree with the gate that charges afterwards; verdict token leads on stdout, degrades
   to `unknown` rather than a reassuring `free`).
-- **Repo lifecycle** — `migrate-plugin`, `init-product`, `update-gitignore`, `audit-learnings`,
-  `learnings-obligation`, `norm-index-scaffold`, `lifecycle-repair`, `plan-backfill`,
-  `repo-disable`, `bug-inbox` (all dry-run-by-default where they mutate).
+- **Repo lifecycle** — `migrate-plugin`, `init-product`, `update-gitignore [--dry-run]`,
+  `audit-learnings`, `learnings-obligation`, `norm-index-scaffold`, `lifecycle-repair`,
+  `plan-backfill`, `repo-disable` (dry-run-by-default where they mutate, with
+  one stated exception). **`update-gitignore` is the exception: it repairs by default and
+  previews only under `--dry-run`.** It is called as a repair step by `/prawduct:doctor`,
+  which is why the default is the mutating one — but a reader who assumed the blanket
+  claim above got the opposite of the truth, and for a while so did the command: it took
+  no argv at all, so `--dry-run` could not reach it and the reconcile ran anyway. Both
+  halves are fixed; the asymmetry that remains is deliberate and is stated here rather
+  than left for the next reader to discover by running it.
+
+**Argument shape is checked before dispatch, for every subcommand.** An argument a
+subcommand has no parameter to receive is refused with exit 2 and nothing runs — the
+usage-error convention already used by `_reject_unknown_args`. The check sits ahead of
+the dispatch chain (and ahead of project-dir resolution) rather than inside each command,
+because a per-command guard misses whichever command nobody thought of; that is the same
+placement `_check_binary_skew` and `_check_ephemeral_worktree` already use. Two carve-outs
+are deliberate and are the only ones:
+
+- **`stop` / `subagent-stop` name the stray argument on stderr and still run.** These are
+  the harness's own calls, never typed. A usage error on a Stop hook does not protect a
+  caller — it blocks the session and feeds the refusal back as a turn, which is a worse
+  failure than the silence it would close.
+- **`stamp-merged` is unchecked and silent.** It is retired-but-callable and its
+  deprecation contract is exit 0 for any input, so a copied release script keeps working.
+  An inert command cannot act on an argument it ignored, so there is no surprise to
+  prevent — the harm this guard exists for is a command that *did* something other than
+  what was asked.
+
+**Commands that DO receive `argv` refuse their own unknown tokens** — the dispatcher cannot
+speak for them, because they can see their arguments and it cannot know their vocabulary.
+Flag-only ones (`--json` / `--apply` style, detected with `"--flag" in argv`) call
+`_reject_unknown_args`, because that idiom reads an unrecognised token as *absent*.
+
+That bucket is the part worth reading carefully, because it was filled twice by
+enumeration and was wrong both times. `update-gitignore` was fixed and `coverage-scaffold`
+was missed — it mutates under `--apply`, and `--apply --dry-run` wrote the stub artifacts
+while the caller believed they had asked for a preview. Those two were fixed and
+`migrate-plugin` and `init-product` were missed: the cutover and the scaffolder, the two
+most destructive commands on the surface. A list is something the next command is not on,
+so the coverage is now asserted structurally —
+`tests/test_hook_argument_shape.py::test_every_argv_taking_command_refuses_what_it_cannot_read`
+derives the argv-taking set from `_dispatch`'s own source and fails for any member with
+neither a guard nor a recorded reason.
+
+**Nine of those recorded reasons are honest gaps, not clearances.** `backlog`,
+`test-evidence`, `advisory`, `ledger-append`, `critic-begin`, `critic-restore`, `handoff`,
+`disposition` and `archive-plan` each error on a bare invocation, so the bare-vs-unknown
+probe cannot distinguish a refusal from that pre-existing error, and they were not
+individually audited. They are named in the test rather than folded into a confident-looking
+allowlist; `#667` carries the audit.
 - **Published surfaces** (read-only, and the only ones third parties may bind to) —
   `version` (bare plugin semver on stdout) and `print-install-reference` (the canonical
   `.claude/settings.json` install reference as JSON on stdout, sorted keys, exit 0; exit 1 with an
@@ -152,10 +330,10 @@ files to touch previews first. That framing is descriptive — the binding rule 
 
 ## Inputs & Outputs
 
-- **Inputs:** subcommand argv (each subcommand parses its own flags; unknown flags are rejected),
+- **Inputs:** subcommand argv (each subcommand parses its own flags; unknown flags are rejected
+  except where § Operations records otherwise — five deliberate non-refusers and nine unaudited),
   and — for the hook subcommands — a JSON event payload on **stdin** (e.g. `stop` reads
-  `background_tasks`; `subagent-stop` reads `cwd`/`agent_type`; `user-prompt-submit` reads
-  `prompt`).
+  `background_tasks`; `subagent-stop` reads `cwd`/`agent_type`).
 - **Human-readable output:** most subcommands print prefixed text (see Error Model). Skills consume
   their **exit codes**, not parsed text.
 - **Machine-readable output (`--json`):** a defined subset emits structured JSON on stdout, each with
@@ -207,7 +385,7 @@ files to touch previews first. That framing is descriptive — the binding rule 
     and `summary` (`findings`, `by_severity`, `by_state`, `undispositioned`, `owner_ruled`,
     `conflicts`). Each row: `fid`, `severity`, `goal`, `title`, `state`, `reason`, `backlog_id`,
     `owner_ruling`, `conflict`.
-  - **Hook context channel:** SessionStart digest and UserPromptSubmit emit the Claude Code
+  - **Hook context channel:** the SessionStart digest emits the Claude Code
     `{"hookSpecificOutput":{"hookEventName":…,"additionalContext":…}}` injection shape.
 
 ## Error Model   <!-- recorded decision → api_error_model_approach -->
@@ -219,7 +397,7 @@ raised as stack traces across the boundary.** The intended scheme:
 | Channel | 0 | 1 | 2 |
 |---|---|---|---|
 | **Harness hook** (`stop`, `clear` refusal) | allow / clean | — | **block** |
-| **CLI gate / query** (`test-status`, `verify-coverage`, `check-*`, `resolve-base`, `bug-inbox`) | satisfied / pass | not satisfied / fail | — |
+| **CLI gate / query** (`test-status`, `verify-coverage`, `check-*`, `resolve-base`) | satisfied / pass | not satisfied / fail | — |
 | **CLI advisory report** (`verify-records`) | ran — findings, if any, are on stdout | **could not run** (unresolvable interval, unreadable state) | usage error |
 | **State-mutating writer** (e.g. `disposition`) | written, or an idempotent no-op | **refused** — validation failed, nothing written | **usage error** |
 | **Usage / arg error** (any subcommand) | — | — | **usage error** |
@@ -229,7 +407,26 @@ raised as stack traces across the boundary.** The intended scheme:
 `ok` | `failed` | `unverifiable`. Registered here because the `--json` emitters are enumerated in
 this section, and a payload documented only by its exit code is a shape a caller has to reverse-engineer.
 
-**One gate carries a third outcome, added 2026-08-04.** `check-released` exits **3** for
+**A gate whose SUBJECT could not be read takes a third outcome — exit 3 — rather than folding into
+0 or 1.** This is a standing rule, not a list to maintain: 0 would report a clean bill off a check
+that never ran, and 1 would put a new meaning on a number that already carries a specific remedy,
+sending the caller to a fix that cannot apply. Each command below states what its own two foldings
+would have said, because the argument is only convincing in the concrete.
+
+- `check-plugin-active` (2026-08-27), *unknown* — folded into 1 it reports a broken install
+  because a harness-internal file would not parse, sending an operator to reinstall something that
+  works; folded into 0 it reports a clean bill off a check that never ran.
+- `check-operator-verification` (2026-08-27), *unreadable queue* — folded into 0 it reports a
+  drained queue on a queue nobody parsed, which is the defect it was written to close; folded into
+  1 it inherits "there are pending entries, drain or override the first one", and both remedies are
+  inapplicable to a file that yielded no entries, leaving the caller at the queue file — the one
+  move the refusal forbids. It still BLOCKS: 3 is non-zero, so the gate fails closed.
+- `check-learnings-pairing` (2026-08-27), *unreadable pair* — folded into 0 it reports a clean
+  pairing off a corpus it could not decode, which is this scope's own subject; folded into 1 it
+  claims a duplicate heading it never saw, sending an operator to hand-edit a file that is fine.
+- `check-released` (2026-08-04), *unverified* — see below.
+
+`check-released` (2026-08-04) exits **3** for
 *unverified*: nothing failed, but a check could not run — no `gh`, no `origin/main` in a
 shallow checkout, or a declared `toml` version file on a pre-3.11 interpreter (no `tomllib`).
 It is a distinct code rather than folded into 0 or 1 because both foldings are
@@ -243,7 +440,10 @@ CI binds to the exit code, so any non-zero is red without special-casing.
 Fail-direction is deliberate and per-purpose:
 
 - **Unevaluable *advisory* gate** (an optional lib path failed to import) → **fail-open, exit 0**: an
-  ungradeable gate must never false-block (`classify-diff-risk`, `check-operator-verification`).
+  ungradeable gate must never false-block (`classify-diff-risk`, `check-operator-verification`,
+  `check-plugin-active`). Scope check, because it is easy to over-read: this covers the **plugin's
+  own lib** failing to import, where prawduct itself is broken and blocking the caller helps nobody.
+  A command whose *subject* could not be read is a different case and takes the third outcome below.
 - **Unevaluable *writer*** (a state-mutating command whose lib failed to import) → **fail-closed,
   exit 1**: never report a false success. (`regen-views` used to be the worked example, escalating
   to **2** for validation/IO errors; it writes nothing at all now, so the rule's subjects are the
@@ -254,8 +454,8 @@ Fail-direction is deliberate and per-purpose:
   appears per check as the `unchecked` list rather than a silently absent result.
 - **Special sentinels** (documented, not general): `critic-begin` **2** = scope-widened;
   `critic-begin` **3** = no review needed (added 2026-08-06);
-  `evidence status` **2** = schema-ahead records present (gates can't be trusted until update);
-  `backlog verify-migration` **4** = completeness failure (a source item with no target issue).
+  `critic-begin` **4** = round budget exhausted (added 2026-09-09);
+  `evidence status` **2** = schema-ahead records present (gates can't be trusted until update).
   (`regen-views` **2** and **3** are RETIRED, not repurposed: the command is inert and exits 0
   unconditionally, so those two meanings were removed rather than given new ones. Retiring a
   meaning is what the additive-first norm permits; the thing it forbids is a new meaning wearing
@@ -273,7 +473,39 @@ Fail-direction is deliberate and per-purpose:
   critic-active marker, and the partials directory is not swept — so a 3 needs no `critic-end`. It is
   not a silent no-op, though: since 2026-08-06 a 3 appends exactly one `guard-refusal` fact to the
   clone-shared evidence store, which is what makes the guard's own yield falsifiable. That fact is
-  inert by construction (no gate reads a non-`review` kind), so it changes no verdict.
+  inert by construction (no gate reads a non-`review` kind), so it changes no verdict. A
+  `verify-resolutions` anchored to an unchanged tree with nothing outstanding takes the same 3, for
+  the same reason — it used to fall out as a bare 1, which the skill's exit table routes to
+  "re-dispatch per the demotion property", manufacturing a full round the gate did not want.
+
+  **`critic-begin` 4 — round budget exhausted.** This build-plan SCOPE has already bought the full
+  rounds `review_round_budget` allows (`.prawduct/project-state.yaml`, default 6, `null` disables).
+  A distinct code rather than folded into 3: both refuse a dispatch, but a 3 says the *gate* does not
+  want this round and a 4 says the *loop* has run out while the gate may still be unsatisfied, and
+  the caller's next move differs — a 3 is "you are done", a 4 is "you are done buying rounds, and any
+  BLOCKING findings still need `verify-resolutions`". Folded into 1 it would read as a dispatch
+  failure and invite a retry in another mode, which is the round it exists to refuse. The refusal
+  auto-ACCEPTs the outstanding **non-blocking** findings, renders the census to stdout, and appends
+  one `guard-refusal` fact; `verify-resolutions` is never counted and never refused, and no BLOCKING
+  finding is ever swept — so the budget can end a review loop and can never open a gate. `--force`
+  dispatches anyway. No session state is written, so a 4 needs no `critic-end`. It is checked
+  BELOW the free-interval refusal, so an interval that needs no review still answers 3: "the loop
+  is over" and "there was nothing to review" stay distinct, which is why they are two codes.
+  Rounds are counted per build-plan **scope** (intersected with this branch's lineage, since the
+  store is clone-wide); a dispatch that resolves no scope is not budgeted, because there is no
+  body of work to bound and the census the refusal renders is selected from the same set.
+
+**The `backlog` group carries its own exit-class set — a documented scheme, not an exception to the
+table above.** `lib/backlog/cli.py`'s `_EXIT_CLASS` maps every error `code` the group can return onto
+a fixed class: **2** validation, **3** not-found, **4** conflict, **5** auth, **6** unavailable, with
+**0** for success and **1** reserved for a code that reaches the map unlisted. The discipline is this
+section's — exit codes are the contract, the failure is attributed inside the envelope, no stack
+trace crosses the boundary — and the wider vocabulary is what a caller needs in order to branch on
+*why* a write failed, which 0/1/2 cannot carry. `backlog verify-migration`'s **4** is that ordinary
+`conflict` class applied to a completeness disagreement (a source item with no target issue), not a
+sentinel meaning of its own, which is why the class set belongs here rather than one member of it.
+Which `code` maps to which class, and the envelope the code rides in, are
+`documentation/backlog-service-api-contract.md` § 4.
 
 **Message vocabulary:** `CRITICAL:` / `WARNING:` / `NOTE:` / `PRAWDUCT:` / `BLOCKED —…`, with a
 channel split — **stdout is agent-facing** (composed into model context), **stderr is
@@ -330,8 +562,28 @@ Evolution rules we want to hold, so new versions stay rare:
   rather than hard-failing (evidence torn-tail repair; advisory corrupt-file quarantine).
 - **Deprecation is signalled, not silent.** The established pattern: mark the subcommand deprecated
   in its help, print a deprecation notice to stderr on use, keep it working, and defer removal to a
-  future **major** version. `stamp-merged` and `regen-views` are both in this state: each stays
-  callable, prints its notice, does nothing, and exits 0.
+  future **major** version. `stamp-merged`, `regen-views` and `bug-inbox` are all in this state:
+  each stays callable, prints its notice, does nothing, and exits 0. `bug-inbox` joined them
+  2026-09-08 with the upstream drop-box it resolved — and it is the member that shows the clause
+  binding rather than merely describing, because the 2026-08-11 departure below did **not** reach
+  it: that departure is scoped to a caller which is a stale hook registration, and this one's
+  caller is a person.
+
+  **DEPARTURE, recorded not amended — 2026-08-11 (v3.3.3), pending owner ratification.**
+  `build-index` and `user-prompt-submit` join the inert tier printing **nothing on either stream**,
+  which the clause above forbids as written. Recorded here rather than by softening the clause: the
+  rule was stated for callers that can act on a notice, and rewriting it to fit the first two
+  members that cannot is the amend-to-match-own-code shape `docs/norms.md` names — the more so on
+  this branch, which declines to settle the adjacent retention-window scope for exactly that reason.
+  **Why the departure:** their only caller is a pre-3.3.2 `hooks.json` registration, which has no
+  reader who can drop the call, and a hook that exits 0 has its **stdout injected into the model's
+  context** — so the notice would be read as instruction every turn rather than seen by anyone.
+  Signalling is discharged by the help text and this artifact instead of by runtime output.
+  **What the owner is being asked:** whether the norm should gain a *silent-when-the-caller-is-a-
+  registration* clause (making this conformance), or whether these two stay a bounded exception. If
+  neither, the remedy is to make them warn on stderr — never stdout. Full behavior in § Operations,
+  "Deprecated and inert"; the deferral's reach and its falsified premise in § Direction under
+  `[[harness-only-removal-is-not-a-major]]`.
 - **Backward-compatibility commitment by tier:** *stable* surface changes only additively within a
   major; *internal* surface may change with its plugin version but must not silently break a
   skill shipped in the same version.
@@ -359,14 +611,38 @@ Evolution rules we want to hold, so new versions stay rare:
   of the real one. Its `counts` follow the same rule as the manifest's: an integer when a check ran,
   `null` when it produced no answer.
 - **Internal / lifecycle surface** (called by the harness or by consolidation, not a public
-  contract): `clear`, `stop`, `subagent-stop`, `critic-begin`, `critic-consolidate`, `build-index`.
-- **Deprecated and inert** (callable, notice on stderr, writes nothing, exits 0; removal deferred
-  to a major): `stamp-merged` and `regen-views`. Both lost their bodies when derived views were
-  retired — `regen-views` had no views left to regenerate, and `stamp-merged`'s only output
-  (`status=`) had no reader left. **Prawduct's own release runbook no longer calls either**, so the
-  remaining reason to keep them callable is the one that cannot be audited from here: a consumer's
-  copied operator script, where a non-zero exit would break a pipeline mid-release. The notice
-  tells such a caller to drop the call.
+  contract): `clear`, `stop`, `subagent-stop`, `critic-begin`, `critic-consolidate`.
+  **`backlog <op>` sits in this tier on different grounds:** its callers are the
+  `/prawduct:backlog` skill and adopter agents rather than the harness, and § Direction's 2026-08-02
+  ruling puts every subcommand outside the two published surfaces here. Unpromised, not unused —
+  § Operations, "Backlog service", is the entry, and it names what would move it.
+- **Deprecated and inert** (callable, writes nothing, exits 0; removal deferred to a major). Two
+  sub-shapes, split by **who calls them** — which decides whether they announce themselves:
+
+  - *Announcing* — `stamp-merged`, `regen-views`, `bug-inbox`. Notice on stderr. The first two lost
+    their bodies when derived views were retired: `regen-views` had no views left to regenerate, and
+    `stamp-merged`'s only output (`status=`) had no reader left. `bug-inbox` resolved the local
+    `incoming-bugs/` drop-box for `/prawduct:report-bug`, which files GitHub issues instead, so
+    there is no directory left to resolve. **Prawduct's own release runbook no longer calls any of
+    them**, so the remaining reason to keep them callable is the one that cannot be audited from
+    here: a consumer's copied operator script or a person's habit, where a non-zero exit would break
+    a pipeline mid-release. The notice tells such a caller to drop the call. `bug-inbox` also moved
+    its exit code, 1 → 0: the 1 meant *no inbox is configured*, a condition a caller could branch
+    on, and nothing can be configured now.
+  - *Silent* — `build-index`, `user-prompt-submit` (inert since v3.3.3). **No output on either
+    stream.** Their caller is a pre-3.3.2 `hooks.json` registration, not a person: a notice has no
+    reader who can act on it, and the next plugin update replaces the registration anyway. On
+    stdout silence is a correctness requirement rather than a preference — a hook exiting 0 has its
+    stdout **injected into the model's context** (SessionStart into the session, UserPromptSubmit
+    ahead of every turn), so a deprecation notice printed the ordinary way would be read as
+    instruction.
+
+  The split is a **recorded departure pending owner ratification**, not a settled rule — see
+  § Deprecation & Compatibility, where the norm it departs from still stands unamended and the
+  proposed *silent-when-the-caller-is-a-registration* clause is the question put to the owner.
+  Every member of the tier is in `_EPHEMERAL_SAFE_COMMANDS` — without it the fail-closed disposable-worktree guard treats an
+  unlisted command as a write and exits 1, which would falsify "exits 0" exactly where a hook
+  invokes it. Pinned in `tests/test_retired_hook_subcommands.py`.
 
   The `--check` flag's earlier state is worth keeping on the record: it was a *repurposing* rather
   than a clean deprecation — it performed a full regen where it documented "writes nothing" — and

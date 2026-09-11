@@ -20,6 +20,20 @@ from pathlib import Path
 
 ARCHIVE_DIR_NAME = "archive"
 
+#: Frontmatter key by which a build plan declares the branch it governs.
+#: Chosen against real data rather than for being the obvious short word: on
+#: 2026-08-13 ``grep -rn '^branch:' --include='*.md' .`` matched nothing in this
+#: repo or the shipped templates, and no other reader parses that key out of
+#: frontmatter. Re-run that grep before adding a second meaning to it.
+BRANCH_KEY = "branch"
+
+#: Characters read from a plan's head when only its frontmatter is wanted. The
+#: largest frontmatter in this repo is ~2.5 KiB, so this covers it several times
+#: over; a block that does not close inside it makes the file be re-read WHOLE
+#: (:func:`_frontmatter_probe`) rather than read as having no frontmatter. A
+#: bounded read that silently drops a plan's claim is worse than a slow one.
+_FRONTMATTER_PROBE_CHARS = 16384
+
 
 def display_path(path: Path, artifacts_dir: Path) -> str:
     """A plan path as written for a human, relative to the artifacts dir when possible.
@@ -102,6 +116,34 @@ def frontmatter_lines(content: str) -> list[str] | None:
     return content.splitlines()[span[0] + 1 : span[1]]
 
 
+def _frontmatter_scalar(fm: list[str], key: str) -> tuple[bool, str | None]:
+    """``(present, value)`` for a top-level ``key:`` in already-extracted frontmatter.
+
+    ONE value-level reader, for the reason :func:`frontmatter_span` gives for
+    being one block-level walker: two independent readers over the same block let
+    a later fix to quoting, inline-comment or whitespace handling land on one key
+    and not the other, so one plan's frontmatter comes to mean different things
+    to the scope map and to the branch claim. ``scope:`` and ``branch:`` were
+    line-for-line twins here, differing only in the key.
+
+    Indented lines are skipped as nested rather than read; ``#`` starts a comment;
+    surrounding quotes are stripped. ``present`` distinguishes a key set to the
+    YAML null literal (``(True, None)`` — an explicit opt-out) from an absent one
+    (``(False, None)``), because ``scope:`` has a caller that must tell them apart.
+    """
+    for line in fm:
+        if line[:1] in (" ", "\t"):
+            continue  # nested key, not a top-level declaration
+        stripped = line.split("#", 1)[0].rstrip()
+        if not stripped.startswith(f"{key}:"):
+            continue
+        value = stripped.split(":", 1)[1].strip().strip('"').strip("'")
+        if not value or value.lower() in ("null", "~"):
+            return (True, None)
+        return (True, value)
+    return (False, None)
+
+
 def parse_build_plan_frontmatter_scope(content: str) -> tuple[bool, str | None]:
     """Parse ``scope:`` from a build plan's YAML frontmatter block.
 
@@ -124,20 +166,84 @@ def parse_build_plan_frontmatter_scope(content: str) -> tuple[bool, str | None]:
     fm = frontmatter_lines(content)
     if fm is None:
         return (False, None)
-    for line in fm:
-        if line[:1] in (" ", "\t"):
-            continue
-        stripped = line.split("#", 1)[0].rstrip()
-        if not stripped.startswith("scope:"):
-            continue
-        value = stripped.split(":", 1)[1].strip().strip('"').strip("'")
-        # Key is present. An empty or null-literal value is an explicit
-        # opt-out, not an absence — return (True, None) so callers can
-        # suppress inference.
-        if not value or value.lower() in ("null", "~"):
-            return (True, None)
-        return (True, value)
-    return (False, None)
+    # A present key with an empty or null-literal value is an explicit opt-out,
+    # not an absence — `(True, None)`, so callers can suppress inference rather
+    # than fall back.
+    return _frontmatter_scalar(fm, "scope")
+
+
+def parse_build_plan_frontmatter_branch(content: str) -> str | None:
+    """The branch a build plan declares it governs, or ``None``.
+
+    The inverse of the ``active_build_plan:`` scalar: *which branch is this plan
+    for* is a fact about the plan, so the plan holds it. Two concurrent branches
+    can then each carry their own plan without editing one shared line, and a
+    merged branch's plan simply stops matching instead of having to be un-pointed.
+
+    Absence, an empty value, and the YAML null literal (``null`` / ``~``) all read
+    as "claims no branch" — unlike ``scope:``, no caller needs to tell an explicit
+    opt-out apart from an absent key, because both mean the same thing here: fall
+    through to the scalar.
+    """
+    fm = frontmatter_lines(content)
+    if fm is None:
+        return None
+    # Unlike `scope:`, the two "no claim" cases collapse: an absent key and an
+    # explicit null both mean "fall through to the scalar", so `present` is
+    # discarded rather than returned.
+    _present, value = _frontmatter_scalar(fm, BRANCH_KEY)
+    return value
+
+
+def _frontmatter_probe(path: Path) -> str | None:
+    """Enough of ``path``'s text to contain its whole frontmatter block, or ``None``.
+
+    A bounded read, because the branch scan opens every live markdown file under
+    ``artifacts/`` and only ever wants the header. The bound is not trusted to be
+    enough: when the block has not closed inside it AND the read hit the limit,
+    the file is re-read whole. Without that second half the bound would be a
+    silent correctness knob — a plan with long frontmatter would read as
+    declaring nothing, and nothing would say so.
+    """
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            head = handle.read(_FRONTMATTER_PROBE_CHARS)
+    except (OSError, UnicodeDecodeError):
+        # As in `_walk_for_scopes`: one unreadable file must not blind the scan
+        # to every other plan. `UnicodeDecodeError` is a `ValueError`, so a
+        # narrower `except OSError` would let it escape to the caller.
+        return None
+    if frontmatter_span(head) is not None or len(head) < _FRONTMATTER_PROBE_CHARS:
+        return head
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
+def branch_claiming_plans(artifacts_dir: Path) -> list[tuple[Path, str]]:
+    """``(path, branch)`` for every live build plan declaring a ``branch:``.
+
+    Sorted by path and archive-pruned on the same walk the scope map uses, so an
+    archived plan's ``branch:`` claims nothing — moving a plan under ``archive/``
+    ends its claim, which is what makes archiving the whole retirement step.
+
+    Returns EVERY claim rather than resolving one. Several plans may claim one
+    branch, and the caller both chooses among them and names the ones it passed
+    over — a function that returned the first match could tell it apart from
+    neither the only match nor the rest.
+    """
+    if not artifacts_dir.is_dir():
+        return []
+    claims: list[tuple[Path, str]] = []
+    for plan_path in _markdown_files(artifacts_dir, prune_archive=True):
+        content = _frontmatter_probe(plan_path)
+        if content is None or _declares_non_build_plan_artifact(content):
+            continue  # declares itself something other than a build plan
+        branch = parse_build_plan_frontmatter_branch(content)
+        if branch:
+            claims.append((plan_path, branch))
+    return claims
 
 
 def _declares_non_build_plan_artifact(content: str) -> bool:
@@ -176,6 +282,23 @@ def _declares_non_build_plan_artifact(content: str) -> bool:
         value = stripped.split(":", 1)[1].strip().strip('"').strip("'")
         return bool(value) and value != "build-plan"
     return False
+
+
+def is_build_plan(content: str) -> bool:
+    """Whether this document is a build plan, by its DECLARED type.
+
+    The positive spelling of :func:`_declares_non_build_plan_artifact`, added
+    when a second module needed the question asked forward rather than as a
+    negation. It inherits that predicate's fail-safe direction exactly: a
+    document declaring no ``artifact:`` at all counts as a build plan, because
+    at least one real plan in this repo declares none.
+
+    Callers that care about a build plan's *chunks* — a Status roster, its
+    completeness — must ask this first. A release plan or a discovery note has
+    no roster by design, and reading its silence as "unreadable" reports a
+    problem about a document that never had the thing being looked for.
+    """
+    return not _declares_non_build_plan_artifact(content)
 
 
 def iter_scoped_plan_candidates(
@@ -303,6 +426,50 @@ def _walk_for_scopes(
         _present, scope = parse_build_plan_frontmatter_scope(content)
         if scope:
             yield plan_path, scope
+
+
+def iter_live_plan_files(artifacts_dir: Path) -> "list[Path]":
+    """Every live build-plan FILE under ``artifacts_dir``, sorted, archive-pruned.
+
+    The sibling of :func:`iter_scoped_plan_candidates`, and the distinction is
+    the whole reason it exists: that one yields ``(path, scope)`` for plans that
+    *declare a scope*, so a plan missing its ``scope:`` — the defect a caller may
+    be hunting — is precisely what it cannot yield. A caller that needs to
+    report on unresolvable plans has to enumerate files, not scopes.
+
+    Identified by declared type OR by filename, and both are needed. Frontmatter
+    ``artifact: build-plan`` is the honest marker, but a plan with no frontmatter
+    at all has none — and that is the very shape this exists to surface, so the
+    ``build-plan`` filename convention is the fallback. A file declaring some
+    OTHER artifact type is excluded on its own word regardless of its name.
+
+    Recursive and archive-pruned on the same rules as
+    :func:`iter_scoped_plan_candidates` — see it for why ``artifacts/plans/<id>/``
+    layouts make a flat glob wrong, and why the archive subtree is never
+    descended.
+    """
+    if not artifacts_dir.is_dir():
+        return []
+    found: list[Path] = []
+    for plan_path in _markdown_files(artifacts_dir, prune_archive=True):
+        try:
+            content = plan_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            # Unreadable is not "not a plan". A file named like one still counts,
+            # so a caller can report it rather than skip past it silently.
+            if plan_path.name.startswith("build-plan"):
+                found.append(plan_path)
+            continue
+        if _declares_non_build_plan_artifact(content):
+            continue
+        fm = frontmatter_lines(content)
+        declared_type = _frontmatter_scalar(fm, "artifact")[1] if fm else None
+        # Frontmatter, never a substring scan of the body: a design note that
+        # merely MENTIONS `artifact: build-plan` in prose is not a plan, and two
+        # such files in this repo matched a body scan.
+        if declared_type == "build-plan" or plan_path.name.startswith("build-plan"):
+            found.append(plan_path)
+    return found
 
 
 def unreadable_candidates(artifacts_dir: Path) -> list[dict]:

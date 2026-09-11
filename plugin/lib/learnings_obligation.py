@@ -63,14 +63,25 @@ OBLIGATION_BLOCK = (
     "say that it does not apply, which is also an answer.\n"
 )
 
-#: Statuses :func:`check` reports. ``ok`` and ``missing`` are the two states a
-#: healthy fleet moves between; the other three are all "declined", for three
-#: different reasons the owner needs told apart.
+#: Statuses this module reports. ``ok`` and ``missing`` are the two states a
+#: healthy fleet moves between; the rest are all "declined", for reasons the
+#: owner needs told apart.
 STATUS_OK = "ok"
 STATUS_MISSING = "missing"
 STATUS_MISPLACED = "misplaced"
 STATUS_ABSENT = "absent"
 STATUS_UNREADABLE = "unreadable"
+#: Only :func:`repair` reports this one, and only on ``--apply``: the file read
+#: fine and the WRITE failed, so nothing changed. Distinct from ``unreadable``
+#: for the same reason the sibling scaffold keeps them apart
+#: (``norm_index_scaffold.STATUS_UNWRITABLE``) — one status meaning both would
+#: describe a failed repair as an undecodable corpus and send the owner to fix
+#: the wrong thing. Before this existed the write-failure branch left `status`
+#: at whatever :func:`check` had set, so a repair that failed on a read-only
+#: filesystem was relayed as the finding it had been asked to fix: ``missing``,
+#: with a `detail` nobody grades on. The operator was told the marker is absent
+#: — true — and not told that prawduct had just tried and failed to add it.
+STATUS_UNWRITABLE = "unwritable"
 
 
 def _first_rule_index(lines: list[str]) -> int | None:
@@ -335,8 +346,10 @@ def repair(project_dir: str | Path, *, apply: bool = False) -> dict:
         # gap — it is a genuine "this text cannot be encoded" (a lone surrogate
         # carried in from elsewhere). Rare, but this module promises "reported,
         # never half-applied", and a traceback is not a report.
-        result.update({"repairable": False,
-                       "detail": f"could not write {LEARNINGS_REL}: {exc}"})
+        result.update({"status": STATUS_UNWRITABLE,
+                       "repairable": False,
+                       "detail": f"could not write {LEARNINGS_REL}: {exc} — "
+                                 f"nothing was changed"})
         return result
     result.update({"applied": True, "status": STATUS_OK,
                    "detail": f"inserted the `{MARKER}` block above line {at + 1}."})

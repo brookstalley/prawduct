@@ -291,6 +291,144 @@ class TestArchivePlan:
         assert "- [x] Chunk 01: one" in archived
         assert "- [ ] Chunk 02: two" in archived
 
+    def test_an_incomplete_plan_records_what_stopped_it(self, tmp_path: Path):
+        """#636 — the archive distinguishes *stopped* from *finished*.
+
+        Before this, a plan archived with unticked chunks was indistinguishable
+        in the archive from one that finished clean. The boxes survive (above),
+        but nothing reads an archived plan's boxes — so the fact has to be said
+        in the frontmatter to be said at all.
+        """
+        project = _repo(tmp_path)  # PLAN's Chunk 02 is unticked
+        result = plan_archive.archive_plan(
+            _artifacts(project) / "build-plan-demo.md",
+            _artifacts(project),
+            state=plan_archive.COMPLETED,
+            date="2026-08-11",
+        )
+        stamped = result["fields"][plan_archive.UNBUILT_KEY]
+        assert "1 of 2" in stamped
+        assert "Chunk 02" in stamped
+        archived = Path(result["destination"]).read_text(encoding="utf-8")
+        assert plan_archive.read_completion(archived)[plan_archive.UNBUILT_KEY] == stamped
+
+    def test_a_complete_plan_carries_no_such_field(self, tmp_path: Path):
+        """**Absence means clean, not unknown.** That is the whole contract that
+        makes this key additive: a reader who has never heard of it sees exactly
+        what it saw before the key existed."""
+        body = PLAN.replace("- [ ] Chunk 02: two", "- [x] Chunk 02: two")
+        project = _repo(tmp_path, body=body)
+        result = plan_archive.archive_plan(
+            _artifacts(project) / "build-plan-demo.md",
+            _artifacts(project),
+            state=plan_archive.COMPLETED,
+            date="2026-08-11",
+        )
+        assert plan_archive.UNBUILT_KEY not in result["fields"]
+        archived = Path(result["destination"]).read_text(encoding="utf-8")
+        assert plan_archive.UNBUILT_KEY not in archived
+
+    def test_a_plan_with_no_readable_status_is_stamped_not_filed_clean(
+        self, tmp_path: Path
+    ):
+        """The case that would otherwise be silent, and the reason the field is
+        derived rather than passed in.
+
+        A plan predating the Status convention, or one whose roster failed to
+        parse, produces the same empty item list as a fully-ticked plan. Reading
+        that silence as completion is exactly the failure the key exists to end,
+        so `incompleteness_reason` returns a SENTENCE there — and it must be
+        stamped like any other.
+        """
+        body = "---\nartifact: build-plan\nscope: demo\n---\n\nNo status section here.\n"
+        project = _repo(tmp_path, body=body)
+        result = plan_archive.archive_plan(
+            _artifacts(project) / "build-plan-demo.md",
+            _artifacts(project),
+            state=plan_archive.COMPLETED,
+            date="2026-08-11",
+        )
+        assert "no readable" in result["fields"][plan_archive.UNBUILT_KEY]
+
+    @pytest.mark.parametrize("declared", ["release-plan", "discovery", "design"])
+    def test_a_document_that_is_not_a_build_plan_is_never_stamped(
+        self, tmp_path: Path, declared: str
+    ):
+        """A release plan has no ``## Status`` roster BY DESIGN.
+
+        Without the type gate the "cannot be read" sentence lands on every
+        release plan at every cut — a control reporting a missing roster in a
+        document that never had one, which is the shape
+        `nonfunctional-requirements.md` § Direction removes by default. Found by
+        running the real command against this repo's own artifacts.
+        """
+        body = f"---\nartifact: {declared}\nrelease: v9.9.9\n---\n\n# Not a build plan\n"
+        project = _repo(tmp_path, rel="artifacts/release-plan-v9.9.9.md", body=body)
+        result = plan_archive.archive_plan(
+            _artifacts(project) / "release-plan-v9.9.9.md",
+            _artifacts(project),
+            state=plan_archive.COMPLETED,
+            date="2026-08-11",
+            release="v9.9.9",
+        )
+        assert plan_archive.UNBUILT_KEY not in result["fields"]
+
+    def test_a_plan_declaring_no_artifact_type_is_still_stamped(self, tmp_path: Path):
+        """The gate fails SAFE toward being a build plan.
+
+        At least one real plan in this repo declares no ``artifact:`` key, so
+        requiring an explicit ``build-plan`` would drop exactly the silent case
+        the stamp exists for. Only an explicit *other* type is excluded.
+        """
+        body = "---\nscope: demo\n---\n\n## Status\n\n- [ ] Chunk 01: one\n"
+        project = _repo(tmp_path, body=body)
+        result = plan_archive.archive_plan(
+            _artifacts(project) / "build-plan-demo.md",
+            _artifacts(project),
+            state=plan_archive.COMPLETED,
+            date="2026-08-11",
+        )
+        assert "Chunk 01" in result["fields"][plan_archive.UNBUILT_KEY]
+
+    def test_the_stamp_is_idempotent_across_a_re_application(self):
+        """Re-archiving neither duplicates the key nor drifts its value.
+
+        Asserted at the frontmatter writer, which is where re-application is
+        actually possible — `archive_plan` itself refuses a plan that already
+        records a terminal state.
+        """
+        reason = "1 of 2 Status items still unticked (Chunk 02: two)"
+        once = plan_archive.apply_completion_frontmatter(
+            PLAN,
+            state=plan_archive.COMPLETED,
+            date="2026-08-11",
+            unbuilt=reason,
+        )
+        twice = plan_archive.apply_completion_frontmatter(
+            once,
+            state=plan_archive.COMPLETED,
+            date="2026-08-11",
+            unbuilt=reason,
+        )
+        assert once == twice
+        assert once.count(f"{plan_archive.UNBUILT_KEY}:") == 1
+
+    def test_a_re_stamp_that_now_reads_clean_drops_the_field(self):
+        """The other direction of idempotence: the key is this writer's own, so
+        a later application that finds nothing unbuilt must REMOVE it rather
+        than leave a stale claim standing beside a fresh `lifecycle`."""
+        stamped = plan_archive.apply_completion_frontmatter(
+            PLAN,
+            state=plan_archive.COMPLETED,
+            date="2026-08-11",
+            unbuilt="1 of 2 Status items still unticked (Chunk 02: two)",
+        )
+        assert plan_archive.UNBUILT_KEY in stamped
+        restamped = plan_archive.apply_completion_frontmatter(
+            stamped, state=plan_archive.COMPLETED, date="2026-08-11"
+        )
+        assert plan_archive.UNBUILT_KEY not in restamped
+
     def test_a_superseded_plan_must_say_what_replaced_it(self, tmp_path: Path):
         """An unexplained dead plan is the thing archiving exists to stop
         producing — moving one into the archive unlabelled just relocates it."""
@@ -822,6 +960,34 @@ class TestArchivePlanCommand:
 
         assert proc.returncode == 0, proc.stderr
         assert "would archive:" in proc.stdout
+
+    def test_the_preview_names_the_unbuilt_stamp_the_write_would_make(
+        self, tmp_path: Path
+    ):
+        """A preview that understates is the mirror of one that overstates.
+
+        The dry-run branch was already fixed once for promising an operation the
+        write refuses; omitting a field the write stamps is the same defect
+        pointing the other way — the operator approves a record they were not
+        shown.
+        """
+        proc = _run_hook(_repo(tmp_path), ".prawduct/artifacts/build-plan-demo.md", "--dry-run")
+
+        assert proc.returncode == 0, proc.stderr
+        assert plan_archive.UNBUILT_KEY in proc.stdout
+        assert "Chunk 02" in proc.stdout
+
+    def test_the_preview_omits_the_stamp_for_a_clean_plan(self, tmp_path: Path):
+        """The control for the assertion above — without it, that test passes on
+        a preview that prints the key unconditionally."""
+        body = PLAN.replace("- [ ] Chunk 02: two", "- [x] Chunk 02: two")
+        proc = _run_hook(
+            _repo(tmp_path, body=body), ".prawduct/artifacts/build-plan-demo.md", "--dry-run"
+        )
+
+        assert proc.returncode == 0, proc.stderr
+        assert "would archive:" in proc.stdout
+        assert plan_archive.UNBUILT_KEY not in proc.stdout
 
     def test_a_refusal_is_exit_one_with_nothing_written(self, tmp_path: Path):
         project = _repo(tmp_path)

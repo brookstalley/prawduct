@@ -1,42 +1,45 @@
-"""Work model — vocabulary index + orphan-term detection (pure logic).
+"""Work model — artifact vocabulary + jurisdiction matching (pure logic).
 
-The "catch" behind the work model's external enforcement (``documentation/work-model.md``
-§3b; ``documentation/work-model-delta.md`` -- prawduct-internal, not distributed): a deterministic check that surfaces, pre-turn,
-any salient term in a user's message that NO governing artifact covers — the
-signal that a new requirement may be entering undocumented (tripwire #1).
+Given a plan or prompt, answer *which governing artifacts already cover this
+text's vocabulary* — the input that seeds a plan's ``governed_by:`` field with
+mechanical candidates for the planner's judgment. See
+:func:`jurisdiction_candidates`, which is this module's only entry point.
 
-This module is PURE — no I/O, no environment, no Claude Code coupling. The hook
-wiring (``bin/prawduct-hook`` subcommands + ``hooks/hooks.json``) is Chunk 2 and
-builds on these functions. Keeping the logic here makes the keystone question —
-*does the deterministic diff actually catch a real new-concept prompt?* —
-unit-testable in isolation, before any live-hook risk.
+This module is PURE — no I/O, no environment, no Claude Code coupling. The
+``prawduct-hook jurisdiction`` subcommand supplies the corpus.
 
-Honest scope (independent review, ``documentation/work-model-review.md`` -- prawduct-internal): this is an
-*unfamiliar-token* tripwire. It reliably surfaces content-word terms absent from
-the artifacts; it is weaker on new concepts phrased entirely in very common
-words. The stoplist below is genuine English function words ONLY — deliberately
-NOT widened to suppress noise, because suppressing content words is exactly how
-the catch would miss the concept it exists for.
+**History, because it explains the shape of what is left.** These functions were
+built for the *inverse* question: an orphan-term tripwire that fired pre-turn on
+any salient term in a user's prompt that no artifact covered, as an external
+enforcement of requirements-precede-code ("tripwire #1"). Jurisdiction matching
+was the later inversion, reusing the same salience machinery so the two answers
+stayed complements over one term-set.
 
-Precision layer (review-fixes Chunk 2, 2026-06-09): in live use the original
-"index is the only noise lever" stance failed — the probe fired on ordinary
-conversational prompts ("thanks, looks good", "Please continue!") and on the
-review session's own prompts (*efficiency, improve, quality, performance*),
-~80 noise tokens per misfire, training the model to ignore the one real catch.
-Three additions restore precision without touching the stoplist:
+**The tripwire was deleted 2026-08-11 by owner ruling (2026-07-12, recorded on
+#257): its resolution was deletion, not a further precision fix.** It never
+achieved usable precision — it fired on ordinary conversational prompts, and a
+frequency floor plus a firing threshold narrowed the noise without ending it,
+which is the pattern that trains a reader to ignore the one real catch.
+Requirements-precede-code enforcement moved to a review-time question instead
+(CRT-5M9J): the ``scope-trace:`` check now carried by both the Critic and PR
+review protocols, which asks whether a capability traces to a documented
+requirement and is reachable end-to-end.
 
-1. a **common-English frequency floor** (``lib/common_words.py``) — high-
-   frequency words are never orphans, regardless of corpus;
-2. a **firing threshold** (``should_fire``) — the nudge fires only when the
-   prompt is requirement-shaped (imperative build/add/implement-class verb)
-   or when >= 2 orphans co-occur; bare questions, acknowledgments, and
-   harness-injected notifications never fire;
-3. a **wider corpus** (hook side) — CLAUDE.md, ``docs/``, and ``methodology/``
-   feed the index alongside ``.prawduct/artifacts/``.
+The salience layer survives here because jurisdiction needs it, not because the
+tripwire might return. Note what that means for precision: a defect in
+:func:`_normalize` no longer produces a visible false claim, it produces a
+slightly worse *ranking*. That is a real but much cheaper failure, and it is why
+this module is no longer on a precision-fix footing.
 
-The accepted recall trade: a requirement phrased entirely in floor words
-("add payment support") stays silent. The deferred LLM-in-hook classifier
-remains the evidence-gated upgrade for that documented gap.
+**And why the 2026-07-12 ruling does not forbid fixing it anyway (#638, v3.3.4).**
+That ruling declared the remaining precision work moot *because the code was
+slated for deletion*. The tripwire was deleted; ``_normalize`` was not, because
+:func:`jurisdiction_candidates` reads through it. The ruling's premise no longer
+holds over this function, so the ruling no longer covers it — the same
+premise-falsified-without-the-decision-being-wrong shape recorded at
+``[[harness-only-removal-is-not-a-major]]``. What the lowered stakes DO govern is
+how much machinery is warranted here: a light, measured, closed-set reduction is
+in bounds; a real stemmer still is not.
 """
 from __future__ import annotations
 
@@ -46,9 +49,8 @@ from collections.abc import Iterable
 from lib.common_words import WORDS as _COMMON_RAW
 
 # Genuine English function words only. Deliberately NARROW: widening this to
-# suppress false positives would swallow the content-bearing nouns the catch
-# depends on (review finding — "jargon vs. concept"). Noise is handled by a
-# populated index, not by an aggressive stoplist.
+# suppress noise would swallow the content-bearing nouns matching depends on
+# (review finding — "jargon vs. concept").
 STOPWORDS: frozenset[str] = frozenset(
     """
     a an the this that these those and or but nor for so yet
@@ -72,19 +74,80 @@ _WORD = re.compile(r"[A-Za-z][A-Za-z'-]*")
 _MIN_LEN = 4  # shorter tokens are too generic to count as a "salient" term
 
 
+#: Contraction and possessive suffixes, reduced to the base word ("let's" ->
+#: "let", "you'd" -> "you"). LONGEST FIRST, because the loop takes the first
+#: match and "n't" would otherwise never be reached past a shorter sibling.
+#: Every clitic English writes with an apostrophe is here — an incomplete set is
+#: what left "you'd"/"i'll"/"they've" surviving whole into the term vocabulary
+#: while "let's"/"don't" reduced correctly (#638).
+_CLITICS: tuple[str, ...] = ("n't", "'ll", "'re", "'ve", "'s", "'d", "'m")
+
+#: Stems that take the ``-es`` plural/3sg allomorph rather than a bare ``-s``.
+#: Stripping one ``s`` from "enriches" mints "enriche"; stripping "es" gives
+#: "enrich".
+#:
+#: **The membership is measured, not guessed**, because every ending here is
+#: ambiguous in principle — "match" + "es" and "cache" + "s" are the same four
+#: letters — so the question is which reading is right more often in the prose
+#: this actually runs on. Counted over every ``.md`` in this repo's
+#: ``.prawduct/``, ``plugin/`` and ``documentation/`` trees: ``ch`` (matches,
+#: reaches, catches, branches, touches, dispatches, searches, …), ``sh``
+#: (publishes, hashes, refreshes, finishes, crashes), ``ss`` (passes, classes,
+#: misses, addresses, bypasses) and ``x`` (fixes, prefixes, suffixes, indexes,
+#: checkboxes) are true ``-es`` in every occurrence but one.
+#:
+#: Two endings are DELIBERATELY ABSENT, and both were in an earlier draft:
+#: a bare ``s`` (it makes "cases" -> "cas") and ``z`` (it makes "sizes" -> "siz"
+#: and "generalizes" -> "generaliz" — the ``-ize`` verb family is the dominant
+#: ``-zes`` population, 100+ occurrences against a handful of true ones).
+_ES_STEM_ENDINGS: tuple[str, ...] = ("ch", "sh", "ss", "x")
+
+#: The one-in-a-hundred exception to the rule above: ordinary words whose stem
+#: genuinely ends in ``-e``, so their plural is a bare ``-s``. "caches" is the
+#: measured instance (34 occurrences in this repo, against zero other ``-ches``
+#: exceptions); the rest of the ``-che`` nouns are carried because this module
+#: runs inside every governed product, whose prose this corpus does not predict.
+#: A CLOSED set of known exceptions, not the beginning of a dictionary — add to
+#: it only for a word someone has actually seen mis-stemmed.
+_ES_EXCEPTIONS: frozenset[str] = frozenset(
+    {"caches", "niches", "aches", "headaches", "avalanches", "mustaches", "quiches"}
+)
+
+#: Words that END in "-ies" without it being a plural suffix. The ``-ies`` -> "y"
+#: rule is right for "stories"/"queries" and wrong for these, and no lexical test
+#: separates them — so they are named. Same closed-set discipline as above.
+_IES_INVARIANTS: frozenset[str] = frozenset({"series", "species"})
+
+
 def _normalize(token: str) -> str:
     """Lowercase + a light, predictable singularization. No real stemmer — an
-    aggressive one collapses distinct terms ("series" -> "seri")."""
+    aggressive one collapses distinct terms ("series" -> "seri").
+
+    **Every branch here exists to avoid minting a non-word**, because a minted
+    token is a term the artifact vocabulary can never match and therefore a
+    silent hole in :func:`jurisdiction_candidates`' ranking. The three rules are
+    clitics, the ``-es`` allomorph, and the bare plural, applied in that order.
+    """
     t = token.lower().strip("'-")
-    # Contractions/possessives reduce to their base word ("let's" -> "let",
-    # "don't" -> "do") — the bare plural rule would otherwise mint non-words
-    # like "let'" that read as orphan terms (review-fixes Chunk 2).
-    if t.endswith("'s"):
-        t = t[:-2]
-    elif t.endswith("n't"):
-        t = t[:-3]
+    for clitic in _CLITICS:
+        if t.endswith(clitic):
+            t = t[: -len(clitic)]
+            break
+    # Returned WHOLE, not merely exempted from the ``-ies`` rule: falling through
+    # would hand "series" to the bare-plural rule, which mints "serie" — the same
+    # defect one branch lower down.
+    if t in _IES_INVARIANTS:
+        return t
     if len(t) > 5 and t.endswith("ies"):
         return t[:-3] + "y"
+    # "-es" after a sibilant is one suffix, not an "-e" plus a plural "s".
+    if (
+        len(t) > 4
+        and t.endswith("es")
+        and t not in _ES_EXCEPTIONS
+        and t[:-2].endswith(_ES_STEM_ENDINGS)
+    ):
+        return t[:-2]
     if len(t) > 4 and t.endswith("s") and not t.endswith(("ss", "us", "is")):
         return t[:-1]
     return t
@@ -94,9 +157,8 @@ def _tokens(text: str) -> list[str]:
     return [_normalize(m.group(0)) for m in _WORD.finditer(text)]
 
 
-# The frequency floor, normalized the same way prompt tokens are so plural
-# forms match ("settings" -> "setting"). Membership is checked against
-# normalized tokens only — see find_orphan_terms.
+# The frequency floor, normalized the same way text tokens are so plural forms
+# match ("settings" -> "setting").
 _COMMON: frozenset[str] = frozenset(_normalize(w) for w in _COMMON_RAW) | _COMMON_RAW
 
 
@@ -111,46 +173,6 @@ def _in_floor(t: str) -> bool:
     if t.endswith("ly") and t[:-2] in _COMMON:
         return True
     return t.endswith("ed") and (t[:-2] in _COMMON or t[:-1] in _COMMON)
-
-# Imperative build/add/implement-class verbs: their presence marks a prompt as
-# requirement-shaped, so even a single orphan term fires the nudge. Base forms
-# only (plus light plural normalization, "implements" -> "implement"); polite
-# requests use base-form imperatives, and a missed "-ing" participle still
-# fires via the >= 2 orphan path.
-REQUIREMENT_VERBS: frozenset[str] = frozenset(
-    """
-    add build implement create support integrate migrate introduce extend
-    enable disable wire ship write expose persist enforce
-    """.split()
-)
-
-# Maintenance verbs act on what already exists: a refactor/rename directive is
-# routine work, not a new requirement entering undocumented, so these never
-# make a prompt requirement-shaped (gate-noise — the old combined set made the
-# tripwire fire on review/cleanup prompts at the single-orphan threshold).
-# They are still directive vocabulary, so find_orphan_terms exempts them like
-# REQUIREMENT_VERBS: rename/redesign/rework sit above the frequency floor and
-# would otherwise surface as bogus domain terms.
-MAINTENANCE_VERBS: frozenset[str] = frozenset(
-    "refactor rename redesign rework remove replace".split()
-)
-
-# The orphan exemption covers both roles of directive vocabulary.
-_DIRECTIVE_VERBS: frozenset[str] = REQUIREMENT_VERBS | MAINTENANCE_VERBS
-
-# Harness-injected (non-user-authored) content that flows through the
-# UserPromptSubmit hook: task notifications, command transcripts, system
-# reminders. Hundreds of orphan-shaped tokens, zero requirements — never fire.
-# Accepted trade: a marker anywhere silences the WHOLE prompt, so a genuine
-# requirement pasted alongside such markup goes unchecked — rare, and the miss
-# is one nudge, not a gate; the alternative (excising marked spans) buys
-# little for real parsing risk.
-_HARNESS_MARKERS: tuple[str, ...] = (
-    "<task-notification>",
-    "<system-reminder>",
-    "<command-name>",
-    "<local-command-stdout>",
-)
 
 
 def _salient(tokens: Iterable[str]) -> list[str]:
@@ -191,74 +213,38 @@ def extract_vocabulary(text: str) -> set[str]:
     return {t for t in vocab if len(t) >= _MIN_LEN and t not in STOPWORDS}
 
 
-def build_index(texts: Iterable[str]) -> dict:
-    """Union the per-artifact vocabularies into a sorted index document."""
-    vocab: set[str] = set()
-    for text in texts:
-        vocab |= extract_vocabulary(text)
-    return {"vocab": sorted(vocab)}
-
-
-def salient_terms(prompt: str) -> list[str]:
-    """Candidate content words from a user prompt, first-seen order."""
-    return _salient(_tokens(prompt))
-
-
-def find_orphan_terms(prompt: str, index: dict) -> list[str]:
-    """Salient prompt terms that appear in NO governing artifact and are not
-    common English (the frequency floor — high-frequency words are never
-    flagged, regardless of corpus). Directive verbs — requirement AND
-    maintenance — are not domain terms: "extend X" must never report *extend*
-    as the orphan, nor "rename X" *rename*."""
-    vocab = set(index.get("vocab", ()))
-    return [
-        t
-        for t in salient_terms(prompt)
-        if t not in vocab and not _in_floor(t) and t not in _DIRECTIVE_VERBS
-    ]
+def salient_terms(text: str) -> list[str]:
+    """Candidate content words from a text, first-seen order."""
+    return _salient(_tokens(text))
 
 
 def jurisdiction_candidates(
     text: str, files: Iterable[tuple[str, str]], *, limit: int = 8
 ) -> list[dict]:
-    """Which governing artifacts have *jurisdiction* over this text — the
-    INVERSION of orphan detection.
+    """Which governing artifacts have *jurisdiction* over this text.
 
-    ``find_orphan_terms`` asks the negative question: which of a prompt's
-    salient terms does NO artifact cover (the new-requirement tripwire). This
-    asks the positive one: for a plan/prompt, which artifacts' vocabularies
-    already cover its salient terms — i.e. which artifacts plausibly *govern*
-    it. It reuses the exact same salience machinery so the two answers stay
-    complements over one term-set: the stoplist (via ``salient_terms``), the
-    ``_MIN_LEN`` floor, and the common-English frequency floor (``_in_floor``)
-    are all applied unchanged. Common words and short tokens can therefore
-    never *produce* a jurisdiction match, mirroring the fact that they can
-    never *become* an orphan — precision is symmetric on purpose.
-
-    Directive verbs are deliberately NOT exempted here (unlike
-    ``find_orphan_terms``, which drops them so "extend X" never reports
-    *extend* as the missing domain term). For jurisdiction they are ordinary
-    shared vocabulary — an artifact and a plan both talking about *enforce*
-    is a weak-but-real overlap signal — and ranking, not exemption, sorts
-    signal from noise.
+    For a plan or prompt, which artifacts' vocabularies already cover its
+    salient terms — i.e. which artifacts plausibly *govern* it. The stoplist
+    (via :func:`salient_terms`), the ``_MIN_LEN`` floor, and the common-English
+    frequency floor (:func:`_in_floor`) all apply, so common words and short
+    tokens can never produce a jurisdiction match.
 
     ``text`` is the plan/prompt to place; ``files`` is an iterable of
-    ``(path, content)`` pairs (the governing corpus). Each file's vocabulary
-    is harvested with ``extract_vocabulary`` (headings + bold + declared
-    vocabulary — the same conservative surface the index is built from);
-    ``matched`` is the text's floor-filtered salient terms present in that
-    vocabulary.
+    ``(path, content)`` pairs (the governing corpus). Each file's vocabulary is
+    harvested with :func:`extract_vocabulary` (headings + bold + declared
+    vocabulary); ``matched`` is the text's floor-filtered salient terms present
+    in that vocabulary.
 
-    Returns candidates with ``count > 0`` only, ranked by count descending
-    then path ascending (a stable, deterministic tie-break), capped at
-    ``limit``. Shape::
+    Returns candidates with ``count > 0`` only, ranked by count descending then
+    path ascending (a stable, deterministic tie-break), capped at ``limit``.
+    Shape::
 
         [{"path": str, "matched": [sorted terms], "count": int}, ...]
 
     This SEEDS a plan's ``governed_by:`` field — a mechanically-derived
-    candidate list for the planner's judgment (a term-overlap heuristic, not
-    a semantic ruling), never an authority. Reconciling each candidate
-    (conform / ruling / amendment / inapplicable) stays the author's call.
+    candidate list for the planner's judgment (a term-overlap heuristic, not a
+    semantic ruling), never an authority. Reconciling each candidate (conform /
+    ruling / amendment / inapplicable) stays the author's call.
     """
     # Floor-filter the text's salient terms once — the intersection below then
     # inherits the floor for free, so common words never surface as matches.
@@ -278,87 +264,3 @@ def jurisdiction_candidates(
     # resolve deterministically regardless of corpus iteration order.
     candidates.sort(key=lambda c: (-c["count"], c["path"]))
     return candidates[:limit]
-
-
-# A requirement verb preceded by one of these reads as a NOUN, not a directive:
-# "the build failed", "thanks for the support". Skipping those keeps status
-# chatter from counting as requirement-shaped (Critic NOTE, review-fixes ch.2).
-_NOUN_DETERMINERS: frozenset[str] = frozenset(
-    "the a an this that these those my your his her its our their some any each no".split()
-)
-
-
-_SENTENCE_BREAK = re.compile(r"[.!?;:\n]")
-
-
-def is_requirement_shaped(prompt: str) -> bool:
-    """True when the prompt contains an imperative build/add/implement-class
-    verb — the shape of a directive that can carry a new requirement. A verb
-    homograph used as a noun ("the build", "your support") does not count;
-    the noun-determiner check resets at sentence boundaries so "I like this.
-    Build a kanban view" still reads as a directive."""
-    prev = ""
-    last_end = 0
-    for m in _WORD.finditer(prompt):
-        if _SENTENCE_BREAK.search(prompt, last_end, m.start()):
-            prev = ""
-        raw = m.group(0).lower()
-        if (
-            (raw in REQUIREMENT_VERBS or _normalize(raw) in REQUIREMENT_VERBS)
-            and prev not in _NOUN_DETERMINERS
-        ):
-            return True
-        prev = raw
-        last_end = m.end()
-    return False
-
-
-def _is_question(prompt: str) -> bool:
-    return prompt.rstrip().endswith("?")
-
-
-def _is_harness_text(prompt: str) -> bool:
-    return any(marker in prompt for marker in _HARNESS_MARKERS)
-
-
-def should_fire(prompt: str, orphans: list[str]) -> bool:
-    """The firing threshold (precision layer). Fire only when:
-
-    * the prompt is requirement-shaped (imperative verb) with >= 1 orphan, or
-    * >= 2 orphan terms co-occur in a non-question prompt.
-
-    Never fire on harness-injected content (notifications, command output) or
-    on bare questions — a question that *requests* work ("can you add X?") is
-    requirement-shaped and still fires.
-    """
-    if not orphans or _is_harness_text(prompt):
-        return False
-    if is_requirement_shaped(prompt):
-        return True
-    if _is_question(prompt):
-        return False
-    return len(orphans) >= 2
-
-
-def format_nudge(orphans: list[str], *, limit: int = 8) -> str | None:
-    """The pre-turn nudge text, or None when there is nothing to flag
-    (silent-when-clean — the property that keeps this signal, not ceremony)."""
-    if not orphans:
-        return None
-    shown = orphans[:limit]
-    more = "" if len(orphans) <= limit else f" (+{len(orphans) - limit} more)"
-    return (
-        "⚠ Work model: terms not found in any governing artifact: "
-        f"{', '.join(shown)}{more}. If this introduces new behavior, locate or "
-        "write the parent requirement before designing against it "
-        "(tripwire #1 — requirements precede code)."
-    )
-
-
-def nudge_for(prompt: str, index: dict) -> str | None:
-    """The full pipeline the hook runs: orphan detection + firing threshold.
-    Returns the nudge text, or None (silent-when-clean)."""
-    orphans = find_orphan_terms(prompt, index)
-    if not should_fire(prompt, orphans):
-        return None
-    return format_nudge(orphans)

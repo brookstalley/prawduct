@@ -255,8 +255,8 @@ def test_human_mode_refusal_names_every_offending_title(capsys):
     any non-string list to a bare count, so `nonconforming_titles` — a list of
     dicts — printed as `nonconforming_titles: 20`.
 
-    That defeats the instruction this bundle shipped: `migration-scrub.md` Step 4
-    tells the operator to rewrite the *named* titles and its command line carries
+    That defeats the instruction this bundle shipped: `migration-scrub.md`'s import
+    step tells the operator to rewrite the *named* titles and its command line carries
     no `--json`, so human mode is the only route those names have. Same
     `--json`-only gap as the `failed` summary line, one review round earlier."""
     cli._print_human_error(

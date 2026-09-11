@@ -33,10 +33,29 @@ review **fact**, so "how often did record-lint fire, and on what" is a query
 over the evidence store rather than an argument. The yield *query* is the
 janitor's Norm Health sweep, deliberately not here.
 
-**Records are markdown.** A record is a ``.md`` file — prose is where
-hand-authored claims live, and classifying by suffix keeps this language-neutral
-(``architecture.md`` § Direction: Python-implemented, never Python-specific).
-Archived history is excluded: it is not being asserted any more.
+**Records are markdown, plus the governance state under ``.prawduct/``.** Prose
+is where most hand-authored claims live, so ``.md`` anywhere in the repo is a
+record. But it is not where they *all* live, and the gap was not hypothetical:
+this module's suite-total tripwire swept the plugin's markdown clean while ten
+governed products carried a hand-maintained test count in
+``.prawduct/project-state.yaml`` — one of them on a single line of roughly 52 KB
+— and markdown-only could not see any of it. So a YAML file **directly under a
+``.prawduct/`` directory** is a record too: that file is hand-authored, it is
+asserted as a product's source of truth, and it is exactly as prone to a claim
+that drifts. Classification stays by path and suffix — no content is read and no
+language is classified (``architecture.md`` § Direction: Python-implemented,
+never Python-specific).
+
+**Scoped to governance state, never to YAML generally.** A product's CI config,
+its lockfiles and its own app config are its data, not governance records;
+linting them would put this control in the business of grading product content.
+The three markdown-specific checks are unaffected because each already selects
+its own inputs — ``learnings-entry-shape`` by filename, ``governed-by-gap`` by
+build-plan name (``.md$``) — rather than trusting the record set to be markdown;
+tests pin that, so widening the set here cannot silently widen them.
+
+Archived history is excluded whatever its suffix: it is not being asserted any
+more.
 """
 
 from __future__ import annotations
@@ -104,6 +123,39 @@ _TOP_LEVEL_KEY_RE = re.compile(r"^[A-Za-z_][\w-]*:")
 _ARTIFACT_ENTRY_RE = re.compile(r"^(\s*)-\s+artifact:\s*(\S+)\s*$")
 _DISPOSITIONS_KEY_RE = re.compile(r"^(\s*)dispositions:\s*$")
 _LIST_ITEM_RE = re.compile(r"^(\s*)-\s+\S")
+#: Where a YAML *value* begins on a line: after a `- ` item marker, after a
+#: `key: `, or after both. A `"` only opens a quoted scalar in that position —
+#: anywhere else in a plain scalar it is an ordinary character — so anchoring
+#: here is what keeps `_frontmatter_break` from calling `msg: he said "hi"` a
+#: defect. **A marker is REQUIRED**, which is what excludes the continuation
+#: line of a multi-line PLAIN scalar that happens to begin with a quote
+#: (`"the thing" is true`, wrapped under an unquoted `note:`): that line opens
+#: nothing, and reading it as an opener reported legal YAML as broken.
+_VALUE_START_RE = re.compile(
+    r"^\s*(?:-\s+(?:[A-Za-z_][\w.-]*:\s+)?|[A-Za-z_][\w.-]*:\s+)(?P<value>\S.*)$"
+)
+#: What may legally follow a closing double quote in block context: a comment,
+#: or the colon of a QUOTED KEY (``- "a b": 1``). Anything else is content
+#: stranded after the close, which is the break this grades.
+#:
+#: **Deliberately NOT the flow-collection punctuation** ``,``/``]``/``}``. Those
+#: look like they belong — a scalar inside a multi-line ``[...]`` closes onto
+#: them — but a flow continuation line carries no ``- ``/``key: `` marker, so
+#: :data:`_VALUE_START_RE` never opens a scalar on one and the branch is
+#: unreachable for that shape. Where they ARE reachable is with a scalar already
+#: open, which is precisely the break case: in ``a: "one`` / ``b: ", two"`` the
+#: unterminated scalar swallows the next line and closes on its quote, stranding
+#: ``, two"``. Admitting ``,`` there suppressed the exact defect this check was
+#: built for, silently, on a machine-answered channel reviewers relay verbatim.
+_LEGAL_AFTER_CLOSING_QUOTE = frozenset("#:")
+
+#: A value that opens a BLOCK scalar (``|``/``>`` with any chomping or
+#: indentation indicator). Everything more-indented below it is literal text,
+#: quotes included — a `>-` note quoting `"inapplicable, because —"` is the real
+#: shape that made this necessary, not a hypothetical.
+_BLOCK_SCALAR_RE = re.compile(
+    r"^(?P<indent>\s*)(?:-\s+)?(?:[A-Za-z_][\w.-]*:\s+)[|>][-+]?\d*\s*(?:#.*)?$"
+)
 
 #: A markdown heading, level + text. Local rather than imported: ``norm_probes``
 #: owns the same grammar but answers a different question (every logical *line*
@@ -127,13 +179,22 @@ _BUILD_PLAN_RE = re.compile(r"(^|/)(?:build-plan[^/]*|[^/]*-plan)\.md$")
 # ---------------------------------------------------------------------------
 
 
+#: Governance state files: YAML sitting directly inside a ``.prawduct/`` dir.
+#: Anchored on the directory rather than on the name so a product that adds a
+#: second state file is covered, while a YAML one level deeper — under
+#: ``.prawduct/artifacts/`` or a product's own tree — is not: nesting is how
+#: this stays a check on a repo's declared state rather than on its data.
+_STATE_RECORD_RE = re.compile(r"(^|/)\.prawduct/[^/]+\.ya?ml$")
+
+
 def is_record(path: str) -> bool:
     """True when ``path`` is a governance record this module lints.
 
-    Markdown, and not archived. Suffix-only by design: no content is read to
-    decide, and no language is classified.
+    Markdown anywhere, or YAML directly under a ``.prawduct/`` directory; never
+    archived. Path and suffix only by design: no content is read to decide, and
+    no language is classified.
     """
-    if not path.endswith(".md"):
+    if not (path.endswith(".md") or _STATE_RECORD_RE.search(path)):
         return False
     return not any(marker in f"/{path}" for marker in _ARCHIVE_MARKERS)
 
@@ -431,8 +492,59 @@ def _read_text(path: Path) -> "str | None":
         return None
 
 
+def _scope_declared_in_change_log(prawduct_dir: Path, scope: "str | None") -> bool:
+    """Does any change-log entry declare ``scope``?
+
+    This is the discriminator between the two shapes that both reach
+    "the dispatch names a scope no build plan declares":
+
+    - a **typo'd or stale** scope, which names nothing anywhere. Grading must
+      not proceed and must not go quiet — a deliverable check that silently
+      skipped is indistinguishable from one that passed, which is the whole
+      reason the `unchecked` prefix blocks.
+    - a **real, deliberately plan-less** scope — the ordinary shape of a
+      framework-only fix, which prawduct's own methodology says needs no build
+      plan (`building.md`: small = build + verify, no plan). There is no
+      deliverable set to grade, no `--chunk` that could supply one, and no edit
+      to the diff that clears it. Blocking that is a false blocker with no
+      remedy, and the only exits left to a builder are inventing a retroactive
+      plan or departing from the rule silently. Three consecutive reviews took
+      the second.
+
+    The change-log is the witness because a code-changing branch cannot open a
+    PR without ADDING an entry (`check-change-log-entry`, enforced at the PR
+    boundary), and the `scope=` tag on that entry is what the release flow
+    reads to enumerate what is still unshipped. So the declaration already
+    exists by the time any review runs, and it lives in a durable, reviewed,
+    release-tracked record.
+
+    Be precise about the strength of that: the PR probe requires the entry, not
+    the tag, so a builder who writes `scope=` is still declaring something
+    rather than having it forced out of them. What this buys over the
+    alternatives — a `--scope-has-no-plan` dispatch flag, or an allowlist key —
+    is not unforgeability, it is that the declaration is durable, is read by
+    the release flow for an unrelated purpose, and is visible in the diff a
+    reviewer reads. A transient flag on one dispatch is none of those. A typo'd
+    scope, meanwhile, is declared nowhere by construction, which is the case
+    this branch actually has to separate.
+    """
+    if not scope or not scope.strip():
+        return False
+    text = _read_text(prawduct_dir / "change-log.md")
+    if text is None:
+        return False  # unreadable witness proves nothing — keep the block
+    from . import change_log  # noqa: PLC0415 — lazy; mirrors the module's import posture
+
+    try:
+        entries = change_log.parse_change_log(text)
+    except Exception:  # prawduct:allow prawduct/broad-except -- a malformed change-log must not decide severity; fail closed to the blocking read
+        return False
+    return any(e.tags.get("scope") == scope.strip() for e in entries)
+
+
 def _norm_field_re():
-    """The norm-entry field marker, IMPORTED from its one home in ``norm_probes``.
+    """What a norm entry IS, imported from its one home in ``norm_probes``:
+    ``(field marker, blockquote prefix)``.
 
     #568 was two definitions of a norm entry disagreeing; closing it with a
     second *copy* of the marker would have re-created the same defect in a
@@ -440,10 +552,21 @@ def _norm_field_re():
     (`architecture.md` § Direction: every fact has one home). Imported lazily
     because ``norm_probes`` pulls the advisory-store and backlog readers, and
     this module's top level is on the record-lint path.
-    """
-    from .norm_probes import _FIELD_MARKER_RE  # noqa: PLC0415 — lazy; heavy deps
 
-    return _FIELD_MARKER_RE
+    **The blockquote prefix is part of the definition, not a detail of the other
+    module's parsing.** Importing only the marker is what let the two drift when
+    blockquote tolerance landed: ``norm_probes`` strips ``>`` inside
+    ``_direction_lines`` before matching, this module walks raw text, and the
+    identical regex then answered differently on identical input. Sharing both
+    halves is what makes "cannot drift apart on an edit" true rather than
+    merely intended.
+    """
+    from .norm_probes import (  # noqa: PLC0415 — lazy; heavy deps
+        _BLOCKQUOTE_PREFIX_RE,
+        _FIELD_MARKER_RE,
+    )
+
+    return _FIELD_MARKER_RE, _BLOCKQUOTE_PREFIX_RE
 
 
 def direction_norm_count(text: str) -> "int | None":
@@ -467,12 +590,19 @@ def direction_norm_count(text: str) -> "int | None":
     :mod:`lib.norm_probes` rather than restated here, so a norm entry is a
     field-bearing entry everywhere and the two cannot drift apart on an edit.
     """
-    field_re = _norm_field_re()
+    field_re, blockquote_re = _norm_field_re()
     in_section = False
     section_level = 0
     count: "int | None" = None
     pending_bullet = False
-    for line in text.splitlines():
+    for raw in text.splitlines():
+        # Strip blockquote markers exactly as `norm_probes._direction_lines`
+        # does. Sharing the field REGEX is not enough to share the DEFINITION:
+        # that function feeds the probes de-quoted lines, while this walks the
+        # raw text, so a `> **Why:** ...` registry counted N entries there and 0
+        # here — #568 reopening in the blockquote case, silently skipping the
+        # `governed_by` lint for exactly the products the strip was added for.
+        line = blockquote_re.sub("", raw)
         heading = _HEADING_RE.match(line)
         if heading:
             level = len(heading.group(1))
@@ -566,6 +696,86 @@ def _resolve_artifact(project_dir: Path, prawduct_dir: Path, name: str) -> "Path
     return None
 
 
+def _frontmatter_break(text: str) -> "tuple[int, str] | None":
+    """The line and reason a record's YAML frontmatter cannot be parsed, or
+    ``None`` when it holds together.
+
+    **Why this exists at all.** This plan's own frontmatter was invalid for two
+    commits — an unterminated double-quoted scalar swallowed the closing fence —
+    and every reader passed it, because ``record_lint``, ``resolve_branch_plan``
+    and ``verify-chunk-refs`` all match line patterns rather than parsing. A
+    header no parser can read is worse than no header: it reads as *more*
+    governed, exactly the failure shape as ``governed_by:`` citing a file nobody
+    can open, which is why the finding it produces is that same check.
+
+    **Why not a YAML parser.** There is none to reach for — `architecture.md`
+    § Direction rules out third-party runtime dependencies, and every YAML read
+    in this codebase is line-based for that reason. So this grades the one
+    structural break the line-based readers are blind to, by tracking whether a
+    double-quoted flow scalar ever closes, and reports nothing it cannot see.
+    A quote is treated as opening a scalar ONLY where YAML would let it — at the
+    start of a value — so plain scalars carrying quotes are not defects here.
+    """
+    lines = text.splitlines()
+    if not lines or lines[0].strip() != _FRONTMATTER_FENCE:
+        return None  # no frontmatter to grade; a missing header is not a break
+    open_line: "int | None" = None
+    block_indent: "int | None" = None
+    closed = False
+    for idx, raw in enumerate(lines[1:], start=2):
+        rest = raw
+        if block_indent is not None:
+            if not raw.strip() or len(raw) - len(raw.lstrip()) > block_indent:
+                continue  # still inside the block scalar's literal text
+            block_indent = None
+        if open_line is None:
+            # A fence inside an open scalar is content, not the close — which is
+            # precisely how the real defect hid the end of its own frontmatter.
+            if raw.strip() == _FRONTMATTER_FENCE:
+                closed = True
+                break
+            block = _BLOCK_SCALAR_RE.match(raw)
+            if block is not None:
+                block_indent = len(block.group("indent"))
+                continue
+            match = _VALUE_START_RE.match(raw)
+            if match is None or not match.group("value").startswith('"'):
+                continue
+            open_line = idx
+            rest = match.group("value")[1:]
+        i = 0
+        while i < len(rest):
+            if rest[i] == "\\":
+                i += 2
+                continue
+            if rest[i] == '"':
+                # WHERE the scalar closes is the whole signal. An unterminated
+                # scalar does not run to the end of the file — it swallows the
+                # next line and closes on ITS opening quote, leaving that line's
+                # real content stranded after the close. In block context the
+                # only thing allowed after a closing quote is whitespace or a
+                # comment, so trailing content IS the break, and it is the shape
+                # the defect that prompted this check actually had.
+                trailing = rest[i + 1:].strip()
+                if trailing and trailing[0] not in _LEGAL_AFTER_CLOSING_QUOTE:
+                    return open_line, (
+                        "a double-quoted value opens here and closes only on a "
+                        "later line, stranding that line's content after it, so "
+                        "no YAML reader can parse this frontmatter"
+                    )
+                open_line = None
+                break
+            i += 1
+    if open_line is not None:
+        return open_line, (
+            "a double-quoted value opens here and is never closed, so no YAML "
+            "reader can parse this frontmatter"
+        )
+    if not closed:
+        return 1, "the `---` frontmatter block is opened here and never closed"
+    return None
+
+
 def _check_governed_by(
     project_dir: Path, prawduct_dir: Path, plan_rel: str, text: str
 ) -> list[dict]:
@@ -577,6 +787,11 @@ def _check_governed_by(
     a norm unaddressed is the defect, and "inapplicable, because —" is a
     perfectly good disposition, so there is never a reason to be short.
 
+    Two neighbours share this check because they share its failure shape — a
+    governance claim in this header that cannot be honoured. A frontmatter no
+    parser can read (:func:`_frontmatter_break`) is reported first, because when
+    it fires nothing else in the block is trustworthy.
+
     A ``governed_by:`` entry naming an artifact that does not exist is reported
     here rather than treated as somebody else's problem: the name is a bare
     token, not a backticked path, so nothing that scans for path-shaped text
@@ -584,6 +799,27 @@ def _check_governed_by(
     is the worse defect, because it reads as *more* governed than an omission.
     """
     findings: list[dict] = []
+    broken = _frontmatter_break(text)
+    if broken is not None:
+        line, why = broken
+        # RETURN, not continue. The line-based parser below still produces
+        # entries from a broken block, and they are entries no YAML reader would
+        # agree with — a stranded fragment reads as an artifact name and renders
+        # a second, spurious "cites an artifact that does not exist". One
+        # structural defect must produce one finding, and grading a block this
+        # function has just called untrustworthy contradicts it in the same
+        # breath.
+        return [
+            _finding(
+                "governed-by-gap",
+                plan_rel,
+                line,
+                f"the frontmatter is structurally broken — {why}. Nothing in it "
+                "can be trusted, `governed_by:` included, and a header no parser "
+                "can read presents as more governed than no header at all. Fix "
+                "the header; the norm dispositions are not graded until it parses",
+            )
+        ]
     for entry in _parse_governed_by(text):
         artifact = entry["artifact"]
         resolved = _resolve_artifact(project_dir, prawduct_dir, artifact)
@@ -655,6 +891,12 @@ def _check_chunk_refs(
     """
     plan = buildplan_refs.resolve_reviewed_plan(project_dir, prawduct_dir, scope)
     if plan.path is None and plan.gap:
+        if _scope_declared_in_change_log(prawduct_dir, scope):
+            return [], (
+                f"chunk-ref-missing no-subject — {plan.gap}; the change-log "
+                f"declares scope {scope!r}, so the scope is real and carries no "
+                "plan — there is no declared deliverable set to grade"
+            ), None, None
         return [], f"chunk-ref-missing unchecked — {plan.gap}", None, None
 
     assumed = False
@@ -662,6 +904,32 @@ def _check_chunk_refs(
         chunk_id = buildplan_refs._current_chunk_id_from_status(project_dir, plan.path)
         assumed = chunk_id is not None
     if chunk_id is None:
+        # "No chunk in scope" has two causes that look identical here and are
+        # not alike. A plan whose chunks are all ticked genuinely has nothing to
+        # grade, and silence is right. A plan exposing no `### Chunk NN:`
+        # heading has nothing to grade EITHER — but because no chunk section can
+        # be located at all, which disables this check for the plan's whole life
+        # while reporting a null count that reads exactly like the healthy case.
+        # That is the wholly-silent route: unlike the other failures here it
+        # emits no `unchecked` line, so nothing downstream has a word to carry.
+        # Both conditions, and the second is what keeps a FINISHED plan quiet.
+        # "No current chunk" is also what a plan whose boxes are all ticked
+        # reports, and that is a healthy end state — grading is over, not
+        # disabled. A Status roster is the evidence that chunks were locatable
+        # at all, so only a plan with neither a roster NOR a heading is
+        # structurally ungradeable rather than simply done.
+        total, _complete = buildplan_refs._count_build_plan_chunks(
+            prawduct_dir, plan.path
+        )
+        if total == 0 and buildplan_refs.plan_has_parseable_chunk_heading(
+            plan.path
+        ) is False:
+            return [], (
+                f"chunk-ref-missing unchecked — {plan.rel} exposes no parseable "
+                "chunk heading (`### Chunk NN: Name`), so no chunk section can "
+                "be located and the deliverable check graded nothing. List items "
+                "under a `## Chunks` section match no heading pattern"
+            ), None, None
         return [], None, None, None  # no chunk in scope — nothing declared to check
     refs = buildplan_refs._parse_build_plan_chunk_refs(
         prawduct_dir, chunk_id, plan.path
@@ -694,7 +962,7 @@ def _check_chunk_refs(
             "dispatch carried no chunk — Status names the first UNCHECKED chunk, "
             "so this may be the next chunk rather than the reviewed one"
         )
-    if plan.source == "active-pointer" and plan.gap:
+    if plan.source == buildplan_refs.SOURCE_ACTIVE_PLAN and plan.gap:
         assumptions.append(plan.gap)
     gap = None
     if assumptions:

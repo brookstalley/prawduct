@@ -87,7 +87,7 @@ class TestGateErrorFailsClosedAndLoud:
         monkeypatch.setattr(
             gates,
             "session_review_verdict",
-            lambda project_dir: (_ for _ in ()).throw(RuntimeError("boom-XYZ")),
+            lambda project_dir, **_kw: (_ for _ in ()).throw(RuntimeError("boom-XYZ")),
         )
 
         rc = _hook.cmd_stop(repo, {})
@@ -113,3 +113,63 @@ class TestGateErrorFailsClosedAndLoud:
         assert rc == 2
         assert "no composed review coverage" in err
         assert "CRITIC REVIEW (gate error)" not in err
+
+
+class TestAContestedBranchReachesTheOrdinaryGates:
+    """Several plans on one branch must not change what `cmd_stop` grades.
+
+    An earlier reading refused to resolve on the second claimant, and `cmd_stop`
+    converted that into a block — so a repo carrying two plans on a branch ended
+    every session at a governance error instead of at its real gate verdict.
+    Several plans on a branch is an ordinary arrangement, so the contested and
+    uncontested sessions must reach the SAME gates and differ only in what the
+    briefing says about which plan governs.
+    """
+
+    def _contested(self, tmp_path: Path) -> Path:
+        repo = _blocking_session(tmp_path)
+        artifacts = repo / ".prawduct" / "artifacts"
+        for name in ("a", "b"):
+            (artifacts / f"build-plan-{name}.md").write_text(
+                "---\nartifact: build-plan\nbranch: main\n---\n\n"
+                "## Status\n\n- [ ] Chunk 01: work\n"
+            )
+        return repo
+
+    def test_it_reaches_the_real_blocker_not_a_resolution_error(self, tmp_path, capsys):
+        repo = self._contested(tmp_path)
+
+        rc = _hook.cmd_stop(repo, {})
+        err = capsys.readouterr().err
+
+        # The session's ACTUAL verdict — the one a resolution error used to
+        # displace. Asserted positively: a negative pin on the removed wording
+        # would pass forever whatever this function did.
+        assert rc == 2
+        assert "no composed review coverage" in err
+
+    def test_background_work_still_defers(self, tmp_path, capsys):
+        """Deferral means "the diff isn't final, ask again when it is". A second
+        claimant is not a reason to withhold it — the plans are resolvable and
+        the gates would have run."""
+        repo = self._contested(tmp_path)
+
+        rc = _hook.cmd_stop(repo, {"background_tasks": [{"description": "a task"}]})
+
+        assert rc == 0, "a contested branch is not a reason to refuse deferral"
+
+    def test_one_claimant_reaches_the_same_gates(self, tmp_path, capsys):
+        """The control: the uncontested session must render the identical
+        blocker, so the assertion above is about the claim count and not about a
+        fixture that blocks for any reason."""
+        repo = _blocking_session(tmp_path)
+        (repo / ".prawduct" / "artifacts" / "build-plan-a.md").write_text(
+            "---\nartifact: build-plan\nbranch: main\n---\n\n"
+            "## Status\n\n- [ ] Chunk 01: work\n"
+        )
+
+        rc = _hook.cmd_stop(repo, {})
+        err = capsys.readouterr().err
+
+        assert rc == 2
+        assert "no composed review coverage" in err

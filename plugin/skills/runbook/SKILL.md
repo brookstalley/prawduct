@@ -16,7 +16,7 @@ If asked for a "runbook" for local dev setup, write a setup guide and say that i
 
 ## Read this first
 
-**Read `${CLAUDE_PLUGIN_ROOT}/docs/runbook-authoring.md` before authoring or reviewing.** It is the
+**Read `${CLAUDE_SKILL_DIR}/../../docs/runbook-authoring.md` before authoring or reviewing.** It is the
 canonical guide — the invariants, the anatomy, the writing rules, branching, irreversible steps,
 domain adaptation, and a self-review of six restraint checks plus 26 criteria. It also carries an
 evidence appendix distinguishing what is verified from what is convention, and a list of refuted
@@ -24,7 +24,7 @@ claims you must not reintroduce.
 
 Do not work from memory. This skill is the workflow; that document is the standard.
 
-The blank artifact is `${CLAUDE_PLUGIN_ROOT}/templates/runbook.md`.
+The blank artifact is `${CLAUDE_SKILL_DIR}/../../templates/runbook.md`.
 
 ## Start short — the failure mode to avoid above all others
 

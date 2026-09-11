@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lib import plan_backfill, plan_index
+from lib import plan_archive, plan_backfill, plan_index
 
 DATE = "2026-08-10"
 
@@ -136,12 +136,35 @@ class TestBackfill:
         plan_backfill.backfill(prawduct, date=DATE, apply=True)
         assert (prawduct / "artifacts" / "build-plan-beta.md").is_file()
 
-    def test_unticked_boxes_do_not_block_archiving(self, tmp_path: Path) -> None:
-        """Checkbox state is explicitly NOT a precondition.
+    def test_unticked_boxes_block_the_AUTOMATIC_sweep(self, tmp_path: Path) -> None:
+        """Unticked chunks route to ``blocked``, naming them (#634).
 
-        Requiring "all boxes ticked" is what left half-finished dead plans in
-        live artifacts forever — they can never satisfy it. Removing the
-        precondition is what makes this mechanical.
+        **This assertion was inverted on 2026-08-11, and the reason it used to
+        read the other way still stands — it is now served differently.** The
+        original contract was "checkbox state is explicitly NOT a precondition",
+        because *"requiring all boxes ticked is what left half-finished dead
+        plans in live artifacts forever — they can never satisfy it."* That
+        failure mode is real and this change must not reintroduce it.
+
+        What it missed is that the sweep cannot tell those two apart:
+
+        - a **dead** plan with unbuilt chunks — archive it, the boxes are how
+          the work ended and that is worth keeping; and
+        - **live work whose scope shipped partially** — `scope=tour` released in
+          hallucinote v1.8.0 with two of seven chunks unbuilt, while the plan was
+          still the tracker for them.
+
+        Selecting by the change log's ``release=`` tag answers "did the scope
+        ship", never "did the plan finish", so it archived the second as
+        ``lifecycle: completed`` + ``released_in:`` — unbuilt work recorded as
+        shipped. That product declined the proposal at two consecutive cuts and
+        accepted it at the third, which is the cost of a judgement the tool
+        re-asks every release.
+
+        So the sweep surfaces instead of deciding, and nothing is stuck forever:
+        an explicit ``archive-plan <path>`` still archives a dead plan in one
+        command — deliberately unchanged, because there a human is asserting the
+        plan is done. Only the mechanical path is conservative.
         """
         prawduct = _make_repo(tmp_path, plans=())
         (prawduct / "artifacts" / "build-plan-alpha.md").write_text(
@@ -149,11 +172,72 @@ class TestBackfill:
         )
         result = plan_backfill.backfill(prawduct, date=DATE, apply=True)
 
-        assert len(result["archived"]) == 1
+        assert result["archived"] == []
+        assert (prawduct / "artifacts" / "build-plan-alpha.md").is_file()
+        assert not (prawduct / "artifacts" / "archive" / "build-plan-alpha.md").exists()
+
+        blocked = plan_backfill.survey(prawduct)["blocked"]
+        assert len(blocked) == 1
+        # The chunk is NAMED — an operator who cannot see which chunk is unbuilt
+        # cannot make the call the block exists to hand them.
+        assert "Chunk 01: the work" in blocked[0]["reason"]
+        assert "1 of 1" in blocked[0]["reason"]
+
+    def test_the_explicit_route_still_archives_an_unfinished_plan(
+        self, tmp_path: Path
+    ) -> None:
+        """The escape hatch the block above depends on being real.
+
+        The original contract's fear — dead plans live forever — is answered
+        here rather than by the sweep. `archive-plan` is a human asserting the
+        plan is done, and `plan_archive`'s module docstring already says an
+        archived plan may carry unticked boxes. If this ever starts refusing,
+        the block in the sweep becomes a trap and #634's fix is worse than the
+        defect it closed.
+        """
+        prawduct = _make_repo(tmp_path, plans=())
+        plan = prawduct / "artifacts" / "build-plan-alpha.md"
+        plan.write_text(_plan("alpha", ticked=False), encoding="utf-8")
+
+        assert (
+            plan_archive.refusal_reason(
+                plan, prawduct / "artifacts", state=plan_archive.COMPLETED
+            )
+            is None
+        )
+        result = plan_archive.archive_plan(
+            plan, prawduct / "artifacts", state=plan_archive.COMPLETED, date=DATE
+        )
+        assert result["status"] == "archived"
         archived = prawduct / "artifacts" / "archive" / "build-plan-alpha.md"
-        # And it is NOT corrected on the way in: the box is preserved as it was,
-        # because how the work ended is a fact worth keeping.
+        # Still not corrected on the way in — how the work ended is a fact worth
+        # keeping, which was the original test's other half and survives intact.
         assert "- [ ] Chunk 01: the work" in archived.read_text()
+
+    def test_a_plan_with_no_status_roster_is_refused_not_passed(
+        self, tmp_path: Path
+    ) -> None:
+        """Absence of a roster is unreadable, not complete.
+
+        `unticked_chunk_items` returns `[]` for a plan with no Status section,
+        identically to a fully-ticked one, so the obvious one-line version of
+        this fix has a hole: a plan predating the Status convention sails
+        through as finished. Two such plans were live in hallucinote when #634
+        was found. Same rule the Critic applies rating `chunk-ref-missing
+        unchecked` at BLOCKING — a check that could not run must not read as a
+        pass.
+        """
+        prawduct = _make_repo(tmp_path, plans=())
+        rosterless = _plan("alpha").replace("## Status", "## Notes")
+        (prawduct / "artifacts" / "build-plan-alpha.md").write_text(
+            rosterless, encoding="utf-8"
+        )
+        result = plan_backfill.backfill(prawduct, date=DATE, apply=True)
+
+        assert result["archived"] == []
+        blocked = plan_backfill.survey(prawduct)["blocked"]
+        assert len(blocked) == 1
+        assert "no readable `## Status` roster" in blocked[0]["reason"]
 
     def test_running_twice_is_a_no_op_the_second_time(self, tmp_path: Path) -> None:
         prawduct = _make_repo(tmp_path)

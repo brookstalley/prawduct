@@ -304,11 +304,19 @@ defect reached three consumers before anyone generalised it.
 - **FL6** **Existing shipped plans are backfilled into the archive**, for this repo and for consumers —
   not left for "from now on." Accumulated live plans reading as active is the confusion this whole set
   exists to remove, and prawduct alone carries 114 artifacts.
-  **Checkbox state is explicitly NOT a precondition for archiving, and is not corrected on the way in.**
-  An archived plan may be left with unticked boxes; nothing reads them once it is out of the live
-  directory, so "make it look complete first" would be ceremony with no consumer. *This is what makes
-  the backfill fully mechanical* — it was the only step v0.3 could not automate, and removing the
-  checkbox precondition removes the judgment.
+  **Checkbox state is never corrected on the way in.** An archived plan may be left with unticked
+  boxes; nothing reads them once it is out of the live directory, so "make it look complete first"
+  would be ceremony with no consumer.
+  **AMENDED 2026-08-11 (v3.3.1, #634) — it IS a precondition of the mechanical sweep, and remains
+  none of an explicit `archive-plan`.** This paragraph read "explicitly NOT a precondition for
+  archiving" without qualification, which selection by change-log `release=` made unsafe: that tag
+  answers *did the scope ship*, never *did the plan finish*, and the two come apart whenever a scope
+  ships partially — a consumer repo archived a plan as `completed` with two chunks unbuilt and still
+  live. The claim that removing the precondition "removes the judgment" was the load-bearing error:
+  it removed only *whose* judgment, leaving the tool to decide, wrongly, every release. The sweep now
+  declines such a plan and names the chunk. Judgment is still out of the write path — the predicate
+  is a deterministic count, and declining hands the call to a human rather than taking it. The
+  binding statement is the ruling in `data-model.md` § Direction; this requirement records it.
   What remains to decide is only **which plans are shipped**, and one mechanical test is available
   today: a plan whose `scope=` carries a `release=` tag in the change log shipped. That reuses the field
   CL3 keeps, needs no judgment, and is a fitting last use of the tag data before it goes inert. Where a

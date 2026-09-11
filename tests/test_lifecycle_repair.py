@@ -455,6 +455,318 @@ class TestTheFilesOwnBytesSurvive:
         assert "SCOPE ROLLUPS" not in text
 
 
+#: The shapes `build_state.test_tracking` actually takes, drawn from a survey of
+#: every governed product carrying it (2026-08-14). They are fixtures rather than
+#: one invented example because the block's membership is the whole risk: the
+#: field it was named for is the *sole* member in exactly one product, and a
+#: removal tuned to that one shape would leave the other seven untouched.
+TT_SOLE_MEMBER = """\
+project: demo
+
+build_state:
+  source_root: "app/"
+
+  test_tracking:
+    test_count: 27414  # 2026-08-14: python 23549 + web 3242 + activity 623
+    # CORRECTED 2026-07-30: three successive edits recorded the *passed* tally
+    #   instead of the collected count, leaving this field 26 low.
+
+active_build_plan: artifacts/build-plan.md
+"""
+
+TT_WITH_SIBLINGS = """\
+project: demo
+
+build_state:
+  source_root: "src/"
+
+  test_tracking:
+    test_count: 1724
+    assertion_count: 4102
+    test_files: 118
+    history:
+      - tests_added: 24
+        date: 2026-08-14
+      - tests_added: 11
+        date: 2026-08-13
+
+  spec_compliance: partial
+  reviews:
+    last: 2026-08-01
+
+active_build_plan: artifacts/build-plan.md
+"""
+
+
+class TestRetiredTestTrackingBlock:
+    """The block is removed whole, not member by member.
+
+    Every member measured across the fleet — ``test_count``, ``assertion_count``,
+    ``test_files``, and a ``history`` of per-chunk ``tests_added`` entries — is
+    hand-maintained bookkeeping of a fact ``.test-evidence.json`` already holds,
+    and nothing in the runtime reads any of them. Removing only the field the
+    backlog item was named for would fully clean one product and leave the same
+    treadmill running in seven.
+
+    The mechanics differ from the two retired keys above in one way that matters:
+    this key is **nested**, so neither the column-0 predicate nor the column-0
+    block span applies to it.
+    """
+
+    def test_removes_the_whole_block_when_test_count_is_its_only_member(
+        self, tmp_path: Path
+    ) -> None:
+        repo = _make_repo(tmp_path, state=TT_SOLE_MEMBER)
+        lifecycle_repair.apply_repair(repo, lifecycle_repair.plan_repair(repo))
+        text = (repo / ".prawduct" / "project-state.yaml").read_text()
+
+        assert "test_tracking" not in text
+        assert "test_count" not in text
+        # The trailing provenance comments live INSIDE the block, indented under
+        # it. A span that stopped at the last `key: value` line would leave them
+        # orphaned under `source_root`, attributing them to the wrong key.
+        assert "CORRECTED" not in text
+
+    def test_removes_the_whole_block_when_it_carries_other_members(
+        self, tmp_path: Path
+    ) -> None:
+        """The case the parent item originally carved out.
+
+        ``history`` nests a list of mappings two levels deeper than the key, so a
+        span that stopped at the first line back at the members' indent would cut
+        the block in half and leave a bare ``- tests_added:`` list behind.
+        """
+        repo = _make_repo(tmp_path, state=TT_WITH_SIBLINGS)
+        lifecycle_repair.apply_repair(repo, lifecycle_repair.plan_repair(repo))
+        text = (repo / ".prawduct" / "project-state.yaml").read_text()
+
+        for member in ("test_tracking", "test_count", "assertion_count", "test_files"):
+            assert member not in text, f"{member} survived the block removal"
+        assert "tests_added" not in text
+        assert "2026-08-13" not in text
+
+    def test_the_blocks_siblings_survive(self, tmp_path: Path) -> None:
+        """``source_root`` is the reason the parent is never left empty.
+
+        It is read in ten places and sits *beside* ``test_tracking`` under
+        ``build_state``, never inside it. ``spec_compliance`` and ``reviews``
+        follow the block, so a span walking too far forward takes them.
+        """
+        repo = _make_repo(tmp_path, state=TT_WITH_SIBLINGS)
+        lifecycle_repair.apply_repair(repo, lifecycle_repair.plan_repair(repo))
+        text = (repo / ".prawduct" / "project-state.yaml").read_text()
+
+        assert "build_state:" in text
+        assert 'source_root: "src/"' in text
+        assert "spec_compliance: partial" in text
+        assert "reviews:" in text
+        assert "last: 2026-08-01" in text
+        assert "active_build_plan: artifacts/build-plan.md" in text
+
+    def test_a_test_tracking_under_some_other_parent_is_left_alone(
+        self, tmp_path: Path
+    ) -> None:
+        """The nested predicate resolves the ENCLOSING key, not the name.
+
+        This is the nested restatement of ``_is_top_level_key``'s own rule: a key
+        under a mapping this repair knows nothing about belongs to that mapping.
+        """
+        repo = _make_repo(
+            tmp_path,
+            state=(
+                "project: demo\n"
+                "vendor_metrics:\n"
+                "  test_tracking:\n"
+                "    test_count: 9\n"
+                "build_state:\n"
+                '  source_root: "src/"\n'
+            ),
+        )
+        assert lifecycle_repair.plan_repair(repo)["edits"] == []
+
+    def test_a_top_level_test_tracking_is_left_alone(self, tmp_path: Path) -> None:
+        """No product writes one, and inventing a removal for a shape nothing has
+        is how a repair acquires a blast radius nobody reviewed."""
+        repo = _make_repo(
+            tmp_path, state="project: demo\ntest_tracking:\n  test_count: 9\n"
+        )
+        assert lifecycle_repair.plan_repair(repo)["edits"] == []
+
+    def test_the_span_does_not_depend_on_the_blocks_size(
+        self, tmp_path: Path
+    ) -> None:
+        """The worst real instance is 343 lines, one of them 52 KB.
+
+        Nothing in the span logic is length-sensitive, so this pins the property
+        rather than the instance: a block an order of magnitude larger, with a
+        pathologically long line in it, is still bounded by the first line back
+        at the key's own indent.
+        """
+        body = "".join(f"    entry_{i}: {i}\n" for i in range(400))
+        repo = _make_repo(
+            tmp_path,
+            state=(
+                "build_state:\n"
+                '  source_root: "src/"\n'
+                "  test_tracking:\n"
+                "    test_count: 27414  # " + ("x" * 50_000) + "\n"
+                + body
+                + "  spec_compliance: partial\n"
+            ),
+        )
+        lifecycle_repair.apply_repair(repo, lifecycle_repair.plan_repair(repo))
+        text = (repo / ".prawduct" / "project-state.yaml").read_text()
+
+        assert "test_tracking" not in text
+        assert "entry_399" not in text, "the span stopped short of the block's end"
+        assert "x" * 100 not in text
+        assert 'source_root: "src/"' in text
+        assert "spec_compliance: partial" in text
+
+    def test_a_prose_mention_of_the_block_elsewhere_survives(
+        self, tmp_path: Path
+    ) -> None:
+        """Found in a real product's state file, not imagined.
+
+        One repo records, under an unrelated key, that *"build_state.test_tracking
+        was stale (0 tests recorded vs 17 actual) — corrected during migration"*.
+        That is history about the field, held somewhere else; removing the field
+        must not remove the record of what it cost. The predicate matches a key
+        (``^\\s+test_tracking:``), never the name in a value, which is what makes
+        this hold — so it is pinned rather than left to that detail.
+        """
+        note = (
+            '        - description: "build_state.test_tracking was stale '
+            '(0 recorded vs 17 actual) — corrected during migration"\n'
+        )
+        repo = _make_repo(
+            tmp_path,
+            state=(
+                "build_state:\n"
+                '  source_root: "src/"\n'
+                "  test_tracking:\n"
+                "    test_count: 18\n\n"
+                "migration_notes:\n"
+                "  entries:\n"
+                "    - date: 2026-01-01\n"
+                "      findings:\n" + note
+            ),
+        )
+        lifecycle_repair.apply_repair(repo, lifecycle_repair.plan_repair(repo))
+        text = (repo / ".prawduct" / "project-state.yaml").read_text()
+
+        assert "  test_tracking:\n" not in text, "the block itself survived"
+        assert "test_count" not in text
+        assert "corrected during migration" in text, "ate a record of the field's cost"
+
+    def test_running_twice_changes_nothing_the_second_time(
+        self, tmp_path: Path
+    ) -> None:
+        repo = _make_repo(tmp_path, state=TT_WITH_SIBLINGS)
+        lifecycle_repair.apply_repair(repo, lifecycle_repair.plan_repair(repo))
+        after_first = (repo / ".prawduct" / "project-state.yaml").read_bytes()
+
+        second = lifecycle_repair.plan_repair(repo)
+        assert second["edits"] == []
+        lifecycle_repair.apply_repair(repo, second)
+        assert (repo / ".prawduct" / "project-state.yaml").read_bytes() == after_first
+
+    def test_the_section_banner_above_the_block_goes_with_it(
+        self, tmp_path: Path
+    ) -> None:
+        """The comment walk-back is reused unchanged, and its bound still holds:
+        it stops at ``source_root``, which is content."""
+        repo = _make_repo(
+            tmp_path,
+            state=(
+                "project: demo\n\n"
+                "build_state:\n"
+                '  source_root: "src/"\n\n'
+                "  # ---------------------------------------------------------\n"
+                "  # TEST TRACKING — hand-maintained, corrected on every merge\n"
+                "  # ---------------------------------------------------------\n"
+                "  test_tracking:\n"
+                "    test_count: 1724\n\n"
+                "  spec_compliance: partial\n"
+            ),
+        )
+        lifecycle_repair.apply_repair(repo, lifecycle_repair.plan_repair(repo))
+        text = (repo / ".prawduct" / "project-state.yaml").read_text()
+
+        assert "TEST TRACKING" not in text, "a heading left standing over a hole"
+        assert 'source_root: "src/"' in text
+        assert "spec_compliance: partial" in text
+
+    def test_it_coexists_with_the_two_column_zero_removals(
+        self, tmp_path: Path
+    ) -> None:
+        """Removals are applied in descending order so one cannot shift another's
+        indices. A nested span lands between the two column-0 ones here, which is
+        the ordering case a single-key fixture cannot reach."""
+        repo = _make_repo(
+            tmp_path,
+            state=(
+                "project: demo\n\n"
+                "views_enabled: true\n\n"
+                "build_state:\n"
+                '  source_root: "src/"\n'
+                "  test_tracking:\n"
+                "    test_count: 1724\n\n"
+                "scope_rollups:\n"
+                "  alpha:\n"
+                '    chunks: ["01"]\n\n'
+                "trailing_key: kept\n"
+            ),
+        )
+        lifecycle_repair.apply_repair(repo, lifecycle_repair.plan_repair(repo))
+        text = (repo / ".prawduct" / "project-state.yaml").read_text()
+
+        for gone in ("views_enabled", "scope_rollups", "test_tracking", "test_count"):
+            assert gone not in text
+        assert "project: demo" in text
+        assert 'source_root: "src/"' in text
+        assert "trailing_key: kept" in text
+
+    def test_crlf_line_endings_are_preserved(self, tmp_path: Path) -> None:
+        """The nested span is a new caller of the same write path, so it inherits
+        the obligation the module already carries: a repair that promises to
+        remove one block must not rewrite every line in a product's file."""
+        repo = _make_repo(
+            tmp_path,
+            state=(
+                "project: demo\r\n\r\n"
+                "build_state:\r\n"
+                '  source_root: "src/"\r\n'
+                "  test_tracking:\r\n"
+                "    test_count: 1724\r\n\r\n"
+                "trailing_key: kept\r\n"
+            ),
+        )
+        lifecycle_repair.apply_repair(repo, lifecycle_repair.plan_repair(repo))
+        raw = (repo / ".prawduct" / "project-state.yaml").read_bytes()
+
+        assert b"test_tracking" not in raw
+        assert b'source_root: "src/"' in raw
+        assert raw.count(b"\n") == raw.count(b"\r\n"), "a bare LF appeared in a CRLF file"
+
+    def test_the_reason_names_where_the_fact_actually_lives(
+        self, tmp_path: Path
+    ) -> None:
+        """An operator reading the preview decides on the reason text alone.
+
+        "Nothing reads it" is not actionable on its own — the answer they need is
+        what to consult instead, which is why the reason names the evidence store.
+        """
+        repo = _make_repo(tmp_path, state=TT_SOLE_MEMBER)
+        edits = [
+            edit
+            for edit in lifecycle_repair.plan_repair(repo)["edits"]
+            if edit["kind"] == "state-key"
+        ]
+        assert len(edits) == 1
+        assert "evidence" in edits[0]["reason"].lower()
+
+
 class TestCrlfSurvivesTheCommentStripToo:
     """The third edit kind. Structurally identical to the other two, but the
     fixture that would have caught the original defect did not exist for it."""

@@ -39,7 +39,7 @@ def _hook_module():
 
     SourceFileLoader because the script has a shebang and no ``.py`` extension;
     the module name is not ``__main__``, so its CLI dispatch does not run at
-    import. Same idiom as ``test_bug_inbox.py``.
+    import. Same idiom as ``test_hook_session_file_registry.py``.
     """
     loader = importlib.machinery.SourceFileLoader("prawduct_hook_ephemeral", str(HOOK))
     spec = importlib.util.spec_from_loader("prawduct_hook_ephemeral", loader)
@@ -95,9 +95,31 @@ def _add_worktree(repo: Path, dest: Path, branch: str) -> Path:
 
 
 def _agent_worktree(repo: Path, wid: str = "a287823214767feaa") -> Path:
-    """The shape Claude Code's Agent tool produces, as observed in the field."""
+    """The shape Claude Code's Agent tool produces, as observed in the field.
+
+    Both halves are the harness's own: the `agent-<hex>` directory AND the
+    `worktree-agent-<hex>` scratch branch. That pairing is what makes the tree
+    disposable, so this fixture is the DISPOSABLE case specifically — see
+    :func:`_agent_worktree_on_named_branch` for the agent-path tree that is not.
+    """
     return _add_worktree(
         repo, repo / ".claude" / "worktrees" / f"agent-{wid}", f"worktree-agent-{wid}"
+    )
+
+
+def _agent_worktree_on_named_branch(
+    repo: Path, branch: str = "fix/real-thing", wid: str = "b391f7c0d2e84a15c"
+) -> Path:
+    """An agent-path worktree holding a REAL named branch (#648).
+
+    The field shape that path-only classification got wrong: four concurrent
+    agents in one devcontainer, each with a durable branch checked out under
+    `.claude/worktrees/agent-*` (brookstalley/discodon#2213). Nothing about
+    such a tree is disposable — the branch is what lands, and it carries the
+    whole tree including `.prawduct/`.
+    """
+    return _add_worktree(
+        repo, repo / ".claude" / "worktrees" / f"agent-{wid}", branch
     )
 
 
@@ -166,6 +188,80 @@ class TestPredicatePositive:
             "worktree-agent-a287823214767feaa",
         )
         assert gitstate.is_ephemeral_worktree(wt) == "agent"
+
+
+class TestBranchIdentityDecides:
+    """#648 — the discriminator is what carries the write out, not the path.
+
+    #594 closed a real defect: an `isolation: "worktree"` agent's code commit
+    returns while its `.prawduct/` write dies at the merge, so the write is
+    stranded and the agent is told it succeeded. That separation is what makes
+    a tree disposable — and it exists only for the harness's own scratch
+    branch. On a REAL named branch the two are inseparable: the branch is what
+    lands, so a `.prawduct/` write on it is carried; and if the branch is
+    discarded the code goes with it, leaving nothing silently ungoverned.
+
+    Classifying on the directory alone conflated the two and made the Critic
+    gate unsatisfiable for every durable branch worked in an agent worktree.
+    """
+
+    def test_agent_path_on_a_named_branch_is_not_ephemeral(self, tmp_path, gitstate):
+        """THE #648 regression."""
+        primary = tmp_path / "primary"
+        _init_repo(primary)
+        wt = _agent_worktree_on_named_branch(primary)
+        assert gitstate.is_ephemeral_worktree(wt) is None
+
+    def test_agent_path_on_the_scratch_branch_is_still_ephemeral(self, tmp_path, gitstate):
+        """The other half — #594's defect must not reopen."""
+        primary = tmp_path / "primary"
+        _init_repo(primary)
+        assert gitstate.is_ephemeral_worktree(_agent_worktree(primary)) == "agent"
+
+    def test_workflow_path_stays_path_only_regardless_of_branch(self, tmp_path, gitstate):
+        """A workflow stage gets no named branch of its own, so for `wf_*` the
+        path IS the identity. Adding the branch conjunct there would classify
+        every workflow worktree as durable and reopen #594 for all of them."""
+        primary = tmp_path / "primary"
+        _init_repo(primary)
+        wt = _add_worktree(
+            primary, primary / ".claude" / "worktrees" / "wf_abc123", "feat/looks-real"
+        )
+        assert gitstate.is_ephemeral_worktree(wt) == "workflow"
+
+    def test_agent_path_with_detached_head_is_ephemeral(self, tmp_path, gitstate):
+        """Fail closed. A detached HEAD has no branch to carry a write out, so
+        the restrictive answer is the correct one — and it is also what an
+        unreadable-git probe degrades to, which must not become an accidental
+        way to unlock the guard."""
+        primary = tmp_path / "primary"
+        _init_repo(primary)
+        wt = _agent_worktree_on_named_branch(primary, branch="tmp/detach-me")
+        _git(wt, "checkout", "--detach", "--quiet")
+        assert gitstate.is_ephemeral_worktree(wt) == "agent"
+
+    @pytest.mark.parametrize("branch", [17, b"fix/bytes", object(), True, []])
+    def test_a_non_string_branch_normalizes_to_absent_in_the_decision_body(
+        self, gitstate, branch
+    ):
+        """`ephemeral_kind_of` guards BOTH its arguments, not just `path`.
+
+        The function already defends `path` with `try/except TypeError`; before
+        this it passed `branch` straight to a regex, so a non-string raised
+        from a lib whose convention is to answer rather than raise. Every live
+        caller normalized first, which is exactly the arrangement that outlives
+        the caller who remembers to.
+
+        The normalized answer is ABSENT, not "not ephemeral" — a malformed
+        field lands on the restrictive side, so it can never promote a
+        disposable tree to durable. Asserted against the agent path, where the
+        two answers actually differ (`"agent"` vs `None`); on a non-worktree
+        path both branches return `None` and the test would pass vacuously.
+        """
+        agent_path = "/repo/.claude/worktrees/agent-abc123"
+        assert gitstate.ephemeral_kind_of(agent_path, branch) == "agent"
+        assert gitstate.ephemeral_kind_of(agent_path, None) == "agent"
+        assert gitstate.ephemeral_kind_of(agent_path, "fix/real-thing") is None
 
 
 class TestPredicateNegative:
@@ -354,6 +450,74 @@ class TestGuardRefusesWrites:
         assert "BLOCKED" in result.stderr
         assert "ephemeral agent worktree" in result.stderr
 
+    @pytest.mark.parametrize(
+        "argv",
+        [
+            ("critic-begin", "--mode", "chunk"),
+            ("advisory", "dismiss", "some-id"),
+            ("disposition", "rev-x", "F1", "--accept", "why"),
+            ("learnings-obligation", "--apply"),
+            ("test-evidence", "record"),
+        ],
+    )
+    def test_state_writers_proceed_on_a_named_branch(self, tmp_path, argv):
+        """#648 — the same writers the guard refuses on a scratch branch must
+        reach their own logic on a durable one.
+
+        Asserts the REFUSAL did not fire, not that the command succeeded: every
+        one of these still exits nonzero here for its own reasons (no active
+        review, no such advisory). Conflating the two is how the mirror-image
+        test in `test_state_writers_refuse` was found vacuous.
+
+        Matched on `BLOCKED: refusing`, not on the bare phrase "ephemeral agent
+        worktree" — that phrase also occurs in the HEAD-snapshot NOTICE, so the
+        looser assertion forbade the notice as well, which is precisely the
+        regression this change had to avoid. An assertion whose wording quietly
+        covers a second, wanted behaviour is how that behaviour gets deleted.
+        """
+        primary = tmp_path / "primary"
+        _init_repo(primary)
+        wt = _agent_worktree_on_named_branch(primary)
+
+        stderr = _run(wt, *argv).stderr
+
+        assert "BLOCKED" not in stderr
+        assert "refusing" not in stderr
+
+    def test_a_durable_agent_worktree_still_gets_the_snapshot_notice(self, tmp_path):
+        """The refusal and the notice answer DIFFERENT questions — "may I write
+        here" versus "how old is what I am reading" — and only the first one
+        stops applying on a named branch. The tree is still one the harness
+        forked from a commit, so the dispatching session's uncommitted
+        artifacts are exactly as invisible in it as in a disposable one.
+        """
+        primary = tmp_path / "primary"
+        _init_repo(primary)
+        wt = _agent_worktree_on_named_branch(primary)
+
+        stderr = _run(wt, "test-evidence", "record", "--from-counts",
+                      "passed=1", "failed=0", "skipped=0").stderr
+
+        assert "snapshot of the commit it was forked from" in stderr
+        # ...and it must not call a durable tree ephemeral while doing so.
+        assert "ephemeral" not in stderr
+
+    def test_an_enter_worktree_session_gets_no_notice(self, tmp_path):
+        """Scope pin. The notice addresses trees the HARNESS forked for an
+        agent; an `EnterWorktree` session worktree is the user's own and has
+        never carried it. Widening that population is a separate decision, not
+        a side effect of #648."""
+        primary = tmp_path / "primary"
+        _init_repo(primary)
+        wt = _add_worktree(
+            primary, primary / ".claude" / "worktrees" / "my-feature", "feat/mine"
+        )
+
+        stderr = _run(wt, "test-evidence", "record", "--from-counts",
+                      "passed=1", "failed=0", "skipped=0").stderr
+
+        assert "snapshot of the commit it was forked from" not in stderr
+
     def test_unknown_command_refuses_fail_closed(self, tmp_path):
         """The allowlist is of READS, so a command added later defaults to
         refused here rather than to a silent strand."""
@@ -363,6 +527,53 @@ class TestGuardRefusesWrites:
         result = _run(wt, "some-future-write-command")
         assert result.returncode == 1
         assert "BLOCKED" in result.stderr
+
+
+class TestConcurrentLanesDoNotCollide:
+    """#649's decider — and the reason #649 closes rather than gets built.
+
+    The upstream report (brookstalley/discodon#2213 §B3) read this as a
+    single-slot defect in `.test-evidence.json`: last writer defines the record,
+    so a gate vouches for a tree nobody ran. The slot is real, but it is not
+    shared — `gates.get_prawduct_dir` is `project_dir / ".prawduct"`, and
+    STH-4K7N already resolves `project_dir` per worktree. The overwriting was a
+    SYMPTOM of the guard: agent worktrees could not write their own
+    `.prawduct/` at all, so every lane's evidence funnelled into the one clone.
+
+    Once the classification is right, lanes separate with no format change. If
+    this test ever fails, #649 is a real defect after all and this is the
+    concrete failure to build against.
+    """
+
+    def test_two_agent_lanes_keep_independent_test_evidence(self, tmp_path):
+        primary = tmp_path / "primary"
+        _init_repo(primary)
+        lane_a = _agent_worktree_on_named_branch(
+            primary, branch="fix/lane-a", wid="aaaa1111bbbb2222c"
+        )
+        lane_b = _agent_worktree_on_named_branch(
+            primary, branch="fix/lane-b", wid="cccc3333dddd4444e"
+        )
+
+        for lane, passed in ((lane_a, "11"), (lane_b, "22")):
+            result = _run(
+                lane, "test-evidence", "record",
+                "--from-counts", f"passed={passed}", "failed=0", "skipped=0",
+            )
+            assert result.returncode == 0, result.stderr
+
+        import json
+
+        def _passed(tree: Path) -> int:
+            return json.loads(
+                (tree / ".prawduct" / ".test-evidence.json").read_text()
+            )["passed"]
+
+        assert _passed(lane_a) == 11
+        assert _passed(lane_b) == 22
+        # The clone collects nothing — the failure mode the report described is
+        # each lane overwriting one shared record, which would show up here.
+        assert not (primary / ".prawduct" / ".test-evidence.json").exists()
 
 
 class TestGuardAllowsReads:
@@ -422,6 +633,14 @@ class TestGuardAllowsReads:
         assert "your prompt is newer" in stderr
 
 
+def _all_backlog_ops():
+    """The op tuple the CLI dispatches from — so a new op inherits the help rule."""
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "plugin"))
+    from lib.backlog import cli
+    return cli._ALL_OPS
+
+
 class TestBacklogOpClassificationIsBound:
     """The guard's backlog tables must stay a PARTITION of the CLI's op surface.
 
@@ -441,8 +660,15 @@ class TestBacklogOpClassificationIsBound:
 
     #: Ops that only ever talk to the service — no local write, so they cannot
     #: strand and the service-backed allowance covers them correctly.
+    #: `file-upstream` is here on the same test — no local write, so it cannot
+    #: strand — even though its target is prawduct's own public tracker rather
+    #: than the product's service. The guard asks one question and that is it.
+    #: Whether an agent worktree should be filing upstream at all is a different
+    #: control with a different answer (the op is attended-only, and `cli._WRITE_OPS`
+    #: withholds it under an unattended trigger); classifying it as a local write
+    #: here to get that effect would misdescribe what it touches.
     SERVICE_ONLY = frozenset({
-        "file", "status", "update", "comment",
+        "file", "file-upstream", "status", "update", "comment",
         "link", "unlink", "provision", "reconcile-labels", "merge",
     })
 
@@ -484,6 +710,91 @@ class TestBacklogOpClassificationIsBound:
             f"{a} and {b} both claim an op — one of them is wrong about whether "
             "it writes into this tree"
         )
+
+    @pytest.mark.parametrize("op", sorted(_all_backlog_ops()))
+    def test_help_is_a_read_for_every_op_on_every_backend(self, op, tmp_path):
+        """Usage is never a write, whatever it is usage FOR.
+
+        The guard classifies by the first positional, and `--help` is not one — so
+        without an explicit rule `backlog import --help` reads as the local-writing
+        `import` on every backend, and `backlog file --help` falls through to the
+        fail-closed remainder on a markdown-backend repo. Both are refusals of a
+        command that prints text and exits.
+
+        This is worth a rule rather than an accepted rough edge because of what the
+        referent is for: the adapter's instruction surface bounds a model to "the ops
+        in the usage table `backlog --help` prints". A bound whose referent cannot be
+        reached is not a bound, and the agent likeliest to hit the refusal is one
+        working in a worktree it did not create — the case where guessing the op set
+        is least safe. The adapter answers `--help` before dispatching an op or
+        parsing a flag; this asserts the guard agrees with it.
+        """
+        hook = _hook_module()
+        for service_backed in (True, False):
+            project = tmp_path / f"svc-{service_backed}"
+            (project / ".prawduct").mkdir(parents=True, exist_ok=True)
+            state = "backlog_format_version: 2\n"
+            if service_backed:
+                state += "backlog_service_repo: owner/repo\n"
+            (project / ".prawduct" / "project-state.yaml").write_text(state)
+
+            assert hook._ephemeral_command_writes("backlog", [op, "--help"], project) is False, (
+                f"`backlog {op} --help` classified as a write on a "
+                f"{'service-backed' if service_backed else 'markdown-backend'} repo"
+            )
+
+    def test_a_help_token_in_a_value_slot_is_still_a_write(self, tmp_path):
+        """The guard and the adapter must agree on what a help request IS.
+
+        A membership test here would call `backlog import --from --help` a read while
+        the adapter treats it as a real import — `--help` fills `--from`'s value slot —
+        and the disagreement resolves the unsafe way: a local write waved through in a
+        tree that discards it, with the caller told it succeeded. The guard asks the
+        adapter instead of re-spelling the rule, so there is one answer.
+        """
+        hook = _hook_module()
+        project = tmp_path / "markdown"
+        (project / ".prawduct").mkdir(parents=True)
+        (project / ".prawduct" / "project-state.yaml").write_text("backlog_format_version: 2\n")
+
+        assert hook._ephemeral_command_writes(
+            "backlog", ["import", "--from", "--help"], project
+        ) is True, (
+            "`--help` in a value slot read as a help request — the adapter would run "
+            "the import, and the guard would have let it strand"
+        )
+
+    def test_the_guard_asks_the_adapter_rather_than_re_spelling_its_rule(self):
+        """One predicate, so the two cannot drift into disagreeing.
+
+        The guard decides whether to refuse a call before the runner ever sees it. If
+        it carries its own notion of what a help request is, the two can disagree —
+        and the disagreement resolves the unsafe way, since the guard is the one that
+        can wave a write through. Asserting the call site rather than the behaviour is
+        deliberate: behaviour tests pass while two copies happen to agree, which is
+        exactly the state that precedes the drift.
+        """
+        source = Path(_hook_module().__file__).read_text(encoding="utf-8")
+        assert "_backlog_cli.is_help_request(argv)" in source, (
+            "the guard no longer asks the adapter's published predicate — if it has "
+            "started deciding for itself what a help request is, the two can disagree"
+        )
+        assert "_take_global_flag" not in source, (
+            "the guard reaches into the adapter's private helper; use the published "
+            "`is_help_request` so the rule has one home"
+        )
+
+    def test_a_real_op_is_still_classified_when_help_is_absent(self, tmp_path):
+        """The floor under the test above: without `--help`, the ops it exercises are
+        still judged on their merits. A rule that made every backlog call a read
+        would satisfy the parametrized test and destroy the guard."""
+        hook = _hook_module()
+        project = tmp_path / "markdown"
+        (project / ".prawduct").mkdir(parents=True)
+        (project / ".prawduct" / "project-state.yaml").write_text("backlog_format_version: 2\n")
+
+        assert hook._ephemeral_command_writes("backlog", ["import"], project) is True
+        assert hook._ephemeral_command_writes("backlog", ["file"], project) is True
 
     def test_the_op_surface_is_the_one_the_unknown_op_message_names(self):
         """`_ALL_OPS` builds that message, so it cannot go stale silently — this

@@ -36,10 +36,17 @@ import subprocess
 import sys
 from pathlib import Path
 
+from .change_log import CHANGE_LOG_REL_PATH
 from .core import read_str_yaml_key
 
 _BASE_BRANCH_KEY = "base_branch"
 _DEFAULT_BASE_CANDIDATES = ("origin/main", "main", "HEAD~1")
+
+#: Branch names the historical candidate list already answers correctly.
+#: ``origin/HEAD`` is only *preferred* when it points somewhere else, which
+#: keeps the consultation strictly additive: a trunk repo resolves exactly the
+#: ref it resolved before, by the same first candidate.
+_MAIN_FAMILY = frozenset({"main", "master"})
 
 
 def _git_ref_exists(project_dir: Path, ref: str) -> bool:
@@ -54,6 +61,31 @@ def _git_ref_exists(project_dir: Path, ref: str) -> bool:
     return proc.returncode == 0
 
 
+def _origin_head_ref(project_dir: Path) -> "str | None":
+    """The remote's own default branch as ``origin/<b>``, or ``None``.
+
+    ``refs/remotes/origin/HEAD`` is what ``clone`` writes and what
+    ``git remote set-head`` repairs; it is the only place a clone records which
+    branch the REMOTE integrates onto. It is frequently absent (a repo created
+    by ``init`` + ``remote add``, a clone from an older git, a fetch-only
+    mirror), so every failure here is a plain ``None`` and the caller falls
+    through to the historical candidate list.
+    """
+    proc = subprocess.run(
+        ["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
+        cwd=str(project_dir),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if proc.returncode != 0:
+        return None
+    ref = proc.stdout.strip()
+    if not ref.startswith("origin/") or ref == "origin/":
+        return None
+    return ref
+
+
 def _resolve_base_branch(project_dir: Path) -> tuple[str | None, str]:
     """Resolve the git diff/merge base, honoring a configured ``base_branch:``.
 
@@ -66,8 +98,53 @@ def _resolve_base_branch(project_dir: Path) -> tuple[str | None, str]:
     branch becomes the base; ``origin/<b>`` is preferred over the bare ``<b>``
     for a stable remote-tracking merge-base. A configured-but-unresolvable base
     fails closed (returns None) so the misconfiguration surfaces rather than
-    silently diffing the wrong range. When the knob is unset, falls back to the
-    historical candidate list, so trunk repos are unaffected.
+    silently diffing the wrong range.
+
+    **Unconfigured, the remote is asked before the guess (#254).** The knob is
+    the authority when set, but an unset knob used to jump straight to a
+    ``main``-first guess — so a gitflow repo that never ran ``/prawduct:doctor``
+    got every gate anchored to ``merge-base(main, HEAD)``, the whole
+    ``develop..main`` promotion delta, silently. ``refs/remotes/origin/HEAD``
+    is the one place a clone records what the REMOTE integrates onto, so it is
+    consulted first and preferred when it names something outside the
+    ``main`` family. That last condition is what keeps this additive: where
+    ``origin/HEAD`` says ``main``, the historical list already resolves the
+    same ref, so a trunk repo's answer is byte-for-byte what it was. Everything
+    about the consultation degrades to ``None`` — an absent ``origin/HEAD`` (an
+    ``init`` + ``remote add`` repo, an older clone) simply falls through.
+
+    It is a fallback, not a fix for the missing knob: it cannot see a repo whose
+    remote default is ``main`` while its integration branch is ``develop``.
+    Onboarding still owes a written ``base_branch:``; this stops the silent
+    wrong answer in the meantime.
+
+    **``origin/<b>`` stays the base even when local ``<b>`` is ahead of it and
+    is an ancestor of HEAD — decided NO, #311.** The case for switching is real:
+    anchoring to the stale remote makes a feature built on unpushed integration
+    commits read as spanning the whole unshipped range, so a composition gate
+    can report ``uncovered`` over work whose every commit carries a clean review
+    fact (COV-7K4N). Preferring the nearer local ref would remove that at the
+    root. It is refused on two counts.
+
+    - *Fail-open.* The commits in ``origin/<b>..<b>`` are inside the audited
+      span today and would be outside it after the change. A commit made
+      straight onto local ``develop`` — no branch, no review fact — would stop
+      being audited by **every** gate that resolves a base. A gate may not
+      narrow what it audits on the strength of where an operator's unpushed
+      work happens to sit.
+    - *Stability.* ``origin/<b>`` is the same value in every clone and every
+      worktree of the clone; local ``<b>`` is not. Two agents on one branch
+      would resolve different bases and reach different verdicts, and
+      ``verdict_cache`` keys on the base tree, so a per-worktree base also
+      un-shares the memo the store is expensive enough to need.
+
+    What pays for the case instead is already shipped and is the cheaper half:
+    :func:`diagnose_stale_remote_base` names the condition and
+    ``stale_base_probes`` nudges before the gate is hit, both prescribing
+    ``git push origin <b>`` — a required release step anyway, which
+    fast-forwards the remote and re-anchors the merge-base to exactly the tree
+    the rejected change would have chosen. Nothing is lost, only deferred to an
+    action the release flow already demands.
 
     Returns ``(base, base)`` on success or ``(None, reason)`` on failure — the
     same contract the gate callers already destructure.
@@ -83,6 +160,11 @@ def _resolve_base_branch(project_dir: Path) -> tuple[str | None, str]:
             f"configured base_branch {configured!r} not found "
             f"(tried origin/{configured}, {configured})"
         )
+
+    origin_head = _origin_head_ref(project_dir)
+    if origin_head and origin_head[len("origin/"):] not in _MAIN_FAMILY:
+        if _git_ref_exists(project_dir, origin_head):
+            return origin_head, origin_head
 
     for candidate in _DEFAULT_BASE_CANDIDATES:
         if _git_ref_exists(project_dir, candidate):
@@ -171,8 +253,7 @@ def diagnose_fix_churn(
     head_tree: str,
     base_tree: str,
     merge_base: str,
-    diff_fn,
-    key_fn,
+    verdict_fn,
 ) -> "dict | None":
     """Detect the gap a builder dug for themselves: **the whole uncovered span**
     is a review of this branch, plus edits confined to files that review's own
@@ -245,9 +326,9 @@ def diagnose_fix_churn(
     the diagnosis ran and this is not churn; ``unavailable`` means it could not
     run, which the caller says out loud so a control that never fires can be
     told apart from one that never ran. Never raises — *given* its arguments:
-    ``diff_fn`` and ``key_fn`` are required, deliberately, so that omitting one
-    is a ``TypeError`` at the call site rather than the silent slow path this
-    diagnosis cannot afford (see the comment at the ``coverage_verdict`` call).
+    ``verdict_fn`` is required, deliberately, so that omitting it is a
+    ``TypeError`` at the call site rather than the silent slow path this
+    diagnosis cannot afford (see the comment at its call).
     """
     from . import coverage_algebra, evidence  # noqa: PLC0415 -- lazy: matches diagnose_stale_remote_base's import posture; avoids an import cycle at module load
 
@@ -319,23 +400,21 @@ def diagnose_fix_churn(
     # Everything below the anchor must already compose, or the gap is not the
     # last leg and the remedy this feeds would not close it.
     #
-    # `diff_fn`/`key_fn` are threaded in and REQUIRED rather than defaulted:
-    # without a `key_fn`, `_find_path` takes the pairwise free-edge branch,
-    # which `_tree_key_fn`'s own docstring measures on this repo's store at
-    # ~5.6k `git diff` subprocesses — twice per verdict, with no memo between
-    # the passes. This runs on the interactive `/prawduct:pr create` path,
-    # inside a diagnosis the gate message calls "the cheap check", so it has to
-    # use the n-key form every other gate uses. A caller that forgets one is a
-    # `TypeError` at the call site, which is the failure a maintainer can see —
-    # the defaults made it a silent ~5-minute hang instead.
-    upstream = coverage_algebra.coverage_verdict(
-        facts, base_tree, anchor_tree, diff_fn, key_fn
-    )
-    # Known gap, accepted: a `diff_fn` that fails renders here as "nothing
-    # composes", the same shape the status split above exists to separate.
-    # Distinguishing them needs the failure surfaced through `coverage_verdict`
-    # itself, which every gate shares — a wider change than this diagnosis, and
-    # the failure direction is the safe one (silence, not a false claim).
+    # `verdict_fn` is threaded in and REQUIRED rather than defaulted. It carries
+    # both properties this call cannot do without: the n-key free-edge form (the
+    # pairwise fallback measures at ~5.6k `git diff` subprocesses on this repo's
+    # store, twice per verdict), and the cross-call memo — this runs on the
+    # interactive `/prawduct:pr create` path, inside a diagnosis the gate message
+    # calls "the cheap check". A caller that forgets it is a `TypeError` at the
+    # call site, which is the failure a maintainer can see; a default made it a
+    # silent multi-minute hang instead.
+    upstream = verdict_fn(facts, base_tree, anchor_tree)
+    # Known gap, accepted: a git failure inside the verdict renders here as
+    # "nothing composes", the same shape the status split above exists to
+    # separate. Distinguishing them needs the failure surfaced through
+    # `coverage_verdict` itself, which every gate shares — a wider change than
+    # this diagnosis, and the failure direction is the safe one (silence, not a
+    # false claim).
     if upstream.get("status") != "covered":
         return None
 
@@ -366,6 +445,205 @@ def diagnose_fix_churn(
         "warning": counts.get("warning", 0),
         "note": counts.get("note", 0),
     }
+
+
+def diagnose_base_advance_transfer(
+    project_dir: Path,
+    facts: "list[dict]",
+    base_tree: str,
+    head_tree: str,
+    diff_fn,
+    verdict_fn,
+) -> "dict | None":
+    """Can a review taken *before* the base branch advanced still vouch for the
+    span the advance created?
+
+    A base sync moves the required span's start node, so no fact begins there
+    and composition reports ``uncovered`` — even when the branch's own diff did
+    not move a byte. The transfer is the computed answer: a span already covered
+    transfers to the required one when the two spans hold *the same branch diff*.
+
+    Conditions 1 and 2 are this function's; condition 3 is the caller's
+    (:func:`gates.suite_vouches_for_tree`, which owns the evidence and
+    states what it requires)::
+
+        1. the two spans' judgeable changed-file sets are identical
+        2. for every such file f: blob(HEAD, f) == blob(head', f)
+                             and  blob(base, f) == blob(base', f)
+
+    **Soundness boundary — byte equality ACROSS contexts, never content
+    equivalence WITHIN one.** The 2026-07-29 ruling (COV-3M8Q) bans relaxing
+    judgeability by normalizing content, because a comment-only edit can change
+    behavior in this repo (a ``prawduct:allow`` pragma suppresses a compliance
+    check while leaving the AST identical). Nothing here is normalized: every
+    comparison is git's own tree-to-tree diff over the exact paths, so **any**
+    edit to a branch file — comments included — makes the diff non-empty and
+    denies the transfer. What the transfer asserts is narrower than what the
+    ruling forbids: not "this changed file need not be reviewed", but "this
+    byte-identical change *was* reviewed, and the advance touched none of it".
+
+    The one genuinely new exposure is the reviewed diff interacting with
+    advanced context in *disjoint* files, which no re-read of an unchanged diff
+    would catch either. Condition 3 is what prices it — the suite, not the
+    transferred review, vouches for semantic interaction with the new base. It
+    lives with the caller so a near miss can be reported as the cheap remedy it
+    is: run the suite, not another review.
+
+    **Candidates are selected by content, not by lineage.** A commit-ancestry
+    filter would be the obvious way to mean "this branch's own reviews", and it
+    is wrong twice: it excludes the rebase case (rebasing rewrites the very
+    commits the branch's facts anchor to, so every one of them leaves HEAD's
+    history while the trees they vouch for are untouched), and it is not what
+    soundness rests on. Conditions 1–3 are statements about content: a span
+    whose judgeable diff is byte-identical on both sides reviewed *this* change,
+    whichever branch or worktree it was taken on. What lineage would have bought
+    is cost control, and the ``files_changed`` prune below buys that directly.
+
+    Returns::
+
+        {"status": "match", "prior_fact_id", "prior_reviews", "prior_base",
+         "prior_head", "files": [...], "advance_files": [...] | None}
+      | {"status": "unavailable", "reason": str}
+      | None                                    # no transferable prior span
+
+    ``advance_files`` is ``None`` — not ``[]`` — when the advance's own diff
+    could not be read. It is message detail only, so an unreadable one does not
+    deny a transfer the three conditions already granted; but a caller rendering
+    it as "the advance touched 0 files" would be asserting something nothing
+    checked, which is why the two are distinguishable.
+
+    ``unavailable`` is kept distinct from ``None`` for the reason
+    :func:`diagnose_fix_churn` states: a degraded check that says nothing is
+    indistinguishable from one that found nothing. Never raises; every git or
+    object failure denies the transfer rather than granting it (authority fails
+    closed).
+    """
+    from . import coverage_algebra, evidence  # noqa: PLC0415 -- lazy: matches diagnose_fix_churn's import posture; avoids an import cycle at module load
+
+    if not head_tree or not base_tree or not isinstance(facts, list):
+        return {"status": "unavailable", "reason": "missing span endpoints"}
+
+    branch_diff = diff_fn(base_tree, head_tree)
+    if branch_diff is None:
+        return {"status": "unavailable", "reason": "branch diff unresolvable"}
+    required = set(coverage_algebra.judgeable_files(branch_diff))
+    if not required:
+        # Nothing judgeable differs across the required span — that composes as
+        # a free edge, so whatever brought the caller here, it is not this.
+        return None
+    paths = sorted(required)
+
+    # Endpoints, not whole facts: the span a branch already had covered is
+    # routinely composed rather than carried by one fact — a cumulative
+    # (merge-base → tip) followed by a verify-resolutions pass (tip → fixed tip)
+    # leaves the covered span running from the FIRST fact's base to the LAST
+    # one's head, a pair no single fact holds. Newest-appended first, so the
+    # branch's most recent state is tried before older ones.
+    #
+    # The prune is a COST bound, not one of the conditions — it can only deny a
+    # transfer the three conditions would have granted, never grant one they
+    # would not. It is the store, not the branch, that makes it necessary: every
+    # worktree of the clone appends to the same file, and each surviving
+    # endpoint costs a git call below.
+    #
+    # It is close to necessary and deliberately not exactly so. A fact on the
+    # path from b' to h' spans a sub-interval, so its ``files_changed`` sits
+    # inside the path's CUMULATIVE changed set — which is a superset of the
+    # span's NET diff whenever the branch touched a file and then put it back.
+    # After such a revert the fact that carries an endpoint is pruned and a
+    # sound transfer is silently missed. Accepted rather than widened: the
+    # failure is a denial (the operator gets today's remedy, not a wrong pass),
+    # and dropping the prune would put the git work back in proportion to a
+    # store that grows forever.
+    prior_bases: list[str] = []
+    prior_heads: list[str] = []
+    for fact in reversed(facts):
+        if fact.get("kind") != "review":
+            continue
+        body = fact.get("body") or {}
+        prior_base, prior_head = body.get("base_tree"), body.get("head_tree")
+        changed = body.get("files_changed")
+        if not prior_base or not prior_head or not isinstance(changed, list):
+            continue
+        if not set(coverage_algebra.judgeable_files(changed)) <= required:
+            continue
+        if prior_base not in prior_bases:
+            prior_bases.append(prior_base)
+        if prior_head not in prior_heads:
+            prior_heads.append(prior_head)
+    if not prior_bases or not prior_heads:
+        return None
+
+    # Condition 2, one pathspec-limited diff per distinct endpoint: a candidate
+    # endpoint survives only when it agrees with the required span's endpoint on
+    # EVERY file the branch changed. Each candidate list is already distinct and
+    # each is asked about ONE anchor, so there is nothing to memoize — an
+    # earlier version cached on (candidate, anchor) and could never hit.
+    # A path set large enough to overflow git's argv makes the diff fail, which
+    # reads as "could not be computed" and denies, the same direction as every
+    # other failure here.
+    degraded: "str | None" = None
+
+    def _survivors(candidates: list[str], anchor: str) -> list[str]:
+        nonlocal degraded
+        kept = []
+        for candidate in candidates:
+            if candidate == anchor:
+                kept.append(candidate)
+                continue
+            differing = evidence.tree_diff(
+                project_dir, candidate, anchor, paths=paths
+            )
+            if differing is None:
+                degraded = degraded or "a candidate tree could not be diffed"
+            elif not differing:
+                kept.append(candidate)
+        return kept
+
+    surviving_heads = _survivors(prior_heads, head_tree)
+    surviving_bases = _survivors(prior_bases, base_tree)
+
+    for prior_head in surviving_heads:
+        for prior_base in surviving_bases:
+            if (prior_base, prior_head) == (base_tree, head_tree):
+                continue  # the span that just failed to compose
+            # Condition 1. Set equality, not the containment the blob checks
+            # already force: a prior span that changed MORE files than this one
+            # saw work no longer in the required span (reverted, or absorbed
+            # upstream), and a review of a different fileset is not a review of
+            # this one.
+            prior_diff = diff_fn(prior_base, prior_head)
+            if prior_diff is None:
+                degraded = degraded or "a candidate span could not be diffed"
+                continue
+            if set(coverage_algebra.judgeable_files(prior_diff)) != required:
+                continue
+            # ...and the prior span must itself be COVERED — which is where
+            # "zero unresolved blocking findings on its path" comes from. A
+            # blocked prior span transfers nothing: the blocker is still owed.
+            prior_verdict = verdict_fn(facts, prior_base, prior_head)
+            if prior_verdict.get("status") != "covered":
+                continue
+            reviews = [
+                step for step in prior_verdict.get("path", [])
+                if step.get("kind") == "review"
+            ]
+            advance = evidence.tree_diff(project_dir, prior_base, base_tree)
+            return {
+                "status": "match",
+                "prior_fact_id": reviews[-1].get("id") if reviews else None,
+                "prior_reviews": len(reviews),
+                "prior_base": prior_base,
+                "prior_head": prior_head,
+                "files": paths,
+                "advance_files": (
+                    None
+                    if advance is None
+                    else sorted(coverage_algebra.judgeable_files(advance))
+                ),
+            }
+
+    return {"status": "unavailable", "reason": degraded} if degraded else None
 
 
 def count_branch_rounds(
@@ -404,12 +682,21 @@ def count_branch_rounds(
     ``/prawduct:pr create`` path against a store holding every review the clone
     has ever recorded.
 
-    Returns ``{"status": "counted", "rounds", "seconds", "timed"}`` — with
-    ``seconds`` ``None`` when no attributed round recorded a duration — or
-    ``{"status": "unavailable", "reason"}``. Never raises: this is advice, and
+    Returns ``{"status": "counted", "rounds", "seconds", "timed", "reviews"}``
+    — with ``seconds`` ``None`` when no attributed round recorded a duration —
+    or ``{"status": "unavailable", "reason"}``. Never raises: this is advice, and
     advice fails soft. It is deliberately not silent, because a tally that
     vanishes when it breaks reads as "round one" to the builder it exists to
     warn (``learnings.md``: "'advice fails soft' is not 'advice fails silent'").
+
+    ``reviews`` is ``[{"id", "mode"}]`` for the attributed rounds, in store
+    order, and it exists so a caller can ask a NARROWER question than "how many
+    reviews" without re-walking the lineage: the round budget counts only *full*
+    rounds, since a ``verify-resolutions`` pass is what clears a blocking
+    finding and a ceiling that ate those would deadlock the gate it protects.
+    The mode strings are handed over verbatim rather than parsed here — the
+    token vocabulary belongs to ``critic_consolidate``, and a second parse of it
+    living in the counter is how one vocabulary becomes two.
     """
     from . import evidence  # noqa: PLC0415 -- lazy: mirrors diagnose_fix_churn's import posture; avoids an import cycle at module load
 
@@ -427,6 +714,7 @@ def count_branch_rounds(
 
     rounds = 0
     durations: list[float] = []
+    reviews: list[dict] = []
     for fact in facts:
         if fact.get("kind") != "review":
             continue
@@ -435,6 +723,7 @@ def count_branch_rounds(
         if not isinstance(commit, str) or commit not in on_branch:
             continue
         rounds += 1
+        reviews.append({"id": fact.get("id"), "mode": body.get("mode")})
         seconds = body.get("duration_seconds")
         if isinstance(seconds, (int, float)) and not isinstance(seconds, bool):
             durations.append(float(seconds))
@@ -443,6 +732,7 @@ def count_branch_rounds(
         "rounds": rounds,
         "seconds": round(sum(durations), 1) if durations else None,
         "timed": len(durations),
+        "reviews": reviews,
     }
 
 
@@ -601,7 +891,14 @@ def _pr_diff_is_doc_only(project_dir: Path) -> tuple[bool, str]:
     when the diff is non-empty and NO changed file is judgeable — the one
     predicate (``coverage_algebra.is_judgeable_path``, kernel-v3 chunk 04)
     answers this, replacing this helper's own ``.md`` + protected-path copy
-    (one of the divergent doc-only sites behind CRT-5D8Q). A
+    (one of the divergent doc-only sites behind CRT-5D8Q) — **and no changed
+    file is live state a non-hermetic test reads** (``TEST_COUPLED_STATE``,
+    COV-4H7N). The fast path skips the Critic, the PR review AND the suite in
+    one move, so it has to clear both questions: PR #125 changed only
+    ``.prawduct/*.md`` plus ``project-state.yaml``, rode this path, and broke
+    ``test_norm_probes`` on develop with nothing to catch it. The two reasons
+    are reported separately because the remedies differ — one needs a review,
+    the other needs a suite run. A
     governance-protected ``.md`` (``skills/``, ``methodology/``,
     ``templates/``, root ``CLAUDE.md`` — PR-5K8D) is judgeable, so it still
     never rides the fast path. The status message names the specific reason
@@ -637,27 +934,43 @@ def _pr_diff_is_doc_only(project_dir: Path) -> tuple[bool, str]:
         more = f" (+{len(judgeable) - 3} more)" if len(judgeable) > 3 else ""
         return False, f"not-doc-only: PR includes review-needing files: {sample}{more}"
 
+    coupled = [f for f in coverage_algebra.suite_coupled_files(files) if f not in judgeable]
+    if coupled:
+        sample = ", ".join(coupled[:3])
+        more = f" (+{len(coupled) - 3} more)" if len(coupled) > 3 else ""
+        return False, (
+            "not-doc-only: PR includes live state a non-hermetic test reads: "
+            f"{sample}{more}"
+        )
+
     return True, (
         f"doc-only: {len(files)} file(s) in {base}...HEAD, none judgeable"
     )
 
 
-_CHANGE_LOG_REL_PATH = ".prawduct/change-log.md"
-
-
 def check_change_log_entry(project_dir: Path) -> int:
     """PR-boundary probe: a code-changing branch must add a change-log entry.
 
-    A branch whose ``merge-base...HEAD`` diff touches any non-``.md`` file is
-    code-changing work that the release flow can only ship if a change-log
-    entry exists for it — historically nothing checked this, so a branch could
-    merge with NO entry and the gap surfaced only at release reconstruction
-    (REL-6C3W — CRT-7B4M/#82, found at the v2.0.16 release). The
-    `/prawduct:pr` Create flow (Step 1c) runs this probe and STOPs on failure.
+    A branch whose ``merge-base...HEAD`` diff contains **judgeable** work — as
+    :func:`coverage_algebra.is_judgeable_path` defines it, the same predicate
+    ``check-pr-doc-only`` and the coverage gates ask — can only be shipped by the
+    release flow if a change-log entry exists for it. Historically nothing
+    checked this, so a branch could merge with NO entry and the gap surfaced only
+    at release reconstruction (REL-6C3W — CRT-7B4M/#82, found at the v2.0.16
+    release). The `/prawduct:pr` Create flow (Step 1c) runs this probe and STOPs
+    on failure.
+
+    **Judgeability is not "is it ``.md``", and this docstring used to say it
+    was.** Session metadata under ``.prawduct/`` is not ``.md`` and is *not*
+    judgeable; governance-protected prose (``skills/``, ``methodology/``,
+    ``templates/``, root ``CLAUDE.md``) *is* ``.md`` and *is* judgeable, because
+    skill prose is behavioral logic. Cite the predicate rather than restating its
+    rule here — a prose copy is the fourth classifier this function shipped once
+    already.
 
     Exit 0 when:
-      * the diff is empty or all-``.md`` (doc-only work needs no entry), or
-      * a non-``.md`` diff includes ``.prawduct/change-log.md`` AND that diff
+      * the diff is empty, or holds no judgeable file, or
+      * a judgeable diff includes ``.prawduct/change-log.md`` AND that diff
         ADDS at least one entry header (a ``+## `` line) — merely editing an
         existing entry's text does not vouch for new work.
 
@@ -687,27 +1000,46 @@ def check_change_log_entry(project_dir: Path) -> int:
         return 1
 
     files = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
-    non_md = [f for f in files if not f.endswith(".md")]
+    # THE predicate, shared with `check-pr-doc-only` (CRT-5D8Q). This used to be
+    # an inline `not f.endswith(".md")`, which is a FOURTH classifier that the
+    # CRT-5D8Q consolidation never folded in — so the two gates at the same PR
+    # boundary answered oppositely about the same file. `.prawduct/` session
+    # metadata (`corpus-state.json`, evidence, findings) is not `.md`, so this
+    # gate called it code while `check-pr-doc-only` correctly called it
+    # non-judgeable and skipped the review gates entirely.
+    #
+    # Reported from a consuming repo, and worse than a spurious block: the
+    # remedy text is executable advice, and it was wrong advice. The
+    # `.prawduct/corpus-state.json` that triggered it was another session's
+    # corpus refresh riding along on a cherry-pick, so following the gate would
+    # have written a change-log entry describing someone else's work as the
+    # author's own — a gate demanding a false provenance record.
+    from . import coverage_algebra  # noqa: PLC0415 — lazy keeps this module's import DAG light
+
+    judgeable = coverage_algebra.judgeable_files(files)
     if not files:
         print(f"empty-diff: no files changed in {base}...HEAD — no entry required.")
         return 0
-    if not non_md:
-        print(f"doc-only: all {len(files)} changed file(s) are .md — no entry required.")
+    if not judgeable:
+        print(
+            f"doc-only: none of the {len(files)} changed file(s) are judgeable "
+            "(docs and session metadata only) — no entry required."
+        )
         return 0
 
-    if _CHANGE_LOG_REL_PATH not in files:
-        sample = ", ".join(non_md[:3])
-        more = f" (+{len(non_md) - 3} more)" if len(non_md) > 3 else ""
+    if CHANGE_LOG_REL_PATH not in files:
+        sample = ", ".join(judgeable[:3])
+        more = f" (+{len(judgeable) - 3} more)" if len(judgeable) > 3 else ""
         print(
             f"no-entry: branch changes code ({sample}{more}) but "
-            f"{_CHANGE_LOG_REL_PATH} is untouched — add a change-log entry for "
+            f"{CHANGE_LOG_REL_PATH} is untouched — add a change-log entry for "
             f"this work before opening the PR.",
             file=sys.stderr,
         )
         return 1
 
     proc2 = subprocess.run(
-        ["git", "diff", f"{base}...HEAD", "--", _CHANGE_LOG_REL_PATH],
+        ["git", "diff", f"{base}...HEAD", "--", CHANGE_LOG_REL_PATH],
         cwd=str(project_dir),
         capture_output=True,
         text=True,
@@ -715,7 +1047,7 @@ def check_change_log_entry(project_dir: Path) -> int:
     )
     if proc2.returncode != 0:
         print(
-            f"git-failed: git diff of {_CHANGE_LOG_REL_PATH} failed: "
+            f"git-failed: git diff of {CHANGE_LOG_REL_PATH} failed: "
             f"{proc2.stderr.strip()}. Check the change-log by hand.",
             file=sys.stderr,
         )
@@ -725,25 +1057,32 @@ def check_change_log_entry(project_dir: Path) -> int:
     )
     if not added_header:
         print(
-            f"entry-edited-not-added: {_CHANGE_LOG_REL_PATH} changed but no new "
+            f"entry-edited-not-added: {CHANGE_LOG_REL_PATH} changed but no new "
             f"entry header (+## ...) was added — editing an existing entry does "
             f"not vouch for this branch's code changes.",
             file=sys.stderr,
         )
         return 1
 
-    print(f"entry-present: {_CHANGE_LOG_REL_PATH} adds a new entry in {base}...HEAD.")
+    print(f"entry-present: {CHANGE_LOG_REL_PATH} adds a new entry in {base}...HEAD.")
     return 0
 
 
 def check_pr_doc_only(project_dir: Path) -> int:
     """Fast-path gate for `/prawduct:pr create`: report whether the PR diff is doc-only.
 
-    Exit 0 when the diff in ``merge-base...HEAD`` is non-empty and contains
-    no judgeable file (``coverage_algebra.is_judgeable_path`` — the one
-    predicate) — the `/prawduct:pr` skill uses this to skip the cumulative-
-    Critic and PR-reviewer gates, mirroring the session-end stop-hook
-    carveout (`gates.session_changes_all_non_judgeable`) at the PR boundary.
+    Exit 0 when the diff in ``merge-base...HEAD`` is non-empty, contains no
+    judgeable file (``coverage_algebra.is_judgeable_path`` — the one predicate)
+    AND names no shipped suite-coupled state (``TEST_COUPLED_STATE``, via
+    ``suite_coupled_files``). **The repo's declared ``suite_coupled_prefixes``
+    are deliberately NOT passed here.** They answer a freshness question — re-run
+    the suite — and forwarding them would make a documentation-only PR buy a full
+    cumulative Critic and PR review, a review cost nothing prices. The freshness
+    gate (``gates._test_evidence_tree_valid``) is the caller that passes them.
+
+    The `/prawduct:pr` skill uses this to skip the cumulative-Critic and
+    PR-reviewer gates, mirroring the session-end stop-hook carveout
+    (`gates.session_changes_all_non_judgeable`) at the PR boundary.
     The stop hook's PR-review evidence gate (Gate 3) consults the same
     helper so a doc-only PR doesn't get blocked at session end for missing
     evidence — symmetric behavior across both gates.

@@ -70,8 +70,13 @@ def _review_fact(
     *,
     scope: str | None = None,
     chunk: str | None = None,
+    files: "list[str] | None" = None,
 ) -> None:
-    """Append a review fact carrying ``(fid, severity)`` findings."""
+    """Append a review fact carrying ``(fid, severity)`` findings.
+
+    ``files`` sets every finding's attribution — the axis
+    ``prior_dispositions`` scopes on, so a test about it must be able to set
+    it."""
     body = {
         "base_tree": "a" * 40,
         "head_tree": "b" * 40,
@@ -85,6 +90,7 @@ def _review_fact(
                 "goal": "Nothing Is Broken",
                 "title": f"finding {fid}",
                 "recommendation": "do the thing",
+                "files": list(files) if files is not None else [],
             }
             for fid, severity in findings
         ],
@@ -559,6 +565,55 @@ class TestCensus:
         assert report["summary"]["undispositioned"] == 1
         assert report["summary"]["findings"] == 5
 
+    def test_a_summary_only_finding_is_named_in_the_census_and_the_prior_block(
+        self, tmp_path
+    ):
+        """Both readers must fall back to `summary` when there is no `title`.
+
+        A DERIVED findings record — the shape `.critic-findings.json` and the
+        review facts written from it actually carry — states the finding under
+        `summary`. `prior_dispositions` already fell back; `_row` did not, so the
+        census rendered `title: null` for exactly the records a human reads to
+        check a disposition was filed against the right finding, and a null title
+        makes that check impossible.
+
+        This module's own `_review_fact` helper always set `title`, which is why
+        nothing caught it: the fixture was shaped like the input that works. So
+        the finding here is built with `summary` and no `title` at all, and both
+        readers are asserted, because fixing one and leaving the other is how
+        this defect came to exist.
+        """
+        repo = _make_repo(tmp_path)
+        body = {
+            "base_tree": "a" * 40,
+            "head_tree": "b" * 40,
+            "mode": "final",
+            "scope": None,
+            "chunk": None,
+            "findings": [
+                {
+                    "fid": "R-1",
+                    "severity": "warning",
+                    "goal": "Nothing Is Broken",
+                    "summary": "the gate reads a stale tree",
+                    "files": ["lib/a.py"],
+                }
+            ],
+        }
+        assert evidence.append_fact(repo, "review", "rev-1", body)["status"] == "appended"
+        dispositions.record(
+            repo, "rev-1", "R-1", dispositions.ACCEPT, reason="by design"
+        )
+        store = evidence.read_facts(repo)
+
+        row = dispositions.census(store)["reviews"][0]["rows"][0]
+        assert row["title"] == "the gate reads a stale tree", (
+            "the census renders no name for a summary-only finding, so the row "
+            "cannot be matched to the finding it dispositions"
+        )
+        entry = dispositions.prior_dispositions(store, ["lib/a.py"])["entries"][0]
+        assert entry["title"] == "the gate reads a stale tree"
+
     def test_unrecognized_resolution_disposition_is_shown_not_hidden(self, tmp_path):
         repo = _make_repo(tmp_path)
         _review_fact(repo, "rev-1", [("R-1", "warning")])
@@ -964,3 +1019,400 @@ class TestCli:
         again = _hook(repo, "disposition", "rev-1", "R-1", "--accept", "craft")
         assert again.returncode == 0, again.stderr
         assert "no-op" in again.stdout
+
+
+# ---------------------------------------------------------------------------
+# Prior dispositions on the dispatch manifest
+# ---------------------------------------------------------------------------
+
+
+class TestPriorDispositions:
+    """Answers already given, put where a REVIEWER can see them.
+
+    Dispositions have been facts for a while, but nothing carried one into a
+    dispatch — so a cumulative run after an ``--accept`` handed its reviewers a
+    diff and no memory, and they found the same true thing again. Measured on
+    one consumer branch: round 9 re-raised six of round 7's findings verbatim,
+    several already accepted.
+    """
+
+    def test_an_accepted_finding_in_scope_is_carried(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        _review_fact(repo, "rev-1", [("R-1", "warning")], files=["lib/a.py"])
+        dispositions.record(repo, "rev-1", "R-1", dispositions.ACCEPT, reason="by design")
+        block = dispositions.prior_dispositions(evidence.read_facts(repo), ["lib/a.py"])
+        assert block["matched"] == 1 and block["shown"] == 1
+        entry = block["entries"][0]
+        assert entry["review_id"] == "rev-1" and entry["fid"] == "R-1"
+        assert entry["action"] == dispositions.ACCEPT
+        assert entry["reason"] == "by design"
+        assert entry["title"] == "finding R-1"
+        assert entry["files"] == ["lib/a.py"]
+
+    def test_an_unreadable_store_says_so_instead_of_reading_empty(self, tmp_path):
+        """A block with no ``unavailable`` tells every reviewer that nothing was
+        dispositioned. For a store this reader could not read, that is false —
+        and false in the case where the accepted answers are most likely to be
+        re-raised, because they exist and are simply unreachable."""
+        repo = _make_repo(tmp_path)
+        _review_fact(repo, "rev-1", [("R-1", "warning")], files=["lib/a.py"])
+        dispositions.record(repo, "rev-1", "R-1", dispositions.ACCEPT, reason="by design")
+        store = evidence.read_facts(repo)
+        store["status"] = "error"
+        store["reason"] = "store is a directory"
+        block = dispositions.prior_dispositions(store, ["lib/a.py"])
+        assert block["entries"] == [] and block["matched"] == 0
+        assert "store is a directory" in block["unavailable"]
+
+    def test_a_schema_ahead_store_says_so_instead_of_reading_empty(self, tmp_path):
+        """Same reason, the other degraded state: records a newer plugin wrote
+        are filtered out of ``facts``, so the dispositions they carry are
+        invisible — which is not the same fact as their absence."""
+        repo = _make_repo(tmp_path)
+        _review_fact(repo, "rev-1", [("R-1", "warning")], files=["lib/a.py"])
+        dispositions.record(repo, "rev-1", "R-1", dispositions.ACCEPT, reason="by design")
+        with open(evidence.store_path(repo), "a", encoding="utf-8") as handle:
+            handle.write(
+                json.dumps(
+                    {
+                        "schema": 99,
+                        "kind": "disposition",
+                        "id": "rev-future",
+                        "ts": "2030-01-01T00:00:00Z",
+                        "body": {},
+                    }
+                )
+                + "\n"
+            )
+        block = dispositions.prior_dispositions(evidence.read_facts(repo), ["lib/a.py"])
+        assert block["entries"] == [] and block["matched"] == 0
+        assert "newer schema" in block["unavailable"]
+
+    def test_a_healthy_store_carries_no_unavailable_key(self, tmp_path):
+        # The control for the two above: the key's PRESENCE is the whole signal,
+        # so a block that always carried it would say nothing.
+        repo = _make_repo(tmp_path)
+        _review_fact(repo, "rev-1", [("R-1", "warning")], files=["lib/a.py"])
+        dispositions.record(repo, "rev-1", "R-1", dispositions.ACCEPT, reason="by design")
+        block = dispositions.prior_dispositions(evidence.read_facts(repo), ["lib/a.py"])
+        assert "unavailable" not in block
+
+    def test_a_disposition_about_other_files_is_not_carried(self, tmp_path):
+        # The scope rule is what keeps a store shared by every worktree of a
+        # clone (652 dispositions on this repo) from becoming a second document
+        # prepended to every review.
+        repo = _make_repo(tmp_path)
+        _review_fact(repo, "rev-1", [("R-1", "warning")], files=["lib/elsewhere.py"])
+        dispositions.record(repo, "rev-1", "R-1", dispositions.ACCEPT, reason="by design")
+        block = dispositions.prior_dispositions(evidence.read_facts(repo), ["lib/a.py"])
+        assert block["entries"] == [] and block["matched"] == 0
+
+    def test_only_the_live_answer_is_carried(self, tmp_path):
+        # Re-disposition APPENDS. Showing both would hand a reviewer two
+        # contradictory answers about one finding.
+        repo = _make_repo(tmp_path)
+        _review_fact(repo, "rev-1", [("R-1", "warning")], files=["lib/a.py"])
+        dispositions.record(repo, "rev-1", "R-1", dispositions.ACCEPT, reason="first answer")
+        dispositions.record(
+            repo, "rev-1", "R-1", dispositions.FILE, backlog_id="owner/repo#1"
+        )
+        block = dispositions.prior_dispositions(evidence.read_facts(repo), ["lib/a.py"])
+        assert block["matched"] == 1
+        assert block["entries"][0]["action"] == dispositions.FILE
+        assert block["entries"][0]["backlog_id"] == "owner/repo#1"
+
+    def test_a_disposition_whose_finding_is_gone_is_skipped(self, tmp_path):
+        # A hand-edited store can hold a disposition with nothing to join to;
+        # there is no title to show and nothing a reviewer could match against.
+        repo = _make_repo(tmp_path)
+        _review_fact(repo, "rev-1", [("R-1", "warning")], files=["lib/a.py"])
+        dispositions.record(repo, "rev-1", "R-1", dispositions.ACCEPT, reason="by design")
+        store = evidence.read_facts(repo)
+        store["facts"] = [f for f in store["facts"] if f.get("kind") != "review"]
+        assert dispositions.prior_dispositions(store, ["lib/a.py"])["entries"] == []
+
+    def test_truncation_is_reported_never_silent(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        pairs = [(f"R-{i}", "note") for i in range(1, 8)]
+        _review_fact(repo, "rev-1", pairs, files=["lib/a.py"])
+        for fid, _ in pairs:
+            dispositions.record(repo, "rev-1", fid, dispositions.ACCEPT, reason="ok")
+        block = dispositions.prior_dispositions(
+            evidence.read_facts(repo), ["lib/a.py"], limit=3
+        )
+        assert block["matched"] == 7
+        assert block["shown"] == 3
+        assert block["truncated"] == 4
+        # Newest-first, so truncation drops the oldest answers, not the live ones.
+        assert block["entries"][0]["fid"] == "R-7"
+
+    def test_an_empty_scope_carries_everything(self, tmp_path):
+        # A review whose files_changed is empty (a same-tree verify pass) must
+        # not silently mean "no priors apply".
+        repo = _make_repo(tmp_path)
+        _review_fact(repo, "rev-1", [("R-1", "warning")], files=["lib/a.py"])
+        dispositions.record(repo, "rev-1", "R-1", dispositions.ACCEPT, reason="by design")
+        assert dispositions.prior_dispositions(evidence.read_facts(repo), [])["matched"] == 1
+
+    def test_a_finding_with_no_file_attribution_is_carried_only_unscoped(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        _review_fact(repo, "rev-1", [("R-1", "warning")], files=[])
+        dispositions.record(repo, "rev-1", "R-1", dispositions.ACCEPT, reason="by design")
+        store = evidence.read_facts(repo)
+        assert dispositions.prior_dispositions(store, ["lib/a.py"])["matched"] == 0
+        assert dispositions.prior_dispositions(store, [])["matched"] == 1
+
+
+class TestFindingTitleAccessor:
+    """One finding, three key names, one place that knows it.
+
+    The same sentence is `name` in a reviewer's partial, `title` once
+    consolidation writes the review fact, and `summary` again in the derived
+    `.critic-findings.json`. Five readers each re-derived that chain by hand and
+    the only thing carrying the contract was a comment in each one pointing at
+    the last — a countdown, not a redundancy: the reader that forgets emits
+    `title: null` into the record a human checks a disposition against, which
+    has already happened once.
+    """
+
+    def test_each_layers_key_resolves(self):
+        for key in ("title", "summary", "name"):
+            assert evidence.finding_title({key: "the sentence"}) == "the sentence", (
+                f"a finding carrying only {key!r} — the shape one whole layer "
+                "emits — no longer resolves, so that layer reads as untitled"
+            )
+
+    def test_precedence_is_fact_then_cache_then_partial(self):
+        """Not alphabetical, and not arbitrary. A finding that carries more than
+        one is one that has been through a projection, and the later layer is
+        the one a human was shown.
+        """
+        assert evidence.finding_title(
+            {"title": "fact", "summary": "cache", "name": "partial"}
+        ) == "fact"
+        assert evidence.finding_title({"summary": "cache", "name": "partial"}) == "cache"
+
+    def test_blank_and_missing_both_fall_through(self):
+        """Presence is not a title. `""` and `"   "` reached the old chains as
+        falsey and fell through; a `key in finding` test would not, and would
+        put an empty string where a caller asked for `<no title>`.
+        """
+        assert evidence.finding_title({}) == ""
+        assert evidence.finding_title({"title": "", "summary": "cache"}) == "cache"
+        assert evidence.finding_title({"title": "   ", "name": "partial"}) == "partial"
+        assert evidence.finding_title({"title": None}, "<no title>") == "<no title>"
+
+    def test_a_non_string_does_not_reach_the_caller(self):
+        """The chains this replaces used `or`, so a truthy non-string (a dict a
+        malformed partial might carry) propagated into `len()` and `str()` at
+        different call sites with different results. It is skipped now.
+        """
+        assert evidence.finding_title({"title": {"nested": 1}, "summary": "cache"}) == "cache"
+        assert evidence.finding_title({"title": 42}, "fallback") == "fallback"
+
+    def test_no_reader_re_derives_the_chain(self):
+        """The property that closes the class — asserted over the source, because
+        the defect is a SIXTH reader being added, and no behavioural test can see
+        one that does not exist yet.
+
+        **What turns this red, and what does not.** It matches a single-line
+        `x.get("a") or y.get("b")` pair — the idiom that actually existed, five
+        times. A chain a formatter wrapped across lines, or a three-key one split
+        at a paren, slips it. That is a real limit and it is stated rather than
+        implied: the scan raises the cost of re-deriving the chain, it does not
+        make it impossible, and a reader who believes otherwise will not look.
+        """
+        import re as _re
+        offenders = []
+        for path in sorted((ROOT / "lib").rglob("*.py")):
+            src = path.read_text(encoding="utf-8")
+            for num, line in enumerate(src.splitlines(), 1):
+                if _re.search(r'get\("(title|summary|name)"\)\s+or\s+\w+\.get\("(title|summary|name)"\)', line):
+                    offenders.append(f"{path.name}:{num}: {line.strip()}")
+        assert offenders == [], (
+            "a reader re-derives the finding-title alias chain instead of "
+            "calling `evidence.finding_title`:\n  " + "\n  ".join(offenders)
+        )
+
+
+# ---------------------------------------------------------------------------
+# --fixed: the free fix becomes recordable, and only where it was free
+# ---------------------------------------------------------------------------
+
+
+class TestFixedDisposition:
+    """A fix confined to non-judgeable paths buys no round, so no verify pass
+    runs and no resolution fact is written — and the census then reported it
+    ``undispositioned`` forever. That made the cheapest correct action the only
+    one the record could not see."""
+
+    def test_a_free_path_set_records(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        _review_fact(repo, "rev-1", [("R-1", "warning")])
+
+        result = dispositions.record(
+            repo, "rev-1", "R-1", dispositions.FIXED,
+            paths=[".prawduct/change-log.md", "docs/notes.md"],
+        )
+        assert result["status"] == "recorded", result
+        rows = dispositions.census(evidence.read_facts(repo))["reviews"][0]["rows"]
+        assert rows[0]["state"] == dispositions.STATE_FIXED_FREE
+        assert rows[0]["paths"] == [".prawduct/change-log.md", "docs/notes.md"]
+
+    def test_the_state_is_not_plain_fixed(self, tmp_path):
+        """Both say the defect is gone; only one says a reviewer looked.
+
+        Collapsing them would let a census claim a review that never ran, which
+        is the class of misdescription the census exists to retire.
+        """
+        assert dispositions.STATE_FIXED_FREE != dispositions.STATE_FIXED
+
+    def test_a_judgeable_path_is_refused(self, tmp_path):
+        """The guard that keeps this from being a way past a gate.
+
+        A judgeable edit re-opens coverage, so the round is already bought by
+        the edit itself — recording it here would claim a review nobody ran.
+        """
+        repo = _make_repo(tmp_path)
+        _review_fact(repo, "rev-1", [("R-1", "warning")])
+
+        result = dispositions.record(
+            repo, "rev-1", "R-1", dispositions.FIXED,
+            paths=[".prawduct/change-log.md", "lib/gates.py"],
+        )
+        assert result["status"] == "error", result
+        assert "lib/gates.py" in result["reason"]
+        assert "verify-resolutions" in result["reason"]
+        assert not [
+            f for f in evidence.read_facts(repo)["facts"]
+            if f.get("kind") == KIND_DISPOSITION
+        ], "a judgeable fix recorded without a review"
+
+    def test_governance_protected_prose_counts_as_judgeable(self, tmp_path):
+        """The predicate is the one that prices the edit, not a private notion
+        of 'docs' — fork-skill prose and a subagent's own prompt are behaviour."""
+        repo = _make_repo(tmp_path)
+        _review_fact(repo, "rev-1", [("R-1", "note")])
+        for path in ("skills/critic/SKILL.md", "plugin/agents/critic-reviewer.md"):
+            result = dispositions.record(
+                repo, "rev-1", "R-1", dispositions.FIXED, paths=[path]
+            )
+            assert result["status"] == "error", (path, result)
+
+    def test_an_empty_path_set_is_refused(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        _review_fact(repo, "rev-1", [("R-1", "warning")])
+        result = dispositions.record(repo, "rev-1", "R-1", dispositions.FIXED, paths=[])
+        assert result["status"] == "error" and "--fixed" in result["reason"]
+
+    def test_blocking_is_refused_outright(self, tmp_path):
+        """No owner-ruling escape, unlike ACCEPT: the real route exists and is
+        cheap. `begin_review`'s free-interval refusal deliberately lets a verify
+        pass through while findings are outstanding, so a blocking finding on a
+        free interval is always clearable — and recording it here would leave
+        the census saying `fixed` while the gate says `blocked`."""
+        repo = _make_repo(tmp_path)
+        _review_fact(repo, "rev-1", [("R-1", "blocking")])
+        result = dispositions.record(
+            repo, "rev-1", "R-1", dispositions.FIXED, paths=[".prawduct/backlog.md"],
+        )
+        assert result["status"] == "error"
+        assert "verify-resolutions" in result["reason"]
+
+    def test_paths_are_refused_on_the_other_actions(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        _review_fact(repo, "rev-1", [("R-1", "warning")])
+        result = dispositions.record(
+            repo, "rev-1", "R-1", dispositions.ACCEPT, reason="by design",
+            paths=[".prawduct/backlog.md"],
+        )
+        assert result["status"] == "error"
+
+    def test_the_cli_parses_a_comma_separated_set(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        _review_fact(repo, "rev-1", [("R-1", "note")])
+        proc = _hook(
+            repo, "disposition", "rev-1", "R-1",
+            "--fixed", ".prawduct/change-log.md,.prawduct/learnings.md",
+        )
+        assert proc.returncode == 0, proc.stderr
+        rendered = _hook(repo, "render-dispositions", "--review", "rev-1")
+        assert "fixed in" in rendered.stdout
+        assert dispositions.STATE_FIXED_FREE in rendered.stdout
+
+    def test_the_cli_refuses_a_judgeable_set_at_exit_1(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        _review_fact(repo, "rev-1", [("R-1", "note")])
+        proc = _hook(repo, "disposition", "rev-1", "R-1", "--fixed", "lib/gates.py")
+        assert proc.returncode == 1, (proc.stdout, proc.stderr)
+
+
+# ---------------------------------------------------------------------------
+# Auto-accept at budget exhaustion
+# ---------------------------------------------------------------------------
+
+
+class TestAutoAccept:
+    """Exhaustion has to ANSWER the outstanding findings — the loop that would
+    have dispositioned them is the loop being ended."""
+
+    def test_it_accepts_warnings_and_notes(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        _review_fact(repo, "rev-1", [("R-1", "warning"), ("R-2", "note")])
+
+        swept = dispositions.auto_accept(repo, ["rev-1"], reason="budget spent")
+        assert swept == {
+            "status": "swept", "accepted": 2, "skipped_blocking": 0, "failed": [],
+        }
+        rows = {
+            row["fid"]: row
+            for row in dispositions.census(evidence.read_facts(repo))["reviews"][0]["rows"]
+        }
+        assert rows["R-1"]["state"] == dispositions.STATE_ACCEPTED
+        assert rows["R-1"]["reason"] == "budget spent"
+
+    def test_a_blocking_finding_is_never_swept(self, tmp_path):
+        """The load-bearing safety property: a budget may end a review loop and
+        may never open a gate. Guarded twice — filtered here, and independently
+        refused by `record`, which needs an owner ruling no caller supplies."""
+        repo = _make_repo(tmp_path)
+        _review_fact(repo, "rev-1", [("R-1", "blocking"), ("R-2", "warning")])
+
+        swept = dispositions.auto_accept(repo, ["rev-1"], reason="budget spent")
+        assert swept["accepted"] == 1 and swept["skipped_blocking"] == 1
+
+        facts = [
+            f for f in evidence.read_facts(repo)["facts"]
+            if f.get("kind") == KIND_DISPOSITION
+        ]
+        assert [f["body"]["finding"]["fid"] for f in facts] == ["R-2"], (
+            "a BLOCKING finding was auto-accepted"
+        )
+
+    def test_it_leaves_already_answered_findings_alone(self, tmp_path):
+        """Re-disposition appends, so a blind sweep would bury a real answer
+        under a generic one and make the budget the last word on every finding
+        it touched."""
+        repo = _make_repo(tmp_path)
+        _review_fact(repo, "rev-1", [("R-1", "warning"), ("R-2", "note"), ("R-3", "note")])
+        dispositions.record(repo, "rev-1", "R-1", dispositions.ACCEPT, reason="mine")
+        _resolution_fact(repo, "rev-1", "R-2", "fixed")
+
+        swept = dispositions.auto_accept(repo, ["rev-1"], reason="budget spent")
+        assert swept["accepted"] == 1
+        rows = {
+            row["fid"]: row
+            for row in dispositions.census(evidence.read_facts(repo))["reviews"][0]["rows"]
+        }
+        assert rows["R-1"]["reason"] == "mine"
+        assert rows["R-2"]["state"] == dispositions.STATE_FIXED
+
+    def test_reviews_outside_the_set_are_untouched(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        _review_fact(repo, "rev-1", [("R-1", "warning")])
+        _review_fact(repo, "rev-2", [("R-1", "warning")])
+
+        dispositions.auto_accept(repo, ["rev-1"], reason="budget spent")
+        rows = dispositions.census(evidence.read_facts(repo), review_id="rev-2")[
+            "reviews"][0]["rows"]
+        assert rows[0]["state"] == dispositions.STATE_OPEN

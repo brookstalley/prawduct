@@ -2,6 +2,7 @@
 artifact: build-plan
 version: 1
 scope: reviewer-rule-over-instance
+branch: fix/reviewer-rule-over-instance
 governed_by:
   - artifact: nonfunctional-requirements.md   # § Direction — review cost is unit-cost × run-count
     dispositions:

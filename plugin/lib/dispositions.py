@@ -18,7 +18,20 @@ codebase: a *release* scope is ``ships``/``withheld``
 (``release_readiness.py``) and a *resolution* fact carries
 ``fixed``/``waived`` (``coverage_algebra._RESOLVING_DISPOSITIONS``). To keep
 one field name from meaning three things across the store, this fact's field
-is ``action`` — ``accept`` or ``file``.
+is ``action`` — ``accept``, ``file`` or ``fixed``.
+
+**Why ``fixed`` is here at all, when a resolution fact already records a fix.**
+A fix confined to non-judgeable paths buys no review round — which is the
+outcome the framework steers toward — so no ``verify-resolutions`` pass runs
+and no resolution fact is ever written, and the census reports the finding
+``undispositioned`` forever. That inverts the gradient one level up: an agent
+wanting a clean census can ACCEPT (free) or buy a round (ten minutes), and the
+cheapest correct action — fix it for free — is the only one the record cannot
+see. So a free fix becomes recordable, **verified at record time against the
+same predicate that prices the edit**: a path set holding anything judgeable is
+refused, so this can never launder a judgeable fix past a gate. A BLOCKING
+finding is refused outright and still clears only through a real resolution
+fact; nothing about gating changes.
 
 **A disposition can never weaken a gate.** ``coverage_algebra`` filters
 ``kind != "resolution"`` before reading any body, so a BLOCKING finding stays
@@ -49,7 +62,8 @@ KIND = "disposition"
 
 ACCEPT = "accept"
 FILE = "file"
-ACTIONS = (ACCEPT, FILE)
+FIXED = "fixed"
+ACTIONS = (ACCEPT, FILE, FIXED)
 
 #: The ``--json`` shape is a machine contract; key changes bump this.
 REPORT_SCHEMA_VERSION = 1
@@ -63,6 +77,11 @@ STATE_FIXED = "fixed"
 STATE_WAIVED = "waived"
 STATE_ACCEPTED = "accepted"
 STATE_FILED = "filed"
+#: A fix recorded by :data:`FIXED` rather than by a resolution fact. Kept
+#: DISTINCT from :data:`STATE_FIXED`, which only a verify pass can produce: both
+#: say the defect is gone, and only one of them says an independent reviewer
+#: looked. Collapsing them would let the census claim a review that never ran.
+STATE_FIXED_FREE = "fixed-unreviewed"
 STATE_OPEN = "undispositioned"
 
 _SEVERITY_ORDER = ("blocking", "warning", "note")
@@ -127,6 +146,144 @@ def disposition_index(store: dict) -> dict[tuple[str, str], dict]:
     return {_target(fact): fact for fact in disposition_facts(store)}
 
 
+#: Prior-disposition entries a dispatch manifest will carry. A reviewer reads
+#: this block before it reads the diff, so it competes with the review for
+#: attention — and the whole point is to SHORTEN the review, not to prepend a
+#: second document to it. Truncation is reported, never silent.
+PRIOR_DISPOSITION_LIMIT = 15
+
+
+def _unavailable(reason: str) -> dict:
+    """An empty prior-dispositions block that SAYS it is empty for want of a
+    readable store, rather than because nothing was dispositioned."""
+    return {"entries": [], "matched": 0, "shown": 0, "truncated": 0, "unavailable": reason}
+
+
+def prior_dispositions(
+    store: dict,
+    files_changed: "list[str] | None",
+    *,
+    scope: "str | None" = None,
+    limit: int = PRIOR_DISPOSITION_LIMIT,
+) -> dict:
+    """The answers already given about findings in the files this review will
+    look at — so a fresh review can decline to re-litigate them.
+
+    Dispositions are facts, but nothing put them where a REVIEWER could see one:
+    a cumulative dispatched after an ``--accept`` hands its reviewers a diff and
+    no memory, and they find the same true thing again. Measured on one consumer
+    branch, round 9 re-raised six of round 7's findings verbatim, several of
+    them already accepted.
+
+    **Scoped by work AND by cited file — the file alone is not a filter.** A
+    store shared across every worktree accumulates hundreds of dispositions (652
+    on this repo), and the first cut of this used the cited file alone. Measured
+    on a live dispatch it carried 92 entries and the block was **91% of the
+    manifest, ~5,700 tokens — 2.7× the protocol file it exists to shorten**,
+    because a repo's hottest files are cited by nearly every finding it has ever
+    recorded, so the filter was weakest exactly where reviews concentrate. A
+    control that costs more attention than it saves is not a control.
+
+    So ``scope`` (the build-plan scope the dispatch resolved) narrows it to
+    answers given about *this body of work*, which is what "already answered"
+    was ever supposed to mean — a disposition from another chunk that happens to
+    touch the same hot file is not an answer about this diff. Reviews recorded
+    without a scope match nothing rather than everything: an unscoped fact
+    cannot claim to be about this work, and failing toward carrying LESS is
+    right for an advisory block whose failure mode is drowning the review.
+    Passing ``scope=None`` disables that half and falls back to files alone.
+
+    The file test stays, because it is what makes the protocol instruction
+    checkable against the evidence the reviewer holds: *not re-raised absent
+    material change in its cited files*.
+
+    A finding whose disposition exists but whose review fact no longer records
+    it (a hand-edited store) is skipped: there is no title to show and nothing
+    a reviewer could match against.
+
+    Returns::
+
+        {"entries": [{"review_id", "fid", "title", "severity", "action",
+                      "reason", "backlog_id", "files"}, ...],
+         "matched": int, "shown": int, "truncated": int,
+         "unavailable"?: str}
+
+    ``entries`` is newest-first, so a truncated block keeps the answers most
+    likely to still be live.
+
+    **A degraded store answers ``unavailable``, never an empty block.** The
+    reviewer protocol reads a block with no ``unavailable`` as "nothing was
+    dispositioned here", so returning ``entries: []`` for a store this reader
+    could not fully see states a falsehood — and states it in the one case where
+    re-litigating an accepted finding is most likely, because the answers are
+    there and simply unreadable. Both degraded states are *returned* by
+    ``evidence.read_facts`` rather than raised, so a caller's ``except`` cannot
+    catch them; they are answered here, the same way ``record_disposition`` and
+    the census reader refuse loudly on the identical two fields.
+    """
+    if store.get("status") == "error":
+        return _unavailable(
+            store.get("reason") or "the evidence store could not be read"
+        )
+    if store.get("schema_ahead"):
+        return _unavailable(
+            f"{len(store['schema_ahead'])} evidence record(s) carry a newer "
+            "schema than this reader — the dispositions they record are "
+            "invisible here. Update the plugin (/reload-plugins or restart "
+            "Claude Code) to see them."
+        )
+    in_scope_files = {f for f in (files_changed or []) if isinstance(f, str) and f}
+    findings = evidence.findings_index(store)
+    # (review id) → the scope that review recorded, so the work filter costs one
+    # pass rather than a lookup per disposition.
+    review_scope = {
+        fact.get("id"): (fact.get("body") or {}).get("scope")
+        for fact in evidence.facts_of_kind(store, "review")
+    }
+    entries: list[dict] = []
+    # Newest-last in store order; reverse so the newest answer leads and any
+    # truncation drops the oldest. Re-disposition APPENDS rather than editing
+    # (see the module docstring), so a finding can appear more than once here —
+    # reversed order makes the first sighting the live answer and every later
+    # one a superseded predecessor to skip. Showing both would hand a reviewer
+    # two contradictory answers about one finding.
+    seen: set[tuple[str, str]] = set()
+    for fact in reversed(disposition_facts(store)):
+        key = _target(fact)
+        if key in seen:
+            continue
+        seen.add(key)
+        finding = findings.get(key)
+        if finding is None:
+            continue
+        if scope is not None and review_scope.get(key[0]) != scope:
+            continue
+        cited = [f for f in (finding.get("files") or []) if isinstance(f, str)]
+        if in_scope_files and not (in_scope_files & set(cited)):
+            continue
+        body = fact.get("body") or {}
+        entries.append(
+            {
+                "review_id": key[0],
+                "fid": key[1],
+                "title": evidence.finding_title(finding),
+                "severity": finding.get("severity"),
+                "action": body.get("action"),
+                "reason": body.get("reason"),
+                "backlog_id": body.get("backlog_id"),
+                "files": cited,
+            }
+        )
+    matched = len(entries)
+    shown = entries[:limit]
+    return {
+        "entries": shown,
+        "matched": matched,
+        "shown": len(shown),
+        "truncated": matched - len(shown),
+    }
+
+
 def disposition_history(store: dict, review_id: str, fid: str) -> list[dict]:
     """Every disposition recorded for one finding, oldest first."""
     return [
@@ -164,8 +321,12 @@ def record(
     reason: str | None = None,
     backlog_id: str | None = None,
     owner_ruling: str | None = None,
+    paths: "list[str] | None" = None,
 ) -> dict:
     """Append one disposition fact.
+
+    ``paths`` belongs to :data:`FIXED` alone — the files the free fix touched,
+    every one of which must be non-judgeable.
 
     Returns ``{"status": "recorded", "id", "action", "severity"}``,
     ``{"status": "unchanged", "id", ...}`` when the newest recorded answer is
@@ -209,6 +370,40 @@ def record(
                 "reason": "a FILE's reasoning belongs on the backlog item, not "
                 "the fact — pass --file <backlog-id> alone",
             }
+    clean_paths: list[str] = []
+    if action == FIXED:
+        if _nonempty(reason) or _nonempty(backlog_id):
+            return {
+                "status": "error",
+                "reason": "a FIXED records the files the fix touched, not a "
+                "reason or a backlog id — pass --fixed <path>[,<path>...] alone",
+            }
+        clean_paths = [p.strip() for p in (paths or []) if _nonempty(p)]
+        if not clean_paths:
+            return {
+                "status": "error",
+                "reason": "a FIXED names the files the fix touched — pass "
+                "--fixed <path>[,<path>...]. Naming them is what makes the "
+                "claim checkable, and the check is the whole warrant for "
+                "recording a fix no reviewer saw",
+            }
+        from . import coverage_algebra  # noqa: PLC0415 — lazy; keeps the import graph flat
+
+        judgeable = [p for p in clean_paths if coverage_algebra.is_judgeable_path(p)]
+        if judgeable:
+            return {
+                "status": "error",
+                "reason": "a FIXED is only for a fix that bought no review "
+                "round, and these paths buy one: "
+                f"{', '.join(judgeable)}. Run /prawduct:critic "
+                "verify-resolutions — the round is already paid for by the "
+                "edit, so recording it here would claim a review nobody ran",
+            }
+    elif paths:
+        return {
+            "status": "error",
+            "reason": f"paths belong to a FIXED, not to a {action.upper()}",
+        }
 
     store = evidence.read_facts(project_dir)
     if store["status"] == "error":
@@ -244,6 +439,22 @@ def record(
             "(--owner-ruling <text>). Fixing it and running "
             "/prawduct:critic verify-resolutions is the ordinary path.",
         }
+    if severity == "blocking" and action == FIXED:
+        # No owner-ruling escape here, unlike ACCEPT. A blocking finding on a
+        # free interval is exactly the case `begin_review`'s free-interval
+        # refusal deliberately does NOT refuse — its second conjunct keeps a
+        # verify pass dispatchable precisely so these stay clearable. So the
+        # real route exists, costs nothing extra, and produces the resolution
+        # fact the gate reads; a disposition here would leave the census saying
+        # "fixed" while the gate says "blocked", with nothing reconciling them.
+        return {
+            "status": "error",
+            "reason": f"{fid} is BLOCKING: a blocking finding clears only "
+            "through a resolution fact, so a free fix still takes "
+            "/prawduct:critic verify-resolutions — which the free-interval "
+            "refusal lets through for this exact case. Recording it here "
+            "would say 'fixed' in the census while the gate stays blocked.",
+        }
 
     body = {
         "finding": {"review_id": review_id, "fid": fid},
@@ -251,6 +462,7 @@ def record(
         "reason": reason.strip() if _nonempty(reason) else None,
         "backlog_id": backlog_id.strip() if _nonempty(backlog_id) else None,
         "owner_ruling": owner_ruling.strip() if _nonempty(owner_ruling) else None,
+        "paths": clean_paths or None,
     }
 
     history = disposition_history(store, review_id, fid)
@@ -258,7 +470,7 @@ def record(
         newest = history[-1]["body"]
         if all(
             newest.get(key) == body.get(key)
-            for key in ("action", "reason", "backlog_id", "owner_ruling")
+            for key in ("action", "reason", "backlog_id", "owner_ruling", "paths")
         ):
             return {
                 "status": "unchanged",
@@ -295,13 +507,89 @@ def record(
     }
 
 
+def auto_accept(
+    project_dir: Path, review_ids: "list[str]", *, reason: str
+) -> dict:
+    """ACCEPT every still-open non-blocking finding across ``review_ids``.
+
+    The round budget's other half: refusing a further round would otherwise
+    leave the outstanding findings open forever, since the loop that would have
+    dispositioned them is the loop that just ended. So exhaustion answers them
+    — with the budget itself as the reason, which is a true and reviewable
+    answer rather than a silent drop.
+
+    **BLOCKING is untouchable, twice over.** This filters blocking findings out
+    before calling :func:`record`, and :func:`record` independently refuses an
+    ACCEPT on one without an owner ruling that no caller here supplies. Either
+    guard alone would do it; both are here because a budget that could open a
+    gate would be a way to *merge* unreviewed work, which is the one thing this
+    plan may not build. Pinned by a regression test.
+
+    Returns ``{"status": "swept", "accepted", "skipped_blocking", "failed":
+    [{"review_id", "fid", "reason"}]}`` or ``{"status": "error", "reason"}``
+    when the store cannot be read. Never raises.
+    """
+    store = evidence.read_facts(project_dir)
+    if store["status"] == "error":
+        return {"status": "error", "reason": store["reason"]}
+    if store["schema_ahead"]:
+        return {
+            "status": "error",
+            "reason": f"{len(store['schema_ahead'])} evidence record(s) carry a "
+            "newer schema than this reader — the findings it would sweep are "
+            "not all visible. Update the plugin (/reload-plugins or restart "
+            "Claude Code).",
+        }
+
+    wanted = set(review_ids)
+    dispositions = disposition_index(store)
+    resolutions = resolution_detail_index(store)
+    accepted = 0
+    skipped_blocking = 0
+    failed: list[dict] = []
+    for fact in evidence.facts_of_kind(store, "review"):
+        rid = fact.get("id")
+        if rid not in wanted:
+            continue
+        findings = (fact.get("body") or {}).get("findings")
+        for finding in findings if isinstance(findings, list) else []:
+            if not isinstance(finding, dict):
+                continue
+            fid = finding.get("fid")
+            if not _nonempty(fid):
+                continue
+            key = (rid, fid)
+            if key in dispositions or key in resolutions:
+                continue
+            if _severity_of(finding) == "blocking":
+                skipped_blocking += 1
+                continue
+            result = record(project_dir, rid, fid, ACCEPT, reason=reason)
+            if result["status"] == "error":
+                failed.append(
+                    {"review_id": rid, "fid": fid, "reason": result["reason"]}
+                )
+            else:
+                accepted += 1
+    return {
+        "status": "swept",
+        "accepted": accepted,
+        "skipped_blocking": skipped_blocking,
+        "failed": failed,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Census (derived view)
 # ---------------------------------------------------------------------------
 
 
 def census(
-    store: dict, *, review_id: str | None = None, scope: str | None = None
+    store: dict,
+    *,
+    review_id: str | None = None,
+    scope: str | None = None,
+    review_ids: "list[str] | None" = None,
 ) -> dict:
     """Derive the disposition census.
 
@@ -310,7 +598,12 @@ def census(
     or scope matches nothing — a renderer that silently prints an empty table
     for a typo'd id is worse than one that says so.
 
-    With neither selector, the newest review fact is rendered.
+    ``review_ids`` renders an explicit SET, which is what a caller that has
+    already computed which reviews it is talking about needs: selecting by scope
+    when the set was derived some other way makes the rendered table and the
+    caller's actual subject two different things.
+
+    With no selector, the newest review fact is rendered.
     """
     review_facts = evidence.facts_of_kind(store, "review")
     if not review_facts:
@@ -322,6 +615,15 @@ def census(
             return {
                 "status": "error",
                 "reason": f"no review fact {review_id!r} in the store",
+            }
+    elif review_ids is not None:
+        wanted = set(review_ids)
+        selected = [f for f in review_facts if f.get("id") in wanted]
+        if not selected:
+            return {
+                "status": "error",
+                "reason": f"none of the {len(wanted)} requested review id(s) is "
+                "in the store",
             }
     elif scope is not None:
         selected = [
@@ -390,6 +692,8 @@ def _row(
         state = STATE_ACCEPTED
     elif disposition.get("action") == FILE:
         state = STATE_FILED
+    elif disposition.get("action") == FIXED:
+        state = STATE_FIXED_FREE
     else:
         state = STATE_OPEN
 
@@ -397,11 +701,12 @@ def _row(
         "fid": fid,
         "severity": _severity_of(finding),
         "goal": finding.get("goal"),
-        "title": finding.get("title"),
+        "title": evidence.finding_title(finding),
         "state": state,
         "reason": disposition.get("reason"),
         "backlog_id": disposition.get("backlog_id"),
         "owner_ruling": disposition.get("owner_ruling"),
+        "paths": disposition.get("paths"),
         # A finding carrying both a resolution and a disposition has been
         # answered twice (accepted, then actually fixed — or the reverse).
         # Which answer is current is a judgement the renderer must not make
@@ -510,6 +815,8 @@ def _detail(row: dict) -> str:
     parts = []
     if _nonempty(row.get("backlog_id")):
         parts.append(f"`{row['backlog_id']}`")
+    if row.get("paths"):
+        parts.append("fixed in " + ", ".join(f"`{p}`" for p in row["paths"]))
     if _nonempty(row.get("reason")):
         parts.append(row["reason"])
     if _nonempty(row.get("owner_ruling")):
@@ -526,7 +833,8 @@ def _detail(row: dict) -> str:
 
 _RECORD_USAGE = (
     "Usage: prawduct-hook disposition <review-id> <fid> "
-    "{--accept <reason>|--file <backlog-id>} [--owner-ruling <text>]"
+    "{--accept <reason>|--file <backlog-id>|--fixed <path>[,<path>...]} "
+    "[--owner-ruling <text>]"
 )
 _RENDER_USAGE = (
     "Usage: prawduct-hook render-dispositions "
@@ -542,11 +850,12 @@ def disposition_cmd(project_dir: Path, argv: list[str]) -> int:
     reason: str | None = None
     backlog_id: str | None = None
     owner_ruling: str | None = None
+    paths: list[str] | None = None
 
     i = 0
     while i < len(argv):
         arg = argv[i]
-        if arg in ("--accept", "--file", "--owner-ruling"):
+        if arg in ("--accept", "--file", "--fixed", "--owner-ruling"):
             if i + 1 >= len(argv):
                 print(f"{_RECORD_USAGE}\n{arg} needs a value", file=sys.stderr)
                 return 2
@@ -561,6 +870,8 @@ def disposition_cmd(project_dir: Path, argv: list[str]) -> int:
                 return 2
             elif arg == "--accept":
                 action, reason = ACCEPT, value
+            elif arg == "--fixed":
+                action, paths = FIXED, [p for p in value.split(",") if p.strip()]
             else:
                 action, backlog_id = FILE, value
             i += 2
@@ -583,6 +894,7 @@ def disposition_cmd(project_dir: Path, argv: list[str]) -> int:
         reason=reason,
         backlog_id=backlog_id,
         owner_ruling=owner_ruling,
+        paths=paths,
     )
     if result["status"] == "error":
         print(f"disposition: {result['reason']}", file=sys.stderr)

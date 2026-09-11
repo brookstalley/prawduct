@@ -246,6 +246,65 @@ class TestMigrationRequiredProbe:
         assert not [c for c in cands if c.type == "backlog-service-migration-required"]
 
 
+class TestTerminalMarkdownDeclaration:
+    """#197 / TM1-TM4 — a product that will never migrate has a committed way to
+    say so, and saying so silences THIS probe and nothing else.
+
+    Absence of the field means undecided, and that is the default: it is pinned by
+    `test_fires_on_structured_unmigrated_backlog` above, which runs an empty
+    `ProjectState` against exactly this backlog.
+    """
+
+    def test_declared_markdown_stays_quiet_through_the_roster(self, tmp_path):
+        # Through the roster, not the direct call: what a real session reads.
+        _write_backlog(tmp_path, _structured_backlog(3))
+        bp.register()
+        cands = run_all_probes(
+            ProjectState({"backlog_backend": "markdown"}), make_codebase(tmp_path)
+        )
+        assert not [c for c in cands if c.type == "backlog-service-migration-required"]
+
+    def test_an_undeclared_value_does_not_resolve(self, tmp_path):
+        # `markdown` is the only defined value (TM1). A typo or a value from some
+        # future backend must not silence the nudge by accident — silence is what
+        # this probe exists to prevent.
+        _write_backlog(tmp_path, _structured_backlog(3))
+        out = bp.probe_migration_required(
+            ProjectState({"backlog_backend": "something-else"}), _cb(tmp_path)
+        )
+        assert len(out) == 1
+
+    def test_an_actual_cutover_beats_a_stale_declaration(self, tmp_path):
+        # TM4, and it falls out of the check ORDER rather than a comparison — this
+        # asserts the combination is not its own path that could regress alone.
+        _write_backlog(tmp_path, _structured_backlog(3))
+        bp.register()
+        cands = run_all_probes(
+            ProjectState(
+                {"backlog_service_repo": "acme/widgets", "backlog_backend": "markdown"}
+            ),
+            make_codebase(tmp_path),
+        )
+        assert not [c for c in cands if c.type == "backlog-service-migration-required"]
+
+    def test_the_sibling_markdown_nudges_are_untouched(self, tmp_path):
+        """TM3 — the whole reason this is a second, narrower predicate rather than a
+        widening of `post_cutover()`. A product staying on the file needs its
+        format/schema/grooming hygiene MORE than a migrating one, not less; folding
+        the check into the shared predicate would have made it second-class."""
+        _write_backlog(tmp_path, _legacy_backlog(bp.LEGACY_FORMAT_MIN_ITEMS + 2))
+        bp.register()
+        declared = run_all_probes(
+            ProjectState({"backlog_backend": "markdown"}), make_codebase(tmp_path)
+        )
+        absent = run_all_probes(ProjectState({}), make_codebase(tmp_path))
+        assert {c.type for c in declared} == {c.type for c in absent}, (
+            "declaring terminal markdown changed which advisories fire beyond "
+            "backlog-service-migration-required"
+        )
+        assert "legacy-backlog-format" in {c.type for c in declared}
+
+
 class TestTheDormancyAdvisoryIsRetired:
     """The `backlog-checks-dormant` advisory and its `DORMANT_CHECKS` roster are
     gone (W1 Chunk 06), and these tests are what stops them coming back by accident.

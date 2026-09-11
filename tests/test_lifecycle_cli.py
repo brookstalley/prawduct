@@ -56,6 +56,18 @@ scope: demo
 ## Build Chunks
 """
 
+#: The same plan with every box ticked. Two commands read this fixture and want
+#: opposite things from it: `lifecycle-repair` reports plans with unticked
+#: chunks, so ITS fixture must have one, while `plan-backfill` refuses them
+#: since #634, so its fixture must not. Ticking the shared one silently stopped
+#: `test_json_plans_to_review_names_the_unticked_chunk` from having anything to
+#: find — it still passed its own assertions until one of them counted. Checkbox
+#: policy itself is pinned in `test_plan_backfill.py`, not here.
+PLAN_COMPLETE = PLAN_WITH_INSTRUCTION.replace(
+    "- [ ] Chunk 02: pending", "- [x] Chunk 02: done"
+)
+
+
 CHANGE_LOG = """\
 # Change Log
 
@@ -64,13 +76,19 @@ CHANGE_LOG = """\
 """
 
 
-def _repo(tmp_path: Path, *, state: str = STATE_WITH_FLAG, change_log: str = CHANGE_LOG) -> Path:
+def _repo(
+    tmp_path: Path,
+    *,
+    state: str = STATE_WITH_FLAG,
+    change_log: str = CHANGE_LOG,
+    plan: str = PLAN_WITH_INSTRUCTION,
+) -> Path:
     prawduct = tmp_path / ".prawduct"
     (prawduct / "artifacts").mkdir(parents=True)
     (prawduct / "project-state.yaml").write_text(state, encoding="utf-8")
     (prawduct / "change-log.md").write_text(change_log, encoding="utf-8")
     (prawduct / "artifacts" / "build-plan-demo.md").write_text(
-        PLAN_WITH_INSTRUCTION, encoding="utf-8"
+        plan, encoding="utf-8"
     )
     return tmp_path
 
@@ -198,7 +216,7 @@ class TestUnreadableFilesChangeTheVerdict:
 
 class TestPlanBackfillCommand:
     def test_dry_run_moves_nothing(self, tmp_path: Path) -> None:
-        project = _repo(tmp_path)
+        project = _repo(tmp_path, plan=PLAN_COMPLETE)
         before = _tree(project)
         proc = _run(project, "plan-backfill")
 
@@ -207,7 +225,7 @@ class TestPlanBackfillCommand:
         assert _tree(project) == before
 
     def test_apply_archives_and_exits_zero(self, tmp_path: Path) -> None:
-        project = _repo(tmp_path)
+        project = _repo(tmp_path, plan=PLAN_COMPLETE)
         proc = _run(project, "plan-backfill", "--apply", "--date", "2026-08-10")
 
         assert proc.returncode == 0, proc.stderr
@@ -216,7 +234,7 @@ class TestPlanBackfillCommand:
         assert "archived: 2026-08-10" in archived.read_text()
 
     def test_date_equals_form_is_accepted(self, tmp_path: Path) -> None:
-        project = _repo(tmp_path)
+        project = _repo(tmp_path, plan=PLAN_COMPLETE)
         proc = _run(project, "plan-backfill", "--apply", "--date=2026-01-02")
 
         assert proc.returncode == 0, proc.stderr
@@ -225,23 +243,27 @@ class TestPlanBackfillCommand:
 
     def test_date_with_no_value_is_exit_two(self, tmp_path: Path) -> None:
         """Never a silently-defaulted date: the date is the record."""
-        proc = _run(_repo(tmp_path), "plan-backfill", "--date")
+        proc = _run(_repo(tmp_path, plan=PLAN_COMPLETE), "plan-backfill", "--date")
         assert proc.returncode == 2
         assert "--date requires" in proc.stderr
 
     def test_empty_date_is_exit_two(self, tmp_path: Path) -> None:
-        proc = _run(_repo(tmp_path), "plan-backfill", "--date=")
+        proc = _run(_repo(tmp_path, plan=PLAN_COMPLETE), "plan-backfill", "--date=")
         assert proc.returncode == 2
 
     def test_an_unknown_flag_is_exit_two(self, tmp_path: Path) -> None:
-        proc = _run(_repo(tmp_path), "plan-backfill", "--wat")
+        proc = _run(_repo(tmp_path, plan=PLAN_COMPLETE), "plan-backfill", "--wat")
         assert proc.returncode == 2
         assert "unknown argument" in proc.stderr
 
     def test_a_product_with_no_release_tags_moves_nothing_and_says_why(
         self, tmp_path: Path
     ) -> None:
-        project = _repo(tmp_path, change_log="# Change Log\n\n## 2026-01-01: a thing\n")
+        project = _repo(
+            tmp_path,
+            change_log="# Change Log\n\n## 2026-01-01: a thing\n",
+            plan=PLAN_COMPLETE,
+        )
         before = _tree(project)
         proc = _run(project, "plan-backfill", "--apply")
 
@@ -250,7 +272,7 @@ class TestPlanBackfillCommand:
         assert _tree(project) == before
 
     def test_json_shape(self, tmp_path: Path) -> None:
-        proc = _run(_repo(tmp_path), "plan-backfill", "--json")
+        proc = _run(_repo(tmp_path, plan=PLAN_COMPLETE), "plan-backfill", "--json")
         assert proc.returncode == 0, proc.stderr
         payload = json.loads(proc.stdout)
 
@@ -269,7 +291,7 @@ class TestPlanBackfillCommand:
 
     def _repo_with_a_blocked_plan(self, tmp_path: Path) -> Path:
         """A plan the change log says shipped but whose archive name is taken."""
-        project = _repo(tmp_path)
+        project = _repo(tmp_path, plan=PLAN_COMPLETE)
         archive = project / ".prawduct" / "artifacts" / "archive"
         archive.mkdir(parents=True, exist_ok=True)
         (archive / "build-plan-demo.md").write_text("an earlier plan\n", encoding="utf-8")
@@ -327,7 +349,7 @@ class TestPlanBackfillCommand:
         gate as "no active build plan" — they go quiet rather than fail, which is
         this work's worst failure class.
         """
-        project = _repo(tmp_path)
+        project = _repo(tmp_path, plan=PLAN_COMPLETE)
         state = project / ".prawduct" / "project-state.yaml"
         state.write_text(
             STATE_WITH_FLAG + "active_build_plan: artifacts/build-plan-demo.md\n",
@@ -341,7 +363,7 @@ class TestPlanBackfillCommand:
     def test_it_reports_a_pointer_that_names_a_missing_plan(self, tmp_path: Path) -> None:
         """Reachable for any reason — archived by hand, moved, renamed, lost to
         an interrupted run — and silent gates are the cost every time."""
-        project = _repo(tmp_path)
+        project = _repo(tmp_path, plan=PLAN_COMPLETE)
         state = project / ".prawduct" / "project-state.yaml"
         state.write_text(
             STATE_WITH_FLAG + "active_build_plan: artifacts/build-plan-gone.md\n",
@@ -354,7 +376,7 @@ class TestPlanBackfillCommand:
 
     def test_it_stays_quiet_when_the_pointer_names_a_live_plan(self, tmp_path: Path) -> None:
         """Without this, the assertion above passes on a notice that always fires."""
-        project = _repo(tmp_path)
+        project = _repo(tmp_path, plan=PLAN_COMPLETE)
         live = project / ".prawduct" / "artifacts" / "build-plan-live.md"
         live.write_text(
             "---\nartifact: build-plan\nscope: unreleased\n---\n\n## Status\n\n- [ ] Chunk 01: x\n",
@@ -373,7 +395,7 @@ class TestPlanBackfillCommand:
     def test_running_twice_under_apply_stays_exit_zero(self, tmp_path: Path) -> None:
         """Idempotence at the CLI boundary — the second run finds nothing to do
         and must not report that as a failure."""
-        project = _repo(tmp_path)
+        project = _repo(tmp_path, plan=PLAN_COMPLETE)
         assert _run(project, "plan-backfill", "--apply").returncode == 0
         second = _run(project, "plan-backfill", "--apply")
         assert second.returncode == 0, second.stderr

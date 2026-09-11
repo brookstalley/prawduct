@@ -1,6 +1,5 @@
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
-.prawduct/.bug-inbox
 .prawduct/.critic-active
 .prawduct/.critic-findings.json
 .prawduct/.governance-ledger.jsonl
@@ -24,8 +23,10 @@ uv.lock
 .prawduct/.test-evidence.json
 .prawduct/.gates-waived
 
-# Work-model vocabulary index — derived per-repo state, rebuilt from artifacts
-# each session (hooks build-index / user-prompt-submit). Ephemeral, gitignored.
+# Work-model vocabulary index — RETIRED in v3.3.2 with the tripwire that wrote it
+# (owner ruling 2026-07-12, #257). Nothing generates this file any more; the entry
+# stays so the copies left on disk by pre-3.3.2 sessions remain invisible rather
+# than resurfacing as untracked noise in every governed repo.
 .prawduct/.work-model-index.json
 
 # Prawduct session files
@@ -36,8 +37,14 @@ uv.lock
 # version bump never produces a tracked-file diff (the core no-noise guarantee).
 .prawduct/.prawduct-version
 
-# Untracked drop-box for externally-filed bug reports (triaged into .prawduct/backlog.md).
+# RETIRED local artifacts of the upstream bug drop-box. Upstream reports are GitHub
+# issues now, and nothing writes either of these — they are kept ignored because a
+# machine that used the channel still holds untracked reports under incoming-bugs/,
+# which have no git copy, and un-ignoring them would surface them as noise. Triage
+# anything left there into the backlog by hand; deleting the tree is the operator's
+# call, not prawduct's.
 incoming-bugs/
+.prawduct/.bug-inbox
 
 # Prawduct session files
 .prawduct/.critic-partials/
@@ -60,3 +67,11 @@ incoming-bugs/
 # under `source_root: "."` and reports any that architecture.md does not name —
 # a recurring false advisory on a directory that is deliberately not architecture.
 scratchpad/
+
+# Prawduct session files
+# An ad-hoc delegate's dispatch record, written into the delegate's own worktree.
+# Untracked because a delegate running `git add -A` would otherwise commit it onto
+# the delegate branch and it would arrive in the merge; ignored (not merely
+# untracked) is what makes that impossible. Its presence in a worktree is also the
+# only signal the unintegrated-delegate advisory has, so it must never come from HEAD.
+.prawduct/.delegate-brief.md

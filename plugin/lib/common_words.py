@@ -1,11 +1,18 @@
-"""Common-English frequency floor for the work-model probe (pure data).
+"""Common-English frequency floor for work-model matching (pure data).
 
-High-frequency English words that must NEVER be flagged as orphan terms by the
-undocumented-requirement catch (``lib/work_model_index.py``), regardless of the
-governing-artifact corpus. Ordinary conversational English ("thanks, looks
-good", "please continue") is not a requirements signal; before this floor
-existed the probe flagged it on every prompt, training the model to ignore the
-one real catch (2026-06-09 framework review, review-fixes Chunk 2).
+High-frequency English words that must NEVER carry a match in
+``lib/work_model_index.py``, regardless of the governing-artifact corpus.
+
+Built for the undocumented-requirement tripwire, where these words were the
+noise: ordinary conversational English ("thanks, looks good", "please continue")
+is not a requirements signal, and before this floor existed the probe flagged it
+on every prompt, training the model to ignore the one real catch (2026-06-09
+framework review, review-fixes Chunk 2). **That tripwire was deleted in v3.3.2**
+(owner ruling 2026-07-12, #257) — the floor survives because
+``jurisdiction_candidates`` applies it in the opposite direction: a floor word
+can never PRODUCE a jurisdiction match, so two documents sharing only "quality"
+and "performance" are correctly reported as unrelated. Same list, inverted
+question.
 
 Provenance: the top 4,000 entries of the google-10000-english frequency list
 (``first20hours/google-10000-english``, ``google-10000-english-usa-no-swears.txt``,
@@ -33,11 +40,6 @@ rank above it.
 ``_SUPPLEMENT`` adds development-session chatter the 2006-era web corpus lacks
 (typo, lint, repo, …) plus git-workflow vocabulary (commit, merge, rebase):
 session mechanics, not product requirements.
-
-Accepted recall trade (documented, deliberate): a requirement phrased entirely
-in floor words ("add payment support" — payment #538) yields no orphans and
-stays silent. The probe is an unfamiliar-token tripwire, not a parser; the
-deferred LLM-in-hook classifier remains the upgrade path for that gap.
 """
 from __future__ import annotations
 

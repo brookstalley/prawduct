@@ -418,12 +418,12 @@ class TestNoUngatedBacklogFileReaders:
         )
 
     def test_injected_digests_scope_markdown_only_backlog_semantics(self):
-        """The digests are injected into every session including cut-over ones,
+        """The digest is injected into every session including cut-over ones,
         so an unconditional `## Archive`/`## Open` sentence there is the same
         defect as the one fixed in `skills/backlog/SKILL.md` — at the framework's
-        highest-traffic surface. They name no `backlog.md` path, so the sweep
-        above cannot see them; this is their pin."""
-        for rel in ("methodology/session-digest.md", "methodology/session-digest-slim.md"):
+        highest-traffic surface. It names no `backlog.md` path, so the sweep
+        above cannot see it; this is its pin."""
+        for rel in ("methodology/session-digest.md",):
             flat = " ".join(_read(rel).split())
             if "## Archive" not in flat:
                 continue

@@ -51,16 +51,29 @@ Prawduct is a **Claude Code plugin**, and it *is* its own single-plugin, git-bac
   `develop` and `main` accumulate divergent histories. **Two promotion shapes exist, and the
   descriptive claim that content is always identical was false for both of the last two releases:**
   - *Whole-develop* — the tree-set (`git read-tree`-style) reset to develop's tree plus a
-    single-parent commit. Here `git diff --stat origin/main origin/develop` is empty afterwards, and
-    that check is a valid completion test.
+    single-parent commit. `git diff --stat origin/main origin/develop` is empty **at the moment the
+    promotion lands**, which is what makes it a valid completion test for that step. It does not
+    stay empty: the runbook's Phase 3 reopens `develop` at the next `-dev` version one commit
+    later, so a release run to completion leaves **five** files differing — the three version
+    files, `plugin/CHANGELOG.md` (whose new `-dev` heading exists only on `develop`) and
+    `.prawduct/change-log.md`. Read the check against Phase 2, not against the end of the runbook.
   - *Pruned* — used for **v3.1.1 and v3.1.2**, where only a classified subset shipped. `main`'s tree
     is deliberately **not** develop's, the content-identical check can never pass, and the completion
     test is the **partition**: every path in `origin/main..origin/develop` accounted for as shipped or
     deliberately withheld. The durable procedure is `runbooks/promote-a-pruned-release.md`, selected
     at Phase 2 by Phase 0's withheld count; `release-plan-v3.1.2-pruned.md` is the worked example.
+    **It replaces Phase 2 only — the reopen step (Phase 3) still runs afterwards**, and nothing on
+    this path detects its omission, because the completion test here is the partition rather than
+    the five-file diff.
 - The release checklist: merge to `main`, **bump `version` + the `VERSION` file**, flip the release's
-  change-log entries to `status=shipped`, regenerate derived views, tag `vX.Y.Z` on `main`, and
-  confirm the version banner. Tags are decorative for delivery (the branch-pinned marketplace
+  change-log entries to `status=shipped`, regenerate derived views, tag `vX.Y.Z` on `main`,
+  confirm the version banner, and **reopen `develop` at the next PATCH `-dev` version** (the same
+  five files the completion test above enumerates, one commit) so a prerelease codebase never
+  reports the released number to the verdict cache or to a develop-pinned consumer's banner. The
+  guess is deliberately low: a prerelease sorts just below its own release, so from `X.Y.Z+1-dev`
+  every possible next cut is a forward move, while a high guess makes a patch cut a downgrade —
+  and the banner renders nothing on a downgrade. Conservative versioning is also the ratified
+  norm above; a minor `-dev` needs the same recorded decision a minor release does. Tags are decorative for delivery (the branch-pinned marketplace
   resolves the branch HEAD, not the latest tag) but are kept for human navigation.
 - `/prawduct:pr` handles feature→`develop` PRs; it is **not** the release vehicle — the
   develop→main promotion is a separate, deliberate step.

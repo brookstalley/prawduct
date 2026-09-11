@@ -12,6 +12,23 @@ version: 2
 # entries carrying the same `scope=`. Use your in-flight chunks' tag; null is fine
 # for single-version products.
 scope: pantry-v1
+# branch: the branch this plan governs. UNCOMMENT IT with your real branch name —
+# it is left commented rather than filled in like the fields around it because a
+# placeholder branch is one no repo has, and the session briefing correctly
+# reports a plan claiming a branch that does not exist.
+#
+# Declaring it makes every governance surface resolve THIS plan while that branch
+# is checked out, ahead of the `active_build_plan` scalar — so two concurrent
+# branches stop fighting over one line, and archiving the plan (or deleting the
+# merged branch) ends the claim with nothing to un-point. Leave it out and the
+# scalar keeps working exactly as before.
+#
+# Several plans MAY declare one branch — a release branch carrying two workstreams
+# is ordinary, not an error. Governance picks one by a stated precedence and the
+# session briefing says which it chose, why, and what else claimed the branch.
+# The precedence itself lives in ONE place: methodology/planning.md, "Which plan
+# is active is branch state".
+# branch: feature/pantry-v1
 depends_on:
   - artifact: product-brief
   - artifact: data-model
@@ -27,6 +44,13 @@ governed_by:
     dispositions:
       - "all timestamps UTC ISO-8601 → conforms"
       - "money as integer minor units → inapplicable because this plan touches no money fields"
+# partition: who builds each chunk, recorded either way — one line, and
+# "serial, because X" is an answer. Drawn when the chunk boundaries are drawn
+# (methodology/planning.md "Partition: Serial or Delegated"), because that is
+# the last moment the whole partition is visible before any brief exists. What
+# the field catches is not serial work but UNEXAMINED work: independent chunks
+# and no line here is the `serial by default` anti-pattern.
+partition: serial — each chunk builds on the last, and 03 extends 02's routes
 last_validated: 2026-07-03
 # END OF LIFE — written by `prawduct-hook archive-plan`, not by hand. A plan is
 # never deleted: when its work is done, or has stopped, been descoped, or been
@@ -44,10 +68,21 @@ last_validated: 2026-07-03
 #                                          because a shipped version is immutable
 #                                          and cannot drift.
 #   superseded_by: <what replaced it, or why it stopped>   <- superseded only
+#   unbuilt_at_archive: <what this plan's own Status said was still unbuilt>
+#                                       <- ABSENCE MEANS CLEAN, not unknown. It
+#                                          appears only when the Status roster
+#                                          shows unticked chunks, or when there
+#                                          is no readable roster at all — an
+#                                          unparseable plan is not evidence of
+#                                          completion. Written by the explicit
+#                                          `archive-plan` route only; the
+#                                          automatic sweep refuses incomplete
+#                                          plans, so it never produces one.
 #   maintained: false
 # Status checkboxes are NOT touched on the way in. An archived plan may carry
 # unticked boxes — that records how the work ended, and nothing reads them once
-# the plan is out of the live directory.
+# the plan is out of the live directory. `unbuilt_at_archive:` exists because
+# nothing reads them: the fact has to be said in the frontmatter to be said at all.
 ---
 
 ## Requirements Confidence

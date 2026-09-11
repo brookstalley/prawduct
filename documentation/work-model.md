@@ -1,5 +1,14 @@
 # The Work Model — Catching Undocumented Requirements
 
+> ⚠️ **HISTORICAL — the runtime leg described here was deleted in v3.3.2.**
+> The `UserPromptSubmit` orphan-term nudge (`prawduct-hook user-prompt-submit`, `build-index`, and
+> the derived vocabulary index) no longer exists: the owner ruled 2026-07-12 (#257) that its
+> resolution was deletion rather than a further precision fix, after its noise desensitized the one
+> signal it existed to carry. Requirements-precede-code enforcement moved to the review-time
+> `scope-trace:` question in the Critic and PR protocols (CRT-5M9J, #293). What survives of this
+> design is `prawduct-hook jurisdiction` and `lib/work_model_index.jurisdiction_candidates`.
+> This document is kept as the record of what was built and why — read it as history, not as spec.
+
 > **Status: kernel (v2).** Supersedes the v1 apparatus — preserved verbatim at
 > [`work-model-v1-archive.md`](./work-model-v1-archive.md) — after a research pass
 > ([`work-model-prior-art.md`](./work-model-prior-art.md)) and an independent adversarial review

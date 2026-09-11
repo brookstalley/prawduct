@@ -1,9 +1,11 @@
-"""Converge a repo off the retired derived-view model (FL2, FL3, GD2).
+"""Converge a repo off retired ``project-state.yaml`` residue (FL2, FL3, GD2).
 
-Three retired things left residue in every already-onboarded repo, and a
-template change cannot reach any of them (``init_product`` and
-``core.write_template`` skip destinations that already exist — the same reason
-:mod:`lib.norm_index_scaffold` exists): a ``views_enabled:`` key, a
+Retired things leave residue in every already-onboarded repo, and a template
+change cannot reach any of them (``init_product`` and ``core.write_template``
+skip destinations that already exist — the same reason
+:mod:`lib.norm_index_scaffold` exists). This module removes them.
+
+Four came from the retired **derived-view model**: a ``views_enabled:`` key, a
 ``scope_rollups:`` block, a ``release-notes.md`` that was a regenerated view,
 and per-plan HTML comments instructing the reader that a plan's ``## Status``
 checkboxes are derived and must not be hand-edited.
@@ -13,6 +15,28 @@ The last of those is the one that still does damage. The other three are inert
 read by a human or an agent and obeyed, and the boxes are now the only reading
 of chunk progress that the session gates have. A repo that keeps it converges
 its data and still behaves the old way.
+
+The fifth is ``build_state.test_tracking`` — a hand-maintained count of tests
+(and, in most repos, an ``assertion_count``, a ``test_files``, and a ``history``
+of per-chunk ``tests_added`` entries). It is here because it is the same defect
+with the same repair: nothing in the runtime reads it, no template scaffolds it,
+and the fact it copies has a real home in the test evidence store. It is **not**
+inert like the first three, and that is why it is worth a repair rather than
+neglect: the state file is a product's source of truth, so an agent meeting a
+stale number there is *obliged* to correct it — and every correction is a commit,
+every commit extends HEAD, and that is how a record defect buys a review round.
+Left alone the number does not merely sit there being wrong; it bills. One
+product's provenance comment for it reached 52 KB on a single line.
+
+**Removing it whole, not member by member**, is a decision measured rather than
+assumed: surveyed across every governed product, the field the item was named for
+is the sole member in exactly one, and each of the other members is the same kind
+of hand-maintained bookkeeping. Removing one member would clean one repo and
+leave the treadmill running in the rest.
+
+The removal is nested where the others are column-0 (:func:`_nested_key_indices`,
+:func:`_nested_block_span`); everything downstream of :func:`state_removals` —
+the ordering, the preview, the write path, the line-ending contract — is shared.
 
 **Why this is preview-by-default with ``--apply``**, when its sibling
 :func:`lib.plan_archive.archive_plan` writes on invocation: the binding rule is
@@ -81,6 +105,14 @@ VIEWS_FLAG = "views_enabled"
 #: plus everything indented under it.
 ROLLUPS_KEY = "scope_rollups"
 
+#: The retired test-bookkeeping block, and the key that encloses it. Nested, so
+#: it needs the two helpers below rather than the column-0 pair above — and named
+#: as a *pair* because the name alone does not identify it: a ``test_tracking``
+#: under some other mapping belongs to that mapping (the rule
+#: :func:`_is_top_level_key` already states for the column-0 case).
+TEST_TRACKING_KEY = "test_tracking"
+TEST_TRACKING_PARENT = "build_state"
+
 #: Marker proving ``release-notes.md`` has already been frozen. Matched as a
 #: substring anywhere in the file's head rather than as an exact banner, because
 #: a repo that froze it by hand wrote its own words and re-freezing it would
@@ -132,6 +164,69 @@ def _block_span(lines: list[str], start: int) -> int:
     while end < len(lines):
         line = lines[end]
         if line.strip() and not line[:1].isspace():
+            break
+        end += 1
+    while end > start + 1 and not lines[end - 1].strip():
+        end -= 1
+    return end
+
+
+def _indent_of(line: str) -> int:
+    """Leading-whitespace width. Only ever asked of non-blank lines."""
+    return len(line) - len(line.lstrip())
+
+
+def _nested_key_indices(lines: list[str], parent: str, key: str) -> list[int]:
+    """Indices of ``key:`` whose **enclosing** mapping is the column-0 ``parent``.
+
+    The enclosing mapping is the nearest preceding line with a smaller indent —
+    blank and comment lines skipped, because neither opens a mapping. That is the
+    nested restatement of :func:`_is_top_level_key`'s rule: the name alone does
+    not identify the key, so a ``test_tracking`` under an unrelated mapping is
+    left to that mapping, and a top-level one (no possible enclosing key) matches
+    nothing at all.
+
+    Returns every match rather than the first. One is what a real state file
+    holds; a list costs nothing and means a second, malformed occurrence is
+    removed rather than silently left behind by a search that stopped early.
+    """
+    pattern = re.compile(rf"^(\s+){re.escape(key)}\s*:")
+    found: list[int] = []
+    for index, line in enumerate(lines):
+        match = pattern.match(line)
+        if match is None:
+            continue
+        indent = len(match.group(1))
+        for back in range(index - 1, -1, -1):
+            candidate = lines[back]
+            stripped = candidate.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            if _indent_of(candidate) < indent:
+                if _is_top_level_key(candidate, parent):
+                    found.append(index)
+                break
+    return found
+
+
+def _nested_block_span(lines: list[str], start: int) -> int:
+    """Exclusive end index of the nested block opened at ``start``.
+
+    :func:`_block_span`'s rule one level in: a key owns every following line that
+    is blank or indented **more deeply than the key itself**, and trailing blanks
+    are given back to the document. Depth rather than "is indented" is the whole
+    difference — a nested key's siblings are indented too, and a span that
+    stopped only at column 0 would swallow every one of them.
+
+    Depth also covers arbitrarily deep members without enumerating them: a
+    ``history:`` list of mappings sits two levels below its key and is owned by
+    the same comparison.
+    """
+    indent = _indent_of(lines[start])
+    end = start + 1
+    while end < len(lines):
+        line = lines[end]
+        if line.strip() and _indent_of(line) <= indent:
             break
         end += 1
     while end > start + 1 and not lines[end - 1].strip():
@@ -200,9 +295,59 @@ def state_removals(text: str) -> list[dict]:
                     "is where the same information already lives and stays correct",
                 }
             )
+    for index in _nested_key_indices(lines, TEST_TRACKING_PARENT, TEST_TRACKING_KEY):
+        found.append(
+            {
+                "key": f"{TEST_TRACKING_PARENT}.{TEST_TRACKING_KEY}",
+                "start": _comment_header_start(lines, index),
+                "end": _nested_block_span(lines, index),
+                "reason": "these counts are a hand-maintained copy of what the test "
+                "evidence store already records per tree (`prawduct-hook "
+                "test-evidence record`, read back with `test-status`) — read that "
+                "instead; nothing in the runtime reads this block",
+            }
+        )
     # Descending, so applying one removal cannot shift the next one's indices.
     found.sort(key=lambda item: item["start"], reverse=True)
     return found
+
+
+def strip_state_file(state_path: Path) -> list[str]:
+    """Remove every retired key from one ``project-state.yaml``. Returns the key
+    names removed, in document order; ``[]`` when there was nothing to do.
+
+    The whole-repo repair above previews first because it walks a tree and picks
+    its own files. This acts on **one** file the caller already named, inside an
+    operation the operator has separately approved — the cutover — so it writes
+    on invocation, the same shape as :func:`lib.plan_archive.archive_plan`
+    (``security-model.md`` § Direction: one informed confirmation at the
+    *operation* level, and explicitly **not** a per-action gate).
+
+    Detection and span logic are :func:`state_removals`' — the caller gets one
+    home for what a retired key is, rather than a second copy that drifts. What
+    is duplicated here is only read/write plumbing, and it is the *same*
+    plumbing: the newline-preserving read and the atomic newline-neutral write,
+    so a CRLF product file survives this path exactly as it survives the other.
+
+    Unreadable is reported as "nothing removed" rather than raised: the cutover
+    must not abandon a repo half-migrated over a state file it could not decode,
+    and the caller's own report says which files it edited.
+    """
+    if not state_path.is_file():
+        return []
+    try:
+        text = _read_preserving_newlines(state_path)
+    except (OSError, UnicodeDecodeError):
+        return []
+    removals = state_removals(text)
+    if not removals:
+        return []
+    core.atomic_write_text(
+        state_path, apply_state_removals(text, removals), encoding="utf-8", newline=""
+    )
+    # `state_removals` returns descending order, for safe index application.
+    # Document order is what a person reads.
+    return [item["key"] for item in reversed(removals)]
 
 
 def apply_state_removals(text: str, removals: list[dict]) -> str:
