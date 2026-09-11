@@ -108,6 +108,7 @@ _TRACKED_DIRS = {
 _RECORD_FILES = frozenset(
     {
         ".prawduct/change-log.md",       # append-only: what changed, when
+        ".prawduct/change-log-history.md",  # the archive half of the same record (archive-change-log)
         ".prawduct/backlog.md",          # frozen by the GitHub Issues cutover
         ".prawduct/learnings.md",        # narrates defects, quoting the paths they occurred at
         ".prawduct/learnings-detail.md",
