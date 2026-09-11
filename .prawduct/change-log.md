@@ -14,11 +14,19 @@ document has no reason to carry.
 
 **The classifier was wrong, so the classifier is what changed.** Reflowing correct prose to satisfy a
 guard is the repair that teaches every later author that the guard, not the sentence, decides how
-they write. A determiner before a past-participle form admits no verb reading, and it is the only
-shape in the keyword family that doesn't — so the exclusion is scoped to the `-ed` forms alone.
-``the `Closes #N` keyword`` still matches and still owes its qualification, because the character
-before `Closes` there is a backtick rather than a space; the exclusion sits one character from
-swallowing the instruction prose it exists to catch, and doesn't.
+they write. Only the three past-participle forms — `closed`, `fixed`, `resolved` — can read as an
+adjective, so the exclusion is scoped to that set and nothing else. That scoping, and not any
+punctuation around the word, is what keeps `the Closes #N keyword` matching: `Closes` is not a
+participle, so no determiner in front of it excuses it.
+
+The determiner list is explicit and open (`the`, `this`, `every`, `its`, …) rather than the two or
+three articles the first cut named — "every closed #19" means what "the closed #19" means, and a
+writer reaching for one is not writing an instruction either. It is matched across **any**
+whitespace, because this repo hard-wraps at ~100 columns: `the closed #422` and a line-broken
+`the\nclosed #422` are one sentence, and a rule keyed to a literal space would have fired on one
+and not the other purely by where the line fell. The sentence that first reddened the suite tripped
+it only because both words happened to land on the same line — so the narrow version would have
+come back, under a different wrap, as the same red.
 
 The note above the regex had recorded the false-positive residual as accepted, resting on the
 premise that "every live hit today carries the qualification". A live hit stopped carrying it, so

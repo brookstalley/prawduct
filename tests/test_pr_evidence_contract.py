@@ -77,32 +77,57 @@ def instruction_surfaces() -> list[Path]:
     return sorted(out)
 
 # The keyword family GitHub actually honours, spelled as prose writes them.
-CLOSING_KEYWORDS = re.compile(
-    # GitHub honours the keyword only immediately before an issue reference, so
-    # require one -- a bare "closes the loop" is not a closing keyword. This
-    # narrows the match; it does not make it exact. "suggested fix #2" still
-    # matches, because the shape is genuinely ambiguous in prose. That residual is
-    # accepted rather than chased: the surface set excludes append-only records.
-    # Narrowing further would start missing the instruction prose this exists to
-    # catch, and a guard that misfires trains its reader to ignore the one real
-    # catch.
-    #
-    # The one narrowing that IS made: a past-participle form behind a determiner
-    # ("the closed #422", "a fixed #19") is an adjective describing an issue's
-    # state, never an instruction to GitHub -- the determiner is what makes it
-    # unambiguous, and it is the only shape in the family that admits no verb
-    # reading. This was accepted as residual until a live surface hit it, which
-    # is the condition the acceptance rested on: the note above once read "every
-    # live hit today carries the qualification", and a requirements document
-    # writing ordinary English about an already-closed issue made that false.
-    # Reflowing correct prose to satisfy a guard is the wrong repair. Only the
-    # -ed forms take the exclusion, so "the `Closes #N` keyword" -- the shape
-    # instruction prose actually uses -- keeps matching and still owes its
-    # default-branch qualification.
-    r"(?:(?<!\bthe )(?<!\ba )(?<!\ban )\b(?:closed|fixed|resolved)"
-    r"|\b(?:closes?|fix(?:es)?|resolves?))\s+#(?:\d+|N)\b",
+# GitHub honours the keyword only immediately before an issue reference, so
+# require one -- a bare "closes the loop" is not a closing keyword. This narrows
+# the match; it does not make it exact. "suggested fix #2" still matches, because
+# the shape is genuinely ambiguous in prose. That residual is accepted rather than
+# chased: the surface set excludes append-only records. Narrowing further would
+# start missing the instruction prose this exists to catch, and a guard that
+# misfires trains its reader to ignore the one real catch.
+CLOSING_KEYWORD_CANDIDATE = re.compile(
+    r"\b(close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(?:\d+|N)\b",
     re.IGNORECASE,
 )
+
+# The three past-participle members. Only these can read as an adjective; the
+# imperative and third-person forms (`Closes`, `fix`) cannot, which is why the
+# determiner rule below is scoped to this set and not to the whole family. That
+# scoping -- NOT the presence of backticks -- is what keeps "the `Closes #N`
+# keyword" matching: `Closes` is not in this set, so no determiner can excuse it.
+_PARTICIPLES = frozenset({"closed", "fixed", "resolved"})
+
+# A determiner immediately before a participle makes it adjectival -- "the closed
+# #422" describes an issue's state and cannot be read as an instruction to
+# GitHub. The list is open on purpose: this is a guard over English prose, and a
+# writer reaching for "every closed #19" means exactly what one reaching for "the
+# closed #19" means. Add to it rather than letting a true adjective redden the
+# suite.
+_DETERMINERS = frozenset(
+    """the a an this that these those its their his her our your my
+    every each any some no one both either neither""".split()
+)
+
+# Whitespace-insensitive by construction, because this repo hard-wraps at ~100
+# columns: "the closed #422" and "the\nclosed #422" are the same sentence, and a
+# rule keyed to a literal space would fire on one and not the other purely by
+# where the line broke. The live sentence that prompted this rule tripped the
+# guard only because both words happened to land on one line.
+_DETERMINER_BEFORE = re.compile(r"(\w+)\s+$")
+
+
+def names_closing_keyword(text: str) -> bool:
+    """True when `text` uses a GitHub closing keyword as an INSTRUCTION.
+
+    An issue described as closed is not an instruction to close one. Every
+    candidate survives unless it is a participle behind a determiner, which is
+    the one shape in the family that admits no verb reading."""
+    for match in CLOSING_KEYWORD_CANDIDATE.finditer(text):
+        if match.group(1).lower() not in _PARTICIPLES:
+            return True
+        preceding = _DETERMINER_BEFORE.search(text[: match.start()])
+        if preceding is None or preceding.group(1).lower() not in _DETERMINERS:
+            return True
+    return False
 
 
 def _fenced_json_blocks(text: str) -> list[dict]:
@@ -185,7 +210,7 @@ class TestClosingKeywordClaims:
         file scope: a qualification three sections away is not read by someone
         following the sentence in front of them."""
         for para in _paragraphs(path.read_text()):
-            if not CLOSING_KEYWORDS.search(para):
+            if not names_closing_keyword(para):
                 continue
             qualified = "default" in para.lower() and "branch" in para.lower()
             assert qualified, (
@@ -205,16 +230,21 @@ class TestClosingKeywordClaims:
             "Closed #55 by hand",
             "a `Closes #N` line for each item",
             "the `Closes #N` keyword",
+            "the Closes #N keyword",
+            "was closed #422 by the release",
         ],
     )
     def test_the_keyword_shapes_instruction_prose_uses_still_match(self, prose: str):
         """The guard's reach, pinned against a narrowing that quietly un-covers
-        the prose it exists for. The backticked forms are here because the
-        determiner exclusion below sits one character away from swallowing them:
-        the char before `Closes` in "the `Closes #N`" is a backtick, not a
-        space, which is the whole reason "the closed #422" can be excluded
-        without excluding these."""
-        assert CLOSING_KEYWORDS.search(prose), (
+        the prose it exists for.
+
+        The last two are the boundary cases. `the Closes #N` survives its
+        determiner because `Closes` is not a participle -- backticks are
+        irrelevant, and a rule that leaned on them would let `the Closes #N`
+        through. `was closed` survives because "was" is not a determiner: the
+        exclusion is deliberately narrow, and anything it cannot positively
+        identify as adjectival stays covered."""
+        assert names_closing_keyword(prose), (
             f"{prose!r} no longer reads as a closing keyword, so a paragraph "
             "containing it would skip the default-branch check. That check is "
             "what stops a gitflow PR promising a close the merge never fires."
@@ -222,17 +252,30 @@ class TestClosingKeywordClaims:
 
     @pytest.mark.parametrize(
         "prose",
-        ["adjacent to the closed #422", "a fixed #19", "an resolved #5"],
+        [
+            "adjacent to the closed #422",
+            "a fixed #19",
+            "this closed #422",
+            "every resolved #5",
+            "its fixed #7",
+            # Hard-wrapped: the same sentence, broken where ~100 columns fall.
+            "a note adjacent to the\nclosed #422, which shipped",
+        ],
     )
     def test_a_participle_behind_a_determiner_is_not_a_keyword(self, prose: str):
         """An issue described as closed is not an instruction to close one, and
         the determiner is what settles it. Live prose hit this and reddened the
         suite; the repair belongs in the classifier, because the alternative is
-        reflowing correct English to satisfy a guard — which teaches every later
-        author that the guard, not the sentence, decides how they write."""
-        assert not CLOSING_KEYWORDS.search(prose), (
+        reflowing correct English to satisfy a guard -- which teaches every later
+        author that the guard, not the sentence, decides how they write.
+
+        The wrapped case is not hypothetical padding. This repo hard-wraps at
+        ~100 columns, so whether a determiner and its participle share a line is
+        an accident of column count; the sentence that first reddened the suite
+        tripped it only because they happened to."""
+        assert not names_closing_keyword(prose), (
             f"{prose!r} matches as a GitHub closing keyword, but the determiner "
-            "makes it adjectival — no verb reading exists. A false positive here "
+            "makes it adjectival -- no verb reading exists. A false positive here "
             "trains readers to ignore the one real catch."
         )
 
