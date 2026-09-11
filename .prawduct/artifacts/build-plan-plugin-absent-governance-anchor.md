@@ -121,8 +121,9 @@ within the hour — it was carried over from a run on a different branch).
 interpolated from `INSTALL_REFERENCE`, and the enforcement claim is conditional. Reviewed
 (`rev-20260825T211056Z-c74a15bc`, chunk mode): 0 blocking, 1 warning + 2 notes, all dispositioned.
 The whole +76-token notice was funded by trimming restatements inside the anchor, so it came out
-smaller than it went in and the `product` ceiling ratcheted 2270 → 2266 rather than banking the
-difference.
+smaller than it went in and the `product` ceiling ratcheted down with the reading rather than
+banking the difference. (The figures moved when this branch advanced its base — read them out of
+`tests/test_v5_methodology.py`; what is durable is the direction, not the pair of numbers.)
 
 **Chunk 02 complete** — `prawduct-hook reanchor` detects by substance and repairs by exact match.
 Reviewed (`rev-20260825T213108Z-2f26dd47`): 1 blocking, 2 warnings, 1 note. The blocking one was
@@ -146,7 +147,13 @@ docstring claimed to match the claim while matching four literal phrasings, and 
 promising an insertion where the code performed a migration. Mutation is what caught each one.
 
 Below: the three items Chunk 02's verify round carried into this chunk, kept as the record of how
-they resolved rather than deleted.
+they resolved rather than deleted. All three are closed.
+
+**Base advanced 2026-09-10** over 253 develop commits — see the merge commit for how the five
+conflicts resolved. Nothing this plan delivers was superseded in the interval: `reanchor`,
+`anchor_repair` and both test files remained absent from develop, and `STATIC_ANCHOR` was unchanged
+there, so the exact-match archive and the tag guard still cover every shipped anchor (re-verified
+with v3.4.0, tagged after this branch's base, now among the tags).
 
 1. **`api-contract.md` names a consumer for `reanchor --json`.** *(Resolved the other way: Chunk 03
    made Health Check #4 relay the command's human form, so the contract now states plainly that
@@ -154,13 +161,15 @@ they resolved rather than deleted.
    review then found two more rows of the same shape, which is the class this carry belonged to.)*
 2. **The tag guard can pass vacuously.** `_shipped_anchor` returns `None` for any f-string shape it
    cannot resolve and `None` is skipped, so a future anchor interpolating something other than a
-   module-level string constant would make the guard green by resolving nothing. Every tag resolves
-   today (verified twice, independently). Make it assert that every tag resolved, so "I could not
-   read it" stops being spelled the same as "it was fine".
+   module-level string constant would make the guard green by resolving nothing. *(Resolved in Chunk
+   03: `test_the_archive_covers_every_anchor_prawduct_ever_shipped` now collects the tags it could
+   not render and asserts that list is empty before trusting what it did not find, so "I could not
+   read it" no longer spells the same as "it was fine".)*
 3. **`ANCHOR_V2` is derived from `ANCHOR_V1` by `.replace()`**, which couples two entries the
-   archive's own "append, never edit" rule treats as independent literals. The tag guard catches any
-   breakage, so this is defended rather than unguarded — but say so at the constant, or the next
-   reader trusts the stated rule over the code.
+   archive's own "append, never edit" rule treats as independent literals. *(Resolved in Chunk 03:
+   the comment at the constant now says the coupling is deliberate — a one-line difference kept as a
+   derivation rather than a second literal — and names the tag guard that reconstructs both from the
+   release tags, so the code no longer contradicts the stated rule in silence.)*
 
 ## Verification Strategy
 
