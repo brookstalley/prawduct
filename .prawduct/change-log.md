@@ -54,6 +54,7 @@ person". They are what an owner reads when deciding what to tell their team, so 
 suppressing the message that closes the gap. Corrected, and pinned by tripwires that match the
 *claim* rather than the wording — a class of decay worth naming, because this prose describes a
 mechanism prawduct does not control and went false with nothing in this repo changing.
+
 ## 2026-09-10: the four-socket epic's missing first document lands
 
 <!-- prawduct: type=docs | scope=coverage-socket-1-docs -->
