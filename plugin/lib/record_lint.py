@@ -123,6 +123,39 @@ _TOP_LEVEL_KEY_RE = re.compile(r"^[A-Za-z_][\w-]*:")
 _ARTIFACT_ENTRY_RE = re.compile(r"^(\s*)-\s+artifact:\s*(\S+)\s*$")
 _DISPOSITIONS_KEY_RE = re.compile(r"^(\s*)dispositions:\s*$")
 _LIST_ITEM_RE = re.compile(r"^(\s*)-\s+\S")
+#: Where a YAML *value* begins on a line: after a `- ` item marker, after a
+#: `key: `, or after both. A `"` only opens a quoted scalar in that position —
+#: anywhere else in a plain scalar it is an ordinary character — so anchoring
+#: here is what keeps `_frontmatter_break` from calling `msg: he said "hi"` a
+#: defect. **A marker is REQUIRED**, which is what excludes the continuation
+#: line of a multi-line PLAIN scalar that happens to begin with a quote
+#: (`"the thing" is true`, wrapped under an unquoted `note:`): that line opens
+#: nothing, and reading it as an opener reported legal YAML as broken.
+_VALUE_START_RE = re.compile(
+    r"^\s*(?:-\s+(?:[A-Za-z_][\w.-]*:\s+)?|[A-Za-z_][\w.-]*:\s+)(?P<value>\S.*)$"
+)
+#: What may legally follow a closing double quote in block context: a comment,
+#: or the colon of a QUOTED KEY (``- "a b": 1``). Anything else is content
+#: stranded after the close, which is the break this grades.
+#:
+#: **Deliberately NOT the flow-collection punctuation** ``,``/``]``/``}``. Those
+#: look like they belong — a scalar inside a multi-line ``[...]`` closes onto
+#: them — but a flow continuation line carries no ``- ``/``key: `` marker, so
+#: :data:`_VALUE_START_RE` never opens a scalar on one and the branch is
+#: unreachable for that shape. Where they ARE reachable is with a scalar already
+#: open, which is precisely the break case: in ``a: "one`` / ``b: ", two"`` the
+#: unterminated scalar swallows the next line and closes on its quote, stranding
+#: ``, two"``. Admitting ``,`` there suppressed the exact defect this check was
+#: built for, silently, on a machine-answered channel reviewers relay verbatim.
+_LEGAL_AFTER_CLOSING_QUOTE = frozenset("#:")
+
+#: A value that opens a BLOCK scalar (``|``/``>`` with any chomping or
+#: indentation indicator). Everything more-indented below it is literal text,
+#: quotes included — a `>-` note quoting `"inapplicable, because —"` is the real
+#: shape that made this necessary, not a hypothetical.
+_BLOCK_SCALAR_RE = re.compile(
+    r"^(?P<indent>\s*)(?:-\s+)?(?:[A-Za-z_][\w.-]*:\s+)[|>][-+]?\d*\s*(?:#.*)?$"
+)
 
 #: A markdown heading, level + text. Local rather than imported: ``norm_probes``
 #: owns the same grammar but answers a different question (every logical *line*
@@ -671,6 +704,86 @@ def _resolve_artifact(project_dir: Path, prawduct_dir: Path, name: str) -> "Path
     return None
 
 
+def _frontmatter_break(text: str) -> "tuple[int, str] | None":
+    """The line and reason a record's YAML frontmatter cannot be parsed, or
+    ``None`` when it holds together.
+
+    **Why this exists at all.** This plan's own frontmatter was invalid for two
+    commits — an unterminated double-quoted scalar swallowed the closing fence —
+    and every reader passed it, because ``record_lint``, ``resolve_branch_plan``
+    and ``verify-chunk-refs`` all match line patterns rather than parsing. A
+    header no parser can read is worse than no header: it reads as *more*
+    governed, exactly the failure shape as ``governed_by:`` citing a file nobody
+    can open, which is why the finding it produces is that same check.
+
+    **Why not a YAML parser.** There is none to reach for — `architecture.md`
+    § Direction rules out third-party runtime dependencies, and every YAML read
+    in this codebase is line-based for that reason. So this grades the one
+    structural break the line-based readers are blind to, by tracking whether a
+    double-quoted flow scalar ever closes, and reports nothing it cannot see.
+    A quote is treated as opening a scalar ONLY where YAML would let it — at the
+    start of a value — so plain scalars carrying quotes are not defects here.
+    """
+    lines = text.splitlines()
+    if not lines or lines[0].strip() != _FRONTMATTER_FENCE:
+        return None  # no frontmatter to grade; a missing header is not a break
+    open_line: "int | None" = None
+    block_indent: "int | None" = None
+    closed = False
+    for idx, raw in enumerate(lines[1:], start=2):
+        rest = raw
+        if block_indent is not None:
+            if not raw.strip() or len(raw) - len(raw.lstrip()) > block_indent:
+                continue  # still inside the block scalar's literal text
+            block_indent = None
+        if open_line is None:
+            # A fence inside an open scalar is content, not the close — which is
+            # precisely how the real defect hid the end of its own frontmatter.
+            if raw.strip() == _FRONTMATTER_FENCE:
+                closed = True
+                break
+            block = _BLOCK_SCALAR_RE.match(raw)
+            if block is not None:
+                block_indent = len(block.group("indent"))
+                continue
+            match = _VALUE_START_RE.match(raw)
+            if match is None or not match.group("value").startswith('"'):
+                continue
+            open_line = idx
+            rest = match.group("value")[1:]
+        i = 0
+        while i < len(rest):
+            if rest[i] == "\\":
+                i += 2
+                continue
+            if rest[i] == '"':
+                # WHERE the scalar closes is the whole signal. An unterminated
+                # scalar does not run to the end of the file — it swallows the
+                # next line and closes on ITS opening quote, leaving that line's
+                # real content stranded after the close. In block context the
+                # only thing allowed after a closing quote is whitespace or a
+                # comment, so trailing content IS the break, and it is the shape
+                # the defect that prompted this check actually had.
+                trailing = rest[i + 1:].strip()
+                if trailing and trailing[0] not in _LEGAL_AFTER_CLOSING_QUOTE:
+                    return open_line, (
+                        "a double-quoted value opens here and closes only on a "
+                        "later line, stranding that line's content after it, so "
+                        "no YAML reader can parse this frontmatter"
+                    )
+                open_line = None
+                break
+            i += 1
+    if open_line is not None:
+        return open_line, (
+            "a double-quoted value opens here and is never closed, so no YAML "
+            "reader can parse this frontmatter"
+        )
+    if not closed:
+        return 1, "the `---` frontmatter block is opened here and never closed"
+    return None
+
+
 def _check_governed_by(
     project_dir: Path, prawduct_dir: Path, plan_rel: str, text: str
 ) -> list[dict]:
@@ -682,6 +795,11 @@ def _check_governed_by(
     a norm unaddressed is the defect, and "inapplicable, because —" is a
     perfectly good disposition, so there is never a reason to be short.
 
+    Two neighbours share this check because they share its failure shape — a
+    governance claim in this header that cannot be honoured. A frontmatter no
+    parser can read (:func:`_frontmatter_break`) is reported first, because when
+    it fires nothing else in the block is trustworthy.
+
     A ``governed_by:`` entry naming an artifact that does not exist is reported
     here rather than treated as somebody else's problem: the name is a bare
     token, not a backticked path, so nothing that scans for path-shaped text
@@ -689,6 +807,27 @@ def _check_governed_by(
     is the worse defect, because it reads as *more* governed than an omission.
     """
     findings: list[dict] = []
+    broken = _frontmatter_break(text)
+    if broken is not None:
+        line, why = broken
+        # RETURN, not continue. The line-based parser below still produces
+        # entries from a broken block, and they are entries no YAML reader would
+        # agree with — a stranded fragment reads as an artifact name and renders
+        # a second, spurious "cites an artifact that does not exist". One
+        # structural defect must produce one finding, and grading a block this
+        # function has just called untrustworthy contradicts it in the same
+        # breath.
+        return [
+            _finding(
+                "governed-by-gap",
+                plan_rel,
+                line,
+                f"the frontmatter is structurally broken — {why}. Nothing in it "
+                "can be trusted, `governed_by:` included, and a header no parser "
+                "can read presents as more governed than no header at all. Fix "
+                "the header; the norm dispositions are not graded until it parses",
+            )
+        ]
     for entry in _parse_governed_by(text):
         artifact = entry["artifact"]
         resolved = _resolve_artifact(project_dir, prawduct_dir, artifact)

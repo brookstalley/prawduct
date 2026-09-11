@@ -415,10 +415,17 @@ correctly. Chunk 06's acceptance is the dogfood itself.
 **Drop-box retirement — verify the lockstep replacement (BKL-0QR1, resolved 2026-07-17 → option c):**
 `incoming-bugs/` is retired **only together with** its minimal same-repo replacement (PRD §8.9/MG5),
 never before it. Before/at the retirement, eyeball that the replacement is live:
-- `/prawduct:report-bug`, on the reachable-channel path, files an `untriaged-upstream`-labeled
-  **GitHub issue** into prawduct's own (public) repo via the adapter — no `incoming-bugs/` file write.
-- The `untriaged-upstream-reports` advisory counts those **labeled open issues**, not `incoming-bugs/*.md`.
-- The **no-channel fallback** still degrades cleanly to local capture + the canonical-tracker pointer.
+- `/prawduct:report-bug` files a **GitHub issue** into prawduct's own (public) repo via the
+  adapter — no `incoming-bugs/` file write. The issue lands **label-less**: a non-collaborator
+  filer cannot set labels, so the taxonomy is applied by triage on arrival, and the intake signal
+  is the `[prawduct]` title prefix (upstream-filing design §2/§6). An earlier draft of this bullet
+  expected an `untriaged-upstream` label on the filing; that would work for the collaborator
+  dogfood and fail for the case the channel exists to serve.
+- The `untriaged-upstream-reports` advisory counts that **intake set** — open issues carrying the
+  `[prawduct]` prefix and no triage label — not `incoming-bugs/*.md`.
+- The **no-channel fallback** degrades to the canonical-tracker pointer, and to **nothing else**:
+  design §5 is submit-or-nothing, so there is deliberately no local capture of an upstream bug.
+  An earlier draft of this bullet expected one.
 - Only *then* is `incoming-bugs/` retired (`legacy.py` is **not** — GV7/MG3, portfolio-wide only).
   The full XP1 cross-owner/foreign-identity
   plane stays **W3** — it is deliberately *not* in this slice.
@@ -1130,6 +1137,23 @@ is reached over a bind mount or network filesystem.
 > **The one thing to watch:** it will go stale rather than wrong. Re-read the `-dev.N` note above
 > before running it — the format already changed once underneath this entry.
 
+> === 2026-09-10 — ATTEMPTED FROM AN AGENT SESSION: STILL PENDING, WITH ONE FINDING FOR THE RECIPE ===
+>
+> Step 1 was done on `~/source/swordfishing` (governed, no live session, committed install
+> reference is the documented `{source: github, ref: main}` form): the `prawduct-dev` block was
+> written to its `.claude/settings.local.json`, which that repo's `.gitignore` already excludes.
+> Step 2 was attempted non-interactively — `claude -p` in that directory, asking the session to
+> quote its SessionStart banner — and **the recipe did not take**: the session received no Prawduct
+> hook output at all, `claude plugin marketplace list` still shows only the three previously known
+> marketplaces, and no `prawduct-dev` cache directory was created. So in print mode a
+> settings-declared marketplace is neither registered nor installed; with `prawduct@prawduct` set
+> to `false` by the same block, the sibling ran with NO prawduct governance for that session.
+> Whether an interactive start registers it (a trust prompt, an auto-install) is exactly what only
+> an operator at a terminal can see — open `claude` in `~/source/swordfishing` and read the banner.
+> The block is left in place for that; delete the file to come back off the track. If interactive
+> start does not register it either, the recipe needs an explicit `claude plugin marketplace add`
+> step and this entry's step 1 is incomplete.
+
 **Why a human check:** the acceptance criterion is that a sibling repo is *actually running* the
 develop track and its briefing reports the prerelease version. That cannot be met from this branch
 and never could: the recipe installs from `{source: github, ref: develop}`, so a sibling fetches
@@ -1171,3 +1195,97 @@ different governance version).
    restart, and confirm the briefing reports the released version again.
 
 **Verified by:** _(operator, date)_
+
+## VRF-018 — Wave B (upstream-report-bug) — what a non-collaborator can actually set on a filed issue
+
+**Status:** pending
+**Added:** 2026-09-07 (upstream-report-bug Chunk 02 — the `[XP6 verify]` item design §9 hands to build)
+
+> === 2026-09-07 — DRAIN DISPOSITION: STAYS PENDING — LIVE HARNESS, AND BLOCKED ON AN IDENTITY ===
+>
+> **What it turns on.** One filing attempt from a GitHub account that is not a collaborator on
+> `brookstalley/prawduct`, against a public repo it cannot write to. Nothing local answers it: the
+> behaviour under test is GitHub's own permission model for a foreign filer, and the fake transport
+> models the adapter's side of the call rather than the platform's.
+>
+> **It has no static half, and that is why it was not split.** The split rule (VRF-002's) turns half
+> a live check into a test you can write today. Here both halves are the same fact — *what can a
+> non-collaborator set* — and neither end of it is observable from this repo. What IS already
+> pinned by tests is the adapter's answer to it: the payload ships `labels: []` and
+> `test_backlog_upstream.py` asserts the filed issue carries none. So the code is already built to
+> the recalled answer; this entry exists to check the recall.
+>
+> **Blocked on the owner, who is the wrong identity.** The account that would run it is a
+> collaborator, which is precisely the case the check must exclude. It needs a second GitHub
+> account or a willing third party, and that is a lead-time item no session can shorten.
+>
+> **What it gates, and what it does not.** It does not gate Wave B: no answer changes a byte
+> `file-upstream` sends. It gates the **release**, because Wave C's `untriaged-upstream-reports`
+> repoint keys on the §6 intake query, and that query's shape ("the `[prawduct]` prefix and no
+> triage label") is only correct if a non-collaborator genuinely cannot apply one.
+
+**Blocked on the owner, and it cannot be done from this account.** The check needs a GitHub identity
+that is **not** a collaborator on `brookstalley/prawduct`, and the owner is one. Nothing in the
+agent's reach substitutes for it.
+
+**Why it does not gate the build.** The payload is already label-less by design §2, so this can only
+*confirm* that choice or *widen* the receiving-side intake query — it cannot change a byte that
+`file-upstream` sends. It gates the **release**, which is where a wrong answer would cost something:
+the `untriaged-upstream-reports` repoint (Wave C) keys on what this establishes.
+
+**Verify (owner, on a throwaway issue):**
+
+1. From a GitHub account with no collaborator access to `brookstalley/prawduct`, open an issue on a
+   public repo you do not have write access to. Note whether the compose form offers labels at all.
+2. Record what that account **can** set: title, body, and what else — assignees? labels? milestone?
+   The load-bearing answer is labels, but record the rest rather than inferring it.
+3. Close the throwaway issue.
+4. If labels turn out to be settable by a non-collaborator, say so plainly: §2's label-less choice
+   would then be a *deliberate* minimization rather than a platform constraint, and §6's intake
+   query — "the `[prawduct]` prefix and no triage label" — needs re-deriving rather than
+   re-confirming.
+
+**Do not ship on recall** (design §9 says so in as many words). Platform behaviour here has changed
+before and the whole receiving side is keyed on the answer.
+
+**Verified by:** _(operator, date)_
+
+## VRF-019 — Wave C (upstream-intake-repoint) Chunk 01 — the repointed advisory, read as an owner reads it
+
+**Status:** pending
+**Added:** 2026-09-08 (upstream-intake-repoint Chunk 01 — the `untriaged-upstream-reports` repoint)
+
+> === 2026-09-08 — DRAIN DISPOSITION: STAYS PENDING — SPLIT ALREADY DONE, THE REMAINDER IS COPY ===
+>
+> **Split at the moment it was written, so this is the residue rather than the whole.** Everything
+> mechanical about the repoint is a test in `tests/test_upstream_probes.py`: the count against a real
+> store, the staged report dropping out, the silence away from the target, `unknown` on an unreadable
+> cache, and the negative pin that no filer's words reach any emitted field. Those did not wait for
+> an owner and did not become bullets here.
+>
+> **What is left cannot be tested, and it is one question:** does the sentence land — does the number
+> read as *reports waiting* rather than as backlog noise, and does the degraded line read as *unknown*
+> rather than as an error to go fix. That is copy judgment on a live briefing, and the only harness is
+> a person reading it once.
+>
+> **It answers itself the first time a report arrives.** No second identity, no lead time: the intake
+> set is empty today (probe and by-hand query agree at 0, checked 2026-09-08), so the count case
+> becomes readable the moment a product files. Until then step 3 — the degraded line — is runnable on
+> its own and is the half worth doing early. It gates nothing.
+
+**Why a human check:** the deliverable is a sentence somebody reads once, at session start, before
+deciding whether to spend a session on triage. Tests pin the count and pin that no filer's words
+reach the text; nothing they can assert says whether the sentence *lands* — whether the number reads
+as reports waiting rather than as backlog noise, and whether the degraded line reads as *unknown*
+rather than as an error the reader should go fix.
+
+**Verify (in a prawduct checkout, one session start):**
+
+1. Run a session start (or `prawduct-hook clear`) and read the `untriaged-upstream-reports` line as
+   the owner sees it. The count should match the issues a maintainer would get by hand: open, title
+   carrying `[prawduct]`, no `stage:` label.
+2. Confirm the line names no issue, no filer and no internal identifier — it should be a number and
+   plain prose, nothing quoted from a report.
+3. Move the backlog cache aside (`<git-common-dir>/prawduct/`) and run it again. The line must say
+   the count is **unknown**, not report zero and not vanish. Put the cache back.
+4. If the count is right but the sentence reads wrong, say so — the copy is the deliverable here.

@@ -790,11 +790,22 @@ class TestPrReviewerScoping:
 
     def test_critic_cross_checks_named_as_owner(self):
         """B (CRT-5T8N): review-cycle.md names final/cumulative as the OWNER of
-        the Learnings Cross-Check + Backlog Reconciliation, so the single-owner
-        division is explicit from the Critic side too (the PR reviewer consumes
-        the result rather than re-running it)."""
+        the final-mode cross-checks, so the single-owner division is explicit
+        from the Critic side too (the PR reviewer consumes the result rather
+        than re-running it).
+
+        Asserted on the PROPERTY — ownership stated, and the PR reviewer told not
+        to re-run — rather than on a phrase carrying the count. The count moved
+        the moment a third cross-check landed (the Records Pass), and a pin that
+        breaks on arithmetic tests the sentence rather than the division it
+        exists to protect.
+        """
         content = (FRAMEWORK_DIR / "skills" / "critic" / "review-cycle.md").read_text()
-        assert "owner of both cross-checks" in content
+        header = content.split("## Final-Mode Cross-Checks", 1)[1].split("\n### ", 1)[0]
+        assert "`final`/`cumulative` owns" in header, (
+            "review-cycle.md no longer names the cross-checks' owner"
+        )
+        assert "the PR reviewer does not re-run them" in header
 
 
 # =============================================================================

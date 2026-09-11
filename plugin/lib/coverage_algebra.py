@@ -109,6 +109,45 @@ def judgeable_files(paths: "list[str] | None") -> list[str]:
     return [p for p in (paths or []) if is_judgeable_path(p)]
 
 
+#: Records ABOUT the work, as opposed to the work itself: governance state,
+#: specs, plans, the change log, learnings, reflections. A review READS these
+#: to judge by; it does not rate them.
+RECORD_PREFIXES = (".prawduct/",)
+
+
+def is_review_subject(path: str) -> bool:
+    """True if a finding may be *about* ``path``.
+
+    **This is not the complement of :func:`is_judgeable_path`, and implementing
+    it as one is the defect it exists to close.** The two answer different
+    questions. ``is_judgeable_path`` asks *does an edit here re-open the
+    coverage gate?* — a cost question, whose answer excludes every ``.md`` that
+    is not governance-protected. This asks *may a finding be about this file?*
+    — an eligibility question. They coincided until the subject/oracle split
+    gave the cost predicate a second job, and its exclusions were never
+    re-vetted against the second one.
+
+    Where the negation got it wrong, in this repo: a review subagent's own
+    system prompt under ``agents/`` and the norm/principle/waiver references
+    under a ``docs/`` tree are behaviour-governing prose that no finding could
+    be about. The general case is sharper and no path list reaches it — for a
+    governed product whose **deliverable is markdown** (a docs site, a spec
+    repo, a prompt library) every product file is non-judgeable, so the whole
+    product output would be read-but-never-rated for all seven goals.
+
+    **Fails closed toward subject.** A path this cannot place is reviewable:
+    over-inclusion costs reviewer attention, while under-inclusion ships an
+    unrated deliverable, and only one of those is recoverable. That is the same
+    direction ``protected_path_violation`` already states for its own bounds.
+    """
+    return not any(path.startswith(p) for p in RECORD_PREFIXES)
+
+
+def review_subjects(paths: "list[str] | None") -> list[str]:
+    """The subject subset of ``paths`` (order preserved, None-safe)."""
+    return [p for p in (paths or []) if is_review_subject(p)]
+
+
 #: Live repo state that a NON-HERMETIC test in this repo reads (COV-4H7N).
 #:
 #: A named inventory, deliberately not a ``.prawduct/**`` rule. These paths are
@@ -150,7 +189,7 @@ TEST_COUPLED_STATE = frozenset(
 )
 
 
-def affects_test_outcome(path: str) -> bool:
+def affects_test_outcome(path: str, extra_prefixes: "tuple[str, ...]" = ()) -> bool:
     """True if a change to ``path`` can change what the test suite says.
 
     A strict superset of :func:`is_judgeable_path`, and the distinction is the
@@ -164,14 +203,49 @@ def affects_test_outcome(path: str) -> bool:
     :func:`is_judgeable_path` because review coverage must NOT widen here: the
     ``_BATCH_FIX_DIRECTIVE`` tells a builder that ``.prawduct/`` writes are
     free mid-review, and that promise stays true.
+
+    ``extra_prefixes`` carries the half that CANNOT ship: path prefixes a repo
+    declares its own non-hermetic tests read. **Prefixes, not a prose rule** —
+    they are not restricted to ``.md``, so declaring a root couples every file
+    under it. That is the fail-safe direction (a superset can only cost a suite
+    run) and it keeps the clause one comparison rather than two (``core.suite_coupled_prefixes``,
+    from ``project-state.yaml``). Which directories hold prose a test scans is a
+    fact about one repo's layout — this repo's guards sweep ``documentation/``
+    and ``plugin/`` markdown, and a design doc merged straight to ``develop``
+    failing two of them while this predicate reported day-old evidence as
+    *current* over the red tree. Baking those names in would make the rule inert
+    for every product that names its directories differently and would tax every
+    product that happens to match, so the names live where the layout does.
+    Default ``()`` — a product that declares nothing behaves exactly as before.
+
+    **A parameter rather than a wider default rule.** "Every ``.md``" was the
+    obvious alternative and it silently overturns two priced decisions: the
+    residual named under :data:`TEST_COUPLED_STATE` (bookkeeping held out on
+    cost, whose sound close is hermetic tests) and the ``README.md`` /
+    ``docs/notes.md`` line those tests pin. Both remain out at every call site.
+
+    **Callers pass prefixes only where the question is FRESHNESS.** The
+    doc-only PR fast path asks a review question and must not inherit them:
+    widening it there would make a documentation-only PR buy a full Critic and
+    PR review, which nothing priced. Passing them is therefore a deliberate act
+    at each site, not a default the predicate applies on its own.
     """
-    return is_judgeable_path(path) or path in TEST_COUPLED_STATE
+    return (
+        is_judgeable_path(path)
+        or path in TEST_COUPLED_STATE
+        or bool(extra_prefixes) and path.startswith(tuple(extra_prefixes))
+    )
 
 
-def suite_coupled_files(paths: "list[str] | None") -> list[str]:
+def suite_coupled_files(
+    paths: "list[str] | None", extra_prefixes: "tuple[str, ...]" = ()
+) -> list[str]:
     """The subset of ``paths`` a test outcome can depend on (order preserved,
-    None-safe) — :func:`affects_test_outcome` over :func:`judgeable_files`."""
-    return [p for p in (paths or []) if affects_test_outcome(p)]
+    None-safe) — :func:`affects_test_outcome` over :func:`judgeable_files`.
+
+    ``extra_prefixes`` is forwarded unchanged; see that function for why the
+    freshness callers pass it and the review callers must not."""
+    return [p for p in (paths or []) if affects_test_outcome(p, extra_prefixes)]
 
 
 def is_executable_path(path: str) -> bool:

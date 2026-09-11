@@ -482,6 +482,41 @@ def check_body_text(text: str | None) -> str | None:
     return None
 
 
+def check_body_text_strict(text: str | None) -> str | None:
+    """Reject body text carrying ANY ``prawduct`` fence — terminated or not.
+
+    The strictly stronger sibling of :func:`check_body_text`, for a caller that
+    has no composer behind it. :func:`check_body_text` deliberately TOLERATES a
+    well-formed block, because every in-repo caller pairs it with
+    :func:`compose_body`, which strips the pasted block and merges its fields
+    into the real one. The guard and the transform are one mechanism, and the
+    tolerance is only safe where both run.
+
+    Porting the guard without the transform is what opens the hole this closes:
+    a caller that appends the body verbatim and then adds its own block ships two
+    parseable blocks, and the receiving side's first
+    :func:`merge_all_block_fields` folds the pasted fields into the canonical
+    block permanently — the same forgery the value guard closes, reached through
+    the body instead.
+
+    Stricter than in-repo is correct here rather than merely cautious: where
+    there is no block of ours to merge a paste INTO, a caller has no legitimate
+    reason to hand over a raw one. The remedy is the one :func:`check_body_text`
+    already names and is unchanged — indent the fence to *show* a block, which
+    :data:`_BLOCK_RE` cannot match and this predicate therefore accepts.
+    """
+    if not text:
+        return None
+    if _FENCE_OPEN_RE.search(text):
+        return (
+            "body may not contain a ```prawduct fence — this path appends your "
+            "text verbatim and then adds the real block, so any fence you send "
+            "arrives as a second parseable block and its fields get merged into "
+            "the real one on the far side; indent it to show a block"
+        )
+    return None
+
+
 def check_block_value(key: str, value) -> str | None:
     """Reject a block field value that would break the line-based block format.
 

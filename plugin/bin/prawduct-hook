@@ -552,7 +552,6 @@ def _yaml_top_level_key_present(state_path: Path, key: str) -> bool:
 # prawduct:allow prawduct/duplication -- intentional inline mirror (import-light hot path); pinned by TestSessionGitignoreMirror
 _SESSION_GITIGNORED_PATHS = (
     ".claude/settings.local.json",
-    ".prawduct/.bug-inbox",
     ".prawduct/.critic-active",
     ".prawduct/.critic-findings.json",
     ".prawduct/.critic-partials",
@@ -1720,6 +1719,51 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
 
     consolidate = _critic_consolidate()
     result = consolidate.begin_review(project_dir, **opts)
+    if result["status"] == "budget-exhausted":
+        # Exit 4, not 3: both refuse a dispatch, but they answer different
+        # questions and have different remedies. A 3 says the gate does not want
+        # this round; a 4 says the loop has run out of budget while the gate may
+        # still be unsatisfied — and the reader's next move differs accordingly.
+        # Stdout, because like a 3 this is a normal outcome the caller acts on.
+        swept = result.get("swept") or {}
+        print(
+            f"PRAWDUCT: {result['reason']}.\n"
+            f"  The loop ends here. {swept.get('accepted', 0)} outstanding "
+            "non-blocking finding(s) were ACCEPTED against the budget — a "
+            "reviewable answer, not a drop: re-disposition any of them with "
+            "`prawduct-hook disposition <review-id> <fid> ...`."
+        )
+        if swept.get("skipped_blocking"):
+            print(
+                f"  {swept['skipped_blocking']} BLOCKING finding(s) were NOT "
+                "swept and still block the gate. The budget can end a review "
+                "loop; it can never open a gate. Fix them and run "
+                "`/prawduct:critic verify-resolutions` — that mode is never "
+                "refused by the budget, so this route always exists."
+            )
+        for failure in swept.get("failed") or []:
+            print(
+                f"  NOT ACCEPTED: {failure['fid']} of {failure['review_id']} — "
+                f"{failure['reason']}",
+                file=sys.stderr,
+            )
+        if swept.get("status") == "error":
+            print(
+                f"  NOT SWEPT: {swept['reason']} — the refusal stands, but the "
+                "outstanding findings are still open. Disposition them by hand.",
+                file=sys.stderr,
+            )
+        if result.get("census"):
+            print(f"\n{result['census']}\n")
+        print(
+            "  To buy another round anyway: `/prawduct:critic <mode> --force`. "
+            "Prefer raising or clearing `review_round_budget` in "
+            ".prawduct/project-state.yaml if this scope genuinely needs more — "
+            "a budget forced past every time is a budget set wrong."
+        )
+        for note in result.get("notes") or []:
+            print(f"PRAWDUCT NOTE: {note}", file=sys.stderr)
+        return 4
     if result["status"] == "no-review-needed":
         # Exit 3, not 0: 0 means "dispatched, go review", and the skill would
         # proceed to spawn a reviewer against a manifest that was never
@@ -5422,30 +5466,40 @@ def cmd_resolve_base(project_dir: Path) -> int:
 
 
 def cmd_bug_inbox(project_dir: Path) -> int:
-    """Resolve the upstream bug-report inbox and print it, or exit 1 when none.
+    """DEPRECATED and inert — prints a notice, resolves nothing, exits 0.
 
-    The `/prawduct:report-bug` skill branches on the exit code: 0 = an inbox is
-    configured and reachable (file the report into the printed path); 1 = no
-    inbox (capture the bug in the product's own backlog + point at GitHub
-    issues). Inert by design for plugin-only users — they configure neither
-    ``PRAWDUCT_BUG_INBOX`` nor ``.prawduct/.bug-inbox``, so resolution returns
-    None and this exits 1.
+    This resolved the gitignored ``incoming-bugs/`` drop-box on a co-located
+    checkout, so ``/prawduct:report-bug`` could write a report there as a file.
+    Reports are GitHub issues now: the skill files through the backlog adapter's
+    ``file-upstream``, which needs no co-located checkout and no local pointer,
+    and ``untriaged-upstream-reports`` counts that intake set. There is no
+    directory left to resolve and nothing that would route a report to one.
 
-    Fail-soft: a missing/stale/unwritable inbox OR an incomplete plugin install
-    (lib not importable) both resolve to exit 1, never a crash — the channel
-    must stay silent and harmless in a repo that does not use it.
+    **Why it is still callable.** ``api-contract.md``'s deprecation norm requires
+    a retired subcommand to be signalled rather than removed. The caller this
+    protects is a person — a hand-written script or a habit — so the notice goes
+    to stderr where ``regen-views`` and ``stamp-merged`` put theirs, rather than
+    into the silence ``build-index`` and ``user-prompt-submit`` keep for a stale
+    hook registration that cannot read one. Removal defers to a major.
+
+    **Exit 0, where the resolver exited 1 when it found nothing.** The old 1 meant
+    *no inbox is configured*, which a caller could branch on; nothing can be
+    configured now, so a 1 would report a condition rather than a retirement and
+    break a pipeline for a channel that no longer exists.
+
+    An operator's ``incoming-bugs/`` tree is untouched by any of this. It is
+    gitignored, so anything still sitting in it has no other copy.
     """
-    lib_root = _plugin_root()
-    if lib_root not in sys.path:
-        sys.path.insert(0, lib_root)
-    try:
-        from lib import bug_inbox  # noqa: PLC0415 — lazy keeps top-level lib-free
-    except ImportError:
-        return 1
-    inbox = bug_inbox.resolve_inbox(os.environ, project_dir)
-    if inbox is None:
-        return 1
-    print(inbox)
+    del project_dir  # kept so the dispatcher's call site is unchanged
+    print(
+        "WARNING: bug-inbox no longer does anything and will be removed in a "
+        "future major version. Upstream bug reports are filed as GitHub issues "
+        "by /prawduct:report-bug, not written to a local drop-box, so there is "
+        "no inbox to resolve. If a script or checklist still calls this command, "
+        "drop the call. Reports already sitting in a local `incoming-bugs/` are "
+        "untouched — triage them by hand into the backlog.",
+        file=sys.stderr,
+    )
     return 0
 
 
@@ -5454,12 +5508,16 @@ def cmd_version() -> int:
     ``.claude-plugin/plugin.json``) and exit 0; exit 1 if the manifest is
     unreadable.
 
-    The **deterministic version source** consumers stamp into upstream bug reports
-    (the ``Found in: prawduct vX.Y.Z`` field — XP2 provenance / the MG5 report-bug
-    path) instead of *recalling* a version from the model. A recalled version
-    drifts silently as the plugin updates; this one is read from the manifest at
-    call time. Output is one bare line (``3.1.0``, no ``v`` prefix, no decoration)
-    so a skill or script can capture it and format ``prawduct v<version>`` itself.
+    The **deterministic version source** for anything that stamps a running version
+    instead of *recalling* one — a recalled version drifts silently as the plugin
+    updates, and this is read from the manifest at call time. Output is one bare
+    line (``3.1.0``, no ``v`` prefix, no decoration) so a caller can format
+    ``prawduct v<version>`` itself.
+
+    Not the route the upstream ``Found in:`` field takes: ``file-upstream``
+    composes that section itself from ``upstream.plugin_version``, so the
+    provenance is sourced on every filing rather than on a careful one, and
+    ``/prawduct:report-bug`` is told not to write the section at all.
     """
     version = _plugin_manifest_version()
     if not version:
@@ -6450,6 +6508,7 @@ _USAGE = (
     "[--release vX.Y.Z] [--superseded-by <text>] [--dry-run]|"
     "check-released vX.Y.Z [--json] [--allow-unverifiable]|"
     "regen-views [deprecated, inert]|stamp-merged [deprecated, inert]|"
+    "bug-inbox [deprecated, inert]|"
     "build-index [deprecated, inert]|user-prompt-submit [deprecated, inert]|"
     "infer-critic-mode [args]|"
     "resolve-base|version|print-install-reference|"
@@ -6784,7 +6843,7 @@ _EPHEMERAL_SAFE_COMMANDS = frozenset({
     # members is the very session-start hook error they were restored to remove
     # (v3.3.3). `regen-views` and `stamp-merged` carried the same gap and the
     # same false claim since they were emptied; this is one classification, not
-    # four decisions. Pinned in tests/test_retired_hook_subcommands.py.
+    # a decision per member. Pinned in tests/test_retired_hook_subcommands.py.
     "build-index",
     "user-prompt-submit",
     "regen-views",
