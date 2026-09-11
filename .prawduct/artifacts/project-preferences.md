@@ -29,8 +29,8 @@ find it.
 Deliberately phrased as *what a reader needs*, not *what it does for its caller*: the norm covers
 plain `#` blocks as well as docstrings, and a block documenting a config stanza has no caller. The
 predicate that generalizes is the reader's first question, which for a callable is the signature
-and for `pyproject.toml`'s ruff stanza is "is this gating yet?" — which that stanza already answers
-in its first sentence.
+and for `pyproject.toml`'s ruff stanza is "is this gating yet?" — which that stanza answers plainly,
+in a bolded paragraph above the settings it governs.
 
 **Why.** A comment's first reader almost always needs to *use* the thing, not redesign it. Making
 that reader page through a design essay to reach what they came for taxes the common case to serve

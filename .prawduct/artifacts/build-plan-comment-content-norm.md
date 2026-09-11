@@ -44,7 +44,12 @@ review, and three protocol files already do that.
 
 ### Open assumptions
 
-None outstanding. The one HIGH-impact assumption — the floor/layer split — was confirmed
+`[ASSUMPTION: R1a — declined by default; the owner may raise the digest ceiling ~25 tokens to add
+the Axis A reach sentence]`. Recorded rather than silently dropped: the measurement is under Chunk
+01's *Blocked deliverable*, the recommendation there is decline, and the build proceeds on it. The
+requirement stays unmet until the owner rules, and the PR body carries the same line.
+
+Otherwise none outstanding. The one HIGH-impact assumption — the floor/layer split — was confirmed
 2026-09-10. The `advisory` audit home recorded in the first draft was corrected to `janitor` on the
 norms spec's own rule (an advisory home must name the mechanical hook its probe fires on; after the
 locator redirect there is none).
@@ -173,6 +178,20 @@ The only mechanism that reaches an already-onboarded repo. Fires once, never rec
   everyone on next sync; dismissal is a recorded decision.
 - Names the rule and the ratification path. Where no density figure exists — every repo without its
   own comment tooling — it says so rather than rendering zero.
+
+**The two scalars, named here because the plan left the naming to the builder.**
+`comment_norm_answered` is the committed answer that clears the offer — either answer, `ratified` or
+`declined`. It could not be `norm_registry_ratified`: this repo recorded that one on 2026-07-17,
+months before the norm existed, so mirroring the sibling's fact would have meant the offer never
+fired in the repo that wrote it (and in every other already-ratified product). `comment_lines_density`
+is the optional figure the offer renders, read from the product's own tooling and written by nothing
+in prawduct; absent, it reads `unchecked`. Both are declared in `plugin/templates/project-state.yaml`
+beside `api_versioning_decided`, the advisory-resolution fact whose shape they follow.
+
+Prawduct's own answer is recorded in the same chunk (`.prawduct/project-state.yaml`) — Chunk 01
+already ratified the norm into the preferences file, so the scalar records a fact that exists rather
+than anticipating Chunk 03's flow, and the repo-coupled tripwire in `tests/test_norm_probes.py`
+(no norm-lifecycle advisory fires here) stays a real assertion instead of being relaxed.
 
 **Carried in from Chunk 01's review** (`rev-20260910T160639Z-7acc99d9`, accepted not deferred):
 the norm block in `.prawduct/artifacts/project-preferences.md` and the Axis B statement in

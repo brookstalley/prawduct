@@ -3,6 +3,45 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-09-10: comments lead with the interface, and the rule is offered rather than imposed
+
+<!-- prawduct: type=feat | scope=comment-content-norm -->
+
+The report was 1000-word comments narrating a function's history instead of what it does. Measuring
+it split the complaint in two. *History in comments* is already governed — `methodology/building.md`
+states it and three review protocols class it as a **deletion** finding — so it needed reach, not a
+rule, and no second copy was written. What nothing addressed is *ordering*: a doc-comment whose
+interface is buried under present-tense design narration. That is the norm this scope adds, and the
+50% comment+docstring density that prompted it is **not** what the norm measures.
+
+**Interface before rationale**, in `.prawduct/artifacts/project-preferences.md` with an Enforcement
+row (mechanism `Critic`, audit home `Critic + janitor`), `Status: in-transition`, `migrate: #772`. A
+comment or doc-comment leads with what a reader needs in order to use or change the thing it
+documents; rationale, alternatives and recorded rulings follow, clearly separated. It is a rule about
+ordering that cannot be satisfied or violated by a line count — deliberately, because a norm about
+volume would collide with the oversized-file advisory's own warning that recorded reasoning is the
+methodology working, and would decay into the percentage target #772 forbids. Every
+do-not-reintroduce comment keeps its full length and simply sits below the interface.
+
+**No comment lexer ships, and that was the design's fork.** The intuitive locator — a per-suffix
+comment grammar producing a density figure — is the syntax-pattern-table-per-language that
+`architecture.md` § Direction names as the ratchet it exists to prevent, and simultaneously the
+linter re-implementation the guides-never-implements norm forbids; `compliance.py`'s per-language
+broad-except table is the same shape and is being retired for exactly that reason. So the judge is
+the Critic, which reads source with a model and needs no comment grammar for any language, and the
+number — where a product has one at all — comes from that product's own tooling. The measurement
+script behind this scope's 50% figure is evidence and stayed in the scratchpad.
+
+**The offer reaches already-onboarded repos, once.** A sixth norm-lifecycle probe,
+`comment-norm-unanswered`, fires one shot per repo on the `norm-registry-unratified` pattern: it
+names the rule and the ratification route, and clears on the committed `comment_norm_answered`
+scalar — `ratified` and `declined` are equally terminal, and one teammate's answer clears it for
+everyone on next sync. It could not key on `norm_registry_ratified`: this repo recorded that in
+July, so reusing it would have muted the offer in every product that ever ran the ratification flow,
+including the one that wrote the norm. Where no density figure exists the offer reads `unchecked`
+rather than rendering a zero that would look like a clean measurement — #348's silent-dark failure
+with a new name.
+
 ## 2026-09-10: an audit of develop, and the three findings that could not wait for the cut
 
 <!-- prawduct: type=fix | scope=audit-followups -->

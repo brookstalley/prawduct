@@ -1,6 +1,6 @@
 """Post-sync advisory probes for the norm-lifecycle feature (``docs/norms.md``).
 
-Five deterministic ``ProbeFn(state, codebase)`` probes surfacing the *time-domain,
+Six deterministic ``ProbeFn(state, codebase)`` probes surfacing the *time-domain,
 cheap* enforcement row of ``docs/norms.md`` § Enforcement — the Session-sync
 contract. Each reads only **machine-readable hooks** (dated ``revisit:`` values,
 backlog-item citations on norm ``Why:``/``Status:`` lines, the ``Status:
@@ -104,6 +104,20 @@ not look* is the whole reason these two were made to announce themselves.
   flow. The evidence string is arm-independent so the advisory id stays stable
   as the firing arm changes; the live arm(s) are named in ``trigger_summary``.
 
+- **comment-norm-unanswered** — *Fires:* one-shot — the product has a
+  preferences file (a norm registry to record an answer in) and
+  :data:`COMMENT_NORM_FACT` carries no answer. *Clears:* that committed scalar
+  recording either answer — ratified or declined, both are answers, and one
+  teammate's commit clears it for everyone on next sync — or a per-clone
+  dismissal. *Reader-action:* names the norm prawduct offers (a comment leads
+  with what a reader needs; rationale follows) and the ratification route.
+  **The only probe here about a norm the product has not written yet**, so its
+  figure — comment density — can only come from the product's own tooling
+  (:data:`COMMENT_DENSITY_FACT`) and reads ``unchecked`` when nothing records
+  one. Prawduct measures no comment density itself: a per-language comment
+  lexer is the complexity ratchet ``architecture.md`` § Direction forbids, and
+  a rendered zero would be #348's silent-dark failure with a new name.
+
 - **norm-health-sweep-overdue** — *Fires:* norms exist under either homing
   (``## Direction`` entries or populated preferences Enforcement rows) AND
   neither the janitor Norm Health sweep stamp :data:`SWEEP_STAMP` nor the
@@ -164,6 +178,19 @@ _NORM_INDEX_COLUMNS = ("Audit home", "Why")
 # no norms to ratify" — suppresses for everyone on next sync. Top-level scalar:
 # load_project_state reads only column-0 keys.
 RATIFIED_FACT = "norm_registry_ratified"
+
+# Shared-state answer that clears comment-norm-unanswered: any recorded decision
+# on the comment-content norm prawduct offers (``ratified`` / ``declined``, dated).
+# Distinct from RATIFIED_FACT on purpose — that one records that the product's OWN
+# registry was ratified, which says nothing about a norm the framework offered
+# afterwards, and a repo that ratified in July would never see the offer.
+COMMENT_NORM_FACT = "comment_norm_answered"
+
+# The product's own comment-density figure, when its tooling records one
+# (SonarQube's metric name, verbatim, because that is the definition products
+# already have an implementation of). READ-ONLY here: nothing in prawduct writes
+# or computes it. Absent ⇒ the offer says ``unchecked``.
+COMMENT_DENSITY_FACT = "comment_lines_density"
 
 # Committed stamp the janitor Norm Health sweep writes (the write side lands with
 # the janitor theme); this probe only READS it, exactly as backlog-overdue-grooming
@@ -1248,6 +1275,72 @@ def probe_norm_registry_unratified(state: ProjectState, codebase: Codebase):
     ]
 
 
+def probe_comment_norm_unanswered(state: ProjectState, codebase: Codebase):
+    """Fire once per repo: offer the comment-content norm, and take either answer.
+
+    Silent as soon as :data:`COMMENT_NORM_FACT` carries any recorded answer —
+    ``ratified`` and ``declined`` are both answers — and gated on the product
+    having a preferences file, which is the registry a norm gets recorded in.
+    Renders the product's own comment density (:data:`COMMENT_DENSITY_FACT`)
+    when its tooling records one and ``unchecked`` when nothing does. Points at
+    the ``/prawduct:doctor`` ratification flow.
+
+    **The figure is read, never computed, and its absence is said out loud.**
+    Prawduct cannot count comment lines in a language it does not parse, and
+    acquiring a per-suffix comment grammar to try is the complexity ratchet
+    ``architecture.md`` § Direction names by name — so the number, where there
+    is one at all, comes from the product's own linter. A repo with no such
+    tooling reads ``unchecked``: rendering ``0%`` there would say "measured and
+    clean" about a measurement nobody took, which is #348's defect (a check
+    going silently dark in every product that cannot observe it went dark).
+
+    **Why a second answer scalar rather than :data:`RATIFIED_FACT`.** That one
+    records that the product ratified *its own* registry, on a date that may
+    predate this norm existing — reusing it would silence the offer in every
+    repo that ever ran the flow, which is most of them. The two facts answer
+    different questions and so cannot share a home.
+
+    *Expected yield*: exactly one fire per repo, ever. A repo that has answered,
+    or whose developer dismissed it, never sees it again.
+    """
+    if state.get(COMMENT_NORM_FACT):
+        return []
+    if not _preferences_lines(codebase):
+        return []
+    density = str(state.get(COMMENT_DENSITY_FACT) or "").strip() or "unchecked"
+    return [
+        AdvisoryCandidate(
+            type="comment-norm-unanswered",
+            # Identity key (advisory_store.compute_id hashes it): deliberately
+            # free of the density figure, so a repo that starts recording one
+            # does not get a second, differently-idd copy of the same offer.
+            evidence=(
+                "prawduct offers a comment-content norm — interface before rationale — and "
+                "this product has recorded no answer to it",
+            ),
+            trigger_summary=(
+                "Comment norm unanswered: prawduct offers the rule that a comment or doc-comment "
+                "leads with what a reader needs in order to use or change the thing it documents, "
+                "with design rationale below it, clearly separated. It is about ordering, not "
+                f"volume — nothing is deleted to comply. Comment density here: {density} (read "
+                "from this product's own tooling; prawduct measures none). Ratify it into the "
+                "preferences Enforcement index or decline it, then record "
+                f"`{COMMENT_NORM_FACT}: <date> — ratified|declined` in project-state.yaml so the "
+                "answer clears this for everyone."
+            ),
+            owner_action=(
+                "Prawduct suggests one rule for the comments in this product: put what a reader "
+                "needs in order to use or change the thing first, and keep the reasoning below "
+                "it. Nothing gets deleted to comply — it is about what comes first. Say yes and I "
+                "will write it into this product's own rules; say no and I will record that you "
+                "declined. Either answer is recorded and stops this coming back."
+            ),
+            recommended_action="/prawduct:doctor",
+            priority="info",
+        )
+    ]
+
+
 def probe_norm_health_sweep_overdue(state: ProjectState, codebase: Codebase):
     """Fire when norms exist but the janitor Norm Health sweep is overdue / never run.
 
@@ -1323,4 +1416,5 @@ def register() -> None:
     register_probe(FEATURE, "dead-why", PROBE_VERSION, probe_dead_why)
     register_probe(FEATURE, "stalled-transition", PROBE_VERSION, probe_stalled_transition)
     register_probe(FEATURE, "norm-registry-unratified", PROBE_VERSION, probe_norm_registry_unratified)
+    register_probe(FEATURE, "comment-norm-unanswered", PROBE_VERSION, probe_comment_norm_unanswered)
     register_probe(FEATURE, "norm-health-sweep-overdue", PROBE_VERSION, probe_norm_health_sweep_overdue)

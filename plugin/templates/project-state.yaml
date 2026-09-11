@@ -471,6 +471,30 @@ review_round_budget: 6
 # api_versioning_decided:
 
 # =============================================================================
+# COMMENT CONTENT NORM (advisory resolution fact, v2.4+)
+# =============================================================================
+# The committed answer the `comment-norm-unanswered` sync probe consults. Prawduct
+# offers one comment-content norm — a comment or doc-comment leads with what a
+# reader needs in order to use or change the thing it documents, with design
+# rationale below it — and a product may take it or leave it. Record either answer
+# here (`2026-01-31 - ratified` / `2026-01-31 - declined`) and the one-shot
+# invitation stops for everyone on next sync. Unset/absent = unanswered.
+#
+# Separate from the norm-registry ratification fact deliberately: that one records
+# that this product ratified its OWN registry, possibly long before this norm
+# existed, and reusing it would silence an offer nobody ever saw.
+#
+# comment_norm_answered:
+
+# The product's own comment-density figure, if its linter records one (SonarQube's
+# `comment_lines_density`, or the same number under another tool's name). The
+# invitation above renders it and NOTHING here computes it: prawduct parses no
+# language's comment grammar, so a product without such tooling reads `unchecked`
+# rather than a zero that would look like a clean measurement.
+#
+# comment_lines_density:
+
+# =============================================================================
 # BACKLOG (structured backlog resolution conditions, v1.7+)
 # =============================================================================
 # The shared "answer store" (committed) that backlog sync probes consult to

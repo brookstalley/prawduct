@@ -977,12 +977,121 @@ class TestNormHealthSweepOverdueProbe:
 
 
 # =============================================================================
+# comment-norm-unanswered
+# =============================================================================
+
+
+class TestCommentNormUnansweredProbe:
+    """The one-shot offer of the interface-before-rationale norm (#774).
+
+    Unlike its five siblings this probe is about a norm the product has NOT
+    written — so the thing under test is the offer's gating and its honesty
+    about the one number it renders, not a scan of the product's own registry.
+    """
+
+    def test_fires_when_a_preferences_file_exists_and_no_answer_is_recorded(self, tmp_path):
+        _write_artifact(tmp_path, "project-preferences.md", _PREFS_WITH_NORM_COLUMNS)
+        out = np.probe_comment_norm_unanswered(ProjectState({}), _cb(tmp_path))
+        assert len(out) == 1
+        assert out[0].type == "comment-norm-unanswered"
+        assert out[0].recommended_action == "/prawduct:doctor"
+
+    def test_silent_when_the_answer_is_ratified(self, tmp_path):
+        _write_artifact(tmp_path, "project-preferences.md", _PREFS_WITH_NORM_COLUMNS)
+        state = ProjectState({np.COMMENT_NORM_FACT: "2026-09-10 — ratified"})
+        assert np.probe_comment_norm_unanswered(state, _cb(tmp_path)) == []
+
+    def test_silent_when_the_answer_is_declined(self, tmp_path):
+        """Declining is an answer, and an offer that keeps coming back after a no
+        is not an offer. The two answers must be equally terminal."""
+        _write_artifact(tmp_path, "project-preferences.md", _PREFS_WITH_NORM_COLUMNS)
+        state = ProjectState({np.COMMENT_NORM_FACT: "2026-09-10 — declined, we document elsewhere"})
+        assert np.probe_comment_norm_unanswered(state, _cb(tmp_path)) == []
+
+    def test_silent_when_the_product_has_no_preferences_file(self, tmp_path):
+        # Nowhere to record a norm: the absent-preferences repair is doctor Health
+        # Check #14's job, and nagging to ratify into a file that does not exist
+        # would be the second nudge in a chain whose first one has not cleared.
+        _write_artifact(tmp_path, "architecture.md", "# Architecture\n\nProse.\n")
+        assert np.probe_comment_norm_unanswered(ProjectState({}), _cb(tmp_path)) == []
+
+    def test_the_registry_ratification_fact_does_not_silence_the_offer(self, tmp_path):
+        """A July ratification says nothing about a norm offered in September.
+
+        Reusing `norm_registry_ratified` as the clearing fact would have muted
+        this offer in every repo that ever ran the ratification flow — including
+        the one that wrote it — and nothing would have reported that the offer
+        was never made.
+        """
+        _write_artifact(tmp_path, "project-preferences.md", _PREFS_WITH_NORM_COLUMNS)
+        state = ProjectState({np.RATIFIED_FACT: "2026-07-17 — ratified; 26 norms"})
+        assert len(np.probe_comment_norm_unanswered(state, _cb(tmp_path))) == 1
+
+    # --- the one number it renders ------------------------------------------
+
+    def test_density_reads_unchecked_when_no_tooling_records_one(self, tmp_path):
+        _write_artifact(tmp_path, "project-preferences.md", _PREFS_WITH_NORM_COLUMNS)
+        out = np.probe_comment_norm_unanswered(ProjectState({}), _cb(tmp_path))
+        assert "Comment density here: unchecked" in out[0].trigger_summary
+        # R4a: the absent measurement must never render as a measured zero — that
+        # reads as "counted, and clean" in a repo where nothing counted at all.
+        assert "0%" not in out[0].trigger_summary
+
+    def test_density_renders_the_products_own_figure(self, tmp_path):
+        _write_artifact(tmp_path, "project-preferences.md", _PREFS_WITH_NORM_COLUMNS)
+        state = ProjectState({np.COMMENT_DENSITY_FACT: "31.4% (sonar, 2026-09-01)"})
+        out = np.probe_comment_norm_unanswered(state, _cb(tmp_path))
+        assert "Comment density here: 31.4% (sonar, 2026-09-01)" in out[0].trigger_summary
+
+    def test_a_blank_recorded_figure_is_unchecked_not_empty(self, tmp_path):
+        # A scalar someone added and never filled in is an absent measurement, not
+        # a rendered blank where a number should be.
+        _write_artifact(tmp_path, "project-preferences.md", _PREFS_WITH_NORM_COLUMNS)
+        state = ProjectState({np.COMMENT_DENSITY_FACT: "   "})
+        out = np.probe_comment_norm_unanswered(state, _cb(tmp_path))
+        assert "Comment density here: unchecked" in out[0].trigger_summary
+
+    def test_the_advisory_id_survives_the_figure_appearing(self, tmp_path):
+        """One offer, one id, however the density reads.
+
+        The figure is rendered copy; the identity key is the offer. A product that
+        installs comment tooling between two sessions must not receive a second,
+        differently-idd copy of an offer it has already dismissed.
+        """
+        _write_artifact(tmp_path, "project-preferences.md", _PREFS_WITH_NORM_COLUMNS)
+        without = np.probe_comment_norm_unanswered(ProjectState({}), _cb(tmp_path))[0]
+        with_figure = np.probe_comment_norm_unanswered(
+            ProjectState({np.COMMENT_DENSITY_FACT: "50%"}), _cb(tmp_path)
+        )[0]
+        assert _id(without) == _id(with_figure)
+        assert without.trigger_summary != with_figure.trigger_summary
+
+    def test_it_reaches_production_through_register_all(self, tmp_path):
+        """Registered at the composition root, not only by this module's register().
+
+        The probe that is only in `norm_probes.register()` is live in tests and
+        dead in every real session; this is the assertion that tells the two
+        apart.
+        """
+        from lib.probe_families import register_all
+
+        _write_artifact(tmp_path, "project-preferences.md", _PREFS_WITH_NORM_COLUMNS)
+        register_all()
+        fired = {
+            c.type
+            for c in run_all_probes(ProjectState({}), make_codebase(tmp_path))
+            if c.feature == np.FEATURE
+        }
+        assert "comment-norm-unanswered" in fired
+
+
+# =============================================================================
 # registration + roster integration
 # =============================================================================
 
 
 class TestRegistration:
-    def test_register_adds_five_probes(self):
+    def test_register_adds_the_whole_family(self):
         from lib import advisory_store
 
         np.register()
@@ -992,6 +1101,7 @@ class TestRegistration:
             "norm-lifecycle:dead-why",
             "norm-lifecycle:stalled-transition",
             "norm-lifecycle:norm-registry-unratified",
+            "norm-lifecycle:comment-norm-unanswered",
             "norm-lifecycle:norm-health-sweep-overdue",
         }
 

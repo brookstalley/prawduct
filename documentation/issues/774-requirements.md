@@ -96,7 +96,7 @@ excluded); docstring lines counted by AST span.
 | D4 | Day one | **One-shot ratification invitation** per repo, dismissible |
 | D5 | Adoption | Probe ships instantly; **norm registry stays product-owned** |
 | D6 | Retroactivity (prawduct) | **Migrate**, born `in-transition`, tracked by **#772** |
-| D7 | Rule kind | **Narrow framework floor + product norm above it** (inferred — see below) |
+| D7 | Rule kind | **Narrow framework floor + product norm above it** — floor = Axis A (history never in comments), layer = Axis B (ratified per product); confirmed by the owner, see § Decision |
 
 **D1's rationale is a named failure class, not a preference.** #348 recorded
 `_GREEN_IS_EVIDENCE_DIRECTIVE` firing off a Python-only signal and going silently dark in every
@@ -142,8 +142,9 @@ find it.
 comments and doc-comments both in scope, and a caller-shaped predicate silently excludes plain `#`
 blocks — including `pyproject.toml`'s ruff stanza, one of the two comments this norm is required to
 leave intact. The reader's first question generalizes where "its caller" does not: for a callable
-it is the signature; for that stanza it is "is this gating yet?", which it already answers in its
-opening sentence.
+it is the signature; for that stanza it is "is this gating yet?", which it answers plainly in a
+bolded paragraph of its own, above the settings it governs — not in its opening sentence, which
+names the linter.
 
 **This is a rule about ordering and separation, not about volume**, and that is deliberate on three
 counts. It does not ask anyone to delete rationale, so it does not collide with the oversized-file

@@ -713,6 +713,23 @@ api_versioning_decided: "plugin-semver + evidence-schema-version; CLI internal, 
 norm_registry_ratified: "2026-07-17 — ratified; 26 Direction norms across the 7 strategy artifacts as of 2026-07-30 (architecture 6, data-model 6, security-model 3, observability-strategy 3, nonfunctional-requirements 3, api-contract 3, operational-spec 2); preferences Enforcement index carries the norm columns (Audit home / Why)"
 
 # =============================================================================
+# COMMENT CONTENT NORM (advisory-probe resolution signal)
+# =============================================================================
+# Flat top-level scalar the comment-norm-unanswered probe reads. Truthy = this
+# product has answered prawduct's offer of the interface-before-rationale norm,
+# either way. Prawduct's own answer is ratify: the norm is stated in
+# artifacts/project-preferences.md (Code Style) with an Enforcement row naming
+# mechanism Critic and audit home Critic + janitor, Status in-transition, and
+# retroactivity migrate:#772.
+#
+# `comment_lines_density` is deliberately absent: no comment-density tooling runs
+# in this repo, and the 50% figure in documentation/issues/774-requirements.md came
+# from a throwaway measurement script that is evidence, not a deliverable. The
+# invitation reads `unchecked` here, which is the true answer.
+
+comment_norm_answered: "2026-09-10 — ratified (#774); interface before rationale, in-transition, migrate:#772"
+
+# =============================================================================
 # DEPRECATED TERMS
 # =============================================================================
 # Track vocabulary changes to catch stale references.
