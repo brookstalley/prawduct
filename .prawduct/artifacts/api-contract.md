@@ -362,9 +362,9 @@ files to touch previews first. That framing is descriptive — the binding rule 
     **A successful `--apply` returns `ok`**, not the status it repaired: a graded status describes
     the state on the way IN, and a consumer reading it back after a write would report the condition
     that was just fixed.
-    Said plainly because the first version of this entry named HC#4 as the JSON consumer while HC#4
-    parses nothing: a contract asserting a consumer it does not have is how a `--json` shape drifts
-    from the command that emits it. Dry run exits 0 when it ran and 1 only when it could not; `--apply`
+    **HC#4 is not the JSON consumer** — it parses nothing, and a contract asserting a consumer it
+    does not have is how a `--json` shape drifts from the command that emits it.
+    Dry run exits 0 when it ran and 1 only when it could not; `--apply`
     exits 0 on a write or idempotent no-op and 1 on refusal. **`stale` and `stale-modified` are
     separate statuses on purpose** and a consumer must not collapse them: the first is prawduct's
     to repair, the second is an anchor the owner has edited, which this command reports and
@@ -395,9 +395,9 @@ files to touch previews first. That framing is descriptive — the binding rule 
     the command gates nothing; 1 is reserved for bad arguments.
   - `migrate-plugin --json` → migrate skill; `init-product --json` → onboard skill;
     `audit-learnings --json` → doctor. **`repo-disable --json` has no consumer** — the
-    repo-disable skill documents and runs only the bare form. Corrected 2026-08-25 after a review
-    re-ran this list's own premise across every row: two rows named a consumer that parses nothing,
-    and both were inert, which is exactly why neither failed.
+    repo-disable skill documents and runs only the bare form. A row naming a consumer that parses
+    nothing is inert, which is exactly why it does not fail — so this list is checked by re-running
+    its own premise against each row, not by reading it.
   - `review-stats --json` → the cross-project telemetry aggregator, carrying a top-level
     `schema_version` (see Versioning).
   - `render-dispositions --json` → the disposition census, for a change-log entry, a PR body, or any
