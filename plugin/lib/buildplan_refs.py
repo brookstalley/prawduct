@@ -1200,10 +1200,95 @@ _PLAN_FIELD_RE = re.compile(r"^\S")
 # token is a code-location citation (`lib/critic_mode.py:452`, `lib/foo.py:5-8`,
 # the editor-style `lib/foo.py:12:34`), not part of the filename.
 _BUILD_PLAN_LINE_SUFFIX_RE = re.compile(r":\d+(?::\d+)?(?:-\d+)?$")
+# ---------------------------------------------------------------------------
+# The shared grammar of a build-plan chunk FIELD (`**Type:**`, `**Critic
+# mode:**`, …). Every chunk field is written the same way and misread the same
+# way, so the shapes live here once and each reader keeps only what genuinely
+# differs — what it does with a value it cannot honour. `critic_mode` builds its
+# own patterns from these factories; two hand-copied delimiter classes is how
+# they came to disagree about `<br>`.
+# ---------------------------------------------------------------------------
+
+
+def field_token_re(label: str) -> "re.Pattern[str]":
+    """The one-word VALUE of a ``**<label>:**`` field, wherever it sits.
+
+    Hyphen-aware, so ``doc-only`` and ``verify-resolutions`` are captured whole.
+    The opening backtick is optional — authors backtick values. And the token
+    must END at a delimiter: read up to the first non-word character instead,
+    ``n/a (verification only)`` reports the value ``'n'``, a string that appears
+    nowhere in the author's plan.
+
+    Unanchored on purpose, because the field is not reliably the first thing on
+    its line — authors compose chunk headers (``**Depends on:** — · **Type:**
+    code · **Critic mode:** chunk``). Apply it through
+    :func:`iter_field_declarations`, never with a bare ``.search``: the marker
+    appears in PROSE too, and a sentence discussing a field must not be read as
+    declaring it.
+    """
+    return re.compile(
+        rf"\*\*{re.escape(label)}:\*\*\s*`?([A-Za-z][\w\-]*)(?=[\s`.,;)<·|]|$)"
+    )
+
+
+def field_value_re(label: str) -> "re.Pattern[str]":
+    """Everything after a ``**<label>:**`` that OPENS its line, verbatim.
+
+    Field position — the line starts with the field, modulo list and bold
+    markers — is what earns a value the right to be reported back to its author
+    when no token can be read out of it. A value further along a line does not:
+    see :func:`iter_field_declarations` for why position is a heuristic there,
+    and a heuristic must not be the thing that fails someone's chunk.
+
+    Blank matches nothing, deliberately: a field with nothing after it carries
+    no intent to contradict.
+    """
+    return re.compile(rf"^[\s\-\*]*\*\*{re.escape(label)}:\*\*\s*(\S.*?)\s*$")
+
+
+#: How much of an unreadable value a report quotes. Fields take a one-word
+#: token, so anything past this is prose that will not help the author find
+#: their own line any faster.
+FIELD_VALUE_QUOTE_LIMIT = 60
+
+#: What a field declaration may FOLLOW on its line, and the whole of what
+#: separates a declaration from a mention. A field opens the line (modulo list,
+#: bold and backtick markers), follows a composition separator, or opens a new
+#: sentence — those three are how every composed chunk header in this repo is
+#: written. Anything else in front of the marker is a sentence *about* the
+#: field: `- **Notes:** the old reader took **Type:** anything as a value`.
+_FIELD_DECLARATION_PREFIX_RE = re.compile(r"(?:^[\s\-\*`]*|[·•|]\s*|\.\s+)$")
+
+
+def iter_field_declarations(
+    line: str, token_re: "re.Pattern[str]"
+) -> "Iterator[re.Match[str]]":
+    """Yield the matches of ``token_re`` on ``line`` that DECLARE the field.
+
+    Searching for a field mid-line is what makes composed headers readable, and
+    the cost is that a line merely discussing the field reads as declaring it.
+    That cost is not payable: a chunk field decides how much review the chunk
+    gets, and `Type: designer-handoff` skips it entirely — so a sentence
+    mentioning a field would switch the gate off in every governed product, with
+    nothing said. Position is what separates the two, and
+    ``_FIELD_DECLARATION_PREFIX_RE`` is the whole of that rule.
+
+    It is a heuristic, and it is used only to BIND — the readers report an
+    unhonourable value only from field position, where the judgement is not a
+    heuristic at all.
+    """
+    for match in token_re.finditer(line):
+        if _FIELD_DECLARATION_PREFIX_RE.search(line[: match.start()]):
+            yield match
+
+
 # Per-chunk Type declaration (v1.4 F6 — proportional Critic via chunk type).
-# Matches `- **Type:** <token>` or `**Type:** <token>` as a list item; trailing
-# parenthetical prose is allowed and ignored.
-_BUILD_PLAN_TYPE_RE = re.compile(r"^[\s\-\*]*\*\*Type:\*\*\s*([A-Za-z][\w\-]*)")
+# Two passes over the section, and their order is what keeps prose out of a
+# gate: a value in FIELD POSITION is read first and is final, typo included;
+# only a section declaring nothing there is searched at large, where an ALLOWED
+# type at a declaration position is the only thing that can bind.
+_BUILD_PLAN_TYPE_RE = field_token_re("Type")
+_BUILD_PLAN_TYPE_VALUE_RE = field_value_re("Type")
 # v1.5 Chunk 04 — `trivial` joins the allowed set. File-set bounds (no
 # edits under skills/, methodology/, templates/; no CLAUDE.md edit; no
 # test deletion; no new files) + required `**Trivial because:**`
@@ -1218,6 +1303,19 @@ _BUILD_PLAN_ALLOWED_TYPES = frozenset(
 # field. Empty after the colon → missing-rationale.
 _BUILD_PLAN_TRIVIAL_RATIONALE_RE = re.compile(
     r"^[\s\-\*]*\*\*Trivial because:\*\*\s*(.*)$"
+)
+# The same field wherever it sits on its line, for the composed-header form
+# (`**Type:** trivial · **Trivial because:** it renames a constant`). Bounded
+# twice, and this field needs both. Read ONLY as a fallback, after the anchored
+# pass above has found no field at all: a mid-line marker in prose would
+# otherwise start the capture, and the capture stops at the next `- **` line —
+# so a sentence discussing the field would eat the rationale declared below it
+# and hand the gate the prose instead. And read only from a DECLARATION
+# position, so a section with no rationale at all cannot have one supplied by a
+# sentence mentioning the field — that sentence would buy `Type: trivial` its
+# bounded review, which is the whole thing the field is asked for.
+_BUILD_PLAN_TRIVIAL_RATIONALE_ANYWHERE_RE = re.compile(
+    r"\*\*Trivial because:\*\*\s*(.*)$"
 )
 
 # Git branch/ref names (`feature/backlog-service-relayout`, `origin/develop`) are
@@ -2372,7 +2470,12 @@ def _parse_build_plan_chunk_type(
     runs the full Critic protocol rather than silently triggering a carveout
     (learnings: "escape hatches in classification create silent failures").
     Unknown values surface as ``(None, "unknown type: <value>")`` so the
-    author fixes the typo instead of getting silent fall-through.
+    author fixes the typo instead of getting silent fall-through — but only
+    from a field in FIELD POSITION. A type binds from further along its line
+    too, backticked or sharing the line with the other chunk fields, provided
+    it sits at a DECLARATION position (:func:`iter_field_declarations`); a
+    sentence mentioning the field binds nothing and reports nothing, because
+    it can neither be trusted to fail a chunk nor to lighten one.
 
     Section discovery is the shared ``_chunk_section_lines`` walker —
     name-anchored on ``### Chunk <chunk_id>:`` with leading-zero tolerance;
@@ -2395,12 +2498,45 @@ def _parse_build_plan_chunk_type(
     if gap:
         return None, gap
 
+    # Pass one: a value in FIELD POSITION, and its answer is final. A token no
+    # type can be read out of is REPORTED here rather than defaulted — the
+    # author declared an intent, and silence would spend their chunk's review
+    # depth on their typo. The verbatim value is what carries: quoting the
+    # readable prefix of `n/a (docs only)` names a value appearing nowhere in
+    # their plan.
     declared: str | None = None
     for _line_num, line in section.lines:
-        m = _BUILD_PLAN_TYPE_RE.match(line)
-        if m:
-            declared = m.group(1)
-            break
+        value = _BUILD_PLAN_TYPE_VALUE_RE.search(line)
+        if value is None:
+            continue
+        # Through the predicate here too, though the line is already known to
+        # open with the field: a second marker further along it —
+        # `- **Type:** n/a (unlike a **Type:** doc-only chunk)` — is prose, and
+        # a bare search would take it as this chunk's type.
+        token = next(iter_field_declarations(line, _BUILD_PLAN_TYPE_RE), None)
+        declared = (
+            token.group(1)
+            if token
+            else value.group(1)[:FIELD_VALUE_QUOTE_LIMIT]
+        )
+        break
+
+    # Pass two runs only when the section declares nothing there, and reads the
+    # composed-header form (`**Depends on:** — · **Type:** code · …`). Two
+    # bounds, and this field needs both: only an ALLOWED type binds, and only
+    # from a DECLARATION position. Position is a heuristic, so it is spent only
+    # on binding — an unreadable value out here takes the `code` default in
+    # silence, exactly what it took before the field was searchable at all.
+    # Without the position bound a Description sentence naming
+    # `**Type:** designer-handoff` would switch the chunk's Critic gate off.
+    if declared is None:
+        for _line_num, line in section.lines:
+            for match in iter_field_declarations(line, _BUILD_PLAN_TYPE_RE):
+                if match.group(1) in _BUILD_PLAN_ALLOWED_TYPES:
+                    declared = match.group(1)
+                    break
+            if declared is not None:
+                break
 
     if declared is None:
         return "code", None  # fail-closed default
@@ -2408,6 +2544,54 @@ def _parse_build_plan_chunk_type(
         allowed = ", ".join(sorted(_BUILD_PLAN_ALLOWED_TYPES))
         return None, f"{UNKNOWN_TYPE_PREFIX} {declared!r} (allowed: {allowed})"
     return declared, None
+
+
+def _capture_trivial_rationale(
+    section: "ChunkSection", pattern: "re.Pattern[str]"
+) -> tuple[bool, list[str]]:
+    """Read a ``**Trivial because:**`` rationale out of ``section``.
+
+    Returns ``(found, lines)`` — ``found`` says the field was present at all,
+    which is a different question from whether it carried anything, because an
+    empty field and an absent one earn the same block for different reasons.
+
+    ``pattern`` decides WHERE the field may sit: the anchored pattern reads a
+    declaration in field position, the ``_ANYWHERE_`` one reads the composed
+    header. Two passes rather than one permissive pass, so a declaration always
+    beats prose — see the ``_ANYWHERE_`` pattern's comment for what one pass
+    would eat.
+
+    Either way the match goes through :func:`iter_field_declarations`, the same
+    predicate the other two chunk fields bind through. It is what stops the
+    composed-header pass from reading a SENTENCE about the field: this rationale
+    is what buys ``Type: trivial`` its bounded review, so prose satisfying it
+    silently is worse than the missing-field block it would replace. (On the
+    anchored pattern the predicate is a no-op — a match there starts at column
+    zero — which is the point: one rule, no second spelling of it.)
+    """
+    capturing = False
+    rationale_lines: list[str] = []
+    for _line_num, line in section.lines:
+        stripped = line.strip()
+        m = next(iter_field_declarations(line, pattern), None)
+        if m:
+            capturing = True
+            first = m.group(1).strip()
+            if first:
+                rationale_lines.append(first)
+            continue
+        if capturing:
+            # Stop at the next list-item field, bolded label, or sub-heading.
+            if (
+                stripped.startswith("- **")
+                or stripped.startswith("* **")
+                or stripped.startswith("**")
+                or stripped.startswith("#")
+            ):
+                break
+            if stripped:
+                rationale_lines.append(stripped)
+    return capturing, rationale_lines
 
 
 def _parse_build_plan_chunk_trivial_rationale(
@@ -2419,7 +2603,10 @@ def _parse_build_plan_chunk_trivial_rationale(
     "missing-rationale: Type: trivial requires non-empty **Trivial
     because:** field")``. Multi-line rationale (continuation lines without
     a list-item / heading prefix) is joined into a single string until the
-    next field.
+    next field. A field in field position is read first; only when the
+    section has none is the composed-header form (``**Type:** trivial ·
+    **Trivial because:** …``) read, so a rationale the author did write
+    cannot be blocked as missing.
 
     Section discovery is the shared ``_chunk_section_lines`` walker —
     name-anchored on ``### Chunk <chunk_id>:`` with leading-zero tolerance;
@@ -2449,28 +2636,16 @@ def _parse_build_plan_chunk_trivial_rationale(
     if gap:
         return None, gap
 
-    capturing = False
-    rationale_lines: list[str] = []
-    for _line_num, line in section.lines:
-        stripped = line.strip()
-        m = _BUILD_PLAN_TRIVIAL_RATIONALE_RE.match(line)
-        if m:
-            capturing = True
-            first = m.group(1).strip()
-            if first:
-                rationale_lines.append(first)
-            continue
-        if capturing:
-            # Stop at the next list-item field, bolded label, or sub-heading.
-            if (
-                stripped.startswith("- **")
-                or stripped.startswith("* **")
-                or stripped.startswith("**")
-                or stripped.startswith("#")
-            ):
-                break
-            if stripped:
-                rationale_lines.append(stripped)
+    capturing, rationale_lines = _capture_trivial_rationale(
+        section, _BUILD_PLAN_TRIVIAL_RATIONALE_RE
+    )
+    if not capturing:
+        # No field in field position anywhere in the section. Before blocking,
+        # look for the composed-header form — the author may have written the
+        # rationale on the same line as the type it justifies.
+        capturing, rationale_lines = _capture_trivial_rationale(
+            section, _BUILD_PLAN_TRIVIAL_RATIONALE_ANYWHERE_RE
+        )
 
     if not capturing:
         return None, (

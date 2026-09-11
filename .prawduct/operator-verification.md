@@ -1137,6 +1137,23 @@ is reached over a bind mount or network filesystem.
 > **The one thing to watch:** it will go stale rather than wrong. Re-read the `-dev.N` note above
 > before running it — the format already changed once underneath this entry.
 
+> === 2026-09-10 — ATTEMPTED FROM AN AGENT SESSION: STILL PENDING, WITH ONE FINDING FOR THE RECIPE ===
+>
+> Step 1 was done on `~/source/swordfishing` (governed, no live session, committed install
+> reference is the documented `{source: github, ref: main}` form): the `prawduct-dev` block was
+> written to its `.claude/settings.local.json`, which that repo's `.gitignore` already excludes.
+> Step 2 was attempted non-interactively — `claude -p` in that directory, asking the session to
+> quote its SessionStart banner — and **the recipe did not take**: the session received no Prawduct
+> hook output at all, `claude plugin marketplace list` still shows only the three previously known
+> marketplaces, and no `prawduct-dev` cache directory was created. So in print mode a
+> settings-declared marketplace is neither registered nor installed; with `prawduct@prawduct` set
+> to `false` by the same block, the sibling ran with NO prawduct governance for that session.
+> Whether an interactive start registers it (a trust prompt, an auto-install) is exactly what only
+> an operator at a terminal can see — open `claude` in `~/source/swordfishing` and read the banner.
+> The block is left in place for that; delete the file to come back off the track. If interactive
+> start does not register it either, the recipe needs an explicit `claude plugin marketplace add`
+> step and this entry's step 1 is incomplete.
+
 **Why a human check:** the acceptance criterion is that a sibling repo is *actually running* the
 develop track and its briefing reports the prerelease version. That cannot be met from this branch
 and never could: the recipe installs from `{source: github, ref: develop}`, so a sibling fetches

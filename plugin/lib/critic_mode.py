@@ -80,7 +80,6 @@ consumes them.
 from __future__ import annotations
 
 import json
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -108,16 +107,37 @@ _VALID_ARG_MODES = frozenset({
     "verify-resolutions",
 })
 
-# Matches a chunk's ``- **Critic mode:** <value>`` build-plan field.
-# Mirrors ``bin/prawduct-hook``'s ``_BUILD_PLAN_TYPE_RE`` shape (leading
-# list-item / bold markers tolerated). The value token is hyphen-aware so
-# ``verify-resolutions`` is captured whole.
-_BUILD_PLAN_CRITIC_MODE_RE = re.compile(
-    r"^[\s\-\*]*\*\*Critic mode:\*\*\s*([A-Za-z][\w\-]*)"
-)
+# The chunk field this module reads, built from the shared field grammar in
+# ``buildplan_refs`` — the same factories the ``**Type:**`` reader uses. Hand
+# copying the shape into a second module is how the two delimiter sets came to
+# disagree about ``<br>``, with nothing to tell anyone they had.
+#
+# Why the field is searched mid-line at all: authors compose chunk headers
+# (``**Type:** code · **Critic mode:** final``) and backtick the value
+# (``**Critic mode:** `chunk` ``); an anchored read finds neither, and finding
+# nothing is indistinguishable from a chunk that declares no mode — a
+# plan-mandated `final` runs as an inferred `chunk` with no one told. That
+# silent demotion is the one thing this field's reader exists to prevent.
+_BUILD_PLAN_CRITIC_MODE_RE = buildplan_refs.field_token_re("Critic mode")
+
+# The same field carrying something no mode token can be read out of —
+# ``**Critic mode:** (inferred — `chunk`)``, say. Silence is not available
+# there: it would say "this chunk declares no mode", and the author wrote one.
+#
+# Read only from FIELD POSITION, where binding is not, and that asymmetry is the
+# whole point. Binding is bounded twice over — only a VALID mode wins, and only
+# from a declaration position rather than a sentence mentioning the field.
+# REPORTING gets neither bound's benefit: it speaks about a value it could NOT
+# read, so it cannot check the value, and position is a heuristic. A note firing
+# on a Description line is one its reader learns to skip — and then skips on the
+# chunk that needed it. A mid-line unparseable value therefore goes unreported;
+# that is the silence this field had before, kept only where speaking would cost
+# more. Blank stays silent too: a field with nothing after it carries no intent
+# to contradict.
+_BUILD_PLAN_CRITIC_MODE_FIELD_RE = buildplan_refs.field_value_re("Critic mode")
 
 
-def _unrecognized_mode_note(token: str) -> str:
+def _unrecognized_mode_note(token: str, line_num: int | None = None) -> str:
     """The one line an ignored ``Critic mode:`` value earns.
 
     Fail-open-to-inference is correct and is NOT changing: a typo'd mode must
@@ -136,8 +156,9 @@ def _unrecognized_mode_note(token: str) -> str:
     ``buildplan_refs._BUILD_PLAN_ALLOWED_TYPES`` rather than a copy, so a Type
     added later keeps routing authors correctly.
     """
+    where = f" (plan line {line_num})" if line_num is not None else ""
     note = (
-        f"NOTE: chunk's `Critic mode:` is {token!r}, which is not one of "
+        f"NOTE: chunk's `Critic mode:`{where} is {token!r}, which is not one of "
         f"{', '.join(sorted(_VALID_ARG_MODES))}. Ignoring it and inferring the "
         "mode instead — nothing was skipped."
     )
@@ -238,7 +259,12 @@ def infer_mode(
     # proceeds — documented, correct, and not changing — but the ignore says so
     # once. Unlike its escalating sibling above, this changes no verdict.
     if plan_read.unrecognized:
-        print(_unrecognized_mode_note(plan_read.unrecognized), file=sys.stderr)
+        print(
+            _unrecognized_mode_note(
+                plan_read.unrecognized, plan_read.unrecognized_line
+            ),
+            file=sys.stderr,
+        )
 
     if _rule_verify_resolutions_fires(prawduct_dir, project_dir):
         return "verify-resolutions", (
@@ -816,13 +842,16 @@ class ChunkModeRead(NamedTuple):
 
     mode: str | None
     unreadable: str | None
-    #: The token found where a mode was expected, when it matched none of them.
-    #: A THIRD state, for the same reason ``unreadable`` is a second: absent and
-    #: blank carry no intent to contradict, but a value someone typed does. It
-    #: must not escalate the way ``unreadable`` does — a typo'd mode is no
-    #: reason to spend a heavier review, and inference proceeding is correct —
-    #: so it changes no verdict and earns only a line saying it was ignored.
+    #: The value found where a mode was expected, when no mode could be read
+    #: out of it. A THIRD state, for the same reason ``unreadable`` is a second:
+    #: absent and blank carry no intent to contradict, but a value someone typed
+    #: does. It must not escalate the way ``unreadable`` does — a typo'd mode is
+    #: no reason to spend a heavier review, and inference proceeding is correct
+    #: — so it changes no verdict and earns only a line saying it was ignored.
     unrecognized: str | None = None
+    #: Which line of the plan carried it, so the note can point at it rather
+    #: than describe it. Set together with ``unrecognized``, never alone.
+    unrecognized_line: int | None = None
 
 
 def _critic_mode_for_chunk(
@@ -831,11 +860,19 @@ def _critic_mode_for_chunk(
     """Return ``chunk_id``'s declared mode and whether its plan could be read.
 
     Finds that chunk's ``### Chunk <id>:`` detail section and reads its
-    ``- **Critic mode:** <value>`` field. Returns the short-token value
-    only when it is one of the recognized modes; an absent, blank, or
-    unrecognized value yields ``ChunkModeRead(None, None)`` (fall through to inference rather
-    than honoring a typo as a mode override — same fail-open-to-inference
-    posture the methodology's "optional field" contract implies).
+    ``**Critic mode:** <value>`` field, wherever on its line it sits and
+    whether or not its value is backticked. Returns the short-token value
+    only when it is one of the recognized modes; anything else falls through
+    to inference rather than honoring a typo as a mode override — the same
+    fail-open posture the methodology's "optional field" contract implies.
+
+    What "anything else" carries differs, and the third field is why. An absent
+    or blank value yields ``ChunkModeRead(None, None)`` and says nothing. A
+    value someone typed that no mode can be read out of — a typo, or prose
+    where a token belongs — yields ``ChunkModeRead(None, None, <value>)``, and
+    the caller notes it: inference proceeds either way, but only one of the two
+    is an author being quietly overruled. The whole section is scanned, so a
+    real declaration always beats an unhonorable value above it.
 
     ``chunk_id`` is resolved by the caller via
     ``buildplan_refs`` — git-aware on a views-enabled feature branch
@@ -896,11 +933,33 @@ def _critic_mode_for_chunk(
         return ChunkModeRead(None, unparsed)
     if buildplan_refs.chunk_section_gap(chunk_id, section):
         return ChunkModeRead(None, None)
-    for _line_num, line in section.lines:
-        m = _BUILD_PLAN_CRITIC_MODE_RE.match(line)
-        if m:
-            token = m.group(1)
-            if token in _VALID_ARG_MODES:
-                return ChunkModeRead(token, None)
-            return ChunkModeRead(None, None, token)
-    return ChunkModeRead(None, None)
+    # The whole section is scanned, and a valid token anywhere in it beats
+    # anything unhonorable found above it. Returning on first sight is what an
+    # unanchored read cannot afford: the marker appears in prose too — a
+    # Description line discussing the field is indistinguishable from a line
+    # declaring it — so first-sight would let a sentence *about* the field
+    # suppress the declaration below it. That is a lost declaration reported as
+    # a typo, which is the silent demotion this reader exists to prevent
+    # wearing a note that misdirects the author away from it.
+    unhonored: str | None = None
+    unhonored_line: int | None = None
+    for line_num, line in section.lines:
+        for match in buildplan_refs.iter_field_declarations(
+            line, _BUILD_PLAN_CRITIC_MODE_RE
+        ):
+            if match.group(1) in _VALID_ARG_MODES:
+                return ChunkModeRead(match.group(1), None)
+        if unhonored is not None:
+            continue
+        # Nothing bound, and this line puts the field in field position with a
+        # value after it. Reported for the reason a typo'd mode is: the author
+        # declared an intent, it is not being honored, and the only way they
+        # learn that today is by noticing the review came out shallower than
+        # they asked for. The VERBATIM value is what carries, truncated only
+        # where it stops being a value — a paraphrase they cannot grep for is
+        # a note that costs them the search it was supposed to save.
+        declared = _BUILD_PLAN_CRITIC_MODE_FIELD_RE.search(line)
+        if declared:
+            unhonored = declared.group(1)[: buildplan_refs.FIELD_VALUE_QUOTE_LIMIT]
+            unhonored_line = line_num
+    return ChunkModeRead(None, None, unhonored, unhonored_line)

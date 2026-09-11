@@ -301,6 +301,29 @@ class TestTheTrimmedBlockCarriesNothingElse:
             title=_TITLE, body="### Problem\n\n    ```prawduct\n    v: 1\n    ```", component=""
         ) is None
 
+    @pytest.mark.parametrize("field", ["title", "body"])
+    @pytest.mark.parametrize("blank", ["", "   ", "\n\t\n"], ids=["empty", "spaces", "newlines"])
+    def test_an_empty_title_or_body_is_refused_before_anything_composes(self, field, blank):
+        """The skill composes both fields through `$(cat <path>)`, and a path the
+        reader never actually wrote reads as NOTHING — the flag is still present,
+        so a presence check passes, and `[prawduct] <component>: ` alone clears
+        the title floor. Under `always-file` no later check compares bytes, so an
+        empty payload would file as an issue that cannot be retitled or deleted.
+        Asserted on the guard AND the composer: the composer re-runs the guard so
+        a caller cannot skip it."""
+        assert upstream.check_payload_inputs(
+            **{"title": _TITLE, "body": _BODY, "component": _COMPONENT, field: blank}
+        ) is not None
+        assert _payload(**{field: blank}) is None
+
+    def test_an_absent_component_is_still_a_report(self):
+        """The component is optional by signature; refusing its absence would turn
+        every report without one into a refusal the skill never predicted."""
+        assert upstream.check_payload_inputs(
+            title=_TITLE, body=_BODY, component=""
+        ) is None
+        assert _payload(component="") is not None
+
 
 class TestIdentityResolvesFromTwoSignals:
     def _state(self, tmp_path, value):
