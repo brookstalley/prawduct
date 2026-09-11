@@ -726,8 +726,12 @@ norm_registry_ratified: "2026-07-17 — ratified; 26 Direction norms across the 
 # in this repo, and the 50% figure in documentation/issues/774-requirements.md came
 # from a throwaway measurement script that is evidence, not a deliverable. The
 # invitation reads `unchecked` here, which is the true answer.
+#
+# The value spells its items "issue 774" rather than "#774" on purpose:
+# advisory_store.load_project_state strips from the first `#` in a value, quoted or
+# not, so a `#`-spelled id is truncated on read.
 
-comment_norm_answered: "2026-09-10 — ratified (#774); interface before rationale, in-transition, migrate:#772"
+comment_norm_answered: "2026-09-10 — ratified; interface before rationale (issue 774), in-transition, migrate: issue 772"
 
 # =============================================================================
 # DEPRECATED TERMS

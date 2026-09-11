@@ -1,5 +1,15 @@
 """Critic-active session marker — the CRT-3X9D session-mutation guard.
 
+**Lifecycle.** ``prawduct-hook critic-begin`` writes ``.prawduct/.critic-active``
+at the start of a review; ``critic-end`` removes it. Session-mutating ``clear``
+consults :func:`review_active` and refuses (with an override) while a review is
+plausibly in progress.
+
+This module enforces the real invariant — *an independent reviewer must not be
+able to mutate the session it is reviewing* — at the mutation site rather than
+relying on a tool restriction that doesn't hold for subagents.
+
+**Why the guard lives at the mutation site.**
 The Critic is documented as structurally unable to run executables (review by
 code analysis only). But the coordinator pattern dispatches review subagents via
 the ``Agent`` tool, and Agent-spawned subagents do NOT inherit the Critic skill's
@@ -8,15 +18,6 @@ During the STH-9V4K ch.7 review a subagent ran ``prawduct-hook clear``, which is
 destructive: it archives/deletes ``.session-reflected``, rewrites
 ``.session-start`` (making fresh test evidence read "stale"), and recaptures the
 git baseline. An independent reviewer clobbered the session it was reviewing.
-
-This module enforces the real invariant — *an independent reviewer must not be
-able to mutate the session it is reviewing* — at the mutation site rather than
-relying on a tool restriction that doesn't hold for subagents.
-
-**Lifecycle.** ``prawduct-hook critic-begin`` writes ``.prawduct/.critic-active``
-at the start of a review; ``critic-end`` removes it. Session-mutating ``clear``
-consults :func:`review_active` and refuses (with an override) while a review is
-plausibly in progress.
 
 **Resilience (the design priority — see CRT-3X9D).** A crashed/hung Critic that
 never calls ``critic-end`` must not permanently brick ``clear``. Three

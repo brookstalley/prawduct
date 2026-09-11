@@ -42,6 +42,25 @@ including the one that wrote the norm. Where no density figure exists the offer 
 rather than rendering a zero that would look like a clean measurement — #348's silent-dark failure
 with a new name.
 
+**The dogfood found two holes in the adoption path, which is what the dogfood was for.** Walking
+`/prawduct:doctor`'s Norm Ratification Flow against this repo: steps 1-3 read *the product's own*
+artifacts and so cannot see a norm the framework offers — a faithful run proposes nothing to the
+owner the advisory just sent there — and step 5 records `norm_registry_ratified`, which this
+advisory does not read, so ratifying through the flow would leave the offer firing at an owner who
+had already said yes. The flow's step 4 gains a framework-offered candidate, admitted only when an
+advisory brought the owner, and step 5 records the answer scalar alongside. The rule that the framework
+never decides which of a product's own unmarked statements are norms is untouched.
+
+`plugin/lib/critic_marker.py` is the worked example: its module docstring now opens with the
+lifecycle a caller needs and carries the CRT-3X9D incident below it, at full length — 92 docstring
+lines became 93, which is the whole point. #772 carries the Migrate relationship, so the norm's
+`in-transition` status names a live item and the stall advisory watches it.
+
+One defect fell out of the exercise and is **not** fixed here: `load_project_state` truncates a
+scalar at the first `#`, quoted or not, so an answer naming its tracking item `#772` is read back
+truncated. This entry's values spell it `issue 772` and the flow's instruction says why; the parser
+is orthogonal to this norm and belongs in its own branch.
+
 ## 2026-09-10: an audit of develop, and the three findings that could not wait for the cut
 
 <!-- prawduct: type=fix | scope=audit-followups -->

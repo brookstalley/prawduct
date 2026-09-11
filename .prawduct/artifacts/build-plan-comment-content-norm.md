@@ -239,6 +239,37 @@ been applied to something.
 4. Commit the chunk, then run `/prawduct:critic cumulative` once.
 5. Tick this chunk's Status box — the last tick disarms the Stop gates.
 
+**Outcome of the dogfood run (2026-09-10) — recorded because the gap is the product.**
+
+The flow was walked against this repo, step by step, and two of its five steps could not do what
+this plan assumed.
+
+- **Steps 1-3 cannot see a framework-offered norm at all.** The flow reads *the product's own*
+  strategy artifacts, preferences and learnings and proposes candidates from them. Axis B is in none
+  of those for a product meeting it for the first time — it arrives in the advisory. A faithful run
+  of the flow as written therefore proposes nothing, and the owner the advisory sent there is told
+  there is nothing to ratify. Fixed rather than filed: step 4 gains a **framework-offered
+  candidate**, admitted *only* when an advisory brought the owner, with the offer's two answers. The rule it must not break is untouched — the framework still never decides
+  which of a product's own unmarked statements are norms.
+- **Step 5 records the wrong fact for this norm.** It sets `norm_registry_ratified`, which the
+  comment-norm advisory does not read. A product that ratified the norm through the flow and
+  stopped there would keep being offered a norm it had already adopted — the failure the one-shot
+  shape exists to prevent, arriving through the remedy. Step 5 now also records
+  `comment_norm_answered`.
+- **Prawduct's own ratification was already done by Chunk 01**, in the preferences file with an
+  Enforcement row rather than a `## Direction` section. Both homings are legitimate
+  (`docs/norms.md` § Where Norms Live), and the norm index is +1 row as R2 requires.
+  `norm-index-scaffold` reports `ok` (no leftover scaffold rows), and the three norm-lifecycle
+  probes that read this repo's state — including the new one — are silent against it.
+- **`norm_registry_ratified` is deliberately NOT re-stamped to today.** Its value seeds the Norm
+  Health sweep baseline, so re-dating it for a pass that considered one norm would silently reset a
+  60-day clock measuring something else. It stays at 2026-07-17, and the sweep falls due on schedule.
+- **One defect found outside the flow.** `advisory_store.load_project_state` truncates a scalar at
+  the first `#`, quoted or not, so `comment_norm_answered: "… migrate:#772"` was read back as
+  `2026-09-10 — ratified (`. Worked around here (the value and the flow's instruction both spell a
+  tracking item `issue 772`) and left orthogonal: the parser fix is small and unrelated to this
+  norm, so it belongs in its own branch, not folded into this diff.
+
 ## Governance checkpoints
 
 1. **After Chunk 01** — the wording review. Both later chunks cite this text, and the specific

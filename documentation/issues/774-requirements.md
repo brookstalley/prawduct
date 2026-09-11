@@ -312,26 +312,31 @@ leftover-scaffold finding, and it is the migration failure this item exists to a
 
 ## Acceptance
 
-- [ ] The Axis B norm is stated with full anatomy (statement, Why, scope, Status, Retroactivity)
+- [x] The Axis B norm is stated with full anatomy (statement, Why, scope, Status, Retroactivity)
       and an Enforcement row naming mechanism `Critic` and audit home `janitor`
-- [ ] Axis A gains **no** second copy — the diff adds reach (one digest sentence) and no restatement
-- [ ] The stated norm demonstrably preserves the do-not-reintroduce comments named above — checked
+- [x] Axis A gains **no** second copy — verified by diff; `building.md:88` is unchanged and nothing
+      restates it. The reach half (one digest sentence) is **descoped**, not delivered: it does not
+      fit the injected ceiling and the owner's ruling is outstanding (R1a)
+- [x] The stated norm demonstrably preserves the do-not-reintroduce comments named above — checked
       against `is_judgeable_path`'s docstring and the `pyproject.toml` ruff stanza specifically,
       both of which must survive at full length, relocated below the interface at most
-- [ ] The norm is in `.prawduct/artifacts/project-preferences.md` — the path `PREFERENCES_REL`
+- [x] The norm is in `.prawduct/artifacts/project-preferences.md` — the path `PREFERENCES_REL`
       names — with its pre-existing rows and rulings intact (norm-index row count strictly +1)
-- [ ] No second preferences file exists at any other path
-- [ ] No per-language comment grammar, prefix table, or lexer ships in the runtime — verified by
+- [x] No second preferences file exists at any other path
+- [x] No per-language comment grammar, prefix table, or lexer ships in the runtime — verified by
       inspection of the diff, and the measurement script used for this document stays out of it
-- [ ] Where no density figure is available the surface says `unchecked`, never zero and never clean
-- [ ] `critic_marker.py` reads interface-first when the norm is applied to it — the worked example
+- [x] Where no density figure is available the surface says `unchecked`, never zero and never clean
+- [x] `critic_marker.py` reads interface-first when the norm is applied to it — the worked example
       that proves the norm is applicable rather than merely stated
-- [ ] The advisory fires once, clears on a committed answer, and does not recur
-- [ ] A product can comply with the methodology floor while declining the product-owned
-      layer above it — verified, not asserted
-- [ ] No threshold in the shipped code gates, blocks, or fails anything
-- [ ] #772 carries the Migrate relationship and this norm names it as tracking ref
-- [ ] Prawduct has ratified the norm against itself via the doctor flow
+- [x] The advisory fires once, clears on a committed answer, and does not recur
+- [x] A product can comply with the methodology floor while declining the product-owned
+      layer above it — verified, not asserted: `declined` is a terminal recorded answer
+      (`test_silent_when_the_answer_is_declined`) that writes no norm row, and Axis A binds
+      through methodology either way
+- [x] No threshold in the shipped code gates, blocks, or fails anything
+- [x] #772 carries the Migrate relationship and this norm names it as tracking ref
+- [x] Prawduct has ratified the norm against itself via the doctor flow — and the run's real
+      product is what the flow could not do; see the build plan's Chunk 03 outcome
 
 ## Scope-out
 
