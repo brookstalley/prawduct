@@ -1,8 +1,9 @@
 # Change Log — Prawduct Framework
 
 <!-- The LIVE change-log: release-pending entries, untagged entries, and the current release
-     line. Append new entries at the top; each is a ## section with a `<!-- prawduct: … -->` tag
-     line, and `scope=` with no `release=` IS the release-pending state — the release adds the tag.
+     line. Append new entries at the top; each is a ## section followed by its prawduct tag line
+     (an HTML comment carrying `type=` and `scope=`), and `scope=` with no `release=` IS the
+     release-pending state — the release adds the tag.
 
      LIFECYCLE. Entries whose `release=` falls below the current minor line leave this file:
      `prawduct-hook archive-change-log` moves them whole into `.prawduct/change-log-history.md`,

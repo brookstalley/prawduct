@@ -56,7 +56,7 @@ not address that (see Out of Scope) — but it is why the fix cannot be "get und
 ## Status
 
 - [x] Chunk 01: The archiver, and the invariant that makes it safe
-- [ ] Chunk 02: Run it — the one-time cut, and the live log's own lifecycle statement
+- [x] Chunk 02: Run it — the one-time cut, and the live log's own lifecycle statement
 - [ ] Chunk 03: A threshold that means something, and a release step that runs the archiver
 
 ### Chunk 01: The archiver, and the invariant that makes it safe
@@ -116,6 +116,21 @@ not address that (see Out of Scope) — but it is why the fix cannot be "get und
   entry still uses the global, and the change-log probe fires above its own ceiling and not below.
 - **Acceptance criteria:** the oversized-change-log advisory is absent at the post-Chunk-02 size and
   present when the file exceeds its own threshold; the release process names the command.
+- **Carried from Chunk 02's cumulative review (rev-20260911T025604Z-1ddc967c), riding this chunk's
+  commit rather than a round of their own — each is a defect in the archiver that only bites on the
+  NEXT run, which (b) is what schedules:** R-1 `new_diagnostics` diffs raw `validate_change_log_tags`
+  strings that embed `(line N)`, so a staying entry below a moved one shifts lines and its
+  pre-existing warning reappears as "new" and the run falsely refuses — compare with line numbers
+  stripped, and pin it with a fixture that has a pending entry older than a shipped one. R-2
+  `_compose` glues `h_preamble + moved_text + existing` with no newline normalisation, so a live file
+  with no trailing newline lands history's newest `## ` mid-line — normalise, and fixture it. R-10
+  `plan_backfill.shipped_scopes` (`plugin/lib/plan_backfill.py:93`) decides "shipped" from the
+  `release=` tags the archiver moves out, so the checklist step in (b) MUST place `plan-backfill
+  --apply` before `archive-change-log --apply`, and say why. R-12 `core.write_all_or_none` catches
+  `Exception`, not `BaseException`, so a Ctrl-C between the two `os.replace` calls leaves the pair
+  half-applied and a re-run duplicates into history; also an existing-but-unreadable target maps to
+  `prior=None`, which the rollback then unlinks. R-5 `documentation/project-structure.md` annotates
+  `learnings-history.md` on both trees and not `change-log-history.md`.
 - **Done when:**
   1. Acceptance criteria met and tests pass
   2. `/prawduct:critic` run and blocking findings resolved
