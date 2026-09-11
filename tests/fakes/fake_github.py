@@ -257,6 +257,7 @@ class FakeGitHub(Transport):
             "assignees": [],
             "user": {"login": self.user["login"], "id": self.user["id"]},
             "html_url": f"https://github.com/{owner}/{repo}/issues/{number}",
+            "comments": 0,
             "created_at": "2026-01-01T00:00:00Z",
             "updated_at": "2026-01-01T00:00:00Z",
         }
@@ -599,7 +600,31 @@ class FakeGitHub(Transport):
             "created_at": "2026-01-01T00:00:00Z",
         }
         state.comments.setdefault(number, []).append(comment)
+        # Real issue payloads carry the native `comments` count — keep it true
+        # so the count-driven fetch skip in `get` is exercised faithfully.
+        issue["comments"] = len(state.comments[number])
         return dict(comment)
+
+    def list_comments(self, owner: str, repo: str, number: int) -> list[dict]:
+        self._maybe_unreachable()
+        self.calls.append(("list_comments", owner, repo, number))
+        state = self._repo(owner, repo)
+        if number not in state.issues:
+            raise TransportError(
+                "not_found",
+                "the requested GitHub resource was not found",
+                details={"operation": f"api repos/{owner}/{repo}/issues/{number}/comments"},
+            )
+        return [
+            {
+                "id": comment.get("id"),
+                "author": (comment.get("user") or {}).get("login"),
+                "created_at": comment.get("created_at"),
+                "body": comment.get("body"),
+                "url": comment.get("html_url"),
+            }
+            for comment in state.comments.get(number, [])
+        ]
 
     # -- native relationships (dependencies + sub-issues) ------------------
 

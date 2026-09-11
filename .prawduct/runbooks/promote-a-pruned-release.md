@@ -20,6 +20,14 @@ You finished Phase 1 of `cut-and-publish-a-plugin-release.md` and some of what i
 **withheld** from this release. This document replaces that runbook's Phase 2 (steps 14–21).
 Everything before Phase 2 is unchanged and is not repeated here.
 
+> **Phase 3 is AFTER Phase 2 and is not replaced — go back and run it.** When you finish this
+> document, return to `cut-and-publish-a-plugin-release.md` **Phase 3 (step 22)** and reopen
+> `develop` at the next patch `-dev` version. This is easy to lose and nothing detects it here:
+> Phase 1 step 7 already bumped `develop` to the bare release number, and the pruned completion
+> test is the *path partition*, not the whole-develop five-file diff — so a pruned release that
+> skips Phase 3 leaves `develop` reporting the released version all cycle, which is exactly the
+> defect Phase 3 exists to remove. The whole-develop path catches this; this one does not.
+
 Confirm you are in that situation:
 
 ```

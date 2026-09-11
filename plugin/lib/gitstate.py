@@ -732,7 +732,7 @@ def git_path_is_ignored(project_dir: Path, rel_path: str) -> bool:
     """True if ``rel_path`` is git-ignored within ``project_dir``.
 
     Used by the build-plan ref-existence check so an intentionally-gitignored
-    managed path (e.g. ``.prawduct/.bug-inbox``) is not flagged as a missing
+    managed path (e.g. ``.prawduct/.test-evidence.json``) is not flagged as a missing
     deliverable (BLD-4K7P) — such paths are generated/managed and legitimately
     absent from a fresh checkout. Fail-closed: ``git check-ignore`` exits 0 when
     ignored, 1 when not, and 128 on error (e.g. not a git repo); any non-zero or

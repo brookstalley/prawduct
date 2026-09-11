@@ -27,14 +27,80 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 HOOKS_JSON = ROOT / "hooks" / "hooks.json"
 DIGEST_HOOK = ROOT / "hooks" / "digest.py"
 DIGEST_SRC = ROOT / "methodology" / "session-digest.md"
-SLIM_DIGEST_SRC = ROOT / "methodology" / "session-digest-slim.md"
 
-# The four methodology guides, read via `/prawduct:methodology <topic>`.
-PHASES = ("building", "discovery", "planning", "reflection")
+# The methodology guides, read via `/prawduct:methodology <topic>`. `delegation`
+# joined on 2026-08-21; `principles` and `norms` are deliberately absent — they
+# route to `docs/`, not to a guide, and the overview list below names phases.
+PHASES = ("building", "discovery", "planning", "reflection", "delegation")
 
 # Claude Code spills additionalContext over this many characters to a file
 # instead of injecting it inline. The digest must stay comfortably under it.
 ADDITIONAL_CONTEXT_INLINE_LIMIT = 10_000
+
+#: The headroom the digest KEEPS, reserved for the next framework-wide default.
+#:
+#: Decided 2026-09-01 (#630), after a relief pass found the digest at 9,987 of
+#: 10,000 -- thirteen characters, measured. Nothing was broken and the ceiling
+#: is loud rather than silent, so the problem was never a failure; it was that
+#: the next default reaching migrated and thin-anchor repos would have arrived
+#: with no room, leaving two levers: relocate under deadline pressure, or
+#: "merge" two rules that are not one rule. The second is a quality regression
+#: dressed as a trim, and it is what a last-minute squeeze produces.
+#:
+#: So the reserve is stated rather than discovered. This assertion is a POLICY
+#: ratchet and can be declared past by an owner ruling; 10,000 is a harness
+#: threshold and cannot. Crossing 9,500 does not mean the digest is broken --
+#: it means the next author is spending the reserve, and owes the relief pass
+#: FIRST, with time to judge what belongs where.
+#:
+#: Relief is a placement decision, never a deletion: content leaves the digest
+#: for a named on-demand surface with a stated retrieval path (§ Agent Stance
+#: in `docs/principles.md` is the worked example), and a rule merge counts only
+#: when re-derivation proves the two were one rule (the BP7 precedent).
+DIGEST_HEADROOM_RESERVE = 500
+
+#: The per-section placement decision, taken once (#630) so the next author
+#: inherits a judgement instead of making one under deadline pressure.
+#:
+#: The test is "would a THIN-ANCHOR repo be wrong without this?" -- a repo whose
+#: CLAUDE.md is only the governance anchor learns the framework defaults here or
+#: nowhere. That is a question about the reader's position, not about
+#: importance: a rule that has to FIRE unprompted is inline; a rule a reader
+#: looks up once they know it exists can live one pointer away.
+DIGEST_SECTION_PLACEMENT = {
+    "(preamble)": (
+        "inline -- names the governing framework and the read-on-demand model; "
+        "a repo that does not know it is governed asks for none of the rest"
+    ),
+    "How work is governed here": (
+        "inline -- the size/rigor scaling and the read-building-first trigger; "
+        "nothing routes to the guides without it"
+    ),
+    "The hardest rules (these degrade at scale — hold them)": (
+        "inline -- each fires unprompted, mid-work, on a surface with no "
+        "opt-out. Individual bullets already point out for their detail "
+        "(reflection.md, docs/waivers.md, review-cycle.md); what stays here is "
+        "the trigger and the shortest true form of the rule"
+    ),
+    "Principles": (
+        "inline -- a 26-name roster in six groups, already the compressed form "
+        "of docs/principles.md"
+    ),
+    "How the agent shows up (stance)": (
+        "SPLIT -- the lead position stays inline (it governs the first move on "
+        "every substantive ask); the nine bars RELOCATED to docs/principles.md "
+        "§ Agent Stance, reached by the pointer here and by "
+        "/prawduct:methodology principles. A bar is consulted when you are "
+        "checking yourself against it, which is a lookup, not a trigger"
+    ),
+    "Enforcement": (
+        "inline -- names the Stop hook gates; a blocked session with no idea "
+        "what blocked it is the failure"
+    ),
+    "Read on demand": (
+        "inline -- this IS the retrieval path every relocation above depends on"
+    ),
+}
 
 
 def _canonical_digest_copies(root: Path = ROOT) -> list[Path]:
@@ -92,21 +158,6 @@ class TestDigestSource:
         copies = _canonical_digest_copies()
         assert copies == [DIGEST_SRC], f"expected one canonical digest, found {copies}"
 
-    def test_slim_source_exists_and_nonempty(self):
-        # review-fixes Chunk 4: the slim framework-repo variant is a second
-        # canonical document, not a runtime derivation of the full digest.
-        assert SLIM_DIGEST_SRC.is_file(), "the slim session digest must be bundled"
-        assert SLIM_DIGEST_SRC.read_text(encoding="utf-8").strip()
-
-    def test_slim_source_is_one_canonical_copy(self):
-        copies = sorted(
-            p
-            for p in ROOT.rglob("session-digest-slim.md")
-            if ".git" not in p.relative_to(ROOT).parts
-            and ".claude" not in p.relative_to(ROOT).parts
-        )
-        assert copies == [SLIM_DIGEST_SRC], f"expected one canonical slim digest, found {copies}"
-
     def test_canonical_copy_check_ignores_claude_worktrees(self, tmp_path: Path):
         # TST-9K4W: a session-digest.md inside a .claude/worktrees/ checkout must
         # NOT count as a second canonical copy (it is a nested workflow checkout).
@@ -130,14 +181,12 @@ class TestDigestHook:
         assert out["additionalContext"].strip(), "additionalContext must be non-empty"
 
     def test_additional_context_matches_source(self):
-        # Renegotiated in review-fixes Chunk 4: the default project_dir is ROOT —
-        # the prawduct framework repo itself — so the emitted context is now the
-        # SLIM variant (CLAUDE.md already carries what the full digest restates).
-        # The full-digest-verbatim contract moved to the product fixture in
-        # TestDigestVariantSelection.
+        # One digest for every governed repo, the framework repo included, so
+        # what ROOT emits is the canonical source verbatim. Both repo shapes are
+        # exercised independently in TestDigestReachesEveryRepoShape.
         result = _run_digest(ROOT)
         ctx = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
-        assert ctx == SLIM_DIGEST_SRC.read_text(encoding="utf-8").strip()
+        assert ctx == DIGEST_SRC.read_text(encoding="utf-8").strip()
 
     def test_additional_context_under_inline_limit(self):
         ctx = json.loads(_run_digest(ROOT).stdout)["hookSpecificOutput"]["additionalContext"]
@@ -146,25 +195,18 @@ class TestDigestHook:
             "inline threshold; Claude Code would spill it to a file"
         )
 
-    @pytest.mark.parametrize("src", [DIGEST_SRC, SLIM_DIGEST_SRC], ids=["full", "slim"])
-    def test_every_digest_variant_is_under_the_inline_limit(self, src: Path):
-        """Both variants, pinned at the SOURCE — not just whichever one ROOT emits.
+    def test_the_digest_source_is_under_the_inline_limit(self):
+        """Pinned at the SOURCE, not only at whatever a given run emits.
 
-        The test above runs `_run_digest(ROOT)`, and since the variant
-        renegotiation ROOT emits the SLIM digest — so the FULL digest, the one
-        injected into every product session and the sole carrier of framework
-        defaults for thin-anchor repos, was pinned by nothing. It reached 11,143
-        chars (11% over) before this assertion existed. `test_slim_budget_at
-        _most_half_of_full` is not a substitute: it gets *easier* to satisfy as
-        the full digest grows, so it cannot brake growth in the wider-blast-radius
-        file.
+        The sibling above asserts the EMITTED context is under the limit for one
+        invocation; this asserts it of the shipped file itself, which is what
+        every governed repo receives. The digest reached 11,143 chars (11% over)
+        while only an emitted-value check existed, so the source-side pin is the
+        one that has actually caught growth.
 
         Asserted against the stripped source because that is what the hook emits.
-        The source==emitted equality is pinned per variant, and by DIFFERENT
-        tests: `test_additional_context_matches_source` covers the slim variant
-        (what ROOT emits), and `TestDigestVariantSelection.test_product_fixture
-        _gets_full_digest_verbatim` covers the full one.
         """
+        src = DIGEST_SRC
         emitted = src.read_text(encoding="utf-8").strip()
         assert len(emitted) < ADDITIONAL_CONTEXT_INLINE_LIMIT, (
             f"{src.name} is {len(emitted)} chars — over the "
@@ -174,6 +216,69 @@ class TestDigestHook:
             "a free destination for text trimmed out of a methodology guide."
         )
 
+    def test_every_digest_section_carries_a_placement_decision(self):
+        """A new section cannot appear without someone answering the question.
+
+        The reserve above is the budget; this is the decision procedure that
+        keeps the budget honest. Without it, relief gets done by whoever is
+        closest to the wall in the moment they hit it -- which is the forced
+        trim #630 names, and the condition under which a rule merge that is not
+        a re-derivation looks like an ordinary edit.
+
+        Reads the headings out of the digest itself rather than a list kept
+        beside it: adding a section and forgetting the classification is the
+        mistake being guarded, and a hand-kept list has that same blind spot.
+        """
+        headings = [
+            ln[3:].strip()
+            for ln in DIGEST_SRC.read_text(encoding="utf-8").splitlines()
+            if ln.startswith("## ")
+        ]
+        assert headings, "no `## ` sections found -- the digest's shape changed"
+        missing = [h for h in headings if h not in DIGEST_SECTION_PLACEMENT]
+        assert not missing, (
+            f"{missing} carry no placement decision. Classify each as "
+            "must-be-inline (a thin-anchor repo is wrong without it) or "
+            "relocatable, and say why, in DIGEST_SECTION_PLACEMENT."
+        )
+        dead = [
+            h
+            for h in DIGEST_SECTION_PLACEMENT
+            if h not in headings and h != "(preamble)"
+        ]
+        assert not dead, (
+            f"{dead} is classified but is no longer a digest section -- a "
+            "stale entry reads as coverage of a decision nobody is making"
+        )
+
+    def test_the_digest_keeps_its_reserved_headroom(self):
+        """The reserve is held, not merely available.
+
+        The sibling above pins the hard harness threshold; this pins the policy
+        one. Without it the reserve is a number in a comment, and a number in a
+        comment is spent by the first author who does not read it -- which is
+        the whole failure #630 records, one level up: the digest reached 13
+        characters of headroom with every assertion green, because nothing
+        asserted headroom, only the wall.
+
+        Deliberately asserted on the SOURCE and not the emitted context: the
+        reserve is a property of what every governed repo receives, and the
+        emitted-value check is already the sibling's job.
+        """
+        emitted = DIGEST_SRC.read_text(encoding="utf-8").strip()
+        budget = ADDITIONAL_CONTEXT_INLINE_LIMIT - DIGEST_HEADROOM_RESERVE
+        assert len(emitted) <= budget, (
+            f"{DIGEST_SRC.name} is {len(emitted)} chars, past the "
+            f"{budget}-char working budget that reserves "
+            f"{DIGEST_HEADROOM_RESERVE} characters for the next framework-wide "
+            "default. This is not the harness wall -- it is the reserve, and "
+            "spending it means doing the relief pass FIRST: classify a section "
+            "as must-be-inline (a thin-anchor repo is wrong without it) or "
+            "relocatable, move the relocatable one to a named on-demand "
+            "surface with a stated retrieval path, and merge two rules only "
+            "when re-derivation proves they were one."
+        )
+
     def test_digest_points_at_load_bearing_readers(self):
         ctx = json.loads(_run_digest(ROOT).stdout)["hookSpecificOutput"]["additionalContext"]
         # The digest's job is to route to on-demand guidance and name the gate.
@@ -181,21 +286,19 @@ class TestDigestHook:
         assert "/prawduct:methodology" in ctx, "must point to the methodology index"
         assert "Critic" in ctx and "Stop hook" in ctx, "must name the enforcement"
 
-    @pytest.mark.parametrize("src", [DIGEST_SRC, SLIM_DIGEST_SRC], ids=["full", "slim"])
-    def test_both_variants_carry_load_bearing_pointers(self, src):
-        # Whatever variant a session receives, it must route to the
+    def test_the_digest_carries_load_bearing_pointers(self):
+        # Every session receives this file, so it must route to the
         # read-before-coding guide, the index, and name the enforcement.
-        text = src.read_text(encoding="utf-8")
+        text = DIGEST_SRC.read_text(encoding="utf-8")
         assert "/prawduct:methodology building" in text
         assert "/prawduct:methodology" in text
         assert "Critic" in text and "Stop hook" in text
 
-    @pytest.mark.parametrize("src", [DIGEST_SRC, SLIM_DIGEST_SRC], ids=["full", "slim"])
-    def test_both_variants_surface_the_report_bug_channel(self, src):
+    def test_the_digest_surfaces_the_report_bug_channel(self):
         # Discoverability of the upstream-bug-reporting channel (regression guard
-        # against a silent trim dropping the pointer). The full digest reaches
-        # products (the filing side); the slim reaches the framework repo.
-        assert "/prawduct:report-bug" in src.read_text(encoding="utf-8")
+        # against a silent trim dropping the pointer). This one digest reaches
+        # products (the filing side) and the framework repo (the receiving end).
+        assert "/prawduct:report-bug" in DIGEST_SRC.read_text(encoding="utf-8")
 
     def test_resolves_root_without_env(self):
         # No CLAUDE_PLUGIN_ROOT -> falls back to hooks/ parent (the plugin root).
@@ -232,6 +335,98 @@ class TestDigestHook:
         assert DIGEST_HOOK.read_text(encoding="utf-8").startswith("#!/usr/bin/env python3")
 
 
+class TestReloadSkills:
+    """`reloadSkills` re-scans the skill directories at a session boundary.
+
+    THE FAILURE THIS CLOSES IS SILENT, NOT SLOW. Claude Code caches skill bodies
+    per session and `/clear` does not refresh them, so a session that edits
+    `skills/*/SKILL.md` and then exercises that skill runs the PRE-EDIT body
+    while believing it tests the new one. The work looks validated. Measured
+    2026-08-02: a fork reported its own body matching a pre-edit commit
+    byte-for-byte while HEAD carried the rewrite, and it cost #207 a designated
+    acceptance test.
+
+    Gated rather than unconditional. The re-scan buys nothing in a repo that
+    never edits the plugin, and this hook fires in every governed repo — so a
+    product session must not pay a directory walk for a defect it cannot have.
+    """
+
+    def _payload(self, plugin_root, project_dir=None):
+        result = _run_digest(plugin_root, project_dir=project_dir)
+        assert result.returncode == 0, result.stderr
+        return json.loads(result.stdout)["hookSpecificOutput"]
+
+    def test_the_shipping_checkout_asks_for_the_rescan(self):
+        # The default `_run_digest` shape IS the framework case: plugin root is
+        # this repo's `plugin/`, project dir is this repo.
+        out = self._payload(ROOT)
+        assert out.get("reloadSkills") is True, (
+            "the framework checkout did not request reloadSkills — a session "
+            "that edits a skill here and then exercises it tests the previous "
+            "version and cannot tell"
+        )
+
+    def test_a_product_repo_pays_nothing(self, tmp_path):
+        # A governed repo that is NOT where this plugin lives: same plugin root,
+        # a different project dir. This is every product session.
+        (tmp_path / ".prawduct").mkdir()
+        out = self._payload(ROOT, project_dir=tmp_path)
+        assert out["additionalContext"].strip(), "the digest itself must still ship"
+        assert "reloadSkills" not in out, (
+            "a product repo was charged a skill-directory re-scan it cannot "
+            "benefit from — it never edits the plugin"
+        )
+
+    def test_the_gate_is_structural_not_by_name(self, tmp_path):
+        """A repo named `prawduct` that installed from the marketplace is a
+        PRODUCT session, and a fork under any other name is not. So the question
+        asked is "did this plugin come out of the repo I am governing?", which
+        a name check answers wrong in both directions.
+        """
+        impostor = tmp_path / "prawduct"
+        (impostor / ".prawduct").mkdir(parents=True)
+        out = self._payload(ROOT, project_dir=impostor)
+        assert "reloadSkills" not in out, (
+            "the gate matched on the repo's NAME — an installed-from-the-"
+            "marketplace repo that happens to be called prawduct is a product"
+        )
+
+    def test_a_nested_plugin_root_still_counts(self, tmp_path):
+        """The plugin need not be the project dir, only inside it.
+
+        A checkout is the shipping source when the plugin tree resolves under
+        it — which is the `source: directory` install this repo uses, and which
+        an equality-only check would answer `False` for.
+        """
+        repo = tmp_path / "checkout"
+        (repo / ".prawduct").mkdir(parents=True)
+        meth = repo / "plugin" / "methodology"
+        meth.mkdir(parents=True)
+        (meth / "session-digest.md").write_text("digest body\n", encoding="utf-8")
+        out = self._payload(repo / "plugin", project_dir=repo)
+        assert out.get("reloadSkills") is True
+
+    def test_the_key_rides_the_same_boundaries_the_digest_does(self):
+        """A refresh that fires only on `startup` would not fix this.
+
+        The measured failure happens WITHIN a session -- edit, `/clear`,
+        exercise -- so the registration has to cover `clear`, not just a cold
+        start. The digest's matcher already does, and the key rides that same
+        registration; this is the assertion that says the two cannot drift.
+        """
+        sessionstart = json.loads(HOOKS_JSON.read_text(encoding="utf-8"))["hooks"]["SessionStart"]
+        entries = [
+            e for e in sessionstart
+            if any("digest.py" in h["command"] for h in e["hooks"])
+        ]
+        assert entries, "no digest SessionStart entry found"
+        for entry in entries:
+            assert "clear" in entry["matcher"], (
+                "the digest hook stopped firing on `clear`, which is the "
+                "boundary the skill-cache staleness is actually crossed at"
+            )
+
+
 class TestDigestRepoGate:
     """The plugin is user-scoped, so the digest SessionStart hook fires in every
     repo the user opens. It must inject the governance digest ONLY in a
@@ -265,23 +460,29 @@ class TestDigestRepoGate:
         assert not (tmp_path / ".prawduct").exists()
 
 
-class TestDigestVariantSelection:
-    """review-fixes Chunk 4: the framework repo's always-loaded CLAUDE.md already
-    carries 40-50% of the full digest nearly 1:1 (principles roster, Critic/Stop
-    explanation, attribution rule), so a session governed by the framework repo
-    itself gets a SLIM variant — pointers plus only the rules CLAUDE.md does not
-    restate. Every product repo keeps the FULL digest verbatim: it is the only
-    carrier of framework defaults for thin-anchor CLAUDE.md repos. Detection is
-    the plugin manifest (`.claude-plugin/plugin.json` with name=prawduct) at the
-    governed repo's root; every anomaly fails safe to the full digest.
+class TestDigestReachesEveryRepoShape:
+    """Repo shape does not select a digest: both shapes receive this one file.
+
+    A per-shape variant is the change these pins exist to refuse. It trades one
+    repository's duplication for a second shipped artifact every session of that
+    shape carries, plus a must-agree pin per duplicated rule to stop the copies
+    drifting. When a repo's own always-loaded CLAUDE.md overlaps the digest, the
+    cheaper fix is to trim that CLAUDE.md.
+
+    Both fixtures are exercised rather than one, because a single-shape test
+    cannot see a divergence on the shape it does not run — the unrun path gets
+    inferred, and an inference is what a pin is supposed to replace.
     """
 
     @staticmethod
-    def _framework_fixture(tmp_path: Path, manifest: str | None = '{"name": "prawduct"}') -> Path:
-        (tmp_path / ".prawduct").mkdir()
+    def _repo_fixture(tmp_path: Path, manifest: str | None = '{"name": "prawduct"}') -> Path:
+        """A governed repo. With a prawduct plugin manifest it is the framework
+        repo's shape; without one it is a product's."""
+        # parents=True so a caller can build two fixtures under one tmp_path.
+        (tmp_path / ".prawduct").mkdir(parents=True)
         if manifest is not None:
             mdir = tmp_path / ".claude-plugin"
-            mdir.mkdir()
+            mdir.mkdir(parents=True)
             (mdir / "plugin.json").write_text(manifest, encoding="utf-8")
         return tmp_path
 
@@ -290,50 +491,28 @@ class TestDigestVariantSelection:
         assert result.returncode == 0, result.stderr
         return json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
 
-    def test_framework_fixture_gets_slim_variant(self, tmp_path):
-        ctx = self._emitted(self._framework_fixture(tmp_path))
-        assert ctx == SLIM_DIGEST_SRC.read_text(encoding="utf-8").strip()
-
-    def test_product_fixture_gets_full_digest_verbatim(self, tmp_path):
-        # A product repo (.prawduct/ but no plugin manifest) must receive the
-        # full digest unchanged — it is the sole carrier of framework defaults.
-        ctx = self._emitted(self._framework_fixture(tmp_path, manifest=None))
+    def test_framework_fixture_gets_the_digest_verbatim(self, tmp_path):
+        ctx = self._emitted(self._repo_fixture(tmp_path))
         assert ctx == DIGEST_SRC.read_text(encoding="utf-8").strip()
 
-    def test_other_plugin_manifest_gets_full_digest(self, tmp_path):
-        # A product that happens to develop its OWN plugin is not the framework.
-        ctx = self._emitted(self._framework_fixture(tmp_path, manifest='{"name": "my-plugin"}'))
+    def test_product_fixture_gets_the_digest_verbatim(self, tmp_path):
+        # A product repo (.prawduct/ but no plugin manifest). This is the path a
+        # framework-only test cannot see, and the digest is the sole carrier of
+        # framework defaults for a thin-anchor CLAUDE.md.
+        ctx = self._emitted(self._repo_fixture(tmp_path, manifest=None))
         assert ctx == DIGEST_SRC.read_text(encoding="utf-8").strip()
 
-    def test_malformed_manifest_fails_safe_to_full_digest(self, tmp_path):
-        ctx = self._emitted(self._framework_fixture(tmp_path, manifest="{not json"))
-        assert ctx == DIGEST_SRC.read_text(encoding="utf-8").strip()
+    def test_both_shapes_receive_identical_context(self, tmp_path):
+        """The positive form of the rule, so it cannot pass by both being empty.
 
-    def test_non_dict_manifest_fails_safe_to_full_digest(self, tmp_path):
-        ctx = self._emitted(self._framework_fixture(tmp_path, manifest='["prawduct"]'))
-        assert ctx == DIGEST_SRC.read_text(encoding="utf-8").strip()
-
-    def test_framework_repo_falls_back_to_full_when_slim_missing(self, tmp_path):
-        # An older cached plugin copy may not bundle the slim file yet. A
-        # framework session must still get A digest — never silence.
-        plugin = tmp_path / "plugin"
-        (plugin / "methodology").mkdir(parents=True)
-        (plugin / "methodology" / "session-digest.md").write_text("full digest body\n")
-        repo = tmp_path / "repo"
-        repo.mkdir()
-        framework = self._framework_fixture(repo)
-        result = _run_digest(plugin, project_dir=framework)
-        assert result.returncode == 0, result.stderr
-        ctx = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
-        assert ctx == "full digest body"
-
-    def test_slim_budget_at_most_half_of_full(self):
-        # The slim variant's reason to exist is the token saving; pin it.
-        slim = len(SLIM_DIGEST_SRC.read_text(encoding="utf-8"))
-        full = len(DIGEST_SRC.read_text(encoding="utf-8"))
-        assert slim <= full * 0.5, (
-            f"slim digest is {slim} chars vs full {full} — over the 50% budget"
-        )
+        The two assertions above would each still hold if the digest were
+        emptied; this states the property the collapse actually bought — the two
+        shapes are indistinguishable at this surface — and pins it non-vacuously.
+        """
+        framework = self._emitted(self._repo_fixture(tmp_path / "fw"))
+        product = self._emitted(self._repo_fixture(tmp_path / "prod", manifest=None))
+        assert framework == product
+        assert framework.strip(), "both shapes agreeing on an empty digest is not the contract"
 
 
 class TestDigestWiring:
@@ -355,8 +534,11 @@ class TestDigestWiring:
         ), "SessionStart must run the bundled digest via ${CLAUDE_PLUGIN_ROOT}"
 
     def test_digest_matcher_includes_compact(self, sessionstart):
-        # Unlike the clear/briefing hook (a state-reset, excluded on compact), the
-        # digest is pure guidance — re-injecting it after a compaction is valuable.
+        # The clear/briefing hook also fires on compact, but only through its
+        # orientation-only registration: it resets session state, so it splits
+        # boundary sources from continuations. The digest needs no such split —
+        # it is pure guidance, so re-injecting it after a compaction is valuable
+        # and costs nothing.
         entries = self._digest_entries(sessionstart)
         assert entries, "no digest SessionStart entry found"
         for e in entries:
@@ -366,7 +548,7 @@ class TestDigestWiring:
 
     def test_digest_does_not_clobber_banner_or_briefing(self, sessionstart):
         # Multiple SessionStart hooks compose; adding the digest must not drop the
-        # Chunk-1 banner or the Chunk-5 clear briefing.
+        # version-delta banner or the clear briefing.
         cmds = [h["command"] for e in sessionstart for h in e["hooks"]]
         assert any("banner.py" in c for c in cmds)
         # The clear briefing now carries `--session-start` (CRT-3X9D guard bypass).
@@ -376,7 +558,7 @@ class TestDigestWiring:
 class TestReaderSkills:
     """prose-diet Chunk 03 folded the four thin delegator skills
     (skills/{building,discovery,planning,reflection}) into the methodology
-    index — one reader skill, four canonical guides, zero duplicate routing
+    index — one reader skill, the canonical guides, zero duplicate routing
     surfaces. These tests pin the folded shape."""
 
     def test_methodology_index_has_description_frontmatter(self):
@@ -402,6 +584,49 @@ class TestReaderSkills:
         ref = f"${{CLAUDE_SKILL_DIR}}/../../methodology/{phase}.md"
         assert ref in text, f"methodology index must read the canonical {ref}"
         assert (ROOT / "methodology" / f"{phase}.md").is_file()
+
+    def test_every_guide_is_named_at_all_four_routing_sites(self):
+        """A topic is reachable only if all four surfaces name it.
+
+        The index routes from four independent places — the frontmatter
+        `description` and `argument-hint` (which is what a user sees before
+        typing, and what the model matches on), the topic list the skill body
+        dispatches from, and the overview's phase list (the only surface an
+        agent that ran `/prawduct:methodology` bare will read). Adding a topic
+        to three of the four is the predictable miss, and each omission fails
+        differently: a missing `description` entry loses model invocation, a
+        missing `argument-hint` entry loses discoverability, a missing topic-list
+        line loses dispatch, and a missing overview line loses the agent who
+        never passed an argument. Nothing else notices any of them, which is why
+        this is asserted per site rather than by a single substring search over
+        the file.
+        """
+        text = (ROOT / "skills" / "methodology" / "SKILL.md").read_text(encoding="utf-8")
+        front, body = text.split("---", 2)[1], text.split("---", 2)[2]
+        sites = {
+            "frontmatter description": [
+                ln for ln in front.splitlines() if ln.startswith("description:")],
+            "argument-hint": [
+                ln for ln in front.splitlines() if ln.startswith("argument-hint:")],
+            "topic list": [
+                ln for ln in body.splitlines()
+                if ln.startswith("- `") and "→" in ln],
+            "overview phase list": [
+                ln for ln in body.splitlines()
+                if ln.startswith("- `/prawduct:methodology ")],
+        }
+        for site, lines in sites.items():
+            assert lines, f"the {site} routing site is gone from methodology/SKILL.md"
+        missing = [
+            f"{phase} @ {site}"
+            for phase in PHASES
+            for site, lines in sites.items()
+            if not any(phase in ln for ln in lines)
+        ]
+        assert not missing, (
+            "methodology/SKILL.md does not name every guide at every routing "
+            f"site: {missing}"
+        )
 
     def test_index_routes_to_principles(self):
         text = (ROOT / "skills" / "methodology" / "SKILL.md").read_text(encoding="utf-8")
@@ -441,11 +666,6 @@ class TestAgentStance:
         assert "Verify, don't guess" in digest, "digest must carry the condensed stance"
         assert "Stress-test before agreeing" in digest
         assert "principles.md" in digest, "stance block must point back at the principles"
-
-    def test_slim_digest_carries_condensed_stance(self):
-        slim = SLIM_DIGEST_SRC.read_text(encoding="utf-8")
-        assert "expert take" in slim
-        assert "Verify, don't guess" in slim
 
     def test_digest_carries_rigor_scaling(self):
         # rigor-and-stance Chunk 03 (digest sweep): the always-on layer carries the
@@ -495,51 +715,4 @@ class TestDigestCarriesBacklogDiscipline:
         assert "strikethrough" in digest, "digest must state the archive (not strikethrough) discipline"
         assert "stage" in digest and "discovery" in digest, (
             "digest must state early-stage items route to discovery, not code"
-        )
-
-
-class TestIsFrameworkRepoCandidates:
-    """`is_framework_repo` decides slim-vs-full digest, and the move broke it once already.
-
-    It originally keyed on `.claude-plugin/plugin.json` at the repo root. v3.1.1 relocated that
-    manifest into `plugin/`, so the framework repo silently began classifying as a product repo and
-    receiving the full digest -- no error, no test failure, just the wrong variant. It now checks
-    three locations, but only the first is reachable in this repo, so the other two were shipping
-    unexercised. These fixtures cover each independently. (Critic, 2026-07-21.)
-    """
-
-    @staticmethod
-    def _digest_mod():
-        import importlib.util
-        spec = importlib.util.spec_from_file_location("prawduct_digest_hook", DIGEST_HOOK)
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-        return mod
-
-    def _write(self, root: Path, rel: str) -> None:
-        target = root / rel
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(json.dumps({"name": "prawduct"}), encoding="utf-8")
-
-    @pytest.mark.parametrize("rel", [
-        ".claude-plugin/marketplace.json",          # current layout (v3.1.1+)
-        "plugin/.claude-plugin/plugin.json",        # relocated plugin manifest
-        ".claude-plugin/plugin.json",               # pre-v3.1.1, kept for older checkouts
-    ])
-    def test_each_candidate_location_classifies_as_framework(self, tmp_path, rel):
-        self._write(tmp_path, rel)
-        assert self._digest_mod().is_framework_repo(tmp_path), (
-            f"{rel} must identify the framework repo -- a miss here silently swaps the digest variant"
-        )
-
-    def test_a_product_repo_is_not_the_framework(self, tmp_path):
-        (tmp_path / ".prawduct").mkdir()
-        assert not self._digest_mod().is_framework_repo(tmp_path)
-
-    def test_a_foreign_manifest_is_not_the_framework(self, tmp_path):
-        self._write(tmp_path, ".claude-plugin/marketplace.json")
-        (tmp_path / ".claude-plugin" / "marketplace.json").write_text(
-            json.dumps({"name": "someone-else"}), encoding="utf-8")
-        assert not self._digest_mod().is_framework_repo(tmp_path), (
-            "fail-safe: an unrelated plugin manifest must not classify as prawduct"
         )

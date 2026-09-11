@@ -56,9 +56,22 @@ The **strategy-class** artifacts (data model, security model, non-functional req
 
 The build plan decomposes artifacts into buildable chunks — coherent units of work with clear deliverables and acceptance criteria.
 
-**Which plan is active is branch state — let the plan say so.** A plan's frontmatter may declare `branch: <name>`; while that branch is checked out, every governance surface resolves that plan, ahead of the `active_build_plan:` scalar. Prefer it: the scalar is one product-level line that two concurrent branches conflict on every time, and after a merge one of the two plans is invisible to every surface that reads it. Opt in per plan — a plan declaring no `branch:` resolves by the scalar exactly as before. Two *live* plans declaring the same branch is a refusal, not a coin-flip: resolution stops and names both, because governing by the wrong plan looks exactly like governing correctly.
+**Presenting a plan carries an advisory obligation.** Before the chunks, say what you would do differently: a scope you would cut, a simpler design that gets most of the value, a risk the requirements do not price. "Nothing — this is the right shape" is a fine answer when it is true. What is not an option is handing over a plan with no position on it, because a plan presented silently reads as endorsed (Principles 7 and 23).
 
-**Plan lifecycle: a plan ends by being archived, never deleted.** When its work is done — or has stopped, been descoped, or been absorbed elsewhere — `prawduct-hook archive-plan <path> --state completed|superseded` stamps it with what became of it and moves it into `archive/`, where it stays findable by name. Both terminal states archive; a half-finished dead plan left live is the one that reads as active forever. Archiving also ends a `branch:` claim, so for a branch-declaring plan the move is the whole retirement — there is no pointer left naming it. **On gitflow**, when authoring a new plan while the prior plan's work is merged-but-unreleased, leave the prior plan live until the release ships; a branch-declaring plan needs nothing further, since its merged branch is gone and it simply reads live-but-inactive, while a scalar-pointed one keeps `active_build_plan` aimed at it and is repointed after the release (see `/prawduct:pr` merge-flow step 7). Build plans are tracked artifacts — commit them, archived ones included.
+**Which plan is active is branch state — let the plan say so.** A plan's frontmatter may declare `branch: <name>`; while that branch is checked out, every governance surface resolves that plan, ahead of the `active_build_plan:` scalar. Prefer it: the scalar is one product-level line that two concurrent branches conflict on every time, and after a merge one of the two plans is invisible to every surface that reads it. Opt in per plan — a plan declaring no `branch:` resolves by the scalar exactly as before.
+
+**Several plans may declare one branch, and that is ordinary** — a `release/2-0` carrying a telemetry plan and a documentation plan, or a fix branch that grew three. Governance resolves one of them and says which, in the session briefing. **This is the one place the precedence is written; every other surface points here.** In order: the sole claimant if there is one (ahead of everything, so a lone plan keeps governing after its last box is ticked — which happens during its own closing PR); else the one claimant still holding open chunks; else the plan `active_build_plan` names, *if* it is one of the candidates still in contention — its remaining job is breaking a tie within a branch, and it does not resurrect a finished plan over open ones; else path order, which is arbitrary and says so. Nothing is silent, because governing by the wrong plan looks exactly like governing correctly unless the surface names its choice. When several plans on a branch are all live work, point the scalar at whichever one you are building now.
+
+**Plan lifecycle: a plan ends by being archived, never deleted.** When its work is done — or has stopped, been descoped, or been absorbed elsewhere — `prawduct-hook archive-plan <path> --state completed|superseded` stamps it with what became of it and moves it into `archive/`, where it stays findable by name. Both terminal states archive; a half-finished dead plan left live is the one that reads as active forever. Archiving also ends a `branch:` claim, so for a branch-declaring plan the move is the whole retirement — nothing has to be un-pointed for the claim to stop resolving. **On gitflow**, when authoring a new plan while the prior plan's work is merged-but-unreleased, leave the prior plan live until the release ships. A branch-declaring plan gets its pointer **cleared** at that merge; a scalar-only plan keeps `active_build_plan` aimed at it and is repointed after the release. `/prawduct:pr`’s Merge Flow *"Confirm the bookkeeping merged WITH the PR"* step owns that split and says why each way. Build plans are tracked artifacts — commit them, archived ones included.
+
+### Plan Shape
+
+How many plans, and how big, is settled before chunking begins.
+
+- **One plan per scope tag.** A plan covers one coherent scope; work under a different tag gets its own plan even when the same session builds both. The `branch:` mechanism above exists precisely so several plans can share one branch — sharing a branch is not a reason to share a plan.
+- **Split when the change types differ.** A plan mixing a schema migration, a UI rewrite and a docs sweep reviews badly as one unit: the Critic selects its protocol per chunk `Type:`, and one blocking finding stalls chunks that have nothing to do with it. Heterogeneous `Type:` values across chunks are the signal.
+- **A plan that will not ship in about three sessions is a program, not a plan.** Express it as backlog items plus a per-wave plan drawn when that wave starts. A long-lived plan goes stale faster than it is built — its Status boxes stop describing anything, and its frictions accumulate in `learnings.md` instead of reaching the next plan.
+- **Push back on a request for one monolithic plan.** Name what it costs — review quality across a large diff, staleness, and the coupling that lets one finding block unrelated work — and propose the split with its wave boundaries. The user decides (Principle 23); they decide with the tradeoff stated.
 
 ### Requirements Confidence
 
@@ -91,6 +104,29 @@ An assumption is a decision made on the user's behalf, surfaced for correction �
 **A persisted format is always a lock-in decision, regardless of implementation size.** Lock-in is measured by reversal cost, not LOC — a 30-line ledger writer locks a schema every future consumer depends on. A chunk introducing a persisted format must enumerate, in the plan and before designing fields, the questions the data must answer: its consumers' future queries are its requirements, elicited from those consumers, not inferred from the mechanism (see `methodology/building.md` "Decision Research").
 
 **Enumerate the surfaces when a chunk introduces a project-wide concept.** A new build-plan field, governance flag, or convention cascades across many files — product CLAUDE.md, the Critic and PR protocols, methodology guides, the template, their guarding tests. List the surfaces up front in the chunk description: the count makes the chunk's true size visible (split it if too large for one Critic pass), and several of those surfaces carry token-budget guardrail tests — anticipate the trim rather than discovering it at chunk-close.
+
+### Partition: Serial or Delegated
+
+Chunk boundaries are where the delegation decision is drawn: the last moment before any brief exists at which the whole partition is visible at once. Ask it of each chunk: **what would prove this chunk on its own?** A chunk you cannot answer that for is not scoped tightly enough to hand to anyone, which is a finding about the chunk rather than about delegation. Then apply the default (`/prawduct:methodology delegation`): delegate when the same work finishes in less wall clock and the delegates will not fight each other.
+
+**Record the decision either way**, in the plan's `partition:` frontmatter field, on one line. `serial — 02 and 03 both edit the store module` is an answer; `02-04 delegated, isolated worktrees` is an answer. Serial is very often right — *unexamined* is what the field catches, and a plan with independent chunks and no partition line is the guide's **serial by default** anti-pattern in its plan-time form.
+
+**Disclose it when the plan is presented.** A plan that will delegate says how many delegates, isolated worktrees or the shared one, what each touches, and what they will *not* do. Carry what varies between plans: a disclosure that could be copy-pasted from the last one is boilerplate, and boilerplate stops being read.
+
+**Ask for approval only on one of these four reasons.** The list is closed, because an agent resolving vagueness asks defensively every time — which is the round-trip this exists to avoid.
+
+1. This project has never delegated before, so the user has no precedent for what it looks like.
+2. The fan-out is materially wider than anything this project has done.
+3. Delegates will write in the shared worktree, so the user's own tree changes under them.
+4. Something irreversible or outward-facing sits inside a delegated chunk.
+
+Reasons 1 and 2 turn on history, so **read it rather than asserting it** — the `partition:` lines
+on this repo's plans, live and archived, and whether `project-preferences.md` carries a Delegation
+row. A precedent you did not look up is the defensive ask wearing a justification.
+
+Three standing negatives override all four — **do not ask** when the user has already approved this plan's delegation, when `project-preferences.md` records delegation as pre-approved, or when the user asked for the plan and its execution without further interruption. Absent a listed reason, disclose and proceed.
+
+**On a yes, offer to make it durable** — a `project-preferences.md` row — or the same question returns with every plan, which is the unnecessary asking wearing a seatbelt.
 
 ### Governing Artifacts
 
@@ -160,7 +196,9 @@ Allowed values: `code` | `doc-only` | `cleanup` | `designer-handoff` | `cumulati
 
   **Over-declaration is unsafe and BLOCKING**: a `Type: trivial` chunk violating either bound is treated as `code` AND the stop-hook emits a named blocker (e.g., `skill-file-edited: …`) — fix the violation or change the Type, never both quietly.
 
-**Type vs. mode orthogonality.** A `doc-only` chunk can be `Critic mode: final`; a `code` chunk can be `chunk`. Declare each on its own merits. Under-declaring Type is safe (worst case: redundant Critic work); over-declaring is unsafe (`designer-handoff` on a code chunk silently skips review; `trivial` on a non-eligible chunk produces a named blocker).
+**Type vs. mode orthogonality.** A `doc-only` chunk can be `Critic mode: final`; a `code` chunk can be `chunk`. Declare each on its own merits. Under-declaring Type is safe (worst case: redundant Critic work); over-declaring is unsafe, per each Type's own bullet above.
+
+**Don't open a LINE or a sentence with a field marker unless you mean to declare it.** These fields are read mid-line — chunk headers compose them, and a period separates them as freely as a `·` — so a Description *starting* `**Type:** designer-handoff …` declares that type, the one that bypasses the Critic entirely. Backticks do not escape it: a line-opening ``` `**Type:** code` ``` is a declaration and binds deliberately. To write *about* a field, keep the marker inside the sentence (`unlike a **Type:** trivial chunk`) or drop the asterisks (`Type:`).
 
 ### Forward-References to Not-Yet-Created Files
 

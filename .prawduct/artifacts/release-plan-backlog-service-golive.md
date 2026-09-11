@@ -93,7 +93,7 @@ actually true, with the go-live chunk that did it.
 | 3 | VRF-005 · VRF-007 · VRF-008 drained against `samsung-frame-art-loader` | — | ☐ **still open, still unblocked** — go-live Chunk 01. The only consumer-shaped evidence in the release |
 | 4 | **`BKL-9XQ2` discovery spike** — consent (1a/1b), evidence+PII, label taxonomy | — | ☑ **SETTLED 2026-07-23** — requirements XP4–XP7 + an owner-approved, Critic-reviewed design (`documentation/backlog-service-upstream-filing.md`, 0 blocking). `stage: ready`. **This row said "critical path" and § B still describes it as unstarted research — both were wrong; see § B's correction** |
 | 5 | SPIKE-S2 live dry-run on a throwaway repo (C1) | ~~1~~ (met) | ☑ **run 2026-07-24 with `--archive-scope all`** — VRF-009; go-live Chunk 05 |
-| 6 | MG4 scrub workflow (C2) | — | ☑ **complete** — `skills/backlog/migration-scrub.md` + go-live Chunk 03's Step 0 target-bind cover every clause |
+| 6 | MG4 scrub workflow (C2) | — | ☑ **complete** — `skills/backlog/migration-scrub.md` + go-live Chunk 03's target-selection-step bind cover every clause |
 | 7 | `BKL-4W7H` — PFX read-resolution + alias idempotency (C3) | — | ◐ **code on develop** via PR #137; only the `promoted → shipped` flip remains (go-live Chunk 01 done-when #2) |
 | 8 | `BKL-6X5D` part (b) — Pacer meters REST points (C7) | — | ☑ **built 2026-07-24** — `_PacingTransport`; go-live Chunk 04 |
 | 9 | The real prawduct migration (C4) | ~~1~~ (met), ~~5~~, ~~6~~, ~~7~~, ~~**8**~~ — **all met** | ☐ **the long pole** — go-live Chunk 06, irreversible, operator-run *(8-before-9 is **decision 6 — ratified 2026-07-23: accept**)* |

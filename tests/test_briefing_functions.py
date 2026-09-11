@@ -22,6 +22,7 @@ import json
 import os
 import re
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -70,9 +71,76 @@ def _plan(prawduct: Path, rel: str, body: str) -> Path:
 class TestBranchScopedPlanBriefing:
     """What the briefing says about `branch:`-declaring plans.
 
-    All three are advice — the briefing must still be produced. The refusal that
-    stops the GATES is reported here rather than met later as a failed command.
+    All of it is advice — the briefing must still be produced whatever it finds.
     """
+
+    def test_a_failed_resolution_is_attributed_not_swallowed(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """Advice fails soft; it does not fail silent.
+
+        The contested-claim line is the ONLY surface that ever says a branch is
+        contested, and the fail-closed route that used to backstop it is gone by
+        design. It is emitted from inside a broad `except`, so without this test
+        a refactor back to a bare `pass` restores the silence and nothing
+        notices — which is the defect a previous review found here.
+        """
+        _init_git_repo(tmp_path, branch="work")
+        prawduct = _prawduct(tmp_path)
+        (prawduct / "project-state.yaml").write_text("")
+
+        def _boom(_prawduct_dir):
+            raise OSError("the plan directory could not be read")
+
+        monkeypatch.setattr(briefing, "resolve_branch_claim", _boom)
+        text = briefing.assemble_session_briefing(tmp_path, [])
+        assert "== SESSION BRIEFING ==" in text, "the briefing must still be produced"
+        assert "could not be reported" in text
+        assert "OSError" in text, "the reader is owed what actually failed"
+
+    def test_a_retained_plan_with_its_pointer_cleared_says_nothing(self, tmp_path: Path):
+        """The gitflow retention window, after a branch-declaring plan merges.
+
+        Its branch is deleted, so the claim resolves for nobody; with the pointer
+        cleared, nothing resolves the finished plan and the briefing is silent.
+        Leaving the pointer aimed at it is what produced an "archive the plan"
+        advisory during the one window the PR skill says to retain it — an
+        advisory whose only correct action was to ignore it.
+        """
+        _init_git_repo(tmp_path, branch="develop")
+        prawduct = _prawduct(tmp_path)
+        (prawduct / "project-state.yaml").write_text("")  # pointer cleared
+        _plan(
+            prawduct,
+            "build-plan-shipped.md",
+            "---\nartifact: build-plan\nbranch: feat/long-merged\n---\n\n"
+            "## Status\n\n- [x] Chunk 01: shipped\n",
+        )
+        findings = briefing.staleness_scan(tmp_path)
+        assert not any("archive the plan" in f for f in findings), findings
+        assert "== SESSION BRIEFING ==" in briefing.assemble_session_briefing(
+            tmp_path, findings
+        )
+
+    def test_the_same_plan_still_nags_when_the_pointer_names_it(self, tmp_path: Path):
+        """The control, and the pointer-resolved case the rule keeps.
+
+        Without it the assertion above passes on any repo where the advisory is
+        broken rather than on one where the pointer was cleared.
+        """
+        _init_git_repo(tmp_path, branch="develop")
+        prawduct = _prawduct(tmp_path)
+        (prawduct / "project-state.yaml").write_text(
+            "active_build_plan: artifacts/build-plan-shipped.md\n"
+        )
+        _plan(
+            prawduct,
+            "build-plan-shipped.md",
+            "---\nartifact: build-plan\nbranch: feat/long-merged\n---\n\n"
+            "## Status\n\n- [x] Chunk 01: shipped\n",
+        )
+        findings = briefing.staleness_scan(tmp_path)
+        assert any("archive the plan" in f for f in findings), findings
 
     def test_a_plan_claiming_a_missing_branch_is_reported(self, tmp_path: Path):
         _init_git_repo(tmp_path, branch="work")
@@ -92,8 +160,8 @@ class TestBranchScopedPlanBriefing:
         """The gitflow retention window, which is the whole point of the narrowing.
 
         A merged branch goes away, so a plan with every box ticked and a claim on
-        a branch that is gone is the documented end state — `/prawduct:pr` step 7
-        says to RETAIN it there until the release archives it. Firing would nag
+        a branch that is gone is the documented end state — `/prawduct:pr`'s Merge
+        Flow "Confirm the bookkeeping merged WITH the PR" step says to RETAIN it there until the release archives it. Firing would nag
         every session for weeks with the one remedy that flow forbids.
 
         This is the test that fails if the `has_unfinished_chunk` filter is
@@ -145,25 +213,31 @@ class TestBranchScopedPlanBriefing:
         findings = briefing.staleness_scan(tmp_path)
         assert not any("not a branch in this repo" in f for f in findings), findings
 
-    def test_two_claimants_are_reported_and_the_briefing_survives(self, tmp_path: Path):
+    def test_two_claimants_resolve_and_the_briefing_names_both(self, tmp_path: Path):
+        # Two plans on one branch is an ordinary arrangement, so the briefing's
+        # job is attribution, not alarm: it must name the plan that governs, why
+        # it won, and the one it passed over. A session that learns which plan
+        # governed by watching a gate grade the wrong one was told too late.
         _init_git_repo(tmp_path, branch="work")
         prawduct = _prawduct(tmp_path)
         (prawduct / "project-state.yaml").write_text("")
-        for name in ("a", "b"):
+        for name, boxes in (("a", "- [x] Chunk 01: shipped"), ("b", "- [ ] Chunk 01: open")):
             _plan(
                 prawduct,
                 f"build-plan-{name}.md",
                 "---\nartifact: build-plan\nbranch: work\n---\n\n"
-                "## Status\n\n- [ ] Chunk 01: a chunk\n",
+                f"## Status\n\n{boxes}\n",
             )
         findings = briefing.staleness_scan(tmp_path)
-        assert any("live build plans declare" in f for f in findings), findings
-        # And the briefing itself is still produced, carrying the refusal — a
-        # session that only learns of this by watching a gate fail has been
-        # told too late.
         text = briefing.assemble_session_briefing(tmp_path, findings)
         assert "== SESSION BRIEFING ==" in text
-        assert "build-plan resolution REFUSES" in text
+        assert "2 live plans declare `branch: work`" in text
+        assert "build-plan-b.md" in text          # the one with chunks left
+        assert "build-plan-a.md" in text          # named as passed over
+        assert "chunks left" in text              # and why
+        # Attribution belongs in ONE place: repeating it as a staleness finding
+        # teaches the reader to skip both copies.
+        assert not any("live plans declare" in f for f in findings), findings
 
     def test_the_dangling_pointer_warning_defers_to_a_branch_claim(self, tmp_path: Path):
         # A plan claiming this branch outranks the scalar, so a stale pointer
@@ -838,6 +912,59 @@ class TestAssembleSessionBriefingSections:
         out = briefing.assemble_session_briefing(tmp_path, [])
         assert "Previous session context available" in out
 
+    def test_handoff_pointer_on_a_continuation_leads_with_applicability(self, tmp_path):
+        # SCN-5B8Q Chunk 02: the pointer is boundary-scoped, the briefing carrying
+        # it is not. On resume/compact/fork the reader's transcript already covers
+        # the handoff, so the line must lead with THAT fact — source is the fact,
+        # age is only a proxy for it.
+        pr = self._state(tmp_path, "")
+        (pr / ".session-handoff.md").write_text("prior")
+        out = briefing.assemble_session_briefing(tmp_path, [], continuation=True)
+        pointer = next(ln for ln in out.splitlines() if ".session-handoff.md" in ln)
+        assert "predates THIS session" in pointer
+        assert "continuation" in pointer
+        # Applicability LEADS; age trails it rather than opening the line.
+        assert pointer.index("predates THIS session") < pointer.index("(just now)")
+        # ...and it is never withheld: advice fails soft, so the path is still named.
+        assert ".prawduct/.session-handoff.md" in pointer
+
+    def test_handoff_pointer_at_a_boundary_is_unchanged_but_dated(self, tmp_path):
+        pr = self._state(tmp_path, "")
+        (pr / ".session-handoff.md").write_text("prior")
+        out = briefing.assemble_session_briefing(tmp_path, [], continuation=False)
+        assert (
+            "Previous session context available: read .prawduct/.session-handoff.md (just now)"
+            in out
+        )
+        assert "predates THIS session" not in out
+
+    def test_handoff_pointer_defaults_to_the_boundary_reading(self, tmp_path):
+        # A caller that does not know its source must not be told a possibly-false
+        # thing about its own context.
+        pr = self._state(tmp_path, "")
+        (pr / ".session-handoff.md").write_text("prior")
+        assert "predates THIS session" not in briefing.assemble_session_briefing(tmp_path, [])
+
+    def test_handoff_pointer_reports_a_real_age(self, tmp_path):
+        pr = self._state(tmp_path, "")
+        handoff = pr / ".session-handoff.md"
+        handoff.write_text("prior")
+        old = time.time() - 3 * 86400
+        os.utime(handoff, (old, old))
+        for continuation in (False, True):
+            out = briefing.assemble_session_briefing(tmp_path, [], continuation=continuation)
+            assert "(3d old)" in out, continuation
+
+    def test_handoff_pointer_survives_an_unreadable_mtime(self, tmp_path):
+        # An unreadable stat is a reason to say LESS, never a reason to withhold
+        # the pointer — the handoff is advice, and advice fails soft.
+        gone = tmp_path / "nope" / ".session-handoff.md"  # stat() raises OSError
+        for continuation in (False, True):
+            pointer = briefing._handoff_pointer(gone, continuation=continuation)
+            assert ".prawduct/.session-handoff.md" in pointer
+            assert "old)" not in pointer and "just now" not in pointer
+        assert "predates THIS session" in briefing._handoff_pointer(gone, continuation=True)
+
     def test_learnings_and_backlog_counts(self, tmp_path):
         pr = self._state(tmp_path, "")
         (pr / "learnings.md").write_text("# L\n- rule one\n- rule two\n")
@@ -889,12 +1016,47 @@ class TestAssembleSessionBriefingSections:
         self._state(tmp_path, "")
         monkeypatch.setattr(briefing.gitstate, "_read_advisory_store", lambda d: {"advisories": [
             {"id": "ADV-1", "state": "active", "feature": "feat", "trigger_summary": "do x",
-             "recommended_action": "/prawduct:doctor", "priority": "warn", "triggered_at": "2026-01-01"},
+             "owner_action": "Decide whether y.", "recommended_action": "/prawduct:doctor",
+             "priority": "warn", "triggered_at": "2026-01-01"},
         ]})
         out = briefing.assemble_session_briefing(tmp_path, [])
         assert "ADVISORIES (post-sync, 1 active):" in out
-        assert "• [feat] do x" in out
-        assert "→ Run /prawduct:doctor (or /prawduct:advisory dismiss ADV-1)" in out
+        assert "• [feat] do x (id: ADV-1)" in out
+        assert "owner → Decide whether y." in out
+        assert "agent → /prawduct:doctor" in out
+        assert "Dismiss any of these: /prawduct:advisory dismiss <id>" in out
+
+    def test_the_single_untyped_action_line_is_gone_from_the_renderer(self, tmp_path, monkeypatch):
+        """A "renders-but-doesn't-resolve" leak is a surface, not a line: assert the
+        bad form is ABSENT rather than only that the good form is present. `→ Run`
+        prefixed one untyped field, which produced `→ Run no action needed` for a
+        probe with no command and handed owners `prawduct-hook` invocations to type.
+        """
+        self._state(tmp_path, "")
+        monkeypatch.setattr(briefing.gitstate, "_read_advisory_store", lambda d: {"advisories": [
+            {"id": "ADV-1", "state": "active", "feature": "feat", "trigger_summary": "do x",
+             "owner_action": "Decide whether y.", "recommended_action": "prawduct-hook fix",
+             "priority": "info", "triggered_at": "2026-01-01"},
+        ]})
+        out = briefing.assemble_session_briefing(tmp_path, [])
+        assert "→ Run " not in out
+        # And the dismissal hint is not repeated under every entry.
+        assert out.count("/prawduct:advisory dismiss") == 1
+
+    def test_owner_line_is_rendered_even_when_the_field_is_absent(self, tmp_path, monkeypatch):
+        """A store written before the two-audience schema, or a probe not yet
+        carrying it. Absence must read as "approval only", never as a missing line —
+        a fail-soft path that renders a signal's inverse is worse than one that
+        renders nothing (`learnings.md`: audit the degradation paths first).
+        """
+        self._state(tmp_path, "")
+        monkeypatch.setattr(briefing.gitstate, "_read_advisory_store", lambda d: {"advisories": [
+            {"id": "ADV-OLD", "state": "active", "feature": "feat", "trigger_summary": "do x",
+             "recommended_action": "/prawduct:doctor", "priority": "info",
+             "triggered_at": "2026-01-01"},
+        ]})
+        out = briefing.assemble_session_briefing(tmp_path, [])
+        assert f"owner → {briefing.OWNER_ACTION_FALLBACK}" in out
 
 
 class TestAdvisoryRelayDirective:
@@ -903,8 +1065,11 @@ class TestAdvisoryRelayDirective:
     that needs an owner decision therefore has to be relayed into conversation or
     it goes unanswered every session while appearing, from the inside, delivered.
 
-    Scoped to `warn`/`urgent`: relaying `info` every session is nagging, which
-    trains the reader to tune the channel out and costs more than it buys.
+    Covers EVERY active priority. Relaying `info` was excluded as nagging until
+    2026-08-03, when the owner ruled that an advisory printed only to the agent is
+    not quiet but undelivered — the same failure the relay exists to fix, one
+    severity band down. Volume is bounded by verbosity instead: `warn`/`urgent`
+    relayed in full, the rest one compact line each.
     """
 
     def _state(self, tmp_path: Path, body: str) -> Path:
@@ -935,10 +1100,21 @@ class TestAdvisoryRelayDirective:
         self._advisories(monkeypatch, self._adv("urgent"))
         assert briefing.ADVISORY_RELAY_MARKER in briefing.assemble_session_briefing(tmp_path, [])
 
-    def test_info_only_is_silent(self, tmp_path, monkeypatch):
+    def test_info_only_still_triggers_the_relay(self, tmp_path, monkeypatch):
+        # The case the amendment exists for. This repo's own briefing was here:
+        # one active `info` advisory, printed to the agent, relayed to nobody.
         self._state(tmp_path, "")
         self._advisories(monkeypatch, self._adv("info"), self._adv("info", "ADV-2"))
-        assert briefing.ADVISORY_RELAY_MARKER not in briefing.assemble_session_briefing(tmp_path, [])
+        assert briefing.ADVISORY_RELAY_MARKER in briefing.assemble_session_briefing(tmp_path, [])
+
+    def test_relay_directive_carries_both_audiences_and_forbids_owner_commands(self):
+        # The directive's shape is the deliverable, not just its presence: without
+        # these clauses the model re-derives an owner action from the summary, and
+        # what it derives is a command for the person to type.
+        text = briefing.ADVISORY_RELAY_TEXT
+        assert "owner →" in text and "agent →" in text
+        assert "never hand them a command to type" in text
+        assert "after →" in text, "sequencing must survive the relay"
 
     def test_no_active_advisories_is_silent(self, tmp_path, monkeypatch):
         self._state(tmp_path, "")
@@ -1007,6 +1183,167 @@ class TestAdvisoryRelayDirective:
         assert not re.search(r"\b[A-Z]{2,4}-[A-Z0-9]{3,4}\b", line), line
 
 
+class TestAdvisoryPrerequisiteOrdering:
+    """Priority ranks by severity; severity is not sequence. Where the two
+    disagree the block used to recommend the wrong order — and the live case is
+    exactly that shape: incoming-bug triage (`info`) files items into the backlog
+    that the migration nudge (`warn`) then migrates in one irreversible batch.
+    """
+
+    def _state(self, tmp_path: Path) -> Path:
+        pr = tmp_path / ".prawduct"
+        pr.mkdir(parents=True, exist_ok=True)
+        (pr / "project-state.yaml").write_text("")
+        return pr
+
+    def _adv(self, feature, type_, priority, *, prerequisite_of=None, aid=None):
+        return {
+            "id": aid or f"{feature}-{type_}", "state": "active", "feature": feature,
+            "type": type_, "trigger_summary": f"{feature} summary",
+            "owner_action": f"{feature} decision.", "recommended_action": f"/{feature}",
+            "priority": priority, "triggered_at": "2026-01-01",
+            "prerequisite_of": prerequisite_of or [],
+        }
+
+    def _render(self, tmp_path, monkeypatch, *advisories):
+        self._state(tmp_path)
+        monkeypatch.setattr(
+            briefing.gitstate, "_read_advisory_store", lambda d: {"advisories": list(advisories)}
+        )
+        return briefing.assemble_session_briefing(tmp_path, [])
+
+    def _order_of(self, out, *features):
+        lines = out.splitlines()
+        return [
+            next(i for i, ln in enumerate(lines) if f"• [{f}]" in ln) for f in features
+        ]
+
+    def _after_lines(self, out):
+        """Rendered `after →` annotations only.
+
+        Matched on line START, not substring: the relay directive quotes the label
+        while teaching the model to preserve sequencing, so a substring check reads
+        the directive as a rendered annotation and passes on every input.
+        """
+        return [ln.strip() for ln in out.splitlines() if ln.strip().startswith("after →")]
+
+    def test_prerequisite_precedes_a_higher_priority_dependent(self, tmp_path, monkeypatch):
+        triage = self._adv(
+            "report-bug", "untriaged", "info",
+            prerequisite_of=[{"type": "backlog:migrate", "because": "triage first, so one batch"}],
+        )
+        migrate = self._adv("backlog", "migrate", "warn")
+        out = self._render(tmp_path, monkeypatch, migrate, triage)
+        triage_at, migrate_at = self._order_of(out, "report-bug", "backlog")
+        assert triage_at < migrate_at, "the `info` prerequisite must precede the `warn` dependent"
+        # The annotation belongs to the dependent — it renders directly under the
+        # backlog entry, not under the triage entry that declared the edge.
+        assert self._after_lines(out) == ["after → triage first, so one batch"]
+        lines = out.splitlines()
+        assert lines[migrate_at + 1].strip() == "after → triage first, so one batch"
+
+    def test_one_edge_does_not_demote_the_warn_below_unrelated_infos(self, tmp_path, monkeypatch):
+        """The four-advisory shape reported from a real product, and the reason
+        ordering is a pull-up rather than a re-sort.
+
+        A ready-queue toposort drains every zero-indegree node before releasing the
+        dependent, so one `info`→`warn` edge lands the `warn` beneath all three
+        unrelated `info` advisories — a single edge quietly demoting the most severe
+        item in the block. Only the prerequisite may move, and only to just ahead of
+        what it feeds.
+        """
+        triage = self._adv(
+            "report-bug", "untriaged", "info",
+            prerequisite_of=[{"type": "backlog:migrate", "because": "triage first"}],
+        )
+        out = self._render(
+            tmp_path, monkeypatch,
+            self._adv("backlog", "migrate", "warn"),
+            self._adv("gitignore", "drift", "info"),
+            self._adv("coverage", "missing", "info"),
+            triage,
+        )
+        triage_at, migrate_at, gitignore_at, coverage_at = self._order_of(
+            out, "report-bug", "backlog", "gitignore", "coverage"
+        )
+        assert triage_at < migrate_at, "the prerequisite comes first"
+        assert migrate_at < gitignore_at < coverage_at, (
+            "the warn keeps its rank over unrelated infos, which keep theirs"
+        )
+
+    def test_prerequisites_cannot_push_a_warn_past_the_display_cap(self, tmp_path, monkeypatch):
+        """The cap is a floor for consequential advisories.
+
+        `TestAdvisoryRelayDirective` pins that the cap can never hide something
+        worth interrupting a person for — an invariant that predates ordering and
+        that ordering could otherwise break, since enough prerequisites pulled
+        ahead of a `warn` push it out of the visible slice while the relay still
+        claims to have relayed everything above.
+        """
+        prereqs = [
+            self._adv(
+                f"pre{i}", f"p{i}", "info",
+                prerequisite_of=[{"type": "backlog:migrate", "because": f"pre{i} first"}],
+            )
+            for i in range(5)
+        ]
+        out = self._render(
+            tmp_path, monkeypatch, self._adv("backlog", "migrate", "warn"), *prereqs
+        )
+        assert "• [backlog]" in out, "a warn behind five prerequisites is still displayed"
+        # The prefix stretched rather than the warn being dropped, so nothing is
+        # reported as hidden.
+        assert "... and" not in out
+
+    def test_priority_order_survives_where_no_edge_forces_otherwise(self, tmp_path, monkeypatch):
+        out = self._render(
+            tmp_path, monkeypatch,
+            self._adv("alpha", "a", "info"), self._adv("beta", "b", "warn"),
+        )
+        beta_at, alpha_at = self._order_of(out, "beta", "alpha")
+        assert beta_at < alpha_at
+
+    def test_edge_to_an_inactive_advisory_is_inert(self, tmp_path, monkeypatch):
+        lone = self._adv(
+            "report-bug", "untriaged", "info",
+            prerequisite_of=[{"type": "backlog:migrate", "because": "triage first"}],
+        )
+        out = self._render(tmp_path, monkeypatch, lone)
+        assert "• [report-bug]" in out
+        assert self._after_lines(out) == [], "nothing is sequenced after an inactive advisory"
+
+    def test_unknown_and_malformed_edges_are_ignored(self, tmp_path, monkeypatch):
+        out = self._render(
+            tmp_path, monkeypatch,
+            self._adv("alpha", "a", "info", prerequisite_of=[
+                {"type": "nobody:home", "because": "x"},   # unknown target
+                {"because": "no type"},                    # malformed
+                "not-a-mapping",                           # malformed
+            ]),
+            self._adv("beta", "b", "info"),
+        )
+        assert "• [alpha]" in out and "• [beta]" in out
+        assert self._after_lines(out) == []
+
+    def test_a_cycle_falls_back_to_priority_order_without_losing_an_advisory(
+        self, tmp_path, monkeypatch
+    ):
+        # Advice fails soft: two probes disagreeing about sequence must cost the
+        # ordering hint, never the block.
+        alpha = self._adv("alpha", "a", "warn", prerequisite_of=[
+            {"type": "beta:b", "because": "alpha first"}
+        ])
+        beta = self._adv("beta", "b", "warn", prerequisite_of=[
+            {"type": "alpha:a", "because": "beta first"}
+        ])
+        out = self._render(tmp_path, monkeypatch, alpha, beta)
+        assert "ADVISORIES (post-sync, 2 active):" in out
+        assert "• [alpha]" in out and "• [beta]" in out
+        # The annotations go with the ordering they describe: "do this after that"
+        # is worse than silent when the sequence it names never resolved.
+        assert self._after_lines(out) == []
+
+
 # --------------------------------------------------------------------------- #
 # _backlog_pending_line — cutover-aware backlog rollup (BKL-8P2R)
 # --------------------------------------------------------------------------- #
@@ -1048,6 +1385,9 @@ def _warm_argv(recorder: _PopenRecorder, op: str) -> list[str]:
     raise AssertionError(f"no detached warm fired for `backlog {op}`")
 
 
+_ABSENT = object()  # "the snapshot has no `untriaged` key at all" — the pre-#532 shape
+
+
 class TestBacklogPendingLine:
     def _state(self, prawduct_dir: Path, scope: str | None):
         text = "product_name: t\n"
@@ -1055,12 +1395,14 @@ class TestBacklogPendingLine:
             text += f"backlog_service_repo: {scope}\n"
         (prawduct_dir / "project-state.yaml").write_text(text, encoding="utf-8")
 
-    def _snapshot(self, project_dir: Path, scope: str, by_status: dict):
+    def _snapshot(self, project_dir: Path, scope: str, by_status: dict, untriaged=_ABSENT):
         from lib.backlog import snapshot
 
         path = snapshot.snapshot_path(project_dir)
         assert path is not None
         counts = {"total": sum(by_status.values()), "by_status": by_status, "by_stage": {}}
+        if untriaged is not _ABSENT:
+            counts["untriaged"] = untriaged
         snapshot.write(path, scope, counts)
 
     def test_pre_cutover_reads_markdown(self, tmp_path):
@@ -1116,6 +1458,56 @@ class TestBacklogPendingLine:
         line = briefing._backlog_pending_line(prawduct, tmp_path, popen=recorder)
         assert line is None
         assert _warmed_ops(recorder) == {"refresh-counts", "sync"}
+
+    def test_untriaged_is_surfaced_by_exception_when_non_zero(self, tmp_path):
+        # #532's thesis: an untriaged item is invisible to the tooling, so it must
+        # be LOUDER than a triaged one. The briefing is the most-read governance
+        # line in the product; absorbing untriaged into an undifferentiated
+        # "N pending" is the quietest possible treatment.
+        _init_git_repo(tmp_path)
+        prawduct = _prawduct(tmp_path)
+        self._state(prawduct, "octo/backlog")
+        self._snapshot(tmp_path, "octo/backlog", {"open": 5}, untriaged=2)
+        line = briefing._backlog_pending_line(prawduct, tmp_path, popen=_PopenRecorder())
+        assert line == (
+            "Backlog: 5 pending (2 untriaged) on octo/backlog "
+            "(snapshot just now; /prawduct:backlog to triage)"
+        )
+
+    def test_zero_untriaged_adds_nothing_to_the_line(self, tmp_path):
+        _init_git_repo(tmp_path)
+        prawduct = _prawduct(tmp_path)
+        self._state(prawduct, "octo/backlog")
+        self._snapshot(tmp_path, "octo/backlog", {"open": 5}, untriaged=0)
+        line = briefing._backlog_pending_line(prawduct, tmp_path, popen=_PopenRecorder())
+        assert line == (
+            "Backlog: 5 pending on octo/backlog (snapshot just now; /prawduct:backlog to triage)"
+        )
+
+    def test_snapshot_predating_the_untriaged_key_renders_unchanged(self, tmp_path):
+        # Tolerant reader: the snapshot on disk was written by whatever version
+        # last ran `refresh-counts`, which may predate the key entirely. A
+        # briefing line is not the place to refuse an old cache.
+        _init_git_repo(tmp_path)
+        prawduct = _prawduct(tmp_path)
+        self._state(prawduct, "octo/backlog")
+        self._snapshot(tmp_path, "octo/backlog", {"open": 5})  # no `untriaged` key
+        line = briefing._backlog_pending_line(prawduct, tmp_path, popen=_PopenRecorder())
+        assert line == (
+            "Backlog: 5 pending on octo/backlog (snapshot just now; /prawduct:backlog to triage)"
+        )
+
+    def test_untriaged_of_a_junk_type_is_ignored_not_rendered(self, tmp_path):
+        # A hand-edited or half-written snapshot must not put `(None untriaged)`
+        # or `(True untriaged)` on the most-read line in the product.
+        _init_git_repo(tmp_path)
+        prawduct = _prawduct(tmp_path)
+        self._state(prawduct, "octo/backlog")
+        for junk in (None, True, "3", -1, 1.5):
+            self._snapshot(tmp_path, "octo/backlog", {"open": 5}, untriaged=junk)
+            line = briefing._backlog_pending_line(prawduct, tmp_path, popen=_PopenRecorder())
+            assert line is not None
+            assert "untriaged" not in line, junk
 
     def test_never_blocks_even_with_a_hanging_backend(self, tmp_path):
         # The G2 real-slowness contract: the briefing path touches no network

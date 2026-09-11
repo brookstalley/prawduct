@@ -33,6 +33,7 @@ prawduct/
 │   │   ├── planning.md                # How to design artifacts and decompose into chunks
 │   │   ├── building.md                # The build cycle, including the Critic review cycle
 │   │   ├── reflection.md              # The learning loop
+│   │   ├── delegation.md              # What a delegate verifies, and what a brief must say
 │   │   └── session-digest.md          # SessionStart additionalContext digest
 │   ├── docs/                          # principles.md (the 26), norms.md, waivers.md,
 │   │                                  #   doctor-vs-janitor.md, governance-telemetry.md, runbook-authoring.md, examples/
@@ -47,7 +48,6 @@ prawduct/
 ├── pyproject.toml                        # pytest configuration + project version (the third mirrored version file)
 ├── tools/                                # one-off measurement scripts, not shipped and not the retired v1 sync engine
 ├── documentation/                        # framework design docs (this file lives here, NOT in plugin/docs/)
-├── incoming-bugs/                        # upstream bug reports products file about prawduct itself
 ├── tests/
 │   ├── test_plugin_runtime.py            # Plugin hook runtime (briefing, gates, canary, handoff)
 │   ├── test_plugin_init.py               # init-product scaffolding (plugin-native)
@@ -70,7 +70,8 @@ prawduct/
 ├── .prawduct/                         # Framework's own prawduct state — it governs itself
 │   ├── project-state.yaml             # Source of truth for framework iteration
 │   ├── learnings.md                   # Accumulated wisdom (surfaced via /prawduct:learnings)
-│   ├── learnings-detail.md            # Full learning context and history
+│   ├── learnings-detail.md            # Full learning context
+│   ├── learnings-history.md           # Retired/superseded entries, read only on a miss
 │   ├── change-log.md                  # what shipped, per scope, with its release= tag
 │   ├── cross-cutting-concerns.md      # Concern-to-pipeline coverage registry
 │   ├── artifacts/                     # this repo's own specs and plans (+ archive/)
@@ -96,7 +97,8 @@ my-product/
 ├── .prawduct/
 │   ├── project-state.yaml             # product state (classification, decisions, health_check; distribution: plugin)
 │   ├── learnings.md                   # active rules, surfaced via /prawduct:learnings
-│   ├── learnings-detail.md            # full learning context and history
+│   ├── learnings-detail.md            # full learning context
+│   ├── learnings-history.md           # retired/superseded entries, read only on a miss
 │   ├── backlog.md                     # deferred work items (out-of-scope captures)
 │   ├── change-log.md                  # change log
 │   ├── artifacts/                     # generated specifications

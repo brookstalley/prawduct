@@ -42,6 +42,12 @@ from .core import read_str_yaml_key
 _BASE_BRANCH_KEY = "base_branch"
 _DEFAULT_BASE_CANDIDATES = ("origin/main", "main", "HEAD~1")
 
+#: Branch names the historical candidate list already answers correctly.
+#: ``origin/HEAD`` is only *preferred* when it points somewhere else, which
+#: keeps the consultation strictly additive: a trunk repo resolves exactly the
+#: ref it resolved before, by the same first candidate.
+_MAIN_FAMILY = frozenset({"main", "master"})
+
 
 def _git_ref_exists(project_dir: Path, ref: str) -> bool:
     """True if ``git rev-parse --verify <ref>`` resolves in ``project_dir``."""
@@ -53,6 +59,31 @@ def _git_ref_exists(project_dir: Path, ref: str) -> bool:
         timeout=30,
     )
     return proc.returncode == 0
+
+
+def _origin_head_ref(project_dir: Path) -> "str | None":
+    """The remote's own default branch as ``origin/<b>``, or ``None``.
+
+    ``refs/remotes/origin/HEAD`` is what ``clone`` writes and what
+    ``git remote set-head`` repairs; it is the only place a clone records which
+    branch the REMOTE integrates onto. It is frequently absent (a repo created
+    by ``init`` + ``remote add``, a clone from an older git, a fetch-only
+    mirror), so every failure here is a plain ``None`` and the caller falls
+    through to the historical candidate list.
+    """
+    proc = subprocess.run(
+        ["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
+        cwd=str(project_dir),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if proc.returncode != 0:
+        return None
+    ref = proc.stdout.strip()
+    if not ref.startswith("origin/") or ref == "origin/":
+        return None
+    return ref
 
 
 def _resolve_base_branch(project_dir: Path) -> tuple[str | None, str]:
@@ -67,8 +98,53 @@ def _resolve_base_branch(project_dir: Path) -> tuple[str | None, str]:
     branch becomes the base; ``origin/<b>`` is preferred over the bare ``<b>``
     for a stable remote-tracking merge-base. A configured-but-unresolvable base
     fails closed (returns None) so the misconfiguration surfaces rather than
-    silently diffing the wrong range. When the knob is unset, falls back to the
-    historical candidate list, so trunk repos are unaffected.
+    silently diffing the wrong range.
+
+    **Unconfigured, the remote is asked before the guess (#254).** The knob is
+    the authority when set, but an unset knob used to jump straight to a
+    ``main``-first guess — so a gitflow repo that never ran ``/prawduct:doctor``
+    got every gate anchored to ``merge-base(main, HEAD)``, the whole
+    ``develop..main`` promotion delta, silently. ``refs/remotes/origin/HEAD``
+    is the one place a clone records what the REMOTE integrates onto, so it is
+    consulted first and preferred when it names something outside the
+    ``main`` family. That last condition is what keeps this additive: where
+    ``origin/HEAD`` says ``main``, the historical list already resolves the
+    same ref, so a trunk repo's answer is byte-for-byte what it was. Everything
+    about the consultation degrades to ``None`` — an absent ``origin/HEAD`` (an
+    ``init`` + ``remote add`` repo, an older clone) simply falls through.
+
+    It is a fallback, not a fix for the missing knob: it cannot see a repo whose
+    remote default is ``main`` while its integration branch is ``develop``.
+    Onboarding still owes a written ``base_branch:``; this stops the silent
+    wrong answer in the meantime.
+
+    **``origin/<b>`` stays the base even when local ``<b>`` is ahead of it and
+    is an ancestor of HEAD — decided NO, #311.** The case for switching is real:
+    anchoring to the stale remote makes a feature built on unpushed integration
+    commits read as spanning the whole unshipped range, so a composition gate
+    can report ``uncovered`` over work whose every commit carries a clean review
+    fact (COV-7K4N). Preferring the nearer local ref would remove that at the
+    root. It is refused on two counts.
+
+    - *Fail-open.* The commits in ``origin/<b>..<b>`` are inside the audited
+      span today and would be outside it after the change. A commit made
+      straight onto local ``develop`` — no branch, no review fact — would stop
+      being audited by **every** gate that resolves a base. A gate may not
+      narrow what it audits on the strength of where an operator's unpushed
+      work happens to sit.
+    - *Stability.* ``origin/<b>`` is the same value in every clone and every
+      worktree of the clone; local ``<b>`` is not. Two agents on one branch
+      would resolve different bases and reach different verdicts, and
+      ``verdict_cache`` keys on the base tree, so a per-worktree base also
+      un-shares the memo the store is expensive enough to need.
+
+    What pays for the case instead is already shipped and is the cheaper half:
+    :func:`diagnose_stale_remote_base` names the condition and
+    ``stale_base_probes`` nudges before the gate is hit, both prescribing
+    ``git push origin <b>`` — a required release step anyway, which
+    fast-forwards the remote and re-anchors the merge-base to exactly the tree
+    the rejected change would have chosen. Nothing is lost, only deferred to an
+    action the release flow already demands.
 
     Returns ``(base, base)`` on success or ``(None, reason)`` on failure — the
     same contract the gate callers already destructure.
@@ -84,6 +160,11 @@ def _resolve_base_branch(project_dir: Path) -> tuple[str | None, str]:
             f"configured base_branch {configured!r} not found "
             f"(tried origin/{configured}, {configured})"
         )
+
+    origin_head = _origin_head_ref(project_dir)
+    if origin_head and origin_head[len("origin/"):] not in _MAIN_FAMILY:
+        if _git_ref_exists(project_dir, origin_head):
+            return origin_head, origin_head
 
     for candidate in _DEFAULT_BASE_CANDIDATES:
         if _git_ref_exists(project_dir, candidate):
@@ -618,12 +699,21 @@ def count_branch_rounds(
     ``/prawduct:pr create`` path against a store holding every review the clone
     has ever recorded.
 
-    Returns ``{"status": "counted", "rounds", "seconds", "timed"}`` — with
-    ``seconds`` ``None`` when no attributed round recorded a duration — or
-    ``{"status": "unavailable", "reason"}``. Never raises: this is advice, and
+    Returns ``{"status": "counted", "rounds", "seconds", "timed", "reviews"}``
+    — with ``seconds`` ``None`` when no attributed round recorded a duration —
+    or ``{"status": "unavailable", "reason"}``. Never raises: this is advice, and
     advice fails soft. It is deliberately not silent, because a tally that
     vanishes when it breaks reads as "round one" to the builder it exists to
     warn (``learnings.md``: "'advice fails soft' is not 'advice fails silent'").
+
+    ``reviews`` is ``[{"id", "mode"}]`` for the attributed rounds, in store
+    order, and it exists so a caller can ask a NARROWER question than "how many
+    reviews" without re-walking the lineage: the round budget counts only *full*
+    rounds, since a ``verify-resolutions`` pass is what clears a blocking
+    finding and a ceiling that ate those would deadlock the gate it protects.
+    The mode strings are handed over verbatim rather than parsed here — the
+    token vocabulary belongs to ``critic_consolidate``, and a second parse of it
+    living in the counter is how one vocabulary becomes two.
     """
     from . import evidence  # noqa: PLC0415 -- lazy: mirrors diagnose_fix_churn's import posture; avoids an import cycle at module load
 
@@ -641,6 +731,7 @@ def count_branch_rounds(
 
     rounds = 0
     durations: list[float] = []
+    reviews: list[dict] = []
     for fact in facts:
         if fact.get("kind") != "review":
             continue
@@ -649,6 +740,7 @@ def count_branch_rounds(
         if not isinstance(commit, str) or commit not in on_branch:
             continue
         rounds += 1
+        reviews.append({"id": fact.get("id"), "mode": body.get("mode")})
         seconds = body.get("duration_seconds")
         if isinstance(seconds, (int, float)) and not isinstance(seconds, bool):
             durations.append(float(seconds))
@@ -657,6 +749,7 @@ def count_branch_rounds(
         "rounds": rounds,
         "seconds": round(sum(durations), 1) if durations else None,
         "timed": len(durations),
+        "reviews": reviews,
     }
 
 
@@ -815,7 +908,14 @@ def _pr_diff_is_doc_only(project_dir: Path) -> tuple[bool, str]:
     when the diff is non-empty and NO changed file is judgeable — the one
     predicate (``coverage_algebra.is_judgeable_path``, kernel-v3 chunk 04)
     answers this, replacing this helper's own ``.md`` + protected-path copy
-    (one of the divergent doc-only sites behind CRT-5D8Q). A
+    (one of the divergent doc-only sites behind CRT-5D8Q) — **and no changed
+    file is live state a non-hermetic test reads** (``TEST_COUPLED_STATE``,
+    COV-4H7N). The fast path skips the Critic, the PR review AND the suite in
+    one move, so it has to clear both questions: PR #125 changed only
+    ``.prawduct/*.md`` plus ``project-state.yaml``, rode this path, and broke
+    ``test_norm_probes`` on develop with nothing to catch it. The two reasons
+    are reported separately because the remedies differ — one needs a review,
+    the other needs a suite run. A
     governance-protected ``.md`` (``skills/``, ``methodology/``,
     ``templates/``, root ``CLAUDE.md`` — PR-5K8D) is judgeable, so it still
     never rides the fast path. The status message names the specific reason
@@ -851,6 +951,15 @@ def _pr_diff_is_doc_only(project_dir: Path) -> tuple[bool, str]:
         more = f" (+{len(judgeable) - 3} more)" if len(judgeable) > 3 else ""
         return False, f"not-doc-only: PR includes review-needing files: {sample}{more}"
 
+    coupled = [f for f in coverage_algebra.suite_coupled_files(files) if f not in judgeable]
+    if coupled:
+        sample = ", ".join(coupled[:3])
+        more = f" (+{len(coupled) - 3} more)" if len(coupled) > 3 else ""
+        return False, (
+            "not-doc-only: PR includes live state a non-hermetic test reads: "
+            f"{sample}{more}"
+        )
+
     return True, (
         f"doc-only: {len(files)} file(s) in {base}...HEAD, none judgeable"
     )
@@ -859,16 +968,26 @@ def _pr_diff_is_doc_only(project_dir: Path) -> tuple[bool, str]:
 def check_change_log_entry(project_dir: Path) -> int:
     """PR-boundary probe: a code-changing branch must add a change-log entry.
 
-    A branch whose ``merge-base...HEAD`` diff touches any non-``.md`` file is
-    code-changing work that the release flow can only ship if a change-log
-    entry exists for it — historically nothing checked this, so a branch could
-    merge with NO entry and the gap surfaced only at release reconstruction
-    (REL-6C3W — CRT-7B4M/#82, found at the v2.0.16 release). The
-    `/prawduct:pr` Create flow (Step 1c) runs this probe and STOPs on failure.
+    A branch whose ``merge-base...HEAD`` diff contains **judgeable** work — as
+    :func:`coverage_algebra.is_judgeable_path` defines it, the same predicate
+    ``check-pr-doc-only`` and the coverage gates ask — can only be shipped by the
+    release flow if a change-log entry exists for it. Historically nothing
+    checked this, so a branch could merge with NO entry and the gap surfaced only
+    at release reconstruction (REL-6C3W — CRT-7B4M/#82, found at the v2.0.16
+    release). The `/prawduct:pr` Create flow (Step 1c) runs this probe and STOPs
+    on failure.
+
+    **Judgeability is not "is it ``.md``", and this docstring used to say it
+    was.** Session metadata under ``.prawduct/`` is not ``.md`` and is *not*
+    judgeable; governance-protected prose (``skills/``, ``methodology/``,
+    ``templates/``, root ``CLAUDE.md``) *is* ``.md`` and *is* judgeable, because
+    skill prose is behavioral logic. Cite the predicate rather than restating its
+    rule here — a prose copy is the fourth classifier this function shipped once
+    already.
 
     Exit 0 when:
-      * the diff is empty or all-``.md`` (doc-only work needs no entry), or
-      * a non-``.md`` diff includes ``.prawduct/change-log.md`` AND that diff
+      * the diff is empty, or holds no judgeable file, or
+      * a judgeable diff includes ``.prawduct/change-log.md`` AND that diff
         ADDS at least one entry header (a ``+## `` line) — merely editing an
         existing entry's text does not vouch for new work.
 
@@ -898,17 +1017,36 @@ def check_change_log_entry(project_dir: Path) -> int:
         return 1
 
     files = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
-    non_md = [f for f in files if not f.endswith(".md")]
+    # THE predicate, shared with `check-pr-doc-only` (CRT-5D8Q). This used to be
+    # an inline `not f.endswith(".md")`, which is a FOURTH classifier that the
+    # CRT-5D8Q consolidation never folded in — so the two gates at the same PR
+    # boundary answered oppositely about the same file. `.prawduct/` session
+    # metadata (`corpus-state.json`, evidence, findings) is not `.md`, so this
+    # gate called it code while `check-pr-doc-only` correctly called it
+    # non-judgeable and skipped the review gates entirely.
+    #
+    # Reported from a consuming repo, and worse than a spurious block: the
+    # remedy text is executable advice, and it was wrong advice. The
+    # `.prawduct/corpus-state.json` that triggered it was another session's
+    # corpus refresh riding along on a cherry-pick, so following the gate would
+    # have written a change-log entry describing someone else's work as the
+    # author's own — a gate demanding a false provenance record.
+    from . import coverage_algebra  # noqa: PLC0415 — lazy keeps this module's import DAG light
+
+    judgeable = coverage_algebra.judgeable_files(files)
     if not files:
         print(f"empty-diff: no files changed in {base}...HEAD — no entry required.")
         return 0
-    if not non_md:
-        print(f"doc-only: all {len(files)} changed file(s) are .md — no entry required.")
+    if not judgeable:
+        print(
+            f"doc-only: none of the {len(files)} changed file(s) are judgeable "
+            "(docs and session metadata only) — no entry required."
+        )
         return 0
 
     if CHANGE_LOG_REL_PATH not in files:
-        sample = ", ".join(non_md[:3])
-        more = f" (+{len(non_md) - 3} more)" if len(non_md) > 3 else ""
+        sample = ", ".join(judgeable[:3])
+        more = f" (+{len(judgeable) - 3} more)" if len(judgeable) > 3 else ""
         print(
             f"no-entry: branch changes code ({sample}{more}) but "
             f"{CHANGE_LOG_REL_PATH} is untouched — add a change-log entry for "
@@ -950,11 +1088,18 @@ def check_change_log_entry(project_dir: Path) -> int:
 def check_pr_doc_only(project_dir: Path) -> int:
     """Fast-path gate for `/prawduct:pr create`: report whether the PR diff is doc-only.
 
-    Exit 0 when the diff in ``merge-base...HEAD`` is non-empty and contains
-    no judgeable file (``coverage_algebra.is_judgeable_path`` — the one
-    predicate) — the `/prawduct:pr` skill uses this to skip the cumulative-
-    Critic and PR-reviewer gates, mirroring the session-end stop-hook
-    carveout (`gates.session_changes_all_non_judgeable`) at the PR boundary.
+    Exit 0 when the diff in ``merge-base...HEAD`` is non-empty, contains no
+    judgeable file (``coverage_algebra.is_judgeable_path`` — the one predicate)
+    AND names no shipped suite-coupled state (``TEST_COUPLED_STATE``, via
+    ``suite_coupled_files``). **The repo's declared ``suite_coupled_prefixes``
+    are deliberately NOT passed here.** They answer a freshness question — re-run
+    the suite — and forwarding them would make a documentation-only PR buy a full
+    cumulative Critic and PR review, a review cost nothing prices. The freshness
+    gate (``gates._test_evidence_tree_valid``) is the caller that passes them.
+
+    The `/prawduct:pr` skill uses this to skip the cumulative-Critic and
+    PR-reviewer gates, mirroring the session-end stop-hook carveout
+    (`gates.session_changes_all_non_judgeable`) at the PR boundary.
     The stop hook's PR-review evidence gate (Gate 3) consults the same
     helper so a doc-only PR doesn't get blocked at session end for missing
     evidence — symmetric behavior across both gates.

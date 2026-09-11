@@ -23,6 +23,29 @@
 > tier — but in a product that declares none, filling this file *raises* review
 > depth. Weigh that before copying this pattern downstream.
 
+### `.test-evidence.json` — the verification record
+
+**Producer:** `plugin/bin/prawduct-hook test-evidence record` (including its
+ingest paths — `--from-junit`, `--from-counts`, `--no-rerun`).
+**Consumers:** `plugin/lib/gates.py` — both evidence readers through the one
+shared prologue (`_load_test_evidence`), plus `validate_evidence`;
+`bin/test-reference-verify` (the F4a coverage half, which writes
+`changes_referenced` / `changes_unjudged` / `coverage_level` into the same
+record); and the Critic and PR protocols, which read the `test-status` exit code
+rather than the file.
+**Contract:** additive fields, and **presence is meaning**. `degraded` (added
+2026-08-21) is the worked case: the key's *absence* means an ordinary run, so a
+writer emitting `false` rather than omitting it changes what every reader sees.
+A new field therefore has to name its absent-case semantics, not just its type.
+**Deliberate non-consumer:** `verify_coverage` does *not* refuse a degraded
+record — at `coverage_level: referenced` its answer is tree-derived, so which
+tests executed cannot change it. Its docstring names the `executed`-level
+condition that would retire the exemption; if that lands, this entry gains a
+consumer.
+**Sweep rule:** a change to the record's shape is checked against `gates.py`'s
+shared prologue *and* the writer's ingest paths, because a restamp that skips a
+field launders it away while running nothing.
+
 ### Generator/Tuple Yields Consumed Positionally
 
 **Producer:** `plugin/lib/backlog/core.py` — `iter_alias_issues` yields
@@ -112,7 +135,7 @@ status a two-site question instead of a one-site edit.
 ### Database Schemas
 
 **Producer:** `plugin/lib/backlog/cache.py` — `_SCHEMA_STATEMENTS`, `ITEM_COLUMNS`, and
-`SCHEMA_VERSION` (currently 7) define the local SQLite store.
+`SCHEMA_VERSION` define the local SQLite store.
 **Consumers:** `plugin/lib/backlog/sync.py` (writes), `plugin/lib/backlog/cachequery.py`
 (every read), and — as a *specification* rather than code —
 `documentation/backlog-service-data-model.md` §6, which declares the table
@@ -133,7 +156,7 @@ other people's machines. The rule lives at `cache.py:60-73`; this row is the
 registry pointer to it, not a second copy.
 **Second consumer, second failure mode:** §6 of the data model is prose and
 drifts silently — it declared an `item.etag` column and a `comment` table that
-the shipped v7 schema does not have. When you add or drop a column, edit §6 in
+the shipped schema does not have. When you add or drop a column, edit §6 in
 the same commit; nothing enforces the agreement.
 
 ### Inter-Process Communication

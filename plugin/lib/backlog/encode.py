@@ -121,10 +121,19 @@ NAMESPACED_LABEL_PREFIXES: tuple[str, ...] = (
     "tag:",
 )
 
+# The opener is written ONCE and both readers are built from it. `check_body_text`
+# previously hand-rolled `line.strip().startswith("```prawduct")`, which is looser
+# than this pattern in exactly the direction that hurts: it rejected an INDENTED
+# fence that `_BLOCK_RE` — column-anchored — could never have matched. A guard
+# stricter than its parser is not safe, it is a false positive, and this one
+# refused the very workaround its own docstring recommended.
+_FENCE_OPEN = r"```prawduct[ \t]*"
 _BLOCK_RE = re.compile(
-    r"^```prawduct[ \t]*\n(?P<body>.*?)^```[ \t]*$",
+    rf"^{_FENCE_OPEN}\n(?P<body>.*?)^```[ \t]*$",
     re.MULTILINE | re.DOTALL,
 )
+#: The opener alone — what `check_body_text` must look for, same source as above.
+_FENCE_OPEN_RE = re.compile(rf"^{_FENCE_OPEN}$", re.MULTILINE)
 
 
 # --- The prawduct: block -----------------------------------------------------
@@ -203,6 +212,15 @@ def parse_block(body: str | None) -> Block:
     Zero blocks → an empty ``Block`` (all defaults, no warning). Two+ blocks →
     the **last** wins and each earlier one is flagged (ENC-3). A malformed inner
     line (no ``:`` separator) is skipped with a warning, never an error.
+
+    **This READER and the WRITERS deliberately disagree about a two-block
+    body.** Reading keeps the last block (a body someone edited twice means the
+    later value); writing — every caller of
+    :func:`merge_all_block_fields` — merges every block, because a write that kept only the last would *persist*
+    the discard and, since it emits exactly one block, destroy the very
+    multi-block warning that was the discard's only signal. Reading is
+    non-destructive and writing is not, which is why the same input gets two
+    readings on purpose.
     """
     block = Block()
     if not body:
@@ -217,22 +235,36 @@ def parse_block(body: str | None) -> Block:
             "and ignoring the earlier one(s)"
         )
 
-    inner = matches[-1]
+    fields, malformed = _parse_block_fields(matches[-1], collect_malformed=True)
+    block.fields.update(fields)
+    block.warnings.extend(f"ignored malformed block line: {m!r}" for m in malformed)
+    return block
+
+
+def _parse_block_fields(
+    inner: str, collect_malformed: bool = False
+) -> "dict[str, str] | tuple[dict[str, str], list[str]]":
+    """Field dict for ONE block's inner text; last occurrence of a key wins.
+
+    Split out of :func:`parse_block` so :func:`merge_all_block_fields` can
+    merge *every* block in a body rather than only the last — the reader and
+    the writers need the same line grammar and must not drift on what counts
+    as a field.
+    """
+    fields: dict[str, str] = {}
+    malformed: list[str] = []
     for raw_line in inner.splitlines():
         line = raw_line.rstrip()
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
             continue  # blank or comment — not a field
-        if ":" not in line:
-            block.warnings.append(f"ignored malformed block line: {stripped!r}")
-            continue
-        key, _, value = line.partition(":")
+        key, sep, value = line.partition(":")
         key = key.strip()
-        if not key:
-            block.warnings.append(f"ignored malformed block line: {stripped!r}")
+        if not sep or not key:
+            malformed.append(stripped)
             continue
-        block.fields[key] = value.strip()  # last occurrence wins
-    return block
+        fields[key] = value.strip()
+    return (fields, malformed) if collect_malformed else fields
 
 
 def strip_block(body: str | None) -> str:
@@ -262,18 +294,53 @@ def upsert_block_field(body: str | None, key: str, value: str | None) -> str:
     fresh ``v: 1`` block if the body had none and a value is being set; clearing a
     field on a blockless body is a no-op (never manufactures an empty block).
     """
-    block = parse_block(body)
+    # Merges EVERY block, for the same reason :func:`compose_body` does: pairing
+    # `parse_block` (last-block-wins) with `strip_block` (removes them all) drops
+    # an earlier block's fields, and since the result emits exactly one block the
+    # multi-block warning can never fire afterwards to signal it. This is that
+    # defect one function over — swept with it rather than left for the body that
+    # happens to carry two hand-written blocks.
+    fields = merge_all_block_fields(body)
     human = strip_block(body)
     if value is None:
-        block.fields.pop(key, None)
+        fields.pop(key, None)
     else:
-        block.fields[key] = value
-    if not block.fields:
+        fields[key] = value
+    if not fields:
         return human
-    rendered = serialize_block(block.fields)
+    rendered = serialize_block(fields)
     if human:
         return f"{human}\n\n{rendered}\n"
     return f"{rendered}\n"
+
+
+#: Block fields that describe WHO FILED an item rather than what it is. A body
+#: never gets to assert these: they are stamped by the command from its own
+#: invocation context, so :func:`compose_body` drops them from any block found
+#: in the caller's text before merging. Every other field is the filer's.
+_CALLER_OWNED_FIELDS = frozenset({"automated", "worker"})
+
+
+def merge_all_block_fields(body: str | None) -> dict[str, str]:
+    """Every ``prawduct:`` block in ``body``, merged in document order.
+
+    **The one home for how a WRITER reads a body's blocks**, and it exists
+    because this defect has now been found at three separate sites. The trap is
+    a pairing that looks correct at each one: :func:`parse_block` keeps the LAST
+    block, :func:`strip_block` removes them ALL, and the writer emits exactly
+    one — so an earlier block's fields are dropped *and* the "carries N prawduct
+    blocks" warning that was the only signal can never fire afterwards. The loss
+    is silent and permanent.
+
+    Reading and writing diverge here on purpose (:func:`parse_block` says why),
+    so the divergence needs a named home rather than three open-coded copies.
+    Later blocks win over earlier ones, matching last-block-wins, so a body that
+    was edited twice still means its later value.
+    """
+    fields: dict[str, str] = {}
+    for inner in _BLOCK_RE.findall(body or ""):
+        fields.update(_parse_block_fields(inner))
+    return fields
 
 
 def compose_body(human: str | None, block_fields: dict[str, str]) -> str:
@@ -284,9 +351,45 @@ def compose_body(human: str | None, block_fields: dict[str, str]) -> str:
     fresh block (``file``, ``import``) goes through here, so the separator/newline
     convention lives in exactly one place and the two paths can never silently
     diverge (Data Model §2). An empty human body yields the block alone.
+
+    **A block already in ``human`` is MERGED, not buried.** Filers write their
+    own ``prawduct:`` block into the body, and this used to append a second one
+    beside it. (The docs steer filers to the flags and ``link`` instead, and
+    still do — but "the docs told you not to" is no reason for a silent data
+    loss, and the warning it produced reads like housekeeping.) Parsing is last-block-wins, so the filer's fields were then silently
+    discarded and the loss surfaced only as a warning that reads cosmetic
+    ("issue body carries 2 prawduct blocks; using the last"). Three items filed
+    on 2026-08-19 (#690, #691, #692) lost their ``related:`` edges exactly this
+    way. Fixed here, at the point of composition, rather than by asking filers
+    to omit a block the docs tell them to write.
+
+    **Precedence: the fresh fields win a key collision**, and the filer's other
+    fields survive untouched. The caller's fields are the authoritative stamps,
+    so a body claiming ``automated: false`` cannot launder a background sweep
+    into looking human.
+
+    The attribution stamps are stripped from the embedded block **in both
+    directions**, which precedence alone does not cover: an *attended* create
+    passes only ``{"v": "1"}``, so with a plain merge a body that self-declared
+    ``automated: true`` would face no colliding key and survive — misattributing
+    a human's filing to a sweep. These two keys describe *who filed this*, which
+    is never something the filed text gets to assert; every other block field is
+    the filer's to set.
     """
-    rendered = serialize_block(block_fields)
-    text = (human or "").rstrip("\n")
+    # EVERY block in the body is merged, in document order, not just the last.
+    # `parse_block` keeps only the last (its own last-block-wins rule) while
+    # `strip_block` removes them ALL — so merging via `parse_block` would still
+    # drop an earlier block's fields, and now silently: the composed body emits
+    # exactly one block, so the downstream "carries N prawduct blocks" warning
+    # that was the losses' only signal can never fire again. Merging all of them
+    # means nothing is lost, which is better than restoring a warning about a
+    # loss. Later blocks win over earlier ones, matching last-block-wins.
+    merged = merge_all_block_fields(human)
+    for key in _CALLER_OWNED_FIELDS:
+        merged.pop(key, None)
+    text = strip_block(human)
+    merged.update(block_fields)
+    rendered = serialize_block(merged)
     if text:
         return f"{text}\n\n{rendered}\n"
     return f"{rendered}\n"
@@ -332,6 +435,135 @@ def format_list(items: list[str]) -> str:
     """Render a list of values as the block's ``[a, b]`` form (inverse of
     :func:`parse_list`)."""
     return "[" + ", ".join(items) + "]"
+
+
+def check_body_text(text: str | None) -> str | None:
+    """Reject human body text that still opens a ``prawduct`` fence after stripping.
+
+    The sibling injection route to :func:`check_block_value`, and it must be
+    guarded in the same breath or the value guard is security theatre: locking
+    ``--refs`` while ``--body`` stays open leaves the identical forgery one flag
+    to the left.
+
+    :func:`strip_block` removes a *well-formed* block, because ``_BLOCK_RE``
+    requires a closing fence. An **unterminated** ````` ```prawduct ````` opener
+    therefore survives stripping — and once the preserved block is appended after
+    it, the body holds two openers, the non-greedy regex spans from the attacker's
+    to the real block's terminator, and every line between them parses as a field.
+    Observed: a ``--body`` ending mid-fence landed ``automated: true`` and
+    ``worker: evil`` *ahead* of the genuine fields, so the next re-serialization
+    made them permanent.
+
+    Rejecting the opener outright is deliberate over trying to escape or re-fence
+    it. A body that legitimately needs to *show* a prawduct block can **indent
+    it** (an indented fence is not an opener to :data:`_BLOCK_RE`, so it is safe
+    *and* accepted here), use a different fence language, or say it in prose; a
+    rewrite rule would have to be exactly as clever as every future attacker.
+
+    The predicate is :data:`_FENCE_OPEN_RE`, built from the same ``_FENCE_OPEN``
+    source as the parser — not a hand-written ``startswith``. The first version
+    *was* a ``startswith`` on the stripped line, which made it **stricter** than
+    the parser: it rejected indented fences the parser can never match, so the
+    docstring's own "indent it" advice was the one workaround the code refused.
+    Same rule as :func:`check_block_value` — derive from the reader, never
+    re-describe it.
+
+    Returns an error message, or ``None`` when the text is safe.
+    """
+    if not text:
+        return None
+    if _FENCE_OPEN_RE.search(strip_block(text)):
+        return (
+            "body may not open a ```prawduct fence at the start of a line — an "
+            "unterminated one survives block-stripping and injects every line "
+            "after it as a block field; indent it to show one, and edit the real "
+            "block through its own flags"
+        )
+    return None
+
+
+def check_body_text_strict(text: str | None) -> str | None:
+    """Reject body text carrying ANY ``prawduct`` fence — terminated or not.
+
+    The strictly stronger sibling of :func:`check_body_text`, for a caller that
+    has no composer behind it. :func:`check_body_text` deliberately TOLERATES a
+    well-formed block, because every in-repo caller pairs it with
+    :func:`compose_body`, which strips the pasted block and merges its fields
+    into the real one. The guard and the transform are one mechanism, and the
+    tolerance is only safe where both run.
+
+    Porting the guard without the transform is what opens the hole this closes:
+    a caller that appends the body verbatim and then adds its own block ships two
+    parseable blocks, and the receiving side's first
+    :func:`merge_all_block_fields` folds the pasted fields into the canonical
+    block permanently — the same forgery the value guard closes, reached through
+    the body instead.
+
+    Stricter than in-repo is correct here rather than merely cautious: where
+    there is no block of ours to merge a paste INTO, a caller has no legitimate
+    reason to hand over a raw one. The remedy is the one :func:`check_body_text`
+    already names and is unchanged — indent the fence to *show* a block, which
+    :data:`_BLOCK_RE` cannot match and this predicate therefore accepts.
+    """
+    if not text:
+        return None
+    if _FENCE_OPEN_RE.search(text):
+        return (
+            "body may not contain a ```prawduct fence — this path appends your "
+            "text verbatim and then adds the real block, so any fence you send "
+            "arrives as a second parseable block and its fields get merged into "
+            "the real one on the far side; indent it to show a block"
+        )
+    return None
+
+
+def check_block_value(key: str, value) -> str | None:
+    """Reject a block field value that would break the line-based block format.
+
+    The block is ``key: value``, one per line (§2), and :func:`parse_block` reads
+    **every** line inside the fence as a field. So a value carrying a newline does
+    not store a multi-line value — it *injects sibling fields*. Concretely,
+    ``--refs $'a\\nautomated: true'`` writes a forged ``automated:`` marker (the
+    SEC-6 unattended-actor attribution) that no allowlist catches, because an
+    allowlist guards **the keys a caller named**, not the lines those keys' values
+    expand into. The same reach lands ``worker``, ``provenance`` and
+    ``id_aliases`` — the MG2 permanent-alias loss the block exists to prevent.
+    A value that starts a line with a backtick fence closes the block early and
+    corrupts the body/block split, so even a benign multi-line paste is a
+    correctness bug; barring the newline bars that too, since a fence can only
+    close the block from the start of a line.
+
+    Free text is **rejected, not escaped.** :func:`format_text` exists and would
+    make any value safe, but it JSON-quotes the value on disk, and the 149 live
+    items spelling ``closed-by: fix/branch`` bare are the format of record —
+    quoting new writes would fork one field into two spellings every reader would
+    then have to guess between. Rejecting keeps one spelling and loses nothing a
+    single-line field wanted to say.
+
+    Returns an error message, or ``None`` when the value is legal.
+
+    **The predicate is derived from the parser, never from a hand-listed set of
+    separators.** :func:`parse_block` splits the fence body with ``splitlines()``,
+    which breaks on the whole universal-newline set — ``\\v``, ``\\f``, ``\\x1c``,
+    ``\\x1d``, ``\\x1e``, ``\\x85``, ``\\u2028``, ``\\u2029`` as well as ``\\n``/``\\r``.
+    A guard that checked only ``\\n``/``\\r`` (the first version of this function
+    did) left the exploit fully live: ``--refs $'a\\vautomated: true'`` passes such a
+    check, ``_emit_block`` writes it as one *physical* line so the ``_BLOCK_RE``
+    fence — anchored on ``\\n`` only — is undisturbed, and the next parse yields the
+    forged field anyway. Asking ``splitlines()`` itself is the only formulation
+    that cannot drift from the parser as Python's set evolves.
+
+    ``splitlines() == [text]`` is also strictly stronger than a ``len(...) > 1``
+    count: a value ending in a separator (``"abc\\n"``) splits to a single element
+    and would slip past a count check while still emitting a stray line.
+    """
+    text = value if isinstance(value, str) else str(value)
+    if text.splitlines() not in ([], [text]):
+        return (
+            f"{key} must be a single line — a line separator in a block value "
+            "injects sibling fields instead of storing a multi-line value"
+        )
+    return None
 
 
 def format_text(text: str) -> str:
@@ -865,9 +1097,32 @@ def decode_item(issue: dict, *, canonical_id: str | None = None) -> tuple[dict, 
         "working_branch": block.working_branch(),
         "automated": block.get("automated") == "true",
         "url": issue.get("html_url"),
+        # The native comment count rides the issue payload, so every read path
+        # (get/list/pick) can show "this item has discussion" for free; the
+        # thread itself is fetched only by `get` (DM5 drill-down).
+        "comments_count": issue.get("comments") or 0,
         "labels": labels,
         "id_aliases": block.id_aliases(),
         "superseded_by": block.superseded_by(),
         "block_version": block.version(),
+        # The editorial block fields, projected so a write is confirmable from the
+        # SAME response that performed it. Without these, `update --refs X --json`
+        # returns an item with no `refs` key and the caller has to re-read and
+        # re-parse the body to learn whether anything happened — which is exactly
+        # the blindness that let `--body` "succeed" while changing nothing for the
+        # whole cutover. Additive per the api-contract norm (`--json` readers
+        # tolerate unknown keys); no consumer pins this dict's key set.
+        #
+        # NOTE THE TWO SPELLINGS, which are both deliberate and must not be
+        # "harmonised": the BLOCK key is `closed-by` (hyphen) because that is what
+        # 149 live items carry and renaming it would orphan every one, while the
+        # ITEM key is `closed_by` (underscore) because this projection is snake_case
+        # throughout (`id_aliases`, `superseded_by`, `claimed_at`) and matches the
+        # data model's §1.1 field name. The hyphen→underscore hop happens here and
+        # only here.
+        "refs": block.get("refs") or None,
+        "revisit": block.get("revisit") or None,
+        "closed_by": block.get("closed-by") or None,
+        "reviewed": block.get("reviewed") or None,
     }
     return item, warnings

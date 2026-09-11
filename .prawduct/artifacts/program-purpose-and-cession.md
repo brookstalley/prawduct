@@ -90,6 +90,13 @@ a cleanup with a size target — grounded in the prose-diet's mispriced-floor pr
 Codifying "always change" as a standing rule was **considered and rejected**; the ledger's
 assumption-carrying rows, re-evaluated on external events, are what replaced it.
 
+**The interim regime, and the ledger's seed rows.** Until this cycle lands, a cession is
+recorded as a `.prawduct/change-log.md` entry — stated in `documentation/purpose.md` § How
+responsibility shifts so a ceder finds it without reading this file (#691). Those entries are
+the ledger's first rows: the 2026-08-19 work-cycle re-pricing is the worked first case, and
+the sweep that seeds the ledger reads the change-log for re-pricing entries rather than
+starting empty.
+
 ### Cycle 4 — telemetry, sibling-first
 
 1. **Zero-code analysis first**: a periodic agent run over sibling repos' existing evidence

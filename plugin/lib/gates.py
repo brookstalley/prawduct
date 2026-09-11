@@ -50,7 +50,7 @@ from . import (
     gitstate,
     verdict_cache,
 )
-from .core import read_bool_yaml_key
+from .core import read_bool_yaml_key, suite_coupled_prefixes
 
 
 _EVIDENCE_REQUIRED_FIELDS: dict[str, tuple[type, ...]] = {
@@ -82,6 +82,33 @@ _EVIDENCE_OPTIONAL_FIELDS: dict[str, tuple[type, ...]] = {
     # capture failed or the on-ramp is ``--from-counts``, so old and count-only
     # records keep exactly their pre-clause timestamp-only behavior.
     "evidence_tree": (str,),
+    # ``degraded``: WHY this run did not cover what its counts imply — a worker
+    # that died under contention, a shard that never reported, a suite cut short.
+    # A run like that exits 0 and reports a plausible total, so nothing in the
+    # counts can distinguish it from a clean pass; the record therefore CARRIES
+    # the observation rather than deriving it (a report has no notion of what was
+    # *collected*, and parsing a runner's summary would need per-runner
+    # knowledge the framework refuses to hold). The coordinator, which can see
+    # the box, supplies it.
+    #
+    # **Presence is the flag**, so a degraded record cannot exist without saying
+    # why — and the emptiness check in ``_validate_evidence_schema`` makes that
+    # true of ``""`` too. Omitted entirely (never null, never false) on an
+    # ordinary run, which is what keeps every pre-existing record's behavior
+    # exactly what it was. Both evidence readers refuse a record carrying it
+    # (:func:`_load_test_evidence`), so a degraded run reads as stale rather
+    # than as a pass.
+    #
+    # **It moves a verdict current → stale, which is the direction the standing
+    # rule about new evidence fields forbids** — and the exemption is worth
+    # stating, because the next field will not have one. That rule exists for
+    # the removed content-hash and ``git_sha`` mechanisms, which DERIVED
+    # staleness from the tree and so produced false positives nobody asked for.
+    # This field derives nothing: it is present only because a coordinator
+    # wrote it, so it cannot fire on its own and there is no false-stale class
+    # for it to reintroduce. The only way to a wrong stale here is to assert a
+    # degradation that did not happen.
+    "degraded": (str,),
 }
 
 
@@ -89,12 +116,17 @@ def _load_test_evidence(prawduct_dir: Path) -> "tuple[dict | None, str]":
     """The saved test-evidence record, or ``(None, reason)`` saying why not.
 
     The prologue both evidence readers need: on disk, parseable, an object, a
-    valid schema, and no failures. It lives here rather than in each because the
-    two gates that read it — session-freshness and the base-advance transfer —
-    must agree about what a saved run SAYS before they can disagree about what
-    it vouches FOR; a new schema field or a different reading of ``failed``
-    landing in one reader and not the other is how they come to answer
-    differently about the same file.
+    valid schema, no failures, and not self-reported ``degraded``. It lives here
+    rather than in each because the two gates that read it — session-freshness
+    and the base-advance transfer — must agree about what a saved run SAYS
+    before they can disagree about what it vouches FOR; a new schema field or a
+    different reading of ``failed`` landing in one reader and not the other is
+    how they come to answer differently about the same file.
+
+    ``degraded`` belongs here for exactly that reason. A run that dropped part
+    of its suite is not evidence for either question — neither "may this session
+    stop re-running" nor "did a run meet this tree" — so both readers have to
+    refuse it, and refusing in one body is what makes them agree.
 
     The schema check catches writer typos (``ran_at`` for ``timestamp``,
     ``num_passed`` for ``passed``): without it a missing field falls through
@@ -116,6 +148,13 @@ def _load_test_evidence(prawduct_dir: Path) -> "tuple[dict | None, str]":
     failed = record.get("failed")
     if isinstance(failed, int) and failed > 0:
         return None, f"{failed} test(s) failing in saved evidence"
+    degraded = record.get("degraded")
+    if isinstance(degraded, str) and degraded.strip():
+        return None, (
+            f"the saved run reports itself degraded ({degraded.strip()}) — its "
+            "counts do not cover what they appear to. Run the suite again, "
+            "uncontended, and record that run"
+        )
     return record, ""
 
 
@@ -123,7 +162,7 @@ def tests_are_current(project_dir: Path) -> tuple[bool, str]:
     """Decide whether saved test evidence is fresh enough to trust.
 
     Two ways evidence is current, either sufficient (a disjunction), with
-    ``failed == 0`` required for both:
+    ``failed == 0`` and no self-reported ``degraded`` required for both:
 
     1. **Session-fresh** — written during this session (timestamp >= session
        start). The "trust the cycle" model: write code → run tests → Critic
@@ -139,8 +178,20 @@ def tests_are_current(project_dir: Path) -> tuple[bool, str]:
        mechanisms dead. Records without ``evidence_tree`` (pre-clause, or a
        ``--from-counts`` on-ramp) skip clause 2 and behave exactly as before.
 
-    Falls back to timestamp-only comparison when no session-start marker
-    exists (e.g., running outside a governed session).
+    **With no session-start marker, clause 2 is the only clause** (STH-6D4Q).
+    An unanchored working copy has no session clock to compare against, so
+    clause 1 cannot be asked — and the answer used to be an unconditional
+    ``True`` on nothing but a schema check, a zero failure count, and the
+    presence of a timestamp. That fail-open was survivable only while the old
+    boundary reset accidentally re-anchored a worktree on its way through
+    ``resume``; that repair is gone by design, so the path is now reachable
+    indefinitely. Clause 2 answers "has anything judgeable changed since the
+    recorded run" without needing a clock, which is exactly the question the
+    missing marker made unaskable. Evidence with no ``evidence_tree`` (a
+    ``--from-counts`` on-ramp, or a pre-clause record) therefore reads STALE
+    on the unanchored path — nothing about it can be verified, and the
+    documented commitment for an absent anchor is that freshness gates fail
+    closed. The remedy is one command: re-record the run.
 
     Returns (is_current, reason). reason is a short human-readable string suitable
     for printing back to the agent.
@@ -156,24 +207,28 @@ def tests_are_current(project_dir: Path) -> tuple[bool, str]:
         return False, "no timestamp in evidence"
 
     session_start = _read_session_start(prawduct_dir)
-    if session_start:
-        if evidence_ts >= session_start:
-            return True, f"evidence from this session ({evidence_ts})"
-        # Timestamp-stale — but the additive tree-validity clause can still
-        # vouch when nothing judgeable has changed since the recorded run. A
-        # relax-only disjunction: it can only turn this stale into current,
-        # never the reverse, so it cannot manufacture a false stale.
-        recorded_tree = evidence.get("evidence_tree")
-        if isinstance(recorded_tree, str) and recorded_tree:
-            tree_valid, tree_reason = _test_evidence_tree_valid(project_dir, recorded_tree)
-            if tree_valid:
+    if session_start and evidence_ts >= session_start:
+        return True, f"evidence from this session ({evidence_ts})"
+
+    # Clause 2, asked on BOTH paths. When a marker exists this is the
+    # relax-only disjunct: timestamp-stale evidence can still be vouched for
+    # by an unchanged judgeable tree. When no marker exists it is the ONLY
+    # thing that can vouch — see the no-marker return below.
+    recorded_tree = evidence.get("evidence_tree")
+    if isinstance(recorded_tree, str) and recorded_tree:
+        tree_valid, tree_reason = _test_evidence_tree_valid(project_dir, recorded_tree)
+        if tree_valid:
+            if session_start:
                 return True, f"tree-valid despite predating session: {tree_reason}"
+            return True, f"tree-valid, no session marker to date it against: {tree_reason}"
+
+    if session_start:
         return False, f"evidence predates session ({evidence_ts} < {session_start})"
 
-    # No session-start marker — fall back to recency check.
-    # Evidence exists with passing tests and a timestamp, but we can't verify
-    # it's from this session. Accept it with a note.
-    return True, f"evidence has passing tests ({evidence_ts}, no session marker to verify)"
+    return False, (
+        f"no session marker to date the evidence against ({evidence_ts}), and "
+        "it does not vouch for the current tree — run the suite and record it"
+    )
 
 
 def _test_evidence_tree_valid(
@@ -195,14 +250,33 @@ def _test_evidence_tree_valid(
     since the run, so the recorded pass still covers the current state. Uses
     the same primitives the v3 review gates trust: ``evidence.capture_tree``
     (temp index, never touches the session — R1), ``evidence.tree_diff``
-    (git-native ``diff --name-only``), and ``coverage_algebra.judgeable_files``
-    (metadata/session churn and non-protected ``.md`` are not judgeable, so
-    the record's own ``.prawduct/.test-evidence.json`` write and doc edits are
-    filtered out). Classifies paths, never file contents.
+    (git-native ``diff --name-only``), and
+    ``coverage_algebra.suite_coupled_files`` (metadata/session churn and
+    non-protected ``.md`` cannot change a test outcome, so the record's own
+    ``.prawduct/.test-evidence.json`` write and doc edits are filtered out).
+    Classifies paths, never file contents.
+
+    **The question here is the suite's, not the reviewer's (COV-4H7N).** This
+    asks ``affects_test_outcome``, not ``is_judgeable_path``, because a
+    non-hermetic test reads live repo state that needs no review: a
+    ``.prawduct/project-state.yaml`` edit is free to write mid-review and can
+    still turn ``test_norm_probes`` red, so evidence recorded before it does
+    not vouch for the tree after it.
 
     Fails toward *not valid* (the caller keeps the timestamp verdict) whenever
     the tree cannot be captured or diffed, so a git failure can only leave
     evidence stale — never flip it fresh. Returns ``(is_valid, reason)``.
+
+    **One caller uses this as a REFUSAL authority, not an additive clause**, and
+    the coupling is deliberate rather than inherited: ``test-evidence record
+    --no-rerun`` asks it whether the restamp's assertion holds, and a ``False``
+    hard-blocks at exit 2. That includes the "cannot capture / cannot diff"
+    answers — so a git failure refuses a restamp that might have been
+    legitimate. Correct by design (a restamp rewrites ``evidence_tree``, so
+    permitting an unverifiable one lets stale counts vouch for a tree they never
+    ran against), and survivable because the reason string is printed and the
+    escape is to run the suite. Read this before widening the ``False`` cases:
+    each one is now a refusal somewhere, not only a stale verdict.
     """
     if target_tree is None:
         capture = evidence.capture_tree(project_dir)
@@ -224,10 +298,14 @@ def _test_evidence_tree_valid(
     changed = evidence.tree_diff(project_dir, recorded_tree, target_tree)
     if changed is None:
         return False, "tree diff unavailable (missing object or git failure)"
-    judgeable = coverage_algebra.judgeable_files(changed)
-    if judgeable:
-        preview = ", ".join(judgeable[:3]) + ("…" if len(judgeable) > 3 else "")
-        return False, f"{len(judgeable)} judgeable path(s) {differ} ({preview})"
+    # The repo's own declaration is passed HERE and NOT at the doc-only PR
+    # gate: this is the freshness question. See `affects_test_outcome`.
+    coupled = coverage_algebra.suite_coupled_files(
+        changed, suite_coupled_prefixes(project_dir / ".prawduct")
+    )
+    if coupled:
+        preview = ", ".join(coupled[:3]) + ("…" if len(coupled) > 3 else "")
+        return False, f"{len(coupled)} suite-coupled path(s) {differ} ({preview})"
     return True, f"{clean} ({len(changed)} metadata/doc file(s))"
 
 
@@ -358,6 +436,20 @@ def _validate_evidence_schema(evidence: dict) -> tuple[bool, str]:
         return False, (
             f"evidence schema violation: coverage_level must be one of "
             f"{{{allowed}}}, got {level!r}"
+        )
+
+    # ``degraded`` carries its own reason — the field IS the flag, so a blank
+    # one is the same defect an absent reason would be: a record that says the
+    # run did not cover what it claims and cannot say how. Refused rather than
+    # ignored, because a reader that skipped a blank flag would read the run as
+    # clean, which is the exact outcome the field exists to prevent. Type is
+    # already known good (str) — the wrong-type loop above returns first.
+    degraded = evidence.get("degraded")
+    if isinstance(degraded, str) and not degraded.strip():
+        return False, (
+            "evidence schema violation: degraded must carry a non-empty reason "
+            "saying what the run did not cover (omit the field entirely for an "
+            "ordinary run — its presence is the flag)"
         )
 
     return True, ""
@@ -1027,7 +1119,8 @@ def _critic_session_satisfies_gate(project_dir: Path) -> tuple[bool, str]:
        (or no review fact exists — nothing to judge) → satisfied.
     """
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
-    total, complete = buildplan_refs._count_build_plan_chunks(prawduct_dir)
+    plan_path = buildplan_refs.resolve_branch_plan(project_dir, prawduct_dir).path
+    total, complete = buildplan_refs._count_build_plan_chunks(prawduct_dir, plan_path)
     if total == 0:
         return True, ""
     if total == 1:
@@ -1227,6 +1320,13 @@ def validate_evidence(project_dir: Path) -> int:
     without the freshness comparison ``test-status`` performs. Returns
     exit 0 only when the file exists, parses, and matches the required
     schema; exit 1 otherwise.
+
+    **Schema-valid is not gate-passing, and a degraded record is where the two
+    part company most sharply**: it is a well-formed record of a run that did
+    not cover what its counts imply, so it is valid here and refused by both
+    evidence readers. The success line names the flag rather than printing a
+    bare ``valid``, so a caller that only reads this output cannot mistake a
+    well-formed degraded record for a healthy one.
     """
     evidence_path = gitstate.get_prawduct_dir(project_dir) / ".test-evidence.json"
     if not evidence_path.is_file():
@@ -1244,7 +1344,11 @@ def validate_evidence(project_dir: Path) -> int:
     if not ok:
         print(f"invalid: {err}", file=sys.stderr)
         return 1
-    print("valid")
+    degraded = evidence.get("degraded")
+    if isinstance(degraded, str) and degraded.strip():
+        print(f"valid, and DEGRADED: {degraded.strip()}")
+    else:
+        print("valid")
     return 0
 
 
@@ -1302,8 +1406,9 @@ def blocking_remedy_lines(unresolved: "list[dict] | None") -> list[str]:
     and the loop that actually costs rounds is fix-commit-verify per finding:
     each commit extends HEAD, so each one buys a fresh round whose demoted
     observations tempt the next fix. Fixing everything in the working tree and
-    verifying once is sound — a verify pass reads the dirty tree — and the
-    verified tree is what gets committed.
+    verifying once is sound — a verify pass reads the dirty tree so long as no
+    commit has moved its anchor, which is what the no-commit-between-fixes line
+    below buys — and the verified tree is what gets committed.
 
     Three cases, because the standard remedy is *wrong* for a superseded
     blocker: one carried by a review fact no verify-resolutions pass will
@@ -1324,9 +1429,12 @@ def blocking_remedy_lines(unresolved: "list[dict] | None") -> list[str]:
     entries = [e for e in (unresolved or []) if isinstance(e, dict)]
     standard = [
         "Fix ALL of them in the working tree first — do not commit between fixes.",
-        "Then run ONE /prawduct:critic verify-resolutions (it reads the dirty tree)",
-        "and commit that verified tree verbatim: it records the resolution facts,",
-        "so this same evidence passes with no full re-review.",
+        "Then run ONE /prawduct:critic verify-resolutions (it reads the dirty tree",
+        "BECAUSE nothing was committed first), and commit that verified tree",
+        "verbatim: it records the resolution facts, so this same evidence passes",
+        "with no full re-review. Commit CONTENT the review has not seen and the",
+        "pass anchors HEAD instead, leaving any uncommitted fix outside it",
+        "(review-cycle.md § Verify-resolutions anchoring and demotion).",
     ]
     n = sum(1 for e in entries if e.get("superseded"))
     if not n:
@@ -1668,11 +1776,18 @@ def _cumulative_critic_verdict(project_dir: Path, read: dict, cache) -> int:
         "selective commit (only part of the reviewed state committed), the "
         "commit's tree was never reviewed — /prawduct:critic verify-resolutions "
         "reviews that delta and closes the gap. If verify-resolutions already ran "
-        "but the working tree still holds an uncommitted fix with no committed "
-        "delta, its fact anchored the WORKING tree, not committed HEAD — commit "
-        "that tree VERBATIM and the fact ends at the tree this gate targets, so "
-        "no further pass is owed. Only a selective or further-edited commit "
-        "leaves a gap to close.",
+        "but the working tree still holds an uncommitted fix, WHICH tree that pass "
+        "anchored decides what you owe. It anchored the WORKING tree unless you had "
+        "committed CONTENT the prior review never saw — a commit that materializes "
+        "the reviewed tree verbatim changes no content and does not move the anchor, "
+        "so \"did I commit at all\" is the wrong question to ask yourself here. "
+        "Working-tree anchor: commit that tree VERBATIM and the fact ends at the "
+        "tree this gate targets — no further pass is owed, and only a selective or "
+        "further-edited commit leaves a gap. Otherwise the pass anchored committed "
+        "HEAD and never saw those uncommitted files, so committing them now opens a "
+        "NEW delta that needs its own verify-resolutions pass; a dispatch that "
+        "refuses over such an interval (exit 3) names the files it left out. Full "
+        "derivation: `review-cycle.md` § Verify-resolutions anchoring and demotion.",
         file=sys.stderr,
     )
     return 1
@@ -1703,6 +1818,15 @@ def verify_coverage(project_dir: Path) -> int:
     ``coverage_level`` — ``referenced`` (floor) vs ``executed`` (real
     coverage tool) — so the Critic can quote it directly in BLOCKING
     findings without re-deriving the wording.
+
+    **A ``degraded`` record is not refused here, deliberately**, though both
+    evidence readers refuse it. At ``referenced`` level this check asks whether
+    a changed file is NAMED by a test, which the symbol-grep overlay derives
+    from the tree — so which tests actually executed cannot change the answer,
+    and refusing would report a failure this check did not find. The reasoning
+    does not survive a ``coverage_level: executed`` verifier, whose evidence is
+    execution: no in-plugin writer emits that level today, and the day one does
+    is the day this needs to ask.
     """
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     state_path = prawduct_dir / "project-state.yaml"
@@ -1763,9 +1887,20 @@ def verify_coverage(project_dir: Path) -> int:
         f for f in changed
         if f in unjudged or not (project_dir / f).is_file()
     ]
+    # Nothing can execute a prose file, so demanding an executing test for one
+    # buys a token reference-test and nothing else (COV-8R2K). Reported like
+    # `skipped` rather than gated, and asked of
+    # `coverage_algebra.is_executable_path` — the one predicate — so this stays
+    # a reading of the CRT-5D8Q boundary rather than a second file-type table
+    # beside it. `skipped` keeps precedence: a file the verifier disclaimed is
+    # out of jurisdiction whatever its suffix.
+    nonexecutable = [
+        f for f in changed
+        if f not in skipped and not coverage_algebra.is_executable_path(f)
+    ]
     missing = [
         f for f in changed
-        if f not in referenced and f not in skipped
+        if f not in referenced and f not in skipped and f not in nonexecutable
     ]
     if skipped:
         print(
@@ -1773,10 +1908,18 @@ def verify_coverage(project_dir: Path) -> int:
             f"judgment (changes_unjudged / deleted) — reported, not gated "
             f"(level: {coverage_level})."
         )
+    if nonexecutable:
+        preview = ", ".join(nonexecutable[:3]) + (
+            "…" if len(nonexecutable) > 3 else ""
+        )
+        print(
+            f"note: {len(nonexecutable)} changed file(s) no test can execute "
+            f"(prose / framework state) — reported, not gated ({preview})."
+        )
     if not missing:
         print(
-            f"ok: {len(changed) - len(skipped)} judged changed file(s) covered "
-            f"(level: {coverage_level})"
+            f"ok: {len(changed) - len(skipped) - len(nonexecutable)} judged "
+            f"changed file(s) covered (level: {coverage_level})"
         )
         return 0
 

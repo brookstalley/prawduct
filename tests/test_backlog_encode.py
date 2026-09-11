@@ -116,6 +116,152 @@ class TestBlockParse:
         assert block.get("superseded_by") == "octo/repo#123"
 
 
+class TestComposeBodyMergesAnEmbeddedBlock:
+    """A filer's own `prawduct:` block survives filing instead of being buried.
+
+    THE REPRODUCTION. Filing writes a fresh `v: 1` block onto the caller's body,
+    and the caller's body is where a filer declares `related:` — the docs tell
+    them to. The old `compose_body` appended, producing two blocks; parsing is
+    last-block-wins, so the filer's fields were dropped and the loss surfaced
+    only as a warning that reads cosmetic ("carries 2 prawduct blocks; using the
+    last"). Items #690, #691 and #692 all lost their `related:` edges this way
+    on 2026-08-19, and nothing failed.
+    """
+
+    def test_a_filer_supplied_block_yields_exactly_one_block(self):
+        body = "Why this matters.\n\n```prawduct\nv: 1\nrelated: [owner/repo#7]\n```"
+        out = encode.compose_body(body, {"v": "1"})
+        assert out.count("```prawduct") == 1, (
+            f"composition emitted {out.count('```prawduct')} blocks; a second one "
+            "makes the first unreadable, because parsing is last-block-wins"
+        )
+
+    def test_the_filers_own_fields_survive(self):
+        body = "Why.\n\n```prawduct\nv: 1\nrelated: [owner/repo#7]\n```"
+        out = encode.compose_body(body, {"v": "1"})
+        # Asserted through the PARSER, not by grepping the text: the defect was
+        # that a field present in the body was invisible to the reader, so a
+        # substring check on the raw body would have passed against it.
+        assert encode.parse_block(out).get("related") == "[owner/repo#7]", (
+            "the filer's `related:` edge did not survive composition — this is "
+            "the exact loss that silently stripped #690/#691/#692"
+        )
+
+    def test_the_human_text_is_kept_once(self):
+        body = "Why this matters.\n\n```prawduct\nv: 1\nrelated: [owner/repo#7]\n```"
+        out = encode.compose_body(body, {"v": "1"})
+        assert out.count("Why this matters.") == 1
+        assert "```prawduct" not in out.split("Why this matters.")[0]
+
+    def test_two_embedded_blocks_both_survive(self):
+        """The residual loss the first fix left — and made silent.
+
+        `parse_block` keeps only the LAST block while `strip_block` removes them
+        all, so merging via `parse_block` still dropped an earlier block's
+        fields. Worse than before: composition now emits exactly one block, so
+        the downstream "carries N prawduct blocks" warning — the only signal the
+        2026-08-19 losses ever produced — could never fire again. Merging every
+        block means nothing is lost, which beats restoring a warning about a
+        loss.
+        """
+        body = (
+            "Why.\n\n```prawduct\nv: 1\nrelated: [owner/repo#7]\n```\n\n"
+            "More prose.\n\n```prawduct\nv: 1\nrefs: [owner/repo#9]\n```"
+        )
+        out = encode.compose_body(body, {"v": "1"})
+        assert out.count("```prawduct") == 1
+        block = encode.parse_block(out)
+        assert block.get("related") == "[owner/repo#7]", (
+            "the EARLIER block's field was dropped — last-block-wins reasserted "
+            "itself through the merge, and now with no warning at all"
+        )
+        assert block.get("refs") == "[owner/repo#9]"
+
+    def test_a_later_block_wins_a_collision_between_two(self):
+        """Merging all blocks must not invent a new precedence: last still wins,
+        matching `parse_block`'s own rule, so the two cannot disagree about which
+        value a body means.
+        """
+        body = (
+            "```prawduct\nv: 1\nrelated: [owner/repo#1]\n```\n\n"
+            "```prawduct\nv: 1\nrelated: [owner/repo#2]\n```"
+        )
+        out = encode.compose_body(body, {"v": "1"})
+        assert encode.parse_block(out).get("related") == "[owner/repo#2]"
+
+    def test_a_body_cannot_claim_the_attribution_stamps(self):
+        """The direction precedence alone does not cover.
+
+        An ATTENDED create passes only `{"v": "1"}`, so a body that self-declared
+        `automated: true` meets no colliding key and would survive a plain merge
+        — misattributing a human's filing to a background sweep. `automated` and
+        `worker` describe *who filed this*, which the filed text never gets to
+        assert; every other block field is the filer's to set.
+        """
+        body = "Why.\n\n```prawduct\nv: 1\nautomated: true\nworker: ghost\nrelated: [owner/repo#7]\n```"
+        out = encode.compose_body(body, {"v": "1"})
+        block = encode.parse_block(out)
+        assert block.get("automated") is None, (
+            "a body declared itself automated on an attended create — a human's "
+            "filing would be attributed to a sweep"
+        )
+        assert block.get("worker") is None
+        # The filer's own field is untouched: this strips two keys, not the block.
+        assert block.get("related") == "[owner/repo#7]"
+
+    def test_the_fresh_fields_win_a_collision(self):
+        """Precedence is not arbitrary: a body must not be able to launder an
+        unattended create into looking human. `automated`/`worker` are the
+        caller's authoritative stamps, so they override anything the body claims.
+        """
+        body = "Why.\n\n```prawduct\nv: 1\nautomated: false\nrelated: [owner/repo#7]\n```"
+        out = encode.compose_body(body, {"v": "1", "automated": "true", "worker": "sweep"})
+        block = encode.parse_block(out)
+        assert block.get("automated") == "true", (
+            "a body claiming `automated: false` overrode the caller's stamp — a "
+            "background sweep could then be misattributed to a human"
+        )
+        assert block.get("worker") == "sweep"
+        # ...and the non-colliding field still survives.
+        assert block.get("related") == "[owner/repo#7]"
+
+    def test_a_blockless_body_is_unchanged_in_behaviour(self):
+        """The path everything else already used stays exactly as it was."""
+        out = encode.compose_body("Just prose.", {"v": "1"})
+        assert out.count("```prawduct") == 1
+        assert out.startswith("Just prose.\n\n")
+
+
+class TestUpsertPreservesEveryBlock:
+    """`upsert_block_field` had `compose_body`'s defect one function over.
+
+    Same pairing: `parse_block` keeps the LAST block, `strip_block` removes them
+    all, and the result emits exactly one — so an earlier block's fields were
+    dropped AND the multi-block warning that was the only signal could never fire
+    afterwards. Swept with the `compose_body` fix rather than left for whoever
+    first sets a field on a body carrying two hand-written blocks.
+    """
+
+    def test_setting_a_field_keeps_an_earlier_blocks_fields(self):
+        body = (
+            "Why.\n\n```prawduct\nv: 1\nrelated: [owner/repo#7]\n```\n\n"
+            "```prawduct\nv: 1\nrefs: [owner/repo#9]\n```"
+        )
+        out = encode.upsert_block_field(body, "working_branch", "fix/x")
+        assert out.count("```prawduct") == 1
+        block = encode.parse_block(out)
+        assert block.get("working_branch") == "fix/x"
+        assert block.get("related") == "[owner/repo#7]", (
+            "the earlier block's field was dropped by an upsert — the same "
+            "silent loss `compose_body` was fixed for"
+        )
+        assert block.get("refs") == "[owner/repo#9]"
+
+    def test_clearing_a_field_on_a_blockless_body_stays_a_no_op(self):
+        """The guard that keeps the merge from manufacturing an empty block."""
+        assert encode.upsert_block_field("Just prose.", "related", None) == "Just prose."
+
+
 class TestBlockSerialize:
     def test_version_emitted_first(self):
         out = encode.serialize_block({"id_aliases": "[BKL-0001]", "v": "1"})

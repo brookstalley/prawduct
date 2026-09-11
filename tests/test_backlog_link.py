@@ -155,6 +155,52 @@ class TestRelated:
         block = encode.parse_block(issue["body"])
         assert block.version() == 1
 
+    def test_related_keeps_edges_from_an_earlier_block(self, fake):
+        """The read-modify-write must not disagree with itself.
+
+        `_related` writes through `upsert_block_field`, which merges every
+        block — but it used to compute the new list from `parse_block`, which
+        keeps only the LAST. So on a body whose EARLIER block carries `related`
+        and whose later block does not, the merged-in earlier value was
+        overwritten by a list that never saw it: the same silent loss the
+        writers were just fixed for, arriving through the read.
+
+        A two-block body is reachable by hand-editing an issue on GitHub, which
+        is exactly what a filer does — every writer now collapses to one block,
+        so this is the one way the state still arises.
+        """
+        a = _file(fake, title="link: the a item under test")
+        b = _file(fake, title="link: the b item under test")
+        c = _file(fake, title="link: the c item under test")
+
+        # Simulate a hand-edited body: an earlier block carrying an edge, and a
+        # later block that does not.
+        issue = fake.get_issue(OWNER, REPO, _num(a))
+        two_block = (
+            "Why this matters.\n\n"
+            f"```prawduct\nv: 1\nrelated: [{c}]\n```\n\n"
+            "More prose.\n\n"
+            "```prawduct\nv: 1\n```"
+        )
+        fake.update_issue(OWNER, REPO, _num(a), fields={"body": two_block})
+        # Guard the fixture: the last-block read must NOT see the edge, or this
+        # grades a body that never had the defect's shape.
+        assert encode.parse_block(two_block).get("related") is None, (
+            "fixture does not build the earlier-block-carries-the-edge shape"
+        )
+
+        core.link(fake, id_raw=a, edge="related", target_raw=b)
+
+        issue = fake.get_issue(OWNER, REPO, _num(a))
+        related = encode.parse_list(encode.parse_block(issue["body"]).get("related"))
+        assert b in related, "the new edge was not written"
+        assert c in related, (
+            "the earlier block's existing `related` edge was destroyed by the "
+            "read-modify-write — computed from a last-block read, written over "
+            "a merged one"
+        )
+
+
 
 class TestLinkValidation:
     def test_self_link_rejected(self, fake):

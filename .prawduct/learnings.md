@@ -1,6 +1,8 @@
 # Learnings
 
-Active rules from this project's development. Surfaced via the `/learnings [topic]` skill — topic headers shown in the session briefing for ambient context. Entries use "When X, do Y because Z" format. Each entry's full narrative lives in `learnings-detail.md` under the same heading — keep narrative THERE, not here.
+Active rules from this project's development. Surfaced via the `/learnings [topic]` skill — topic headers shown in the session briefing for ambient context. Entries use "When X, do Y because Z" format. Keep narrative in `learnings-detail.md`, not here.
+
+**How the two files pair.** A `learnings-detail.md` heading is the OPENING CLAUSE of its entry here — a *prefix* of this heading, not a copy of it. Rules get lengthened as they are sharpened and their detail headings are not always relengthened with them, so prefix is what the corpus has actually maintained; a heading claiming an exact match was asserting an invariant that never held, which is worse than no claim, because the machinery that MOVES an entry on retirement believed it and silently left the prose behind. The pairing is one-directional: every detail heading must prefix exactly one heading here, and a rule here may have no narrative at all. **Relative order is not part of it** — this file groups by topic and the detail file accretes chronologically. `prawduct-hook check-learnings-pairing` grades all of that; retired entries move to `learnings-history.md` and never come back here.
 
 <!-- prawduct:descent-obligation — the structural statement below is the HOME of the
      descent rule; `/prawduct:learnings` points here rather than restating it. Reword the
@@ -26,13 +28,34 @@ never by dropping them.
 ## RETIRED RULING (regen-views-is-advice), 2026-08-08 — subject removed, not overturned. Its generalisation was promoted onto the norm it ruled on (`architecture.md`: *a command's failure posture follows what it produces*). Kept as a heading because both norms link here — the link must find the retirement, not a 404 — [learnings-detail.md]
 <!-- anchor: regen-views-is-advice — linked from architecture.md and data-model.md Rulings: -->
 
+## When a control narrows what a REVIEWER sees, say which of the two roles it narrows — **subject** (a thing that can be wrong) or **oracle** (the authority the code is judged against) — because a file plays both parts and dropping the oracle looks exactly like the narrowing working. A measurement of what findings were *about* (36% cite only records) was applied to what the reviewer *reads*; every spec here is non-judgeable — the build plan, every artifact, `project-preferences.md` — and `goals-1-3.md` sends the reviewer to exactly those for Goal 2 coverage and norm departures, both BLOCKING. Tell: the chunk's success metric and its failure mode move the same direction, so no planned verification can separate them — the guard must assert the oracle was DELIVERED, never that the finding count fell — [learnings-detail.md]
+
+## When a long-lived branch syncs a base that moved a lot, diff the TESTS on both sides before resolving any hunk — a test states the rule the code only instantiates, so two sides that re-implemented one mechanism disagree visibly there. Tell: a hunk where both sides are coherent implementations of the same named thing — [learnings-detail.md]
+
+## When a review finds the SAME class twice, stop fixing instances and enumerate the domain — two spot fixes in two rounds is one missing act, not two mistakes. List every state the thing can be in and make each a case. Tell: your fix cites the reviewer's example — [learnings-detail.md]
+
+## Hand-verifying at the terminal leaves nothing behind — the corpus you ran the grep against IS a fixture, so make it one in the same breath. A guard warning over every repo's real data shipped with only its positive case asserted. Tell: "I checked it against the real file" with no test naming it — [learnings-detail.md]
+
+## A docstring written in the same keystroke as its code describes the design you INTEND, not the code you shipped — "the one reader", "every surface", "always". Twice in one session, both wrong when written. Before a sentence claims reach, grep for the callers; a claim about scope is checkable in seconds and unfalsifiable once it ships — [learnings-detail.md]
+
+## The prose that REPLACES a deleted control is load-bearing logic — pin every rendered branch of it. A message covering two states must be DERIVED from the state, never written for the one in mind: a sentence asserting "no plan has chunks left" met an operator whose plans had them. Tell: you changed a user-facing string and no assertion names it — [learnings-detail.md]
+
+## When prose asserts what a system DOES, make the system do it — the pin is the check, not a formality. One pass here disproved the finding that opened it, then failed against the shipped docstring and exposed a `release=` tag that merged away read by nothing. Reading cannot find either. Tell: a caveat naming a downstream catch nobody has run — [learnings-detail.md]
+
+## A zero from a scan is suspicious until the scan is shown able to return non-zero — `getattr(x, "body", "")` on a field the dataclass lacks measured nothing and reported clean. Before believing a count, feed it a case you know it should catch. Tell: a survey that confirms exactly what you hoped — [learnings-detail.md]
+
+## When scoping a NEW framework feature, list unmerged branches before writing requirements — this repo parks proposals on branches, not in the working tree, so a grep of `plugin/` + `.prawduct/` + the backlog reads as "no prior art" while a finished investigation sits one `git branch` away. `docs/remote-test-execution-proposal` had already settled the config home, the reusable-surface size and the measured concurrency shape. Tell: your prior-art search touched only paths that exist on HEAD
+
+## When you rewrite a MEASUREMENT into a BENEFIT, re-attach the number to the sentence you actually wrote — the rewrite is where a claim silently widens past its evidence, because the benefit sentence is shorter and short sentences generalize. v3.4.0 shipped *"the review gates are 57× faster"*; 57× was the gate CHECK, and reviews cost what they always did. Tell: you cannot point at the number behind the noun you just chose — [learnings-detail.md]
+<!-- anchor: benefit-framing-widens-the-claim -->
+
 ## When a criterion, plan or rule DESCRIBES an artifact, open the artifact before building to the description — it was written from a framing and inherits that framing's blind spot. "Does not touch a block carrying other keys", authored before anyone read the block, would have left 7 of 8 repos broken. Tell: you can satisfy it fully without ever reading the thing it names — [learnings-detail.md]
 <!-- anchor: build-from-the-thing-not-its-description -->
 
 ## When you retire a MECHANISM, sort its rules into three piles before deleting any — died / rewritten / **INVERTED**. "The tool is gone" reads like a licence to drop the lot, and the lesson usually outlived the tool. The third pile is the one nobody looks for and the only one that leaves a harmful rule standing. Tell: the rule is a prohibition whose reason was the tool — [learnings-detail.md]
 <!-- anchor: the-derived-views-retirement -->
 
-## When a field's ABSENCE carries the meaning, a value NAMING the absence is its opposite — and it reads as deliberate, so review cannot see it. `release=unreleased` hid a finished branch from its own release. Ask the CONSUMER, not the reader: run the probe that acts on the field. Guard by BLAST RADIUS — `status=` was guarded, `release=` (drops a whole scope) was not — [learnings-detail.md]
+## When a field's ABSENCE carries the meaning, a value NAMING the absence is its opposite — it reads as deliberate, so review cannot see it. `release=unreleased` hid a finished branch from its own release. Ask the CONSUMER, not the reader, and guard by BLAST RADIUS. **Never write "verified" against a reader-check** — it promotes a guess to a fact review reads as settled — [learnings-detail.md]
 
 ## `grep -rn <new symbol> tests/` before calling a behaviour change done — a guard with no test is one a regression deletes silently. Three rounds running found that, the last two in code written to FIX the previous instance: applying a rule to the finding in front of you is not applying it to the code you write while applying it
 
@@ -40,17 +63,28 @@ never by dropping them.
 
 ## When you TRANSCRIBE a rule between two records, its identifiers are the part that silently degrades — re-verify every field, symbol and path against the code, because a paraphrase reads exactly like a faithful copy. Copying the retire rule from build plan to change-log turned `title` into `summary`: plausible, adjacent, and wrong for the store the query runs against, so the sweep would have returned zero for every review and retired a firing control. Fifth instance of two-copies-of-one-idea on this branch and the FIRST with the plan correct and the durable copy wrong — the direction flips at transcription, so carry the *reason* alongside the token ("`title`, because a partial's `name` becomes the fact's `title`"), not the token alone
 
+## When operator prose restates a PREDICATE, diff your sentence against the rule's canonical prose statement — never paraphrase from the code you just read, because reading it correctly and summarising it wrongly are the same afternoon. #722's own fix stated the verify-resolutions anchor test as a commit-SET question ("was anything committed?") in two surfaces at once; the code compares TREES, and the two disagree on the ordinary happy path where a commit materializes the reviewed tree verbatim and moves nothing — so the correction told a builder they owed the round the branch existed to remove. `review-cycle.md` already said it correctly and was never opened. Tell: you can state the rule but not point at the sentence you got it from — [learnings-detail.md]
+
 ## Enumerate the sites answering a question by GREP, never by memory — and the grep is itself a site: it is a PREFIX of the real set wherever the code BUILDS the string rather than spelling it, or emits it somewhere the query cannot see. Widen it until it is falsifiable, then have someone else run it
+
+## A green read off a PIPELINE is the last stage's verdict, not the suite's — `pytest ... | tail` reports `tail`'s exit: 0 whether the run passed or failed. Redirect to a file and read the command's own `$?`. Tell: you called a baseline green from a piped run and never saw a count. It costs a cycle, because every later judgement rests on a baseline that certified nothing.
+
+## A guard's TOLERANCES belong to the path it was written for — when you reuse one on a new path, port what it was PAIRED with or re-derive whether it still holds. What it deliberately lets through is invisible at the call site and reads as safe. Tell: you reused a `check_*` and wrote no transform beside it. Second instance on one seam is a signal about the seam — [learnings-detail.md]
 
 ## A fix ships TWO artifacts that can independently be false — the change, and the evidence that it works. This branch put every defect in the second: a test that could not see the bug it pinned, then a comment asserting the rule its own assertion disproves. When you fix something, sweep the NEIGHBOURING PROSE in the same pass, or a reviewer finds it one comment at a time
 
+## A mutant that SURVIVES on code you just wrote is a claim about the CODE, not the test — before writing a test to kill it, ask which existing branch already answers that case. Tell: no fixture makes the guarded and unguarded versions differ, which is unreachability, not coverage. Delete the guard; pin the GUARANTEE, not the mechanism — [learnings-detail.md]
+
 ## A mutation test is only evidence if the MUTANT IS THE DEFECT — hand-reverting to "something wrong" tests nothing. Restore the code that actually shipped the bug, gate conditions included: drop a guard the real defect sat behind and the test exercises a path the bug never reached, passing against the very code it was written to catch. And mutate each independently falsifiable CONJUNCT, never the guard as a unit: a compound condition is N guards wearing one name, and `A and B` reverted whole goes red on A's test while B stays unpinned. `anchor_is_ahead`'s second conjunct could be deleted with the entire suite green, because every existing fixture agreed on both sides of it — the absent case was the one the conjunct existed for
+<!-- prawduct-learning: confirmations=2; created=2026-08-18 -->
 
 ## A `[DECISION]` block is a CLAIM ABOUT THE CODE and carries a test's verification duty — but nothing checks it, so re-derive it from the implementation before writing the next record that cites it. Records written FROM a decision rather than from the code all agree with each other and all disagree with the tree: "binary identity, not version equality" went into a decision block, a deliverable, two docstrings and a change-log draft while the code read `$CLAUDE_PLUGIN_ROOT` — five mutually-consistent records, one implementation, no overlap. The tell is copying a claim forward from the previous record instead of opening the mechanism; the mechanism's own docstring said it preferred the env var, and it had been read earlier in the same session. Corollary: tests written from the same mental model inherit its blind spot — the first matrix here varied only the env var, so it could not have discriminated the two implementations it was written to distinguish
 
 ## When you cite a precedent, COPY ITS TEST FILE FIRST — a module that says "shape mirrors X" and does not mirror `test_X.py` has borrowed the design and left the coverage behind, and the gap is invisible because the code looks right. Twice in one chunk: a new hook subcommand modelled on `learnings-obligation` shipped ~50 untested lines (both exit-code mappings, the confirmation block, `--json`, unknown-arg, the dispatch arm) because that precedent's `TestCommand` was never carried across; then the failure policy added to CLOSE that finding shipped untested too, because the same precedent's monkeypatched-writer test was also left behind. The precedent's tests enumerate the branches its design creates — that is most of what makes it a precedent worth citing. Open `test_<precedent>.py` and port its cases before writing your own
 
-## When a predicate's job is to classify REAL artifacts, at least one test must read the real artifact — a fixture you wrote encodes your belief about the input, so it can only ever confirm that belief, and a suite made of them is green precisely where the belief is wrong. Widening a norm-detection guard, I wrote TWO over-fire fixtures aimed at exactly the failure that shipped, and never opened `templates/project-preferences.md`: it ships illustrative rows whose cells are non-empty placeholders, which `init_product` copies verbatim, so the guard fired on every freshly-onboarded repo while both fixtures passed. Pin the artifact and the predicate against EACH OTHER (read through `core.TEMPLATES_DIR`), or they drift apart the moment either moves. Mutation testing does not cover this — it probes the line you wrote, and says nothing about inputs you never supplied
+## When a predicate's job is to classify REAL artifacts, at least one test must read the real artifact — a fixture you wrote encodes your belief about the input, so it can only ever confirm that belief. Pin artifact and predicate against EACH OTHER. Tell: you grepped the real corpus to WRITE your fixtures — that grep proved it walkable, so walk it — [learnings-detail.md]
+
+## A comment that NAMES a new failure mode owes a test in the same commit — write the sentence and you can write the assertion; unasserted, the comment reads as though the case were handled. Widening what an input may BE changes every branch consuming it: re-read the function, not the line. Tell: a comment describing a case, no test for it — [learnings-detail.md]
 
 ## A dry run that validates IDENTICALLY to the real run is not a safety device — it is where drift hides, because it reports clean while the artifact it checks rots. Delete the mode and always write. Tell: the check and the real command share a validation path and differ only in whether they persist
 
@@ -59,6 +93,12 @@ never by dropping them.
 ## Under a single-parent promotion model, "did this ship?" is a question about TREE CONTENT and never about ancestry — `git tag --contains` cannot return a positive answer for any scope, so it fails as a confident false negative, and the content test needs a control that fails plus a functional-surface target
 
 ## The fix for a review finding needs the same adversarial pass as the original work — dispatch a delta review of the fix commit, because "I am correcting a known defect" feels like lower-risk work than writing new code and the verification reflex relaxes exactly where the last round proved it shouldn't. **A fix commit is a code commit**: everything the chunk protocol demands of new code — a test, red-verified, in the same pass — applies unchanged to code written to close a finding, and applies MORE, because that code is written under time pressure and never gets a chunk review of its own. A reader guard added to close a utf-8 round-trip finding shipped with no test at all and the suite stayed green, because on a UTF-8 host the guard is a no-op; the delta review caught it. Third under-tested guard on one branch — an unpinned conjunct, a fixture that could not reach the guard it named, then this — so the failure is not the rule being unknown but the *reflex* not firing on correction work
+
+## When a guard is about WHERE something may appear, assert the COUNT and scan from the end the PARSER reads — an assertion pointed at the other end finds the genuine structure sitting after the forgery and calls it clean. A marker test slicing `rindex(fence)` passed on a body whose FIRST opener had hijacked the parse. Tell: your guard says "first" and your test slices from the last
+
+## Check WHICH interval the Critic mode takes — they differ and both fail silently. `chunk` is HEAD-tree → working tree, so committing first reviews an EMPTY interval; `cumulative` is a COMMIT RANGE, so NOT committing first reviews everything except your work. Only the Signals interval line says which. Tell: you took the mode from the plan without asking what tree it reads — [learnings-detail.md]
+
+## Adding an op whose NAME EXTENDS an existing one silently widens every prefix-matching grant and guard naming the shorter one — Bash grants are prefix matches, so `file-upstream` inherited `Bash(... backlog file*)` no-prompt with all three grant tests green. Ask those guards by rule over the dispatcher's own op set, never over today's names. Tell: your new op shares a prefix with a granted one
 
 ## A background agent's liveness is answered by ITS OWN completion signal, never by reading the files it is midway through writing — a death verdict from a directory listing is how a re-dispatch clobbers a live review. And the grep that "confirms" it may be matching the failure mode's own DOCUMENTATION, which feels exactly like verification
 
@@ -73,6 +113,8 @@ never by dropping them.
 ## A NEGATIVE assertion forbids everything its wording matches, not the one thing you meant — match the exact string that carries the behaviour you are excluding, because a loose phrase quietly outlaws any OTHER output containing it, and the test then pins that deletion as if it were the requirement. Always pair it with a POSITIVE assertion for the behaviour that must survive
 
 ## Apparent duplication across governing docs may be the RECEIPT for a token budget already paid — check for a pinning test before cutting it, never fund a budget by moving prose between files, and raise the ceiling rather than spend redundancy twice
+
+## Ratcheting the ceiling is part of a cut, not a follow-up — when a trim lands under a HARD budget, lower the ceiling in the same commit, because the drift pin only asks the next editor to update the READING while the ceiling is the only thing that refuses the spend; unratcheted slack is a loan the next edit collects silently and green. Corollary for the builder: a slack you flagged to the owner as a scope question is one you have already priced as optional — if it protects the win the chunk just took, take it. **Re-offended 2026-09-08**, so assert BETWEEN the two tables (`ceiling == reading + 1`): a pin watching one cannot see the other left behind — [learnings-detail.md]
 
 ## Justify at the ALTITUDE OF THE DECISION, never the mechanism — a mechanism claim carries the same verification duty as the instruction it supports but escapes the check by reading as commentary. Test: must the reader reason PAST this instruction? No → mechanism is liability; yes (a norm, a recorded decision) → verify it like code. Same species as over-precise counts. Altitude, never omission
 
@@ -124,6 +166,8 @@ never by dropping them.
 
 ## When writing a durable artifact (code comment, docstring, long-lived spec), never anchor its meaning to an ephemeral build identifier — carry the *why* inline, because build plans are deleted after completion and every project has many "chunk 03"s
 
+## When a durable prose surface holds both released and UNRELEASED sections, "it is history, leave it" is a per-SECTION test, not a per-file one — an unreleased section states pending claims, so a bundle that retires a vocabulary its own unreleased notes announce ships a consumer-facing banner contradicting what it shipped. Tell: a rationale that spares a file by its GENRE ("that's a changelog") rather than by its section's release state
+
 ## A red version/release-hygiene test on a feature branch is often a branch-STALENESS symptom, not a doc defect — check distance from the integration branch before patching the changelog
 
 ## When `check-cumulative-critic` reports `uncovered` on a branch whose code you know was reviewed, suspect a stale base before running a fresh review — the gate anchors to `origin/<base>` by design, so unpushed integration commits drag already-shipped work into the required span
@@ -136,7 +180,7 @@ never by dropping them.
 
 ## When the success path threads advisory/audit data through a result envelope, add it to EVERY error-return path too — in an envelope-heavy codebase the error return is built by a *different* constructor (here `core.from_transport_error` vs `core.ok(data, warnings)`) that has no slot for the field and silently drops it; the damage is permanent, not cosmetic, when the datum is one-shot (a self-heal audit line that won't re-run on resume, so it can never be re-emitted). Second instance of this class in backlog-service import (BKL-3K9N rate-limit path, BKL-9V2W TransportError path — both funnel through one outer `except`). Grep the error/exception returns whenever you enrich a success envelope.
 
-## When designing any flow step that records status or bookkeeping, make it ride IN the PR that does the work — a step that can only run post-merge on the integration branch is structurally broken for protected-branch consumers
+## When designing a flow step that records status or bookkeeping, make it ride IN the PR that does the work — a step that can only run post-merge on the integration branch is structurally broken for protected-branch consumers. Exception: bookkeeping that is not a commit. An API status change has no branch to ride, so run it AT the merge, before the artifacts recording the debt are deleted.
 
 ## When a governance checkpoint verifies a required side-effect happened, put it OUTSIDE the control flow that produces the side-effect — a check inside the fallible flow can't catch that flow's own skip
 
@@ -260,7 +304,7 @@ never by dropping them.
 ## Shared "answer" state and personal "nag" state belong in separate stores
 
 ## Framework ownership follows the write strategy, not just registry membership
-<!-- prawduct-learning: confirmations=1; created=2026-05-19; sentinel=tests/test_prawduct_sync.py::TestAutoCommitSafety::test_user_authored_place_once_edits_treated_as_wip -->
+<!-- prawduct-learning: confirmations=1; created=2026-05-19 -->
 
 ## A leftover marker is not an in-progress signal — and a test using the canonical marker leaves the real-world branch untested
 
@@ -270,19 +314,11 @@ never by dropping them.
 
 ## Dogfooding the generator on its own output masks output-relative bugs the real consumer would hit
 
-## Relocating a source file: sweep every READER of the old path, not just the data-key references
-
 ## A review's "inert / harmless" verdict on a latent bug is conditional on the current call graph
 
 ## Excising a subsystem silently kills the incidental work it happened to host — re-home the orphaned call, and test the positive
 
 ## A deletion's SURVIVORS owe new coverage when their behaviour changed — the deleted thing's tests dying correctly is a different question
-
-## A "renders-but-doesn't-resolve" leak is a SURFACE, not a line — sweep the whole renderer and assert the bad form is ABSENT
-
-## An "assert the bad form is ABSENT" sweep is only as good as the pattern that defines the bad form — enumerate the whole FORM-FAMILY, not one spelling
-
-## An untested governance bound rots silently across a migration — sweep the guards (with tests), not just the prose
 
 ## In a leaf-first decomposition, dependency-scan a chunk's COMMAND bodies against later-chunk symbols before moving — and never move a parity-pinned mirror just because a deliverable lists it
 
@@ -294,7 +330,7 @@ never by dropping them.
 
 ## A persisted schema's requirements are its consumers' future queries — lock-in is reversal cost, not LOC, so "small format" never exempts it from decision research
 
-## Test-evidence freshness is `test-status` (session timestamp) ONLY — `git_sha` was retired as misleading (TST-4K2P)
+## Test-evidence freshness is the `test-status` exit code ONLY — never a commit/SHA field (`git_sha` retired as misleading, TST-4K2P); what that code composes has grown (session timestamp, the relax-only tree-validity clause, and the record's own `degraded` flag), so read the gate, not a remembered rule
 
 ## A cross-cutting concern can be UNCOVERED even when discovery names it once — audit the coverage matrix for "named-but-dropped", not just "absent"
 
@@ -342,7 +378,7 @@ never by dropping them.
 
 ## "Advice fails soft" is not "advice fails silent" — a degraded advisory path must still name its consequence, or it manufactures the false success it was meant to prevent
 
-## A fix lands at the instance a review named; the defect lives in the class — so before closing a finding, name the class and route it through one owner, because every local fix looks complete from inside itself
+## A fix lands at the instance a review named; the defect lives in the class — state why it broke in one sentence; if that sentence does not name the site you fixed, it defines the class, whose members sit OUTSIDE your diff and stay invisible. Route it through one owner, not a longer list. Tell: several findings share one sentence; your fix is one row — [learnings-detail.md]
 
 ## A CLI on `$PATH` is a different checkout from the worktree you are editing — an interactive command's exit code is not verification evidence for a change to that command
 
@@ -354,13 +390,23 @@ never by dropping them.
 
 ## When a triggered job must observe a state that a LATER step creates, you have found a RACE, not a certainty — the ordering argument yields the hazard and only the wall clock yields the verdict, so read the dispatch/observation/conclusion timestamps before writing EITHER outcome into a durable document. v3.2.4's release plan asserted the tag-push `verify-release` job was "red by construction" because the GitHub Release is published one runbook step later; it went GREEN — runner spin-up plus `checkout` burned the first 11s of a 20s job while the publish landed at +11s, winning by ~9s. Same root as the rate-ceiling rule above: the mechanism was reasoned about and never given a number. And a race that usually passes is a WORSE finding than the deterministic red, because a deterministic red gets fixed and an intermittent one gets learned as noise — so the wrong prediction would have buried the more valuable result, not merely mis-stated it
 
-## When you change a MECHANISM, cascade-search the CLAIM as well as the code — grep the tokens you edited and you find every site that runs the old procedure, but not the prose that merely DESCRIBES the old behaviour, which shares no token with it. Fixing the tag/publish order caught both runbooks and the process doc via `git tag`/`gh release create`; the Critic then found a stale "on every tag push" in `architecture.md`, a superseded command in a historical release plan, and one doc asserting flatly what another hedged — none reachable from the command strings. Search for what the system is said to DO, in the vocabulary a describing sentence would use
+## A chunk boundary defers a DELETION, never a CORRECTION — when your chunk falsifies a sentence whose surface the plan assigned to a later chunk, fix the falsehood NOW and leave only the removal. A claim's home and its truth-condition are different things: a plan listing a file under Chunk 02 said where the prose lives, not when it stopped being true
+
+## A comment reasoning about a CONDITION binds every branch that condition reaches, not the one you were writing — when you justify how a branch handles a degraded input, walk the sibling branches before moving on, because the reasoning is about the input and stopping writing is not evidence you stopped needing it. Tell: the comment names a condition ("a failed sync still answers ok") inside one arm of an `if` — [learnings-detail.md]
+
+## A lint that SKIPS what it cannot statically read needs a companion asserting everything is readable — otherwise it degrades silently into approval the first time someone hoists a string into a constant or behind a helper, which is ordinary refactoring instinct and invisible in review. Write the companion in the same commit as the lint; a "today nothing does this" comment is the version that fails
+
+## When you change a MECHANISM, cascade-search the CLAIM, not just the code — edited tokens find every site that RUNS the old procedure, never the prose that DESCRIBES it. Enumerate the claims FIRST, **plural**: a change usually falsifies more than one, and cascading the one your plan named leaves the rest standing. Tell: you can state the claim you searched for in the singular — [learnings-detail.md]
 
 ## A durable record inherits the confidence of its DERIVATION, not the authority of its author — before propagating a claim out of an issue comment, release plan, or prior reflection, check the mechanism it rests on, exactly as you would a claim you generated. #581's disposition read a tag-push CI run as proof that workflows resolve from the tagged commit's own tree; the promotion had pushed `main` first, so ordinary default-branch registration explained the run completely and the evidence isolated nothing. It was copied into the change-log unchecked because it was owner-authored and already written down. Both are the same failure the record itself was warning about: reasoning about a mechanism without measuring it
 
 ## When one fix must hold for N procedures, cost it against the WORST of them, not the one that surfaced the bug — the cheap option is usually cheap only for the case you were looking at. Narrowing the tag→publish window was defensible for the whole-develop runbook (a 9-second margin) and impossible for the pruned one, whose release notes need a hand-edit inside that same window; reading the second document before choosing is what eliminated the option that looked cheapest
 
 ## When a release has two documents tracking its state, one is already wrong — designate a single live tracker and demote the other to a decision record; and author each build chunk from the TREE, never from the upstream plan, because a plan derived from a plan describes intent the code may have overtaken
+
+## State precedence among named alternatives RELATIONALLY ("`BLOCKED` wins any overlap"), never by position ("the earlier one wins") — list order is presentational and gets reordered the moment someone improves the prose, so the ordinal inverts while every word still reads true; the tell is a worked example that is the only thing keeping the general rule honest
+
+## When a shape changes, re-read every rule that POINTED AT the old shape — one exact under the old shape ("takes the second line") degrades to a location rather than an instruction once that slot holds several meanings, and it degrades silently because the sentence stays grammatical; a presence test pinning the rule passes throughout
 
 ## When a guard test pins a safety claim, assert the PROPERTY, not one spelling of it — a test that matches a literal (an exact flag token, an exact grant string, a substring anywhere in a file) passes for every rewording of the same defect, so write the check to answer the question the property asks and verify it red against a DIFFERENT phrasing than the one that prompted it
 
@@ -372,15 +418,11 @@ never by dropping them.
 
 ## A completeness claim asserts the falsifying COMMAND now returns nothing — never a count of sites fixed, which is true of any prefix of the real set. The query is itself a mechanism and can carry the defect it hunts: normalize the text before searching, because line structure is not semantic structure, and query the CONCEPT, not the phrasings you already found wrong
 
-## A falsifying grep queries a PHRASING; only a reader queries a concept — the same stale state written in words your query does not contain is invisible, so the sites that survive a sweep are exactly the ones that paraphrase. Name the STATE being asserted, then search two or three vocabularies that share no word with each other. Tell: every hit came back in the words you typed
-
 ## Reads as evidence, is not: an absence-claim citing a path that does not RESOLVE, a missing directory returns the same empty result as the claim being true; a disposition recorded from intent, not the diff, which the next reader trusts INSTEAD of the findings; a commit crediting a backlog item by TITLE while its filed reproduction still reproduces; and a subagent's COUNT or LIST, a lead
 
 ## Green is evidence ONLY about what could have made it red — for each test name the change that would turn it red; if you cannot, it measured nothing. The fixture may never reach the subject; a constant-equality assertion survives an inverted comparison while its NAME convinces the reader it is covered. Same for a live probe: say what a FAILING run would have looked like before recording one
 
 ## A passing assertion may be satisfied by something other than the property — an unimplemented flag passes because the arg guard REJECTED it (assert success BEFORE absence); a prose SUBSTRING stays green under any longer sentence containing it (when prose changes meaning, grep tests asserting FRAGMENTS, not just failing ones); a proxy passes every test you thought to write — gate on the named event
-
-## A fixture's world is narrower than the requirement it certifies — check coverage against the requirement's stated BREADTH, not against the common instance, because a guard silently redefines the claim to its own scope and the claim then reads as verified — [learnings-detail.md]
 
 ## A test inherits inputs nobody declared and properties nothing observes — machine state, a load-dependent race in setup, and a value silent by construction, so a stage whose worth is SPEED needs a test that fails when it stops being fast. Mutation is one-directional — reverting removes the damage alongside the fix — so pair it with branch coverage of the function you touched
 
@@ -402,13 +444,9 @@ never by dropping them.
 
 ## A disposition claiming "fixed" must restate the FINDING'S OWN predicate and show it false — arguing from what the change FOUND is satisfiable by fixing an adjacent surface. If the finding says *the check cannot see X*, the closing test asserts exactly that sentence. Tell: the fix note describes what the fix caught rather than what the finding said
 
-## Scope an exemption by the PROPERTY that justifies it, not by the container it lives in — an exemption justified by *naming* a file belongs to naming forms, not to every file under that directory, and the container is one cheap generalisation away from correct while looking complete. Tell: the boundary is a path prefix while the rationale is a verb
-
 ## "Make A agree with B" has two solutions and the cheap one hands A the defects of B — an agreement criterion is satisfied by teaching A the narrower predicate, so it cannot tell correctness from consensus and goes green with both wrong together. Pin the DIRECTION separately, on a fixture from the population that predicate is worst at. Tell: every fixture sits inside its allowlist
 
 ## Citing a named procedure is a claim that you RAN that procedure — re-read the named step before citing it, because two independent recalls fire and each feels verified by the other: you reach for the test you KNOW and attach the authority you REMEMBER. A right conclusion on a substituted warrant is the durable defect, since conclusions get re-derived by the next reader and warrants get copied. Repair by running the named test, never by softening the citation
-
-## An edit that changes a COUNT or a SET falsifies every sentence stating the old one — and noticing one of them feels like completing a search rather than starting one, because the catch arrives with the satisfaction of thoroughness. The instance you found is the one you happened to be reading, not the first of an enumerated set. Grep the document for the old value before committing; prefer a relational statement ("the table's rows") over a literal count, which is the part that goes stale
 
 ## A guardrail whose anchors come from your MENTAL MODEL of a file is a second copy of the claim, not a check on it — derive them by reading the file, line by line, as you write the test, because otherwise the test encodes the same error the claim does and goes green over it. Tell: you can write the anchors without opening the file
 
@@ -420,8 +458,6 @@ never by dropping them.
 
 ## Making a capability conditional on the RUNTIME retroactively conditions every existing test whose fixture touches it — the affected set is not the set you wrote, since shared fixtures carry it into tests that never mention it. Simulate the degraded runtime over the whole file before commit; a reviewer surfaces one and it reads like the one — [learnings-detail.md]
 
-## When you add a validator because a value became DANGEROUS, sweep every existing use of that value, not the uses you are writing — the vulnerable line is already in the file and therefore not in your diff. Tell: the helper is new and you never grepped the value's other readers — [learnings-detail.md]
-
 ## When a check's subject is a SET (files scanned, paths matched, items collected), assert the set is non-empty and contains what the check names — otherwise green means "nothing was looked at", and the check passes forever
 
 ## When you add a member to an enumerated set in code (a fact kind, a waiver rule id, an exit code), the registry that DOCUMENTS that set is owed a row in the SAME commit — four went stale in one chunk, and three cost a full review round each because the gap is cheap to fix and expensive to notice
@@ -429,8 +465,6 @@ never by dropping them.
 ## A reviewer severity is a SCHEDULING decision, not just a risk rating — BLOCKING means "the tree must not move again without this", so a record gap that can ride a commit already owed is an observation; rating it BLOCKING spends a whole round on a one-row edit
 
 ## Before choosing block-vs-warn for a gate, establish WHO is at the write — a refusal in front of a human is a stop, but in front of an AGENT it is an auto-fix, and an auto-fix performed to satisfy a gate is a silent mutation nobody reviewed. Tell: you are weighing "strict vs lenient" and have not named the caller
-
-## Enumerating the surfaces a chunk EDITS is a different question from enumerating the surfaces its behaviour change FALSIFIES — only the second finds the docstring that now lies. A plan that lists the first and calls it a surface sweep misses the file the chunk never opens, which is exactly where a maintainer reads the old rule before changing a threshold
 
 ## Promoting an advisory check to blocking changes what its false positives COST, so audit them as part of the wiring — a placeholder lint matched "fix it" inside "pre-FIX IT-em" harmlessly for years, then became a false refusal on an irreversible migration. Fix the classification, never the budget
 
@@ -450,8 +484,6 @@ never by dropping them.
 
 ## A docstring stating a guarantee is an ASSERTION, not a verification — when you write a rule you know into a docstring, check the API can actually express it before believing the sentence. I wrote "the cursor is written in the same transaction as the rows it covers" *because* the learnings pass had handed me the rule, then shipped two functions each opening their own transaction; no test failed, because the chunk that had the bug degraded harmlessly and the chunk whose correctness argument depended on it was not written yet. Tell: a docstring that states a rule you were pleased to have remembered, on a guarantee no current caller exercises
 
-## A retirement ruling also retires whatever existed only to serve the retired thing, and those consequences never announce themselves — after deciding to remove a mechanism, sweep for what it was the ONLY reader of. Retiring the claim machinery silently killed the `assignee` column's only consumer, so a schema specified by a reviewed artifact would have shipped a dead field; found only by walking all fifteen consumer queries against the column list before writing the DDL. Tell: you have just accepted a removal and are moving straight to the thing that replaces it
-
 ## A number that disagrees with another number is a bug report, and "that source is stale" is the explanation that stops you reading it — chase two-digit discrepancies before explaining them away. The cache said 178 open and the session briefing said 182 pending; the snapshot genuinely WAS 27 minutes old, which made the wrong explanation available and correct-sounding. The real cause was a consumer query filtering `status = 'open'` literally and dropping `submitted`/`in-progress` — invisible to every fixture (which had no such items) and to live verification (ditto). Tell: you can name a plausible reason two counts differ without having checked that it is the actual reason
 
 ## A test written RELATIVE to the constant it polices can never detect that constant being wrong — pin the absolute value when the value is a historical fact (a version a real store was stamped with, a format that shipped), because `CONST - 1` moves with CONST and passes at every setting of it. Tell: the mutation you expected to go red stayed green
@@ -470,15 +502,11 @@ never by dropping them.
 
 ## A rule enforced only as a SIDE EFFECT of some other failure is unenforced for every change whose failure mode differs — when a rule has a real incident behind it, ask what actually caught that incident; if the answer is "something else broke loudly," the rule has no guard of its own. Tell: a mutation you expected to be caught is not, and the rule it violates has a documented past incident
 
-## Sweeping for the IDENTIFIER is not sweeping for the CLAIM — when a change makes a capability appear or disappear, grep finds the sites naming the symbol and misses the prose asserting the opposite. Ask what the change made true or false, then find who says the opposite in words. Tell: your post-change grep came back clean
-
 ## A change-log `scope=` tag comes from the PLAN you are in, never the entry above it — `check-releasability` matches it to plan frontmatter by exact string, so a copied neighbouring scope attributes your work to someone else's plan and BOTH readings stay quiet: that scope does resolve to a plan, and yours reports as pending with nothing describing it. Tell: your branch narrows an existing scope
 
 ## A pattern narrowed to kill a false positive is validated against the case that PROVOKED it — which is the one case already known — so re-run it over the whole corpus before installing it, counting what it stops matching as well as what it starts. Tell: the narrowing was "verified against this branch's real subjects"
 
 ## A new key in a shared namespace needs a collision check against real DATA before it needs a test — grep the live corpus for the name and ask what already means something by it, because a writer that strips "its own" keys silently deletes a homonym and every test you wrote for your own semantics still passes. Tell: you picked the obvious short name for a frontmatter/config/tag key
-
-## An assert-absent guard passes when the instruction is simply DROPPED — silence satisfies it by construction — so any retired-behaviour sweep needs a positive pin on each surface that must now carry the replacement, scoped to the BRANCH rather than the file, because which branch carries it is usually the whole rule. Tell: your only coverage of a governance surface is a negative grep
 
 ## A parser shared between a READER and a WRITER inverts its safety on malformed input — "assume it runs to EOF" is tolerant for a reader and "delete to EOF" for a writer, so a writer must claim nothing it cannot delimit. Tell: you reused a reporting scanner inside something that edits files
 
@@ -493,8 +521,6 @@ never by dropping them.
 ## When fixing a SILENT SWALLOW, find the frame that actually discards — it is usually one layer below where you noticed the symptom, so a report added at your call site is empty by construction and its test passes on a healthy repo. Tell: your new "problems found" list is structurally never populated
 
 ## A guard written against the EXAMPLE IN THE FINDING holds for that example and nothing else — restate the threat in your own words before coding it (`is_relative_to` is lexical, so one `..` walks through a containment check that passes the reported case). Tell: your fix quotes the report's scenario back at it
-
-## Read a review's findings for the CLASS, not the list — when four findings share a shape, fixing four instances leaves the fifth to be found by the next round. Tell: several findings could be described by one sentence
 
 ## Fix a defect at the LAYER IT WAS REPORTED AT — pinning the extracted predicate proves the predicate, not the wiring, so deleting the CLI branch leaves a lib-level test green while the reported defect returns. Tell: the finding says "at the CLI" and your new test imports the module
 
@@ -511,6 +537,10 @@ never by dropping them.
 ## Prove a new regression test DISCRIMINATES by running it against a stash of the pre-fix source — a fixture that fails one step early never reaches the subject and passes either way, which is indistinguishable from a working fix. Tell: you wrote a test for an error path and never saw it red
 
 ## A step is release-PREP only if undoing it costs nothing — if the step is what MAKES the release happen it belongs to the cut, whatever phase the checklist files it under. "Bump the version" sits under prep and is the trigger (`version` is the auto-update cache key); stripping a `— DRAFT` suffix is what makes a section publishable. Doing both while "not releasing" leaves the repo one promotion from shipping with every in-repo signal saying it already did. Tell: you are about to do a prep step you could not reverse by deleting a file — [learnings-detail.md]
+
+## When you swap a mechanism's input for a COPY of a file, ask what the original's METADATA was load-bearing for — filesystem metadata is often a protocol, so a byte-identical copy is silently NOT an identical input. `copyfile` dropped the git index's mtime, silencing git's racily-clean rule, and the tree capture could then vouch for content never on disk — [learnings-detail.md]
+
+## An exemption filter added to keep a self-referential test honest on a clean clone silently exempts every environment the subject is unreachable from — so the test is red where it can see and GREEN where it cannot, and CI, the blind one, is the copy people trust. `test_no_norm_lifecycle_advisory_fires_here_today` drops `backlog-cache-unreadable` candidates, which is correct (that condition is true about a machine, not the norms); but the backlog cache is gitignored, so in CI the probe reports unreadable instead of `stalled-transition` and the assertion passes having never reached its subject. Local 5553p/1f, CI 5554p/0f, same 5571 total. Whatever such a test exempts, assert its subject was REACHED — an exemption without a reachability assert is an environment-shaped hole. Tell: a `TestSilentAgainstThisRepo`-style test filters a candidate type whose cause is 'we could not read X', and X is gitignored — [learnings-detail.md]
 
 ## A test asserting against its OWN repo's live state pins the repo's current PHASE as an invariant — and a release is the event that ends that phase, so the suite goes red at the worst possible moment, under pressure to relax the assertion. Six `TestAgainstTheReal*` guards died together at v3.3.0 because tagging every change-log entry emptied the release-pending set and archiving every shipped plan emptied the live plan map — both steps working as designed. The guards were RIGHT (an earlier round added them to stop vacuous passes) and the release was RIGHT; they were still incompatible. Make such a test say WHICH emptiness it rejects, or it cannot tell "we just shipped" from "the join is broken". Tell: your test reads the real tree/log instead of a fixture and asserts something is non-empty — [learnings-detail.md]
 
@@ -532,15 +562,15 @@ never by dropping them.
 
 ## RULING (deprecation-requires-an-inert-retention-window), 2026-08-11 (v3.3.4) — when you retire a harness-invoked subcommand, unregister it now and keep it INERT until no supported install still registers it, because plugin pins are per-project and lazy. Settles the question `[[harness-only-removal-is-not-a-major]]` left open; the tier permission is unchanged — [learnings-detail.md]
 
+## RULING (inert-retention-cannot-be-extended-across-norms), 2026-08-26 — when the behaviour an inert-retention window would preserve IS a violation of another ratified norm, withdraw it outright, because the window's bargain is that retention is CHEAP. Qualifies `[[deprecation-requires-an-inert-retention-window]]`; requires the withdrawal to fail CLOSED — [learnings-detail.md]
+
 ## When a re-measurement CORRECTS a prior test, run it against the QUESTION, not the prior test's conclusion — otherwise each new instrument re-grades the last one's output and a wrong verdict survives every correction. Ask what the check is a fact ABOUT, then pick the unit that carries it. Tell: your re-measurement reuses the previous framing — [learnings-detail.md]
 
-## Copying a fix into a sibling procedure is a NEW change needing its own analysis — two documents share a paragraph, not their invariants, so one edit can repair one and break the other. Ask which invariant made the original wrong and whether it holds next door. Tell: you fixed one file and grep found the same lines elsewhere — [learnings-detail.md]
-
-## Unit tests built from a feature's OWN subject cannot catch a WIDENED subject — every fixture is an instance of the thing the feature is about, so the input that breaks it is the one you had no reason to construct. Run the real command against the real repo before believing green. Tell: your feature reads whatever it is pointed at — [learnings-detail.md]
+## Copying a fix into a sibling procedure or reader is a NEW change needing its own analysis — two of them share a paragraph or a regex, not their invariants, so ask what a WRONG value COSTS at each site, because that decides the fix's shape next door. Tell: you fixed one file and grep found the same lines elsewhere — [learnings-detail.md]
 
 ## A rule that LOWERS a severity outranks every rule that raises one unless you say so — state the floor with the ceiling, in one sentence, or the suppression quietly becomes the file's highest authority. The exits that LIFT a ceiling are not the severities it must never touch. Tell: your new rule caps a severity and all you wrote next was how to escape the cap — [learnings-detail.md]
 
-## Scrub the WHOLE diff before dispatching a review, tests and their comments included — a rule you just wrote is a rule you are still violating elsewhere in the same commit, and the reviewer will find it in the place you were not looking. Tell: you scrubbed the files the chunk is "about" and not the ones it added — [learnings-detail.md]
+## Scrub the WHOLE diff before dispatching a review, tests and their comments included, and scrub a grep-able ban BY GREP — a rule you just wrote is one you are still violating elsewhere in the same commit, re-reading missed it twice on one branch, and a reviewer's list of instances is a sample rather than a census. Tell: you scrubbed by re-reading — [learnings-detail.md]
 
 ## "Fail closed" means the CHANNEL's blocking value, not merely a non-zero one — mapping every refusal to a generic error code fails OPEN wherever the contract reads a SPECIFIC code as "block". Check the contract for the surface the refusal can REACH, not the one you were writing. Tell: you wrote "a refused gate is a blocked gate" and never opened the exit-code table — [learnings-detail.md]
 
@@ -549,3 +579,73 @@ never by dropping them.
 ## A `try/except` around a producer that RETURNS its degraded states guards nothing — and the comment above it will read as if it does, so the intent survives while the mechanism does not. Read what the callee actually does on its bad paths before writing the guard, and answer the returned states where the read already is. Tell: your `except` names exception types the producer's docstring never mentions raising — [learnings-detail.md]
 
 ## A "never raises" contract is a claim about EVERY input, and the one it fails on is the one nobody constructed — `evidence.read_facts` promised a degraded-status dict, delivered one for `OSError`, and let `UnicodeDecodeError` (a `ValueError`) escape; a second module's docstring then cited the promise, and `learnings-detail.md` wrote "never raises" into the durable record, so the hole was asserted twice and checked never. Two moves: state what a producer does on its bad paths only after reading them (a record that asserts it stops the next reader from looking), and treat a fix whose reason names an exception CLASS as a class-wide finding — grep the class across every sibling reader in the same pass, or you ship the third instance in the same release that fixed the first two. Tell: your commit message states a rule ("X is a subclass of Y") and your diff touches only the call sites that were already in front of you — [learnings-detail.md]
+
+## A fallback must be checked against the SIZE of the interval it replaces, not its name — a mode name carries goal count, not span, so a demotion can hand back an interval narrower than the one just refused for being too wide. Have the refusal name the mode rather than let the reader pick. Tell: a refusal tells the caller to re-dispatch and does not say as what — [learnings-detail.md]
+
+## A correct decision defended by an unread mechanism is still a defect — when you write the *reason* for a choice ("X forces this", "that span is a superset"), open X first, because review checks the code against the claim and rarely the claim itself, so a false reason outlives the round. Tell: your justification names a gate, flag or span you have not opened — [learnings-detail.md]
+
+## A refusal predicate is not a severity predicate — a gate folding several conditions into one "cannot be trusted" answer must not also decide how hard to fail, because its mildest condition is ordinary and escalating on it punishes the common case. Split the reasons at the call site. Tell: you reached for the function whose NAME matched your sentence — [learnings-detail.md]
+
+## A clean sweep usually indicts your QUERY, not the tree — grep returns sites phrased in your words, so survivors are the ones that paraphrase, assert the opposite in prose, or say nothing (silence satisfies an assert-absent guard). Name the state the change makes true or false, search two vocabularies sharing no word, pin positively. Tell: every hit used your words — [learnings-detail.md]
+
+## Bound a class by the PROPERTY that justifies it, never by the container it sits in — a path prefix, a line range, or a fixture built from the feature's own subject each look complete while bounding the wrong set, so the claim reads as verified at the fixture's scope rather than the requirement's BREADTH. Tell: your boundary is a location, your rationale is a verb — [learnings-detail.md]
+
+## An UNEXPECTED PASS is a signal, not a result — when a change you believed would break tests doesn't, find out which branch they are on before banking it, because green usually means confirmation and here it means your fixture never reached the subject. Tell: you predicted red, got green, and explained it to yourself in one sentence without opening anything — [learnings-detail.md]
+
+## One home stops DIVERGENCE, not staleness — when you add a caller to shared copy, re-read the shared sentence AS THAT SURFACE'S READER, because a clause true of every existing caller can be flatly false at the new one and composition hands it over unexamined. Tell: you satisfied "route it through the one home" and never read the composed output — [learnings-detail.md]
+
+## When you add a rule to the site that motivated it, ENUMERATE the siblings that perform the same ACT before calling it done — a criterion can be false at a surface your chunk never opened, and listing a reader is not asking whether the change reaches it. Tell: your fix names one call site and your acceptance criterion names a class ("cannot X without Y") — [learnings-detail.md]
+
+## Re-invoking the thing you just edited verifies NOTHING in the same session — a skill body, hook payload or digest the harness loads once is served from ITS cache, so the render you are grading is the pre-edit one and a missing change looks like a working one. Verify against disk, or in a fresh session. Tell: your acceptance criterion is "run X and see the new thing" and X ran earlier this session — [learnings-detail.md]
+
+## Funding a budget by deleting what ANOTHER surface already says is only valid for readers who RECEIVE that surface — the always-injected digest covers a session's main agent and not a subagent, so a `building.md` dedup against it is a dedup for you and a deletion for the delegate, and the delegate is the reader that instruction exists for. Enumerate who opens the file before crediting the cut. Tell: your justification is "the digest states this" and the file's reader is not the one the digest reaches — [learnings-detail.md]
+
+## Adding the right rule is not the same act as DELETING the wrong one — a superseded sentence keeps governing every reader who stops at the file it lives in, and it survives most easily in the paragraph you just edited, because the diff shows you touching it and your attention is on what you added. When a rule exists because an existing one was wrong, name the wrong one and go remove it. Tell: your change adds a surface, and the sentence that caused the defect is still standing one line above your addition — [learnings-detail.md]
+
+## A mutation sweep where EVERY mutant dies on the first pass is a claim about the HARNESS, not the subject — prove it can report a survivor: assert the test RAN (return code, never a substring of output) and include one mutant you expect to live. A bad pytest flag killed every subprocess on a usage error, read as a catch — 18 of 18 from a runner that never started — [learnings-detail.md]
+
+## When editing `session-digest.md`, count CHARACTERS as well as tokens — it ships as SessionStart `additionalContext`, which Claude Code spills to a file above a hard 10,000, pinned in `test_plugin_methodology_digest.py` while the token ceilings sit in `test_v5_methodology.py`. A ceiling is policy; 10,000 is not. Tell: budget arithmetic green, never counted a character — [learnings-detail.md]
+
+## A general policy sentence is NOT evidence that a specific procedure in the same document inherits what you are adding — read that procedure end to end and ask what it RE-STATES, because restating a step it would inherit means replacing, not supplementing. Tell: you answered "does B inherit from A?" from a sentence about the class — [learnings-detail.md]
+
+## When one rule is carried by two surfaces on purpose, pin it in the module that reads BOTH — a bar reworded in one carrier is two bars for one decision, and no single-file guard sees that. Bound the assertion to the smallest region that must carry the phrase. Tell: a mutation stays green on a neighbouring sentence — [learnings-detail.md]
+
+## When a fix NARROWS a detector, the verification set must contain the TRUE POSITIVES it exists to catch, not only the false alarms you narrowed it to stop — suppressing a real detection and removing a false one read identically at the call site: zero findings. Tell: every shape you tested is one you were told was legal — [learnings-detail.md]
+
+## When a change redefines a FIELD, enumerate its READERS, not the documents that describe it — a surface list reads like completeness and is blind to the consumers comparing against the field's old meaning. Tell: your plan lists "surfaces this concept touches" and the field is a published key other modules compare against — [learnings-detail.md]
+
+## Prose about what a new guard BUYS must state its PREDICATE, not its purpose — read the guard's deliberate-exclusion tests first, the ones pinning what it does NOT cover: they are the cheapest falsifier. Motivation and extension are one word apart in English and a set apart in code. Tell: the claim turns on a term defined in BOTH code and prose, with different extensions — [learnings-detail.md]
+
+## Naming a prior fix as "the same family" IS the class finding, not a citation decorating an instance-level one — a recurrence says the FIRST fix was scoped too narrowly, so the remedy is the construction preventing both members, bounded by every site the shared predicate reaches. Tell: your note cites a prior finding as precedent and your fix touches fewer sites than it did — [learnings-detail.md]
+
+## A documented "clears when X" / "exempt when X" arm is NOT evidence X is implemented — grep the module for the mechanism before you build the fix around it. `probe_stalled_transition` documents *Clears: … or a stopgap is recorded*; `stopgap` appears in `norm_probes.py` only in comments and two operator-facing strings, and the real levers are `updated_at` and the `Status: in-transition` literal. The cost is not a wasted hour: an operator who does the documented thing watches the symptom persist, and the natural next move is whatever lever DOES work — here, touching the tracking item, which is the silent departure the norm forbids wearing compliance's clothes. A contract that teaches unworkable compliance actively routes people to the forbidden lever. Tell: prose promises a state change your fix should produce, and the symptom does not move — [learnings-detail.md]
+
+## When a fix is driven by a report's SUMMARY LIST, go back to the underlying scan before calling it complete — a summary that DEDUPES undercounts the sites needing the change, and the ones it hides are the ones nobody re-checks. The stalled-transition advisory prints one row per `(artifact, tracking-id)`; `architecture.md` held two distinct `## Direction` entries both tracking LNG-5W8R, so four printed rows meant five entries needing a stopgap. Fixing the four would have left a live norm governing new work with no exception recorded, and the advisory would have gone quiet anyway — the miss is invisible precisely because the report is satisfied. Tell: your remedy's count equals the report's row count, and you never opened the scan that produced it — [learnings-detail.md]
+
+## A fixture's world is narrower than the requirement it certifies — the COMMON instance narrows the requirement to itself, so check coverage against its stated BREADTH; the framework's OWN state stands in for the propagated contract, so assert what reaches consumer repos; one moment stands in for the procedure's transitions; and the collision case is unwritten when the fan-out key is not unique — [learnings-detail.md]
+
+## When an addition would breach a prose token ceiling, the only two moves are pay-in-place from genuine duplication or DECLARE a raise with its reason — never trim until it fits. A ceiling forces a decision; resolving it by trimming spends whichever clause is least defended, and the clause no test asserts is the expensive one. #644's new BLOCKING obligation was funded by trimming `goals-1-3.md`, and the trim took both the clause `test_record_lint` requires on every reviewer surface AND the reviewer-independence sentence nothing guarded. Tell: your diff holds a measured count constant while adding a new obligation — [learnings-detail.md]
+
+## In parallel multi-agent work the dominant integration cost is PROSE that another agent's code falsified, not merge conflicts — nine worktree-isolated agents over ~9,600 insertions produced one conflict and three stale assertions no test could catch, one of which cited the very item that falsified it (`pr/SKILL.md` said resolve-base "does not consult origin/HEAD (#254)"). File-disjointness prevents collisions; it does nothing for a claim about a mechanism someone else is concurrently changing. Tell: an agent's file set excludes the file that DESCRIBES what it just changed — [learnings-detail.md]
+
+## Archiving an unmerged branch as "intent captured in the backlog" must verify the IMPLEMENTATION landed, not that an item exists — the two are independent, and the item's own body may read past-tense as if it shipped (that is how it got archived). Nine branches were tagged in one pass; ~11,000 lines of already-Critic-reviewed work went with them, including 775 lines of tests. Tell: you are closing or archiving on the strength of a description rather than a diff — [learnings-detail.md]
+
+## A closing block asserting that state exists ONLY in context is the trigger to WRITE IT DOWN, not a mitigation — `DO NOT CLEAR` asks the user to change their behavior, while `.handoff-notes.md` (which only `/clear` consumes) is the agent changing its own, and only the second is free of their compliance. Twelve owed backlog closes were left unwritten behind an explicit warning that nothing on disk recorded them; the session was cleared and the debt survived solely because the user pasted the block back as text. Tell: your own words are "nothing else on disk records this" and you are about to end the turn — [learnings-detail.md]
+
+## A precondition recorded only in PROSE is never re-evaluated when it is discharged — wire it as the machine-readable dependency the tool already honours, because nothing revisits an item whose blocker quietly closed. Tell: you are writing "GATED by X" into a body, and nothing but a human reader will ever check X again — [learnings-detail.md]
+
+## When every test INJECTS a dependency, green says nothing about how production OBTAINS it — drive a new consumer of an existing seam once with nothing injected, asserting the seam gets BUILT, because injection makes the acquisition path untested by construction. Tell: you threaded a dependency parameter through a new arm without asking who supplies it outside the tests — [learnings-detail.md]
+
+## Defence in depth costs a test PER LAYER, not per rule — an outer pre-check short-circuits every call routed through it, so the inner copy of the same check is a mutation survivor that reads as covered; each layer needs a test entering at its own door. Tell: you skipped mutation-checking a rule because an earlier chunk verified it — on a different arm — [learnings-detail.md]
+
+## Withholding a fix to protect a review round is only correct if `cost-of-commit` PRICES it `costs-a-round` — run it on the fix's paths BEFORE deciding, because docs, artifacts and `.prawduct/` state price `free` and the round you are protecting was never owed. Tell: you are reasoning about which paths move coverage instead of asking the tool — [learnings-detail.md]
+
+## Instructions for driving code are sourced from the CODE's surface, with the design as a constraint on it — a design says what must be GUARANTEED and is silent on the states, refusal codes, envelope fields and failure modes no guarantee turns on, which is exactly where a reader meets reality. Tell: your instructions cite design sections and you never opened the handler — [learnings-detail.md]
+
+## A fix that replaces a visible placeholder with something that READS as working code can be worse than the gap it closed — an agent skill's shell state does not survive between tool calls, so a variable assigned in one block is empty in the next and every downstream guard sees well-formed-but-empty input. `<scratch>` demanded substitution; `"$SCRATCH"` looked correct and would have filed an empty issue into a repo with no delete. Pin the dangerous half, not the instructive prose, and give the pin a positive control. Tell: your fix makes an instruction look executable that previously looked like a blank to fill — [learnings-detail.md]
+
+## A reflection written at speed is a HYPOTHESIS, and re-reading your own note later feels like evidence — re-derive a diagnosis from provenance before building on it, because the mechanism freshest in context is the one you will blame. A session reflection named the doc-only fast path as the cause of a red integration branch; the actual cause was two commits pushed directly to it with CI failing unread, found only by asking the API which PR carried them. The fix built on the wrong reading would have been inert. Tell: your causal claim names the file you happened to be reading when the symptom appeared — [learnings-detail.md]
+
+## A "keep both sides" conflict resolution silently drops whatever the BASE grew in a region the branch also touched — after a large base advance, diff the merged tree against the incoming commit for CONTENT, not just for conflicts, because the loss appears nowhere in the diff you reviewed. Eight active learnings lost their narrative blocks in a 216-commit merge: present at both parents, absent at HEAD, every rule still ending `— [learnings-detail.md]`, and the merge message recorded a different, verified deletion, so the collateral set read as accounted for. `check-learnings-pairing` is one-directional and saw nothing; a Critic Records Pass found it two chunks later, one merge short of propagating to develop. Tell: you resolved conflict hunks by keeping both sides and never compared the result against the side you were merging IN — [learnings-detail.md]
+
+## A test that pins the ARITHMETIC does not pin the CALL — when a guard's value comes from a narrowing call at its call site, the test must enter at that site with an input the narrowed and un-narrowed forms answer DIFFERENTLY, or the call can be deleted with the suite green. A comment claimed a widening bound was "pinned by" a class that only exercised the predicates on hand-built lists, and the one dispatch-level test used paths BOTH predicates excluded, so removing the narrowing failed open — a partial re-review where a full one was owed — with nothing red. Tell: you are writing "pinned by <TestClass>" about a call site, and that class never invokes the function containing it — [learnings-detail.md]
