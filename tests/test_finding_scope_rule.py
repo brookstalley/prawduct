@@ -355,11 +355,18 @@ DIRECTIVES = {
 #: :func:`test_the_per_mode_load_has_a_ceiling` covers whatever `ALL_MODES`
 #: holds; a fifth mode reddens :func:`test_every_mode_has_a_ceiling` until
 #: someone decides what it may cost, rather than going quietly unmetered.
+#:
+#: `final` and `cumulative` read `review-protocol.md` and receive no directive,
+#: so their ceiling is that file's own governed ceiling — the one
+#: `test_v5_methodology.py` asserts. Pinning anything lower here would red-line
+#: on a raise that file already ratified, and anything higher would let a
+#: directive added to those modes ride in free. The two numbers move together:
+#: raising the file's ceiling there means raising this one by the same amount.
 CEILINGS = {
     "chunk": 2500,
     "verify-resolutions": 3500,
-    "final": 3900,
-    "cumulative": 3900,
+    "final": 4035,
+    "cumulative": 4035,
 }
 
 

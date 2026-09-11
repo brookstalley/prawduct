@@ -86,33 +86,39 @@ and cost the routes. That closes the only Medium item; nothing else is waiting o
 
 - [x] Chunk 01: The Scope rule reaches every mode that raises findings, and its vocabulary covers the mandated notes
 - [x] Chunk 02: The unscoped-plan blind spot gets a published fact, and its consumers state their coverage
-- [ ] Chunk 03: The base-advance transfer's silent outcome gets a voice and a falsifiable record
-- [ ] Chunk 04: A release-pending scope missing from the consumer digest is warned, advisory-only
+- [ ] Chunk 03: The base-advance transfer's silent outcome gets a voice and a falsifiable record — SPLIT OUT to `#672`, not built here
+- [ ] Chunk 04: A release-pending scope missing from the consumer digest is warned, advisory-only — SUPERSEDED by PR #734
 
-Context: **Chunks 01 and 02 are complete** (2026-08-20/21). Chunk 02 shipped as
+**This plan closes on Chunks 01–02, and the two unticked boxes stay unticked on purpose.** Chunk 03
+moved to `#672`, which now carries this chunk's text as its spec; Chunk 04 shipped on `develop` from
+another branch. Neither is work this branch owes, and ticking either would claim a build that did not
+happen here. Each chunk's own heading carries the dated reason.
+
+Context: **Chunks 01 and 02 are complete** (2026-08-20/21), and the branch then sat behind a large
+base advance before merging `develop` (2026-09-10). Chunk 02 shipped as
 `plan_index.unscoped_candidates` (the walk) + `buildplan_refs.plans_missing_scope` (the answer
 consumers call), with the shape predicate in `buildplan_refs` because `plan_index` cannot import
 it back and must stay light. **Read the three `[DECISION]` blocks in the chunk before touching
 this area** — the predicate was settled by measurement over this repo's own 91 known-real plans,
 not by taste.
 
-**Five surfaces now state their coverage**, which is more than the deliverables named and is the
-Critic's doing: `plan_backfill.survey`, the `plan-backfill` report, the dispatch gap sentence,
-`lifecycle-repair` (its own `unscoped` key plus a stale-Status walk that covers unscoped plans),
-and the release gate, which **caveats** rather than suppresses. That last one was stating
-something FALSE, not merely incomplete, and no chunk owned it.
+**Four surfaces state their coverage**, which is still more than the deliverables named:
+`plan_backfill.survey`, the `plan-backfill` report, `lifecycle-repair` (its own `unscoped` key plus
+a stale-Status walk that covers unscoped plans), and the release gate, which **caveats** rather than
+suppresses. That last one was stating something FALSE, not merely incomplete, and no chunk owned it.
+The fifth — a footnote on the dispatch gap sentence — was **retired at the base sync (2026-09-10)**
+in favour of `buildplan_refs.deliverable_check_gaps`, which `develop` added for the same reader and
+which names each scope-less plan with its remedy; see Chunk 02's dated paragraph.
 
 Three review rounds, and rounds two and three were bought by builder omissions rather than review
 churn: a class finding closed by adding call sites, one of which routed a diagnostic fact onto
 `lifecycle-repair`'s fatal `unreadable` channel (permanent `/prawduct:doctor` degraded, unclearable
-by `--apply`), shipped without consumer tests. Both fixed and mutation-pinned;
-`check-cumulative-critic` is satisfied. Suite 4961 / 0 / 11.
+by `--apply`), shipped without consumer tests. Both fixed and mutation-pinned.
 
-Next: **Chunk 03** (the base-advance transfer's silent denial). Nothing blocks it. Two things are
-worth carrying in: the cross-cutting-concerns row added here (*a scan that reports a set states
-what it could not evaluate*) records that **nothing pins that a SIXTH reported total acquires the
-obligation** — the construction R-7 asked for remains unbuilt, and finding R-1 of the last round
-was its first cost. And `.prawduct/.handoff-notes.md` carries the rest.
+Carry-in for whoever picks up the remaining thread: the cross-cutting-concerns row added here (*a
+scan that reports a set states what it could not evaluate*) records that **nothing pins that a
+SIXTH reported total acquires the obligation** — the construction the review asked for remains
+unbuilt.
 
 One item genuinely needs the owner and blocks nothing: the category ruling recorded on
 architecture.md's "every fact has one home" norm carries no owner attribution, where its two
@@ -237,6 +243,18 @@ what the headline assumption is waiting on, and it belongs in the chunk-close re
 
 ### Chunk 02: The unscoped-plan blind spot gets a published fact, and its consumers state their coverage
 
+- **RETIRED SURFACE 2026-09-10, at the base sync: the dispatch gap footnote is `develop`'s job
+  now.** While this branch sat unmerged, `develop` added `buildplan_refs.deliverable_check_gaps`,
+  which on any dispatch where no plan resolved names every scope-less plan under `artifacts/` —
+  the same population this chunk's footnote listed inside the resolution gap sentence, and with
+  the remedy attached per plan rather than summarised. The two fire on exactly the same branch, so
+  keeping both put one fact in front of one reviewer twice in one dispatch. The footnote
+  (`_unscoped_plan_suffix`) is therefore deleted and the resolution gap keeps only its own subject
+  — this scope named no plan. `tests/test_unscoped_plan_fact.py` pins the split itself: the
+  scope-less plan is named in exactly one of the two channels, and it is the one carrying the
+  remedy. `plans_missing_scope` is untouched; its other four consumers are this chunk's shipped
+  deliverable.
+
 - **Description:** `plan_index.iter_scoped_plan_candidates` yields only scope-declaring build plans
   — `if scope:` and nothing else. A plan that is perfectly readable but declares no frontmatter
   `scope:` is invisible to **every** consumer of that walk, and none of them says so.
@@ -341,6 +359,10 @@ what the headline assumption is waiting on, and it belongs in the chunk-close re
 
 ### Chunk 03: The base-advance transfer's silent outcome gets a voice and a falsifiable record
 
+- **SPLIT OUT 2026-09-10 — this chunk is not built here; `#672` owns it, and the text below is its
+  spec.** The defect is unchanged on `develop` (the denial still returns `None` and prints nothing),
+  so nothing is retired: the work moved off a plan that was otherwise ready to close.
+
 - **Description:** The transfer has three outcomes and only two of them speak.
   `gates.record_transfer_grant` records a grant, deduped by span. A *degraded* check prints "the
   base-advance transfer check could not run (…)" via `gates.transfer_remedy`. But the ordinary
@@ -403,6 +425,14 @@ what the headline assumption is waiting on, and it belongs in the chunk-close re
 
 ### Chunk 04: A release-pending scope missing from the consumer digest is warned, advisory-only
 
+- **SUPERSEDED 2026-09-10 by PR #734 (release-gate-blindness), which closed `#702`.** `develop`
+  now ships the control this chunk specified: `release_readiness._digest_advisories` reads the open
+  `## vX.Y.Z-dev` section of `plugin/CHANGELOG.md`, warns once per release-pending scope it cannot
+  find there, emits its denominator whether or not it fired, and never touches the exit code —
+  advisory by construction, which is the requirement this chunk called non-negotiable. The box
+  stays unticked because this branch built none of it. The description below is kept as the record
+  of what was asked for; `#702` is closed and must not be re-filed from it.
+
 - **Description:** `#702`, filed from the v3.4.0 cut itself: a release-pending scope can reach the
   tag with zero consumer-facing notes in `plugin/CHANGELOG.md` and no gate asks whether the digest
   covers it. At that cut, `scope=tactical-efficiency` carried nine `release=v3.4.0` change-log
@@ -453,16 +483,20 @@ lands rather than at the end of the branch.
 ## Governance Checkpoints
 
 **Commit & PR cadence:** commit per chunk after its Critic review passes (per-chunk commit is what
-scopes `chunk`-mode reviews). Chunk 04's `cumulative` review makes the branch PR-ready —
+scopes `chunk`-mode reviews). The `cumulative` review that makes the branch PR-ready is now the one
+run over the base sync (2026-09-10), Chunk 04 having been superseded before it was built —
 `/prawduct:pr create` is gated on it and runs when the user asks for a PR.
 
 - **After Chunk 01:** confirm the delivery route held. If step 0's decision cost more than the trim
   it was weighed against, stop and re-decide rather than carrying the cost into three more chunks.
   This is the plan's only real architectural fork.
-- **Before Chunk 04:** re-read what Chunks 02 and 03 shipped against this plan's claim that all four
-  are one defect class. If they are not — if "reports a subset as the whole" turned out to be a
-  narrative rather than a shared root — say so in the change-log entry rather than letting the
-  plan's framing outlive its evidence.
+- **Before Chunk 04:** *(the chunk was superseded, and this checkpoint was answered at the base sync
+  instead.)* Re-read what the built chunks shipped against this plan's claim that all four are one
+  defect class. The claim held where it was testable: Chunks 01 and 02 are the same defect — a
+  surface reporting complete coverage of something it only partly saw — and PR #734 fixed Chunk 04's
+  instance of it independently, which is corroboration rather than coincidence. Chunk 03 is the
+  weakest member: its defect is an *absent* report rather than an over-claimed one, which is why it
+  survives as its own item rather than as this plan's fourth quarter.
 
 ## Deferred, with reasons
 
@@ -484,8 +518,8 @@ say what was decided, and a build plan is the free, non-judgeable place for one.
   session. `#369`'s own title records that it had already been firing without changing behaviour. A
   fourth compaction pass is the third rework (Principle 26) — the signal is that a nudge with no
   mechanism behind it is the wrong control, and that is a design question, not a sweep.
-- **The proportionality norm's missing yield query.** Chunk 03 emits a signal that the norm's own
-  consumer — the janitor's Norm Health sweep — cannot yet read; the enabling half is tracked as
-  `LNG-5W8R`. Emitting first is still right (the record is what a later query reads, and an
-  unemitted firing is unrecoverable), but this plan does not close the loop and should not be read
-  as having done so.
+- **The proportionality norm's missing yield query.** The signal Chunk 03 specifies is one the
+  norm's own consumer — the janitor's Norm Health sweep — cannot yet read; the enabling half is
+  tracked as `LNG-5W8R`. Emitting first is still right (the record is what a later query reads, and
+  an unemitted firing is unrecoverable), but nothing here closes that loop, and `#672` inherits the
+  caveat along with the chunk.

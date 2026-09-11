@@ -247,14 +247,20 @@ class TestTheShapeSignalsCoverTheSilentlyDefeatedForms:
             )
 
 
-class TestTheGapSentenceNamesTheInvisiblePlans:
-    """`#642` cause 1 at the surface it was asked for.
+class TestTheInvisiblePlansAreNamedOnceAtDispatch:
+    """`#642` cause 1 at the surface it was asked for, carried by ONE channel.
 
     A dispatch scope that resolves to no plan produces ``chunk-ref-missing
-    unchecked`` — and the sentence explaining it gave the reader one of the two
-    explanations. "No such plan exists" and "a plan exists but declares no
-    `scope:`, so this lookup could never have found it" are different problems
-    with different remedies, and the second is the one the reader cannot deduce.
+    unchecked``, and the reader needs the second explanation — "a plan exists
+    but declares no `scope:`, so this lookup could never have found it" — which
+    is the one nobody can deduce from the failure. That sentence is
+    :func:`buildplan_refs.deliverable_check_gaps`'s: whenever no plan resolved
+    it names every scope-less plan with its remedy, which is strictly more than
+    a footnote on the resolution gap could say.
+
+    So the resolution gap reports only what it resolved. Two sentences carrying
+    one fact into one dispatch is the duplicate-report shape, and the reader
+    pays for both — these tests pin the split rather than the wording.
     """
 
     def _repo(self, tmp_path: Path, files: dict) -> Path:
@@ -262,65 +268,62 @@ class TestTheGapSentenceNamesTheInvisiblePlans:
         _tree(prawduct, files)
         return prawduct
 
-    def test_the_gap_names_a_scopeless_plan(self, tmp_path: Path) -> None:
-        prawduct = self._repo(tmp_path, {"build-plan-mystery.md": UNSCOPED_PLAN})
-        plan = buildplan_refs.resolve_reviewed_plan(tmp_path, prawduct, "mystery")
+    def _channels(self, tmp_path: Path, scope: str, files: dict) -> tuple:
+        """(resolution gap, dispatch notes) for one dispatch — the two sentences
+        a reviewer reads in the same tool result."""
+        prawduct = self._repo(tmp_path, files)
+        plan = buildplan_refs.resolve_reviewed_plan(tmp_path, prawduct, scope)
+        return plan, buildplan_refs.deliverable_check_gaps(prawduct, plan.path)
 
-        assert plan.path is None
-        assert "declare no `scope:`" in plan.gap
-        assert "build-plan-mystery.md" in plan.gap
-
-    def test_a_repo_with_none_gets_no_footnote(self, tmp_path: Path) -> None:
-        """Without this the assertion above passes on a sentence that always
-        carries the clause, and the clause would tell the reader nothing."""
-        prawduct = self._repo(tmp_path, {"build-plan-alpha.md": SCOPED})
-        plan = buildplan_refs.resolve_reviewed_plan(tmp_path, prawduct, "mystery")
-
-        assert plan.path is None
-        assert "declare no `scope:`" not in plan.gap
-
-    def test_a_resolved_scope_pays_nothing_and_says_nothing(self, tmp_path: Path) -> None:
-        """The footnote belongs to the failure branch. A resolution that found
-        its plan has no gap at all — and must not grow one, nor the walk behind
-        it, on the path every review dispatch takes."""
-        prawduct = self._repo(
-            tmp_path,
-            {"build-plan-alpha.md": SCOPED, "build-plan-mystery.md": UNSCOPED_PLAN},
+    def test_the_scopeless_plan_is_named_exactly_once(self, tmp_path: Path) -> None:
+        plan, notes = self._channels(
+            tmp_path, "mystery", {"build-plan-mystery.md": UNSCOPED_PLAN}
         )
-        plan = buildplan_refs.resolve_reviewed_plan(tmp_path, prawduct, "alpha")
 
-        assert plan.path is not None
-        assert plan.gap is None
+        assert plan.path is None
+        named_in = [
+            channel
+            for channel, text in (("gap", plan.gap), ("notes", " ".join(notes)))
+            if "build-plan-mystery.md" in text
+        ]
+        assert named_in == ["notes"], (
+            "the scope-less plan must reach the reviewer once, from the channel "
+            f"that also carries its remedy; named in {named_in}"
+        )
 
-    def test_a_long_list_is_summarised_and_says_that_it_was(self, tmp_path: Path) -> None:
-        """The gap is prose inside a reviewer's payload, so the list is bounded —
-        and the remainder is counted, because a truncation that does not say so
-        is the same silence this whole fact exists to end."""
-        many = {f"build-plan-{i:02d}.md": UNSCOPED_PLAN for i in range(9)}
-        prawduct = self._repo(tmp_path, many)
-        plan = buildplan_refs.resolve_reviewed_plan(tmp_path, prawduct, "mystery")
+    def test_the_note_carries_the_remedy_the_gap_cannot(self, tmp_path: Path) -> None:
+        """What the reader is owed is the ACT, not the diagnosis: the reason the
+        lookup could never have worked, and the three words that fix it."""
+        _plan, notes = self._channels(
+            tmp_path, "mystery", {"build-plan-mystery.md": UNSCOPED_PLAN}
+        )
 
-        named = [name for name in many if name in plan.gap]
-        assert len(named) == buildplan_refs._UNSCOPED_NAMED_LIMIT
-        assert f"and {len(many) - len(named)} more" in plan.gap
-        assert f"{len(many)} build plan(s)" in plan.gap
+        assert any("declares no frontmatter `scope:`" in note for note in notes)
+        assert any("Add `scope:" in note for note in notes)
 
-    def test_an_unreadable_artifacts_dir_degrades_to_the_bare_gap(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """A footnote on an already-reported non-answer must never become an
-        exception in the dispatch path — advice fails soft."""
-        prawduct = self._repo(tmp_path, {"build-plan-mystery.md": UNSCOPED_PLAN})
-
-        def boom(_artifacts_dir):
-            raise OSError("artifacts/ is not readable")
-
-        monkeypatch.setattr(buildplan_refs, "plans_missing_scope", boom)
-        plan = buildplan_refs.resolve_reviewed_plan(tmp_path, prawduct, "mystery")
+    def test_the_resolution_gap_states_its_own_failure(self, tmp_path: Path) -> None:
+        """The gap keeps its own subject — this scope named no plan — because
+        that is the one thing the note channel does not say."""
+        plan, _notes = self._channels(
+            tmp_path, "mystery", {"build-plan-alpha.md": SCOPED}
+        )
 
         assert plan.path is None
         assert "no build plan under" in plan.gap
         assert "declare no `scope:`" not in plan.gap
+
+    def test_a_resolved_scope_pays_nothing_and_says_nothing(self, tmp_path: Path) -> None:
+        """A resolution that found its plan has no gap at all — and must not
+        grow one, nor a walk behind it, on the path every review dispatch takes.
+        """
+        plan, _notes = self._channels(
+            tmp_path,
+            "alpha",
+            {"build-plan-alpha.md": SCOPED, "build-plan-mystery.md": UNSCOPED_PLAN},
+        )
+
+        assert plan.path is not None
+        assert plan.gap is None
 
 
 class TestTheShapePredicateAgainstTheRealCorpus:

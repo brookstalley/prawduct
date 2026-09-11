@@ -48,20 +48,27 @@ restating the numbers.
 An explicit `scope: null` — the parser's documented opt-out — is **not** reported. It is a
 declared choice, and a control that fires on one can never be settled.
 
-**Five surfaces state their coverage now** — every reader of that walk which reports a set.
+**Four surfaces state their coverage now** — every reader of that walk which reports a set.
 `plan_backfill.survey` gains `unevaluated`; `plan-backfill` names the count and the paths under
 both arms of the release-tag fork, in the same breath as the buckets rather than leaving it to
-`--json`; the "no build plan declares that scope" gap that reaches a reviewer at dispatch names
-the plans invisible to the lookup, bounded to five with the remainder counted; `lifecycle-repair`
-gains its own `unscoped` key and sentence, and its stale-Status walk now covers unscoped plans
-too, because whether a plan carries a stale derived-Status note has nothing to do with whether it
-declares a scope; and the release gate **caveats** its "no build-plan file" warning rather than
-suppressing it, since which scope an unscoped plan belongs to is exactly what nothing there can
-know. That last one was not incomplete but FALSE — it said "work is shipping with no plan
-describing it" about a plan in the same directory, which is the v3.3.4 recurrence this plan cites
-as its motivation.
+`--json`; `lifecycle-repair` gains its own `unscoped` key and sentence, and its stale-Status walk
+now covers unscoped plans too, because whether a plan carries a stale derived-Status note has
+nothing to do with whether it declares a scope; and the release gate **caveats** its "no
+build-plan file" warning rather than suppressing it, since which scope an unscoped plan belongs to
+is exactly what nothing there can know. That last one was not incomplete but FALSE — it said "work
+is shipping with no plan describing it" about a plan in the same directory, which is the v3.3.4
+recurrence this plan cites as its motivation.
 
-All five are diagnostic — no exit code moves and no gate reads any of it. That is a requirement
+A fifth surface was built and is not shipping. This branch also hung a footnote on the dispatch
+gap sentence naming the plans invisible to the lookup; while it sat unmerged, `develop` added
+`buildplan_refs.deliverable_check_gaps`, which on any dispatch where no plan resolved names each
+scope-less plan *with its remedy*. The two fire on exactly the same branch, so both would put one
+fact in front of one reviewer twice in one dispatch. The footnote is dropped, the resolution gap
+keeps only its own subject — this scope named no plan — and the test that pinned the footnote's
+wording now pins the split instead: the scope-less plan is named in exactly one of the two
+channels, and it is the one carrying the remedy.
+
+All four are diagnostic — no exit code moves and no gate reads any of it. That is a requirement
 rather than a preference, and the first attempt broke it: routing the fact onto
 `lifecycle-repair`'s `unreadable` list made it fatal and made `/prawduct:doctor` report degraded
 forever, since `--apply` cannot add a `scope:` key. A diagnostic that pins a verdict is the
@@ -70,6 +77,19 @@ forever, since `--apply` cannot add a `scope:` key. A diagnostic that pins a ver
 Riding this commit: the per-mode payload meter added by the previous entry now derives each mode's
 directive set from the dispatch it actually ran, and its ceilings are keyed by mode, so a fifth
 mode or a fourth directive is metered rather than skipped.
+
+**What the base sync settled about the rest of the plan** (2026-09-10, merging 333 commits of
+`develop`). Chunk 04 — warn when a release-pending scope is absent from the consumer digest —
+shipped on `develop` from PR #734 as `release_readiness._digest_advisories` and closed #702, so it
+is superseded rather than built here. Chunk 03 — the base-advance transfer's silent denial — is
+unchanged on `develop` and moved to #672, which now carries the chunk text as its spec. The plan
+closes on Chunks 01–02 with both boxes unticked and the reason under each heading.
+
+The meter's own ceiling for `final` / `cumulative` moved 3900 → 4035, and the number is not this
+branch's to spend: `review-protocol.md` grew on `develop` under its own ratified ceiling, which is
+the figure the per-mode meter now tracks for the two modes that read that file and receive no
+directive. Pinning below it would red-line on a raise the file already ratified; pinning above it
+would let a directive added to those modes ride in free.
 
 ## 2026-08-20: the finding-scope rule reaches the two modes whose payload had no room for it
 

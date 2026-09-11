@@ -853,8 +853,7 @@ def resolve_reviewed_plan(
                 "none",
                 f"the dispatch names scope {scope!r} but no build plan under "
                 "artifacts/ declares it — grading this repo's active plan "
-                "would grade a different subject"
-                + _unscoped_plan_suffix(prawduct_dir),
+                "would grade a different subject",
             )
         return ReviewedPlan(match, _repo_rel(prawduct_dir, match), scope, SOURCE_SCOPE_NAMED, None)
 
@@ -885,51 +884,6 @@ def resolve_reviewed_plan(
         )
         if ambiguous
         else None,
-    )
-
-
-#: How many unscoped plans the gap sentence names before summarising the rest.
-#: The gap is prose a reviewer reads inside its dispatch payload, so an
-#: unbounded list of a repo's every scope-less plan would crowd out the finding
-#: it is a footnote to. The remainder is COUNTED rather than dropped — a
-#: truncation that does not say it truncated is the same silence one level down.
-_UNSCOPED_NAMED_LIMIT = 5
-
-
-def _unscoped_plan_suffix(prawduct_dir: Path) -> str:
-    """The scope-less plans this repo holds, phrased to follow a "no plan declares
-    it" gap — or ``""`` when there are none.
-
-    A scope that resolves to no plan has two very different explanations, and
-    the gap sentence alone gives the reader only one of them: either no such
-    plan exists, or one exists and declares no ``scope:``, so the lookup this
-    resolution is built on could never have found it. That second case is
-    `#642`'s first cause, and it reached the reviewer as ``chunk-ref-missing
-    unchecked`` with no hint of which — a check that could not run, reported in
-    a sentence that reads like a check that ran.
-
-    Computed only on this branch, which is by construction the failure branch:
-    a resolution that found its plan pays nothing, so the extra walk never
-    lands on the path the session gates are timed against.
-
-    Fails soft to ``""``. This is a footnote on a gap that is itself already
-    being reported, so an unreadable artifacts directory must not turn a
-    reported non-answer into an exception in the dispatch path.
-    """
-    try:
-        candidates = plans_missing_scope(prawduct_dir / "artifacts")
-    except OSError:
-        return ""
-    if not candidates:
-        return ""
-    shown = [_repo_rel(prawduct_dir, path) for path in candidates[:_UNSCOPED_NAMED_LIMIT]]
-    remainder = len(candidates) - len(shown)
-    listed = ", ".join(shown) + (f", and {remainder} more" if remainder else "")
-    return (
-        f". Note that {len(candidates)} build plan(s) here declare no `scope:` at "
-        f"all and are invisible to this lookup ({listed}) — if the reviewed work "
-        "belongs to one of them, adding a `scope:` to its frontmatter is what "
-        "makes it findable"
     )
 
 
