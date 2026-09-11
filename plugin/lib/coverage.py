@@ -970,31 +970,41 @@ def _entry_check_without_history(project_dir: Path) -> int:
     this format, and the last four disagreeing is what made this gate's history.
     """
     path = project_dir / CHANGE_LOG_REL_PATH
+    # The same pair `release_readiness` reads the log with: a non-UTF-8 byte is
+    # as unreadable as a missing file, and an exception escaping here would be
+    # the one verdict Step 1c cannot route.
     try:
         content = path.read_text(encoding="utf-8")
-    except OSError as exc:
+    except (OSError, UnicodeDecodeError) as exc:
         print(
-            f"no-entry: {CHANGE_LOG_REL_PATH} is untracked here (the repo "
-            f"gitignores it) and could not be read from disk either: {exc}. "
+            f"no-entry: {CHANGE_LOG_REL_PATH} is untracked here (gitignored, or "
+            f"never added) and could not be read from disk either: {exc}. "
             "Add the change-log before opening the PR.",
             file=sys.stderr,
         )
         return 1
 
+    # Only release-pending entries vouch for anything: an entry carrying
+    # `release=` shipped long ago, and a log that holds nothing but shipped
+    # entries would otherwise pass every branch forever. Same semantics as the
+    # STOP row's "scope= and no release=" the strong check enforces.
     entries = parse_change_log(content)
-    if not entries:
+    pending = [entry for entry in entries if entry.tags.get("release") is None]
+    if not pending:
         print(
-            f"no-entry: {CHANGE_LOG_REL_PATH} is untracked here (the repo "
-            "gitignores it), and the copy on disk holds no entry at all. Add a "
-            "change-log entry for this work before opening the PR.",
+            f"no-entry: {CHANGE_LOG_REL_PATH} is untracked here (gitignored, or "
+            "never added), and the copy on disk holds no release-pending entry "
+            f"({len(entries)} entr(ies), all carrying release=). Add a change-log "
+            "entry for this work before opening the PR.",
             file=sys.stderr,
         )
         return 1
 
     print(
-        f"entry-present-untracked: {CHANGE_LOG_REL_PATH} is untracked here (the "
-        "repo gitignores it), so git cannot say whether THIS branch added an "
-        f"entry — only that the log on disk holds {len(entries)}. That weaker "
+        f"entry-present-untracked: {CHANGE_LOG_REL_PATH} is untracked here "
+        "(gitignored, or never added), so git cannot say whether THIS branch "
+        f"added an entry — only that the log on disk holds {len(pending)} "
+        "release-pending. That weaker "
         "check passed. To restore the real one, track the log: `.prawduct/*` "
         "plus `!.prawduct/change-log.md` (a bare `.prawduct/` cannot be "
         "negated — git will not re-include a file under an excluded directory)."

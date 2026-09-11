@@ -478,3 +478,52 @@ def test_step_1c_does_not_route_a_verdict_the_probe_no_longer_emits():
         f"Step 1c routes verdicts the probe no longer emits: {stale}. A row for "
         "a dead verdict is an instruction that can never fire."
     )
+
+
+def test_untracked_log_that_is_not_utf8_fails_with_a_verdict_not_a_traceback(tmp_path):
+    """A non-UTF-8 byte is as unreadable as a missing file. Escaping as an
+    exception would be the one outcome Step 1c has no row for."""
+    repo = _make_untracked_log_repo(tmp_path, None)
+    log = repo / CHANGE_LOG
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_bytes(b"# Change Log\n\n## 2026-06-10: work\n\n\xff\xfe body\n")
+    _commit_file(repo, "app.py", "print(2)\n", "code change")
+    result = _run_probe(repo)
+    assert result.returncode == 1
+    assert "no-entry" in result.stderr and "could not be read" in result.stderr
+    assert "Traceback" not in result.stderr
+
+
+def test_untracked_log_holding_only_shipped_entries_still_fails(tmp_path):
+    """An entry carrying `release=` shipped long ago and vouches for nothing;
+    otherwise one old entry would pass every branch in the repo forever."""
+    repo = _make_untracked_log_repo(
+        tmp_path,
+        "# Change Log\n\n## 2026-01-01: old\n\n<!-- prawduct: scope=old | release=v1.0.0 -->\n\nBody.\n",
+    )
+    _commit_file(repo, "app.py", "print(2)\n", "code change")
+    result = _run_probe(repo)
+    assert result.returncode == 1
+    assert "no release-pending entry" in result.stderr
+
+
+def test_a_failed_tracked_probe_is_git_failed_not_the_weak_check(tmp_path, monkeypatch):
+    """`git_path_is_tracked` is three-valued so that a probe that could not run
+    is never read as "untracked": that arm must route to `git-failed` (exit 1),
+    never into the weaker on-disk check (exit 0)."""
+    import sys as _sys
+
+    _sys.path.insert(0, str(ROOT))
+    from lib import coverage, gitstate  # noqa: PLC0415
+
+    repo = _make_untracked_log_repo(
+        tmp_path, "# Change Log\n\n## 2026-06-10: work\n\nBody.\n"
+    )
+    _commit_file(repo, "app.py", "print(2)\n", "code change")
+    monkeypatch.setattr(gitstate, "git_path_is_tracked", lambda *_a, **_k: None)
+    import io, contextlib
+    err = io.StringIO()
+    with contextlib.redirect_stderr(err):
+        code = coverage.check_change_log_entry(repo)
+    assert code == 1
+    assert "git-failed" in err.getvalue()
