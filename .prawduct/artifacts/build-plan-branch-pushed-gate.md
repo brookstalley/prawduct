@@ -66,6 +66,21 @@ governed_by:
         argument gets to be tested against."
       - "state-file growth is an advisory, never a hard block → inapplicable because this
         plan writes no state file."
+  - artifact: observability-strategy
+    dispositions:
+      - "text emitted into a governed product names no prawduct-internal identifier → conforms,
+        and it is design constraint 5: every reason token is a git-domain word
+        (`unpushed-commits`, `diverged`) and no message names a fid, a plan or an internal
+        symbol."
+      - "terminal signals use the stable severity-prefix vocabulary on the right channel →
+        conforms by the gate's own channel rule rather than by the prefix list: a gate's
+        verdict is its exit code, its reason token is the prefix, the pass goes to stdout and
+        every refusal to stderr. No `CRITICAL:`/`WARNING:`/`NOTE:` line is emitted, so none is
+        mis-levelled."
+      - "the governance ledger has a single writer and agents never hand-author it →
+        LOAD-BEARING, as the constraint that decided the emission question: this gate writes no
+        ledger event precisely because it is not that writer, which is why its yield is carried
+        as a recorded bounded exception instead (§ The Yield This Gate Cannot Emit)."
   - artifact: project-preferences
     dispositions:
       - "internal `lib/` functions return dicts with status/reason rather than raising →
@@ -121,8 +136,9 @@ of them load-bearing:
   `refs/remotes/origin/<branch>` fallback, which would answer confidently about a ref nothing in
   the flow pushes to.
 
-**What this gate does NOT replace, and the file must keep saying so.** Merge Flow step 3's
-`gh pr view --json headRefOid` check covers the direction this gate structurally cannot see: the
+**What this gate does NOT replace, and the file must keep saying so.** The `gh pr view --json
+headRefOid` check in Merge Flow's *"Verify the PR's head is the commit you mean to merge"* step
+covers the direction this gate structurally cannot see: the
 remote moved and this clone does not know it (a suggestion committed on GitHub, a push from
 another worktree, a stale tracking ref). The two checks have different subjects — local
 completeness versus the PR's actual head — and a future editor reading them as duplicates and
@@ -134,11 +150,17 @@ deleting one would reintroduce half the defect. Stated in the skill beside both,
 third outcome — exit 3 — rather than folding into 0 or 1*, and the test is concrete — what would
 each folding have said?
 
-| Exit | Reasons | Why this code |
+| Exit | Which states | Why this code |
 |---|---|---|
-| 0 | `pushed` | The upstream ref resolves to exactly HEAD. |
-| 1 | `unpushed-commits`, `local-behind-remote`, `diverged`, `no-upstream` | The subject was read and the answer is "not satisfied". 1's standing remedy — push, or integrate and push — is the fix in all four, so the number carries no meaning it cannot honour. |
-| 3 | `detached-head`, `git-failed` | The subject does not exist or could not be read. Folded into 0, the gate reports "safe to merge" off a check that never ran — the defect it exists to close. Folded into 1, it hands the caller "push before merging", and there is nothing to push from a detached HEAD and no git to push it with. |
+| 0 | the branch's upstream ref is exactly its tip, or the named branch is not in this clone at all | Either way no local commit can be dropped by the merge. The second is a pass that certifies **only** that, and says so in its own message. |
+| 1 | every state that was read and is unsatisfied | 1's standing remedy — push, or integrate and push — is the fix in all of them, so the number carries no meaning it cannot honour. |
+| 3 | the subject does not exist, or could not be read | Folded into 0, the gate reports "safe to merge" off a check that never ran — the defect it exists to close. Folded into 1, it hands the caller "push before merging", and there is nothing to push from a detached HEAD, no git to push it with, and no answer from an ancestry probe that failed. |
+
+**The state names live in one place, and it is not here** — `gitstate.branch_push_state`'s
+docstring, registered at the boundary in `api-contract.md`. An earlier revision of this table
+enumerated four exit-1 reasons; the build found a fifth (`upstream-ref-missing`) and the review
+found a sixth path to 3 (unreadable ancestry), which is exactly how a derived list in a plan goes
+stale under its own chunk.
 
 All three non-zero outcomes fail closed: the item's own instruction ("fail CLOSED on every
 uncertainty — a merge that silently drops commits is worse than a false block") is satisfied by 1
@@ -213,11 +235,15 @@ the thing it names is not pinned.
   - `plugin/lib/gates.py` — `check_branch_pushed(project_dir)`: the gate. Maps state → exit code
     and prints the named reason with its remedy. Holds no git calls of its own.
   - `plugin/bin/prawduct-hook` — `cmd_check_branch_pushed` thin wrapper, the `_USAGE` entry, the
-    dispatch branch, and a `_NO_ARGUMENT_COMMANDS` row (the guard refuses arguments on the
-    caller's behalf; every sibling `check-*` gate is in that set).
-  - `plugin/skills/pr/SKILL.md` — the `allowed-tools` grant, the call in Create Step 5 (after the
-    push, before `gh pr create`), and the call in Merge Flow **step 3**, joining the existing
-    `headRefOid` check inside that step rather than becoming a new numbered step. Deliberate: this
+    dispatch branch, a `_SINGLE_POSITIONAL_COMMANDS` row (the gate takes one optional branch
+    name, so the pre-dispatch guard refuses a flag on the caller's behalf — a flag recorded AS
+    the branch name would answer about a branch nobody has, which is a *pass*), and an
+    `_EPHEMERAL_SAFE_COMMANDS` row (that list is an allowlist of provably read-only commands,
+    and an unlisted one is refused inside a disposable agent worktree).
+  - `plugin/skills/pr/SKILL.md` — the `allowed-tools` grant, the call in the Create flow's
+    *"Create PR"* step (after the push, before `gh pr create`), and the call in Merge Flow's
+    *"Verify the PR's head is the commit you mean to merge"* step, joining the existing
+    `headRefOid` check inside that step rather than becoming a new numbered one. Deliberate: this
     branch's own predecessor shipped a stale cross-reference by renumbering that flow, and the two
     checks belong together anyway — one answers local completeness, the other the PR's head.
   - `.prawduct/artifacts/api-contract.md` — the § Operations gate-list row and the third-outcome
@@ -249,7 +275,7 @@ the thing it names is not pinned.
      and the human diagnostics go to stderr.
 
 - **Tests:**
-  - integration (real bare-origin fixture) — the six states: `pushed` exits 0; a commit made after
+  - integration (real bare-origin fixture) — one per state: `pushed` exits 0; a commit made after
     the push exits 1 `unpushed-commits`; the remote ahead of local exits 1 `local-behind-remote`;
     both sides carrying a commit exits 1 `diverged`; a branch with no upstream exits 1
     `no-upstream`; a detached HEAD exits **3** `detached-head`.

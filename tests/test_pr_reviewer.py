@@ -779,29 +779,36 @@ class TestPrReviewerScoping:
     def test_merge_flow_runs_the_push_gate_alongside_the_pr_head_check(self):
         """Two checks with two subjects, pinned together.
 
-        `check-branch-pushed` is mechanical and unskippable but reads only this
-        clone's refs; `headRefOid` sees a remote that moved but is an
-        instruction. Whichever one a future editor calls redundant, half the
-        defect comes back — so the file must carry both, and the reason.
+        `check-branch-pushed` computes its verdict and fails closed when it
+        runs, but reads only this clone's refs; `headRefOid` sees a remote that
+        moved but asks an agent to compare two strings. Whichever one a future
+        editor calls redundant, half the defect comes back — so the file must
+        carry both, and the reason. Neither is unskippable: both are sentences
+        in one numbered step, and the gate's own omission is the one state it
+        cannot detect.
         """
         merge_flow = self.skill.split("## Merge Flow", 1)[1].split("## Status Flow", 1)[0]
-        assert "prawduct-hook check-branch-pushed" in merge_flow, (
-            "Merge Flow no longer runs the fail-closed push gate -- the "
-            "headRefOid check beside it is prose an agent can skip"
+        assert "prawduct-hook check-branch-pushed <headRefName>" in merge_flow, (
+            "Merge Flow must run the push gate ON THE PR'S BRANCH -- the "
+            "argument-less form answers about whatever is checked out, so on a "
+            "merge run from the base branch it reports the base is pushed and "
+            "that reads as the PR being pushed"
         )
-        assert "Neither subsumes the other" in merge_flow, (
+        assert "subsumes the other" in merge_flow, (
             "the reason the two merge-side checks are not duplicates is gone, "
             "which is what makes one of them look deletable"
         )
 
     def test_the_push_gate_is_granted_to_the_skill(self):
-        """An ungranted command is a step that cannot run. The house grant form
-        is the star ATTACHED or the bare call; this gate takes no arguments, so
-        the bare form is what it needs (`tests/test_skill_command_grants.py`)."""
+        """An ungranted command is a step that cannot run. The star must be
+        ATTACHED: the gate takes an optional branch argument, and the Merge Flow
+        passes one, which a bare grant would not cover
+        (`tests/test_skill_command_grants.py` defines the form)."""
         frontmatter = self.skill.split("---", 2)[1]
-        assert "Bash(prawduct-hook check-branch-pushed)" in frontmatter, (
-            "skills/pr/SKILL.md allowed-tools is missing check-branch-pushed -- "
-            "both flows call a gate the skill may not invoke"
+        assert "Bash(prawduct-hook check-branch-pushed*)" in frontmatter, (
+            "skills/pr/SKILL.md allowed-tools is missing check-branch-pushed* -- "
+            "both flows call a gate the skill may not invoke, and the Merge Flow "
+            "call passes the PR's branch"
         )
 
     def test_a_pushed_ref_mismatch_is_not_answered_with_force_push(self):

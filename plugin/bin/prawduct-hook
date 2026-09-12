@@ -4782,10 +4782,11 @@ def cmd_check_cumulative_critic(project_dir: Path) -> int:
     return _gates().check_cumulative_critic(project_dir)
 
 
-def cmd_check_branch_pushed(project_dir: Path) -> int:
+def cmd_check_branch_pushed(project_dir: Path, branch: str | None = None) -> int:
     """Pre-merge push-completeness gate for `/prawduct:pr`. Thin wrapper — body
-    lives in ``lib.gates.check_branch_pushed``, which documents the 0/1/3 split."""
-    return _gates().check_branch_pushed(project_dir)
+    lives in ``lib.gates.check_branch_pushed``, which documents the 0/1/3 split.
+    The optional branch is the PR's, for a merge run from somewhere else."""
+    return _gates().check_branch_pushed(project_dir, branch)
 
 
 def cmd_verify_coverage(project_dir: Path) -> int:
@@ -6567,7 +6568,7 @@ _USAGE = (
     "cost-of-commit [--json] [<paths>...]|"
     "check-operator-verification|accept-operator-verification <rationale>|"
     "verify-operator-verification <vrf-id>|"
-    "check-pr-doc-only|check-change-log-entry|check-branch-pushed|"
+    "check-pr-doc-only|check-change-log-entry|check-branch-pushed [<branch>]|"
     "check-releasability [--release vX.Y.Z]|"
     "check-plugin-active [--path P] [--context onboard|doctor] [--json]|"
     "check-learnings-pairing [--json]|"
@@ -7291,7 +7292,6 @@ def main() -> int:
 # did something.
 _NO_ARGUMENT_COMMANDS = frozenset({
     "bug-inbox",
-    "check-branch-pushed",
     "check-change-log-entry",
     "check-cumulative-critic",
     "check-operator-verification",
@@ -7333,6 +7333,7 @@ _NO_ARGUMENT_UNCHECKED_COMMANDS = frozenset({
 # passes a value starting with a dash.
 _SINGLE_POSITIONAL_COMMANDS = frozenset({
     "accept-operator-verification",
+    "check-branch-pushed",
     "verify-chunk-refs",
     "verify-operator-verification",
 })
@@ -7440,7 +7441,8 @@ def _dispatch() -> int:
     elif command == "check-cumulative-critic":
         return cmd_check_cumulative_critic(project_dir)
     elif command == "check-branch-pushed":
-        return cmd_check_branch_pushed(project_dir)
+        branch = sys.argv[2] if len(sys.argv) > 2 else None
+        return cmd_check_branch_pushed(project_dir, branch)
     elif command == "verify-chunk-refs":
         chunk_id = sys.argv[2] if len(sys.argv) > 2 else None
         return cmd_verify_chunk_refs(project_dir, chunk_id)

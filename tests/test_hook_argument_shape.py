@@ -490,6 +490,7 @@ def test_documented_invocations_are_not_refused(capsys):
         ("accept-operator-verification", ["because the screenshot matched"]),
         ("verify-operator-verification", ["VRF-001"]),
         ("check-branch-pushed", []),
+        ("check-branch-pushed", ["feature/x"]),
         ("check-change-log-entry", []),
         ("check-releasability", ["--release", "v1.2.3"]),
         ("archive-plan", ["p.md", "--state", "completed", "--release", "v1.2.3"]),

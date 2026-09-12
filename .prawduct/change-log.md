@@ -14,10 +14,16 @@ is not hypothetical: it happened the same day this shipped, to PR #803, and the 
 noticed was `git branch -d` refusing the delete afterwards, when the remedy had become a second PR
 against a protected branch.
 
-`prawduct-hook check-branch-pushed` answers it mechanically. `gitstate.branch_push_state` reads the
-branch's *configured upstream* (`%(upstream:short)`, not an assembled `origin/<branch>` — that is
-the ref an argument-less `git push` targets, on any repo whose remote is not named `origin`), and
-decides the direction from ancestry rather than from commit counts, which are for the sentence only.
+`prawduct-hook check-branch-pushed [<branch>]` answers it mechanically. `gitstate.branch_push_state`
+reads the branch's *configured upstream* (`%(upstream:short)`, not an assembled `origin/<branch>` —
+that is the ref an argument-less `git push` targets, on any repo whose remote is not named
+`origin`), and decides the direction from ancestry rather than from commit counts, which are for the
+sentence only; an ancestry probe that cannot answer is `git-failed`, never a confident `diverged`.
+**The branch argument is the subject, and the Merge Flow passes the PR's** — the argument-less form
+answers about whatever is checked out, so a merge run from the base branch would otherwise report
+cheerfully that `develop` is pushed, which is true and says nothing about the PR. A branch this
+clone does not have (a fork PR) passes with `no-local-branch`, which certifies only that nothing
+local can be dropped.
 `gates.check_branch_pushed` turns that state into an exit code and a remedy that applies to that
 shape: `unpushed-commits` says push, `local-behind-remote` and `diverged` say integrate and re-run
 the gates — never force-push, which rewrites the tree the PR review's `commit_reviewed` check

@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK = ROOT / "bin" / "prawduct-hook"
 
 sys.path.insert(0, str(ROOT))
-from lib import gitstate  # noqa: E402
+from lib import gates, gitstate  # noqa: E402
 
 
 def _git_env(repo: Path) -> dict[str, str]:
@@ -172,6 +172,21 @@ def test_branch_never_pushed_fails(tmp_path):
     assert "git push -u origin feature/never-pushed" in r.stderr
 
 
+def test_the_no_upstream_remedy_names_the_repos_own_remote(tmp_path):
+    """Not a literal `origin`. The probe reads the branch's configured upstream
+    precisely so a differently-named remote gets a real answer; a remedy naming
+    a remote the repo does not have undoes that in the one message an operator
+    is most likely to act on."""
+    repo = _repo_on_pushed_branch(tmp_path)
+    _git(repo, "remote", "rename", "origin", "upstream")
+    _git(repo, "checkout", "--quiet", "-b", "feature/elsewhere")
+    _commit(repo, "new.py", "z = 3\n", "unpushed branch")
+    r = _run(repo)
+    assert r.returncode == 1
+    assert "git push -u upstream feature/elsewhere" in r.stderr
+    assert "origin" not in r.stderr
+
+
 def test_configured_upstream_whose_ref_is_gone_fails(tmp_path):
     """The shape a branch reused after its PR merged lands in: tracking config
     survives, the remote branch does not. Kept distinct from `no-upstream`
@@ -246,4 +261,118 @@ def test_probe_counts_do_not_decide_the_direction(tmp_path):
     assert state["ahead"] == "1"
     assert state["behind"] == "0"
     assert state["upstream"] == "origin/feature/x"
-    assert state["head"] != state["upstream_sha"]
+    assert state["local_sha"] != state["upstream_sha"]
+
+
+# --- the branch argument: the merge flow's subject is the PR's branch ---------
+
+def _run_for(repo: Path, branch: str) -> subprocess.CompletedProcess:
+    env = dict(_git_env(repo))
+    env["CLAUDE_PROJECT_DIR"] = str(repo)
+    return subprocess.run(
+        ["python3", str(HOOK), "check-branch-pushed", branch],
+        cwd=str(repo), capture_output=True, text=True, env=env, timeout=30,
+    )
+
+
+def test_a_named_branch_is_the_subject_not_the_checked_out_one(tmp_path):
+    """The merge-flow defect: a merge run from the base branch asked the
+    argument-less gate, which answered about the base. Both answers are true and
+    only one is about the PR, so a green verdict read as "this PR is pushed"."""
+    repo = _repo_on_pushed_branch(tmp_path)
+    _commit(repo, "late.py", "y = 2\n", "commit after last push")  # feature/x is behind
+    _git(repo, "checkout", "--quiet", "main")
+    _git(repo, "push", "--quiet", "-u", "origin", "main")
+
+    checked_out = _run(repo)
+    assert checked_out.returncode == 0, "main is genuinely pushed"
+
+    the_prs_branch = _run_for(repo, "feature/x")
+    assert the_prs_branch.returncode == 1
+    assert "unpushed-commits" in the_prs_branch.stderr
+    assert "feature/x" in the_prs_branch.stderr
+
+
+def test_a_branch_this_clone_does_not_have_is_a_pass_that_says_what_it_certified(tmp_path):
+    """A fork PR, or one nobody here checked out. There is no local commit to be
+    dropped, so blocking would be a false block on every fork — but the message
+    must not let that read as certifying the PR head."""
+    repo = _repo_on_pushed_branch(tmp_path)
+    r = _run_for(repo, "contributor/from-a-fork")
+    assert r.returncode == 0
+    assert "no-local-branch" in r.stdout
+    assert "headRefOid" in r.stdout
+    assert "still owed" in r.stdout
+
+
+def test_a_named_detached_repo_still_answers(tmp_path):
+    """Detachment is only fatal when nothing names the subject — the argument is
+    the remedy the detached-head message offers, so it has to work."""
+    repo = _repo_on_pushed_branch(tmp_path)
+    head = _git(repo, "rev-parse", "HEAD").stdout.strip()
+    _git(repo, "checkout", "--quiet", head)
+    assert _run(repo).returncode == 3
+    assert _run_for(repo, "feature/x").returncode == 0
+
+
+# --- the two degradation paths, which no fixture can reach ------------------
+
+def test_an_unreadable_count_does_not_change_the_verdict(tmp_path):
+    """Design constraint: ancestry decides, counts only describe. The two agree
+    on every readable repo, so this is the ONLY case that tells a counts-based
+    classifier from an ancestry-based one — and `"?"` is exactly what a counts
+    comparison mis-handles, turning `unpushed-commits` into `diverged`."""
+    repo = _repo_on_pushed_branch(tmp_path)
+    _commit(repo, "late.py", "y = 2\n", "commit after last push")
+    real = gitstate._rev_count
+    try:
+        gitstate._rev_count = lambda *a, **k: "?"
+        state = gitstate.branch_push_state(repo)
+    finally:
+        gitstate._rev_count = real
+    assert state["state"] == "unpushed-commits"
+    assert state["ahead"] == "?" and state["behind"] == "?"
+
+
+def test_unreadable_ancestry_is_the_third_outcome_not_a_confident_diverged(tmp_path):
+    """`--is-ancestor` exits 0 for yes, 1 for no, and 128 (or the probe's own -1
+    on a missing binary or a timeout) for "could not answer". Collapsing the
+    third into "no" reports `diverged` — and tells the operator to integrate —
+    off a history nobody read."""
+    repo = _repo_on_pushed_branch(tmp_path)
+    _commit(repo, "late.py", "y = 2\n", "commit after last push")
+    real = gitstate._git_text
+
+    def _fail_ancestry(project_dir, *args):
+        if args[:2] == ("merge-base", "--is-ancestor"):
+            return (128, "", "fatal: could not read the object store")
+        return real(project_dir, *args)
+
+    try:
+        gitstate._git_text = _fail_ancestry
+        state = gitstate.branch_push_state(repo)
+        # The exit code is asserted UNDER the patch: outside it the ancestry probe
+        # works again and the gate correctly answers 1, which is what a check written
+        # after the `finally` would have measured.
+        exit_code = gates.check_branch_pushed(repo)
+    finally:
+        gitstate._git_text = real
+    assert state["state"] == "git-failed"
+    assert "could not read" in state["detail"]
+    assert exit_code == 3
+
+
+# --- dispatch ----------------------------------------------------------------
+
+def test_a_flag_is_refused_and_nothing_runs(tmp_path):
+    """The argument is a branch name, so a flag would have been recorded AS the
+    branch name and answered about a branch nobody has — a pass, on a typo."""
+    repo = _repo_on_pushed_branch(tmp_path)
+    env = dict(_git_env(repo))
+    env["CLAUDE_PROJECT_DIR"] = str(repo)
+    r = subprocess.run(
+        ["python3", str(HOOK), "check-branch-pushed", "--json"],
+        cwd=str(repo), capture_output=True, text=True, env=env, timeout=30,
+    )
+    assert r.returncode == 2
+    assert "Nothing ran" in r.stderr

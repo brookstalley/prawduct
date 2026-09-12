@@ -448,8 +448,26 @@ def _rev_count(project_dir: Path, range_spec: str) -> str:
     return out if code == 0 and out else "?"
 
 
-def branch_push_state(project_dir: Path) -> dict[str, str]:
-    """How the current branch stands against the ref a merge of it would take.
+def push_remote(project_dir: Path) -> str:
+    """The remote a bare ``git push`` would reach, or ``"origin"`` when it cannot be
+    derived. ``origin`` is the fallback and never the assumption: a repo whose single
+    remote is named otherwise must not be handed a remedy naming a remote it lacks."""
+    code, out, _ = _git_text(project_dir, "remote")
+    remotes = [line.strip() for line in out.splitlines() if line.strip()] if code == 0 else []
+    if len(remotes) == 1:
+        return remotes[0]
+    if not remotes or "origin" in remotes:
+        return "origin"
+    return remotes[0]
+
+
+def branch_push_state(project_dir: Path, branch: str | None = None) -> dict[str, str]:
+    """How a branch stands against the ref a merge of it would take.
+
+    ``branch`` names the subject; ``None`` means the checked-out one. Naming it is what
+    lets a merge flow ask about *the PR's* branch rather than about whatever happens to
+    be checked out — where an unscoped answer is worse than none, since a green verdict
+    about the integration branch reads as the PR being pushed.
 
     The answer a merge needs and the other gates cannot give: coverage, cumulative-Critic
     and CI all grade a ref that agrees with itself — local HEAD, local HEAD, and the
@@ -492,40 +510,60 @@ def branch_push_state(project_dir: Path) -> dict[str, str]:
         An upstream is configured but its ref does not exist here (never fetched, or the
         remote branch was deleted — the shape a reused branch lands in after its PR merged).
     ``detached-head``
-        No branch is checked out, so the question has no subject.
+        No branch is checked out and none was named, so the question has no subject.
+    ``no-local-branch``
+        A branch was named and this clone does not have it (a fork PR, a PR nobody here
+        checked out). Nothing local can be dropped by the merge, so this is a **pass**
+        that certifies only that — never that the remote head is the reviewed commit.
     ``git-failed``
         Git could not be run, or could not resolve HEAD (not a work tree, no commits yet).
 
-    Also present: ``branch``, ``upstream``, ``head``, ``upstream_sha``, ``ahead``,
-    ``behind`` and ``detail`` — each empty or ``"?"`` where it does not apply. Ancestry,
-    not the counts, decides the direction: a count that fails to read must never turn one
-    verdict into another.
+    Also present: ``branch``, ``upstream``, ``local_sha``, ``upstream_sha``, ``ahead``,
+    ``behind`` and ``detail`` — each empty or ``"?"`` where it does not apply.
+    Ancestry, not the counts, decides the direction: a count that fails to read must never
+    turn one verdict into another, and an ancestry probe that fails to *answer* (any exit
+    beyond git's own 0/1) is ``git-failed`` rather than a confident ``diverged`` — the
+    difference between "these histories disagree" and "nobody looked" is the whole reason
+    the third outcome exists.
     """
     answer = {
         "state": "git-failed",
-        "branch": "",
+        "branch": branch or "",
         "upstream": "",
-        "head": "",
+        "local_sha": "",
         "upstream_sha": "",
         "ahead": "?",
         "behind": "?",
         "detail": "",
     }
 
-    head_code, head_sha, head_err = _git_text(project_dir, "rev-parse", "HEAD")
-    if head_code != 0 or not head_sha:
-        answer["detail"] = head_err or "git rev-parse HEAD produced no commit"
-        return answer
-    answer["head"] = head_sha
+    if branch is None:
+        head_code, head_sha, head_err = _git_text(project_dir, "rev-parse", "HEAD")
+        if head_code != 0 or not head_sha:
+            answer["detail"] = head_err or "git rev-parse HEAD produced no commit"
+            return answer
+        answer["local_sha"] = head_sha
+        # `current_branch` folds a detached HEAD and an unreadable git into one `None`;
+        # the successful `rev-parse HEAD` above is what separates them, so by here
+        # `None` is detachment and nothing else.
+        branch = current_branch(project_dir)
+        if not branch:
+            answer["state"] = "detached-head"
+            return answer
+        answer["branch"] = branch
+    else:
+        ref_code, local_sha, _ = _git_text(
+            project_dir, "rev-parse", "--verify", f"refs/heads/{branch}^{{commit}}"
+        )
+        if ref_code != 0 or not local_sha:
+            # Not this clone's branch at all. Distinct from every failure above: there is
+            # no local commit that a merge could drop, which is a real answer to the
+            # question asked and the only one that keeps a fork PR mergeable.
+            answer["state"] = "no-local-branch"
+            return answer
+        answer["local_sha"] = local_sha
 
-    # `current_branch` folds a detached HEAD and an unreadable git into one `None`; the
-    # successful `rev-parse HEAD` above is what separates them, so by here `None` is
-    # detachment and nothing else.
-    branch = current_branch(project_dir)
-    if not branch:
-        answer["state"] = "detached-head"
-        return answer
-    answer["branch"] = branch
+    local_sha = answer["local_sha"]
 
     up_code, upstream, up_err = _git_text(
         project_dir, "for-each-ref", "--format=%(upstream:short)", f"refs/heads/{branch}"
@@ -547,21 +585,32 @@ def branch_push_state(project_dir: Path) -> dict[str, str]:
         return answer
     answer["upstream_sha"] = upstream_sha
 
-    if upstream_sha == head_sha:
+    if upstream_sha == local_sha:
         answer["state"] = "pushed"
         return answer
 
-    answer["ahead"] = _rev_count(project_dir, f"{upstream}..HEAD")
-    answer["behind"] = _rev_count(project_dir, f"HEAD..{upstream}")
-    remote_is_ancestor = _git_text(
-        project_dir, "merge-base", "--is-ancestor", upstream_sha, head_sha
-    )[0] == 0
-    head_is_ancestor = _git_text(
-        project_dir, "merge-base", "--is-ancestor", head_sha, upstream_sha
-    )[0] == 0
-    if remote_is_ancestor:
+    # `--is-ancestor` answers in its exit code: 0 yes, 1 no, anything else (128, or
+    # `_git_text`'s -1 on a missing binary or the timeout) is not an answer. Collapsing
+    # the third into "no" is what would report a confident `diverged` — and its
+    # integrate-and-push remedy — off a history nobody read.
+    remote_code = _git_text(
+        project_dir, "merge-base", "--is-ancestor", upstream_sha, local_sha
+    )
+    local_code = _git_text(
+        project_dir, "merge-base", "--is-ancestor", local_sha, upstream_sha
+    )
+    for code, out, err in (remote_code, local_code):
+        if code not in (0, 1):
+            answer["detail"] = (
+                err or out or "git merge-base --is-ancestor could not answer"
+            )
+            return answer
+
+    answer["ahead"] = _rev_count(project_dir, f"{upstream}..{local_sha}")
+    answer["behind"] = _rev_count(project_dir, f"{local_sha}..{upstream}")
+    if remote_code[0] == 0:
         answer["state"] = "unpushed-commits"
-    elif head_is_ancestor:
+    elif local_code[0] == 0:
         answer["state"] = "local-behind-remote"
     else:
         answer["state"] = "diverged"

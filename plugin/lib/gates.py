@@ -1448,7 +1448,7 @@ def blocking_remedy_lines(unresolved: "list[dict] | None") -> list[str]:
     ]
 
 
-def check_branch_pushed(project_dir: Path) -> int:
+def check_branch_pushed(project_dir: Path, branch: str | None = None) -> int:
     """Pre-merge gate: the branch about to be merged must be fully pushed.
 
     The gates around it all validate a ref that agrees with itself — the coverage and
@@ -1459,12 +1459,19 @@ def check_branch_pushed(project_dir: Path) -> int:
     that noticed was ``git branch -d`` refusing the delete, after the merge, when the
     remedy had become a second PR against a protected branch.
 
-    Reads :func:`lib.gitstate.branch_push_state` and holds no git calls of its own. That
-    probe's docstring owns what the question *is* — including why it is answered from
-    this clone rather than from the remote, and what therefore remains the caller's
-    ``gh pr view --json headRefOid`` comparison to answer.
+    ``branch`` names the subject; ``None`` means the checked-out one. A merge flow names
+    the PR's branch, because an unscoped answer there is worse than none — a green
+    verdict about the integration branch reads as the PR being pushed.
 
-    Exit 0 — ``pushed``, naming the ref that answered and the bound on the answer.
+    Reads :func:`lib.gitstate.branch_push_state` and holds no git calls of its own beyond
+    naming the push remote for the one remedy that needs it. That probe's docstring owns
+    what the question *is* — including why it is answered from this clone rather than
+    from the remote, and what therefore remains the caller's ``gh pr view --json
+    headRefOid`` comparison to answer.
+
+    Exit 0 — ``pushed``, naming the ref that answered and the bound on the answer, or
+    ``no-local-branch``, where the named branch is not in this clone and so has no local
+    commit a merge could drop.
 
     Exit 1 — the state was read and the branch is not fully pushed:
     ``unpushed-commits`` (the reported defect), ``local-behind-remote``, ``diverged``,
@@ -1478,25 +1485,34 @@ def check_branch_pushed(project_dir: Path) -> int:
     non-zero outcomes block** — the split buys the caller an accurate remedy, not a
     different decision.
     """
-    state = gitstate.branch_push_state(project_dir)
+    state = gitstate.branch_push_state(project_dir, branch)
     kind = state["state"]
     branch = state["branch"]
     upstream = state["upstream"]
-    head = state["head"][:12]
+    local = state["local_sha"][:12]
     upstream_sha = state["upstream_sha"][:12]
 
     if kind == "pushed":
         print(
-            f"pushed: {upstream} is at HEAD ({head}) — every commit on {branch} is on "
-            "the remote as far as this clone knows. That the remote has not moved "
+            f"pushed: {upstream} is at {branch} ({local}) — every commit on {branch} is "
+            "on the remote as far as this clone knows. That the remote has not moved "
             "underneath it is a separate question, and a network one."
+        )
+        return 0
+
+    if kind == "no-local-branch":
+        print(
+            f"no-local-branch: {branch} is not a branch in this clone, so it holds no "
+            "local commit that a merge could drop. That is all this says — whether the "
+            "remote head is the commit that was reviewed is the `headRefOid` comparison, "
+            "and it is still owed."
         )
         return 0
 
     if kind == "unpushed-commits":
         print(
             f"unpushed-commits: {state['ahead']} commit(s) on {branch} are not on "
-            f"{upstream} (HEAD {head}, {upstream} {upstream_sha}). The merge takes "
+            f"{upstream} ({branch} {local}, {upstream} {upstream_sha}). The merge takes "
             "what is on the remote, so these would be DROPPED silently. Run "
             "`git push`, then re-run this check.",
             file=sys.stderr,
@@ -1506,7 +1522,7 @@ def check_branch_pushed(project_dir: Path) -> int:
     if kind == "local-behind-remote":
         print(
             f"local-behind-remote: {upstream} is {state['behind']} commit(s) ahead of "
-            f"HEAD ({upstream} {upstream_sha}, HEAD {head}). The merge would take "
+            f"{branch} ({upstream} {upstream_sha}, {branch} {local}). The merge would take "
             "commits that no gate here has validated. Pull, re-run the gates over the "
             "tree that results, and push that — never force-push, which rewrites the "
             "tree the PR review's `commit_reviewed` check pinned and voids the evidence.",
@@ -1517,7 +1533,7 @@ def check_branch_pushed(project_dir: Path) -> int:
     if kind == "diverged":
         print(
             f"diverged: {branch} and {upstream} each carry commits the other lacks "
-            f"({state['ahead']} local, {state['behind']} remote; HEAD {head}, "
+            f"({state['ahead']} local, {state['behind']} remote; {branch} {local}, "
             f"{upstream} {upstream_sha}). Integrate the remote side, re-run the gates "
             "over the merged tree, and push that — never force-push, which rewrites "
             "the tree the PR review's `commit_reviewed` check pinned and voids the "
@@ -1527,9 +1543,14 @@ def check_branch_pushed(project_dir: Path) -> int:
         return 1
 
     if kind == "no-upstream":
+        # The remedy names the repo's actual push remote. Printing a literal `origin`
+        # would be the one assumption this gate was built not to make: the probe reads
+        # the branch's configured upstream precisely so a repo whose remote is named
+        # otherwise gets an answer, and a remedy naming a remote it lacks undoes that.
+        remote = gitstate.push_remote(project_dir)
         print(
             f"no-upstream: {branch} has no upstream configured, so nothing here says "
-            "what a merge of it would take. Run `git push -u origin "
+            f"what a merge of it would take. Run `git push -u {remote} "
             f"{branch}` — safe on a branch that is already on the remote, and it is "
             "what makes this answerable next time.",
             file=sys.stderr,
@@ -1549,9 +1570,10 @@ def check_branch_pushed(project_dir: Path) -> int:
 
     if kind == "detached-head":
         print(
-            f"detached-head: HEAD is at {head} with no branch checked out, so there is "
-            "no branch whose push state can be read and nothing a push would send. "
-            "Check out the branch this PR names and re-run.",
+            f"detached-head: HEAD is at {local} with no branch checked out and none "
+            "named, so there is no branch whose push state can be read and nothing a "
+            "push would send. Check out the branch this PR names, or pass it as the "
+            "argument, and re-run.",
             file=sys.stderr,
         )
         return 3
