@@ -1448,6 +1448,123 @@ def blocking_remedy_lines(unresolved: "list[dict] | None") -> list[str]:
     ]
 
 
+def check_branch_pushed(project_dir: Path) -> int:
+    """Pre-merge gate: the branch about to be merged must be fully pushed.
+
+    The gates around it all validate a ref that agrees with itself — the coverage and
+    cumulative-Critic gates read local HEAD, CI grades the pushed tip — while the merge
+    takes what is on the remote. A commit made after the last push, very often the
+    change-log entry a review just forced, is therefore absent from the merge with every
+    signal green. Observed 2026-09-12: a PR merged one commit short and the only thing
+    that noticed was ``git branch -d`` refusing the delete, after the merge, when the
+    remedy had become a second PR against a protected branch.
+
+    Reads :func:`lib.gitstate.branch_push_state` and holds no git calls of its own. That
+    probe's docstring owns what the question *is* — including why it is answered from
+    this clone rather than from the remote, and what therefore remains the caller's
+    ``gh pr view --json headRefOid`` comparison to answer.
+
+    Exit 0 — ``pushed``, naming the ref that answered and the bound on the answer.
+
+    Exit 1 — the state was read and the branch is not fully pushed:
+    ``unpushed-commits`` (the reported defect), ``local-behind-remote``, ``diverged``,
+    ``no-upstream``, ``upstream-ref-missing``. A push, or an integrate-then-push, is the
+    fix in every one, which is what the CLI-gate channel's 1 already promises.
+
+    Exit 3 — the subject could not be read: ``detached-head`` (no branch, so nothing to
+    be pushed) or ``git-failed``. Per ``api-contract.md`` § Error Model's standing rule,
+    folding these into 0 would report a clean bill off a check that never ran, and
+    folding them into 1 would hand the caller a push that cannot apply. **All three
+    non-zero outcomes block** — the split buys the caller an accurate remedy, not a
+    different decision.
+    """
+    state = gitstate.branch_push_state(project_dir)
+    kind = state["state"]
+    branch = state["branch"]
+    upstream = state["upstream"]
+    head = state["head"][:12]
+    upstream_sha = state["upstream_sha"][:12]
+
+    if kind == "pushed":
+        print(
+            f"pushed: {upstream} is at HEAD ({head}) — every commit on {branch} is on "
+            "the remote as far as this clone knows. That the remote has not moved "
+            "underneath it is a separate question, and a network one."
+        )
+        return 0
+
+    if kind == "unpushed-commits":
+        print(
+            f"unpushed-commits: {state['ahead']} commit(s) on {branch} are not on "
+            f"{upstream} (HEAD {head}, {upstream} {upstream_sha}). The merge takes "
+            "what is on the remote, so these would be DROPPED silently. Run "
+            "`git push`, then re-run this check.",
+            file=sys.stderr,
+        )
+        return 1
+
+    if kind == "local-behind-remote":
+        print(
+            f"local-behind-remote: {upstream} is {state['behind']} commit(s) ahead of "
+            f"HEAD ({upstream} {upstream_sha}, HEAD {head}). The merge would take "
+            "commits that no gate here has validated. Pull, re-run the gates over the "
+            "tree that results, and push that — never force-push, which rewrites the "
+            "tree the PR review's `commit_reviewed` check pinned and voids the evidence.",
+            file=sys.stderr,
+        )
+        return 1
+
+    if kind == "diverged":
+        print(
+            f"diverged: {branch} and {upstream} each carry commits the other lacks "
+            f"({state['ahead']} local, {state['behind']} remote; HEAD {head}, "
+            f"{upstream} {upstream_sha}). Integrate the remote side, re-run the gates "
+            "over the merged tree, and push that — never force-push, which rewrites "
+            "the tree the PR review's `commit_reviewed` check pinned and voids the "
+            "evidence.",
+            file=sys.stderr,
+        )
+        return 1
+
+    if kind == "no-upstream":
+        print(
+            f"no-upstream: {branch} has no upstream configured, so nothing here says "
+            "what a merge of it would take. Run `git push -u origin "
+            f"{branch}` — safe on a branch that is already on the remote, and it is "
+            "what makes this answerable next time.",
+            file=sys.stderr,
+        )
+        return 1
+
+    if kind == "upstream-ref-missing":
+        print(
+            f"upstream-ref-missing: {branch} is configured to track {upstream}, but "
+            "that ref does not exist here — never fetched, or the remote branch was "
+            "deleted (the shape a branch reused after its PR merged lands in). Run "
+            "`git push` to recreate it, or `git fetch` if you expect it to be there. "
+            f"({state['detail']})",
+            file=sys.stderr,
+        )
+        return 1
+
+    if kind == "detached-head":
+        print(
+            f"detached-head: HEAD is at {head} with no branch checked out, so there is "
+            "no branch whose push state can be read and nothing a push would send. "
+            "Check out the branch this PR names and re-run.",
+            file=sys.stderr,
+        )
+        return 3
+
+    print(
+        f"git-failed: could not read this repository's push state ({state['detail']}). "
+        "Nothing was checked — confirm by hand that the remote head is the commit you "
+        "mean to merge before merging.",
+        file=sys.stderr,
+    )
+    return 3
+
+
 def check_cumulative_critic(project_dir: Path) -> int:
     """Structural gate for ``/prawduct:pr create`` — Q1, answered by
     composition (kernel-v3-evidence-design.md D6, chunk 04): does composed

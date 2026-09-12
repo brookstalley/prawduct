@@ -734,21 +734,28 @@ class TestPrReviewerScoping:
     def test_create_step_5_pushes_with_upstream_and_verifies_the_pushed_ref(self):
         """Both halves, because the check depends on the flag.
 
-        `git rev-parse @{u}` resolves only with an upstream configured, so a
-        rewrite that drops `-u` turns the verification into a fatal error on
-        the first push of a Create flow — the exact path it guards. Asserting
-        the comparison alone passed while that was true.
+        The verification is `check-branch-pushed`, which reads the branch's
+        configured upstream — so a rewrite that drops `-u` leaves it answering
+        `no-upstream` on the first push of a Create flow instead of certifying
+        the push it just made. Asserting the check alone passed while that was
+        true.
         """
         step5 = self.skill.split("### Step 5: Create PR", 1)[1].split("\n## ", 1)[0]
         # Scoped and literal: a bare `"-u" in content` passes on --json, on any
         # hyphen-u anywhere in the file, and on a Step 5 that pushes without it.
         assert "Push branch with `-u`" in step5, (
-            "Step 5 must push with -u -- `git rev-parse @{u}` resolves only "
-            "with an upstream, so without it the check below exits fatal "
-            "instead of answering"
+            "Step 5 must push with -u -- `check-branch-pushed` reads the "
+            "branch's upstream, so without it the check answers no-upstream "
+            "instead of certifying the push"
         )
-        assert "git rev-parse @{u}" in step5
-        assert "git rev-parse HEAD" in step5
+        assert "prawduct-hook check-branch-pushed" in step5, (
+            "Step 5 no longer runs the push-completeness gate -- a prose "
+            "comparison an agent can skip is what #248 was filed against"
+        )
+        assert "AFTER the push" in step5, (
+            "the ORDER is the whole check: run before the push it verifies, "
+            "it certifies the previous one"
+        )
 
     def test_merge_flow_verifies_the_prs_head_before_merging(self):
         """The merge-side check, pinned separately from the create-side one.
@@ -767,6 +774,34 @@ class TestPrReviewerScoping:
         assert "OUTSIDE the step whose skip causes the defect" in merge_flow, (
             "the reason this check is not redundant with Create Step 5 is gone, "
             "which is what makes it look trimmable"
+        )
+
+    def test_merge_flow_runs_the_push_gate_alongside_the_pr_head_check(self):
+        """Two checks with two subjects, pinned together.
+
+        `check-branch-pushed` is mechanical and unskippable but reads only this
+        clone's refs; `headRefOid` sees a remote that moved but is an
+        instruction. Whichever one a future editor calls redundant, half the
+        defect comes back — so the file must carry both, and the reason.
+        """
+        merge_flow = self.skill.split("## Merge Flow", 1)[1].split("## Status Flow", 1)[0]
+        assert "prawduct-hook check-branch-pushed" in merge_flow, (
+            "Merge Flow no longer runs the fail-closed push gate -- the "
+            "headRefOid check beside it is prose an agent can skip"
+        )
+        assert "Neither subsumes the other" in merge_flow, (
+            "the reason the two merge-side checks are not duplicates is gone, "
+            "which is what makes one of them look deletable"
+        )
+
+    def test_the_push_gate_is_granted_to_the_skill(self):
+        """An ungranted command is a step that cannot run. The house grant form
+        is the star ATTACHED or the bare call; this gate takes no arguments, so
+        the bare form is what it needs (`tests/test_skill_command_grants.py`)."""
+        frontmatter = self.skill.split("---", 2)[1]
+        assert "Bash(prawduct-hook check-branch-pushed)" in frontmatter, (
+            "skills/pr/SKILL.md allowed-tools is missing check-branch-pushed -- "
+            "both flows call a gate the skill may not invoke"
         )
 
     def test_a_pushed_ref_mismatch_is_not_answered_with_force_push(self):

@@ -420,6 +420,154 @@ def local_branches(project_dir: Path) -> set[str] | None:
         return None
 
 
+def _git_text(project_dir: Path, *args: str) -> tuple[int, str, str]:
+    """``(returncode, stdout, stderr)`` from one git call, all stripped.
+
+    Returncode ``-1`` means git could not be run at all (missing binary, timeout),
+    which callers must keep distinct from a git that ran and said no — the two
+    carry different remedies."""
+    try:
+        result = subprocess.run(
+            ["git", *args],
+            capture_output=True,
+            text=True,
+            cwd=str(project_dir),
+            timeout=10,
+        )
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- a missing/hung git is a state to report, not a crash
+        return (-1, "", repr(exc))
+    return (result.returncode, result.stdout.strip(), result.stderr.strip())
+
+
+def _rev_count(project_dir: Path, range_spec: str) -> str:
+    """``git rev-list --count <range_spec>``, or ``"?"`` when it could not be read.
+
+    Cosmetic: the count sharpens a human sentence and never decides a verdict, so an
+    unreadable one degrades to a character rather than changing an answer."""
+    code, out, _ = _git_text(project_dir, "rev-list", "--count", range_spec)
+    return out if code == 0 and out else "?"
+
+
+def branch_push_state(project_dir: Path) -> dict[str, str]:
+    """How the current branch stands against the ref a merge of it would take.
+
+    The answer a merge needs and the other gates cannot give: coverage, cumulative-Critic
+    and CI all grade a ref that agrees with itself — local HEAD, local HEAD, and the
+    pushed tip respectively — so a commit made after the last push is absent from the
+    merge while every signal stays green (observed 2026-09-12: a PR merged one commit
+    short, caught only by ``git branch -d`` refusing afterwards).
+
+    **Scope, deliberately narrow: this is what the local object database knows.** The
+    authoritative head lives on the remote, and reaching it would put a network call under
+    a governance verdict, which ``architecture.md``'s local-first norm forbids. So the
+    question answered is *"is every commit on this branch also on its upstream ref, as far
+    as this clone has been told"* — which is exactly the shape of the defect above, because
+    a push updates the tracking ref, so local-ahead can never hide. A remote that moved
+    without this clone's knowledge is a different question, and its home is the caller's
+    `gh pr view --json headRefOid` comparison.
+
+    The upstream is read from the branch's own config (``%(upstream:short)``) rather than
+    assembled as ``origin/<branch>``: that is the ref an argument-less ``git push``
+    targets, so it is the ref whose disagreement with HEAD means "not pushed", on any
+    repo whose remote is not named ``origin``. It is read via ``for-each-ref`` rather than
+    ``rev-parse @{u}`` because ``@{u}`` conflates *no upstream configured* with
+    *configured but the tracking ref is gone* — both exit 128, and the second even prints
+    a plausible-looking ``@{u}`` on stdout.
+
+    Returns a dict whose ``state`` is one of:
+
+    ``pushed``
+        The upstream ref resolves to exactly HEAD.
+    ``unpushed-commits``
+        The upstream is an ancestor of HEAD: local commits are not on the remote, so a
+        merge would drop them. The reported defect.
+    ``local-behind-remote``
+        HEAD is an ancestor of the upstream: the merge would include commits this clone
+        never validated.
+    ``diverged``
+        Each side carries a commit the other lacks.
+    ``no-upstream``
+        The branch has no upstream configured, so nothing here says what would be merged.
+    ``upstream-ref-missing``
+        An upstream is configured but its ref does not exist here (never fetched, or the
+        remote branch was deleted — the shape a reused branch lands in after its PR merged).
+    ``detached-head``
+        No branch is checked out, so the question has no subject.
+    ``git-failed``
+        Git could not be run, or could not resolve HEAD (not a work tree, no commits yet).
+
+    Also present: ``branch``, ``upstream``, ``head``, ``upstream_sha``, ``ahead``,
+    ``behind`` and ``detail`` — each empty or ``"?"`` where it does not apply. Ancestry,
+    not the counts, decides the direction: a count that fails to read must never turn one
+    verdict into another.
+    """
+    answer = {
+        "state": "git-failed",
+        "branch": "",
+        "upstream": "",
+        "head": "",
+        "upstream_sha": "",
+        "ahead": "?",
+        "behind": "?",
+        "detail": "",
+    }
+
+    head_code, head_sha, head_err = _git_text(project_dir, "rev-parse", "HEAD")
+    if head_code != 0 or not head_sha:
+        answer["detail"] = head_err or "git rev-parse HEAD produced no commit"
+        return answer
+    answer["head"] = head_sha
+
+    # `current_branch` folds a detached HEAD and an unreadable git into one `None`; the
+    # successful `rev-parse HEAD` above is what separates them, so by here `None` is
+    # detachment and nothing else.
+    branch = current_branch(project_dir)
+    if not branch:
+        answer["state"] = "detached-head"
+        return answer
+    answer["branch"] = branch
+
+    up_code, upstream, up_err = _git_text(
+        project_dir, "for-each-ref", "--format=%(upstream:short)", f"refs/heads/{branch}"
+    )
+    if up_code != 0:
+        answer["detail"] = up_err or "git for-each-ref failed"
+        return answer
+    if not upstream:
+        answer["state"] = "no-upstream"
+        return answer
+    answer["upstream"] = upstream
+
+    ref_code, upstream_sha, ref_err = _git_text(
+        project_dir, "rev-parse", "--verify", f"{upstream}^{{commit}}"
+    )
+    if ref_code != 0 or not upstream_sha:
+        answer["state"] = "upstream-ref-missing"
+        answer["detail"] = ref_err or f"{upstream} does not resolve to a commit"
+        return answer
+    answer["upstream_sha"] = upstream_sha
+
+    if upstream_sha == head_sha:
+        answer["state"] = "pushed"
+        return answer
+
+    answer["ahead"] = _rev_count(project_dir, f"{upstream}..HEAD")
+    answer["behind"] = _rev_count(project_dir, f"HEAD..{upstream}")
+    remote_is_ancestor = _git_text(
+        project_dir, "merge-base", "--is-ancestor", upstream_sha, head_sha
+    )[0] == 0
+    head_is_ancestor = _git_text(
+        project_dir, "merge-base", "--is-ancestor", head_sha, upstream_sha
+    )[0] == 0
+    if remote_is_ancestor:
+        answer["state"] = "unpushed-commits"
+    elif head_is_ancestor:
+        answer["state"] = "local-behind-remote"
+    else:
+        answer["state"] = "diverged"
+    return answer
+
+
 def git_has_changes(project_dir: Path, status_output: str | None = None) -> str:
     """Check if there are uncommitted changes. Returns first changed file or empty string.
 

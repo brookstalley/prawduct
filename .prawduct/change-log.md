@@ -3,6 +3,54 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-09-12: `check-branch-pushed` — the merge gate that fails closed on an unpushed commit
+
+<!-- prawduct: type=fix | scope=branch-pushed-gate -->
+
+The gate #248 has specified since 2026-07-09, built. A branch is merged from its remote ref while
+every gate around the merge validates local HEAD, so a commit made after the last push — very often
+the change-log entry a review just forced — is absent from the merge with every signal green. That
+is not hypothetical: it happened the same day this shipped, to PR #803, and the only thing that
+noticed was `git branch -d` refusing the delete afterwards, when the remedy had become a second PR
+against a protected branch.
+
+`prawduct-hook check-branch-pushed` answers it mechanically. `gitstate.branch_push_state` reads the
+branch's *configured upstream* (`%(upstream:short)`, not an assembled `origin/<branch>` — that is
+the ref an argument-less `git push` targets, on any repo whose remote is not named `origin`), and
+decides the direction from ancestry rather than from commit counts, which are for the sentence only.
+`gates.check_branch_pushed` turns that state into an exit code and a remedy that applies to that
+shape: `unpushed-commits` says push, `local-behind-remote` and `diverged` say integrate and re-run
+the gates — never force-push, which rewrites the tree the PR review's `commit_reviewed` check
+pinned and voids the evidence.
+
+**Exit 0/1/3, derived from the error model rather than chosen.** 1 is a push state that was read and
+found unsatisfied, where 1's standing remedy is the fix. 3 is `detached-head` or `git-failed` — a
+subject that could not be read, where folding into 0 would certify a check that never ran and
+folding into 1 would offer a push with nothing to push. All three non-zero outcomes block; the split
+buys the caller an accurate remedy, not a different verdict.
+
+**Deliberately local, and it says so where the answer is read.** The authoritative head lives on the
+remote, and reaching it would put a network call under a governance verdict, which architecture's
+local-first norm forbids. So the gate answers *"is every commit on this branch on its upstream ref,
+as far as this clone knows"* — the exact shape of the defect, because a push updates the tracking
+ref. The other direction, a remote that moved unseen, stays with Merge Flow's `gh pr view --json
+headRefOid` comparison. Both now run in Merge Flow step 3, with the reason neither subsumes the
+other stated beside them and pinned, because the cheapest future mistake here is reading them as
+duplicates and deleting one.
+
+Create Step 5 runs the gate after its push in place of the prose comparison #805 shipped; the `-u`
+requirement stays, with its reason updated — without an upstream the gate answers `no-upstream` and
+blocks rather than certifying the push.
+
+**On the emission arm of the proportionality norm**, this control records a bounded exception on the
+doctor-#13 precedent: the governance ledger is a review-event store whose non-review kinds are
+deliberately unbuilt, and teaching it one for a single gate is the accumulation that norm exists to
+stop. The expected yield is named in the build plan instead, so a future retirement argument has
+something to be tested against — one firing is evidence it was needed; a year of none, alongside no
+recurrence of a short merge, is evidence for retiring it in favour of the prose.
+
+Resolves #248.
+
 ## 2026-09-12: the PR flow re-checks that the remote ref is HEAD before creating or merging
 
 <!-- prawduct: type=fix | scope=pr-push-head-divergence -->

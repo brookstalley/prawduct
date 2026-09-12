@@ -165,6 +165,7 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
 - **Session handoff** — `handoff preview`: renders the handoff the next session would receive,
   through the same function `clear` uses, without writing it or consuming the forward notes.
 - **PR / release gates & views** — `check-pr-doc-only`, `check-change-log-entry`,
+  `check-branch-pushed` (0/1/**3**),
   `check-releasability [--release vX.Y.Z]`, `check-released vX.Y.Z [--json] [--allow-unverifiable]`,
   `resolve-base`,
   `regen-views` (deprecated, inert), `stamp-merged` (deprecated, inert).
@@ -446,6 +447,14 @@ would have said, because the argument is only convincing in the concrete.
   pairing off a corpus it could not decode, which is this scope's own subject; folded into 1 it
   claims a duplicate heading it never saw, sending an operator to hand-edit a file that is fine.
 - `check-released` (2026-08-04), *unverified* — see below.
+- `check-branch-pushed` (2026-09-12), *detached HEAD / git unreadable* — folded into 0 it reports
+  the branch safe to merge off a check that never ran, which is the silent short merge the gate
+  exists to stop; folded into 1 it inherits "push before merging", and there is nothing to push
+  from a detached HEAD and no git to push it with. Its exit **1** is reserved for a push state it
+  *did* read and found unsatisfied (`unpushed-commits`, `local-behind-remote`, `diverged`,
+  `no-upstream`, `upstream-ref-missing`), where a push or an integrate-then-push is the remedy in
+  every case. Both codes BLOCK — the third outcome buys the caller an applicable remedy, not a
+  different verdict.
 
 `check-released` (2026-08-04) exits **3** for
 *unverified*: nothing failed, but a check could not run — no `gh`, no `origin/main` in a
