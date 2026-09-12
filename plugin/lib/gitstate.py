@@ -537,11 +537,18 @@ def branch_push_state(project_dir: Path, branch: str | None = None) -> dict[str,
         "detail": "",
     }
 
+    # Unconditional, and load-bearing even where its sha goes unused: this is the probe
+    # that establishes git RAN and this is a repository with commits. Without it the
+    # named-branch path below cannot read its own 128 — `rev-parse --verify
+    # refs/heads/<name>` exits 128 both for "no such branch" and for "not a git
+    # repository", so an unreadable repo would answer `no-local-branch`, which is a PASS.
+    # An unreadable subject reported as a pass is the defect this gate exists to close.
+    head_code, head_sha, head_err = _git_text(project_dir, "rev-parse", "HEAD")
+    if head_code != 0 or not head_sha:
+        answer["detail"] = head_err or "git rev-parse HEAD produced no commit"
+        return answer
+
     if branch is None:
-        head_code, head_sha, head_err = _git_text(project_dir, "rev-parse", "HEAD")
-        if head_code != 0 or not head_sha:
-            answer["detail"] = head_err or "git rev-parse HEAD produced no commit"
-            return answer
         answer["local_sha"] = head_sha
         # `current_branch` folds a detached HEAD and an unreadable git into one `None`;
         # the successful `rev-parse HEAD` above is what separates them, so by here
@@ -552,13 +559,18 @@ def branch_push_state(project_dir: Path, branch: str | None = None) -> dict[str,
             return answer
         answer["branch"] = branch
     else:
-        ref_code, local_sha, _ = _git_text(
+        ref_code, local_sha, ref_err = _git_text(
             project_dir, "rev-parse", "--verify", f"refs/heads/{branch}^{{commit}}"
         )
+        if ref_code == -1:
+            # git itself went away between the two calls. Never a pass.
+            answer["detail"] = ref_err or "git could not be run"
+            return answer
         if ref_code != 0 or not local_sha:
-            # Not this clone's branch at all. Distinct from every failure above: there is
-            # no local commit that a merge could drop, which is a real answer to the
-            # question asked and the only one that keeps a fork PR mergeable.
+            # Not this clone's branch — and, because the probe above proved the repo is
+            # readable, that is now what a 128 here actually means. There is no local
+            # commit a merge could drop, which is a real answer to the question asked and
+            # the only one that keeps a fork PR mergeable.
             answer["state"] = "no-local-branch"
             return answer
         answer["local_sha"] = local_sha

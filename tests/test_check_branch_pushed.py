@@ -305,6 +305,21 @@ def test_a_branch_this_clone_does_not_have_is_a_pass_that_says_what_it_certified
     assert "still owed" in r.stdout
 
 
+def test_a_named_branch_in_an_unreadable_repo_is_not_a_pass(tmp_path):
+    """`rev-parse --verify refs/heads/<name>` exits 128 for BOTH "no such branch" and
+    "not a git repository", so the named-branch path cannot read its own failure without
+    a probe that proves the repo is readable first. Without one, a broken repo answers
+    `no-local-branch` — exit 0 — which is an unreadable subject reported as a pass, the
+    defect this gate exists to close, on the path the Merge Flow uses."""
+    outside = tmp_path / "not-a-repo"
+    outside.mkdir()
+    state = gitstate.branch_push_state(outside, "feature/x")
+    assert state["state"] == "git-failed", (
+        "a named branch in a non-repo must not read as `no-local-branch`"
+    )
+    assert gates.check_branch_pushed(outside, "feature/x") == 3
+
+
 def test_a_named_detached_repo_still_answers(tmp_path):
     """Detachment is only fatal when nothing names the subject — the argument is
     the remedy the detached-head message offers, so it has to work."""

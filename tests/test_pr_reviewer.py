@@ -794,7 +794,7 @@ class TestPrReviewerScoping:
             "merge run from the base branch it reports the base is pushed and "
             "that reads as the PR being pushed"
         )
-        assert "subsumes the other" in merge_flow, (
+        assert "Neither check subsumes the other" in merge_flow, (
             "the reason the two merge-side checks are not duplicates is gone, "
             "which is what makes one of them look deletable"
         )

@@ -222,6 +222,14 @@ other check — three reviewers found it independently from three directions. Th
 same shape as the one this gate exists to close: a check whose subject is not the thing being
 merged. The gate takes the PR's branch as an argument now.
 
+**And what neither caught — found by self-review of the fix commit, fixed in a third.** The
+named-branch path read only `rev-parse --verify refs/heads/<name>`, which exits 128 for *both* "no
+such branch" and "not a git repository", so an unreadable repo answered `no-local-branch` at exit
+**0**. That is an unreadable subject reported as a pass — R-6's defect class, inside R-6's own fix,
+on the path the Merge Flow uses. The `rev-parse HEAD` probe is unconditional now and its comment
+says why it runs where its sha is unused, so the next reader does not delete it as dead. Pinned and
+mutation-proven (drop the probe, the test goes red).
+
 ## Verification Strategy
 
 Beyond the suite: run the gate against **this** repo on this branch at three real states — before
@@ -251,12 +259,15 @@ the thing it names is not pinned.
   and its third-outcome rule), `.prawduct/artifacts/architecture.md` § Direction (local-first,
   authority-fails-closed)
 - **Deliverables:**
-  - `plugin/lib/gitstate.py` — `branch_push_state(project_dir)`: the read-only probe, returning a
-    state dict (`state`, plus the refs, shas and counts the message needs). Homed here rather than
-    in `gates.py` because this module owns git plumbing and already imports `subprocess`, which
-    `gates.py` deliberately does not.
-  - `plugin/lib/gates.py` — `check_branch_pushed(project_dir)`: the gate. Maps state → exit code
-    and prints the named reason with its remedy. Holds no git calls of its own.
+  - `plugin/lib/gitstate.py` — `branch_push_state(project_dir, branch=None)`: the read-only probe,
+    returning a state dict (`state`, plus the refs, shas and counts the message needs), plus
+    `push_remote` for the one remedy that must name a remote. Homed here rather than in `gates.py`
+    because this module owns git plumbing and already imports `subprocess`, which `gates.py`
+    deliberately does not. **The branch argument was added at the review** — the first build read
+    the checked-out branch, which is the wrong subject in a Merge Flow (R-1/R-8).
+  - `plugin/lib/gates.py` — `check_branch_pushed(project_dir, branch=None)`: the gate. Maps state →
+    exit code and prints the named reason with its remedy. Its only git call is the `push_remote`
+    lookup behind that one message.
   - `plugin/bin/prawduct-hook` — `cmd_check_branch_pushed` thin wrapper, the `_USAGE` entry, the
     dispatch branch, a `_SINGLE_POSITIONAL_COMMANDS` row (the gate takes one optional branch
     name, so the pre-dispatch guard refuses a flag on the caller's behalf — a flag recorded AS
