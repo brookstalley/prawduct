@@ -18,6 +18,30 @@ redirect.
 
 ---
 
+## To pin a DESIGN CONSTRAINT, mutate to the implementation it FORBIDS
+
+`check-branch-pushed` (2026-09-12) shipped with a design constraint in its plan: the direction
+between a branch and its upstream is decided by **ancestry**, never from the commit counts, which
+serve the message only. Three mutations were run against it and all three went red — flipping the
+equality, returning 1 where 3 was owed, swapping which ancestry answer was read — and none of them
+measured the constraint. `git rev-list --count A..B` and `merge-base --is-ancestor` are computed
+from the same graph, so a counts-based classifier returns the identical verdict on every repo a
+fixture can build. The forbidden implementation was still available, and the review said so.
+
+Where the two differ is the path a fixture cannot reach: a count that fails to resolve. The probe
+degrades it to `"?"`, which a counts comparison reads as non-zero and calls `diverged`. The test
+that pins the constraint therefore stubs `_rev_count` to `"?"` and asserts the verdict is still
+`unpushed-commits` — one assertion, and the only one of the four that a counts classifier fails.
+
+**The companion error, same session, one commit later.** A fix added *two* independently
+falsifiable guards to one code path — an unconditional `rev-parse HEAD` probe (so a 128 from the
+ref lookup means "no such branch" rather than "not a repository") and a separate branch for
+`_git_text`'s `-1` (git could not be run at all). The mutation deleted **both at once**, one test
+went red, and that read as coverage for the pair. The `-1` guard could be deleted with all 6717
+tests green, and a Critic found it BLOCKING. This is the sibling rule on mutating each conjunct
+independently, arriving through a different door: two guards removed in one mutation is **one**
+mutant, and it proves whichever guard the test happened to be about.
+
 ## Copying a fix into a sibling procedure or reader is a NEW change needing its own analysis
 
 Two documents share a paragraph, not their invariants, so one edit can repair one and break the

@@ -227,8 +227,17 @@ named-branch path read only `rev-parse --verify refs/heads/<name>`, which exits 
 such branch" and "not a git repository", so an unreadable repo answered `no-local-branch` at exit
 **0**. That is an unreadable subject reported as a pass — R-6's defect class, inside R-6's own fix,
 on the path the Merge Flow uses. The `rev-parse HEAD` probe is unconditional now and its comment
-says why it runs where its sha is unused, so the next reader does not delete it as dead. Pinned and
-mutation-proven (drop the probe, the test goes red).
+says why it runs where its sha is unused, so the next reader does not delete it as dead.
+
+**And the review after that one caught the half I had not pinned, which is the better lesson.** The
+fix added TWO independently falsifiable guards to that path — the unconditional probe, and a
+separate branch for `_git_text`'s `-1` (git could not be run at all, distinct from git running and
+exiting 128). The mutation deleted both at once, one test went red, and that read as covering the
+pair; the `-1` guard could be deleted with all 6717 tests green, which a Critic rated BLOCKING.
+**Two guards removed in one mutation is one mutant.** Each has its own dead mutant now: delete only
+the probe and `test_a_named_branch_in_an_unreadable_repo_is_not_a_pass` goes red; delete only the
+`-1` branch and `test_a_git_that_cannot_run_is_not_a_pass_on_the_named_branch_path` goes red. Both
+verified that way, one at a time.
 
 ## Verification Strategy
 

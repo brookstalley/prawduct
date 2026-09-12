@@ -320,6 +320,38 @@ def test_a_named_branch_in_an_unreadable_repo_is_not_a_pass(tmp_path):
     assert gates.check_branch_pushed(outside, "feature/x") == 3
 
 
+def test_a_git_that_cannot_run_is_not_a_pass_on_the_named_branch_path(tmp_path):
+    """The OTHER half of the named-branch guard, and independently falsifiable.
+
+    Two distinct failures reach the same line: git RAN and exited 128 (no such
+    branch, pinned above), and git could not be run at all — `_git_text`'s own
+    `-1`, from a missing binary or the timeout. Without its own guard, `-1`
+    falls into `ref_code != 0` and answers `no-local-branch` at exit 0. No
+    fixture can produce it, because a fixture that makes git fail makes it fail
+    for the HEAD probe too, which is a different verdict; the stub lets the
+    probe through and fails only the ref lookup.
+    """
+    repo = _repo_on_pushed_branch(tmp_path)
+    real = gitstate._git_text
+
+    def _fail_ref_lookup(project_dir, *args):
+        if args[:2] == ("rev-parse", "--verify") and args[2].startswith("refs/heads/"):
+            return (-1, "", "FileNotFoundError('git')")
+        return real(project_dir, *args)
+
+    try:
+        gitstate._git_text = _fail_ref_lookup
+        state = gitstate.branch_push_state(repo, "feature/x")
+        exit_code = gates.check_branch_pushed(repo, "feature/x")
+    finally:
+        gitstate._git_text = real
+    assert state["state"] == "git-failed", (
+        "a git that could not be run must not read as `no-local-branch`"
+    )
+    assert "git" in state["detail"]
+    assert exit_code == 3
+
+
 def test_a_named_detached_repo_still_answers(tmp_path):
     """Detachment is only fatal when nothing names the subject — the argument is
     the remedy the detached-head message offers, so it has to work."""
