@@ -3153,3 +3153,27 @@ irreversible act.
 The general form is worth more than the instance: **a check is only a check if it can disagree with
 the thing it grades.** Three green signals here were all downstream of the same stale ref. When
 something can be stale, verify it against a source that does not share its staleness.
+
+## When test evidence is stale, run the suite THROUGH `prawduct-hook test-evidence record`
+
+**2026-09-12, PR #807 (`branch-pushed-gate`).** `/prawduct:pr` Step 1 says to check
+`prawduct-hook test-status` first and only run the suite if it reports `stale`. It reported stale, and
+the obvious next move — `python3 -m pytest tests/ -q` — was the wrong one. Five minutes later the
+suite was green and the evidence was still stale, because recording it is a separate step with its
+own constraints:
+
+- `test-evidence record --from-counts passed=N failed=M skipped=K` is **refused** on any repo that
+  declares `test_command:`/`test_commands:`. The declared command emits JUnit, so the recorder wants
+  the report; hand-transcribed counts are exactly the unbacked evidence it exists to prevent.
+- `--from-counts` and `--no-rerun` are also mutually exclusive with each other, so there is no
+  combination that launders a bare run into evidence.
+
+The supported paths are `test-evidence record` with no flags (it runs the declared command itself,
+substituting `{junit_xml}`), or running the declared command by hand *with* `--junit-xml` and
+ingesting the report with `--from-junit`. Either way the JUnit report is the artifact; a green
+transcript is not.
+
+The cost was one wasted five-minute suite run at a PR boundary. The generalisable shape: when a
+governance step names a hook that produces an artifact, the hook is the entry point, not a
+formality wrapped around a command you would have run anyway. Reaching for the familiar raw command
+first means the hook has to either re-run it or reject what you brought back.
