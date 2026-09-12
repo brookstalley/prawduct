@@ -17,6 +17,19 @@ says so wherever it appears, so a repo pinned to the develop ref can tell what i
 cached review verdict from the released plugin is not replayed against this one. Rolling release
 notes accumulate here, and this section is renamed to the release number at the cut.
 
+**A merge can no longer drop a commit you pushed late.** `/prawduct:pr` now runs a new gate,
+`check-branch-pushed`, after the push in the Create flow and before the merge in the Merge Flow.
+It compares your branch's tip against the ref the merge will actually take, and blocks when they
+differ — naming the shape (commits not pushed, the remote ahead of you, the two diverged, no
+upstream configured) and the remedy that fits it. The failure it closes was silent by
+construction: every other signal is computed from a ref that agrees with itself, so a commit made
+after the last push — often the change-log entry a review just asked for — was absent from the
+merge with CI green, the review gate satisfied and the PR merging cleanly. **What this means for
+you:** a merge may now stop with a named reason where it previously proceeded. Push (or integrate
+and push), re-run, and continue. The gate reads only your clone's refs, so it never makes a
+network call; the PR-head comparison beside it covers the case where the remote moved without
+your knowing.
+
 **A stalled norm no longer expires in silence.** A `Stopgap:` field on an in-transition norm —
 the bounded exception that says "this half-finished state is deliberate until <date>" — was
 being written into governing artifacts but could not be read by the probe that watches them.
