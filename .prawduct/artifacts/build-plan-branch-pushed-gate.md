@@ -223,8 +223,11 @@ boundary): the upstream `rev-parse --verify` lookup has no `-1` branch, so a git
 there reports `upstream-ref-missing` with a fetch remedy instead of `git-failed` — inaccurate
 remedy, still exit 1, still blocks; and `test_push_remote_prefers_origin_among_several…` accepts
 either name for the multi-remote tie-break, so a `remotes[-1]` mutant survives on a path where
-either answer is a guess. Both are carried in `.prawduct/.handoff-notes.md` to ride the next commit
-that opens those files, alongside the accepted R-9.
+either answer is a guess. Both are filed as **#806**, alongside the accepted R-9, to ride the next
+commit that opens those files. **The durable home is the backlog item, and that is the correction
+worth keeping:** this plan first recorded them as carried in `.prawduct/.handoff-notes.md`, which is
+gitignored and consumed by `/clear` — an accepted deferral pointed at a channel that empties is a
+drop with a sentence in front of it, which the PR review caught as a warning.
 
 **Mutation proofs, all red-then-green** (five, each reverted after): flipping the pushed comparison
 to `!=`; returning 1 instead of 3 on a detached HEAD; taking the direction from `head_is_ancestor`
@@ -343,8 +346,10 @@ the thing it names is not pinned.
     is asserted rather than trusted.
   - unit — `branch_push_state` returns a `git-failed` state when git cannot answer (exercised by
     pointing the probe at a directory that is not a work tree), and the gate maps it to 3.
-  - dispatch — `check-branch-pushed` with an argument exits 2 and runs nothing (the
-    `_NO_ARGUMENT_COMMANDS` contract), and the command appears in usage.
+  - dispatch — `check-branch-pushed` takes one optional positional branch name
+    (`_SINGLE_POSITIONAL_COMMANDS`, since the Merge Flow passes the PR's branch), so
+    `check-branch-pushed feature/x` is accepted; what exits 2 and runs nothing is a flag in that
+    position, or a second argument. The command appears in usage.
   - skill pins — Create Step 5 and Merge Flow each invoke the gate; the `allowed-tools` grant
     exists in the house form; the "not duplicates" reason is still in the file.
   - mutation-proof each new guard per the Verification Strategy above; a green suite through a
