@@ -409,6 +409,86 @@ def test_unreadable_ancestry_is_the_third_outcome_not_a_confident_diverged(tmp_p
     assert exit_code == 3
 
 
+def test_an_unreadable_upstream_lookup_is_not_reported_as_no_upstream(tmp_path):
+    """`for-each-ref` failing and the branch having no upstream are one line apart
+    and mean opposite things: the first is "nobody asked", the second is "asked,
+    and the answer is none". Without its own guard the failure falls through to
+    `no-upstream`, whose remedy — push with `-u` — is a confident instruction
+    derived from a probe that never ran."""
+    repo = _repo_on_pushed_branch(tmp_path)
+    real = gitstate._git_text
+
+    def _fail_upstream_lookup(project_dir, *args):
+        if args[:1] == ("for-each-ref",):
+            return (128, "", "fatal: could not read the ref store")
+        return real(project_dir, *args)
+
+    try:
+        gitstate._git_text = _fail_upstream_lookup
+        state = gitstate.branch_push_state(repo)
+        exit_code = gates.check_branch_pushed(repo)
+    finally:
+        gitstate._git_text = real
+    assert state["state"] == "git-failed"
+    assert exit_code == 3
+
+
+def test_a_head_that_resolves_to_nothing_is_not_treated_as_resolved(tmp_path):
+    """The second conjunct of the HEAD probe, which git does not produce and a
+    stub does: exit 0 with empty stdout.
+
+    The assertion is on the DETAIL, not on the state, and that is the whole
+    test. Delete the conjunct and the state is still `git-failed` — the empty
+    sha reaches `merge-base --is-ancestor` as a revision nothing resolves, and
+    the ancestry guard three layers down catches it. A test asserting only the
+    state passes under the mutation it names. What changes is which layer
+    answered, so the message is the discriminator: this probe's failure has to
+    be attributed to this probe.
+    """
+    repo = _repo_on_pushed_branch(tmp_path)
+    real = gitstate._git_text
+
+    def _empty_head(project_dir, *args):
+        if args[:2] == ("rev-parse", "HEAD"):
+            return (0, "", "")
+        return real(project_dir, *args)
+
+    try:
+        gitstate._git_text = _empty_head
+        state = gitstate.branch_push_state(repo)
+    finally:
+        gitstate._git_text = real
+    assert state["state"] == "git-failed"
+    assert state["detail"] == "git rev-parse HEAD produced no commit", (
+        "the failure must be attributed to the HEAD probe, not to whichever "
+        "downstream guard an empty sha happens to trip"
+    )
+
+
+# --- `push_remote`, whose every branch feeds a printed remedy ----------------
+
+def test_push_remote_names_the_sole_remote_whatever_it_is_called(tmp_path):
+    repo = _repo_on_pushed_branch(tmp_path)
+    assert gitstate.push_remote(repo) == "origin"
+    _git(repo, "remote", "rename", "origin", "upstream")
+    assert gitstate.push_remote(repo) == "upstream"
+
+
+def test_push_remote_prefers_origin_among_several_and_falls_back_to_it(tmp_path):
+    """Two remotes is genuinely ambiguous — a bare `git push` resolves it from
+    branch config this function does not read — so `origin` wins when present
+    and the first name is taken when it is not. A repo with NO remote gets
+    `origin` too: the remedy then names what the operator will add."""
+    repo = _repo_on_pushed_branch(tmp_path)
+    _git(repo, "remote", "add", "fork", str(tmp_path / "origin.git"))
+    assert gitstate.push_remote(repo) == "origin"
+    _git(repo, "remote", "rename", "origin", "canonical")
+    assert gitstate.push_remote(repo) in {"canonical", "fork"}
+    _git(repo, "remote", "remove", "canonical")
+    _git(repo, "remote", "remove", "fork")
+    assert gitstate.push_remote(repo) == "origin"
+
+
 # --- dispatch ----------------------------------------------------------------
 
 def test_a_flag_is_refused_and_nothing_runs(tmp_path):
