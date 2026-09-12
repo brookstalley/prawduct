@@ -8,8 +8,8 @@
 <!-- prawduct: type=fix | scope=pr-push-head-divergence -->
 
 PR #803 merged one commit short of its branch, and no gate in a fully-governed flow noticed. The
-branch was pushed with `-u` while the independent reviewer ran — legitimate prep, and what Step 3's
-wait-time guidance asks for. The reviewer returned a warning; the fix was committed and never
+branch was pushed with `-u` during the flow's own wait-time prep — legitimate, and what the skill
+asks for. The reviewer returned a warning; the fix was committed and never
 pushed, because Step 5 bundled "push with `-u`" and "`gh pr create`" into one sentence and so read
 as atomic.
 
@@ -21,23 +21,23 @@ refusing the delete afterwards — a real safety net, but it fires AFTER the mer
 no longer one `git push` but a second PR against a protected branch.
 
 Step 5 now requires `git rev-parse HEAD` to equal `git rev-parse @{u}` after the push, and says what
-the silence costs rather than only naming the check.
-
-**This is prose where #248 specifies a gate, and that is a deliberate narrowing, not an oversight.**
-#248 ("pr: gates validate local HEAD, not the pushed branch that is merged", open since 2026-07-09,
-re-verified 2026-07-19) prescribes a fail-closed `check-branch-pushed` with direction-aware reasons,
-and six tests for it already exist on tag `archive/gate-friction-batch`. The gate is the better fix
-and remains the right one; it is not built here because its body was written against a `lib/gates.py`
-that has since been rewritten around the evidence store (the tag's own note says so), so porting it
-is a scoped work cycle with its own review, not a line in a bugfix that was already in flight. What
-ships here is the mitigation that costs nothing to carry and does not conflict with the gate: two
-instruction-level checks, both pinned by tests, at the two moments the mismatch is still cheap.
-**#248 stays open and is not resolved by this entry** — a prose check an agent can skip is weaker
-than a gate that fails closed, which is exactly the distinction #248 was filed on. The Merge Flow gains the same check against
+the silence costs rather than only naming the check. The Merge Flow gains the same check against
 `gh pr view --json headRefOid`, because the merge is the irreversible act and is the last point
 where a mismatch is still cheap. The general rule is recorded in learnings: a check is only a check
 if it can disagree with the thing it grades.
 
+**This is prose where #248 specifies a gate, and that is a deliberate narrowing, not an
+oversight.** #248 ("pr: gates validate local HEAD, not the pushed branch that is merged", open
+since 2026-07-09, re-verified 2026-07-19) prescribes a fail-closed `check-branch-pushed` with
+direction-aware reasons, and six tests for it already exist on tag `archive/gate-friction-batch`.
+The gate is the better fix and remains the right one; it is not built here because its body was
+written against a `lib/gates.py` that has since been rewritten around the evidence store (the tag's
+own note says so), so porting it is a scoped work cycle with its own review, not a line in a bugfix
+that was already in flight. What ships here is the mitigation that costs nothing to carry and does
+not conflict with the gate: two instruction-level checks, both pinned by tests, at the two moments
+the mismatch is still cheap. **#248 stays open and is not resolved by this entry** — a prose check
+an agent can skip is weaker than a gate that fails closed, which is exactly the distinction #248
+was filed on.
 
 ## 2026-09-12: the verification drain refuses an entry it cannot read, instead of reporting success
 
