@@ -59,6 +59,20 @@ override is all-or-nothing across the pending set and one such entry stops it fo
 it listed would have been this same defect one level up — advice that provably cannot work on the entry
 it is given about. Its result gains `unparsed_status_entries`; exit codes and flags are unchanged.
 
+**Three shipped-instruction changes ride with the fix**, each earned by this cycle rather than
+planned into it, and named here because the release narrative is written by hand from this log.
+`building.md` gains the rule that a LIVE Critic review's files are read-only: `critic-begin`
+snapshots a tree, so editing a reviewed file leaves the reviewers grading code that is gone and the
+suite covering the pre-edit tree, and `test-status` is blind to it because it is session-scoped.
+That rule was bought by making the mistake — the chunk's first review was dispatched and the
+subject files were then scrubbed underneath it, costing a second round. It landed under the file's
+token ceiling by trimming restatement in place (the ceiling does not move); one attempted trim was
+reverted, because dropping "major" from the uninvestigated-decisions trap would have severed it
+from the five-trigger definition it points at, and a trim that changes an instruction's SCOPE is
+not funding whatever it saves. `pr/SKILL.md` Step 2b and `doctor/SKILL.md` gain the matching relay
+guidance, so neither surface offers the operator an override the queue will now refuse — the same
+defect as the half-write, one surface up, which is exactly how it was found.
+
 ## 2026-09-11: a participle behind a determiner stops reading as a closing keyword
 
 <!-- prawduct: type=fix | scope=closing-keyword-classifier -->
