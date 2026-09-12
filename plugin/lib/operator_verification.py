@@ -23,10 +23,12 @@ cannot be read is REFUSED rather than partially written — the mutators report
 it, nothing is appended, and the caller renders the reason and the exact edit
 from :attr:`VerificationEntry.status_defect`; the file is never repaired on the
 operator's behalf. And a write changes only what the operation names: the
-serializer round-trips byte-for-byte on unmutated input, and
+serializer preserves the body lines and the file's terminator, and
 :func:`_write_queue` keeps the file's existing line endings, so flipping one
-status word never hands back a reformatted file (exactly, for a file whose
-endings are consistent — the one limit is stated on that function).
+status word never hands back a reformatted file. Byte-identity is the stronger
+claim and is not the one made here: the serializer terminates a final line that
+had no terminator, and ``str.splitlines()`` breaks on \x0b, \x0c and \u2028,
+which come back written as the file's ordinary terminator.
 """
 
 from __future__ import annotations
@@ -354,7 +356,11 @@ def _append_drain_footer(entry: VerificationEntry, footer: str) -> None:
     stacked a second onto an entry whose body already ended in a blank, and the
     queue is append-only, so every drain ran through here.
 
-    BELOW it: whatever the body already had, put back verbatim. Body lines run
+    BELOW it: whatever the body already had, put back verbatim -- ORDER
+    INCLUDED, which a pop-then-extend does not do. The tail is taken by slice
+    for that reason: a tail mixing "" with a whitespace-only line is the only
+    shape that can tell the two apart, and "verbatim" is the claim being made.
+    Body lines run
     to the next ``## `` heading, so an entry's trailing blank IS the separator
     from the entry below it — a middle entry carries one and the last entry in
     the file carries none. Appending a fixed trailing blank welds nothing, but
@@ -363,9 +369,11 @@ def _append_drain_footer(entry: VerificationEntry, footer: str) -> None:
     write changes only what the operation names. Restoring the tail keeps the
     separator where one exists without authoring one where none did.
     """
-    tail: list[str] = []
-    while entry.body_lines and not entry.body_lines[-1].strip():
-        tail.append(entry.body_lines.pop())
+    cut = len(entry.body_lines)
+    while cut and not entry.body_lines[cut - 1].strip():
+        cut -= 1
+    tail = entry.body_lines[cut:]
+    del entry.body_lines[cut:]
     entry.body_lines.append("")
     entry.body_lines.append(footer)
     entry.body_lines.extend(tail)
@@ -681,8 +689,9 @@ def run_verify_entry(
 
     Returns ``{"product_dir", "vrf_id", "previous_status", "status",
     "queue_path", "actions": [str], "notes": [str]}`` or
-    ``{"error": "..."}`` on lookup failures (no ``.prawduct/``, no queue
-    file, unknown ID).
+    ``{"error": "..."}`` on any refusal, whose text is the operator-facing
+    reason (a lookup that found nothing, and any entry this operation declines
+    to write).
     """
     product_path = Path(product_dir).resolve()
     prawduct_dir = product_path / ".prawduct"

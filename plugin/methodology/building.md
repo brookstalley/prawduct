@@ -194,7 +194,7 @@ Every consolidated review appends a **fact** to a store shared by all worktrees 
 
 `Critic mode:` in the plan and an explicit slash arg are successive overrides on the inference described above. Four modes: `chunk`, `final`, `cumulative`, `verify-resolutions`. What each covers — and the fail-safe that a missing, unrecognized or unconfidently-inferred mode runs `final` — is `skills/critic/review-cycle.md`, not restated here. Two facts are worth having before you open it: `cumulative` feeds `/prawduct:pr create`'s gate, and `verify-resolutions` alone records resolution facts.
 
-**The Critic takes minutes, not seconds** (per-mode targets: `review-cycle.md`). Don't poll; deep-scrub your own changes while it runs, which often pre-resolves findings — but **read** the reviewed files, never **edit** them. `critic-begin` snapshots a tree: an edit under review voids the review and the suite evidence together, and `test-status` is blind to it. Scrub the free surfaces instead (the plan, the change-log, `.prawduct/`) and fold the rest into the fix commit the findings will need. If it fails, tell the user and re-invoke — never write `.critic-findings.json` yourself.
+**The Critic takes minutes, not seconds** (per-mode targets: `review-cycle.md`). Don't poll; deep-scrub your own changes while it runs, which often pre-resolves findings — but **read** the reviewed files, never **edit** them. `critic-begin` snapshots a tree: an edit under review voids the review and the suite evidence together, and `test-status` is blind to it. Scrub the free surfaces instead (the plan, the change-log, `.prawduct/`) and fold the rest into the fix commit the findings need. If it fails, tell the user and re-invoke — never write `.critic-findings.json` yourself.
 
 **Warnings and notes gate nothing** — every fix commit extends HEAD, which is how a passing review buys another round. Think before dismissing one anyway: the Critic catches blind spots the builder can't see.
 
@@ -214,7 +214,7 @@ A broad catch is legitimate at system boundaries, event loops and top-level supe
 
 **Test-last**: Tests written to pass against existing implementation document behavior, including bugs.
 
-**Uninvestigated decisions**: a choice made without the research above.
+**Uninvestigated decisions**: a major choice made without the research above.
 
 **Tuning a mechanism you haven't read**: read it first (Principle 24).
 

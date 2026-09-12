@@ -1335,6 +1335,36 @@ class TestWritePathPreservesTheFile:
             "**Status:** pending\n"
         )
 
+    def test_a_mixed_whitespace_tail_comes_back_in_its_original_order(self):
+        """The one shape that can tell "verbatim" from "the same lines, reversed".
+
+        Every other tail in this class is all-empty, so it round-trips
+        identically under either implementation and none of them would go red
+        if the tail were restored backwards. Here the trailing run is
+        ``["", "   "]``: reversing it moves the indented line above the blank,
+        which changes bytes the drain never named. Turns red if the tail is
+        rebuilt by popping onto a list and extending it back.
+        """
+        content = (
+            "## VRF-001 \u2014 a\n\n**Status:** pending\n\n   \n"
+            "## VRF-002 \u2014 b\n\n**Status:** pending\n"
+        )
+        preamble, entries = ov.parse_operator_verification(content)
+        assert ov.mark_verified(entries[0], today=date(2026, 5, 19)) is True
+        out = ov.format_operator_verification(preamble, entries)
+        assert out == (
+            "## VRF-001 \u2014 a\n"
+            "\n"
+            "**Status:** verified\n"
+            "\n"
+            "**Verified:** 2026-05-19\n"
+            "\n"
+            "   \n"
+            "## VRF-002 \u2014 b\n"
+            "\n"
+            "**Status:** pending\n"
+        )
+
     def test_operator_double_spacing_survives_a_drain(self):
         """Spacing the operation did not name is not the drain's to normalize."""
         content = (

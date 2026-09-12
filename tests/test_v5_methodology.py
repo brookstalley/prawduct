@@ -2371,15 +2371,24 @@ class TestBuildingMethodology:
         # `critic-begin` snapshots a tree, so editing a reviewed file voids the
         # review and the suite evidence together, and `test-status` cannot see
         # it. Recorded because a self-funded change is the one most likely to go
-        # unlogged. Four trims paid for it, each pure restatement or detail the
-        # pointer beside it already owns: the Cumulative-Critic-gate paragraph
-        # (its ordering is "Resolve findings", its existence is Modes, its
-        # mechanics are pr/SKILL.md), the "Tuning a mechanism you haven't read"
-        # trap (the cheap-check gate lists it verbatim as a detector), the
-        # "Uninvestigated decisions" trap (its own text points at "the research
-        # above"), and the coordinator roster's three roles (the next sentence
-        # sends the roster rule to review-cycle.md). The narrative why lives in
-        # the learnings entry this cycle wrote, not here.
+        # unlogged. What paid, each pure restatement or detail the pointer
+        # beside it already owns — no count, because the first draft of this
+        # entry said "four" and the review found five: the Cumulative-Critic-gate
+        # paragraph (its ordering is "Resolve findings", its existence is Modes,
+        # its mechanics are pr/SKILL.md); the "Tuning a mechanism you haven't
+        # read" trap's tail (the cheap-check gate lists the trap verbatim as a
+        # detector); the coordinator roster's three roles (the next sentence
+        # sends the roster rule to review-cycle.md); the build cycle's "Update
+        # build plan Status" bullet (chunk-boundary step 5 carries it verbatim);
+        # and two words off the wait-time paragraph's own tail.
+        # ONE trim was attempted and REVERTED: "major" in the
+        # "Uninvestigated decisions" trap. It reads as restatement and is not —
+        # § Decision Research is where "major" is DEFINED (lock-in,
+        # pervasiveness, structural impact, external dependency, volatility), so
+        # the word is the trap's only link to that predicate, and without it the
+        # line asserts that every choice owes research. A trim that changes an
+        # instruction's SCOPE is not funding, whatever it saves.
+        # The narrative why lives in the learnings entry this cycle wrote.
         assert tokens < 4757, f"building.md is ~{tokens} tokens, should be <4757"
 
 

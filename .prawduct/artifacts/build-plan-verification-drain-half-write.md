@@ -125,8 +125,10 @@ internal `lib/` functions return status/reason dicts. They are **left alone**, d
   case and `run_accept_pending` pre-checks the rationale, each returning `{"error": ...}` before the
   mutator is called.
 
-This chunk adds **no new raise**. Filed for later rather than folded in; noted here so the next reader
-meets the decision rather than re-discovering the inconsistency.
+This chunk adds **no new raise**. Filed as **#801** rather than folded in — filed for real, and that
+is the point: this plan is archived at the release, so a deferral recorded only here would vanish
+exactly when it came due. Noted here too so the next reader of the module meets the decision rather
+than re-discovering the inconsistency.
 
 ## Status
 
@@ -147,7 +149,9 @@ exit 3 was specified and exit 1 shipped. Recorded rather than conformed to, per 
 
 Outstanding for whoever merges this: `/prawduct:backlog update 798 status=shipped
 closed-by=verification-drain-half-write` — deliberately not done here because the branch is unmerged
-(accepted finding R-10, carried in `.prawduct/.handoff-notes.md`). Nothing else is open on this plan.
+(accepted finding R-10). The carrier is the **PR body**, which survives to the merge where the close
+comes due; an earlier draft named `.prawduct/.handoff-notes.md`, which is gitignored and so cannot
+travel with the branch to whoever merges it. Nothing else is open on this plan.
 
 ## Verification Strategy
 
