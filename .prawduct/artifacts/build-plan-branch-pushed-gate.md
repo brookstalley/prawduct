@@ -196,8 +196,31 @@ alongside doctor #13.
 ## Status
 
 - [ ] Chunk 01: `check-branch-pushed` — the fail-closed push-completeness gate, wired into both PR flows
-Context: Plan written 2026-09-12 from #248 (filed 2026-07-09, fired in production 2026-09-12).
-Nothing built yet.
+Context: Built 2026-09-12 (`26e5a443`), cumulative-reviewed, fixes in `9f6d5155`. Grown from #248,
+filed 2026-07-09 with a designed fix and six written tests on tag `archive/gate-friction-batch`,
+which sat open for two months while the defect it describes fired in production (PR #803).
+
+**The live acceptance run, which no code analysis can see.** On this repo, on this branch, the
+gate was run at each real state as the branch reached it: before the first push it reported
+`no-upstream` (exit 1) naming `git push -u origin fix/branch-pushed-gate`; after `git push -u` it
+reported `pushed` at `9f6d5155b819` (exit 0); after one further local commit it reported
+`unpushed-commits` (exit 1) — the production defect, observed against the live repo rather than a
+fixture. The argument form was exercised the same way: `check-branch-pushed develop` answered about
+`develop` while `fix/branch-pushed-gate` was checked out, and a branch name nobody has returned
+`no-local-branch` at exit 0.
+
+**Mutation proofs, all red-then-green** (five, each reverted after): flipping the pushed comparison
+to `!=`; returning 1 instead of 3 on a detached HEAD; taking the direction from `head_is_ancestor`
+rather than `remote_is_ancestor`; admitting 128/-1 into the ancestry answer; and classifying the
+direction from the commit counts. The last two were added BY the review — the first three tests
+passed under a counts-based classifier, which is the implementation this plan's own design
+constraint 1 forbids, and only the degraded-count case tells them apart.
+
+**What the review caught that the build did not.** The merge-side call answered about whatever
+branch was checked out, and the flow around it already conceded the not-checked-out case for its
+other check — three reviewers found it independently from three directions. That is a defect of the
+same shape as the one this gate exists to close: a check whose subject is not the thing being
+merged. The gate takes the PR's branch as an argument now.
 
 ## Verification Strategy
 
