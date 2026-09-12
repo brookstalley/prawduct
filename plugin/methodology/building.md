@@ -110,8 +110,6 @@ Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 **Verify artifacts are current.** Confirm artifacts reflect the code — the Critic checks bidirectional freshness.
 
-**Update build plan Status.** Mark the chunk `[x]` and update the Context block — the cross-session handoff.
-
 ## Session Scope Discipline
 
 **Size a work cycle by the diff its review must cover, not by a chunk count.** Critic quality degrades across a large diff, and the constraint is the reviewer's *attention* rather than its window. The roster rule names the honest unit: a risk surface, or 12+ judgeable files. A multi-chunk plan spans sessions: per-chunk reviews accumulate, and the final/cumulative lands with the last chunk.
@@ -186,7 +184,7 @@ Tests are the most important artifact you produce: contracts that define correct
 
 After medium+ work, invoke the Critic as a separate agent. It reasons from signals through seven prioritized goals, from **Nothing Is Broken** to **The Design Is Sound** (definitions: `skills/critic/review-protocol.md`).
 
-In `final` mode the Critic also cross-checks learnings and reconciles the backlog. `final`/`cumulative` reviews may use a coordinator pattern — parallel subagents for correctness, design and sustainability. The roster rule, which depends on whether the repo declares `risk_surfaces:`, is in `skills/critic/review-cycle.md`.
+In `final` mode the Critic also cross-checks learnings and reconciles the backlog. `final`/`cumulative` reviews may use a coordinator pattern. The roster rule, which depends on whether the repo declares `risk_surfaces:`, is in `skills/critic/review-cycle.md`.
 
 ### The evidence model
 
@@ -196,7 +194,7 @@ Every consolidated review appends a **fact** to a store shared by all worktrees 
 
 `Critic mode:` in the plan and an explicit slash arg are successive overrides on the inference described above. Four modes: `chunk`, `final`, `cumulative`, `verify-resolutions`. What each covers — and the fail-safe that a missing, unrecognized or unconfidently-inferred mode runs `final` — is `skills/critic/review-cycle.md`, not restated here. Two facts are worth having before you open it: `cumulative` feeds `/prawduct:pr create`'s gate, and `verify-resolutions` alone records resolution facts.
 
-**The Critic takes minutes, not seconds** (per-mode targets: `review-cycle.md`). Don't poll; deep-scrub your own changes while it runs, which often pre-resolves findings — but **read** the reviewed files, don't **edit** them. `critic-begin` snapshots a tree, so an edit to a file under review invalidates the review and the test evidence together: the reviewers grade code that no longer exists, and the suite that went green covered the pre-edit tree. `test-status` will not catch it — it is session-scoped and cannot see an edit made after the run it graded. Scrub the free surfaces instead (the plan, the change-log, anything under `.prawduct/`), write the rest down, and land it in the one fix commit the findings are going to need anyway. If it fails, tell the user and re-invoke — never write `.critic-findings.json` yourself.
+**The Critic takes minutes, not seconds** (per-mode targets: `review-cycle.md`). Don't poll; deep-scrub your own changes while it runs, which often pre-resolves findings — but **read** the reviewed files, never **edit** them. `critic-begin` snapshots a tree: an edit under review voids the review and the suite evidence together, and `test-status` is blind to it. Scrub the free surfaces instead (the plan, the change-log, `.prawduct/`) and fold the rest into the fix commit the findings will need. If it fails, tell the user and re-invoke — never write `.critic-findings.json` yourself.
 
 **Warnings and notes gate nothing** — every fix commit extends HEAD, which is how a passing review buys another round. Think before dismissing one anyway: the Critic catches blind spots the builder can't see.
 
@@ -206,7 +204,7 @@ Every consolidated review appends a **fact** to a store shared by all worktrees 
 
 `/prawduct:pr` handles the full lifecycle (it detects git state and routes to create, update, merge, or status) and invokes the PR reviewer agent for independent release-readiness assessment of the full changeset. Review criteria: the plugin's `skills/pr/review-protocol.md`. After merge, `/prawduct:pr` cleans up the build plan.
 
-**Cumulative-Critic gate.** `/prawduct:pr create` calls `prawduct-hook check-cumulative-critic` — composed coverage must span merge-base → HEAD with zero unresolved blocking findings. Land every judgeable fix first, run `/prawduct:critic cumulative` once, commit verbatim. While it runs, do findings-independent prep.
+**Cumulative-Critic gate.** `/prawduct:pr create` blocks unless composed coverage spans merge-base → HEAD with zero unresolved blocking findings; the skill owns the mechanics.
 
 ## Exception Handling
 
@@ -216,9 +214,9 @@ A broad catch is legitimate at system boundaries, event loops and top-level supe
 
 **Test-last**: Tests written to pass against existing implementation document behavior, including bugs.
 
-**Uninvestigated decisions**: a major choice made without the research above.
+**Uninvestigated decisions**: a choice made without the research above.
 
-**Tuning a mechanism you haven't read**: read it first — a ten-minute read routinely collapses a multi-day tuning campaign (Principle 24).
+**Tuning a mechanism you haven't read**: read it first (Principle 24).
 
 **Boundary blindness**: Modifying a contract surface without checking consumers. The canary catches this at session end; checking proactively is cheaper.
 

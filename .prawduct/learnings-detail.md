@@ -3049,7 +3049,7 @@ consequence, and the sharpest tell is that behaviour was correct throughout, so 
 prose was ever wrong.
 
 
-## While a Critic review is LIVE, edit only the free surfaces
+## While a Critic review is LIVE, read the reviewed files and edit only the free surfaces
 
 Earned on the operator-verification drain fix (2026-09-12). `building.md` said "Don't poll;
 deep-scrub your own changes while it runs, which often pre-resolves findings", and that was read as
@@ -3069,7 +3069,7 @@ evidence describe the bytes on disk now", so it is structurally blind to an edit
 it graded. The one probe that looks like it would catch this cannot. `building.md` now carries the
 boundary explicitly, which is the fix the rule exists to make unnecessary.
 
-## A ruling recorded only where the deciding team reads it is not recorded
+## A ruling recorded only where the deciding team reads it is NOT recorded
 
 Same cycle. Two downstream products filed the same defect a day apart, each proposing that the
 parser be widened to accept the shape that tripped them. The widening was declined and the reasoning
@@ -3083,7 +3083,7 @@ a bug repeatedly, and no statement that the question is settled — and the chea
 is "known bug, still open", whose natural actions are a third report or a local parser patch. A
 decision's home is wherever the people who keep asking the question will meet it.
 
-## Proving a guard can go red is only half the question
+## Proving a new guard can go red is half the question
 
 Same cycle, twice in one diff. Every check-gate test on the new defective path paired one readable
 entry with one unreadable one, so the branch that mattered — a queue whose only pending entry is
