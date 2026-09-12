@@ -37,8 +37,8 @@ that pins the constraint therefore stubs `_rev_count` to `"?"` and asserts the v
 falsifiable guards to one code path — an unconditional `rev-parse HEAD` probe (so a 128 from the
 ref lookup means "no such branch" rather than "not a repository") and a separate branch for
 `_git_text`'s `-1` (git could not be run at all). The mutation deleted **both at once**, one test
-went red, and that read as coverage for the pair. The `-1` guard could be deleted with all 6717
-tests green, and a Critic found it BLOCKING. This is the sibling rule on mutating each conjunct
+went red, and that read as coverage for the pair. The `-1` guard could be deleted with the suite
+green, and a Critic found it BLOCKING. This is the sibling rule on mutating each conjunct
 independently, arriving through a different door: two guards removed in one mutation is **one**
 mutant, and it proves whichever guard the test happened to be about.
 

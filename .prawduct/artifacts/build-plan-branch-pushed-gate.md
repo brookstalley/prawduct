@@ -195,7 +195,7 @@ alongside doctor #13.
 
 ## Status
 
-- [ ] Chunk 01: `check-branch-pushed` — the fail-closed push-completeness gate, wired into both PR flows
+- [x] Chunk 01: `check-branch-pushed` — the fail-closed push-completeness gate, wired into both PR flows
 Context: Built 2026-09-12 (`26e5a443`), cumulative-reviewed, fixes in `9f6d5155`. Grown from #248,
 filed 2026-07-09 with a designed fix and six written tests on tag `archive/gate-friction-batch`,
 which sat open for two months while the defect it describes fired in production (PR #803).
@@ -208,6 +208,23 @@ reported `pushed` at `9f6d5155b819` (exit 0); after one further local commit it 
 fixture. The argument form was exercised the same way: `check-branch-pushed develop` answered about
 `develop` while `fix/branch-pushed-gate` was checked out, and a branch name nobody has returned
 `no-local-branch` at exit 0.
+
+**Review cost, stated because it overran the plan's own estimate.** Five rounds — one cumulative
+(0 blocking / 6 warning / 8 note) and four verify passes, about 25 minutes of review wall clock on
+a plan that priced itself at one review. Two of the extra rounds bought real defects (a gate whose
+subject was the wrong branch; a guard that could be deleted with the suite green), so none was
+waste, but the shape that produced them is worth not repeating: **both came from self-reviewing
+AFTER dispatch.** Scrubbing the diff before dispatch is free and found three more unpinned guards
+in the fifth round's own delta.
+
+**Two observations accepted rather than fixed** (both cost a round, both on already-blocking or
+guess-tie-break paths, and the owner's recorded preference is to accept cost-a-round NOTEs at a PR
+boundary): the upstream `rev-parse --verify` lookup has no `-1` branch, so a git that vanishes
+there reports `upstream-ref-missing` with a fetch remedy instead of `git-failed` — inaccurate
+remedy, still exit 1, still blocks; and `test_push_remote_prefers_origin_among_several…` accepts
+either name for the multi-remote tie-break, so a `remotes[-1]` mutant survives on a path where
+either answer is a guess. Both are carried in `.prawduct/.handoff-notes.md` to ride the next commit
+that opens those files, alongside the accepted R-9.
 
 **Mutation proofs, all red-then-green** (five, each reverted after): flipping the pushed comparison
 to `!=`; returning 1 instead of 3 on a detached HEAD; taking the direction from `head_is_ancestor`
@@ -233,7 +250,7 @@ says why it runs where its sha is unused, so the next reader does not delete it 
 fix added TWO independently falsifiable guards to that path — the unconditional probe, and a
 separate branch for `_git_text`'s `-1` (git could not be run at all, distinct from git running and
 exiting 128). The mutation deleted both at once, one test went red, and that read as covering the
-pair; the `-1` guard could be deleted with all 6717 tests green, which a Critic rated BLOCKING.
+pair; the `-1` guard could be deleted with the suite green, which a Critic rated BLOCKING.
 **Two guards removed in one mutation is one mutant.** Each has its own dead mutant now: delete only
 the probe and `test_a_named_branch_in_an_unreadable_repo_is_not_a_pass` goes red; delete only the
 `-1` branch and `test_a_git_that_cannot_run_is_not_a_pass_on_the_named_branch_path` goes red. Both
