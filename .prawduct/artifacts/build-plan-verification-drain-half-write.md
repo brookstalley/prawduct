@@ -130,10 +130,24 @@ meets the decision rather than re-discovering the inconsistency.
 
 ## Status
 
-- [ ] Chunk 01: Refuse the half-write; make the queue's write path stop damaging the file
-Context: Plan written 2026-09-12 from upstream reports #798 (root cause verified by direct call) and
-#788 (merged into it as the same defect at a different altitude). Defects B, C and D below were found
-while reproducing A and are in neither report. Nothing built yet.
+- [x] Chunk 01: Refuse the half-write; make the queue's write path stop damaging the file
+Context: Built and reviewed 2026-09-12, committed a9cf0cec. Grew from upstream reports #798 (root
+cause verified by direct call) and #788 (merged into it as the same defect at a different altitude);
+defects B, C and D were found while reproducing A and are in neither report.
+
+Two review rounds, and the second was bought by a process error worth naming here: the first review
+was dispatched and then the subject files were scrubbed underneath it, so the reviewed code had no
+green suite behind it (BLOCKING R-1). `building.md` and `learnings.md` now carry the rule that
+prevents it. `rev-20260912T144832Z-5323100f` closed clean — 0 blocking, 0 findings — after nine
+fixes; R-10 and R-11 carry recorded `accept` dispositions.
+
+The plan's one prescription that the code did NOT follow is § The Exit Code This Plan Does Not Add:
+exit 3 was specified and exit 1 shipped. Recorded rather than conformed to, per architecture's
+"goals and verification bind; prescribed method is advice".
+
+Outstanding for whoever merges this: `/prawduct:backlog update 798 status=shipped
+closed-by=verification-drain-half-write` — deliberately not done here because the branch is unmerged
+(accepted finding R-10, carried in `.prawduct/.handoff-notes.md`). Nothing else is open on this plan.
 
 ## Verification Strategy
 
