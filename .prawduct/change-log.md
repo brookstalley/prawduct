@@ -3,6 +3,62 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-09-12: the verification drain refuses an entry it cannot read, instead of reporting success
+
+<!-- prawduct: type=fix | scope=verification-drain-half-write -->
+
+`prawduct-hook verify-operator-verification <ID>` printed `Marked <ID> verified`, appended a
+`**Verified:**` footer, changed no status, and exited 0. The gate went on counting the entry pending,
+so `/pr create` stayed blocked, and each re-run appended one more footer. Reported by two downstream
+products a day apart — one root-caused by direct call against the module, one inferred from the
+artifact — and merged as one defect at two altitudes.
+
+**The root cause is a discarded boolean.** `_set_status_line` correctly returned `False` when it found
+no status line to rewrite, and both mutators threw that answer away and appended the footer regardless.
+`mark_accepted` carried the identical shape and the identical discarded return; neither report mentioned
+it, and one fix covers both. The mutators now branch on the answer and write nothing when it is `False`.
+
+**The parser stays strict, because the silence was the defect.** Both reports proposed teaching the
+parser the shape that tripped them — a compact header running the status in with its neighbours,
+`**Chunk:** … · **Raised:** … · **Status:** pending`. Declined: nothing in prawduct emits that shape,
+the bare-token rule is stated twice in the shipped template with the incident that bought it (six
+entries reading `verified (date, repo)`, the gate counting 14 pending where a human counted 8), and
+honouring a second shape silently is the same one-rule-two-carriers failure the reports level at the
+half-write. What was genuinely wrong is that nothing SAID so: the drain claimed success and the gate
+offered a remedy that provably could not move the entry. Both now refuse and name the edit — including
+that correcting the status word inside the combined line will not help, which is the second thing an
+operator tries and the second thing that silently fails.
+
+**The reader and the writer had drifted apart on which line the status line is.** The reader required
+it as the first non-blank body line; the writer rewrote the first line matching the pattern *anywhere*
+in the body. On an entry with a malformed header and a bare status line further down, the writer would
+have edited a line the reader never consults. One walk now answers for both, which is the structural
+half of the repair — the discarded boolean was only how it surfaced.
+
+**Three further defects on the same write path, none of them in either report, all hitting well-formed
+entries.** Found while reproducing the reported one, and fixed here because this module's whole posture
+is that the queue is an operator-authored record it must not damage: the preamble's trailing blank line
+was deleted on every round trip (a parse→format with no mutation was not identity, so each drain closed
+the gap between the file's header comment and its first entry); a drained entry's footer was welded to
+the next `## ` heading with no blank between, while stacking a second blank above itself; and
+`_write_queue` omitted `newline=""`, so a CRLF queue was re-line-ended wholesale in exchange for a
+two-word status edit — the exact case `atomic_write_text`'s own docstring asks callers to pass it for.
+
+**Exit 1, deliberately, and not the exit 3 its sibling gate uses.** These are state-mutating writers,
+whose documented refusal value is 1 (validation failed, nothing written). The third-outcome rule that
+gives `check-operator-verification` its 3 is scoped to a gate whose subject could not be read, where 1
+already carries a remedy that cannot apply. The first cut of this change generalised from the sibling
+and was wrong; `api-contract.md` § Error Model now carries the distinction as a worked example, because
+the mistake is an easy one to repeat.
+
+`check-operator-verification` additionally reports unreadable entries as their own set rather than
+folding them into the pending count unremarked — they block for a different reason, and the message no
+longer offers a remedy that cannot reach them. It now names only the remedies that can actually run:
+the per-PR override disappears from the message entirely once any entry is unreadable, because the
+override is all-or-nothing across the pending set and one such entry stops it for every entry. Leaving
+it listed would have been this same defect one level up — advice that provably cannot work on the entry
+it is given about. Its result gains `unparsed_status_entries`; exit codes and flags are unchanged.
+
 ## 2026-09-11: a participle behind a determiner stops reading as a closing keyword
 
 <!-- prawduct: type=fix | scope=closing-keyword-classifier -->

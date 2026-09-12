@@ -337,7 +337,7 @@ LAST_MEASURED_TOKENS = {
     # its Direction precondition and it was reverted. The sentence is true again
     # because the check is back. Recorded as one entry rather than two so the
     # next reader sees a no-op, not a pair of unexplained swings.
-    "methodology/building.md": 4754,
+    "methodology/building.md": 4756,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -2364,6 +2364,31 @@ class TestBuildingMethodology:
         # pointer's table of contents went with it. The ceiling moves by the
         # same -5 rather than banking it — unratcheted slack is a loan the next
         # edit collects silently and green.
+        # The live-review edit rule (2026-09-12) landed +2 net (4754 -> 4756),
+        # so the ceiling does NOT move — it is spent out of the 3 tokens of
+        # headroom the last ratchet left, leaving 1.
+        # The addition is the read-don't-edit rule on the wait-time paragraph:
+        # `critic-begin` snapshots a tree, so editing a reviewed file voids the
+        # review and the suite evidence together, and `test-status` cannot see
+        # it. Recorded because a self-funded change is the one most likely to go
+        # unlogged. What paid, each pure restatement or detail the pointer
+        # beside it already owns — no count, because the first draft of this
+        # entry said "four" and the review found five: the Cumulative-Critic-gate
+        # paragraph (its ordering is "Resolve findings", its existence is Modes,
+        # its mechanics are pr/SKILL.md); the "Tuning a mechanism you haven't
+        # read" trap's tail (the cheap-check gate lists the trap verbatim as a
+        # detector); the coordinator roster's three roles (the next sentence
+        # sends the roster rule to review-cycle.md); the build cycle's "Update
+        # build plan Status" bullet (chunk-boundary step 5 carries it verbatim);
+        # and two words off the wait-time paragraph's own tail.
+        # ONE trim was attempted and REVERTED: "major" in the
+        # "Uninvestigated decisions" trap. It reads as restatement and is not —
+        # § Decision Research is where "major" is DEFINED (lock-in,
+        # pervasiveness, structural impact, external dependency, volatility), so
+        # the word is the trap's only link to that predicate, and without it the
+        # line asserts that every choice owes research. A trim that changes an
+        # instruction's SCOPE is not funding, whatever it saves.
+        # The narrative why lives in the learnings entry this cycle wrote.
         assert tokens < 4757, f"building.md is ~{tokens} tokens, should be <4757"
 
 

@@ -18,6 +18,33 @@
      `superseded` is not a status: an entry that must NOT be drained by running its
      steps is `accepted`, with the reason as its rationale.
 
+     AND IT LIVES ON A LINE OF ITS OWN. This is the half that gets missed, and
+     it is missed the same way every time: a compact entry header that runs the
+     status in with its neighbours —
+
+         **Chunk:** <chunk> - **Raised:** <date> - **Status:** pending
+
+     — is not read as a status at all. Two separate products invented that exact
+     shape independently and each filed it as a bug, so treat it as the natural
+     mistake rather than a careless one. The status line is the entry's FIRST
+     non-blank body line and holds nothing but `**Status:** <word>`.
+
+     Correcting the status WORD inside such a line does not help: nothing reads
+     that line's interior, so the entry goes on counting as pending. The line has
+     to be split, with the other metadata moved to lines of its own.
+
+     RULED 2026-09-12 - THE PARSER STAYS STRICT; THE SILENCE WAS THE DEFECT.
+     Two downstream products filed the combined-metadata shape above as a bug a
+     day apart, each proposing "teach the parser that shape" as the first fix.
+     Declined: nothing in prawduct emits it, this rule is stated twice in the
+     shipped template with the incident that bought it, and honouring a second
+     shape silently would be the same one-rule-two-carriers failure those reports
+     correctly level at the drain. What WAS wrong is that the tooling said
+     nothing useful - the drain reported success on an entry it had not changed,
+     and the gate offered a remedy that provably could not move it. Both now
+     refuse and name the edit. Re-open this only with evidence that the strict
+     shape costs more than the silence did, not merely that someone hit it again.
+
      WHY EACH ENTRY IS HERE, AND WHEN IT MAY LEAVE (#183). This queue was
      write-only until 2026-09-01: entries went in conscientiously and never came
      back out, and VRF-002 named CRT-2J8N's root cause seventeen days before an

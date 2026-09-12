@@ -101,15 +101,15 @@ While `/prawduct:critic cumulative` runs (~4-10 min), do prep that doesn't depen
 **Run `prawduct-hook check-operator-verification`.** Three outcomes, and the third takes neither of the two paths below:
 
 - **Exit 0** — satisfied (the queue requirement is off, or every entry is verified/accepted).
-- **Exit 1** — pending entries in `.prawduct/operator-verification.md`; stderr names the first ID. Take one of the two paths below.
+- **Exit 1** — pending entries in `.prawduct/operator-verification.md`; stderr names the first ID. Take one of the two paths below — but **read the whole message first, and offer only the paths it offers.** When any pending entry has a status line the queue cannot read, stderr names those entries and stops offering the override *entirely*: it is all-or-nothing across the pending set, so one unreadable entry blocks it for every entry, and path 2 is simply unavailable until the operator edits those entries by hand (the message says exactly what edit). Path 1 still drains the readable ones. Do not re-run the drain on an unreadable entry hoping for a different answer, and do not edit the queue on the operator's behalf — it is their record.
 - **Exit 3** — the queue file holds content that parsed as **zero entries**. The gate still blocks, but neither path below applies: there is no ID to verify, and an override would record a bypass covering nothing. **Do NOT reformat the queue to make the check pass.** It is an operator-authored record, and rewriting it to satisfy a gate is a silent edit nobody reviewed — which is worse than the inert gate this outcome exists to expose. Relay the stderr message, which names the expected entry shape, and let the operator decide. (`accept-operator-verification` refuses on the same state rather than inheriting the defect.)
 
-When pending entries exist (exit 1), two paths:
+When pending entries exist (exit 1), two paths — but offer only the ones stderr offers: path 2 is available only when the message names NO unreadable entry, and one unreadable entry withdraws it for the whole pending set.
 
 1. **Verify the items** (preferred): for each pending `VRF-NNN`, complete the human-verification step described in the entry, then run `prawduct-hook verify-operator-verification <VRF-NNN>` to flip its status. Re-run the gate.
 2. **Override for this PR**: if the user explicitly passes `--accept-pending-verification "rationale"` in `$ARGUMENTS`, run `prawduct-hook accept-operator-verification "<rationale>"`. This flips every pending entry to `accepted` and records the rationale into each entry — the queue file is the work-log. The override is per-PR; future PRs will block again if new pending entries appear.
 
-If the user did NOT supply the override flag and pending entries exist, **STOP**: do not proceed to Step 3 until either path above is taken. Present the stderr message and the two options to the user. On **exit 3**, STOP as well and present the message — but offer neither option, because neither is available; the next move is the operator's.
+If the user did NOT supply the override flag and pending entries exist, **STOP**: do not proceed to Step 3 until an available path above is taken. Present the stderr message and the options it leaves open — both when it names no unreadable entry, path 1 alone when it does. Offering an override the queue will refuse is the same defect this gate exists to report, one surface up. On **exit 3**, STOP as well and present the message — but offer neither option, because neither is available; the next move is the operator's.
 
 ### Step 3: Independent review — MANDATORY
 **STOP. Do NOT proceed to step 4 until the reviewer agent has completed and written its evidence file.**

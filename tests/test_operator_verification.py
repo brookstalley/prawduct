@@ -469,6 +469,27 @@ class TestRunAcceptPending:
 # =============================================================================
 
 
+def _run_hook(project_dir: Path, *args: str) -> subprocess.CompletedProcess:
+    """Invoke the plugin runtime the way a governed repo does.
+
+    Module-level rather than a method so a second dispatch class can reach it
+    without subclassing the first — inheriting a pytest class re-collects its
+    tests, so the tidy-looking reuse silently runs three subprocess tests twice.
+    """
+    cmd = [sys.executable, str(REPO_ROOT / "bin" / "prawduct-hook"), *args]
+    return subprocess.run(
+        cmd,
+        cwd=project_dir,
+        capture_output=True,
+        text=True,
+        env={
+            "CLAUDE_PROJECT_DIR": str(project_dir),
+            "CLAUDE_PLUGIN_ROOT": str(REPO_ROOT),
+            "PATH": "/usr/bin:/bin",
+        },
+    )
+
+
 class TestPrawductHookOperatorVerification:
     """Subprocess-level coverage of the plugin runtime's dispatch wiring.
 
@@ -479,18 +500,7 @@ class TestPrawductHookOperatorVerification:
     """
 
     def _hook(self, project_dir: Path, *args: str) -> subprocess.CompletedProcess:
-        cmd = [sys.executable, str(REPO_ROOT / "bin" / "prawduct-hook"), *args]
-        return subprocess.run(
-            cmd,
-            cwd=project_dir,
-            capture_output=True,
-            text=True,
-            env={
-                "CLAUDE_PROJECT_DIR": str(project_dir),
-                "CLAUDE_PLUGIN_ROOT": str(REPO_ROOT),
-                "PATH": "/usr/bin:/bin",
-            },
-        )
+        return _run_hook(project_dir, *args)
 
     def test_check_dispatch_returns_0_when_gate_off(self, tmp_path: Path):
         product = _make_product(tmp_path, required=False)
@@ -926,3 +936,520 @@ def test_every_pending_entry_in_the_live_queue_carries_a_disposition():
         f"when someone finally asks. Splitting it first (see the template) often "
         f"turns half of it into a test you can write today."
     )
+
+
+# =============================================================================
+# Unreadable status lines — refuse, never half-write
+#
+# The defect these pin: `_set_status_line` correctly reported "no status line
+# to rewrite" and both mutators discarded that answer, appending a drain footer
+# anyway. The status never moved, the footer said it had, the command exited 0
+# saying so, and every re-run appended one more footer. Reported twice from two
+# products a day apart (one root-caused by direct call, one inferred from the
+# artifact), which is what identified the malformed shape as convergent rather
+# than a typo: it is what an agent writes composing a compact entry header.
+# =============================================================================
+
+
+_COMBINED_METADATA_LINE = (
+    "**Chunk:** a chunk · **Raised:** 2026-01-01 · **Status:** pending"
+)
+
+
+class TestStatusDefectClassification:
+    """`status` is unchanged on every input; the defect is purely additive."""
+
+    def test_well_formed_entry_has_no_defect(self):
+        _, entries = ov.parse_operator_verification(
+            "## VRF-001 — a\n**Status:** pending\n"
+        )
+        assert entries[0].status == "pending"
+        assert entries[0].status_defect is None
+
+    def test_status_inside_a_combined_metadata_line(self):
+        _, entries = ov.parse_operator_verification(
+            f"## VRF-001 — a\n{_COMBINED_METADATA_LINE}\n"
+        )
+        entry = entries[0]
+        assert entry.status == "pending"  # strictness preserved: fails closed
+        assert entry.status_defect.kind == ov.STATUS_DEFECT_UNPARSED_LINE
+        assert entry.status_defect.line == _COMBINED_METADATA_LINE
+
+    def test_first_body_line_is_prose_rather_than_a_status_line(self):
+        _, entries = ov.parse_operator_verification(
+            "## VRF-001 — a\nBody without a Status line at all.\n"
+        )
+        assert entries[0].status == "pending"
+        assert entries[0].status_defect.kind == ov.STATUS_DEFECT_UNPARSED_LINE
+
+    def test_entry_with_empty_body(self):
+        _, entries = ov.parse_operator_verification("## VRF-001 — a\n\n")
+        assert entries[0].status == "pending"
+        assert entries[0].status_defect.kind == ov.STATUS_DEFECT_NO_STATUS_LINE
+        assert entries[0].status_defect.line is None
+
+    def test_unknown_status_token(self):
+        _, entries = ov.parse_operator_verification(
+            "## VRF-001 — a\n**Status:** wibble\n"
+        )
+        assert entries[0].status == "pending"
+        assert entries[0].status_defect.kind == ov.STATUS_DEFECT_UNKNOWN_TOKEN
+
+    def test_reader_and_writer_agree_on_which_line_is_the_status_line(self):
+        """A later bare status line does not rescue a malformed first line.
+
+        The two used to disagree: the reader required the status on the first
+        non-blank body line, while the writer rewrote the first line matching
+        the pattern *anywhere* in the body. On this entry that gap let the
+        writer silently edit a line the reader never consults — changing the
+        file while the entry went on reading `pending` forever.
+        """
+        _, entries = ov.parse_operator_verification(
+            f"## VRF-001 — a\n{_COMBINED_METADATA_LINE}\n"
+            "\n"
+            "**Status:** pending\n"
+        )
+        entry = entries[0]
+        assert entry.status_defect is not None
+        before = list(entry.body_lines)
+        assert ov.mark_verified(entry, today=date(2026, 5, 19)) is False
+        assert entry.body_lines == before
+
+
+class TestMutatorsRefuseRatherThanHalfWrite:
+    def _malformed(self) -> ov.VerificationEntry:
+        _, entries = ov.parse_operator_verification(
+            f"## VRF-001 — a\n{_COMBINED_METADATA_LINE}\n"
+        )
+        return entries[0]
+
+    def test_mark_verified_refuses_and_touches_nothing(self):
+        entry = self._malformed()
+        before = list(entry.body_lines)
+        assert ov.mark_verified(entry, today=date(2026, 5, 19)) is False
+        assert entry.body_lines == before
+        assert not any("Verified" in line for line in entry.body_lines)
+
+    def test_mark_accepted_refuses_and_touches_nothing(self):
+        entry = self._malformed()
+        before = list(entry.body_lines)
+        assert (
+            ov.mark_accepted(entry, rationale="r", today=date(2026, 5, 19))
+            is False
+        )
+        assert entry.body_lines == before
+        assert not any("Accepted" in line for line in entry.body_lines)
+
+    def test_well_formed_entries_still_report_success(self):
+        _, entries = ov.parse_operator_verification(
+            "## VRF-001 — a\n**Status:** pending\n"
+        )
+        assert ov.mark_verified(entries[0], today=date(2026, 5, 19)) is True
+
+    def test_already_verified_reports_no_work_outstanding(self):
+        _, entries = ov.parse_operator_verification(
+            "## VRF-001 — a\n**Status:** verified\n"
+        )
+        assert ov.mark_verified(entries[0], today=date(2026, 5, 19)) is True
+
+
+class TestDescribeStatusDefect:
+    """The refusal has to name the edit that WORKS, not merely say 'malformed'.
+
+    Correcting the status word inside the combined line changes nothing — the
+    reader never looks at that line's interior — so a message that stops at
+    "malformed" sends an operator to make an edit that cannot help, twice.
+    """
+
+    def _describe(self, content: str) -> str:
+        _, entries = ov.parse_operator_verification(content)
+        return ov.describe_status_defect(
+            entries[0].vrf_id, entries[0].status_defect
+        )
+
+    def test_quotes_the_offending_line_back(self):
+        msg = self._describe(f"## VRF-001 — a\n{_COMBINED_METADATA_LINE}\n")
+        assert _COMBINED_METADATA_LINE in msg
+
+    def test_says_editing_in_place_will_not_help(self):
+        msg = self._describe(f"## VRF-001 — a\n{_COMBINED_METADATA_LINE}\n")
+        assert "NOT help" in msg
+        assert "own line" in msg
+
+    def test_unknown_token_lists_the_valid_ones(self):
+        msg = self._describe("## VRF-001 — a\n**Status:** wibble\n")
+        for token in ("pending", "verified", "accepted"):
+            assert token in msg
+
+    def test_claims_nothing_about_mutation(self):
+        """The gate check shares this string and mutates nothing."""
+        msg = self._describe(f"## VRF-001 — a\n{_COMBINED_METADATA_LINE}\n")
+        assert "nothing was changed" not in msg.lower()
+
+
+class TestRunnersRefuseAndWriteNothing:
+    QUEUE = (
+        "# Operator Verification Queue\n"
+        "\n"
+        "## VRF-101 — well formed\n"
+        "\n"
+        "**Status:** pending\n"
+        "\n"
+        "## VRF-102 — status inside a metadata line\n"
+        "\n"
+        f"{_COMBINED_METADATA_LINE}\n"
+    )
+
+    def test_verify_leaves_the_file_byte_identical(self, tmp_path: Path):
+        product = _make_product(tmp_path, required=True, queue_body=self.QUEUE)
+        queue = product / ".prawduct" / "operator-verification.md"
+        before = queue.read_bytes()
+        result = ov.run_verify_entry(product, "VRF-102", today=date(2026, 5, 19))
+        assert "error" in result
+        assert "Nothing was changed" in result["error"]
+        assert queue.read_bytes() == before
+
+    def test_verify_is_idempotent_when_refusing(self, tmp_path: Path):
+        """Each re-run used to append one more `**Verified:**` footer."""
+        product = _make_product(tmp_path, required=True, queue_body=self.QUEUE)
+        queue = product / ".prawduct" / "operator-verification.md"
+        before = queue.read_bytes()
+        for _ in range(3):
+            assert "error" in ov.run_verify_entry(
+                product, "VRF-102", today=date(2026, 5, 19)
+            )
+        assert queue.read_bytes() == before
+
+    def test_verify_still_drains_the_well_formed_sibling(self, tmp_path: Path):
+        product = _make_product(tmp_path, required=True, queue_body=self.QUEUE)
+        result = ov.run_verify_entry(product, "VRF-101", today=date(2026, 5, 19))
+        assert "error" not in result
+        assert result["status"] == "verified"
+
+    def test_accept_is_all_or_nothing(self, tmp_path: Path):
+        """One unreadable entry aborts the whole override, writing nothing.
+
+        A bypass that covered every pending entry but one, silently, would
+        record a decision about work nobody read — and the gate would go on
+        blocking on the entry it skipped.
+        """
+        product = _make_product(tmp_path, required=True, queue_body=self.QUEUE)
+        queue = product / ".prawduct" / "operator-verification.md"
+        before = queue.read_bytes()
+        result = ov.run_accept_pending(product, "shipping anyway", today=date(2026, 5, 19))
+        assert "error" in result
+        assert "no entries were accepted" in result["error"].lower()
+        assert queue.read_bytes() == before
+
+    def test_check_names_the_unreadable_entries_separately(self, tmp_path: Path):
+        product = _make_product(tmp_path, required=True, queue_body=self.QUEUE)
+        result = ov.run_check_operator_verification(product)
+        assert result["pending"] == 2
+        assert result["unparsed_status_entries"] == ["VRF-102"]
+        assert "VRF-102" in result["message"]
+        assert "cannot be drained or overridden" in result["message"]
+
+    def test_check_does_not_offer_the_override_it_would_refuse(self, tmp_path: Path):
+        """The override is all-or-nothing, so one unreadable entry stops it.
+
+        Naming it as an available remedy here would repeat, one level up, the
+        defect this whole change closes: advice that provably cannot work on
+        the entry it is given about.
+        """
+        product = _make_product(tmp_path, required=True, queue_body=self.QUEUE)
+        result = ov.run_check_operator_verification(product)
+        assert "--accept-pending-verification \"rationale\"" not in result["message"]
+        assert "override is unavailable" in result["message"]
+        # The readable sibling is still reported as drainable.
+        assert "1 can be drained" in result["message"]
+
+    def test_check_on_a_queue_whose_only_pending_entry_is_unreadable(
+        self, tmp_path: Path
+    ):
+        """The shape both upstream reports actually filed.
+
+        Every other check test here pairs a readable entry with an unreadable
+        one, so the `drainable == []` branch — no remedy is offered at all —
+        was never taken. A regression that re-offered the override, or leaked a
+        "0 can be drained" sentence, would have shipped green.
+        """
+        product = _make_product(
+            tmp_path,
+            required=True,
+            queue_body=f"## VRF-001 — a\n{_COMBINED_METADATA_LINE}\n",
+        )
+        result = ov.run_check_operator_verification(product)
+        assert result["pending"] == 1
+        assert result["unparsed_status_entries"] == ["VRF-001"]
+        assert "can be drained" not in result["message"]
+        assert "--accept-pending-verification" not in result["message"]
+        assert "1 entry cannot be drained or overridden" in result["message"]
+
+    def test_check_pluralises_when_several_entries_are_unreadable(
+        self, tmp_path: Path
+    ):
+        product = _make_product(
+            tmp_path,
+            required=True,
+            queue_body=(
+                f"## VRF-001 — a\n{_COMBINED_METADATA_LINE}\n\n"
+                f"## VRF-002 — b\n{_COMBINED_METADATA_LINE}\n"
+            ),
+        )
+        result = ov.run_check_operator_verification(product)
+        assert result["unparsed_status_entries"] == ["VRF-001", "VRF-002"]
+        assert "2 entries cannot be drained or overridden" in result["message"]
+        assert "Their status counts as pending" in result["message"]
+
+    def test_check_stays_silent_on_a_healthy_queue(self, tmp_path: Path):
+        """The fix must add nothing to the output for a well-formed queue."""
+        product = _make_product(
+            tmp_path,
+            required=True,
+            queue_body="## VRF-001 — a\n**Status:** pending\n",
+        )
+        result = ov.run_check_operator_verification(product)
+        assert result["unparsed_status_entries"] == []
+        assert "cannot be drained" not in result["message"]
+
+    def test_every_check_branch_carries_the_same_keys(self, tmp_path: Path):
+        """The runner's docstring promises identical keys on every branch."""
+        cases = [
+            _make_product(tmp_path / "off", required=False),
+            _make_product(tmp_path / "empty", required=True),
+            _make_product(
+                tmp_path / "ok",
+                required=True,
+                queue_body="## VRF-001 — a\n**Status:** pending\n",
+            ),
+            _make_product(
+                tmp_path / "unreadable",
+                required=True,
+                queue_body="## Pending\n- an item in some other format\n",
+            ),
+        ]
+        shapes = {
+            frozenset(ov.run_check_operator_verification(p)) for p in cases
+        }
+        assert len(shapes) == 1, shapes
+        assert "unparsed_status_entries" in next(iter(shapes))
+
+
+# =============================================================================
+# The write path must not damage the file it was handed
+#
+# The queue is an operator-authored record. Every defect below hits WELL-FORMED
+# entries — they are not consequences of the malformed shape above, and each
+# one edited a part of the file nobody asked this command to touch.
+# =============================================================================
+
+
+class TestWritePathPreservesTheFile:
+    def test_round_trip_is_identity_including_the_preamble_blank_line(self):
+        """Parse → format with no mutation must return the input unchanged.
+
+        The preamble was joined with separators and re-terminated with a single
+        newline, which cannot tell "the last preamble line was blank" from "no
+        trailing newline" — so each drain deleted the blank line between the
+        file's header comment and its first entry.
+        """
+        content = (
+            "# Operator Verification Queue\n"
+            "\n"
+            "<!-- a header comment -->\n"
+            "\n"
+            "## VRF-001 — a\n"
+            "\n"
+            "**Status:** pending\n"
+        )
+        preamble, entries = ov.parse_operator_verification(content)
+        assert ov.format_operator_verification(preamble, entries) == content
+
+    def test_drained_entry_does_not_weld_itself_to_the_next_heading(self):
+        content = (
+            "## VRF-001 — a\n"
+            "\n"
+            "**Status:** pending\n"
+            "\n"
+            "## VRF-002 — b\n"
+            "\n"
+            "**Status:** pending\n"
+        )
+        preamble, entries = ov.parse_operator_verification(content)
+        assert ov.mark_verified(entries[0], today=date(2026, 5, 19)) is True
+        out = ov.format_operator_verification(preamble, entries)
+        assert "**Verified:** 2026-05-19\n\n## VRF-002" in out
+
+    def test_drain_adds_exactly_one_blank_line_above_the_footer(self):
+        content = "## VRF-001 — a\n\n**Status:** pending\n\n"
+        preamble, entries = ov.parse_operator_verification(content)
+        assert ov.mark_verified(entries[0], today=date(2026, 5, 19)) is True
+        out = ov.format_operator_verification(preamble, entries)
+        assert "**Status:** verified\n\n**Verified:**" in out
+
+    def test_repeated_drains_do_not_accumulate_blank_lines(self):
+        """Idempotence on the file, not just on the status token."""
+        content = "## VRF-001 — a\n\n**Status:** pending\n"
+        preamble, entries = ov.parse_operator_verification(content)
+        ov.mark_verified(entries[0], today=date(2026, 5, 19))
+        once = ov.format_operator_verification(preamble, entries)
+        preamble2, entries2 = ov.parse_operator_verification(once)
+        ov.mark_verified(entries2[0], today=date(2026, 5, 19))
+        assert ov.format_operator_verification(preamble2, entries2) == once
+
+    def test_draining_the_last_entry_invents_no_trailing_blank_line(self):
+        """A drain must not author an end-of-file line nobody asked for.
+
+        Asserted on the exact bytes: the substring checks above pass whether or
+        not a trailing blank is appended, which is how this went unnoticed.
+        """
+        content = "## VRF-001 — a\n\n**Status:** pending\n"
+        preamble, entries = ov.parse_operator_verification(content)
+        assert ov.mark_verified(entries[0], today=date(2026, 5, 19)) is True
+        out = ov.format_operator_verification(preamble, entries)
+        assert out == (
+            "## VRF-001 — a\n"
+            "\n"
+            "**Status:** verified\n"
+            "\n"
+            "**Verified:** 2026-05-19\n"
+        )
+
+    def test_draining_a_middle_entry_keeps_its_separator_exactly(self):
+        content = (
+            "## VRF-001 — a\n\n**Status:** pending\n\n"
+            "## VRF-002 — b\n\n**Status:** pending\n"
+        )
+        preamble, entries = ov.parse_operator_verification(content)
+        assert ov.mark_verified(entries[0], today=date(2026, 5, 19)) is True
+        out = ov.format_operator_verification(preamble, entries)
+        assert out == (
+            "## VRF-001 — a\n"
+            "\n"
+            "**Status:** verified\n"
+            "\n"
+            "**Verified:** 2026-05-19\n"
+            "\n"
+            "## VRF-002 — b\n"
+            "\n"
+            "**Status:** pending\n"
+        )
+
+    def test_a_mixed_whitespace_tail_comes_back_in_its_original_order(self):
+        """The one shape that can tell "verbatim" from "the same lines, reversed".
+
+        Every other tail in this class is all-empty, so it round-trips
+        identically under either implementation and none of them would go red
+        if the tail were restored backwards. Here the trailing run is
+        ``["", "   "]``: reversing it moves the indented line above the blank,
+        which changes bytes the drain never named. Turns red if the tail is
+        rebuilt by popping onto a list and extending it back.
+        """
+        content = (
+            "## VRF-001 \u2014 a\n\n**Status:** pending\n\n   \n"
+            "## VRF-002 \u2014 b\n\n**Status:** pending\n"
+        )
+        preamble, entries = ov.parse_operator_verification(content)
+        assert ov.mark_verified(entries[0], today=date(2026, 5, 19)) is True
+        out = ov.format_operator_verification(preamble, entries)
+        assert out == (
+            "## VRF-001 \u2014 a\n"
+            "\n"
+            "**Status:** verified\n"
+            "\n"
+            "**Verified:** 2026-05-19\n"
+            "\n"
+            "   \n"
+            "## VRF-002 \u2014 b\n"
+            "\n"
+            "**Status:** pending\n"
+        )
+
+    def test_operator_double_spacing_survives_a_drain(self):
+        """Spacing the operation did not name is not the drain's to normalize."""
+        content = (
+            "## VRF-001 — a\n\n**Status:** pending\n\n\n"
+            "## VRF-002 — b\n\n**Status:** pending\n"
+        )
+        preamble, entries = ov.parse_operator_verification(content)
+        ov.mark_verified(entries[0], today=date(2026, 5, 19))
+        out = ov.format_operator_verification(preamble, entries)
+        assert "**Verified:** 2026-05-19\n\n\n## VRF-002" in out
+
+    def test_crlf_queue_keeps_crlf_across_a_drain(self, tmp_path: Path):
+        """A two-word status edit must not hand back a whole-file reformat."""
+        product = _make_product(tmp_path, required=True)
+        queue = product / ".prawduct" / "operator-verification.md"
+        queue.write_bytes(
+            b"# Queue\r\n\r\n## VRF-001 - a\r\n\r\n**Status:** pending\r\n"
+        )
+        result = ov.run_verify_entry(product, "VRF-001", today=date(2026, 5, 19))
+        assert "error" not in result
+        raw = queue.read_bytes()
+        assert b"\r\n" in raw
+        assert b"\n" not in raw.replace(b"\r\n", b"")
+
+    def test_line_ending_detection(self, tmp_path: Path):
+        """The terminator is read from the bytes on disk, not guessed.
+
+        Stated as its own contract because the two callers only ever exercise
+        the two happy shapes: a queue is written back only when it already
+        existed, so the missing-file and no-newline defaults are otherwise
+        unreachable and would sit unexamined.
+        """
+        cases = {
+            b"a\nb\n": "\n",
+            b"a\r\nb\r\n": "\r\n",
+            b"no newline at all": "\n",
+            b"": "\n",
+            b"\nleading blank": "\n",
+        }
+        for raw, expected in cases.items():
+            target = tmp_path / "q.md"
+            target.write_bytes(raw)
+            assert ov._existing_line_ending(target) == expected, raw
+        assert ov._existing_line_ending(tmp_path / "absent.md") == "\n"
+
+    def test_lf_queue_stays_lf(self, tmp_path: Path):
+        product = _make_product(
+            tmp_path,
+            required=True,
+            queue_body="## VRF-001 — a\n**Status:** pending\n",
+        )
+        queue = product / ".prawduct" / "operator-verification.md"
+        ov.run_verify_entry(product, "VRF-001", today=date(2026, 5, 19))
+        assert b"\r" not in queue.read_bytes()
+
+
+class TestDispatchRefusesUnreadableStatus:
+    """Exit-code semantics at the CLI boundary.
+
+    Exit 1, not a new code: these are state-mutating writers, whose documented
+    refusal value is 1 (validation failed, nothing written). The third-outcome
+    rule that gives `check-operator-verification` its exit 3 is scoped to a GATE
+    whose subject could not be read, where 1 already carries a remedy that
+    cannot apply — a different channel with a different table row.
+    """
+
+    def test_verify_dispatch_refuses_unreadable_status(self, tmp_path: Path):
+        product = _make_product(
+            tmp_path,
+            required=True,
+            queue_body=f"## VRF-001 — a\n{_COMBINED_METADATA_LINE}\n",
+        )
+        queue = product / ".prawduct" / "operator-verification.md"
+        before = queue.read_bytes()
+        cp = _run_hook(product, "verify-operator-verification", "VRF-001")
+        assert cp.returncode == 1
+        assert "own line" in cp.stderr
+        assert queue.read_bytes() == before
+
+    def test_verify_dispatch_still_drains_a_well_formed_entry(self, tmp_path: Path):
+        product = _make_product(
+            tmp_path,
+            required=True,
+            queue_body="## VRF-001 — a\n**Status:** pending\n",
+        )
+        cp = _run_hook(product, "verify-operator-verification", "VRF-001")
+        assert cp.returncode == 0
+        assert "pending → verified" in cp.stdout
