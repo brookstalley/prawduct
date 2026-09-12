@@ -458,6 +458,22 @@ build red. Its `--json` `verdict` therefore has three values: `released`, `not-r
 `unverified`. `--allow-unverifiable` collapses 3 to 0 for an operator who wants the local subset.
 CI binds to the exit code, so any non-zero is red without special-casing.
 
+**The third outcome is scoped to gates, and the queue mutators are the worked counter-example
+(2026-09-12).** `verify-operator-verification` and `accept-operator-verification` refuse an entry whose
+`**Status:**` line cannot be read — it is not on a line of its own, carries an unrecognised token, or is
+absent — writing nothing and naming the edit that fixes it. That refusal exits **1**, not 3, and the
+reasoning is worth keeping because the first attempt got it backwards by generalising from
+`check-operator-verification`'s exit 3 above.
+
+These two are **state-mutating writers**, not gates. Their row in the table reads `1 = refused,
+validation failed, nothing written`, which is exactly and only what happens, so 1 carries no competing
+remedy to be displaced — the condition that earns `check` its third outcome is absent. Adding a 3 here
+would put a new meaning into the scheme that the scheme does not need, and owe the registry a row for a
+member that should not exist. **The rule this states: read the row for the channel the refusal reaches,
+not the one for the nearest command that looks similar.** A gate and a writer over the same subject
+take different codes for the same underlying fault, and that is the scheme working rather than an
+inconsistency to iron out.
+
 Fail-direction is deliberate and per-purpose:
 
 - **Unevaluable *advisory* gate** (an optional lib path failed to import) → **fail-open, exit 0**: an

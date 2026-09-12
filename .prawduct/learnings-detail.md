@@ -3047,3 +3047,52 @@ between the real rule and the plausible wrong ones. Related: the docstring-as-as
 "a correct decision defended by an unread mechanism is still a defect" — this is their test-design
 consequence, and the sharpest tell is that behaviour was correct throughout, so nothing but the
 prose was ever wrong.
+
+
+## While a Critic review is LIVE, edit only the free surfaces
+
+Earned on the operator-verification drain fix (2026-09-12). `building.md` said "Don't poll;
+deep-scrub your own changes while it runs, which often pre-resolves findings", and that was read as
+licence to keep editing the files under review. The scrub was genuinely productive — it caught a
+duplicated test class and a message that offered a remedy the code would refuse — but it also
+rewrote `operator_verification.py` and its test file after `critic-begin` had snapshotted the tree
+and after the suite had gone green.
+
+The result was the review's own BLOCKING finding, and two reviewers reached it independently: one
+read the lib twice minutes apart and got different blobs, the other noticed its findings were
+against a state that no longer existed. `.test-evidence.json` recorded the PRE-edit tree, so the
+reviewed code had no green suite behind it and the green suite described code nobody reviewed.
+
+**The tell is the part worth keeping.** `prawduct-hook test-status` exited 0 throughout. It is
+session-scoped: it answers "did a suite pass in this session over these paths", not "does the
+evidence describe the bytes on disk now", so it is structurally blind to an edit made after the run
+it graded. The one probe that looks like it would catch this cannot. `building.md` now carries the
+boundary explicitly, which is the fix the rule exists to make unnecessary.
+
+## A ruling recorded only where the deciding team reads it is not recorded
+
+Same cycle. Two downstream products filed the same defect a day apart, each proposing that the
+parser be widened to accept the shape that tripped them. The widening was declined and the reasoning
+written up carefully — in this repo's own `operator-verification.md` queue header and in the
+change-log. The plan asserted it was in the shipped template too. It was not: the template got the
+shape call-out and stopped short of saying the widening had been considered and refused.
+
+The consequence is specific rather than tidy-mindedness. The audience that produced both reports
+reads only the template. It would have found a rule, an acknowledgement that the rule gets filed as
+a bug repeatedly, and no statement that the question is settled — and the cheapest reading of that
+is "known bug, still open", whose natural actions are a third report or a local parser patch. A
+decision's home is wherever the people who keep asking the question will meet it.
+
+## Proving a guard can go red is only half the question
+
+Same cycle, twice in one diff. Every check-gate test on the new defective path paired one readable
+entry with one unreadable one, so the branch that mattered — a queue whose only pending entry is
+unreadable, which is literally the shape both upstream reports filed — was never reached. And two
+spacing tests asserted substrings (`"**Verified:** …\n\n## VRF-002" in out`) that held whether or
+not the drain appended a stray blank line, which is the thing they were written to pin.
+
+The mutation-testing instinct does not help here: mutation grades the lines you added, and both
+gaps were about paths the fixtures never entered. The earlier discipline — mutate the real corpus
+and watch each new assertion fail against the unfixed module — was applied and passed, because the
+assertions that ran really did discriminate. The unasked question was whether the fixture set
+reached every branch the change introduced.

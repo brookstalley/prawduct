@@ -158,6 +158,7 @@ Drains a single pending entry in `.prawduct/operator-verification.md` after the 
 1. Confirm the user has actually performed the verification described in the entry's `**Verify:**` checklist — `verify` is a deliberate user action, not a session-time auto-flip.
 2. Run: `prawduct-hook verify-operator-verification <VRF-id>`
 3. Relay the `previous_status → status` line ("pending → verified") and the action line. If the entry was already verified, the command is a no-op and surfaces a note.
+4. **On exit 1, relay the message verbatim and read it before advising** — exit 1 covers every refusal this command makes (an unknown or mistyped VRF id, no queue file, the accepted-entry refusal, a lib that would not import), so the code alone does not say what went wrong. **When the message says the entry's status line could not be read** — not on a line of its own, an unrecognised word, or missing — nothing was written, re-running cannot change the outcome, and only the operator's hand edit will: relay the edit the message names and stop. Do not edit the queue yourself; it is an operator-authored record. Leave every other exit-1 cause to what the message says, and retry where that is the actual remedy.
 
 Refuses to verify an `accepted` entry — `accepted` means the gate was overridden via `--accept-pending-verification`; flipping to verified would erase the override rationale. Edit the file by hand if the verification is now genuine.
 
