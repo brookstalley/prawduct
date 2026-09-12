@@ -731,6 +731,58 @@ class TestPrReviewerScoping:
             "the skill cannot append the review.pr event."
         )
 
+    def test_create_step_5_pushes_with_upstream_and_verifies_the_pushed_ref(self):
+        """Both halves, because the check depends on the flag.
+
+        `git rev-parse @{u}` resolves only with an upstream configured, so a
+        rewrite that drops `-u` turns the verification into a fatal error on
+        the first push of a Create flow — the exact path it guards. Asserting
+        the comparison alone passed while that was true.
+        """
+        step5 = self.skill.split("### Step 5: Create PR", 1)[1].split("\n## ", 1)[0]
+        # Scoped and literal: a bare `"-u" in content` passes on --json, on any
+        # hyphen-u anywhere in the file, and on a Step 5 that pushes without it.
+        assert "Push branch with `-u`" in step5, (
+            "Step 5 must push with -u -- `git rev-parse @{u}` resolves only "
+            "with an upstream, so without it the check below exits fatal "
+            "instead of answering"
+        )
+        assert "git rev-parse @{u}" in step5
+        assert "git rev-parse HEAD" in step5
+
+    def test_merge_flow_verifies_the_prs_head_before_merging(self):
+        """The merge-side check, pinned separately from the create-side one.
+
+        These are not duplicates and the file says so: the Create-flow check
+        sits INSIDE the step whose skip causes the defect, so only this one is
+        outside the control flow that produces the side effect. A future
+        editor trimming it as redundant is the failure this asserts against.
+        """
+        content = self.skill
+        merge_flow = content.split("## Merge Flow", 1)[1].split("## Status Flow", 1)[0]
+        assert "headRefOid" in merge_flow, (
+            "Merge Flow no longer verifies the PR head against local HEAD — "
+            "an unpushed commit then merges silently."
+        )
+        assert "OUTSIDE the step whose skip causes the defect" in merge_flow, (
+            "the reason this check is not redundant with Create Step 5 is gone, "
+            "which is what makes it look trimmable"
+        )
+
+    def test_a_pushed_ref_mismatch_is_not_answered_with_force_push(self):
+        """One remedy per shape. Force-pushing a remote-ahead branch rewrites
+        the tree Step 4's `commit_reviewed` ancestor check pinned, voiding the
+        review evidence — so the file must not answer every mismatch with
+        "push again"."""
+        step5 = self.skill.split("### Step 5: Create PR", 1)[1].split("\n## ", 1)[0]
+        assert "never force-push" in step5
+        # Scoped: `commit_reviewed` appears independently all through the
+        # Update Flow, so a file-wide check passes with this rationale deleted.
+        assert "commit_reviewed" in step5, (
+            "Step 5 no longer says WHY a force-push is the wrong answer -- "
+            "without the evidence-voiding reason it reads as mere preference"
+        )
+
     def test_learnings_and_backlog_not_rescanned(self):
         """The cumulative Critic owns the Learnings Cross-Check and Backlog
         Reconciliation walk; the PR reviewer must not repeat them. R-2 (data
