@@ -3,6 +3,30 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-09-12: the PR flow re-checks that the remote ref is HEAD before creating or merging
+
+<!-- prawduct: type=fix | scope=pr-push-head-divergence -->
+
+PR #803 merged one commit short of its branch, and no gate in a fully-governed flow noticed. The
+branch was pushed with `-u` while the independent reviewer ran — legitimate prep, and what Step 3's
+wait-time guidance asks for. The reviewer returned a warning; the fix was committed and never
+pushed, because Step 5 bundled "push with `-u`" and "`gh pr create`" into one sentence and so read
+as atomic.
+
+**Every check that could have caught it was computed from a ref that agreed with itself.**
+`check-cumulative-critic` re-ran `satisfied` (it reads LOCAL HEAD, which had the commit); CI passed
+(it grades the PUSHED tip, which did not); the merge succeeded, the PR being internally consistent;
+and the description cited a commit outside its own merge. The one signal was `git branch -d`
+refusing the delete afterwards — a real safety net, but it fires AFTER the merge, when the remedy is
+no longer one `git push` but a second PR against a protected branch.
+
+Step 5 now requires `git rev-parse HEAD` to equal `git rev-parse @{u}` after the push, and says what
+the silence costs rather than only naming the check. The Merge Flow gains the same check against
+`gh pr view --json headRefOid`, because the merge is the irreversible act and is the last point
+where a mismatch is still cheap. The general rule is recorded in learnings: a check is only a check
+if it can disagree with the thing it grades.
+
+
 ## 2026-09-12: the verification drain refuses an entry it cannot read, instead of reporting success
 
 <!-- prawduct: type=fix | scope=verification-drain-half-write -->
