@@ -774,9 +774,14 @@ class TestPrReviewerScoping:
         the tree Step 4's `commit_reviewed` ancestor check pinned, voiding the
         review evidence — so the file must not answer every mismatch with
         "push again"."""
-        content = self.skill
-        assert "never force-push" in content
-        assert "commit_reviewed" in content
+        step5 = self.skill.split("### Step 5: Create PR", 1)[1].split("\n## ", 1)[0]
+        assert "never force-push" in step5
+        # Scoped: `commit_reviewed` appears independently all through the
+        # Update Flow, so a file-wide check passes with this rationale deleted.
+        assert "commit_reviewed" in step5, (
+            "Step 5 no longer says WHY a force-push is the wrong answer -- "
+            "without the evidence-voiding reason it reads as mere preference"
+        )
 
     def test_learnings_and_backlog_not_rescanned(self):
         """The cumulative Critic owns the Learnings Cross-Check and Backlog
