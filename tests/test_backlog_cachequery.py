@@ -812,6 +812,37 @@ class TestRedirects:
         assert result["data"]["via"] == "alias"
         assert result["data"]["redirected_from"] == source
 
+    def test_a_bare_number_in_a_body_does_not_redirect_to_a_real_item(self, fake, repo_dir):
+        """The bare-number spelling is OPERATOR INPUT ONLY, and this is the seam
+        that has to hold it.
+
+        `resolve` qualifies a bare `7` against the store's own scope — that is the
+        whole point of the bare form. `_redirect_fetch` deliberately does not, and
+        nothing but a comment said so: a `superseded_by` target is parsed out of
+        ISSUE BODY TEXT, which anyone who can file an issue can write. Without this
+        test, adding `default_repo=` to that one call "for consistency with resolve"
+        would let a body containing `7` silently redirect every lookup of the
+        carrier to a real, unrelated item, and the suite would stay green.
+        """
+        target = _file(fake, title="cache: the item a bare body-ref must NOT reach", area="backlog")
+        number = target.rsplit("#", 1)[1]
+        source = _blocked_issue(
+            fake,
+            title="cache: a record whose body carries a bare superseded_by",
+            block={"superseded_by": number},
+        )
+        _rebuild(fake, repo_dir)
+
+        # The same spelling resolves fine as operator input...
+        operator = cachequery.resolve(repo_dir, scope=SCOPE, id_raw=number, now=NOW)
+        assert operator["data"]["id"] == target
+
+        # ...and must not be followed when it came out of a body.
+        result = cachequery.resolve(repo_dir, scope=SCOPE, id_raw=source, now=NOW)
+
+        assert result["data"]["id"] == source
+        assert result["data"]["redirected_from"] is None
+
     def test_a_redirect_the_store_cannot_follow_is_reported_not_swallowed(self, fake, repo_dir):
         """Following it would resolve to nothing, and reading that as "no such
         item" would lose the redirect the body plainly records."""
@@ -1217,18 +1248,29 @@ class TestTheCacheQueryOp:
         after = {p: p.stat().st_mtime_ns for p in repo_dir.rglob("*") if p.is_file()}
         assert after == before
 
-    def test_a_bare_issue_ref_resolves_against_the_stores_own_scope(self, fake, repo_dir):
+    @pytest.mark.parametrize("spelling", ["#{number}", "{number}"])
+    def test_a_bare_issue_ref_resolves_against_the_stores_own_scope(
+        self, fake, repo_dir, spelling
+    ):
         """`#621` is how citations are nearly always written — this repo's
         change-log carries 259 bare refs against 5 qualified ones, and `closes:
         #621` is the shape the PR reviewer's R-2 reads. `normalize_id` cannot
         qualify one on its own (it takes an owner and still needs a repo), so
         without this the restored checks would resolve almost nothing and report it
-        as "no such item"."""
+        as "no such item".
+
+        Both spellings are pinned HERE, at the seam, not only at `ids`: the
+        un-prefixed `322` is the form that motivated the change, and
+        `cachequery.resolve` derives its `default_repo` from the store's own
+        `scope` rather than taking it from the caller. Testing only `#N` would
+        keep passing off the older `spelled = f"{scope}{raw}"` prefix, so a later
+        change to how the scope is built could break the bare number silently.
+        """
         item = _file(fake, title="cache: an item cited bare", area="backlog")
         _rebuild(fake, repo_dir)
         number = item.rsplit("#", 1)[1]
 
-        code, envelope = _cq(repo_dir, "resolve", f"#{number}")
+        code, envelope = _cq(repo_dir, "resolve", spelling.format(number=number))
 
         assert code == 0
         assert envelope["data"]["resolved"] is True

@@ -108,13 +108,28 @@ Self-check: *"Does this depend on the current state of the world, or a field tha
 
 ## How to Discover
 
+**Open with the expert take.** Discovery's first move is your read of the problem — what you think this is, the risk you already see, the option they may not have considered — stated before the first question. An agent that only *asks* has offloaded the expertise the user came for (Principle 7), and the read is cheaper to correct than an interview is to sit through.
+
 **Infer, confirm, proceed.** Don't interrogate. Form hypotheses from context, state them, and let the user correct you: "Since this handles payment data, I'm assuming PCI-DSS awareness and encrypted storage. Sound right?" moves faster than "What security requirements do you have?"
 
 **Bring expertise.** Your value is raising considerations the user hasn't thought of — architecture for non-technical users, UX for non-designers, edge cases, operations, and accessibility for everyone. This includes developer preferences: technical users have opinions on testing, code style, and tooling that shape how code is written.
 
 **Ask the fewest questions that most change the project.** Every question has a cost (patience, time) and a value (decision impact). Questions that determine structural characteristics are high-value; icon colors are not. Front-load the high-value questions.
 
-**Detect domain-specific concerns dynamically.** Don't rely on hardcoded question lists — your domain knowledge is the source; structural characteristics tell you where to focus it. A marketplace, a data pipeline, a healthcare app each have different critical questions. Some domains imply testing strategies — mathematical operations and data transforms suit property-based testing, event-driven systems suit state-machine testing, APIs suit contract testing. Surface these during discovery so they reach test-specifications.
+**Detect domain-specific concerns dynamically.** Don't rely on hardcoded question lists — your domain knowledge is the source; structural characteristics tell you where to focus it. Some domains imply testing strategies — mathematical operations and data transforms suit property-based testing, event-driven systems suit state-machine testing, APIs suit contract testing. Surface these during discovery so they reach test-specifications.
+
+**Seed the sweep from the structure, so "dynamically" does not become "from memory".** Each characteristic you detected opens a fixed set of questions. Running them is the floor — the part a hardcoded list was standing in for:
+
+| The product… | ask about |
+|---|---|
+| has a human interface | the empty, loading, error and offline states; what a first-run user sees; the keyboard and screen-reader paths |
+| runs unattended | how a silent failure becomes visible; what a retry does twice; what a half-finished run leaves behind |
+| exposes a programmatic interface | who else calls it; what breaks a caller; how a caller learns a call failed, and what it is supposed to do then |
+| has multiple party types | what each party must never see; who may act on whose behalf; what an admin cannot undo |
+| handles sensitive data | what is collected and why; how long it is kept; who can read it; what a breach exposes |
+| is multi-process or distributed | what is durable vs. ephemeral; what happens while one side is absent; what orders the work |
+
+Then go past the table — it is the seed, not the checklist. A marketplace, a data pipeline and a healthcare app each have critical questions no general table can name, and finding those is the expertise the user came for (Principle 7). The table is the floor you are not allowed to fall below; the ceiling is yours.
 
 **Read the room on pacing.** Patience is finite. Fatigue signals — shortening answers, repeated bare agreement ("yes", "sure"), explicit redirects ("just build it") — mean adapt: batch remaining questions into one confirm-or-correct pass, shift to confirmation mode, or infer more aggressively and move on. Under-discovery that preserves engagement beats thorough discovery that loses the user. This isn't a state machine with thresholds — it's a judgment call, and erring toward action is usually correct.
 

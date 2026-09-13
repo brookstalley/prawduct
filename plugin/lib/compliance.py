@@ -31,7 +31,7 @@ def _is_source_file(filepath: str) -> bool:
     p = Path(filepath)
     suffix = p.suffix
 
-    if suffix not in (".py", ".js", ".ts", ".jsx", ".tsx", ".go", ".rs", ".java", ".rb", ".swift", ".kt", ".c", ".cpp", ".h"):
+    if suffix not in (".py", ".js", ".ts", ".jsx", ".tsx", ".go", ".rs", ".java", ".rb", ".swift", ".kt", ".cs", ".c", ".cpp", ".h"):
         return False
 
     name = p.name
@@ -53,10 +53,28 @@ def _is_test_file(filepath: str) -> bool:
     )
 
 
+_DEPENDENCY_FILENAMES = frozenset({
+    "requirements.txt",     # Python (pip)
+    "pyproject.toml",       # Python (PEP 621)
+    "Pipfile",              # Python (pipenv)
+    "package.json",         # JavaScript / TypeScript
+    "Cargo.toml",           # Rust
+    "go.mod",               # Go
+    "Gemfile",              # Ruby
+    "Package.swift",        # Swift (SwiftPM)
+    "CMakeLists.txt",       # C / C++ (CMake)
+})
+
+#: Dependency declarations whose EXTENSION identifies them, not their filename:
+#: .NET names the manifest after the project rather than after the tool. `.csproj`/`.sln` carry `<PackageReference>`
+#: and the project list respectively, so either changing is a dependency change.
+_DEPENDENCY_SUFFIXES = (".csproj", ".sln")   # .NET / C#
+
+
 def _is_dependency_file(filepath: str) -> bool:
     """Check if a filepath is a dependency declaration file."""
     name = Path(filepath).name
-    return name in ("requirements.txt", "package.json", "Pipfile", "pyproject.toml", "Cargo.toml", "go.mod", "Gemfile")
+    return name in _DEPENDENCY_FILENAMES or name.endswith(_DEPENDENCY_SUFFIXES)
 
 
 def _waivers_module():

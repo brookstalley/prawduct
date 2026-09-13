@@ -447,12 +447,28 @@ def probe_strategy_artifact_missing(state: ProjectState, codebase: Codebase):
             evidence=(
                 "one or more expected strategy-class artifacts do not exist",
             ),
+            # Names the gap; the route out belongs to the two action fields. The old
+            # tail spelled out a slash command and a file-authoring recipe here, which
+            # is relayed straight to the owner — the same defect this probe's own copy
+            # target was raised to fix, one field further up.
             trigger_summary=(
                 "Strategy-class artifact(s) expected but absent: "
                 + listed
-                + ". Author each via /prawduct:methodology planning, or add a brief "
-                + ".prawduct/artifacts/<name> recording why it is not relevant to this "
-                + "product — a one-line '(not relevant — <reason>)' stub is a valid decision."
+                + ". Each is satisfied either by a real spec or by a brief recorded "
+                + "decision that it is not relevant to this product."
+            ),
+            # The route out, not just the gap. This advisory's original failure was
+            # announcing seven absent files and offering nothing to do about any of
+            # them — which reads as seven documents owed, when for most products most
+            # of them are not. Coverage is satisfied by a recorded decision, so the
+            # owner's real contribution is the judgement of which apply; the declining
+            # half is named first-class rather than buried as a caveat, because it is
+            # the answer most of these will get and an owner who does not know it is a
+            # valid answer will simply ignore the advisory instead.
+            owner_action=(
+                "Tell me which of these the product actually needs and I will draft them. "
+                "For the rest, a one-line \"not relevant here, because …\" is a complete "
+                "answer — it is the reason that is missing, not the document."
             ),
             recommended_action="/prawduct:methodology planning",
             priority="info",
@@ -512,6 +528,12 @@ def probe_discovery_not_captured(state: ProjectState, codebase: Codebase):
                 "product-definition work present but no structural characteristic recorded",
             ),
             trigger_summary=summary,
+            owner_action=(
+                "Spend a few minutes telling me what this product is and who it serves. I "
+                "can read the code and docs already here and draft the answers, but you are "
+                "the one who can confirm or correct them — and nothing gets recorded as fact "
+                "until you have."
+            ),
             recommended_action="/prawduct:methodology discovery",
             priority="warn",
         )

@@ -121,7 +121,20 @@ last_validated: null
      - Deprecation/sunset policy: how a breaking change is signalled (deprecation
        headers, `@deprecated` annotations, schema directives, changelog, CLI
        warnings), the support window, and how consumers are notified.
-     - Backward-compatibility commitment, per stability tier (below). -->
+     - Backward-compatibility commitment, per stability tier (below).
+
+     RECORD THE RETENTION RULE ON ITS OWN LINE, outside this comment:
+
+         Retention: additive-first; removal defers to a major.
+
+     That one line is what the Critic's conformance check reads (Goal 2). It is
+     free text — the policy is yours to write — and a policy that defers removal
+     to a MAJOR is the one that binds: with it recorded, deleting a member the
+     inventory below still declares is a norm departure, not a judgement call.
+     Write "Retention: none" and the check stays silent; the point is to force
+     the decision, not to mandate deferral. -->
+
+Retention: <your rule, or "none">
 
 ## Surface Inventory & Stability Tiers
 
@@ -134,7 +147,22 @@ last_validated: null
        it's "accidentally public" internals consumers come to depend on.
      - Stability tier per surface: experimental | stable | deprecated. Tiers set
        the compatibility promise — experimental may break; stable cannot without
-       a version bump. -->
+       a version bump.
+
+     DECLARE THE INVENTORY AS A LIST, outside this comment, one member per line:
+
+         - `member-name` — stable
+
+     Name in a code span, then the tier. This is the surface the conformance
+     check holds you to, so it is the product's declaration and not prawduct's
+     inference: nothing reads your source to decide what "public" means. Only
+     `stable` and `deprecated` are promises — `experimental` means "this may
+     break", so removing one is the policy working. Deleting an entry does not
+     retire the promise: dropping a member from this list in the same change
+     that removes it is amending the norm to match the code, which is the tell
+     Goal 3 names. -->
+
+- `<member>` — experimental | stable | deprecated
 
 ## Conventions
 

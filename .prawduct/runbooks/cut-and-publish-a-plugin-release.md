@@ -31,9 +31,10 @@ not grading a plan:
 **Read the scope list, not the exit code.** Two outcomes matter — plus one that gives you no
 scope list to read at all:
 
-- **`bad-change-log-tag:` on stderr, exit 1, and NO scope list.** The gate refused a tag line before
-  it could compute the pending set, so there is nothing to read here yet. **Fix the tag and re-run**;
-  the reason-code table in Phase 0 step 0 says how. Do not read this as either outcome below — the
+- **A change-log refusal on stderr, exit 1, and NO scope list** — `bad-change-log-tag:` or
+  `unclassifiable-pending-entry:`. The gate refused the change log itself before the pending set
+  could be trusted, so there is nothing to read here yet. **Fix what it names and re-run**; the
+  reason-code table in Phase 0 step 0 says how. Do not read this as either outcome below — the
   absence of a scope list is the tell.
 
 - **It names one or more release-pending scopes** — change-log entries tagged
@@ -126,15 +127,37 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
    ./plugin/bin/prawduct-hook check-releasability --release vX.Y.Z
    ```
 
-   **Expected:** `releasable: vX.Y.Z — N release-pending scope(s), M shipping, K withheld`,
-   followed by the two lists. **Note `K` — it selects the promotion shape at Phase 2.**
+   **Expected:** a `scanned:` line naming what the gate looked at — entries, tagged entries,
+   release-pending entries, the scopes they enumerate, and how many enumerate none — then
+   `releasable: vX.Y.Z — N release-pending scope(s), M shipping, K withheld` and the two lists.
+   **Note `K` — it selects the promotion shape at Phase 2.**
+
+   Read the `scanned:` line as the gate's denominator — a verdict is only as good as what it looked
+   at. Several entries per scope is ordinary, so the two counts differing is not a signal; the
+   number to read is the last one, and it is `0 unclassifiable` on every run that gets this far,
+   because a non-zero one refuses instead.
+
+   Beneath it, `digest headline: '…' in ## vX.Y.Z-dev.N` — the section's first non-empty line,
+   printed back verbatim because that is the line the version-delta banner shows every repo
+   crossing this version, and the whole failure mode is a line nobody looked at. Then
+   `digest coverage: N of M release-pending scope(s) named in …` — how many pending
+   scopes this release's notes actually mention. Both print on every run that reads the digest —
+   including the ones that find nothing, so the checks can later be retired on a record of finding
+   nothing rather than defended on principle. Where they are absent, the `NOTE:` below says why. `N < M` is not a stop; it is the list to walk before you write the
+   headline.
+
+   Last, `suite: green — <which evidence vouched>`. Read what it actually claims: the saved run
+   is recorded green and current **as of now**. It is not a statement about the tree you will
+   tag — Phase 1 rewrites four files after this point, and nothing checkable at Phase 0 can
+   vouch for a tree that does not exist yet.
 
    **Also exit 0, but different:** `releasable: no release-pending scopes — nothing to classify`.
    This line names no version and yields **no `K`**; read it as `K = 0`. Reaching it *during* a
    release contradicts this runbook's own entry condition, so treat it as a symptom, not a pass:
-   either Phase 1 already ran (its step 3 stamps `release=`, which empties the pending set), or the
-   entries you expect carry no `scope=` key and are invisible to the gate. Check which before
-   continuing.
+   Phase 1 already ran (its step 3 stamps `release=`, which empties the pending set). That used to
+   have a second cause — entries carrying no `scope=` key, invisible to a gate that enumerates
+   scopes — and it no longer can: those refuse by name as `unclassifiable-pending-entry:` before
+   this line is reachable. An empty pending set here is an honestly empty one.
 
    **If not:** it stops, printing either a `not-releasable:` header plus one `ERROR:` line per
    problem, or — when an input it needs is missing outright — a single bare `<reason-code>:` line.
@@ -170,6 +193,13 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
      **Fix or restore `.prawduct/project-state.yaml`**, then re-run. (This is not the cutover case —
      the message says so precisely because the two need different remedies.)
 
+   `unclassifiable-pending-entry:`
+   - A release-pending change-log entry carrying no `scope=`. It is in no scope, so it reaches no
+     row of the classification table, so it can be neither shipped nor withheld — the gate would be
+     certifying a release over work it never enumerated. **This is not a gate defect — add a
+     `scope=` to each entry it names** (the message gives the title and the change-log line number),
+     matching the `scope:` of the build plan the work belongs to. Then re-run.
+
    `bad-change-log-tag:`
    - A change-log tag line the gate refuses to act on. **This is not a gate defect — fix the tag.**
      The common case is a `release=` value that is not a version (`release=unreleased`,
@@ -180,10 +210,50 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
      entry carrying several `prawduct:` tag lines that disagree — merge them and resolve the
      conflict. The message names the entry and its line number.
 
-   `WARNING: … has no build-plan file` · `WARNING: duplicate scope=`
+   `WARNING: … has no build-plan file` · `WARNING: duplicate scope=` · `WARNING: could not find
+   release-pending scope=… in the open plugin/CHANGELOG.md section`
    - **Advisory, not a stop.** The first says work is shipping with no plan describing it (worth a
      look, not worth blocking a release); the second says two plans declare one scope, so
-     scope→plan resolution is decided by sort order. Neither changes the exit code.
+     scope→plan resolution is decided by sort order. The third says this release's notes never
+     mention a scope that is shipping in it — the v3.4.0 cut shipped `tactical-efficiency` that
+     way, and the notes were written at cut time only because somebody noticed.
+     **Expect false positives on the third and do not act on it blind:** it matches the scope's
+     name, so work the notes describe in other words reads as absent, and a scope recording the
+     release mechanics itself will never have a consumer note. Open the section and look. None of
+     the three changes the exit code.
+
+   `WARNING: the open plugin/CHANGELOG.md section (…) has no headline` · `WARNING: … still leads
+   with the seeded placeholder`
+   - **Advisory, not a stop** — and it fires on a correct release, once. Step 22 of the last cut
+     opened this section with a seeded one-liner, and **step 10 below is where you replace it**;
+     this warning is that step arriving early, while you are still reading Phase 0 output and the
+     notes are cheap to write. It is not a refusal because Phase 0 runs *before* the step that
+     fixes it. Both shapes have shipped: v2.1.6 was tagged with no headline at all, and v3.4.0
+     went out still leading with the seed after eight weeks of good notes had accumulated
+     underneath it — a section full of good notes reads as a finished section.
+
+   `NOTE: digest coverage not checked: …`
+   - The digest exists but could not be read, or holds no `## ` section, so **no scope was checked
+     for a note at all**. Not a refusal, and not a pass either — the coverage question simply went
+     unasked. Fix the file and re-run before you trust a clean Phase 0 on this point. (In a repo
+     that publishes no digest the check has no subject and says nothing; this line means yours
+     does and it could not be read.)
+
+   `unproven-suite:`
+   - Nothing has said this code passes. Four states reach this one line and the message names
+     which: no `.test-evidence.json` at all, a saved run reporting failures, a run that predates
+     this session and can no longer be matched to the tree, and a run that reported itself
+     `degraded` (a contended run covers less than its counts imply, so a release must read it as
+     "no run" rather than "a green run"). **Run the suite and record it** —
+     `prawduct-hook test-evidence record` — then re-run. This is not a gate defect and there is no
+     variant of it to work around: v2.1.6 shipped on a red suite because the release path read no
+     test result at all.
+   - **Read the bound.** It asks the same question `prawduct-hook test-status` asks, so a repo
+     cannot be green for the builder and stale for the release. That question is *"is the saved
+     run green and current"*, **not** *"did a run meet the tree you are about to tag"* — Phase 1
+     rewrites `plugin/VERSION`, `plugin/.claude-plugin/plugin.json`, `pyproject.toml` and
+     `plugin/CHANGELOG.md` after this phase, so the tagged tree does not exist yet. If you want a
+     green-suite check at the tagging moment, that is a control at Phase 2, not this one.
 
    `no-release-plan:` · `no-change-log:` · `no-version:` · `unreadable-release-plan:` · `no-backlog:`
    - An input the gate needs is missing or unreadable. **The message names the path** — create or
@@ -243,92 +313,86 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
    **Expected:** numbered tag lines, newest first, at least one carrying
    `release=v...`.
 
-2. Find the boundary — the topmost line whose tag carries `release=`. That's
-   the previous release.
+2. **Derive the release-pending set per candidate.** An entry is release-pending
+   **iff** it carries no `release=` tag **and** its code is absent from the
+   previous release's tree. That test — not a position in the file — is the
+   procedure. Run it over every untagged entry in the whole file.
 
-   **Expected:** one line number and a version, like
-   `404:<!-- prawduct: chunks=01,02,03 | type=fix | scope=backlog-title-enforcement | release=v3.2.7 | status=shipped -->`.
-   Entries written before 2026-08-08 carry `chunks=` and `status=` from the retired
-   derived-views mechanism. Those keys are **inert** — read `release=`, ignore the rest,
-   and do not rewrite them.
+   First, name the previous release's tag:
 
-   > ⚠️ **The boundary narrows the search. It does NOT define the set — do not
-   > flip "everything above it" (REL-7D4X).** An entry lands where it merged,
-   > not above the last release, so a genuinely unreleased entry can sit
-   > *below* the boundary and a positional sweep drops it silently. This
-   > happened at v3.1.1: `2026-07-14: Stale remote-base diagnostics` sits below
-   > and had to be flipped.
-   >
-   > **The sound test is per candidate:** an entry is release-pending iff it
-   > carries no `release=` tag **and** its code is absent from the previous
-   > release's tree (`git show <prev-tag>:<path>`). Walk every untagged entry
-   > and apply it. Entries predating the tag convention (roughly pre-2026-06)
-   > are untagged but shipped — the code test is what separates them.
+   ```
+   git tag --list 'v*' --sort=-v:refname | head -3
+   ```
 
-   > ⚠️ **The set also spans SCOPES — narrowing the sweep to one `scope=` drops
-   > the rest just as silently.** A release bundle routinely carries several, so
-   > re-deriving the set with `grep 'scope=<the-one-you-remember>'` returns a
-   > subset that looks complete. **Step 0 already printed the full list** — the
-   > release-pending scopes it enumerated are the scopes to walk here. Use that
-   > output; do not re-derive it from memory.
-   >
-   > Count them rather than recalling them — the number moves every time work
-   > merges. This enumerates every scope with a statusless entry, **whole file,
-   > no boundary restriction**:
-   >
-   > ```
-   > grep -o '<!-- prawduct:[^>]*-->' .prawduct/change-log.md | grep -v 'release=' \
-   >   | grep -oE 'scope=[A-Za-z0-9._-]+' | sort | uniq -c | sort -rn
-   > ```
-   >
-   > It deliberately **over**-includes: entries below the step-2 boundary land in
-   > it too, and the per-candidate code test above is what filters them. Over-
-   > inclusion is the safe direction here — the failure being prevented is a
-   > scope you never looked at.
-   >
-   > To reproduce the figures below, restrict it to the boundary first:
-   >
-   > ```
-   > sed -n "1,$(( $(grep -n '<!-- prawduct:.*release=' .prawduct/change-log.md | head -1 | cut -d: -f1) - 1 ))p" \
-   >   .prawduct/change-log.md | grep -o '<!-- prawduct:[^>]*-->' | grep -v 'release=' \
-   >   | grep -oE 'scope=[A-Za-z0-9._-]+' | sort | uniq -c | sort -rn
-   > ```
-   >
-   > *(The boundary pattern must be the **tag line** `<!-- prawduct:.*release=`, not a
-   > bare `release=` — this file's own prose contains that string, and a bare match
-   > lands the boundary in a paragraph near the top and returns almost nothing.)*
-   >
-   > Measured that way on `feature/rel-8p6m-releasability-gate` @ `1a353d1`:
-   > **23 release-pending entries across six scopes**, of which
-   > `scope=v3.2.0-golive` is only **7** — so that one grep misses **16 across
-   > five other scopes** (`release-readiness` 7, `coverage-perf` 4,
-   > `chunk-refs-gate` 2, `critic-disposition` 2, `review-loop-termination` 1).
-   > One of the missed entries is the `protected_path_violation` widening, a
-   > change to the governance bounds of every installed repo. Step 10's
-   > consumer-facing headline is derived from **all** shipping scopes, so a
-   > scope-narrowed sweep quietly shortens the release notes as well as the tags.
-   >
-   > *(Any figure written here is a measurement of one tree, not a property of
-   > the repo. Re-run the commands rather than citing this paragraph.)*
+   Then enumerate every candidate — **whole file, no boundary restriction**, and
+   grouped by scope so you can see the shape of what you are about to walk:
 
-   > 🚧 **If this selection rule looks wrong to you, it is — and it is
-   > deliberately not being fixed here.** The positional-and-scoped sweep is
-   > REL-8P6M (e), **held** by owner decision 2026-07-29:
-   > `artifacts/change-log-ledger-design.md` proposes deleting this machinery
-   > outright, so rewriting the rule now is throwaway work. **That decision was
-   > taken 2026-07-31 — GO on the design, HOLD on the schedule (§11.7) — so the
-   > hold survives and only its bound moved: it now runs until the ledger plan
-   > is scheduled and shipped.** Until then, this release tags its shipping
-   > subset **by hand across every scope, once**. `REL-7D4X` stays open with it.
-   >
-   > Retiring the derived views (2026-08-08) did **not** close this. It removed
-   > two of the three keys the sweep used to write, so the edit is smaller — but
-   > *which entries shipped* is the question the sweep was always wrong about,
-   > and `release=` is the surviving key that answers it. The hold is unchanged
-   > and the per-candidate code test above is still the sound rule.
+   ```
+   grep -o '<!-- prawduct:[^>]*-->' .prawduct/change-log.md | grep -v 'release=' \
+     | grep -oE 'scope=[A-Za-z0-9._-]+' | sort | uniq -c | sort -rn
+   ```
 
-3. Append ` | release=vX.Y.Z` to every tag line that passed the step-2 test,
-   keeping the keys already there and the ` | ` separator. This is the only
+   **Expected:** a scope histogram whose scope set **equals** the release-pending
+   scope list Phase 0 step 0 printed. Reconcile any difference before you edit
+   anything — the two derivations disagreeing means one of them is looking at the
+   wrong tree.
+
+   Now apply the per-candidate test to each untagged entry the enumeration
+   reaches. For an entry whose change you can localize to a file, the test is
+   mechanical:
+
+   ```
+   git show <prev-tag>:<path>
+   ```
+
+   Absent from that tree, or present without the change the entry describes →
+   **release-pending**. Present with the change → already shipped, leave it
+   untagged. Entries predating the tag convention (roughly pre-2026-06) are
+   untagged but shipped; the code test is the only thing that separates them from
+   genuinely pending ones, and a clean Phase 0 is not permission to skip the walk
+   — the gate claims no authority over untagged history, so those entries never
+   appear in a `scope=` grep at all.
+
+   **Three ways the older positional method got this wrong, all still live if you
+   fall back to it:**
+
+   - **Position does not decide.** An entry lands where it merged, not above the
+     last release, so a genuinely unreleased entry can sit *below* the topmost
+     `release=` line and a "flip everything above the boundary" sweep drops it
+     silently. This happened at v3.1.1: `2026-07-14: Stale remote-base
+     diagnostics` sits below and had to be flipped.
+   - **One scope is not the set.** A release bundle routinely carries several, so
+     re-deriving with `grep 'scope=<the-one-you-remember>'` returns a subset that
+     looks complete. Measured once on `feature/rel-8p6m-releasability-gate` @
+     `1a353d1`: 23 release-pending entries across six scopes, of which the
+     remembered one was 7 — the grep missed 16 across five others, including a
+     `protected_path_violation` widening that changes the governance bounds of
+     every installed repo. Step 10's consumer-facing headline derives from the
+     same set, so a narrowed sweep quietly shortens the release notes too. *(That
+     figure is a measurement of one tree, not a property of the repo. Re-run the
+     command above; do not cite the paragraph.)*
+   - **Not everything pending ships.** See step 3.
+
+   **What the boundary is still good for:** reading. The topmost line whose tag
+   carries `release=` tells you which release you are walking back to, and
+   restricting the enumeration to it is how you reproduce a historical figure:
+
+   ```
+   sed -n "1,$(( $(grep -n '<!-- prawduct:.*release=' .prawduct/change-log.md | head -1 | cut -d: -f1) - 1 ))p" \
+     .prawduct/change-log.md | grep -o '<!-- prawduct:[^>]*-->' | grep -v 'release=' \
+     | grep -oE 'scope=[A-Za-z0-9._-]+' | sort | uniq -c | sort -rn
+   ```
+
+   *(The boundary pattern must be the **tag line** `<!-- prawduct:.*release=`, not
+   a bare `release=` — this file's own prose contains that string, and a bare
+   match lands the boundary in a paragraph near the top and returns almost
+   nothing.)* It narrows; it never decides. Entries written before 2026-08-08
+   also carry `chunks=` and `status=` from the retired derived-views mechanism —
+   those keys are **inert**: read `release=`, ignore the rest, do not rewrite them.
+
+3. **Tag the shipping scopes only.** Append ` | release=vX.Y.Z` to the tag line of
+   every entry that passed step 2's test **and** whose scope the release plan's
+   `## Release classification` table classifies `ships`. This is the only
    change-log edit the release makes:
 
    ```diff
@@ -336,19 +400,42 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
    + <!-- prawduct: type=feature | scope=skills-cutover-awareness | release=v3.2.0 -->
    ```
 
-   > *Why: the tag's ABSENCE is the release-pending state, so an entry left
-   > untagged here stays pending forever and nothing downstream complains. Do
-   > not invent a placeholder for the other direction — any value at all,
-   > `release=unreleased` included, ships the entry's whole scope silently.*
-
-4. Re-run the enumeration and read down to the boundary:
+   **If this is a pruned release** — Phase 0 step 0 printed `K withheld` with `K`
+   ≥ 1 — the withheld scopes' entries **stay untagged**. Tagging one marks
+   withheld work as shipped in a release that does not contain it, which is
+   unrecoverable in the direction that matters: the entry now reads as delivered,
+   the next release's step 2 will not re-derive it as pending, and the code it
+   describes ships to nobody while the log says otherwise. Prawduct has pruned
+   twice, so this is a pattern, not a hypothetical. Cross-check before you edit:
 
    ```
-   grep -n "<!-- prawduct:" .prawduct/change-log.md | head -20
+   ./plugin/bin/prawduct-hook check-releasability --release vX.Y.Z
    ```
 
-   **Expected:** every line above the step 2 boundary now carries
-   `| release=vX.Y.Z`.
+   **Expected:** the shipping list it prints is exactly the set of scopes you are
+   about to tag. If a scope is in one and not the other, the table and the change
+   log disagree — Phase 0 step 0's ``scope(s) classified `withheld` whose entries
+   already carry this release's tag`` remedy says how to settle it, and deleting
+   the table row is never the answer.
+
+   > *Why the direction of the error matters: the tag's ABSENCE is the
+   > release-pending state, so an entry left untagged here stays pending and is
+   > picked up by the next release's step 2 — recoverable. An entry tagged wrongly
+   > is silently gone from every future pending set. Do not invent a placeholder
+   > for the other direction either — any value at all, `release=unreleased`
+   > included, ships the entry's whole scope silently.*
+
+4. Re-derive the pending set and confirm it shrank to exactly what you withheld:
+
+   ```
+   grep -o '<!-- prawduct:[^>]*-->' .prawduct/change-log.md | grep -v 'release=' \
+     | grep -oE 'scope=[A-Za-z0-9._-]+' | sort | uniq -c | sort -rn
+   ```
+
+   **Expected:** the scopes still listed are exactly the `withheld` rows of the
+   release plan's classification table — empty on an unpruned release. Re-running
+   step 2's own enumeration is the check here on purpose: a positional read-down
+   would agree with a positional sweep and confirm nothing.
 
 5. Validate the tags you just wrote:
 
@@ -361,11 +448,12 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
    `vMAJOR.MINOR.PATCH` fails closed, because an unevaluable release state must
    never read as "fine".
 
-   The gate also prints **advisories** that do not change its exit code. Read
-   them: *a release-pending scope with no build-plan file* means work is shipping
-   with nothing documenting it, and *two plans declaring one scope* means the
-   pairing this gate relies on is ambiguous. Neither blocks; both are worth
-   knowing before you tag.
+   The gate also prints **advisories** that do not change its exit code. None
+   blocks and all are worth knowing before you tag — the digest ones most of all,
+   since they are the cheapest to fix now and the most annoying to discover after
+   it. **Phase 0 step 0 above is where each one is named and answered**; read them
+   there rather than from a second list here, because a copy of that list goes
+   stale the next time an advisory is added, and it already has.
 
 6. Confirm each shipping scope's build plan is actually closed out — every
    `## Status` box ticked for the chunks this release carries.
@@ -400,7 +488,17 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
     prerelease section exists (the first cut after this runbook changed) do you add a fresh
     `## vX.Y.Z` section above the previous release.
 
-    > *Why: the version-delta banner shows exactly that first line to every repo
+    > *Phase 0 already told you which of these you are in: it prints the section's first line
+    > back as `digest headline: '…'` and warns when that line is missing or still the seed. If
+    > you read a warning there, this is the step it was pointing at.*
+
+    > *Why check first: `develop` runs on a prerelease of the version it is heading for and
+    > accumulates its notes under `## vX.Y.Z-dev.N`, so on any release that was dogfooded the
+    > section already exists under the prerelease heading. Renaming it is what makes it this
+    > release's section; adding a fresh one instead yields two sections for one version, and the
+    > banner reads the first it finds.*
+
+    > *Why a headline at all: the version-delta banner shows exactly that first line to every repo
     > crossing this version.*
 
     > **Rename, do not add a second section.** Adding one leaves the `-dev` section in place
@@ -409,21 +507,29 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
     > the *same* release's notes under a working name, not a separate entry.
 
     **On a minor or major bump — not a patch — also refresh `README.md`'s `## Recent
-    Changes`** so the current line is represented there. Rewrite the section; do not
-    append a per-release bullet. A patch has nothing to say on that surface, so skipping
-    it is the correct outcome and not an omission.
+    Changes`** so the current line is represented there. Check it the same way: a release that
+    was dogfooded on `develop` already has its section under the prerelease heading, so rename and
+    bring that one up to date rather than adding a second. Rewrite the section; do not append a
+    per-release bullet. A patch has nothing to say on that surface, so skipping it is the correct
+    outcome and not an omission.
 
     > *Why it is conditional, and why it lives here: the README is the first thing a
     > prospective user reads, and no release had ever updated it — it sat two minor
     > versions and eight releases stale (3.1.0 through 3.2.4) because no release document
     > named the file. A per-release step would no-op on every patch, and a step that
     > usually does nothing is a step you stop reading. A minor-bump-only step fires rarely
-    > and has something to say every time it does.*
+    > and has something to say every time it does. `documentation/release-process.md` step 5
+    > points here for both files rather than restating them, so deleting this paragraph is
+    > what makes that pointer dangle.*
 
-11. **Clear the pointer, then archive the plans this release shipped.** On gitflow the
-    closing PR deliberately RETAINS each plan and the `active_build_plan` pointer — the
-    work is not released yet — so this is where that retention ends. Skip it and the live
-    artifacts directory re-accumulates the pile the archive exists to prevent.
+11. **Clear the pointer if one is still set, then archive the plans this release shipped.**
+    On gitflow the closing PR deliberately RETAINS each plan — the work is not released yet
+    — so this is where that retention ends. The pointer may already be unset: a plan that
+    declares `branch:` has it cleared at its own merge (`/prawduct:pr`’s Merge Flow *"Confirm the bookkeeping merged WITH the PR"* step),
+    because its branch is gone and the declaration resolves for nobody; only a
+    pointer-resolved plan still has one to clear here. Archiving is what ends retention in
+    both cases. Skip it and the live artifacts directory re-accumulates the pile the
+    archive exists to prevent.
 
     First set `active_build_plan:` to `null` in `.prawduct/project-state.yaml`.
 
@@ -691,6 +797,13 @@ the by-hand blocker check — `main`'s tree is a deliberately chosen subset of `
     > there. It is avoided because **one call leaves no instant at which the tag exists without
     > its Release**, so the push-triggered job cannot observe the absence it would go red on.
     > v3.2.4 won that race by ~9 seconds of typing speed; v3.2.5 could not have lost it.*
+
+    > *Anyone dogfooding the develop track is, at this instant, running the released plugin
+    > without knowing it: the promotion left `develop` carrying the string `main` now uses,
+    > so the version-keyed cache resolves the released entry
+    > (`documentation/release-process.md` § Dogfooding the develop track). Phase 3 is what
+    > ends that window, which is why it is unconditional and immediately next — there is no
+    > "nobody is on the track today" branch to take.*
 
 ---
 

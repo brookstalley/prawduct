@@ -115,15 +115,15 @@ class TestGateErrorFailsClosedAndLoud:
         assert "CRITIC REVIEW (gate error)" not in err
 
 
-class TestAmbiguousPlanBlocksRatherThanEndingClean:
-    """A plan-resolution refusal must leave `cmd_stop` at 2, never at 1.
+class TestAContestedBranchReachesTheOrdinaryGates:
+    """Several plans on one branch must not change what `cmd_stop` grades.
 
-    `cmd_stop` reaches `resolve_branch_plan` BEFORE any gate runs, so two live
-    plans claiming the branch raise there. `api-contract.md` § Error Model gives
-    the harness-hook row exactly two outcomes — 0 clean, 2 block — so letting the
-    refusal escape to `main`'s `return 1` ends the session CLEAN with the
-    reflection, coverage and PR gates never having fired. That is the fail-OPEN
-    inverse of what the refusal exists for, on the one state it invents.
+    An earlier reading refused to resolve on the second claimant, and `cmd_stop`
+    converted that into a block — so a repo carrying two plans on a branch ended
+    every session at a governance error instead of at its real gate verdict.
+    Several plans on a branch is an ordinary arrangement, so the contested and
+    uncontested sessions must reach the SAME gates and differ only in what the
+    briefing says about which plan governs.
     """
 
     def _contested(self, tmp_path: Path) -> Path:
@@ -136,33 +136,31 @@ class TestAmbiguousPlanBlocksRatherThanEndingClean:
             )
         return repo
 
-    def test_it_blocks_at_two_and_names_both_plans(self, tmp_path, capsys):
+    def test_it_reaches_the_real_blocker_not_a_resolution_error(self, tmp_path, capsys):
         repo = self._contested(tmp_path)
 
         rc = _hook.cmd_stop(repo, {})
         err = capsys.readouterr().err
 
-        assert rc == 2, "a refused gate is a blocked gate — 1 ends the session clean"
-        assert "BLOCKED" in err
-        assert "resolution refused" in err
-        # The operator cannot act on "ambiguous" alone.
-        assert "build-plan-a.md" in err and "build-plan-b.md" in err
+        # The session's ACTUAL verdict — the one a resolution error used to
+        # displace. Asserted positively: a negative pin on the removed wording
+        # would pass forever whatever this function did.
+        assert rc == 2
+        assert "no composed review coverage" in err
 
-    def test_background_work_does_not_defer_it(self, tmp_path, capsys):
-        """Deferral means "the diff isn't final, ask again when it is". No amount
-        of background work resolves two plans claiming one branch, so deferring
-        would return 0 — ending the session clean by a different route."""
+    def test_background_work_still_defers(self, tmp_path, capsys):
+        """Deferral means "the diff isn't final, ask again when it is". A second
+        claimant is not a reason to withhold it — the plans are resolvable and
+        the gates would have run."""
         repo = self._contested(tmp_path)
 
         rc = _hook.cmd_stop(repo, {"background_tasks": [{"description": "a task"}]})
-        err = capsys.readouterr().err
 
-        assert rc == 2, "the refusal is not deferrable"
-        assert "resolution refused" in err
+        assert rc == 0, "a contested branch is not a reason to refuse deferral"
 
-    def test_one_claimant_reaches_the_ordinary_gates(self, tmp_path, capsys):
-        """The control: without the collision the same session renders its real
-        blocker, so the assertions above are about the refusal and not about a
+    def test_one_claimant_reaches_the_same_gates(self, tmp_path, capsys):
+        """The control: the uncontested session must render the identical
+        blocker, so the assertion above is about the claim count and not about a
         fixture that blocks for any reason."""
         repo = _blocking_session(tmp_path)
         (repo / ".prawduct" / "artifacts" / "build-plan-a.md").write_text(
@@ -174,5 +172,4 @@ class TestAmbiguousPlanBlocksRatherThanEndingClean:
         err = capsys.readouterr().err
 
         assert rc == 2
-        assert "resolution refused" not in err
         assert "no composed review coverage" in err

@@ -242,6 +242,25 @@ mechanical: the tracking item's backlog entry unedited (no status, stage, or con
 for the 30-day stall window raises an advisory (a fixed window today; a config surface is
 deferred until any probe needs one).
 
+A stopgap is **written into the norm's own entry** as a `Stopgap:` field, one line-starting
+field alongside `Status:`, and it must name its bound in the form `expires YYYY-MM-DD`:
+
+```
+Status: in-transition — LNG-5W8R tracks the migration. Interim rule: …
+Stopgap: recorded 2026-09-01, expires 2026-12-01. `[DECISION: … | … | user can veto/override]`
+```
+
+Both halves of that shape are load-bearing, and each is a defect this spec has already paid for
+once. The field label is **one word** because the entry parser treats only single-word
+capitalized labels as line starts — a `Live exception:` marker soft-wraps into the line above,
+where no field matcher can see it and where its backlog citations are read as the previous
+field's. And the `expires <date>` bound is **the whole field**: the stall advisory suppresses
+itself for a stopgap whose expiry is still ahead and fires once that date has passed —
+independently of the stall clock, since touching the tracking item resets the stall clock and
+would otherwise let a lapsed exception stand unnoticed forever. A `Stopgap:` with no parseable
+expiry therefore suppresses nothing. An exception with no clock is not bounded, and an
+unbounded exception is the drift this whole section exists to prevent.
+
 ### Trajectory — erosion and decay
 
 Diff-scoped review sees instantaneous compliance; two failure modes are visible only over

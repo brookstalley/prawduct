@@ -39,13 +39,21 @@ def _hook_module():
 
     SourceFileLoader because the script has a shebang and no ``.py`` extension;
     the module name is not ``__main__``, so its CLI dispatch does not run at
-    import. Same idiom as ``test_bug_inbox.py``.
+    import. Same idiom as ``test_hook_session_file_registry.py``.
     """
     loader = importlib.machinery.SourceFileLoader("prawduct_hook_ephemeral", str(HOOK))
     spec = importlib.util.spec_from_loader("prawduct_hook_ephemeral", loader)
     module = importlib.util.module_from_spec(spec)
     loader.exec_module(module)
     return module
+
+
+#: The apply-gated family, read from the hook's OWN table rather than listed here.
+#: A transcribed copy is what this file carried before, and it had drifted by
+#: three commands (`lifecycle-repair`, `plan-backfill`, `reanchor`) while its
+#: docstring still said "these four" — a green suite over an unpinned classifier,
+#: whose failure mode is a read-only dry run refused inside a worktree.
+_APPLY_GATED = frozenset(_hook_module()._EPHEMERAL_APPLY_GATED_COMMANDS)
 
 
 # ---------------------------------------------------------------------------
@@ -584,17 +592,9 @@ class TestGuardAllowsReads:
         wt = _agent_worktree(primary)
         assert "BLOCKED" not in _run(wt, *argv).stderr
 
-    @pytest.mark.parametrize(
-        "command",
-        [
-            "audit-learnings",
-            "coverage-scaffold",
-            "learnings-obligation",
-            "norm-index-scaffold",
-        ],
-    )
+    @pytest.mark.parametrize("command", sorted(_APPLY_GATED))
     def test_read_only_flag_form_proceeds(self, tmp_path, command):
-        """These four mutate only under `--apply`; the dry run is a report.
+        """Every apply-gated command mutates only under `--apply`; the dry run is a report.
 
         Parametrized over the whole family because two of them shipped missing
         from the allowlist: their dry runs were refused with a message asserting
@@ -608,15 +608,7 @@ class TestGuardAllowsReads:
         wt = _agent_worktree(primary)
         assert "BLOCKED" not in _run(wt, command).stderr
 
-    @pytest.mark.parametrize(
-        "command",
-        [
-            "audit-learnings",
-            "coverage-scaffold",
-            "learnings-obligation",
-            "norm-index-scaffold",
-        ],
-    )
+    @pytest.mark.parametrize("command", sorted(_APPLY_GATED))
     def test_apply_form_still_refuses(self, tmp_path, command):
         """The other half of the same branch — `--apply` is the writing form."""
         primary = tmp_path / "primary"
@@ -631,6 +623,14 @@ class TestGuardAllowsReads:
         stderr = _run(_agent_worktree(_seeded(tmp_path)), "version").stderr
         assert "snapshot of the commit it was forked from" in stderr
         assert "your prompt is newer" in stderr
+
+
+def _all_backlog_ops():
+    """The op tuple the CLI dispatches from — so a new op inherits the help rule."""
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "plugin"))
+    from lib.backlog import cli
+    return cli._ALL_OPS
 
 
 class TestBacklogOpClassificationIsBound:
@@ -652,8 +652,15 @@ class TestBacklogOpClassificationIsBound:
 
     #: Ops that only ever talk to the service — no local write, so they cannot
     #: strand and the service-backed allowance covers them correctly.
+    #: `file-upstream` is here on the same test — no local write, so it cannot
+    #: strand — even though its target is prawduct's own public tracker rather
+    #: than the product's service. The guard asks one question and that is it.
+    #: Whether an agent worktree should be filing upstream at all is a different
+    #: control with a different answer (the op is attended-only, and `cli._WRITE_OPS`
+    #: withholds it under an unattended trigger); classifying it as a local write
+    #: here to get that effect would misdescribe what it touches.
     SERVICE_ONLY = frozenset({
-        "file", "status", "update", "comment",
+        "file", "file-upstream", "status", "update", "comment",
         "link", "unlink", "provision", "reconcile-labels", "merge",
     })
 
@@ -695,6 +702,91 @@ class TestBacklogOpClassificationIsBound:
             f"{a} and {b} both claim an op — one of them is wrong about whether "
             "it writes into this tree"
         )
+
+    @pytest.mark.parametrize("op", sorted(_all_backlog_ops()))
+    def test_help_is_a_read_for_every_op_on_every_backend(self, op, tmp_path):
+        """Usage is never a write, whatever it is usage FOR.
+
+        The guard classifies by the first positional, and `--help` is not one — so
+        without an explicit rule `backlog import --help` reads as the local-writing
+        `import` on every backend, and `backlog file --help` falls through to the
+        fail-closed remainder on a markdown-backend repo. Both are refusals of a
+        command that prints text and exits.
+
+        This is worth a rule rather than an accepted rough edge because of what the
+        referent is for: the adapter's instruction surface bounds a model to "the ops
+        in the usage table `backlog --help` prints". A bound whose referent cannot be
+        reached is not a bound, and the agent likeliest to hit the refusal is one
+        working in a worktree it did not create — the case where guessing the op set
+        is least safe. The adapter answers `--help` before dispatching an op or
+        parsing a flag; this asserts the guard agrees with it.
+        """
+        hook = _hook_module()
+        for service_backed in (True, False):
+            project = tmp_path / f"svc-{service_backed}"
+            (project / ".prawduct").mkdir(parents=True, exist_ok=True)
+            state = "backlog_format_version: 2\n"
+            if service_backed:
+                state += "backlog_service_repo: owner/repo\n"
+            (project / ".prawduct" / "project-state.yaml").write_text(state)
+
+            assert hook._ephemeral_command_writes("backlog", [op, "--help"], project) is False, (
+                f"`backlog {op} --help` classified as a write on a "
+                f"{'service-backed' if service_backed else 'markdown-backend'} repo"
+            )
+
+    def test_a_help_token_in_a_value_slot_is_still_a_write(self, tmp_path):
+        """The guard and the adapter must agree on what a help request IS.
+
+        A membership test here would call `backlog import --from --help` a read while
+        the adapter treats it as a real import — `--help` fills `--from`'s value slot —
+        and the disagreement resolves the unsafe way: a local write waved through in a
+        tree that discards it, with the caller told it succeeded. The guard asks the
+        adapter instead of re-spelling the rule, so there is one answer.
+        """
+        hook = _hook_module()
+        project = tmp_path / "markdown"
+        (project / ".prawduct").mkdir(parents=True)
+        (project / ".prawduct" / "project-state.yaml").write_text("backlog_format_version: 2\n")
+
+        assert hook._ephemeral_command_writes(
+            "backlog", ["import", "--from", "--help"], project
+        ) is True, (
+            "`--help` in a value slot read as a help request — the adapter would run "
+            "the import, and the guard would have let it strand"
+        )
+
+    def test_the_guard_asks_the_adapter_rather_than_re_spelling_its_rule(self):
+        """One predicate, so the two cannot drift into disagreeing.
+
+        The guard decides whether to refuse a call before the runner ever sees it. If
+        it carries its own notion of what a help request is, the two can disagree —
+        and the disagreement resolves the unsafe way, since the guard is the one that
+        can wave a write through. Asserting the call site rather than the behaviour is
+        deliberate: behaviour tests pass while two copies happen to agree, which is
+        exactly the state that precedes the drift.
+        """
+        source = Path(_hook_module().__file__).read_text(encoding="utf-8")
+        assert "_backlog_cli.is_help_request(argv)" in source, (
+            "the guard no longer asks the adapter's published predicate — if it has "
+            "started deciding for itself what a help request is, the two can disagree"
+        )
+        assert "_take_global_flag" not in source, (
+            "the guard reaches into the adapter's private helper; use the published "
+            "`is_help_request` so the rule has one home"
+        )
+
+    def test_a_real_op_is_still_classified_when_help_is_absent(self, tmp_path):
+        """The floor under the test above: without `--help`, the ops it exercises are
+        still judged on their merits. A rule that made every backlog call a read
+        would satisfy the parametrized test and destroy the guard."""
+        hook = _hook_module()
+        project = tmp_path / "markdown"
+        (project / ".prawduct").mkdir(parents=True)
+        (project / ".prawduct" / "project-state.yaml").write_text("backlog_format_version: 2\n")
+
+        assert hook._ephemeral_command_writes("backlog", ["import"], project) is True
+        assert hook._ephemeral_command_writes("backlog", ["file"], project) is True
 
     def test_the_op_surface_is_the_one_the_unknown_op_message_names(self):
         """`_ALL_OPS` builds that message, so it cannot go stale silently — this

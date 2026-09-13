@@ -228,10 +228,10 @@ def branch_claiming_plans(artifacts_dir: Path) -> list[tuple[Path, str]]:
     archived plan's ``branch:`` claims nothing — moving a plan under ``archive/``
     ends its claim, which is what makes archiving the whole retirement step.
 
-    Returns EVERY claim rather than resolving one, because the caller that
-    resolves also has to detect two plans claiming the same branch, and a
-    function that returned the first match could not tell it apart from the only
-    match.
+    Returns EVERY claim rather than resolving one. Several plans may claim one
+    branch, and the caller both chooses among them and names the ones it passed
+    over — a function that returned the first match could tell it apart from
+    neither the only match nor the rest.
     """
     if not artifacts_dir.is_dir():
         return []
@@ -426,6 +426,50 @@ def _walk_for_scopes(
         _present, scope = parse_build_plan_frontmatter_scope(content)
         if scope:
             yield plan_path, scope
+
+
+def iter_live_plan_files(artifacts_dir: Path) -> "list[Path]":
+    """Every live build-plan FILE under ``artifacts_dir``, sorted, archive-pruned.
+
+    The sibling of :func:`iter_scoped_plan_candidates`, and the distinction is
+    the whole reason it exists: that one yields ``(path, scope)`` for plans that
+    *declare a scope*, so a plan missing its ``scope:`` — the defect a caller may
+    be hunting — is precisely what it cannot yield. A caller that needs to
+    report on unresolvable plans has to enumerate files, not scopes.
+
+    Identified by declared type OR by filename, and both are needed. Frontmatter
+    ``artifact: build-plan`` is the honest marker, but a plan with no frontmatter
+    at all has none — and that is the very shape this exists to surface, so the
+    ``build-plan`` filename convention is the fallback. A file declaring some
+    OTHER artifact type is excluded on its own word regardless of its name.
+
+    Recursive and archive-pruned on the same rules as
+    :func:`iter_scoped_plan_candidates` — see it for why ``artifacts/plans/<id>/``
+    layouts make a flat glob wrong, and why the archive subtree is never
+    descended.
+    """
+    if not artifacts_dir.is_dir():
+        return []
+    found: list[Path] = []
+    for plan_path in _markdown_files(artifacts_dir, prune_archive=True):
+        try:
+            content = plan_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            # Unreadable is not "not a plan". A file named like one still counts,
+            # so a caller can report it rather than skip past it silently.
+            if plan_path.name.startswith("build-plan"):
+                found.append(plan_path)
+            continue
+        if _declares_non_build_plan_artifact(content):
+            continue
+        fm = frontmatter_lines(content)
+        declared_type = _frontmatter_scalar(fm, "artifact")[1] if fm else None
+        # Frontmatter, never a substring scan of the body: a design note that
+        # merely MENTIONS `artifact: build-plan` in prose is not a plan, and two
+        # such files in this repo matched a body scan.
+        if declared_type == "build-plan" or plan_path.name.startswith("build-plan"):
+            found.append(plan_path)
+    return found
 
 
 def unreadable_candidates(artifacts_dir: Path) -> list[dict]:

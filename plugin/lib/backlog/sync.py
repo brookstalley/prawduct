@@ -53,6 +53,101 @@ CURSOR_OVERLAP = timedelta(minutes=2)
 MIRROR_ABSENT = "absent"
 
 
+def _recording(project_dir: Path, scope: str, run) -> dict:
+    """Run a sync and stamp its outcome, whichever way it ends.
+
+    **Both exits, and the envelope one carries the motivating case.** A sync can
+    end as an error ENVELOPE — `_revalidate` catches ``TransportError`` and returns
+    ``from_transport_error(exc)``, so a revoked credential arrives this way — or as
+    a raised exception the CLI boundary turns into one. Wrapping only the return
+    value would leave the second unrecorded, and an unexpected exception is exactly
+    when a record is most wanted. The ``except`` re-raises, so that boundary stays
+    the single place an exception becomes an envelope."""
+    try:
+        result = run()
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- records the attempt, then re-raises for the CLI boundary to envelope; narrowing it would silently skip recording for exactly the failures nobody anticipated
+        from .transport import scrub_secrets  # noqa: PLC0415 — only this path stamps
+
+        _record_attempt(project_dir, scope, scrub_secrets(f"{type(exc).__name__}: {exc}"))
+        raise
+    _record_attempt(project_dir, scope, _failure_of(result))
+    return result
+
+
+def _record_attempt(project_dir: Path, scope: str, failure: str | None) -> None:
+    """Stamp this sync's outcome on the cursor.
+
+    **This lives at the sync boundary, beside ``confirm_coverage``, and that
+    siting is the whole point.** The coverage stamp is advanced by every caller
+    because it is written inside the sync; the health stamps were written by
+    ``cli._run_sync`` alone, so `pick`'s revalidating sync (``query.py``) and the
+    post-import warm (``cli._refresh_after_import``) both moved the coverage stamp
+    without clearing the failure beside it. A stale ``SYNC FAILING`` banner then
+    outlived the sync that fixed it and printed under a *newer* ``synced_at`` —
+    the store contradicting itself in two adjacent lines, to a reader
+    ``cache-reads.md`` tells to trust exactly this pairing.
+
+    Total by construction: it runs on the failure path too, so an exception
+    escaping here would replace the failure being recorded with the bookkeeping's
+    own. Logged, never silently swallowed."""
+    try:
+        conn = cache.open_store(project_dir, create=False)
+        if isinstance(conn, dict):
+            return  # no store to stamp; the result already says what happened
+        try:
+            cache.record_sync_attempt(
+                conn,
+                scope,
+                attempted_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                failure=failure,
+            )
+        finally:
+            conn.close()
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- bookkeeping must never replace the failure it is recording; logged, never swallowed silently
+        log_diag(f"could not record the sync attempt: {type(exc).__name__}: {exc}")
+
+
+def _failure_of(result) -> str | None:
+    """The failure text of a sync envelope, or ``None`` when it succeeded."""
+    if not isinstance(result, dict) or result.get("status") != "error":
+        return None
+    err = result.get("error") or {}
+    code, message = err.get("code"), err.get("message")
+    return f"{code}: {message}" if code and message else (message or code or "error")
+
+
+def full_rebuild(
+    transport: Transport,
+    *,
+    project_dir: Path,
+    owner: str,
+    repo: str,
+    now: datetime | None = None,
+) -> dict:
+    """:func:`_full_rebuild`, with the attempt recorded. See :func:`_record_attempt`."""
+    return _recording(
+        project_dir,
+        f"{owner}/{repo}",
+        lambda: _full_rebuild(transport, project_dir=project_dir, owner=owner, repo=repo, now=now),
+    )
+
+
+def incremental_sync(
+    transport: Transport,
+    *,
+    project_dir: Path,
+    owner: str,
+    repo: str,
+    now: datetime | None = None,
+) -> dict:
+    """:func:`_incremental_sync`, with the attempt recorded. See :func:`_record_attempt`."""
+    return _recording(
+        project_dir,
+        f"{owner}/{repo}",
+        lambda: _incremental_sync(transport, project_dir=project_dir, owner=owner, repo=repo, now=now),
+    )
+
+
 def _rows_from_issues(issues: list[dict], owner: str, repo: str) -> tuple[list[dict], list[str]]:
     """Decode provider issues into cache rows, and name the ones that are not ours.
 
@@ -126,7 +221,7 @@ def _list_column(values: list[str] | None) -> str | None:
     return encode.format_list(values) if values else None
 
 
-def full_rebuild(
+def _full_rebuild(
     transport: Transport,
     *,
     project_dir: Path,
@@ -329,7 +424,7 @@ def _watermark_from(issues: list[dict], *, floor: str | None) -> str | None:
     return rewound.isoformat()
 
 
-def incremental_sync(
+def _incremental_sync(
     transport: Transport,
     *,
     project_dir: Path,
@@ -340,7 +435,7 @@ def incremental_sync(
     """Bring the store up to date by fetching only what changed.
 
     Three outcomes, and the cheap one is the common one. With no watermark this
-    delegates to :func:`full_rebuild`. With a watermark it first asks the
+    delegates to :func:`_full_rebuild`. With a watermark it first asks the
     provider whether the window changed at all — a conditional request that costs
     **zero rate-limit points** when the answer is no — and returns without
     fetching a page. Only when something did change does it scan the window and
@@ -374,7 +469,7 @@ def incremental_sync(
         # Never synced, or a rebuild that found nothing to take a provider
         # timestamp from. Either way there is no window to be incremental about.
         conn.close()
-        return full_rebuild(transport, project_dir=project_dir, owner=owner, repo=repo, now=now)
+        return _full_rebuild(transport, project_dir=project_dir, owner=owner, repo=repo, now=now)
 
     try:
         validator = _revalidate(transport, owner, repo, since=since, etag=etag)

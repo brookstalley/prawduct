@@ -1,6 +1,6 @@
 # Release Plan — v3.4.0, Whole-Develop Promotion
 
-**Status:** Phase 1 complete — release prep committed on `develop` (change-log entries tagged `release=v3.4.0`, all three version carriers bumped, `plugin/CHANGELOG.md` section renamed, `active_build_plan` cleared and ten plans archived). Phases 2–3 pending.
+**Status:** CUT 2026-08-20. `main` is at `9526ec84`, tag `v3.4.0` published with the CHANGELOG section as its Release notes, `check-released v3.4.0` reports 3 of 3 verified and the dispatched `verify-release` run is green. All fourteen scopes shipped as classified; nothing withheld. `develop` reopened on `3.4.1-dev`.
 
 **Version:** v3.4.0 — **minor**, and the call is recorded rather than reflexive because the ratified
 norm pulls the other way. The norm (`operational-spec.md` `## Direction`, 2026-07-17) is

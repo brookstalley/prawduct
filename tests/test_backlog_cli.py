@@ -25,7 +25,7 @@ for _p in (str(_REPO_ROOT), str(_TESTS_DIR)):
 
 import pytest  # noqa: E402
 
-from lib.backlog import cli, core  # noqa: E402
+from lib.backlog import cache, cli, core  # noqa: E402
 from lib.backlog.transport import TransportError  # noqa: E402
 from fakes.fake_github import FakeGitHub  # noqa: E402
 
@@ -297,6 +297,27 @@ class TestGetAndProvisionCli:
         assert code == 0
         assert "stage:ready" in json.loads(out)["data"]["created"]
 
+    def test_get_json_carries_the_comment_thread(self, capsys):
+        fake = FakeGitHub()
+        _run(["file", "--repo", REPO, "--title", "cli: the thread item under test", "--body", "b", "--json"], fake, capsys)
+        _run(["comment", "octo/repo#1", "--body", "scope narrowed — CLI only", "--json"], fake, capsys)
+        code, out, err = _run(["get", "octo/repo#1", "--json"], fake, capsys)
+        assert code == 0
+        data = json.loads(out)["data"]
+        assert data["comments_count"] == 1
+        assert data["comments"][0]["body"] == "scope narrowed — CLI only"
+        assert data["comments"][0]["author"] == "octocat"
+
+    def test_get_human_mode_renders_the_thread(self, capsys):
+        fake = FakeGitHub()
+        _run(["file", "--repo", REPO, "--title", "cli: the thread item under test", "--body", "b", "--json"], fake, capsys)
+        _run(["comment", "octo/repo#1", "--body", "see the fix in #99", "--json"], fake, capsys)
+        code, out, err = _run(["get", "octo/repo#1"], fake, capsys)
+        assert code == 0
+        assert "1 comment(s):" in out
+        assert "octocat" in out
+        assert "see the fix in #99" in out
+
 
 class TestNonInteractive:
     """INV-2 — the runner never reads stdin (nothing to hang on)."""
@@ -476,6 +497,41 @@ class TestNewFieldFlagsCli:
     def test_the_help_names_all_three_new_flags(self):
         for flag in ("--tags", "--affected", "--working-branch", "--tag T"):
             assert flag in cli._HELP, flag
+class TestBlockFieldFlagsCli:
+    """The block-field flags reach `core` through the front (#550).
+
+    `core` is covered directly in test_backlog_core.py; what these pin is the
+    wiring — that each flag is *parsed* rather than rejected as unknown, since a
+    flag missing from the `valued`/`boolean` sets is exactly how these writes were
+    unreachable in the first place.
+    """
+
+    def _body_of(self, fake, item_id):
+        owner_repo, number = item_id.split("#")
+        owner, repo = owner_repo.split("/")
+        return fake.get_issue(owner, repo, int(number))["body"]
+
+    @pytest.mark.parametrize("flag,value", [
+        ("--refs", "documentation/x.md"),
+        ("--revisit", "2027-01-01"),
+        ("--closed-by", "fix/some-branch"),
+    ])
+    def test_each_valued_block_flag_parses_and_writes(self, capsys, flag, value):
+        fake = FakeGitHub()
+        item_id = _file(fake, capsys)
+        code, out, err = _run(["update", item_id, flag, value, "--json"], fake, capsys)
+        assert code == 0
+        assert f"{flag[2:]}: {value}" in self._body_of(fake, item_id)
+
+    def test_file_refs_flag_parses(self, capsys):
+        fake = FakeGitHub()
+        code, out, err = _run(
+            ["file", "--repo", REPO, "--title", "cli: the refs item under test", "--body", "b",
+             "--refs", "documentation/x.md", "--json"],
+            fake, capsys,
+        )
+        assert code == 0
+        assert "refs: documentation/x.md" in self._body_of(fake, json.loads(out)["data"]["id"])
 
 
 class TestCommentCli:
@@ -597,6 +653,133 @@ class TestSyncCli:
         assert payload["status"] == "ok"
         assert payload["data"]["written"] == 1
 
+    def _health(self, project_dir):
+        """``(last_attempt_at, last_error)`` straight from the store."""
+        conn = cache.open_store(project_dir, create=False)
+        assert not isinstance(conn, dict), conn
+        try:
+            return cache.sync_health(conn, REPO)
+        finally:
+            conn.close()
+
+    def test_a_failing_sync_records_itself_on_a_warmed_scope(self, tmp_path, capsys):
+        """The wiring half of #625: a sync that fails must stamp the attempt, not
+        just return the envelope. The session-start warm is detached with its
+        stderr discarded, so a sync that records nothing leaves no trace at all.
+
+        **The transport is broken the way a revoked credential breaks it** — by
+        raising a real `TransportError`, which `sync` catches and converts to an
+        error ENVELOPE. An earlier version of this test raised `TransportError`
+        with one argument; its `__init__` takes two, so what actually escaped was
+        a `TypeError`, the test drove the exception path instead, and the envelope
+        branch it was written to cover had no coverage at all while passing.
+        """
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+        fake = FakeGitHub()
+        core.file_item(
+            fake, owner="octo", repo="repo",
+            title="cli: the sync item under test", body="b", facets={},
+        )
+        cli.run(str(tmp_path), ["sync", "--repo", REPO, "--json"], transport=fake)  # warm it
+        capsys.readouterr()
+
+        class AuthFail(FakeGitHub):
+            def list_issues(self, *a, **k):
+                raise TransportError("auth", "auth required")
+
+        cli.run(str(tmp_path), ["sync", "--repo", REPO, "--rebuild", "--json"], transport=AuthFail())
+        out = capsys.readouterr().out
+        assert json.loads(out)["status"] == "error", out  # the envelope path, not the raise
+
+        attempted_at, last_error = self._health(tmp_path)
+        assert last_error, "a failing sync left no record on a warmed scope"
+        assert "TypeError" not in last_error, f"drove the exception path, not the envelope: {last_error}"
+        assert "auth" in last_error, last_error
+        assert attempted_at
+
+    def test_a_recovering_sync_clears_the_record_through_the_cli(self, tmp_path, capsys):
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+        fake = FakeGitHub()
+        core.file_item(
+            fake, owner="octo", repo="repo",
+            title="cli: the sync item under test", body="b", facets={},
+        )
+        cli.run(str(tmp_path), ["sync", "--repo", REPO, "--json"], transport=fake)
+
+        class AuthFail(FakeGitHub):
+            def list_issues(self, *a, **k):
+                raise TransportError("auth", "auth required")
+
+        cli.run(str(tmp_path), ["sync", "--repo", REPO, "--rebuild", "--json"], transport=AuthFail())
+        cli.run(str(tmp_path), ["sync", "--repo", REPO, "--json"], transport=fake)  # recovered
+        capsys.readouterr()
+
+        assert self._health(tmp_path)[1] is None, "a recovered sync left a stale failure behind"
+
+    def test_an_unexpected_exception_is_recorded_before_it_propagates(self, tmp_path, capsys):
+        # The other exit. `TransportError` becomes an envelope (above); an
+        # UNEXPECTED exception reaches the CLI boundary handler instead, and that
+        # is exactly when a record is most wanted. Distinct from the envelope test
+        # on purpose — conflating them is what let the arity bug hide.
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+        fake = FakeGitHub()
+        core.file_item(
+            fake, owner="octo", repo="repo",
+            title="cli: the sync item under test", body="b", facets={},
+        )
+        cli.run(str(tmp_path), ["sync", "--repo", REPO, "--json"], transport=fake)
+        capsys.readouterr()
+
+        class Exploding(FakeGitHub):
+            def list_issues(self, *a, **k):
+                raise RuntimeError("something nobody anticipated")
+
+        cli.run(str(tmp_path), ["sync", "--repo", REPO, "--rebuild", "--json"], transport=Exploding())
+        capsys.readouterr()
+
+        _attempted_at, last_error = self._health(tmp_path)
+        assert last_error, "an unexpected exception left no record"
+        assert "RuntimeError" in last_error, last_error
+
+    def test_every_sync_caller_stamps_the_health_beside_the_coverage(self, tmp_path, capsys):
+        """R-6: the health stamps must move wherever the coverage stamp moves.
+
+        `confirm_coverage` lives inside `sync`, so every caller advances it. While
+        the health stamps were written by `_run_sync` alone, `pick`'s revalidating
+        sync and the post-import warm advanced the coverage stamp WITHOUT clearing
+        the failure beside it — so a stale `SYNC FAILING` banner outlived the sync
+        that fixed it and printed under a newer `synced_at`.
+        """
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+        fake = FakeGitHub()
+        core.file_item(
+            fake, owner="octo", repo="repo",
+            title="cli: the sync item under test", body="b", facets={},
+        )
+        cli.run(str(tmp_path), ["sync", "--repo", REPO, "--json"], transport=fake)
+
+        class AuthFail(FakeGitHub):
+            def list_issues(self, *a, **k):
+                raise TransportError("auth", "auth required")
+
+        cli.run(str(tmp_path), ["sync", "--repo", REPO, "--rebuild", "--json"], transport=AuthFail())
+        capsys.readouterr()
+
+        # Pin the precondition. Without it this test passes when NOTHING records
+        # at all — "cleared correctly" and "never written" look identical at the
+        # end state, which is the same vacuity that hid the `TransportError`
+        # arity bug in the test above.
+        assert self._health(tmp_path)[1], "setup did not record a failure to clear"
+
+        # A caller that is NOT `sync`: `pick` revalidates through the same path.
+        cli.run(str(tmp_path), ["pick", "--repo", REPO, "--json"], transport=fake)
+        capsys.readouterr()
+
+        assert self._health(tmp_path)[1] is None, (
+            "a successful sync through `pick` advanced the coverage stamp but left "
+            "the failure beside it — the two must move together"
+        )
+
     def test_the_error_strings_that_name_this_op_now_name_a_real_one(self):
         """`cache.py` and `cachequery.py` tell the operator to run
         `prawduct-hook backlog sync`. That string is only useful if the op
@@ -623,3 +806,94 @@ class TestSyncCli:
         code, _out, _err = _run(["sync"], fake, capsys)
 
         assert code == 2
+class TestUpdateRefusesAStrayPositional:
+    """`update` must not silently ignore a second positional (#550, cumulative R-15).
+
+    The arrival that matters is `update <id> status=shipped` — the markdown
+    spelling still instructed by `skills/pr` and the Critic's review-cycle. It
+    parsed as a stray positional `_run_update` dropped: exit 0, nothing written,
+    no diagnostic. A wrong result with a success code is worse than any error,
+    because nothing prompts the caller to look.
+    """
+
+    def test_a_field_value_positional_is_rejected(self, capsys):
+        fake = FakeGitHub()
+        item_id = _file(fake, capsys)
+        code, out, err = _run(
+            ["update", item_id, "status=shipped", "--json"], fake, capsys
+        )
+        assert code == 2
+        assert "named flags" in json.loads(out)["error"]["message"]
+
+    def test_the_stray_argument_writes_nothing(self, capsys):
+        # The exit code is not the property that matters — that nothing was
+        # written is.
+        fake = FakeGitHub()
+        item_id = _file(fake, capsys)
+        owner_repo, number = item_id.split("#")
+        owner, repo = owner_repo.split("/")
+        before = fake.get_issue(owner, repo, int(number))["body"]
+        _run(["update", item_id, "status=shipped", "--json"], fake, capsys)
+        assert fake.get_issue(owner, repo, int(number))["body"] == before
+
+    def test_the_single_positional_form_still_works(self, capsys):
+        fake = FakeGitHub()
+        item_id = _file(fake, capsys)
+        code, _, _ = _run(["update", item_id, "--refs", "docs/x.md", "--json"], fake, capsys)
+        assert code == 0
+
+
+class TestListHumanModeSurfacesTruncation:
+    """A truncated page must not read as the complete set (#549).
+
+    `list_items` computes `has_more` correctly and `--json` receives it; the
+    human formatter dropped it, so `99 item(s)` + exit 0 was indistinguishable
+    from a backlog of 99 when it held 160 — and every count derived from that
+    page was wrong while looking well-formed. A `--json`-only test cannot see
+    this: the defect lives one layer above the data the JSON tests read.
+    """
+
+    def _seeded(self, capsys, how_many):
+        fake = FakeGitHub()
+        for n in range(how_many):
+            _run(
+                ["file", "--repo", REPO, "--title", f"cli: the page item {n} under test",
+                 "--body", "b", "--json"],
+                fake, capsys,
+            )
+        return fake
+
+    def test_a_truncated_page_says_so_and_names_the_remedy(self, capsys):
+        fake = self._seeded(capsys, 3)
+
+        code, out, _err = _run(
+            ["list", "--repo", REPO, "--per-page", "3", "--page", "1"], fake, capsys
+        )
+
+        assert code == 0
+        assert "3 item(s)" in out
+        assert "MORE AVAILABLE" in out
+        assert "--page 2" in out, "the signal names no way to see the rest"
+
+    def test_a_complete_result_stays_silent(self, capsys):
+        # The signal has to be by exception, or it stops meaning anything.
+        fake = self._seeded(capsys, 2)
+
+        code, out, _err = _run(
+            ["list", "--repo", REPO, "--per-page", "10", "--page", "1"], fake, capsys
+        )
+
+        assert code == 0
+        assert "2 item(s)" in out
+        assert "MORE AVAILABLE" not in out
+
+    def test_the_human_signal_agrees_with_the_json_envelope(self, capsys):
+        """The two views must not disagree — the whole defect was one honest
+        surface and one silent one over the same fact."""
+        fake = self._seeded(capsys, 3)
+        argv = ["list", "--repo", REPO, "--per-page", "3", "--page", "1"]
+
+        _code, human, _ = _run(argv, fake, capsys)
+        _code, envelope, _ = _run([*argv, "--json"], fake, capsys)
+
+        assert json.loads(envelope)["data"]["has_more"] is ("MORE AVAILABLE" in human)

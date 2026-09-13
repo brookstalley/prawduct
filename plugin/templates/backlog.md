@@ -15,11 +15,17 @@
 
 == Item shape ==
 
-  - **[PFX-XXXX]** One-line title
-    `effort: M · impact: M · area: stop-hook · source: reflection · added: 2026-05-29 · status: open`
+  EVERY ITEM STARTS AT COLUMN 0. The parser takes a column-0 `- ` bullet as the
+  item boundary and treats everything indented as that item's body, so an item
+  written with leading spaces is invisible: it parses as no item at all, and a
+  whole backlog written that way migrates as zero issues. The example below is
+  therefore flush-left on purpose — do not indent it back to match this comment.
 
-    Free-form body of any length — a single sentence or multi-paragraph analysis
-    with file refs, fix-shape, and open questions. The author chooses what fits.
+- **[PFX-XXXX]** One-line title
+  `effort: M · impact: M · area: stop-hook · source: reflection · added: 2026-05-29 · status: open`
+
+  Free-form body of any length — a single sentence or multi-paragraph analysis
+  with file refs, fix-shape, and open questions. The author chooses what fits.
 
   ID format `[PFX-XXXX]`:
     PFX = 2–3 uppercase letters naming the work-space the item was filed from.

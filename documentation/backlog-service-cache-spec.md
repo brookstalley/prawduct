@@ -105,9 +105,11 @@ is overstating.
 **The write-path gap is no longer a W1 prerequisite.** An earlier revision of this document made
 #550 (`refs`/`reviewed`/`revisit`/`closed-by` unwritable; see also #564 for `revisit`
 specifically — the two may be duplicates and are worth a dedup pass) a hard blocker on the
-strength of consumers 10, 13 and 15. Applying *observable beats stored* removes all three. #550
-remains a genuine defect, and the **new `affected` field (§3) will need a write path** — the same
-underlying gap — but nothing that exists today waits on it.
+strength of consumers 10, 13 and 15. Applying *observable beats stored* removes all three. #550 **landed 2026-09-01** (salvaged from
+`archive/fix-backlog-block-field-writes` in the burndown), together with #564, so the block
+fields are writable and the two are no longer a dedup question — both shipped. The **new
+`affected` field (§3) has the same write path available to it**; nothing that exists today
+waits on this.
 
 ### 2.2 One consumer gets better, not merely restored
 

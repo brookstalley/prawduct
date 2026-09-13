@@ -36,11 +36,17 @@ import subprocess
 import sys
 from pathlib import Path
 
-from .change_log import CHANGE_LOG_REL_PATH
+from .change_log import CHANGE_LOG_REL_PATH, parse_change_log
 from .core import read_str_yaml_key
 
 _BASE_BRANCH_KEY = "base_branch"
 _DEFAULT_BASE_CANDIDATES = ("origin/main", "main", "HEAD~1")
+
+#: Branch names the historical candidate list already answers correctly.
+#: ``origin/HEAD`` is only *preferred* when it points somewhere else, which
+#: keeps the consultation strictly additive: a trunk repo resolves exactly the
+#: ref it resolved before, by the same first candidate.
+_MAIN_FAMILY = frozenset({"main", "master"})
 
 
 def _git_ref_exists(project_dir: Path, ref: str) -> bool:
@@ -55,6 +61,31 @@ def _git_ref_exists(project_dir: Path, ref: str) -> bool:
     return proc.returncode == 0
 
 
+def _origin_head_ref(project_dir: Path) -> "str | None":
+    """The remote's own default branch as ``origin/<b>``, or ``None``.
+
+    ``refs/remotes/origin/HEAD`` is what ``clone`` writes and what
+    ``git remote set-head`` repairs; it is the only place a clone records which
+    branch the REMOTE integrates onto. It is frequently absent (a repo created
+    by ``init`` + ``remote add``, a clone from an older git, a fetch-only
+    mirror), so every failure here is a plain ``None`` and the caller falls
+    through to the historical candidate list.
+    """
+    proc = subprocess.run(
+        ["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
+        cwd=str(project_dir),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if proc.returncode != 0:
+        return None
+    ref = proc.stdout.strip()
+    if not ref.startswith("origin/") or ref == "origin/":
+        return None
+    return ref
+
+
 def _resolve_base_branch(project_dir: Path) -> tuple[str | None, str]:
     """Resolve the git diff/merge base, honoring a configured ``base_branch:``.
 
@@ -67,8 +98,53 @@ def _resolve_base_branch(project_dir: Path) -> tuple[str | None, str]:
     branch becomes the base; ``origin/<b>`` is preferred over the bare ``<b>``
     for a stable remote-tracking merge-base. A configured-but-unresolvable base
     fails closed (returns None) so the misconfiguration surfaces rather than
-    silently diffing the wrong range. When the knob is unset, falls back to the
-    historical candidate list, so trunk repos are unaffected.
+    silently diffing the wrong range.
+
+    **Unconfigured, the remote is asked before the guess (#254).** The knob is
+    the authority when set, but an unset knob used to jump straight to a
+    ``main``-first guess — so a gitflow repo that never ran ``/prawduct:doctor``
+    got every gate anchored to ``merge-base(main, HEAD)``, the whole
+    ``develop..main`` promotion delta, silently. ``refs/remotes/origin/HEAD``
+    is the one place a clone records what the REMOTE integrates onto, so it is
+    consulted first and preferred when it names something outside the
+    ``main`` family. That last condition is what keeps this additive: where
+    ``origin/HEAD`` says ``main``, the historical list already resolves the
+    same ref, so a trunk repo's answer is byte-for-byte what it was. Everything
+    about the consultation degrades to ``None`` — an absent ``origin/HEAD`` (an
+    ``init`` + ``remote add`` repo, an older clone) simply falls through.
+
+    It is a fallback, not a fix for the missing knob: it cannot see a repo whose
+    remote default is ``main`` while its integration branch is ``develop``.
+    Onboarding still owes a written ``base_branch:``; this stops the silent
+    wrong answer in the meantime.
+
+    **``origin/<b>`` stays the base even when local ``<b>`` is ahead of it and
+    is an ancestor of HEAD — decided NO, #311.** The case for switching is real:
+    anchoring to the stale remote makes a feature built on unpushed integration
+    commits read as spanning the whole unshipped range, so a composition gate
+    can report ``uncovered`` over work whose every commit carries a clean review
+    fact (COV-7K4N). Preferring the nearer local ref would remove that at the
+    root. It is refused on two counts.
+
+    - *Fail-open.* The commits in ``origin/<b>..<b>`` are inside the audited
+      span today and would be outside it after the change. A commit made
+      straight onto local ``develop`` — no branch, no review fact — would stop
+      being audited by **every** gate that resolves a base. A gate may not
+      narrow what it audits on the strength of where an operator's unpushed
+      work happens to sit.
+    - *Stability.* ``origin/<b>`` is the same value in every clone and every
+      worktree of the clone; local ``<b>`` is not. Two agents on one branch
+      would resolve different bases and reach different verdicts, and
+      ``verdict_cache`` keys on the base tree, so a per-worktree base also
+      un-shares the memo the store is expensive enough to need.
+
+    What pays for the case instead is already shipped and is the cheaper half:
+    :func:`diagnose_stale_remote_base` names the condition and
+    ``stale_base_probes`` nudges before the gate is hit, both prescribing
+    ``git push origin <b>`` — a required release step anyway, which
+    fast-forwards the remote and re-anchors the merge-base to exactly the tree
+    the rejected change would have chosen. Nothing is lost, only deferred to an
+    action the release flow already demands.
 
     Returns ``(base, base)`` on success or ``(None, reason)`` on failure — the
     same contract the gate callers already destructure.
@@ -84,6 +160,11 @@ def _resolve_base_branch(project_dir: Path) -> tuple[str | None, str]:
             f"configured base_branch {configured!r} not found "
             f"(tried origin/{configured}, {configured})"
         )
+
+    origin_head = _origin_head_ref(project_dir)
+    if origin_head and origin_head[len("origin/"):] not in _MAIN_FAMILY:
+        if _git_ref_exists(project_dir, origin_head):
+            return origin_head, origin_head
 
     for candidate in _DEFAULT_BASE_CANDIDATES:
         if _git_ref_exists(project_dir, candidate):
@@ -601,12 +682,21 @@ def count_branch_rounds(
     ``/prawduct:pr create`` path against a store holding every review the clone
     has ever recorded.
 
-    Returns ``{"status": "counted", "rounds", "seconds", "timed"}`` — with
-    ``seconds`` ``None`` when no attributed round recorded a duration — or
-    ``{"status": "unavailable", "reason"}``. Never raises: this is advice, and
+    Returns ``{"status": "counted", "rounds", "seconds", "timed", "reviews"}``
+    — with ``seconds`` ``None`` when no attributed round recorded a duration —
+    or ``{"status": "unavailable", "reason"}``. Never raises: this is advice, and
     advice fails soft. It is deliberately not silent, because a tally that
     vanishes when it breaks reads as "round one" to the builder it exists to
     warn (``learnings.md``: "'advice fails soft' is not 'advice fails silent'").
+
+    ``reviews`` is ``[{"id", "mode"}]`` for the attributed rounds, in store
+    order, and it exists so a caller can ask a NARROWER question than "how many
+    reviews" without re-walking the lineage: the round budget counts only *full*
+    rounds, since a ``verify-resolutions`` pass is what clears a blocking
+    finding and a ceiling that ate those would deadlock the gate it protects.
+    The mode strings are handed over verbatim rather than parsed here — the
+    token vocabulary belongs to ``critic_consolidate``, and a second parse of it
+    living in the counter is how one vocabulary becomes two.
     """
     from . import evidence  # noqa: PLC0415 -- lazy: mirrors diagnose_fix_churn's import posture; avoids an import cycle at module load
 
@@ -624,6 +714,7 @@ def count_branch_rounds(
 
     rounds = 0
     durations: list[float] = []
+    reviews: list[dict] = []
     for fact in facts:
         if fact.get("kind") != "review":
             continue
@@ -632,6 +723,7 @@ def count_branch_rounds(
         if not isinstance(commit, str) or commit not in on_branch:
             continue
         rounds += 1
+        reviews.append({"id": fact.get("id"), "mode": body.get("mode")})
         seconds = body.get("duration_seconds")
         if isinstance(seconds, (int, float)) and not isinstance(seconds, bool):
             durations.append(float(seconds))
@@ -640,6 +732,7 @@ def count_branch_rounds(
         "rounds": rounds,
         "seconds": round(sum(durations), 1) if durations else None,
         "timed": len(durations),
+        "reviews": reviews,
     }
 
 
@@ -798,7 +891,14 @@ def _pr_diff_is_doc_only(project_dir: Path) -> tuple[bool, str]:
     when the diff is non-empty and NO changed file is judgeable — the one
     predicate (``coverage_algebra.is_judgeable_path``, kernel-v3 chunk 04)
     answers this, replacing this helper's own ``.md`` + protected-path copy
-    (one of the divergent doc-only sites behind CRT-5D8Q). A
+    (one of the divergent doc-only sites behind CRT-5D8Q) — **and no changed
+    file is live state a non-hermetic test reads** (``TEST_COUPLED_STATE``,
+    COV-4H7N). The fast path skips the Critic, the PR review AND the suite in
+    one move, so it has to clear both questions: PR #125 changed only
+    ``.prawduct/*.md`` plus ``project-state.yaml``, rode this path, and broke
+    ``test_norm_probes`` on develop with nothing to catch it. The two reasons
+    are reported separately because the remedies differ — one needs a review,
+    the other needs a suite run. A
     governance-protected ``.md`` (``skills/``, ``methodology/``,
     ``templates/``, root ``CLAUDE.md`` — PR-5K8D) is judgeable, so it still
     never rides the fast path. The status message names the specific reason
@@ -834,9 +934,82 @@ def _pr_diff_is_doc_only(project_dir: Path) -> tuple[bool, str]:
         more = f" (+{len(judgeable) - 3} more)" if len(judgeable) > 3 else ""
         return False, f"not-doc-only: PR includes review-needing files: {sample}{more}"
 
+    coupled = [f for f in coverage_algebra.suite_coupled_files(files) if f not in judgeable]
+    if coupled:
+        sample = ", ".join(coupled[:3])
+        more = f" (+{len(coupled) - 3} more)" if len(coupled) > 3 else ""
+        return False, (
+            "not-doc-only: PR includes live state a non-hermetic test reads: "
+            f"{sample}{more}"
+        )
+
     return True, (
         f"doc-only: {len(files)} file(s) in {base}...HEAD, none judgeable"
     )
+
+
+def _entry_check_without_history(project_dir: Path) -> int:
+    """The weaker entry check available when the change-log is untracked.
+
+    The gate's real contract is "this branch ADDED an entry" — that is what the
+    ``+## `` scan enforces, and why ``entry-edited-not-added`` is a separate
+    failure. An untracked file has no merge-base version, so that question is
+    unanswerable here, and no substitute exists: a change-log entry carries
+    ``scope`` and ``release`` (:mod:`lib.change_log`) and nothing that records
+    which branch wrote it.
+
+    So this is a deliberate, *named* weakening rather than parity, and the
+    message says which check the caller actually got. It reads the log from
+    disk — the same way :mod:`lib.release_readiness` already reads it — and
+    passes only when at least one entry parses. Degrading the check must not
+    disarm it: a missing or entry-less log still fails, because those are the
+    states the gate exists to catch and they are visible from disk.
+
+    Parsing goes through :func:`lib.change_log.parse_change_log` rather than a
+    local ``## `` scan. A private classifier here would be the fifth reading of
+    this format, and the last four disagreeing is what made this gate's history.
+    """
+    path = project_dir / CHANGE_LOG_REL_PATH
+    # The same pair `release_readiness` reads the log with: a non-UTF-8 byte is
+    # as unreadable as a missing file, and an exception escaping here would be
+    # the one verdict Step 1c cannot route.
+    try:
+        content = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        print(
+            f"no-entry: {CHANGE_LOG_REL_PATH} is untracked here (gitignored, or "
+            f"never added) and could not be read from disk either: {exc}. "
+            "Add the change-log before opening the PR.",
+            file=sys.stderr,
+        )
+        return 1
+
+    # Only release-pending entries vouch for anything: an entry carrying
+    # `release=` shipped long ago, and a log that holds nothing but shipped
+    # entries would otherwise pass every branch forever. Same semantics as the
+    # STOP row's "scope= and no release=" the strong check enforces.
+    entries = parse_change_log(content)
+    pending = [entry for entry in entries if entry.tags.get("release") is None]
+    if not pending:
+        print(
+            f"no-entry: {CHANGE_LOG_REL_PATH} is untracked here (gitignored, or "
+            "never added), and the copy on disk holds no release-pending entry "
+            f"({len(entries)} entr(ies), all carrying release=). Add a change-log "
+            "entry for this work before opening the PR.",
+            file=sys.stderr,
+        )
+        return 1
+
+    print(
+        f"entry-present-untracked: {CHANGE_LOG_REL_PATH} is untracked here "
+        "(gitignored, or never added), so git cannot say whether THIS branch "
+        f"added an entry — only that the log on disk holds {len(pending)} "
+        "release-pending. That weaker "
+        "check passed. To restore the real one, track the log: `.prawduct/*` "
+        "plus `!.prawduct/change-log.md` (a bare `.prawduct/` cannot be "
+        "negated — git will not re-include a file under an excluded directory)."
+    )
+    return 0
 
 
 def check_change_log_entry(project_dir: Path) -> int:
@@ -863,12 +1036,17 @@ def check_change_log_entry(project_dir: Path) -> int:
       * the diff is empty, or holds no judgeable file, or
       * a judgeable diff includes ``.prawduct/change-log.md`` AND that diff
         ADDS at least one entry header (a ``+## `` line) — merely editing an
-        existing entry's text does not vouch for new work.
+        existing entry's text does not vouch for new work, or
+      * the log is UNTRACKED and the copy on disk holds at least one entry
+        (``entry-present-untracked`` — the weaker check of
+        :func:`_entry_check_without_history`, which says so).
 
     Exit 1 otherwise, with a named reason on stderr (``no-entry``,
     ``entry-edited-not-added``, ``no-base``, ``git-failed``). Un-evaluable
     git state fails closed — the caller falls back to manual judgment rather
     than silently skipping the probe (same posture as ``check_pr_doc_only``).
+    An untracked log is not un-evaluable and must not be read as absent: the
+    diff simply cannot speak to a path git does not track.
     """
     base, base_note = _coverage_resolve_base(project_dir)
     if base is None:
@@ -919,6 +1097,30 @@ def check_change_log_entry(project_dir: Path) -> int:
         return 0
 
     if CHANGE_LOG_REL_PATH not in files:
+        # A path git does not TRACK can never appear in a diff, so this silence
+        # is not evidence of a missing entry — it is the absence of a question
+        # git can answer. A repo that gitignores `.prawduct/` wholesale keeps a
+        # real change-log on disk that no diff can show, and the `no-entry`
+        # remedy below then tells the author to add an entry they already wrote:
+        # advice that cannot clear the gate however often it is followed. That is
+        # the same failure the block above describes — a wrong `no-entry` is
+        # worse than a spurious block because its remedy text is executable.
+        # `git_path_is_tracked` is three-valued precisely so a caller cannot
+        # collapse "untracked" into "absent"; collapsing them was the defect.
+        from . import gitstate  # noqa: PLC0415 — lazy keeps this module's import DAG light
+
+        tracked = gitstate.git_path_is_tracked(project_dir, CHANGE_LOG_REL_PATH)
+        if tracked is False:
+            return _entry_check_without_history(project_dir)
+        if tracked is None:
+            print(
+                "git-failed: could not ask git whether "
+                f"{CHANGE_LOG_REL_PATH} is tracked, so its absence from the "
+                "diff proves nothing either way. Check the change-log by hand.",
+                file=sys.stderr,
+            )
+            return 1
+
         sample = ", ".join(judgeable[:3])
         more = f" (+{len(judgeable) - 3} more)" if len(judgeable) > 3 else ""
         print(
@@ -962,11 +1164,18 @@ def check_change_log_entry(project_dir: Path) -> int:
 def check_pr_doc_only(project_dir: Path) -> int:
     """Fast-path gate for `/prawduct:pr create`: report whether the PR diff is doc-only.
 
-    Exit 0 when the diff in ``merge-base...HEAD`` is non-empty and contains
-    no judgeable file (``coverage_algebra.is_judgeable_path`` — the one
-    predicate) — the `/prawduct:pr` skill uses this to skip the cumulative-
-    Critic and PR-reviewer gates, mirroring the session-end stop-hook
-    carveout (`gates.session_changes_all_non_judgeable`) at the PR boundary.
+    Exit 0 when the diff in ``merge-base...HEAD`` is non-empty, contains no
+    judgeable file (``coverage_algebra.is_judgeable_path`` — the one predicate)
+    AND names no shipped suite-coupled state (``TEST_COUPLED_STATE``, via
+    ``suite_coupled_files``). **The repo's declared ``suite_coupled_prefixes``
+    are deliberately NOT passed here.** They answer a freshness question — re-run
+    the suite — and forwarding them would make a documentation-only PR buy a full
+    cumulative Critic and PR review, a review cost nothing prices. The freshness
+    gate (``gates._test_evidence_tree_valid``) is the caller that passes them.
+
+    The `/prawduct:pr` skill uses this to skip the cumulative-Critic and
+    PR-reviewer gates, mirroring the session-end stop-hook carveout
+    (`gates.session_changes_all_non_judgeable`) at the PR boundary.
     The stop hook's PR-review evidence gate (Gate 3) consults the same
     helper so a doc-only PR doesn't get blocked at session end for missing
     evidence — symmetric behavior across both gates.

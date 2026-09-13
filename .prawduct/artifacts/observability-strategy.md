@@ -30,8 +30,9 @@ The scenarios this design must make answerable:
 4. **"Is review costing too much?"** → `review-stats` aggregates the governance ledger into
    wall-clock, run-count, and finding-yield numbers (this is how the P0 wall-clock budget in
    `nonfunctional-requirements.md` is actually watched).
-5. **"What nudges am I ignoring?"** → `/prawduct:advisory list` on demand; and for `warn`/`urgent`,
-   the relay raises them unasked, so ignoring one is a choice rather than an accident.
+5. **"What nudges am I ignoring?"** → `/prawduct:advisory list` on demand; and the relay raises
+   every active advisory unasked (priorities in full, the rest one line each — see the amended
+   bullet below), so ignoring one is a choice rather than an accident.
 
 If those five are answerable from the terminal and the committed/local state, observability has
 done its job.
@@ -57,8 +58,14 @@ reads. Two properties are load-bearing:
   to say; a digest rule is re-read every session to cover the minority that have news, and sits far
   from the content it governs. This mirrors the same release's learnings change — deliver the rule
   where it applies rather than parking it in a file to be read later.
-- **`warn`/`urgent` only.** Relaying `info` every session is nagging, and a channel that nags gets
-  tuned out — which would cost the `warn` case the audience it exists for.
+- **~~`warn`/`urgent` only.~~ Amended 2026-08-03 (owner decision): everything active is relayed,
+  with a VERBOSITY split rather than a severity cutoff — priorities in full, everything else one
+  compact line each.** The original reasoning (relaying `info` every session is nagging, and a
+  channel that nags gets tuned out) was right about volume and wrong about the remedy: the briefing
+  prints to the *agent*, so an advisory nobody relays reached nobody — the alternative to relaying
+  is not quiet, it is undelivered. Volume is bounded by the verbosity split instead. The rule is
+  implemented at `lib/briefing.py` (the relay directive and its priority set), which cited this
+  decision before this artifact recorded it — corrected 2026-09-01.
 
 **Rejected: routing advisories to stderr by consequence.** Tempting, since the norm already provides
 the split and stderr is the person's channel. Rejected because the relay covers advisories,

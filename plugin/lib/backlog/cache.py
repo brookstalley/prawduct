@@ -71,7 +71,7 @@ from .core import error, log_diag, ok
 # machine during the chunk that introduced the column, and read as an empty
 # result rather than as an error. "Unreleased, so nobody has an old store" is a
 # claim about other people's machines, not about the format.
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 STORE_SUBDIR = "prawduct"
 STORE_BASENAME = "backlog-cache.sqlite3"
@@ -242,6 +242,14 @@ _SCHEMA_STATEMENTS: tuple[str, ...] = (
     # the fan-out to it and the cross-repo case fails silently, which is the one
     # failure mode that costs two people one item. The no-dead-fields rule and the
     # correctness argument point the same way here.
+    # `last_attempt_at` / `last_error` age the ATTEMPT, where the stamp below ages
+    # the last SUCCESS. Both are needed to tell a warm that failed once from one
+    # failing for a week: the session-start warm is detached with its stderr to
+    # DEVNULL, so a failing sync leaves the store readable and merely stale, and
+    # a reader with only an age cannot distinguish that from a quiet backlog. A
+    # NULL `last_error` beside a non-NULL `last_attempt_at` means the last attempt
+    # succeeded — the pair is cleared and re-stamped together, never separately.
+    #
     # `coverage_confirmed_at` is the local stamp of the last sync that CONFIRMED
     # this scope — which includes a not-modified sync, the one that reads nothing
     # and writes no rows. It was `fetched_at` (the stamp of the sync that wrote
@@ -253,7 +261,9 @@ _SCHEMA_STATEMENTS: tuple[str, ...] = (
         scope                 TEXT PRIMARY KEY,
         since                 TEXT,
         etag                  TEXT,
-        coverage_confirmed_at TEXT
+        coverage_confirmed_at TEXT,
+        last_attempt_at       TEXT,
+        last_error            TEXT
     )
     """,
 )
@@ -945,6 +955,58 @@ def confirm_coverage(conn: sqlite3.Connection, scope: str, confirmed_at: str) ->
         log_diag(f"could not stamp backlog cache coverage: {type(exc).__name__}: {exc}")
         return error("unavailable", f"the backlog cache coverage stamp failed ({type(exc).__name__})")
     return None
+
+
+def record_sync_attempt(
+    conn: sqlite3.Connection, scope: str, *, attempted_at: str, failure: str | None
+) -> None:
+    """Stamp the outcome of a sync attempt on an EXISTING cursor row.
+
+    The gap this closes: the session-start warm is spawned detached with its
+    stderr routed to ``DEVNULL``, and only a *successful* sync stamps
+    ``coverage_confirmed_at``. So every diagnostic on that path wrote into a black
+    hole, and a warm that failed once looked exactly like one failing for a week —
+    the store stays readable, the reads keep succeeding with stale answers, and
+    the only signal is an age judged against no named threshold.
+
+    **Only ever an UPDATE, never an INSERT, and that is load-bearing.**
+    :func:`cursor_scopes` answers "has this scope ever been synced?" from row
+    EXISTENCE. Minting a row here to record a first-attempt failure would make a
+    scope that never synced claim it had, breaking the one question that reader
+    exists to answer. Cold start is already covered — a scope with no row reports
+    *never synced* at every consumer — so the uncovered case, and the only one
+    this serves, is warm-then-failing.
+
+    The two columns move together: a success clears ``last_error`` as it stamps
+    ``last_attempt_at``, so a stale failure can never outlive the sync that fixed
+    it. Best-effort — a failure to record a failure must not turn a degraded sync
+    into a crashed one."""
+    try:
+        with conn:
+            conn.execute(
+                "UPDATE cursor SET last_attempt_at = ?, last_error = ? WHERE scope = ?",
+                (attempted_at, failure, scope),
+            )
+    except sqlite3.Error as exc:
+        log_diag(f"could not record the backlog sync attempt: {type(exc).__name__}: {exc}")
+
+
+def sync_health(conn: sqlite3.Connection, scope: str) -> tuple[str | None, str | None]:
+    """``(last_attempt_at, last_error)`` for the scope — both ``None`` when no
+    attempt has ever been recorded against an existing cursor row.
+
+    A non-``None`` ``last_error`` is the live claim "the most recent attempt
+    failed, and everything you are reading predates it". Callers pair it with the
+    coverage stamp: the two together say how old the data is AND whether anything
+    is still trying to refresh it, which neither answers alone."""
+    try:
+        row = conn.execute(
+            "SELECT last_attempt_at, last_error FROM cursor WHERE scope = ?", (scope,)
+        ).fetchone()
+    except sqlite3.Error as exc:
+        log_diag(f"could not read the backlog sync health: {type(exc).__name__}")
+        return None, None
+    return (row[0], row[1]) if row else (None, None)
 
 
 def optimize(conn: sqlite3.Connection) -> None:

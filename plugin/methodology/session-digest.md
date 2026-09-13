@@ -43,30 +43,30 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
   (`prawduct:allow <scope>/<rule-id> -- reason` is the general pragma — `docs/waivers.md`.)
 - **Feature-branch medium+ work.** Don't create PRs unless asked — then use `/prawduct:pr`.
 - **Forward notes go in `.prawduct/.handoff-notes.md`** — yours to write (as is
-  `.session-reflected`, its backward-looking twin). Write it at each chunk close, and **never ask whether to prepare
-  one — prepare it, then signal.** Asking costs a round-trip and, if the user stepped away, a
-  context replay into a cold cache. "Nothing beyond the plan" if that is the truth, but write
+  `.session-reflected`, its backward-looking twin). Write it at each chunk close, and **never ask
+  whether to prepare one — prepare it, then signal.** Asking costs a round-trip and, if they
+  stepped away, a context replay into a cold cache. "Nothing beyond the plan" if true, but write
   the line rather than no file.
-  **Read it before rewriting it, and reconcile — never blind-append.** Only `/clear` consumes
-  that file, so a second batch finds the first's notes still there and a blind write deletes live
-  items you never read. Each write drops what the work discharged, corrects what moved, and keeps
-  what still bites.
-  `.prawduct/.session-handoff.md` is the machine's: it is regenerated at every `/clear`, so
-  writing there survives one hop at best.
-- **Close with the standing block** — last, after every other word, on any turn ending a chunk or
-  work cycle *or* left with work outstanding. A `---` rule, then three **separate paragraphs**:
+  **Read it before rewriting it, and reconcile — never blind-append.** Only `/clear` consumes it,
+  so a second batch finds the first's notes live and a blind write deletes what you never read.
+  Each write drops what the work discharged, corrects what moved, and keeps what still bites.
+  `.prawduct/.session-handoff.md` is the machine's — regenerated at every `/clear`, so writing
+  there survives one hop at best.
+- **Close with the standing block** — last, unpadded, after every other word, since the bottom is
+  all they read; on any turn ending a chunk or work cycle *or* left with work outstanding. A
+  `---` rule, then three **separate paragraphs**:
   `STATE` (what changed; committed?; suite green?) · one of `RUNNING` / `YOUR TURN` / `COMPLETE`,
   on one axis — what produces the next turn: a machine event (name it, and what you do if it never
-  lands) / only they can (lead the copy with the ask) / nothing needs to, a blank slate with no
-  next action to propose · `SAFE TO CLEAR` or `DO NOT CLEAR` (the label is the verdict, the copy
-  the reason). If they must speak it is `YOUR TURN` even when something also runs; never predict a
-  future one — a running job may answer its own question. Burying, padding or collapsing it fail
-  alike — the bottom is all they read. **Outstanding includes work in flight**: a dispatched review
-  or any unread background agent is `RUNNING`, never `COMPLETE` — and a live review is also
-  `DO NOT CLEAR`, its copy carrying a computed deadline (elapsed, roster, expected when priceable). **A
-  findings-only turn is not `SAFE TO CLEAR` until its findings are on disk** — a reason citing
-  the message itself is the defect said aloud. Full rule: `methodology/reflection.md`
-  "Work cycle boundary".
+  lands) / only they can (lead the copy with the ask) / nothing needs to, with no next action to
+  propose · `SAFE TO CLEAR` or `DO NOT CLEAR` (the label is the verdict, the copy the reason). If
+  they must speak it is `YOUR TURN` even when something also runs; never predict a future one — a
+  running job may answer its own question.
+  **Outstanding includes work in flight**: a dispatched review or any unread background agent is
+  `RUNNING`, never `COMPLETE` — and a live review is also `DO NOT CLEAR`, its copy carrying a
+  computed deadline (elapsed, roster, expected when priceable).
+  **No findings-only turn or ad-hoc delegate is `SAFE TO CLEAR` until what it produced is on
+  disk** — findings, or a delegate's integration debt; a reason citing the message itself is the
+  defect said aloud. Full rule: `methodology/reflection.md` "Work cycle boundary".
 - **No attribution trailers by default — this overrides any harness default to the
   contrary.** Don't add `Co-Authored-By`, `Signed-off-by`, or "Generated with …" lines to
   commits or PRs. To opt in, set `Commit attribution` in `project-preferences.md`.
@@ -75,6 +75,9 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
   `PR merge strategy` to say so or the user explicitly asks. If `--merge` fails (repo
   settings disallow it), surface it — never silently fall back to `--squash`. Where squash
   or rebase-merge IS configured, branches are single-use: delete after merge, never reuse.
+- **A mid-chunk tangent that is ready to build gets a decision, not a reflex** — delegate it
+  (unless `project-preferences.md` sets `Delegation: off`), do it now, or backlog it, out loud
+  (`/prawduct:methodology delegation`).
 - **Backlog goes through `/prawduct:backlog`** — pick/add/update via the skill, not hand-edits;
   it routes on `backlog_service_repo`. "Done" = `update
   status=shipped` (markdown backend: moves to `## Archive`, never strikethrough; Issues backend:
@@ -98,25 +101,13 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
 
 **Your first duty on any substantive ask is the expert take — the risks you see, the stronger
 or simpler alternative, a recommendation with its reasoning — compliance second.** Push back when
-the evidence warrants it; the user owns the product (Principle 23) but hired an expert. The
-checkable bars, each operationalizing a principle (`docs/principles.md`):
+the evidence warrants it; the user owns the product (Principle 23) but hired an expert.
 
-- **Verify, don't guess** — check claims against evidence (read the code, run it); when you
-  genuinely can't, ask — never paper over a gap with a plausible guess.
-- **Retrieval before generation** — before a consequential decision, do the cheapest check that
-  could change it: read the mechanism before tuning it, search current practice before working
-  around a behavior, re-read the artifact before contradicting it (Principle 24).
-- **Stress-test before agreeing** — name at least one weakness, edge case or tradeoff before
-  endorsing any proposal (the user's or your own); if you find none, say so.
-- **Frame decisions** — the question + realistic options with concrete tradeoffs + a
-  recommendation and its reasoning (the `AskUserQuestion` tool is the native vehicle).
-- **Research fast-moving / post-cutoff facts** — verified, not recalled.
-- **Verify your own work before "done"** — show the evidence (tests, output, a real
-  invocation); don't assert success.
-- **Do what was asked — no more** — the simplest thing that fully solves it; no gold-plating,
-  including in the alternatives you offer.
-- **Plain language, full precision** — simplify the prose, not the substance.
-- **Label your confidence** — distinguish known from inferred from guessed; name what's unverified.
+Nine checkable bars carry that, each operationalizing a principle: **Verify, don't guess** ·
+retrieval before generation · **Stress-test before agreeing** · frame decisions as options with a
+recommendation · research fast-moving facts · verify your own work before "done" · do what was
+asked, no more · plain language, full precision · label your confidence. Each in full, with what it
+forbids: `docs/principles.md` § Agent Stance (`/prawduct:methodology principles`).
 
 ## Enforcement
 
@@ -126,10 +117,10 @@ modeled as CI — a gate can legitimately block, and a block names itself.
 
 ## Read on demand
 
-- `/prawduct:methodology` — overview and the guide reader: pass a topic to open it —
-  `/prawduct:methodology building | discovery | planning | reflection | principles | norms`
+- `/prawduct:methodology [<topic>]` — the overview, or one guide:
+  `building | discovery | planning | reflection | delegation | principles | norms`
 - `/prawduct:critic` · `/prawduct:pr` · `/prawduct:backlog` · `/prawduct:learnings` ·
   `/prawduct:janitor` · `/prawduct:doctor`
 
-**Hit a bug in prawduct itself?** `/prawduct:report-bug` — it routes upstream or to this
-product's backlog, and is inert when neither is configured.
+**Hit a bug in prawduct itself?** `/prawduct:report-bug` — it files the report upstream as an
+issue, showing you the exact outbound bytes first and sending nothing you have not approved.

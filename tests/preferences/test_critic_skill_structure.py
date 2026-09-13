@@ -313,3 +313,77 @@ class TestCriticSkillEntryPoints:
             "Critic agent reads the mode from this placeholder; without an explicit "
             "instruction to parse it, the agent will fall back to its default."
         )
+
+
+class TestAMetaNoteIsNotAFinding:
+    """An observation whose subject is another finding is folded in, not filed.
+
+    Measured in review ``rev-20260729T230420Z-71b7f129`` (mode `final`,
+    coordinator roster, 25 findings / 16 notes): R-23 was Learnings Cross-Check
+    bookkeeping ABOUT R-20, and R-25 restated R-1's consequence. The honest
+    distinct count was ~13 of 16. Counts are read as review thoroughness — the
+    builder budgets remediation against them and every inflated note is one
+    someone must read, judge and dispose of.
+
+    The reporting half shipped (``critic_consolidate`` renders a
+    likely-duplicate view and a distinct count). This is the protocol half, and
+    the two are not substitutes: consolidation can flag a resemblance after the
+    fact, but only the reviewer holding the observation knows that its subject
+    IS a finding.
+
+    **The recognition test is the load-bearing part, and it is pinned as a
+    property rather than a phrase.** A coordinator reviewer cannot see the other
+    partials, so any test shaped "does this duplicate R-13?" is unanswerable
+    where it is most needed — the rule has to be answerable from one partial
+    alone, which "is a finding the subject of this one?" is.
+    """
+
+    _CARRIERS = (
+        ("review-protocol.md", REPO_ROOT / "skills" / "critic" / "review-protocol.md"),
+        ("goals-1-3.md", REPO_ROOT / "skills" / "critic" / "goals-1-3.md"),
+        ("critic-reviewer.md", REPO_ROOT / "agents" / "critic-reviewer.md"),
+    )
+
+    @pytest.mark.parametrize("name,path", _CARRIERS, ids=[n for n, _ in _CARRIERS])
+    def test_every_reviewer_surface_carries_the_rule(self, name, path):
+        """All three, because the three reviewer shapes read different files:
+        `final`/`cumulative` single-pass reads review-protocol.md, `chunk` and
+        `verify-resolutions` read goals-1-3.md, and a dispatched coordinator
+        reviewer reads its agent definition. A rule on two of them is a rule the
+        third reviewer never meets."""
+        text = path.read_text()
+        assert "subject is never another finding" in text.lower(), (
+            f"{name} does not state that a finding's subject is never another "
+            f"finding — a reviewer reading only this file will keep filing "
+            f"meta-notes as findings"
+        )
+
+    @pytest.mark.parametrize("name,path", _CARRIERS, ids=[n for n, _ in _CARRIERS])
+    def test_the_rule_names_its_two_observed_shapes(self, name, path):
+        """Bookkeeping about a finding (R-23) and restating a consequence
+        (R-25). A bare "don't duplicate" catches neither: both are true,
+        independent-looking observations."""
+        text = path.read_text().lower()
+        assert "consequence" in text, f"{name} omits the restated-consequence shape"
+        assert "learnings" in text, f"{name} omits the cross-check-bookkeeping shape"
+
+    @pytest.mark.parametrize("name,path", _CARRIERS, ids=[n for n, _ in _CARRIERS])
+    def test_the_recognition_test_works_from_one_partial(self, name, path):
+        """The property, not the wording: the rule must say the reviewer applies
+        it to its OWN findings. Phrased against another reviewer's partial it is
+        unrunnable in the coordinator pattern, which is where the measured
+        duplication happened."""
+        text = path.read_text().lower()
+        assert "your own" in text or "own partial" in text, (
+            f"{name} does not scope the recognition test to the reviewer's own "
+            f"partial — the other reviewers' are not visible to it"
+        )
+
+    def test_the_rule_lives_in_the_severity_legend(self):
+        """Placement is substance. A reviewer resolving "what severity is this?"
+        reads the legend; a rule parked elsewhere is met either before there is
+        an observation to apply it to, or not at all. Same argument the
+        inert-count cap is placed by."""
+        text = (REPO_ROOT / "skills" / "critic" / "review-protocol.md").read_text()
+        legend = text.split("## Severity Levels", 1)[1]
+        assert "subject is never another finding" in legend.lower()

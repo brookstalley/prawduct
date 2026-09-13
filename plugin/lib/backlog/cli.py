@@ -1,8 +1,20 @@
-"""CLI — the ``prawduct-hook backlog <op>`` runner (the stable public contract).
+"""CLI — the ``prawduct-hook backlog <op>`` runner (the surface callers bind to).
 
 A **thin** front over ``core`` (Test Specs §1.1): it parses flags, calls the core
 op, serializes the envelope, and maps the error code to a stable exit class. All
 the logic lives in ``core``; this layer adds only the CLI surface.
+
+**This is the boundary, and it is an internal one.** Every skill and gate reaches
+the backlog through here — nothing outside this package calls ``core`` — so what
+is documented below (the op set, the flags, the envelope, the exit classes) is
+binding *behaviour*, and a caller at the version it shipped with may rely on all
+of it. What is **not** offered is a stability tier for a third party: this CLI is
+delivered by the plugin that installs it and carried at the plugin's own version
+alongside the skills that call it, so it evolves additive-first with them rather
+than under a separate compatibility promise. Prawduct's externally bindable
+surface is a short enumeration of read-only subcommands and ``backlog`` is
+deliberately not in it — binding to it from outside the plugin is unsupported
+rather than merely undocumented.
 
 Output discipline (AG6, API §3/§8):
 - ``--json`` → the JSON envelope is the **sole stdout content**; a ``| jq`` never
@@ -10,6 +22,11 @@ Output discipline (AG6, API §3/§8):
 - default (human) → a readable summary to stdout, narration/warnings to stderr.
 
 Non-interactive always (INV-2): the runner never prompts and never reads stdin.
+
+Self-describing (AG6): ``<op> --help`` prints that op's usage on **stdout** at
+**exit 0**, and a bare ``--help`` prints the whole usage table — the op set an
+instruction surface bounds its reader to. Help is a request that succeeded, so
+it is never a validation error.
 
 Exit codes are a small fixed set of classes (a build-time coherence check, API
 §11) so scripts can branch without parsing the body:
@@ -21,7 +38,7 @@ from __future__ import annotations
 import json
 import sys
 
-from . import context, core, ids, query
+from . import context, core, ids, query, upstream
 
 # GitHub-mutating ops — refused under an untrusted-triggered Actions run absent an
 # explicit triggering-actor authorization check (SEC-5). Reads, ``counts``,
@@ -29,8 +46,19 @@ from . import context, core, ids, query
 # read-only reporting under such triggers is fine (Security §1b). ``pick`` is a
 # read on every path now that it takes nothing: it revalidates the local store and
 # ranks, and mutates nothing on the provider.
+# ``file-upstream`` is here although its preview arm mutates nothing: the op is
+# attended-only by design (a human reviews the literal outbound bytes and approves
+# a digest), and an untrusted-triggered Actions run is a context where nobody has
+# vouched for the caller at all. Withholding the whole op there costs a preview
+# nobody could act on and closes the arm that would otherwise send.
+# This set is NOT the general "no human present" check and must not be read as one:
+# :func:`context.is_unattended` is also true under ``PRAWDUCT_UNATTENDED=1`` and for
+# every *trusted* Actions event, and :func:`context.writes_withheld` reaches none of
+# those. Attendance on the send path rests on the ``report-bug`` skill obligation
+# plus the honest limit the owner ruled for (upstream-filing design section 4.3),
+# never on membership here.
 _WRITE_OPS: frozenset[str] = frozenset(
-    {"file", "status", "update", "comment",
+    {"file", "file-upstream", "status", "update", "comment",
      "link", "unlink", "provision", "reconcile-labels", "import", "merge"}
 )
 
@@ -44,12 +72,7 @@ _WRITE_OPS: frozenset[str] = frozenset(
 #: service-backed early return fires before the per-op set), which is precisely
 #: the stranded write that guard exists to refuse. Adding an op therefore has to
 #: fail something until it is classified.
-_ALL_OPS: tuple[str, ...] = (
-    "file", "get", "show", "status", "update", "comment", "list", "pick",
-    "counts", "verify-migration", "refresh-counts", "reconcile-labels",
-    "link", "unlink", "provision", "import",
-    "restructure-preview", "export", "merge", "sync", "cache-query",
-)
+_ALL_OPS: tuple[str, ...] = ()  # bound below, once the usage table exists
 
 # code → exit class. A code absent here (should not happen) falls back to 1.
 _EXIT_CLASS: dict[str, int] = {
@@ -66,74 +89,315 @@ _EXIT_CLASS: dict[str, int] = {
     "auth": 5,
     "unavailable": 6,
     "rate_limited": 6,
+    # The upstream-filing refusals (design §5). They classify with `validation`
+    # because that is what they are — the caller asked for something the contract
+    # forbids — and a distinct code exists only so a caller can tell WHICH check
+    # refused without parsing prose. None is retryable: retrying an identical
+    # refused filing produces an identical refusal. The fifth check refuses with
+    # `auth` above, which already means what it needs to mean here.
+    "filing-disabled": 2,
+    "target-not-pinned": 2,
+    "self-file": 2,
+    "approval-mismatch": 2,
 }
 
-_HELP = (
-    "usage: prawduct-hook backlog <op> [flags]\n"
-    "  file     --repo owner/repo --title T --body B "
-    "[--stage S] [--kind K] [--area A] [--effort E] [--impact I] [--source SRC]\n"
-    "  get      <id> [--repo owner/repo]\n"
-    "  status   <id> --to submitted|open|in-progress|shipped|dropped [--repo owner/repo]\n"
-    "  update   <id> [--title T] [--body B] [--stage S] [--kind K] [--area A] "
-    "[--effort E] [--impact I] [--source SRC] [--tags a,b] [--affected p1,p2] "
-    "[--working-branch owner/repo@branch] [--if-updated-at TS] [--repo owner/repo]\n"
-    "           --tags sets the WHOLE tag set (absent ones are stripped; --tags '' clears)\n"
-    "           --affected takes repo-relative paths only, no prose (a directory "
-    "covers everything under it)\n"
-    "           --working-branch must name a PUSHED branch, repo-qualified\n"
-    "  comment  <id> --body B [--repo owner/repo]\n"
-    "  list     --repo owner/repo [--status S] [--stage S] [--kind K] [--area A] "
-    "[--effort E] [--impact I] [--source SRC] [--tag T] [--assignee A|none|*] "
-    "[--state open|closed|all] [--sort created|updated] [--direction asc|desc] "
-    "[--per-page N] [--page N] [--untriaged]\n"
-    "           --untriaged inverts the scope filter: shows only issues with no "
-    "prawduct labels or block\n"
-    "  pick     --repo owner/repo [--limit N] [--include-working]\n"
-    "           ready work, ranked; items naming a `working-branch` are excluded "
-    "unless --include-working\n"
-    "  counts   --repo owner/repo\n"
-    "  refresh-counts   --repo owner/repo   (derive + persist the briefing snapshot)\n"
-    "  sync     --repo owner/repo [--rebuild]   (populate the local cache; "
-    "incremental unless --rebuild)\n"
-    "  cache-query <query> [args] --repo owner/repo   (read the local cache; "
-    "never touches the network)\n"
-    "           open | unstaged | by-area [--all] | stale [--older-than N] |\n"
-    "           search <text> [--area A] | affecting <path>... [--all] |\n"
-    "           created-since <ISO> | resolve <id>\n"
-    "           exit 6 means the cache could not be read — NOT that nothing matched\n"
-
-    "  link     <id> --edge blocks|blocked-by|parent|child|related --to <target-id> [--repo owner/repo]\n"
-    "  unlink   <id> --edge blocks|blocked-by|parent|child|related --to <target-id> [--repo owner/repo]\n"
-    "  provision --repo owner/repo\n"
+#: Per-op usage, keyed by the op name — **the usage table**. It is the referent
+#: every instruction surface points at when it bounds a caller to "the ops the
+#: adapter exposes": `backlog --help` renders the whole table, `backlog <op>
+#: --help` renders one entry, both on stdout at exit 0. Composed into `_HELP`
+#: below rather than duplicated, so an op cannot be documented in one view and
+#: missing from the other, and dict order is display order.
+_OP_USAGE: dict[str, str] = {
+    "file": (
+        "  file     --repo owner/repo --title T --body B "
+        "[--stage S] [--kind K] [--area A] [--effort E] [--impact I] [--source SRC] "
+        "[--refs R]\n"
+    ),
+    "get": "  get      <id> [--repo owner/repo]   (`show` is an alias)\n",
+    "status": (
+        "  status   <id> --to submitted|open|in-progress|shipped|dropped [--repo owner/repo]\n"
+        "           takes no `--closed-by`: a close records no scope handle\n"
+    ),
+    "update": (
+        "  update   <id> [--title T] [--body B] [--stage S] [--kind K] [--area A] "
+        "[--effort E] [--impact I] [--source SRC] [--tags a,b] [--affected p1,p2] "
+        "[--working-branch owner/repo@branch] [--refs R] [--revisit R] [--closed-by REF] "
+        "[--if-updated-at TS] [--repo owner/repo]\n"
+        "           --tags sets the WHOLE tag set (absent ones are stripped; --tags '' clears)\n"
+        "           --affected takes repo-relative paths only, no prose (a directory "
+        "covers everything under it)\n"
+        "           --working-branch must name a PUSHED branch, repo-qualified\n"
+        "           --refs/--revisit/--closed-by edit the prawduct: block; an empty "
+        "value clears the field\n"
+    ),
+    "comment": "  comment  <id> --body B [--repo owner/repo]\n",
+    "list": (
+        "  list     --repo owner/repo [--status S] [--stage S] [--kind K] [--area A] "
+        "[--effort E] [--impact I] [--source SRC] [--tag T] [--assignee A|none|*] "
+        "[--state open|closed|all] [--sort created|updated] [--direction asc|desc] "
+        "[--per-page N] [--page N] [--untriaged]\n"
+        "           --untriaged inverts the scope filter: shows only issues with no "
+        "prawduct labels or block\n"
+    ),
+    "pick": (
+        "  pick     --repo owner/repo [--limit N] [--include-working]\n"
+        "           ready work, ranked; items naming a `working-branch` are excluded "
+        "unless --include-working\n"
+    ),
+    "counts": "  counts   --repo owner/repo\n",
+    "refresh-counts": (
+        "  refresh-counts   --repo owner/repo   (derive + persist the briefing snapshot)\n"
+    ),
+    "sync": (
+        "  sync     --repo owner/repo [--rebuild]   (populate the local cache; "
+        "incremental unless --rebuild)\n"
+    ),
+    "cache-query": (
+        "  cache-query <query> [args] --repo owner/repo   (read the local cache; "
+        "never touches the network)\n"
+        "           open | unstaged | by-area [--all] | stale [--older-than N] |\n"
+        "           search <text> [--area A] | affecting <path>... [--all] |\n"
+        "           created-since <ISO> | resolve <id>\n"
+        "           exit 6 means the cache could not be read — NOT that nothing matched\n"
+    ),
+    "link": (
+        "  link     <id> --edge blocks|blocked-by|parent|child|related "
+        "--to <target-id> [--repo owner/repo]\n"
+    ),
+    "unlink": (
+        "  unlink   <id> --edge blocks|blocked-by|parent|child|related "
+        "--to <target-id> [--repo owner/repo]\n"
+    ),
+    "provision": "  provision --repo owner/repo\n",
     # GV6. The id stays here, out of the operator's way: text emitted into a
     # governed product carries the reason, never a prawduct-internal label.
-    "  reconcile-labels --repo owner/repo   "
-    "(add missing taxonomy labels; never removes or edits existing ones)\n"
-    "  import   --repo owner/repo --from <backlog.md> [--archive <archive.md>] "
-    "[--restructure <plan.json>] [--archive-scope all|open]   "
-    # MG6 — see the note on reconcile-labels above.
-    "(resumable/idempotent; a --restructure plan is applied as each issue "
-    "is created, not as a later edit)\n"
-    "  restructure-preview --from <backlog.md> [--archive <archive.md>] "
-    "--plan <plan.json> --out <preview.md> [--archive-scope all|open]   "
-    "(offline before/after review artifact)\n"
-    "  verify-migration --repo owner/repo --from <backlog.md> [--archive <archive.md>] "
-    "[--archive-scope all|open]   (completeness gate — exit 4 names any source item with "
-    "no issue on the target, and any whose id is not a valid PFX so no alias can key it; "
-    "run before recording the cutover)\n"
-    "  export   --repo owner/repo --to <dir>   (full-fidelity dump incl. native graph)\n"
-    "  merge    <source-id> --into <target-id> [--repo owner/repo]   (fold A→B, redirect-before-close)\n"
-    "global: --json  (machine envelope on stdout; default is human)\n"
-    "\n"
+    "reconcile-labels": (
+        "  reconcile-labels --repo owner/repo   "
+        "(add missing taxonomy labels; never removes or edits existing ones)\n"
+    ),
+    "import": (
+        "  import   --repo owner/repo --from <backlog.md> [--archive <archive.md>] "
+        "[--restructure <plan.json>] [--archive-scope all|open]   "
+        # MG6 — see the note on reconcile-labels above.
+        "(resumable/idempotent; a --restructure plan is applied as each issue "
+        "is created, not as a later edit)\n"
+        "           retries a rate-limited record in-run, bounded; every other "
+        "failure ends the run resumably\n"
+    ),
+    "restructure-preview": (
+        "  restructure-preview --from <backlog.md> [--archive <archive.md>] "
+        "--plan <plan.json> --out <preview.md> [--archive-scope all|open]   "
+        "(offline before/after review artifact)\n"
+    ),
+    "verify-migration": (
+        "  verify-migration --repo owner/repo --from <backlog.md> [--archive <archive.md>] "
+        "[--archive-scope all|open]   (completeness gate — exit 4 names any source item with "
+        "no issue on the target, and any whose id is not a valid PFX so no alias can key it; "
+        "run before recording the cutover)\n"
+    ),
+    "export": (
+        "  export   --repo owner/repo --to <dir>   (full-fidelity dump incl. native graph)\n"
+    ),
+    "merge": (
+        "  merge    <source-id> --into <target-id> [--repo owner/repo]   "
+        "(fold A→B, redirect-before-close)\n"
+    ),
+    # Last in the table, away from `file`, deliberately: the two differ in the
+    # only way that matters — `file` writes into the product's own repo, this
+    # writes into a foreign public one — and a reader scanning adjacent rows for
+    # "how do I file a bug" must not pick this one by accident.
+    "file-upstream": (
+        "  file-upstream --title T --body B [--component C] [--repo owner/repo]   "
+        "(preview the outbound payload for prawduct's OWN public tracker; sends "
+        "nothing)\n"
+        "           prints {payload, payload_digest}; --repo, if given, must match "
+        "the pinned target\n"
+        "           --approve sha256:<digest> SENDS: same --title/--body/--component, "
+        "plus the digest the preview printed\n"
+        "           it refuses unless all five checks hold (filing-disabled, "
+        "target-not-pinned, self-file, approval-mismatch, auth) and files nothing "
+        "on any of them\n"
+        "           the body crosses an owner boundary irreversibly — recompose it "
+        "in prawduct's terms first (no product names, paths, ids or excerpts)\n"
+    ),
+}
+
+#: Ops that share another op's handler and therefore its usage entry. Keeping
+#: them out of `_OP_USAGE` keeps the rendered table one row per operation while
+#: `--help` still answers for the spelling the caller actually typed.
+_OP_ALIASES: dict[str, str] = {"show": "get"}
+
+#: One enumeration, not two. `_ALL_OPS` used to be a hand-kept tuple beside the
+#: usage table, and the pins all iterated it — so an op wired into `run` alone was
+#: dispatchable, absent from `--help`, and invisible to every check, while this
+#: file's own contract promises callers that the published op set is what
+#: dispatches. Deriving it from the table that `--help` prints makes the promise
+#: structural in one direction; `test_every_dispatched_op_is_in_the_op_set` closes
+#: the other, reading the dispatch chain itself.
+_ALL_OPS = tuple(_OP_USAGE) + tuple(_OP_ALIASES)
+
+_GLOBAL_HELP = "global: --json  (machine envelope on stdout; default is human)\n"
+
+#: The **caller-side** retry budget. No adapter code enforces it — a single op
+#: makes one `gh` call and returns, so a retry only ever exists in the caller —
+#: which is exactly why it has to be published rather than assumed: an
+#: unbounded caller loop is the opposite of the never-block guarantee. Three
+#: attempts cost at most 3 x the 30s `gh` timeout plus the two pauses, so the
+#: deadline binds only when calls run long; a healthy op answers in ~2s.
+RETRY_MAX_ATTEMPTS = 3
+RETRY_DEADLINE_SECONDS = 120
+
+_RETRY_HELP = (
+    "retrying: no op retries a failed call for you except `import`, which retries a\n"
+    "  rate-limited record in-run. A caller re-attempting a `retryable` error spends\n"
+    f"  at most {RETRY_MAX_ATTEMPTS} attempts and {RETRY_DEADLINE_SECONDS}s wall "
+    "clock, then gives up and reports.\n"
+)
+
+_ISSUE_STANDARD_HELP = (
     "issue standard: `file` emits an `area:`-prefixed title and audits the issue.\n"
-    "  The four §1 TITLE checks BLOCK on every write path — `file`, `update` (on a\n"
-    "  title it is asked to write) and `import` (whole corpus, before the first\n"
-    "  write); body/label `lint` findings stay advisory. Author a scannable\n"
+    "  The four §1 TITLE checks BLOCK on EVERY op that writes a title — `file`,\n"
+    "  `update` (on a title it is asked to write), `import` (whole corpus,\n"
+    "  before the first write) and `file-upstream` (the rendered outbound\n"
+    "  title); body/label `lint` findings stay advisory. Author a scannable\n"
     "  `area: summary` title (15-72) + a sectioned body (bug:\n"
     "  Problem/Repro/Actual/Expected/Evidence; task: Problem/Proposed\n"
     "  change/Acceptance `- [ ]`/Scope-out) and set --kind.\n"
     "  Full contract: documentation/backlog-service-issue-standard.md\n"
 )
+
+_HELP = (
+    "usage: prawduct-hook backlog <op> [flags]\n"
+    + "".join(_OP_USAGE.values())
+    + _GLOBAL_HELP
+    + "\n"
+    + _RETRY_HELP
+    + "\n"
+    + _ISSUE_STANDARD_HELP
+)
+
+
+def _op_usage(op: str) -> str | None:
+    """That op's usage entry, resolving an alias; ``None`` if it is not an op."""
+    return _OP_USAGE.get(_OP_ALIASES.get(op, op))
+
+
+def _help_text(op: str | None) -> str:
+    """The whole usage table, or one op's entry when ``op`` names one."""
+    entry = _op_usage(op) if op is not None else None
+    if entry is None:
+        return _HELP
+    return (
+        f"usage: prawduct-hook backlog {op} [flags]\n"
+        + entry
+        + _GLOBAL_HELP
+        + "\n"
+        + _RETRY_HELP
+        + "\n"
+        + "the whole op set: prawduct-hook backlog --help\n"
+    )
+
+
+def _emit_help(op: str | None, *, json_mode: bool) -> int:
+    """Serve ``--help`` on **stdout** at exit 0.
+
+    Help is a request that succeeded, so it is not a validation error and does
+    not go to stderr: a reader discovering the op surface is the intended use,
+    and an exit-2 "unknown flag" teaches the opposite. Under ``--json`` the
+    usage rides inside the envelope, because the envelope is the sole stdout
+    content (ERR-2) for every path that honors the flag.
+    """
+    text = _help_text(op)
+    if json_mode:
+        print(json.dumps(core.ok({"usage": text})))
+    else:
+        print(text)
+    return 0
+
+
+def _unknown_op(op: str, *, json_mode: bool) -> int:
+    """The unknown-op envelope, whose message enumerates the whole op set."""
+    return _emit(
+        core.error(
+            "validation",
+            f"unknown op {op!r} (expected {'|'.join(_ALL_OPS)})",
+        ),
+        json_mode=json_mode,
+        usage=True,
+    )
+
+
+#: Every flag name that takes a value anywhere in this CLI. Used ONLY to tell a
+#: value slot from a flag position when scanning for a global flag — never to
+#: validate, which stays each handler's own `_parse_flags(valued=...)` call.
+#:
+#: The union rather than a per-op map, deliberately: a per-op map is a second
+#: enumeration of something the handlers already state, and it would drift the way
+#: the op set did. The union is equivalent for every real invocation as long as no
+#: name is valued for one op and boolean for another —
+#: `test_no_flag_name_is_valued_here_and_boolean_there` is that condition, and
+#: `test_the_valued_flag_union_matches_what_the_handlers_parse` reads the handlers
+#: by AST so this set cannot fall behind them.
+_VALUED_FLAG_NAMES: frozenset[str] = frozenset({
+    "affected", "approve", "archive", "archive-scope", "area", "assignee", "body",
+    "closed-by", "component", "direction", "edge", "effort", "from", "if-updated-at",
+    "impact", "into", "kind", "limit", "older-than", "out", "page", "per-page",
+    "plan", "refs", "repo", "restructure", "revisit", "sort", "source", "stage",
+    "state", "status", "tag", "tags", "title", "to", "working-branch",
+})
+
+
+def _take_global_flag(argv: list[str], flag: str, named: str | None) -> tuple[bool, list[str]]:
+    """Whether ``flag`` is present as a FLAG, and ``argv`` with those occurrences gone.
+
+    A token that fills a valued flag's value slot belongs to that flag whatever it
+    spells, so ``--body --help`` is a body of ``--help`` and not a help request.
+    Membership alone cannot see that, which is how a write that never happened came
+    back as a success envelope.
+    """
+    present = False
+    out: list[str] = []
+    skip_value = False
+    for i, token in enumerate(argv):
+        if i == 0 and named is not None:
+            out.append(token)          # the op itself
+            continue
+        if skip_value:
+            out.append(token)          # this token is someone's value
+            skip_value = False
+            continue
+        if token == flag:
+            present = True
+            continue
+        if token.startswith("--") and "=" not in token and token[2:] in _VALUED_FLAG_NAMES:
+            skip_value = True
+        out.append(token)
+    return present, out
+
+
+def resolve_op(argv: list[str]) -> str | None:
+    """The op this call names, or ``None``.
+
+    ``argv[0]`` or nothing. Resolving it as "the first token that does not look like
+    a flag" reads a VALUED FLAG'S ARGUMENT as the op the moment one is present, and
+    ``--repo <owner/repo>`` is in the invocation this adapter's own instruction
+    surface teaches — which is how the habitual spelling of a help request came back
+    ``unknown op 'owner/repo'``.
+    """
+    return argv[0] if argv and not argv[0].startswith("-") else None
+
+
+def is_help_request(argv: list[str]) -> bool:
+    """Whether this call asks for usage rather than doing anything.
+
+    Public because more than one caller needs the answer and there must only be one:
+    the ephemeral-worktree guard in ``bin/prawduct-hook`` decides whether to refuse a
+    call before this module ever sees it, and a guard that re-spells the rule is a
+    guard that can disagree with the runner about what the call *is*. A disagreement
+    resolves the unsafe way — the guard waves through a write it has classified as a
+    read.
+    """
+    return _take_global_flag(argv, "--help", resolve_op(argv))[0]
 
 
 def run(project_dir, argv: list[str], *, transport=None) -> int:
@@ -143,8 +407,25 @@ def run(project_dir, argv: list[str], *, transport=None) -> int:
     injected by tests (the L1 fake); in production it defaults to the real
     ``gh``-backed transport built lazily so no import cost lands on other paths.
     """
-    json_mode = "--json" in argv
-    argv = [tok for tok in argv if tok != "--json"]
+    named = resolve_op(argv)
+
+    # `--json` and `--help` are global, but "global" is about which flag it is, not
+    # about where the token sits: a token occupying a VALUE slot belongs to the flag
+    # that claimed it, whatever it spells. Scanning by membership instead let
+    # `comment <id> --body --help` print usage and report ok for a write that never
+    # happened. `_VALUED_FLAG_NAMES` is what distinguishes a value slot from a flag,
+    # and it is pinned against what each handler actually parses.
+    json_mode, argv = _take_global_flag(argv, "--json", named)
+    wants_help, argv = _take_global_flag(argv, "--help", named)
+
+    # Help is answered before anything can turn it into an error: no op is
+    # dispatched, no flag is parsed, and a write op under a withheld-writes trigger
+    # still gets its usage (printing help is not writing). An unrecognized op still
+    # gets the unknown-op envelope, so a typo is never dressed up as success.
+    if wants_help:
+        if named is None or _op_usage(named) is not None:
+            return _emit_help(named, json_mode=json_mode)
+        return _unknown_op(named, json_mode=json_mode)
 
     if not argv:
         return _emit(core.error("validation", "no operation given"), json_mode=json_mode, usage=True)
@@ -163,6 +444,8 @@ def run(project_dir, argv: list[str], *, transport=None) -> int:
     try:
         if op == "file":
             result = _run_file(rest, transport, project_dir)
+        elif op == "file-upstream":
+            result = _run_file_upstream(rest, project_dir, transport)
         elif op in ("get", "show"):
             result = _run_get(rest, transport)
         elif op == "status":
@@ -200,14 +483,7 @@ def run(project_dir, argv: list[str], *, transport=None) -> int:
         elif op == "merge":
             result = _run_merge(rest, transport, project_dir)
         else:
-            return _emit(
-                core.error(
-                    "validation",
-                    f"unknown op {op!r} (expected {'|'.join(_ALL_OPS)})",
-                ),
-                json_mode=json_mode,
-                usage=True,
-            )
+            return _unknown_op(op, json_mode=json_mode)
     except Exception as exc:  # prawduct:allow prawduct/broad-except -- CLI boundary: an unforeseen exception must become a clean, token-free envelope, never a raw traceback on stdout (SEC-1)
         from .transport import scrub_secrets
 
@@ -229,7 +505,10 @@ def run(project_dir, argv: list[str], *, transport=None) -> int:
 def _run_file(rest: list[str], transport, project_dir):
     flags, positionals, err = _parse_flags(
         rest,
-        valued={"repo", "title", "body", "stage", "kind", "area", "effort", "impact", "source"},
+        valued={
+            "repo", "title", "body", "stage", "kind", "area",
+            "effort", "impact", "source", "refs",
+        },
     )
     if err:
         return core.error("validation", err)
@@ -262,8 +541,138 @@ def _run_file(rest: list[str], transport, project_dir):
             facets=facets,
             automated=automated,
             worker=context.worker_marker() if automated else None,
+            refs=flags.get("refs"),
             absorb=absorb,
         ),
+    )
+
+
+def _run_file_upstream(rest: list[str], project_dir, transport):
+    """``file-upstream`` — preview the outbound payload, or send it on an approval.
+
+    Two arms, and which one runs is decided by ``--approve`` alone. Without it
+    this is design §5's first call: render the exact bytes and their digest, send
+    nothing. With it, the digest-bearing second call, which refuses unless all
+    five §5 checks hold.
+
+    **The preview arm is handed no transport, and that is the guarantee rather
+    than an omission.** The seam is passed to the send arm only, so a preview
+    cannot reach the network whatever a later edit does to the body of
+    :func:`_file_upstream_preview` — the property the contract test asserts by
+    watching the seam, held here by scope rather than by discipline.
+    """
+    flags, _positionals, err = _parse_flags(
+        rest, valued={"repo", "title", "body", "component", "approve"}
+    )
+    if err:
+        return core.error("validation", err)
+
+    # First, ahead of even the required-flag checks and on BOTH arms: a caller
+    # naming a target that is not the pin has asked for the one thing this op
+    # refuses categorically, and that answer must not be shadowed by a missing
+    # `--title`. `send` re-asks, because it is a module entry point of its own.
+    #
+    # It is therefore the one refusal that carries no `lint` findings, while the
+    # other four do — deliberately, not by omission. Nothing has been composed
+    # yet, and composing a payload aimed at the PIN in order to lint it would
+    # report budget findings about bytes this caller never asked to send. The
+    # remedy here is the `--repo` flag, not the title.
+    refusal = upstream.check_target(flags.get("repo"))
+    if refusal is not None:
+        return core.error(
+            refusal.code, refusal.message, retryable=False, details=refusal.details
+        )
+    if "title" not in flags:
+        return core.error("validation", "file-upstream requires --title")
+    if "body" not in flags:
+        return core.error("validation", "file-upstream requires --body")
+
+    if "approve" not in flags:
+        return _file_upstream_preview(
+            project_dir,
+            title=flags["title"],
+            body=flags["body"],
+            component=flags.get("component", ""),
+        )
+    if not flags["approve"].strip():
+        # A malformed flag value, answered as one. The RULE that an empty token is
+        # never an approval lives in `upstream.check_approval`, which refuses it
+        # ahead of the `always-file` waiver — this is a better message for a CLI
+        # caller, not a second copy of the guarantee.
+        return core.error("validation", "--approve requires the digest the preview printed")
+    # Resolved HERE rather than at the top of the handler, which is where every
+    # sibling resolves it: doing it at the top would construct a `GhTransport` on
+    # the preview path and dissolve the scope guarantee below. Resolving it not at
+    # all is worse and was the first shape of this code — production calls
+    # `run(project_dir, argv)` with no transport, so `send` met a `None`, died on
+    # `None.get_authenticated_user()`, and the CLI-boundary catch reported the
+    # whole op as a retryable `unavailable`.
+    return upstream.send(
+        project_dir,
+        _resolve_transport(transport),
+        title=flags["title"],
+        body=flags["body"],
+        component=flags.get("component", ""),
+        approve=flags["approve"],
+        requested_repo=flags.get("repo"),
+    )
+
+
+def _file_upstream_preview(project_dir, *, title, body, component):
+    """Render the §5 call-1 payload and its digest. No transport in scope, ever.
+
+    Two of the five §5 checks are enforceable with no send path: the target is
+    **pinned** (refused by the caller above, on both arms), and nothing files
+    **without an approval** — there is no path from this function to a write at
+    all. The digest it returns is what a later ``--approve`` is matched against,
+    which is what makes "sent == previewed" a property of the bytes rather than of
+    the caller's intentions.
+    """
+    # Every caller string that lands in the body, checked in the module that owns
+    # the bytes. Guarding `--body` here and nothing else is what let `--component`
+    # forge the whole provenance block.
+    input_err = upstream.check_payload_inputs(title=title, body=body, component=component)
+    if input_err:
+        return core.error("validation", input_err)
+
+    payload, digest = upstream.render_preview(
+        project_dir, title=title, body=body, component=component
+    )
+    # An unfileable payload must not preview as a fileable one: a digest handed
+    # over with no word of that invites an approval for a send that can only ever
+    # refuse, and the operator learns it AFTER reviewing the bytes. The set is
+    # asked for by NAME rather than enumerated here — an enumeration at this call
+    # site is one a later refusal joins only if someone remembers, which is how
+    # the title refusal ended up reaching the operator as an ordinary `lint:`
+    # line indistinguishable from the budget hints that never block.
+    preference, pref_warning = upstream.read_filing_preference(project_dir)
+    warnings: list[str] = [pref_warning] if pref_warning else []
+    for code, message in upstream.previewable_refusals(
+        project_dir, rendered_title=payload["title"], preference=preference
+    ):
+        warnings.append(f"filing would refuse ({code}): {message}")
+    # Budgets are REPORTED here and REFUSED at send: nothing is written by a
+    # preview, and an advisory finding is what lets an author fix a title before
+    # approving it. Silently truncating an outbound bug report would cut bytes the
+    # reviewer already approved, so neither arm ever rewrites them.
+    # The resolved consent state rides out on BOTH views. It is not a byte of the
+    # payload and takes no part in the digest — it is the one §4.1 fact a caller
+    # cannot otherwise observe, and `always-file` is the state that needs it:
+    # standing consent means "never ask me", and a caller with no way to READ the
+    # state asks anyway, on every report, which makes the value inert on its only
+    # consumer. `never-file` announces itself through a refusal and `ask-user` is
+    # the default, so this line is what the third state is missing.
+    return upstream.attach_advisories(
+        core.ok(
+            {
+                "payload": payload,
+                "payload_digest": digest,
+                "sent": False,
+                "preference": preference,
+            },
+            warnings,
+        ),
+        findings=upstream.lint_payload(payload["title"], payload["body"]),
     )
 
 
@@ -324,12 +733,23 @@ def _run_update(rest: list[str], transport, project_dir):
             "repo", "title", "body", "stage", "kind", "area",
             "effort", "impact", "source", "if-updated-at",
             "tags", "affected", "working-branch",
+            "refs", "revisit", "closed-by",
         },
     )
     if err:
         return core.error("validation", err)
     if not positionals:
         return core.error("validation", "update requires an <id>")
+    if len(positionals) > 1:
+        # A stray positional was silently IGNORED before this guard, which is how
+        # `update <id> status=shipped` — the markdown spelling still instructed by
+        # skills/pr and the Critic's review-cycle — read as a success that changed
+        # nothing. A wrong result at exit 0 is worse than any error.
+        return core.error(
+            "validation",
+            f"unexpected argument(s) {positionals[1:]} — fields are set with named "
+            "flags on this backend (`--stage ready`), not as `field=value` arguments",
+        )
     # `--tags` is plural because it sets the whole set rather than adding one —
     # the `--tag` on `list` filters by a single tag, which is a different verb on
     # purpose and is named for it.
@@ -338,6 +758,7 @@ def _run_update(rest: list[str], transport, project_dir):
         for key in (
             "title", "body", "stage", "kind", "area", "effort", "impact", "source",
             "tags", "affected", "working-branch",
+            "refs", "revisit", "closed-by",
         )
         if key in flags
     }
@@ -551,6 +972,10 @@ def _run_sync(rest: list[str], transport, project_dir):
     from . import sync as sync_mod  # noqa: PLC0415 — only this op drives the store
 
     run = sync_mod.full_rebuild if flags.get("rebuild") else sync_mod.incremental_sync
+    # The attempt is stamped inside `sync`, beside the coverage stamp, so every
+    # caller records it — not just this one. It used to be recorded here, and
+    # `pick`'s revalidating sync and the post-import warm both moved the coverage
+    # stamp without clearing the failure beside it.
     return run(transport, project_dir=Path(project_dir), owner=owner, repo=repo)
 
 
@@ -1175,6 +1600,13 @@ def _print_cache_query(data: dict) -> None:
         print(f"  {len(items)} item(s)")
     print(f"  cache: {data.get('scope')}, confirmed {data.get('synced_at')} "
           f"({_humanize_seconds(data.get('age_seconds'))})")
+    # Printed directly under the age, because it is the sentence that changes how
+    # the age should be read: a store that is merely old is a different fact from
+    # one whose refresh has been failing since that stamp.
+    if data.get("sync_error"):
+        print(f"  SYNC FAILING: {data['sync_error']} "
+              f"(last attempt {data.get('sync_last_attempt_at') or 'unknown'}) — "
+              f"everything above predates it")
 
 
 def _humanize_seconds(age) -> str:
@@ -1377,6 +1809,12 @@ def _emit(result: dict, *, json_mode: bool, usage: bool = False) -> int:
         # before the cut; surface them like the ok path so they reach the operator.
         for warning in result.get("warnings", []):
             print(f"warning: {warning}", file=sys.stderr)
+        # And the advisory findings, for the same reason and against the same
+        # failure: a refused `file-upstream` is exactly when an author is about to
+        # edit the report, so budget findings that reached only the ok branch would
+        # be lost on the one envelope that most needs them.
+        for finding in result.get("lint", []):
+            print(f"lint: {finding.get('message')}", file=sys.stderr)
         if usage:
             print(_HELP, file=sys.stderr)
     return exit_code
@@ -1413,7 +1851,39 @@ def _print_human_ok(data) -> None:
     if not isinstance(data, dict):
         print(json.dumps(data))
         return
-    if "edge" in data and "target" in data:
+    if "payload_digest" in data:
+        # A `file-upstream` preview. First, and matched on a key no other result
+        # carries: this is the branch a reviewer reads before authorizing an
+        # irreversible cross-owner write, so it must never be shadowed into a
+        # summary line by a later branch that happens to share a key.
+        #
+        # It prints the payload VERBATIM — every byte that would leave — because
+        # approval given to a summary is not approval of what gets sent.
+        payload = data.get("payload", {})
+        print(f"target: {payload.get('repo')}")
+        print(f"title:  {payload.get('title')}")
+        print()
+        print(payload.get("body", ""))
+        print()
+        print(f"payload-digest: {data.get('payload_digest')}")
+        # Preview-only, and printed even though the human already knows what they
+        # set: the reader here is a model deciding whether design §4.1 obliges it
+        # to stop and ask, and it has no other way to see the answer.
+        if data.get("preference"):
+            print(f"consent: {data.get('preference')}")
+        # The outcome line, last, because it is the one a reader scans for after
+        # a wall of verbatim payload — and the payload is printed on BOTH arms so
+        # the send's record shows what actually left, not a summary of it.
+        if not data.get("sent"):
+            print("nothing was sent: this is a preview of what filing would send")
+        elif data.get("created"):
+            print(f"filed: {data.get('issue', {}).get('url')}")
+        else:
+            print(
+                "already filed — this report's source-key matched an existing issue, "
+                f"so nothing new was created: {data.get('issue', {}).get('url')}"
+            )
+    elif "edge" in data and "target" in data:
         # A link/unlink result.
         verb = "linked" if data.get("linked") else "unlinked"
         print(f"{verb} {data.get('item')} --{data.get('edge')}--> {data.get('target')}")
@@ -1514,6 +1984,17 @@ def _print_human_ok(data) -> None:
         for item in data.get("items", []):
             _print_item_line(item)
         print(f"  {data.get('count', 0)} item(s)")
+        # A truncated page must not read as the complete set (#549, the class
+        # #313 closed on four other paginators). `has_more` is computed
+        # correctly and handed to `--json`; dropping it here made "99 item(s),
+        # exit 0" indistinguishable from a backlog of 99 when it was 160, and
+        # every count derived from that page was wrong while looking well-formed.
+        # Named remedy, not a bare flag: the reader has to be able to act on it.
+        if data.get("has_more"):
+            print(
+                "  MORE AVAILABLE — this is one page, not the whole set; "
+                "re-run with --page 2 (and onward) or raise --per-page"
+            )
     elif "by_status" in data:
         # A counts / refresh-counts result.
         print(f"{data.get('repo')}: {data.get('total')} item(s)")
@@ -1566,6 +2047,19 @@ def _print_human_ok(data) -> None:
             if data.get("resolves_to"):
                 line += f"  (survivor: {data['resolves_to']})"
             print(line)
+        # The comment thread (only `get` attaches it — the DM5 drill-down).
+        # A failed fetch leaves it empty with the payload count intact; the
+        # warning on stderr says why, so nothing extra is rendered here.
+        comments = data.get("comments") or []
+        if comments:
+            print(f"  {len(comments)} comment(s):")
+            for comment in comments:
+                stamp = " · ".join(
+                    bit for bit in (comment.get("author"), comment.get("created_at")) if bit
+                )
+                print(f"  — {stamp}" if stamp else "  —")
+                for line in (comment.get("body") or "").splitlines():
+                    print(f"    {line}")
     elif "created" in data:
         # provision / reconcile-labels.
         line = (

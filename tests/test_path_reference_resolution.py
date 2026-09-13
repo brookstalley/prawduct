@@ -34,6 +34,14 @@ three high-signal forms, in the sweep order of how silently each fails:
 
 A bare backticked path inside a sentence is a *citation* and is deliberately not extracted.
 
+**The extractor itself lives in ``plugin/lib/buildplan_refs.py``, not here (#552).** It shipped
+in this module and stayed here, while ``_parse_build_plan_chunk_refs`` — wired to a BLOCKING
+Critic check — went on reading by shape. Two extractors disagreeing about one tree, with the
+naive one holding the veto: a plan quoting a broken path as its adversarial evidence was reported
+as defective by the gate and correct by this test. The forms, their predicates and their
+``plugin/`` fallback rule are imported below; what stays here is what only a test can own — the
+tracked-file corpus, the record/allowlist exemptions, and the non-vacuity floors.
+
 Relative targets resolve against the **containing file**, not the repo root. Getting that wrong
 over-reported twenty non-defects during the census.
 
@@ -54,11 +62,23 @@ from __future__ import annotations
 import posixpath
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 REPO = Path(__file__).resolve().parent.parent
+
+if str(REPO / "plugin") not in sys.path:
+    sys.path.insert(0, str(REPO / "plugin"))
+
+from lib.buildplan_refs import (  # noqa: E402  (path set above)
+    INVOCATION_FORMS as _INVOCATION_FORMS,
+    instruction_references as _references_in,
+    is_repo_path_token as _is_repo_path,
+    normalize_skill_relative as _normalize_skill_relative,
+    strip_reference as _strip_ref,
+)
 
 
 def _tracked() -> list[str]:
@@ -91,6 +111,7 @@ _RECORD_FILES = frozenset(
         ".prawduct/backlog.md",          # frozen by the GitHub Issues cutover
         ".prawduct/learnings.md",        # narrates defects, quoting the paths they occurred at
         ".prawduct/learnings-detail.md",
+        ".prawduct/learnings-history.md",   # the archive half of the same record
         ".prawduct/reflections.md",
         ".prawduct/operator-verification.md",
     }
@@ -136,56 +157,6 @@ ALLOWLISTED_FILES = {
         "a planned surface, not a stale reference to a removed one"
     ),
 }
-
-# Executables whose arguments are paths a reader will actually run against this tree.
-_COMMAND_HEAD = re.compile(
-    r"^(?:\$\s+)?(?:python3?|prawduct-hook|pytest|bash|sh|cat|less|grep|rg|ls|chmod)\b"
-)
-_PATH_SHAPED = re.compile(r"^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+$")
-_HAS_EXTENSION = re.compile(r"\.(?:py|md|sh|json|yaml|yml|toml|jsonl)$")
-
-# Directory vocabulary of this repo's source tree, INCLUDING directories that no longer exist
-# (``tools/``, ``agents/``, and a repo-root ``bin/``). Deliberately explicit rather than derived
-# from the current tree: a derived set can only name directories that still exist, and the defect
-# class this test was built for is a reference to one that was REMOVED. ``bin/prawduct-hook`` — the
-# original five-skill breakage — is extensionless and lives under a root ``bin/`` that is now
-# ``plugin/bin/``, so neither the extension rule nor a derived-directory rule would see it.
-_SOURCE_DIR_SEGMENTS = frozenset(
-    {
-        "plugin", "bin", "lib", "tests", "docs", "skills", "methodology",
-        "templates", "hooks", "documentation", "tools", "agents",
-        ".prawduct", ".claude", ".claude-plugin",
-    }
-)
-
-
-def _is_repo_path(token: str) -> bool:
-    """Path-shaped and plausibly naming something in this tree.
-
-    The extension branch catches ``tools/prawduct-sync.py``; the directory branch catches
-    extensionless ``plugin/bin/prawduct-hook``. Together they exclude ``owner/repo`` arguments,
-    which are path-shaped, appear in command position after ``--repo``, and name nothing on disk.
-    """
-    if not _PATH_SHAPED.match(token):
-        return False
-    return bool(_HAS_EXTENSION.search(_strip_ref(token))) or (
-        token.split("/", 1)[0] in _SOURCE_DIR_SEGMENTS
-    )
-_BACKTICKED = re.compile(r"`([^`\n]{3,300})`")
-_MD_LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
-_FRONT_MATTER = re.compile(r"\A---\n(.*?)\n---", re.S)
-# Forms that INVOKE a path rather than name it. The plugin/ root fallback is denied to these.
-_INVOCATION_FORMS = frozenset({"command", "allowed-tools"})
-_ALLOWED_TOOLS = re.compile(r"^allowed-tools:(.*)$", re.M)
-
-
-def _strip_ref(raw: str) -> str:
-    """Trim trailing prose punctuation, a line-number suffix, and an anchor."""
-    ref = raw.rstrip(".,;:)`").rstrip("/")
-    ref = ref.split("#", 1)[0]
-    ref = re.sub(r":\d+(?:[,-]\d+)*$", "", ref)  # foo.py:182 and foo.md:58-60
-    return ref
-
 
 def _resolves(containing: str, raw: str, form: str) -> bool:
     """True if ``raw``, referenced from ``containing``, names something in the tracked tree.
@@ -234,77 +205,6 @@ def _resolves(containing: str, raw: str, form: str) -> bool:
     return any(c in _TRACKED_SET or c in _TRACKED_DIRS for c in candidates)
 
 
-def _fenced_command_lines(text: str) -> list[str]:
-    """Lines inside fenced blocks that begin with a known executable.
-
-    #193 names *fenced and inline* commands; a shell block is command position just as much as an
-    inline span, and it is where multi-line setup instructions live.
-    """
-    lines: list[str] = []
-    in_fence = False
-    for line in text.splitlines():
-        if line.lstrip().startswith("```"):
-            in_fence = not in_fence
-            continue
-        if in_fence and _COMMAND_HEAD.match(line.strip()):
-            lines.append(line.strip())
-    return lines
-
-
-def _strip_code(text: str) -> str:
-    """Remove fenced blocks and inline code spans.
-
-    A markdown link *inside backticks* is being quoted, not offered — this batch's own build plan
-    quotes the broken ``[learnings file](../.prawduct/learnings.md)`` as evidence, and an extractor
-    that follows it reddens on the document specifying it. Same citation-versus-reference rule as
-    for bare paths, applied to the link form.
-    """
-    text = re.sub(r"```.*?```", " ", text, flags=re.S)
-    return re.sub(r"`[^`\n]*`", " ", text)
-
-
-def _references(rel: str, text: str) -> list[tuple[str, str]]:
-    """Every instruction-bearing path reference in ``text``, as ``(form, raw_ref)``."""
-    found: list[tuple[str, str]] = []
-
-    fm = _FRONT_MATTER.match(text)
-    if fm:
-        for grant_line in _ALLOWED_TOOLS.findall(fm.group(1)):
-            for token in re.findall(r"[A-Za-z0-9_./-]+", grant_line):
-                # Same predicate as command position, and for the same reason ``_is_repo_path``
-                # was written: ``owner/repo`` arguments are path-shaped and name nothing on disk.
-                # Latent rather than live today — the only slash-bearing grant token in tracked
-                # markdown is ``plugin/bin/prawduct-hook`` — but the moment a skill grants
-                # ``Bash(gh issue list --repo owner/name *)`` the bare shape test reddens on a
-                # non-defect, and the cheapest-looking fix is an allowlist entry spent on a bug
-                # in this extractor.
-                #
-                # ``buildplan_refs._verify_chunk_refs`` answers the same shape the OPPOSITE way —
-                # it reports the ambiguity and has the author disambiguate. Both are right on
-                # their own blast radii: that check emits an advisory lint line a human reads,
-                # while this one fails the suite outright, and a hard failure a reader cannot
-                # disambiguate is one they silence with an allowlist entry.
-                if _is_repo_path(token):
-                    found.append(("allowed-tools", token))
-
-    for span in list(_BACKTICKED.findall(text)) + _fenced_command_lines(text):
-        span = span.strip()
-        if not _COMMAND_HEAD.match(span):
-            continue
-        for token in span.split()[1:]:
-            if _is_repo_path(token):
-                found.append(("command", token))
-
-    for target in _MD_LINK.findall(_strip_code(text)):
-        if target.startswith(("http://", "https://", "#", "mailto:")):
-            continue
-        if not _HAS_EXTENSION.search(target.split("#", 1)[0]):
-            continue  # section links and bare anchors are not file references
-        found.append(("md-link", target))
-
-    return found
-
-
 def _scan() -> tuple[list[str], list[tuple[str, str, str]]]:
     """Return (offenders, checked_references) across tracked markdown.
 
@@ -324,7 +224,7 @@ def _scan() -> tuple[list[str], list[tuple[str, str, str]]]:
             continue
         if rel in ALLOWLISTED_FILES or _is_record(rel):
             continue
-        for form, raw in _references(rel, text):
+        for form, raw in _references_in(text):
             checked.append((rel, form, raw))
             if not _resolves(rel, raw, form):
                 offenders.append(f"{rel} [{form}] -> {raw}")
@@ -432,7 +332,7 @@ def test_a_broken_reference_is_caught_in_each_covered_form(form: str, text: str)
     Synthetic rather than by mutating a real file: mutating the tree to prove a test works leaves
     the proof nowhere, and this keeps each form's failure independently visible.
     """
-    refs = _references("docs/example.md", text)
+    refs = _references_in(text)
     assert refs, f"the {form} extractor matched nothing in its own fixture"
     assert any(f == form for f, _ in refs), f"expected a {form} reference, got {refs}"
     assert any(not _resolves("docs/example.md", raw, form) for f, raw in refs if f == form), (
@@ -450,13 +350,13 @@ def test_a_grant_token_naming_a_repository_is_not_a_path_reference():
     grant token in tracked markdown — which is exactly why it needs a test rather than a comment.
     """
     grant = "---\nallowed-tools: Read, Bash(gh issue list --repo owner/name *)\n---\nbody\n"
-    assert not [f for f, _ in _references("docs/example.md", grant) if f == "allowed-tools"], (
+    assert not [f for f, _ in _references_in(grant) if f == "allowed-tools"], (
         "a repository argument was extracted as a path reference, which reddens the suite on a "
         "non-defect and invites an allowlist entry spent on a bug in this extractor"
     )
     # The same line still yields the real path beside it — narrowing, not disabling.
     both = "---\nallowed-tools: Bash(gh issue list --repo owner/name *), Bash(python3 plugin/bin/prawduct-hook *)\n---\nbody\n"
-    assert [raw for f, raw in _references("docs/example.md", both) if f == "allowed-tools"] == [
+    assert [raw for f, raw in _references_in(both) if f == "allowed-tools"] == [
         "plugin/bin/prawduct-hook"
     ]
 
@@ -484,7 +384,7 @@ def test_a_citation_is_not_a_reference():
         "```\nsee [a guide](../nowhere/absent.md)\n```",
     ]
     for text in citations:
-        assert not _references("docs/example.md", text), (
+        assert not _references_in(text), (
             f"a citation was extracted as an instruction-bearing reference: {text!r}"
         )
 
@@ -532,3 +432,169 @@ def test_relative_targets_resolve_against_the_containing_file():
     # The same target from a file one level up DOES resolve — proving the base is the containing
     # file rather than a constant.
     assert _resolves("plugin/principles.md", "../.prawduct/learnings.md", "md-link")
+
+
+# ---------------------------------------------------------------------------
+# Which interpolation a shipped instruction may use
+#
+# Claude Code substitutes ``${CLAUDE_PLUGIN_ROOT}`` into hook commands declared in
+# ``hooks/hooks.json``, and exports it into the environment of the process those
+# commands start. It does NOT substitute it into skill prose, and the Bash tool the
+# agent runs does not carry it either — so a prose instruction spelled that way
+# reaches the reader as the literal seven-token string and names nothing.
+# ``${CLAUDE_SKILL_DIR}`` *is* substituted when a skill loads, which makes
+# ``${CLAUDE_SKILL_DIR}/../../<path>`` the form that resolves from a skill to
+# anything else the plugin ships.
+#
+# The failure is silent and it is worse than a missing file: the reader that cannot
+# open the path does not stop. Doctor's install-reference check, told to read the
+# install contract out of the plugin, falls back to the illustrative list printed
+# beside the instruction — a list its own text forbids grading against, and one that
+# has already gone stale once. So the check reports a verdict, and the verdict is
+# whatever the stale list says.
+#
+# The trees below are the ones whose markdown is READ AS INSTRUCTIONS: skill prose,
+# the docs skills route readers into, the methodology guides, and the templates a
+# product copies. ``plugin/CHANGELOG.md`` sits outside them because it is a record —
+# it narrates the packaging change that curated the plugin root, and naming the
+# variable is the subject of the sentence rather than a path anyone follows.
+#: `plugin/agents/` is here for a reason worth stating: `critic-reviewer.md` ships in
+#: the plugin and is read verbatim as a subagent's system prompt, and it is the one
+#: tree where the remedy does NOT apply — `${CLAUDE_SKILL_DIR}` is not defined for an
+#: agent, so an agent file must name its paths in prose. It is clean today, which is
+#: exactly why omitting it was invisible: the next agent definition would reopen the
+#: defect with CI green, in the one instruction surface the guard could not see.
+_INSTRUCTION_TREES = (
+    "plugin/skills/", "plugin/docs/", "plugin/methodology/",
+    "plugin/templates/", "plugin/agents/",
+)
+
+#: The INTERPOLATION, not the name. Prose is free to discuss `CLAUDE_PLUGIN_ROOT`
+#: as a variable — that reads as documentation. `${...}` reads as a path to follow,
+#: and in these trees it is always a path that will not resolve. Keeping the rule on
+#: the sigil is what lets it stay absolute instead of growing an exemption list.
+_PLUGIN_ROOT_INTERPOLATION = re.compile(r"\$\{CLAUDE_PLUGIN_ROOT\}")
+_SKILL_DIR_INTERPOLATION = re.compile(r"\$\{CLAUDE_SKILL_DIR\}")
+
+
+def _instruction_markdown() -> list[str]:
+    return [
+        p for p in _TRACKED
+        if p.endswith(".md") and p.startswith(_INSTRUCTION_TREES)
+    ]
+
+
+def test_no_shipped_instruction_interpolates_the_plugin_root():
+    """Skill prose and the docs it routes to must not spell a path they cannot resolve."""
+    offenders = []
+    for rel in _instruction_markdown():
+        for lineno, line in enumerate((REPO / rel).read_text(encoding="utf-8").splitlines(), 1):
+            if _PLUGIN_ROOT_INTERPOLATION.search(line):
+                offenders.append(f"{rel}:{lineno}")
+    assert not offenders, (
+        "${CLAUDE_PLUGIN_ROOT} does not expand outside a hooks.json command, so these "
+        "instructions hand their reader a literal that names nothing. Use "
+        "${CLAUDE_SKILL_DIR}/../../<path> from a skill; from a doc, which is read as "
+        "plain content and interpolates nothing at all, describe the location instead:"
+        "\n  " + "\n  ".join(offenders)
+    )
+
+
+def test_the_resolving_interpolation_is_the_one_in_use():
+    """The rule above is assert-absent, and deleting every path would satisfy it.
+
+    This is the other half: skills really do have to reach across the plugin, and
+    they reach with the form that expands. If this goes quiet, the reads were not
+    repointed — they were removed, or the substitution contract changed under them.
+    """
+    users = {
+        rel for rel in _instruction_markdown()
+        if _SKILL_DIR_INTERPOLATION.search((REPO / rel).read_text(encoding="utf-8"))
+    }
+    assert len(users) >= 4, (
+        f"only {len(users)} shipped instruction files reach across the plugin with "
+        "${CLAUDE_SKILL_DIR} — either the cross-plugin reads are gone, or they are "
+        "being written some other way that this check no longer sees"
+    )
+
+
+def test_the_interpolation_sweep_has_subjects():
+    """An assert-absent check over an empty file list is green and worthless."""
+    assert len(_instruction_markdown()) > 20, (
+        f"only {len(_instruction_markdown())} instruction-bearing markdown files found "
+        f"under {_INSTRUCTION_TREES} — the trees moved and the sweep is dark"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Cross-document flow citations: cite the step by NAME, never by position
+# ---------------------------------------------------------------------------
+
+_NUMBERED_FLOW_CITATION = re.compile(
+    r"\b(?:merge|create)[- ]flow\s+step\s+\d+\b", re.IGNORECASE
+)
+# The form that replaces it: the step's own title, quoted. Matching on the
+# distinctive title rather than on "Merge Flow" alone keeps the floor honest —
+# a prose sweep that deleted every citation would otherwise still pass.
+_NAMED_FLOW_CITATION = re.compile(
+    r"Merge Flow\s+\*?\"Confirm the bookkeeping merged WITH the PR\"", re.IGNORECASE
+)
+
+
+def _governance_prose() -> list[str]:
+    """Tracked markdown that INSTRUCTS, excluding records and history.
+
+    Records are excluded for the usual reason: a change-log entry or an archived
+    plan is a statement about what was true when it was written, so a step number
+    inside one is correct history and renumbering does not falsify it.
+    """
+    return [
+        rel for rel in _TRACKED
+        if rel.endswith(".md") and not _is_record(rel)
+    ]
+
+
+def test_no_governance_prose_cites_a_flow_step_by_NUMBER():
+    """A durable pointer must not ride on a position that renumbers.
+
+    This rot has now been paid for three times. `planning.md` cited
+    "/prawduct:pr merge-flow step 7"; a step inserted into that flow turned it
+    into "Clean up evidence file", and it was replaced with the step's NAME on
+    2026-08-24 (recorded in `test_v5_methodology.py`'s budget comment). At the
+    2026-08-27 base sync the same citation came back in FOUR files, three were
+    converted by a re-read, and `documentation/release-process.md` survived —
+    caught by review, not by a check, because there was no check.
+
+    Assert-absent, so `test_the_named_flow_citation_is_the_one_in_use` below is
+    the half that notices if the citations were deleted rather than converted.
+    """
+    offenders = []
+    for rel in _governance_prose():
+        for lineno, line in enumerate((REPO / rel).read_text(encoding="utf-8").splitlines(), 1):
+            if _NUMBERED_FLOW_CITATION.search(line):
+                offenders.append(f"{rel}:{lineno}: {line.strip()[:110]}")
+    assert not offenders, (
+        "governance prose cites a /prawduct:pr flow step by its NUMBER. Inserting a step "
+        "into that flow silently repoints every one of these at the wrong step. Cite the "
+        "step by its title instead — e.g. `/prawduct:pr`'s Merge Flow \"Confirm the "
+        "bookkeeping merged WITH the PR\" step:\n  " + "\n  ".join(offenders)
+    )
+
+
+def test_the_named_flow_citation_is_the_one_in_use():
+    """The discriminating half: the rule above is satisfied by having no citations at all.
+
+    Cross-document pointers into the merge flow are real and load-bearing — the
+    plan-retention split is stated in one place and pointed at from three. If this
+    goes quiet, the pointers were not converted to the durable form; they were
+    dropped, and each reader now has to rediscover the rule.
+    """
+    users = {
+        rel for rel in _governance_prose()
+        if _NAMED_FLOW_CITATION.search((REPO / rel).read_text(encoding="utf-8"))
+    }
+    assert len(users) >= 3, (
+        f"only {len(users)} governance documents cite the merge-flow bookkeeping step by "
+        "name — the durable pointers are gone, or are being written some other way this "
+        f"check no longer sees. Found in: {sorted(users)}"
+    )

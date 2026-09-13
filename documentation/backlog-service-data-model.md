@@ -1,6 +1,6 @@
 # Backlog Service — Data Model
 
-`status: draft v3 — build-plan coherence sweep (2026-07-16, from the §16(6) Build-plan drill-down review): §8 open-Q5 added — the export on-disk file layout is deferred to the export build chunk (bounded by the NFR §8 fidelity contract), resolving PRD §8.9/MG2's over-promise that this doc "pins the on-disk representation." Prior v3 — coherence touch-up (2026-07-16, §5): field-home added for two operation-idempotency markers (`split-op:` and `source-key:`), the field homes for the split / file-upstream keys the Test-Specs review made the API contract pin (§2.3/§2.4). Prior v3 — GV3 coherence (2026-07-16): added a closed_by field to Item §1.1 — GV3's ship-traceability handle had no field home, surfaced by the API-contract independent review; native close-ref authoritative on close-on-merge, the block field the manual-close fallback, and the bidirectional drift sweep is a janitor list+timeline scan (API contract §2.6). Prior v2 — independent-review fold (2026-07-16): B1 fixed (open-state transitions are now crash-safe via an idempotent set-status op + decoder precedence); ready-work restated as list-then-fan-out (M1); cache gains an ETag validator (M2) + a briefing-counts snapshot reconciling GV2 (M3); Q4 routed to query-side fan-out, not the per-clone cache (M4); a single authority fixed per field + corrected write-cost attribution (M5); verification encoding resolved to one authority (M6); dead node_id cache column dropped (m1); redirect facet added to the taxonomy (m2); duplicate→target timeline read stated (m3); block evolution is additive-only-forever (m4); duplicated-block rule (m5). Prior v1: initial drill-down from PRD §7/§7a. · source: planning session · stage: design`
+`status: draft v3 — DM5 read side (2026-08-02, from the backlog-comments-read cycle): §1.1 gains a `comments` row and §1.3 the read-path rule — `get` returns the thread, every read carries `comments_count` (API contract §2.1 updated in step). Prior v3 — build-plan coherence sweep (2026-07-16, from the §16(6) Build-plan drill-down review): §8 open-Q5 added — the export on-disk file layout is deferred to the export build chunk (bounded by the NFR §8 fidelity contract), resolving PRD §8.9/MG2's over-promise that this doc "pins the on-disk representation." Prior v3 — coherence touch-up (2026-07-16, §5): field-home added for two operation-idempotency markers (`split-op:` and `source-key:`), the field homes for the split / file-upstream keys the Test-Specs review made the API contract pin (§2.3/§2.4). Prior v3 — GV3 coherence (2026-07-16): added a closed_by field to Item §1.1 — GV3's ship-traceability handle had no field home, surfaced by the API-contract independent review; native close-ref authoritative on close-on-merge, the block field the manual-close fallback, and the bidirectional drift sweep is a janitor list+timeline scan (API contract §2.6). Prior v2 — independent-review fold (2026-07-16): B1 fixed (open-state transitions are now crash-safe via an idempotent set-status op + decoder precedence); ready-work restated as list-then-fan-out (M1); cache gains an ETag validator (M2) + a briefing-counts snapshot reconciling GV2 (M3); Q4 routed to query-side fan-out, not the per-clone cache (M4); a single authority fixed per field + corrected write-cost attribution (M5); verification encoding resolved to one authority (M6); dead node_id cache column dropped (m1); redirect facet added to the taxonomy (m2); duplicate→target timeline read stated (m3); block evolution is additive-only-forever (m4); duplicated-block rule (m5). Prior v1: initial drill-down from PRD §7/§7a. · source: planning session · stage: design`
 
 **Parent:** `documentation/backlog-service-prd.md` (PRD v4) and, through it,
 `documentation/backlog-service-requirements.md` (DM1–7, Q1–5). This doc fixes the **field-level
@@ -36,7 +36,7 @@ cache (§6) projects the same fields for the queries GitHub can't serve read-you
 
 | Field | Type / values | **Authority** (one per field) | Justified by |
 |---|---|---|---|
-| `id` | `owner/repo#number` (canon); `repo#number` (short, same-owner) | issue **number** (immutable except transfer, §5) | DM4 · every ref |
+| `id` | canonical `owner/repo#number`; the full accepted grammar and which forms need a default is §5 | issue **number** (immutable except transfer, §5) | DM4 · every ref |
 | `node_id` | opaque | issue **node-id** (entity-level transfer fallback; *not* cached, m1) | DM4 (verify transfer-stability in S2) |
 | `title` | string | issue **title** | AG2, Q1 |
 | `body` | markdown + one `prawduct:` block (§2) | issue **body** | AG2, round-trip |
@@ -51,14 +51,15 @@ cache (§6) projects the same fields for the queries GitHub can't serve read-you
 | `relationships` | §1.3 | native dependencies / sub-issues / refs | DM3, ready-work |
 | `provenance` | §1.5 | block (detail) + `source:<product>` label (the coarse XP2/Q4 filter) | XP2 |
 | `history` | append-only | issue **timeline/events** (native) | CC4 |
-| `closed_by` | branch/PR/release handle | native **timeline close-ref** (close-on-merge) + block `closed_by` (manual-close fallback) | GV3 |
+| `comments` | thread (§1.3) + native count | issue **comments** — `get` returns the thread; every read carries `comments_count` (payload count) | DM5 (drill-down) |
+| `closed_by` | branch/PR/release handle | native **timeline close-ref** (close-on-merge) + block **`closed-by`** (manual-close fallback — hyphenated in the block; see §2) | GV3 |
 
 *Soft enums (DM1):* an undeclared `stage:`/`kind:` value is **flagged, not rejected** (scriob's `kind:`
 on 158 items). `added` is display/sort metadata (sort-by-date under Q1), not a standalone query key.
 
 *`closed_by` (GV3, added v3):* the ship-**traceability** handle that replaces git's ship-atomicity. On a
 close-on-merge it is **authoritative from the native `closed` timeline event** (the closing PR/commit
-ref, no new stored field), with the block `closed_by` only as the **manual-close** fallback (a bare
+ref, no new stored field), with the block **`closed-by`** (hyphenated — §2) only as the **manual-close** fallback (a bare
 `status`→shipped otherwise carries no handle). The GV3 bidirectional drift sweep (*shipped-but-PR-died* ·
 *merged-but-item-open*) is a janitor `list`+timeline scan, not a stored projection — see API contract
 §2.6.
@@ -69,14 +70,31 @@ ref, no new stored field), with the block `closed_by` only as the **manual-close
   too but is **not writable at all** — see §1.1.
 - **Block-authoritative, unmirrored:** `affected`, `working_branch`, `verified`, `attachments`, `superseded_by`,
   `automated`/`worker` (the unattended-actor marker — Security §1a/CC4; self-asserted like all block
-  fields, trustworthy for audit only insofar as the acting API identity is).
+  fields, trustworthy for audit only insofar as the acting API identity is), and the three
+  **editorial** fields `refs`/`revisit`/`closed-by` (§2).
+- **Writable vs import-only, within the block.** Block-authoritative does not mean writable — the
+  two axes are independent and conflating them is what left the editorial fields stranded for a
+  whole cutover. Writable through `update`: `affected`, `working_branch` and the three editorial
+  fields. Writable only through the op that owns the invariant: `related` (link/unlink),
+  `superseded_by` (merge). **Import-only, deliberately and permanently:** `id_aliases` and `v` (identity and schema
+  version — MG2 alias loss), `original_title`/`original_body` (write-once MG6 provenance),
+  `automated`/`worker` (caller-settable attribution *is* the SEC-6 forgery they guard against),
+  `provenance` (untrusted until triaged — Security §5), `added` — for which the native
+  `created_at` is a better answer than any stored copy, being unforgeable and never in need of
+  update — and `reviewed`, which keeps its 300 imported values readable but gained no write path,
+  because the stale-items sweep takes its date from native `updated_at` (#550 scope reshape
+  2026-08-07) and a second, forgeable copy would answer nothing.
 - **Two justified mirrors** (each side serves a *distinct* consumer, not the same value twice):
   - `id:` — the **label** makes old refs *queryable/resolvable*; the **block `id_aliases`** is the
     export round-trip record.
   - `source:` — the **label** is the coarse Q4/XP2 *filter*; the **block provenance** is the detail.
 
 ### 1.3 Comment · 1.4 Taking an item · 1.5 Provenance · 1.6 Attachment
-- **Comment** → native issue comments (DM5); cache mirrors text only for Q1-fulltext/Q3.
+- **Comment** → native issue comments (DM5); cache mirrors text only for Q1-fulltext/Q3. **Read
+  side (added 2026-08-02):** `get` returns the thread (oldest-first `{id, author, created_at,
+  body, url}` — `id` is the native comment id, kept as the stable handle for any future
+  comment-level op) — comments are where an item evolves after filing, so the drill-down read ships with the
+  single-item fetch; every decoded item carries `comments_count` from the native payload count.
 - **Taking an item** (Item facet) → set `working-branch` (§1.1). **There is no Claim entity**, and its
   removal is the substantive change here rather than a rename: the claim was an `assignee` take plus a
   `claimed_at` stamp plus a staleness TTL that drove an auto-unclaim so `pick` could not starve —
@@ -118,6 +136,10 @@ automated: true                                          # unattended-actor mark
 worker: prawduct-hook                                    # the unattended worker id (paired with `automated`)
 original_title: Add the harbor map overlay               # pre-migration title, verbatim (MG6 — only when the scrub changed it)
 original_body: "line one\nline two"                      # pre-migration body, verbatim; JSON-string-encoded to one line
+refs: requirements-x.md#section, arch-y.md               # governing docs (item→doc; `related`/`superseded_by` are item→item)
+revisit: 2027-01-01 | <event trigger text>               # norm-exception / stopgap expiry clock
+closed-by: fix/some-branch                               # manual-close ship handle (§1.1 `closed_by`; NOTE the hyphen)
+reviewed: 2026-08-02                                     # import-only TF2 re-confirmation date — see § Editorial fields below
 ```
 ````
 
@@ -126,6 +148,43 @@ CLI flag, this document's §1.1 row). The block's keys are snake throughout and 
 additive-only-forever (§7), so the spelling chosen at birth is the spelling always — it matches its
 neighbours rather than the flag. `encode.Block.working_branch` (read) and `core._BLOCK_KEY` (write)
 are the only two places the two spellings meet.
+
+**Editorial fields (`refs` · `revisit` · `closed-by`) — writable, not import-only.**
+These three carry a human/agent *judgment about the item* that GitHub has no native slot for. They
+entered the block through the importer's preserve-unknown-keys rule (§7 additive-only-forever) and
+were **write-once for the whole cutover**: the only writers were the importer and the ops owning one
+field apiece, so `update --body` carrying an edited block returned ok and discarded the edit. They
+are now written by `update --refs/--revisit/--closed-by` and `file --refs` (#550, #564).
+Usage when that landed, across 388 blocks: `refs` 270 · `closed-by` 149 · `revisit` 6. (`reviewed`,
+at 300, is the fourth field of the same shape and deliberately stayed import-only — see §1.2.)
+
+**`closed-by` is hyphenated in the block** while §1.1 names the field `closed_by` and the item
+projection exposes `closed_by`. That is deliberate and must not be "harmonised": 149 live items
+spell it with a hyphen and none with an underscore, so renaming the block key would orphan every
+one. The hyphen→underscore hop happens in `encode.decode_item` and only there.
+
+**Block values are single-line by construction, and this is a security property, not a formatting
+one.** The block is line-based and the parser reads *every* line inside the fence as a field, so a
+value carrying any separator `str.splitlines()` recognises does not store a multi-line value — it
+injects sibling fields, reaching `automated`/`worker` (SEC-6 attribution forgery) and `id_aliases`
+(MG2 permanent-alias loss) past any key-level allowlist. `encode.check_block_value` rejects such
+values at every write op, and derives its predicate from `splitlines()` itself rather than
+enumerating separators, so guard and parser cannot drift. Rejected rather than escaped:
+`format_text` would make any value safe but JSON-quotes it on disk, forking `closed-by` into two
+spellings against the items that carry it bare.
+
+**`reviewed` vs `verified` — one concept, two fidelities (resolved 2026-08-02).** §1.1's
+`reviewed`/verification row and the block's `reviewed:` date are **not** competing fields. TF2 asks
+for *"premise re-checked against code by `<actor>` on `<date>`"*, and TF3 counts `reviewed:` stamps
+as the observed workload — so `reviewed:` **is** TF2's stamp, in its date-only form. The richer
+`verified: [{by, on}]` shape sketched above remains designed-but-unbuilt: **zero live items carry
+it.** The live encoding is therefore the `reviewed:` date, with the `<actor>` half supplied by the
+GitHub API identity on the write (native, unforgeable, in the issue timeline) rather than
+self-asserted in the block — which is strictly better than storing it, since every block field is
+forgeable by any write-capable actor. Build `verified` only if a use case needs multiple retained
+verification events per item; a single latest-re-confirmation does not. Neither is written today:
+the 2026-08-07 reshape of #550 took the staleness sweep's date from native `updated_at`, so the
+300 imported `reviewed:` values are read and never refreshed.
 
 **`original_title` / `original_body` (MG6 restructure preservation).** Written by the importer only
 when an owner-confirmed restructure plan changed the item at create (issue-standard §5); absent
@@ -149,7 +208,9 @@ merge/transfer, §1.3/§5 — m2). Provisioned +
 reconciled by `/prawduct:onboard`/`doctor` (GV5). **Non-prawduct issues/labels are out-of-scope, not
 malformed** — the adapter ignores issues carrying no `stage:`/`id:` marker (but see the
 anonymous-quarantine reconciliation, Security Model §6/F7: an unlabeled non-collaborator filing *is*
-the quarantine state, surfaced to triage, not silently ignored).
+the quarantine state, surfaced to triage, not silently ignored). The triage surface that reaches it,
+`list --untriaged`, selects on the LABEL half of that definition only — so it returns every unlabeled
+issue rather than only a non-collaborator's, making it a superset of quarantine (API §9).
 
 ---
 
@@ -215,8 +276,27 @@ every call and decoded it all to rank, which measured ~12.4s at ~209 issues, ~6x
 
 ## 5. Identifiers
 
-- **Canonical `owner/repo#number`** — GitHub's own cross-ref syntax; **short `repo#number` same-owner
-  only** (ambiguous under federation).
+- **The accepted ID grammar, stated once here.** This section is the home; API contract §3/§8, the
+  Direction bullet, the test specs' ID-1 and `plugin/skills/backlog/cache-reads.md` point here rather
+  than restating the list, because a spelling added to some carriers and not others is how the grammar
+  forked before. Five forms, in two classes:
+  - **Self-describing** — **canonical `owner/repo#number`**, GitHub's own cross-ref syntax, and
+    **short `repo#number` same-owner only** (ambiguous under federation). These need no default and
+    are the only forms accepted from a *stored* value.
+  - **Bare** — `number` and `#number`. These carry no repo, so they resolve **only against a supplied
+    default** (`--repo`, or the store's own `scope`, which is where `cachequery.resolve` derives it).
+    **Operator input only.** A ref parsed out of an issue *body* — a `superseded-by:` target, a
+    `resolve_survivor` fetch, a provider alias — resolves canonically or not at all, because a body is
+    attacker-writable and a bare `7` would otherwise redirect a lookup to a real item (Security Model
+    §5/F3).
+  - **Digit-suffix `repo-number`** — the shell spelling, whose collision with the PFX alias grammar the
+    precedence rule below resolves.
+- **One canonical form per item.** The number is re-rendered from its integer value, so `#007` and `#7`
+  are one id and not two; and the digit class is ASCII `[0-9]` only, so a non-ASCII decimal digit is a
+  validation error rather than a canonical id GitHub cannot resolve. Both follow from ID-1 (one
+  canonical id per item) rather than adding to it. A consequence worth naming: a *stored* alias spelled
+  with a padded number no longer round-trips, since `parse_provider_alias` requires the canonical form
+  to equal the ref verbatim.
 - **Immutable except `gh issue transfer`** (renumbers) → transfer writes a **`superseded-by:` redirect**
   via the alias machinery; store `node_id` as the transfer-stable fallback (*undocumented → prove S2*).
 - **Migrated `PFX-XXXX` → permanent `id:PFX-XXXX` alias labels** + `id_aliases` block entries; old refs
@@ -237,8 +317,17 @@ every call and decoded it all to rank, which measured ~12.4s at ~209 issues, ~6x
   arguments, so a re-run finds and skips what it already produced (API contract §2.3/§2.4):
   - **`split-op:<token>#<index>`** — `token` = a digest of *(parent canonical id, ordered child specs)*;
     stamped on each child so a resumed `split` skips children already made and creates only the missing.
-  - **`source-key:<digest>`** — `digest` = *(submitter identity, source item ref / title+body digest)*;
-    stamped on a `file-upstream` item so a re-file returns the existing item rather than duplicating.
+  - **`source-key:<digest>`** — `digest` = `sha256` over *(submitter identity, title, body)*,
+    NUL-separated so no two different triples can concatenate to the same bytes; stamped on a
+    `file-upstream` item so a re-file finds it rather than duplicating. **The guarantee's exact shape is
+    API contract §2.4's to state and is bounded to a recent window, not absolute** — cited here rather
+    than restated, because this section is the marker's field-home and not the lookup's. The submitter
+    identity is exactly what minimization forbids *sending*, so it crosses only as an input to this
+    one-way digest. **The outbound block this marker rides in is trimmed, and the trim is structural:**
+    a `file-upstream` payload carries `v:`, `found_in:` and `source-key:` and nothing else — it is
+    built field-by-field through the shared block serializer rather than filtered down from a fuller
+    dict, so a field added to the in-repo block cannot leak across the owner boundary by default.
+    That is the field-home difference from every other marker here, all of which stay in-repo.
   - **`import-key:<digest>`** — `digest` = *(title, body)* of an **id-less** imported item (one with no
     hand-minted `PFX`); the importer's skip-if-exists key for items that have no `id:PFX` alias to key on,
     so an id-less item is still resumable/non-duplicating. **Idempotency-only, never an identity** — it is
@@ -258,13 +347,13 @@ authorizes at **fetch** time — cross-repo entries must **revalidate on read** 
 
 | Table / index | Serves | Notes |
 |---|---|---|
-| `item(id, title, body, status, stage, area, effort, impact, source, created_at, updated_at, **affected**, **working_branch**, fetched_at)` | Q1-structured, ready-work, Q5 | **`etag` was specified here and is NOT built — the W1 store (schema v7) has no such column**, and the reason is the no-dead-fields rule again rather than an oversight. It was to be the **conditional-request** column G3's revalidation needs (M2), per-item, written only by a read that actually issues `GET /issues/{n}`. That producer was retired by this same work: the per-item validator was deferred to "a decision-path read", and `pick` instead revalidates through the *list* validator on `cursor.etag`, so the read that would have populated it was never built and `sync` wrote `None` into every row. A later builder wiring a conditional single-item request against it would have missed on every request while seeing something that looked like it was working. `cursor.etag` below is a **different column and is live** — it is the list validator the incremental 304 rides on, and Cache Spec §6 records the live verification that the two do not substitute for each other. `fetched_at` = **row provenance** (when this machine last read *this row*), which is the served age's **fallback** and was its primary input until W1 Chunk 04 — see `cursor.coverage_confirmed_at` below for why incremental sync took that job away from it. **No `node_id`** (dead-read, m1). **As built in W1** — three changes from this row's original form, each because the every-column-is-a-Q-projection rule bit: **`assignee` removed** (it served ready-work's claimed-item exclusion, and the claim mechanism is retired — `working-branch` replaces it, so nothing queries assignment); **`reviewed` removed** (it served TF2's date range for the stale-items consumer, which cache-spec §2.1 moved onto the provider's `updated_at` under *observable beats stored*); **`added` → `created_at`** (the creation-time filter is a provider timestamp that is always present and cannot be forgotten, rather than a block field with no write path). `kind` remains absent — no consumer query asks for it. **Two columns added in W1** alongside the three new domain fields (§1.1), each storing the field's verbatim value (`affected` in the block's `[a, b]` spelling, NULL when empty — never `[]`, so "no value" has one representation): **`affected`** serves the changed-file intersection via `item_affected` below, and **`working_branch`** serves ready-work's in-progress exclusion. **`tags` is the third field and has no column here** — added in Chunk 03 with its justification stated as explicitly *not* a consumer query (it was carried because the rebuild invariant doubles as the provider-adequacy test, so a field the cache never stores is one that test never exercises), and removed in Chunk 04 when the query surface shipped without one: `list --tag` is served **live** off the provider's label filter, and none of §2's enumerated consumers asks about a tag. The no-dead-fields rule took it, on the trigger its own note named. Two things make that the cheap side of the trade rather than the brave one — a cache is rebuildable, so re-adding a column later costs a version bump and a re-fetch rather than a migration; and `tags` → labels is the mapping every candidate provider satisfies most trivially, which the live `--tag` filter exercises end to end anyway |
+| `item(id, title, body, status, stage, area, effort, impact, source, created_at, updated_at, **affected**, **working_branch**, fetched_at)` | Q1-structured, ready-work, Q5 | **`etag` was specified here and is NOT built — the W1 store has no such column**, and the reason is the no-dead-fields rule again rather than an oversight. It was to be the **conditional-request** column G3's revalidation needs (M2), per-item, written only by a read that actually issues `GET /issues/{n}`. That producer was retired by this same work: the per-item validator was deferred to "a decision-path read", and `pick` instead revalidates through the *list* validator on `cursor.etag`, so the read that would have populated it was never built and `sync` wrote `None` into every row. A later builder wiring a conditional single-item request against it would have missed on every request while seeing something that looked like it was working. `cursor.etag` below is a **different column and is live** — it is the list validator the incremental 304 rides on, and Cache Spec §6 records the live verification that the two do not substitute for each other. `fetched_at` = **row provenance** (when this machine last read *this row*), which is the served age's **fallback** and was its primary input until W1 Chunk 04 — see `cursor.coverage_confirmed_at` below for why incremental sync took that job away from it. **No `node_id`** (dead-read, m1). **As built in W1** — three changes from this row's original form, each because the every-column-is-a-Q-projection rule bit: **`assignee` removed** (it served ready-work's claimed-item exclusion, and the claim mechanism is retired — `working-branch` replaces it, so nothing queries assignment); **`reviewed` removed** (it served TF2's date range for the stale-items consumer, which cache-spec §2.1 moved onto the provider's `updated_at` under *observable beats stored*); **`added` → `created_at`** (the creation-time filter is a provider timestamp that is always present and cannot be forgotten, rather than a block field with no write path). `kind` remains absent — no consumer query asks for it. **Two columns added in W1** alongside the three new domain fields (§1.1), each storing the field's verbatim value (`affected` in the block's `[a, b]` spelling, NULL when empty — never `[]`, so "no value" has one representation): **`affected`** serves the changed-file intersection via `item_affected` below, and **`working_branch`** serves ready-work's in-progress exclusion. **`tags` is the third field and has no column here** — added in Chunk 03 with its justification stated as explicitly *not* a consumer query (it was carried because the rebuild invariant doubles as the provider-adequacy test, so a field the cache never stores is one that test never exercises), and removed in Chunk 04 when the query surface shipped without one: `list --tag` is served **live** off the provider's label filter, and none of §2's enumerated consumers asks about a tag. The no-dead-fields rule took it, on the trigger its own note named. Two things make that the cheap side of the trade rather than the brave one — a cache is rebuildable, so re-adding a column later costs a version bump and a re-fetch rather than a migration; and `tags` → labels is the mapping every candidate provider satisfies most trivially, which the live `--tag` filter exercises end to end anyway |
 | `item_affected(item_id, path)` + index on `path` | consumers 1 and 4 (change overlap) | the **`affected` index** — a table, not an index on `item.affected`, and the same shape as `item_fts` beside `item.title`: derived from the column in the same transaction, never written independently, so it is not a second home for the fact. It is a table because the query runs *entry-contains-changed-file* (`plugin/lib` matches `plugin/lib/sync.py`), and phrasing that over the column — `WHERE ? LIKE affected \|\| '%'` — puts the variable on the side no index can help. Exploding the list into one row per path lets a caller expand each changed file into its ancestor directories and match by **equality**, which this index serves |
 | `item_alias(alias, ref, item_id)` + index on `ref` | consumers 5, 7, 14 (resolution through aliases, including dead items) | **§4 rule 3's "all resolution goes through the alias table", made a table** so resolution is a lookup rather than a scan that parses every body. Added in W1 Chunk 04; same derived-index shape as `item_affected` and `item_fts` — re-derived from the stored `item.body` in the same transaction, never written on its own, so it is not a second home. `alias` is the entry verbatim, in whichever of the two accepted spellings the record carries (a hand-minted `PFX`, or a tagged `github:owner/repo#249` — §4). **`ref` is the untagged canonical id a tagged alias carries**, NULL for a `PFX`: the two ends of a resolution are spelled differently on purpose (an alias is stored tagged because `owner/repo#number` is not GitHub-unique; a historical citation in a change-log is written untagged), and matching the untagged one against the tagged column would take `LIKE '%:' \|\| ?`, whose leading wildcard no index can serve — the same unindexable direction `item_affected` exists to invert, inverted the same way. **No UNIQUE on `alias`**: uniqueness is an integrity constraint (§5), not a storage one, and a store that refused to hold a violation could not report it as `alias_collision` |
 | `item_fts(title, body)` (FTS5) | Q1-fulltext, Q3 lexical | the read-your-writes path GitHub search lacks |
-| `comment(item_id, body, author, created_at)` — **specified, and NOT built** | Q1-fulltext, Q3 | text mirror. **The W1 store (schema v7) has no such table.** It was created earlier in the build with nothing writing or reading it — the enumerated consumers ask about item text, not discussion — and kept on the argument that nothing forbids a consumer arriving (the reconciliation walk could want the thread under an item), unlike the blocker table below. The trigger it named for itself is the one that fired: the consumer surface settled at plan completion with no comment-reading query, so the no-dead-fields rule took it. Its own note had recorded the test as deliberately weaker than the one that removed `relationship` beside it — that table *could never* gain its consumer (a blocker must be judged live), while this one simply *had not yet*; could-never removes on a design fact, has-not-yet waits on a schedule. The schedule ran out. Re-adding it costs a version bump and a re-fetch, never a migration, which is what made waiting cheap and what makes removing it cheap now — once |
+| `comment(item_id, body, author, created_at)` — **specified, and NOT built** | Q1-fulltext, Q3 | text mirror. **The W1 store has no such table.** It was created earlier in the build with nothing writing or reading it — the enumerated consumers ask about item text, not discussion — and kept on the argument that nothing forbids a consumer arriving (the reconciliation walk could want the thread under an item), unlike the blocker table below. The trigger it named for itself is the one that fired: the consumer surface settled at plan completion with no comment-reading query, so the no-dead-fields rule took it. Its own note had recorded the test as deliberately weaker than the one that removed `relationship` beside it — that table *could never* gain its consumer (a blocker must be judged live), while this one simply *had not yet*; could-never removes on a design fact, has-not-yet waits on a schedule. The schedule ran out. Re-adding it costs a version bump and a re-fetch, never a migration, which is what made waiting cheap and what makes removing it cheap now — once |
 | ~~`relationship(src, kind, dst)`~~ | — | **Removed in W1 Chunk 05, not deferred.** It was the home for blocker edges, and blocker edges are the one predicate ready-work must never answer from here: a blocker can live in another repo, this store holds exactly one, so a cached edge could record only that a dependency *existed* — never whether it is still open. `pick` therefore reads dependencies live, permanently, and the negative is asserted directly (a stale store must not let a blocked item through). A table that could never gain the consumer it was shaped for is a dead field by the every-column-is-a-Q-projection rule; worse than dead, because the next builder wires the fan-out to it and the cross-repo case fails silently |
-| `cursor(scope, since, etag, coverage_confirmed_at)` | Q2 incremental refresh | primitive for sweeps/prefetch. **`etag` added in W1 Chunk 02** — the *list-query* validator, which is a different thing from `item.etag` beside it and is why it needs its own column rather than reusing one: verified live (Cache Spec §6), a list ETag replayed against `GET /issues/{n}` returns 200 while the item's own returns 304, and the list body carries no per-item validator. It is a Q-projection under the no-dead-fields rule because the no-op sync reads it: an unadvanced cursor re-issues a byte-identical query, matches, and takes a 304 at **zero rate-limit cost**. Stored against the cursor because the cursor is what fixes the query's identity — change `since` and the validator is void by construction. **`coverage_confirmed_at` — added in W1 as `fetched_at`, renamed and widened in Chunk 04, and the widening is the substantive half.** As `fetched_at` it was the local stamp of the sync that *wrote* the row, which was the ONLY trace a successful sync of an **empty** scope left: with no rows there is no `item.fetched_at` to age, and reporting *never synced* for a backlog that is simply empty is a different claim from the true one. Chunk 04 found the larger problem — **it is what a served payload's visible age is measured from, and only a stamp every successful sync advances can answer that**. The age had been `MIN(item.fetched_at)`, honest while every sync rewrote every row; once sync went incremental only the window is restamped, so that number becomes the fetch time of the least-recently-*edited* item and grows without bound while syncs keep succeeding — a store synced ten seconds ago reporting an age of weeks. The 304 path was worse still: it returned before touching the store, so the cheapest and most common successful sync left no trace at all. The column therefore records **coverage confirmed**, which a not-modified sync advances too (a 304 establishes that the provider has nothing newer, not merely that nothing was written); row stamps remain the reader's fallback. Recorded here deliberately: this is the very column whose unversioned addition caused the `SCHEMA_VERSION` incident `cache.py` documents, so a §6 that omitted it would leave the schema's one home disagreeing with the store on exactly the column that already bit once |
+| `cursor(scope, since, etag, coverage_confirmed_at, last_attempt_at, last_error)` | Q2 incremental refresh | primitive for sweeps/prefetch. **`etag` added in W1 Chunk 02** — the *list-query* validator, which is a different thing from `item.etag` beside it and is why it needs its own column rather than reusing one: verified live (Cache Spec §6), a list ETag replayed against `GET /issues/{n}` returns 200 while the item's own returns 304, and the list body carries no per-item validator. It is a Q-projection under the no-dead-fields rule because the no-op sync reads it: an unadvanced cursor re-issues a byte-identical query, matches, and takes a 304 at **zero rate-limit cost**. Stored against the cursor because the cursor is what fixes the query's identity — change `since` and the validator is void by construction. **`coverage_confirmed_at` — added in W1 as `fetched_at`, renamed and widened in Chunk 04, and the widening is the substantive half.** As `fetched_at` it was the local stamp of the sync that *wrote* the row, which was the ONLY trace a successful sync of an **empty** scope left: with no rows there is no `item.fetched_at` to age, and reporting *never synced* for a backlog that is simply empty is a different claim from the true one. Chunk 04 found the larger problem — **it is what a served payload's visible age is measured from, and only a stamp every successful sync advances can answer that**. The age had been `MIN(item.fetched_at)`, honest while every sync rewrote every row; once sync went incremental only the window is restamped, so that number becomes the fetch time of the least-recently-*edited* item and grows without bound while syncs keep succeeding — a store synced ten seconds ago reporting an age of weeks. The 304 path was worse still: it returned before touching the store, so the cheapest and most common successful sync left no trace at all. The column therefore records **coverage confirmed**, which a not-modified sync advances too (a 304 establishes that the provider has nothing newer, not merely that nothing was written); row stamps remain the reader's fallback. Recorded here deliberately: this is the very column whose unversioned addition caused the `SCHEMA_VERSION` incident `cache.py` documents, so a §6 that omitted it would leave the schema's one home disagreeing with the store on exactly the column that already bit once. **`last_attempt_at` / `last_error` added alongside it (SCHEMA_VERSION 8)** and they age the *attempt* where the stamp beside them ages the last *success* — both are needed to tell a warm that failed once from one failing for a week, because a failing sync leaves the store readable and merely stale and an age alone cannot see the difference. They are written at the sync boundary next to `confirm_coverage`, so every caller moves them together; a `NULL` `last_error` beside a non-`NULL` `last_attempt_at` means the last attempt succeeded. Recorded only against an EXISTING row — `cursor_scopes` answers "was this scope ever synced?" from row existence, so minting one for a first-attempt failure would make a never-synced scope claim it had synced |
 | `briefing_counts(scope, counts_json, fetched_at)` | **GV2** — session-start counts | the **P0 persisted-counts floor** the PRD admits (M3): a degenerate cache w/ visible age so "start never waits"; distinct from the always-derived Q5 read path. **W1 did NOT absorb it into SQLite** — it stays the standalone JSON file `snapshot.py` owns, beside the SQLite store rather than inside it, so the session-start read stays in-process and network-independent (BLOCK-5); folding it in would put that read behind a connection open |
 
 *On-disk (build decision, slice):* the SQLite `item`/`item_fts`/… tables arrive with the read-through
@@ -329,6 +418,6 @@ submitted/in-progress carry one — §4.)*
 DM1→§1.1/§3; DM2→§4; DM3→§1.3; DM4→§5; DM5→§1.3; DM6→§1.6; DM7→§8. Q1-structured→§4 ready-work + §6;
 Q1-fulltext/Q3→§6 (`item_fts`); Q2→§6 (`cursor`); **Q4→query-side fan-out (NOT the cache), §6 note**;
 Q5→§6 (derived-on-read + the `briefing_counts` GV2 exception). ready-work→§4 (list-then-fan-out);
-stale-verification (TF2)→§1.1 `verified` + cache `reviewed`; provenance (XP2)→§1.5 + `source:` label
-(the XP2 filter — *not* Q4); **GV3→§1.1 `closed_by`** (native close-ref authoritative, block fallback;
+stale-verification (TF2)→§1.1 block `reviewed` (live; `verified` + cache `reviewed` designed-but-unbuilt); provenance (XP2)→§1.5 + `source:` label
+(the XP2 filter — *not* Q4); **GV3→§1.1 `closed_by`**, block key `closed-by` (native close-ref authoritative, block fallback;
 drift sweep is a janitor scan, API contract §2.6).

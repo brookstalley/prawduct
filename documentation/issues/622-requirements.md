@@ -39,7 +39,8 @@ Verified against this repo's current `plugin/skills/backlog/migration-scrub.md` 
 `plugin/lib/backlog/`, not carried over unread from the discodon writeup:
 
 - **Gap 1 (adopted items keep their pre-restructure title/body) still applies.** `--restructure`
-  is consumed only by `backlog import` (`migration-scrub.md` Step 4), which applies it at create.
+  is consumed only by `backlog import` (`migration-scrub.md`'s import step), which applies it at
+  create.
   An item the importer adopts by its `id:PFX` alias — already on the target from an earlier
   partial run — is looked up, not re-created, so the plan never touches it. No later step
   re-applies a restructure plan to an already-existing issue.

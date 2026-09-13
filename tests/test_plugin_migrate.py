@@ -41,6 +41,24 @@ if str(ROOT) not in sys.path:
 
 from lib import migrate_plugin as _migrate_plugin  # noqa: E402 — sys.path mutated above
 
+
+def _writes_no_base_branch_key(text: str) -> bool:
+    """No *uncommented* `base_branch:` key in the rendered state file.
+
+    A bare `"base_branch" not in text` substring test is wrong here: the
+    template carries a COMMENTED-OUT `# base_branch: develop` hint, and a hint
+    is not a written key. (An uncommented placeholder would be a real defect --
+    it suppresses the write, and if the branch it names does not resolve every
+    diff-base gate fails closed -- so the commented form is deliberate.) What
+    these negative controls actually assert is that onboarding recorded nothing.
+    """
+    return not any(
+        re.match(r"\s*base_branch\s*:", line)
+        for line in text.splitlines()
+        if not line.lstrip().startswith("#")
+    )
+
+
 # The 7 framework skills (registry-derived; mirrored here so the fixture is
 # realistic — the engine derives this set itself, the test must not).
 FRAMEWORK_SKILLS = [
@@ -643,6 +661,101 @@ def test_anchor_is_version_free(repo: Path):
     assert re.search(r"\bv?\d+\.\d+", text) is None, "anchor must not embed a version number"
 
 
+def test_anchor_tells_a_plugin_less_session_that_governance_is_off(repo: Path):
+    """The anchor is the ONLY governance surface a plugin-less clone receives.
+
+    `CLAUDE.md` is a repo file, so it loads whether or not the plugin does —
+    while the hooks, skills and gates it describes do not. Measured on a
+    simulated fresh machine (`artifacts/plugin-absent-clone-investigation.md`):
+    a clone registers the marketplace from `.claude/settings.json` and installs
+    nothing, Claude Code says nothing about it on any session, and the anchor
+    used to assure that reader a Stop gate was watching. Silence would have been
+    better than that; naming the condition and the one command that ends it is
+    better still.
+    """
+    run_migrate(repo, "--apply")
+    text = (repo / "CLAUDE.md").read_text()
+    assert "governance is OFF" in text, "the anchor must name the condition"
+    assert "claude plugin install" in text, "and the command that ends it"
+    # Not merely present — the reader is told to hand it to a human, because an
+    # agent cannot install a plugin for itself. Matched against whitespace-collapsed
+    # text: the anchor is hard-wrapped prose, so which words a line break falls
+    # between is formatting, and a test that pins it fails on a reflow that changed
+    # nothing.
+    flowed = " ".join(text.split())
+    assert "Tell the user to run" in flowed
+    assert "don't proceed as if governed" in flowed
+
+
+def test_anchor_install_command_names_the_id_from_the_install_contract(repo: Path):
+    """One home for the plugin id: `INSTALL_REFERENCE`, never typed twice.
+
+    The anchor's command and `.claude/settings.json`'s `enabledPlugins` key must
+    name the same plugin, and a marketplace rename must not be able to leave a
+    correct settings file beside an anchor pointing at something that no longer
+    exists. Checked mechanically (architecture.md § Direction, "every fact has
+    one home"), the same way the retired-key set is — a literal the code acts on
+    is the copy that goes stale silently.
+    """
+    tree = ast.parse((ROOT / "lib" / "migrate_plugin.py").read_text())
+    docstrings = {
+        node.body[0].value
+        for node in ast.walk(tree)
+        if isinstance(
+            node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+        )
+        and node.body
+        and isinstance(node.body[0], ast.Expr)
+        and isinstance(node.body[0].value, ast.Constant)
+        and isinstance(node.body[0].value.value, str)
+    }
+    live = [
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and node not in docstrings
+    ]
+    plugin_ids = [s for s in live if "@" in s and s.startswith("prawduct")]
+    assert plugin_ids == ["prawduct@prawduct"], (
+        f"the plugin id must appear exactly once as a live literal, in "
+        f"INSTALL_REFERENCE; found {plugin_ids!r}"
+    )
+
+    # And what the contract enables is what the anchor tells the reader to install.
+    run_migrate(repo, "--apply")
+    text = (repo / "CLAUDE.md").read_text()
+    settings = json.loads((repo / ".claude" / "settings.json").read_text())
+    (enabled_id,) = settings["enabledPlugins"].keys()
+    assert f"claude plugin install {enabled_id}" in text
+
+
+def test_anchor_enforcement_claim_is_conditional_on_the_plugin(repo: Path):
+    """The claim that changed, and why it had to.
+
+    "Enforcement is structural: the Stop hook blocks" is true of a governed
+    session and false of the session that most needs to know — and an agent that
+    believes a gate is behind it builds differently from one that knows there is
+    none. The sentence now carries its own precondition, so it cannot be read
+    correctly and be wrong at the same time.
+
+    Pinned as the precondition plus the absence of the unconditional form, and
+    deliberately not as a second sentence spelling out "no hook without the
+    plugin": the check paragraph above already states that consequence, so a
+    third statement of it is what the footprint ratchet charged for and what the
+    one-home rule forbids.
+    """
+    run_migrate(repo, "--apply")
+    text = (repo / "CLAUDE.md").read_text()
+    assert "Enforcement is structural — while the plugin is loaded:" in text
+    assert "Enforcement is structural:" not in text, (
+        "the unconditional form is the claim this test exists to keep out"
+    )
+    assert "no Stop gate, no Critic, nothing below enforced" in text, (
+        "the consequence of an absent plugin must be stated once, up top"
+    )
+
+
 def test_anchor_not_duplicated_on_reapply(repo: Path):
     # Anchor insertion is idempotent independent of the already_migrated guard:
     # if the distribution marker is absent (partial/reverted state) migrate runs
@@ -828,3 +941,205 @@ class TestCollapseBlankRuns:
         # separate triple-newline runs each reduce to a double newline.
         text = "a\n\n\nb\n\n\nc"
         assert _migrate_plugin._collapse_blank_runs(text) == "a\n\nb\n\nc"
+
+
+# =============================================================================
+# base_branch — the gitflow knob, written at cutover (#254)
+# =============================================================================
+#
+# A pre-2.0 repo migrating onto the plugin is exactly a repo that never had the
+# knob, so the cutover is its one cheap moment to acquire it. Recorded ONLY when
+# the remote's own default branch is outside the main family: where it is `main`,
+# `coverage._resolve_base_branch` already answers `main` unaided and the key
+# would be noise in every ordinary repo.
+
+
+def _git(repo: Path, *args: str) -> str:
+    home = repo.parent / "_home"
+    home.mkdir(exist_ok=True, parents=True)
+    proc = subprocess.run(
+        ["git", *args],
+        cwd=str(repo), capture_output=True, text=True, timeout=30,
+        env={
+            "HOME": str(home),
+            "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+            "GIT_CONFIG_GLOBAL": str(home / "gitconfig"),
+            "GIT_CONFIG_SYSTEM": str(home / "gitconfig-system"),
+            "GIT_AUTHOR_NAME": "T", "GIT_AUTHOR_EMAIL": "t@example.com",
+            "GIT_COMMITTER_NAME": "T", "GIT_COMMITTER_EMAIL": "t@example.com",
+        },
+    )
+    assert proc.returncode == 0, f"git {args} failed: {proc.stderr}"
+    return proc.stdout.strip()
+
+
+def gitify(root: Path, remote_default: str | None) -> Path:
+    """Make ``root`` a git repo whose ``origin/HEAD`` names ``remote_default``."""
+    _git(root, "init", "-q", ".")
+    _git(root, "commit", "--allow-empty", "-q", "-m", "seed")
+    if remote_default is not None:
+        _git(root, "update-ref", f"refs/remotes/origin/{remote_default}",
+             _git(root, "rev-parse", "HEAD"))
+        _git(root, "symbolic-ref", "refs/remotes/origin/HEAD",
+             f"refs/remotes/origin/{remote_default}")
+    return root
+
+
+@pytest.mark.parametrize("remote_default,expected", [
+    ("develop", "develop"),   # the gitflow consumer the knob exists for
+    ("integration", "integration"),  # any non-main-family name, not an allowlist
+    ("main", None),           # NEGATIVE CONTROL — the resolver already says main
+    ("master", None),         # ...and master, the other half of the family
+])
+def test_cutover_records_base_branch_only_for_a_non_main_family_default(
+    tmp_path: Path, remote_default: str, expected: "str | None"
+):
+    """Both directions over one fixture: a writer that always writes, or never
+    does, fails half of this parametrization."""
+    repo = gitify(make_filesync_repo(tmp_path / "myproduct"), remote_default)
+    result = run_migrate(repo, "--apply")
+    state = (repo / ".prawduct" / "project-state.yaml").read_text()
+
+    assert result["base_branch"] == expected
+    if expected is None:
+        assert _writes_no_base_branch_key(state)
+    else:
+        assert f"base_branch: {expected}\n" in state
+        assert ".prawduct/project-state.yaml" in result["edited"]
+    # The cutover itself is unaffected either way.
+    assert "distribution: plugin" in state
+    assert result["removed"], "the cutover stopped doing its job"
+
+
+def test_a_repo_with_no_origin_head_migrates_normally(tmp_path: Path):
+    """`make_filesync_repo` is not a git repo at all, which is the harshest
+    version of this: every git probe must fail soft."""
+    repo = make_filesync_repo(tmp_path / "myproduct")
+    result = run_migrate(repo, "--apply")
+
+    assert result["base_branch"] is None
+    assert _writes_no_base_branch_key(
+        (repo / ".prawduct" / "project-state.yaml").read_text()
+    )
+    assert "distribution: plugin" in (
+        repo / ".prawduct" / "project-state.yaml"
+    ).read_text()
+
+
+def test_dry_run_previews_base_branch_and_writes_nothing(tmp_path: Path):
+    """The preview is what the operator's single confirmation is given against,
+    and this key changes what every diff-base gate measures."""
+    repo = gitify(make_filesync_repo(tmp_path / "myproduct"), "develop")
+    before = (repo / ".prawduct" / "project-state.yaml").read_bytes()
+
+    preview = run_migrate(repo)
+
+    assert preview["base_branch"] == "develop"
+    assert ".prawduct/project-state.yaml" in preview["edited"]
+    assert (repo / ".prawduct" / "project-state.yaml").read_bytes() == before
+
+
+def test_an_operator_set_base_branch_survives_the_cutover(tmp_path: Path):
+    """Product-authored state is preserved verbatim — and this scalar is a
+    decision, not framework residue: the remote's default is only a guess at it."""
+    repo = gitify(make_filesync_repo(tmp_path / "myproduct"), "develop")
+    state = repo / ".prawduct" / "project-state.yaml"
+    state.write_text("# Project State\nbase_branch: release\nviews_enabled: true\n")
+
+    result = run_migrate(repo, "--apply")
+
+    text = state.read_text()
+    assert "base_branch: release" in text
+    assert "base_branch: develop" not in text
+    assert result["base_branch"] is None, "reported a write that did not happen"
+
+
+def test_the_base_branch_append_preserves_crlf_line_endings(tmp_path: Path):
+    """Two appenders now write to this file in one run. The second one is
+    exactly where the CRLF flattening got in the first time — a hand-written
+    `read_text`/`write_text` pair beside an ending-preserving one."""
+    repo = gitify(make_filesync_repo(tmp_path / "myproduct"), "develop")
+    state = repo / ".prawduct" / "project-state.yaml"
+    state.write_bytes(b"# Project State\r\nbacklog_format_version: 2\r\n")
+
+    run_migrate(repo, "--apply")
+    raw = state.read_bytes()
+
+    assert b"base_branch: develop" in raw
+    assert b"distribution: plugin" in raw
+    assert raw.count(b"\n") == raw.count(b"\r\n"), "a bare LF appeared in a CRLF file"
+
+
+def test_an_unreadable_state_file_blocks_the_base_branch_append_too(tmp_path: Path):
+    """Never append to a file we could not read: the alternative is writing over
+    content we cannot see. The same guard `record_distribution` carries — shared,
+    not re-derived."""
+    repo = gitify(make_filesync_repo(tmp_path / "myproduct"), "develop")
+    state = repo / ".prawduct" / "project-state.yaml"
+    state.write_bytes(b"\xff\xfe not valid utf-8 \x80\x81")
+
+    result = run_migrate(repo, "--apply")
+
+    assert result["base_branch"] is None
+    assert state.read_bytes() == b"\xff\xfe not valid utf-8 \x80\x81", "wrote over it"
+    assert result["removed"], "the cutover aborted on an unreadable state file"
+    # And the preview promises no edit it will decline.
+    preview = run_migrate(repo)
+    assert preview["base_branch"] is None
+    assert ".prawduct/project-state.yaml" not in preview["edited"]
+
+
+def test_the_cutover_owns_no_second_notion_of_a_main_family_branch(tmp_path: Path):
+    """The write half and the read half must agree by construction. Two copies
+    of "non-main-family" drift, and the knob would then steer the gates
+    somewhere the resolver would not have gone on its own."""
+    from lib import coverage
+
+    src = Path(_migrate_plugin.__file__).read_text()
+    assert "coverage._MAIN_FAMILY" in src, (
+        "the cutover restated the resolver's family test instead of reading it"
+    )
+    assert not re.search(r'["\']master["\']', src), (
+        "a branch-name literal appeared in the cutover engine — the resolver owns "
+        "that vocabulary"
+    )
+    # And the shared predicate is what it claims to be.
+    assert coverage._MAIN_FAMILY == frozenset({"main", "master"})
+
+
+def test_human_output_names_the_recorded_base_branch(tmp_path: Path):
+    """The plain (non-JSON) form is what an operator reads before confirming."""
+    repo = gitify(make_filesync_repo(tmp_path / "myproduct"), "develop")
+    home = repo.parent / "_home"
+    home.mkdir(exist_ok=True)
+    proc = subprocess.run(
+        [sys.executable, str(HOOK), "migrate-plugin", "--apply"],
+        capture_output=True, text=True, timeout=30,
+        env={
+            "HOME": str(home),
+            "CLAUDE_PROJECT_DIR": str(repo),
+            "CLAUDE_PLUGIN_ROOT": str(ROOT),
+            "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+            "PYTHONDONTWRITEBYTECODE": "1",
+        },
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "base_branch: develop" in proc.stdout
+
+
+def test_the_anchor_insert_does_not_leave_a_bare_cr_on_a_crlf_file(tmp_path: Path):
+    """A CRLF file ending in a blank line stripped only its `\\n`, leaving a `\\r`
+    that read as an extra blank line before the anchor. Endings stay uniform
+    and the blank-line run stays what the insert intends."""
+    import sys as _sys
+
+    _sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "plugin"))
+    from lib import migrate_plugin
+
+    (tmp_path / ".prawduct").mkdir()
+    target = tmp_path / "CLAUDE.md"
+    target.write_bytes(b"# Product\r\n\r\nSome prose.\r\n\r\n")
+    migrate_plugin.apply_claude_anchor(tmp_path)
+    raw = target.read_bytes()
+    assert b"\r\r" not in raw
+    assert b"\r\n\r\n\r\n" not in raw

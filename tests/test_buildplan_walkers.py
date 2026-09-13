@@ -21,12 +21,13 @@ Three concerns:
 
 from __future__ import annotations
 
+import re
 import subprocess
 from pathlib import Path
 
 import pytest
 
-from lib import buildplan_refs, critic_mode, gates, gitstate
+from lib import buildplan_refs, critic_mode, gates, gitstate, plan_index
 from lib.buildplan_refs import (
     _chunk_id_from_item_text,
     _chunk_section_lines,
@@ -610,6 +611,35 @@ class TestUnparsedHeadingReachesEveryCaller:
         assert read.mode == "chunk"
         assert read.unreadable is None
 
+    def test_critic_mode_reader_reports_a_value_it_did_not_recognise(
+        self, tmp_path: Path
+    ):
+        """The wiring, not just the wording.
+
+        A value the author typed and the reader discarded is a THIRD state: it
+        must not escalate the way `unreadable` does (a typo'd mode is no reason
+        to spend a heavier review) and must not stay silent the way an absent
+        field does (an absent field carries no intent to contradict). Without
+        this test the note function could be perfect and never reached.
+        """
+        prawduct, plan = self._plan(
+            tmp_path, PLAN.replace("**Critic mode:** chunk", "**Critic mode:** cumluative")
+        )
+        read = critic_mode._critic_mode_for_chunk(prawduct, "01", plan)
+        assert read.mode is None
+        assert read.unreadable is None, "a typo must not escalate to `final`"
+        assert read.unrecognized == "cumluative"
+
+    def test_critic_mode_reader_stays_silent_on_an_absent_field(
+        self, tmp_path: Path
+    ):
+        """Absent carries no intent, so it earns no note."""
+        prawduct, plan = self._plan(
+            tmp_path, PLAN.replace("- **Critic mode:** chunk\n", "")
+        )
+        read = critic_mode._critic_mode_for_chunk(prawduct, "01", plan)
+        assert read.unrecognized is None
+
 
 # ---------------------------------------------------------------------------
 # 2. Consolidation pins — the deleted mirrors must stay deleted
@@ -655,6 +685,58 @@ class TestConsolidationPins:
             src = (LIB_DIR / mod).read_text()
             assert '"## Status"' not in src, f"lib/{mod} regrew a Status walk"
             assert '"### Chunk "' not in src, f"lib/{mod} regrew a chunk-section walk"
+
+    def test_field_patterns_are_built_from_the_shared_factory(self):
+        """Every chunk field is written the same way and misread the same way.
+
+        Two hand-copied delimiter classes is how the `Critic mode:` and `Type:`
+        readers came to disagree about `<br>` — one bound it, one read the line
+        as declaring no field at all — with nothing to tell anyone. The readers
+        keep their reporting POLICY, which genuinely differs; the grammar is one
+        object.
+        """
+        assert (
+            critic_mode._BUILD_PLAN_CRITIC_MODE_RE.pattern
+            == buildplan_refs.field_token_re("Critic mode").pattern
+        )
+        assert (
+            critic_mode._BUILD_PLAN_CRITIC_MODE_FIELD_RE.pattern
+            == buildplan_refs.field_value_re("Critic mode").pattern
+        )
+        src = (LIB_DIR / "critic_mode.py").read_text()
+        assert "\\*\\*" not in src, (
+            "lib/critic_mode.py hand-compiles a build-plan field pattern again; "
+            "build it with buildplan_refs.field_token_re / field_value_re"
+        )
+
+    def test_every_field_bind_goes_through_the_one_position_predicate(self):
+        """"Shared" has to mean all of them, or the records are describing two
+        readers and a third that quietly is not.
+
+        A bare `.search` bind is the defect: it makes every prose line in a
+        chunk section a declaration site for that field. The `Trivial because:`
+        fallback shipped that way once — a Description sentence could supply the
+        rationale that buys `Type: trivial` its bounded review, on a section
+        that declared none.
+        """
+        binds = (
+            "_BUILD_PLAN_TYPE_RE.search(",
+            "_BUILD_PLAN_CRITIC_MODE_RE.search(",
+            "_BUILD_PLAN_TRIVIAL_RATIONALE_RE.search(",
+            "_BUILD_PLAN_TRIVIAL_RATIONALE_ANYWHERE_RE.search(",
+            # The alias the fallback is passed under. Without it the scan misses
+            # the exact defect this test names: the pattern arrives as a
+            # PARAMETER, so the module never spells its own constant's name.
+            "pattern.search(",
+        )
+        for mod in ("buildplan_refs.py", "critic_mode.py"):
+            src = (LIB_DIR / mod).read_text()
+            for bind in binds:
+                assert bind not in src, (
+                    f"lib/{mod} binds a chunk field with `{bind}`; route it "
+                    "through buildplan_refs.iter_field_declarations so prose "
+                    "cannot declare a chunk field"
+                )
 
     def test_canonical_helpers_are_what_consumers_reach(self):
         # The names critic_mode now resolves are the canonical objects.
@@ -939,3 +1021,807 @@ class TestChunkIdFormsReachTheWalk:
         assert labelled.found and labelled.found == bare.found
         assert [ln for _n, ln in labelled.lines] == [ln for _n, ln in bare.lines]
         assert _chunk_section_lines(PLAN, "chunk 2").found
+
+
+class TestDeliverableCheckGaps:
+    """#642 — a plan the chunk deliverable check cannot grade must SAY SO at dispatch.
+
+    Two routes disabled the check for a plan's whole life, and the reason it
+    stayed open through one fix is that they fail differently. A plan with no
+    frontmatter `scope:` reports `chunk-ref-missing unchecked — …` into the
+    dispatch manifest, which is real but reads as a pass to anyone who does not
+    also read the caveat line. A plan whose chunks are list items under a
+    `## Chunks` heading matches no heading pattern at all, so there is no
+    offending line to name and the check reports *nothing*.
+
+    Either is sufficient alone, which is why both are asserted separately rather
+    than through one composite fixture: fixing one and calling the item closed is
+    exactly what happened the first time.
+    """
+
+    _CONFORMING = (
+        "---\n"
+        "artifact: build-plan\n"
+        "scope: some-scope\n"
+        "---\n\n"
+        "## Status\n\n"
+        "- [ ] Chunk 01: Do the thing\n\n"
+        "## Build Chunks\n\n"
+        "### Chunk 01: Do the thing\n\n"
+        "- **Deliverables:** `plugin/lib/thing.py`\n"
+    )
+
+    def _plan(self, tmp_path: Path, content: str) -> Path:
+        plan = tmp_path / "build-plan-x.md"
+        plan.write_text(content)
+        return plan
+
+    def test_conforming_plan_is_silent(self, tmp_path: Path):
+        """The no-false-positive case, first: a signal whose first firing is
+        wrong is one its readers learn to ignore."""
+        plan = self._plan(tmp_path, self._CONFORMING)
+        assert buildplan_refs.deliverable_check_gaps(tmp_path, plan) == []
+
+    def test_missing_frontmatter_scope_is_named(self, tmp_path: Path):
+        plan = self._plan(
+            tmp_path, self._CONFORMING.replace("scope: some-scope\n", "")
+        )
+        gaps = buildplan_refs.deliverable_check_gaps(tmp_path, plan)
+        assert len(gaps) == 1, gaps
+        assert "`scope:`" in gaps[0]
+        assert "build-plan-x.md" in gaps[0], "name the file that would be graded"
+
+    def test_list_item_chunks_are_named(self, tmp_path: Path):
+        """The wholly-silent route: `- Chunk 01: …` under `## Chunks` matches
+        neither the heading nor the announce pattern, so nothing downstream has
+        a line to report."""
+        plan = self._plan(
+            tmp_path,
+            "---\nartifact: build-plan\nscope: some-scope\n---\n\n"
+            "## Status\n\n- [ ] Chunk 01: Do the thing\n\n"
+            "## Chunks\n\n"
+            "- Chunk 01: Do the thing\n"
+            "  - Deliverables: `plugin/lib/thing.py`\n",
+        )
+        gaps = buildplan_refs.deliverable_check_gaps(tmp_path, plan)
+        assert len(gaps) == 1, gaps
+        assert "no parseable chunk heading" in gaps[0]
+
+    def test_both_routes_reported_together(self, tmp_path: Path):
+        """Either cause is sufficient alone, so a plan with both gets both —
+        fixing one and re-dispatching must not look like progress to a clean
+        result."""
+        plan = self._plan(
+            tmp_path,
+            "## Status\n\n- [ ] Chunk 01: Do the thing\n\n"
+            "## Chunks\n\n- Chunk 01: Do the thing\n",
+        )
+        assert len(buildplan_refs.deliverable_check_gaps(tmp_path, plan)) == 2
+
+    def test_absent_or_unreadable_plan_is_not_this_check_s_business(
+        self, tmp_path: Path
+    ):
+        """The resolver reports a plan it could not find; this must not add a
+        second, differently-worded complaint about the same absence."""
+        assert buildplan_refs.deliverable_check_gaps(tmp_path, None) == []
+        assert buildplan_refs.deliverable_check_gaps(tmp_path, tmp_path / "nope.md") == []
+
+    def test_unresolvable_plan_is_found_by_the_fallback_scan(self, tmp_path: Path):
+        """The main case, and the one an earlier draft of this missed entirely.
+
+        A plan declaring neither `scope:` nor `branch:` does not RESOLVE — because
+        of the very gap being reported. Checking only the resolver's answer means
+        `None` comes back and the signal goes quiet exactly where #642 says it
+        must fire. Verified against a real dispatch before this test was written:
+        the note was absent.
+        """
+        prawduct = tmp_path / ".prawduct"
+        (prawduct / "artifacts").mkdir(parents=True)
+        (prawduct / "artifacts" / "build-plan-thing.md").write_text(
+            "## Chunks\n\n- Chunk 01: Do it\n"
+        )
+        gaps = buildplan_refs.deliverable_check_gaps(prawduct, None)
+        assert len(gaps) == 2, gaps
+        assert any("build-plan-thing.md" in g for g in gaps), (
+            "an unresolved plan must still be named, or the operator cannot act"
+        )
+
+    def test_a_nested_unresolvable_plan_is_reported_by_name(self, tmp_path: Path):
+        """The fallback scan, end to end, on a layout the flat glob could not see.
+
+        This is the fixture the review named as required: `TestDeliverableCheckGaps`
+        wrote only flat plans, which the old `artifacts.glob("build-plan-*.md")`
+        also found, so nothing separated the fix from the code it replaced.
+        """
+        prawduct = tmp_path / ".prawduct"
+        nested = prawduct / "artifacts" / "plans" / "007" / "build-plan.md"
+        nested.parent.mkdir(parents=True)
+        nested.write_text("## Chunks\n\n- Chunk 01: Do it\n")
+
+        gaps = buildplan_refs.deliverable_check_gaps(prawduct, None)
+        assert len(gaps) == 2, gaps
+        assert all("plans/007/build-plan.md" in g for g in gaps), (
+            "a nested plan must be named by its PATH — recursion makes "
+            f"`build-plan.md` a near-certain collision: {gaps}"
+        )
+
+    def test_an_unreadable_plan_is_reported_at_the_dispatch_channel(
+        self, tmp_path: Path
+    ):
+        """Nothing else on this path reports it.
+
+        An earlier version swallowed the decode error, reasoning that
+        `plan_index.unreadable_candidates` covers the case. It does — for the
+        doctor, its only caller. `begin_review` never calls it, so at the
+        dispatch channel an undecodable plan was reported by no one.
+        """
+        prawduct = tmp_path / ".prawduct"
+        (prawduct / "artifacts").mkdir(parents=True)
+        (prawduct / "artifacts" / "build-plan-binary.md").write_bytes(
+            b"\xff\xfe\x00\x00not utf-8"
+        )
+        gaps = buildplan_refs.deliverable_check_gaps(prawduct, None)
+        assert len(gaps) == 1, gaps
+        assert "could not be read" in gaps[0]
+        assert "build-plan-binary.md" in gaps[0]
+
+    def test_no_plan_at_all_is_silent(self, tmp_path: Path):
+        """An absent plan is the resolver's report to make, not this one's — two
+        differently-worded complaints about one absence is noise."""
+        prawduct = tmp_path / ".prawduct"
+        (prawduct / "artifacts").mkdir(parents=True)
+        assert buildplan_refs.deliverable_check_gaps(prawduct, None) == []
+        assert buildplan_refs.deliverable_check_gaps(tmp_path / "nothing", None) == []
+
+
+class TestChunkRefGapForUnparseablePlan:
+    """#642 Route 2, at the manifest — the half `deliverable_check_gaps` does not cover.
+
+    The dispatch note tells the OPERATOR at `critic-begin`. This is the other
+    reader: `record_lint` rides the manifest into the review itself, and its
+    `chunk_id is None` branch returned `[], None, None, None` — a null count
+    indistinguishable from a healthy plan whose chunks are all ticked. Unlike
+    every other failure on that path it emitted no `unchecked` line at all, so
+    nothing downstream had a word to carry.
+
+    Both causes of "no chunk in scope" must stay distinguishable: a finished
+    plan is silent, an unparseable one is not.
+    """
+
+    def _plan(self, tmp_path: Path, content: str) -> Path:
+        artifacts = tmp_path / "artifacts"
+        artifacts.mkdir(parents=True, exist_ok=True)
+        plan = artifacts / "build-plan-x.md"
+        plan.write_text(content)
+        return plan
+
+    def test_a_finished_plan_stays_silent(self, tmp_path: Path):
+        """The no-false-positive half, and the reason this is a predicate rather
+        than an unconditional complaint: every chunk ticked is a normal, healthy
+        end state that must not start reporting a gap."""
+        plan = self._plan(
+            tmp_path,
+            "---\nartifact: build-plan\nscope: s\n---\n\n"
+            "## Status\n\n- [x] Chunk 01: Done\n\n"
+            "## Build Chunks\n\n### Chunk 01: Done\n\n- **Deliverables:** none\n",
+        )
+        assert buildplan_refs.plan_has_parseable_chunk_heading(plan) is True
+
+    def test_an_unparseable_plan_is_distinguishable(self, tmp_path: Path):
+        plan = self._plan(
+            tmp_path, "## Status\n\n- [x] Chunk 01: Done\n\n## Chunks\n\n- Chunk 01: Done\n"
+        )
+        assert buildplan_refs.plan_has_parseable_chunk_heading(plan) is False
+
+    def test_unreadable_is_a_third_answer_not_a_verdict(self, tmp_path: Path):
+        """`None`, never `False`. Collapsing them would report a confident
+        structural claim about a file that was never opened — and the caller
+        branches on `is False` precisely so it cannot."""
+        assert buildplan_refs.plan_has_parseable_chunk_heading(None) is None
+        assert buildplan_refs.plan_has_parseable_chunk_heading(
+            tmp_path / "absent.md"
+        ) is None
+
+
+class TestCountChunksCallerEnumeration:
+    """#541: the docstring enumerates `_count_build_plan_chunks`'s callers — pin it.
+
+    That enumeration went stale twice. It said "both callers are in
+    ``lib.gates``" while a third had appeared in ``lib.record_lint``, and it
+    said the gate paths pass ``plan_path`` while one of them does not. A
+    docstring naming a call graph is a fact with a home, and a fact nothing
+    checks is a fact that drifts — which is exactly what a reader consults this
+    docstring to avoid, since the whole point of the argument is that a caller
+    holding a resolved plan must not let this function resolve a different one.
+
+    Mechanized rather than corrected, because correcting it is what was done
+    last time.
+    """
+
+    CALL = "_count_build_plan_chunks("
+
+    def _call_sites(self) -> dict[str, int]:
+        """``module -> call count`` across the plugin library, definition excluded."""
+        sites: dict[str, int] = {}
+        for path in sorted(LIB_DIR.glob("*.py")):
+            text = path.read_text(encoding="utf-8")
+            calls = sum(
+                1
+                for line in text.splitlines()
+                if self.CALL in line and not line.lstrip().startswith("def ")
+            )
+            if calls:
+                sites[f"lib.{path.stem}"] = calls
+        return sites
+
+    def test_the_docstring_names_every_calling_module(self):
+        doc = buildplan_refs._count_build_plan_chunks.__doc__ or ""
+        callers = self._call_sites()
+        # The defining module references it in its own docstring; that is not a call.
+        callers.pop("lib.buildplan_refs", None)
+        unnamed = sorted(m for m in callers if m not in doc)
+        assert not unnamed, (
+            f"`_count_build_plan_chunks` is called from {unnamed}, which the docstring's "
+            "caller enumeration does not name. Update the enumeration — it exists so a "
+            "reader can see who must pass `plan_path` and who does not."
+        )
+
+    def test_the_docstring_claims_the_right_number_of_callers(self):
+        callers = self._call_sites()
+        callers.pop("lib.buildplan_refs", None)
+        total = sum(callers.values())
+        assert total == 3, (
+            f"{total} call sites across {sorted(callers)}; the docstring enumerates three. "
+            "A new caller must be added to that list with whether it passes `plan_path` — "
+            "the argument exists because resolving twice can answer about two plans."
+        )
+
+    def test_the_two_callers_documented_as_passing_a_plan_actually_do(self):
+        # The half a prose enumeration cannot be trusted with. Read from source
+        # rather than asserted from memory: `_has_active_build_plan_file` and
+        # `record_lint._check_chunk_refs` each hand the resolved plan through,
+        # and this reddens if either stops.
+        gates_src = (LIB_DIR / "gates.py").read_text(encoding="utf-8")
+        lint_src = (LIB_DIR / "record_lint.py").read_text(encoding="utf-8")
+        assert f"{self.CALL}prawduct_dir, plan_path)" in gates_src
+        assert self.CALL in lint_src and "plan.path" in lint_src
+
+    def test_the_third_caller_is_the_one_the_docstring_flags(self):
+        # `_critic_session_satisfies_gate` resolves its own plan. #541's fix is
+        # one argument at that call site and lives in `lib/gates.py`, which this
+        # group does not own — so the pin is that the docstring keeps SAYING so
+        # for as long as it is true, and reddens the moment the fix lands
+        # without the docstring following it.
+        gates_src = (LIB_DIR / "gates.py").read_text(encoding="utf-8")
+        doc = buildplan_refs._count_build_plan_chunks.__doc__ or ""
+        resolves_own_plan = f"{self.CALL}prawduct_dir)" in gates_src
+        assert resolves_own_plan == ("does not" in doc and "#541" in doc), (
+            "gates.py and the docstring disagree about whether "
+            "`_critic_session_satisfies_gate` passes `plan_path`. If the call site was "
+            "fixed, drop the flagged bullet from the enumeration; if the docstring was "
+            "edited, fix the call site."
+        )
+
+
+class TestIterLivePlanFiles:
+    """`plan_index.iter_live_plan_files` — four behaviours, none of which a flat
+    fixture can tell apart from the glob it replaced.
+
+    That is the point of this class. A flat fixture cannot distinguish this
+    function from the flat `artifacts.glob("build-plan-*.md")` it replaced, so
+    every case below is nested, scoped, or archived on purpose.
+    `display_path`'s own docstring records the same lesson from the same module:
+    "every fixture here is flat, so no fixture could have shown it."
+    """
+
+    def _plan(self, path: Path, scope: str | None = "s") -> Path:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fm = f"---\nartifact: build-plan\n{f'scope: {scope}' if scope else ''}\n---\n"
+        path.write_text(fm + "\n## Build Chunks\n\n### Chunk 01: Do it\n")
+        return path
+
+    def test_finds_a_nested_plan_a_flat_glob_would_miss(self, tmp_path: Path):
+        """The regression the function exists for: repos laying plans out as
+        `artifacts/plans/<id>/build-plan.md`. A flat glob sees none of them, and
+        the surveyed fleet carries 16 nested plans per repo."""
+        self._plan(tmp_path / "plans" / "007" / "build-plan.md")
+        found = plan_index.iter_live_plan_files(tmp_path)
+        assert [p.name for p in found] == ["build-plan.md"]
+        assert "007" in str(found[0]), "the nested path must be preserved"
+
+    def test_never_descends_an_archive_subtree(self, tmp_path: Path):
+        """An archived plan is history, not a live assertion — and it must not
+        be reported as a live plan with gaps."""
+        self._plan(tmp_path / "build-plan-live.md")
+        self._plan(tmp_path / "archive" / "build-plan-old.md")
+        self._plan(tmp_path / "plans" / "9" / "archive" / "build-plan-nested-old.md")
+        names = {p.name for p in plan_index.iter_live_plan_files(tmp_path)}
+        assert names == {"build-plan-live.md"}
+
+    def test_typed_by_frontmatter_or_filename_but_not_by_body_text(
+        self, tmp_path: Path
+    ):
+        """Both routes are needed and a body scan is not one of them.
+
+        A plan with NO frontmatter has no declared type — and that is exactly
+        the shape being hunted — so the filename convention is the fallback. But
+        a body substring scan pulled in two design notes in this repo that merely
+        MENTION the string, so typing reads frontmatter only.
+        """
+        (tmp_path / "build-plan-no-frontmatter.md").write_text("## Chunks\n\n- Chunk 01\n")
+        self._plan(tmp_path / "oddly-named-plan.md")
+        (tmp_path / "design-note.md").write_text(
+            "# Note\n\nWe considered `artifact: build-plan` here but chose otherwise.\n"
+        )
+        names = {p.name for p in plan_index.iter_live_plan_files(tmp_path)}
+        assert "build-plan-no-frontmatter.md" in names, "filename fallback"
+        assert "oddly-named-plan.md" in names, "declared type wins over the name"
+        assert "design-note.md" not in names, "a body mention is not a declaration"
+
+    def test_a_file_declaring_another_artifact_type_is_excluded(self, tmp_path: Path):
+        """On its own word, regardless of a plan-shaped filename."""
+        (tmp_path / "build-plan-not-really.md").write_text(
+            "---\nartifact: discovery\nscope: s\n---\n\n# Not a plan\n"
+        )
+        assert plan_index.iter_live_plan_files(tmp_path) == []
+
+    def test_an_unreadable_plan_is_retained_for_the_caller_to_report(
+        self, tmp_path: Path
+    ):
+        """Unreadable is not 'not a plan'. Retaining it is only worth doing
+        because `_plan_gaps` now reports it — an earlier pairing retained the
+        file and then returned [] for it, so the stated intent was dead."""
+        bad = tmp_path / "build-plan-binary.md"
+        bad.write_bytes(b"\xff\xfe\x00\x00not utf-8 at all")
+        assert [p.name for p in plan_index.iter_live_plan_files(tmp_path)] == [
+            "build-plan-binary.md"
+        ]
+
+    def test_absent_artifacts_dir_is_empty_not_an_error(self, tmp_path: Path):
+        assert plan_index.iter_live_plan_files(tmp_path / "nothing") == []
+
+
+# ---------------------------------------------------------------------------
+# The chunk-field readers find the field where authors actually write it
+# ---------------------------------------------------------------------------
+
+
+def _plan_with_chunk_body(tmp_path: Path, body: str) -> tuple[Path, Path]:
+    """A one-chunk plan whose section carries ``body`` verbatim."""
+    prawduct = tmp_path / ".prawduct"
+    prawduct.mkdir(exist_ok=True)
+    plan = prawduct / "plan.md"
+    plan.write_text(f"### Chunk 01: a chunk\n\n{body}", encoding="utf-8")
+    return prawduct, plan
+
+
+class TestTheTypeFieldIsFoundWhereAuthorsWriteIt:
+    """The field binds in the forms real build plans use, not one canonical form.
+
+    Every accepted form here is copied from a plan in this repo. Each one used
+    to read as *no field at all*, and the `code` default then ran the chunk
+    under the full protocol its author had already declared it did not need —
+    with nothing said, because a lost declaration and an absent one are the same
+    silence.
+
+    The refusals matter as much: the field is now searchable, so a line merely
+    *discussing* it looks like a line declaring it, and an unknown token from a
+    sentence must never fail a chunk that declares no type at all.
+    """
+
+    def test_a_field_sharing_its_line_with_another_binds(self, tmp_path: Path):
+        """Chunk headers compose fields on one line, separated by `·`."""
+        prawduct, plan = _plan_with_chunk_body(
+            tmp_path,
+            "**Depends on:** —  ·  **Type:** doc-only  ·  **Critic mode:** chunk\n",
+        )
+        assert buildplan_refs._parse_build_plan_chunk_type(
+            prawduct, "01", plan_path=plan
+        ) == ("doc-only", None)
+
+    def test_a_backticked_value_binds(self, tmp_path: Path):
+        prawduct, plan = _plan_with_chunk_body(
+            tmp_path, "**Type:** `doc-only` · **Critic mode:** `final`\n"
+        )
+        assert buildplan_refs._parse_build_plan_chunk_type(
+            prawduct, "01", plan_path=plan
+        ) == ("doc-only", None)
+
+    def test_a_trailing_parenthetical_is_still_ignored(self, tmp_path: Path):
+        """The form the anchored read already accepted keeps working."""
+        prawduct, plan = _plan_with_chunk_body(
+            tmp_path, "- **Type:** code (bugfix)\n"
+        )
+        assert buildplan_refs._parse_build_plan_chunk_type(
+            prawduct, "01", plan_path=plan
+        ) == ("code", None)
+
+    def test_an_unknown_value_in_field_position_still_reports(self, tmp_path: Path):
+        """The typo path is unchanged — that is the point of reading it first."""
+        prawduct, plan = _plan_with_chunk_body(
+            tmp_path, "- **Type:** nonsense-value\n"
+        )
+        chunk_type, error = buildplan_refs._parse_build_plan_chunk_type(
+            prawduct, "01", plan_path=plan
+        )
+        assert chunk_type is None
+        assert error and error.startswith(buildplan_refs.UNKNOWN_TYPE_PREFIX)
+        assert "nonsense-value" in error
+
+    def test_prose_about_the_field_cannot_fail_a_chunk(self, tmp_path: Path):
+        """The cost of searching, refused where it would actually hurt.
+
+        A Description sentence mentioning the field is indistinguishable from a
+        declaration. Reporting the word after it as an unknown type would block
+        a chunk on prose — so a mid-line value that is not a type is silence,
+        and silence here is the `code` default, the same fail-closed answer this
+        section got before the field was searchable.
+        """
+        prawduct, plan = _plan_with_chunk_body(
+            tmp_path,
+            "- **Notes:** the old reader took **Type:** anything as a value\n",
+        )
+        assert buildplan_refs._parse_build_plan_chunk_type(
+            prawduct, "01", plan_path=plan
+        ) == ("code", None)
+
+    @pytest.mark.parametrize(
+        "lightening_type", ["designer-handoff", "trivial", "doc-only"]
+    )
+    def test_prose_naming_a_gate_lightening_type_binds_nothing(
+        self, tmp_path: Path, lightening_type: str
+    ):
+        """The other half of the cost, and the expensive one.
+
+        A chunk that declares no type at all, whose Description happens to
+        mention one, must still be `code`. Each of these BUYS something:
+        `designer-handoff` makes the stop hook skip the Critic gate outright, so
+        a sentence about the field would switch review off — silently, in every
+        governed product. Binding is therefore bounded by position as well as by
+        the allowed set.
+        """
+        prawduct, plan = _plan_with_chunk_body(
+            tmp_path,
+            f"- **Description:** unlike a **Type:** {lightening_type} chunk, "
+            "this one earns the full protocol\n",
+        )
+        assert buildplan_refs._parse_build_plan_chunk_type(
+            prawduct, "01", plan_path=plan
+        ) == ("code", None)
+
+    def test_a_declaration_after_a_sentence_on_the_same_line_binds(
+        self, tmp_path: Path
+    ):
+        """A real corpus form: two fields joined by a full stop, not a `·`.
+
+        This arm is also the predicate's knowing residual, pinned here so it is
+        not mistaken for an accident: a period separates composed fields as
+        freely as a `·` does, so a Description sentence that BEGINS with the
+        marker binds too. Mid-sentence mentions — what prose about a field
+        overwhelmingly is — do not. The bound on the residual is authoring
+        guidance in `methodology/planning.md`; narrowing the predicate would
+        drop the composed forms this reader exists to find.
+        """
+        prawduct, plan = _plan_with_chunk_body(
+            tmp_path,
+            "**Covers:** CRT-8N5V (instruction half). **Type:** doc-only "
+            "(governance prose).\n",
+        )
+        assert buildplan_refs._parse_build_plan_chunk_type(
+            prawduct, "01", plan_path=plan
+        ) == ("doc-only", None)
+
+    def test_a_value_no_token_can_be_read_out_of_is_reported_verbatim(
+        self, tmp_path: Path
+    ):
+        """Field position, unreadable value: the one case silence would hide.
+
+        `n/a (docs only)` is a declaration. Falling through to the `code`
+        default says *this chunk declared no type*, and the author would learn
+        otherwise only by noticing the review was heavier than they asked for.
+        The whole value is quoted — the readable prefix `n` names a string that
+        appears nowhere in their plan.
+        """
+        prawduct, plan = _plan_with_chunk_body(
+            tmp_path, "- **Type:** n/a (docs only)\n"
+        )
+        chunk_type, error = buildplan_refs._parse_build_plan_chunk_type(
+            prawduct, "01", plan_path=plan
+        )
+        assert chunk_type is None
+        assert error and "'n/a (docs only)'" in error, error
+
+    def test_a_second_marker_on_the_declaration_line_is_prose_too(
+        self, tmp_path: Path
+    ):
+        """Field position is where the line STARTS, not anywhere on it.
+
+        `n/a` breaks the token lookahead, so a search across the whole line
+        finds the second marker and grades the chunk `doc-only` — off a
+        parenthetical, on the author's own declaration line, with the value they
+        actually wrote never reported. The declaration position predicate is
+        what makes the first marker the only candidate here.
+        """
+        prawduct, plan = _plan_with_chunk_body(
+            tmp_path,
+            "- **Type:** n/a (unlike a **Type:** doc-only chunk)\n",
+        )
+        chunk_type, error = buildplan_refs._parse_build_plan_chunk_type(
+            prawduct, "01", plan_path=plan
+        )
+        assert chunk_type is None
+        assert error and "'n/a (unlike a **Type:** doc-only chunk)'" in error, error
+
+    def test_an_unreadable_value_in_field_position_is_not_overridden_by_prose(
+        self, tmp_path: Path
+    ):
+        """Pass one's answer is final — that is what keeps pass two honest."""
+        prawduct, plan = _plan_with_chunk_body(
+            tmp_path,
+            "- **Type:** (see Chunk 03)\n"
+            "- **Description:** a **Type:** trivial chunk would skip this\n",
+        )
+        chunk_type, error = buildplan_refs._parse_build_plan_chunk_type(
+            prawduct, "01", plan_path=plan
+        )
+        assert chunk_type is None
+        assert error and "(see Chunk 03)" in error, error
+
+    def test_prose_about_the_field_does_not_suppress_the_declaration_below_it(
+        self, tmp_path: Path
+    ):
+        prawduct, plan = _plan_with_chunk_body(
+            tmp_path,
+            "- **Notes:** a line discussing **Type:** trivial in passing\n"
+            "- **Type:** doc-only\n",
+        )
+        assert buildplan_refs._parse_build_plan_chunk_type(
+            prawduct, "01", plan_path=plan
+        ) == ("doc-only", None)
+
+    def test_a_declaration_in_field_position_beats_prose_naming_a_type(
+        self, tmp_path: Path
+    ):
+        """Field position is read FIRST, so prose cannot lighten a gate.
+
+        `trivial` and `doc-only` are carveouts. A sentence naming one, in a
+        chunk whose author declared something else — a typo included — must not
+        be the thing that decides which protocol the chunk runs.
+        """
+        prawduct, plan = _plan_with_chunk_body(
+            tmp_path,
+            "- **Type:** nonsense-value\n"
+            "- **Notes:** unlike a **Type:** trivial chunk, this one is not\n",
+        )
+        chunk_type, error = buildplan_refs._parse_build_plan_chunk_type(
+            prawduct, "01", plan_path=plan
+        )
+        assert chunk_type is None
+        assert error and "nonsense-value" in error
+
+    def test_a_line_opening_with_a_backticked_field_binds(self, tmp_path: Path):
+        """Backticking is not an escape, and that is deliberate.
+
+        Plans write line-initial ``` `**Critic mode:** chunk` ``` and mean it,
+        so the line-opening class allows the backtick. Pinned because
+        `methodology/planning.md` tells authors that backticking a marker does
+        NOT stop it declaring — guidance that is true only while this binds, and
+        that would otherwise send someone to hide a field behind backticks and
+        declare it instead.
+        """
+        prawduct, plan = _plan_with_chunk_body(
+            tmp_path, "`**Type:** doc-only` for the prose half of this chunk\n"
+        )
+        assert buildplan_refs._parse_build_plan_chunk_type(
+            prawduct, "01", plan_path=plan
+        ) == ("doc-only", None)
+
+    def test_a_backticked_mention_inside_a_sentence_binds_nothing(
+        self, tmp_path: Path
+    ):
+        """The form the guidance actually recommends for writing ABOUT a field."""
+        prawduct, plan = _plan_with_chunk_body(
+            tmp_path,
+            "- **Description:** unlike a `**Type:** designer-handoff` chunk, "
+            "this one is reviewed\n",
+        )
+        assert buildplan_refs._parse_build_plan_chunk_type(
+            prawduct, "01", plan_path=plan
+        ) == ("code", None)
+
+    def test_an_absent_field_still_defaults_to_code(self, tmp_path: Path):
+        prawduct, plan = _plan_with_chunk_body(tmp_path, "- **Done when:** done\n")
+        assert buildplan_refs._parse_build_plan_chunk_type(
+            prawduct, "01", plan_path=plan
+        ) == ("code", None)
+
+
+class TestTheTrivialRationaleIsFoundWhereAuthorsWriteIt:
+    """A rationale the author DID write must not be reported as missing.
+
+    `Type: trivial` is the one type that buys a bounded review, and it is bought
+    with this field — so the field being unreadable blocks the chunk. Blocking a
+    plan that declares its rationale on the same line as the type it justifies
+    is the gate failing its own author, not catching one.
+    """
+
+    def test_a_rationale_sharing_its_line_with_the_type_binds(self, tmp_path: Path):
+        prawduct, plan = _plan_with_chunk_body(
+            tmp_path,
+            "**Type:** trivial · **Trivial because:** it renames one constant\n",
+        )
+        assert buildplan_refs._parse_build_plan_chunk_trivial_rationale(
+            prawduct, "01", plan_path=plan
+        ) == ("it renames one constant", None)
+
+    def test_a_field_position_rationale_still_binds_with_its_continuations(
+        self, tmp_path: Path
+    ):
+        prawduct, plan = _plan_with_chunk_body(
+            tmp_path,
+            "- **Trivial because:** it renames one constant\n"
+            "  across three call sites\n"
+            "- **Done when:** done\n",
+        )
+        assert buildplan_refs._parse_build_plan_chunk_trivial_rationale(
+            prawduct, "01", plan_path=plan
+        ) == ("it renames one constant across three call sites", None)
+
+    def test_prose_above_the_field_does_not_eat_the_rationale(self, tmp_path: Path):
+        """Why this is two passes and not one permissive one.
+
+        A single searching pass starts capturing at the prose line, and the
+        capture stops at the next `- **` line — which is the declaration. The
+        gate would then grade the sentence *about* the field instead of the
+        rationale, and the author would never know their words were not read.
+        """
+        prawduct, plan = _plan_with_chunk_body(
+            tmp_path,
+            "- **Notes:** every trivial chunk needs a **Trivial because:** line\n"
+            "- **Trivial because:** it renames one constant\n",
+        )
+        assert buildplan_refs._parse_build_plan_chunk_trivial_rationale(
+            prawduct, "01", plan_path=plan
+        ) == ("it renames one constant", None)
+
+    def test_prose_alone_cannot_supply_a_rationale_that_is_absent(
+        self, tmp_path: Path
+    ):
+        """The hole the composed-header fallback would otherwise open.
+
+        `Type: trivial` buys a bounded review, and this field is the price. A
+        section that declares no rationale at all, whose Description merely
+        mentions the field, must still block — prose satisfying the gate
+        silently is worse than the missing-field block it replaces, because the
+        author never learns their chunk was never graded. Distinct from the
+        suppression case above, which pins prose losing to a real declaration;
+        here there is nothing for it to lose to.
+        """
+        prawduct, plan = _plan_with_chunk_body(
+            tmp_path,
+            "- **Type:** trivial\n"
+            "- **Description:** every trivial chunk needs a **Trivial because:** "
+            "line, and this one has none\n",
+        )
+        rationale, error = buildplan_refs._parse_build_plan_chunk_trivial_rationale(
+            prawduct, "01", plan_path=plan
+        )
+        assert rationale is None
+        assert error and error.startswith("missing-rationale:")
+
+    def test_an_absent_field_is_still_missing_rationale(self, tmp_path: Path):
+        prawduct, plan = _plan_with_chunk_body(tmp_path, "- **Type:** trivial\n")
+        rationale, error = buildplan_refs._parse_build_plan_chunk_trivial_rationale(
+            prawduct, "01", plan_path=plan
+        )
+        assert rationale is None
+        assert error and error.startswith("missing-rationale:")
+
+    def test_a_blank_field_is_still_missing_rationale(self, tmp_path: Path):
+        prawduct, plan = _plan_with_chunk_body(
+            tmp_path, "**Type:** trivial · **Trivial because:**\n"
+        )
+        rationale, error = buildplan_refs._parse_build_plan_chunk_trivial_rationale(
+            prawduct, "01", plan_path=plan
+        )
+        assert rationale is None
+        assert error and error.startswith("missing-rationale:")
+
+
+def test_every_type_line_in_this_repo_is_honoured_or_reported():
+    """The corpus, against a form list that was transcribed by hand.
+
+    Every other case above is a form someone thought of. This one is the forms
+    authors actually wrote, and the oracle is deliberately crude — the text
+    after the marker, first word, punctuation stripped — because an oracle built
+    out of the reader's own regex can only ever agree with it.
+
+    **A line whose value reads as a type binds that type.** This is the property
+    the defect broke: `**Depends on:** — · **Type:** doc-only` reads as
+    `doc-only` to any human and read as *no field at all* to the anchored
+    reader, which then ran the chunk as `code`.
+
+    **A chunk declaring a value in FIELD POSITION never takes the `code` default
+    in silence** — it binds, or it reports. Asked of the reader's return value,
+    because asking it of a regex the reader uses is how the assertion goes
+    inert. Not asserted: that every such value IS a type. At least one is not,
+    and correctly so — that one reports, which is the contract.
+
+    The refusal half of the contract — prose must neither fail a chunk nor
+    lighten one — is not asserted here: it needs a chunk section whose only
+    mention of the field is prose, which this corpus does not reliably contain.
+    The fixture cases above carry it, and that is where a regression in it would
+    show.
+    """
+    artifacts = Path(__file__).resolve().parent.parent / ".prawduct" / "artifacts"
+    plans = sorted(artifacts.rglob("build-plan*.md"))
+    assert plans, f"no build plans under {artifacts} — this test proves nothing"
+
+    marker = "**Type:**"
+    field_position = re.compile(r"^[\s\-\*]*" + re.escape(marker))
+    misread, silent = [], []
+    declared_at: dict[Path, dict[int, str]] = {plan: {} for plan in plans}
+    bound = graded = 0
+    for plan in plans:
+        for lineno, line in enumerate(
+            plan.read_text(encoding="utf-8").splitlines(), start=1
+        ):
+            if marker not in line:
+                continue
+            where = f"{plan.name}:{lineno}: {line.strip()!r}"
+
+            m = next(
+                buildplan_refs.iter_field_declarations(
+                    line, buildplan_refs._BUILD_PLAN_TYPE_RE
+                ),
+                None,
+            )
+            token = m.group(1) if m else None
+
+            after = line.split(marker, 1)[1].split()
+            reads_as = after[0].strip("`.,;*") if after else ""
+            if reads_as in buildplan_refs._BUILD_PLAN_ALLOWED_TYPES:
+                bound += 1
+                if token != reads_as:
+                    misread.append(f"{where} reads as {reads_as!r}, read as {token!r}")
+            if field_position.match(line) and after:
+                declared_at[plan][lineno] = reads_as
+
+    # The second property, asked of the READER rather than of a regex the reader
+    # happens to use. Phrasing it as "some pattern matches this line" is how it
+    # goes inert: `_BUILD_PLAN_TYPE_VALUE_RE` matches every line the field-position
+    # check just matched, so `bound or reported` was true by construction and the
+    # assertion could not fail. What the contract is actually about is what the
+    # chunk's read RETURNS.
+    for plan, linenos in declared_at.items():
+        content = plan.read_text(encoding="utf-8")
+        roster = (
+            _chunk_id_from_item_text(text)
+            for _checked, text in _iter_status_section_items(content)
+        )
+        for chunk_id in filter(None, roster):
+            section = _chunk_section_lines(content, chunk_id)
+            if buildplan_refs.chunk_section_gap(chunk_id, section):
+                continue
+            declared = [
+                linenos[num] for num, _text in section.lines if num in linenos
+            ]
+            if not declared:
+                continue
+            chunk_type, error = buildplan_refs._parse_build_plan_chunk_type(
+                plan.parent, chunk_id, plan_path=plan
+            )
+            graded += 1
+            # `code` is the default AND a declarable type, so it is the one
+            # answer that cannot distinguish "honoured" from "fell through" —
+            # unless the section is one whose author wrote `code`.
+            if (chunk_type, error) == ("code", None) and "code" not in declared:
+                silent.append(f"{plan.name} Chunk {chunk_id}: declared {declared}")
+
+    assert not misread, "a type a human reads off the line was read as something else:\n" + "\n".join(misread)
+    assert not silent, (
+        "a chunk declaring a type in field position took the `code` default with "
+        "nothing said:\n" + "\n".join(silent)
+    )
+    assert bound >= 10, f"only {bound} bindable Type: lines found — the corpus moved"
+    assert graded >= 10, f"only {graded} chunk sections graded — the corpus moved"

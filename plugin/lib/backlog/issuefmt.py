@@ -18,9 +18,11 @@ the callers — but the split is now load-bearing, so a change here changes what
 can be written:
 
 - :func:`lint_title` (``title-too-long`` / ``-too-short`` / ``-placeholder`` /
-  ``-non-atomic``) is consumed by every write path as a **refusal**: ``file`` and
-  ``update`` reject a non-conforming title before the write, and the migration
-  pre-flight refuses a whole corpus before its first write. Loosening a threshold
+  ``-non-atomic``) is consumed as a **refusal by every op that writes a title** —
+  stated as the rule rather than as a roster, so a path added later is covered by
+  the sentence instead of falling out of it. Today: ``file``/``update`` reject
+  before the write, the migration pre-flight refuses a whole corpus before its
+  first, and ``file-upstream`` refuses the rendered outbound title. Loosening a threshold
   here silently widens what enters the backlog; tightening one can hard-refuse an
   irreversible ~900-issue migration. Both directions want a test.
 - :func:`lint`'s body and label findings are advisory and gate nothing. That is
@@ -163,8 +165,16 @@ def _split_area(title: str) -> tuple[str | None, str]:
     by ``: `` (so a mid-sentence ``foo: bar`` colon or a ``file.py: 12`` reference
     is not mistaken for a prefix). Case-insensitive on the token: an author's
     ``CLI:`` counts as a prefix so ``normalize_title`` never double-prefixes it
-    (canonical area labels are lowercase, but a human title may not be)."""
-    match = re.match(r"^([A-Za-z][A-Za-z0-9._-]*): +(\S.*)$", title)
+    (canonical area labels are lowercase, but a human title may not be).
+
+    ``/`` is IN the charset because areas carry it — ``governance/kernel``,
+    ``methodology/planning``, ``templates/artifacts`` and nine more on this
+    backlog alone. Without it a slash-bearing area matched as no prefix at all,
+    so ``normalize_title`` prepended a second copy and the create then tripped
+    the ``title-too-long`` lint it had just caused (#591). The single-token
+    anchoring is what keeps a mid-sentence colon out; the charset was the
+    defect, not the structure."""
+    match = re.match(r"^([A-Za-z][A-Za-z0-9._/-]*): +(\S.*)$", title)
     if match:
         return match.group(1), match.group(2)
     return None, title
@@ -230,10 +240,17 @@ class LintFinding:
     filter/suppress); ``message`` is human-facing.
 
     ``severity`` is always ``warn`` because this type carries no posture — the
-    CALLER decides. A `title-*` finding reaching a write path becomes a refusal
-    (`core._title_refusal`, `migrate.preflight_titles`); the same dataclass, with
-    the same ``"severity": "warn"``, therefore also rides inside a BLOCKING
-    validation error. Do not read this field as "this finding is advisory"."""
+    CALLER decides. A `title-*` finding reaching an op that writes a title becomes
+    a refusal; the same dataclass, with the same ``"severity": "warn"``, therefore
+    also rides inside a BLOCKING validation error. Do not read this field as "this
+    finding is advisory".
+
+    To find every site that turns one into a refusal, grep ``_title_refusal`` and
+    ``preflight_titles`` rather than trusting a list here — a roster in this
+    docstring is what a maintainer would grep INSTEAD of the code, so an omission
+    would silently narrow the very sweep it was meant to serve. That is not
+    hypothetical: this sentence named two sites and `upstream._title_refusal`, the
+    one irreversible cross-owner path, was the one it left out."""
 
     rule: str
     message: str

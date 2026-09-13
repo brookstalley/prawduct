@@ -181,7 +181,17 @@ drop-box formalized in the retired `build-plan-upstream-bug-reporting.md` (that 
 `bug-inbox` resolver, `.bug-inbox` pointer, `incoming-bugs/` drop-box, the
 `untriaged-upstream-reports` probe, and the local-capture fallback — is **to be removed** (target
 state; it remains the interim supported path until the GitHub-issue path is built, per
-`security-model.md` § Direction), not carried forward). Tracked by **BKL-7Q4M** (content minimization — the artifact `security-model.md`
+`security-model.md` § Direction), not carried forward). *(**Two clauses here expired 2026-09-08**,
+when BKL-7Q4M's Wave C landed. Corrected here rather than in place, because a requirement is the
+record of what was asked for. **The interim clause has run out:** the GitHub-issue path is built,
+the drop-box is retired, and there is no supported local channel left — `bug-inbox` is inert, the
+`.bug-inbox` pointer and the `incoming-bugs/` template are gone, and an operator's untracked
+`incoming-bugs/` tree is a local archive with nothing behind it. **And the probe was not removed:**
+`untriaged-upstream-reports` was **repointed** to count the issue intake set — open items carrying
+the `[prawduct]` title prefix and no `stage:` label — because the receiving side needs a nudge
+whatever the channel is, and the asked-for removal would have deleted the mechanism along with the
+substrate. The reviewed design that made that choice is
+`documentation/backlog-service-upstream-filing.md` §6/§7.4, which outranks this bullet.)* Tracked by **BKL-7Q4M** (content minimization — the artifact `security-model.md`
 § Direction norm cites it by id) and **BKL-9XQ2** (consent / evidence / label taxonomy).
 
 - **XP4** Content minimization is a **two-layer guarantee, stated honestly**:
@@ -224,7 +234,7 @@ state; it remains the interim supported path until the GitHub-issue path is buil
   op MUST: **pin the target** to the intended public repo (no unconstrained `--repo` owner —
   BKL-2Q7F); **authenticate** via the session's GitHub identity (no anonymous — gh issues are
   inherently authenticated); **refuse to execute without a recorded owner-approval** (XP4 L2); and
-  never let prawduct's **own** repo self-file upstream (it routes to its own backlog). This triple is
+  never let prawduct's **own** repo self-file upstream (it routes to its own backlog). These MUSTs are
   the durable enforcement that **replaces** the interim egress guard
   (`tests/preferences/test_no_upstream_content_egress.py`), which stays live until a design
   supersedes it. **Submit-or-nothing:** declining files nothing — there is no local backlog capture
@@ -348,8 +358,10 @@ state; it remains the interim supported path until the GitHub-issue path is buil
   `owner/repo#number` and **no new `PFX-XXXX` is ever minted** (Data Model §5;
   `lib/backlog/ids.py`) — the `id:PFX` alias exists so *migrated* items' old refs resolve forever,
   not as a continuing scheme. Every surface that **cites** an item must therefore recognize *both*
-  forms: the PFX alias for migrated items, and `owner/repo#number` / `repo#number` for everything
-  filed after cutover. Today several recognize only the first — e.g. `lib/norm_probes.py`'s
+  forms: the PFX alias for migrated items, and the GitHub-number grammar for everything filed after
+  cutover — whose accepted spellings are enumerated in **Data Model §5**, the one home, rather than
+  restated here, because a spelling added to some carriers and not others is exactly how the grammar
+  forked before. Today several recognize only the first — e.g. `lib/norm_probes.py`'s
   `_BACKLOG_ID_RE` (`\b[A-Z]{2,4}-[A-Z0-9]{4}\b`), the Critic's C-B4 dangling-id check, PR review
   `R-2`'s `closes: PFX-XXXX` reconciliation, `closes:`/`closed-by:` in backlog metadata and
   change-log tags, and the deferred build-plan backlog-id verification
@@ -429,7 +441,7 @@ state; it remains the interim supported path until the GitHub-issue path is buil
   hold what `open` excluded; the git-tracked source file is the actual preservation mechanism. The
   consequence the owner must hear at scrub time — skipped items are git history, not searchable
   backlog, because the skill stops reading the source file after cutover — is stated with the lever
-  in `skills/backlog/migration-scrub.md` step 2c.)* The importer honors the chosen scope through an
+  in `skills/backlog/migration-scrub.md`'s archive-scope decision step.)* The importer honors the chosen scope through an
   `--archive-scope` selector (AG1 — a deterministic lever, not a model inference). `open` also
   **reduces the total write volume** of a large migration (fewer creates) — but the write-*rate*
   ceiling is enforced by the Pacer, **not** by this lever; crediting the archive window as the

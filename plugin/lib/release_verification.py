@@ -53,6 +53,7 @@ import sys
 from pathlib import Path
 from typing import Callable, NamedTuple
 
+from .core import YAML_DECLARED, YAML_UNPARSEABLE, read_yaml_block
 from .release_readiness import normalize_version
 
 #: Subprocess ceiling. Matches ``gitstate``'s: these are local plumbing calls,
@@ -193,12 +194,26 @@ def _outside_repo_reason(project_dir: Path) -> str | None:
     return None if probe[0] == 0 else "not a git repository"
 
 
+def declaration_status(text: str) -> str:
+    """How ``release_version_files:`` reads in ``text`` — the shared three-way
+    answer (:data:`core.YAML_ABSENT` / ``DECLARED`` / ``UNPARSEABLE``).
+
+    Exposed alongside :func:`_read_declaration` because "declared in a shape I
+    cannot parse" and "declared empty" are different facts that this check
+    reports differently, and the ``list | None`` return cannot carry the
+    difference.
+    """
+    return read_yaml_block(text, _DECLARATION_KEY)[0]
+
+
 def _read_declaration(text: str) -> list[VersionFile] | None:
     """``release_version_files:`` as declared, or ``None`` when undeclared.
 
-    Minimal-YAML by the same discipline as ``risk._read_list_yaml_key`` and
-    ``core.read_str_yaml_key`` — a column-0 key, indented ``- path: …`` entries
-    until the next column-0 key, inline comments stripped. No PyYAML: the
+    Block scanning is ``core.read_yaml_block`` — the one reader (backlog #590),
+    shared with ``risk`` and the hook's ``test_commands`` reader: a column-0
+    key, comments and blank lines inert at ANY indent, the block ending at the
+    next column-0 key. Entry assembly stays here, because this is the only one of
+    the three whose items are mappings rather than plain strings. No PyYAML: the
     governance runtime is stdlib-only.
 
     **Three outcomes, not two.** ``None`` (undeclared) and ``[]`` (declared
@@ -207,57 +222,41 @@ def _read_declaration(text: str) -> list[VersionFile] | None:
     deliberate "this product ships no version file" and is honoured exclusively.
     ``risk_surfaces:`` draws the same line for the same reason.
 
-    **Block style only.** A flow-style ``release_version_files: [ … ]`` yields no
-    entries and so reads as *declared empty*, reporting "no version file to
-    check" rather than silently reverting to the guess — loud, and naming the
-    key, which is what an operator needs to spot the wrong syntax. An explicit
-    ``== "[]"`` branch sat here to make the empty case deliberate and was
-    removed: the block scan already returns ``[]`` for it by every route, so the
-    branch could not change an answer and no test could have caught its
-    deletion.
+    **Block style only, and a flow-style declaration is now told apart from an
+    empty one.** ``release_version_files: [ … ]`` yields ``[]`` here — so it
+    still cannot silently revert to the guess — but the caller asks
+    :func:`declaration_status` and reports the *shape*, rather than telling an
+    operator who wrote a real declaration that they declared nothing. Reading it
+    as declared-empty was the shared defect #590 records; the sibling keys' fix
+    is a loud refusal, and this key's is a loud ``UNVERIFIABLE`` — a guess must
+    never be able to FAIL a release, so refusing outright is too strong here.
     """
-    lines = text.splitlines()
-    needle = f"{_DECLARATION_KEY}:"
-    for index, raw in enumerate(lines):
-        if raw[:1] in (" ", "\t"):
+    status, body = read_yaml_block(text, _DECLARATION_KEY)
+    if status != YAML_DECLARED:
+        # UNPARSEABLE keeps the pre-#590 return so `not specs` still reaches the
+        # caller's non-passing branch; the shape is named there via
+        # `declaration_status`. ABSENT is the fallback-to-guess case.
+        return [] if status == YAML_UNPARSEABLE else None
+    entries: list[dict[str, str]] = []
+    for line in body:
+        stripped = line
+        if stripped.startswith("- "):
+            entries.append({})
+            stripped = stripped[2:].strip()
+        if not entries or ":" not in stripped:
             continue
-        line = raw.split("#", 1)[0].rstrip()
-        if not line.startswith(needle):
-            continue
-        entries: list[dict[str, str]] = []
-        for follow in lines[index + 1:]:
-            if follow.lstrip().startswith("#"):
-                # A comment is inert at ANY indent, column 0 included. Without
-                # this the terminator below fires on a full-line comment sitting
-                # between entries and the rest of the declaration is silently
-                # dropped — a product loses a version file it declared, and the
-                # check reports `ok` over what is left. `bin`'s sibling reader
-                # already documents comments as inert; the two `lib` readers
-                # truncate (backlog #590, which tracks reconciling all four).
-                continue
-            if follow[:1] not in (" ", "\t") and follow.strip():
-                break  # next column-0 key — the block ended
-            stripped = follow.split("#", 1)[0].strip()
-            if not stripped:
-                continue
-            if stripped.startswith("- "):
-                entries.append({})
-                stripped = stripped[2:].strip()
-            if not entries or ":" not in stripped:
-                continue
-            field, _, value = stripped.partition(":")
-            entries[-1][field.strip()] = value.strip().strip("\"'")
-        # An entry with no `path` names no file and is dropped; one with no
-        # `format` is KEPT, and reports itself unreadable rather than being
-        # silently skipped — an unknown shape is "unchecked", never "passed"
-        # (`architecture.md` § Direction, the same clause that put the read
-        # under declaration in the first place).
-        return [
-            VersionFile(e["path"], e.get("format", ""), e.get("key", ""))
-            for e in entries
-            if e.get("path")
-        ]
-    return None
+        field, _, value = stripped.partition(":")
+        entries[-1][field.strip()] = value.strip().strip("\"'")
+    # An entry with no `path` names no file and is dropped; one with no
+    # `format` is KEPT, and reports itself unreadable rather than being
+    # silently skipped — an unknown shape is "unchecked", never "passed"
+    # (`architecture.md` § Direction, the same clause that put the read
+    # under declaration in the first place).
+    return [
+        VersionFile(e["path"], e.get("format", ""), e.get("key", ""))
+        for e in entries
+        if e.get("path")
+    ]
 
 
 def _toml_loader() -> Callable[[str], dict] | None:
@@ -377,9 +376,22 @@ def check_version_files(project_dir: Path, tag: str) -> tuple[str, str]:
     # A non-zero here is an absent declaration, not an error: most trees — every
     # release cut before this key existed, and every product that never opted in
     # — legitimately carry no `.prawduct/project-state.yaml` at this path.
-    declared = _read_declaration(shown_state[1]) if shown_state[0] == 0 else None
+    state_text = shown_state[1] if shown_state[0] == 0 else ""
+    declared = _read_declaration(state_text) if shown_state[0] == 0 else None
     specs = declared if declared is not None else list(_FALLBACK_VERSION_FILES)
     if not specs:
+        # Two ways to reach an empty declaration, and an operator needs to know
+        # which one they hit: a deliberate `[]` opt-out, or a real declaration
+        # written in a shape this reader does not parse (flow style). Both are
+        # UNVERIFIABLE — a guess must never be able to FAIL a release, so
+        # refusing outright is too strong — but reporting "with no entries" over
+        # a filled-in flow-style list tells them the opposite of what happened.
+        if declaration_status(state_text) == YAML_UNPARSEABLE:
+            return UNVERIFIABLE, (
+                f"{tag}'s tree declares {_DECLARATION_KEY}: in a shape prawduct "
+                "cannot parse — use a block sequence of `- path:` entries "
+                "(flow style `[ … ]` is not read); `[]` is the deliberate opt-out"
+            )
         return UNVERIFIABLE, (
             f"{tag}'s tree declares {_DECLARATION_KEY}: with no entries "
             "— no version file to check"

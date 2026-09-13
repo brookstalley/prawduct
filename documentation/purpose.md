@@ -79,11 +79,19 @@ functions**. The operating rules for that evolution:
 - **Deletion gets the same care as addition** — reviewed, evidenced, recorded. A
   mechanism exits whole: its code, tests, docs, and records together.
 - The planned instrument for all of this is a **responsibility ledger** (Cycle 3 of
-  the cession program; not yet built): each condition of
-  successful software development, who holds it today, under what assumption, and what
-  external signal would reassign it. Re-pricing is event-driven — a runtime change, not
-  a calendar — and each re-pricing is conducted by a runtime smarter than the one that
-  wrote the rows.
+  the cession program, `.prawduct/artifacts/program-purpose-and-cession.md`): each
+  condition of successful software development, who holds it today, under what
+  assumption, and what external signal would reassign it. Re-pricing is event-driven —
+  a runtime change, not a calendar — and each re-pricing is conducted by a runtime
+  smarter than the one that wrote the rows.
+- **Until the ledger carries them, cessions ride the change-log.** A re-pricing is
+  recorded as a `.prawduct/change-log.md` entry naming what was ceded, the assumption
+  that expired, and what survives on which remaining rationale — a log of *changes*
+  standing in for a register of *holdings*. Writing one is the regime, not a workaround
+  for a missing surface. Cycle 3 landing moves the register to the ledger and leaves the
+  narrative where it already is; a ceder reading this before then writes the change-log
+  entry and nothing else. Worked example, and the shape to copy: the 2026-08-19 entry
+  *“the work-cycle limit is re-priced, and a rationale is formally ceded”*.
 
 ## What prawduct never does
 

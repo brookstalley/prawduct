@@ -88,7 +88,7 @@ def mini_repo(tmp_path: Path) -> Path:
 
 
 class TestEvidenceShape:
-    """The verifier always emits the five F4a fields, in any execution path."""
+    """The verifier always emits the six F4a fields, in any execution path."""
 
     def test_default_run_prints_all_evidence_fields(self, mini_repo: Path):
         result = _run_verifier(mini_repo)
@@ -101,6 +101,7 @@ class TestEvidenceShape:
             "tests_executed",
             "changes_referenced",
             "changes_unjudged",
+            "changes_unchecked",
         }
 
     def test_coverage_level_is_referenced_floor(self, mini_repo: Path):
@@ -296,6 +297,82 @@ class TestUnjudgedClassification:
         evidence = json.loads(_run_verifier(mini_repo, "--base", "main").stdout)
         assert "src/untested.py" not in evidence["changes_referenced"]
         assert "src/untested.py" not in evidence["changes_unjudged"]
+
+
+class TestUncheckedClassification:
+    """`changes_unchecked` (#164): the files this verifier never analysed, told
+    apart from the ones it analysed and found nothing in.
+
+    The gate this feeds is BLOCKING. Without the distinction, a repo whose whole
+    diff is Swift produces an empty `changes_referenced` that reads identically
+    to a repo with genuinely nothing to cover — the gate passes having inspected
+    nothing. These tests pin the partition, not just the presence of the key.
+    """
+
+    def test_non_python_file_is_unchecked_as_well_as_unjudged(self, mini_repo: Path):
+        (mini_repo / "Feature.swift").write_text("struct Feature {}\n")
+
+        evidence = json.loads(_run_verifier(mini_repo, "--base", "main").stdout)
+        assert "Feature.swift" in evidence["changes_unchecked"]
+        assert "Feature.swift" in evidence["changes_unjudged"]
+
+    def test_unchecked_is_a_subset_of_unjudged(self, mini_repo: Path):
+        """Additive by construction: every unchecked file is also unjudged, so a
+        consumer reading only the old field keeps its current behaviour."""
+        (mini_repo / "Feature.swift").write_text("struct Feature {}\n")
+        (mini_repo / "README.md").write_text("# Docs\n")
+        (mini_repo / "src" / "constants.py").write_text("LIMIT = 10\n")
+
+        evidence = json.loads(_run_verifier(mini_repo, "--base", "main").stdout)
+        assert set(evidence["changes_unchecked"]) <= set(evidence["changes_unjudged"])
+
+    def test_symbol_less_python_is_unjudged_but_not_unchecked(self, mini_repo: Path):
+        """It WAS analysed. Reporting it unchecked would overstate the hole and
+        make the signal useless on a Python repo, which is most of them."""
+        (mini_repo / "src" / "constants.py").write_text("LIMIT = 10\n")
+
+        evidence = json.loads(_run_verifier(mini_repo, "--base", "main").stdout)
+        assert "src/constants.py" in evidence["changes_unjudged"]
+        assert "src/constants.py" not in evidence["changes_unchecked"]
+
+    def test_deleted_file_is_unjudged_but_not_unchecked(self, mini_repo: Path):
+        """There is no file on disk to have failed to analyse."""
+        _git(mini_repo, "rm", "-q", "src/core.py")
+
+        evidence = json.loads(_run_verifier(mini_repo, "--base", "main").stdout)
+        assert "src/core.py" in evidence["changes_unjudged"]
+        assert "src/core.py" not in evidence["changes_unchecked"]
+
+    def test_python_shebang_script_without_suffix_is_not_unchecked(
+        self, mini_repo: Path
+    ):
+        """`_looks_like_python` already rescues these — a CLI verb with a Python
+        shebang is analysed, so calling it unchecked would be a false hole."""
+        script = mini_repo / "bin-tool"
+        script.write_text("#!/usr/bin/env python3\ndef run():\n    return 1\n")
+
+        evidence = json.loads(_run_verifier(mini_repo, "--base", "main").stdout)
+        assert "bin-tool" not in evidence["changes_unchecked"]
+
+    def test_a_run_that_analysed_nothing_warns_on_stderr(self, mini_repo: Path):
+        """The vacuous-pass case. Nothing judgeable, files sitting unanalysed —
+        an empty `changes_referenced` here means "not looked at", and the run
+        must say so out loud rather than emit a quietly clean record."""
+        (mini_repo / "Feature.swift").write_text("struct Feature {}\n")
+
+        result = _run_verifier(mini_repo, "--base", "main")
+        assert result.returncode == 0, result.stderr
+        assert "cannot analyse" in result.stderr
+        assert "Feature.swift" in result.stderr
+
+    def test_no_warning_when_something_was_judgeable(self, mini_repo: Path):
+        """A mixed diff analysed SOMETHING. The warning is for the run that
+        inspected nothing, not for every repo that contains a README."""
+        (mini_repo / "README.md").write_text("# Docs\n")
+        (mini_repo / "src" / "extra.py").write_text("def extra():\n    return 2\n")
+
+        result = _run_verifier(mini_repo, "--base", "main")
+        assert "cannot analyse" not in result.stderr
 
 
 class TestMultipleTestsDirs:

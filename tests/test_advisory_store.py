@@ -761,3 +761,152 @@ class TestSchemaMigration:
         write_store(tmp_path, read_store(tmp_path))
         raw = json.loads((tmp_path / ".prawduct" / ".advisories.json").read_text())
         assert raw["schema_version"] == SCHEMA_VERSION
+
+
+# ---------------------------------------------------------------------------
+# The two-audience schema: persistence round-trip and the fail-soft validator
+# ---------------------------------------------------------------------------
+
+
+class TestTwoAudienceFieldsPersist:
+    """The store WRITES `prerequisite_of` as `[{"type":…, "because":…}]` and the
+    briefing READS that shape back. Both halves were once covered only by briefing
+    tests that hand-built the stored dict, so the producer and the consumer agreed
+    with the test fixture and never with each other — rename either key and the
+    suite stays green while the one live ordering edge goes silently inert.
+    """
+
+    def _cand(self, **kw):
+        base = dict(
+            type="synthetic-condition",
+            evidence=("sig-1",),
+            trigger_summary="Synthetic trigger.",
+            owner_action="Decide whether to do the thing.",
+            recommended_action="/prawduct-advisory list",
+            feature="synthetic",
+            probe_version=1,
+        )
+        base.update(kw)
+        return AdvisoryCandidate(**base)
+
+    def _reconciled(self, candidate):
+        store = _adv.reconcile({"advisories": []}, [candidate], now="2026-01-01T00:00:00Z")
+        return store["advisories"][0]
+
+    def test_owner_action_reaches_the_stored_advisory(self):
+        assert self._reconciled(self._cand())["owner_action"] == "Decide whether to do the thing."
+
+    def test_prerequisite_pairs_persist_in_the_shape_the_briefing_reads(self):
+        stored = self._reconciled(
+            self._cand(prerequisite_of=(("backlog:migrate", "triage first, so one batch"),))
+        )
+        assert stored["prerequisite_of"] == [
+            {"type": "backlog:migrate", "because": "triage first, so one batch"}
+        ]
+        # The consumer's own reader must accept what the writer produced. This is
+        # the assertion that fails on a rename of either key.
+        from lib import briefing  # noqa: PLC0415 — test-local, avoids a module-load dependency
+
+        assert briefing._declared_prerequisites(stored) == [
+            ("backlog:migrate", "triage first, so one batch")
+        ]
+
+    def test_absent_fields_persist_as_empty_not_missing(self):
+        stored = self._reconciled(self._cand(owner_action="", prerequisite_of=()))
+        assert stored["owner_action"] == ""
+        assert stored["prerequisite_of"] == []
+
+
+class TestPrerequisiteValidatorFailsSoft:
+    """`_valid_prerequisites` exists to drop malformed declarations rather than
+    raise — advice fails soft. Every rejection branch is exercised, because a
+    validator whose rejection paths are untested is a validator that has never
+    been shown to reject anything.
+    """
+
+    @pytest.mark.parametrize(
+        "declared",
+        [
+            None,
+            "backlog:migrate",              # a bare string: iterating it yields characters
+            b"backlog:migrate",
+            123,                            # not iterable at all
+            [("only-one-element",)],
+            [("a", "b", "c")],              # three elements
+            ["backlog:migrate"],            # string entry inside the sequence
+            [{"type": "x", "because": "y"}],  # dict entry (the STORED shape, not the declared one)
+            [("", "because")],              # empty key
+            [("key", 7)],                   # non-string reason
+        ],
+    )
+    def test_malformed_declarations_yield_no_edges(self, declared):
+        assert _adv._valid_prerequisites(declared) == []
+
+    def test_well_formed_pairs_survive_and_a_list_is_accepted_alongside_a_tuple(self):
+        assert _adv._valid_prerequisites([("a:b", "why")]) == [("a:b", "why")]
+        assert _adv._valid_prerequisites((["a:b", "why"],)) == [("a:b", "why")]
+
+
+class TestActiveAdvisoryRefreshesItsDerivedText:
+    """A live count in `trigger_summary` is the thing meant to prove an advisory is
+    current, and on the re-fire path it was the stalest field in the store.
+    """
+
+    def _cand(self, summary, owner="Decide.", priority="info"):
+        return AdvisoryCandidate(
+            type="synthetic-condition",
+            evidence=("sig-1",),          # identity: deliberately unchanged
+            trigger_summary=summary,
+            owner_action=owner,
+            recommended_action="/prawduct-advisory list",
+            priority=priority,
+            feature="synthetic",
+            probe_version=1,
+        )
+
+    def test_refire_updates_the_summary_and_owner_action_but_not_the_identity(self):
+        first = _adv.reconcile(
+            {"advisories": []}, [self._cand("16 entries missing")], now="2026-01-01T00:00:00Z"
+        )
+        again = _adv.reconcile(
+            first, [self._cand("2 entries missing", owner="Approve the smaller fix.")],
+            now="2026-02-02T00:00:00Z",
+        )
+        assert len(again["advisories"]) == 1, "a re-fire must not duplicate the entry"
+        entry = again["advisories"][0]
+        assert entry["trigger_summary"] == "2 entries missing"
+        assert entry["owner_action"] == "Approve the smaller fix."
+        # Identity and lifecycle are untouched — this is still the same advisory,
+        # first seen when it was first seen (spec A2).
+        assert entry["id"] == first["advisories"][0]["id"]
+        assert entry["triggered_at"] == "2026-01-01T00:00:00Z"
+        assert entry["state"] == "active"
+
+    def test_a_dismissed_advisory_is_not_refreshed(self):
+        first = _adv.reconcile(
+            {"advisories": []}, [self._cand("16 entries missing")], now="2026-01-01T00:00:00Z"
+        )
+        first["advisories"][0]["state"] = "dismissed"
+        again = _adv.reconcile(first, [self._cand("2 entries missing")], now="2026-02-02T00:00:00Z")
+        assert again["advisories"][0]["state"] == "dismissed"
+        assert again["advisories"][0]["trigger_summary"] == "16 entries missing", (
+            "a dismissal is sticky; refreshing its text would re-open a closed question"
+        )
+
+
+def test_the_owner_action_fallback_has_one_spelling_across_both_renderers():
+    """`briefing.py` keeps a literal mirror of the store's fallback line.
+
+    Deliberate, not sloppy: the briefing reads the advisory store through the
+    dependency-light standalone reader so it survives a partial install, and
+    importing `advisory_store` for one string would give that up. A mirror needs a
+    pin, or the two surfaces drift into telling an owner two different things about
+    an advisory that names no action.
+    """
+    from lib import briefing
+
+    assert briefing.OWNER_ACTION_FALLBACK == _adv.OWNER_ACTION_FALLBACK
+    # It is a decision, not a command — the same rule the authoring lint applies to
+    # every probe-authored owner line applies to the one the framework writes.
+    assert "prawduct-hook" not in _adv.OWNER_ACTION_FALLBACK
+    assert "/prawduct:" not in _adv.OWNER_ACTION_FALLBACK

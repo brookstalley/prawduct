@@ -10,6 +10,8 @@ mirrors ``test_upstream_probes.py`` (autouse ``clear_registry``).
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from lib.advisory_store import (
@@ -152,3 +154,144 @@ def test_register_runs_in_the_roster(tmp_path):
     assert len(fired) == 1
     assert fired[0].feature == "api-design"
     assert fired[0].probe_version == av.PROBE_VERSION
+
+
+# --- conformance: is the recorded decision KEPT --------------------------------
+
+_CONTRACT = """
+# API Contract
+
+## Deprecation & Compatibility
+
+Retention: additive-first; removal defers to a major.
+
+## Surface Inventory & Stability Tiers
+
+- `clear` — stable
+- `build-index` — deprecated
+- `sketch` — experimental
+
+## Conventions
+
+- `not-a-member` — stable
+"""
+
+
+def test_declared_surface_reads_names_and_tiers():
+    members = av.declared_surface(_CONTRACT)
+    assert [(m.name, m.tier) for m in members] == [
+        ("clear", "stable"),
+        ("build-index", "deprecated"),
+        ("sketch", "experimental"),
+    ]
+
+
+def test_the_inventory_is_scoped_to_its_own_section():
+    """An inventory-shaped bullet under a different heading is not a declaration
+    — otherwise every example in the artifact becomes a promise."""
+    assert "not-a-member" not in {m.name for m in av.declared_surface(_CONTRACT)}
+
+
+def test_retention_policy_is_free_text():
+    assert av.retention_policy(_CONTRACT) == "additive-first; removal defers to a major."
+
+
+def test_an_authoring_comment_declares_nothing():
+    """The template SHOWS both forms by example inside HTML comments. Reading
+    those as declarations makes an unauthored artifact report a binding policy
+    over a surface nobody declared — a finding invented out of instructions."""
+    commented = """
+# API Contract
+
+<!-- Retention: removal defers to a major.
+
+## Surface Inventory & Stability Tiers
+
+- `example` — stable
+-->
+"""
+    assert av.retention_policy(commented) is None
+    assert av.declared_surface(commented) == ()
+
+
+def test_the_shipped_template_declares_nothing():
+    """The real file, not a fixture of it: an untouched template must be inert."""
+    template = (
+        Path(__file__).resolve().parents[1]
+        / "plugin" / "templates" / "api-contract.md"
+    ).read_text()
+    assert av.retention_policy(template) is None
+    assert av.declared_surface(template) == ()
+    assert av.conformance_departures(template, set()) == ()
+
+
+def test_an_unfilled_placeholder_is_not_a_declaration():
+    text = """
+## Deprecation & Compatibility
+
+Retention: <your rule, or "none">
+
+## Surface Inventory & Stability Tiers
+
+- `<member>` — stable
+"""
+    assert av.retention_policy(text) is None
+    assert av.declared_surface(text) == ()
+
+
+def test_a_removed_promised_member_is_a_departure():
+    out = av.conformance_departures(_CONTRACT, {"clear", "sketch"})
+    assert [(d.member, d.kind) for d in out] == [("build-index", "removed")]
+    assert out[0].policy == "additive-first; removal defers to a major."
+
+
+def test_experimental_may_break():
+    """`experimental` is the tier whose entire meaning is "this may break", so
+    removing one is the policy working rather than a departure from it."""
+    assert av.conformance_departures(_CONTRACT, {"clear", "build-index"}) == ()
+
+
+def test_nothing_removed_is_no_departure():
+    assert av.conformance_departures(_CONTRACT, {"clear", "build-index", "sketch"}) == ()
+
+
+def test_no_recorded_policy_reports_nothing():
+    """The absence of a decision is the PRESENCE leg's WARNING. Reporting it here
+    too would file one gap twice under two severities."""
+    text = _CONTRACT.replace("Retention: additive-first; removal defers to a major.", "")
+    assert av.retention_policy(text) is None
+    assert av.conformance_departures(text, set()) == ()
+
+
+def test_a_policy_that_promises_nothing_binds_nothing():
+    """Force the decision, don't mandate the answer: "none" is a valid recorded
+    policy, and manufacturing a finding out of it inverts the whole feature."""
+    text = _CONTRACT.replace(
+        "Retention: additive-first; removal defers to a major.", "Retention: none"
+    )
+    assert av.retention_policy(text) == "none"
+    assert av.conformance_departures(text, set()) == ()
+
+
+def test_dropping_the_entry_does_not_retire_the_promise():
+    """Deleting the member and its inventory line in one change is amending the
+    norm to match the code — the tell Goal 3's Normative authority names. Without
+    the previous artifact the promise and the thing it protected vanish together."""
+    after = _CONTRACT.replace("- `build-index` — deprecated\n", "")
+    assert av.conformance_departures(after, {"clear", "sketch"}) == ()
+
+    out = av.conformance_departures(
+        after, {"clear", "sketch"}, previous_contract_text=_CONTRACT
+    )
+    assert [(d.member, d.kind) for d in out] == [("build-index", "undeclared")]
+
+
+def test_un_declaring_a_member_that_is_still_there_is_not_a_departure():
+    """Reclassifying a member out of the public inventory while it still exists
+    is a promise being narrowed deliberately, not a consumer being broken. The
+    departure this leg reports is a removal."""
+    after = _CONTRACT.replace("- `build-index` — deprecated\n", "")
+    out = av.conformance_departures(
+        after, {"clear", "build-index", "sketch"}, previous_contract_text=_CONTRACT
+    )
+    assert out == ()

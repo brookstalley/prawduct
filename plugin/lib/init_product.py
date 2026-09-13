@@ -9,7 +9,9 @@ this module is **plugin-only** (no ``tools/lib/`` twin), mirroring ``migrate_plu
 that committed only the install reference has no framework checkout to call back to.
 
 Creates:
-  - ``.prawduct/project-state.yaml``                  (rendered; ``distribution: plugin`` recorded)
+  - ``.prawduct/project-state.yaml``                  (rendered; ``distribution: plugin`` recorded,
+                                                       plus ``base_branch:`` when the remote's
+                                                       default branch is not main/master)
   - ``.prawduct/learnings.md``                        (starter)
   - ``.prawduct/backlog.md``                          (template)
   - ``.prawduct/change-log.md``                       (template)
@@ -38,10 +40,13 @@ from pathlib import Path
 from . import core, learnings_obligation
 from .migrate_plugin import (
     ANCHOR_SENTINEL,
+    BASE_BRANCH_KEY,
     DISTRIBUTION_VALUE,
     INSTALL_REFERENCE,
     apply_claude_anchor,
+    detect_base_branch,
     ensure_marker_gitignored,
+    record_base_branch,
     record_distribution,
     transform_settings,
 )
@@ -163,6 +168,11 @@ def init_product(
     never recorded; the repo need not exist on GitHub (or be a git repo) to record
     the intended target. Ignored on a re-run of an already-scaffolded repo (that is a
     cutover, owned by ``/prawduct:backlog scrub``, not a re-scaffold).
+
+    ``base_branch`` in the result is the integration base the scaffolded repo will
+    have the gates anchor to: written when the remote's own default branch is
+    outside the ``main`` family (#254) and absent — reported ``None`` — in an
+    ordinary trunk repo, where the resolver already answers ``main`` unaided.
     """
     project_dir = Path(project_dir).resolve()
     created: list[str] = []
@@ -200,6 +210,7 @@ def init_product(
             "edited": edited,
             "created_dirs": created_dirs,
             "backlog_service_repo": None,
+            "base_branch": None,
             "warnings": warnings,
         }
 
@@ -260,6 +271,27 @@ def init_product(
     # project-state.yaml is already in `created` above; the distribution line is an
     # append to that same new file, so it needs no separate report entry.
 
+    # base_branch — the gitflow knob, written ONLY when the remote's own default
+    # branch is outside the main family (#254). A repo cloned from a develop-default
+    # remote otherwise onboards with every diff-base gate silently anchored to
+    # `main`, i.e. reviewing the whole develop..main promotion delta. A trunk repo
+    # gets nothing: the resolver already answers `main` without a knob, and a key
+    # that only restates the default is noise in every ordinary repo. Same append
+    # target as the distribution line, so it needs no separate report entry.
+    #
+    # Reported as what the file HOLDS, on both paths — the same rule
+    # `backlog_service_repo` follows. A repo that already carries an operator's
+    # own `base_branch:` keeps it (the writer no-ops), and a report derived from
+    # the detection would name a branch that is not the one the gates will use.
+    state_path = project_dir / ".prawduct" / "project-state.yaml"
+    if apply:
+        record_base_branch(project_dir)
+        base_branch_recorded = core.read_str_yaml_key(state_path, BASE_BRANCH_KEY)
+    else:
+        base_branch_recorded = core.read_str_yaml_key(
+            state_path, BASE_BRANCH_KEY
+        ) or detect_base_branch(project_dir)
+
     # backlog_service_repo — only when a valid --backlog-repo was given (day-one
     # Issues adoption). Appended to the same new project-state.yaml, so like the
     # distribution line it needs no separate `created`/`edited` entry.
@@ -316,6 +348,10 @@ def init_product(
         # field must therefore gate on `applied`: provisioning against a dry run
         # writes labels into a real repo whose scaffold does not exist.
         "backlog_service_repo": backlog_repo_recorded,
+        # The recorded gitflow base (#254): the branch actually written on apply,
+        # the branch that WOULD be written on a dry run, or None — which is the
+        # ordinary trunk-repo answer, not a failure.
+        "base_branch": base_branch_recorded,
         "warnings": warnings,
     }
 
@@ -445,6 +481,11 @@ def run(argv: list[str]) -> int:
         # Stale ignore lines stripped (managed files / retired entries like the
         # tracked-by-default build plan) — the onboard skill advises `git add`.
         print(f"  unignored   {f} — now tracked-by-contract; `git add` it if present")
+    if result.get("base_branch"):
+        # Said out loud: it changes what every diff-base gate measures against,
+        # and only the operator knows whether this repo really integrates there.
+        print(f"  {verb}      base_branch: {result['base_branch']} "
+              "(origin/HEAD names it — the coverage/Critic/PR gates anchor here)")
     if result.get("backlog_service_repo"):
         print(f"  {verb}      backlog_service_repo: {result['backlog_service_repo']} "
               "(GitHub Issues backend — provision its labels next)")

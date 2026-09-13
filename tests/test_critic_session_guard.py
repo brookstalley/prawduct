@@ -956,6 +956,33 @@ class TestRestoreEdgeStates:
         assert "no dispatch manifest" in result["blocked_reason"]
         assert result["restored"] == ["correctness.rev-gone.json"]
 
+    def test_the_round_trip_survives_the_manifest_that_caused_the_archive(self, tmp_path):
+        """The disk this whole bundle is about, walked end to end: an
+        undecodable manifest is what makes `critic-begin` sweep, the sweep
+        preserves it into the archive, and `critic-restore` — the undo both
+        `begin_review` and `critic-discard` advertise by name — used to
+        traceback on it. Worse than the other members of that class: the
+        all-or-nothing copy has already completed by then, so the files are back
+        in place with no verdict printed, and the retry meets the "another
+        review is in the way" refusal.
+        """
+        prawduct = tmp_path / ".prawduct"
+        partials = prawduct / ".critic-partials"
+        partials.mkdir(parents=True)
+        (partials / "manifest.json").write_bytes(b"\xff\xfe\x00binary")
+        (partials / "correctness.rev-x.json").write_text("{}")
+
+        archived = cc._archive_leftovers(prawduct)
+        assert archived is not None and archived.name.startswith("unmanifested-")
+        assert not any(partials.iterdir()), "the sweep clears the directory it archives"
+
+        result = cc.restore_review(prawduct, archived.name)
+
+        assert result["status"] == "ok"
+        assert result["consolidatable"] is False
+        assert "unreadable" in result["blocked_reason"]
+        assert sorted(result["restored"]) == ["correctness.rev-x.json", "manifest.json"]
+
     def test_a_pre_keying_archive_restores_but_cannot_be_recorded(self, tmp_path):
         """The upgrade case, and the one the Governance Checkpoint names as this
         plan's exposure. A set archived by v3.2.6 carries a manifest with no

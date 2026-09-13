@@ -20,17 +20,19 @@ When someone opens this directory, route on what they came for:
 | **Framework development** (this repo) | It is a Prawduct product in active development. Read `.prawduct/project-state.yaml` and `.prawduct/learnings.md`; apply the methodology to framework changes like any other work. |
 | **Onboard another product** — *"set up prawduct for ../foo"* | `/prawduct:onboard <target-path>` (it routes a pre-2.0 file-sync repo to `/prawduct:migrate`). Then tell the user to open the target in a new session — `claude <target-path>` — because governance loads at session start. `/prawduct:doctor` for an already-onboarded repo. |
 | **Ad-hoc work outside this repo** — *"build me X in ../foo"* | Not framework work and not being onboarded. Do the work, applying the principles as engineering judgment rather than as process. Reflect at the end on whether the methodology helped, hindered, or was irrelevant — that observation is the only thing this repo gets out of it. |
-| **Review product feedback** — *"what have my products learned?"* | Scan known product directories for `.prawduct/learnings.md`, looking for methodology friction; summarize it and propose framework updates. Also triage `incoming-bugs/` — upstream bug reports about prawduct itself, which the `untriaged-upstream-reports` advisory nudges — into the backlog via `/prawduct:backlog`, then archive each (`/prawduct:report-bug`). |
+| **Review product feedback** — *"what have my products learned?"* | Scan known product directories for `.prawduct/learnings.md`, looking for methodology friction; summarize it and propose framework updates. Also triage upstream bug reports about prawduct itself: they arrive as issues, the `untriaged-upstream-reports` advisory counts them, and staging one clears it (`/prawduct:backlog`; intake set and steps: `/prawduct:report-bug`). |
 | **First contact** — *"what is this?"* | Prawduct helps you build software by guiding structured discovery, producing quality specifications, governing the build, and learning from experience. It installs as a Claude Code plugin; product repos commit a small install reference and no framework files. |
 
 ## Before Building: Requirements Clarity
 
 When the user says "build X," "implement Y," or "let's add Z" — this fires before a plan exists,
-which is before `building.md` is read — check three things:
+which is before `building.md` is read — check four things:
 
 1. **What problem does this solve?** (Observable, not abstract.)
 2. **What does success look like?** (Specific, verifiable.)
 3. **What's out of scope?** (What you're deliberately not doing.)
+4. **Should it be built as asked?** Lead with the expert take — the risk, the simpler
+   alternative, or explicit agreement — then build. Silence here reads as endorsement.
 
 If any is unclear, **don't start building.** State the gap, offer the cheapest close — one targeted
 question, an inferred assumption to confirm, or a 5-line scope sketch — then proceed. One round of
@@ -38,8 +40,8 @@ clarification is cheap; building the wrong thing is not.
 
 ## Methodology
 
-The narrative guides live in `plugin/methodology/`: `discovery.md` (before exploring a problem),
-`planning.md` (before designing artifacts or a build plan), `building.md`, `reflection.md`.
+The narrative guides live in `plugin/methodology/`: `discovery.md`, `planning.md`, `building.md`,
+`reflection.md`, `delegation.md` — the reader carries each one's when-to-read.
 **Read the one for the work you are entering — the file itself, not from memory.**
 
 ## The Critic — Independent Review

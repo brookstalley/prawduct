@@ -119,6 +119,18 @@ class TestApiPaged:
         )
         assert len(gh2.list_sub_issues(OWNER, REPO, 1)) == 105
 
+    def test_comments_use_the_loop_and_reduce(self):
+        # The DM5 drill-down read pages like every other list endpoint and
+        # reduces each comment to the fields the item read carries.
+        gh = _PagedGh(
+            [{"id": i, "user": {"login": "u"}, "created_at": "t",
+              "body": f"c{i}", "html_url": f"h{i}"} for i in range(120)]
+        )
+        out = gh.list_comments(OWNER, REPO, 1)
+        assert len(out) == 120
+        assert len(gh.requests) == 2
+        assert out[0] == {"id": 0, "author": "u", "created_at": "t", "body": "c0", "url": "h0"}
+
     def test_page_cap_raises_rather_than_returning_a_prefix(self):
         """A cap trip is a failure, not a short answer. Returning the collected
         prefix made a truncated result indistinguishable from a complete one —
@@ -135,6 +147,42 @@ class TestApiPaged:
         assert exc.value.code == "unavailable"
         assert "truncated" in exc.value.message
         assert exc.value.details["max_pages"] == tp.MAX_PAGES
+
+    def test_on_cap_stop_ends_the_walk_instead_of_raising(self):
+        """The opt-in windowed read. `find_upstream`-style callers look a bounded
+        distance back and treat "not in the window" as a real answer, so the cap
+        is their terminator rather than their failure."""
+        pages = [[{"n": i} for i in range(100)] for _ in range(10)]
+
+        out = list(tp.paginate(
+            lambda page, per_page: pages[page - 1], max_pages=3, on_cap="stop"
+        ))
+
+        assert len(out) == 300, "a windowed read returned something other than its window"
+
+    def test_the_default_still_raises_so_no_caller_gets_a_silent_prefix(self):
+        """The guarantee `on_cap` must not erode. Stated as its own test because
+        the failure mode is a DEFAULT quietly changing: every completeness-seeking
+        caller inherits this one, and none of them passes the flag."""
+        pages = [[{"n": i} for i in range(100)] for _ in range(10)]
+
+        with pytest.raises(tp.TransportError):
+            list(tp.paginate(lambda page, per_page: pages[page - 1], max_pages=3))
+
+    def test_an_unknown_on_cap_is_refused_rather_than_defaulted(self):
+        """Falling through to the safe default is still wrong: a caller who typed
+        `on_cap="Stop"` wanting a window would get a truncation failure with
+        nothing pointing at the typo."""
+        with pytest.raises(ValueError, match="on_cap"):
+            list(tp.paginate(lambda page, per_page: [], on_cap="Stop"))
+
+    def test_on_cap_stop_still_raises_on_an_unreadable_page(self):
+        """`stop` softens the CAP TRIP and nothing else. A window that swallowed
+        transport failures would answer "nothing in the window" for an outage —
+        the same indistinguishable-prefix defect, one layer down."""
+        with pytest.raises(tp.TransportError) as exc:
+            list(tp.paginate(lambda page, per_page: None, max_pages=3, on_cap="stop"))
+        assert "could not be read" in exc.value.message
 
 
 # --- BKL-5T3J: raw pages + decode-layer PR filtering -------------------------

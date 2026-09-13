@@ -71,7 +71,19 @@ SCRUB_ONLY_OPS = ("import", "merge", "provision", "reconcile-labels")
 # "corrects drift by adding what is missing, never by removing" — so onboard and
 # doctor grant them no-prompt on purpose: running them IS what those flows are
 # for. They stay out of the backlog skill's own grant regardless (below).
-IRREVERSIBLE_OPS = ("import", "merge")
+IRREVERSIBLE_OPS = ("import", "merge", "file-upstream")
+
+#: The grant form for each everyday op. `<op>*` is the house form (JNT-4R2M, #730)
+#: and holds wherever no other dispatched op extends the op's name. `file` is the
+#: exception and the reason the rule below exists: `file*` also permits
+#: `file-upstream`, which writes into a FOREIGN public repo irreversibly, so its
+#: grant stops at the flag lead-in. `test_no_everyday_grant_leaks_another_op`
+#: proves this map is complete rather than remembered.
+_GRANT_SUFFIX: dict[str, str] = {"file": " --*"}
+
+
+def _grant_form(inv: str, op: str) -> str:
+    return f"Bash({inv} {op}{_GRANT_SUFFIX.get(op, '*')})"
 
 _INVOCATIONS = ("prawduct-hook backlog", "python3 plugin/bin/prawduct-hook backlog")
 
@@ -82,6 +94,17 @@ def _allowed_tools() -> str:
     )
     assert m is not None, "backlog SKILL.md missing `allowed-tools:` frontmatter field"
     return m.group(1).strip()
+
+
+def _dispatched_ops() -> tuple[str, ...]:
+    """The CLI's own op surface — asked of the source, never re-typed here, so an
+    op added tomorrow is checked by the rules below without anyone remembering."""
+    import sys
+
+    sys.path.insert(0, str(PLUGIN))
+    from lib.backlog import cli
+
+    return cli._ALL_OPS
 
 
 def _granted_patterns() -> list[str]:
@@ -102,26 +125,72 @@ def _grant_matches(pattern: str, command: str) -> bool:
 
 
 def test_no_bare_wildcard_grant():
+    # Both spellings, so the narrowing cannot be undone by respelling the star:
+    # `backlog *` and `backlog*` confer the same thing.
     allowed = _allowed_tools()
     for inv in _INVOCATIONS:
-        assert f"Bash({inv} *)" not in allowed, (
-            f"backlog SKILL.md still grants the bare wildcard `Bash({inv} *)` — "
-            "narrow it to the everyday ops so high-consequence scrub ops prompt "
-            "(BKL-5N9W)."
-        )
+        for grant in (f"Bash({inv} *)", f"Bash({inv}*)"):
+            assert grant not in allowed, (
+                f"backlog SKILL.md still grants the bare wildcard `{grant}` — "
+                "narrow it to the everyday ops so high-consequence scrub ops prompt "
+                "(BKL-5N9W)."
+            )
 
 
 def test_everyday_ops_granted_in_both_forms():
+    """The house grant form (#730): the star attaches to the last command word with
+    NO space, one line per command.
+
+    A Bash grant is a literal prefix match, so the old `... <op> *)` spelling
+    required a trailing space plus an argument and did not cover the bare call —
+    which fell through to a permission prompt nothing in an unattended run can
+    answer. The attached star covers the bare call and every argument form at once.
+
+    ``_GRANT_SUFFIX`` records where the house form cannot hold: an attached star
+    also covers every op whose name *extends* this one, which is a widening nobody
+    writing the grant intended.
+    """
     allowed = _allowed_tools()
     missing: list[str] = []
     for op in EVERYDAY_OPS:
         for inv in _INVOCATIONS:
-            grant = f"Bash({inv} {op} *)"
+            grant = _grant_form(inv, op)
             if grant not in allowed:
                 missing.append(grant)
     assert not missing, (
-        "backlog SKILL.md is missing everyday-op grants (both invocation forms are "
-        "required — JNT-4R2M):\n  - " + "\n  - ".join(missing)
+        "backlog SKILL.md is missing everyday-op grants in the house form — the "
+        "star attaches to the op with no space, and both invocation forms are "
+        "required (JNT-4R2M, #730):\n  - " + "\n  - ".join(missing)
+    )
+
+
+def test_no_everyday_grant_leaks_another_op():
+    """An everyday-op grant must permit that op and no other dispatched one.
+
+    The house form `<op>*` is a prefix match, so it silently confers every op whose
+    name extends the granted one. `file*` permitted `file-upstream` — a filing into
+    a foreign public repo, irreversible, and precisely the op whose whole design is
+    a per-report human approval — from the moment that op existed, with every
+    grant test green. The narrowing is real but the general rule is what keeps it:
+    the next op named `list-*` or `sync-*` reopens this the same way.
+    """
+    patterns = _granted_patterns()
+    everyday = set(EVERYDAY_OPS)
+    leaked: list[str] = []
+    for op in _dispatched_ops():
+        if op in everyday:
+            continue
+        for inv in _INVOCATIONS:
+            command = f"{inv} {op} --title T"
+            leaked += [
+                f"`Bash({p})` permits `{command}`"
+                for p in patterns
+                if _grant_matches(p, command)
+            ]
+    assert not leaked, (
+        "an everyday-op grant reaches an op that is not an everyday op — narrow it "
+        "(record the narrowing in `_GRANT_SUFFIX`) so the extra op prompts:\n  - "
+        + "\n  - ".join(leaked)
     )
 
 

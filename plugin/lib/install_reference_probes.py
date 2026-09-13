@@ -45,7 +45,8 @@ repos all carry a correct reference produces no advisory here, because the
 stranding is not in anything this probe can see. What a drifted committed
 reference does cost is the *next* clone — it is what a fresh checkout or a new
 machine seeds from, which is `/prawduct:doctor` Health Check #1's own stated
-rationale ("contributors won't get governance on clone"). That is why the
+rationale (the next clone seeds from it and has nothing to resolve the
+install against). That is why the
 advisory still routes to doctor, which is model-side and *can* read the
 machine-level file: the two halves are complementary checks, not two ends of
 one loop.
@@ -63,7 +64,7 @@ import time, so the infrastructure stays feature-agnostic.
 from __future__ import annotations
 
 from .advisory_store import AdvisoryCandidate, Codebase, ProjectState, register_probe
-from .migrate_plugin import INSTALL_REFERENCE, install_reference_drift
+from .migrate_plugin import INSTALL_REFERENCE, PLUGIN_ID, install_reference_drift
 
 FEATURE = "install-reference"
 PROBE_VERSION = 1
@@ -71,7 +72,7 @@ PROBE_VERSION = 1
 #: The one contract field whose drift is not a *version* problem — governance is
 #: off rather than pinned, so it earns a different consequence clause. Derived
 #: from the contract's own key so it tracks a rename.
-_ENABLED_PLUGINS_FIELD = f"enabledPlugins.{next(iter(INSTALL_REFERENCE['enabledPlugins']))}"
+_ENABLED_PLUGINS_FIELD = f"enabledPlugins.{PLUGIN_ID}"
 
 
 def _fmt(value: object) -> str:
@@ -142,6 +143,17 @@ def probe_install_reference_drift(state: ProjectState, codebase: Codebase):
                 "drift travels to the next person even when it costs you nothing here",
             ),
             trigger_summary=_summary(drift["drifted"]),
+            # The owner line has to answer "why should I care, if nothing here is
+            # broken?" — because on THIS machine nothing is (the comment on priority
+            # below spells out why). The cost is borne by the next person to clone,
+            # which is a thing only the person deciding whether to commit a fix can
+            # weigh, and it is invisible from where they are sitting.
+            owner_action=(
+                "Say go — this edits a committed file, so you will see a diff to review "
+                "before anything is staged. It changes nothing about how this machine "
+                "runs; what it fixes is what a fresh clone or a new teammate's machine "
+                "would set itself up from."
+            ),
             # Doctor Health Check #1 asserts this whole contract — every field this
             # probe can fire on, `autoUpdate` included. That was not true when this
             # probe was written (HC#1 checked `enabledPlugins` and `ref` only), which
@@ -149,19 +161,22 @@ def probe_install_reference_drift(state: ProjectState, codebase: Codebase):
             # this fires on. Kept as one contract in two places rather than two
             # contracts: if a field is added here, add it there.
             recommended_action="/prawduct:doctor",
-            # `info`, deliberately. `briefing._RELAY_PRIORITIES` is {warn, urgent}, so
-            # this never reaches the person-facing relay. Right here, because the
-            # condition costs the CURRENT machine nothing — and that holds for every
-            # contract field, though for two different reasons worth keeping distinct:
+            # `info`, deliberately — which since 2026-08-03 means relayed as ONE
+            # COMPACT LINE rather than not relayed at all (the relay now covers every
+            # priority and scales verbosity instead; `observability-strategy.md` § How
+            # the owner actually learns). The priority is still right, and for the
+            # same reason: the condition costs the CURRENT machine nothing — which
+            # holds for every contract field, though for two reasons worth keeping
+            # distinct:
             #   - marketplace/source/autoUpdate drift: measured decoupling from the
             #     machine-level file (see module docstring, #120).
             #   - `enabledPlugins: false`: not measured, and does not need to be — this
             #     probe only runs at all because the plugin IS loaded in this session,
             #     so a committed `false` is self-evidently not binding here.
             # It is also self-resolving and re-fires every session until someone commits
-            # the fix — exactly the profile the relay exclusion exists for; a nudge that
-            # pages a person every session about a cost they will not pay today is the
-            # one that teaches them to skip the channel. Raise to `warn` only if the
+            # the fix — exactly the profile the compact form exists for; a nudge that
+            # takes a paragraph every session about a cost they will not pay today is
+            # the one that teaches them to skip the channel. Raise to `warn` only if the
             # decoupling is ever falsified in the other direction.
             priority="info",
         )
