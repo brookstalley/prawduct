@@ -44,6 +44,19 @@ correct action is VRF-017, then a tick.
 `develop` reopens on `3.5.1-dev` — guessed low on purpose, so every possible next cut is a forward
 move for anyone running the develop track.
 
+**Two `Done when` items graded a correct release wrong, and both are fixed in the runbook rather
+than filed.** The content-identity bullet enumerated *five* files and this cut's reopen commit
+carries seven — the release plan's `Status:` line and step 11a itself — so a correct release reads
+as "Phase 2 did not finish"; the bullet now says what the reopen commit carries and points at step
+17, which is the check that actually proved identity, before the promotion. And the install triage
+fatals on a **prerelease** installed version: this machine's cache is keyed `3.4.1-dev.2`, no such
+tag exists, `git rev-parse "v3.4.1-dev.2:plugin"` errors, and the `||` branch prints *cache holds a
+NON-release plugin — case 2 or 3*, routing a perfectly correct develop-track install at the
+delete-the-cache remedy. That is the same false-negative shape #646 removed from the ancestry test,
+surviving one layer up. A `case 0` now names it with a test that applies — does the cached plugin's
+own `plugin/VERSION` equal the key it is cached under — and the old command is gated behind ruling
+it out.
+
 ## 2026-09-12: `check-branch-pushed` — the merge gate that fails closed on an unpushed commit
 
 <!-- prawduct: type=fix | scope=branch-pushed-gate | release=v3.5.0 -->
