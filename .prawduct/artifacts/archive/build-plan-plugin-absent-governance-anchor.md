@@ -88,7 +88,13 @@ partition: >
   documents both. Delegation was considered and declined: the chunks share one constant and one
   file, so parallel delegates would contend on `migrate_plugin.py` for no wall-clock gain.
 last_validated: 2026-08-25
+lifecycle: completed
+archived: 2026-09-13
+released_in: v3.5.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Requirements Confidence
 

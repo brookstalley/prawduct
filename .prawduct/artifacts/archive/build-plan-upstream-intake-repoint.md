@@ -40,7 +40,13 @@ governed_by:
       - "whole-surface semantic versioning; the internal CLI subcommand surface carries no per-subcommand version → conforms; `bug-inbox` is in neither stable-tier subcommand"
 partition: serial — 02 retires exactly what 01's replacement makes retirable, and that ordering IS design §7's lockstep. The two also collide on `plugin/skills/report-bug/SKILL.md`'s receiving-side section, which 01 makes stale and 02 rewrites
 last_validated: 2026-09-08
+lifecycle: completed
+archived: 2026-09-13
+released_in: v3.5.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Requirements Confidence
 

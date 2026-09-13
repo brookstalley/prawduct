@@ -52,7 +52,13 @@ governed_by:
       - "a governed product content never leaves its own repository and owner -> conforms - every surface here is local; nothing added reaches a network"
 partition: serial — all three chunks edit `critic_consolidate.py` at the same dispatch/render seam; delegates would collide on one file and the coordinator would own every merge anyway
 last_validated: 2026-08-25
+lifecycle: completed
+archived: 2026-09-13
+released_in: v3.5.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Requirements Confidence
 

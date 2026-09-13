@@ -36,7 +36,13 @@ governed_by:
       - "two stores, two lifetimes → conforms; Wave A persists nothing at all, in either store"
 partition: serial — 02 extends 01's op on the same module, and 03 records what 01–02 built
 last_validated: 2026-09-07
+lifecycle: completed
+archived: 2026-09-13
+released_in: v3.5.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Requirements Confidence
 

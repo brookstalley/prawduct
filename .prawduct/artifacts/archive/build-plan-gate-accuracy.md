@@ -20,7 +20,13 @@ governed_by:
       - "two stores, two lifetimes: shared committed answers vs per-clone gitignored nags → conforms; the evidence record this changes the freshness of is already per-clone and gitignored, and neither chunk moves a fact between stores."
 partition: serial — Chunk 02 is prose about a mechanism Chunk 01 does not touch, but it rides the same review and the same PR, so there is no reason to parallelize two edits one reviewer reads together. **Both chunks are reviewed by ONE cumulative pass rather than the per-chunk review each `Done when` names** — the combined diff is ~5 files and well under the roster's 12-file bound, and two dispatches over one small bundle buys a second round without a second reader's worth of attention. Recorded as a deviation from this plan's own prescribed method, which `architecture.md` § Direction permits and asks be written down.
 last_validated: 2026-09-09
+lifecycle: completed
+archived: 2026-09-13
+released_in: v3.5.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Requirements Confidence
 

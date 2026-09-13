@@ -35,7 +35,13 @@ governed_by:
       - "two stores, two lifetimes → conforms, and Chunk 02 tightens it by subtraction: submit-or-nothing removes the local-capture write, so the failure path stops leaving a committed backlog item behind for an upstream bug"
 partition: serial — 02 rewrites the caller that 01's preference row governs, and both edit the same consent story
 last_validated: 2026-09-07
+lifecycle: completed
+archived: 2026-09-13
+released_in: v3.5.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Requirements Confidence
 

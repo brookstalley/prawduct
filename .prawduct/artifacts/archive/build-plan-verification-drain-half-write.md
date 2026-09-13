@@ -50,7 +50,13 @@ governed_by:
 partition: serial, single chunk — four defects share one write path and one review is cheaper than
   four; splitting them would buy nothing and cost three extra Critic rounds
 last_validated: 2026-09-12
+lifecycle: completed
+archived: 2026-09-13
+released_in: v3.5.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Requirements Confidence
 

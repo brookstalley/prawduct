@@ -29,7 +29,13 @@ governed_by:
       - "review wall-clock is a P0 constraint → conforms; three chunks, one Critic pass each, no new review surface"
       - "state-file growth is advisory, never a hard block → inapplicable"
 last_validated: 2026-08-27
+lifecycle: completed
+archived: 2026-09-13
+released_in: v3.5.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Requirements Confidence
 

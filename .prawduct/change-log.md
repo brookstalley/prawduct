@@ -5,7 +5,7 @@
 
 ## 2026-09-12: `check-branch-pushed` — the merge gate that fails closed on an unpushed commit
 
-<!-- prawduct: type=fix | scope=branch-pushed-gate -->
+<!-- prawduct: type=fix | scope=branch-pushed-gate | release=v3.5.0 -->
 
 The gate #248 has specified since 2026-07-09, built. A branch is merged from its remote ref while
 every gate around the merge validates local HEAD, so a commit made after the last push — very often
@@ -59,7 +59,7 @@ Resolves #248.
 
 ## 2026-09-12: the PR flow re-checks that the remote ref is HEAD before creating or merging
 
-<!-- prawduct: type=fix | scope=pr-push-head-divergence -->
+<!-- prawduct: type=fix | scope=pr-push-head-divergence | release=v3.5.0 -->
 
 PR #803 merged one commit short of its branch, and no gate in a fully-governed flow noticed. The
 branch was pushed with `-u` during the flow's own wait-time prep — legitimate, and what the skill
@@ -95,7 +95,7 @@ was filed on.
 
 ## 2026-09-12: the verification drain refuses an entry it cannot read, instead of reporting success
 
-<!-- prawduct: type=fix | scope=verification-drain-half-write -->
+<!-- prawduct: type=fix | scope=verification-drain-half-write | release=v3.5.0 -->
 
 `prawduct-hook verify-operator-verification <ID>` printed `Marked <ID> verified`, appended a
 `**Verified:**` footer, changed no status, and exited 0. The gate went on counting the entry pending,
@@ -165,7 +165,7 @@ defect as the half-write, one surface up, which is exactly how it was found.
 
 ## 2026-09-11: a participle behind a determiner stops reading as a closing keyword
 
-<!-- prawduct: type=fix | scope=closing-keyword-classifier -->
+<!-- prawduct: type=fix | scope=closing-keyword-classifier | release=v3.5.0 -->
 
 The closing-keyword guard reddened the suite on ordinary English. A requirements document wrote
 "adjacent to the closed #422" — an adjective describing an issue's state — and the guard read it as
@@ -196,7 +196,7 @@ later re-widening fails a test instead of going quiet.
 
 ## 2026-08-25: a clone without the plugin is told so, instead of being told a gate is watching
 
-<!-- prawduct: type=fix | scope=plugin-absent-governance-anchor -->
+<!-- prawduct: type=fix | scope=plugin-absent-governance-anchor | release=v3.5.0 -->
 
 A repo governed by prawduct, cloned onto a machine where the plugin was never installed, ran
 completely ungoverned and said nothing about it. Measured rather than reasoned about: on a simulated
@@ -248,7 +248,7 @@ mechanism prawduct does not control and went false with nothing in this repo cha
 
 ## 2026-09-10: the four-socket epic's missing first document lands
 
-<!-- prawduct: type=docs | scope=coverage-socket-1-docs -->
+<!-- prawduct: type=docs | scope=coverage-socket-1-docs | release=v3.5.0 -->
 
 The change-evidence contract is four sockets, and three of them — #618 blast radius, #619
 diff-scoped mutation, #620 API diff — have carried both a requirements and a design document on
@@ -276,7 +276,7 @@ stamp stands and the drift is named here instead.
 
 ## 2026-09-10: an audit of develop, and the three findings that could not wait for the cut
 
-<!-- prawduct: type=fix | scope=audit-followups -->
+<!-- prawduct: type=fix | scope=audit-followups | release=v3.5.0 -->
 
 Twenty-three scopes were release-pending on `develop` since v3.4.0. Five independent read-only
 auditors, one per cluster of related PRs, graded each scope's claims against its code, its tests
@@ -322,7 +322,7 @@ stands, deliberately: ticking the box would say the track works, and nobody has 
 
 ## 2026-09-10: a build plan's chunk fields bind in the forms authors write
 
-<!-- prawduct: type=fix | scope=critic-mode-field-parse -->
+<!-- prawduct: type=fix | scope=critic-mode-field-parse | release=v3.5.0 -->
 
 The plan-level `Critic mode:` override was read line-anchored and unbackticked, so two forms real
 build plans use were invisible to it: the field sharing a line (`**Type:** doc-only · **Critic
@@ -412,7 +412,7 @@ which is worse than the missing-field block it was meant to prevent.
 
 ## 2026-09-09: the review loop gets a stopping rule
 
-<!-- prawduct: type=feat | scope=review-loop-termination -->
+<!-- prawduct: type=feat | scope=review-loop-termination | release=v3.5.0 -->
 
 Every control this plan shipped prices a review round, refuses a wasteful one, or shrinks what one
 produces. None of them ever says *stop* — and the measurement this plan was built on says nothing
@@ -496,7 +496,7 @@ them, and one merge short of propagating to develop. Restored, with the rule tha
 
 ## 2026-09-09: review eligibility stops being the negation of review cost
 
-<!-- prawduct: type=fix | scope=review-loop-termination -->
+<!-- prawduct: type=fix | scope=review-loop-termination | release=v3.5.0 -->
 
 The subject/oracle split shipped in August asked `is_judgeable_path` which files a finding could be
 about. That predicate answers a different question — *does an edit here re-open the coverage gate?*
@@ -559,7 +559,7 @@ paper.
 
 ## 2026-09-03: the Issues-backend close says how to establish the merge it waits for
 
-<!-- prawduct: type=fix | scope=shipped-merge-check -->
+<!-- prawduct: type=fix | scope=shipped-merge-check | release=v3.5.0 -->
 
 The backlog skill's timing rule defers an Issues-backend `status=shipped` to the merge — correctly,
 because closing an issue is an immediate remote side effect with no branch to be abandoned with —
@@ -583,7 +583,7 @@ that drifts out of the bullet stops being read by the caller the obligation land
 
 ## 2026-09-07: an untracked change-log no longer reads as a missing one
 
-<!-- prawduct: type=fix | scope=change-log-gate -->
+<!-- prawduct: type=fix | scope=change-log-gate | release=v3.5.0 -->
 
 `check-change-log-entry` decided whether a branch added an entry entirely from
 `git diff --name-only <base>...HEAD`. A repo that gitignores `.prawduct/` wholesale never tracks
@@ -634,7 +634,7 @@ verdict the code no longer emits, each fail a test.
 
 ## 2026-08-25: judgeability decides what a review RATES, not what it READS
 
-<!-- prawduct: type=feature | scope=review-loop-termination -->
+<!-- prawduct: type=feature | scope=review-loop-termination | release=v3.5.0 -->
 
 Non-judgeable files were 39% of every file-slot handed to a reviewer (5,869 of 14,860) and 36% of
 every finding returned (1,372 of 3,826). Those findings are correct — the measured false-positive
@@ -716,7 +716,7 @@ of flow and plain scalars that begin with a quote).
 
 ## 2026-08-25: every finding says what acting on it costs
 
-<!-- prawduct: type=feature | scope=review-loop-termination -->
+<!-- prawduct: type=feature | scope=review-loop-termination | release=v3.5.0 -->
 
 The disposition menu is priced backwards from the intuition, and nothing said so at the point of
 decision. ACCEPT is always free. FIX is free on a non-judgeable surface and costs a whole review
@@ -741,7 +741,7 @@ saving. The key is additive and the schema validator checks required fields only
 reader breaks.
 ## 2026-09-09: `/prawduct:pr` Step 2 stops promising a saving it cannot always deliver
 
-<!-- prawduct: type=docs | scope=gate-accuracy -->
+<!-- prawduct: type=docs | scope=gate-accuracy | release=v3.5.0 -->
 
 Step 2 told the builder *"run the pass on the dirty tree, then commit it whole, and there is one
 round instead of two."* Followed literally, it cost the round it promised: `verify-resolutions`
@@ -767,7 +767,7 @@ instruction was incomplete.
 
 ## 2026-09-09: the freshness gate stops calling instruction prose untestable
 
-<!-- prawduct: type=fix | scope=gate-accuracy -->
+<!-- prawduct: type=fix | scope=gate-accuracy | release=v3.5.0 -->
 
 `affects_test_outcome` answers *can a change to this path change what the suite says*, and it
 answered **no** for every non-governance-protected `.md`. That is false here and false in general:
@@ -820,7 +820,7 @@ so no `/prawduct:pr` gate was ever reached and CI's failure on both pushes was r
 
 ## 2026-09-09: the scratch path a reader holds, and the fix that read as working code
 
-<!-- prawduct: type=fix | scope=upstream-report-bug -->
+<!-- prawduct: type=fix | scope=upstream-report-bug | release=v3.5.0 -->
 
 Third round on one defect class in `/prawduct:report-bug`'s step 2, and the third is the one worth
 recording, because it was caused by the second.
@@ -851,7 +851,7 @@ cross-call shell variable, so the class is swept rather than assumed.
 
 ## 2026-09-08: the upstream bug drop-box retires, and every surface still describing it stops
 
-<!-- prawduct: type=refactor | scope=upstream-intake-repoint -->
+<!-- prawduct: type=refactor | scope=upstream-intake-repoint | release=v3.5.0 -->
 
 With `untriaged-upstream-reports` counting filed issues, the channel it replaced is retired
 (upstream-filing design §7.4). Reports about prawduct are GitHub issues; nothing routes one into a
@@ -960,7 +960,7 @@ appears" gap restated as observed rather than anticipated.
 
 ## 2026-09-08: the intake nudge counts issues, and knows the difference between none and unknown
 
-<!-- prawduct: type=feat | scope=upstream-intake-repoint -->
+<!-- prawduct: type=feat | scope=upstream-intake-repoint | release=v3.5.0 -->
 
 `untriaged-upstream-reports` counted `.md` files in a gitignored directory nothing writes to. It now
 counts what the channel actually produces: open issues on prawduct's own tracker whose title carries
@@ -1039,7 +1039,7 @@ chunk.
 
 ## 2026-09-07: the cumulative round — a shipped preference that did nothing, and a shell that ate titles
 
-<!-- prawduct: type=fix | scope=upstream-report-bug -->
+<!-- prawduct: type=fix | scope=upstream-report-bug | release=v3.5.0 -->
 
 Wave B's cumulative review: 0 blocking, 11 warnings, 3 notes. Thirteen fixed, one accepted.
 
@@ -1116,7 +1116,7 @@ Wave C, and #234 is the lockstep guard whose replacement is now live and whose r
 
 ## 2026-09-07: `/prawduct:report-bug` stops writing a file on one machine and files an issue
 
-<!-- prawduct: type=feature | scope=upstream-report-bug -->
+<!-- prawduct: type=feature | scope=upstream-report-bug | release=v3.5.0 -->
 
 Wave B, Chunk 02 of BKL-7Q4M. The skill is rewritten onto `file-upstream`: recompose the report in
 prawduct's terms, preview the exact outbound payload, show a human those bytes, send on their
@@ -1170,7 +1170,7 @@ describes `incoming-bugs/` as where products file today.
 
 ## 2026-09-07: the consent preference becomes a row somebody can write
 
-<!-- prawduct: type=feature | scope=upstream-report-bug -->
+<!-- prawduct: type=feature | scope=upstream-report-bug | release=v3.5.0 -->
 
 Wave B, Chunk 01 of BKL-7Q4M. The `Upstream filing` preference has been readable since Wave A and
 authorable nowhere: `read_filing_preference` handles all three of design §4.1's states, and the only
@@ -1204,7 +1204,7 @@ and renumbers, and "authored in Wave B" stopped being true in this commit.
 
 ## 2026-09-07: the review round that bought the merge — one blocking claim retracted
 
-<!-- prawduct: type=fix | scope=upstream-filing-adapter -->
+<!-- prawduct: type=fix | scope=upstream-filing-adapter | release=v3.5.0 -->
 
 Round 10, spent on the one justification the coverage gate names: a merge. Six findings fixed.
 
@@ -1243,7 +1243,7 @@ minimization exists to strip, and `file-upstream` gets its own `### file-upstrea
 
 ## 2026-09-07: the egress norm reaches steady-state, and every live surface describes the contract
 
-<!-- prawduct: type=feature | scope=upstream-filing-adapter -->
+<!-- prawduct: type=feature | scope=upstream-filing-adapter | release=v3.5.0 -->
 
 Wave A, Chunk 03 of BKL-7Q4M — the records half, no module changes. The owner ruled the plan's open
 Local-first question **(a) amend**, which was this chunk's blocking input.
@@ -1384,7 +1384,7 @@ reached by a real line.
 
 ## 2026-09-06: the `file-upstream` send path refuses on all five checks, and identity fails closed
 
-<!-- prawduct: type=feature | scope=upstream-filing-adapter -->
+<!-- prawduct: type=feature | scope=upstream-filing-adapter | release=v3.5.0 -->
 
 Wave A, Chunk 02 of BKL-7Q4M, closing `#329` (BKL-4T9C). `file-upstream --approve sha256:<digest>`
 sends, and refuses unless all five design §5 checks hold — each a distinct code, and every one of
@@ -1463,7 +1463,7 @@ another repo to it.
 
 ## 2026-09-06: `file-upstream` previews the bytes that would cross the owner boundary
 
-<!-- prawduct: type=feature | scope=upstream-filing-adapter -->
+<!-- prawduct: type=feature | scope=upstream-filing-adapter | release=v3.5.0 -->
 
 Wave A, Chunk 01 of BKL-7Q4M. The adapter gains one operation that writes into a **foreign, public**
 repo — prawduct's own tracker — and this chunk lands only the half that sends nothing: the pinned
@@ -1570,7 +1570,7 @@ for prawduct's tracker cannot be sent to a repo the reviewer never saw.
 
 ## 2026-09-02: four small backlog-adapter items, and two plans falsified by reading the code
 
-<!-- prawduct: type=fix | scope=small-batch-2026-09-02 -->
+<!-- prawduct: type=fix | scope=small-batch-2026-09-02 | release=v3.5.0 -->
 
 Four S-sized items on one branch under one cumulative review. Three shipped as planned; **two of
 the four had their premise falsified by reading the code before building**, which is the result
@@ -1651,7 +1651,7 @@ R-6's caller search independently rather than taking the fix on trust.
 
 ## 2026-09-01: backlog burndown — 57 items across ten parallel work groups
 
-<!-- prawduct: type=feat | scope=backlog-burndown-2026-09 -->
+<!-- prawduct: type=feat | scope=backlog-burndown-2026-09 | release=v3.5.0 -->
 
 A parallel burndown over the 202-item open backlog. One triage agent scrubbed and grouped; nine
 implementation agents ran in isolated worktrees on mechanically-disjoint file sets (every path in
@@ -1698,7 +1698,7 @@ signal for the fleet, so agents graded on targeted serial (`-n0`) runs. Worth it
 
 ## 2026-09-01: four stalled transitions get a bounded exception instead of a silent one
 
-<!-- prawduct: type=fix | scope=norm-lifecycle-stopgaps -->
+<!-- prawduct: type=fix | scope=norm-lifecycle-stopgaps | release=v3.5.0 -->
 
 `#732`. Four `Status: in-transition` norm entries sat past the 30-day stall window, so
 `test_no_norm_lifecycle_advisory_fires_here_today` was red. `docs/norms.md` § Transitions makes a
@@ -1747,7 +1747,7 @@ not just conditions, and the exempted set here is exactly "every CI run".
 
 ## 2026-09-01: the headline nobody wrote, and the red suite nothing refused
 
-<!-- prawduct: type=feat | scope=release-gate-blindness -->
+<!-- prawduct: type=feat | scope=release-gate-blindness | release=v3.5.0 -->
 
 Two failures met at one moment. The consumer-facing headline is a hand step and it gets forgotten:
 **v2.1.6 was tagged and version-bumped with no digest section at all**, which left `develop` red on
@@ -1798,7 +1798,7 @@ would have been the third `plugin/…` path printed at a repo that cannot have o
 
 ## 2026-08-29: the release-pending scope that reaches the tag with nothing written about it
 
-<!-- prawduct: type=feat | scope=release-gate-blindness -->
+<!-- prawduct: type=feat | scope=release-gate-blindness | release=v3.5.0 -->
 
 A release-pending scope could reach the tag with **zero** consumer-facing notes in
 `plugin/CHANGELOG.md`, and no gate asked. It happened at the v3.4.0 cut:
@@ -1856,7 +1856,7 @@ advisory posture is what makes carrying a ~15% false-positive rate the right tra
 
 ## 2026-08-27: the release-pending entry that enumerated as nothing, and the branch that never counted
 
-<!-- prawduct: type=fix | scope=release-gate-blindness -->
+<!-- prawduct: type=fix | scope=release-gate-blindness | release=v3.5.0 -->
 
 `check-releasability` enumerates *scopes*. A release-pending change-log entry carrying no `scope=`
 contributes none, so it reached no row of the release plan's classification table, could be neither
@@ -1898,7 +1898,7 @@ like. Six `TestAgainstTheReal*` guards died together at v3.3.0 for want of that 
 
 ## 2026-08-27: the rc track that develop had already replaced, resolved rather than re-merged
 
-<!-- prawduct: type=fix | scope=branch-claim-multiplicity -->
+<!-- prawduct: type=fix | scope=branch-claim-multiplicity | release=v3.5.0 -->
 
 The branch sat 251 commits behind `develop`, and the sync was not a textual merge. Half of Chunk 04
 — a develop track keyed on an **rc** prerelease — had been independently superseded: `develop`
@@ -1936,7 +1936,7 @@ Chunk 04's live half stays outstanding and is now visible as VRF-017: the recipe
 
 ## 2026-08-14: the derived-sentence defect, found twice, closed by enumeration
 
-<!-- prawduct: type=fix | scope=branch-claim-multiplicity -->
+<!-- prawduct: type=fix | scope=branch-claim-multiplicity | release=v3.5.0 -->
 
 The branch's cumulative review found the *same class* its predecessor did, surviving in a state the
 first fix did not reach — and that recurrence is the finding, not the sentence.
@@ -1975,7 +1975,7 @@ one, with the others pointing.
 
 ## 2026-08-13: develop becomes a track you can actually run on
 
-<!-- prawduct: type=feature | scope=branch-claim-multiplicity -->
+<!-- prawduct: type=feature | scope=branch-claim-multiplicity | release=v3.5.0 -->
 
 `develop` reaches consumers through nothing, which is correct and made it impossible to run
 unreleased governance against real work before promoting it. It is now a track one repo of yours can
@@ -2004,7 +2004,7 @@ frozen archive of a retired derived view, and writing there would revive it.
 
 ## 2026-08-13: a merged-away change-log tag stops disappearing quietly
 
-<!-- prawduct: type=fix | scope=branch-claim-multiplicity -->
+<!-- prawduct: type=fix | scope=branch-claim-multiplicity | release=v3.5.0 -->
 
 The union-merge advisory told operators that a two-sided edit to one entry's tag line "is surfaced
 downstream rather than silently believed," naming the release gate's tag validator as the catch.
@@ -2034,7 +2034,7 @@ existing no-attribute conflict control.
 
 ## 2026-08-13: a branch-declaring plan retires by archiving alone
 
-<!-- prawduct: type=fix | scope=branch-claim-multiplicity -->
+<!-- prawduct: type=fix | scope=branch-claim-multiplicity | release=v3.5.0 -->
 
 `planning.md` and `/prawduct:pr` both promised that a merged branch-declaring plan "reads
 live-but-inactive with no advisory to ignore." It did not, and this repo's own `develop` was the
@@ -2051,7 +2051,7 @@ as an oversight.
 
 ## 2026-08-13: several plans may claim one branch
 
-<!-- prawduct: type=fix | scope=branch-claim-multiplicity -->
+<!-- prawduct: type=fix | scope=branch-claim-multiplicity | release=v3.5.0 -->
 
 Branch-scoped plan resolution shipped with a fail-closed refusal: a second live plan declaring the
 same `branch:` stopped resolution entirely, on the reasoning that governing by the wrong plan looks
@@ -2109,7 +2109,7 @@ fail-closed route deliberately gone — meant the only surface that ever says a 
 could vanish with no output at all. It is attributed now: advice fails soft, not silent.
 ## 2026-08-27: the version-delta headline renders as one sentence
 
-<!-- prawduct: type=fix | scope=silent-clear-checks -->
+<!-- prawduct: type=fix | scope=silent-clear-checks | release=v3.5.0 -->
 
 Every version-delta headline carried a stray `**` mid-sentence — *"Less waiting on the gates, fewer
 rounds in review.`**` Gate checks stop timing out…"* — and had done since at least v3.3.2. It lands
@@ -2151,7 +2151,7 @@ sets it explicitly.
 
 ## 2026-08-27: a duplicate learnings heading is reported, and refuses a retirement
 
-<!-- prawduct: type=fix | scope=silent-clear-checks -->
+<!-- prawduct: type=fix | scope=silent-clear-checks | release=v3.5.0 -->
 
 `_take_active_narrative` resolved a heading by exact title and took the **first** match. Two
 same-titled blocks therefore meant a retirement cut one and archived it while its twin stayed in the
@@ -2194,7 +2194,7 @@ convention actually *is* has to come before anything can grade conformance to it
 
 ## 2026-08-27: the verdict cache keys on the code that computed the verdict
 
-<!-- prawduct: type=fix | scope=silent-clear-checks -->
+<!-- prawduct: type=fix | scope=silent-clear-checks | release=v3.5.0 -->
 
 `verdict_cache._key` folded in the plugin version because the cache outlives the plugin and the
 verdict depends on `coverage_algebra.is_judgeable_path`. That is enough for an installed copy,
@@ -2225,7 +2225,7 @@ from it — spending the saving this module exists to create.
 
 ## 2026-08-27: a verify pass cannot report the review over while a blocker it inherited stands
 
-<!-- prawduct: type=fix | scope=silent-clear-checks -->
+<!-- prawduct: type=fix | scope=silent-clear-checks | release=v3.5.0 -->
 
 A `verify-resolutions` pass could discharge one finding by reference to another — *"R-12 is
 implicitly closed by R-1's fix, same class"* — and write a resolution fact for R-1 only. Its own
@@ -2271,7 +2271,7 @@ rule would let a sibling branch's review supply this branch's blockers.
 
 ## 2026-08-27: an input that could not be read or recognised says so
 
-<!-- prawduct: type=fix | scope=silent-clear-checks -->
+<!-- prawduct: type=fix | scope=silent-clear-checks | release=v3.5.0 -->
 
 Two instances of one rule — **a present input that yielded nothing must not read as absent.**
 
@@ -2321,7 +2321,7 @@ the real Type vocabulary rather than a copy of it.
 
 ## 2026-08-27: onboarding proves the plugin will load, or says it could not tell
 
-<!-- prawduct: type=fix | scope=silent-clear-checks -->
+<!-- prawduct: type=fix | scope=silent-clear-checks | release=v3.5.0 -->
 
 A repo could be onboarded perfectly and still run **completely ungoverned**. Writing the install
 reference into `.claude/settings.json` enables the plugin; it does not install it. The harness also
@@ -2362,7 +2362,7 @@ consequences, two messages, one home.
 
 ## 2026-08-26: a dispatch refusal names the tree it graded and the work it excluded
 
-<!-- prawduct: type=fix | scope=verify-resolutions-exit3 -->
+<!-- prawduct: type=fix | scope=verify-resolutions-exit3 | release=v3.5.0 -->
 
 `verify-resolutions` anchors at committed HEAD once a commit lands that the prior review never
 saw — the PR gate's target, and the fix for the inverse anchoring bug. Judgeable files still
@@ -2435,7 +2435,7 @@ Upstream report: #722.
 
 ## 2026-08-26: a plan the deliverable check cannot grade says so at dispatch
 
-<!-- prawduct: type=fix | scope=silent-governance-failures -->
+<!-- prawduct: type=fix | scope=silent-governance-failures | release=v3.5.0 -->
 
 Two plan shapes disabled the chunk deliverable check for a plan's whole life, and neither said
 so where it happened. A plan declaring no frontmatter `scope:` reported
@@ -2475,7 +2475,7 @@ too.
 
 ## 2026-08-26: a sentinel is graded by the product's own runner, or not at all
 
-<!-- prawduct: type=fix | scope=silent-governance-failures -->
+<!-- prawduct: type=fix | scope=silent-governance-failures | release=v3.5.0 -->
 
 `run_sentinel` hardcoded `sys.executable -m pytest`. In a product that does not use pytest,
 every learnings sentinel came back **failing** with "No module named pytest" — against tests
@@ -2520,7 +2520,7 @@ together rather than traded against each other.
 
 ## 2026-08-24: the evidence file can say which commit it read
 
-<!-- prawduct: type=fix | scope=pr-evidence-reviewed-commit -->
+<!-- prawduct: type=fix | scope=pr-evidence-reviewed-commit | release=v3.5.0 -->
 
 The Update Flow's substantive-delta test says to diff from "the reviewed commit" — and nothing in a
 PR-review evidence file recorded which commit that was. The caller had `timestamp` and
@@ -2547,7 +2547,7 @@ looks. A test pins that it does not come back.
 
 ## 2026-08-24: an issue close has no branch to ride
 
-<!-- prawduct: type=fix | scope=pr-issues-backend-close -->
+<!-- prawduct: type=fix | scope=pr-issues-backend-close | release=v3.5.0 -->
 
 `/prawduct:pr` Step 1d opens by promising that every release tag, archive and Status tick "rides IN
 this branch, atomic with the merge", and then lists the backlog archive among them. That atomicity is
@@ -2617,7 +2617,7 @@ event, whose `review` payload is an independent verbatim copy — a second witne
 
 ## 2026-08-23: a nested checkout is not a misplaced test
 
-<!-- prawduct: type=fix | scope=test-location-nested-checkout -->
+<!-- prawduct: type=fix | scope=test-location-nested-checkout | release=v3.5.0 -->
 
 `git worktree add ./devchk` inside the primary checkout turned the test-location preference red for
 every session in the clone. The walk found `devchk/tests/**/test_*.py`, correctly observed they were
@@ -2641,7 +2641,7 @@ quietly disarmed the module.
 
 ## 2026-08-23: a wedged manifest says which kind of wedged it is
 
-<!-- prawduct: type=fix | scope=manifest-state-diagnosis -->
+<!-- prawduct: type=fix | scope=manifest-state-diagnosis | release=v3.5.0 -->
 
 An operator who met a dispatch manifest written by an older prawduct was told, by the surface that
 refuses `critic-begin`: *"no readable dispatch manifest — a review set the marker but never recorded
@@ -2802,7 +2802,7 @@ which is a provenance claim about a file no prawduct ever wrote; it classifies C
 
 ## 2026-08-23: eleven instruction surfaces stop misdescribing the runtime
 
-<!-- prawduct: type=fix | scope=instruction-surface-truth -->
+<!-- prawduct: type=fix | scope=instruction-surface-truth | release=v3.5.0 -->
 
 A batch of backlog items selected under one lens rather than by area: **a surface that tells a
 reader something false or unresolvable about this system**. Skill frontmatter, skill prose, adapter
@@ -2878,7 +2878,7 @@ of the real set.
 
 ## 2026-08-22: an abandoned delegate worktree is not silent
 
-<!-- prawduct: type=feature | scope=adhoc-delegation -->
+<!-- prawduct: type=feature | scope=adhoc-delegation | release=v3.5.0 -->
 
 A delegated tangent hands back a branch plus an integration debt, and the agent that incurred the
 debt is — by the very reason it delegated, a full context — not the one who will pay it. A debt
@@ -2917,7 +2917,7 @@ back when the field was inert, so `show` prints that route twice until one copy 
 
 ## 2026-08-22: the backlog instinct gets a third option
 
-<!-- prawduct: type=feature | scope=adhoc-delegation -->
+<!-- prawduct: type=feature | scope=adhoc-delegation | release=v3.5.0 -->
 
 The delegation question has two moments. The first is a tangent arriving mid-chunk, which the
 always-injected digest now names. The second is quieter and much more common: an agent has decided
@@ -2970,7 +2970,7 @@ so stripping the bar out of the offer left the assertion satisfied by a neighbou
 
 ## 2026-08-21: the clear verdict accounts for a delegate
 
-<!-- prawduct: type=feature | scope=adhoc-delegation -->
+<!-- prawduct: type=feature | scope=adhoc-delegation | release=v3.5.0 -->
 
 An ad-hoc delegate dies with the session that dispatched it. Its branch is unfinished, its report
 unread, and nothing regenerates it but re-running the work — so the standing block's clear verdict
@@ -3033,7 +3033,7 @@ already normalize whitespace for exactly this reason. Normalized, with the reaso
 
 ## 2026-08-21: the delegation question, for work no plan anticipated
 
-<!-- prawduct: type=feature | scope=adhoc-delegation -->
+<!-- prawduct: type=feature | scope=adhoc-delegation | release=v3.5.0 -->
 
 The delegation guide answered one trigger: a partition drawn while a build plan is being written.
 The other one is an interrupt — a tangent the user raises mid-chunk, or work you were about to
@@ -3064,7 +3064,7 @@ judgment, that section is the mechanics.
 
 ## 2026-08-21: a `closed-by` handle names the work, not its slot in a plan
 
-<!-- prawduct: type=fix | scope=backlog-metadata -->
+<!-- prawduct: type=fix | scope=backlog-metadata | release=v3.5.0 -->
 
 `closed-by: Chunk 04` names no plan and means nothing to a reader a year out; `closed-by:
 eval-system-rebuild` still says what shipped the item. Principle 13 already stated the governing
@@ -3082,7 +3082,7 @@ its item is touched.
 
 ## 2026-08-21: one place knows what a finding's title is called
 
-<!-- prawduct: type=fix | scope=delegation -->
+<!-- prawduct: type=fix | scope=delegation | release=v3.5.0 -->
 
 The same sentence travels a review pipeline under three keys — `name` in a reviewer's partial,
 `title` once consolidation writes the review fact, `summary` again in the derived
@@ -3102,7 +3102,7 @@ here because that is the review that caught it.
 
 ## 2026-08-21: a project can say how it delegates, in its own words
 
-<!-- prawduct: type=feature | scope=delegation -->
+<!-- prawduct: type=feature | scope=delegation | release=v3.5.0 -->
 
 The delegation guide states one default and a set of considerations, and stops there on purpose:
 prawduct cannot know a consumer's test regime, so it does not invent one. That leaves a gap the
@@ -3153,7 +3153,7 @@ its row when the owner ratifies it.
 
 ## 2026-08-21: the record can say a run was degraded
 
-<!-- prawduct: type=feature | scope=delegation -->
+<!-- prawduct: type=feature | scope=delegation | release=v3.5.0 -->
 
 `.prawduct/.test-evidence.json` could record a green for a run that silently dropped part of its
 suite. A test worker that dies under contention is typically not re-queued and does not fail the
@@ -3198,7 +3198,7 @@ who caught themselves accepting an unattributable green had nowhere to go.
 
 ## 2026-08-21: the delegation question arrives where the coordinator already stops
 
-<!-- prawduct: type=feature | scope=delegation -->
+<!-- prawduct: type=feature | scope=delegation | release=v3.5.0 -->
 
 Guidance-only is what already failed — `building.md` has said "when chunks are independent and
 parallelizable" the whole time, and delegation ran at 0.34% of 31,220 tool calls. So the question
@@ -3235,7 +3235,7 @@ two paragraphs down. The ceiling did not move, and the file is back to one token
 
 ## 2026-08-21: delegation becomes a guide an agent can reach
 
-<!-- prawduct: type=feature | scope=delegation -->
+<!-- prawduct: type=feature | scope=delegation | release=v3.5.0 -->
 
 `plugin/methodology/delegation.md`, which `/prawduct:methodology delegation` opens. It leads with **when to
 delegate**: the default is to delegate when the same work finishes in less wall clock and the
@@ -3272,7 +3272,7 @@ the next edit collects silently and green.
 
 ## 2026-08-20: v3.4.0 is cut, and develop reopens on 3.4.1-dev
 
-<!-- prawduct: type=chore | scope=release-v3.4.0 -->
+<!-- prawduct: type=chore | scope=release-v3.4.0 | release=v3.5.0 -->
 
 v3.4.0 shipped: fourteen release-pending scopes, all of them, no pruning — `main`'s tree is
 `develop`'s and `check-released v3.4.0` reports 3 of 3 verified. The version decision (minor rather
