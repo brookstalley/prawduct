@@ -3,6 +3,47 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-09-13: v3.5.0 is cut, and develop reopens on 3.5.1-dev
+
+<!-- prawduct: type=chore | scope=release-v3.5.0 -->
+
+The largest batch since the tag convention began: **32 release-pending scopes, 63 change-log
+entries**, all shipping, nothing withheld — `K = 0`, so the whole-develop promotion path. `main` is
+at `45902920`, tag `v3.5.0` published with the CHANGELOG section as its Release notes,
+`check-released v3.5.0` reports 3 of 3 verified.
+
+**A minor, and the call is recorded rather than reflexive.** `develop` had been running `3.4.1-dev`
+since the last cut, so the patch was the default the marker implied and the ratified
+conservative-versioning norm argued for. It was raised as a framed decision before the cut and the
+maintainer chose the minor, on the runbook's unratified precedent that *a subsystem going live* is a
+minor: `/prawduct:report-bug` files upstream through a new network egress surface that carried a
+norm amendment to ship, `review_round_budget` puts a declared stop on a review loop that had none,
+and the subject/oracle split changes what a review rates. Full reasoning in
+`.prawduct/artifacts/release-plan-v3.5.0.md`.
+
+**The release prep turned the suite red, in two ways Phase 0 cannot see.** `check-releasability`'s
+`unproven-suite:` gate reads the tree you have *now*; Phase 1 then rewrites four files, and the
+runbook says as much. Both breaks were real, not bookkeeping. The new CHANGELOG headline was wrapped
+across two physical lines, so the version-delta banner — which reads the section's first *line* —
+would have shipped an unpaired `**` on the single most-read line prawduct emits, the exact defect
+`silent-clear-checks` fixed one release earlier. And `plan-backfill`'s sixteen archive moves left
+the index still naming the old paths, so `_governance_prose()`'s `git ls-files` walk opened files
+that were no longer there. Staging fixed the second; unwrapping the headline fixed the first. **A
+suite re-run between Phase 1's edits and Phase 2's tree-set is what caught both** — it is not a step
+in the runbook, and this entry is the argument that it should be.
+
+**`build-plan-branch-claim-multiplicity.md` ships with Chunk 04 open and stays live**, which is the
+plan's own recorded decision: the develop-track dogfooding recipe is written and nobody has run a
+session on it, because it installs from `ref: develop` and could not be exercised until it merged.
+`plan-backfill --apply` archived the other sixteen plans and refused this one on the Status-roster
+reason — the correct outcome, and the one refusal `archive-plan` does not share. The release notes
+say the track is undogfooded rather than implying otherwise, as the plan asks. The briefing's
+staleness scan will keep firing on `develop` and both remedies it prints are still wrong; the
+correct action is VRF-017, then a tick.
+
+`develop` reopens on `3.5.1-dev` — guessed low on purpose, so every possible next cut is a forward
+move for anyone running the develop track.
+
 ## 2026-09-12: `check-branch-pushed` — the merge gate that fails closed on an unpushed commit
 
 <!-- prawduct: type=fix | scope=branch-pushed-gate | release=v3.5.0 -->

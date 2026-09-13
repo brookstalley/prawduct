@@ -2,10 +2,10 @@
 runbook: cut-and-publish-a-plugin-release
 tier: 3
 owner: prawduct maintainer
-last_verified: null         # steps 0-21 matched the v3.3.4 cut (2026-08-11, brookstalley); Phase 3,
-                            # step 10's rename and the rewritten `Done when` were added AFTER that
-                            # run and have never been executed — re-verify at the next cut
-verified_by: null
+last_verified: 2026-09-13   # steps 0-22 executed end to end at the v3.5.0 cut, including step 10's
+                            # rename and Phase 3, both of which were unexecuted before this run.
+                            # Step 11a was ADDED during that cut, from two failures it caught.
+verified_by: brookstalley
 ---
 
 # Cut and publish a Prawduct plugin release
@@ -587,6 +587,36 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
     A plan whose work was **descoped** rather than shipped carries no `release=` tag and is
     not swept. Give it its end of life by hand, naming what replaced it:
     `prawduct-hook archive-plan <path> --state superseded --superseded-by "<what/why>"`.
+
+11a. **Stage everything, then run the suite again.** Steps 7–11 rewrote four files and moved a
+    pile of plans; Phase 0's `unproven-suite:` gate graded the tree that existed *before* all of
+    that, and says so. This is the only control that reads the tree you are about to tag.
+
+    ```
+    git add -A
+    prawduct-hook test-evidence record
+    ```
+
+    **Expected:** exit 0, `recorded: N passed, 0 failed`.
+
+    **`git add -A` first is load-bearing, not tidiness.** Several suite checks enumerate the repo
+    through `git ls-files`, so step 11's archive moves are invisible to them until they are staged
+    — the walk then opens live-directory paths that are no longer there and the suite dies on
+    `FileNotFoundError` rather than on anything real.
+
+    > *Both failure modes below were measured at the v3.5.0 cut, on a suite that had been green
+    > forty minutes earlier at Phase 0. Neither is bookkeeping.*
+    >
+    > 1. **A wrapped CHANGELOG headline.** The banner reads the section's first physical **line**,
+    >    so a bold lead-in wrapped across two lines ships an unpaired `**` on the single most-read
+    >    line prawduct emits — the exact defect `silent-clear-checks` fixed one release earlier,
+    >    reintroduced by step 10 writing prose at the file's ordinary wrap width. **Write the
+    >    headline paragraph as one long unwrapped line**, the way every shipped section does.
+    > 2. **Unstaged archive moves**, as above.
+    >
+    > *If it is red:* fix it here. Everything up to the Checkpoint is undone by an ordinary commit
+    > on `develop`, and a red tree is far cheaper now than after step 19.
+
 
 12. Commit the prep:
 

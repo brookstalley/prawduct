@@ -10,6 +10,13 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
+## v3.5.1-dev
+
+**Prerelease under test — this build is the develop branch ahead of the next release.** The version
+says so wherever it appears, so a repo pinned to the develop ref can tell what it is running, and a
+cached review verdict from the released plugin is not replayed against this one. Rolling release
+notes accumulate here, and this section is renamed to the release number at the cut.
+
 ## v3.5.0
 
 **Prawduct can now file a bug about itself, the review loop has a stopping rule, and a dozen governance surfaces stop reporting success on a check they never ran.** Thirty-two scopes since v3.4.0, and the three headline changes each move something you will feel in an ordinary session: a new outbound surface, a review that ends, and gates that say "I could not tell" where they used to say "fine".
