@@ -49,29 +49,6 @@ independence, distinct from a second opinion on the same evidence.
 **Generalizes:** any heuristic derived from a tool's output, carried forward as a rule, drifts into
 a replacement for the tool. When a learnings rule names a command, the rule is to RUN it.
 
-### A "keep both sides" conflict resolution silently drops whatever the BASE grew in a region the branch also touched — after a large base advance, diff the merged tree against the incoming commit for CONTENT, not just for conflicts, because the loss appears nowhere in the diff you reviewed. Eight active learnings lost their narrative blocks in a 216-commit merge: present at both parents, absent at HEAD, every rule still ending `— [learnings-detail.md]`, and the merge message recorded a different, verified deletion, so the collateral set read as accounted for. `check-learnings-pairing` is one-directional and saw nothing; a Critic Records Pass found it two chunks later, one merge short of propagating to develop. Tell: you resolved conflict hunks by keeping both sides and never compared the result against the side you were merging IN
-
-Found 2026-09-09 by the Records Pass of `review-loop-termination` Chunk 04's cumulative review, two
-chunks after the merge that caused it.
-
-`feat/review-loop-termination` advanced its base over 216 develop commits, eighteen conflict hunks,
-resolved by keeping both sides. The suite was green and the merge message recorded a deletion of four
-historical `learnings-detail.md` entries, verified present in the archive — an honest, checked
-record of an intended change.
-
-Eight *other* narrative blocks went with them. Each existed at the interval base AND at the merged
-develop commit; none existed at HEAD; all eight rules were still active in `learnings.md` and still
-ended `— [learnings-detail.md]`, so each had become a citation to a file that no longer held it. None
-had been moved to `learnings-history.md`.
-
-Why nothing caught it: the accounted-for deletion made the region look reviewed, `check-learnings-
-pairing` verifies index→detail in one direction only, and a merge diff shows conflicts rather than
-content the other side grew. The next merge would have propagated the loss to develop.
-
-The check that would have caught it is cheap and mechanical — after a large base advance, list the
-`##` headings of a long-lived append-only record at both parents and at the merged tree, and account
-for every heading present at either parent and absent at the result.
-
 ### While a Critic review is LIVE, read the reviewed files and edit only the free surfaces (`.prawduct/`, the plan, the change-log) — `critic-begin` snapshots a tree, so editing a reviewed file leaves reviewers grading code that is gone and the suite covering the pre-edit tree. Tell: `test-status` still exits 0, blind to an edit after the run it graded
 
 Earned on the operator-verification drain fix (2026-09-12). `building.md` said "Don't poll;

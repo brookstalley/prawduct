@@ -201,39 +201,6 @@ prose was ever wrong.
 
 ### Proving a new guard can go red is half the question — ask whether each ASSERTION discriminates the two outcomes it names, because a substring check over a formatted message, or a fixture that never reaches the new branch, passes identically either way. Mutation grades lines you added, not paths you never enter. Tell: every test on the new path shares one fixture
 
-### After the last commit, re-check that the remote ref IS HEAD before creating or merging a PR — because every downstream signal agrees with a stale ref instead of contradicting it: the coverage gate reads LOCAL HEAD and re-runs green, CI grades the PUSHED tip and passes, the PR merges cleanly, and the description cites a commit the merge never took. Pushing early is legitimate (it is exactly the independent prep the reviewer-wait invites); what is missing is the re-check after the commit that follows it. Tell: you pushed at one point in the flow and committed at a later one. The only thing that catches it is `git branch -d` refusing the delete, which fires AFTER the merge
-
-PR #803 merged one commit short of its branch, and nothing in a fully-governed flow noticed.
-
-The sequence was ordinary. The branch was pushed with `-u` during the independent reviewer's run —
-legitimate prep, and exactly what the skill's wait-time guidance asks for. The reviewer then
-returned a WARNING; it was fixed, committed, and the commit was never pushed, because the push had
-already happened and Step 5 reads as though push-and-create are one act.
-
-What makes this worth a rule is how quiet it is. Every check that could have caught it is computed
-from a ref that agrees with itself:
-
-- `check-cumulative-critic` re-ran and reported `satisfied` — it reads LOCAL HEAD, which had the
-  commit.
-- CI passed — it grades the PUSHED tip, which did not, and had nothing to disagree with.
-- `gh pr merge --merge` succeeded, because the PR was internally consistent.
-- The PR description said the warning "is fixed in 662a86fe", naming a commit outside its own merge.
-
-The single signal was `git branch -d` refusing to delete the local branch afterwards, on the
-grounds that its tip was not an ancestor of the base. That is a real safety net and it worked — but
-it fires AFTER the merge, when the remedy is no longer `git push` but a second PR against a
-protected integration branch.
-
-The framework gap this exposed (fixed in the same cycle): `pr/SKILL.md` Step 5 bundled "push with
-`-u`" and "`gh pr create`" into one sentence, so it read as atomic, while Step 3 actively encouraged
-the prep that splits them. Step 5 now requires `git rev-parse HEAD` to equal `git rev-parse @{u}`
-after the push, and the Merge Flow carries the same check against `headRefOid` — the merge being the
-irreversible act.
-
-The general form is worth more than the instance: **a check is only a check if it can disagree with
-the thing it grades.** Three green signals here were all downstream of the same stale ref. When
-something can be stale, verify it against a source that does not share its staleness.
-
 ### When test evidence is stale, run the suite THROUGH `prawduct-hook test-evidence record` rather than running it bare and recording the counts after — because a repo that declares a `test_command:` emitting JUnit refuses both `--from-counts` (it wants the machine-readable report, not your transcription) and `--no-rerun`, so a bare `pytest` run buys nothing and the suite runs twice. Two five-minute runs at a PR boundary, for the same green. Tell: you just read `stale:` from `test-status` and your next thought is the pytest command you already know
 
 **2026-09-12, PR #807 (`branch-pushed-gate`).** `/prawduct:pr` Step 1 says to check

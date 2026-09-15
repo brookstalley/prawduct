@@ -3,7 +3,8 @@ paths:
   - "plugin/methodology/**"
   - "plugin/docs/**"
   - "plugin/skills/**"
-  - ".prawduct/artifacts/**"
+  - ".prawduct/**"
+  - ".claude/rules/learnings/**"
 ---
 
 # Learnings — authoring
@@ -60,3 +61,59 @@ reads only the template. It would have found a rule, an acknowledgement that the
 a bug repeatedly, and no statement that the question is settled — and the cheapest reading of that
 is "known bug, still open", whose natural actions are a third report or a local parser patch. A
 decision's home is wherever the people who keep asking the question will meet it.
+
+### A "keep both sides" conflict resolution silently drops whatever the BASE grew in a region the branch also touched — after a large base advance, diff the merged tree against the incoming commit for CONTENT, not just for conflicts, because the loss appears nowhere in the diff you reviewed. Eight active learnings lost their narrative blocks in a 216-commit merge: present at both parents, absent at HEAD, every rule still ending `— [learnings-detail.md]`, and the merge message recorded a different, verified deletion, so the collateral set read as accounted for. `check-learnings-pairing` is one-directional and saw nothing; a Critic Records Pass found it two chunks later, one merge short of propagating to develop. Tell: you resolved conflict hunks by keeping both sides and never compared the result against the side you were merging IN
+
+Found 2026-09-09 by the Records Pass of `review-loop-termination` Chunk 04's cumulative review, two
+chunks after the merge that caused it.
+
+`feat/review-loop-termination` advanced its base over 216 develop commits, eighteen conflict hunks,
+resolved by keeping both sides. The suite was green and the merge message recorded a deletion of four
+historical `learnings-detail.md` entries, verified present in the archive — an honest, checked
+record of an intended change.
+
+Eight *other* narrative blocks went with them. Each existed at the interval base AND at the merged
+develop commit; none existed at HEAD; all eight rules were still active in `learnings.md` and still
+ended `— [learnings-detail.md]`, so each had become a citation to a file that no longer held it. None
+had been moved to `learnings-history.md`.
+
+Why nothing caught it: the accounted-for deletion made the region look reviewed, `check-learnings-
+pairing` verifies index→detail in one direction only, and a merge diff shows conflicts rather than
+content the other side grew. The next merge would have propagated the loss to develop.
+
+The check that would have caught it is cheap and mechanical — after a large base advance, list the
+`##` headings of a long-lived append-only record at both parents and at the merged tree, and account
+for every heading present at either parent and absent at the result.
+
+### After the last commit, re-check that the remote ref IS HEAD before creating or merging a PR — because every downstream signal agrees with a stale ref instead of contradicting it: the coverage gate reads LOCAL HEAD and re-runs green, CI grades the PUSHED tip and passes, the PR merges cleanly, and the description cites a commit the merge never took. Pushing early is legitimate (it is exactly the independent prep the reviewer-wait invites); what is missing is the re-check after the commit that follows it. Tell: you pushed at one point in the flow and committed at a later one. The only thing that catches it is `git branch -d` refusing the delete, which fires AFTER the merge
+
+PR #803 merged one commit short of its branch, and nothing in a fully-governed flow noticed.
+
+The sequence was ordinary. The branch was pushed with `-u` during the independent reviewer's run —
+legitimate prep, and exactly what the skill's wait-time guidance asks for. The reviewer then
+returned a WARNING; it was fixed, committed, and the commit was never pushed, because the push had
+already happened and Step 5 reads as though push-and-create are one act.
+
+What makes this worth a rule is how quiet it is. Every check that could have caught it is computed
+from a ref that agrees with itself:
+
+- `check-cumulative-critic` re-ran and reported `satisfied` — it reads LOCAL HEAD, which had the
+  commit.
+- CI passed — it grades the PUSHED tip, which did not, and had nothing to disagree with.
+- `gh pr merge --merge` succeeded, because the PR was internally consistent.
+- The PR description said the warning "is fixed in 662a86fe", naming a commit outside its own merge.
+
+The single signal was `git branch -d` refusing to delete the local branch afterwards, on the
+grounds that its tip was not an ancestor of the base. That is a real safety net and it worked — but
+it fires AFTER the merge, when the remedy is no longer `git push` but a second PR against a
+protected integration branch.
+
+The framework gap this exposed (fixed in the same cycle): `pr/SKILL.md` Step 5 bundled "push with
+`-u`" and "`gh pr create`" into one sentence, so it read as atomic, while Step 3 actively encouraged
+the prep that splits them. Step 5 now requires `git rev-parse HEAD` to equal `git rev-parse @{u}`
+after the push, and the Merge Flow carries the same check against `headRefOid` — the merge being the
+irreversible act.
+
+The general form is worth more than the instance: **a check is only a check if it can disagree with
+the thing it grades.** Three green signals here were all downstream of the same stale ref. When
+something can be stale, verify it against a source that does not share its staleness.

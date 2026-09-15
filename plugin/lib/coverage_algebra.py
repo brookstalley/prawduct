@@ -112,7 +112,13 @@ def judgeable_files(paths: "list[str] | None") -> list[str]:
 #: Records ABOUT the work, as opposed to the work itself: governance state,
 #: specs, plans, the change log, learnings, reflections. A review READS these
 #: to judge by; it does not rate them.
-RECORD_PREFIXES = (".prawduct/",)
+#:
+#: ``.claude/rules/learnings/`` is here because the v2 cutover moved the corpus
+#: OUT of ``.prawduct/``. Leaving it out reclassified every rule file from
+#: oracle to review subject silently -- the Records Pass stops shielding them
+#: and they land in ``files_reviewed`` -- which is a change in what a review
+#: RATES, made by relocating a file rather than by deciding anything.
+RECORD_PREFIXES = (".prawduct/", ".claude/rules/learnings/")
 
 
 def is_review_subject(path: str) -> bool:

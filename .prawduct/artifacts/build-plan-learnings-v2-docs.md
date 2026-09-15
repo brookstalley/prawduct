@@ -87,9 +87,12 @@ exists — the discovery's own delivery evidence (audit §3.2) is that code dire
 always-loaded prose does not | MED impact — it decides which ceilings are touched | user can
 override per rule]
 
-[ASSUMPTION: the version is 3.5.0 (discovery D1, minor) — framed for the owner at the cut, and
-`gates.json`'s three `since: "3.5.0"` rows are rewritten if the owner chooses otherwise | HIGH
-impact on the cut, none on the build | user decides]
+[RESOLVED 2026-09-15 — the owner ruled **3.5.1**. The 3.5.0 assumption below was overtaken:
+v3.5.0 SHIPPED on 2026-09-12 without this work, while this branch sat merge-ready. `gates.json`'s
+three learnings rows are restamped `since: "3.5.1"` accordingly — a gate stamped with a version
+that shipped without it is a gate the banner never announces. I put on record that a PATCH number
+understates a one-way cutover which deletes `.prawduct/learnings.md` in every governed repo and
+relocates where rules live; the owner ruled 3.5.1 with that stated. Recorded, not re-litigated.]
 
 **What would raise confidence:** the owner's version call; it is asked at Chunk 05, where it
 is needed, and nothing before it depends on the answer.
@@ -117,7 +120,8 @@ against its surface and the two protocol files against each other. Chunk 04 done
 cumulatives (rev-…a960563b, rev-…db97159b after the sync) and four verify-resolutions rounds, all
 findings fixed or accepted; PR reviewer (opus) clean on the re-run; PR #759 open against develop,
 merge commit, merge awaits the owner (`PR merge: wait_for_user`). Next: Chunk 05 after the merge —
-the owner's version call first (3.5.0 recommended; gates.json rows carry that `since`).
+the owner's version call — MADE 2026-09-15: **3.5.1** (see the resolved assumption above;
+gates.json rows now carry that `since`).
 
 ## Scaffolding
 
@@ -162,7 +166,10 @@ plugin/docs/discipline.md                 # NEW: the ten-rule delivery table (03
 plugin/docs/norms.md                      # learnings cross-links repointed (02)
 plugin/skills/critic/review-cycle.md      # rule-unit sentence stated from the writer (02); R12 sentences if any (03)
 .prawduct/artifacts/api-contract.md       # R13: the added verbs and the contract narrative (02)
-.prawduct/artifacts/release-plan-v3.5.0.md  # NEW at the cut (05)
+.prawduct/artifacts/release-plan-v3.5.1.md  # NEW at the cut (05) — 3.5.1, NOT 3.5.0:
+                                            # develop already shipped release-plan-v3.5.0.md
+                                            # on 2026-09-12 and writing that path would
+                                            # overwrite a shipped record.
 tests/test_v5_methodology.py, tests/test_plugin_methodology_digest.py, tests/test_v5_templates.py
 ```
 
@@ -384,7 +391,7 @@ lives at exactly one delivery surface.
     consumer's repo is rewritten on its first session, a skill and three verbs retired, a Stop
     gate widened to every session) versus 3.4.1 (the conservative norm). Recorded in the release
     plan whichever way; `gates.json`'s `since` rows rewritten if not 3.5.0.
-  - new `.prawduct/artifacts/release-plan-v3.5.0.md` (or the chosen version): version decision,
+  - new `.prawduct/artifacts/release-plan-v3.5.1.md` (the owner's 2026-09-15 ruling): version decision,
     release classification of every release-pending scope on `develop` (this program's three plus
     whatever the peer session landed), the consumer-facing headline, what ships, verification.
   - Phase 0: `check-releasability --release vX.Y.Z` green on a current green suite. Phase 1 on

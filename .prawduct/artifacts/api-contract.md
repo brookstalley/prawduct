@@ -247,13 +247,14 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   same `inactive` means "this repo loads nothing" to an onboarding session and "the manifest
   record does not name this path" to a doctor run, which by construction executes inside a
   session where the plugin did load. `--json` carries `status` for a caller that must branch.
-- **Learnings pairing** — `check-learnings-pairing [--json]` (read-only). Grades `learnings.md`
-  against `learnings-detail.md`. Exit 0 clean, 1 a duplicate active heading, **3** the pair could
-  not be read — the third-outcome rule below. Only duplicates are graded; counterpart and ordering
-  drift ride `counts` as measurements, because the two files pair by PREFIX rather than exact title
-  and the mirror-exactly invariant does not hold in practice (270 index vs 179 detail active
-  entries on this repo). `audit-learnings --apply` refuses on the same duplicate state and exits
-  **1** — a writer that refused and wrote nothing, per the fail-direction rules below.
+- **Learnings pairing** — `check-learnings-pairing [--json]` (**deprecated, inert** since the v2
+  cutover). Exits **0** always and writes nothing; `--json` yields empty stdout. It graded
+  `.prawduct/learnings.md` against `learnings-detail.md`, and that corpus no longer exists — rules
+  are `.claude/rules/` files the harness loads by path match. **Its former contract (0 clean, 1 a
+  duplicate active heading, 3 the pair unreadable) is RETIRED, not merely unused**: a stub that
+  returns 0 cannot raise 1 or 3, so a caller still branching on them takes the clean arm forever.
+  The notice on stderr names where rules live now. `audit-learnings` and `learnings-obligation`
+  are inert on the same terms.
 - **Advisory** — `advisory list|show|dismiss|undismiss|resolve`.
 - **Backlog service** — `backlog <op>`: a subcommand *group*, not a single command. The op set is
   `_ALL_OPS` in `lib/backlog/cli.py` — the same tuple the CLI builds its unknown-op message from, so

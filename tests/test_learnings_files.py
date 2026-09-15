@@ -634,3 +634,40 @@ class TestAgainstTheRealCorpus:
         units = lf.rule_units(self._core().read_text(encoding="utf-8"))
         assert not any(u.startswith("Learnings —") for u in units)
         assert not any("Reading a rule is not applying it" in u for u in units)
+
+
+class TestThisReposOwnCorpus:
+    """The fixture-based tests above prove the resolver; none of them reads the
+    corpus this repo actually ships.
+
+    That gap is why a 32-rule hand merge landed unasserted: the v3.5.1 cutover
+    merge re-homed rules develop had grown, verified every rule HEADING
+    survived, and still shipped two rules twice -- the revised text in an area
+    file and a superseded copy still in `core.md`. Later-one-wins resolves
+    position WITHIN a file; across two files there is no position to read, and
+    `core.md` is the always-loaded one, so the stale copy is the one that wins.
+
+    A duplicate is therefore not untidiness, it is a rule whose text nobody can
+    predict. This reads the real directory because the defect was in the real
+    directory and a fixture can only confirm what its author already believed.
+    """
+
+    def _corpus(self) -> dict[str, list[str]]:
+        root = _PLUGIN_ROOT.parent / lf.RULES_DIR_REL
+        seen: dict[str, list[str]] = {}
+        for path in sorted(root.glob("*.md")):
+            for unit in lf.rule_units(path.read_text(encoding="utf-8")):
+                seen.setdefault(" ".join(unit.split()), []).append(path.name)
+        return seen
+
+    def test_no_rule_is_carried_by_two_files(self):
+        dupes = {u: f for u, f in self._corpus().items() if len(f) > 1}
+        assert not dupes, "rule(s) carried by more than one corpus file:\n" + "\n".join(
+            f"  {files}: {unit[:100]}" for unit, files in dupes.items()
+        )
+
+    def test_the_corpus_is_not_empty(self):
+        """Without this, an empty or unreadable directory turns the guard above
+        into zero silently-passing comparisons."""
+        corpus = self._corpus()
+        assert len(corpus) > 50, f"only {len(corpus)} rules found; the sweep read nothing real"
