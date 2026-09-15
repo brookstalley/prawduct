@@ -21,6 +21,14 @@ def read_file(rel_path: str) -> str:
     return (base / rel_path).read_text()
 
 
+# MERGE 2026-09-15 (#759 develop sync). The readings below that moved did so because
+# BOTH lineages now sit in one tree: this branch's learnings-v2 edits and develop's
+# review-loop-termination / upstream-report-bug / live-review-rule edits. Nothing was
+# written to spend a ceiling — every number is `estimate_tokens` on the MERGED file, and
+# each ceiling is ratcheted to exactly one over its reading, so the merge banks no slack
+# and the next addition pays normally. Earlier dated entries in this file are history and
+# were left exactly as they were: they record what was true when written.
+
 def estimate_tokens(text: str) -> int:
     return int(len(text.split()) * 1.3)
 
@@ -366,7 +374,7 @@ LAST_MEASURED_TOKENS = {
     # -3 on 2026-09-03 (learnings-v2-docs Chunk 01): the standing-block pointer
     # now names `session-hygiene.md` instead of a section of reflection.md. A
     # CUT; the ceiling ratchets by the same -3.
-    "methodology/building.md": 4784,
+    "methodology/building.md": 4786,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -452,6 +460,25 @@ LAST_MEASURED_TOKENS = {
     # meant). `chunk` mode is UNCOVERED and explicitly so: `goals-1-3.md` has 2
     # tokens of headroom and the rule costs ~65, which is an owner ruling on
     # that ceiling, not a trim to slip into this chunk.
+    # 2026-08-25, review-loop-termination Chunk 02 — one change, four readings.
+    # Judgeability now governs review SCOPE: `files_reviewed` narrows to the
+    # findings-eligible subject set, what it sheds rides as `files_oracle` (read,
+    # not rated), and a new Records Pass at `final`/`cumulative` rates that set
+    # against the two bars. Each file's ceiling comment carries what funded its
+    # share; the raises are justified there, not here.
+    # +125 review-protocol.md (3794 -> 3919), +52 goals-1-3.md (2247 -> 2299),
+    # +190 review-cycle.md (9596 -> 9786), +9 SKILL.md (3445 -> 3454).
+    # Then the chunk's own review corrected the rule it shipped (R-9/R-15 — the
+    # subject rule was an absolute the protocol contradicted): +191 review-cycle
+    # (9786 -> 9977), +18 goals-1-3 (2299 -> 2317), +66 review-protocol
+    # (3919 -> 3985), each ceiling moved with its reading and the reason at the
+    # ceiling. The last 9 of the first pass are a widened `governed-by-gap` definition: it now also
+    # covers a plan frontmatter no parser can read, the defect class that
+    # let THIS plan ship an invalid header past three regex-based readers.
+    # -4 on 2026-09-09 (Chunk 04's review): a refund. Two bar COUNTS became
+    # relational ("its bars"), which is the remedy for a count restated at four
+    # sites, and the Records-Pass precedence moved to its one home in
+    # `review-cycle.md` instead of being half-stated here.
     # -9 on 2026-09-02 (learnings-v2 Chunk 04), 3799 -> 3790 across two edits
     # that net to a REFUND. The cutover repointed step 4's read list from one
     # file to "core.md plus the area files `learnings-files --for-diff` lists"
@@ -467,7 +494,7 @@ LAST_MEASURED_TOKENS = {
     # bullets as goals-1-3.md, which this file must agree with
     # (tests/test_discipline_table.py pins the pair). Raised, not funded.
     # -33 on 2026-09-03 (PR-boundary review R-6): the same bullet left here.
-    "skills/critic/review-protocol.md": 3815,
+    "skills/critic/review-protocol.md": 4050,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -532,7 +559,7 @@ LAST_MEASURED_TOKENS = {
     # -32 on 2026-09-03 (PR-boundary review R-6): the removal-is-repo-wide bullet
     # re-owned Goal 4's drift subject at a different severity; it left, and
     # discipline row 5 re-homed on the drift bullet. A CUT; the ceiling ratchets.
-    "skills/critic/goals-1-3.md": 2301,
+    "skills/critic/goals-1-3.md": 2373,
     # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
     # a computed pass the gate can now print, which a reader who only knows
     # "uncovered means run a cumulative" will otherwise re-review straight
@@ -564,6 +591,29 @@ LAST_MEASURED_TOKENS = {
     # was asserting a timing that is false on the Issues backend, so the routing
     # replaced prose rather than adding to it, and the "why" the routing would
     # have restated stayed at the owner where the reader is already being sent.
+    # +371 on 2026-09-09 (review-loop-termination Chunk 04). Three additions,
+    # each a rule this file must state or teach falsely. (1) The
+    # diminishing-returns paragraph asserted that yield decays; the store says it
+    # rises (13.5 -> 18.4 per full round, 99% new), so it was replaced with the
+    # measured floor and its number — shipping a budget beside a contradictory
+    # stopping rule leaves an agent two rules, one of which it can check and
+    # therefore learn to distrust. (2) The round budget itself. (3) `--fixed`,
+    # which is a new disposition verb: the three-way ACCEPT/FIX/FILE vocabulary
+    # this file owns had a hole exactly where the cheapest correct action sat.
+    # Paid down first: the replaced paragraph funds roughly half of (1), the
+    # budget prose points at `project-state.yaml` for the knob rather than
+    # restating its defaults, and the SKILL.md row stays a route, not a copy.
+    # Held at the ceiling on its own review: the exit-4 row's SECOND table (the
+    # verify-resolutions demotion table) still priced the nothing-to-verify
+    # refusal at exit 1 and routed it as a demotion — a reader following it
+    # spends a full cumulative on a bundle the gate already passes, which is the
+    # framework-manufactured round this chunk removes, shipping in the same
+    # commit. Corrected here, along with the Records-Pass precedence (bars decide
+    # WHETHER, Goal 4 decides WHICH — stated once instead of contradicted twice)
+    # and the coverage-priced labels the eligibility split left wrong. Paid for
+    # in place rather than by a second raise: the diminishing-returns paragraph
+    # stopped narrating what this file used to say (durable prose never narrates
+    # history), and four clauses that restated their own sentences went.
     # -9 on 2026-09-02 (learnings-v2 Chunk 04), 9599 -> 9590, and the two edits
     # that made it are worth separating. ADDED: the cross-check's read list is
     # now the resolver's answer (core.md plus the diff's area files, printed by
@@ -617,7 +667,7 @@ LAST_MEASURED_TOKENS = {
     # ceiling ratchets with it.
     # -1 on 2026-09-03: `learnings` left the free-writes parenthetical (the
     # corpus is no longer under `.prawduct/`).
-    "skills/critic/review-cycle.md": 9590,
+    "skills/critic/review-cycle.md": 10452,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -693,6 +743,12 @@ LAST_MEASURED_TOKENS = {
     # explicitly rules out. Collapsing the pair and attaching the stars removed a
     # duplicate grant line, so the saving is duplication going away rather than
     # any rule being shortened. (#160's +2 from the same burndown is included.)
+    # +20 on 2026-09-09 (review-loop-termination Chunk 04): the exit-4 row, for
+    # the round budget. A new exit code with no row is an exit code the skill
+    # cannot route, and an unrouted refusal is read as a failure and retried in
+    # another mode — the round the budget exists to refuse. Funded by dropping
+    # exit 3's guard-refusal parenthetical: it named a fact no gate reads and
+    # nothing here acts on, and `api-contract.md` § Error Model is its home.
     # +3 on 2026-09-02 (learnings-v2 Chunk 04): the `learnings-files` grant, in
     # the house form, one line. The fork runs the Critic's own cross-check and
     # `review-protocol.md` names the command it enumerates the read list with --
@@ -703,7 +759,7 @@ LAST_MEASURED_TOKENS = {
     # still holds, and the standing rule (the next addition trims or relocates)
     # is unchanged by a grant line that has no prose to trim. 2026-09-02: +7 for the
     # two `learnings-files` grants (hook and python3 twin) — same kind, nothing to trim.
-    "skills/critic/SKILL.md": 3442,
+    "skills/critic/SKILL.md": 3477,
     "skills/critic/framework-checks.md": 1116,
     # The on-demand class, first recorded 2026-08-19 (#688) — readings, no
     # ceilings; the block above this dict is the decision and its reasoning.
@@ -802,8 +858,22 @@ LAST_MEASURED_TOKENS = {
     # is a plan handed over with no position on it. Distinct from the Plan Shape
     # pushback above, which is one specific take (this plan is too big); this is
     # the general obligation that take is an instance of.
+    # +107 on 2026-09-10: an authoring rule the readers now REQUIRE. The chunk
+    # fields are read mid-line, and a period separates composed fields as
+    # freely as a `·` does — so a Description sentence that OPENS with
+    # `**Type:** designer-handoff` declares the one Type that bypasses the
+    # Critic. Narrowing the reader instead would drop the composed forms real
+    # plans use, so the bound is here, where the plan's author is. Part-paid in
+    # place: the orthogonality paragraph re-listed what over-declaring
+    # `designer-handoff` and `trivial` each cost, six lines under the bullets
+    # that state both, and now points at them. The last 25 of it are the
+    # backtick clause: a first draft told authors to backtick the marker, which
+    # is false at a line start — the line-opening class ALLOWS the backtick, on
+    # purpose, because line-initial backticked declarations are a real corpus
+    # form. Advice that names an escape which is not one costs more than the
+    # words it saves.
     # 2026-09-02 (learnings-v2 chunk 05, cumulative R-6): the "program, not a plan" bullet names the learnings rules, not a file.
-    "methodology/planning.md": 5469,
+    "methodology/planning.md": 5575,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
@@ -1227,6 +1297,60 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # form a view on whether the work should happen. That is the gap: the most
     # expensive failure available here is building the wrong thing well, and it
     # is invisible to a check that only interrogates scope.
+    #
+    # framework 3197 -> 3218, product 2085 -> 2095 on 2026-09-07
+    # (upstream-report-bug): A DECLARED RAISE, and the smallest true one I could
+    # write. Both members carried a sentence about `/prawduct:report-bug` that
+    # the same commit made FALSE. The digest said the skill "routes upstream or
+    # to this product's backlog, and is inert when neither is configured" --
+    # three claims, all now wrong: it files an issue, it never captures locally
+    # (submit-or-nothing), and nothing is configured. CLAUDE.md said upstream
+    # reports arrive in `incoming-bugs/`; they arrive as issues, and that
+    # directory now holds only pre-cutover ones.
+    #
+    # NOT PAID IN PLACE, and the reason is the rule rather than an exemption.
+    # There is no duplication between these two members to cut -- the last three
+    # entries above already spent it -- and the standing rule's other branch is
+    # to trim whichever clause is least defended, which is how a correction gets
+    # funded by deleting something nobody was watching. So: declared.
+    #
+    # What the 10 tokens on EVERY governed session buy (the product delta, the
+    # one that compounds): the digest sentence is the only place a model learns
+    # this skill exists, and the old one told it the channel was inert unless
+    # configured -- which is a reason not to reach for it. A routing line that
+    # routes nowhere costs more than it saves. The two clauses that remain are
+    # the two a reader needs to decide whether to reach for it at all: it files
+    # upstream, and it will show them the bytes before anything leaves. The
+    # recomposition clause was drafted and cut -- the skill carries it, and a
+    # reader who has not invoked it does not need it.
+    #
+    # The framework delta is 11 more, all CLAUDE.md, and it is a correction of
+    # the same falsified fact in the one file that is not shared.
+    #
+    # Character budget checked FIRST, as the note in the ceiling table below
+    # says to: the digest is at 9129 of its 9500-character budget, so the
+    # characters were there before this arithmetic was done.
+    # framework 3218 -> 3211, 2026-09-08 (upstream-intake-repoint): the product-
+    # feedback row stopped naming the retired drop-box and stopped restating the
+    # intake query, which has homes in the design and in the report-bug skill. A
+    # CUT at the duplication, not a relocation -- the row now points at both and
+    # states neither, and the 7 tokens are a return rather than headroom banked.
+    #
+    # product 2095 -> 2091 on 2026-09-10 (plugin-absent-governance-anchor), and
+    # `framework` does not move because the static anchor is not one of its
+    # members -- the CLAUDE.md-edit case in reverse. The anchor gained the notice
+    # a plugin-less clone needs -- that `/prawduct:*` being unavailable means
+    # governance is OFF, and the one command that ends it -- and came out SMALLER
+    # than it went in.
+    #
+    # The +76 the notice cost was funded IN PLACE, and by cutting restatements
+    # rather than words: the marker restated the version-free rule that the block
+    # comment above it already owns (and that no session pays for); the opening
+    # paragraph said "lives in the plugin" and "never copied into this repo",
+    # which are one fact; and the enforcement paragraph closed by restating "no
+    # hook and no gate" two paragraphs after the new check says "no Stop gate, no
+    # Critic, nothing below enforced". The conditional in its heading is what
+    # carries that fact now, so the sentence was a third copy.
     # 2026-09-02 (learnings-v2 chunk 05): CLAUDE.md repointed four learnings references
     # at .claude/rules/learnings/; paid by dropping the lookup-skill mention and the
     # "read learnings.md" instruction (the harness loads the rules now).
@@ -1258,8 +1382,8 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # migrated repos. NOT funded by a trim, and the ceilings are RAISED with it
     # (see the ceilings block): the two shortest cuts on the digest were both
     # rules a test pins.
-    "framework": 3244,
-    "product": 2131,
+    "framework": 3257,
+    "product": 2136,
 }
 
 #: Ceilings. HARD, like the per-file prose ceilings in this module and
@@ -1344,6 +1468,29 @@ INJECTED_FOOTPRINT_CEILINGS = {
     # reserve is characters against a harness threshold that no ruling buys past
     # (`tests/test_plugin_methodology_digest.py`'s DIGEST_HEADROOM_RESERVE).
     # Banking headroom in a raisable budget would have protected nothing.
+    #
+    # 3198 -> 3219, 2086 -> 2096 on 2026-09-07 (upstream-report-bug): ratcheted
+    # with the declared raise recorded in the reading table above, staying one
+    # over the reading with zero banked -- so the next addition meets the
+    # standing trim-or-relocate rule with nothing to collect silently.
+    #
+    # framework 3219 -> 3212 on 2026-09-08 (upstream-intake-repoint): ratcheted
+    # with the drop-box cut in the reading table above, which returned 7 tokens
+    # and left them collectable here for a commit. That gap is the exact
+    # re-funding this comment's first paragraph forbids, and it is easy to make
+    # because the cut and the ratchet are two edits and only one of them is
+    # where the work is. `product` did not move and neither does its ceiling.
+    #
+    # INVARIANT, so the next reader does not have to re-derive it from the
+    # entries above: each ceiling is EXACTLY one over its reading unless an
+    # entry here declares otherwise and says why. Stated as a rule rather than
+    # left as a pattern, because a pattern is what this cut broke.
+    #
+    # 2096 -> 2092 on 2026-09-10, `product` only: ratcheted with the reading, per
+    # the invariant above. The anchor's plugin-absent notice was paid for by more
+    # trim than it cost, and leaving the ceiling at 2096 would bank that
+    # difference as headroom for the next addition -- the re-funding this
+    # comment's first paragraph forbids. NOT a declared raise: nothing here grew.
     # RATCHETED 3198 -> 3196, 2086 -> 2084 (2026-09-02): the digest dropped the
     # deleted lookup skill from its read-on-demand line. Both ceilings move by
     # the same -2 as the readings, so the deletion banks nothing.
@@ -1364,8 +1511,8 @@ INJECTED_FOOTPRINT_CEILINGS = {
     # (where project memory lives) on the one surface every session receives.
     # One over each reading, so nothing is banked. The digest sits at 9,455 of
     # the 10,000-character wall — checked before this arithmetic, not after.
-    "framework": 3245,
-    "product": 2132,
+    "framework": 3258,
+    "product": 2137,
 }
 
 
@@ -1499,6 +1646,31 @@ def test_injected_footprint_under_ceiling(shape):
         f"ceiling. Trim a member, or move the content OUT of the injected set "
         f"into an on-demand guide -- moving it to the other member of this same "
         f"set buys nothing, because this assertion sums them."
+    )
+
+
+@pytest.mark.parametrize("shape", sorted(INJECTED_FOOTPRINT_CEILINGS))
+def test_each_ceiling_is_exactly_one_over_its_reading(shape):
+    """The ratchet, asserted instead of remembered.
+
+    `test_injected_footprint_under_ceiling` catches growth ABOVE a ceiling; it
+    cannot see a ceiling left above its reading after a cut, which silently
+    re-funds the growth the cut paid for and is the one thing the ceiling
+    comment's first paragraph forbids. That gap was reached in practice: a cut
+    landed in the reading table and its paired ratchet did not follow, leaving
+    seven tokens collectable with nothing red.
+
+    A DECLARED departure is still available — this is a rule about the two
+    tables agreeing, not a ban on raising one. Raise the reading with its
+    reason, and this follows for free.
+    """
+    reading = LAST_MEASURED_INJECTED_TOKENS[shape]
+    ceiling = INJECTED_FOOTPRINT_CEILINGS[shape]
+    assert ceiling == reading + 1, (
+        f"the {shape} ceiling is {ceiling} against a recorded reading of {reading}. "
+        f"Each ceiling sits exactly one over its reading, so nothing is banked -- "
+        f"set it to {reading + 1} in the same edit that moved the reading, or move "
+        f"the reading with a declared reason and let this follow."
     )
 
 
@@ -2420,6 +2592,31 @@ class TestBuildingMethodology:
         # pointer's table of contents went with it. The ceiling moves by the
         # same -5 rather than banking it — unratcheted slack is a loan the next
         # edit collects silently and green.
+        # The live-review edit rule (2026-09-12) landed +2 net (4754 -> 4756),
+        # so the ceiling does NOT move — it is spent out of the 3 tokens of
+        # headroom the last ratchet left, leaving 1.
+        # The addition is the read-don't-edit rule on the wait-time paragraph:
+        # `critic-begin` snapshots a tree, so editing a reviewed file voids the
+        # review and the suite evidence together, and `test-status` cannot see
+        # it. Recorded because a self-funded change is the one most likely to go
+        # unlogged. What paid, each pure restatement or detail the pointer
+        # beside it already owns — no count, because the first draft of this
+        # entry said "four" and the review found five: the Cumulative-Critic-gate
+        # paragraph (its ordering is "Resolve findings", its existence is Modes,
+        # its mechanics are pr/SKILL.md); the "Tuning a mechanism you haven't
+        # read" trap's tail (the cheap-check gate lists the trap verbatim as a
+        # detector); the coordinator roster's three roles (the next sentence
+        # sends the roster rule to review-cycle.md); the build cycle's "Update
+        # build plan Status" bullet (chunk-boundary step 5 carries it verbatim);
+        # and two words off the wait-time paragraph's own tail.
+        # ONE trim was attempted and REVERTED: "major" in the
+        # "Uninvestigated decisions" trap. It reads as restatement and is not —
+        # § Decision Research is where "major" is DEFINED (lock-in,
+        # pervasiveness, structural impact, external dependency, volatility), so
+        # the word is the trap's only link to that predicate, and without it the
+        # line asserts that every choice owes research. A trim that changes an
+        # instruction's SCOPE is not funding, whatever it saves.
+        # The narrative why lives in the learnings entry this cycle wrote.
         # RATCHETED AGAIN 4757 -> 4755 (2026-09-02): the lookup-skill sentences
         # were rewritten to the harness-loaded model and the `/clear` list
         # stopped naming a reflections archive that no longer exists. The
@@ -2439,7 +2636,9 @@ class TestBuildingMethodology:
         # the number below is the measured merge (B's delta + C's delta), not either side.
         # RATCHETED 4788 -> 4785 (2026-09-03): the pointer to the standing block
         # got shorter when the block moved to its own guide.
-        assert tokens < 4785, f"building.md is ~{tokens} tokens, should be <4785"
+        # MERGE 2026-09-15 (#759 develop sync): ceiling is one over the merged
+        # reading — both lineages above are history and stand as written.
+        assert tokens < 4787, f"building.md is ~{tokens} tokens, should be <4787"
 
 
 # =============================================================================
@@ -4051,11 +4250,55 @@ class TestCriticSkill:
         # every correctly-sequenced chunk. The PR reviewer's protocol carries it
         # instead, where the sequencing is finished.
         tokens = estimate_tokens(self.content)
+        #
+        # RAISED 3800 -> 3922 (2026-08-25, review-loop-termination Chunk 02).
+        # The one raise the standing rule allows: a control that removes more
+        # review work than it costs. Judgeability now governs review SCOPE —
+        # `files_reviewed` narrows to the findings-eligible subject set and what
+        # it sheds is handed over as `files_oracle`, read and not rated — which
+        # takes 36% of ALL findings out of per-round review, measured across
+        # 3,826 findings in 728 review facts. The reviewer payload grows ~3%
+        # to buy that, and the trade is checkable in both directions from the
+        # store. Funded first where it could be: the NOTE bullet's
+        # record-only-text clause is gone, because record-only text is no longer a
+        # per-round subject at all — it was a rule about severity for a class this
+        # file's reader can no longer rate.
+        #
+        # RAISED AGAIN 3922 -> 3988 (2026-08-25, Chunk 02's own cumulative
+        # review, R-9/R-15). The first raise priced the narrowing and UNDERPRICED
+        # it: the subject rule shipped as an absolute while the protocol still
+        # mandated findings about oracle files, and this review proved it by
+        # producing one — its single `record_lint` finding sits on an oracle
+        # path. Closing that by construction costs the carve-out naming the three
+        # passes that own oracle findings, plus the third Records-Pass bar that
+        # keeps record-only BLOCKING reachable (54 of 236, 23%) instead of
+        # trading it away silently. Corrections to a rule this file introduced
+        # two commits ago, not new scope — but they are a real cost the first
+        # estimate missed, and recording that is the point of this dict.
+        # RAISED 3988 -> 3995 (2026-09-09, base advance from develop). Not new
+        # authorship: this branch and develop each grew this file under its own
+        # declared budget, and the merge carries both. develop's addition is the
+        # "a finding's subject is never another finding" bullet; this branch's is
+        # the Records-Pass reach on Goal 4's severities. Neither is duplication
+        # the other pays for, so there is nothing to pay in place with — the sum
+        # is the honest number. The one trim available WAS taken, in
+        # goals-1-3.md: see the raise recorded there.
+        # RAISED AGAIN 3995 -> 4035 (2026-09-09, Chunk 03's own review, R-1).
+        # This file is the final/cumulative reviewer's protocol and it still
+        # taught eligibility as "findings-eligible, judgeable paths only" — the
+        # exact rule Chunk 03 removed from the code. A reviewer reading it would
+        # apply the removed rule, which is the load-bearing-prose bar, not a
+        # wording preference. Paid down first: the draft spelled out the
+        # question and why judgeability answers a different one and cost 50;
+        # naming the predicate and leaving the case to
+        # `coverage_algebra.is_review_subject` costs 31.
         # RAISED 3800 -> 3849 on 2026-09-03 (learnings-v2-docs Chunk 03), by
         # declaration: two fleet-rediscovered rules delivered as Goal 2 bullets
         # (`docs/discipline.md` rows 5 and 7). One over the reading; nothing banked.
         # RATCHETED 3849 -> 3816 (2026-09-03) with the reading.
-        assert tokens < 3816, f"review-protocol.md is ~{tokens} tokens, should be <3816"
+        # MERGE 2026-09-15 (#759 develop sync): ceiling is one over the merged
+        # reading — both lineages above are history and stand as written.
+        assert tokens < 4051, f"review-protocol.md is ~{tokens} tokens, should be <4051"
 
 
 # =============================================================================
@@ -4270,6 +4513,35 @@ class TestCriticGoals13:
         # sentence's. Net +3, carrying one added check name.
         tokens = estimate_tokens(self.content)
         #
+        # RAISED 2250 -> 2302 (2026-08-25, review-loop-termination Chunk 02).
+        # The one raise the standing rule allows: a control that removes more
+        # review work than it costs. Judgeability now governs review SCOPE —
+        # `files_reviewed` narrows to the findings-eligible subject set and what
+        # it sheds is handed over as `files_oracle`, read and not rated — which
+        # takes 36% of ALL findings out of per-round review, measured across
+        # 3,826 findings in 728 review facts. The reviewer payload grows ~2%
+        # to buy that, and the trade is checkable in both directions from the
+        # store. Funded first where it could be: the same record-only-text clause in the
+        # Severity section, and `files_changed` dropped from step 1's scope list —
+        # the subject/oracle split is what a reviewer scopes by now.
+        #
+        # RAISED AGAIN 2302 -> 2320 (2026-08-25, Chunk 02's own cumulative
+        # review, R-9/R-15). The first raise priced the narrowing and UNDERPRICED
+        # it: the subject rule shipped as an absolute while the protocol still
+        # mandated findings about oracle files, and this review proved it by
+        # producing one — its single `record_lint` finding sits on an oracle
+        # path. Closing that by construction costs the carve-out naming the three
+        # passes that own oracle findings, plus the third Records-Pass bar that
+        # keeps record-only BLOCKING reachable (54 of 236, 23%) instead of
+        # trading it away silently. Corrections to a rule this file introduced
+        # two commits ago, not new scope — but they are a real cost the first
+        # estimate missed, and recording that is the point of this dict.
+        # RAISED 2320 -> 2345 (2026-09-09, base advance from develop) — same
+        # cause as review-protocol.md's raise above, same two contributions.
+        # Paid in place first: step 1's scope list went back to naming the
+        # review interval rather than re-enumerating `files_changed`, because
+        # the subject/oracle sentence below it is what a reviewer scopes by now
+        # and the flat list restated it. That trim funded 4 of the 25.
         # Ceiling 2280 -> 2278 on 2026-09-02 (learnings-v2-delete Chunk 01),
         # ratcheted by the two tokens the retired entry-shape clause freed.
         # A cut that leaves the ceiling where it was converts a deletion into a
@@ -4279,7 +4551,9 @@ class TestCriticGoals13:
         # declaration: two fleet-rediscovered rules delivered as Goal 2 bullets
         # (`docs/discipline.md` rows 5 and 7). One over the reading; nothing banked.
         # RATCHETED 2334 -> 2302 (2026-09-03) with the reading.
-        assert tokens < 2302, f"goals-1-3.md is ~{tokens} tokens, should be <2302"
+        # MERGE 2026-09-15 (#759 develop sync): ceiling is one over the merged
+        # reading — both lineages above are history and stand as written.
+        assert tokens < 2374, f"goals-1-3.md is ~{tokens} tokens, should be <2374"
 
     def test_is_self_contained(self):
         """No follow-the-pointer reads at review time — the acceptance criterion
@@ -4483,7 +4757,30 @@ class TestCriticSkillRoutesByMode:
         # It lives in this class because this class owns SKILL.md; the mode
         # routing it asserts around it is the reason the ceiling is this tight.
         tokens = estimate_tokens(self.content)
-        assert tokens < 3450, f"SKILL.md is ~{tokens} tokens, should be <3450"
+        #
+        # RAISED 3450 -> 3457 (2026-08-25, review-loop-termination Chunk 02).
+        # The one raise the standing rule allows: a control that removes more
+        # review work than it costs. Judgeability now governs review SCOPE —
+        # `files_reviewed` narrows to the findings-eligible subject set and what
+        # it sheds is handed over as `files_oracle`, read and not rated — which
+        # takes 36% of ALL findings out of per-round review, measured across
+        # 3,826 findings in 728 review facts. The reviewer payload grows ~0.3%
+        # to buy that, and the trade is checkable in both directions from the
+        # store. Funded first where it could be: nothing here — step 5 is one line and
+        # the +9 is the split it now names.
+        #
+        # RAISED 3457 -> 3475 (2026-09-09, review-loop-termination Chunk 04).
+        # The same allowed raise, for the same reason: a control that removes
+        # more review work than it costs. The round budget ends a loop the
+        # measured store says has no natural fixed point — yield per full round
+        # RISES (13.5 -> 18.4, 99% of findings new), so nothing else stops it —
+        # and its refusal needs a row here or the skill cannot route the exit
+        # code, which is worse than not having one: an unrouted refusal reads as
+        # a dispatch failure and gets retried in another mode, buying the round.
+        # Funded first: exit 3's guard-refusal parenthetical went (a fact no gate
+        # reads, documented in `api-contract.md`), and the row is a route rather
+        # than a copy of `review-cycle.md`'s explanation.
+        assert tokens < 3478, f"SKILL.md is ~{tokens} tokens, should be <3478"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))
@@ -4610,7 +4907,9 @@ class TestCriticSkillRoutesByMode:
 
 class TestReviewCycle:
     def test_token_budget(self):
-        # Ceiling 9600. It exists because the absence of one was being SPENT:
+        # The ceiling is the number this test asserts, and nothing else restates
+        # it — a second copy here would go stale at the next raise and ship as
+        # fact. It exists because the absence of one was being SPENT:
         # `review-protocol.md`'s relocated "Extending This Skill" and the
         # verify-narrowing argument both landed here justified by "review-cycle
         # carries no ceiling", while the ceiling test one file over passed on a
@@ -4715,6 +5014,57 @@ class TestReviewCycle:
         # Net +5.
         content = read_file("skills/critic/review-cycle.md")
         tokens = estimate_tokens(content)
+        #
+        # RAISED 9600 -> 9789 (2026-08-25, review-loop-termination Chunk 02).
+        # The one raise the standing rule allows: a control that removes more
+        # review work than it costs. Judgeability now governs review SCOPE —
+        # `files_reviewed` narrows to the findings-eligible subject set and what
+        # it sheds is handed over as `files_oracle`, read and not rated — which
+        # takes 36% of ALL findings out of per-round review, measured across
+        # 3,826 findings in 728 review facts. The reviewer payload grows ~2%
+        # to buy that, and the trade is checkable in both directions from the
+        # store. Funded first where it could be: the two-bar severity rule RELOCATED
+        # within this file into the new Records Pass (where it is now a pass, not a
+        # severity floor); `## Directional Change Review` CUT — three bullets
+        # restating Goals 1, 4 and 5 under a trigger condition that is just
+        # `cumulative`, referenced by nothing; and the ledger section's second,
+        # verbatim statement of where `scope` comes from.
+        #
+        # RAISED AGAIN 9789 -> 9980 (2026-08-25, Chunk 02's own cumulative
+        # review, R-9/R-15). The first raise priced the narrowing and UNDERPRICED
+        # it: the subject rule shipped as an absolute while the protocol still
+        # mandated findings about oracle files, and this review proved it by
+        # producing one — its single `record_lint` finding sits on an oracle
+        # path. Closing that by construction costs the carve-out naming the three
+        # passes that own oracle findings, plus the third Records-Pass bar that
+        # keeps record-only BLOCKING reachable (54 of 236, 23%) instead of
+        # trading it away silently. Corrections to a rule this file introduced
+        # two commits ago, not new scope — but they are a real cost the first
+        # estimate missed, and recording that is the point of this dict.
+        # RAISED 9980 -> 10065 (2026-09-09, Chunk 03). The Records Pass taught
+        # eligibility as "is it judgeable", which is the defect Chunk 03 closes:
+        # judgeability prices a round, eligibility decides what a finding may be
+        # ABOUT, and deriving the second by negating the first left a review
+        # subagent's own prompt unrateable and, for a markdown-deliverable
+        # product, its whole output. Correcting a rule this file states is not
+        # optional — leaving it would have the skill teaching the negation the
+        # code no longer implements. Paid down first by keeping only the RULE
+        # here and pointing at `coverage_algebra.is_review_subject` for the
+        # case, per one-home: the first draft restated both worked examples and
+        # cost 116; this costs 78.
+        # RAISED 10065 -> 10435 (2026-09-09, Chunk 04). Two mechanisms and one
+        # correction, and the correction is why the raise is not optional: this
+        # file asserted that review yield decays by round 3, and the store it is
+        # written against says it rises (13.5 -> 15.4 -> 15.5 -> 18.4 per full
+        # round, 99% of findings new). Shipping a round budget while that
+        # paragraph stood would leave two stopping rules, and the false one is
+        # the one an agent can check — which is how a protocol file teaches
+        # itself to be distrusted. The mechanisms are the budget (exit 4,
+        # auto-accept, BLOCKING untouchable) and `--fixed`, a third disposition
+        # verb closing the hole where a free fix had no recordable answer. Paid
+        # down first: the replaced paragraph funds about half of the correction,
+        # the budget prose points at `project-state.yaml` for its knob instead
+        # of restating it, and SKILL.md's row routes rather than duplicates.
         # Ceiling 9600 -> 9571 on 2026-09-02 (learnings-v2-delete Chunk 01),
         # ratcheted by the 29 tokens the retired entry-shape row freed. Same
         # rule as the reading above: slack a deletion opens is not headroom.
@@ -4726,7 +5076,9 @@ class TestReviewCycle:
         # rule-unit sentence stated from the writer cost less than the stale
         # narrative-body clause it replaced.
         # RATCHETED 9592 -> 9591 (2026-09-03) with the reading.
-        assert tokens < 9591, f"review-cycle.md is ~{tokens} tokens, should be <9591"
+        # MERGE 2026-09-15 (#759 develop sync): ceiling is one over the merged
+        # reading — both lineages above are history and stand as written.
+        assert tokens < 10453, f"review-cycle.md is ~{tokens} tokens, should be <10453"
 
     def test_framework_checks_token_budget(self):
         # Ceiling 1150. This file is `final`/`cumulative` payload: SKILL.md's
@@ -4789,6 +5141,32 @@ class TestReviewCycle:
             "the table no longer distinguishes the narrowed mode from the "
             "three that rate every severity"
         )
+
+    def test_the_stopping_rule_carries_its_measured_figure(self):
+        """The paragraph this replaces said review yield DECAYS by round 3. The
+        store it is written against says it rises, and shipping a round budget
+        beside a contradictory stopping rule leaves an agent two rules — one of
+        which it can check, and therefore learn to distrust.
+
+        Asserting the parts of the argument, not its wording: that the claim is
+        the rising one, that it carries the measurement rather than asserting a
+        direction, and that the budget it hands off to names its own bounds.
+        """
+        content = read_file("skills/critic/review-cycle.md")
+        assert "no natural fixed point" in content, (
+            "the stopping rule no longer states WHY a declared budget is needed "
+            "— without it the budget reads as an arbitrary cap"
+        )
+        assert "18.4" in content and "13.5" in content, (
+            "the yield correction lost its measurement, which is the only thing "
+            "that makes it checkable against the store"
+        )
+        assert "review_round_budget" in content
+        for bound in ("verify-resolutions", "BLOCKING"):
+            assert bound in content.split("round budget is the backstop", 1)[1][:900], (
+                f"the budget paragraph never states the {bound} bound — those "
+                "two are what keep it from being able to open a gate"
+            )
 
     def test_the_supply_side_section_states_the_cost(self):
         """A rule that removes review output has to name what it gives up, or
@@ -4995,3 +5373,123 @@ class TestPrinciplesDoc:
         assert [int(h) for h in headings] == list(range(1, 27)), (
             f"expected principle headings 1..26 in order, found {headings}"
         )
+
+
+# =============================================================================
+# Subject vs oracle — judgeability governs review SCOPE, not review READING
+# =============================================================================
+
+
+class TestSubjectAndOracleReachTheReviewer:
+    """The narrowing is delivered to every surface a reviewer meets, and the
+    ORACLE half is delivered with it.
+
+    Blinding the reviewer and narrowing the reviewer produce the same reading —
+    fewer findings, less reader load — so the success metric cannot tell them
+    apart. These pin the half the metric is blind to: that each surface still
+    hands the reviewer what the code is judged against.
+    """
+
+    SURFACES = [
+        "skills/critic/goals-1-3.md",
+        "skills/critic/review-protocol.md",
+        "skills/critic/SKILL.md",
+        "agents/critic-reviewer.md",
+    ]
+
+    @pytest.mark.parametrize("rel_path", SURFACES)
+    def test_every_reviewer_surface_names_both_sets(self, rel_path):
+        content = read_file(rel_path)
+        assert "files_reviewed" in content, f"{rel_path} does not name the subject set"
+        assert "files_oracle" in content, (
+            f"{rel_path} narrows the subject set without delivering the oracle — "
+            "a reviewer reading it would rate less AND read less"
+        )
+
+    @pytest.mark.parametrize("rel_path", ["skills/critic/goals-1-3.md",
+                                          "skills/critic/review-protocol.md",
+                                          "agents/critic-reviewer.md"])
+    def test_a_spec_violation_stays_in_scope(self, rel_path):
+        """The class the narrowing must not touch: a finding that the code
+        violates a spec has the CODE as its subject."""
+        content = read_file(rel_path)
+        assert "violates this spec" in content, (
+            f"{rel_path} does not say that code-violates-spec stays in scope — "
+            "the reviewer is left to infer that the narrowing swallowed it"
+        )
+
+    def test_review_cycle_owns_the_records_pass(self):
+        content = read_file("skills/critic/review-cycle.md")
+        assert "### Records Pass" in content
+        # The two bars moved here from the builder-facing severity paragraph;
+        # they are the pass's whole contract, so both must survive the move.
+        assert "**It ships**" in content
+        assert "**It misleads into action**" in content
+        assert "files_oracle" in content
+
+    def test_the_records_pass_is_a_final_mode_cross_check(self):
+        """Not a fourth reviewer role — adding lenses is what the measurement
+        said drives finding count. It rides `sustainability`, which already
+        owns the other two cross-checks."""
+        cycle = read_file("skills/critic/review-cycle.md")
+        header = cycle.split("## Final-Mode Cross-Checks", 1)[1]
+        assert "### Records Pass" in header.split("\n## ", 1)[0], (
+            "the Records Pass is not inside Final-Mode Cross-Checks"
+        )
+        assert "three additional passes" in cycle
+        agent = read_file("agents/critic-reviewer.md")
+        sustainability = agent.split("- **sustainability**", 1)[1].split("\n\n", 1)[0]
+        assert "Records Pass" in sustainability
+
+    def test_the_subject_rule_names_the_passes_that_own_oracle_findings(self):
+        """The subject rule is NOT an absolute, and stating it as one collided
+        with the protocol that still mandates oracle findings — `chunk-ref-missing`
+        is BLOCKING on a record by construction, and `chunk`/`verify-resolutions`
+        have no Records Pass to route it to. A reviewer obeying an absolute there
+        swallows a machine-detected BLOCKING, which is the expensive direction.
+        One statement owns the carve-out; the other surfaces point at it."""
+        cycle = read_file("skills/critic/review-cycle.md")
+        # Whitespace-normalized: these files are hard-wrapped, so a two-word
+        # name legitimately straddles a line break and a literal substring test
+        # would grade the wrapping rather than the rule.
+        pass_section = " ".join(
+            cycle.split("### Records Pass", 1)[1].split("\n### ", 1)[0].split()
+        )
+        for owner in ("record-lint relay", "Learnings Cross-Check"):
+            assert owner in pass_section, f"the carve-out omits the {owner}"
+        assert "chunk-ref-missing" in pass_section, (
+            "the carve-out does not say the machine's BLOCKING answer survives"
+        )
+        # And the reviewer-facing surfaces must not restate it as an absolute.
+        for rel in ("skills/critic/goals-1-3.md", "skills/critic/review-protocol.md",
+                    "agents/critic-reviewer.md"):
+            content = read_file(rel)
+            assert "may only be *about*" not in content, (
+                f"{rel} still states the subject rule as an absolute"
+            )
+
+    def test_record_only_blocking_stays_reachable(self):
+        """54 of 236 BLOCKING findings (23%) had a record as their only subject.
+        Making records oracle-only per round retired no severity — a Records Pass
+        whose bars all read WARNING would have traded that class away silently,
+        and nothing in the plan disposed of it."""
+        cycle = read_file("skills/critic/review-cycle.md")
+        pass_section = " ".join(
+            cycle.split("### Records Pass", 1)[1].split("\n### ", 1)[0].split()
+        )
+        assert "**BLOCKING**" in pass_section, (
+            "the Records Pass offers no bar that can stop a merge"
+        )
+        assert "23%" in pass_section, (
+            "the traded-away class is not priced where the decision is made"
+        )
+
+    def test_the_builder_facing_severity_rule_points_at_the_pass(self):
+        """The old rule ("a record-only finding is a NOTE") is gone from the
+        builder section rather than left standing beside its replacement. Two
+        stopping rules where one is false is the failure this whole plan exists
+        to fix."""
+        cycle = read_file("skills/critic/review-cycle.md")
+        builder_half = cycle.split("## Final-Mode Cross-Checks", 1)[0]
+        assert "only subject is a non-judgeable record is a **NOTE**" not in builder_half
+        assert "Records Pass** below" in builder_half

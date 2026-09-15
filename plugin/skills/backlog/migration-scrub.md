@@ -556,9 +556,12 @@ repo's migration, since `lib/backlog/migrate.py` reads the source through
 `legacy.parse_backlog`.
 Portfolio-wide retirement is not this runbook's business.
 
-`incoming-bugs/` is different: it retires **in lockstep with its MG5 replacement**,
-never before it (BKL-0QR1) — and that leg is **gated by BKL-9XQ2**, so it does not
-run here either. Everything else in this runbook is unaffected by that gate.
+**The local upstream-bug drop-box this runbook once had to sequence against is
+gone**, retired 2026-09-08 together with the MG5 replacement that made it
+retirable (BKL-0QR1) — reports are filed as GitHub issues now. So a cutover run
+has no local bug channel to hold in lockstep, and no step here reads or writes
+one. Anything a machine still holds from that era is one operator's untracked
+files, triaged by hand.
 
 **6b. Repair the items the import ADOPTED.** A `--restructure` plan applies **at
 create**, so it cannot reach an item the importer adopted by its `id:PFX` alias from an

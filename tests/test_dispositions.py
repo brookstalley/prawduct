@@ -1233,3 +1233,186 @@ class TestFindingTitleAccessor:
             "a reader re-derives the finding-title alias chain instead of "
             "calling `evidence.finding_title`:\n  " + "\n  ".join(offenders)
         )
+
+
+# ---------------------------------------------------------------------------
+# --fixed: the free fix becomes recordable, and only where it was free
+# ---------------------------------------------------------------------------
+
+
+class TestFixedDisposition:
+    """A fix confined to non-judgeable paths buys no round, so no verify pass
+    runs and no resolution fact is written — and the census then reported it
+    ``undispositioned`` forever. That made the cheapest correct action the only
+    one the record could not see."""
+
+    def test_a_free_path_set_records(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        _review_fact(repo, "rev-1", [("R-1", "warning")])
+
+        result = dispositions.record(
+            repo, "rev-1", "R-1", dispositions.FIXED,
+            paths=[".prawduct/change-log.md", "docs/notes.md"],
+        )
+        assert result["status"] == "recorded", result
+        rows = dispositions.census(evidence.read_facts(repo))["reviews"][0]["rows"]
+        assert rows[0]["state"] == dispositions.STATE_FIXED_FREE
+        assert rows[0]["paths"] == [".prawduct/change-log.md", "docs/notes.md"]
+
+    def test_the_state_is_not_plain_fixed(self, tmp_path):
+        """Both say the defect is gone; only one says a reviewer looked.
+
+        Collapsing them would let a census claim a review that never ran, which
+        is the class of misdescription the census exists to retire.
+        """
+        assert dispositions.STATE_FIXED_FREE != dispositions.STATE_FIXED
+
+    def test_a_judgeable_path_is_refused(self, tmp_path):
+        """The guard that keeps this from being a way past a gate.
+
+        A judgeable edit re-opens coverage, so the round is already bought by
+        the edit itself — recording it here would claim a review nobody ran.
+        """
+        repo = _make_repo(tmp_path)
+        _review_fact(repo, "rev-1", [("R-1", "warning")])
+
+        result = dispositions.record(
+            repo, "rev-1", "R-1", dispositions.FIXED,
+            paths=[".prawduct/change-log.md", "lib/gates.py"],
+        )
+        assert result["status"] == "error", result
+        assert "lib/gates.py" in result["reason"]
+        assert "verify-resolutions" in result["reason"]
+        assert not [
+            f for f in evidence.read_facts(repo)["facts"]
+            if f.get("kind") == KIND_DISPOSITION
+        ], "a judgeable fix recorded without a review"
+
+    def test_governance_protected_prose_counts_as_judgeable(self, tmp_path):
+        """The predicate is the one that prices the edit, not a private notion
+        of 'docs' — fork-skill prose and a subagent's own prompt are behaviour."""
+        repo = _make_repo(tmp_path)
+        _review_fact(repo, "rev-1", [("R-1", "note")])
+        for path in ("skills/critic/SKILL.md", "plugin/agents/critic-reviewer.md"):
+            result = dispositions.record(
+                repo, "rev-1", "R-1", dispositions.FIXED, paths=[path]
+            )
+            assert result["status"] == "error", (path, result)
+
+    def test_an_empty_path_set_is_refused(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        _review_fact(repo, "rev-1", [("R-1", "warning")])
+        result = dispositions.record(repo, "rev-1", "R-1", dispositions.FIXED, paths=[])
+        assert result["status"] == "error" and "--fixed" in result["reason"]
+
+    def test_blocking_is_refused_outright(self, tmp_path):
+        """No owner-ruling escape, unlike ACCEPT: the real route exists and is
+        cheap. `begin_review`'s free-interval refusal deliberately lets a verify
+        pass through while findings are outstanding, so a blocking finding on a
+        free interval is always clearable — and recording it here would leave
+        the census saying `fixed` while the gate says `blocked`."""
+        repo = _make_repo(tmp_path)
+        _review_fact(repo, "rev-1", [("R-1", "blocking")])
+        result = dispositions.record(
+            repo, "rev-1", "R-1", dispositions.FIXED, paths=[".prawduct/backlog.md"],
+        )
+        assert result["status"] == "error"
+        assert "verify-resolutions" in result["reason"]
+
+    def test_paths_are_refused_on_the_other_actions(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        _review_fact(repo, "rev-1", [("R-1", "warning")])
+        result = dispositions.record(
+            repo, "rev-1", "R-1", dispositions.ACCEPT, reason="by design",
+            paths=[".prawduct/backlog.md"],
+        )
+        assert result["status"] == "error"
+
+    def test_the_cli_parses_a_comma_separated_set(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        _review_fact(repo, "rev-1", [("R-1", "note")])
+        proc = _hook(
+            repo, "disposition", "rev-1", "R-1",
+            "--fixed", ".prawduct/change-log.md,.prawduct/learnings.md",
+        )
+        assert proc.returncode == 0, proc.stderr
+        rendered = _hook(repo, "render-dispositions", "--review", "rev-1")
+        assert "fixed in" in rendered.stdout
+        assert dispositions.STATE_FIXED_FREE in rendered.stdout
+
+    def test_the_cli_refuses_a_judgeable_set_at_exit_1(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        _review_fact(repo, "rev-1", [("R-1", "note")])
+        proc = _hook(repo, "disposition", "rev-1", "R-1", "--fixed", "lib/gates.py")
+        assert proc.returncode == 1, (proc.stdout, proc.stderr)
+
+
+# ---------------------------------------------------------------------------
+# Auto-accept at budget exhaustion
+# ---------------------------------------------------------------------------
+
+
+class TestAutoAccept:
+    """Exhaustion has to ANSWER the outstanding findings — the loop that would
+    have dispositioned them is the loop being ended."""
+
+    def test_it_accepts_warnings_and_notes(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        _review_fact(repo, "rev-1", [("R-1", "warning"), ("R-2", "note")])
+
+        swept = dispositions.auto_accept(repo, ["rev-1"], reason="budget spent")
+        assert swept == {
+            "status": "swept", "accepted": 2, "skipped_blocking": 0, "failed": [],
+        }
+        rows = {
+            row["fid"]: row
+            for row in dispositions.census(evidence.read_facts(repo))["reviews"][0]["rows"]
+        }
+        assert rows["R-1"]["state"] == dispositions.STATE_ACCEPTED
+        assert rows["R-1"]["reason"] == "budget spent"
+
+    def test_a_blocking_finding_is_never_swept(self, tmp_path):
+        """The load-bearing safety property: a budget may end a review loop and
+        may never open a gate. Guarded twice — filtered here, and independently
+        refused by `record`, which needs an owner ruling no caller supplies."""
+        repo = _make_repo(tmp_path)
+        _review_fact(repo, "rev-1", [("R-1", "blocking"), ("R-2", "warning")])
+
+        swept = dispositions.auto_accept(repo, ["rev-1"], reason="budget spent")
+        assert swept["accepted"] == 1 and swept["skipped_blocking"] == 1
+
+        facts = [
+            f for f in evidence.read_facts(repo)["facts"]
+            if f.get("kind") == KIND_DISPOSITION
+        ]
+        assert [f["body"]["finding"]["fid"] for f in facts] == ["R-2"], (
+            "a BLOCKING finding was auto-accepted"
+        )
+
+    def test_it_leaves_already_answered_findings_alone(self, tmp_path):
+        """Re-disposition appends, so a blind sweep would bury a real answer
+        under a generic one and make the budget the last word on every finding
+        it touched."""
+        repo = _make_repo(tmp_path)
+        _review_fact(repo, "rev-1", [("R-1", "warning"), ("R-2", "note"), ("R-3", "note")])
+        dispositions.record(repo, "rev-1", "R-1", dispositions.ACCEPT, reason="mine")
+        _resolution_fact(repo, "rev-1", "R-2", "fixed")
+
+        swept = dispositions.auto_accept(repo, ["rev-1"], reason="budget spent")
+        assert swept["accepted"] == 1
+        rows = {
+            row["fid"]: row
+            for row in dispositions.census(evidence.read_facts(repo))["reviews"][0]["rows"]
+        }
+        assert rows["R-1"]["reason"] == "mine"
+        assert rows["R-2"]["state"] == dispositions.STATE_FIXED
+
+    def test_reviews_outside_the_set_are_untouched(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        _review_fact(repo, "rev-1", [("R-1", "warning")])
+        _review_fact(repo, "rev-2", [("R-1", "warning")])
+
+        dispositions.auto_accept(repo, ["rev-1"], reason="budget spent")
+        rows = dispositions.census(evidence.read_facts(repo), review_id="rev-2")[
+            "reviews"][0]["rows"]
+        assert rows[0]["state"] == dispositions.STATE_OPEN

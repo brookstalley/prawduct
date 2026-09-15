@@ -1,6 +1,6 @@
-"""The deprecated-inert commands: callable, announced, and doing nothing.
+"""The **announcing** inert tier: deprecated, callable, loud on stderr, doing nothing.
 
-Five commands lost their bodies without losing their names. `regen-views` had no
+Six commands lost their bodies without losing their names. `regen-views` had no
 views left to regenerate and `stamp-merged`'s only output (`status=`) had no
 reader left, when derived views were retired. `audit-learnings`,
 `learnings-obligation` and `check-learnings-pairing` graded a lifecycle that no
@@ -50,11 +50,16 @@ HOOK = REPO_ROOT / "bin" / "prawduct-hook"
 # is the one that most needs "inert" to mean inert. `--json` was a machine
 # contract, and a caller still piping it must get an empty stdout rather than a
 # corrupted payload — `test_announces_itself_on_stderr_not_stdout` covers that.
+#
+# `bug-inbox` appears bare only: it never accepted a flag, so no pinned script
+# passes one, and it stays in the hook's `_NO_ARGUMENT_COMMANDS` refusal set
+# where a mistyped argument is still worth reporting as a usage error.
 INERT_INVOCATIONS = [
     ("regen-views",),
     ("regen-views", "--check"),
     ("regen-views", "--a-flag-that-never-existed"),
     ("stamp-merged",),
+    ("bug-inbox",),
     ("audit-learnings",),
     ("audit-learnings", "--json"),
     ("audit-learnings", "--apply", "--json"),
@@ -206,16 +211,11 @@ def test_the_fixture_would_notice_a_write(tmp_path: Path):
     assert _tree(repo) != before
 
 
-INERT_COMMANDS = (
-    "regen-views",
-    "stamp-merged",
-    "audit-learnings",
-    "learnings-obligation",
-    "check-learnings-pairing",
-)
+#: Derived, not transcribed — a command added above is covered below too.
+ANNOUNCING_TIER = tuple(dict.fromkeys(argv[0] for argv in INERT_INVOCATIONS))
 
 
-def test_every_command_is_still_dispatched(tmp_path: Path):
+def test_every_announcing_command_is_still_dispatched(tmp_path: Path):
     """The deprecation's whole point: no name may become unrecognized.
 
     An unknown command exits non-zero with a usage error, which is precisely the
@@ -224,7 +224,7 @@ def test_every_command_is_still_dispatched(tmp_path: Path):
     to a generic handler that happened to print a warning.
     """
     repo = _repo(tmp_path)
-    for name in INERT_COMMANDS:
+    for name in ANNOUNCING_TIER:
         proc = _run(repo, (name,))
         assert proc.returncode == 0
         assert "unknown command" not in (proc.stdout + proc.stderr).lower()
@@ -241,7 +241,7 @@ def test_the_usage_text_still_lists_every_inert_command(tmp_path: Path):
     """
     proc = _run(_repo(tmp_path), ("a-command-that-never-existed",))
     usage = proc.stdout + proc.stderr
-    for name in INERT_COMMANDS:
+    for name in ANNOUNCING_TIER:
         assert name in usage, f"`{name}` is missing from the usage text: {usage!r}"
         # The MARKER is the contract, not the name: an inert verb listed beside
         # its old flags reads as live, and `[--apply]` on a stub advertises a
@@ -294,3 +294,21 @@ def test_the_learnings_verbs_no_longer_grade_the_legacy_corpus(tmp_path: Path):
         proc = _run(repo, (name,))
         assert proc.returncode == 0, (name, proc.stdout, proc.stderr)
         assert proc.stdout == "", (name, proc.stdout)
+
+
+def test_no_announcing_command_reports_a_condition_it_can_no_longer_have(
+    tmp_path: Path,
+):
+    """`bug-inbox` is why this exists, and it generalises.
+
+    It used to exit **1** to mean *no inbox is configured* — a real condition a
+    caller could branch on. Nothing can be configured now, so a surviving 1 would
+    report a state rather than a retirement, and a script branching on it would
+    take the not-configured arm forever. Exit 0 is asserted above for a repo
+    carrying prawduct state; assert it too for a bare directory, which is the
+    shape that used to produce the 1.
+    """
+    for name in ANNOUNCING_TIER:
+        proc = _run(tmp_path, (name,))
+        assert proc.returncode == 0, f"{name}: {proc.stdout + proc.stderr}"
+        assert proc.stdout == "", f"{name} wrote to stdout: {proc.stdout!r}"

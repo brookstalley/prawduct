@@ -1514,6 +1514,10 @@ class TestRoundTally:
         tally = coverage.count_branch_rounds(repo, facts, merge_base)
         assert tally == {
             "status": "counted", "rounds": 2, "seconds": 120.0, "timed": 1,
+            # Per-round ids and modes, so a caller asking a narrower question
+            # than "how many reviews" — the round budget counts only FULL
+            # rounds — does not re-walk the lineage to get them.
+            "reviews": [{"id": None, "mode": None}, {"id": None, "mode": None}],
         }
 
     def test_the_tally_leads_the_block_it_frames(self, tmp_path, capsys):

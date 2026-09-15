@@ -38,7 +38,7 @@ from __future__ import annotations
 import json
 import sys
 
-from . import context, core, ids, query
+from . import context, core, ids, query, upstream
 
 # GitHub-mutating ops — refused under an untrusted-triggered Actions run absent an
 # explicit triggering-actor authorization check (SEC-5). Reads, ``counts``,
@@ -46,8 +46,19 @@ from . import context, core, ids, query
 # read-only reporting under such triggers is fine (Security §1b). ``pick`` is a
 # read on every path now that it takes nothing: it revalidates the local store and
 # ranks, and mutates nothing on the provider.
+# ``file-upstream`` is here although its preview arm mutates nothing: the op is
+# attended-only by design (a human reviews the literal outbound bytes and approves
+# a digest), and an untrusted-triggered Actions run is a context where nobody has
+# vouched for the caller at all. Withholding the whole op there costs a preview
+# nobody could act on and closes the arm that would otherwise send.
+# This set is NOT the general "no human present" check and must not be read as one:
+# :func:`context.is_unattended` is also true under ``PRAWDUCT_UNATTENDED=1`` and for
+# every *trusted* Actions event, and :func:`context.writes_withheld` reaches none of
+# those. Attendance on the send path rests on the ``report-bug`` skill obligation
+# plus the honest limit the owner ruled for (upstream-filing design section 4.3),
+# never on membership here.
 _WRITE_OPS: frozenset[str] = frozenset(
-    {"file", "status", "update", "comment",
+    {"file", "file-upstream", "status", "update", "comment",
      "link", "unlink", "provision", "reconcile-labels", "import", "merge"}
 )
 
@@ -78,6 +89,16 @@ _EXIT_CLASS: dict[str, int] = {
     "auth": 5,
     "unavailable": 6,
     "rate_limited": 6,
+    # The upstream-filing refusals (design §5). They classify with `validation`
+    # because that is what they are — the caller asked for something the contract
+    # forbids — and a distinct code exists only so a caller can tell WHICH check
+    # refused without parsing prose. None is retryable: retrying an identical
+    # refused filing produces an identical refusal. The fifth check refuses with
+    # `auth` above, which already means what it needs to mean here.
+    "filing-disabled": 2,
+    "target-not-pinned": 2,
+    "self-file": 2,
+    "approval-mismatch": 2,
 }
 
 #: Per-op usage, keyed by the op name — **the usage table**. It is the referent
@@ -181,6 +202,24 @@ _OP_USAGE: dict[str, str] = {
         "  merge    <source-id> --into <target-id> [--repo owner/repo]   "
         "(fold A→B, redirect-before-close)\n"
     ),
+    # Last in the table, away from `file`, deliberately: the two differ in the
+    # only way that matters — `file` writes into the product's own repo, this
+    # writes into a foreign public one — and a reader scanning adjacent rows for
+    # "how do I file a bug" must not pick this one by accident.
+    "file-upstream": (
+        "  file-upstream --title T --body B [--component C] [--repo owner/repo]   "
+        "(preview the outbound payload for prawduct's OWN public tracker; sends "
+        "nothing)\n"
+        "           prints {payload, payload_digest}; --repo, if given, must match "
+        "the pinned target\n"
+        "           --approve sha256:<digest> SENDS: same --title/--body/--component, "
+        "plus the digest the preview printed\n"
+        "           it refuses unless all five checks hold (filing-disabled, "
+        "target-not-pinned, self-file, approval-mismatch, auth) and files nothing "
+        "on any of them\n"
+        "           the body crosses an owner boundary irreversibly — recompose it "
+        "in prawduct's terms first (no product names, paths, ids or excerpts)\n"
+    ),
 }
 
 #: Ops that share another op's handler and therefore its usage entry. Keeping
@@ -217,9 +256,10 @@ _RETRY_HELP = (
 
 _ISSUE_STANDARD_HELP = (
     "issue standard: `file` emits an `area:`-prefixed title and audits the issue.\n"
-    "  The four §1 TITLE checks BLOCK on every write path — `file`, `update` (on a\n"
-    "  title it is asked to write) and `import` (whole corpus, before the first\n"
-    "  write); body/label `lint` findings stay advisory. Author a scannable\n"
+    "  The four §1 TITLE checks BLOCK on EVERY op that writes a title — `file`,\n"
+    "  `update` (on a title it is asked to write), `import` (whole corpus,\n"
+    "  before the first write) and `file-upstream` (the rendered outbound\n"
+    "  title); body/label `lint` findings stay advisory. Author a scannable\n"
     "  `area: summary` title (15-72) + a sectioned body (bug:\n"
     "  Problem/Repro/Actual/Expected/Evidence; task: Problem/Proposed\n"
     "  change/Acceptance `- [ ]`/Scope-out) and set --kind.\n"
@@ -299,8 +339,8 @@ def _unknown_op(op: str, *, json_mode: bool) -> int:
 #: `test_the_valued_flag_union_matches_what_the_handlers_parse` reads the handlers
 #: by AST so this set cannot fall behind them.
 _VALUED_FLAG_NAMES: frozenset[str] = frozenset({
-    "affected", "archive", "archive-scope", "area", "assignee", "body",
-    "closed-by", "direction", "edge", "effort", "from", "if-updated-at",
+    "affected", "approve", "archive", "archive-scope", "area", "assignee", "body",
+    "closed-by", "component", "direction", "edge", "effort", "from", "if-updated-at",
     "impact", "into", "kind", "limit", "older-than", "out", "page", "per-page",
     "plan", "refs", "repo", "restructure", "revisit", "sort", "source", "stage",
     "state", "status", "tag", "tags", "title", "to", "working-branch",
@@ -404,6 +444,8 @@ def run(project_dir, argv: list[str], *, transport=None) -> int:
     try:
         if op == "file":
             result = _run_file(rest, transport, project_dir)
+        elif op == "file-upstream":
+            result = _run_file_upstream(rest, project_dir, transport)
         elif op in ("get", "show"):
             result = _run_get(rest, transport)
         elif op == "status":
@@ -502,6 +544,135 @@ def _run_file(rest: list[str], transport, project_dir):
             refs=flags.get("refs"),
             absorb=absorb,
         ),
+    )
+
+
+def _run_file_upstream(rest: list[str], project_dir, transport):
+    """``file-upstream`` — preview the outbound payload, or send it on an approval.
+
+    Two arms, and which one runs is decided by ``--approve`` alone. Without it
+    this is design §5's first call: render the exact bytes and their digest, send
+    nothing. With it, the digest-bearing second call, which refuses unless all
+    five §5 checks hold.
+
+    **The preview arm is handed no transport, and that is the guarantee rather
+    than an omission.** The seam is passed to the send arm only, so a preview
+    cannot reach the network whatever a later edit does to the body of
+    :func:`_file_upstream_preview` — the property the contract test asserts by
+    watching the seam, held here by scope rather than by discipline.
+    """
+    flags, _positionals, err = _parse_flags(
+        rest, valued={"repo", "title", "body", "component", "approve"}
+    )
+    if err:
+        return core.error("validation", err)
+
+    # First, ahead of even the required-flag checks and on BOTH arms: a caller
+    # naming a target that is not the pin has asked for the one thing this op
+    # refuses categorically, and that answer must not be shadowed by a missing
+    # `--title`. `send` re-asks, because it is a module entry point of its own.
+    #
+    # It is therefore the one refusal that carries no `lint` findings, while the
+    # other four do — deliberately, not by omission. Nothing has been composed
+    # yet, and composing a payload aimed at the PIN in order to lint it would
+    # report budget findings about bytes this caller never asked to send. The
+    # remedy here is the `--repo` flag, not the title.
+    refusal = upstream.check_target(flags.get("repo"))
+    if refusal is not None:
+        return core.error(
+            refusal.code, refusal.message, retryable=False, details=refusal.details
+        )
+    if "title" not in flags:
+        return core.error("validation", "file-upstream requires --title")
+    if "body" not in flags:
+        return core.error("validation", "file-upstream requires --body")
+
+    if "approve" not in flags:
+        return _file_upstream_preview(
+            project_dir,
+            title=flags["title"],
+            body=flags["body"],
+            component=flags.get("component", ""),
+        )
+    if not flags["approve"].strip():
+        # A malformed flag value, answered as one. The RULE that an empty token is
+        # never an approval lives in `upstream.check_approval`, which refuses it
+        # ahead of the `always-file` waiver — this is a better message for a CLI
+        # caller, not a second copy of the guarantee.
+        return core.error("validation", "--approve requires the digest the preview printed")
+    # Resolved HERE rather than at the top of the handler, which is where every
+    # sibling resolves it: doing it at the top would construct a `GhTransport` on
+    # the preview path and dissolve the scope guarantee below. Resolving it not at
+    # all is worse and was the first shape of this code — production calls
+    # `run(project_dir, argv)` with no transport, so `send` met a `None`, died on
+    # `None.get_authenticated_user()`, and the CLI-boundary catch reported the
+    # whole op as a retryable `unavailable`.
+    return upstream.send(
+        project_dir,
+        _resolve_transport(transport),
+        title=flags["title"],
+        body=flags["body"],
+        component=flags.get("component", ""),
+        approve=flags["approve"],
+        requested_repo=flags.get("repo"),
+    )
+
+
+def _file_upstream_preview(project_dir, *, title, body, component):
+    """Render the §5 call-1 payload and its digest. No transport in scope, ever.
+
+    Two of the five §5 checks are enforceable with no send path: the target is
+    **pinned** (refused by the caller above, on both arms), and nothing files
+    **without an approval** — there is no path from this function to a write at
+    all. The digest it returns is what a later ``--approve`` is matched against,
+    which is what makes "sent == previewed" a property of the bytes rather than of
+    the caller's intentions.
+    """
+    # Every caller string that lands in the body, checked in the module that owns
+    # the bytes. Guarding `--body` here and nothing else is what let `--component`
+    # forge the whole provenance block.
+    input_err = upstream.check_payload_inputs(title=title, body=body, component=component)
+    if input_err:
+        return core.error("validation", input_err)
+
+    payload, digest = upstream.render_preview(
+        project_dir, title=title, body=body, component=component
+    )
+    # An unfileable payload must not preview as a fileable one: a digest handed
+    # over with no word of that invites an approval for a send that can only ever
+    # refuse, and the operator learns it AFTER reviewing the bytes. The set is
+    # asked for by NAME rather than enumerated here — an enumeration at this call
+    # site is one a later refusal joins only if someone remembers, which is how
+    # the title refusal ended up reaching the operator as an ordinary `lint:`
+    # line indistinguishable from the budget hints that never block.
+    preference, pref_warning = upstream.read_filing_preference(project_dir)
+    warnings: list[str] = [pref_warning] if pref_warning else []
+    for code, message in upstream.previewable_refusals(
+        project_dir, rendered_title=payload["title"], preference=preference
+    ):
+        warnings.append(f"filing would refuse ({code}): {message}")
+    # Budgets are REPORTED here and REFUSED at send: nothing is written by a
+    # preview, and an advisory finding is what lets an author fix a title before
+    # approving it. Silently truncating an outbound bug report would cut bytes the
+    # reviewer already approved, so neither arm ever rewrites them.
+    # The resolved consent state rides out on BOTH views. It is not a byte of the
+    # payload and takes no part in the digest — it is the one §4.1 fact a caller
+    # cannot otherwise observe, and `always-file` is the state that needs it:
+    # standing consent means "never ask me", and a caller with no way to READ the
+    # state asks anyway, on every report, which makes the value inert on its only
+    # consumer. `never-file` announces itself through a refusal and `ask-user` is
+    # the default, so this line is what the third state is missing.
+    return upstream.attach_advisories(
+        core.ok(
+            {
+                "payload": payload,
+                "payload_digest": digest,
+                "sent": False,
+                "preference": preference,
+            },
+            warnings,
+        ),
+        findings=upstream.lint_payload(payload["title"], payload["body"]),
     )
 
 
@@ -1638,6 +1809,12 @@ def _emit(result: dict, *, json_mode: bool, usage: bool = False) -> int:
         # before the cut; surface them like the ok path so they reach the operator.
         for warning in result.get("warnings", []):
             print(f"warning: {warning}", file=sys.stderr)
+        # And the advisory findings, for the same reason and against the same
+        # failure: a refused `file-upstream` is exactly when an author is about to
+        # edit the report, so budget findings that reached only the ok branch would
+        # be lost on the one envelope that most needs them.
+        for finding in result.get("lint", []):
+            print(f"lint: {finding.get('message')}", file=sys.stderr)
         if usage:
             print(_HELP, file=sys.stderr)
     return exit_code
@@ -1674,7 +1851,39 @@ def _print_human_ok(data) -> None:
     if not isinstance(data, dict):
         print(json.dumps(data))
         return
-    if "edge" in data and "target" in data:
+    if "payload_digest" in data:
+        # A `file-upstream` preview. First, and matched on a key no other result
+        # carries: this is the branch a reviewer reads before authorizing an
+        # irreversible cross-owner write, so it must never be shadowed into a
+        # summary line by a later branch that happens to share a key.
+        #
+        # It prints the payload VERBATIM — every byte that would leave — because
+        # approval given to a summary is not approval of what gets sent.
+        payload = data.get("payload", {})
+        print(f"target: {payload.get('repo')}")
+        print(f"title:  {payload.get('title')}")
+        print()
+        print(payload.get("body", ""))
+        print()
+        print(f"payload-digest: {data.get('payload_digest')}")
+        # Preview-only, and printed even though the human already knows what they
+        # set: the reader here is a model deciding whether design §4.1 obliges it
+        # to stop and ask, and it has no other way to see the answer.
+        if data.get("preference"):
+            print(f"consent: {data.get('preference')}")
+        # The outcome line, last, because it is the one a reader scans for after
+        # a wall of verbatim payload — and the payload is printed on BOTH arms so
+        # the send's record shows what actually left, not a summary of it.
+        if not data.get("sent"):
+            print("nothing was sent: this is a preview of what filing would send")
+        elif data.get("created"):
+            print(f"filed: {data.get('issue', {}).get('url')}")
+        else:
+            print(
+                "already filed — this report's source-key matched an existing issue, "
+                f"so nothing new was created: {data.get('issue', {}).get('url')}"
+            )
+    elif "edge" in data and "target" in data:
         # A link/unlink result.
         verb = "linked" if data.get("linked") else "unlinked"
         print(f"{verb} {data.get('item')} --{data.get('edge')}--> {data.get('target')}")

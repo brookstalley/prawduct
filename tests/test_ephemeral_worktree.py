@@ -39,13 +39,21 @@ def _hook_module():
 
     SourceFileLoader because the script has a shebang and no ``.py`` extension;
     the module name is not ``__main__``, so its CLI dispatch does not run at
-    import. Same idiom as ``test_bug_inbox.py``.
+    import. Same idiom as ``test_hook_session_file_registry.py``.
     """
     loader = importlib.machinery.SourceFileLoader("prawduct_hook_ephemeral", str(HOOK))
     spec = importlib.util.spec_from_loader("prawduct_hook_ephemeral", loader)
     module = importlib.util.module_from_spec(spec)
     loader.exec_module(module)
     return module
+
+
+#: The apply-gated family, read from the hook's OWN table rather than listed here.
+#: A transcribed copy is what this file carried before, and it had drifted by
+#: three commands (`lifecycle-repair`, `plan-backfill`, `reanchor`) while its
+#: docstring still said "these four" — a green suite over an unpinned classifier,
+#: whose failure mode is a read-only dry run refused inside a worktree.
+_APPLY_GATED = frozenset(_hook_module()._EPHEMERAL_APPLY_GATED_COMMANDS)
 
 
 # ---------------------------------------------------------------------------
@@ -584,20 +592,13 @@ class TestGuardAllowsReads:
         wt = _agent_worktree(primary)
         assert "BLOCKED" not in _run(wt, *argv).stderr
 
-    #: Every member of `_EPHEMERAL_APPLY_GATED_COMMANDS`, read from the hook
-    #: rather than retyped: this branch's whole hazard is a command classified
-    #: into a set that does not describe it, and a hand-copied list is the same
-    #: mistake one layer out. A shrinking set is expected — a command leaves by
-    #: losing its `--apply`, and then it belongs to the inert tier
-    #: (`tests/test_retired_hook_subcommands.py`), not here.
-    APPLY_GATED = tuple(sorted(_hook_module()._EPHEMERAL_APPLY_GATED_COMMANDS))
 
     def test_the_apply_gated_family_is_non_empty(self):
-        """Both parametrisations below are over `APPLY_GATED`, so an empty set
+        """Both parametrisations below are over `_APPLY_GATED`, so an empty set
         turns each into zero silently-passing cases."""
-        assert len(self.APPLY_GATED) >= 2, self.APPLY_GATED
+        assert len(_APPLY_GATED) >= 2, _APPLY_GATED
 
-    @pytest.mark.parametrize("command", APPLY_GATED)
+    @pytest.mark.parametrize("command", sorted(_APPLY_GATED))
     def test_read_only_flag_form_proceeds(self, tmp_path, command):
         """These mutate only under `--apply`; the dry run is a report.
 
@@ -613,7 +614,7 @@ class TestGuardAllowsReads:
         wt = _agent_worktree(primary)
         assert "BLOCKED" not in _run(wt, command).stderr
 
-    @pytest.mark.parametrize("command", APPLY_GATED)
+    @pytest.mark.parametrize("command", sorted(_APPLY_GATED))
     def test_apply_form_still_refuses(self, tmp_path, command):
         """The other half of the same branch — `--apply` is the writing form."""
         primary = tmp_path / "primary"
@@ -685,8 +686,15 @@ class TestBacklogOpClassificationIsBound:
 
     #: Ops that only ever talk to the service — no local write, so they cannot
     #: strand and the service-backed allowance covers them correctly.
+    #: `file-upstream` is here on the same test — no local write, so it cannot
+    #: strand — even though its target is prawduct's own public tracker rather
+    #: than the product's service. The guard asks one question and that is it.
+    #: Whether an agent worktree should be filing upstream at all is a different
+    #: control with a different answer (the op is attended-only, and `cli._WRITE_OPS`
+    #: withholds it under an unattended trigger); classifying it as a local write
+    #: here to get that effect would misdescribe what it touches.
     SERVICE_ONLY = frozenset({
-        "file", "status", "update", "comment",
+        "file", "file-upstream", "status", "update", "comment",
         "link", "unlink", "provision", "reconcile-labels", "merge",
     })
 

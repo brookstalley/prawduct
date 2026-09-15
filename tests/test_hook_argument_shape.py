@@ -492,6 +492,8 @@ def test_documented_invocations_are_not_refused(capsys):
         ("check-operator-verification", []),
         ("accept-operator-verification", ["because the screenshot matched"]),
         ("verify-operator-verification", ["VRF-001"]),
+        ("check-branch-pushed", []),
+        ("check-branch-pushed", ["feature/x"]),
         ("check-change-log-entry", []),
         ("check-releasability", ["--release", "v1.2.3"]),
         ("archive-plan", ["p.md", "--state", "completed", "--release", "v1.2.3"]),
@@ -520,6 +522,7 @@ def test_documented_invocations_are_not_refused(capsys):
         ("audit-learnings", ["--apply", "--json"]),
         ("norm-index-scaffold", ["--apply", "--json"]),
         ("learnings-obligation", ["--apply", "--json"]),
+        ("reanchor", ["--apply", "--json"]),
         ("lifecycle-repair", ["--apply", "--json"]),
         ("plan-backfill", ["--apply", "--date", "2026-01-01"]),
         ("repo-disable", ["--local", "--apply"]),
@@ -552,6 +555,7 @@ def test_every_dispatched_command_appears_in_the_documented_list():
         "handoff", "review-stats", "classify-diff-risk", "cost-of-commit",
         "check-operator-verification", "accept-operator-verification",
         "verify-operator-verification", "check-change-log-entry",
+        "check-branch-pushed",
         "check-releasability", "archive-plan", "check-released", "check-pr-doc-only",
         "check-plugin-active",
         "check-learnings-pairing", "learnings-migrate",
@@ -562,6 +566,7 @@ def test_every_dispatched_command_appears_in_the_documented_list():
         "init-product", "update-gitignore", "audit-learnings", "norm-index-scaffold",
         "learnings-files",
         "learnings-obligation", "lifecycle-repair", "plan-backfill", "repo-disable",
+        "reanchor",
     }
     assert set(_dispatch_branches()) == listed
 

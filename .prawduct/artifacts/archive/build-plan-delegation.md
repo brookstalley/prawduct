@@ -68,7 +68,13 @@ governed_by:
         flow says so in those words."
 partition: serial — 01, 02 and 04 all edit the same methodology and skill files; 03 is independent but too small to brief
 last_validated: 2026-08-21
+lifecycle: completed
+archived: 2026-09-13
+released_in: v3.5.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Requirements Confidence
 

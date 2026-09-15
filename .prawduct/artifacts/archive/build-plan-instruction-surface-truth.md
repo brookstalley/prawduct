@@ -95,7 +95,13 @@ partition: >-
   The delegates do the build half only: no commits, no `.prawduct/` bookkeeping, no full suite,
   no Critic. This session owns integration, the combined run, the review and all governance.
 last_validated: 2026-08-23
+lifecycle: completed
+archived: 2026-09-13
+released_in: v3.5.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Requirements Confidence
 

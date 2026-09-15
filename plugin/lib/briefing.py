@@ -750,10 +750,13 @@ def _order_advisories(advisories: list[dict]) -> tuple[list[dict], dict[int, str
     """Order the active set so a prerequisite precedes what it feeds.
 
     Priority ranks by *severity*, which is not *sequence*, and where the two
-    disagreed the briefing recommended the wrong order — triaging the incoming-bug
-    drop-box files items into the backlog and is `info`, while migrating that
-    backlog is a one-shot irreversible bulk write and is `warn`, so severity
-    ordering printed migrate-first in every product carrying both.
+    disagreed the briefing recommended the wrong order. The pair that showed it,
+    both since retired and kept as the derivation because no other pair has needed
+    reading (`documentation/post-sync-advisory-spec.md` §5.3): triaging a local bug
+    drop-box filed items into the backlog and was `info`, while migrating that
+    backlog is a one-shot irreversible bulk write and is `warn` — so severity
+    ordering printed migrate-first in every product carrying both, and stragglers
+    would have arrived outside the batch that was reviewed.
 
     Takes an already priority-sorted list and returns it re-ordered, plus the
     ``after →`` annotation for each dependent keyed by its index in the RESULT.

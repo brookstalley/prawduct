@@ -116,7 +116,13 @@ partition: >-
   plan in this repo carrying a partition line and it chose serial, and `project-preferences.md`
   carries no Delegation row — so this project has no delegation history to lean on either way.
 last_validated: 2026-08-21
+lifecycle: completed
+archived: 2026-09-13
+released_in: v3.5.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Requirements Confidence
 

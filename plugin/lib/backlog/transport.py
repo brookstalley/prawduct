@@ -176,6 +176,7 @@ def paginate(
     *,
     per_page: int = PAGE_SIZE,
     max_pages: int = MAX_PAGES,
+    on_cap: str = "raise",
     what: str = "results",
 ) -> Iterator:
     """Yield every item of a paged GitHub list endpoint, page by page.
@@ -193,12 +194,31 @@ def paginate(
     into an attributed envelope at its boundary, so the loud path costs no new
     error plumbing — it reuses the one that was already there.
 
+    **``on_cap="stop"`` is the one exception, opt-in at the call site.** A
+    caller doing a deliberately WINDOWED read — looking a bounded distance back,
+    where "not in the window" is a real answer rather than an incomplete one —
+    wants the cap to end the walk. That is a different question from the one the
+    default answers, so it is spelled where a reader meets it and is never the
+    default: the moment a completeness-seeking caller gets a silent prefix, this
+    function has stopped doing its job. The cap trip is the ONLY thing softened —
+    an unreadable page raises under both settings, because unreadable is not
+    empty and a window that swallowed transport failures would answer "nothing
+    here" for an outage.
+
     **Termination is on a short RAW page.** Callers filter (pull requests
     interleave the REST issues list; non-prawduct issues are out of scope), and
     a filtered view can be short while the real page was full — terminating on
     it would silently drop every later page. So this yields raw items and the
     caller filters downstream, never the reverse.
     """
+    if on_cap not in ("raise", "stop"):
+        # A programming error, refused rather than defaulted. Falling through to
+        # "raise" would be the SAFE direction and still wrong: a caller who typed
+        # `on_cap="Stop"` wanting a window gets a truncation failure with nothing
+        # pointing at the typo — the same "a guard silently did something other
+        # than what the call site says" shape this parameter was added to fix.
+        raise ValueError(f"paginate: on_cap must be 'raise' or 'stop', not {on_cap!r}")
+
     page = 1
     while page <= max_pages:
         batch = fetch_page(page, per_page)
@@ -218,6 +238,8 @@ def paginate(
         if len(batch) < per_page:
             return
         page += 1
+    if on_cap == "stop":
+        return
     raise TransportError(
         "unavailable",
         f"{what} truncated at the {max_pages}-page read limit — "

@@ -148,13 +148,16 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `stop` (session-end gate), `subagent-stop` (consolidate, mutating). Called
   by the harness, not by humans.
 - **Critic data plane** — `critic-begin [--force]` (write dispatch manifest, mutating; `--force`
-  overrides the exit-3 no-review-needed refusal — see § Error Model), `critic-consolidate`
+  overrides both pre-dispatch refusals, exit-3 no-review-needed and exit-4 budget-exhausted — see
+  § Error Model), `critic-consolidate`
   (merge partials → evidence fact, mutating), `critic-end`, `critic-discard` (archive-then-remove a
   stranded review's partials, mutating), `critic-restore <review-id>` (copy an archived review's
   manifest + partials back so it consolidates under its own id, mutating — `critic-discard`'s
   inverse), `evidence status|list`, `ledger-append`
-  (single-writer, mutating), `review-stats`, `disposition` (append a finding's ACCEPT/FILE
-  disposition fact, mutating), `render-dispositions` (derive the disposition census), plus the
+  (single-writer, mutating), `review-stats`, `disposition` (append a finding's ACCEPT/FILE/FIXED
+  disposition fact, mutating — `--fixed <paths>` records a fix that bought no round and is refused
+  on any judgeable path or any BLOCKING finding), `render-dispositions` (derive the disposition
+  census), plus the
   coverage/mode gate wrappers (`verify-coverage`, `check-cumulative-critic`, `infer-critic-mode`,
   `classify-diff-risk`, `verify-chunk-refs`), plus `verify-records` (the deterministic record
   checks, read-only and advisory — `critic-begin` runs the same pass into the manifest).
@@ -162,6 +165,7 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
 - **Session handoff** — `handoff preview`: renders the handoff the next session would receive,
   through the same function `clear` uses, without writing it or consuming the forward notes.
 - **PR / release gates & views** — `check-pr-doc-only`, `check-change-log-entry`,
+  `check-branch-pushed` (0/1/**3**),
   `check-releasability [--release vX.Y.Z]`, `check-released vX.Y.Z [--json] [--allow-unverifiable]`,
   `resolve-base`,
   `regen-views` (deprecated, inert), `stamp-merged` (deprecated, inert).
@@ -277,8 +281,8 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   cannot disagree with the gate that charges afterwards; verdict token leads on stdout, degrades
   to `unknown` rather than a reassuring `free`).
 - **Repo lifecycle** — `migrate-plugin`, `init-product`, `update-gitignore [--dry-run]`,
-  `audit-learnings`, `learnings-obligation`, `norm-index-scaffold`, `lifecycle-repair`,
-  `plan-backfill`, `repo-disable`, `bug-inbox` (dry-run-by-default where they mutate, with
+  `audit-learnings`, `learnings-obligation`, `norm-index-scaffold`, `reanchor`,
+  `lifecycle-repair`, `plan-backfill`, `repo-disable` (dry-run-by-default where they mutate, with
   one stated exception). **`update-gitignore` is the exception: it repairs by default and
   previews only under `--dry-run`.** It is called as a repair step by `/prawduct:doctor`,
   which is why the default is the mutating one — but a reader who assumed the blanket
@@ -338,7 +342,7 @@ allowlist; `#667` carries the audit.
 Safe/idempotent notes: consolidation and fact-appends are **idempotent** (identity fixed at
 dispatch); state-mutating lifecycle commands (`migrate-plugin`, `init-product`, `coverage-scaffold`,
 `repo-disable`, `audit-learnings`, `learnings-obligation`, `norm-index-scaffold`,
-`lifecycle-repair`, `plan-backfill`) default to a
+`reanchor`, `lifecycle-repair`, `plan-backfill`) default to a
 **dry run** and require
 `--apply` to write. The split is **scope, not danger**: a command acting on one file the operator
 named writes on invocation (`archive-plan`), one that walks a tree and decides for itself which
@@ -355,7 +359,10 @@ files to touch previews first. That framing is descriptive — the binding rule 
   their **exit codes**, not parsed text.
 - **Machine-readable output (`--json`):** a defined subset emits structured JSON on stdout, each with
   a documented key set, consumed by a specific skill:
-  - `coverage-status --json` / `coverage-scaffold --json` → doctor (`structural_recorded`,
+  - `coverage-status --json` → doctor, **partly**: Health Check #11 runs the bare command and
+    relays its human form, reaching for `--json` only to distinguish `discovery_expected` false from
+    null. **`coverage-scaffold --json` has no consumer** — #11 runs it bare and with `--apply`.
+    Keys (`structural_recorded`,
     `discovery_expected`, `missing_artifacts[]`, `norms_unratified`, `active_layer`, `fix` /
     `applied`, `created[]`). `discovery_expected` is the layer-0 staging half, and it has **three**
     states, not two. **False** = no product work *this scan recognises* — it reads source by suffix
@@ -364,10 +371,25 @@ files to touch previews first. That framing is descriptive — the binding rule 
     `discovery_expected` or `structural_recorded` = the staging check **could not run**, and in that
     state `missing_artifacts: []` means *nothing was looked at*, not *nothing is missing* — a
     consumer must not read it as a clean layer 1.
-  - `norm-index-scaffold --json` → consumed by `/prawduct:doctor` Health Check #14 (`status` —
-    one of `ok` / `leftover` / `absent` / `unreadable` / `unwritable`; plus `rows`, `path`, `detail`, `applied`,
-    `removed`). Dry run exits 0 when it ran and 1 only when it could not; `--apply` exits 0 on a
+  - `norm-index-scaffold --json` → **no JSON consumer today** — Health Check #14 runs the command
+    and relays its human form, the same as #4. The shape is published for programmatic consumers:
+    `status` — one of `ok` / `leftover` / `absent` / `unreadable` / `unwritable` — plus `rows`,
+    `path`, `detail`, `applied`, `removed`. Dry run exits 0 when it ran and 1 only when it could not; `--apply` exits 0 on a
     write or idempotent no-op and 1 on refusal.
+  - `reanchor --json` → **no JSON consumer today.** `/prawduct:doctor` Health Check #4 runs the
+    command and relays its human form; the `--json` shape is published for programmatic consumers
+    and carries `status` — one of `ok` / `stale` / `stale-modified` / `legacy-block` / `absent` /
+    `unreadable` / `unwritable` — plus `path`, `repairable`, `detail`, `applied`, `replacement`.
+    **A successful `--apply` returns `ok`**, not the status it repaired: a graded status describes
+    the state on the way IN, and a consumer reading it back after a write would report the condition
+    that was just fixed.
+    **HC#4 is not the JSON consumer** — it parses nothing, and a contract asserting a consumer it
+    does not have is how a `--json` shape drifts from the command that emits it.
+    Dry run exits 0 when it ran and 1 only when it could not; `--apply`
+    exits 0 on a write or idempotent no-op and 1 on refusal. **`stale` and `stale-modified` are
+    separate statuses on purpose** and a consumer must not collapse them: the first is prawduct's
+    to repair, the second is an anchor the owner has edited, which this command reports and
+    declines to overwrite.
   - `learnings-obligation --json` → **no skill consumer today** (`status` — one of `ok` / `missing` /
     `misplaced` / `absent` / `unreadable` — plus `path`, `marker`, `marker_lines[]`,
     `first_rule_line`, `detail`, `repairable`, `applied`, `insert_before_line`, `insert_text`).
@@ -393,7 +415,10 @@ files to touch previews first. That framing is descriptive — the binding rule 
     code is deliberately NOT the contract here: 0 means "answered", including `unknown`, because
     the command gates nothing; 1 is reserved for bad arguments.
   - `migrate-plugin --json` → migrate skill; `init-product --json` → onboard skill;
-    `audit-learnings --json` → doctor; `repo-disable --json` → repo-disable skill.
+    `audit-learnings --json` → doctor. **`repo-disable --json` has no consumer** — the
+    repo-disable skill documents and runs only the bare form. A row naming a consumer that parses
+    nothing is inert, which is exactly why it does not fail — so this list is checked by re-running
+    its own premise against each row, not by reading it.
   - `review-stats --json` → the cross-project telemetry aggregator, carrying a top-level
     `schema_version` (see Versioning).
   - `render-dispositions --json` → the disposition census, for a change-log entry, a PR body, or any
@@ -414,7 +439,7 @@ raised as stack traces across the boundary.** The intended scheme:
 | Channel | 0 | 1 | 2 |
 |---|---|---|---|
 | **Harness hook** (`stop`, `clear` refusal) | allow / clean | — | **block** |
-| **CLI gate / query** (`test-status`, `verify-coverage`, `check-*`, `resolve-base`, `bug-inbox`) | satisfied / pass | not satisfied / fail | — |
+| **CLI gate / query** (`test-status`, `verify-coverage`, `check-*`, `resolve-base`) | satisfied / pass | not satisfied / fail | — |
 | **CLI advisory report** (`verify-records`) | ran — findings, if any, are on stdout | **could not run** (unresolvable interval, unreadable state) | usage error |
 | **State-mutating writer** (e.g. `disposition`) | written, or an idempotent no-op | **refused** — validation failed, nothing written | **usage error** |
 | **Usage / arg error** (any subcommand) | — | — | **usage error** |
@@ -442,6 +467,14 @@ would have said, because the argument is only convincing in the concrete.
   pairing off a corpus it could not decode, which is this scope's own subject; folded into 1 it
   claims a duplicate heading it never saw, sending an operator to hand-edit a file that is fine.
 - `check-released` (2026-08-04), *unverified* — see below.
+- `check-branch-pushed` (2026-09-12), *detached HEAD / git unreadable* — folded into 0 it reports
+  the branch safe to merge off a check that never ran, which is the silent short merge the gate
+  exists to stop; folded into 1 it inherits "push before merging", and there is nothing to push
+  from a detached HEAD and no git to push it with. Its exit **1** is reserved for a push state it
+  *did* read and found unsatisfied (`unpushed-commits`, `local-behind-remote`, `diverged`,
+  `no-upstream`, `upstream-ref-missing`), where a push or an integrate-then-push is the remedy in
+  every case. Both codes BLOCK — the third outcome buys the caller an applicable remedy, not a
+  different verdict.
 
 `check-released` (2026-08-04) exits **3** for
 *unverified*: nothing failed, but a check could not run — no `gh`, no `origin/main` in a
@@ -453,6 +486,22 @@ default and may have no token — precisely the case where an unpublished Releas
 build red. Its `--json` `verdict` therefore has three values: `released`, `not-released`,
 `unverified`. `--allow-unverifiable` collapses 3 to 0 for an operator who wants the local subset.
 CI binds to the exit code, so any non-zero is red without special-casing.
+
+**The third outcome is scoped to gates, and the queue mutators are the worked counter-example
+(2026-09-12).** `verify-operator-verification` and `accept-operator-verification` refuse an entry whose
+`**Status:**` line cannot be read — it is not on a line of its own, carries an unrecognised token, or is
+absent — writing nothing and naming the edit that fixes it. That refusal exits **1**, not 3, and the
+reasoning is worth keeping because the first attempt got it backwards by generalising from
+`check-operator-verification`'s exit 3 above.
+
+These two are **state-mutating writers**, not gates. Their row in the table reads `1 = refused,
+validation failed, nothing written`, which is exactly and only what happens, so 1 carries no competing
+remedy to be displaced — the condition that earns `check` its third outcome is absent. Adding a 3 here
+would put a new meaning into the scheme that the scheme does not need, and owe the registry a row for a
+member that should not exist. **The rule this states: read the row for the channel the refusal reaches,
+not the one for the nearest command that looks similar.** A gate and a writer over the same subject
+take different codes for the same underlying fault, and that is the scheme working rather than an
+inconsistency to iron out.
 
 Fail-direction is deliberate and per-purpose:
 
@@ -471,6 +520,7 @@ Fail-direction is deliberate and per-purpose:
   appears per check as the `unchecked` list rather than a silently absent result.
 - **Special sentinels** (documented, not general): `critic-begin` **2** = scope-widened;
   `critic-begin` **3** = no review needed (added 2026-08-06);
+  `critic-begin` **4** = round budget exhausted (added 2026-09-09);
   `evidence status` **2** = schema-ahead records present (gates can't be trusted until update).
   (`regen-views` **2** and **3** are RETIRED, not repurposed: the command is inert and exits 0
   unconditionally, so those two meanings were removed rather than given new ones. Retiring a
@@ -489,7 +539,27 @@ Fail-direction is deliberate and per-purpose:
   critic-active marker, and the partials directory is not swept — so a 3 needs no `critic-end`. It is
   not a silent no-op, though: since 2026-08-06 a 3 appends exactly one `guard-refusal` fact to the
   clone-shared evidence store, which is what makes the guard's own yield falsifiable. That fact is
-  inert by construction (no gate reads a non-`review` kind), so it changes no verdict.
+  inert by construction (no gate reads a non-`review` kind), so it changes no verdict. A
+  `verify-resolutions` anchored to an unchanged tree with nothing outstanding takes the same 3, for
+  the same reason — it used to fall out as a bare 1, which the skill's exit table routes to
+  "re-dispatch per the demotion property", manufacturing a full round the gate did not want.
+
+  **`critic-begin` 4 — round budget exhausted.** This build-plan SCOPE has already bought the full
+  rounds `review_round_budget` allows (`.prawduct/project-state.yaml`, default 6, `null` disables).
+  A distinct code rather than folded into 3: both refuse a dispatch, but a 3 says the *gate* does not
+  want this round and a 4 says the *loop* has run out while the gate may still be unsatisfied, and
+  the caller's next move differs — a 3 is "you are done", a 4 is "you are done buying rounds, and any
+  BLOCKING findings still need `verify-resolutions`". Folded into 1 it would read as a dispatch
+  failure and invite a retry in another mode, which is the round it exists to refuse. The refusal
+  auto-ACCEPTs the outstanding **non-blocking** findings, renders the census to stdout, and appends
+  one `guard-refusal` fact; `verify-resolutions` is never counted and never refused, and no BLOCKING
+  finding is ever swept — so the budget can end a review loop and can never open a gate. `--force`
+  dispatches anyway. No session state is written, so a 4 needs no `critic-end`. It is checked
+  BELOW the free-interval refusal, so an interval that needs no review still answers 3: "the loop
+  is over" and "there was nothing to review" stay distinct, which is why they are two codes.
+  Rounds are counted per build-plan **scope** (intersected with this branch's lineage, since the
+  store is clone-wide); a dispatch that resolves no scope is not budgeted, because there is no
+  body of work to bound and the census the refusal renders is selected from the same set.
 
 **The `backlog` group carries its own exit-class set — a documented scheme, not an exception to the
 table above.** `lib/backlog/cli.py`'s `_EXIT_CLASS` maps every error `code` the group can return onto
@@ -558,8 +628,12 @@ Evolution rules we want to hold, so new versions stay rare:
   rather than hard-failing (evidence torn-tail repair; advisory corrupt-file quarantine).
 - **Deprecation is signalled, not silent.** The established pattern: mark the subcommand deprecated
   in its help, print a deprecation notice to stderr on use, keep it working, and defer removal to a
-  future **major** version. `stamp-merged` and `regen-views` are both in this state: each stays
-  callable, prints its notice, does nothing, and exits 0.
+  future **major** version. `stamp-merged`, `regen-views` and `bug-inbox` are all in this state:
+  each stays callable, prints its notice, does nothing, and exits 0. `bug-inbox` joined them
+  2026-09-08 with the upstream drop-box it resolved — and it is the member that shows the clause
+  binding rather than merely describing, because the 2026-08-11 departure below did **not** reach
+  it: that departure is scoped to a caller which is a stale hook registration, and this one's
+  caller is a person.
 
   **DEPARTURE, recorded not amended — 2026-08-11 (v3.3.3), pending owner ratification.**
   `build-index` and `user-prompt-submit` join the inert tier printing **nothing on either stream**,
@@ -614,14 +688,19 @@ Evolution rules we want to hold, so new versions stay rare:
   members § Operations marks so, in two sub-shapes, split by **who calls them** — which decides whether they announce
   themselves:
 
-  - *Announcing* — `stamp-merged`, `regen-views`, and since learnings v2 `audit-learnings`,
-    `learnings-obligation`, `check-learnings-pairing` (their notice names the rules layout that
-    replaced the corpus they graded). Notice on stderr. The first two lost their bodies when
-    derived views were retired: `regen-views` had no views left to regenerate, and `stamp-merged`'s
-    only output (`status=`) had no reader left. **Prawduct's own release runbook no longer calls
-    either**, so the remaining reason to keep them callable is the one that cannot be audited from
-    here: a consumer's copied operator script, where a non-zero exit would break a pipeline
-    mid-release. The notice tells such a caller to drop the call.
+  - *Announcing* — `stamp-merged`, `regen-views`, `bug-inbox`, and since learnings v2
+    `audit-learnings`, `learnings-obligation`, `check-learnings-pairing` (their notice names the
+    rules layout that replaced the corpus they graded). Notice on stderr. The first two lost their
+    bodies when derived views were retired: `regen-views` had no views left to regenerate, and
+    `stamp-merged`'s only output (`status=`) had no reader left. `bug-inbox` resolved the local
+    `incoming-bugs/` drop-box for `/prawduct:report-bug`, which files GitHub issues instead, so
+    there is no directory left to resolve. **Prawduct's own release runbook no longer calls any of
+    them**, so the remaining reason to keep them callable is the one that cannot be audited from
+    here: a consumer's copied operator script or a person's habit, where a non-zero exit would break
+    a pipeline mid-release. The notice tells such a caller to drop the call. `bug-inbox` also moved
+    its exit code, 1 → 0: the 1 meant *no inbox is configured*, a condition a caller could branch
+    on, and nothing can be configured now.
+
   - *Silent* — `build-index`, `user-prompt-submit` (inert since v3.3.3). **No output on either
     stream.** Their caller is a pre-3.3.2 `hooks.json` registration, not a person: a notice has no
     reader who can act on it, and the next plugin update replaces the registration anyway. On
@@ -632,8 +711,8 @@ Evolution rules we want to hold, so new versions stay rare:
 
   The split is a **recorded departure pending owner ratification**, not a settled rule — see
   § Deprecation & Compatibility, where the norm it departs from still stands unamended and the
-  proposed *silent-when-the-caller-is-a-registration* clause is the question put to the owner. All of them are members of
-  `_EPHEMERAL_SAFE_COMMANDS` — without it the fail-closed disposable-worktree guard treats an
+  proposed *silent-when-the-caller-is-a-registration* clause is the question put to the owner.
+  Every member of the tier is in `_EPHEMERAL_SAFE_COMMANDS` — without it the fail-closed disposable-worktree guard treats an
   unlisted command as a write and exits 1, which would falsify "exits 0" exactly where a hook
   invokes it. Pinned in `tests/test_retired_hook_subcommands.py`.
 

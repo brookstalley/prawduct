@@ -4,11 +4,9 @@ This is the catastrophic-blast-radius guard: a chunk declaring `Type: trivial`
 (or `doc-only`) skips Critic review, so it must NOT be allowed to silently edit
 the framework-governance-defining files. Under plugin distribution those live in
 `skills/` (the critic/pr/etc. definitions + bundled protocols), `methodology/`,
-`templates/`, and `CLAUDE.md`. The pre-2.0 `agents/` tree was removed in the
-plugin cutover, so it is no longer a protected class.
+`templates/`, `agents/` (a subagent's own system prompt) and `CLAUDE.md`.
 
-These tests are the regression coverage the bound never had — the stale `agents/`
-literal had nothing pinning it.
+These tests are the regression coverage the bound never had.
 """
 
 from __future__ import annotations
@@ -53,14 +51,27 @@ class TestProtectedPaths:
         assert _classify("CLAUDE.md") == "claude-md-edited: CLAUDE.md"
 
 
-class TestAgentsNoLongerSpecial:
-    """The pre-2.0 `agents/` tree was removed; it is no longer a protected class.
-    (Kept as an explicit contract so a future reader knows the omission is
-    intentional, not an oversight.)"""
+class TestAgentsAreProtected:
+    """`agents/` is a protected class again, because the tree came back.
 
-    def test_agents_path_is_not_blocked(self):
-        # A hypothetical agents/ .md edit is now an ordinary doc edit (eligible).
-        assert _classify("agents/critic/SKILL.md") is None
+    It was dropped when the pre-2.0 `agents/` tree was removed, and the
+    contract recorded then said so. The plugin now ships `agents/` again, and
+    what is in it is a review subagent's own system prompt — behavioural logic
+    by exactly the argument `skills/` makes for fork-skill prose, and the one
+    whose unreviewed edit compounds, since it decides what every later review
+    looks at.
+    """
+
+    def test_agents_path_is_blocked(self):
+        assert (
+            _classify("agents/critic-reviewer.md")
+            == "agent-file-edited: agents/critic-reviewer.md"
+        )
+
+    def test_a_nested_plugin_agents_path_is_blocked(self):
+        # Segment match, like every other directory bound: a repo that keeps its
+        # plugin under `plugin/` is the ordinary layout, not an escape.
+        assert _classify("plugin/agents/critic-reviewer.md") is not None
 
 
 class TestNonProtectedChanges:

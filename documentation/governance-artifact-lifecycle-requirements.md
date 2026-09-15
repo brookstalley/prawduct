@@ -180,8 +180,10 @@ MUST unless marked SHOULD.
 - **CL3** `check-releasability` continues to derive release-pending scopes from `scope=` plus the
   absence of `release=`. *Unchanged; recorded because it is the only surviving gate over change-log
   content and the sole reason any tag survives.*
-- **CL4** `check-change-log-entry` continues to gate on a branch adding an entry heading. It reads diff
-  shape, never tags, and is unaffected.
+- **CL4** `check-change-log-entry` continues to gate on a branch adding an entry heading. It never
+  reads tags, so nothing in this tag lifecycle reaches it. *How* it establishes that a heading was
+  added is its own concern and has since grown a second path (`lib/coverage.py`) — do not restate the
+  mechanism here.
 - **CL5** (SHOULD) At release, the only change-log edit is adding `release=vX.Y.Z` to the entries that
   shipped. The three-tag sweep and its selection rule are removed.
 - **CL6** Change-log tag validation is **one** validator over the two surviving keys — value format,

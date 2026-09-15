@@ -299,8 +299,10 @@ class TestTheInertTierIsEphemeralWorktreeSafe:
     everywhere" true. Without it the two hook-invoked members reproduce the exact
     session-start hook error they were restored to remove, in the one environment
     prawduct itself creates. `regen-views` and `stamp-merged` carried the same
-    gap and the same false docstring claim, so they are pinned together — one
-    classification, not one decision per command.
+    gap and the same false docstring claim, so the whole tier is pinned together
+    — one classification, not a decision per member. `bug-inbox` joined it
+    2026-09-08 when the upstream bug drop-box retired, and inherits the same
+    requirement for the same reason.
 
     The three learnings verbs arrived from `_EPHEMERAL_APPLY_GATED_COMMANDS`,
     which is the trap that makes this pin worth more than its size: an
@@ -318,6 +320,7 @@ class TestTheInertTierIsEphemeralWorktreeSafe:
         "audit-learnings",
         "learnings-obligation",
         "check-learnings-pairing",
+        "bug-inbox",
     )
 
     def _set_block(self, name: str) -> str:

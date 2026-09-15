@@ -59,9 +59,15 @@ framework files in your tree. Then describe what you want:
 > add OAuth login to the existing API
 ```
 
-Anyone who clones the repo gets the same governance (the plugin auto-installs on first trusted
-open). Already onboarded? `/prawduct:doctor` health-checks the repo. Moving a pre-2.0 file-sync
-repo? `/prawduct:onboard` routes it to [`/prawduct:migrate`](documentation/MIGRATION.md).
+**Each contributor installs the plugin once** — step 1 above, in any repo. The committed install
+reference registers the marketplace for them automatically on first trusted open, but Claude Code
+does not auto-install a plugin sourced from a repository, so a clone on a machine that has never
+installed prawduct runs **ungoverned and silent about it**: no hooks, no `/prawduct:*`, no gates,
+and no message saying so. The repo's `CLAUDE.md` anchor tells that session to say so and names the
+install command; `/prawduct:doctor` Health Check #4 keeps the anchor current.
+
+Already onboarded? `/prawduct:doctor` health-checks the repo. Moving a pre-2.0 file-sync repo?
+`/prawduct:onboard` routes it to [`/prawduct:migrate`](documentation/MIGRATION.md).
 
 ### Turn Prawduct off in a specific repo
 
@@ -282,9 +288,12 @@ See [`docs/principles.md`](plugin/docs/principles.md) for the full principles wi
 
 ## Recent Changes
 
-Full release notes are in [CHANGELOG.md](plugin/CHANGELOG.md). Two major releases define the current architecture, and the **3.1–3.4** line is what has been built on top of them:
+Full release notes are in [CHANGELOG.md](plugin/CHANGELOG.md). Two major releases define the current architecture, and the **3.1–3.5** line is what has been built on top of them:
 
-### 3.1–3.4 — Governance that reports its own state
+### 3.1–3.5 — Governance that reports its own state
+- **Report a bug in prawduct itself, upstream** — `/prawduct:report-bug` recomposes the report in prawduct's terms, previews the exact outbound bytes, and files an issue on prawduct's public tracker only on your approval of them. Five checks each refuse and file nothing, identity fails closed, and one row in `project-preferences.md` — `Upstream filing: never-file` — is a hard mechanical guarantee that nothing leaves your machine
+- **The review loop has a declared stop** — `review_round_budget`, six full rounds per build-plan scope, on by default. Findings per round were measured *rising* rather than converging, so nothing else was going to end it. A review now rates only the files a finding can be *about* and reads the rest as oracle, and every finding carries a `fix_cost` saying whether acting on it buys another round
+- **Delegation is a guide, a default, and a policy you write** — `/prawduct:methodology delegation`, a project-authored delegation policy in `project-preferences.md` where `off` is a complete answer, and the partition question arriving where you already stop rather than as a new ceremony
 - **Less waiting on the gates, fewer rounds in review** — the *check* for whether a review is needed stops timing out (20 s → 0.35 s), because the coverage verdict is memoized instead of rescanning every tree the evidence store mentions; syncing your base no longer buys a re-review, because coverage **transfers** when the branch's judgeable files are byte-identical across the two spans. The review itself costs what it always did
 - **A finding says whether it found an instance or a class** — and an unbounded class closes only by a *construction*, not by fixing the sites it happened to name; a turn-closing block whose second line answers *whose move is it* (`RUNNING` / `YOUR TURN` / `COMPLETE`) rather than naming a topic; and one session digest for every repo, framework or product
 - **Norms bind, descriptions track** — `## Direction` statements in governing artifacts carry normative authority, with an owner-ratification flow and time-domain health sweeps; enforcement is scoped to adoption, so a repo with no ratified norms gets NOTEs and is never blocked

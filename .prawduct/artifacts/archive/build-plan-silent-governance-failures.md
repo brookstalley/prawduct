@@ -24,7 +24,13 @@ governed_by:
       - "additive-first evolution; keys never repurposed; deprecation signalled, never silent → conforms WITH A DEPARTURE TO RECORD. `sentinel_command:` and `unevaluated_reason` are additive, and `passed: null` becomes reachable in production where it was a test seam only, its meaning (not graded) unchanged. But removing the implicit pytest runner withdraws working behaviour rather than adding to it. Ruled in-bounds here because the withdrawal fails CLOSED — an ungraded sentinel withholds a retirement, destroying nothing — where the norm's Why is protecting callers from breakage; and it is signalled per the clause, by a stderr notice naming the knob rather than a silent unchecked. The alternative, an inert-retention window keeping the pytest default alive, would retain the very Python-specificity the architecture norm forbids, so the two norms are answered together rather than traded off"
 partition: serial — the three chunks are independent, but delegation is off for this session, and one reviewer's attention over a single small diff is the binding constraint regardless
 last_validated: 2026-08-26
+lifecycle: completed
+archived: 2026-09-13
+released_in: v3.5.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Requirements Confidence
 

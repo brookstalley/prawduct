@@ -75,35 +75,51 @@ _EDIT_IN_PLACE = frozenset({"CLAUDE.md", ".claude/settings.json"})
 # treats the anchor as a strippable block) makes anchor insertion idempotent and
 # future re-anchoring detectable.
 ANCHOR_SENTINEL = "PRAWDUCT:ANCHOR"
+# The marker is paid for by every governed session, so it states the contract a
+# maintainer needs and stops: what it is, and the one rule for editing it. Why the
+# anchor is version-free, and why this sentinel is not the BEGIN/END pair, are in
+# the block comment above — which no session pays for.
 ANCHOR_MARKER = (
-    "<!-- PRAWDUCT:ANCHOR — static governance pointer managed by the prawduct "
-    "plugin. Keep it small and version-free: principles, methodology, and the "
-    "active version live in the plugin and are injected at session start. -->"
+    "<!-- PRAWDUCT:ANCHOR — governance pointer managed by the prawduct plugin; "
+    "keep it small and version-free. -->"
 )
+
+#: The plugin's ``<plugin>@<marketplace>`` id, read out of the install contract
+#: rather than typed again. The anchor's install command is the FIRST thing a
+#: reader without the plugin can act on, so it has to name the same id
+#: `.claude/settings.json` enables — and a marketplace rename must not be able to
+#: leave a correct settings file beside an anchor telling people to install
+#: something that no longer exists. One home, one edit (architecture.md
+#: § Direction, "every fact has one home"). ``install_reference_probes`` derives
+#: its field name from this same key for the same reason.
+PLUGIN_ID = next(iter(INSTALL_REFERENCE["enabledPlugins"]))
+
 STATIC_ANCHOR = f"""{ANCHOR_MARKER}
 
 ## Governance (Prawduct)
 
-This repo is governed by **Prawduct**, installed as a Claude Code plugin — not as
-committed framework files. The principles, methodology, Critic protocol, and PR
-review live in the plugin and are read on demand (run `/prawduct:methodology`);
-they are intentionally not copied into this repo.
+This repo is governed by **Prawduct**, a Claude Code plugin; its methodology and
+protocols are read on demand via `/prawduct:methodology`.
 
-**Before writing any code, STOP and read the build cycle: `/prawduct:methodology building`.**
-Skipping it is the #1 governance failure.
+**Check first: is the plugin loaded?** If `/prawduct:*` commands are unavailable it
+is not, and **governance is OFF** — no Stop gate, no Critic, nothing below enforced.
+A clone registers the marketplace but installs nothing. Tell the user to
+run `claude plugin install {PLUGIN_ID}`, then restart — don't proceed as if governed.
 
-The hardest rules (everything else is in the plugin):
+**With the plugin loaded — before writing any code, STOP and read the build cycle:
+`/prawduct:methodology building`.** Skipping it is the #1 governance failure.
+
+Hardest rules:
 
 - **Tests are contracts** — fix the code, never weaken a test.
 - **No "pre-existing" exception** — fix what you find, or flag why you can't.
 - **Never silently drop a requirement** — say so explicitly.
-- **Run `/prawduct:critic` after medium+ work** — never write Critic findings
+- **Run `/prawduct:critic` after medium+ work** — never write findings
   yourself; the independence is the value.
 
-**Enforcement is structural:** the plugin's Stop hook runs at session end and
-**blocks** if code changed against an active build plan with no Critic findings.
-The session-start banner shows the active version and what changed — this anchor
-stays version-free.
+**Enforcement is structural — while the plugin is loaded:** its Stop hook runs at
+session end and **blocks** if code changed against an active build plan with no
+Critic findings.
 """
 
 
@@ -390,10 +406,16 @@ def apply_claude_anchor(project_dir: Path) -> bool:
     if not path.is_file():
         # Defensive: a file-sync repo always carries CLAUDE.md, but if it is
         # absent the migrated repo must still carry the governance anchor.
-        path.write_text(f"# CLAUDE.md\n\n{anchor}\n", encoding="utf-8")
+        core.atomic_write_text(
+            path, f"# CLAUDE.md\n\n{anchor}\n", encoding="utf-8", newline=""
+        )
         return True
 
-    original = path.read_text(encoding="utf-8")
+    # newline="" — read this product's OWN line endings. `read_text` translates
+    # them, so writing back reformats every line of a file this function promises
+    # to edit only at the anchor seam.
+    with path.open(encoding="utf-8", newline="") as fh:
+        original = fh.read()
     block, before, after = core.extract_block(original)
 
     if block is not None:
@@ -404,12 +426,22 @@ def apply_claude_anchor(project_dir: Path) -> bool:
     elif ANCHOR_SENTINEL in original:
         return False  # already-migrated CLAUDE.md: anchor present, no block
     else:
-        base = original.rstrip("\n")
+        base = original.rstrip("\r\n")
         new = f"{base}\n\n{anchor}\n" if base else f"{anchor}\n"
+
+    # Match the file's OWN endings before writing. Reading with newline="" keeps
+    # a CRLF document intact, but `anchor` is LF-only — so splicing it in produced
+    # a file with mixed endings, which is a whole-file diff dressed as a one-block
+    # edit. Detected from the document rather than assumed: a file with no CRLF at
+    # all is left exactly as it is.
+    if "\r\n" in original and "\r\n" not in anchor:
+        new = new.replace("\r\n", "\n").replace("\n", "\r\n")
 
     if new == original:
         return False
-    path.write_text(new, encoding="utf-8")
+    # Atomic, and endings-preserving: this is the product's own instruction file,
+    # and a crash between truncate and write would leave it half-written.
+    core.atomic_write_text(path, new, encoding="utf-8", newline="")
     return True
 
 

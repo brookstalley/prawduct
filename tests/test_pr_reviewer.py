@@ -778,6 +778,100 @@ class TestPrReviewerScoping:
             "the skill cannot append the review.pr event."
         )
 
+    def test_create_step_5_pushes_with_upstream_and_verifies_the_pushed_ref(self):
+        """Both halves, because the check depends on the flag.
+
+        The verification is `check-branch-pushed`, which reads the branch's
+        configured upstream — so a rewrite that drops `-u` leaves it answering
+        `no-upstream` on the first push of a Create flow instead of certifying
+        the push it just made. Asserting the check alone passed while that was
+        true.
+        """
+        step5 = self.skill.split("### Step 5: Create PR", 1)[1].split("\n## ", 1)[0]
+        # Scoped and literal: a bare `"-u" in content` passes on --json, on any
+        # hyphen-u anywhere in the file, and on a Step 5 that pushes without it.
+        assert "Push branch with `-u`" in step5, (
+            "Step 5 must push with -u -- `check-branch-pushed` reads the "
+            "branch's upstream, so without it the check answers no-upstream "
+            "instead of certifying the push"
+        )
+        assert "prawduct-hook check-branch-pushed" in step5, (
+            "Step 5 no longer runs the push-completeness gate -- a prose "
+            "comparison an agent can skip is what #248 was filed against"
+        )
+        assert "AFTER the push" in step5, (
+            "the ORDER is the whole check: run before the push it verifies, "
+            "it certifies the previous one"
+        )
+
+    def test_merge_flow_verifies_the_prs_head_before_merging(self):
+        """The merge-side check, pinned separately from the create-side one.
+
+        These are not duplicates and the file says so: the Create-flow check
+        sits INSIDE the step whose skip causes the defect, so only this one is
+        outside the control flow that produces the side effect. A future
+        editor trimming it as redundant is the failure this asserts against.
+        """
+        content = self.skill
+        merge_flow = content.split("## Merge Flow", 1)[1].split("## Status Flow", 1)[0]
+        assert "headRefOid" in merge_flow, (
+            "Merge Flow no longer verifies the PR head against local HEAD — "
+            "an unpushed commit then merges silently."
+        )
+        assert "OUTSIDE the step whose skip causes the defect" in merge_flow, (
+            "the reason this check is not redundant with Create Step 5 is gone, "
+            "which is what makes it look trimmable"
+        )
+
+    def test_merge_flow_runs_the_push_gate_alongside_the_pr_head_check(self):
+        """Two checks with two subjects, pinned together.
+
+        `check-branch-pushed` computes its verdict and fails closed when it
+        runs, but reads only this clone's refs; `headRefOid` sees a remote that
+        moved but asks an agent to compare two strings. Whichever one a future
+        editor calls redundant, half the defect comes back — so the file must
+        carry both, and the reason. Neither is unskippable: both are sentences
+        in one numbered step, and the gate's own omission is the one state it
+        cannot detect.
+        """
+        merge_flow = self.skill.split("## Merge Flow", 1)[1].split("## Status Flow", 1)[0]
+        assert "prawduct-hook check-branch-pushed <headRefName>" in merge_flow, (
+            "Merge Flow must run the push gate ON THE PR'S BRANCH -- the "
+            "argument-less form answers about whatever is checked out, so on a "
+            "merge run from the base branch it reports the base is pushed and "
+            "that reads as the PR being pushed"
+        )
+        assert "Neither check subsumes the other" in merge_flow, (
+            "the reason the two merge-side checks are not duplicates is gone, "
+            "which is what makes one of them look deletable"
+        )
+
+    def test_the_push_gate_is_granted_to_the_skill(self):
+        """An ungranted command is a step that cannot run. The star must be
+        ATTACHED: the gate takes an optional branch argument, and the Merge Flow
+        passes one, which a bare grant would not cover
+        (`tests/test_skill_command_grants.py` defines the form)."""
+        frontmatter = self.skill.split("---", 2)[1]
+        assert "Bash(prawduct-hook check-branch-pushed*)" in frontmatter, (
+            "skills/pr/SKILL.md allowed-tools is missing check-branch-pushed* -- "
+            "both flows call a gate the skill may not invoke, and the Merge Flow "
+            "call passes the PR's branch"
+        )
+
+    def test_a_pushed_ref_mismatch_is_not_answered_with_force_push(self):
+        """One remedy per shape. Force-pushing a remote-ahead branch rewrites
+        the tree Step 4's `commit_reviewed` ancestor check pinned, voiding the
+        review evidence — so the file must not answer every mismatch with
+        "push again"."""
+        step5 = self.skill.split("### Step 5: Create PR", 1)[1].split("\n## ", 1)[0]
+        assert "never force-push" in step5
+        # Scoped: `commit_reviewed` appears independently all through the
+        # Update Flow, so a file-wide check passes with this rationale deleted.
+        assert "commit_reviewed" in step5, (
+            "Step 5 no longer says WHY a force-push is the wrong answer -- "
+            "without the evidence-voiding reason it reads as mere preference"
+        )
+
     def test_learnings_and_backlog_not_rescanned(self):
         """The cumulative Critic owns the Learnings Cross-Check and Backlog
         Reconciliation walk; the PR reviewer must not repeat them. R-2 (data
@@ -837,11 +931,22 @@ class TestPrReviewerScoping:
 
     def test_critic_cross_checks_named_as_owner(self):
         """B (CRT-5T8N): review-cycle.md names final/cumulative as the OWNER of
-        the Learnings Cross-Check + Backlog Reconciliation, so the single-owner
-        division is explicit from the Critic side too (the PR reviewer consumes
-        the result rather than re-running it)."""
+        the final-mode cross-checks, so the single-owner division is explicit
+        from the Critic side too (the PR reviewer consumes the result rather
+        than re-running it).
+
+        Asserted on the PROPERTY — ownership stated, and the PR reviewer told not
+        to re-run — rather than on a phrase carrying the count. The count moved
+        the moment a third cross-check landed (the Records Pass), and a pin that
+        breaks on arithmetic tests the sentence rather than the division it
+        exists to protect.
+        """
         content = (FRAMEWORK_DIR / "skills" / "critic" / "review-cycle.md").read_text()
-        assert "owner of both cross-checks" in content
+        header = content.split("## Final-Mode Cross-Checks", 1)[1].split("\n### ", 1)[0]
+        assert "`final`/`cumulative` owns" in header, (
+            "review-cycle.md no longer names the cross-checks' owner"
+        )
+        assert "the PR reviewer does not re-run them" in header
 
 
 # =============================================================================

@@ -19,6 +19,7 @@ name-only diffs behave as in production.
 
 from __future__ import annotations
 
+import re
 import subprocess
 from pathlib import Path
 
@@ -310,3 +311,219 @@ def test_plus_h2_in_body_prose_does_not_count(tmp_path):
     result = _run_probe(repo)
     assert result.returncode == 1
     assert "entry-edited-not-added" in result.stderr
+
+
+# ---------------------------------------------------------------------------
+# The log is UNTRACKED (repo gitignores `.prawduct/` wholesale)
+#
+# A path git does not track can never appear in a diff, so the diff's silence
+# is not evidence of a missing entry. Repos that ignore `.prawduct/` wholesale
+# kept a real change-log on disk and got `no-entry` anyway — with a remedy
+# ("add a change-log entry") that no amount of following could ever clear.
+# ---------------------------------------------------------------------------
+
+
+def _make_untracked_log_repo(tmp_path: Path, log_body: str | None) -> Path:
+    """A branched repo whose `.prawduct/` is gitignored wholesale.
+
+    ``log_body`` is written to disk (never committed — git cannot see it); pass
+    ``None`` to leave the repo with no change-log file at all.
+    """
+    repo = tmp_path / "repo"
+    repo.mkdir(parents=True)
+    _git(repo, "init", "--quiet", "-b", "main")
+    _git(repo, "config", "user.email", "test@example.com")
+    _git(repo, "config", "user.name", "Test")
+    _git(repo, "config", "commit.gpgsign", "false")
+    _commit_file(repo, ".gitignore", ".prawduct/\n", "ignore prawduct state")
+    _commit_file(repo, "app.py", "print(1)\n", "baseline code")
+    if log_body is not None:
+        log = repo / CHANGE_LOG
+        log.parent.mkdir(parents=True, exist_ok=True)
+        log.write_text(log_body)
+    _git(repo, "checkout", "-q", "-b", "feature/x")
+    return repo
+
+
+def test_untracked_log_with_entries_passes_on_the_weaker_check(tmp_path):
+    """The defect this family exists for: a real log, on disk, read as absent."""
+    repo = _make_untracked_log_repo(
+        tmp_path,
+        "# Change Log\n\n## 2026-06-10: this branch's work\n\nBody.\n"
+        "\n## 2026-06-01: baseline entry\n\nBody.\n",
+    )
+    _commit_file(repo, "app.py", "print(2)\n", "code change")
+    # The log really is invisible to git — the premise of the whole case.
+    assert not _git(repo, "log", "--all", "--", CHANGE_LOG).stdout.strip()
+
+    result = _run_probe(repo)
+    assert result.returncode == 0, result.stderr
+    assert "entry-present-untracked" in result.stdout
+    # The message must not claim the strong check ran, and must not repeat the
+    # unfollowable remedy.
+    assert "no-entry" not in result.stdout + result.stderr
+
+
+def test_untracked_log_missing_from_disk_still_fails(tmp_path):
+    """Degrading the check must not disarm it: no log at all is still no entry."""
+    repo = _make_untracked_log_repo(tmp_path, None)
+    _commit_file(repo, "app.py", "print(2)\n", "code change")
+    result = _run_probe(repo)
+    assert result.returncode == 1
+    assert "no-entry" in result.stderr
+
+
+def test_untracked_log_with_no_entries_still_fails(tmp_path):
+    """A stub log — a header and no `## ` entry — does not vouch for anything."""
+    repo = _make_untracked_log_repo(tmp_path, "# Change Log\n\nNothing yet.\n")
+    _commit_file(repo, "app.py", "print(2)\n", "code change")
+    result = _run_probe(repo)
+    assert result.returncode == 1
+    assert "no-entry" in result.stderr
+
+
+def test_untracked_log_does_not_rescue_a_doc_only_branch(tmp_path):
+    """The judgeability exemption still short-circuits first, unchanged."""
+    repo = _make_untracked_log_repo(
+        tmp_path, "# Change Log\n\n## 2026-06-10: work\n\nBody.\n"
+    )
+    _commit_file(repo, "docs/notes.md", "notes\n", "doc change")
+    result = _run_probe(repo)
+    assert result.returncode == 0, result.stderr
+    assert "doc-only" in result.stdout
+
+
+def test_tracked_log_untouched_by_the_branch_still_says_no_entry(tmp_path):
+    """The tracked path is untouched by the fix — pinned so it cannot drift.
+
+    `test_code_change_without_entry_fails` asserts the same outcome; this one
+    asserts it did NOT arrive via the untracked branch, which is the regression
+    that would silently pass every tracked repo.
+    """
+    repo = _make_branched_repo(tmp_path)
+    _commit_file(repo, "app.py", "print(2)\n", "code change")
+    result = _run_probe(repo)
+    assert result.returncode == 1
+    assert "no-entry" in result.stderr
+    assert "untracked" not in result.stderr
+
+
+# ---------------------------------------------------------------------------
+# The probe's verdicts and Step 1c's enumeration must not drift apart
+#
+# Step 1c routes on the verdict NAME, so a verdict the prose does not list
+# falls into whichever row the reader generalises from — which is how
+# `entry-present-untracked` was first swallowed by a blanket "Exit 0: proceed",
+# reopening the very REL-6C3W failure this gate exists to prevent. Prose has no
+# compiler; this is the pin. Same shape as test_cutover_prose_coherence.py.
+# ---------------------------------------------------------------------------
+
+SOURCE = Path(__file__).resolve().parent.parent / "plugin"
+COVERAGE_PY = SOURCE / "lib" / "coverage.py"
+PR_SKILL = SOURCE / "skills" / "pr" / "SKILL.md"
+
+# A verdict is the hyphenated token a message opens with (`no-entry: ...`),
+# captured at a string-literal boundary so prose mentions do not count. Every
+# verdict this gate has ever emitted is hyphenated; a future single-word one
+# would slip past this and needs the pattern widened with it.
+_VERDICT_RE = re.compile(r"""["'](?:\s*)([a-z][a-z0-9]*(?:-[a-z0-9]+)+):\s""")
+
+
+def _probe_source() -> str:
+    """The two functions that emit this gate's verdicts, and nothing else."""
+    text = COVERAGE_PY.read_text(encoding="utf-8")
+    start = text.index("def _entry_check_without_history")
+    end = text.index("\ndef ", text.index("def check_change_log_entry"))
+    return text[start:end]
+
+
+def _step_1c() -> str:
+    text = PR_SKILL.read_text(encoding="utf-8")
+    start = text.index("### Step 1c:")
+    return text[start:text.index("### Step 1d:", start)]
+
+
+def test_every_verdict_the_probe_emits_is_routed_by_step_1c():
+    verdicts = set(_VERDICT_RE.findall(_probe_source()))
+    # Guard the extractor itself: a regex that silently matched nothing would
+    # make this test pass while pinning absolutely nothing.
+    assert len(verdicts) >= 6, f"verdict extraction looks broken: {verdicts}"
+
+    step = _step_1c()
+    missing = sorted(v for v in verdicts if f"`{v}`" not in step)
+    assert not missing, (
+        f"{PR_SKILL.name} Step 1c does not route these verdicts: {missing}. "
+        "An unlisted verdict is read under whichever row the agent generalises "
+        "from, which for an exit-0 verdict means proceeding on an unanswered check."
+    )
+
+
+def test_step_1c_does_not_route_a_verdict_the_probe_no_longer_emits():
+    """The other drift direction — prose outliving the code that fed it.
+
+    Reads only the ``- **Exit N with `x`, `y`**:`` bullet headers, so what it
+    compares is the routing table itself rather than every token Step 1c
+    happens to mention (paths, predicates and REL ids are all backticked too).
+    """
+    routed = set()
+    for line in _step_1c().splitlines():
+        if not line.startswith("- **Exit "):
+            continue
+        header = line.split("**:", 1)[0]
+        routed.update(re.findall(r"`([a-z][a-z0-9-]+)`", header))
+    assert routed, "no exit rows parsed out of Step 1c — the bullet shape moved"
+
+    stale = sorted(routed - set(_VERDICT_RE.findall(_probe_source())))
+    assert not stale, (
+        f"Step 1c routes verdicts the probe no longer emits: {stale}. A row for "
+        "a dead verdict is an instruction that can never fire."
+    )
+
+
+def test_untracked_log_that_is_not_utf8_fails_with_a_verdict_not_a_traceback(tmp_path):
+    """A non-UTF-8 byte is as unreadable as a missing file. Escaping as an
+    exception would be the one outcome Step 1c has no row for."""
+    repo = _make_untracked_log_repo(tmp_path, None)
+    log = repo / CHANGE_LOG
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_bytes(b"# Change Log\n\n## 2026-06-10: work\n\n\xff\xfe body\n")
+    _commit_file(repo, "app.py", "print(2)\n", "code change")
+    result = _run_probe(repo)
+    assert result.returncode == 1
+    assert "no-entry" in result.stderr and "could not be read" in result.stderr
+    assert "Traceback" not in result.stderr
+
+
+def test_untracked_log_holding_only_shipped_entries_still_fails(tmp_path):
+    """An entry carrying `release=` shipped long ago and vouches for nothing;
+    otherwise one old entry would pass every branch in the repo forever."""
+    repo = _make_untracked_log_repo(
+        tmp_path,
+        "# Change Log\n\n## 2026-01-01: old\n\n<!-- prawduct: scope=old | release=v1.0.0 -->\n\nBody.\n",
+    )
+    _commit_file(repo, "app.py", "print(2)\n", "code change")
+    result = _run_probe(repo)
+    assert result.returncode == 1
+    assert "no release-pending entry" in result.stderr
+
+
+def test_a_failed_tracked_probe_is_git_failed_not_the_weak_check(tmp_path, monkeypatch):
+    """`git_path_is_tracked` is three-valued so that a probe that could not run
+    is never read as "untracked": that arm must route to `git-failed` (exit 1),
+    never into the weaker on-disk check (exit 0)."""
+    import sys as _sys
+
+    _sys.path.insert(0, str(ROOT))
+    from lib import coverage, gitstate  # noqa: PLC0415
+
+    repo = _make_untracked_log_repo(
+        tmp_path, "# Change Log\n\n## 2026-06-10: work\n\nBody.\n"
+    )
+    _commit_file(repo, "app.py", "print(2)\n", "code change")
+    monkeypatch.setattr(gitstate, "git_path_is_tracked", lambda *_a, **_k: None)
+    import io, contextlib
+    err = io.StringIO()
+    with contextlib.redirect_stderr(err):
+        code = coverage.check_change_log_entry(repo)
+    assert code == 1
+    assert "git-failed" in err.getvalue()

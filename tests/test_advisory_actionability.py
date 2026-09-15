@@ -61,7 +61,7 @@ COMMAND_EXECUTABLES = frozenset({"prawduct-hook", "git"})
 # Tokens that make owner-facing text a command rather than a decision. `/prawduct:`
 # and `prawduct-hook` are banned as substrings (they are unambiguous wherever they
 # appear); a bare slash command is matched only token-initially, so a path an owner
-# genuinely needs to see — `.prawduct/backlog.md`, `docs/norms.md`, `incoming-bugs/`
+# genuinely needs to see — `.prawduct/backlog.md`, `docs/norms.md`, `.prawduct/artifacts/`
 # — is not mistaken for one.
 _OWNER_BANNED_SUBSTRINGS = ("/prawduct:", "prawduct-hook")
 _SLASH_COMMAND_RE = re.compile(r"(?:^|\s)/[a-z][\w:-]*")

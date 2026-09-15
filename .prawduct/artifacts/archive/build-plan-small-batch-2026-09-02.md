@@ -7,7 +7,13 @@ depends_on:
   - artifact: backlog-service-api-contract
 partition: serial — four independent items, but they are S-sized and share one Critic pass; delegating four briefs costs more coordination than the work saves, and Chunks 01 and 02 touch adjacent code in `plugin/lib/backlog/`
 last_validated: 2026-09-02
+lifecycle: completed
+archived: 2026-09-13
+released_in: v3.5.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Requirements Confidence
 

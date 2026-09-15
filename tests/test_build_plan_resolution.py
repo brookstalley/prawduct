@@ -1938,14 +1938,14 @@ class TestGitAnswersTheBranchQuestion:
 class TestVerifyChunkRefsNonPathTokens:
     """BLD-4K7P: backticked tokens that aren't literal on-disk paths must not
     produce false `missing-ref` positives — angle-bracket write-target templates
-    (`<inbox>/<slug>.md`) and URLs (`https://…`) are skipped at parse (same
+    (`<target-repo>/<slug>.md`) and URLs (`https://…`) are skipped at parse (same
     form-family as the glob carveout), and an intentionally-gitignored managed
-    path (`.prawduct/.bug-inbox`) is captured but skipped at verification because
+    path (`.prawduct/.test-evidence.json`) is captured but skipped at verification because
     it's a generated/managed file, legitimately absent from a fresh checkout."""
 
     def test_angle_bracket_template_is_skipped(self, tmp_path: Path):
         project, prawduct = _project_with_chunk(
-            tmp_path, "- writes `<inbox>/<kebab-slug>.md` per report\n"
+            tmp_path, "- writes `<target-repo>/<kebab-slug>.md` per report\n"
         )
         refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
         assert refs["error"] is None
@@ -1961,13 +1961,13 @@ class TestVerifyChunkRefsNonPathTokens:
 
     def test_gitignored_managed_path_not_flagged_missing(self, tmp_path: Path):
         project, prawduct = _project_with_chunk(
-            tmp_path, "- the resolver writes to `.prawduct/.bug-inbox`\n"
+            tmp_path, "- the run is recorded in `.prawduct/.test-evidence.json`\n"
         )
         subprocess.run(["git", "init", "-q"], cwd=project, check=True)
-        (project / ".gitignore").write_text(".prawduct/.bug-inbox\n")
+        (project / ".gitignore").write_text(".prawduct/.test-evidence.json\n")
         refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
         # It IS a path-shaped token (captured), but verification skips it.
-        assert [e["ref"] for e in refs["file_paths"]] == [".prawduct/.bug-inbox"]
+        assert [e["ref"] for e in refs["file_paths"]] == [".prawduct/.test-evidence.json"]
         assert _bpr._verify_chunk_refs(project, refs) == []
 
     def test_non_ignored_missing_path_still_flagged(self, tmp_path: Path):
@@ -1977,7 +1977,7 @@ class TestVerifyChunkRefsNonPathTokens:
             tmp_path, "- touches `lib/does_not_exist.py`\n"
         )
         subprocess.run(["git", "init", "-q"], cwd=project, check=True)
-        (project / ".gitignore").write_text(".prawduct/.bug-inbox\n")
+        (project / ".gitignore").write_text(".prawduct/.test-evidence.json\n")
         refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
         missing = _bpr._verify_chunk_refs(project, refs)
         assert [m["ref"] for m in missing] == ["lib/does_not_exist.py"]

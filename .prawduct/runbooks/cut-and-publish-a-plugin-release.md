@@ -2,10 +2,10 @@
 runbook: cut-and-publish-a-plugin-release
 tier: 3
 owner: prawduct maintainer
-last_verified: null         # steps 0-21 matched the v3.3.4 cut (2026-08-11, brookstalley); Phase 3,
-                            # step 10's rename and the rewritten `Done when` were added AFTER that
-                            # run and have never been executed — re-verify at the next cut
-verified_by: null
+last_verified: 2026-09-13   # steps 0-22 executed end to end at the v3.5.0 cut, including step 10's
+                            # rename and Phase 3, both of which were unexecuted before this run.
+                            # Step 11a was ADDED during that cut, from two failures it caught.
+verified_by: brookstalley
 ---
 
 # Cut and publish a Prawduct plugin release
@@ -588,6 +588,36 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
     not swept. Give it its end of life by hand, naming what replaced it:
     `prawduct-hook archive-plan <path> --state superseded --superseded-by "<what/why>"`.
 
+11a. **Stage everything, then run the suite again.** Steps 7–11 rewrote four files and moved a
+    pile of plans; Phase 0's `unproven-suite:` gate graded the tree that existed *before* all of
+    that, and says so. This is the only control that reads the tree you are about to tag.
+
+    ```
+    git add -A
+    prawduct-hook test-evidence record
+    ```
+
+    **Expected:** exit 0, `recorded: N passed, 0 failed`.
+
+    **`git add -A` first is load-bearing, not tidiness.** Several suite checks enumerate the repo
+    through `git ls-files`, so step 11's archive moves are invisible to them until they are staged
+    — the walk then opens live-directory paths that are no longer there and the suite dies on
+    `FileNotFoundError` rather than on anything real.
+
+    > *Both failure modes below were measured at the v3.5.0 cut, on a suite that had been green
+    > forty minutes earlier at Phase 0. Neither is bookkeeping.*
+    >
+    > 1. **A wrapped CHANGELOG headline.** The banner reads the section's first physical **line**,
+    >    so a bold lead-in wrapped across two lines ships an unpaired `**` on the single most-read
+    >    line prawduct emits — the exact defect `silent-clear-checks` fixed one release earlier,
+    >    reintroduced by step 10 writing prose at the file's ordinary wrap width. **Write the
+    >    headline paragraph as one long unwrapped line**, the way every shipped section does.
+    > 2. **Unstaged archive moves**, as above.
+    >
+    > *If it is red:* fix it here. Everything up to the Checkpoint is undone by an ordinary commit
+    > on `develop`, and a red tree is far cheaper now than after step 19.
+
+
 12. Commit the prep:
 
     ```
@@ -862,9 +892,14 @@ the by-hand blocker check — `main`'s tree is a deliberately chosen subset of `
 own `Done when`: the content-identity check below can never pass there, and if it did pass it would
 mean the withheld work shipped.*
 
-- After `git fetch origin`, `git diff --stat origin/main origin/develop` prints **only the
-  reopen commit's five files** — `plugin/VERSION`, `plugin/.claude-plugin/plugin.json`,
-  `pyproject.toml`, `plugin/CHANGELOG.md` and `.prawduct/change-log.md`.
+- After `git fetch origin`, `git diff --stat origin/main origin/develop` prints **only what the
+  reopen commit carries** — at minimum step 22's five files: `plugin/VERSION`,
+  `plugin/.claude-plugin/plugin.json`, `pyproject.toml`, `plugin/CHANGELOG.md` and
+  `.prawduct/change-log.md`. Post-cut bookkeeping folded into the same commit is expected beside
+  them and is not a Phase 2 failure: the v3.5.0 cut added the release plan's `Status:` line and this
+  runbook's own step 11a, for seven files. **What makes the difference readable is step 17**, which
+  proved content identity *before* the promotion; anything appearing here arrived after it, on
+  `develop` only. If you skipped step 17, you cannot tell the two apart from this line alone.
 
   > `plugin/CHANGELOG.md` is in the list because step 10 renames `## vX.Y.Z-dev` → `## vX.Y.Z`
   > on the tree `main` is set from, and step 22 then opens `## vX.Y.Z+1-dev` above it on
@@ -931,6 +966,22 @@ mean the withheld work shipped.*
   they are what tell the three apart. In every case the release itself is fine and consumers are
   unaffected: this is a `directory:` marketplace symptom, local to you.
 
+  0. **`version` is a *prerelease* (`3.4.1-dev.2`, anything with a `-`)** — **nothing is wrong, and
+     the triage command below cannot grade it.** Your marketplace resolved `develop`, so the cache
+     is keyed on a version that has no tag; `git rev-parse "v${installed_ver}:plugin"` fatals with
+     `invalid object name` and the `||` branch then prints **case 2 or 3**, which is a false verdict
+     of exactly the shape #646 removed — it routes a correct install at the delete-the-cache remedy.
+     The check that *does* apply is whether the cached plugin is the plugin that version names:
+
+     ```
+     [ "$(git show "${installed_sha}:plugin/VERSION")" = "$installed_ver" ] \
+       && echo "cache holds the plugin its own key names — prerelease, case 0"
+     ```
+
+     A prerelease key is abandoned by the cut in both directions (`main` is now the release,
+     `develop` is now the *next* prerelease), so it can never be re-resolved and the next session
+     picks up whichever ref your marketplace points at. Do nothing. *(Measured at v3.5.0: installed
+     `3.4.1-dev.2` at `151751b2` on `develop`, whose `plugin/VERSION` is `3.4.1-dev.2` exactly.)*
   1. **`version` is the *previous* release, and no cache directory exists for the new one** —
      **nothing is wrong.** Your install is simply still on the last release and re-resolves at
      the next session start. This is the ordinary state immediately after a promotion, because
@@ -977,7 +1028,8 @@ mean the withheld work shipped.*
      *Recorded at length because the instance survived two corrections before dying: each new test
      was run against the previous test's conclusion rather than against the question.*
 
-  The test that separates (2) and (3) from (1), and is worth running rather than eyeballing:
+  The test that separates (2) and (3) from (1). Run it only after ruling out (0) — a `-` anywhere
+  in `installed_ver` means the tag it names does not exist and this command's verdict is noise:
 
   ```
   installed_sha=$(python3 -c "import json,os,pathlib;p=pathlib.Path(os.environ.get('CLAUDE_CONFIG_DIR','~/.claude')).expanduser()/'plugins/installed_plugins.json';print(json.loads(p.read_text())['plugins']['prawduct@prawduct'][0]['gitCommitSha'])")

@@ -679,16 +679,22 @@ Data Model §2)
   **idempotent** (already-applied items converge, the previously-rate-limited ones now apply); the mass
   grooming workload (TF3) is paced under the write caps (pacing constants are L3/S3, correctness here).
 
-**XP-1 — `file-upstream` provenance + submitted-landing + auth-by-target-owner + `source-key:` dedup** (→ XP1/XP2, API §2.4, Security §1)
+**XP-1 — `file-upstream` payload minimization + submitted-landing + session-identity auth + `source-key:` dedup** (→ XP1/XP2, API §2.4, Security §1)
 - Level: integration
 - Setup: a target project owned by a **different owner**; the caller has no local checkout of it.
 - Action: `file-upstream` into the target; then **re-file the same source item** (same submitter + source
   digest → same `source-key:`), simulating a retry; then a distinct source item.
-- Expected: the item is filed with **no upstream checkout and no drop-box**; it carries stamped
-  **provenance** (`source:` + submitter identity) and a **`source-key:<digest>`** marker (API §2.4, Data
-  Model §5), and lands in **`submitted`** (a triage state, not the working backlog); auth **resolves by
-  the target owner** (owned repo → session identity; foreign repo → user token, Security §1). The **retry
-  returns the existing upstream item** (matched by `source-key:`) rather than creating a duplicate; the
+- Expected: the item is filed with **no upstream checkout and no drop-box**; the outbound body carries
+  **exactly the fields the upstream-filing design §2 fixes and no others** — the in-repo
+  `provenance: {source: <product>, …}` pair is the field minimization exists to strip, so asserting its
+  presence here would specify the leak rather than the guarantee — including the **`source-key:<digest>`**
+  marker (API §2.4, Data Model §5); it lands in **`submitted`** (a triage state, not the working
+  backlog); auth **resolves the session's own `gh` login** and refuses when the answer names nobody
+  (§5 check 5, Security §1) — the op reaches one pinned target, so there is no by-target-owner arm to
+  select. The **retry
+  returns the existing upstream item** (matched by `source-key:`) **when the prior filing is inside the
+  dedup scan's window — api-contract §2.4 states the bound, and a test asserting the ABSOLUTE form would
+  encode a guarantee the code does not make** — rather than creating a duplicate; the
   distinct source item creates a new one. Distinct from SEC-7 (the *anonymous/non-collaborator* path;
   this is *authenticated* cross-project filing) and from AG3 advisory dedup (this is deliberate
   retry-safety, not a similarity hint).
@@ -877,7 +883,7 @@ duplicates (the same behavior stated in 4–5 docs) collapse to one row.
 | GV6/F7 non-prawduct issues out-of-scope | **PROV-2** |
 | GV3 closed_by authority + bidirectional drift sweep *(dropped in v1 — added)* | **GOV-1** |
 | AU2/TF3 batch per-item partial success *(mis-routed in v1 — added)* | **BATCH-1** |
-| XP1/XP2 file-upstream provenance/submitted/auth-by-owner *(mis-routed in v1 — added)* | **XP-1** |
+| XP1/XP2 file-upstream payload-minimization/submitted/session-identity-auth *(mis-routed in v1 — added)* | **XP-1** |
 | NF1/G4 cost O(1) in project count *(dangling pointer in v1 — added)* | **OPS-1** |
 | NFR §2 local-artifacts-disk-not-dollars | **OPS-2** |
 | NF2 no-server-for-correctness | **OPS-3** |
