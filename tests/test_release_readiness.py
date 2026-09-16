@@ -717,12 +717,14 @@ class TestChangeLogTagsAreRefusedHere:
 
     def test_this_repos_own_change_log_passes_the_guard(self):
         """Sixty-plus entries of real history, so the guard cannot fail closed."""
-        from lib import change_log
+        from lib import change_log, change_log_archive
 
-        log = Path(__file__).resolve().parents[1] / ".prawduct" / "change-log.md"
-        if not log.is_file():
+        # Live log plus archive: released history moves to the archive, and the
+        # guard must pass over every real entry, not only the pending ones left live.
+        text = change_log_archive.load_all_text(Path(__file__).resolve().parents[1] / ".prawduct")
+        if text is None:
             pytest.skip("no .prawduct/change-log.md in this checkout")
-        entries = change_log.parse_change_log(log.read_text(encoding="utf-8"))
+        entries = change_log.parse_change_log(text)
         assert [e for e in entries if e.tags.get("release")], "no release tags parsed"
         errors, _warnings = change_log.validate_change_log_tags(entries)
         assert errors == [], errors

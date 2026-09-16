@@ -201,6 +201,14 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   preview cannot promise what the write declines. **Exit 1 on `--apply` when anything is `blocked`
   or `refused`** — an apply that could not move work the change log says shipped is not a clean run;
   a preview stays 0, having attempted nothing.
+  `archive-change-log [--apply] [--json]` (mutating with `--apply`) keeps `.prawduct/change-log.md`
+  bounded: past the repo's oversized threshold it moves entries verbatim into
+  `.prawduct/change-log-archive/YYYY-MM.md` until the live log is at most half the threshold,
+  never moving a release-pending entry in a product that versions. A state-mutating writer: exit 0
+  when it ran (moved, would move, or nothing to do), **1 `refused:`** when a tag fails the release
+  validator or the log is unreadable — nothing written — and 2 on a usage error. `--json` keys:
+  `applied`, `threshold_bytes`, `live_bytes_before`, `live_bytes_after`, `product_versions`, `kept`,
+  `moved`, `pinned_bytes`, `buckets{YYYY-MM: count}`, `written[]`.
 - **Derived-view convergence** — `lifecycle-repair [--apply] [--json]` (mutating with `--apply`):
   removes the retired `views_enabled` key and `scope_rollups` block, labels a derived
   `release-notes.md` as history, and deletes `## Status` notes instructing readers not to hand-edit
@@ -263,7 +271,7 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   to `unknown` rather than a reassuring `free`).
 - **Repo lifecycle** — `migrate-plugin`, `init-product`, `update-gitignore [--dry-run]`,
   `audit-learnings`, `learnings-obligation`, `norm-index-scaffold`, `reanchor`,
-  `lifecycle-repair`, `plan-backfill`, `repo-disable` (dry-run-by-default where they mutate, with
+  `lifecycle-repair`, `plan-backfill`, `archive-change-log`, `repo-disable` (dry-run-by-default where they mutate, with
   one stated exception). **`update-gitignore` is the exception: it repairs by default and
   previews only under `--dry-run`.** It is called as a repair step by `/prawduct:doctor`,
   which is why the default is the mutating one — but a reader who assumed the blanket
@@ -323,7 +331,7 @@ allowlist; `#667` carries the audit.
 Safe/idempotent notes: consolidation and fact-appends are **idempotent** (identity fixed at
 dispatch); state-mutating lifecycle commands (`migrate-plugin`, `init-product`, `coverage-scaffold`,
 `repo-disable`, `audit-learnings`, `learnings-obligation`, `norm-index-scaffold`,
-`reanchor`, `lifecycle-repair`, `plan-backfill`) default to a
+`reanchor`, `lifecycle-repair`, `plan-backfill`, `archive-change-log`) default to a
 **dry run** and require
 `--apply` to write. The split is **scope, not danger**: a command acting on one file the operator
 named writes on invocation (`archive-plan`), one that walks a tree and decides for itself which

@@ -545,6 +545,7 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
     ```
     prawduct-hook plan-backfill            # preview: names each plan and its release
     prawduct-hook plan-backfill --apply    # one confirmation covers the whole set
+    prawduct-hook archive-change-log --apply   # bound the live change log (no-op under its threshold)
     ```
 
     **Expected:** exit 0, and every plan whose `scope=` you tagged in step 3 moves into

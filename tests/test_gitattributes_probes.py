@@ -372,10 +372,12 @@ class TestUnionMergeRecommendation:
         """The corpus itself is the fixture. The detector was measured clean on
         all 306 entries before it shipped; this keeps it that way, because the
         cost of a regression is a warning on every session of every repo."""
-        from lib import change_log as cl
+        from lib import change_log as cl, change_log_archive
 
-        log = Path(__file__).resolve().parent.parent / ".prawduct" / "change-log.md"
-        entries = cl.parse_change_log(log.read_text(encoding="utf-8"))
+        # Live log plus archive: the corpus is every real entry, wherever it lives.
+        text = change_log_archive.load_all_text(Path(__file__).resolve().parent.parent / ".prawduct")
+        assert text is not None, "fixture must actually reach the corpus"
+        entries = cl.parse_change_log(text)
         assert len(entries) > 100, "fixture must actually reach the corpus"
         stray = [e.title for e in entries if e.unconsumed_tag_lines]
         assert not stray, f"detector fires on real entries: {stray[:3]}"
