@@ -543,7 +543,7 @@ LAST_MEASURED_TOKENS = {
     # in place rather than by a second raise: the diminishing-returns paragraph
     # stopped narrating what this file used to say (durable prose never narrates
     # history), and four clauses that restated their own sentences went.
-    "skills/critic/review-cycle.md": 10432,
+    "skills/critic/review-cycle.md": 10429,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the

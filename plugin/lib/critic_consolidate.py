@@ -850,10 +850,10 @@ def account_for_prior_blockers_directive(carried: list[dict]) -> str:
 #: why this mode and not the others, what it does not cost (only
 #: ``unresolved_blocking`` is read by any gate), what it does cost (an
 #: observation is not a recorded fact), the escalation history, and the
-#: half-emitted yield. Both audiences are maintainers and both copies were
+#: how its yield is observed. Both audiences are maintainers and both copies were
 #: full-length, which is the shape ``architecture.md``'s one-home norm names: on
-#: the next change to the argument — #585 landing makes "yield is half-emitted"
-#: false — the loser is whichever reader met the stale copy.
+#: the next change to the argument, the loser is whichever reader met the stale
+#: copy.
 #:
 #: What stays here is what an editor of THIS STRING needs and that section does
 #: not own:

@@ -199,9 +199,9 @@ under an `### Observations` section with a stated count, and on the review fact 
 which makes it **answerable** (`disposition <review-id> O-1 --accept "<reason>"`). Declining one
 stops costing the reasoning, which is what made fixing it the only answer that left a trace.
 
-*Yield is emitted on both arms.* Under-firing stays visible via `review-stats`; over-firing — real
-work suppressed — is a query over the store, because the observations ride the review fact beside the
-findings instead of being a number the reviewer asserted about its own output.
+*Yield is emitted on both arms.* `review-stats` shows under-firing as B/W/N and over-firing — real
+work suppressed — as the `observations` count beside it, derived from the items riding the review
+event rather than a number the reviewer asserted about its own output.
 
 ### Record the disposition; render the census
 

@@ -41,7 +41,7 @@ from statistics import median
 from . import gitstate
 from .ledger import ledger_path
 
-REPORT_SCHEMA_VERSION = 1
+REPORT_SCHEMA_VERSION = 2
 
 # Severities with first-class columns. Anything else a record carries lands in
 # "other" — counted, never dropped (the validator only requires a non-empty
@@ -161,6 +161,17 @@ def _extract_row(event: dict) -> dict:
         duration = None
     scope = event.get("scope")
     findings = [f for f in event["review"]["findings"] if isinstance(f, dict)]
+    # A verify pass demotes everything below BLOCKING into `observations`, so
+    # its `findings` undercount what it saw by construction; the demoted count
+    # is the only way an over-firing narrowing shows up here. None, not 0, when
+    # the event carries no list — events written before the array was persisted
+    # say nothing about demotion, and counting them as zero would read as a
+    # narrowing that never fired.
+    raw_observations = event["review"].get("observations")
+    observations = (
+        sum(1 for o in raw_observations if isinstance(o, dict))
+        if isinstance(raw_observations, list) else None
+    )
     severities = [
         f["severity"] if f.get("severity") in _SEVERITIES else "other"
         for f in findings
@@ -174,6 +185,7 @@ def _extract_row(event: dict) -> dict:
         "duration": duration,
         "severities": severities,
         "findings": findings,
+        "observations": observations,
     }
 
 
@@ -191,6 +203,7 @@ def _group_stats(rows: list[dict]) -> dict:
         total_findings += len(r["severities"])
         if any(sev in _ACTIONABLE for sev in r["severities"]):
             actionable_reviews += 1
+    recording = [r["observations"] for r in rows if r["observations"] is not None]
     n = len(rows)
     return {
         "reviews": n,
@@ -199,6 +212,8 @@ def _group_stats(rows: list[dict]) -> dict:
         "findings": by_severity,
         "findings_per_review": round(total_findings / n, 2) if n else 0.0,
         "actionable_rate": round(actionable_reviews / n, 3) if n else 0.0,
+        "observations": sum(recording),
+        "reviews_recording_observations": len(recording),
     }
 
 
@@ -401,11 +416,17 @@ def _fmt_stats(stats: dict) -> str:
     f = stats["findings"]
     med = stats["duration_median_seconds"]
     pct = round(stats["actionable_rate"] * 100)
+    recording = stats["reviews_recording_observations"]
+    observations = (
+        f"observations {stats['observations']} in {recording} recording review(s)"
+        if recording else "observations not recorded"
+    )
     return (
         f"{stats['reviews']} review(s) | duration total {stats['duration_total_seconds']}s, "
         f"median {med if med is not None else '-'}s | "
         f"B/W/N/other {f['blocking']}/{f['warning']}/{f['note']}/{f['other']} | "
-        f"actionable {pct}% | {stats['findings_per_review']} findings/review"
+        f"actionable {pct}% | {stats['findings_per_review']} findings/review | "
+        f"{observations}"
     )
 
 
