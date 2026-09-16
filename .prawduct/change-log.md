@@ -32,6 +32,9 @@ Supersedes the unmerged `fix/change-log-lifecycle` branch and `documentation/iss
 (one history file, current-minor-line retention — 326 KB left live, no archiving in unversioned
 products); its result invariant, `write_all_or_none` and parser-line-number entry boundaries are
 ported. Resolves #802 and #793.
+**Rollback:** an older plugin reads only the live log, so after a repo archives, downgrading past this
+release hides archived release tags from plan-backfill and the release gate — copy the month files'
+entries back into `change-log.md` first, or do not downgrade (noted in `plugin/CHANGELOG.md`).
 
 ## 2026-09-16: review-stats counts what verify passes demote
 

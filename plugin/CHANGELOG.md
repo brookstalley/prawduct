@@ -17,6 +17,12 @@ says so wherever it appears, so a repo pinned to the develop ref can tell what i
 cached review verdict from the released plugin is not replayed against this one. Rolling release
 notes accumulate here, and this section is renamed to the release number at the cut.
 
+**The change log stays bounded.** Once `.prawduct/change-log.md` passes its size threshold, `/prawduct:pr`
+moves shipped history verbatim into `.prawduct/change-log-archive/YYYY-MM.md` (release-pending entries
+stay live), and the size nudge hands the agent that command instead of advice nobody could act on.
+**Downgrade caution:** an older plugin reads only the live log, so after your repo has archived, do not
+roll back past this release — or copy the archived entries back into `change-log.md` first.
+
 ## v3.5.0
 
 **Prawduct can now file a bug about itself, the review loop has a stopping rule, and a dozen governance surfaces stop reporting success on a check they never ran.** Thirty-two scopes since v3.4.0, and the three headline changes each move something you will feel in an ordinary session: a new outbound surface, a review that ends, and gates that say "I could not tell" where they used to say "fine".
