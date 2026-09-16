@@ -6581,7 +6581,7 @@ _USAGE = (
     "infer-critic-mode [args]|"
     "resolve-base|version|print-install-reference|"
     "evidence {status|list [--kind <k>] [-n <count>]}|advisory <subcmd> [args]|"
-    "disposition <review-id> <fid> {--accept <reason>|--file <backlog-id>} [--owner-ruling <text>]|"
+    "disposition <review-id> <fid|oid> {--accept <reason>|--file <backlog-id>} [--owner-ruling <text>]|"
     "render-dispositions [--review <id>|--scope <s>] [--json]|"
     "coverage-status [--json]|coverage-scaffold [--apply] [--json]|"
     "migrate-plugin [--apply] [--json]|init-product <target> --name <name> [--backlog-repo owner/repo] [--apply] [--json]|"

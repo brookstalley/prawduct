@@ -76,7 +76,7 @@ When chunk type is `designer-handoff` and the Critic is invoked anyway, output a
 
 ### Evidence and Composition
 
-Every consolidated review appends a **fact** to the shared evidence store (`<git-common-dir>/prawduct/evidence.jsonl` — shared by all worktrees of a clone, inspectable via `prawduct-hook evidence status|list`). A fact records the trees it actually saw: `base_tree → head_tree`, plus `files_reviewed` (the findings-eligible **subject** set — everything but the records *about* the work), `files_oracle` (what the round read and did not rate) and the findings. Gates answer by **composition**: coverage of A → B exists when review facts (and free edges over intervals touching only non-judgeable files) form a path from tree(A) to tree(B), and the verdict passes when no blocking finding on the path lacks a resolution fact. Consequences worth knowing:
+Every consolidated review appends a **fact** to the shared evidence store (`<git-common-dir>/prawduct/evidence.jsonl` — shared by all worktrees of a clone, inspectable via `prawduct-hook evidence status|list`). A fact records the trees it actually saw: `base_tree → head_tree`, plus `files_reviewed` (the findings-eligible **subject** set — everything but the records *about* the work), `files_oracle` (what the round read and did not rate), the findings, and any `observations` a verify pass demoted. Gates answer by **composition**: coverage of A → B exists when review facts (and free edges over intervals touching only non-judgeable files) form a path from tree(A) to tree(B), and the verdict passes when no blocking finding on the path lacks a resolution fact. Consequences worth knowing:
 
 - A review of the dirty working tree **vouches for the subsequent commit** when the commit is made verbatim — the commit carries the reviewed tree. Any worktree or later session can then compose over it; nothing expires by time or session.
 - A rebase or amend changes the tree → a gap composition cannot close (the transfer below closes one case). A squash-merge preserves the tree, so squashed PRs stay covered.
@@ -190,20 +190,18 @@ fix-by-fudging at all (its workaround leg was rated only here, in a file this mo
 forbidden to open). An earlier draft claimed all five were "already BLOCKING-rated"; that was false
 for two, and a safety argument that rests on a false claim is not a safety argument.
 
-*What it does cost, stated plainly.* An observation is not a recorded fact: it cannot be
-`disposition`ed, and a later reader of the evidence store will not find it. The bound is narrower
-than it first reads, and the weaker reading is the honest one: `verify-resolutions` is never a first
-review (`critic-begin` demotes when no usable prior fact exists), so the tree *beneath* the fix was
-fully reviewed — but the fix delta's own content was not, and post-cumulative fixes route here too.
-What actually holds is that the builder reads the observations in the reviewer's report, which is why
-they have a structural destination (an `### Observations` section) and a stated count, not just
-"prose".
+*What it does cost, stated plainly.* The fix delta's own content is rated at BLOCKING only. The
+bound is narrower than it first reads, and the weaker reading is the honest one: `verify-resolutions`
+is never a first review (`critic-begin` demotes when no usable prior fact exists), so the tree
+*beneath* the fix was fully reviewed — but the fix delta's own content was not, and post-cumulative
+fixes route here too. What holds is that the builder meets every observation twice: in the report,
+under an `### Observations` section with a stated count, and on the review fact under an `O-n` id —
+which makes it **answerable** (`disposition <review-id> O-1 --accept "<reason>"`). Declining one
+stops costing the reasoning, which is what made fixing it the only answer that left a trace.
 
-*Yield is half-emitted, and that is a known gap.* The demotion count reaches the builder; it does not
-reach the evidence store, so verify-mode WARNING/NOTE totals will read zero post-release — true by
-construction and therefore evidence of nothing. Under-firing stays visible via `review-stats`;
-over-firing does not. A structured field on the fact body is the fix, deferred deliberately (a
-persisted format is lock-in) and filed.
+*Yield is emitted on both arms.* Under-firing stays visible via `review-stats`; over-firing — real
+work suppressed — is a query over the store, because the observations ride the review fact beside the
+findings instead of being a number the reviewer asserted about its own output.
 
 ### Record the disposition; render the census
 
@@ -212,9 +210,9 @@ machine-readable trace — the resolution fact a `verify-resolutions` pass recor
 the FIX that bought *no* round now do too:
 
 ```
-prawduct-hook disposition <review-id> <fid> --accept "<reason>"      # won't fix, reason recorded
-prawduct-hook disposition <review-id> <fid> --file <backlog-id>      # deferred, item carries the work
-prawduct-hook disposition <review-id> <fid> --fixed <path>[,<path>…] # fixed for free, no round bought
+prawduct-hook disposition <review-id> <fid|oid> --accept "<reason>"      # won't fix, reason recorded
+prawduct-hook disposition <review-id> <fid|oid> --file <backlog-id>      # deferred, item carries the work
+prawduct-hook disposition <review-id> <fid|oid> --fixed <path>[,<path>…] # fixed for free, no round bought
 ```
 
 **`--fixed` exists because the cheapest correct action was the only one the record could not see.** A
