@@ -104,6 +104,14 @@ is needed, and nothing before it depends on the answer.
 - [x] Chunk 03: The discipline seed — ten cross-repo rules delivered where rules fire, recorded in one table
 - [x] Chunk 04: The program's PR to `develop` — its cumulative review is the gate
 - [ ] Chunk 05: Release — plan, version, cut, verify, reopen `develop`
+
+**Carried into Chunk 05 (PR review #759, NOTE):** `audit_against_incoming`
+(`tests/test_learnings_files.py`) has no caller outside its own three fixture tests. It is the
+instrument built so the NEXT base-advance merge does not repeat this one's defect — heading-
+accounting missing five in-place body revisions — and as built it will not run at that merge.
+`authoring.md`'s narrative now points a human merger at it, which is a pointer, not a caller.
+Wiring it (a hook op that takes an incoming corpus and reports `missing` / `diverged`, plus its
+tests) is a code change with its own review cost, so it rides this chunk rather than the merge.
 Context: Plan drawn 2026-09-03 from the tree at f2dffc6b (Wave 2 complete). Chunk 01 done
 2026-09-03: reflection.md 5003 → 2753 tokens, session-hygiene.md born at 2811 (the block moved
 verbatim; one paragraph restating the digest's reconcile rule dropped as a second home); every
