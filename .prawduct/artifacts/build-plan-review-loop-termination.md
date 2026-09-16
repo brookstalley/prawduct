@@ -3,7 +3,7 @@ artifact: build-plan
 version: 2
 scope: review-loop-termination
 branch: fix/review-loop-termination
-partition: serial — all three chunks edit `critic_consolidate.py` and read the coverage/evidence path; 02 and 03 both consume a coverage verdict, so delegates would collide on the same seam
+partition: serial — all three chunks edit `critic_consolidate.py` and read the coverage/evidence path; 02 consumes a coverage verdict and 03 edits the close copy beside it, so delegates would collide on the same seam
 depends_on:
   - artifact: review-loop-nontermination-diagnosis
 related_issues:
@@ -38,7 +38,7 @@ governed_by:
   - artifact: api-contract
     dispositions:
       - "whole-surface semver; the internal CLI subcommand surface carries no per-subcommand version → conforms; the plugin version covers it"
-      - "exit codes are the contract, on a documented and consistent scheme → ENGAGED by Chunk 01 (a new `disposition` arm needs an exit-code meaning) Chunk 03, revised, changes no exit code"
+      - "exit codes are the contract, on a documented and consistent scheme → ENGAGED by Chunk 01 (a new `disposition` arm needs an exit-code meaning); Chunk 03, revised, changes no exit code"
       - "additive-first evolution: flags and `--json` keys are added, never repurposed → ENGAGED by Chunk 01. `--accept` must keep its current meaning; an observation arm is a new spelling or a widened id domain, never a redefinition of the existing one"
   - artifact: observability-strategy
     dispositions:
@@ -122,9 +122,9 @@ plan, so the next reader of that design finds its scoped-out dependency has a ho
 governance *believes* rather than what it *says*. Chunks 01 and 02 cannot let a defect through
 by construction — an accepted observation gates exactly what it gated before (nothing), and a
 more honest message gates nothing at all. Chunk 03 grants coverage, which is authority, and its
-warrant is a predicate over facts. It is still the right call — `diagnose_fix_churn` already
-proves the condition and the framework already pays to compute it — but if only two of these
-ship, ship 01 and 02 and leave 03 for when someone can sit with the predicate properly.
+warrant is a predicate over facts. The case for it was that `diagnose_fix_churn` already
+proves the condition; the case against, which won, is that its predicate compares whole files
+and would have skipped the first verify pass #167's D2 keeps.
 
 **3. The measured yield floor may matter more than all three.** The diagnosis's fix #6 — tell
 the agent a full review returns 13-18 true findings *regardless of round*, because that is the
@@ -341,9 +341,9 @@ refusal compose at the gate is the grant's real home, and it lands after #167 (n
 - **Why #180 was closed with the defect live, and why RC7 was still unfiled on 2026-09-15** —
   advisory note 1. Not engineering work.
 - **#167's dispatch-time refusal** — a separate item with its own design
-  (`documentation/issues/167-design.md`). Do not re-derive it here. If it lands first, Chunk 03
-  composes in a world where some rounds are already refused upstream; that is additive, but the
-  builder of whichever lands second re-reads the other's mechanism before starting.
+  (`documentation/issues/167-design.md`). Do not re-derive it here. It composes with this plan
+  additively (it refuses rounds upstream; this plan changes consolidation and close copy), but
+  its builder re-reads Chunk 01's observations mechanism before starting.
 
 ## Verification strategy
 
