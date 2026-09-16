@@ -710,7 +710,35 @@ api_versioning_decided: "plugin-semver + evidence-schema-version; CLI internal, 
 # The ratified norms live in `## Direction` sections across the strategy
 # artifacts, indexed in artifacts/project-preferences.md section Enforcement.
 
-norm_registry_ratified: "2026-07-17 — ratified; 26 Direction norms across the 7 strategy artifacts as of 2026-07-30 (architecture 6, data-model 6, security-model 3, observability-strategy 3, nonfunctional-requirements 3, api-contract 3, operational-spec 2); preferences Enforcement index carries the norm columns (Audit home / Why)"
+norm_registry_ratified: "2026-07-17 — ratified. The norms themselves are the count: `## Direction` sections across the 7 strategy artifacts, indexed in artifacts/project-preferences.md section Enforcement. No tally is carried here — the 2026-09-16 Norm Health sweep found the previous one (26, as of 2026-07-30) had drifted four short of the live registry, which is this repo's own `every fact has one home` norm broken by its own bookkeeping; a hand-copied count nothing recomputes is wrong from the next norm onward."
+
+# NORM HEALTH SWEEP (janitor theme; resolves norm-health-sweep-overdue)
+# =============================================================================
+# `norm_health_last_run` is the flat scalar `probe_norm_health_sweep_overdue`
+# reads (newer of this and `norm_registry_ratified`; SWEEP_WINDOW_DAYS = 60).
+# `norm_health` is the TREND — one entry per sweep, APPENDED, never overwritten,
+# because a single point-in-time distance cannot show the thing the theme exists
+# to catch: many individually-defensible exceptions summing to a dead norm.
+# Keep the last 3 entries; git holds the rest.
+
+norm_health_last_run: 2026-09-16
+
+norm_health:
+  - date: 2026-09-16
+    scope: "first sweep. Norm Health theme only — the other 10 janitor themes were not surveyed."
+    registry: "30 `## Direction` norms across 7 strategy artifacts (architecture 8, data-model 8, security-model 3, observability-strategy 3, nonfunctional-requirements 3, api-contract 3, operational-spec 2)"
+    measurements:
+      "catch-specific-exceptions": "105 production `prawduct:allow prawduct/broad-except` waivers — bin/prawduct-hook 41, lib/briefing.py 23, lib/gitstate.py 11, lib/compliance.py 4, lib/gates.py 3, long tail of 1-2. All carry reasons; most read as defensible (`an advisory notice must never block session start`). BASELINE ONLY — no trend yet, no cleanup proposed. The number to watch is the tail, not the total: growth outside the three hot files is the erosion signal."
+      "no-duplicate-facts (every fact has one home)": "5 `prawduct/duplication` waivers, all intentional inline mirrors in bin/prawduct-hook pinned by parity tests. Separately: the norm was found broken by the registry's OWN bookkeeping — `norm_registry_ratified` carried a hand-copied count (26) that had drifted 4 short. Count removed rather than corrected."
+      "python-never-python-specific": "in-transition, bounded to 2026-12-01 (#732). Tracking LNG-5W8R/#164 OPEN stage:ready, updated 2026-09-11. Not stalled."
+      "guides-never-implements": "in-transition, bounded to 2026-12-01 (#732). The two linter-duplicating compliance.py checks are still present (`_check_broad_exceptions` at lib/compliance.py:94, canary #3) — that is the documented stalled half, not new drift."
+      "goals-and-verification-bind": "in-transition, bounded to 2026-12-01 (#732). Tracking GOV-4T9P/#341 OPEN stage:ready, updated 2026-09-01. Two named sites unmigrated (templates/build-plan.md worked examples, methodology/planning.md teaching block)."
+      "one-home-per-fact-sweep": "in-transition, bounded to 2026-12-01 (#732). Tracking GOV-2R8K/#342 OPEN stage:ready, updated 2026-09-01."
+      "proportionality-ratchets-both-ways": "in-transition, bounded to 2026-12-01 (#732). FIRST evidence-based run of the removal-by-default arm: `pr-scoped` has 0 BLOCKING across 30 runs -> owner ruled keep-with-reason, recorded as a Live exception in nonfunctional-requirements.md. `verify-resolutions` is 499/969 reviews (51%) and ~41.4h (38% of all review wall-clock) at 40%/17% actionable — not removal-eligible (96 blocking) but the largest single wall-clock consumer against a declared P0 constraint."
+      "local-first (two egress surfaces)": "no erosion. The surface-vs-site distinction is reconciled in both homes (architecture.md Direction entry and project-state egress_boundary: 2 surfaces, 3 sites). Clarified 2026-09-07."
+      "backlog_service_repo selects the store": "DECAYED AND FIXED this sweep. Status had read `ratified but unenforced on main as of v3.1.1` for ~4 releases after the condition it named for its own return was met; 44 code references verified. Flipped to steady-state."
+    stalled_transitions: "none. All 5 in-transition norms carry a Stopgap bounded exception recorded 2026-09-01, expiring 2026-12-01, owner-ruled #732 — 76 days remaining at sweep time. These carry expiry as PROSE, not a `revisit:` field (the Issues backend has no write path, #564), so no advisory can fire on them and this sweep is the only walker."
+    event_triggers_walked: "5 stopgap expiries (none fired); the #13/#13a and branch-pushed-gate emission clocks keyed on #563 (doctor fact-emitting path — does not exist yet, so not fired)"
 
 # =============================================================================
 # DEPRECATED TERMS

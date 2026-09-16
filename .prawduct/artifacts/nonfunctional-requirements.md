@@ -44,6 +44,28 @@ last_validated: null
   referring path when it moves (the sibling #13 cite two lines below already carries the
   post-archive form, and had to be edited by hand to get there).
   Live exception: **doctor Health Checks #13 and #13a** (the learnings descent-obligation check, shipped 2026-08-02, and the learnings-pairing check, shipped 2026-08-27) are recorded **bounded exceptions** to the emission arm — it names its expected yield and cannot emit it, because doctor has no fact-emitting path at all and building one for a single check is the accumulation this norm exists to stop. Clock: `#563` — the trigger is *when doctor gains that path*, at which point #13 is its worked first case and #13a follows it. `[DECISION: the #13 bounded exception is widened to cover doctor Health Check #13a (learnings pairing), same clock and same reason | doctor still has no fact-emitting path, so #13a can no more emit its yield than #13 can, and building one for a second single check is precisely the accumulation this norm exists to stop; the alternative — amending the emission arm to admit a control that cannot satisfy it — is the laundering tell the norms guide names, since it would edit the rule to bless the code | user can veto/override]` Owner-vetoable, recorded 2026-08-27 on `fix/silent-clear-checks`. **The exception is bounded by naming its expected yield now, so the query has something to answer:** #13a expects to fire on duplicate active headings, which is zero on this repo's 270-entry corpus today — so a firing is evidence, and a year of never firing is evidence for retiring it. **That trigger is prose here and on the item, not a `revisit:` field, because the Issues backend has no write path for one**: the adapter's `update` deliberately strips a caller-pasted `prawduct:` block and re-appends the existing one (`lib/backlog/core.py` `_body_update_preserving_block`), and no op takes a `revisit` flag — the field is read only off the frozen markdown model (`lib/backlog/legacy.py`). So the walker is the janitor's Norm Health sweep reading #563, exactly as it is for every event-bound trigger (`probe_revisit_due` fires on *dated* values and is dark post-cutover regardless). The missing write path is filed as `#564`. Decision block: `artifacts/archive/build-plan-drift-burndown.md` § `governed_by` → nonfunctional-requirements.
+  Live exception: **the `pr-scoped` review mode** is a recorded **keep-with-reason** under the
+  removal-by-default arm, ruled by the owner at the 2026-09-16 Norm Health sweep — the first
+  time this arm has been run against ledger evidence rather than judgment. **The trigger is
+  met on its own terms:** across 30 runs (`pr/fable/pr-scoped` 16, `pr/opus/pr-scoped` 14) it
+  has returned **zero BLOCKING findings, ever**, for ~9,300s of wall-clock. It is not a
+  zero-yield control — it returned 8 WARNING and 16 NOTE, ~25% actionable — but the arm as
+  written keys on blocking yield, and that is absent.
+  **Reason for keeping:** it guards the PR boundary, where a warning is worth more than the
+  same warning mid-chunk, because it is the last read before work leaves the branch; and 30
+  runs is thin evidence for retiring a release-boundary control whose miss would surface in a
+  merged PR rather than a rerunnable round. Retiring it trades a small, measured cost against
+  an unmeasured tail risk, which is the trade this norm's *why* warns is easy to get wrong in
+  the accumulating direction and no safer in the shedding one.
+  **What evidence would settle it** (required by the interim rule above, so the future query
+  has a specification rather than a blank): (a) a blocking finding from `pr-scoped` at any
+  point retires this exception and vindicates the control outright; (b) 100 cumulative runs
+  with still zero blocking AND no post-merge defect traceable to a warning it raised is
+  evidence to retire it — the second clause matters, because a warning acted on is a miss
+  prevented and would otherwise read as further proof of uselessness; (c) if `pr` (unscoped,
+  81 runs, 1 blocking) and `pr-scoped` converge in yield, the two modes are one control and
+  the cheaper should absorb the other. Clock: this sweep — the walker is the janitor's Norm
+  Health theme, as it is for every non-mechanical trigger here (`#564`).
   Retroactivity: contain — existing controls are not swept on adoption, because the evidence to judge them does not exist yet (the very defect this norm names). The boundary is explicit and dated: controls added **from 2026-07-29** carry the observable-yield obligation at birth; controls predating it are assessed as the janitor's sweep gains yield data, not before. `compliance_canary` is the worked example and the first case — it emits nothing, so it cannot be judged, and LNG-5W8R fixes that rather than retiring it on argument.
 - **State-file growth past its size threshold is surfaced as an advisory warning that prompts compaction — it is never a hard block or mechanical enforcement.**
   Why: oversized governance state is a real context-weight cost, but blocking a session on file size would be disproportionate for a local tool — this is advice (fail-soft), not authority; an over-threshold file is the nag's designed target, not a violation, so no ratification retroactivity applies.
