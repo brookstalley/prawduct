@@ -413,7 +413,7 @@ files to touch previews first. That framing is descriptive — the binding rule 
     observation is explicitly not work the record demands. The two lists and the two tallies stay
     separate: a consumer that summed them would report more findings than the review made.
     **This report bumps `schema_version` on any change to its key SET, not only a breaking one**
-    (the telemetry rule below is the narrower one, and it governs the telemetry report). The reason
+    (the telemetry report below follows the same rule). The reason
     is specific to a report of optional-by-nature lists: without a bump, a consumer meeting a
     report with no `observations` key cannot tell whether the review demoted nothing or the writer
     predates the field, and those call for opposite handling. Version 2 added the observation list
@@ -592,7 +592,8 @@ forward-incompatibility detection. Status: active.**
   cross-version compatibility mechanism.
 - **New-gate attribution:** each gate carries a `since` version; a block from a gate new in the
   current release is labelled as such, so a newly-enforced rule is never a silent surprise.
-- **Telemetry report** carries its own `schema_version`, bumped on breaking key changes, so a
+- **Telemetry report** carries its own `schema_version`, bumped on any change to its key set
+  (`plugin/docs/governance-telemetry.md`, pinned by `tests/test_review_stats.py`), so a
   cross-project aggregator can trust the shape.
 
 **Deferral with a revisit trigger:** no external-consumer versioning of the CLI subcommand surface
