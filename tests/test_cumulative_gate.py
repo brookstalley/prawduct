@@ -218,6 +218,7 @@ def _fact(
     counts: "dict | None" = None,
     dispatch_commit: "str | None" = None,
     duration_seconds: "float | None" = None,
+    observations: "list[dict] | None" = None,
 ) -> str:
     fact_id = f"rev-test-{next(_ids):04d}"
     body = {
@@ -243,6 +244,8 @@ def _fact(
         body["dispatch_commit"] = dispatch_commit
     if duration_seconds is not None:
         body["duration_seconds"] = duration_seconds
+    if observations is not None:
+        body["observations"] = observations
     result = evidence.append_fact(repo, "review", fact_id, body)
     assert result["status"] == "appended", result
     return fact_id
@@ -1147,6 +1150,22 @@ class TestFixChurnDiagnosis:
         # the review loop did not cause, so the round it needs is real.
         repo, _rid = self._reviewed_feature(tmp_path)
         _commit(repo, "other.py", "z = 9\n", "unrelated work")
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 1
+        assert "uncovered" in err
+        assert "fix churn" not in err
+
+    def test_a_file_only_an_observation_named_is_not_churn(self, tmp_path, capsys):
+        # Observations carry `files` too, and are deliberately not read: the
+        # subset test is already only file-level evidence that an edit is a
+        # fix, and an item the reviewer did not rate as a finding is weaker
+        # ground still. Widening it would widen what the gate calls churn.
+        repo, _rid = self._reviewed_feature(
+            tmp_path,
+            observations=[{"oid": "O-1", "name": "o", "goal": "g",
+                           "recommendation": "r", "files": ["helper.py"]}],
+        )
+        _commit(repo, "helper.py", "h = 1\n", "act on the observation")
         rc, _out, err = _run_gate(repo, capsys)
         assert rc == 1
         assert "uncovered" in err

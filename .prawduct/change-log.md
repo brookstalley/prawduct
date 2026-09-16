@@ -3,6 +3,31 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-09-16: the churn coverage grant is cut; the observations close prices fixing
+
+<!-- prawduct: type=fix | scope=review-loop-termination -->
+
+The plan's last chunk was to compose `diagnose_fix_churn`'s condition as covered — a round the
+diagnosis called provably unnecessary would be granted instead of narrated and charged. **It was
+cut before any code, on two findings from re-reading what it would have stood on.** The predicate
+is file-granular, and its own docstring says the message it feeds must not claim content-level
+certainty: it cannot tell a fix from new work written into a file some finding named. Today a false
+positive routes to `verify-resolutions`, which still blocks on weakened tests and fudged fixes; a
+grant would have routed the same false positive to no review at all. And #167's design holds that
+the first verify pass after a full round always runs, because it is the pass that covers the fix
+commit — the exact pass the grant would have skipped. The plan's Chunk 03 records both reasons and
+what would reopen it.
+
+**What ships is the two items that were riding on that chunk.** The `0 blocking, 0 findings, N
+observations` close — the one clean close that still carries fixable items — ended at its coverage
+clause, so it never said what fixing costs, how to price a batch before committing it, or that a
+fix can ride the next chunk's commit. It now carries all three, exactly as the warnings close does:
+the cost-of-fixing guidance moved into one constant both closes share, and the duration guard that
+scanned it inside the function now scans the constants directly. And observation-cited files stay
+out of the churn predicate by decision rather than by omission — widening it would widen what the
+gate calls churn, from items the reviewer did not even rate as findings — pinned by a test that
+fails if they are ever counted.
+
 ## 2026-09-16: a clean delta stops reading as branch clearance
 
 <!-- prawduct: type=fix | scope=review-loop-termination -->

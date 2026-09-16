@@ -479,6 +479,28 @@ _RIDE_ALONG_ROUTE = (
 )
 
 
+#: What fixing a non-blocking item costs, and how to find out before paying it.
+#:
+#: Shared by every zero-blocking close that still carries something a builder
+#: might fix — findings or demoted observations. Fixing is the one response to
+#: those items that moves the tree, so a close that offers "accept" without also
+#: saying what the alternative costs is weighing one route and hiding the other.
+_IF_YOU_FIX_SOME = (
+    " If you do choose to fix some, batch them into"
+    " ONE commit — and re-cover with ONE `/prawduct:critic verify-resolutions`"
+    " ONLY if that commit touched judgeable files. `prawduct-hook cost-of-commit"
+    " <paths>` answers that for the exact batch BEFORE you commit it; a batch it"
+    " prices `free` moves no coverage and needs no pass at all. AFTER committing,"
+    " you no longer have to judge it either: dispatch asks the same predicate and"
+    " exits 3 (`no review needed`, under a second, no session state written) rather than"
+    " spending a reviewer on a free interval — so asking costs nothing, and a"
+    " refusal is the answer, not a reason to retry in another mode."
+    " Do NOT start another round to 'close coverage' before committing, and do"
+    " not infer that you need one from gate output printed before your fix —"
+    " commit, then re-run the gate and let it answer."
+)
+
+
 def carried_blocking(facts: list[dict], base_tree: "str | None",
                      this_review_id: "str | None") -> list[dict]:
     """Blocking findings from the review this verify pass anchors to that the
@@ -662,6 +684,14 @@ def next_action_line(
                 " (the ids are in `.critic-findings.json` under `observations`),"
                 " which needs no review and moves no tree."
                 + coverage_clause
+                # This is the one clean close that still carries actionable
+                # items, so it is the close where a builder is most likely to
+                # fix one — and fixing is the route that buys a round. It
+                # therefore owes the same cost of fixing, the same free route
+                # and the same price the warnings arm prints.
+                + _IF_YOU_FIX_SOME
+                + _RIDE_ALONG_ROUTE
+                + price
             )
         return (
             "0 blocking, 0 other findings — THE REVIEW IS OVER and there is nothing"
@@ -683,18 +713,7 @@ def next_action_line(
             if observations
             else ""
         )
-        + " If you do choose to fix some, batch them into"
-        " ONE commit — and re-cover with ONE `/prawduct:critic verify-resolutions`"
-        " ONLY if that commit touched judgeable files. `prawduct-hook cost-of-commit"
-        " <paths>` answers that for the exact batch BEFORE you commit it; a batch it"
-        " prices `free` moves no coverage and needs no pass at all. AFTER committing,"
-        " you no longer have to judge it either: dispatch asks the same predicate and"
-        " exits 3 (`no review needed`, under a second, no session state written) rather than"
-        " spending a reviewer on a free interval — so asking costs nothing, and a"
-        " refusal is the answer, not a reason to retry in another mode."
-        " Do NOT start another round to 'close coverage' before committing, and do"
-        " not infer that you need one from gate output printed before your fix —"
-        " commit, then re-run the gate and let it answer."
+        + _IF_YOU_FIX_SOME
         + _RIDE_ALONG_ROUTE
         + price
     )

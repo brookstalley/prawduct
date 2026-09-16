@@ -839,6 +839,10 @@ class TestNextActionLine:
             # "." or the coverage caveat's closing paren — never a dangling
             # connector left behind by the omitted clause.
             assert line.endswith((".", ")")), counts
+        for span in (None, " The BRANCH is covered too."):
+            line = cc.next_action_line("rev-9", 0, 0, 0, span=span, observations=2)
+            assert line == line.strip() and "  " not in line, span
+            assert line.endswith((".", ")")), span
 
     def test_both_arms_offer_the_ride_along_route_with_its_condition(self):
         """The fix/accept/file trio was missing the option that costs nothing
@@ -876,6 +880,32 @@ class TestNextActionLine:
         assert "nothing to disposition" not in line
         assert "3 item(s) were demoted to observations" in line
         assert 'prawduct-hook disposition rev-9 <oid> --accept "<reason>"' in line
+
+    def test_the_observations_close_prices_fixing_like_the_warnings_close(self):
+        """The observations-only close is the one clean close that still
+        carries items a builder might fix, and fixing is the route that buys a
+        round. It used to end at the coverage clause, so the single close where
+        fixing was likeliest was the one that never said what fixing costs, how
+        to price a batch first, or that a fix can ride the next chunk's commit.
+        The warnings close carries all three; this one must match it."""
+        priced = "One more round costs about 5 min here (median of 9 rounds)."
+        obs = cc.next_action_line("rev-9", 0, 0, 0, priced, observations=3)
+        warn = cc.next_action_line("rev-9", 0, 1, 0, priced, observations=3)
+        for clause in (cc._IF_YOU_FIX_SOME, cc._RIDE_ALONG_ROUTE, priced):
+            assert clause in obs, clause[:60]
+            assert clause in warn, clause[:60]
+        # The span verdict still leads the close rather than trailing the
+        # advice — a clean delta is never allowed to read as branch clearance.
+        span = " The BRANCH is covered too."
+        line = cc.next_action_line("rev-9", 0, 0, 0, priced, span=span, observations=3)
+        assert line.index(span) < line.index(cc._IF_YOU_FIX_SOME)
+
+    def test_a_close_with_nothing_to_fix_offers_no_fix_route(self):
+        # 0/0/0 with no observations has nothing a builder could fix, so the
+        # cost-of-fixing advice would be noise there.
+        line = cc.next_action_line("rev-9", 0, 0, 0, "One more round costs a lot.")
+        assert cc._IF_YOU_FIX_SOME not in line
+        assert cc._RIDE_ALONG_ROUTE not in line
 
     def test_the_warnings_arm_names_them_too(self):
         # Findings and observations arrive together on a verify close; an arm

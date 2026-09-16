@@ -14,7 +14,7 @@ governed_by:
     dispositions:
       - "verdicts computed from the append-only fact ledger, never from mutable model-written state → ENGAGED by Chunk 01, and it is the chunk's central constraint: an accepted observation must enter as a fact written by deterministic code from validated reviewer content, never as model-written state a gate later reads. No gate reads an accepted observation at all (it gates nothing by construction), so the norm is satisfied by the weaker path too — but the design takes the stronger one so the record is queryable"
       - "facts are immutable and append-only → conforms; an accepted observation is a NEW fact, never an edit to the review fact that demoted it"
-      - "derived views are disposable and never authoritative → conforms; Chunk 03's grant is computed per call from composed coverage, never persisted"
+      - "derived views are disposable and never authoritative → conforms; nothing persists a derived verdict (Chunk 03's grant, which would have been computed per call, was cut)"
       - "a governance document reaches a terminal state, never deleted → inapplicable, because no chunk touches plan archival"
       - "every issue written to the backlog store conforms to the issue standard's §1 title rules → inapplicable, because no chunk writes a backlog item"
       - "a newer-schema fact surfaces as a loud block → ENGAGED by Chunk 01: if the observation disposition lands as a new fact kind or a new field, `evidence status` must still exit 2 on a schema-ahead read. Chunk 01's acceptance names this"
@@ -23,12 +23,12 @@ governed_by:
   - artifact: nonfunctional-requirements
     dispositions:
       - "review wall-clock is a P0 constraint; cost = unit-cost × run-count, both levers → this plan IS that norm being acted on. Run-count is the target; the measured baseline is in the diagnosis and in `norm_health` (2026-09-16)"
-      - "proportionality ratchets both ways; a control that never blocks is removed by default → ENGAGED, and it cuts against Chunk 03. Granting coverage REMOVES a control (the mandated round), so the emission arm applies to its inverse: the plan must name what evidence would show the grant let a defect through. Chunk 03's acceptance carries it"
+      - "proportionality ratchets both ways; a control that never blocks is removed by default → ENGAGED, and it cut against Chunk 03 as first written: granting coverage REMOVES a control (the mandated round), and no evidence the ledger holds could bound what the file-level grant would let through — one reason the grant was cut (Chunk 03, revised). Nothing that ships removes a control"
       - "state-file growth past its threshold is an advisory, never a hard block → inapplicable, because no chunk changes a size gate"
   - artifact: architecture
     dispositions:
       - "an independent reviewer never mutates the session it reviews → ENGAGED by Chunk 01: an accepted observation is written by the BUILDER through `disposition`, never by the reviewer. Nothing here gives a reviewer subagent a write path it lacks"
-      - "authority fails closed; advice fails soft → ENGAGED by Chunk 03, and it is the risk. A coverage grant is authority, so it must fail CLOSED: any ambiguity in the churn predicate (unreadable facts, a partial read) grants nothing and the round is charged. `diagnose_fix_churn` already returns `unavailable` for exactly this and Chunk 03 must not collapse it into a grant"
+      - "authority fails closed; advice fails soft → ENGAGED by Chunk 03 as first written, and decisive: a coverage grant is authority, and failing closed on a degraded read is not enough when a SUCCESSFUL read is only file-level evidence. The grant was cut; what ships is advice (message text) and a predicate left narrow, both of which fail soft by construction"
       - "local-first: no network, no daemon, no third-party runtime dependency → conforms; file reads and git only"
       - "the plugin writes nothing into a governed repo except its own state → conforms"
       - "prawduct is Python but never Python-specific → conforms; no chunk classifies a product file by language"
@@ -38,7 +38,7 @@ governed_by:
   - artifact: api-contract
     dispositions:
       - "whole-surface semver; the internal CLI subcommand surface carries no per-subcommand version → conforms; the plugin version covers it"
-      - "exit codes are the contract, on a documented and consistent scheme → ENGAGED by Chunk 01 (a new `disposition` arm needs an exit-code meaning) and Chunk 03 (the grant must not change `check-cumulative-critic`'s exit vocabulary — a granted round still exits 0 `satisfied`, with the reason in the message)"
+      - "exit codes are the contract, on a documented and consistent scheme → ENGAGED by Chunk 01 (a new `disposition` arm needs an exit-code meaning) Chunk 03, revised, changes no exit code"
       - "additive-first evolution: flags and `--json` keys are added, never repurposed → ENGAGED by Chunk 01. `--accept` must keep its current meaning; an observation arm is a new spelling or a widened id domain, never a redefinition of the existing one"
   - artifact: observability-strategy
     dispositions:
@@ -87,7 +87,7 @@ which was its first deliverable.
 
 **Open assumptions:**
 
-- `[ASSUMPTION: the owner wants round-count reduced without accepting any additional miss rate | HIGH impact | user can correct]` — this is why the diagnosis's withdrawn fix #7 (incremental cumulative) stays out of scope, and why Chunk 03 is ordered last and carries a fail-closed requirement. If some miss-rate increase IS acceptable in exchange for a larger cut, the shape of this plan changes and #7 comes back on the table.
+- `[ASSUMPTION: the owner wants round-count reduced without accepting any additional miss rate | HIGH impact | user can correct]` — this is why the diagnosis's withdrawn fix #7 (incremental cumulative) stays out of scope, and why Chunk 03's coverage grant was cut rather than built (Chunk 03, revised). If some miss-rate increase IS acceptable in exchange for a larger cut, the shape of this plan changes and #7 comes back on the table.
 - `[ASSUMPTION: fixing the three mechanisms is worth doing even though the evidence says the real blocker was organizational, not mechanical | MED impact | user can correct]` — see the advisory note below.
 
 ## Advisory note — what I would do differently
@@ -118,7 +118,7 @@ into a chunk: it is not engineering work and I do not know the answer.
 plan, so the next reader of that design finds its scoped-out dependency has a home. Per
 `project-preferences.md`, a comment on an existing item is not filing and is unrestricted.
 
-**2. I would consider cutting Chunk 03.** It is the only one of the three that changes what
+**2. I would consider cutting Chunk 03.** *(Taken 2026-09-16: the grant is cut — see Chunk 03, revised.)* It is the only one of the three that changes what
 governance *believes* rather than what it *says*. Chunks 01 and 02 cannot let a defect through
 by construction — an accepted observation gates exactly what it gated before (nothing), and a
 more honest message gates nothing at all. Chunk 03 grants coverage, which is authority, and its
@@ -138,7 +138,7 @@ a re-measurement to point at. **That is a judgment call and it may be the wrong 
 
 - [x] Chunk 01: An observation can be accepted on the record, not only fixed (RC7)
 - [x] Chunk 02: A clean delta stops reading as branch clearance (RC8)
-- [ ] Chunk 03: A provably unnecessary round is granted, not narrated and charged (RC5)
+- [x] Chunk 03: The coverage grant is cut; the observations close prices fixing (RC5, revised)
 
 ## Chunk 01: An observation can be accepted on the record, not only fixed (RC7)
 
@@ -275,55 +275,56 @@ written down because an unwritten deferral is a drop.
    domain is stated eight lines earlier, under a re-review heading. Not a contradiction, and the
    rendered census teaches the rule — but the usage string is what a refused invocation prints.
 
-## Chunk 03: A provably unnecessary round is granted, not narrated and charged (RC5)
+## Chunk 03: The coverage grant is cut; the observations close prices fixing (RC5, revised)
 
 **Type:** code
 
-**Ordered last because it is the only chunk that grants authority.** See the advisory note.
+**Revised 2026-09-16, owner-confirmed, before any code.** The original chunk — *"a provably
+unnecessary round is granted, not narrated and charged"* — composed `diagnose_fix_churn`'s
+condition as covered. **That grant is cut.** What ships is the two items that rode on this chunk,
+plus the recorded reasons, so the grant is not re-derived from the diagnosis a third time.
 
-**An input Chunk 01 changed, surfaced by its review.** `coverage.diagnose_fix_churn` derives the
-file set it reasons over from `findings` alone. Observations now carry `files` too, and they are
-invisible to it — so an edit confined to files that only an OBSERVATION named does not look like
-churn to the predicate, and the round is charged. Decide this deliberately rather than by
-omission: widening the predicate to observation-cited files widens a GRANT, which is authority,
-so the fail-closed rule above governs it. Leaving it narrow is a defensible answer and is the
-current behaviour; what is not defensible is not noticing.
+### Why the grant is cut
 
-**Riding this chunk's commit — one observation from Chunk 02's review.** Accepted on the record
-there with this home named, so it is a deferral rather than a drop. The clean close's new
-`0 blocking, 0 findings, N observations` arm inherits its ending from the 0/0/0 arm it branches
-from: `+ coverage_clause` and stop. It therefore carries neither `_RIDE_ALONG_ROUTE` nor the round
-price — and it is the one clean shape that DOES carry actionable items, so the single close where a
-builder might fix an observation is the one that never sees what fixing costs. The warnings arm
-below it names the observations and keeps both. This chunk edits `critic_consolidate.py` anyway
-(see `partition:`), so it meets the function.
+1. **The predicate cannot carry authority, and its own docstring says so.** Its subset test is
+   *file*-granular: it cannot tell a fix from new work written into a file some finding named, and
+   it states that the message it feeds "must not assert content-level certainty on file-level
+   evidence." Today a false positive routes to `verify-resolutions`, which still blocks on weakened
+   tests, dropped requirements, untested behaviour and fix-by-fudging. A grant turns that same
+   false positive into **no review at all**. The discriminator the docstring names (hunk overlap
+   against each finding's line range) is not in the findings record, and deliverable 3 of the
+   original chunk ruled out content comparison. "Provably" was never true of the evidence.
+2. **It contradicts #167's design.** `documentation/issues/167-design.md` D2 (test case 2) holds
+   that the **first** `verify-resolutions` after a full round always runs, "regardless of that
+   round's severity mix", because it is the pass that establishes coverage over the fix commit.
+   #167 refuses only a verify anchored on a verify. The grant would have skipped exactly the pass
+   D2 protects. The "adjacent, not overlapping" claim in `related_issues` was true of files, not of
+   policy.
 
-**The defect.** `coverage.diagnose_fix_churn` already detects "the whole uncovered span is a
-clean review of this branch plus edits confined to files that review's own findings named." Its
-only consumer renders it as a `NOTE:` and then still directs the builder to run
-`verify-resolutions`. A provably-unnecessary round is diagnosed, narrated, and charged for.
+**What would reopen it:** the findings record carrying line ranges, so churn can be proved at hunk
+granularity — and even then, scoped to #167's D2 rather than to every anchor. The more likely
+useful successor is narrower: when #167 refuses a round at dispatch, that refused round has no
+review fact, so `check-cumulative-critic` may still report the span `uncovered`. Making a #167
+refusal compose at the gate is the grant's real home, and it lands after #167 (noted on the issue).
 
-**Deliverables:**
-1. Compose the churn condition as covered rather than printing a paragraph and charging.
-2. **Fail closed.** `diagnose_fix_churn`'s `unavailable` status must grant nothing — a degraded
-   read charges the round (architecture § authority fails closed).
-3. **Do not reach for content hashing.** `coverage_algebra` carries a standing rejection —
-   "paths classify, contents don't" (COV-3R9K / kernel-v3 R10, `coverage_algebra.py:66`). The
-   grant is computed from path classification and the fact ledger, never from comparing file
-   contents. This is recorded here because it is exactly the shape a builder reinvents when
-   asked to prove "nothing really changed".
+### What ships
+
+1. **The observations-only clean close prices fixing.** The `0 blocking, 0 findings, N
+   observations` arm ended at its coverage clause, so the one clean close that still carries
+   fixable items never said what fixing costs, how to price a batch first, or that a fix can ride
+   the next chunk's commit. It now carries the same cost-of-fixing guidance (extracted to one
+   constant both arms share), the ride-along route and the round price as the warnings arm. The
+   span verdict still precedes them (Chunk 02's headline requirement).
+2. **Observation-cited files stay out of the churn predicate — decided, not defaulted.** Widening
+   `named` would widen what the gate calls churn on evidence already only file-level, from items
+   the reviewer did not even rate as findings. Recorded beside the loop in `coverage.py` and
+   pinned by a test that fails if observation files are ever counted.
 
 **Done when:**
-- The churn condition composes as covered; the round is not charged.
-- A degraded or unavailable churn read grants nothing, pinned by a test that makes the predicate
-  return `unavailable` and asserts the round is still charged.
-- The grant is strictly narrower than the base-advance transfer already granted, and a test says
-  so.
-- `check-cumulative-critic`'s exit vocabulary is unchanged — a granted round exits 0
-  `satisfied` with the reason in the message (api-contract § exit codes).
-- **The yield-inverse is named:** the chunk records what evidence would show the grant let a
-  defect through, so it can be retired on evidence rather than defended on principle
-  (nonfunctional § proportionality, emission arm).
+- The observations close carries the fix-cost guidance, the ride-along route and the price, after
+  the span clause; the 0/0/0 close with nothing to fix carries none of them.
+- The duration guard still scans the text that moved into constants.
+- A delta confined to a file only an observation named is not diagnosed as churn.
 - Full suite green.
 - `/prawduct:critic` — findings resolved.
 
@@ -352,6 +353,9 @@ reading the census back. Chunk 02 by closing a verify round clean on a branch kn
 uncovered and reading the headline. Chunk 03 by producing the churn condition deliberately (a
 clean review, then an edit confined to files its findings named) and confirming no round is
 charged — then by breaking the fact read and confirming one is.
+
+**Chunk 03 as revised** is exercised by reading the observations close off a real verify pass. The
+churn-produce-then-break exercise above belonged to the cut grant and does not apply.
 
 **Governance checkpoint after Chunk 01** — it decides the persisted format every later consumer
 reads. Re-measure before/after round counts at plan close, against the `norm_health` 2026-09-16
