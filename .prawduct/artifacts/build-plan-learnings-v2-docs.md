@@ -390,7 +390,8 @@ lives at exactly one delivery surface.
   - **Owner decision, framed before Phase 1:** version 3.5.0 (minor — the discovery's D1: a
     consumer's repo is rewritten on its first session, a skill and three verbs retired, a Stop
     gate widened to every session) versus 3.4.1 (the conservative norm). Recorded in the release
-    plan whichever way; `gates.json`'s `since` rows rewritten if not 3.5.0.
+    plan whichever way. SETTLED 2026-09-15: the owner ruled 3.5.1, and `gates.json`'s
+    three learnings rows now carry that `since`.
   - new `.prawduct/artifacts/release-plan-v3.5.1.md` (the owner's 2026-09-15 ruling): version decision,
     release classification of every release-pending scope on `develop` (this program's three plus
     whatever the peer session landed), the consumer-facing headline, what ships, verification.

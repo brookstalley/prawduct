@@ -17,6 +17,7 @@ Three things are asserted, in rough order of how much a wrong answer costs:
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -636,38 +637,114 @@ class TestAgainstTheRealCorpus:
         assert not any("Reading a rule is not applying it" in u for u in units)
 
 
+#: Words of a rule's opening used to decide that two units are the SAME RULE.
+#:
+#: Deliberately SHORTER than ``lf.CITATION_WORDS`` (8). A revision reworks the
+#: eighth word routinely -- the two duplicates the v3.5.1 cutover merge shipped
+#: were "...a sibling procedure IS a NEW change" against "...a sibling procedure
+#: OR READER is a NEW change", which agree on seven words and diverge on the
+#: eighth. Calibrated, not guessed: against the tree that carried the defect
+#: (23611875) a 5-, 6- or 7-word key reports both pairs and an 8-word key reports
+#: one, while every length from 5 to 8 reports zero duplicates on the fixed tree.
+_SAME_RULE_WORDS = 6
+
+
+def _rule_key(unit: str, words: int = _SAME_RULE_WORDS) -> str:
+    """The opening of a unit, punctuation-insensitive -- an identity that
+    survives a rewording of the rest."""
+    return " ".join(re.sub(r"[^a-z0-9 ]", " ", unit.lower()).split()[:words])
+
+
+def audit_against_incoming(corpus: dict[str, str], incoming_units: list[str]) -> dict:
+    """Compare a merged corpus against the corpus being merged IN.
+
+    Heading-accounting is the half of a merge that is easy to automate and the
+    half that cannot see an edit. The v3.5.1 cutover verified that all 318 rule
+    headings survived -- they did -- while develop had revised five bodies in
+    place: three were lost outright and two shipped twice, the revised text in an
+    area file and a superseded copy still in the always-loaded ``core.md``.
+
+    So both halves are reported: ``missing`` is a unit the merged corpus has no
+    rule for at all, ``diverged`` is one it HAS but whose text differs. A
+    divergence is not automatically a defect -- the other side may have revised
+    it -- but it is always a decision, and the merge that made it silently is the
+    one that goes wrong.
+    """
+    by_key: dict[str, list[str]] = {}
+    for unit in corpus.values() if isinstance(corpus, dict) else corpus:
+        by_key.setdefault(_rule_key(unit), []).append(unit)
+    missing, diverged = [], []
+    for unit in incoming_units:
+        here = by_key.get(_rule_key(unit))
+        if not here:
+            missing.append(unit)
+        elif not any(" ".join(h.split()) == " ".join(unit.split()) for h in here):
+            diverged.append(unit)
+    return {"missing": missing, "diverged": diverged}
+
+
+class TestAuditAgainstIncoming:
+    """The merge-time half, pinned on fixtures because the real event is a merge.
+
+    Each case is a shape the v3.5.1 cutover actually produced.
+    """
+
+    def test_a_unit_the_corpus_never_received_is_missing(self):
+        out = audit_against_incoming(["Some entirely different rule about trees"],
+                                     ["A rule the merge dropped on the floor entirely"])
+        assert len(out["missing"]) == 1 and not out["diverged"]
+
+    def test_a_body_revised_on_the_incoming_side_is_DIVERGED_not_missing(self):
+        """The exact shape that cost three rules: same opening, edited body.
+        Keyed on the opening it is found; compared on text it is reported."""
+        corpus = ["Ratcheting the ceiling is part of a cut, not a follow-up - old body"]
+        incoming = ["Ratcheting the ceiling is part of a cut, not a follow-up - "
+                    "old body. Re-offended 2026-09-08, so assert BETWEEN the two tables"]
+        out = audit_against_incoming(corpus, incoming)
+        assert not out["missing"], "a revision is not a disappearance"
+        assert len(out["diverged"]) == 1
+
+    def test_an_unchanged_unit_is_neither(self):
+        same = ["A rule that crossed the merge untouched and should raise nothing"]
+        out = audit_against_incoming(same, list(same))
+        assert not out["missing"] and not out["diverged"]
+
+
 class TestThisReposOwnCorpus:
     """The fixture-based tests above prove the resolver; none of them reads the
     corpus this repo actually ships.
 
-    That gap is why a 32-rule hand merge landed unasserted: the v3.5.1 cutover
-    merge re-homed rules develop had grown, verified every rule HEADING
-    survived, and still shipped two rules twice -- the revised text in an area
-    file and a superseded copy still in `core.md`. Later-one-wins resolves
-    position WITHIN a file; across two files there is no position to read, and
-    `core.md` is the always-loaded one, so the stale copy is the one that wins.
+    That gap is why a 32-rule hand merge landed unasserted -- and the first guard
+    written for it was keyed on EXACT text, which is green on the very tree that
+    carried the defect: the two duplicates were *divergent*, and an exact key
+    cannot see a rule that was reworded. Verified, not assumed: replaying this
+    sweep against 23611875 reports both pairs on a 6-word key and neither on an
+    exact one.
 
-    A duplicate is therefore not untidiness, it is a rule whose text nobody can
-    predict. This reads the real directory because the defect was in the real
-    directory and a fixture can only confirm what its author already believed.
+    Cross-file is the class that matters. Later-one-wins resolves position WITHIN
+    a file; across two files there is no position to read, and ``core.md`` is
+    always loaded, so the stale copy is the one that wins.
     """
 
-    def _corpus(self) -> dict[str, list[str]]:
+    def _units(self) -> list[tuple[str, str]]:
         root = _PLUGIN_ROOT.parent / lf.RULES_DIR_REL
-        seen: dict[str, list[str]] = {}
+        out = []
         for path in sorted(root.glob("*.md")):
             for unit in lf.rule_units(path.read_text(encoding="utf-8")):
-                seen.setdefault(" ".join(unit.split()), []).append(path.name)
-        return seen
+                out.append((path.name, " ".join(unit.split())))
+        return out
 
     def test_no_rule_is_carried_by_two_files(self):
-        dupes = {u: f for u, f in self._corpus().items() if len(f) > 1}
+        homes: dict[str, set] = {}
+        for name, unit in self._units():
+            homes.setdefault(_rule_key(unit), set()).add(name)
+        dupes = {k: v for k, v in homes.items() if len(v) > 1}
         assert not dupes, "rule(s) carried by more than one corpus file:\n" + "\n".join(
-            f"  {files}: {unit[:100]}" for unit, files in dupes.items()
+            f"  {sorted(files)}: {key}" for key, files in dupes.items()
         )
 
     def test_the_corpus_is_not_empty(self):
-        """Without this, an empty or unreadable directory turns the guard above
-        into zero silently-passing comparisons."""
-        corpus = self._corpus()
-        assert len(corpus) > 50, f"only {len(corpus)} rules found; the sweep read nothing real"
+        """Without this, an unreadable directory turns the guard above into zero
+        silently-passing comparisons."""
+        units = self._units()
+        assert len(units) > 50, f"only {len(units)} units found; the sweep read nothing real"

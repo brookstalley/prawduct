@@ -143,6 +143,6 @@ reaches an operator in the moment. Verifying the first is not evidence about the
 
 **What closes it mechanically:** an assertion on the WRITING run's output that names the pre-fix
 status as forbidden (`assert STATUS_STALE not in result.stdout`), not merely the post state as
-present. Both precedents in this family (`learnings_obligation`, `norm_index_scaffold`) return their
-OK status on success, so copying the precedent's TEST file — not just its shape — would also have
-caught it.
+present. `norm_index_scaffold` returns its OK status on success, so copying the precedent's TEST file —
+not just its shape — would also have caught it. (`learnings_obligation` was the other precedent
+and was DELETED in the v2 cutover; it is named here as history, not as a file to open.)

@@ -1382,7 +1382,11 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # migrated repos. NOT funded by a trim, and the ceilings are RAISED with it
     # (see the ceilings block): the two shortest cuts on the digest were both
     # rules a test pins.
-    "framework": 3257,
+    # +1 on 2026-09-15 (#759 verify round 2): `CLAUDE.md`'s guide roster named five
+    # guides while the directory holds six — `session-hygiene.md`, added by this very
+    # branch and left out of its own list. One filename is what a roster that was WRONG
+    # costs to make right, so the ceiling ratchets with it and nothing is banked.
+    "framework": 3258,
     "product": 2136,
 }
 
@@ -1511,7 +1515,7 @@ INJECTED_FOOTPRINT_CEILINGS = {
     # (where project memory lives) on the one surface every session receives.
     # One over each reading, so nothing is banked. The digest sits at 9,455 of
     # the 10,000-character wall — checked before this arithmetic, not after.
-    "framework": 3258,
+    "framework": 3259,
     "product": 2137,
 }
 
