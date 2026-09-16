@@ -145,9 +145,10 @@ def _record_success(result: dict, verb: str) -> None:
     only ``applied`` distinguishing it from a refusal. The CLI prints exactly
     that and stops, ``--json`` publishes it, and doctor maps every non-``ok``
     status to degraded: a repair that worked would have been reported as the
-    problem it had just fixed. Both cited precedents (``learnings_obligation``,
-    ``norm_index_scaffold``) return their OK status on success, and this is that
-    line.
+    problem it had just fixed. ``norm_index_scaffold`` returns its OK status on
+    success, and this is that line. (``learnings_obligation`` was the second
+    precedent and was deleted in the v2 cutover -- named as history, since a
+    precedent a reader cannot open is not one.)
     """
     result["status"] = STATUS_OK
     result["repairable"] = False

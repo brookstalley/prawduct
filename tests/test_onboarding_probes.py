@@ -251,14 +251,15 @@ def test_hook_nudged_files_are_not_onboarding_markers(tmp_path):
     """A file the *runtime* asks a session to create cannot vouch for an onboard.
 
     The session-start hook prints a CRITICAL telling the agent to create
-    ``project-preferences.md`` when product code exists, the reflection loop asks
-    for ``learnings.md``, and ``/prawduct:backlog`` creates ``backlog.md`` — all
-    reachable without ever onboarding. Counting them would silence the probe on
-    exactly the trajectory the field repo was on.
+    ``project-preferences.md`` when product code exists, the reflection loop
+    writes rules into ``.claude/rules/learnings/core.md``, and
+    ``/prawduct:backlog`` creates ``backlog.md`` — all reachable without ever
+    onboarding. Counting them would silence the probe on exactly the trajectory
+    the field repo was on.
     """
     _enabled_never_onboarded(tmp_path)
     for rel in (
-        ".prawduct/learnings.md",
+        ".claude/rules/learnings/core.md",
         ".prawduct/backlog.md",
         ".prawduct/change-log.md",
         ".prawduct/artifacts/project-preferences.md",

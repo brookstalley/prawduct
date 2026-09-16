@@ -323,7 +323,7 @@ def append_guard_refusal(
     question later. Returns :func:`append_fact`'s result. Callers must treat a
     failure as **soft**: a guard's refusal is correct whether or not the record
     lands, so a store error must never convert it into an error exit. It must
-    not be silent either (``learnings.md``: "'advice fails soft' is not 'advice
+    not be silent either (``core.md``: "'advice fails soft' is not 'advice
     fails silent'") — attribute it on stderr and carry on.
 
     **``dedupe_key`` is for a guard that fires on a POLLED path**, where the

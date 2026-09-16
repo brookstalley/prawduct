@@ -46,6 +46,21 @@ consumer.
 shared prologue *and* the writer's ingest paths, because a restamp that skips a
 field launders it away while running nothing.
 
+### `.claude/rules/learnings/` — the rules layout
+
+**Producers:** the author (a rule written by hand under the byte budget `record_lint` enforces);
+`prawduct-hook learnings-migrate` (the one-way relayout of a legacy corpus); `init-product`'s
+`scaffold_core` (the header of a new product's `core.md`).
+**Consumers:** the harness (loads `core.md` every session and an `<area>.md` when a file its `paths:`
+match is read); `lib/learnings_files.resolve` and `prawduct-hook learnings-files --for-diff` (the
+Critic skill, the reviewer agent and the PR reviewer protocol read the answer); `record_lint`'s
+budget gate; the Stop hook's `learning.written` emitter and `critic-consolidate`'s `learning.fired`.
+**Contract:** `paths:` frontmatter is a list of root-relative globs matched the way the harness
+matches them; a rule unit is a `##`/`###` heading or a top-level bullet (`learnings_files.rule_units`),
+hashed by `unit_hash`; each file carries a byte budget (16KB default; `learnings_budgets:` in
+`project-state.yaml` overrides with a reason). A change to the glob semantics or the unit grammar
+crosses this boundary for every consumer above.
+
 ### Generator/Tuple Yields Consumed Positionally
 
 **Producer:** `plugin/lib/backlog/core.py` — `iter_alias_issues` yields

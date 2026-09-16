@@ -39,8 +39,6 @@ EXPECTED_FLAT_EXPORTS = frozenset({
     "undismiss_advisory",
     # critic_mode
     "infer_mode",
-    # audit_learnings_cmd
-    "run_audit_learnings",
     # operator_verification
     "VerificationEntry", "count_pending", "format_operator_verification",
     "is_operator_verification_required", "mark_accepted", "mark_verified",
@@ -60,7 +58,6 @@ HEAVY_SUBMODULES = (
     "lib.advisory_store",
     "lib.operator_verification",
     "lib.critic_mode",
-    "lib.audit_learnings_cmd",
 )
 
 # The control's subject, named once so the two places that must agree — the
@@ -219,7 +216,7 @@ class TestFlatApiPreserved:
 
     def test_representative_from_imports(self):
         # Exercise the `from lib import X` form across each owning submodule.
-        from lib import GITIGNORE_ENTRIES, infer_mode, run_audit_learnings  # noqa: F401
+        from lib import GITIGNORE_ENTRIES, infer_mode  # noqa: F401
         from lib import run_sync_advisories, list_advisories, count_pending  # noqa: F401
 
         assert callable(infer_mode)

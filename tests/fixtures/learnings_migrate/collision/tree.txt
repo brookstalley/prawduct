@@ -1,0 +1,5 @@
+# The code tree this corpus was written against, one repo-relative path per
+# line. Materialised by the test rather than committed — see `topic/tree.txt`.
+src/core/loop.py
+src/core/clock.py
+src/testing/harness.py

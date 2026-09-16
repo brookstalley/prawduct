@@ -6,7 +6,7 @@ A `/prawduct:backlog` item at `stage: design` is a planning task: requirements a
 
 ## Learnings as Design Constraints
 
-Before generating artifacts, run `/prawduct:learnings [your planned work]` to surface relevant project rules and preferences without loading the full files. Active learnings encode architecture decisions, technology constraints, and patterns the project has been burned by — context that prevents repeating known mistakes, not a checklist.
+The harness loads the rules: `core.md` every session, an `<area>.md` when you read a file its `paths:` match. Before generating artifacts, open the `.claude/rules/learnings/` area files covering what this work will touch — architecture decisions, technology constraints, and patterns the project has been burned by.
 
 ## Artifact Generation
 
@@ -70,7 +70,7 @@ How many plans, and how big, is settled before chunking begins.
 
 - **One plan per scope tag.** A plan covers one coherent scope; work under a different tag gets its own plan even when the same session builds both. The `branch:` mechanism above exists precisely so several plans can share one branch — sharing a branch is not a reason to share a plan.
 - **Split when the change types differ.** A plan mixing a schema migration, a UI rewrite and a docs sweep reviews badly as one unit: the Critic selects its protocol per chunk `Type:`, and one blocking finding stalls chunks that have nothing to do with it. Heterogeneous `Type:` values across chunks are the signal.
-- **A plan that will not ship in about three sessions is a program, not a plan.** Express it as backlog items plus a per-wave plan drawn when that wave starts. A long-lived plan goes stale faster than it is built — its Status boxes stop describing anything, and its frictions accumulate in `learnings.md` instead of reaching the next plan.
+- **A plan that will not ship in about three sessions is a program, not a plan.** Express it as backlog items plus a per-wave plan drawn when that wave starts. A long-lived plan goes stale faster than it is built — its Status boxes stop describing anything, and its frictions accumulate in the learnings rules instead of reaching the next plan.
 - **Push back on a request for one monolithic plan.** Name what it costs — review quality across a large diff, staleness, and the coupling that lets one finding block unrelated work — and propose the split with its wave boundaries. The user decides (Principle 23); they decide with the tradeoff stated.
 
 ### Requirements Confidence

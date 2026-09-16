@@ -60,7 +60,7 @@ characteristic flips alike:
 - **Reasoned** — it engages the norm's why, not just the local convenience.
 - **Timely** — it lands with or before the departing change, never as post-hoc paperwork
   discovered by a later review.
-- **Durably homed** — rulings in `learnings.md` linked from the norm; amendments in the norm's
+- **Durably homed** — rulings in the learnings rules (`.claude/rules/learnings/`) linked from the norm; amendments in the norm's
   own entry; exceptions and stopgaps on backlog items (below); flips in
   `project-state.yaml` classification.
 
@@ -105,7 +105,7 @@ Norms live where they already live — **no new file class, no norm IDs, no sche
   their own index and take no Enforcement-table row; their machinery is the characteristic-flip
   protocol below plus the doctor's classification-currency check.
 
-Rulings live in `learnings.md`, cross-linked — norms are statute, learnings are case law, and
+Rulings live in the learnings rules (`.claude/rules/learnings/`), cross-linked — norms are statute, learnings are case law, and
 each reads better for pointing at the other.
 
 ## Anatomy of a Norm

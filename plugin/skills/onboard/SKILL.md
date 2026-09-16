@@ -16,7 +16,7 @@ Onboarding under the plugin model is plugin-native — there is no file-sync set
 
 ### A. New or existing repo with no `.prawduct/` yet → **scaffold it**
 
-`prawduct-hook init-product` creates the product-owned state for a plugin repo: `.prawduct/` (project-state.yaml with `distribution: plugin`, learnings.md, backlog.md, change-log.md, artifacts/), the thin static CLAUDE.md anchor, and the committed install reference — and **none** of the file-sync machinery (no `tools/`, no committed skills, no sync-manifest). It works identically for an empty repo and one with years of existing code (for existing code, discovery later reads it to infer conventions).
+`prawduct-hook init-product` creates the product-owned state for a plugin repo: `.prawduct/` (project-state.yaml with `distribution: plugin`, backlog.md, change-log.md, artifacts/), the starter rules corpus at `.claude/rules/learnings/core.md`, the thin static CLAUDE.md anchor, and the committed install reference — and **none** of the file-sync machinery (no `tools/`, no committed skills, no sync-manifest). It works identically for an empty repo and one with years of existing code (for existing code, discovery later reads it to infer conventions).
 
 1. Confirm the target directory with the user (it should be a git repo).
 2. **Dry-run** the scaffold and present the plan: `prawduct-hook init-product <target> --name "<Product Name>" --json` (no `--apply`). Surface that it creates only product-owned state + the install reference.

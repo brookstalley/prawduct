@@ -218,11 +218,11 @@ class TestRepair:
         check rather than degrading it to a finding — fail-soft inverted at a
         fail-soft site.
 
-        This test exists because the policy shipped with none: the module cites
-        `learnings_obligation` as its precedent, and that precedent's test file
-        monkeypatches the writer to raise. Following a precedent's *code* while
-        skipping its *tests* is how ~50 untested lines got here once already in
-        this same chunk.
+        This test exists because the policy shipped with none: the module was
+        written to a precedent's *code* while its *tests* were left behind, and
+        the monkeypatched-writer case below is one of the cases that precedent's
+        file held. Skipping a precedent's tests is how ~50 untested lines got
+        here once already in this same work.
         """
         _write_prefs(tmp_path, _HEADER + _ROW_ORDINARY + "\n")
 
@@ -287,8 +287,9 @@ class TestCommand:
 
     The first cut tested the lib alone and left ~50 lines — both exit-code
     mappings, the confirmation block, `--json`, unknown-arg rejection and the
-    dispatch arm — executing in no test at all, against the very pattern this
-    chunk models itself on (`test_learnings_obligation.py::TestCommand`).
+    dispatch arm — executing in no test at all, against the very pattern the
+    module was modelled on. A `TestCommand` that drives the CLI is what makes a
+    lib-level suite honest about the wrapper.
     """
 
     def test_dry_run_reports_the_finding_and_exits_zero(self, tmp_path):

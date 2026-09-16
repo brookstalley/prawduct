@@ -43,9 +43,11 @@ The cutover engine derives the REMOVE set from the **framework registry** — it
   `/prawduct:doctor` — the detection is shared, so the two never disagree about what a retired
   key is.
 - **NEVER TOUCHED**: everything else under `.prawduct/` — the rest of `project-state.yaml`,
-  `learnings.md`, `learnings-detail.md`, `backlog.md`, `change-log.md`, `artifacts/`,
-  `.critic-findings.json`, reflections — and **all** non-framework files: the product's own
-  skills, `src/`, `tests/`, MCP server, configs.
+  any `learnings*.md` the repo still carries, `backlog.md`, `change-log.md`, `artifacts/`,
+  `.critic-findings.json` — nor `.claude/rules/learnings/`, and **all** non-framework files:
+  the product's own skills, `src/`, `tests/`, MCP server, configs. (Relaying a legacy learnings
+  corpus into `.claude/rules/learnings/` is the `learnings-migrate` command's job, not this
+  command's.)
 
 ## Flow
 

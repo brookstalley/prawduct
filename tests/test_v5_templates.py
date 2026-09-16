@@ -9,8 +9,9 @@ source-of-truth elsewhere:
     → ``test_v5_methodology.py`` (``TestBuildingMethodology`` / ``TestCriticSkill`` /
     ``TestMethodologyPBT``) plus the always-injected session digest
     (``test_plugin_methodology_digest.py``);
-  - ``skills/learnings/SKILL.md`` and ``skills/critic/review-protocol.md`` → retargeted
-    in this file.
+  - ``skills/critic/review-protocol.md`` → retargeted in this file. (The learnings
+    lookup skill it sat beside was deleted with the rest of the lookup path: rules
+    are ``.claude/rules/`` files the harness loads, so nothing reads them for you.)
 
 What remains here validates the place-once / planning templates that
 ``init_product`` still renders or that planning authors scaffold from
@@ -251,38 +252,6 @@ class TestCriticSkillPBT:
             if "property-based" in line.lower():
                 assert "note" in line.lower()
                 break
-
-
-# =============================================================================
-# /learnings skill — Structure (plugin source-of-truth)
-# =============================================================================
-
-
-class TestLearningsSkill:
-    """Verify the plugin /learnings skill has required structure.
-
-    Retargeted from the retired file-sync `templates/skill-learnings.md` to the
-    plugin's `skills/learnings/SKILL.md` (M4 Chunk 4)."""
-
-    @pytest.fixture
-    def skill(self) -> str:
-        return (FRAMEWORK_DIR / "skills" / "learnings" / "SKILL.md").read_text()
-
-    def test_frontmatter_and_references(self, skill: str):
-        """Has required frontmatter and references all knowledge files."""
-        assert "description:" in skill
-        assert "argument-hint:" in skill
-        assert "disable-model-invocation:" in skill
-        assert "learnings.md" in skill
-        assert "learnings-detail.md" in skill
-        assert "project-preferences.md" in skill
-
-    def test_behavior(self, skill: str):
-        """Has subagent instructions, no-args mode, read-only, token budget."""
-        assert "subagent" in skill.lower() or "Agent tool" in skill
-        assert "no topic" in skill.lower() or "no topic was provided" in skill.lower()
-        assert "read-only" in skill.lower()
-        assert "500 tokens" in skill
 
 
 # =============================================================================

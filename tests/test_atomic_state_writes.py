@@ -107,10 +107,11 @@ class TestAtomicWriteText:
     def test_explicit_encoding_and_newline_still_honoured(self, tmp_path):
         """The utf-8 default must not swallow a caller's explicit arguments.
 
-        `learnings_obligation.repair` writes into a product's *authored* file
-        and passes `newline=""` so the bytes around its insertion are not
-        re-line-ended. That opt-out is independent of the encoding default and
-        has to survive it.
+        A repair that edits a product's *authored* file passes `newline=""` so
+        the bytes around its edit are not re-line-ended — `norm_index_scaffold`
+        is the one in the tree, and a CRLF repo otherwise gets every line
+        rewritten by an operation that promised to touch two rows. That opt-out
+        is independent of the encoding default and has to survive it.
         """
         target = tmp_path / "authored.md"
         core.atomic_write_text(target, "a\r\nb\n", encoding="utf-8", newline="")

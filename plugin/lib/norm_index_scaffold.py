@@ -18,9 +18,9 @@ for a scaffold one. The two row strings are byte-identical across the whole
 template lineage (verified back through the `plugin/` move), so the exact set
 is small, closed, and complete.
 
-Shape mirrors :mod:`lib.learnings_obligation` — the established pattern for a
-defect that lives in already-onboarded repos and that a template change cannot
-reach: report a status, offer a repair, never apply it unasked. This edits a
+The shape is the one every repair for an already-onboarded repo takes, because
+a template change cannot reach a file the repo already has: detect, report a
+status, offer the exact edit, and write only when asked for. This edits a
 product's own authored preferences file, so the repair is **delete-only** and
 touches nothing but the scaffold rows themselves.
 """

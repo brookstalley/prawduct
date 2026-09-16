@@ -7,7 +7,7 @@ The REMOVE set is **derived from the framework registry** (``core.MANAGED_FILES`
 / ``core.MANAGED_DIRS`` — write-strategy ``!=`` place-once), never from "any path
 prawduct ever placed." Everything else — product-owned ``.prawduct/`` state
 (``project-state.yaml``, ``learnings*.md``, ``backlog.md``, ``change-log.md``,
-``artifacts/``, reflections) and every non-framework file (the product's own
+``artifacts/``) and every non-framework file (the product's own
 skills, ``src/``, ``tests/``, MCP server, configs) — is preserved byte-for-byte
 (the place-once contract, design §7). A real consumer (hallucinote) intermixes
 ~20 product skills with the 7 framework skills and ~12 product ``tools/*.py``
