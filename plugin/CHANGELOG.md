@@ -29,12 +29,6 @@ proves the move lossless before it unlinks anything. `--propose-map` and a dry r
 see the mapping before any of that happens. Until you migrate, the new **`learnings-unmigrated`**
 Stop gate reports the repo is still on the legacy corpus.
 
-**Deprecated and inert this release:** `audit-learnings`, `learnings-obligation` and
-`check-learnings-pairing` still exit 0 and write nothing — they graded a corpus that no longer
-exists. Their notices name where rules live now. `check-learnings-pairing`'s former exit codes (1 a
-duplicate active heading, 3 an unreadable pair) are RETIRED, so a script still branching on them
-takes the clean arm forever.
-
 **The reflection guide is about the learning loop again, and the standing block has its own
 guide.** `methodology/reflection.md` halves: its Step 4 is now a routing decision with four
 destinations — an episode to `.session-reflected`, a product rule to `.claude/rules/learnings/`
@@ -66,7 +60,9 @@ gate would block.
 `learnings-obligation` and `check-learnings-pairing` graded a `.prawduct/learnings.md` that the
 harness-loaded layout replaced. Each still runs — exit 0, one `WARNING:` on stderr naming the
 replacement, nothing written — so a doctor skill on an older pin or a copied runbook does not break;
-removal waits for a major. The `/prawduct:learnings` lookup skill is gone: the harness loads
+removal waits for a major. `check-learnings-pairing`'s former exit codes (1 a duplicate active
+heading, 3 an unreadable pair) are RETIRED, so a script still branching on them takes the clean arm
+forever. The `/prawduct:learnings` lookup skill is gone: the harness loads
 `.claude/rules/learnings/core.md` every session and an area file when you read a file its `paths:`
 match, so there is nothing to look up. Doctor's learnings checks, the `sentinel_command` key and the
 record-lint `learnings-entry-shape` check go with them.
