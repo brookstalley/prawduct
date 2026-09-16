@@ -205,8 +205,10 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   bounded: past the repo's oversized threshold it moves entries verbatim into
   `.prawduct/change-log-archive/YYYY-MM.md` until the live log is at most half the threshold,
   never moving a release-pending entry in a product that versions. A state-mutating writer: exit 0
-  when it ran (moved, would move, or nothing to do), **1 `refused:`** when a tag fails the release
-  validator or the log is unreadable — nothing written — and 2 on a usage error. `--json` keys:
+  when it ran (moved, would move, or nothing to do), **1 `refused:`** — nothing written — when a tag
+  fails the release validator, when the release gate's own readers would see the resulting live log
+  differently, when git tracks the live log but would ignore the archive, when the log is unreadable,
+  or when a write fails (every file is restored); 2 on a usage error. `--json` keys:
   `applied`, `threshold_bytes`, `live_bytes_before`, `live_bytes_after`, `product_versions`, `kept`,
   `moved`, `pinned_bytes`, `buckets{YYYY-MM: count}`, `written[]`.
 - **Derived-view convergence** — `lifecycle-repair [--apply] [--json]` (mutating with `--apply`):

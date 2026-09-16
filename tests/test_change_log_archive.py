@@ -9,7 +9,9 @@ The claims each test pins, in the order a reader of the module meets them:
 * undated entries and entries with an unparsed tag line stay live;
 * newest first, and once one entry does not fit, everything older moves;
 * the move is lossless: live + archive holds exactly the original entries;
-* a malformed tag refuses with nothing written;
+* a malformed tag refuses with nothing written, and so does a selection the
+  release gate's own readers would see differently, or an archive git would ignore;
+* a failed write restores every file;
 * readers that interpret history (plan-backfill, record-lint's scope witness)
   see archived entries.
 """
@@ -187,17 +189,88 @@ class TestApply:
         assert {"2026-09-10: pending newest", "2026-09-09: pending second",
                 "2026-09-11: more pending"} <= set(remaining)
 
-    def test_an_interrupted_run_is_repaired_by_rerunning(self, tmp_path: Path) -> None:
-        """Archive written, live log not yet rewritten: entries exist twice, never
-        nowhere, and the next run leaves exactly one copy."""
+    def test_an_entry_already_in_its_month_file_is_not_archived_twice(self, tmp_path: Path) -> None:
+        """A live log restored over an applied run (a revert, a bad merge) holds
+        entries its month files already have. Re-running must leave one copy of
+        each: gone from the live log, present once in the archive."""
         prawduct = _repo(tmp_path, VERSIONED)
-        text = VERSIONED
-        selection = cla.select(text, threshold=2000, versions=True)
+        selection = cla.select(VERSIONED, threshold=2000, versions=True)
         cla.apply(prawduct, selection)
-        (prawduct / "change-log.md").write_text(text, encoding="utf-8")  # simulate the crash
+        moved = {b.entry.title for b in selection.moved}
+        (prawduct / "change-log.md").write_text(VERSIONED, encoding="utf-8")
         _run(prawduct)
         archived = [t for s in _archive(prawduct).values() for t in _titles(s)]
-        assert len(archived) == len(set(archived))
+        assert sorted(archived) == sorted(moved)
+        assert not moved & set(_titles((prawduct / "change-log.md").read_text(encoding="utf-8")))
+
+    def test_a_failed_write_restores_every_file(self, tmp_path: Path, monkeypatch) -> None:
+        from lib import core
+
+        prawduct = _repo(tmp_path, VERSIONED)
+        real = core.atomic_write_text
+        calls: list = []
+
+        def _full(path, text, *args, **kwargs):
+            calls.append(path)
+            if len(calls) == 2:
+                raise OSError(28, "No space left on device")
+            return real(path, text, *args, **kwargs)
+
+        monkeypatch.setattr(core, "atomic_write_text", _full)
+        selection = cla.select(VERSIONED, threshold=2000, versions=True)
+        assert len(selection.buckets) >= 2, "fixture must make the second write an archive file"
+        with pytest.raises(OSError):
+            cla.apply(prawduct, selection)
+        assert (prawduct / "change-log.md").read_text(encoding="utf-8") == VERSIONED
+        assert _archive(prawduct) == {}
+
+    def test_a_stale_month_file_header_is_rewritten(self, tmp_path: Path) -> None:
+        prawduct = _repo(tmp_path, VERSIONED)
+        (prawduct / cla.ARCHIVE_DIR_NAME).mkdir()
+        (prawduct / cla.ARCHIVE_DIR_NAME / "2026-07.md").write_text(
+            "# wrong header naming the wrong reader\n\n", encoding="utf-8"
+        )
+        _run(prawduct)
+        july = _archive(prawduct)["2026-07.md"]
+        assert july.startswith("# Change log archive — 2026-07")
+        assert "wrong reader" not in july
+
+
+class TestTheReleaseGateChecksTheResult:
+    """The selection keeps pending entries by construction; the invariant is the
+    check that does not trust the construction."""
+
+    def test_a_selection_that_would_drop_pending_work_refuses(self, monkeypatch) -> None:
+        monkeypatch.setattr(cla, "_pinned", lambda block, versions: block.bucket is None)
+        with pytest.raises(cla.ArchiveRefused, match="release-pending entries would leave"):
+            cla.select(VERSIONED, threshold=500, versions=True)
+
+    def test_an_unversioned_product_has_no_pending_set_to_protect(self) -> None:
+        log = HEADER + "".join(
+            _entry(f"2026-0{m}-01", f"work {m}", f"scope=s{m}") for m in range(9, 1, -1)
+        )
+        assert cla.invariant_violations(log, HEADER, versions=False) == []
+        assert cla.invariant_violations(log, HEADER, versions=True)
+
+    def test_a_diagnostic_that_only_moved_line_is_not_new(self) -> None:
+        doubled = _entry("2026-09-05", "two tag lines", "scope=z").replace(
+            "-->\n\n", "-->\n<!-- prawduct: type=fix -->\n\n", 1
+        )
+        before = HEADER + _entry("2026-09-06", "above", body_bytes=600) + doubled
+        after = HEADER + doubled
+        assert cla.invariant_violations(before, after, versions=True) == []
+
+    def test_the_release_gate_still_finds_scopes_tagged_for_an_archived_release(
+        self, tmp_path: Path
+    ) -> None:
+        from lib import release_readiness
+
+        prawduct = _repo(tmp_path, VERSIONED)
+        _run(prawduct)
+        live = change_log.parse_change_log((prawduct / "change-log.md").read_text(encoding="utf-8"))
+        assert release_readiness.scopes_tagged_for(live, "v1.0.0") == set()
+        history = release_readiness._history_entries(tmp_path, live)
+        assert release_readiness.scopes_tagged_for(history, "v1.0.0") == {"alpha"}
 
 
 class TestWholeHistoryReaders:
@@ -266,6 +339,31 @@ class TestCommand:
         assert proc.stderr.startswith("refused:")
         assert _archive(prawduct) == {}
         assert (prawduct / "change-log.md").read_text(encoding="utf-8") == log
+
+    def test_an_archive_git_would_ignore_refuses(self, tmp_path: Path) -> None:
+        """Committing the live log's removals without the month files they moved
+        to would drop history from git with no error anywhere."""
+        prawduct = _repo(tmp_path, VERSIONED)
+        env = {"GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null",
+               "HOME": str(tmp_path), "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin"}
+
+        def git(*args: str) -> None:
+            subprocess.run(["git", *args], cwd=str(tmp_path), check=True,
+                           capture_output=True, env=env)
+
+        git("init", "-q", "-b", "main")
+        (tmp_path / ".gitignore").write_text(
+            ".prawduct/*\n!.prawduct/change-log.md\n!.prawduct/project-state.yaml\n",
+            encoding="utf-8",
+        )
+        git("add", ".gitignore", ".prawduct/change-log.md", ".prawduct/project-state.yaml")
+        git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "init")
+
+        proc = _cli(prawduct, "--apply")
+        assert proc.returncode == 1, proc.stdout
+        assert "would ignore" in proc.stderr
+        assert _archive(prawduct) == {}
+        assert (prawduct / "change-log.md").read_text(encoding="utf-8") == VERSIONED
 
     def test_unknown_argument_is_a_usage_error(self, tmp_path: Path) -> None:
         assert _cli(_repo(tmp_path, VERSIONED), "--force").returncode == 2

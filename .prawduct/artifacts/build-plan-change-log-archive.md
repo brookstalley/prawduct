@@ -4,18 +4,30 @@ version: 2
 scope: change-log-archive
 branch: feature/change-log-archive
 partition: serial — one chunk; the archiver, its readers and the probe share one predicate (what may leave the live log), and splitting them would put that predicate's definition and its consumers in different reviews
+related_issues:
+  - "brookstalley/prawduct#802 — plan-backfill strands a refused plan once its release= tag leaves the live log. RESOLVED here by R5: plan-backfill reads live + archive, so the tag never leaves its sight and the checklist ordering constraint the prior design needed is gone"
+  - "brookstalley/prawduct#793 — a product's release moment never runs the archiver. RESOLVED here by R6: /prawduct:pr Step 1d runs it on every PR, for trunk and gitflow alike"
 governed_by:
   - artifact: data-model
     dispositions:
-      - "a governance document reaches a terminal state, never deleted → ENGAGED: entries are MOVED verbatim into `.prawduct/change-log-archive/`, never deleted or rewritten; the archive is committed history, same tier as the live log"
+      - "verdicts computed from the append-only fact ledger, never mutable model-written state → inapplicable, because nothing here touches the Critic data plane"
       - "facts are immutable and append-only → conforms; an entry's bytes are unchanged by the move"
       - "derived views are disposable and never authoritative → conforms; the archive is not a view, it is the entries' one home once moved"
+      - "a governance document reaches a terminal state, never deleted → ENGAGED: entries are MOVED verbatim into `.prawduct/change-log-archive/`, never deleted or rewritten; the archive is committed history, same tier as the live log"
+      - "every issue written to the backlog store conforms to §1 title rules → inapplicable, because no backlog item is written"
+      - "a newer-schema fact surfaces as a loud block → inapplicable, because no fact schema changes"
+      - "two stores, two lifetimes → ENGAGED: the archive is a committed answer, never a gitignored cache — which is why the command refuses when git would ignore it while tracking the live log"
+      - "`backlog_service_repo` selects the authoritative store → inapplicable, because no chunk reads the backlog"
   - artifact: architecture
     dispositions:
-      - "every fact has one home → ENGAGED: a moved entry exists in exactly one file. Every reader that interprets history (plan-backfill, record-lint's scope witness) reads live + archive through ONE loader; the release gate reads only pending entries, which never leave the live file"
-      - "authority fails closed; advice fails soft → ENGAGED: the archiver refuses (nothing written) on any tag the release validator rejects, because a malformed `release=` is exactly what would make a pending entry look archivable; the advisory probe fails soft (no advice) on an unreadable file"
-      - "the plugin writes nothing into a governed repo except its own state → conforms; the archive lives under `.prawduct/`"
-      - "local-first: no network, no daemon → conforms; file reads only"
+      - "an independent reviewer never mutates the session it reviews → inapplicable, because no review path changes"
+      - "authority fails closed; advice fails soft → ENGAGED: the archiver refuses (nothing written) on a malformed tag, on any difference the release gate's own readers would see, and on an archive git would ignore; the advisory probe fails soft (no advice) on an unreadable file"
+      - "local-first: process-spawn + atomically-written files + git → conforms; the move is written all-or-nothing through `core.write_all_or_none`"
+      - "the plugin writes nothing into a governed repo except its own `.prawduct/` state → conforms; the archive lives under `.prawduct/`"
+      - "Python but never Python-specific → conforms; no product file is classified"
+      - "prawduct guides and reviews; it never implements → conforms; it moves its own records, never product code"
+      - "goals and verification bind; prescribed method is advice → conforms; the prior design's method (version-line retention) was weighed against the binding goal (a bounded live log) and lost on it — see Decision"
+      - "every fact has one home → ENGAGED: a moved entry exists in exactly one file. Readers of history (plan-backfill, record-lint's scope witness, the release gate's tagged-for-this-release lookup) read live + archive through one loader; the archiver keeps live exactly what `release_readiness.release_pending_entries` calls pending, by calling it"
   - artifact: api-contract
     dispositions:
       - "exit codes are the contract, on a documented scheme → ENGAGED: `archive-change-log` is a state-mutating writer — 0 written or no-op, 1 refused, 2 usage"
@@ -23,8 +35,9 @@ governed_by:
       - "additive-first evolution → conforms; new subcommand, no existing flag or key repurposed"
   - artifact: nonfunctional-requirements
     dispositions:
-      - "state-file growth past its threshold is an advisory, never a hard block → conforms; nothing blocks on size. The advisory gains a command that actually clears it"
       - "review wall-clock is P0 → one chunk, one cumulative review"
+      - "proportionality ratchets both ways → conforms; no control is added that blocks a session — the refusals are on an explicit --apply"
+      - "state-file growth past its threshold is an advisory, never a hard block → conforms; nothing blocks on size. The advisory gains a command that actually clears it"
 last_validated: 2026-09-16
 ---
 
@@ -42,6 +55,43 @@ here is 97% of the bytes, so it nags with no available action — noise in every
 "A 1.5 MB changelog is totally unacceptable. Design, build and fix a durable solution — this is
 creating noise for consuming repos too." Amends CL5 (see `documentation/governance-artifact-lifecycle-requirements.md`).
 
+## Decision — this design over the two prior ones
+
+**Prior work, missed when this plan was first written and found by its cumulative review.** An
+unmerged branch, `fix/change-log-lifecycle` (three chunks, complete and Critic-clean 2026-09-10),
+built `archive-change-log` into one `.prawduct/change-log-history.md`, moving only `release=` entries
+below the current minor line, with a per-file size ceiling (768 KB for this log). The draft
+`documentation/issues/802-design.md` (2026-09-14) chose the same single file. #802 and #793 were
+filed against that design's gaps.
+
+**Why this one ships (owner asked for the audit, 2026-09-16):**
+- **It bounds the log; the prior design relocates most of it.** Keeping the current minor line
+  leaves 326 KB live today (measured over develop's log at keep-3.5) — 8x the default threshold,
+  which is why that branch also had to raise the ceiling to 768 KB. The owner's bar is that 1.5 MB is
+  unacceptable; 326 KB with a raised ceiling does not meet it. Size-based hysteresis leaves 23 KB,
+  all release-pending.
+- **It works in every product.** Version-line retention needs declared version files and never
+  archives in a product that does not tag releases; size selection needs neither.
+- **It closes #802 and #793 instead of inheriting them.** History readers load live + archive, so no
+  release tag leaves their sight and no checklist ordering is load-bearing; the PR step runs it in
+  every repo.
+- **Monthly files over one history file:** each move touches the month files it fills, not a
+  1.5 MB file that every archive run rewrites.
+
+**Ported from the prior branch, because they were better:**
+- The **result invariant** — re-read the log the run would leave with the release gate's own
+  predicates (pending set, unclassifiable set, diagnostics with line numbers normalised) and refuse
+  on any difference, rather than trusting the selection rule.
+- **`core.write_all_or_none`** and its tests — rollback across every file written, including on
+  Ctrl-C, naming any file a failed rollback left behind.
+- **Entry boundaries from the parser's own line numbers**, not a second header regex.
+
+**Not ported:** version-line retention and `--keep-minor` (see above); the per-file ceiling
+`oversized_file_thresholds_kb` (a log bounded at half the default threshold does not need one).
+
+**The prior branch** is superseded by this plan and kept until the owner rules on deleting it.
+`documentation/issues/802-design.md` is marked superseded.
+
 ## Requirements
 
 - **R1 Bounded live log.** When `.prawduct/change-log.md` exceeds the repo's oversized threshold, one
@@ -53,10 +103,14 @@ creating noise for consuming repos too." Amends CL5 (see `documentation/governan
   tagged entry with no `release=` stays live. Undated entries stay live (no bucket; fail-safe).
   Selection keeps the newest entries by date; once one does not fit the budget, it and everything
   older moves (no swiss-cheese).
-- **R4 Refuse on bad tags.** If the release tag validator reports errors, nothing is written.
-- **R5 Readers of history see the whole log.** `plan-backfill` and record-lint's scope witness read
-  live + archive through one loader. `check-releasability` stays on the live file:
-  [DECISION: its subject is the pending set, which R3 keeps live by construction, and its messages
+- **R4 Refuse rather than guess.** Nothing is written when the release tag validator reports
+  errors, when the release gate's own readers would see the resulting live log differently (pending
+  set, unclassifiable set, a new diagnostic), or when git tracks the live log but would ignore the
+  archive. The write itself is all-or-nothing across every file.
+- **R5 Readers of history see the whole log.** `plan-backfill`, record-lint's scope witness and the
+  release gate's "already tagged for this release" lookup read live + archive through one loader. `check-releasability` stays on the live file:
+  Its pending questions stay on the live file:
+  [DECISION: their subject is the pending set, which R3 keeps live by construction, and its messages
   cite live-file line numbers that a concatenated read would falsify.] `check-change-log-entry`
   stays on the live file (it asks what this branch added).
 - **R6 Durable trigger.** `/prawduct:pr` Step 1d runs `archive-change-log --apply` on every PR (a

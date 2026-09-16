@@ -212,7 +212,10 @@ MUST unless marked SHOULD.
   history — `plan-backfill`'s shipped set, record-lint's scope witness — reads live **and** archive;
   `check-releasability` reads the live log, which holds every pending entry by construction.
   `/prawduct:pr` Step 1d runs it on every PR (a no-op under the threshold), so no product needs a
-  person to decide to compact. *Added 2026-09-16, owner direction.*
+  person to decide to compact. *Added 2026-09-16, owner direction. Supersedes the single
+  `change-log-history.md` design of `documentation/issues/802-design.md` and the unmerged
+  `fix/change-log-lifecycle` branch: version-line retention left 326 KB live and never archived an
+  unversioned product. Reasoning and what was ported: `build-plan-change-log-archive.md` § Decision.*
 
 ### What survives the deletion
 

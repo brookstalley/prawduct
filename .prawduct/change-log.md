@@ -19,11 +19,19 @@ and undated entries never move, and a malformed tag refuses with nothing written
 and record-lint's scope witness now read live + archive; `check-releasability` stays on the live
 log, which holds every pending entry by construction. `/prawduct:pr` Step 1d runs the archiver on
 every PR (a no-op under the threshold) and the release checklist runs it after tagging, so no repo
-needs a person to decide to compact. The oversized-change-log advisory now asks the archiver: it
+needs a person to decide to compact. Before writing, it re-reads the log it would leave with the
+release gate's own predicates and refuses on any difference; it writes every file all-or-nothing
+(`core.write_all_or_none`), and it refuses when git tracks the live log but would ignore the archive.
+The release gate's "already tagged for this release" lookup reads the archive too, so a Phase 0
+re-run after archiving still recognises shipped scopes. The oversized-change-log advisory now asks the archiver: it
 hands the runtime the command when history can move and says why otherwise. Its old guarded-bullet
 tests are replaced by tests of that contract — the guard's reason (pending work is never offered
 for removal) is still asserted. Amends CL5 and adds CL8 in the lifecycle requirements. This repo's
 own log is archived on this branch.
+Supersedes the unmerged `fix/change-log-lifecycle` branch and `documentation/issues/802-design.md`
+(one history file, current-minor-line retention — 326 KB left live, no archiving in unversioned
+products); its result invariant, `write_all_or_none` and parser-line-number entry boundaries are
+ported. Resolves #802 and #793.
 
 ## 2026-09-16: review-stats counts what verify passes demote
 

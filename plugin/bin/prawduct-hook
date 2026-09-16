@@ -6359,18 +6359,27 @@ def cmd_archive_change_log(project_dir: Path, argv: list[str]) -> int:
         selection = change_log_archive.select(text, threshold=threshold, versions=versions)
     except change_log_archive.ArchiveRefused as exc:
         print(
-            f"refused: the change log carries a tag the release gate rejects, and a bad "
-            f"`release=` is what makes pending work look shipped — nothing moved. Fix: {exc}",
+            f"refused: {exc}",
             file=sys.stderr,
         )
         return 1
 
     written: list[Path] = []
     if apply and selection.moved:
+        if change_log_archive.archive_would_be_ignored(prawduct_dir.parent):
+            print(
+                "refused: git tracks .prawduct/change-log.md but would ignore "
+                f"{change_log_archive.ARCHIVE_DIR_REL}/, so committing the move would drop the "
+                "moved entries from history — nothing moved. Un-ignore it (for a `.prawduct/*` "
+                f"pattern add `!{change_log_archive.ARCHIVE_DIR_REL}/` to .gitignore) and re-run.",
+                file=sys.stderr,
+            )
+            return 1
         try:
             written = change_log_archive.apply(prawduct_dir, selection)
-        except OSError as exc:
-            print(f"refused: could not write the archive: {exc}", file=sys.stderr)
+        except (OSError, UnicodeDecodeError) as exc:
+            print(f"refused: could not write the archive, and every file was restored: {exc}",
+                  file=sys.stderr)
             return 1
 
     if as_json:
