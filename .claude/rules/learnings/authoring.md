@@ -81,9 +81,16 @@ Why nothing caught it: the accounted-for deletion made the region look reviewed,
 pairing` verifies index→detail in one direction only, and a merge diff shows conflicts rather than
 content the other side grew. The next merge would have propagated the loss to develop.
 
-The check that would have caught it is cheap and mechanical — after a large base advance, list the
-`##` headings of a long-lived append-only record at both parents and at the merged tree, and account
-for every heading present at either parent and absent at the result.
+The check that would have caught it is cheap and mechanical, and a HEADING account is not it —
+that is the half this rule was read as prescribing, and it is the half that already failed. The
+v3.5.1 cutover merge verified all 318 headings survived, and they did, while five bodies had been
+revised in place: three lost outright, two shipped twice. **Account for CONTENT: for every unit at
+either parent, find its counterpart in the result and compare the TEXT, keying on an opening short
+enough to survive a rewording.** `audit_against_incoming` in `tests/test_learnings_files.py` is that
+check — it separates `missing` (no counterpart at all) from `diverged` (counterpart found, text
+differs), and only the second can see a revision. A divergence is not automatically a defect; the
+other side may have revised it deliberately. It is always a DECISION, and the merge that makes it
+silently is the one that goes wrong.
 
 ### After the last commit, re-check that the remote ref IS HEAD before creating or merging a PR — because every downstream signal agrees with a stale ref instead of contradicting it: the coverage gate reads LOCAL HEAD and re-runs green, CI grades the PUSHED tip and passes, the PR merges cleanly, and the description cites a commit the merge never took. Pushing early is legitimate (it is exactly the independent prep the reviewer-wait invites); what is missing is the re-check after the commit that follows it. Tell: you pushed at one point in the flow and committed at a later one. The only thing that catches it is `git branch -d` refusing the delete, which fires AFTER the merge
 
