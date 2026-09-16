@@ -108,8 +108,8 @@ filed against that design's gaps.
   set, unclassifiable set, a new diagnostic), or when git tracks the live log but would ignore the
   archive. The write itself is all-or-nothing across every file.
 - **R5 Readers of history see the whole log.** `plan-backfill`, record-lint's scope witness and the
-  release gate's "already tagged for this release" lookup read live + archive through one loader. `check-releasability` stays on the live file:
-  Its pending questions stay on the live file:
+  release gate's "already tagged for this release" lookup read live + archive through one loader.
+  `check-releasability`'s pending questions stay on the live file:
   [DECISION: their subject is the pending set, which R3 keeps live by construction, and its messages
   cite live-file line numbers that a concatenated read would falsify.] `check-change-log-entry`
   stays on the live file (it asks what this branch added).
@@ -150,4 +150,4 @@ step; CL5 amendment + CL8; api-contract, data-model, project-structure; this rep
 
 ## Status
 
-- [ ] Chunk 01 — archiver, readers, trigger, migration
+- [x] Chunk 01 — archiver, readers, trigger, migration
