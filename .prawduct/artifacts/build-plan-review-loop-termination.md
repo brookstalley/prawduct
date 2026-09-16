@@ -6,6 +6,9 @@ branch: fix/review-loop-termination
 partition: serial — all three chunks edit `critic_consolidate.py` and read the coverage/evidence path; 02 and 03 both consume a coverage verdict, so delegates would collide on the same seam
 depends_on:
   - artifact: review-loop-nontermination-diagnosis
+related_issues:
+  - "brookstalley/prawduct#167 — `critic: refuse a full re-round when zero blocking findings remain` (OPEN, stage:design, technical design at `documentation/issues/167-design.md`, 2026-09-15). ADJACENT, NOT OVERLAPPING, and checked rather than assumed: #167's own Scope-out section excludes BOTH Chunk 02 ('any UI/wording change to the NEXT-ACTION carrier itself — untouched') and Chunk 03 ('any change to `diagnose_fix_churn` or its `gates.py` caller'). It works at DISPATCH (a new `begin_review` refusal, exit 5); this plan works at CONSOLIDATION and COMPOSITION. Nothing here edits a file #167's 'Files touched' table claims except `critic_consolidate.py`, and in a different function"
+  - "brookstalley/prawduct#167 names Chunk 01's gap as its own blocking dependency: its Scope-out defers 'the true zero-finding-anchor double-verify' because 'it needs observations to become checkable facts first, which is a separate, currently-unfiled gap'. Chunk 01 IS that gap. Landing it lets #167's D3 extend to the case #167 had to scope out — so the two compound rather than collide, and the sequencing is worth stating out loud to whoever builds second"
 governed_by:
   - artifact: data-model
     dispositions:
@@ -87,16 +90,29 @@ written down. That is Chunk 01's first deliverable and is cheap — it is a deci
 
 **Three things, and the first is not a chunk.**
 
-**1. The mechanisms are not why this is unfixed, and shipping them may not be enough.** The
-diagnosis is excellent and three weeks old. In that window one fix shipped (RC9) and the
-measured loop got marginally *worse*. The item that should have carried the work — #180, *"The
-Critic review loop has no structural exit condition — agents in production get trapped for 3-4
-rounds"* — was **closed 2026-08-01, three weeks before the diagnosis re-derived the same problem
-from scratch.** A plan that fixes RC7/RC8/RC5 and does not ask why a measured, costed, ranked
-diagnosis sat unplanned for three weeks is treating the symptom at the level above the one it
-diagnosed. **My recommendation: this plan ships, AND the closure of #180 gets a look as its own
-question.** I have not folded that into a chunk because it is not engineering work and I do not
-know the answer.
+**1. Work IS moving on the round pump — just not on these three fixes.** An earlier draft of
+this note said a measured diagnosis had "sat unplanned for three weeks" and implied nobody was
+acting. That was checked afterwards and is **not fair**: `#167` is open at `stage:design` with a
+22KB technical design written 2026-09-15, it measures the same pump (27 rounds/4.5h on #724's
+branch, 10 rounds at a consumer, six rounds twice here), and it lands a dispatch-time refusal
+that none of these three chunks touch. The correction matters because the wrong version of this
+note would have argued for re-planning work already in flight — which is the exact failure the
+repo's own handoff identifies as its root cause (scheduled sessions re-deriving work they cannot
+see).
+
+**What IS true and still worth saying:** the three fixes in THIS plan are unshipped, RC7 is
+ranked #1 by the diagnosis's own leverage ordering, and #167's design independently names RC7's
+gap as *"currently-unfiled"* — so the highest-leverage item in a 2026-08-25 diagnosis was still
+unfiled on 2026-09-15, while a second document re-derived the need for it from the other
+direction. That is a *routing* failure, not an analysis failure, and it is the same shape as
+#180 — *"The Critic review loop has no structural exit condition"* — being **closed 2026-08-01,
+three weeks before the diagnosis re-derived the same problem.** **My recommendation: this plan
+ships, and somebody looks at how a filed diagnosis fails to become filed items.** Not folded
+into a chunk: it is not engineering work and I do not know the answer.
+
+**A concrete, free step that closes half of it now:** put a comment on #167 pointing at this
+plan, so the next reader of that design finds its scoped-out dependency has a home. Per
+`project-preferences.md`, a comment on an existing item is not filing and is unrestricted.
 
 **2. I would consider cutting Chunk 03.** It is the only one of the three that changes what
 governance *believes* rather than what it *says*. Chunks 01 and 02 cannot let a defect through
@@ -202,6 +218,11 @@ only consumer renders it as a `NOTE:` and then still directs the builder to run
 1. Compose the churn condition as covered rather than printing a paragraph and charging.
 2. **Fail closed.** `diagnose_fix_churn`'s `unavailable` status must grant nothing — a degraded
    read charges the round (architecture § authority fails closed).
+3. **Do not reach for content hashing.** `coverage_algebra` carries a standing rejection —
+   "paths classify, contents don't" (COV-3R9K / kernel-v3 R10, `coverage_algebra.py:66`). The
+   grant is computed from path classification and the fact ledger, never from comparing file
+   contents. This is recorded here because it is exactly the shape a builder reinvents when
+   asked to prove "nothing really changed".
 
 **Done when:**
 - The churn condition composes as covered; the round is not charged.
@@ -227,7 +248,12 @@ only consumer renders it as a `NOTE:` and then still directs the builder to run
 - **The yield-floor prose change** (diagnosis fix #6) — deliberately deferred, see advisory note 3.
 - **Dropping non-judgeable files from reviewer scope** (diagnosis Option 1) — live as #771 at
   `stage:design`; not re-planned here.
-- **Why #180 was closed with the defect live** — advisory note 1. Not engineering work.
+- **Why #180 was closed with the defect live, and why RC7 was still unfiled on 2026-09-15** —
+  advisory note 1. Not engineering work.
+- **#167's dispatch-time refusal** — a separate item with its own design
+  (`documentation/issues/167-design.md`). Do not re-derive it here. If it lands first, Chunk 03
+  composes in a world where some rounds are already refused upstream; that is additive, but the
+  builder of whichever lands second re-reads the other's mechanism before starting.
 
 ## Verification strategy
 
