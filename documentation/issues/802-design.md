@@ -1,6 +1,10 @@
 # Issue #802 — plan-backfill: A Rolled Change Log Strands a Refused Plan Forever: Design
 
-`status: draft · stage: design · area: release · added: 2026-09-14 · source: scheduled
+> **SUPERSEDED 2026-09-16** by `.prawduct/artifacts/build-plan-change-log-archive.md` (monthly
+> `change-log-archive/`, history readers load live + archive). The location decision below was not
+> adopted; #802 is resolved by that plan's R5. Kept as the record of the alternative.
+
+`status: superseded · stage: design · area: release · added: 2026-09-14 · source: scheduled
 backlog session · issue: https://github.com/brookstalley/prawduct/issues/802`
 
 No separate requirements document exists for this item — the issue body itself (Problem /
@@ -9,8 +13,8 @@ comment named the actual unit of work directly: *"Deciding where archived change
 the actual unit of work, and it is shared with #793... Sequence the location decision first; both
 items collapse to small edits after it."* This document makes that decision and designs the small
 edit it unblocks. It does **not** design #793's own PR-flow wiring (out of scope below) — only the
-archive convention and location decision #793 depends on, plus the fix that #802's own `affected:` list
-names (`plugin/lib/plan_backfill.py`, `plugin/lib/change_log.py`).
+archive convention and location decision #793 depends on, plus the `affected:` list names carried on
+#802 itself (`plugin/lib/plan_backfill.py`, `plugin/lib/change_log.py`).
 
 Grounding re-verified against `develop`, 2026-09-14.
 

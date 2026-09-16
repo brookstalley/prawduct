@@ -559,7 +559,9 @@ LAST_MEASURED_TOKENS = {
     # -32 on 2026-09-03 (PR-boundary review R-6): the removal-is-repo-wide bullet
     # re-owned Goal 4's drift subject at a different severity; it left, and
     # discipline row 5 re-homed on the drift bullet. A CUT; the ceiling ratchets.
-    "skills/critic/goals-1-3.md": 2373,
+    # MERGE 2026-09-16 (#759 develop sync): develop's +26 observations key
+    # (2373 learnings-v2 / 2399 develop) lands on this lineage; measured merge.
+    "skills/critic/goals-1-3.md": 2434,
     # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
     # a computed pass the gate can now print, which a reader who only knows
     # "uncovered means run a cumulative" will otherwise re-review straight
@@ -667,7 +669,9 @@ LAST_MEASURED_TOKENS = {
     # ceiling ratchets with it.
     # -1 on 2026-09-03: `learnings` left the free-writes parenthetical (the
     # corpus is no longer under `.prawduct/`).
-    "skills/critic/review-cycle.md": 10452,
+    # MERGE 2026-09-16 (#759 develop sync): develop's observations wording
+    # (10452 learnings-v2 / 10429 develop); measured merge.
+    "skills/critic/review-cycle.md": 10448,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -4557,7 +4561,29 @@ class TestCriticGoals13:
         # RATCHETED 2334 -> 2302 (2026-09-03) with the reading.
         # MERGE 2026-09-15 (#759 develop sync): ceiling is one over the merged
         # reading — both lineages above are history and stand as written.
-        assert tokens < 2374, f"goals-1-3.md is ~{tokens} tokens, should be <2374"
+        # RAISED 2345 -> 2400 (2026-09-16, observations become recordable).
+        # DECLARED, not trimmed to fit, per the rule that a ceiling forces a
+        # decision and trimming spends whichever clause is least defended.
+        # What it bought: a `verify-resolutions` reviewer now writes its demoted
+        # items into the partial's `observations` array, so the builder can
+        # ACCEPT one on the record instead of fixing it purely to leave a trace
+        # — measured as rounds 4 and 5 of six on one consumer branch. The file
+        # has to SHOW the key, because this JSON block is the schema a reviewer
+        # transcribes and a key it must write while no example carries it is the
+        # seam where an identifier silently degrades. The rule "have CODE own
+        # the wording" was applied as far as it goes: the entry shape, the
+        # refusal and the reasoning all live in
+        # `VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE`, printed at dispatch, and what
+        # is bought here is the key plus two sentences, one of them the mode
+        # scope: this file serves `chunk` mode too, and consolidation
+        # fail-closes on an `observations` array from a non-verify dispatch.
+        # Paid in place first: step 4's "Nothing else executes" restated the
+        # bolded never-run rule three lines above it. That trim funded 5 of the
+        # 66.
+        # MERGE 2026-09-16 (#759 develop sync): both raises above are real and
+        # additive — learnings-v2's Goal 2 bullets and develop's observations key.
+        # Ceiling is one over the measured merged reading; nothing banked.
+        assert tokens < 2435, f"goals-1-3.md is ~{tokens} tokens, should be <2435"
 
     def test_is_self_contained(self):
         """No follow-the-pointer reads at review time — the acceptance criterion
@@ -4640,6 +4666,14 @@ class TestCriticGoals13:
         assert "designer-handoff" in self.content     # the chunk `Type:` selector
         assert "Normative authority" in self.content  # Goal 3's binding preamble
         assert '"resolutions"' in self.content        # the verify-resolutions schema arm
+        # The ceiling was raised 2345 -> 2400 to buy this key, on the argument
+        # that the JSON block has to SHOW what a reviewer is told to write. The
+        # argument is only honoured while the key is here: the file sits one
+        # token under its ceiling, so the next editor needing room trims the
+        # least-defended clause, and an unpinned one is undefended by
+        # definition. The twin carrier in `VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE`
+        # is already pinned; this is the half that was not.
+        assert '"observations"' in self.content       # the demotion record's schema arm
 
     def test_an_inert_count_is_capped_at_note(self):
         """The `chunk`/`verify-resolutions` half of the sink-side cap — same
@@ -5178,8 +5212,17 @@ class TestReviewCycle:
         on the strength of the risk alone.
 
         Asserting the parts of the argument, not its wording: the rule, the
-        carve-out that keeps it safe, and the admission that an observation is
-        not a recorded fact.
+        carve-out that keeps it safe, and the admission of what the narrowing
+        gives up.
+
+        **The cost this checks for has changed once, and the change is the
+        point.** It used to be that a demoted observation left no trace at all —
+        unanswerable, invisible to a later reader of the store. Observations now
+        ride the review fact, so that cost is paid off and asserting it would
+        pin a falsehood. What is NOT paid off is the narrowing itself: the fix
+        delta's own content is rated at BLOCKING only, so a genuine
+        warning-level defect introduced by a fix is recorded as something that
+        gates nothing.
         """
         content = read_file("skills/critic/review-cycle.md")
         heading = "### A re-review does not manufacture work"
@@ -5196,9 +5239,11 @@ class TestReviewCycle:
             "the section states the narrowing without its carve-out — the "
             "classes that stay BLOCKING are what make it safe"
         )
-        assert "not a recorded fact" in section or "cannot be" in section, (
-            "the section sells the benefit without stating the cost: a demoted "
-            "observation leaves no trace in the evidence store"
+        assert "BLOCKING only" in section and "own content was not" in section, (
+            "the section sells the benefit without stating the cost: the fix "
+            "delta's own content is rated at BLOCKING only, so a real "
+            "warning-level defect in the fix is recorded as something that "
+            "gates nothing"
         )
 
     def test_the_verify_step_no_longer_rates_a_workaround_warning(self):

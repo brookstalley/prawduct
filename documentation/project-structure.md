@@ -71,6 +71,7 @@ prawduct/
 ├── .prawduct/                         # Framework's own prawduct state — it governs itself
 │   ├── project-state.yaml             # Source of truth for framework iteration
 │   ├── change-log.md                  # what shipped, per scope, with its release= tag
+│   ├── change-log-archive/            # older entries, moved verbatim by month (archive-change-log)
 │   ├── cross-cutting-concerns.md      # Concern-to-pipeline coverage registry
 │   ├── artifacts/                     # this repo's own specs and plans (+ archive/)
 │   ├── runbooks/                      # operational procedures (release cut, pruned promotion)
@@ -96,7 +97,8 @@ my-product/
 ├── .prawduct/
 │   ├── project-state.yaml             # product state (classification, decisions, health_check; distribution: plugin)
 │   ├── backlog.md                     # deferred work items (out-of-scope captures)
-│   ├── change-log.md                  # change log
+│   ├── change-log.md                  # change log (recent + release-pending entries)
+│   ├── change-log-archive/            # older entries by month, created once the log outgrows its threshold
 │   ├── artifacts/                     # generated specifications
 │   │   ├── boundary-patterns.md       # contract surfaces between components
 │   │   ├── project-preferences.md     # developer preferences (language, testing, style)

@@ -156,8 +156,9 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   inverse), `evidence status|list`, `ledger-append`
   (single-writer, mutating), `review-stats`, `disposition` (append a finding's ACCEPT/FILE/FIXED
   disposition fact, mutating — `--fixed <paths>` records a fix that bought no round and is refused
-  on any judgeable path or any BLOCKING finding), `render-dispositions` (derive the disposition
-  census), plus the
+  on any judgeable path or any BLOCKING finding; the id argument takes a finding's `fid` **or** an
+  observation's `oid`, the flags meaning exactly what they mean for a finding),
+  `render-dispositions` (derive the disposition census), plus the
   coverage/mode gate wrappers (`verify-coverage`, `check-cumulative-critic`, `infer-critic-mode`,
   `classify-diff-risk`, `verify-chunk-refs`), plus `verify-records` (the deterministic record
   checks, read-only and advisory — `critic-begin` runs the same pass into the manifest).
@@ -220,6 +221,16 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   preview cannot promise what the write declines. **Exit 1 on `--apply` when anything is `blocked`
   or `refused`** — an apply that could not move work the change log says shipped is not a clean run;
   a preview stays 0, having attempted nothing.
+  `archive-change-log [--apply] [--json]` (mutating with `--apply`) keeps `.prawduct/change-log.md`
+  bounded: past the repo's oversized threshold it moves entries verbatim into
+  `.prawduct/change-log-archive/YYYY-MM.md` until the live log is at most half the threshold,
+  never moving a release-pending entry in a product that versions. A state-mutating writer: exit 0
+  when it ran (moved, would move, or nothing to do), **1 `refused:`** — nothing written — when a tag
+  fails the release validator, when the release gate's own readers would see the resulting live log
+  differently, when git tracks the live log but would ignore the archive, when the log is unreadable,
+  or when a write fails (every file is restored); 2 on a usage error. `--json` keys:
+  `applied`, `threshold_bytes`, `live_bytes_before`, `live_bytes_after`, `product_versions`, `kept`,
+  `moved`, `pinned_bytes`, `buckets{YYYY-MM: count}`, `written[]`.
 - **Derived-view convergence** — `lifecycle-repair [--apply] [--json]` (mutating with `--apply`):
   removes the retired `views_enabled` key and `scope_rollups` block, labels a derived
   `release-notes.md` as history, and deletes `## Status` notes instructing readers not to hand-edit
@@ -283,7 +294,7 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   to `unknown` rather than a reassuring `free`).
 - **Repo lifecycle** — `migrate-plugin`, `init-product`, `update-gitignore [--dry-run]`,
   `audit-learnings`, `learnings-obligation`, `norm-index-scaffold`, `reanchor`,
-  `lifecycle-repair`, `plan-backfill`, `repo-disable` (dry-run-by-default where they mutate, with
+  `lifecycle-repair`, `plan-backfill`, `archive-change-log`, `repo-disable` (dry-run-by-default where they mutate, with
   one stated exception). **`update-gitignore` is the exception: it repairs by default and
   previews only under `--dry-run`.** It is called as a repair step by `/prawduct:doctor`,
   which is why the default is the mutating one — but a reader who assumed the blanket
@@ -343,7 +354,7 @@ allowlist; `#667` carries the audit.
 Safe/idempotent notes: consolidation and fact-appends are **idempotent** (identity fixed at
 dispatch); state-mutating lifecycle commands (`migrate-plugin`, `init-product`, `coverage-scaffold`,
 `repo-disable`, `audit-learnings`, `learnings-obligation`, `norm-index-scaffold`,
-`reanchor`, `lifecycle-repair`, `plan-backfill`) default to a
+`reanchor`, `lifecycle-repair`, `plan-backfill`, `archive-change-log`) default to a
 **dry run** and require
 `--apply` to write. The split is **scope, not danger**: a command acting on one file the operator
 named writes on invocation (`archive-plan`), one that walks a tree and decides for itself which
@@ -424,10 +435,20 @@ files to touch previews first. That framing is descriptive — the binding rule 
     `schema_version` (see Versioning).
   - `render-dispositions --json` → the disposition census, for a change-log entry, a PR body, or any
     consumer that would otherwise recount findings by hand. Top-level `schema_version` (the second
-    report to carry one), `reviews[]` (each `review_id`, `ts`, `mode`, `scope`, `chunk`, `rows[]`),
-    and `summary` (`findings`, `by_severity`, `by_state`, `undispositioned`, `owner_ruled`,
-    `conflicts`). Each row: `fid`, `severity`, `goal`, `title`, `state`, `reason`, `backlog_id`,
-    `owner_ruling`, `conflict`.
+    report to carry one), `reviews[]` (each `review_id`, `ts`, `mode`, `scope`, `chunk`, `rows[]`,
+    `observations[]`), and `summary` (`findings`, `by_severity`, `by_state`, `undispositioned`,
+    `owner_ruled`, `conflicts`, `observations`, `observations_answered`). Each row: `fid`,
+    `severity`, `goal`, `title`, `state`, `reason`, `backlog_id`, `owner_ruling`, `conflict`. Each
+    observation row: `oid`, `goal`, `title`, `state`, `reason`, `backlog_id`, `paths` — no
+    severity, and its unanswered state is `noted` rather than `undispositioned`, because an
+    observation is explicitly not work the record demands. The two lists and the two tallies stay
+    separate: a consumer that summed them would report more findings than the review made.
+    **This report bumps `schema_version` on any change to its key SET, not only a breaking one**
+    (the telemetry report below follows the same rule). The reason
+    is specific to a report of optional-by-nature lists: without a bump, a consumer meeting a
+    report with no `observations` key cannot tell whether the review demoted nothing or the writer
+    predates the field, and those call for opposite handling. Version 2 added the observation list
+    and its two summary counts.
   - **Hook context channel:** the SessionStart digest emits the Claude Code
     `{"hookSpecificOutput":{"hookEventName":…,"additionalContext":…}}` injection shape.
 
@@ -602,7 +623,8 @@ forward-incompatibility detection. Status: active.**
   cross-version compatibility mechanism.
 - **New-gate attribution:** each gate carries a `since` version; a block from a gate new in the
   current release is labelled as such, so a newly-enforced rule is never a silent surprise.
-- **Telemetry report** carries its own `schema_version`, bumped on breaking key changes, so a
+- **Telemetry report** carries its own `schema_version`, bumped on any change to its key set
+  (`plugin/docs/governance-telemetry.md`, pinned by `tests/test_review_stats.py`), so a
   cross-project aggregator can trust the shape.
 
 **Deferral with a revisit trigger:** no external-consumer versioning of the CLI subcommand surface

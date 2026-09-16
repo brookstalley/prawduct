@@ -132,7 +132,8 @@ FROZEN_BANNER = """# Release Notes — FROZEN ARCHIVE
 >
 > Everything below is preserved as it stood when this file was frozen. It is
 > **not** updated for later releases, so a release missing here has not
-> necessarily gone unreleased — look it up in `change-log.md`.
+> necessarily gone unreleased — look it up in `change-log.md`, or in
+> `change-log-archive/` once its entries have moved there.
 
 """
 

@@ -86,7 +86,7 @@ out where reality still lags.
   Status: steady-state.
 - **`backlog_service_repo` selects which backlog store is authoritative; once it is set, `.prawduct/backlog.md` is frozen history and no reader treats it as live state.** Readers reach the backlog through `/prawduct:backlog`, which routes on both sides of a cutover. A direct read of the markdown file is permitted only after checking the scalar and finding it **unset**, and only for detail the skill's views don't carry (full item bodies, for instance); writes never bypass the skill on either backend.
   Why: the markdown file survives the cutover intact, so every item archived at cutover still parses as open — a direct read answers with identical confidence whether it is right or months stale, and a confident wrong answer is indistinguishable from a clean bill of health. The gate, not a blanket ban, is the rule: banning direct reads outright would retire the janitor's full-body overlap read with no live replacement, which is the bespoke per-reader projection the read-through cache exists to avoid.
-  Status: **ratified but unenforced on `main` as of v3.1.1** — the norm binds, its enforcement does not exist in the shipped tree. `backlog_service_repo` is read by no code and appears nowhere in `project-state.yaml` at v3.1.1: the release deliberately withheld the whole backlog-service surface, and the scalar went with it. The norm is therefore vacuously satisfied (there is one backend, so nothing can read the wrong one) and returns to steady-state when v3.2.0 lands the adapter. Do not "fix" this by deleting the norm — it was legitimately ratified 2026-07-20 and the code is on `feature/backlog-service`.
+  Status: **steady-state** as of the 2026-09-16 Norm Health sweep — the condition this entry named for its own return was met and the entry had not been moved. It read "ratified but unenforced on `main` as of v3.1.1 … `backlog_service_repo` is read by no code and appears nowhere in `project-state.yaml` … returns to steady-state when v3.2.0 lands the adapter"; v3.2.0 shipped, the scalar is set in `project-state.yaml`, and 44 sites across `lib/` and `bin/` read it. Mechanism: the adapter routes on the scalar, `norm_probes` and `briefing` gate on it, `init_product._record_backlog_service_repo` writes it at onboarding, and `release_readiness` cites this Direction entry when it freezes the markdown file. The v3.1.1 text stood for roughly four releases after it stopped being true — a Status that names its own exit condition still needs a walker, and this sweep is it.
   Retroactivity: migrate — the reader inventory was swept across `skills/` and `lib/` at birth and every reader is gated (`lib/` probes and the briefing guard on the scalar; the Critic, PR reviewer, and janitor state dormancy). `skills/pr/SKILL.md` had overstated the rule as an unconditional ban and was corrected in the birthing changeset. No residual sites, so no tracking item.
 
 ## Entities
@@ -113,14 +113,24 @@ An absent file is the empty store.
 
 - **Review fact `body`** — the tree interval reviewed (`base_tree`/`head_tree` and their commits),
   `mode`, `roster` (roles + models), `files_reviewed`/`files_changed`, `findings[]` (each with a
-  stable `fid`, `goal`, `severity`, `title`, `recommendation`), and `counts`.
+  stable `fid`, `goal`, `severity`, `title`, `recommendation`), `counts`, and `observations[]` —
+  what a `verify-resolutions` pass DEMOTED, each with an `oid`, `goal`, `title` and
+  `recommendation` and no severity. An observation is carried on `record_lint`'s terms: data
+  *about* the review, not a finding *in* it. It never reaches `counts`, composition walks
+  `findings` alone, and so no gate can read one. What it buys is an id the builder can answer
+  against, so declining an observation stops costing the reasoning — before it had one, the only
+  discharges were to FIX it (moving the tree, buying a round) or to say nothing. The two id
+  namespaces are disjoint (`R-1` against `O-1`), which is what lets one join key address both.
 - **Resolution fact `body`** — points at the finding it resolves (`{review_id, fid}`), the
   `disposition` (`fixed` | `waived`), the `verified_by` review that attests it, the `at_tree` it was
   verified against, and a `rationale` (required for `waived`). A resolution may only originate from a
   `verify-resolutions` review and must reference a finding already in the store (fail-closed).
 - **Disposition fact `body`** — the builder's answer to a finding that was *not* fixed: the target
-  (`{review_id, fid}`), an `action` (`accept` | `file`), a `reason` (accept) or `backlog_id` (file),
-  and an `owner_ruling` (required to accept a BLOCKING finding). Field named `action`, not
+  (`{review_id, fid}` — a finding's `fid` **or** an observation's `oid`, the one widening the
+  additive-first norm sanctions), an `action` (`accept` | `file` | `fixed`), a `reason` (accept),
+  `backlog_id` (file) or `paths` (fixed — refused on any judgeable path, so it can never claim a
+  review nobody ran), and an `owner_ruling` (required to accept a BLOCKING finding). Field named
+  `action`, not
   `disposition`, because that word already carries two other vocabularies here — release scope
   (`ships`/`withheld`) and resolution (`fixed`/`waived`). **A disposition never resolves anything:**
   gate composition filters on `kind` before reading a body, so a BLOCKING finding stays blocking until
@@ -195,13 +205,18 @@ of `pending` | `verified` | `accepted`). Gates the PR when `operator_verificatio
 #### Change Log — `.prawduct/change-log.md`
 
 Committed narrative log, kept separate from `project-state.yaml` for merge-friendliness (state holds
-only a compact `change_log_history`).
+only a compact `change_log_history`). **Bounded:** once it passes the oversized threshold,
+`archive-change-log` moves shipped history verbatim into `.prawduct/change-log-archive/YYYY-MM.md`
+(committed, same tier; one home per entry). Release-pending entries always stay in the live file.
 
 ### Tier 3 — Ephemeral / derived (per-session or regenerable)
 
 - **`.critic-findings.json`** (gitignored) — derived *view* of the latest review fact, carrying a
   `fact_id` back-pointer. Regenerated by code on every consolidation; read only for content
-  (briefing, builders), never for a verdict. Between a `critic-begin` and the consolidation that
+  (briefing, builders), never for a verdict. It carries the fact's `observations` as well as its
+  findings, because the `O-n` ids are assigned at consolidation — the reviewer wrote prose and
+  never saw one — so this is the only surface on which a builder told it may ACCEPT an observation
+  can name the one it means. Between a `critic-begin` and the consolidation that
   replaces it the record holds the *previous* review, so `critic-begin` stamps it
   `superseded_by` / `superseded_at` / `superseded_notice` (first keys in the file) and leaves every
   other field untouched — the view says which review it is and which one displaced it, rather than

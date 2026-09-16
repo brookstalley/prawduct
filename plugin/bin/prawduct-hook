@@ -6649,6 +6649,119 @@ def cmd_plan_backfill(project_dir: Path, argv: list[str]) -> int:
     return 1 if incomplete else 0
 
 
+def cmd_archive_change_log(project_dir: Path, argv: list[str]) -> int:
+    """Move change-log history out of the live log into ``change-log-archive/``.
+
+    A no-op until ``.prawduct/change-log.md`` exceeds the repo's oversized
+    threshold; then it is cut to half of it, entries moved verbatim into
+    ``YYYY-MM.md`` buckets. Release-pending entries never move in a product that
+    versions. Selection and its reasons: ``lib/change_log_archive.py``.
+
+    Previews unless ``--apply``, because it decides for itself which entries to
+    move. Exit 0 when it ran (moved, would move, or nothing to do), 1 when it
+    refused — a tag the release validator rejects, or an unreadable log — with
+    nothing written, 2 on a usage error.
+    """
+    refused = _reject_unknown_args("archive-change-log", argv, {"--apply", "--json"})
+    if refused is not None:
+        return refused
+    apply = "--apply" in argv
+    as_json = "--json" in argv
+
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import change_log_archive, core  # noqa: PLC0415 — lazy keeps top-level cheap
+    except ImportError as exc:
+        print(f"error: archive-change-log could not import the plugin lib/ ({exc})",
+              file=sys.stderr)
+        return 1
+
+    prawduct_dir = _gitstate().get_prawduct_dir(project_dir)
+    live = prawduct_dir / change_log_archive.LIVE_NAME
+    if not live.is_file():
+        print("archive-change-log: no .prawduct/change-log.md — nothing to archive.")
+        return 0
+    try:
+        text = live.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        print(f"refused: cannot read .prawduct/change-log.md: {exc}", file=sys.stderr)
+        return 1
+    threshold = core.oversized_file_threshold(prawduct_dir)
+    versions = change_log_archive.product_versions(
+        text, prawduct_dir / change_log_archive.ARCHIVE_DIR_NAME
+    )
+    try:
+        selection = change_log_archive.select(text, threshold=threshold, versions=versions)
+    except change_log_archive.ArchiveRefused as exc:
+        print(
+            f"refused: {exc}",
+            file=sys.stderr,
+        )
+        return 1
+
+    written: list[Path] = []
+    if apply and selection.moved:
+        if change_log_archive.archive_would_be_ignored(prawduct_dir.parent):
+            print(
+                "refused: git tracks .prawduct/change-log.md but would ignore "
+                f"{change_log_archive.ARCHIVE_DIR_REL}/, so committing the move would drop the "
+                "moved entries from history — nothing moved. Un-ignore it (for a `.prawduct/*` "
+                f"pattern add `!{change_log_archive.ARCHIVE_DIR_REL}/` to .gitignore) and re-run.",
+                file=sys.stderr,
+            )
+            return 1
+        try:
+            written = change_log_archive.apply(prawduct_dir, selection)
+        except (OSError, UnicodeDecodeError) as exc:
+            print(f"refused: could not write the archive, and every file was restored: {exc}",
+                  file=sys.stderr)
+            return 1
+
+    if as_json:
+        print(json.dumps(
+            {
+                "applied": bool(apply and selection.moved),
+                "threshold_bytes": threshold,
+                "live_bytes_before": selection.live_bytes,
+                "live_bytes_after": selection.kept_bytes if selection.moved else selection.live_bytes,
+                "product_versions": versions,
+                "kept": len(selection.kept),
+                "moved": len(selection.moved),
+                "pinned_bytes": selection.pinned_bytes,
+                "buckets": {k: len(v) for k, v in sorted(selection.buckets.items())},
+                "written": [str(p) for p in written],
+            },
+            indent=2,
+        ))
+        return 0
+
+    mode = "apply" if apply else "dry-run"
+    if selection.live_bytes <= threshold:
+        print(f"archive-change-log ({mode}): change-log.md is {selection.live_bytes // 1000}KB, "
+              f"within its {threshold // 1000}KB threshold — nothing to move.")
+        return 0
+    if not selection.moved:
+        print(f"archive-change-log ({mode}): change-log.md is {selection.live_bytes // 1000}KB, "
+              "but every entry in it is release-pending or undated, and those stay live. "
+              "It shrinks when that work ships.")
+        return 0
+    verb = "moved" if apply else "would move"
+    print(f"archive-change-log ({mode}): {verb} {len(selection.moved)} entr"
+          f"{'y' if len(selection.moved) == 1 else 'ies'} into "
+          f"{len(selection.buckets)} archive file(s); change-log.md "
+          f"{selection.live_bytes // 1000}KB → {selection.kept_bytes // 1000}KB.")
+    for bucket, blocks in sorted(selection.buckets.items()):
+        print(f"  {change_log_archive.ARCHIVE_DIR_REL}/{bucket}.md  +{len(blocks)}")
+    if selection.pinned_bytes > threshold // 2:
+        print(f"  release-pending entries alone are {selection.pinned_bytes // 1000}KB, so the "
+              "live log stays above half its threshold until that work ships.")
+    if not apply:
+        print("  Re-run with --apply to move them. Entries are moved verbatim, never deleted.")
+    return 0
+
+
 def cmd_check_learnings_pairing(project_dir: Path, argv: list[str] | None = None) -> int:
     """DEPRECATED and inert — prints a notice, writes nothing, exits 0.
 
@@ -7055,7 +7168,7 @@ _USAGE = (
     "infer-critic-mode [args]|"
     "resolve-base|version|print-install-reference|"
     "evidence {status|list [--kind <k>] [-n <count>]}|advisory <subcmd> [args]|"
-    "disposition <review-id> <fid> {--accept <reason>|--file <backlog-id>} [--owner-ruling <text>]|"
+    "disposition <review-id> <fid|oid> {--accept <reason>|--file <backlog-id>} [--owner-ruling <text>]|"
     "render-dispositions [--review <id>|--scope <s>] [--json]|"
     "coverage-status [--json]|coverage-scaffold [--apply] [--json]|"
     "migrate-plugin [--apply] [--json]|init-product <target> --name <name> [--backlog-repo owner/repo] [--apply] [--json]|"
@@ -7066,6 +7179,7 @@ _USAGE = (
     "norm-index-scaffold [--apply] [--json]|reanchor [--apply] [--json]|"
     "lifecycle-repair [--apply] [--json]|"
     "plan-backfill [--apply] [--json] [--date YYYY-MM-DD]|"
+    "archive-change-log [--apply] [--json]|"
     "repo-disable [--local] [--apply] [--json]}"
 )
 
@@ -7434,6 +7548,7 @@ _EPHEMERAL_SAFE_COMMANDS = frozenset({
 # Read-only reports that mutate only under `--apply` — a third shape, neither
 # whole-command nor per-op.
 _EPHEMERAL_APPLY_GATED_COMMANDS = frozenset({
+    "archive-change-log",
     "coverage-scaffold",
     "lifecycle-repair",
     "norm-index-scaffold",
@@ -8024,6 +8139,8 @@ def _dispatch() -> int:
         return cmd_lifecycle_repair(project_dir, sys.argv[2:])
     elif command == "plan-backfill":
         return cmd_plan_backfill(project_dir, sys.argv[2:])
+    elif command == "archive-change-log":
+        return cmd_archive_change_log(project_dir, sys.argv[2:])
     elif command == "repo-disable":
         return cmd_repo_disable(project_dir, sys.argv[2:])
     else:

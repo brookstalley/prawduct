@@ -82,7 +82,13 @@ and `learning.fired` when a Critic finding quotes a rule's opening words (record
 `critic-consolidate`, joined to the review). Both are written by the plugin, never by hand.
 `review-stats` reports them: a `learning` block counting writes, citations and the distinct
 rules behind each, closing with the number the corpus cannot ask itself — how many written
-rules no review has ever cited. Its `--json` `schema_version` moves to 3 (2 for the block, 3 for `units_uncited`, the set of written rules no review cited).
+rules no review has ever cited. Its `--json` `schema_version` moves to 4 (2 for the block, 3 for `units_uncited`, the set of written rules no review cited, 4 for the verify-pass `observations` counts).
+
+**The change log stays bounded.** Once `.prawduct/change-log.md` passes its size threshold, `/prawduct:pr`
+moves shipped history verbatim into `.prawduct/change-log-archive/YYYY-MM.md` (release-pending entries
+stay live), and the size nudge hands the agent that command instead of advice nobody could act on.
+**Downgrade caution:** an older plugin reads only the live log, so after your repo has archived, do not
+roll back past this release — or copy the archived entries back into `change-log.md` first.
 
 ## v3.5.0
 

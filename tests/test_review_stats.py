@@ -59,8 +59,9 @@ def _event(
     scope: str | None = "feat-a",
     duration: float | None = 100,
     findings: list[dict] | None = None,
+    observations: list[dict] | None = None,
 ) -> dict:
-    return {
+    event = {
         "schema_version": 1,
         "event": kind,
         "ts": "2026-06-10T12:00:00Z",
@@ -77,6 +78,12 @@ def _event(
             "summary": "Review.",
         },
     }
+    # Absent, not empty, by default: every event written before observations
+    # were persisted lacks the key, and that must stay distinguishable from a
+    # review that demoted nothing.
+    if observations is not None:
+        event["review"]["observations"] = observations
+    return event
 
 
 def _write_ledger(repo: Path, lines: list) -> None:
@@ -217,6 +224,71 @@ class TestAggregationMath:
         assert modes == {("pr", "pr"), ("pr", "pr-custom")}
 
 
+class TestObservationCounts:
+    """A verify pass rates new findings BLOCKING-only and demotes the rest to
+    observations, which never reach `findings`. Without their count, a
+    narrowing that suppresses real findings is invisible in this report."""
+
+    VERIFY_MODE = "verify-resolutions (delta review, prior findings only)"
+
+    def _obs(self, n: int) -> list[dict]:
+        return [
+            {"id": f"O-{i}", "name": f"o{i}", "goal": "4", "recommendation": "r"}
+            for i in range(1, n + 1)
+        ]
+
+    def test_demoted_items_counted_per_mode(self, tmp_path):
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [
+            _event(mode=self.VERIFY_MODE, observations=self._obs(3)),
+            _event(mode=self.VERIFY_MODE, observations=self._obs(2)),
+            _event(mode=CUMULATIVE_MODE, observations=[]),
+        ])
+        report = json.loads(_run(repo, "--json").stdout)
+        assert report["overall"]["observations"] == 5
+        assert report["overall"]["reviews_recording_observations"] == 3
+        groups = {e["mode"]: e for e in report["by_role_model_mode"]}
+        assert groups["verify-resolutions"]["observations"] == 5
+        assert groups["cumulative"]["observations"] == 0
+        # Observations are not findings: they move no severity count.
+        assert report["overall"]["findings"] == {
+            "blocking": 0, "warning": 0, "note": 0, "other": 0,
+        }
+
+    def test_events_without_the_key_are_not_counted_as_zero(self, tmp_path):
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [
+            _event(mode=self.VERIFY_MODE),  # written before the field existed
+            _event(mode=self.VERIFY_MODE, observations=self._obs(1)),
+            _event(mode=self.VERIFY_MODE, observations="garbage"),
+        ])
+        overall = json.loads(_run(repo, "--json").stdout)["overall"]
+        assert overall["reviews"] == 3
+        assert overall["observations"] == 1
+        assert overall["reviews_recording_observations"] == 1
+
+    def test_non_object_entries_are_not_counted(self, tmp_path):
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [
+            _event(mode=self.VERIFY_MODE, observations=[*self._obs(1), "x", 7]),
+        ])
+        overall = json.loads(_run(repo, "--json").stdout)["overall"]
+        assert overall["observations"] == 1
+        assert overall["reviews_recording_observations"] == 1
+
+    def test_human_rendering_distinguishes_unrecorded_from_zero(self, tmp_path):
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [
+            _event(mode=self.VERIFY_MODE, scope="new", observations=self._obs(4)),
+            _event(mode=CHUNK_MODE, scope="old"),
+        ])
+        lines = _run(repo).stdout.splitlines()
+        new = next(ln for ln in lines if ln.startswith("  new: "))
+        old = next(ln for ln in lines if ln.startswith("  old: "))
+        assert "observations 4 in 1 recording review(s)" in new
+        assert "observations not recorded" in old
+
+
 class TestModelCanonicalization:
     """Model-id aliases for one model fold to a single family bucket so the
     reviewer-model A/B isn't fragmented across id strings; distinct families
@@ -304,7 +376,9 @@ class TestJsonSchemaStability:
         # version moves with it — that is the whole contract this class exists
         # to hold, and a silent add would break TEL-7A4X's consumers quietly.
         # 2 -> 3 on 2026-09-03: `learning` gained `units_uncited` (a key change).
-        assert report["schema_version"] == 3
+        # 3 -> 4 on 2026-09-16 (develop sync): every stat block gained
+        # `observations` and `reviews_recording_observations` (a key change).
+        assert report["schema_version"] == 4
         assert report["project"] == "repo"
 
     def test_group_entry_keys_pinned(self, tmp_path):
@@ -316,6 +390,7 @@ class TestJsonSchemaStability:
         stat_keys = [
             "reviews", "duration_total_seconds", "duration_median_seconds",
             "findings", "findings_per_review", "actionable_rate",
+            "observations", "reviews_recording_observations",
         ]
         assert list(report["overall"]) == stat_keys
         assert list(report["by_role_model_mode"][0]) == ["role", "model", "mode", *stat_keys]
