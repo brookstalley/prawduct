@@ -50,7 +50,11 @@ last_validated: 2026-09-16
 
 ## Requirements Confidence
 
-**Level:** Medium
+**Level:** High for Chunk 01, Medium for Chunks 02-03.
+
+**Why the split:** the fork below was Chunk 01's only open question and it is now decided against
+the three consumer queries — see "Decision — how an accepted observation is recorded" in Chunk 01.
+Chunks 02 and 03 stay Medium on the reasons that follow.
 
 **Why:** The problem is measured, not inferred — 9 root causes against 728 review facts, an
 independent consumer report (#716) corroborating two of them, and a 2026-09-16 re-measurement
@@ -59,10 +63,10 @@ confirming nothing improved in the three weeks after (mean reviews/chain 2.5 →
 three by leverage, and two of them are message/composition changes over values the framework
 already computes.
 
-**What is NOT confirmed, and it is Chunk 01's central fork:** *how* an accepted observation is
-recorded. `evidence.KNOWN_KINDS` is `{review, resolution, disposition}` and
-`dispositions.record` refuses a fid it cannot find, so today an observation has no id to
-disposition against. Two routes, and they differ in what they lock in:
+**Chunk 01's central fork, DECIDED 2026-09-16** — kept here because the reasoning the two routes
+were weighed on is what a later reader needs; the answer and its consumer-query table are in
+Chunk 01. `dispositions.record` refuses a fid it cannot find, so today an observation has no id to
+disposition against. Two routes were on the table, and they differ in what they lock in:
 
 - **(a) Persist demoted observations as findings** at a severity no gate reads. Gives every
   observation a real fid; changes the shape of the review fact.
@@ -78,8 +82,8 @@ yield query that `nonfunctional-requirements.md`'s proportionality norm is waiti
 this control catch, and what was waved through?"), and a human reading back why a round was not
 spent. **Chunk 01 does not design fields until those three have stated their queries.**
 
-**What would raise this to High:** answering the fork above with the three consumer queries
-written down. That is Chunk 01's first deliverable and is cheap — it is a decision, not a spike.
+**What raised Chunk 01 to High:** the fork answered with the three consumer queries written down,
+which was its first deliverable.
 
 **Open assumptions:**
 
@@ -132,7 +136,7 @@ a re-measurement to point at. **That is a judgment call and it may be the wrong 
 
 ## Status
 
-- [ ] Chunk 01: An observation can be accepted on the record, not only fixed (RC7)
+- [x] Chunk 01: An observation can be accepted on the record, not only fixed (RC7)
 - [ ] Chunk 02: A clean delta stops reading as branch clearance (RC8)
 - [ ] Chunk 03: A provably unnecessary round is granted, not narrated and charged (RC5)
 
@@ -172,6 +176,59 @@ rounds 4 and 5 of six.
 - Full suite green.
 - `/prawduct:critic` — findings resolved.
 
+### Decision — how an accepted observation is recorded (deliverable 1)
+
+**Chosen: a sibling `observations[]` array on the review fact body**, ids `O-n`, reachable by
+`disposition` through a widened id domain. Owner-confirmed 2026-09-16. This is route (a) from
+Requirements Confidence, corrected on one detail: the observations do **not** enter `findings`.
+
+**What the code said that the fork's framing did not.** Observations are not data anywhere today
+— `VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE` routes them to an `### Observations` heading *in prose*,
+and the partial's only structured channel is `findings[]`. So route (b) does not merely leave the
+subject unrecoverable later; the subject is never captured at all, and a disposition against it
+would be a reason string bolted to an opaque id.
+
+**The three consumer queries, answered before any field was designed:**
+
+| Consumer | Its query | What it needs recorded | (a) as written | (b) | Chosen |
+|---|---|---|---|---|---|
+| `render-dispositions` | is this answered? | a joinable id, a title to show | works, but observations enter `counts`/`by_severity` and every un-accepted one reads `undispositioned` — record-debt the demotion exists to remove | invisible: `census` builds rows from the fact's `findings`, and `prior_dispositions` skips a disposition whose finding is not indexed | separate array + separate census block; `undispositioned` keeps counting findings only |
+| the yield query (`nonfunctional-requirements.md` proportionality) | what did this control catch, and what did it wave through? | the observation's title, goal and cited files | answerable | unanswerable — acceptances countable, subjects lost | answerable, and it is what makes over-firing of the verify-mode narrowing visible for the first time |
+| a human reading back | why was a round not spent on this? | subject and reason co-located | yes | reason without subject | yes |
+
+**Why a sibling array rather than findings.** `build_fact_body` already carries `record_lint` on
+exactly these terms — *data about the review, not a finding in it; never reaches `counts`, so it
+cannot move a verdict, and no gate reads it.* An observation is that shape. Keeping it out of
+`findings` is what makes this chunk's "no gate's verdict changes" true **by construction** rather
+than by audit: `coverage_algebra` never sees the array at all.
+
+**Additive, per `api-contract.md`.** `--accept` keeps its meaning exactly — record why this will
+not be fixed. What widens is the id domain it accepts, which is the spelling that norm sanctions.
+
+**A recorded position is departed from here, and it is #585's.** `#585` (*verify-mode demotion
+count never reaches the evidence store*) scopes out *"persisting the demoted observations
+themselves (deliberately not facts)"* and asks only for a **count**. A count cannot be
+dispositioned, so it cannot deliver this chunk's requirement. The departure is narrower than it
+reads: nothing here mints an observation *fact* — the array is a field on the review fact, beside
+`findings` and `record_lint`, so the store grows no new kind. #585's own acceptance falls out as
+a by-product (the count is `len(observations)`); its remaining leg is surfacing that count in
+`review-stats`, which is **not** in this chunk's Done-when and stays #585's.
+
+**Resolutions stay findings-only.** `_known_findings_index` is not widened — a resolution may
+still only target a finding. That is the fail-closed side of the join and nothing here needs it.
+
+**Why `O-n` and not `OBS-n`.** #716's own reproduction reaches for `OBS-3`, so it is the spelling
+the next reader will try. It is already taken: `OBS-` is this repo's backlog **area** prefix for
+observability (`OBS-4C1K`, cited in `docs/norms.md` and `test_norm_probes.py`). An id vocabulary
+shared between review observations and backlog items would collide in exactly the records that
+join on ids.
+
+**#585 and #167 are reconciled on the tracker**, which is where the departure and the dependency
+respectively had to land — a comment on an existing item is not filing and is unrestricted
+(`project-preferences.md` § Backlog filing). #585 carries the departure from its own Scope-out and
+keeps its `review-stats` leg; #167 is told the gap its design calls "currently-unfiled" has
+landed, and is warned about both the non-verify refusal and the `OBS-` collision above.
+
 ## Chunk 02: A clean delta stops reading as branch clearance (RC8)
 
 **Type:** code
@@ -203,11 +260,34 @@ later and more expensively.
 - Full suite green.
 - `/prawduct:critic` — findings resolved.
 
+**Riding this chunk's commit — two notes from Chunk 01's review.** Both are judgeable fixes that
+would each have bought their own round; carried here because this chunk buys one anyway. They are
+written down because an unwritten deferral is a drop.
+
+1. **Pin the `observations` key in `goals-1-3.md`.** Chunk 01 raised that file's ceiling 2345 →
+   2400 arguing the JSON block must SHOW the key a reviewer is told to write, and then pinned
+   nothing — `test_carries_what_the_pointers_used_to_fetch` does not assert it, and the file sits
+   at 2399 against the new ceiling, so the next editor needing a token trims the unguarded clause.
+   The twin carrier in `VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE` IS pinned, which is why this is a
+   note and not worse.
+2. **Say `<fid|oid>` where the builder is actually told what to type.** `dispositions._RECORD_USAGE`
+   and `review-cycle.md`'s operational disposition section both still read `<fid>`; the widened
+   domain is stated eight lines earlier, under a re-review heading. Not a contradiction, and the
+   rendered census teaches the rule — but the usage string is what a refused invocation prints.
+
 ## Chunk 03: A provably unnecessary round is granted, not narrated and charged (RC5)
 
 **Type:** code
 
 **Ordered last because it is the only chunk that grants authority.** See the advisory note.
+
+**An input Chunk 01 changed, surfaced by its review.** `coverage.diagnose_fix_churn` derives the
+file set it reasons over from `findings` alone. Observations now carry `files` too, and they are
+invisible to it — so an edit confined to files that only an OBSERVATION named does not look like
+churn to the predicate, and the round is charged. Decide this deliberately rather than by
+omission: widening the predicate to observation-cited files widens a GRANT, which is authority,
+so the fail-closed rule above governs it. Leaving it narrow is a defensible answer and is the
+current behaviour; what is not defensible is not noticing.
 
 **The defect.** `coverage.diagnose_fix_churn` already detects "the whole uncovered span is a
 clean review of this branch plus edits confined to files that review's own findings named." Its

@@ -156,8 +156,9 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   inverse), `evidence status|list`, `ledger-append`
   (single-writer, mutating), `review-stats`, `disposition` (append a finding's ACCEPT/FILE/FIXED
   disposition fact, mutating — `--fixed <paths>` records a fix that bought no round and is refused
-  on any judgeable path or any BLOCKING finding), `render-dispositions` (derive the disposition
-  census), plus the
+  on any judgeable path or any BLOCKING finding; the id argument takes a finding's `fid` **or** an
+  observation's `oid`, the flags meaning exactly what they mean for a finding),
+  `render-dispositions` (derive the disposition census), plus the
   coverage/mode gate wrappers (`verify-coverage`, `check-cumulative-critic`, `infer-critic-mode`,
   `classify-diff-risk`, `verify-chunk-refs`), plus `verify-records` (the deterministic record
   checks, read-only and advisory — `critic-begin` runs the same pass into the manifest).
@@ -403,10 +404,20 @@ files to touch previews first. That framing is descriptive — the binding rule 
     `schema_version` (see Versioning).
   - `render-dispositions --json` → the disposition census, for a change-log entry, a PR body, or any
     consumer that would otherwise recount findings by hand. Top-level `schema_version` (the second
-    report to carry one), `reviews[]` (each `review_id`, `ts`, `mode`, `scope`, `chunk`, `rows[]`),
-    and `summary` (`findings`, `by_severity`, `by_state`, `undispositioned`, `owner_ruled`,
-    `conflicts`). Each row: `fid`, `severity`, `goal`, `title`, `state`, `reason`, `backlog_id`,
-    `owner_ruling`, `conflict`.
+    report to carry one), `reviews[]` (each `review_id`, `ts`, `mode`, `scope`, `chunk`, `rows[]`,
+    `observations[]`), and `summary` (`findings`, `by_severity`, `by_state`, `undispositioned`,
+    `owner_ruled`, `conflicts`, `observations`, `observations_answered`). Each row: `fid`,
+    `severity`, `goal`, `title`, `state`, `reason`, `backlog_id`, `owner_ruling`, `conflict`. Each
+    observation row: `oid`, `goal`, `title`, `state`, `reason`, `backlog_id`, `paths` — no
+    severity, and its unanswered state is `noted` rather than `undispositioned`, because an
+    observation is explicitly not work the record demands. The two lists and the two tallies stay
+    separate: a consumer that summed them would report more findings than the review made.
+    **This report bumps `schema_version` on any change to its key SET, not only a breaking one**
+    (the telemetry rule below is the narrower one, and it governs the telemetry report). The reason
+    is specific to a report of optional-by-nature lists: without a bump, a consumer meeting a
+    report with no `observations` key cannot tell whether the review demoted nothing or the writer
+    predates the field, and those call for opposite handling. Version 2 added the observation list
+    and its two summary counts.
   - **Hook context channel:** the SessionStart digest emits the Claude Code
     `{"hookSpecificOutput":{"hookEventName":…,"additionalContext":…}}` injection shape.
 

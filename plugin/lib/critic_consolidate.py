@@ -687,6 +687,16 @@ def account_for_prior_blockers_directive(carried: list[dict]) -> str:
 #: slot for anything else, so "in prose" was not enough — the text names an
 #: `### Observations` heading and asks for a count, and both are pinned.
 #:
+#: **There are now TWO destinations and the text must keep naming both.** The
+#: partial's ``observations`` array is where the RECORD goes: it gives each one
+#: an id ``disposition`` can join on, so declining an observation stops costing
+#: the reasoning, and it makes the demotion rate a query over the store rather
+#: than a number the reviewer asserts about its own output. The report heading
+#: is where the BUILDER meets them, in the same reading where it decides what
+#: to do — and the cost-bound this whole rule rests on is that the builder
+#: reads them. The two lose different things when dropped, which is why the
+#: count in the report is not redundant with the array.
+#:
 #: **The descent is load-bearing, for the reason
 #: :data:`RESOLUTION_IS_A_CLAIM_DIRECTIVE`'s docstring gives at length.** A
 #: reviewer agrees that re-reviews should not manufacture work and then records
@@ -703,7 +713,12 @@ VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE = (
     " entry the manifest rated below BLOCKING — goes in your report under an"
     " `### Observations` heading, in prose, and NOT into `findings`: a name you"
     " would have chosen differently, prose that could be tighter, a test you"
-    " would have structured another way. Everything the protocol rates BLOCKING"
+    " would have structured another way. Put each one in your partial's"
+    " `observations` array TOO — `{name, goal, recommendation, files?}`, a"
+    " finding minus its severity — which is what lets the builder ACCEPT it on"
+    " the record instead of fixing it just to leave a trace. An entry you rate"
+    " `blocking` is refused there: a BLOCKING item is a finding."
+    " Everything the protocol rates BLOCKING"
     " stays BLOCKING, with no exceptions and no list to check. Five classes are"
     " BLOCKING *in this mode whatever they are rated elsewhere*, because they"
     " are what a fix delta actually gets wrong and demoting one is the only way"
@@ -715,8 +730,8 @@ VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE = (
     " or a workaround where the finding named the root cause, which is equally"
     " grounds to leave that finding OUT of `resolutions`. This list only ADDS to"
     " what the protocol blocks; it never narrows it. Then say how many"
-    " observations you demoted, in one line, so a rule that fired can be told"
-    " apart from a reviewer that found nothing. The demotion is not politeness:"
+    " observations you demoted, in one line, so the builder meets the number"
+    " without opening the record. The demotion is not politeness:"
     " a WARNING recorded here becomes a fix commit, the commit moves the tree,"
     " the moved tree reopens coverage, and the next pass reviews the prose this"
     " fix just wrote — measured at ten rounds on one branch, where rounds five"
@@ -2567,6 +2582,58 @@ def _str_list(val) -> bool:
     return isinstance(val, list) and all(_nonempty_str(v) for v in val)
 
 
+def _validate_observations(observations) -> tuple[bool, str]:
+    """Validate a partial's optional ``observations`` array.
+
+    An observation is what a ``verify-resolutions`` pass demoted: the reviewer
+    would have rated it below BLOCKING, so it is not a finding and no gate ever
+    reads it. It is recorded anyway, for two reasons the prose destination
+    could not serve — the builder can ANSWER one (``prawduct-hook disposition``
+    joins on its id), and the demotion's own yield becomes a query over the
+    store instead of a count the reviewer asserts about itself.
+
+    **Shape mirrors a finding minus its severity**, deliberately: the reviewer
+    writes both arrays in one sitting, and a second vocabulary for the same
+    subject is what it would have to remember rather than transcribe.
+
+    **``severity: blocking`` is REFUSED, and that refusal is the safety
+    property.** The array is outside ``findings``, so nothing downstream gates
+    on it; an item the reviewer itself rates BLOCKING therefore cannot be
+    allowed to sit here, where it would read as handled and gate nothing. It is
+    a contradiction in the record — the directive that produces observations
+    says anything BLOCKING stays a finding — and the fail-closed answer to a
+    record that contradicts itself is to refuse the whole consolidation rather
+    than to pick a half to believe. A lesser ``severity`` is tolerated and NOT
+    carried: every observation is below-blocking by construction, so persisting
+    a rating would only invite the census to re-sort on it, which is the
+    gradient the demotion exists to flatten.
+    """
+    if observations is None:
+        return True, ""
+    if not isinstance(observations, list):
+        return False, "'observations' must be a list"
+    for idx, o in enumerate(observations):
+        if not isinstance(o, dict):
+            return False, f"observation[{idx}] is not an object"
+        for field in ("name", "goal", "recommendation"):
+            if not _nonempty_str(o.get(field)):
+                return False, f"observation[{idx}] missing/empty '{field}'"
+        severity = o.get("severity")
+        if isinstance(severity, str) and severity.strip().lower() == "blocking":
+            return False, (
+                f"observation[{idx}] is rated 'blocking' — a BLOCKING item is a "
+                "finding, never an observation. Nothing gates on an observation, "
+                "so recording it here would read as handled while blocking "
+                "nothing; move it into 'findings'"
+            )
+        # Same tolerance as a finding's ``files``: optional attribution must
+        # never fail-close a whole consolidation, so a malformed element is
+        # normalized away downstream rather than refused here.
+        if "files" in o and not isinstance(o["files"], list):
+            return False, f"observation[{idx}] 'files' must be a list"
+    return True, ""
+
+
 def validate_partial(data) -> tuple[bool, str]:
     """Validate a single reviewer partial.
 
@@ -2579,6 +2646,12 @@ def validate_partial(data) -> tuple[bool, str]:
     verify-resolutions judgment payload (D5): ``disposition`` is ``fixed`` or
     ``waived``, and ``waived`` REQUIRES a non-empty ``rationale`` (R7 — a
     waiver carries its justification).
+
+    ``observations`` is what a verify pass DEMOTED — validated by
+    :func:`_validate_observations`, and refused outright by :func:`consolidate`
+    on any dispatch that is not ``verify-resolutions``. Demotion is a
+    verify-mode rule; an array outside ``findings`` that every mode could write
+    would be a severity-laundering path.
 
     ``dispatch_id`` is the id of the review that dispatched this reviewer, and
     it is deliberately NOT named ``review_id``: ``resolutions[].review_id`` in
@@ -2633,6 +2706,9 @@ def validate_partial(data) -> tuple[bool, str]:
         # META-finding otherwise bricked every review).
         if "files" in f and not isinstance(f["files"], list):
             return False, f"finding[{idx}] 'files' must be a list"
+    ok, why = _validate_observations(data.get("observations"))
+    if not ok:
+        return False, why
     resolutions = data.get("resolutions")
     if resolutions is not None:
         if not isinstance(resolutions, list):
@@ -3289,6 +3365,44 @@ def merge_findings(partials: list[dict]) -> list[dict]:
     return findings
 
 
+def merge_observations(partials: list[dict]) -> list[dict]:
+    """Union every reviewer's observations into the fact-body shape,
+    de-duplicated by ``(goal, name, files)`` with sequential ``oid``s assigned
+    in merge order.
+
+    Deliberately the same rules as :func:`merge_findings`, minus severity:
+    same dedupe key, same ``name`` → ``title`` rename, same deterministic
+    ordering, so one mental model covers both arrays. The id namespace is
+    SEPARATE (``O-1`` against ``R-1``), which is what lets ``disposition`` take
+    either kind of id without a second flag and lets a ``(review_id, id)`` pair
+    stay unambiguous.
+
+    Severity is dropped rather than carried; :func:`_validate_observations`
+    owns that decision and states why.
+    """
+    merged: dict[tuple, dict] = {}
+    for partial in partials:
+        for o in partial.get("observations") or []:
+            files = [
+                x for x in (o.get("files") or []) if isinstance(x, str) and x.strip()
+            ]
+            key = (o["goal"], o["name"], tuple(files))
+            if key in merged:
+                continue
+            entry = {
+                "goal": o["goal"],
+                "title": o["name"],
+                "recommendation": o["recommendation"],
+            }
+            if files:
+                entry["files"] = files
+            merged[key] = entry
+    observations = list(merged.values())
+    for idx, entry in enumerate(observations, start=1):
+        entry["oid"] = f"O-{idx}"
+    return observations
+
+
 # Words that carry no discriminating signal in a finding title. Deliberately
 # short: over-stopping raises the similarity of unrelated titles, which costs
 # precision in the one direction that matters.
@@ -3519,6 +3633,15 @@ def build_fact_body(manifest: dict, partials: list[dict]) -> dict:
         "files_oracle": list(manifest.get("files_oracle") or []),
         "findings": findings,
         "counts": {"blocking": blocking, "warning": warning, "note": note},
+        # What the reviewer DEMOTED — real, worth reading, and deliberately not
+        # work the record demands. Carried on the same terms as ``record_lint``
+        # below: data ABOUT the review, not a finding IN it. It never reaches
+        # ``counts``, so it cannot move a verdict, and no gate reads it —
+        # ``coverage_algebra`` walks ``findings`` alone. What it buys is an id a
+        # builder can ACCEPT against, so declining an observation stops costing
+        # the reasoning, and a demotion rate that is a query over the store
+        # rather than a number the reviewer asserts about its own output.
+        "observations": merge_observations(partials),
         "duration_seconds": max(durations) if durations else None,
         "scope": manifest.get("scope"),
         # How the scope was decided, carried so attribution is auditable rather
@@ -3634,6 +3757,22 @@ def fact_to_cache_record(
         # `--json` readers tolerate unknown ones (api-contract § Direction).
         entry["fix_cost"] = finding_fix_cost(f.get("files"))
         findings.append(entry)
+    # The builder's only surface for these. Observation ids are assigned HERE,
+    # at consolidation — the reviewer wrote prose and never saw an `O-n` — so a
+    # cache without them leaves the builder told it may ACCEPT an observation
+    # and unable to name one. Additive, and severity-free by construction:
+    # there is nothing to rate.
+    observations = []
+    for o in body.get("observations", []):
+        entry = {
+            "oid": o.get("oid"),
+            "goal": o.get("goal"),
+            "summary": o.get("title"),
+            "recommendation": o.get("recommendation"),
+        }
+        if o.get("files"):
+            entry["files"] = list(o["files"])
+        observations.append(entry)
     counts = body.get("counts") or {}
     blocking = counts.get("blocking", 0)
     warning = counts.get("warning", 0)
@@ -3654,6 +3793,7 @@ def fact_to_cache_record(
         "base_reviewed": body.get("base_reviewed"),
         "files_reviewed": list(body.get("files_reviewed") or []),
         "findings": findings,
+        "observations": observations,
         "summary": (
             f"{blocking} blocking, {warning} warning, {note} note "
             f"across {len(roster)} reviewer(s). {verdict}"
@@ -4017,6 +4157,28 @@ def consolidate(project_dir: Path) -> int:
         print(_incomplete_noop_message(
             missing, len(partials), len(roster), review_id, prawduct_dir))
         return 0
+
+    # Observations may only arrive from a verify-resolutions dispatch, and the
+    # reason is the mirror image of the resolutions rule below. Demotion is a
+    # VERIFY-MODE rule: in every other mode an item the reviewer would rate
+    # below BLOCKING is a finding, and findings are what `counts` counts. An
+    # array outside `findings` that any mode could write is therefore a
+    # severity-laundering path — a `final` reviewer could put nine warnings in
+    # it and consolidate a 0/0/0 review with nothing anywhere reporting the
+    # difference. Refusing is the only answer that cannot record a falsehood,
+    # and it costs a conforming reviewer nothing, because outside this mode it
+    # has no reason to write the array at all.
+    for partial in partials:
+        if partial.get("observations") and not is_verify:
+            print(
+                f"critic-consolidate: partial {partial['role']!r} carries "
+                f"observations but the dispatch mode is {manifest['mode']!r} — "
+                "only a verify-resolutions dispatch demotes findings to "
+                "observations; anything you would rate below BLOCKING is a "
+                "finding here; fail-closed.",
+                file=sys.stderr,
+            )
+            return 1
 
     # Resolutions may only arrive from a verify-resolutions dispatch — they
     # WEAKEN gates (they unblock findings), so off-protocol ones fail closed.

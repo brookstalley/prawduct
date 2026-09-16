@@ -476,6 +476,181 @@ class TestValidateManifest:
 # ---------------------------------------------------------------------------
 
 
+class TestObservationsInThePartial:
+    """`verify-resolutions` demotes anything below BLOCKING to an observation.
+    Before they had a structured destination they lived only in the reviewer's
+    prose report, so a builder could FIX one (moving the tree, buying a round)
+    or say nothing (losing the reasoning) — and nothing else."""
+
+    def test_a_partial_with_observations_is_valid(self):
+        p = _partial("reviewer", "abc", observations=[
+            {"name": "A name I'd have picked differently",
+             "goal": "Nothing Is Unintended", "recommendation": "Rename it"}
+        ])
+        ok, reason = cc.validate_partial(p)
+        assert ok, reason
+
+    def test_observations_are_optional(self):
+        ok, reason = cc.validate_partial(_partial("reviewer", "abc"))
+        assert ok, reason
+
+    def test_an_observation_rated_blocking_is_refused(self):
+        """The safety property of putting observations outside `findings`:
+        nothing downstream gates on the array, so an item the reviewer ITSELF
+        rates BLOCKING cannot be allowed to sit in it — it would read as handled
+        and block nothing. The record contradicts itself, and the fail-closed
+        answer is to refuse rather than to pick a half to believe."""
+        p = _partial("reviewer", "abc", observations=[
+            {"name": "Test deleted to make the fix pass",
+             "goal": "Nothing Is Broken", "severity": "blocking",
+             "recommendation": "Restore it"}
+        ])
+        ok, reason = cc.validate_partial(p)
+        assert not ok
+        assert "blocking" in reason and "finding" in reason
+
+    def test_a_lesser_severity_is_tolerated_and_not_carried(self):
+        """Every observation is below-blocking by construction, so a rating adds
+        nothing but an axis for the census to re-sort on — which is the gradient
+        the demotion exists to flatten."""
+        p = _partial("reviewer", "abc", observations=[
+            {"name": "Prose could be tighter", "goal": "Nothing Is Unintended",
+             "severity": "note", "recommendation": "Tighten it"}
+        ])
+        ok, reason = cc.validate_partial(p)
+        assert ok, reason
+        assert "severity" not in cc.merge_observations([p])[0]
+
+    def test_a_missing_required_field_is_refused(self):
+        for field in ("name", "goal", "recommendation"):
+            entry = {"name": "n", "goal": "g", "recommendation": "r"}
+            del entry[field]
+            ok, reason = cc.validate_partial(
+                _partial("reviewer", "abc", observations=[entry])
+            )
+            assert not ok, field
+            assert field in reason
+
+    def test_observations_must_be_a_list(self):
+        ok, reason = cc.validate_partial(
+            _partial("reviewer", "abc", observations={"name": "n"})
+        )
+        assert not ok
+        assert "list" in reason
+
+
+class TestMergeObservations:
+    def test_maps_name_to_title_assigns_oid_in_its_own_namespace(self):
+        """`O-1`, never `R-1`. The disjoint namespace is what lets `disposition`
+        take either kind of id without a second flag, and what keeps a
+        `(review_id, id)` pair unambiguous across both arrays."""
+        merged = cc.merge_observations([_partial("reviewer", "a", observations=[
+            {"name": "Prose could be tighter", "goal": "Nothing Is Unintended",
+             "recommendation": "Tighten it", "files": ["a.md"]}
+        ])])
+        assert merged == [{
+            "goal": "Nothing Is Unintended", "title": "Prose could be tighter",
+            "recommendation": "Tighten it", "files": ["a.md"], "oid": "O-1",
+        }]
+
+    def test_duplicates_collapse_and_ids_stay_sequential(self):
+        entry = {"name": "Same point", "goal": "Nothing Is Unintended",
+                 "recommendation": "Do it"}
+        other = dict(entry, name="Another point")
+        merged = cc.merge_observations([
+            _partial("a", "x", observations=[entry, other]),
+            _partial("b", "x", observations=[entry]),
+        ])
+        assert [o["oid"] for o in merged] == ["O-1", "O-2"]
+
+    def test_blank_file_attribution_normalizes_away(self):
+        merged = cc.merge_observations([_partial("reviewer", "a", observations=[
+            {"name": "n", "goal": "g", "recommendation": "r", "files": ["", None]}
+        ])])
+        assert "files" not in merged[0]
+
+    def test_no_observations_is_an_empty_list(self):
+        assert cc.merge_observations([_partial("reviewer", "a")]) == []
+
+
+class TestObservationsReachTheFactBody:
+    def test_the_fact_carries_observations_beside_findings(self):
+        body = cc.build_fact_body(_manifest_dict(), [_partial(
+            "reviewer", "abc123",
+            findings=[{"name": "Broken", "goal": "Nothing Is Broken",
+                       "severity": "blocking", "recommendation": "Fix"}],
+            observations=[{"name": "Tighter prose", "goal": "Nothing Is Unintended",
+                           "recommendation": "Tighten"}],
+        )])
+        assert [f["fid"] for f in body["findings"]] == ["R-1"]
+        assert [o["oid"] for o in body["observations"]] == ["O-1"]
+
+    def test_observations_never_reach_counts(self):
+        """Carried on `record_lint`'s terms: data ABOUT the review, not a
+        finding IN it. `counts` is what a verdict and every census tally read,
+        so staying out of it is what makes "no gate's verdict changes" true by
+        construction rather than by audit."""
+        body = cc.build_fact_body(_manifest_dict(), [_partial(
+            "reviewer", "abc123",
+            observations=[
+                {"name": "One", "goal": "g", "recommendation": "r"},
+                {"name": "Two", "goal": "g", "recommendation": "r"},
+            ],
+        )])
+        assert body["counts"] == {"blocking": 0, "warning": 0, "note": 0}
+        assert body["findings"] == []
+        assert len(body["observations"]) == 2
+
+
+class TestObservationsReachTheBuilder:
+    """The ids are assigned at CONSOLIDATION — the reviewer wrote prose and
+    never saw an `O-n`. So the derived cache is the builder's only surface for
+    them, and without it the builder is told it may ACCEPT an observation and
+    given no way to name one."""
+
+    def test_the_cache_record_carries_observations_with_their_ids(self):
+        fact = {
+            "ts": "2026-09-16T00:00:00Z",
+            "body": {
+                "findings": [],
+                "counts": {"blocking": 0, "warning": 0, "note": 0},
+                "observations": [
+                    {"oid": "O-1", "goal": "Nothing Is Unintended",
+                     "title": "the helper reads as a verb but returns a value",
+                     "recommendation": "rename it", "files": ["a.py"]}
+                ],
+            },
+        }
+        record = cc.fact_to_cache_record(fact)
+        assert record["observations"] == [{
+            "oid": "O-1", "goal": "Nothing Is Unintended",
+            "summary": "the helper reads as a verb but returns a value",
+            "recommendation": "rename it", "files": ["a.py"],
+        }]
+
+    def test_observations_do_not_move_the_cache_verdict(self):
+        fact = {
+            "ts": "2026-09-16T00:00:00Z",
+            "body": {
+                "findings": [],
+                "counts": {"blocking": 0, "warning": 0, "note": 0},
+                "observations": [
+                    {"oid": "O-1", "goal": "g", "title": "t", "recommendation": "r"}
+                ],
+            },
+        }
+        record = cc.fact_to_cache_record(fact)
+        assert record["summary"].startswith("0 blocking, 0 warning, 0 note")
+        assert "Changes ready to proceed." in record["summary"]
+
+    def test_a_fact_with_no_observations_renders_an_empty_list(self):
+        record = cc.fact_to_cache_record({
+            "ts": "2026-09-16T00:00:00Z",
+            "body": {"findings": [], "counts": {"blocking": 0, "warning": 0, "note": 0}},
+        })
+        assert record["observations"] == []
+
+
 class TestMergeFindings:
     def test_maps_name_to_title_assigns_fid(self):
         # The reviewer's ``name`` becomes the fact ``title`` (rendered as the
@@ -1879,12 +2054,21 @@ class TestVerifyRatesBlockingOnlyDirective:
         `LAST_MEASURED_TOKENS` convention exists to prevent. Two numbers, two
         jobs: the pin fails on any drift and carries the new figure; the ceiling
         says how much drift is allowed before a clause has to move out.
+
+        The raise from 707 was DECLARED rather than paid for by a trim, per the
+        rule that a ceiling forces a decision and trimming spends whichever
+        clause is least defended. It bought the second destination: observations
+        now go into the partial's `observations` array as well as the report, so
+        the builder can ACCEPT one on the record instead of fixing it to leave a
+        trace. The text has to name the array, its entry shape, and the refusal
+        of a `blocking` entry — a shape a reviewer must transcribe cannot be
+        left to inference.
         """
         tokens = int(len(cc.VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE.split()) * 1.3)
 
-        assert tokens == 707, (
+        assert tokens == 770, (
             f"VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE is ~{tokens} tokens; this pin "
-            f"says 707. Update it to {tokens} and say in the docstring what paid "
+            f"says 770. Update it to {tokens} and say in the docstring what paid "
             f"for the change — the ceiling below is not a budget to spend."
         )
         assert tokens < 900, (
@@ -1945,13 +2129,23 @@ class TestVerifyRatesBlockingOnlyDirective:
             "they vanish — and the whole cost-bound rests on the builder "
             "reading them."
         )
-        # Half-emitted yield: the count must at least reach the builder, or a
-        # rule that fired is indistinguishable from a reviewer that found
-        # nothing.
+        # The count reaches the BUILDER, in the report it is already reading.
+        # It is no longer the only signal that the narrowing fired — the
+        # `observations` array below makes that a query over the store — but
+        # the two serve different readers at different moments, so the report
+        # count is not redundant with the record.
         assert "how many" in d, (
-            "the directive no longer asks for a demotion count. Verify-mode "
-            "WARNING/NOTE totals are zero by construction, so this line is the "
-            "only signal that the narrowing fired at all."
+            "the directive no longer asks for a demotion count in the report. "
+            "The array records it, but the builder decides what to do while "
+            "reading the report, not while reading the store."
+        )
+        # The RECORD destination: without the array an observation has no id,
+        # and the only ways to discharge one are to fix it (buying a round) or
+        # to say nothing (losing the reasoning).
+        assert "`observations` array" in d, (
+            "the directive no longer names the partial's `observations` array. "
+            "Nothing else tells the reviewer to emit them structurally, so no "
+            "observation ever reaches the fact body and none can be accepted."
         )
 
     def test_delivery_is_upstream_of_the_rating(self):
@@ -3249,6 +3443,51 @@ class TestResolutionFacts:
         assert result.returncode == 1
         assert "verify-resolutions" in result.stderr
         assert len(_store_facts(repo, "resolution")) == 0
+
+    def test_observations_outside_verify_mode_fail_closed(self, tmp_path):
+        """The mirror of the rule above, and it closes a laundering path rather
+        than a weakening one. Demotion is a VERIFY-MODE rule: in every other
+        mode an item the reviewer would rate below BLOCKING is a finding, and
+        findings are what `counts` counts. An array outside `findings` that any
+        mode could write would let a final reviewer file nine warnings where
+        nothing counts them and consolidate a 0/0/0 review."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+
+        _set_marker(repo)
+        _write_manifest(repo, head, id="rev-final-0002")  # final mode
+        _full_roster_partials(repo, head)
+        _write_partial(repo, "correctness", head, observations=[
+            {"name": "Prose could be tighter", "goal": "Nothing Is Unintended",
+             "recommendation": "Tighten it"}
+        ])
+        result = _run_consolidate(repo)
+        assert result.returncode == 1
+        assert "verify-resolutions" in result.stderr
+        assert len(_store_facts(repo, "review")) == 0
+
+    def test_observations_persist_from_a_verify_dispatch(self, tmp_path):
+        """The path that must work: a verify pass's demoted items reach the
+        review fact with ids a builder can answer against."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _seed_prior_review_with_blocker(repo, head)
+
+        _set_marker(repo)
+        _write_manifest(repo, head, id="rev-verify-0002", mode=VERIFY_MODE,
+                        roster=["reviewer"])
+        _write_partial(repo, "reviewer", head, observations=[
+            {"name": "The helper reads as a verb", "goal": "Nothing Is Unintended",
+             "recommendation": "Rename it"}
+        ])
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, result.stderr
+        fact = [f for f in _store_facts(repo, "review")
+                if f["id"] == "rev-verify-0002"][0]
+        assert [o["oid"] for o in fact["body"]["observations"]] == ["O-1"]
+        assert fact["body"]["counts"] == {"blocking": 0, "warning": 0, "note": 0}
 
     def test_resolution_of_unknown_finding_fails_closed(self, tmp_path):
         """A resolution must reference a finding the store actually holds —

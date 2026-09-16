@@ -609,6 +609,40 @@ def findings_index(read_result: dict) -> dict[tuple[str, str], dict]:
     return index
 
 
+def observations_index(read_result: dict) -> dict[tuple[str, str], dict]:
+    """``(review_id, oid)`` → the observation entry its review fact recorded.
+
+    The sibling of :func:`findings_index`, kept a SEPARATE walk on purpose.
+    An observation is what a ``verify-resolutions`` pass demoted: real, worth
+    reading, and deliberately not work the record demands. It is recorded so a
+    builder can answer it and so the demotion's yield is queryable — never so a
+    gate can read it. Merging the two indexes would put observations one
+    ``.get`` away from every consumer that joins on a finding, including the
+    resolution existence check, and the only thing keeping an observation out
+    of a verdict would be each caller remembering to filter. Two indexes, and
+    the callers that want both say so.
+
+    Observation ids live in their own namespace (``O-1``), so a
+    ``(review_id, id)`` pair is unambiguous across both.
+    """
+    index: dict[tuple[str, str], dict] = {}
+    for fact in facts_of_kind(read_result, "review"):
+        review_id = fact.get("id")
+        if not isinstance(review_id, str) or not review_id:
+            continue
+        body = fact.get("body") or {}
+        observations = body.get("observations")
+        if not isinstance(observations, list):
+            continue
+        for observation in observations:
+            if not isinstance(observation, dict):
+                continue
+            oid = observation.get("oid")
+            if isinstance(oid, str) and oid.strip():
+                index[(review_id, oid)] = observation
+    return index
+
+
 def finding_title(finding: dict, default: str = "") -> str:
     """A finding's one-line statement, whichever layer's name it is carrying.
 

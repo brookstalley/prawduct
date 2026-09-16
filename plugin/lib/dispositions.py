@@ -39,6 +39,19 @@ blocking until a verify pass records a real resolution. That is the
 load-bearing safety property here, and it is pinned by a regression test
 rather than left resting on the filter staying where it is.
 
+**Observations are answerable too, and the id domain is what carries that.**
+A ``verify-resolutions`` pass demotes every non-BLOCKING finding to an
+*observation*. Until observations reached the review fact they could be
+discharged in exactly two ways — FIX one, which moves the tree and buys a
+review round, or say nothing, which loses the reasoning. So an agent that had
+decided an observation was not worth acting on had no way to say so, and fixing
+it was the only answer that left a trace; measured on one consumer branch, two
+such fix commits bought rounds 4 and 5 of six. :func:`record` therefore joins
+against findings **and** observations, whose id namespaces are disjoint
+(``R-1`` against ``O-1``). Nothing else changes: an observation lives outside
+the review fact's ``findings`` array, which is the only one the coverage
+algebra walks, so answering one gates exactly what it gated before.
+
 **Re-disposition appends; it never edits.** ``evidence.read_facts`` dedupes
 ``(kind, id)`` keeping the *first* occurrence, so reusing a fact id would make
 a changed answer silently vanish. Each disposition therefore carries a
@@ -66,7 +79,12 @@ FIXED = "fixed"
 ACTIONS = (ACCEPT, FILE, FIXED)
 
 #: The ``--json`` shape is a machine contract; key changes bump this.
-REPORT_SCHEMA_VERSION = 1
+#: 2 added each review's ``observations`` list and the summary's
+#: ``observations``/``observations_answered`` pair. Additive — a version-1
+#: reader that ignores unknown keys still reads a version-2 report correctly —
+#: but the number is what lets a consumer say which shape it was written for,
+#: and a bump costs nothing next to a consumer guessing.
+REPORT_SCHEMA_VERSION = 2
 
 #: Display states a census row can carry, in the order the summary reports
 #: them. ``resolved-*`` covers a resolution fact whose disposition this
@@ -83,6 +101,12 @@ STATE_FILED = "filed"
 #: looked. Collapsing them would let the census claim a review that never ran.
 STATE_FIXED_FREE = "fixed-unreviewed"
 STATE_OPEN = "undispositioned"
+#: An observation nobody answered. Deliberately NOT :data:`STATE_OPEN`: that
+#: word names a debt, and the summary counts it as one. An observation is work
+#: the record explicitly does not demand, so a census that reported unanswered
+#: observations as undispositioned would rebuild, one layer down, the very
+#: obligation the verify-mode demotion exists to remove.
+STATE_NOTED = "noted"
 
 _SEVERITY_ORDER = ("blocking", "warning", "note")
 
@@ -255,6 +279,15 @@ def prior_dispositions(
         seen.add(key)
         finding = findings.get(key)
         if finding is None:
+            # Observations are NOT joined here, deliberately. This block is
+            # budgeted payload a reviewer reads before the diff — the docstring
+            # above is the story of it costing 2.7x the protocol file it exists
+            # to shorten — and an accepted observation is the lowest-value entry
+            # it could carry: nothing gated on it, so a reviewer re-raising one
+            # costs the builder a sentence, where a re-raised accepted FINDING
+            # costs a round. Widening this is its own decision with its own
+            # token bill, not a free consequence of observations becoming
+            # recordable.
             continue
         if scope is not None and review_scope.get(key[0]) != scope:
             continue
@@ -420,16 +453,30 @@ def record(
             "Code) before recording dispositions.",
         }
 
-    findings = evidence.findings_index(store)
-    finding = findings.get((review_id, fid))
+    # The id domain is findings PLUS observations — the widening
+    # ``api-contract.md``'s additive-first norm sanctions, and the reason
+    # ``--accept`` needed no new spelling. An observation is a
+    # ``verify-resolutions`` demotion: it gates nothing, and before it had an
+    # id the only ways to discharge one were to FIX it (moving the tree and
+    # buying a round) or to say nothing (losing the reasoning). Findings are
+    # tried first and the namespaces are disjoint (``R-1`` against ``O-1``), so
+    # neither lookup can shadow the other.
+    finding = evidence.findings_index(store).get((review_id, fid))
+    if finding is None:
+        finding = evidence.observations_index(store).get((review_id, fid))
     if finding is None:
         return {
             "status": "error",
-            "reason": f"no finding {fid!r} recorded for review {review_id!r} — "
-            "a disposition must reference a recorded finding "
+            "reason": f"no finding or observation {fid!r} recorded for review "
+            f"{review_id!r} — a disposition must reference a recorded one "
             "(prawduct-hook evidence list --kind review)",
         }
 
+    # An observation carries no severity by construction, so every
+    # severity-keyed guard below reads "" and stands down. That is correct
+    # rather than incidental: those guards exist to stop a BLOCKING finding
+    # being answered without an owner, and a BLOCKING item can never be an
+    # observation — ``_validate_observations`` refuses the array outright.
     severity = _severity_of(finding)
     if severity == "blocking" and action == ACCEPT and not _nonempty(owner_ruling):
         return {
@@ -541,6 +588,10 @@ def auto_accept(
             "Claude Code).",
         }
 
+    # Findings only — the sweep never touches observations. It exists because a
+    # refused round would otherwise strand findings the loop still owed an
+    # answer on; an observation is owed nothing, so sweeping one would mint a
+    # fact recording a decision nobody made.
     wanted = set(review_ids)
     dispositions = disposition_index(store)
     resolutions = resolution_detail_index(store)
@@ -653,6 +704,15 @@ def census(
             if not _nonempty(fid):
                 continue
             rows.append(_row(rid, finding, dispositions, resolutions))
+        observation_rows = []
+        observations = body.get("observations")
+        for observation in observations if isinstance(observations, list) else []:
+            if not isinstance(observation, dict):
+                continue
+            oid = observation.get("oid")
+            if not _nonempty(oid):
+                continue
+            observation_rows.append(_observation_row(rid, observation, dispositions))
         reviews.append(
             {
                 "review_id": rid,
@@ -661,14 +721,21 @@ def census(
                 "scope": body.get("scope"),
                 "chunk": body.get("chunk"),
                 "rows": rows,
+                # A SEPARATE list, never appended to ``rows``. Every consumer of
+                # ``rows`` — the summary's severity tally, its undispositioned
+                # count, the markdown table — asks questions that presuppose a
+                # finding, and answering them over observations would report
+                # debt nobody owes and severities nothing assigned.
+                "observations": observation_rows,
             }
         )
 
     all_rows = [row for r in reviews for row in r["rows"]]
+    all_observations = [row for r in reviews for row in r["observations"]]
     return {
         "status": "ok",
         "reviews": reviews,
-        "summary": _summarize(all_rows),
+        "summary": _summarize(all_rows, all_observations),
     }
 
 
@@ -715,7 +782,40 @@ def _row(
     }
 
 
-def _summarize(rows: list[dict]) -> dict:
+def _observation_row(
+    review_id: str, observation: dict, dispositions: dict
+) -> dict:
+    """One observation, with whatever answer the builder recorded against it.
+
+    No resolution lookup: a resolution may only target a finding
+    (``critic_consolidate`` checks the finding index alone before persisting
+    one), so an observation can never carry one — and therefore can never carry
+    the answered-twice conflict either.
+    """
+    oid = observation["oid"]
+    disposition = (dispositions.get((review_id, oid)) or {}).get("body") or {}
+    action = disposition.get("action")
+    if action == ACCEPT:
+        state = STATE_ACCEPTED
+    elif action == FILE:
+        state = STATE_FILED
+    elif action == FIXED:
+        state = STATE_FIXED_FREE
+    else:
+        state = STATE_NOTED
+
+    return {
+        "oid": oid,
+        "goal": observation.get("goal"),
+        "title": evidence.finding_title(observation),
+        "state": state,
+        "reason": disposition.get("reason"),
+        "backlog_id": disposition.get("backlog_id"),
+        "paths": disposition.get("paths"),
+    }
+
+
+def _summarize(rows: list[dict], observations: "list[dict] | None" = None) -> dict:
     by_severity: dict[str, int] = {}
     by_state: dict[str, int] = {}
     for row in rows:
@@ -730,6 +830,15 @@ def _summarize(rows: list[dict]) -> dict:
         "undispositioned": by_state.get(STATE_OPEN, 0),
         "owner_ruled": sum(1 for r in rows if _nonempty(r.get("owner_ruling"))),
         "conflicts": sum(1 for r in rows if r["conflict"]),
+        # Reported beside the findings and never mixed into them. The pair is
+        # the demotion control's yield: how much a verify pass declined to
+        # raise, and how much of that the builder went on to answer. Before the
+        # observations reached the fact body the first number could only be
+        # asserted by the reviewer about its own output.
+        "observations": len(observations or []),
+        "observations_answered": sum(
+            1 for o in (observations or []) if o["state"] != STATE_NOTED
+        ),
     }
 
 
@@ -760,6 +869,10 @@ def render_markdown(report: dict) -> str:
         if not review["rows"]:
             lines.append("_No findings._")
             lines.append("")
+            # Not `continue`-ing past the observations: a verify pass that
+            # demoted everything it saw records exactly zero findings, so the
+            # clean-review branch is the ONE this block most needs to reach.
+            lines.extend(_observation_block(review["observations"]))
             continue
         lines.append("| Finding | Severity | State | Detail |")
         lines.append("|---|---|---|---|")
@@ -769,6 +882,7 @@ def render_markdown(report: dict) -> str:
                 f"| {_detail(row)} |"
             )
         lines.append("")
+        lines.extend(_observation_block(review["observations"]))
 
     summary = report["summary"]
     # Known severities in their ratified order, then anything else — a census
@@ -784,6 +898,12 @@ def render_markdown(report: dict) -> str:
         # collapse to nothing, which used to leave a dangling "— ." in text
         # written to be pasted into a change-log entry.
         lines.append("**No findings** — a clean pass.")
+        # The observation tally rides this branch too. A `verify-resolutions`
+        # pass that demoted everything it saw records exactly ZERO findings, so
+        # the clean-pass early return is the case where observations are most
+        # likely to exist — returning without them would print "a clean pass"
+        # over a review that had things to say.
+        lines.extend(_observation_summary(summary))
         return "\n".join(lines)
 
     state = ", ".join(
@@ -802,7 +922,46 @@ def render_markdown(report: dict) -> str:
             f"**{summary['conflicts']} answered twice** — recorded as both "
             "resolved and dispositioned; check which answer is current."
         )
+    lines.extend(_observation_summary(summary))
     return "\n".join(lines)
+
+
+def _observation_summary(summary: dict) -> list[str]:
+    """The demotion tally, stated as a separate sentence from the findings one.
+
+    Separate because the two report different kinds of thing, and a reader who
+    reads them as one total concludes the review found more than it did — the
+    census's oldest failure mode. The answered count is stated without comment:
+    an unanswered observation is not a gap, and prose nudging toward answering
+    them would reintroduce the obligation the demotion removed.
+    """
+    total = summary.get("observations") or 0
+    if not total:
+        return []
+    noun = "observation" if total == 1 else "observations"
+    return [
+        f"**{total} {noun} demoted** — {summary['observations_answered']} "
+        "answered. An observation gates nothing; answering one is optional."
+    ]
+
+
+def _observation_block(observations: list[dict]) -> list[str]:
+    """The observations a review demoted, as their own table — or nothing.
+
+    Rendered only when there are some: a heading over an empty table trains its
+    reader to skip the section, and most reviews demote nothing because only
+    ``verify-resolutions`` demotes at all. No severity column, because an
+    observation has no severity to show.
+    """
+    if not observations:
+        return []
+    lines = ["_Observations — read, not owed. Answering one is optional._", ""]
+    lines.append("| Observation | State | Detail |")
+    lines.append("|---|---|---|")
+    for row in observations:
+        lines.append(f"| {row['oid']} | {row['state']} | {_detail(row)} |")
+    lines.append("")
+    return lines
 
 
 def _state_label(row: dict) -> str:
@@ -812,6 +971,8 @@ def _state_label(row: dict) -> str:
 
 
 def _detail(row: dict) -> str:
+    """The cell shared by both tables — every field it reads is one an
+    observation row may also carry, or one ``.get`` tolerates."""
     parts = []
     if _nonempty(row.get("backlog_id")):
         parts.append(f"`{row['backlog_id']}`")

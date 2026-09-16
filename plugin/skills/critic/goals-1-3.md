@@ -19,7 +19,7 @@ already-planned commit.
    unchanged.** *"The code violates this spec"* has the code as its subject, at full severity.
 2. Read `.prawduct/project-state.yaml`, then the changed files and `git diff` over the interval.
 3. Read the `.prawduct/artifacts/` a change touches — its build plan, and any artifact it cites.
-4. Run `prawduct-hook test-status` and `prawduct-hook verify-coverage` (Goal 1). Nothing else executes.
+4. Run `prawduct-hook test-status` and `prawduct-hook verify-coverage` (Goal 1).
 
 **Chunk `Type:`** (separate axis from mode; missing or unrecognized ⇒ `code` — never honor an
 unknown Type). `code`: all three goals full. `doc-only`: Goal 1 prose only, Goal 2 requirement
@@ -123,6 +123,9 @@ dies in your context, and the builder is what terminates the review loop.
   "findings": [
     {"name": "<short title>", "goal": "Nothing Is Unintended", "severity": "warning", "recommendation": "<what to do>", "files": ["file1"]}
   ],
+  "observations": [
+    {"name": "<short title>", "goal": "Nothing Is Missing", "recommendation": "<what to do>"}
+  ],
   "resolutions": [
     {"review_id": "<the PRIOR review's id, not yours>", "fid": "R-1", "disposition": "fixed"}
   ],
@@ -131,6 +134,9 @@ dies in your context, and the builder is what terminates the review loop.
 ```
 
 `files` per finding is attribution — omit when not file-specific. `findings` is `[]` for a clean pass.
+**`observations` is `verify-resolutions` mode ONLY** — what you demoted: a finding minus
+`severity`. Recording it lets the builder ACCEPT one instead of fixing it to leave a trace; one you
+would rate `blocking` belongs in `findings`.
 **`resolutions` is `verify-resolutions` mode ONLY** — your judgment on each prior BLOCKING/WARNING
 finding, joined by `(review_id, fid)` from the prior findings record; `disposition` is `fixed` or
 `waived` (`waived` requires a `rationale`). Consolidation validates every entry and fails closed on a

@@ -488,7 +488,7 @@ LAST_MEASURED_TOKENS = {
     # for the dispatched roster, but the single-pass modes this file serves do
     # not read that file -- flagged for an owner ruling rather than re-added
     # under the same pressure that removed it.
-    "skills/critic/goals-1-3.md": 2338,
+    "skills/critic/goals-1-3.md": 2399,
     # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
     # a computed pass the gate can now print, which a reader who only knows
     # "uncovered means run a cumulative" will otherwise re-review straight
@@ -543,7 +543,7 @@ LAST_MEASURED_TOKENS = {
     # in place rather than by a second raise: the diminishing-returns paragraph
     # stopped narrating what this file used to say (durable prose never narrates
     # history), and four clauses that restated their own sentences went.
-    "skills/critic/review-cycle.md": 10433,
+    "skills/critic/review-cycle.md": 10432,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -4232,7 +4232,26 @@ class TestCriticGoals13:
         # review interval rather than re-enumerating `files_changed`, because
         # the subject/oracle sentence below it is what a reviewer scopes by now
         # and the flat list restated it. That trim funded 4 of the 25.
-        assert tokens < 2345, f"goals-1-3.md is ~{tokens} tokens, should be <2345"
+        # RAISED 2345 -> 2400 (2026-09-16, observations become recordable).
+        # DECLARED, not trimmed to fit, per the rule that a ceiling forces a
+        # decision and trimming spends whichever clause is least defended.
+        # What it bought: a `verify-resolutions` reviewer now writes its demoted
+        # items into the partial's `observations` array, so the builder can
+        # ACCEPT one on the record instead of fixing it purely to leave a trace
+        # — measured as rounds 4 and 5 of six on one consumer branch. The file
+        # has to SHOW the key, because this JSON block is the schema a reviewer
+        # transcribes and a key it must write while no example carries it is the
+        # seam where an identifier silently degrades. The rule "have CODE own
+        # the wording" was applied as far as it goes: the entry shape, the
+        # refusal and the reasoning all live in
+        # `VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE`, printed at dispatch, and what
+        # is bought here is the key plus two sentences, one of them the mode
+        # scope: this file serves `chunk` mode too, and consolidation
+        # fail-closes on an `observations` array from a non-verify dispatch.
+        # Paid in place first: step 4's "Nothing else executes" restated the
+        # bolded never-run rule three lines above it. That trim funded 5 of the
+        # 66.
+        assert tokens < 2400, f"goals-1-3.md is ~{tokens} tokens, should be <2400"
 
     def test_is_self_contained(self):
         """No follow-the-pointer reads at review time — the acceptance criterion
@@ -4819,8 +4838,17 @@ class TestReviewCycle:
         on the strength of the risk alone.
 
         Asserting the parts of the argument, not its wording: the rule, the
-        carve-out that keeps it safe, and the admission that an observation is
-        not a recorded fact.
+        carve-out that keeps it safe, and the admission of what the narrowing
+        gives up.
+
+        **The cost this checks for has changed once, and the change is the
+        point.** It used to be that a demoted observation left no trace at all —
+        unanswerable, invisible to a later reader of the store. Observations now
+        ride the review fact, so that cost is paid off and asserting it would
+        pin a falsehood. What is NOT paid off is the narrowing itself: the fix
+        delta's own content is rated at BLOCKING only, so a genuine
+        warning-level defect introduced by a fix is recorded as something that
+        gates nothing.
         """
         content = read_file("skills/critic/review-cycle.md")
         heading = "### A re-review does not manufacture work"
@@ -4837,9 +4865,11 @@ class TestReviewCycle:
             "the section states the narrowing without its carve-out — the "
             "classes that stay BLOCKING are what make it safe"
         )
-        assert "not a recorded fact" in section or "cannot be" in section, (
-            "the section sells the benefit without stating the cost: a demoted "
-            "observation leaves no trace in the evidence store"
+        assert "BLOCKING only" in section and "own content was not" in section, (
+            "the section sells the benefit without stating the cost: the fix "
+            "delta's own content is rated at BLOCKING only, so a real "
+            "warning-level defect in the fix is recorded as something that "
+            "gates nothing"
         )
 
     def test_the_verify_step_no_longer_rates_a_workaround_warning(self):
