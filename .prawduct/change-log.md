@@ -3,6 +3,20 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-09-16: review-stats counts what verify passes demote
+
+<!-- prawduct: type=feature | scope=review-stats-observations -->
+
+`verify-resolutions` rates new findings BLOCKING-only and demotes the rest to observations, so its
+`findings` undercount what it saw by construction. `review-stats` showed only that undercount: a
+narrowing that fires too rarely was visible, one that suppresses real findings was not. The
+observations already ride every `review.critic` ledger event (review-loop-termination ch.01), so this
+is a read, not a new record. Every stat block now carries `observations` and
+`reviews_recording_observations`; an event written before the array existed is excluded rather than
+counted as zero, because "nothing demoted" and "not measured" must not render the same. Two keys
+changed the `--json` shape, so the report `schema_version` goes 1 → 2 (nothing parses version 1
+today). Closes the last acceptance box of #585.
+
 ## 2026-09-16: the churn coverage grant is cut; the observations close prices fixing
 
 <!-- prawduct: type=fix | scope=review-loop-termination -->

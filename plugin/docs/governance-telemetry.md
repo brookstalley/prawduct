@@ -77,7 +77,11 @@ files_attributed_total  count behind the top_files cap
 Stat block: `reviews`, `duration_total_seconds`, `duration_median_seconds`
 (null when no event carried a duration), `findings`
 (`{blocking, warning, note, other}`), `findings_per_review`,
-`actionable_rate` (0–1).
+`actionable_rate` (0–1), `observations` (items `verify-resolutions` demoted below
+BLOCKING — never counted in `findings`), `reviews_recording_observations`
+(reviews whose event carried the array; events written before it existed are
+excluded, so `observations: 0` over `0` recording reviews means *not measured*,
+not *nothing demoted*). Schema 2 added the last two keys.
 
 Mode keys are the short tokens (`chunk` / `final` / `cumulative` /
 `verify-resolutions`), derived from the persisted verbose strings. PR-review
