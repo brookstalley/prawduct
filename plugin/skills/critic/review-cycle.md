@@ -210,9 +210,9 @@ machine-readable trace — the resolution fact a `verify-resolutions` pass recor
 the FIX that bought *no* round now do too:
 
 ```
-prawduct-hook disposition <review-id> <fid> --accept "<reason>"      # won't fix, reason recorded
-prawduct-hook disposition <review-id> <fid> --file <backlog-id>      # deferred, item carries the work
-prawduct-hook disposition <review-id> <fid> --fixed <path>[,<path>…] # fixed for free, no round bought
+prawduct-hook disposition <review-id> <fid|oid> --accept "<reason>"      # won't fix, reason recorded
+prawduct-hook disposition <review-id> <fid|oid> --file <backlog-id>      # deferred, item carries the work
+prawduct-hook disposition <review-id> <fid|oid> --fixed <path>[,<path>…] # fixed for free, no round bought
 ```
 
 **`--fixed` exists because the cheapest correct action was the only one the record could not see.** A

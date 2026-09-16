@@ -288,7 +288,9 @@ _BATCH_FIX_DIRECTIVE = (
 )
 
 
-#: Carried by EVERY zero-blocking variant, including the clean pass.
+#: Carried by every zero-blocking variant that does NOT arrive holding the span
+#: answer — every mode but a clean `verify-resolutions` close, and that close
+#: too whenever the span could not be read (:func:`span_clause`).
 #:
 #: "The review is over" and "you may merge" are different claims, and only the
 #: first is this function's to make: a clean `chunk` mid-plan still owes a
@@ -298,11 +300,151 @@ _BATCH_FIX_DIRECTIVE = (
 #: the clean branch let two code-owned surfaces assert opposite things in one
 #: session, with the newer one saying "stop" — so it is a constant rather than
 #: a phrase each branch remembers to repeat.
+#:
+#: It remains the honest text for a span nobody could read: "go ask the gate" is
+#: a degraded answer, not a silent one ("advice fails soft" is not "advice fails
+#: silent"). What it is NOT honest for is the case where the framework has
+#: already computed the answer — see :func:`span_clause`.
 _COVERAGE_IS_A_SEPARATE_QUESTION = (
     " (Whether the PR gate is satisfied, and whether the work cycle still owes a"
     " final/cumulative, are separate questions about coverage — ask them by"
     " running the gate, not by reviewing again.)"
 )
+
+
+#: The half of :data:`_COVERAGE_IS_A_SEPARATE_QUESTION` that survives once the
+#: span answer IS in hand. Coverage becomes a statement; whether the work cycle
+#: has run the review it owes is a different question over the build plan, which
+#: nothing here computes, so it stays a caveat.
+_WORK_CYCLE_STILL_OWES = (
+    " (A review being over is not a work cycle being over — a plan mid-flight"
+    " still owes its final/cumulative at the end of it.)"
+)
+
+
+def fact_body_counts(fact: dict) -> dict:
+    """The ``counts`` block of a review fact, never ``None``."""
+    return (fact.get("body") or {}).get("counts") or {}
+
+
+def _span_commits(project_dir: Path, answer: dict) -> "int | None":
+    """How wide the branch span is, in commits.
+
+    The verdict itself cannot say: coverage composes over TREES, and a count of
+    trees is not a number anyone can picture. ``None`` when it cannot be read,
+    which drops the width from the sentence rather than guessing one — the
+    clause reads correctly without it, and a wrong width is worse than none.
+    """
+    merge_base = (answer.get("resolved") or {}).get("merge_base")
+    if not merge_base:
+        return None
+    rc, out, _ = evidence.run_git(
+        project_dir, "rev-list", "--count", f"{merge_base}..HEAD"
+    )
+    out = (out or "").strip()
+    if rc != 0 or not out.isdigit():
+        return None
+    return int(out)
+
+
+def span_clause(answer: "dict | None", commits: "int | None" = None) -> str:
+    """The branch-span verdict, rendered for the builder who just closed a
+    clean ``verify-resolutions`` round.
+
+    **The defect it answers.** A verify pass covers its own delta and nothing
+    else, and on a clean close it says ``THE REVIEW IS OVER``. Both halves of
+    that are true and the second is routinely read as branch clearance: on one
+    measured consumer branch the author relayed "the branch is clean" after
+    round 3, and round 4's cumulative found a BLOCKING defect that had been
+    present since chunk 1 — structurally invisible to every verify round
+    because it never sat inside one of their diffs. Nothing said the second
+    fact, because the framework's only carrier for it told the reader to go
+    *ask* the gate rather than stating an answer it had already computed.
+
+    ``answer`` is :func:`gates.branch_coverage_verdict`'s dict — rendered here,
+    never recomputed. ``commits`` is how wide the span is, passed in for the
+    same reason ``price_sentence`` is: this stays a pure function of its
+    arguments and the git read happens once, at the call site that already
+    holds the repo.
+
+    A span that could not be read falls back to
+    :data:`_COVERAGE_IS_A_SEPARATE_QUESTION`, which is the pre-existing text and
+    the honest one for "unknown".
+
+    **It names no prawduct-internal identifier** (``observability-strategy.md``:
+    text emitted into a governed product names none) — no tree hashes, no
+    review ids, no fids. A count and a branch name are the product's own facts.
+    It invents no severity prefix either: it is a declarative sentence inside
+    the ``NEXT-ACTION:`` line, not a second signal competing with it.
+    """
+    status = (answer or {}).get("status")
+    if status not in ("covered", "transferred", "blocked", "uncovered"):
+        return _COVERAGE_IS_A_SEPARATE_QUESTION
+
+    base = ((answer or {}).get("resolved") or {}).get("base_branch") or "the base"
+    width = f"{commits} commit(s) since {base}" if commits is not None else base
+
+    if status in ("covered", "transferred"):
+        # An empty span — HEAD at the base, no commits of the branch's own — is
+        # the permanent state of a trunk-based governed product, and composition
+        # calls it covered because there is nothing to compose. Saying "review
+        # evidence spans 0 commit(s)" there is a claim about evidence that was
+        # never consulted, made in the review headline rather than behind a gate
+        # call the builder chose to make. This chunk's premise is that stating an
+        # answer beats inviting a question; that cuts both ways, and this is the
+        # arm where it cuts wrong.
+        path = ((answer or {}).get("verdict") or {}).get("path")
+        if commits == 0 or (status == "covered" and not path):
+            return (
+                " There is nothing on this branch for a review to span: HEAD"
+                f" sits at {base}, so the branch holds no commits of its own."
+                " That is not a statement about review evidence — none was"
+                " consulted." + _WORK_CYCLE_STILL_OWES
+            )
+        how = (
+            " (granted across a base advance rather than reviewed again)"
+            if status == "transferred"
+            else ""
+        )
+        # Says so and stops — no hedge on the verdict itself. A caveat implying
+        # the branch might not be covered is the same defect pointing the other
+        # way, and it trains the reader to discount the clause on the branch
+        # where it is load-bearing.
+        #
+        # **"at HEAD" is precision, not a hedge, and it is the one thing this
+        # arm cannot leave out.** The span ends at the last COMMIT, and a verify
+        # pass routinely reviews a dirty tree — so the fix the builder is about
+        # to commit is not in the span this sentence just called covered, and
+        # committing it re-opens the gate. Reporting "the branch is covered"
+        # from that state is the very misread this whole clause exists to stop,
+        # arriving one minute later by the other door.
+        return (
+            f" The BRANCH is covered too{how}, at HEAD: composed review evidence"
+            f" spans {width} with no blocking findings outstanding — work you"
+            " have not committed yet is not in that span."
+            + _WORK_CYCLE_STILL_OWES
+        )
+
+    if status == "blocked":
+        unresolved = len(((answer or {}).get("verdict") or {}).get("unresolved", []))
+        return (
+            " This verdict covers THIS delta only, and the BRANCH is not clear:"
+            f" evidence spans {width} but carries {unresolved} unresolved BLOCKING"
+            " finding(s) from earlier round(s). Do not report the branch clean —"
+            " `prawduct-hook check-cumulative-critic` names them and how each one"
+            " clears." + _WORK_CYCLE_STILL_OWES
+        )
+
+    return (
+        " This verdict covers THIS delta only. The BRANCH is NOT covered: no"
+        f" composed review evidence spans {width} end to end, so anything changed"
+        " outside the deltas these rounds looked at has been reviewed by nothing."
+        " Both facts are true at once and only one of them is about the branch —"
+        " say both if you report this upward. `prawduct-hook"
+        " check-cumulative-critic` names the cheapest route to close the gap; do"
+        " not assume that route is another full review."
+        + _WORK_CYCLE_STILL_OWES
+    )
 
 
 #: The route the fix/accept/file trio was missing, carried by BOTH arms.
@@ -401,6 +543,8 @@ def next_action_line(
     note: int,
     price_sentence: "str | None" = None,
     carried: "list[dict] | None" = None,
+    span: "str | None" = None,
+    observations: int = 0,
 ) -> str:
     """The one sentence the BUILDER needs, computed from the fact's own counts
     and written into ``.critic-findings.json`` by :func:`fact_to_cache_record`.
@@ -442,6 +586,11 @@ def next_action_line(
     only in the arm the builder does not reach when something is blocking."""
     ref = fact_id or "<review-id>"
     price = f" {price_sentence}" if price_sentence else ""
+    # `span` is :func:`span_clause`'s output, rendered by the caller for the
+    # same reason `price_sentence` is. Absent (every mode but a clean
+    # `verify-resolutions` close) the clause stays what it always was: go ask
+    # the gate.
+    coverage_clause = span if span is not None else _COVERAGE_IS_A_SEPARATE_QUESTION
     if carried:
         named = "; ".join(
             f"{c['review_id']}/{c.get('fid', '?')}"
@@ -490,26 +639,51 @@ def next_action_line(
             " findings in that SAME pass (fix / accept / file) — deferring them to a"
             " later round is what turns one review into several. Accept is the"
             " default for anything nobody will realistically action:"
-            f' `prawduct-hook disposition {ref} <fid> --accept "<reason>"` needs no'
+            f' `prawduct-hook disposition {ref} <fid|oid> --accept "<reason>"` needs no'
             " review and moves no tree."
             + _RIDE_ALONG_ROUTE
             + price
         )
     if not (warning or note):
+        # `verify-resolutions` demotes everything below BLOCKING to an
+        # observation, so "0 findings, N observations" is that mode's MODAL
+        # close, not an edge — and this arm is the text it prints. Saying
+        # "nothing to disposition" there contradicts the reviewer's own
+        # `### Observations` report in the same message, and leaves the
+        # accept-on-the-record route unused on the path that produces most of
+        # the items it was built for.
+        if observations:
+            return (
+                f"0 blocking, 0 findings — THE REVIEW IS OVER and nothing in THIS"
+                f" review requires another round. {observations} item(s) were"
+                " demoted to observations, and each can be answered on the record"
+                " instead of fixed:"
+                f' `prawduct-hook disposition {ref} <oid> --accept "<reason>"`'
+                " (the ids are in `.critic-findings.json` under `observations`),"
+                " which needs no review and moves no tree."
+                + coverage_clause
+            )
         return (
             "0 blocking, 0 other findings — THE REVIEW IS OVER and there is nothing"
             " to disposition. Nothing in THIS review requires another round."
-            + _COVERAGE_IS_A_SEPARATE_QUESTION
+            + coverage_clause
         )
     return (
         f"0 blocking — THE REVIEW IS OVER. The {warning} warning + {note} note"
         " finding(s) gate NOTHING: no gate reads them, so nothing in THIS review"
         " requires another round."
-        + _COVERAGE_IS_A_SEPARATE_QUESTION
+        + coverage_clause
         + " Disposition each finding instead of reflexively fixing it —"
         " accept is the default for anything nobody will realistically action:"
-        f' `prawduct-hook disposition {ref} <fid> --accept "<reason>"`, which needs'
-        " no review and moves no tree. If you do choose to fix some, batch them into"
+        f' `prawduct-hook disposition {ref} <fid|oid> --accept "<reason>"`, which needs'
+        " no review and moves no tree."
+        + (
+            f" The {observations} demoted observation(s) answer to the same"
+            " command by their `O-n` ids."
+            if observations
+            else ""
+        )
+        + " If you do choose to fix some, batch them into"
         " ONE commit — and re-cover with ONE `/prawduct:critic verify-resolutions`"
         " ONLY if that commit touched judgeable files. `prawduct-hook cost-of-commit"
         " <paths>` answers that for the exact batch BEFORE you commit it; a batch it"
@@ -3730,6 +3904,7 @@ def fact_to_cache_record(
     fact: dict,
     price_sentence: "str | None" = None,
     carried: "list[dict] | None" = None,
+    span: "str | None" = None,
 ) -> dict:
     """Render the derived ``.critic-findings.json`` record from a review fact
     (D7: the cache is a code-regenerated VIEW of the latest fact — builders
@@ -3740,7 +3915,11 @@ def fact_to_cache_record(
     ``price_sentence`` rides through to :func:`next_action_line`. It is a
     parameter rather than a ledger read here because this function is a pure
     fact→record projection and the cache is written once per consolidation,
-    where the caller already holds the prawduct dir."""
+    where the caller already holds the prawduct dir. ``span`` rides through the
+    same way and for the same reason — and it must ride, because this record and
+    the relayed ``NEXT-ACTION:`` line are two carriers of one sentence, and a
+    builder who met them saying different things about the branch would have no
+    way to tell which was computed."""
     body = fact.get("body") or {}
     findings = []
     for f in body.get("findings", []):
@@ -3804,7 +3983,7 @@ def fact_to_cache_record(
         # the carrier that had a reader and no message.
         "next_action": next_action_line(
             fact.get("id"), blocking, warning, note, price_sentence,
-            carried=carried,
+            carried=carried, span=span, observations=len(observations),
         ),
         # Recomputed from the fact's own findings, so this advisory grouping
         # adds nothing to the persisted schema and keeps no model in the write
@@ -4294,7 +4473,24 @@ def consolidate(project_dir: Path) -> int:
         else []
     )
 
-    record = fact_to_cache_record(fact, price_sentence, carried)
+    # The delta verdict and the span verdict, in one breath — on the one close
+    # where the delta verdict is routinely read as branch clearance. A clean
+    # `verify-resolutions` pass says THE REVIEW IS OVER about a diff it chose,
+    # and the branch it was run on may never have been reviewed end to end.
+    #
+    # Scoped to that close on purpose. With blocking findings the next move is
+    # to fix them and the branch question is moot; with a carried blocker the
+    # line already says NOT DONE; and in the other modes today's "go ask the
+    # gate" text is what ships. The cost lands where it is affordable: composing
+    # the span can take seconds on a large store, against a review that just
+    # took minutes, and the memo it warms is the one the builder's next
+    # `check-cumulative-critic` reads.
+    span = None
+    if is_verify and not (fact_body_counts(fact).get("blocking") or carried):
+        answer = gates.branch_coverage_verdict(project_dir)
+        span = span_clause(answer, _span_commits(project_dir, answer))
+
+    record = fact_to_cache_record(fact, price_sentence, carried, span)
     findings_path = prawduct_dir / ".critic-findings.json"
     atomic_write_text(findings_path, json.dumps(record, indent=2))
 
@@ -4398,6 +4594,8 @@ def consolidate(project_dir: Path) -> int:
             counts.get("note", 0),
             price_sentence,
             carried=carried,
+            span=span,
+            observations=len(fact_body.get("observations") or []),
         )
     )
     return 0

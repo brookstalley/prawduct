@@ -137,7 +137,7 @@ a re-measurement to point at. **That is a judgment call and it may be the wrong 
 ## Status
 
 - [x] Chunk 01: An observation can be accepted on the record, not only fixed (RC7)
-- [ ] Chunk 02: A clean delta stops reading as branch clearance (RC8)
+- [x] Chunk 02: A clean delta stops reading as branch clearance (RC8)
 - [ ] Chunk 03: A provably unnecessary round is granted, not narrated and charged (RC5)
 
 ## Chunk 01: An observation can be accepted on the record, not only fixed (RC7)
@@ -288,6 +288,15 @@ churn to the predicate, and the round is charged. Decide this deliberately rathe
 omission: widening the predicate to observation-cited files widens a GRANT, which is authority,
 so the fail-closed rule above governs it. Leaving it narrow is a defensible answer and is the
 current behaviour; what is not defensible is not noticing.
+
+**Riding this chunk's commit — one observation from Chunk 02's review.** Accepted on the record
+there with this home named, so it is a deferral rather than a drop. The clean close's new
+`0 blocking, 0 findings, N observations` arm inherits its ending from the 0/0/0 arm it branches
+from: `+ coverage_clause` and stop. It therefore carries neither `_RIDE_ALONG_ROUTE` nor the round
+price — and it is the one clean shape that DOES carry actionable items, so the single close where a
+builder might fix an observation is the one that never sees what fixing costs. The warnings arm
+below it names the observations and keeps both. This chunk edits `critic_consolidate.py` anyway
+(see `partition:`), so it meets the function.
 
 **The defect.** `coverage.diagnose_fix_churn` already detects "the whole uncovered span is a
 clean review of this branch plus edits confined to files that review's own findings named." Its

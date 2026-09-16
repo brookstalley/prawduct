@@ -993,7 +993,10 @@ def _detail(row: dict) -> str:
 # ---------------------------------------------------------------------------
 
 _RECORD_USAGE = (
-    "Usage: prawduct-hook disposition <review-id> <fid> "
+    # `<fid|oid>`, not `<fid>`: the id domain is findings PLUS observations
+    # (see `record`), and this string is what a REFUSED invocation prints —
+    # exactly the moment a builder needs to know an observation id is legal.
+    "Usage: prawduct-hook disposition <review-id> <fid|oid> "
     "{--accept <reason>|--file <backlog-id>|--fixed <path>[,<path>...]} "
     "[--owner-ruling <text>]"
 )

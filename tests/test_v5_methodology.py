@@ -4334,6 +4334,14 @@ class TestCriticGoals13:
         assert "designer-handoff" in self.content     # the chunk `Type:` selector
         assert "Normative authority" in self.content  # Goal 3's binding preamble
         assert '"resolutions"' in self.content        # the verify-resolutions schema arm
+        # The ceiling was raised 2345 -> 2400 to buy this key, on the argument
+        # that the JSON block has to SHOW what a reviewer is told to write. The
+        # argument is only honoured while the key is here: the file sits one
+        # token under its ceiling, so the next editor needing room trims the
+        # least-defended clause, and an unpinned one is undefended by
+        # definition. The twin carrier in `VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE`
+        # is already pinned; this is the half that was not.
+        assert '"observations"' in self.content       # the demotion record's schema arm
 
     def test_an_inert_count_is_capped_at_note(self):
         """The `chunk`/`verify-resolutions` half of the sink-side cap — same

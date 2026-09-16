@@ -1667,30 +1667,81 @@ def check_cumulative_critic(project_dir: Path) -> int:
             )
 
 
-def _cumulative_critic_verdict(project_dir: Path, read: dict, cache) -> int:
-    """:func:`check_cumulative_critic`'s body; see it for the contract."""
+def branch_coverage_verdict(project_dir: Path, *, record_grants: bool = False) -> dict:
+    """:func:`check_cumulative_critic`'s verdict as DATA — the same span, the
+    same composition, the same base-advance transfer, with no printing and no
+    exit code.
+
+    It exists because a second surface needs the branch-level answer and must
+    not compute its own. ``critic_consolidate`` joins it onto a clean
+    ``verify-resolutions`` close, where *this delta is clean* and *this branch
+    is covered* are different claims and only the first is that review's to
+    make. Two implementations of "is the branch covered" would disagree the
+    first time either moved, and the copy the builder reads while deciding what
+    to report is the advisory one — the worse half to be stale
+    (``architecture.md`` § every fact has one home).
+
+    ``record_grants`` defaults False for the reason it does on
+    :func:`_merge_base_verdict`: recording a transfer's yield belongs to the
+    authority that spent it. An advisory read appending one would file a grant
+    under a gate that never ran, and would move the store fingerprint the
+    verdict memo is keyed on.
+
+    Returns what :func:`_branch_coverage` documents, minus the private
+    rendering context: a caller that wants the answer never sees the memo
+    closures the printer needs.
+    """
+    read = evidence.read_facts(project_dir)
+    cache = verdict_cache.VerdictCache.for_read(project_dir, read)
+    try:
+        answer = _branch_coverage(
+            project_dir, read, cache, record_grants=record_grants
+        )
+    finally:
+        # Best-effort by contract (:meth:`VerdictCache.flush`) and worth doing
+        # even from an advisory read: the builder's next `check-cumulative-critic`
+        # asks this exact question of this exact store, so a memo warmed here is
+        # the difference between that call being instant and paying the cold
+        # composition twice.
+        cache.flush()
+    return {k: v for k, v in answer.items() if not k.startswith("_")}
+
+
+def _branch_coverage(
+    project_dir: Path, read: dict, cache, *, record_grants: bool
+) -> dict:
+    """Compose coverage over ``merge-base(base_branch, HEAD)`` → ``HEAD`` and
+    return the verdict as data. Renders nothing: each caller writes it for its
+    own audience.
+
+    ``status`` is one of:
+
+    - ``store-precheck`` — the store refuses to be graded at all (schema-ahead
+      and friends). ``precheck`` carries the ``(status, reason)`` pair.
+    - ``no-base`` / ``no-head`` — the span itself could not be resolved.
+    - ``covered`` — a path composes with 0 unresolved blocking.
+    - ``blocked`` — a path composes but carries unresolved BLOCKING findings.
+    - ``transferred`` — uncovered by composition, granted by the base-advance
+      transfer; ``transfer`` and ``tests_reason`` say what vouched.
+    - ``uncovered`` — nothing composes and no transfer holds. ``transfer_stale``
+      is the near-miss reason when byte identity held and the suite did not.
+
+    Keys prefixed ``_`` are the rendering context: the verdict closure built
+    over this invocation's diff/key memos. They are returned rather than
+    rebuilt by the caller because rebuilding re-pays the ``git ls-tree`` per
+    tree this call already paid — which is most of a cold verdict's cost.
+    """
     precheck = _store_precheck(read)
     if precheck is not None:
-        status, reason = precheck
-        print(f"{status}: {reason}", file=sys.stderr)
-        return 1
+        return {"status": "store-precheck", "precheck": precheck}
 
     resolved = coverage.resolve_merge_base_tree(project_dir)
     if resolved["status"] != "ok":
-        remedy = {
-            "resolve-base": (
-                " — cannot determine the PR span. Fix base_branch in "
-                "project-state.yaml (or fetch the base) and re-run."
-            ),
-            "merge-base": ". Re-run once the branch shares history with its base.",
-        }.get(resolved.get("step", ""), ".")
-        print(f"no-base: {resolved['reason']}{remedy}", file=sys.stderr)
-        return 1
+        return {"status": "no-base", "resolved": resolved}
     base_tree = resolved["tree"]
     rc, head_tree, err = evidence.run_git(project_dir, "rev-parse", "HEAD^{tree}")
     if rc != 0 or not head_tree:
-        print(f"no-head: cannot resolve HEAD^{{tree}} ({err}).", file=sys.stderr)
-        return 1
+        return {"status": "no-head", "resolved": resolved, "error": err}
 
     # Every cached ANSWER is read after the schema-ahead precheck above, and
     # that ordering is the contract: a fact from a newer plugin must block
@@ -1704,9 +1755,109 @@ def _cumulative_critic_verdict(project_dir: Path, read: dict, cache) -> int:
     def verdict_fn(facts: list[dict], base: str, target: str) -> dict:
         return cache.verdict(facts, base, target, diff_fn, key_fn)
 
+    common = {
+        "resolved": resolved,
+        "base_tree": base_tree,
+        "head_tree": head_tree,
+        "_verdict_fn": verdict_fn,
+    }
     verdict = verdict_fn(read.get("facts", []), base_tree, head_tree)
 
-    if verdict["status"] == "covered":
+    if verdict["status"] in ("covered", "blocked"):
+        return {"status": verdict["status"], "verdict": verdict, **common}
+
+    # A base advance moves the span's START node, so a branch whose own diff did
+    # not move a byte reads as uncovered and buys a full re-review. Attempt the
+    # transfer BEFORE anything is rendered: when it holds this is a pass, and
+    # the remedy block the printer would otherwise write describes a problem the
+    # operator does not have. Condition 3 lives here rather than in the
+    # diagnosis because the test evidence is this module's — and because the
+    # near miss (byte identity holds, the suite has not met the merged tree) has
+    # a remedy worth naming: a suite run, which is minutes against a
+    # cumulative's tens of them.
+    transfer = coverage.diagnose_base_advance_transfer(
+        project_dir,
+        read.get("facts", []),
+        base_tree,
+        head_tree,
+        diff_fn,
+        verdict_fn,
+    )
+    if transfer is not None and transfer.get("status") == "match":
+        tests_ok, tests_reason = suite_vouches_for_tree(project_dir, head_tree)
+        if tests_ok:
+            if record_grants:
+                record_transfer_grant(
+                    project_dir,
+                    read.get("facts", []),
+                    transfer,
+                    base_tree,
+                    head_tree,
+                    "check-cumulative-critic",
+                )
+            return {
+                "status": "transferred",
+                "verdict": verdict,
+                "transfer": transfer,
+                "tests_reason": tests_reason,
+                **common,
+            }
+        return {
+            "status": "uncovered",
+            "verdict": verdict,
+            "transfer": transfer,
+            "transfer_stale": tests_reason,
+            **common,
+        }
+    return {
+        "status": "uncovered",
+        "verdict": verdict,
+        "transfer": transfer,
+        "transfer_stale": None,
+        **common,
+    }
+
+
+def _cumulative_critic_verdict(project_dir: Path, read: dict, cache) -> int:
+    """:func:`check_cumulative_critic`'s body; see it for the contract.
+
+    The composition is :func:`_branch_coverage`'s and this function only
+    renders it — including every diagnosis below, which is advice about a
+    verdict already reached rather than an input to it."""
+    answer = _branch_coverage(project_dir, read, cache, record_grants=True)
+    status = answer["status"]
+
+    if status == "store-precheck":
+        pstatus, reason = answer["precheck"]
+        print(f"{pstatus}: {reason}", file=sys.stderr)
+        return 1
+
+    if status == "no-base":
+        resolved = answer["resolved"]
+        remedy = {
+            "resolve-base": (
+                " — cannot determine the PR span. Fix base_branch in "
+                "project-state.yaml (or fetch the base) and re-run."
+            ),
+            "merge-base": ". Re-run once the branch shares history with its base.",
+        }.get(resolved.get("step", ""), ".")
+        print(f"no-base: {resolved['reason']}{remedy}", file=sys.stderr)
+        return 1
+
+    if status == "no-head":
+        print(
+            f"no-head: cannot resolve HEAD^{{tree}} ({answer['error']}).",
+            file=sys.stderr,
+        )
+        return 1
+
+    resolved = answer["resolved"]
+    base_tree = answer["base_tree"]
+    head_tree = answer["head_tree"]
+    verdict_fn = answer["_verdict_fn"]
+    verdict = answer["verdict"]
+
+    if status == "covered":
         steps = verdict.get("path", [])
         reviews = sum(1 for s in steps if s.get("kind") == "review")
         free = sum(1 for s in steps if s.get("kind") == "free")
@@ -1721,7 +1872,7 @@ def _cumulative_critic_verdict(project_dir: Path, read: dict, cache) -> int:
         )
         return 0
 
-    if verdict["status"] == "blocked":
+    if status == "blocked":
         unresolved = verdict.get("unresolved", [])
         print(
             f"blocking: coverage composes over {base_tree[:12]}..{head_tree[:12]} "
@@ -1740,52 +1891,27 @@ def _cumulative_critic_verdict(project_dir: Path, read: dict, cache) -> int:
             print(line, file=sys.stderr)
         return 1
 
-    # A base advance moves the span's START node, so a branch whose own diff did
-    # not move a byte reads as uncovered and buys a full re-review. Attempt the
-    # transfer BEFORE printing anything: when it holds, this is a pass, and the
-    # remedy block below would be describing a problem the operator does not
-    # have. Condition 3 lives here rather than in the diagnosis because the test
-    # evidence is this module's — and because the near miss (byte identity
-    # holds, the suite has not met the merged tree) has a remedy worth naming: a
-    # suite run, which is minutes against a cumulative's tens of them.
-    transfer = coverage.diagnose_base_advance_transfer(
-        project_dir,
-        read.get("facts", []),
-        base_tree,
-        head_tree,
-        diff_fn,
-        verdict_fn,
-    )
-    transfer_stale: "str | None" = None
-    if transfer is not None and transfer.get("status") == "match":
-        tests_ok, tests_reason = suite_vouches_for_tree(project_dir, head_tree)
-        if tests_ok:
-            record_transfer_grant(
-                project_dir,
-                read.get("facts", []),
-                transfer,
-                base_tree,
-                head_tree,
-                "check-cumulative-critic",
-            )
-            advance = transfer["advance_files"]
-            advanced = (
-                "the advance's own diff was unreadable, so its size is unknown"
-                if advance is None
-                else f"the advance touched {len(advance)} judgeable file(s), none of them yours"
-            )
-            print(
-                f"satisfied (transferred across base advance "
-                f"{transfer['prior_base'][:12]}→{base_tree[:12]}; branch diff "
-                f"byte-identical; suite current): {transfer['prior_reviews']} review "
-                f"fact(s) already span {transfer['prior_base'][:12]}.."
-                f"{transfer['prior_head'][:12]} with 0 unresolved blocking, the "
-                f"{len(transfer['files'])} judgeable file(s) this branch changes are "
-                f"byte-identical in both spans, and {advanced}. "
-                f"Test evidence: {tests_reason}."
-            )
-            return 0
-        transfer_stale = tests_reason
+    transfer = answer.get("transfer")
+    if status == "transferred":
+        advance = transfer["advance_files"]
+        advanced = (
+            "the advance's own diff was unreadable, so its size is unknown"
+            if advance is None
+            else f"the advance touched {len(advance)} judgeable file(s), none of them yours"
+        )
+        print(
+            f"satisfied (transferred across base advance "
+            f"{transfer['prior_base'][:12]}→{base_tree[:12]}; branch diff "
+            f"byte-identical; suite current): {transfer['prior_reviews']} review "
+            f"fact(s) already span {transfer['prior_base'][:12]}.."
+            f"{transfer['prior_head'][:12]} with 0 unresolved blocking, the "
+            f"{len(transfer['files'])} judgeable file(s) this branch changes are "
+            f"byte-identical in both spans, and {advanced}. "
+            f"Test evidence: {answer['tests_reason']}."
+        )
+        return 0
+
+    transfer_stale = answer.get("transfer_stale")
 
     print(
         f"uncovered: no composed review evidence spans "
@@ -1878,7 +2004,7 @@ def _cumulative_critic_verdict(project_dir: Path, read: dict, cache) -> int:
             f"finding(s) gated nothing. ONE `/prawduct:critic verify-resolutions` "
             f"closes it; fix nothing further first, or you will re-open it. For "
             f"anything still undecided, `prawduct-hook disposition "
-            f"{churn['fact_id']} <fid> --accept \"<reason>\"` records a won't-fix, "
+            f"{churn['fact_id']} <fid|oid> --accept \"<reason>\"` records a won't-fix, "
             f"moves no tree, and needs no review. Before you make the NEXT commit, "
             f"`prawduct-hook cost-of-commit` says whether it re-opens this gate — "
             f"the answer that used to be learnable only after committing.",

@@ -3,6 +3,81 @@
 <!-- Append new entries at the top. Each entry is a ## section.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
+## 2026-09-16: a clean delta stops reading as branch clearance
+
+<!-- prawduct: type=fix | scope=review-loop-termination -->
+
+A `verify-resolutions` pass covers its own delta and nothing else. On a clean close it said
+`0 blocking, 0 other findings — THE REVIEW IS OVER`, and the only thing standing between that
+sentence and "the branch is clean" was a parenthetical telling the reader to go **ask** the gate
+about coverage. In #716 the author relayed branch clearance upward after round 3; round 4's
+cumulative found a BLOCKING defect that had been present since chunk 1, structurally invisible to
+every verify round because it never sat inside one of their diffs. Both facts were true — the delta
+was clean, the span was never reviewed — and nothing said the second.
+
+A clean verify close now **states** the span verdict instead of inviting a question about it:
+*this delta is clean; the branch is NOT covered, N commit(s) since the base unspanned*. A covered
+branch gets the covered sentence and no manufactured hedge — but it names what the span ends at,
+because a verify pass routinely reviews a dirty tree and the fix about to be committed is not in
+the span just called covered; a span carrying unresolved blocking
+findings from earlier rounds says how many; a span nobody could read degrades to the text that
+shipped before, because "go ask the gate" is the honest answer for unknown and advice failing soft
+is not advice failing silent.
+
+**It renders the value the gate already computes rather than a second one.** `check-cumulative-critic`'s
+composition — the same span, the same base-advance transfer — is now a function returning data, and
+the gate is its printer. Two implementations of "is the branch covered" would disagree the first
+time either moved, and the copy the builder reads while deciding what to report is the advisory
+one: the worse half to be stale. The advisory read records no transfer grant, on the standing
+split that authority records its own yield and advice observes and writes nothing.
+
+**Scoped to the one close where the misreading happens.** With blocking findings the next move is
+to fix them and the branch question is moot; with a blocker carried from the review being verified
+the line already says NOT DONE; and every other mode ships exactly the text it shipped before. A
+silent widening would have been a requirement nobody wrote.
+
+**It does not order a round.** The clause points at `check-cumulative-critic` for the cheapest
+route and says not to assume that route is another full review — a clause ending in "run a
+cumulative" would spend a round on every clean verify close, which is a worse pump than the one
+this closes.
+
+**Two things the Critic caught, both fixed in this commit.** The clean arm said *"there is nothing
+to disposition"* while the cache beside it held `O-n` observations — and since `verify-resolutions`
+demotes everything below BLOCKING, "0 findings, N observations" is that mode's *modal* close, not an
+edge. It now names them and the command that answers one. The same gap had left the relayed
+`NEXT-ACTION:` line printing `disposition <fid>`: the one carrier the `<fid|oid>` correction below
+skipped, and the strongest of them, because on the single-pass path it is the only text that
+reaches the builder at all. Separately, the covered arm asserted branch coverage over a *vacuously
+empty* span — merge-base == HEAD, zero commits, no evidence composed — which is the permanent state
+of a trunk-based governed product. An empty span now gets its own sentence: there is nothing here
+for a review to span, and that is not a claim about review evidence.
+
+**The verify pass closed clean and demonstrated the chunk on itself**: its close named its own
+three demoted observations by `O-n` id and stated the branch verdict with the dirty-tree anchor —
+`0 blocking, 0 findings ... 3 item(s) were demoted to observations ... The BRANCH is covered too, at
+HEAD`. All three observations are answered on the record, one of them carried into Chunk 03's
+commit with its home written into the plan.
+
+**rev-20260916T182912Z-d994f53c** — scope `review-loop-termination`, chunk 01, 2026-09-16T18:30:55Z
+
+_No findings._
+
+_Observations — read, not owed. Answering one is optional._
+
+| Observation | State | Detail |
+|---|---|---|
+| O-1 | accepted | The coverage claim stays true; only the explanation is wrong, and only in the add-then-revert state where merge-base tree == HEAD tree with commits > 0. Not worth a round on its own. The fix for whoever next touches span_clause: let `commits` drive the wording and `path` drive the arm — two disjuncts, two jobs. |
+| O-2 | accepted | Operator-facing help text that nothing parses, so a regression to <fid> costs a reader one confusing moment and no gate. The relayed NEXT-ACTION line — the carrier that reaches the builder on the single-pass path and the one this chunk was correcting — IS pinned, negative assertion included. If the class is ever wanted as a whole it belongs in tests/preferences/, where it can also record why prawduct-hook:1734 keeps the narrow <fid> (the sweep is findings-only by recorded decision). |
+| O-3 | accepted | Correct, and it rides Chunk 03's commit rather than buying a round of its own — written into the plan's Chunk 03 section so it is a deferral with a home, not a drop. Chunk 03 edits critic_consolidate.py (the plan's partition says so), so it will meet this function. |
+
+**No findings** — a clean pass.
+**3 observations demoted** — 3 answered. An observation gates nothing; answering one is optional.
+
+Two notes from the previous chunk's review ride this commit rather than buying their own round:
+`goals-1-3.md`'s `observations` key is now pinned by the test that guards what the file's raised
+ceiling bought, and the disposition usage string — what a **refused** invocation prints — says
+`<fid|oid>`, which is the moment a builder needs to know an observation id is legal.
+
 ## 2026-09-16: an observation can be accepted on the record, not only fixed
 
 <!-- prawduct: type=feat | scope=review-loop-termination -->
