@@ -573,3 +573,305 @@ class TestReviewAnchorIdempotency:
 
         prawduct = repo / ".prawduct"
         assert ledger.review_event_exists(prawduct, "rev-first") is True
+
+
+class TestLedgerAppendRefusesLearningKinds:
+    """`learning.*` is machine-emitted or it is nothing.
+
+    The fields are DERIVED — a unit hash from the corpus, a session from the
+    `.session-start` marker — so a hand-typed event agrees with neither, and
+    the instrument then reports a rule that fired in no review or a rule nobody
+    wrote. The refusal is what keeps a `learning.*` line meaning what the join
+    assumes it means.
+    """
+
+    @pytest.mark.parametrize("kind", ["learning.written", "learning.fired"])
+    def test_cli_refuses_a_real_learning_kind(self, tmp_path, kind):
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _commit_file(repo, "app.py", "print(1)\n", "init")
+        _write_findings(repo)
+        r = _run_hook(repo, "ledger-append", "--event", kind)
+        assert r.returncode == 1
+        assert "never by hand" in r.stderr
+        assert _ledger_events(repo) == []
+
+    def test_a_mistyped_learning_kind_gets_the_same_answer(self, tmp_path):
+        """Not "unknown kind (allowed: … learning.written …)" — that message
+        invites the caller to fix the spelling and try again, and the retry
+        would be refused for a reason the message never gave."""
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _commit_file(repo, "app.py", "print(1)\n", "init")
+        _write_findings(repo)
+        r = _run_hook(repo, "ledger-append", "--event", "learning.writen")
+        assert r.returncode == 1
+        assert "never by hand" in r.stderr
+
+    def test_the_unknown_kind_message_never_advertises_a_learning_kind(self, tmp_path):
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _commit_file(repo, "app.py", "print(1)\n", "init")
+        _write_findings(repo)
+        r = _run_hook(repo, "ledger-append", "--event", "build.chunk")
+        assert r.returncode == 1
+        assert "unknown event kind" in r.stderr
+        assert "learning." not in r.stderr
+
+    def test_review_kinds_still_append(self, tmp_path):
+        """The control. A refusal that also refused `review.critic` would pass
+        every assertion above while breaking the writer."""
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _commit_file(repo, "app.py", "print(1)\n", "init")
+        _write_findings(repo)
+        assert _run_hook(repo, "ledger-append", "--event", "review.critic").returncode == 0
+        assert len(_ledger_events(repo)) == 1
+
+
+class TestAppendLearningEvent:
+    """The one entry point for `learning.*`, and its idempotence key."""
+
+    @staticmethod
+    def _repo(tmp_path, *, session: bool = True) -> Path:
+        repo = tmp_path / "myproject"
+        _init_repo(repo)
+        _commit_file(repo, "app.py", "print(1)\n", "init")
+        prawduct = repo / ".prawduct"
+        prawduct.mkdir(parents=True, exist_ok=True)
+        if session:
+            (prawduct / ".session-start").write_text("")
+        return repo
+
+    def test_written_envelope_role_and_payload(self, tmp_path):
+        from lib import ledger
+
+        repo = self._repo(tmp_path)
+        head = _git(repo, "rev-parse", "HEAD").stdout.strip()
+        assert ledger.append_learning_event(
+            repo, "learning.written",
+            file=".claude/rules/learnings/core.md", unit_hash="abc1234567890def",
+        ) is True
+
+        events = _ledger_events(repo)
+        assert len(events) == 1
+        ev = events[0]
+        assert ev["schema_version"] == 1
+        assert ev["event"] == "learning.written"
+        assert ev["ts"].endswith("Z") and "T" in ev["ts"]
+        assert ev["project"] == "myproject"
+        assert ev["git"]["head"] == head
+        # A measurement of an act, not of a duration, and no model produced it.
+        assert ev["duration_seconds"] is None
+        assert ev["actor"] == {"role": "builder", "model": None}
+        assert ev["learning"] == {
+            "file": ".claude/rules/learnings/core.md",
+            "unit_hash": "abc1234567890def",
+            "session": ev["learning"]["session"],
+            "review_id": None,
+        }
+        assert ev["learning"]["session"].endswith("Z")
+        # The payload nests under its own family key — `review` belongs to the
+        # review kinds and a consumer switching on it must not see this line.
+        assert "review" not in ev
+
+    def test_fired_carries_the_review_id_and_the_critic_role(self, tmp_path):
+        from lib import ledger
+
+        repo = self._repo(tmp_path)
+        assert ledger.append_learning_event(
+            repo, "learning.fired", file="a.md", unit_hash="h1", review_id="rev-9",
+        ) is True
+        ev = _ledger_events(repo)[0]
+        assert ev["actor"]["role"] == "critic"
+        assert ev["learning"]["review_id"] == "rev-9"
+
+    def test_session_is_null_when_no_marker_exists(self, tmp_path):
+        """Nullable, never invented: a headless probe or a fixture has no
+        session, and a made-up id would bucket those events on their own."""
+        from lib import ledger
+
+        repo = self._repo(tmp_path, session=False)
+        assert ledger.append_learning_event(
+            repo, "learning.written", file="a.md", unit_hash="h1",
+        ) is True
+        assert _ledger_events(repo)[0]["learning"]["session"] is None
+
+    def test_scope_uses_the_existing_build_plan_fallback(self, tmp_path):
+        from lib import ledger
+
+        repo = self._repo(tmp_path)
+        plans = repo / ".prawduct" / "artifacts"
+        plans.mkdir(parents=True, exist_ok=True)
+        (plans / "build-plan-my-feature.md").write_text("---\nscope: plan-scope\n---\n")
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            "active_build_plan: artifacts/build-plan-my-feature.md\n"
+        )
+        assert ledger.append_learning_event(
+            repo, "learning.written", file="a.md", unit_hash="h1",
+        ) is True
+        assert _ledger_events(repo)[0]["scope"] == "plan-scope"
+
+    def test_a_second_call_with_the_same_key_appends_nothing(self, tmp_path):
+        """The Stop hook runs every turn, so the same new rule is re-observed
+        until the session ends. Without the key the ledger counts one rule as
+        dozens and the instrument reads the opposite of the truth."""
+        from lib import ledger
+
+        repo = self._repo(tmp_path)
+        assert ledger.append_learning_event(
+            repo, "learning.written", file="a.md", unit_hash="h1",
+        ) is True
+        assert ledger.append_learning_event(
+            repo, "learning.written", file="a.md", unit_hash="h1",
+        ) is False
+        assert len(_ledger_events(repo)) == 1
+
+    @pytest.mark.parametrize(
+        "second",
+        [
+            {"file": "b.md", "unit_hash": "h1"},
+            {"file": "a.md", "unit_hash": "h2"},
+            {"file": "a.md", "unit_hash": "h1", "review_id": "rev-1"},
+        ],
+        ids=["different-file", "different-unit", "different-review"],
+    )
+    def test_each_key_field_separates_two_events(self, tmp_path, second):
+        from lib import ledger
+
+        repo = self._repo(tmp_path)
+        ledger.append_learning_event(
+            repo, "learning.fired", file="a.md", unit_hash="h1",
+        )
+        assert ledger.append_learning_event(repo, "learning.fired", **second) is True
+        assert len(_ledger_events(repo)) == 2
+
+    def test_the_kind_separates_two_events(self, tmp_path):
+        from lib import ledger
+
+        repo = self._repo(tmp_path)
+        ledger.append_learning_event(
+            repo, "learning.written", file="a.md", unit_hash="h1",
+        )
+        assert ledger.append_learning_event(
+            repo, "learning.fired", file="a.md", unit_hash="h1",
+        ) is True
+        assert len(_ledger_events(repo)) == 2
+
+    def test_a_new_session_records_the_same_rule_again(self, tmp_path):
+        """`session` is in the key because question 1 counts rules written PER
+        SESSION — the same rule surviving into a second session's base tree is
+        not written twice, but a corpus arriving fresh in two repos is."""
+        import os
+        import time
+
+        from lib import ledger
+
+        repo = self._repo(tmp_path)
+        marker = repo / ".prawduct" / ".session-start"
+        os.utime(marker, (time.time() - 7200, time.time() - 7200))
+        assert ledger.append_learning_event(
+            repo, "learning.written", file="a.md", unit_hash="h1",
+        ) is True
+        os.utime(marker, None)  # a new session boundary
+        assert ledger.append_learning_event(
+            repo, "learning.written", file="a.md", unit_hash="h1",
+        ) is True
+        assert len(_ledger_events(repo)) == 2
+
+    def test_a_non_learning_kind_is_refused_at_the_api_too(self, tmp_path):
+        """Fail-closed at the write boundary, exactly as the CLI does — the
+        caller catching this turns the mistake into a visible NOTE."""
+        from lib import ledger
+
+        repo = self._repo(tmp_path)
+        for kind in ("review.critic", "learning.typo", ""):
+            with pytest.raises(ValueError):
+                ledger.append_learning_event(
+                    repo, kind, file="a.md", unit_hash="h1",
+                )
+        assert _ledger_events(repo) == []
+
+    def test_the_probe_ignores_review_events_and_malformed_payloads(self, tmp_path):
+        from lib import ledger
+
+        repo = self._repo(tmp_path)
+        _write_findings(repo)
+        assert _run_hook(repo, "ledger-append", "--event", "review.critic").returncode == 0
+        path = repo / LEDGER_REL
+        with open(path, "a") as fh:
+            fh.write(json.dumps({"event": "learning.written", "learning": "not-a-dict"}) + "\n")
+        assert ledger.append_learning_event(
+            repo, "learning.written", file="a.md", unit_hash="h1",
+        ) is True
+
+
+class TestLearningEventProbe:
+    """`learning_event_exists` directly — the same three cases the review
+    anchor's probe carries, because the class of defect is identical: a probe
+    that answers wrong makes the ledger double-count, and `review-stats` and
+    the never-fired join both read counts.
+    """
+
+    @staticmethod
+    def _seed(repo: Path) -> None:
+        from lib import ledger
+
+        _init_repo(repo)
+        _commit_file(repo, "app.py", "x = 1\n", "c1")
+        (repo / ".prawduct").mkdir(parents=True, exist_ok=True)
+        ledger.append_learning_event(
+            repo, "learning.fired", file="a.md", unit_hash="h1", review_id="rev-1",
+        )
+
+    def test_finds_an_existing_event_by_its_whole_key(self, tmp_path):
+        from lib import ledger
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        self._seed(repo)
+        prawduct = repo / ".prawduct"
+        key = dict(file="a.md", unit_hash="h1", session=None, review_id="rev-1")
+        assert ledger.learning_event_exists(prawduct, "learning.fired", **key) is True
+        # Each field, alone, makes it a different event.
+        assert ledger.learning_event_exists(
+            prawduct, "learning.written", **key
+        ) is False
+        assert ledger.learning_event_exists(
+            prawduct, "learning.fired", **{**key, "file": "b.md"}
+        ) is False
+        assert ledger.learning_event_exists(
+            prawduct, "learning.fired", **{**key, "unit_hash": "h2"}
+        ) is False
+        assert ledger.learning_event_exists(
+            prawduct, "learning.fired", **{**key, "review_id": "rev-2"}
+        ) is False
+        assert ledger.learning_event_exists(
+            prawduct, "learning.fired", **{**key, "session": "2026-01-01T00:00:00Z"}
+        ) is False
+
+    def test_is_false_on_an_absent_ledger(self, tmp_path):
+        from lib import ledger
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _init_repo(repo)
+        assert ledger.learning_event_exists(
+            repo / ".prawduct", "learning.written",
+            file="a.md", unit_hash="h1", session=None,
+        ) is False
+
+    def test_a_review_event_does_not_stop_the_scan(self, tmp_path):
+        """`review.*` lines sit between learning events and carry no `learning`
+        key; they must be skipped, not read as a mismatch that ends the walk."""
+        from lib import ledger
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        self._seed(repo)
+        _write_findings(repo)
+        assert _run_hook(repo, "ledger-append", "--event", "review.critic").returncode == 0
+        assert ledger.learning_event_exists(
+            repo / ".prawduct", "learning.fired",
+            file="a.md", unit_hash="h1", session=None, review_id="rev-1",
+        ) is True

@@ -2,7 +2,7 @@
 
 These principles guide every decision in a Prawduct-managed project. They are the system's constitution — stable, always present, and always applicable. When principles tension against each other (e.g., proportional effort vs. complete delivery), use judgment and document the tradeoff.
 
-Principles are not checklists. They teach intent. Claude applies them with judgment, adapting to context. The product's own `.prawduct/learnings.md` provides worked examples of how principles apply in practice — the case law that interprets the constitution. § Agent Stance below translates several of these principles into *how the agent communicates and acts* day to day — the working voice that puts the constitution into practice. The always-injected session digest (`methodology/session-digest.md`) carries its lead position and the roster of its nine bars, and routes here for each one in full.
+Principles are not checklists. They teach intent. Claude applies them with judgment, adapting to context. The product's own learnings rules (`.claude/rules/learnings/`) provide worked examples of how principles apply in practice — the case law that interprets the constitution. § Agent Stance below translates several of these principles into *how the agent communicates and acts* day to day — the working voice that puts the constitution into practice. The always-injected session digest (`methodology/session-digest.md`) carries its lead position and the roster of its nine bars, and routes here for each one in full.
 
 ## Quality
 

@@ -94,18 +94,6 @@ class TestThreshold:
                    _FILLER + f"oversized_file_threshold_kb: {junk}\n")
             assert _by_type(repo, "oversized-project-state") is not None, junk
 
-    def test_the_learnings_twin_reads_the_same_threshold(self, tmp_path):
-        # The two nudges documented themselves as sharing "the same 40KB
-        # threshold" while being two hardcoded literals free to drift, and only
-        # one of them could be tuned. One function now answers for both.
-        from lib import briefing
-
-        repo = _repo(tmp_path)
-        _write(repo, ".prawduct/learnings.md", "# L\n" + ("- rule\n" + "y" * 100 + "\n") * 500)
-        assert "learnings.md is large" in briefing.assemble_session_briefing(repo, [])
-        _write(repo, ".prawduct/project-state.yaml", "oversized_file_threshold_kb: 500\n")
-        assert "learnings.md is large" not in briefing.assemble_session_briefing(repo, [])
-
 
 class TestBulletsAreGatedOnTheMeasuredFile:
     def test_a_bullet_whose_class_is_absent_is_not_printed(self, tmp_path):

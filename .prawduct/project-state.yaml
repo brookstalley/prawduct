@@ -753,3 +753,13 @@ deprecated_terms:
   - term: "concern dimensions"
     replacement: "structural characteristics"
     patterns: ["concern dimension"]
+
+# Per-file byte ceilings for the learnings rules (default 16 KB; see
+# plugin/templates/project-state.yaml). Raised with a reason, never silently.
+learnings_budgets:
+  tests.md:
+    kb: 22
+    reason: "the test-authoring rules that reached develop after this branch migrated its corpus, re-homed here at the cutover merge (2026-09-15) rather than appended to core.md, which had ~450 bytes of headroom under its own ceiling. Over the 16 KB default by arrival, not by authoring: they are one batch of already-earned rules, and splitting them further would scope by size rather than by what they govern. RATCHETED 24 -> 22 on 2026-09-15 after six units moved out to authoring.md: at 24 the file sat ~3.4 KB under its own ceiling, so the over-and-grew gate would have let the next three additions through free. A ceiling with slack in it is not a ceiling"
+  core.md:
+    kb: 99
+    reason: "the 287-rule corpus migrated whole on 2026-09-02 at ~100 KB — over the default by construction until #343's content program splits it into area files; this ceiling sits just above the ported corpus so the over-and-grew gate sees the next addition; it covers rules ported from develop at the cutover merge (the one-way relayout left the legacy file on develop for a day). New authoring still pays: the next raise needs its own reason"

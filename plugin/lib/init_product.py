@@ -12,7 +12,7 @@ Creates:
   - ``.prawduct/project-state.yaml``                  (rendered; ``distribution: plugin`` recorded,
                                                        plus ``base_branch:`` when the remote's
                                                        default branch is not main/master)
-  - ``.prawduct/learnings.md``                        (starter)
+  - ``.claude/rules/learnings/core.md``               (starter rules corpus)
   - ``.prawduct/backlog.md``                          (template)
   - ``.prawduct/change-log.md``                       (template)
   - ``.prawduct/artifacts/project-preferences.md``    (template)
@@ -37,7 +37,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import core, learnings_obligation
+from . import core, learnings_files
 from .migrate_plugin import (
     ANCHOR_SENTINEL,
     BASE_BRANCH_KEY,
@@ -62,25 +62,6 @@ _STATE_TEMPLATES: list[tuple[str, str]] = [
 ]
 
 _SCAFFOLD_DIRS = (".prawduct", ".prawduct/artifacts", ".prawduct/.pr-reviews")
-
-_LEARNINGS_REL = learnings_obligation.LEARNINGS_REL
-
-#: The starter corpus carries the descent obligation from the very first
-#: session, because `/prawduct:learnings` instructs its caller to apply "the
-#: obligation marked `prawduct:descent-obligation`" — a pointer that resolves
-#: in the framework repo and, before this, nowhere else. Every onboarded
-#: product got an instruction aimed at a file that had no such marker.
-#: The block itself is `learnings_obligation.OBLIGATION_BLOCK`, shared with the
-#: doctor repair that backfills it into a product onboarded before this existed —
-#: scaffold and repair must plant the same thing, or a reworded obligation reaches
-#: new products and skips repaired ones.
-_LEARNINGS_STARTER = (
-    "# Learnings\n\n"
-    "Accumulated wisdom from building this product. Entries use "
-    '"When X, do Y because Z" format, and each rule carries its instances '
-    "inline — they are what a reader pattern-matches their own case against.\n\n"
-    + learnings_obligation.OBLIGATION_BLOCK
-)
 
 
 def _subs(name: str) -> dict[str, str]:
@@ -236,13 +217,14 @@ def init_product(
                 dst.parent.mkdir(parents=True, exist_ok=True)
                 core.write_template(core.TEMPLATES_DIR / tmpl, dst, subs)
 
-    # Learnings starter (no template — a one-line seed, mirroring file-sync init).
-    learnings = project_dir / _LEARNINGS_REL
-    if not learnings.is_file():
-        created.append(_LEARNINGS_REL)
+    # Learnings starter — a `.claude/rules/` file, so the harness loads it and no
+    # prawduct code sits on the read path. `scaffold_core` owns the header (the
+    # descent obligation) and the never-overwrite rule; this reports the write.
+    core_rel = f"{learnings_files.RULES_DIR_REL}/{learnings_files.CORE_NAME}"
+    if not (project_dir / core_rel).is_file():
+        created.append(core_rel)
         if apply:
-            learnings.parent.mkdir(parents=True, exist_ok=True)
-            learnings.write_text(_LEARNINGS_STARTER, encoding="utf-8")
+            learnings_files.scaffold_core(project_dir)
 
     # CLAUDE.md — thin static governance anchor (created fresh, or anchored into an
     # existing product CLAUDE.md). Same anchor a migrated repo keeps (Chunk 10).

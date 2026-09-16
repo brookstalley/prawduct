@@ -170,6 +170,26 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `check-releasability [--release vX.Y.Z]`, `check-released vX.Y.Z [--json] [--allow-unverifiable]`,
   `resolve-base`,
   `regen-views` (deprecated, inert), `stamp-merged` (deprecated, inert).
+- **Learnings layout (learnings v2)** — `learnings-files [--for-diff] [--json]` (read-only: the one
+  resolver's answer — the rules files under `.claude/rules/learnings/`, and with `--for-diff` the
+  core file plus every area file whose `paths:` intersect the diff; two `allowed-tools` grants bind
+  it and the PR reviewer protocol instructs it, so it sits in the stable tier) and `learnings-migrate [--apply] [--map <file>] [--propose-map]
+  [--json]` (mutating with `--apply`: the one-way relayout of a legacy `.prawduct/learnings.md` into
+  the rules files, byte-accounted against the tree it writes; refuses on a dirty tree; exit 0 written,
+  1 refused or could not run, 2 usage — the sibling repairs' scheme). **The contract change, in one
+  place:** two verbs added; three retired to deprecated-inert (below) rather than removed, because the
+  deprecation norm above governs every verb a human or a skill can call and the release is a minor;
+  `ledger-append` gained two event kinds it refuses at the CLI; `review-stats --json` moved to
+  `schema_version` 4 (a `learning` block added, then its `units_uncited` key, then the verify-pass `observations` counts; no key repurposed). Nothing a consumer allowlisted
+  changed meaning.
+- **Learnings lifecycle (retired with learnings v2)** — `audit-learnings`, `learnings-obligation`,
+  `check-learnings-pairing` (deprecated, inert): the corpus they graded — `.prawduct/learnings.md`
+  and its detail/history pair — no longer exists; rules are harness-loaded from
+  `.claude/rules/learnings/`. Kept dispatchable under the deprecation norm above because a doctor
+  skill on an older per-project pin or a copied runbook can still call them: exit 0 for any
+  flags, one `WARNING:` on stderr naming the replacement, nothing on stdout, nothing written.
+  `ledger-append --event learning.*` is REFUSED (exit 1): those two kinds are emitted by the Stop
+  hook and `critic-consolidate`, never by hand (`docs/governance-telemetry.md`).
 - **Retired hook subcommands** — `build-index`, `user-prompt-submit` (deprecated, inert since
   v3.3.3). No longer registered in `hooks.json`; kept dispatchable because a pre-3.3.2 registration
   still invokes them and plugin version pins update per project. Silent on **both** streams, unlike
@@ -238,13 +258,14 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   same `inactive` means "this repo loads nothing" to an onboarding session and "the manifest
   record does not name this path" to a doctor run, which by construction executes inside a
   session where the plugin did load. `--json` carries `status` for a caller that must branch.
-- **Learnings pairing** — `check-learnings-pairing [--json]` (read-only). Grades `learnings.md`
-  against `learnings-detail.md`. Exit 0 clean, 1 a duplicate active heading, **3** the pair could
-  not be read — the third-outcome rule below. Only duplicates are graded; counterpart and ordering
-  drift ride `counts` as measurements, because the two files pair by PREFIX rather than exact title
-  and the mirror-exactly invariant does not hold in practice (270 index vs 179 detail active
-  entries on this repo). `audit-learnings --apply` refuses on the same duplicate state and exits
-  **1** — a writer that refused and wrote nothing, per the fail-direction rules below.
+- **Learnings pairing** — `check-learnings-pairing [--json]` (**deprecated, inert** since the v2
+  cutover). Exits **0** always and writes nothing; `--json` yields empty stdout. It graded
+  `.prawduct/learnings.md` against `learnings-detail.md`, and that corpus no longer exists — rules
+  are `.claude/rules/` files the harness loads by path match. **Its former contract (0 clean, 1 a
+  duplicate active heading, 3 the pair unreadable) is RETIRED, not merely unused**: a stub that
+  returns 0 cannot raise 1 or 3, so a caller still branching on them takes the clean arm forever.
+  The notice on stderr names where rules live now. `audit-learnings` and `learnings-obligation`
+  are inert on the same terms.
 - **Advisory** — `advisory list|show|dismiss|undismiss|resolve`.
 - **Backlog service** — `backlog <op>`: a subcommand *group*, not a single command. The op set is
   `_ALL_OPS` in `lib/backlog/cli.py` — the same tuple the CLI builds its unknown-op message from, so
@@ -660,6 +681,7 @@ Evolution rules we want to hold, so new versions stay rare:
 
 - **Stable, allowlistable surface** (intended to be depended on, and scoped into skill
   `allowed-tools`): `evidence status|list`, `review-stats --json`, `render-dispositions`,
+  `learnings-files` (bound by the Critic skill, the PR reviewer protocol and the reviewer agent),
   `disposition`, and the query/gate subcommands skills bind to (`test-status`, `verify-coverage`,
   `check-*`, `resolve-base`, `coverage-status`, `advisory *`, `infer-critic-mode`). Several of these
   exist *specifically* to give skills a narrow, stable command to allowlist instead of arbitrary
@@ -679,16 +701,20 @@ Evolution rules we want to hold, so new versions stay rare:
   of the real one. Its `counts` follow the same rule as the manifest's: an integer when a check ran,
   `null` when it produced no answer.
 - **Internal / lifecycle surface** (called by the harness or by consolidation, not a public
-  contract): `clear`, `stop`, `subagent-stop`, `critic-begin`, `critic-consolidate`.
+  contract): `clear`, `stop`, `subagent-stop`, `critic-begin`, `critic-consolidate`,
+  `learnings-migrate` (run once per repo from the session-start directive).
   **`backlog <op>` sits in this tier on different grounds:** its callers are the
   `/prawduct:backlog` skill and adopter agents rather than the harness, and § Direction's 2026-08-02
   ruling puts every subcommand outside the two published surfaces here. Unpromised, not unused —
   § Operations, "Backlog service", is the entry, and it names what would move it.
-- **Deprecated and inert** (callable, writes nothing, exits 0; removal deferred to a major). Two
-  sub-shapes, split by **who calls them** — which decides whether they announce themselves:
+- **Deprecated and inert** (callable, writes nothing, exits 0; removal deferred to a major). The
+  members § Operations marks so, in two sub-shapes, split by **who calls them** — which decides whether they announce
+  themselves:
 
-  - *Announcing* — `stamp-merged`, `regen-views`, `bug-inbox`. Notice on stderr. The first two lost
-    their bodies when derived views were retired: `regen-views` had no views left to regenerate, and
+  - *Announcing* — `stamp-merged`, `regen-views`, `bug-inbox`, and since learnings v2
+    `audit-learnings`, `learnings-obligation`, `check-learnings-pairing` (their notice names the
+    rules layout that replaced the corpus they graded). Notice on stderr. The first two lost their
+    bodies when derived views were retired: `regen-views` had no views left to regenerate, and
     `stamp-merged`'s only output (`status=`) had no reader left. `bug-inbox` resolved the local
     `incoming-bugs/` drop-box for `/prawduct:report-bug`, which files GitHub issues instead, so
     there is no directory left to resolve. **Prawduct's own release runbook no longer calls any of
@@ -697,6 +723,7 @@ Evolution rules we want to hold, so new versions stay rare:
     a pipeline mid-release. The notice tells such a caller to drop the call. `bug-inbox` also moved
     its exit code, 1 → 0: the 1 meant *no inbox is configured*, a condition a caller could branch
     on, and nothing can be configured now.
+
   - *Silent* — `build-index`, `user-prompt-submit` (inert since v3.3.3). **No output on either
     stream.** Their caller is a pre-3.3.2 `hooks.json` registration, not a person: a notice has no
     reader who can act on it, and the next plugin update replaces the registration anyway. On

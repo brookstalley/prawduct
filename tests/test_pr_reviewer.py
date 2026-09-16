@@ -14,6 +14,8 @@ from pathlib import Path
 
 import pytest
 
+from conftest import SHAPED_REFLECTION
+
 REPO_ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK_PATH = REPO_ROOT / "bin" / "prawduct-hook"
 FRAMEWORK_DIR = REPO_ROOT
@@ -93,6 +95,9 @@ class TestStopPrReviewGate:
         """Stop hook exits clean when there's no PR."""
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
+        # The reflection gate keys on the session's code changes, plan or no
+        # plan; satisfy it so the PR gate is the only thing under test here.
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
 
         result = run_hook("stop", tmp_path, git_output="")
         assert result.returncode == 0
@@ -110,6 +115,9 @@ class TestStopPrReviewGate:
         """
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
+        # The reflection gate keys on the session's code changes, plan or no
+        # plan; satisfy it so the PR gate is the only thing under test here.
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
 
         git_script = "\n".join([
             'if [[ "$1" == "rev-parse" ]]; then echo ".git"; exit 0; fi',
@@ -139,6 +147,9 @@ class TestStopPrReviewGate:
         not just the absence of the blocker."""
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
+        # The reflection gate keys on the session's code changes, plan or no
+        # plan; satisfy it so the PR gate is the only thing under test here.
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
         gh_log = tmp_path.parent / "gh_calls.log"
 
         git_script = "\n".join([
@@ -168,6 +179,9 @@ class TestStopPrReviewGate:
         see test_stop_with_pr_no_evidence_blocks.)"""
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
+        # The reflection gate keys on the session's code changes, plan or no
+        # plan; satisfy it so the PR gate is the only thing under test here.
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
         reviews_dir = prawduct / ".pr-reviews"
         reviews_dir.mkdir()
         evidence = reviews_dir / "feature--test-pr.json"
@@ -203,6 +217,9 @@ class TestStopPrReviewGate:
         """When evidence file has malformed JSON, stop should block."""
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
+        # The reflection gate keys on the session's code changes, plan or no
+        # plan; satisfy it so the PR gate is the only thing under test here.
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
         reviews_dir = prawduct / ".pr-reviews"
         reviews_dir.mkdir()
         evidence = reviews_dir / "feature--test-pr.json"
@@ -225,6 +242,9 @@ class TestStopPrReviewGate:
         """When evidence file is missing 'findings' key, stop should block."""
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
+        # The reflection gate keys on the session's code changes, plan or no
+        # plan; satisfy it so the PR gate is the only thing under test here.
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
         reviews_dir = prawduct / ".pr-reviews"
         reviews_dir.mkdir()
         evidence = reviews_dir / "feature--test-pr.json"
@@ -247,6 +267,9 @@ class TestStopPrReviewGate:
         """When evidence file is missing 'summary' key, stop should block."""
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
+        # The reflection gate keys on the session's code changes, plan or no
+        # plan; satisfy it so the PR gate is the only thing under test here.
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
         reviews_dir = prawduct / ".pr-reviews"
         reviews_dir.mkdir()
         evidence = reviews_dir / "feature--test-pr.json"
@@ -271,6 +294,9 @@ class TestStopPrReviewGate:
         no-session-changes short-circuit — is what's exercised.)"""
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
+        # The reflection gate keys on the session's code changes, plan or no
+        # plan; satisfy it so the PR gate is the only thing under test here.
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
 
         git_script = "\n".join([
             'if [[ "$1" == "rev-parse" ]]; then echo ".git"; exit 0; fi',
@@ -292,6 +318,9 @@ class TestStopPrReviewGate:
         """
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
+        # The reflection gate keys on the session's code changes, plan or no
+        # plan; satisfy it so the PR gate is the only thing under test here.
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
 
         # Session: uncommitted .py change → session_doc_only=False, Gate 3 enters
         # PR diff: only .md committed → pr_doc_only=True, new skip applies
@@ -322,6 +351,9 @@ class TestStopPrReviewGate:
         """
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
+        # The reflection gate keys on the session's code changes, plan or no
+        # plan; satisfy it so the PR gate is the only thing under test here.
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
 
         git_script = "\n".join([
             'if [[ "$1" == "rev-parse" && "$2" == "--verify" && "$3" == "origin/main" ]]; then echo "abc123"; exit 0; fi',
@@ -360,6 +392,9 @@ class TestStopPrReviewGate:
         """
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
+        # The reflection gate keys on the session's code changes, plan or no
+        # plan; satisfy it so the PR gate is the only thing under test here.
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
 
         git_script = "\n".join([
             'if [[ "$1" == "rev-parse" && "$2" == "--verify" && "$3" == "origin/main" ]]; then echo "abc123"; exit 0; fi',
@@ -651,9 +686,21 @@ class TestPrReviewSkillContent:
         )
 
     def test_review_protocol_references_learnings(self):
-        """PR reviewer must read learnings.md during setup."""
+        """PR reviewer must read the product's learnings during setup.
+
+        Post-cutover that is not one file: `core.md` is always loaded and each
+        area file arrives only when the diff intersects its `paths:` globs, so
+        the read list is computed, not written down. The protocol names the
+        command that computes it — a reviewer told to "read the learnings" with
+        no way to enumerate them reads `core.md` and silently misses every area
+        rule the session actually had in context.
+        """
         content = (FRAMEWORK_DIR / "skills" / "pr" / "review-protocol.md").read_text()
-        assert "learnings.md" in content
+        assert ".claude/rules/learnings/core.md" in content
+        assert "prawduct-hook learnings-files --for-diff" in content
+        assert "learnings.md" not in content, (
+            "the PR protocol still names the pre-cutover corpus — nothing reads it"
+        )
 
     def test_review_protocol_has_learnings_crosscheck(self):
         """PR reviewer must have a Learnings Cross-Check section."""

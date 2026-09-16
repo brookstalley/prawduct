@@ -3,7 +3,7 @@ prawduct plugin lib — the dev-time governance library the runtime hook uses.
 
 The plugin ships only *governance* modules `bin/prawduct-hook` needs —
 critic-mode inference, operator-verification, the advisory
-CLI/store, the learnings-lifecycle audit — plus the plugin-native onboarding
+CLI/store, the learnings layout and its relayout — plus the plugin-native onboarding
 (`init_product`) and file-sync→plugin migration (`migrate_plugin`). The plugin
 is dev-time governance, not a sync engine (design §2, §7).
 
@@ -85,8 +85,6 @@ _FLATTENED_EXPORTS: dict[str, str] = {
     "undismiss_advisory": "advisory_cmd",
     # Critic mode inference (no-arg /critic picks mode from state)
     "infer_mode": "critic_mode",
-    # Learnings-lifecycle audit (/prawduct:doctor Audit-Learnings flow)
-    "run_audit_learnings": "audit_learnings_cmd",
     # Operator-verification queue (pre-merge human-verification gate)
     "VerificationEntry": "operator_verification",
     "count_pending": "operator_verification",

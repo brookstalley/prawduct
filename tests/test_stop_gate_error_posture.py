@@ -30,6 +30,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from conftest import SHAPED_REFLECTION
+
 _ROOT = Path(__file__).resolve().parent.parent / "plugin"
 
 sys.path.insert(0, str(_ROOT))
@@ -72,9 +74,7 @@ def _blocking_session(tmp_path: Path) -> Path:
     (prawduct / "artifacts" / "build-plan.md").write_text(
         "# Build Plan\n\n## Status\n\n- [ ] Chunk 01: work\n"
     )
-    (prawduct / ".session-reflected").write_text(
-        "A sufficiently long session reflection so only the Critic gate can block here.\n"
-    )
+    (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
     (repo / "code.py").write_text("x = 2\n")  # judgeable session change
     return repo
 

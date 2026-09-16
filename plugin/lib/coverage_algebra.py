@@ -112,7 +112,13 @@ def judgeable_files(paths: "list[str] | None") -> list[str]:
 #: Records ABOUT the work, as opposed to the work itself: governance state,
 #: specs, plans, the change log, learnings, reflections. A review READS these
 #: to judge by; it does not rate them.
-RECORD_PREFIXES = (".prawduct/",)
+#:
+#: ``.claude/rules/learnings/`` is here because the v2 cutover moved the corpus
+#: OUT of ``.prawduct/``. Leaving it out reclassified every rule file from
+#: oracle to review subject silently -- the Records Pass stops shielding them
+#: and they land in ``files_reviewed`` -- which is a change in what a review
+#: RATES, made by relocating a file rather than by deciding anything.
+RECORD_PREFIXES = (".prawduct/", ".claude/rules/learnings/")
 
 
 def is_review_subject(path: str) -> bool:
@@ -165,17 +171,16 @@ def review_subjects(paths: "list[str] | None") -> list[str]:
 #: it AND the file is low-churn framework configuration.
 #:
 #: - ``project-state.yaml`` — ``test_norm_probes.TestSilentAgainstThisRepo``
-#:   requires every norm-lifecycle probe to stay silent against it, and
-#:   ``test_audit_learnings`` requires a ``sentinel_command:`` spelled with the
-#:   canonical placeholder.
+#:   requires every norm-lifecycle probe to stay silent against it.
 #: - ``cross-cutting-concerns.md`` — ``test_v5_methodology.TestCrossCuttingConcerns``
 #:   pins named sections and references in it.
 #:
 #: **The residual, stated rather than implied.** ``backlog.md``,
-#: ``change-log.md``, ``learnings.md`` and ``artifacts/**`` are ALSO read by
-#: repo-coupled tests (``test_backlog_parser`` pins an item id;
+#: ``change-log.md``, ``.claude/rules/learnings/**`` and ``artifacts/**`` are
+#: ALSO read by repo-coupled tests (``test_backlog_parser`` pins an item id;
 #: ``test_change_log`` pins the tagged/untagged split, the scope-to-plan join
-#: and same-line duplicates). They are held out on cost, not on principle: all
+#: and same-line duplicates; ``test_path_reference_resolution`` grades every
+#: path a rule cites). They are held out on cost, not on principle: all
 #: four are written as ordinary bookkeeping in nearly every session, and a
 #: change-log entry is written LATE by construction because the PR gate demands
 #: one — so suite-coupling them would tax every PR with a re-run after the
