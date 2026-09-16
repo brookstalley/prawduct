@@ -184,8 +184,12 @@ MUST unless marked SHOULD.
   reads tags, so nothing in this tag lifecycle reaches it. *How* it establishes that a heading was
   added is its own concern and has since grown a second path (`lib/coverage.py`) — do not restate the
   mechanism here.
-- **CL5** (SHOULD) At release, the only change-log edit is adding `release=vX.Y.Z` to the entries that
-  shipped. The three-tag sweep and its selection rule are removed.
+- **CL5** (SHOULD) At release, the only edit to an entry's *content* is adding `release=vX.Y.Z` to the
+  entries that shipped. The three-tag sweep and its selection rule are removed. *Amended 2026-09-16
+  (owner direction, `build-plan-change-log-archive.md`): "only edit" once read as "nothing else
+  happens to the log at release", and with nothing else the log only grew — 1.5 MB in this repo, the
+  same curve in every product. Moving entries verbatim (CL8) is not a content edit, so the original
+  intent — no tag sweep, no regenerated views — is untouched.*
 - **CL6** Change-log tag validation is **one** validator over the two surviving keys — value format,
   duplicate key, duplicate tag line — invoked by `check-releasability`, the gate that depends on them.
   *This is a consolidation that must not become a deletion.* Six checks exist today
@@ -201,6 +205,17 @@ MUST unless marked SHOULD.
   *release plan* today, so it does not cover this. Its meaning also improves: post-change, a scope
   shipping with no plan is **work with no documented parent** (Principle 6), not merely a view that
   cannot regenerate.
+- **CL8** The live change log stays bounded. `prawduct-hook archive-change-log` moves entries
+  **verbatim** into `.prawduct/change-log-archive/YYYY-MM.md` (by header date) once
+  `change-log.md` exceeds the repo's oversized threshold, cutting it to half. Release-pending entries
+  never move in a product that versions; undated entries never move. Every reader that interprets
+  history — `plan-backfill`'s shipped set, record-lint's scope witness — reads live **and** archive;
+  `check-releasability` reads the live log, which holds every pending entry by construction.
+  `/prawduct:pr` Step 1d runs it on every PR (a no-op under the threshold), so no product needs a
+  person to decide to compact. *Added 2026-09-16, owner direction. Supersedes the single
+  `change-log-history.md` design of `documentation/issues/802-design.md` and the unmerged
+  `fix/change-log-lifecycle` branch: version-line retention left 326 KB live and never archived an
+  unversioned product. Reasoning and what was ported: `build-plan-change-log-archive.md` § Decision.*
 
 ### What survives the deletion
 

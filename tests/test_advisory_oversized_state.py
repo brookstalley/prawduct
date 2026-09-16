@@ -170,25 +170,59 @@ class TestTheFileNamedIsTheFileToEdit:
         assert _by_type(repo, "oversized-project-state").evidence == first
 
 
-class TestTheChangeLogBulletIsGuarded:
-    def test_a_tagged_log_is_never_told_to_delete_tagged_entries(self, tmp_path):
-        # "keep the last ~10, git has the history" is unsafe wherever entries
-        # carry prawduct tags: the release-pending set is every `scope=`-tagged
-        # entry with no `release=`, so a deleted tagged entry drops out of that
-        # derivation silently. The old note printed it unconditionally.
-        repo = _repo(tmp_path)
-        _write(repo, ".prawduct/change-log.md",
-               _FILLER + "\n<!-- prawduct: scope=v1.4 | release=v1.3.18 -->\n")
-        summary = _by_type(repo, "oversized-change-log").trigger_summary
-        assert "NEVER one carrying a" in summary
-        assert "nothing here derives from them" not in summary
+class TestTheChangeLogAdviceIsTheArchiver:
+    """The change log's advice asks the archiver, so it names a command that works.
 
-    def test_an_untagged_log_gets_the_plain_advice(self, tmp_path):
+    The guarded advice it replaced ("older entries can go, but NEVER a tagged one")
+    was correct and unactionable: in a tagged log nearly every byte is tagged, so
+    the nudge fired in every product with nothing to do. What must still hold is
+    the guard's reason — release-pending work is never offered for removal.
+    """
+
+    @staticmethod
+    def _log(*entries: str) -> str:
+        return "# Change Log\n\n" + "".join(entries)
+
+    @staticmethod
+    def _entry(date: str, tags: str) -> str:
+        return f"## {date}: work\n\n<!-- prawduct: {tags} -->\n\n" + ("x" * 80 + "\n") * 300 + "\n"
+
+    def test_shipped_history_gets_the_archive_command(self, tmp_path):
         repo = _repo(tmp_path)
-        _write(repo, ".prawduct/change-log.md", "# Change Log\n" + _FILLER)
-        summary = _by_type(repo, "oversized-change-log").trigger_summary
-        assert "nothing here derives from them" in summary
-        assert "NEVER one carrying a" not in summary
+        _write(repo, ".prawduct/change-log.md", self._log(
+            self._entry("2026-09-01", "scope=b"),
+            self._entry("2026-08-01", "scope=a | release=v1.0.0"),
+            self._entry("2026-07-01", "scope=a | release=v0.9.0"),
+        ))
+        cand = _by_type(repo, "oversized-change-log")
+        assert cand.recommended_action == "prawduct-hook archive-change-log --apply"
+        assert "can move verbatim" in cand.trigger_summary
+        assert "Nothing to decide" in cand.owner_action
+        assert "prawduct-hook" not in cand.owner_action
+
+    def test_a_log_of_pending_work_is_told_why_and_given_no_command(self, tmp_path):
+        repo = _repo(tmp_path)
+        _write(repo, ".prawduct/change-log.md", self._log(
+            self._entry("2026-09-02", "scope=b"),
+            self._entry("2026-09-01", "scope=c"),
+        ))
+        # Released history already archived: the product versions, so the live
+        # entries are pending and must stay.
+        _write(repo, ".prawduct/change-log-archive/2026-08.md",
+               self._log(self._entry("2026-08-01", "scope=a | release=v1.0.0")))
+        cand = _by_type(repo, "oversized-change-log")
+        assert cand.recommended_action == ""
+        assert "release-pending" in cand.trigger_summary
+
+    def test_a_malformed_tag_is_never_handed_the_apply(self, tmp_path):
+        repo = _repo(tmp_path)
+        _write(repo, ".prawduct/change-log.md", self._log(
+            self._entry("2026-08-02", "scope=a"),
+            self._entry("2026-08-01", "scope=a | release=unreleased"),
+        ))
+        cand = _by_type(repo, "oversized-change-log")
+        assert cand.recommended_action == ""
+        assert "malformed" in cand.trigger_summary
 
 
 class TestRecordedReasoningIsNotTheThingToCut:

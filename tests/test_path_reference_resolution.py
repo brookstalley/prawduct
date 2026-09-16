@@ -116,7 +116,10 @@ _RECORD_FILES = frozenset(
         ".prawduct/operator-verification.md",
     }
 )
-_RECORD_PREFIXES = (".prawduct/archive/",)
+_RECORD_PREFIXES = (
+    ".prawduct/archive/",
+    ".prawduct/change-log-archive/",  # the archive half of change-log.md: entries moved verbatim
+)
 # An archived build plan is a record of what was built, and its instructions were
 # true when written — `tools/product-hook` really was the entry point before the
 # plugin distribution. Grading one as a live instruction file demands editing

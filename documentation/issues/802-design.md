@@ -1,6 +1,10 @@
 # Issue #802 — plan-backfill: A Rolled Change Log Strands a Refused Plan Forever: Design
 
-`status: draft · stage: design · area: release · added: 2026-09-14 · source: scheduled
+> **SUPERSEDED 2026-09-16** by `.prawduct/artifacts/build-plan-change-log-archive.md` (monthly
+> `change-log-archive/`, history readers load live + archive). The location decision below was not
+> adopted; #802 is resolved by that plan's R5. Kept as the record of the alternative.
+
+`status: superseded · stage: design · area: release · added: 2026-09-14 · source: scheduled
 backlog session · issue: https://github.com/brookstalley/prawduct/issues/802`
 
 No separate requirements document exists for this item — the issue body itself (Problem /

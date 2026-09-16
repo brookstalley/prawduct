@@ -203,7 +203,9 @@ of `pending` | `verified` | `accepted`). Gates the PR when `operator_verificatio
 #### Change Log — `.prawduct/change-log.md`
 
 Committed narrative log, kept separate from `project-state.yaml` for merge-friendliness (state holds
-only a compact `change_log_history`).
+only a compact `change_log_history`). **Bounded:** once it passes the oversized threshold,
+`archive-change-log` moves shipped history verbatim into `.prawduct/change-log-archive/YYYY-MM.md`
+(committed, same tier; one home per entry). Release-pending entries always stay in the live file.
 
 ### Tier 3 — Ephemeral / derived (per-session or regenerable)
 
