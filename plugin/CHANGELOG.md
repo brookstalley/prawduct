@@ -12,10 +12,24 @@ release process keeps the two in sync (one headline per shipped release).
 
 ## v3.5.1-dev
 
-**Prerelease under test — this build is the develop branch ahead of the next release.** The version
-says so wherever it appears, so a repo pinned to the develop ref can tell what it is running, and a
-cached review verdict from the released plugin is not replayed against this one. Rolling release
-notes accumulate here, and this section is renamed to the release number at the cut.
+**Learnings move to `.claude/rules/` (run `prawduct-hook learnings-migrate` — one-way), verify-pass observations can be accepted on the record instead of buying a review round, and the change log stops growing forever.**
+
+**Accept an observation instead of fixing it.** `verify-resolutions` demotes every non-blocking item
+to an *observation*. Until now the only way to discharge one on the record was to fix it — which
+moves the tree and buys another review round. Observations now get `O-n` ids in `.critic-findings.json`, and
+`prawduct-hook disposition <review-id> O-1 --accept "<reason>"` records the decision without a
+round. Observations never count toward any gate, so accepting one cannot weaken a verdict. The
+`0 blocking, 0 findings, N observations` close now also says what fixing costs and how to price a
+batch before committing it.
+
+**A clean verify close says whether the branch is covered.** A `verify-resolutions` pass covers its
+own delta only. Its clean close used to read as "the review is over" while earlier commits could sit
+unreviewed. It now states the branch verdict the cumulative gate computes — covered, or not covered
+with the count of commits outside any review — so a clean delta is never relayed as a clean branch.
+
+**`review-stats` counts demoted observations**, so a verify narrowing that suppresses real findings
+becomes visible. Every stat block gains `observations` and `reviews_recording_observations`; with
+the learning block below, the `--json` report's `schema_version` is 4.
 
 **Your learnings corpus moves, and this release deletes the old files.** Rules leave
 `.prawduct/learnings.md` and become ordinary `.claude/rules/` files the harness loads by path match:
