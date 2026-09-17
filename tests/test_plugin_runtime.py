@@ -2009,9 +2009,9 @@ class TestFromCountsIngest:
 
     def test_rejects_combination_with_test_command(self, tmp_path):
         # A declared test_command emits JUnit, so hand-typed counts (no artifact)
-        # stay rejected — but the error redirects to --from-junit, which ingests
-        # that report without a re-run (fixes the discoverability half: the agent
-        # need not guess the escape hatch).
+        # stay rejected. This test owns the refusal and the --from-junit route;
+        # whether the message also serves a caller who has NOT run yet is the
+        # sibling's subject.
         repo = self._repo(tmp_path)
         (repo / ".prawduct" / "project-state.yaml").write_text(
             "test_command: python3 -m pytest --junit-xml={junit_xml} -q\n"
@@ -2021,6 +2021,34 @@ class TestFromCountsIngest:
         assert res.returncode == 2
         assert "test_command" in res.stderr
         assert "from-junit" in res.stderr.lower()
+
+    def test_refusal_names_the_path_for_a_caller_who_has_not_run_yet(self, tmp_path):
+        """The refusal serves two callers and must name both ways out.
+
+        `--from-junit` answers someone already holding a report. It is useless
+        to someone who has not run the suite — and naming only it sent such a
+        caller off to run the declared suite BY HAND, which emits no report to
+        ingest (the `{junit_xml}` path is the hook's to substitute), leaving a
+        second full suite run as the only way to record. A bare `record` runs
+        the declared command and records in one step; the message says so.
+        """
+        repo = self._repo(tmp_path)
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            "test_command: python3 -m pytest --junit-xml={junit_xml} -q\n"
+        )
+        res = _run_in(repo, "test-evidence", "record", "--from-counts",
+                      "passed=1", "failed=0")
+        assert res.returncode == 2
+        err = res.stderr.lower()
+        # The command is the load-bearing token: without it the message can be
+        # read sympathetically and still leave the caller with nowhere to go.
+        assert "test-evidence record" in err, res.stderr
+        # These two are literal fragments, not a property — they pin THIS
+        # phrasing of "you have not run yet / this does it in one step", and a
+        # reworded message must update them rather than silently pass.
+        assert "have not run" in err and "one step" in err, res.stderr
+        # ...without displacing the answer for the caller who HAS a report.
+        assert "from-junit" in err, res.stderr
 
     def test_head_tilde1_base_emits_advisory(self, tmp_path):
         # A repo NOT on main with no origin → the recorder's overlay base falls
