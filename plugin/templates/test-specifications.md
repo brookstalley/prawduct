@@ -40,6 +40,11 @@ last_validated: null
      - At least one E2E test per core flow (proves the system works end-to-end)
      - Coverage measurement configured
 
+     **The floor is a PRODUCT floor, met by the product's suite and checked at the
+     boundary review — never a per-chunk bar.** A chunk owes the tests that prove its
+     own change, so "at least one E2E test per core flow" is read against the finished
+     product rather than against one chunk's diff.
+
      **Low-risk:** Concise strategy. Lightweight infrastructure (single test
      directory is fine, simple mocking). Coverage measured but no enforced
      thresholds. Performance tests only if NFRs specify quantified targets.

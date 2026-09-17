@@ -379,7 +379,33 @@ LAST_MEASURED_TOKENS = {
     # `final`", which the stage-keyed rigor norm retired; it now says "the
     # default when no rule fires" and lets `review-cycle.md`, the sentence's own
     # pointer target, carry what that default is. A CUT; the ceiling ratchets.
-    "methodology/building.md": 4780,
+    # +130 on 2026-09-17 (review-stages Chunk 05): the inner loop had no
+    # verification ceiling at all. A builder who stopped at the build cycle read
+    # "Run the full suite" at baseline and nothing about what to run while
+    # iterating, so the declared suite ran on every loop — the wall-clock cost
+    # this plan exists to cut. Four additions: the baseline bullet now LEADS
+    # with `test-status` (check first; one run of the declared suite only when
+    # it is not current); a verification ceiling in the build cycle, written
+    # ONCE for both readers — the builder's own loop and a delegate's brief;
+    # and two pointers to `review-cycle.md`'s "When Review Is Required" row for
+    # the short-plan rule, at the two steps that decide it (the Critic-review
+    # step and the Skipping-`final`-mode trap).
+    # PAID IN PLACE exactly where the addition created the duplication: the
+    # delegate ceiling's *why* — "A cost bound, not a rigor discount" plus the
+    # silent-green mechanism — is stated once in the shared paragraph and
+    # dropped from the `How:` line, which keeps the mechanics a brief-writer
+    # needs. That reader is in this same file and reaches the shared statement,
+    # which is what makes it a dedup rather than a deletion.
+    # The REST is a DECLARED RAISE (ceiling 4781 -> 4911, narrated at the
+    # assertion): the only other ways to fund it were another file's content —
+    # `delegation.md` already owns the mechanism, and its reader is not this
+    # file's — or cutting the new ceiling rule back down, which reintroduces
+    # the defect.
+    # Also CORRECTED rather than added, same pass: § Session Scope Discipline
+    # said "per-chunk reviews accumulate", which the short-plan rule makes
+    # false for a plan of at most 3 chunks touching no risk surface. It now
+    # reads "the reviews it owes accumulate" — net -1 word.
+    "methodology/building.md": 4910,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -2416,6 +2442,96 @@ class TestBuildingMethodology:
         (not hand-edits) — workflow wiring, Chunk 09. Guards the routing."""
         assert "/prawduct:backlog" in self.content
 
+    def test_the_baseline_leads_with_the_evidence_check(self):
+        """The baseline stopped prescribing a suite run, and still fails closed.
+
+        `test-status` already answers "is this tree green?", so a session that
+        re-ran the declared suite to establish a baseline paid for an answer it
+        had. The NEGATIVE half matches the exact sentence that carried the
+        unconditional run; it is paired with the positive that the fallback and
+        the no-exception rule both survive, because DELETING the fallback
+        satisfies the negative just as well and would leave no baseline at all.
+        """
+        cycle = self.content.split("## The Build Cycle", 1)[1].split("\n## ", 1)[0]
+        assert "*Tests*: Run the full suite." not in cycle, (
+            "the baseline prescribes a suite run again — `test-status` current "
+            "IS the baseline, and re-running it is the cost this removed"
+        )
+        assert "`test-status` current is the baseline" in cycle, (
+            "the baseline no longer leads with the check that answers it"
+        )
+        assert "one run of the declared suite" in cycle, (
+            "the baseline dropped its fallback — with no run when `test-status` "
+            "is not current, there is no baseline at all"
+        )
+        assert 'There is no "pre-existing" exception: every session starts clean.' in self.content, (
+            "the no-exception rule went with the suite run; it is the half that "
+            "was never about how the baseline is measured"
+        )
+
+    def test_the_build_cycle_carries_a_verification_ceiling_of_its_own(self):
+        """The chunk's acceptance criterion, asserted as a PLACEMENT.
+
+        A reader who stops at the build cycle must know what to run while
+        iterating and when the whole suite is owed, WITHOUT opening
+        `delegation.md` — so the region is bounded to § The Build Cycle rather
+        than searched whole-file, which would pass on the delegate ceiling that
+        was already in § Delegating Work to Subagents and has a different
+        reader.
+
+        What turns this red: relocating the paragraph into the delegation
+        section (verified), or dropping any of the four clauses below. What it
+        does not catch: a second copy elsewhere in the file.
+        """
+        cycle = self.content.split("## The Build Cycle", 1)[1].split("\n## ", 1)[0]
+        assert "`Inner-loop verification`" in cycle, (
+            "the build cycle does not reach the project's own inner-loop row, "
+            "so a builder gets prawduct's guess instead of the owner's words"
+        )
+        assert "narrowest thing that proves the change" in cycle, (
+            "the build cycle no longer states the ceiling itself"
+        )
+        assert "at Verify and at the boundary" in cycle, (
+            "nothing in the build cycle says when the declared suite IS owed — "
+            "without it the ceiling reads as a rigor discount"
+        )
+        assert "A cost bound, not a rigor discount" in cycle, (
+            "the ceiling lost the clause that stops it being softened later"
+        )
+
+    def test_the_short_plan_rule_is_pointed_at_and_never_restated(self):
+        """Two decision points get a pointer; neither gets a second copy.
+
+        `review-cycle.md`'s "When Review Is Required" row is the canonical
+        statement. Restating its conditions here is two bars for one decision,
+        so the conditions are asserted ABSENT — matched on the exact predicates
+        that carry them (the chunk bound, the opt-back-in field), not on the
+        word "short" — and paired with the pointer being present at BOTH
+        surfaces. The row's heading is checked to resolve, because a pointer
+        nobody followed is a claim.
+        """
+        row = '"When Review Is Required"'
+        critic_step = self.content.split("**Critic review.**", 1)[1].split("\n\n", 1)[0]
+        assert row in critic_step, (
+            "the Critic-review step does not say a short plan owes fewer runs, "
+            "so a builder mid-plan dispatches one per chunk"
+        )
+        trap = self.content.split("**Skipping `final` mode**", 1)[1]
+        assert row in trap, (
+            "the skipping-`final` trap does not reach the short-plan rule, so "
+            "it reads as requiring a per-chunk review before the boundary one"
+        )
+        for restated in ("at most 3 chunks", "no `Critic mode:` declared"):
+            assert restated not in self.content, (
+                f"building.md restates the short-plan condition ({restated!r}) "
+                "instead of pointing at it — two bars for one decision, and "
+                "only one of them gets updated"
+            )
+        cycle_doc = read_file("skills/critic/review-cycle.md")
+        assert "## When Review Is Required" in cycle_doc, (
+            "both pointers name a section review-cycle.md no longer has"
+        )
+
     def test_token_budget(self):
         # Lowered 4950 -> 4600 in prose-diet Chunk 02 (MET-3Q8V): the editorial
         # compression pass cut building.md to ~4173 est tokens; the ceiling is
@@ -2739,7 +2855,19 @@ class TestBuildingMethodology:
         # reading — both lineages above are history and stand as written.
         # RATCHETED 4787 -> 4781 (2026-09-17, review-stages Chunk 03): the
         # retired fail-safe clause left the Modes pointer; see LAST_MEASURED_TOKENS.
-        assert tokens < 4781, f"building.md is ~{tokens} tokens, should be <4781"
+        # RAISED 4781 -> 4911 (2026-09-17, review-stages Chunk 05), by
+        # declaration and with its reason. This file is the only home for the
+        # inner-loop verification ceiling: the chunk's acceptance criterion is
+        # that a reader who stops at the build cycle knows what to run while
+        # iterating and when the whole suite is owed, WITHOUT opening
+        # `delegation.md`, so relocating it is the one thing that cannot pay.
+        # The two short-plan pointers sit at the steps that decide the
+        # question. What was paid in place is accounted in LAST_MEASURED_TOKENS
+        # above — the shared *why* is now stated once instead of twice. Cutting
+        # further would have spent a clause nothing defends to fund a clause
+        # nothing defends, which is the move the standing rule refuses. One
+        # over the reading, so nothing is banked.
+        assert tokens < 4911, f"building.md is ~{tokens} tokens, should be <4911"
 
 
 # =============================================================================

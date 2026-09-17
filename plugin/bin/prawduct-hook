@@ -3502,6 +3502,17 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
 #: it was "tracked separately" while naming no item, which is how it stayed open
 #: long enough to be worth this warning: a tracking reference that points at no
 #: id is not a tracking reference.
+#:
+#: **The mutation half is NOT here, on purpose.** This directive keeps the cheap
+#: check — for each test, name what would turn it red — because that is
+#: answerable in the seconds a builder has at ``record``. The mutation-watch
+#: rule (a mutant you did not watch go red applied nothing; a revert is blind to
+#: what your change broke beside it) is a BOUNDARY check instead: it costs a RUN
+#: PER CLAIM, and the inner loop is the stage whose wall clock is worth buying
+#: back. It lives in ``skills/pr/SKILL.md``'s pre-review step, before the one
+#: cumulative review, and ``docs/discipline.md`` row 1 names that surface.
+#: Adding either half back here re-prices every ``record`` call — pinned by
+#: ``test_the_mutation_half_stays_at_the_boundary_not_at_record_time``.
 _GREEN_IS_EVIDENCE_DIRECTIVE = (
     "\nGreen is evidence only about what could have made it red. For each test"
     " you just added or changed, name the change that would flip it — and"
@@ -3510,11 +3521,6 @@ _GREEN_IS_EVIDENCE_DIRECTIVE = (
     " the thing they name is broken: a fixture whose input cannot trigger the"
     " guard, an assertion that cannot tell the two orderings apart, and a"
     " branch that depends on a file which happens to exist on this machine."
-    " Mutation answers this only for the line you ADDED — reverting removes the"
-    " damage alongside the fix, so it is blind to what your change broke beside"
-    " it; pair it with branch coverage of every path in the function you"
-    " touched. And a mutation you did not watch go red applied nothing — count"
-    " only the reds you saw, and restore each the way you made it."
 )
 
 
