@@ -753,7 +753,12 @@ LAST_MEASURED_TOKENS = {
     # the branch's paths). The allowed kind of raise: a control that removes
     # review work — whole rounds, on plans of three chunks or fewer. Nothing
     # to pay in place with: no sentence here said the opposite before.
-    "skills/critic/review-cycle.md": 11090,
+    # +15 on 2026-09-17 (review-stages integration, the bundle review's R-5):
+    # the Small row promised `final`; rule 4 answers `chunk` on the uncommitted
+    # diff and `final` comes only by declaration, so the row says which. Raised
+    # by declaration — the row is the table's one home for what inference does
+    # on planless small work, and no duplicate exists to pay it from.
+    "skills/critic/review-cycle.md": 11105,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -5402,7 +5407,10 @@ class TestReviewCycle:
         # RAISED 10865 -> 11091 (2026-09-17, review-stages Chunk 04): the
         # short-plan deferral on the three surfaces that say when a review is
         # owed — see LAST_MEASURED_TOKENS. A control that removes whole rounds.
-        assert tokens < 11091, f"review-cycle.md is ~{tokens} tokens, should be <11091"
+        # RAISED 11091 -> 11106 (2026-09-17, review-stages integration, R-5): the
+        # Small row now states what inference answers (`chunk`; `final` by
+        # declaration). Declared, not paid — reading + 1.
+        assert tokens < 11106, f"review-cycle.md is ~{tokens} tokens, should be <11106"
 
     def test_framework_checks_token_budget(self):
         # Ceiling 1150. This file is `final`/`cumulative` payload: SKILL.md's

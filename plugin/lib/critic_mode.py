@@ -748,9 +748,16 @@ class ShortPlanDeferral(NamedTuple):
 
     ``reason`` is prose in the product's terms, fit for a rationale string or
     a gate message, and is filled in BOTH directions: why the plan defers, or
-    which condition failed. ``last_chunk`` is whether the current chunk is the
-    plan's last unticked one — the boundary review is that chunk's review, so
-    its readers (the Stop gate, the rationale) say something different there.
+    which condition failed. ``last_chunk`` is whether the chunk the branch's
+    uncommitted work belongs to is the plan's last — the boundary review is
+    that chunk's review, so its readers (the Stop gate, the rationale) say
+    something different there. It is read against the ticks COMMITTED at HEAD
+    (:func:`buildplan_refs.committed_chunk_progress`), falling back to the
+    working tree only when the plan is not at HEAD: a tick made and not yet
+    committed belongs to the chunk just finished, and counting it would call
+    chunk N-1's Stop the last chunk's and block for a boundary review one
+    chunk early — which chunk N would then owe again, two `cumulative` runs
+    where the plan promised one.
     """
 
     defers: bool
@@ -808,7 +815,9 @@ def short_plan_deferral(
             False,
             total,
         )
-    last_chunk = total - complete == 1
+    committed = buildplan_refs.committed_chunk_progress(project_dir, plan.path)
+    built_before = committed.complete if committed is not None else complete
+    last_chunk = total - built_before == 1
     if total > SHORT_PLAN_MAX_CHUNKS:
         return ShortPlanDeferral(
             False,

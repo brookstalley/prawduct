@@ -9,7 +9,7 @@ Work-scaled review lifecycle. Review depth matches the size of the work.
 | Work size | Mode and frequency |
 |---|---|
 | **Trivial** (typo, config) | None — waive via `.gates-waived` if the stop hook prompts. |
-| **Small** (bug fix, minor feature) | One `final` review, optional. |
+| **Small** (bug fix, minor feature) | One inner-stage review, optional — inference answers `chunk` on the uncommitted diff; `final` only by declaration. |
 | **Medium** (new feature, refactor) — non-chunked | One `final` review, mandatory after completion. |
 | **Medium / Large** (chunked build plan) | `chunk` review per non-final chunk + `final` review on the last chunk — except when the last chunk is `Type: cumulative-final`: then ONE `cumulative` IS the last chunk's review (no separate `final`). **A short plan** — at most 3 chunks, no `Critic mode:` declared on any chunk, nothing the branch changed a risk surface — owes no per-chunk review at all: the one `cumulative` at its last chunk is every chunk's review (#292). Inference answers `deferred` mid-chunk (dispatch nothing), and the Stop gate WARNS instead of blocking on a non-final chunk, naming that boundary review; on the last chunk it blocks as ever. |
 | **Any work merging a multi-cycle branch** | `cumulative` review before opening the PR (on a `cumulative-final` plan it doubles as the last chunk's review, not a second pass). |

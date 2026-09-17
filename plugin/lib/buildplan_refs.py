@@ -886,6 +886,40 @@ def resolve_chunk_progress(
     return _resolve_chunk_progress_from(content)
 
 
+def committed_chunk_progress(
+    project_dir: Path, plan_path: Path
+) -> "ChunkProgress | None":
+    """:func:`resolve_chunk_progress`'s reading of the plan AS COMMITTED AT HEAD.
+
+    The same reading — the ``## Status`` checkboxes, through the same parser —
+    of the same file at a different tree, not a second derivation of progress
+    (the git-derived reading ``TestOneCurrentChunkImplementation`` pins as
+    retired inferred chunks from commit subjects; this reads no commit but the
+    plan's own text). One consumer needs the two trees told apart: a tick made
+    in the working tree and not yet committed is the builder saying "that chunk
+    is done", and a reader asking *which chunk does the session's uncommitted
+    work belong to* must answer the chunk just ticked, not the one after it —
+    the working-tree reading alone cannot tell "chunk N-1 ticked, uncommitted"
+    from "chunk N in progress".
+
+    ``None`` when the plan is not at HEAD (a new plan, or ``.prawduct/`` not
+    tracked), when git cannot run, or when the path is outside the repo — the
+    caller falls back to the working-tree reading, which is the only one there
+    is in that case.
+    """
+    toplevel = gitstate._git_toplevel(project_dir)
+    if toplevel is None:
+        return None
+    try:
+        rel = Path(plan_path).resolve().relative_to(toplevel.resolve())
+    except ValueError:
+        return None
+    rc, text, _err = gitstate._git_text(project_dir, "show", f"HEAD:{rel.as_posix()}")
+    if rc != 0:
+        return None
+    return _resolve_chunk_progress_from(text)
+
+
 def _resolve_chunk_progress_from(content: str) -> ChunkProgress:
     """:func:`resolve_chunk_progress` against already-read plan content — so the
     parser below resolves progress without re-reading the file it already holds.

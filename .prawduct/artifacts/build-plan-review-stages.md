@@ -128,7 +128,7 @@ own acceptance.
 - [x] Chunk 03: Defaults fail cheap at the inner stage — mode inference and the roster
 - [x] Chunk 04: A short plan owes one boundary review, not one per chunk (#292)
 - [x] Chunk 05: The inner loop has a verification ceiling; the suite runs at Verify and at the boundary
-- [ ] Chunk 06: Product-facing surfaces say it, and a product is asked once where its risk lives
+- [x] Chunk 06: Product-facing surfaces say it, and a product is asked once where its risk lives
 Context: Drawn 2026-09-17 from `review-proportionality-assessment-2026-09-17.md`. Chunk 01 shipped
 2026-09-17 on `feature/review-stages` (owner ratified the entry and the Principle 11 sentence the same day).
 Chunk 02 shipped 2026-09-17 on the same branch (chunk review + two verify passes, the second bought by
@@ -142,7 +142,9 @@ mechanism departs from the description in four recorded places). Chunks 05 and 0
 `feature/review-stages-c06`, Fable) under named verification ceilings and merged by the coordinator;
 Chunk 05's review (inference chose `cumulative` on the clean merged tree) was clean with six
 warnings, all answered at integration or by Chunk 06's own diff; Chunk 06's review is the bundle's
-`cumulative`. The consumer-overhead program and its five plans are on the unmerged
+`cumulative` (rev-20260917T202028Z-f41d3487: 0 blocking, 3 warnings all fixed in one pass and
+verified by rev-20260917T204719Z-6c549a53 — one of them a real Stop-gate edge in Chunk 04, see the
+change-log). All six chunks shipped 2026-09-17; the PR is next. The consumer-overhead program and its five plans are on the unmerged
 branch `docs/consumer-overhead-program` (checked out in an agent worktree under
 `.claude/worktrees/`); this plan is written to sit beside them, not replace them.
 
@@ -410,3 +412,9 @@ branch `docs/consumer-overhead-program` (checked out in an agent worktree under
   after `risk_surfaces: []` is written (verify against a copy, never a sibling's live tree).
 - **Done when:** tests pass; `/prawduct:critic cumulative` (this chunk's review is the bundle's);
   change-log entry `scope=review-stages` covering all six chunks in its body; tick.
+- **Live checks (2026-09-17):** the sibling-repo half of the acceptance ran on a copy of `hum`
+  (Swift, no `risk_surfaces:` key): `prawduct-hook clear` rendered the ask once under
+  `review-depth-risk-surfaces-undeclared-v1-dec907`, and after `risk_surfaces: []` rendered nothing.
+  The one live check this plan CANNOT run — whether Claude Code delivers the Stop gate's deferral
+  WARNING (Chunk 04's JSON `systemMessage`/`additionalContext` channel) to the model — is
+  `operator-verification.md` VRF-020, to be drained on the first short plan any product builds.

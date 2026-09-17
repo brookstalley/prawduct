@@ -6446,8 +6446,10 @@ def cmd_norm_index_scaffold(project_dir: Path, argv: list[str]) -> int:
 
 
 def cmd_reanchor(project_dir: Path, argv: list[str]) -> int:
-    """Detect — and on ``--apply`` replace — a governance anchor that predates the
-    plugin-absent notice.
+    """Detect — and on ``--apply`` replace — a governance anchor that lacks one of
+    the current text's load-bearing sentences: the plugin-absent notice, or the
+    rule that review rigor is stage-keyed (``lib/anchor_repair.SUBSTANCE`` is the
+    roster; the command's detail names which one is missing).
 
     ``apply_claude_anchor`` returns the moment it sees the sentinel, so it converges
     repos that have NO anchor and never repairs one that is merely old. That was

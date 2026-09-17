@@ -66,6 +66,7 @@ def _short_plan_branch(
     dirty_path: str = "src/wip.py",
     branch: str | None = "feature/short",
     committed_paths: dict[str, str] | None = None,
+    plan_committed: bool = False,
 ) -> Path:
     """A real repo whose branch builds a ``chunks``-chunk plan.
 
@@ -74,31 +75,55 @@ def _short_plan_branch(
     ``None`` stays on ``main`` itself. ``state_extra`` is appended to
     ``project-state.yaml`` — a ``risk_surfaces:`` block, or a different
     ``base_branch:``. ``.prawduct/`` is gitignored so session markers never
-    read as work.
+    read as work — unless ``plan_committed``, which tracks ``.prawduct/`` the
+    way a real repo does (only its dot-files ignored) and lands each landed
+    chunk's tick IN that chunk's commit, so HEAD's plan and the working tree's
+    can be told apart.
     """
     _init_repo(tmp_path, branch="main")
-    _write(tmp_path, ".gitignore", ".prawduct/\n")
+    _write(tmp_path, ".gitignore", ".prawduct/.*\n" if plan_committed else ".prawduct/\n")
     _write(tmp_path, "README.md", "x\n")
-    _commit(tmp_path, "initial")
     prawduct = tmp_path / ".prawduct"
     prawduct.mkdir(parents=True, exist_ok=True)
     (prawduct / "project-state.yaml").write_text("base_branch: main\n" + state_extra)
     ticked = {cid.lstrip("0") or "0" for cid in committed}
-    items = [
-        ("x" if str(i).lstrip("0") in ticked else " ", f"Chunk {i:02d}: step {i}")
-        for i in range(1, chunks + 1)
-    ]
-    _write_build_plan_with_chunks(prawduct, items, chunk_modes)
+
+    def _items(ticked_ids: set[str]) -> list[tuple[str, str]]:
+        return [
+            ("x" if str(i).lstrip("0") in ticked_ids else " ", f"Chunk {i:02d}: step {i}")
+            for i in range(1, chunks + 1)
+        ]
+
+    if plan_committed:
+        _write_build_plan_with_chunks(prawduct, _items(set()), chunk_modes)
+        _commit(tmp_path, "initial")
+    else:
+        _commit(tmp_path, "initial")
+        _write_build_plan_with_chunks(prawduct, _items(ticked), chunk_modes)
     if branch is not None:
         _checkout_new_branch(tmp_path, branch)
     committed_paths = committed_paths or {}
+    landed: set[str] = set()
     for cid in committed:
         rel = committed_paths.get(cid, f"src/chunk_{cid}.py")
         _write(tmp_path, rel, f"# chunk {cid}\n")
+        if plan_committed:
+            landed.add(cid.lstrip("0") or "0")
+            _write_build_plan_with_chunks(prawduct, _items(landed), chunk_modes)
         _commit(tmp_path, f"feat: land it (Chunk {cid})")
     if dirty:
         _write(tmp_path, dirty_path, "# work in progress\n")
     return prawduct
+
+
+def _tick_in_working_tree(prawduct: Path, chunk_id: str) -> None:
+    """Tick one chunk's Status box on disk and commit nothing — the state a
+    builder is in between finishing a chunk and committing it."""
+    plan = prawduct / "artifacts" / "build-plan.md"
+    text = plan.read_text()
+    needle = f"- [ ] Chunk {chunk_id}:"
+    assert needle in text, text
+    plan.write_text(text.replace(needle, f"- [x] Chunk {chunk_id}:"))
 
 
 def _deferral(repo: Path):
@@ -237,6 +262,27 @@ class TestEligiblePlanDefers:
         d = _deferral(tmp_path)
         assert d.defers and not d.last_chunk and d.total == 3
         assert "no risk-surface paths" in d.reason or "no risk surfaces" in d.reason
+
+    def test_a_tick_made_but_not_committed_belongs_to_the_chunk_just_finished(self, tmp_path: Path):
+        """Chunk 02 of 3 built, ticked on disk, not committed: the session's
+        work is chunk 02, not the last chunk — reading the working-tree tick
+        would call it the last and demand the boundary review one chunk early
+        (chunk 03 then owing a second one). What turns this red: computing
+        ``last_chunk`` from the working tree's ticks instead of HEAD's."""
+        prawduct = _short_plan_branch(tmp_path, committed=("01",), plan_committed=True)
+        _tick_in_working_tree(prawduct, "02")
+        plan = buildplan_refs.resolve_branch_plan(tmp_path, prawduct)
+        # Precondition: the two trees really disagree, so the subject is reached.
+        assert buildplan_refs.resolve_chunk_progress(tmp_path, plan.path).complete == 2
+        head = buildplan_refs.committed_chunk_progress(tmp_path, plan.path)
+        assert head is not None and head.complete == 1
+        d = _deferral(tmp_path)
+        assert d.defers, d.reason
+        assert d.last_chunk is False
+        # And once chunk 02's tick is committed, chunk 03's work IS the last chunk.
+        _commit(tmp_path, "feat: land it (Chunk 02)")
+        _write(tmp_path, "src/wip3.py", "# chunk 03 in flight\n")
+        assert _deferral(tmp_path).last_chunk is True
 
     def test_last_chunk_is_the_boundary_review_not_a_final(self, tmp_path: Path):
         """`Type: cumulative-final` semantics without the declaration: rule 3
@@ -443,6 +489,27 @@ class TestStopGateOnShortPlans:
         result = _run_stop(tmp_path)
         assert result.returncode == 2, result.stderr
         assert _GENERIC_BLOCK in result.stderr
+
+    def test_a_ticked_but_uncommitted_penultimate_chunk_still_warns(self, tmp_path: Path):
+        """The Stop between finishing chunk 02 of 3 and committing it: the
+        gate must WARN (deferral), not BLOCK for a boundary review that chunk
+        03 would then owe again."""
+        prawduct = _short_plan_branch(tmp_path, committed=("01",), plan_committed=True)
+        _tick_in_working_tree(prawduct, "02")
+        _arm_stop(prawduct)
+        result = _run_stop(tmp_path)
+        assert result.returncode == 0, result.stderr
+        assert _GENERIC_BLOCK not in result.stderr
+        assert "deferred-boundary-review" in result.stderr
+
+    def test_last_chunk_blocks_with_the_plan_tracked_too(self, tmp_path: Path):
+        """Same block as below, on a repo that commits its plan: chunks 01–02
+        landed with their ticks, chunk 03 in flight."""
+        prawduct = _short_plan_branch(tmp_path, committed=("01", "02"), plan_committed=True)
+        _arm_stop(prawduct)
+        result = _run_stop(tmp_path)
+        assert result.returncode == 2, result.stderr
+        assert "it infers `cumulative`, which is this chunk's" in result.stderr
 
     def test_last_chunk_blocks_and_says_the_boundary_review_is_its_review(self, tmp_path: Path):
         prawduct = _short_plan_branch(tmp_path, committed=("01", "02"))

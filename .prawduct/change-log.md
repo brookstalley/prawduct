@@ -122,8 +122,15 @@ drafts and ratifies it as its own norm row. At integration: `planning.md`'s mode
 qualified to the short-plan condition, `risk.py`'s non-empty predicate docstring corrected to say
 the ask does not read it, `api-contract.md` documents the new key, and the delegation-policy test
 that Chunk 06 left red by construction (the template row it asserts is Chunk 05's) went green on
-the merge. Both chunks were built by delegates in isolated worktrees under named verification
-ceilings; the combined suite, the reviews, and the records are the coordinator's.
+the merge. The bundle's `cumulative` review found one correctness edge in Chunk 04's Stop gate:
+`last_chunk` was read from the working tree's ticks, so a chunk ticked and not yet committed at a
+Stop read as the last chunk and blocked for a boundary review one chunk early — chunk N would
+then owe a second one. It now reads the ticks committed at HEAD
+(`buildplan_refs.committed_chunk_progress`, the same checkbox parser on the committed plan, never a
+git-derived progress), falling back to the working tree only when the plan is not tracked; the
+two-tree fixture and the Stop-gate case are pinned and mutation-verified. Both chunks were built
+by delegates in isolated worktrees under named verification ceilings; the combined suite, the
+reviews, and the records are the coordinator's.
 
 ## 2026-09-03: learnings v2 docs — the guides say what the code does; the discipline corpus has a home; the program ships
 
