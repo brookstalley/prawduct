@@ -1507,8 +1507,18 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # guides while the directory holds six — `session-hygiene.md`, added by this very
     # branch and left out of its own list. One filename is what a roster that was WRONG
     # costs to make right, so the ceiling ratchets with it and nothing is banked.
-    "framework": 3258,
-    "product": 2136,
+    # +8 on both, +43 more on `product`, 2026-09-17 (review-stages Chunk 06):
+    # review rigor is stage-keyed — a framework-wide default, so it lands on the
+    # always-injected surface (the digest, both shapes) and on the thin anchor
+    # (`product` only), the two carriers a migrated or thin-anchor repo actually
+    # receives. The digest bullet was paid for IN PLACE past most of its cost by
+    # cutting a class: the size-scale parenthetical restating the table
+    # `building.md` owns and the same sentence points at. The anchor line is a
+    # declared raise — it is the only governance text a plugin-less clone ever
+    # loads, so nothing in it is duplicated by a surface that reader receives.
+    # The digest sits at 9,422 of the 10,000-character wall, checked first.
+    "framework": 3266,
+    "product": 2187,
 }
 
 #: Ceilings. HARD, like the per-file prose ceilings in this module and
@@ -1636,8 +1646,11 @@ INJECTED_FOOTPRINT_CEILINGS = {
     # (where project memory lives) on the one surface every session receives.
     # One over each reading, so nothing is banked. The digest sits at 9,455 of
     # the 10,000-character wall — checked before this arithmetic, not after.
-    "framework": 3259,
-    "product": 2137,
+    # RAISED 3259 -> 3267, 2137 -> 2188 on 2026-09-17 (review-stages Chunk 06),
+    # by declaration and with its reason: the stage-keyed review rule on the
+    # digest and the anchor. One over each reading, so nothing is banked.
+    "framework": 3267,
+    "product": 2188,
 }
 
 
@@ -3765,10 +3778,13 @@ class TestDelegationPolicyAndPromotion:
 
     #: The rows Health Check #18 may branch on. NOT `ROWS`: `Delegation
     #: approval` ships a default, so it is never unset, and including it makes
-    #: every freshly scaffolded repo a mixed state — one filled row beside two
+    #: every freshly scaffolded repo a mixed state — one filled row beside
     #: blank ones — which reads as "recorded" and silently turns the check off
-    #: for exactly the repos the template reaches.
-    TRIGGER_ROWS = ("Delegation", "Delegate verification")
+    #: for exactly the repos the template reaches. `Inner-loop verification`
+    #: joined (review-stages) because it ships UNSET like the other two: the
+    #: membership rule is "ships blank", never the count, and an unset third
+    #: row is the ordinary blank state rather than a mixed one.
+    TRIGGER_ROWS = ("Delegation", "Delegate verification", "Inner-loop verification")
 
     def _workflow(self) -> str:
         """The Workflow section, bounded by whichever comes first — the next
@@ -3922,7 +3938,7 @@ class TestDelegationPolicyAndPromotion:
 
     def test_the_flow_is_one_step_and_one_confirmation(self):
         """R14 — one step, not an interview. The Norm Ratification Flow is the
-        heavy path and it is the wrong shape here: three rows do not need
+        heavy path and it is the wrong shape here: four rows do not need
         surface-by-exception, and per-row prompting is the confirmation fatigue
         `security-model.md` § Direction calls a safety regression in itself.
         """
@@ -3943,7 +3959,7 @@ class TestDelegationPolicyAndPromotion:
         """
         flow = self._flow()
         assert "only the rows the evidence supports" in flow.lower(), (
-            "the flow can now draft all three rows regardless of what it found, "
+            "the flow can now draft all four rows regardless of what it found, "
             "which puts prawduct's guess in the owner's voice"
         )
 
@@ -4027,16 +4043,31 @@ class TestDelegationPolicyAndPromotion:
         exists.
         """
         check = self._check()
+        # Bounded to the TRIGGER SENTENCE — the text up to the branching rule —
+        # not the whole check: the rationale and the evidence guidance below it
+        # both mention the rows by name, so a whole-body substring stayed green
+        # with the third row deleted from the set it was meant to pin (mutation
+        # caught it).
+        trigger = check.split("branch per row rather than on the set", 1)[0]
         for row in self.TRIGGER_ROWS:
-            assert f"`{row}`" in check, (
-                f"the check no longer reads the `{row}` row, so a policy the "
-                "owner can state has no detector"
+            assert f"`{row}`" in trigger, (
+                f"the check's trigger set no longer names the `{row}` row, so a "
+                "policy the owner can state has no detector"
             )
         assert "not in the trigger set" in check, (
             "`Delegation approval` is back in the trigger set (or the exclusion "
             "stopped being stated) — it ships a default, so it is never unset, "
-            "and reading it alongside the other two recreates the mixed state "
+            "and reading it alongside the others recreates the mixed state "
             "that reads as `recorded` and silently disables the check"
+        )
+        # The inclusion rule, stated where the exclusion is: a third row that
+        # ships unset does not create the mixed state. Without this sentence the
+        # next reader infers the rule from the COUNT and drops the third row to
+        # restore "those two".
+        assert "what excludes a row is shipping filled, not being a third" in check, (
+            "the check no longer says WHY a third unset row is safe to read, so "
+            "the exclusion reads as a rule about the count rather than about "
+            "which rows ship filled"
         )
         # The template is the other half of the claim: this test is only true
         # while `Delegation approval` really does ship filled. Read the real

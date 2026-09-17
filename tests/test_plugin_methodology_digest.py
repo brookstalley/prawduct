@@ -303,6 +303,18 @@ class TestDigestHook:
         assert "auto-memory" in digest
         assert "`.claude/rules/learnings/` are authoritative" in digest
 
+    def test_the_digest_states_the_stage_keyed_review_rule(self):
+        """A framework-wide DEFAULT lands on the always-injected surface: review
+        rigor is stage-keyed, and the three clauses that make it a rule rather
+        than a label — what the inner stage blocks on, that the boundary review
+        is never skipped, and which way "unsure" defaults — reach every session.
+        Whitespace-normalized because the digest hard-wraps mid-clause."""
+        digest = " ".join(DIGEST_SRC.read_text(encoding="utf-8").split())
+        assert "stage-keyed" in digest
+        assert "inner-loop reviews block only on ships-broken" in digest
+        assert "never skipped" in digest
+        assert "defaults to the cheaper inner review" in digest
+
     def test_the_digest_surfaces_the_report_bug_channel(self):
         # Discoverability of the upstream-bug-reporting channel (regression guard
         # against a silent trim dropping the pointer). This one digest reaches
