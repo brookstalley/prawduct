@@ -11,7 +11,7 @@ Work-scaled review lifecycle. Review depth matches the size of the work.
 | **Trivial** (typo, config) | None — waive via `.gates-waived` if the stop hook prompts. |
 | **Small** (bug fix, minor feature) | One `final` review, optional. |
 | **Medium** (new feature, refactor) — non-chunked | One `final` review, mandatory after completion. |
-| **Medium / Large** (chunked build plan) | `chunk` review per non-final chunk + `final` review on the last chunk — except when the last chunk is `Type: cumulative-final`: then ONE `cumulative` IS the last chunk's review (no separate `final`). |
+| **Medium / Large** (chunked build plan) | `chunk` review per non-final chunk + `final` review on the last chunk — except when the last chunk is `Type: cumulative-final`: then ONE `cumulative` IS the last chunk's review (no separate `final`). **A short plan** — at most 3 chunks, no `Critic mode:` declared on any chunk, nothing the branch changed a risk surface — owes no per-chunk review at all: the one `cumulative` at its last chunk is every chunk's review (#292). Inference answers `deferred` mid-chunk (dispatch nothing), and the Stop gate WARNS instead of blocking on a non-final chunk, naming that boundary review; on the last chunk it blocks as ever. |
 | **Any work merging a multi-cycle branch** | `cumulative` review before opening the PR (on a `cumulative-final` plan it doubles as the last chunk's review, not a second pass). |
 | **Re-review after fixing prior BLOCKING/WARNING findings** | `verify-resolutions` — delta review against the prior pass's scope. Falls through to `chunk`/`final` when the anchor is missing or scope widens past the demotion threshold. |
 
@@ -25,7 +25,7 @@ Four modes: `chunk`, `final`, `cumulative`, `verify-resolutions`. The canonical 
 
 1. **Per-invocation override** — an explicit mode argument (`/prawduct:critic chunk` etc.). Rationale: `"explicit-args"` — except a named `chunk`/`final` on a clean tree, whose interval is provably empty: the helper answers `cumulative`, rationale `explicit-args <token> redirected: …` — the operator's word survives into `mode_chosen_by`.
 2. **Plan-level override** — the active build plan's current chunk's `Critic mode:` field (the current chunk is the first unticked `## Status` box). A valid value wins over inference with rationale `plan-override: <mode>`; an absent, blank, or unrecognized value is ignored.
-3. **Inference** — the four rules (`verify-resolutions > cumulative > final > chunk`).
+3. **Inference** — the four rules (`verify-resolutions > cumulative > final > chunk`), with the short-plan deferral between the second and third: an eligible plan with code in flight answers `deferred` (rationale `short-plan deferral: …`), which dispatches nothing; a fix-in-progress or a committed bundle still gets the review rules 1–2 name.
 
 Authoring heuristic (what inference picks per plan shape, when an explicit declaration earns the override): `methodology/planning.md` "Critic Mode Per Chunk".
 
@@ -352,7 +352,7 @@ findings with the budget as their reason, and renders the census. It never count
 `verify-resolutions` pass, and never sweeps a BLOCKING finding — so **it can end a review loop and
 can never open a gate**. `--force` buys one anyway; needing that every time means the number is wrong.
 
-**Last chunk of a `Type: cumulative-final` plan — one review, not two.** Commit the chunk, then run `/prawduct:critic cumulative` ONCE: that single review serves as both the chunk's review and the PR-gate evidence. Don't run a separate `final` first — cumulative runs the same 7 goals plus cross-checks over `merge-base...HEAD`, a scope that already contains the chunk's diff, so a preceding `final` re-pays 4-10 minutes for assurance the cumulative re-derives. Mode inference implements the sequencing: with the last chunk's work still uncommitted, `/prawduct:critic` infers `final` (the right mid-chunk look); once committed and clean, it infers `cumulative` — the at-commit review. Post-cumulative fixes take a `verify-resolutions` pass, not a second full one — its fact extends coverage over the fix delta.
+**Last chunk of a `Type: cumulative-final` plan — one review, not two.** Commit the chunk, then run `/prawduct:critic cumulative` ONCE: that single review serves as both the chunk's review and the PR-gate evidence. Don't run a separate `final` first — cumulative runs the same 7 goals plus cross-checks over `merge-base...HEAD`, a scope that already contains the chunk's diff, so a preceding `final` re-pays 4-10 minutes for assurance the cumulative re-derives. Mode inference implements the sequencing: with the last chunk's work still uncommitted, `/prawduct:critic` infers `final` (the right mid-chunk look); once committed and clean, it infers `cumulative` — the at-commit review. Post-cumulative fixes take a `verify-resolutions` pass, not a second full one — its fact extends coverage over the fix delta. **A short plan gets this sequencing without the declaration**, on every chunk: mid-chunk `/prawduct:critic` answers `deferred` rather than `final`, and the boundary review that follows the last commit is the plan's whole review record. The eligibility is re-asked at every inference and every Stop against the branch's actual paths, so a later chunk that lands on a risk surface owes its review like any other.
 
 ## Final-Mode Cross-Checks
 

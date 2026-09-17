@@ -718,7 +718,16 @@ LAST_MEASURED_TOKENS = {
     # rule reworded, fourteen lines below the statement that replaced it, found
     # by the chunk's Critic rather than by the grep (it shares no token with
     # the sentence families the norm names). The ceiling holds at 10865.
-    "skills/critic/review-cycle.md": 10864,
+    # RAISED 10864 -> 11090 (2026-09-17, review-stages Chunk 04). DECLARED: the
+    # short-plan deferral (#292) on the three surfaces that state when a
+    # review is owed — the "When Review Is Required" row for chunked plans, the
+    # precedence list's inference item (`deferred` sits between rules 2 and
+    # 3), and the cumulative-final paragraph (a short plan gets that
+    # sequencing without the declaration, re-asked at every inference against
+    # the branch's paths). The allowed kind of raise: a control that removes
+    # review work — whole rounds, on plans of three chunks or fewer. Nothing
+    # to pay in place with: no sentence here said the opposite before.
+    "skills/critic/review-cycle.md": 11090,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -821,7 +830,14 @@ LAST_MEASURED_TOKENS = {
     # light review now, recorded in `mode_chosen_by`), which is where the rest
     # of the sentence came from. The allowed kind of raise: a control that
     # removes review work (findings become observations at every inner mode).
-    "skills/critic/SKILL.md": 3484,
+    # RAISED 3484 -> 3615 (2026-09-17, review-stages Chunk 04). DECLARED: the
+    # `deferred` bullet under step 1 — the fork reads the helper's answer
+    # before it dispatches, and a fifth token it has never seen would be
+    # forwarded to `critic-begin --mode deferred` and refused there; the
+    # bullet says dispatch NOTHING, report the rationale, stop, and that an
+    # explicit token still wins. Same kind of raise as the row above it: a
+    # control that removes review work (the per-chunk round on a short plan).
+    "skills/critic/SKILL.md": 3615,
     "skills/critic/framework-checks.md": 1116,
     # The on-demand class, first recorded 2026-08-19 (#688) — readings, no
     # ceilings; the block above this dict is the decision and its reasoning.
@@ -946,7 +962,13 @@ LAST_MEASURED_TOKENS = {
     # under-declaring Type safe — both are sentences the stage-keyed rigor norm
     # names as retired; "the safe option" left the Type default's gloss. The
     # on-demand class: declared, paid by the reader.
-    "methodology/planning.md": 5597,
+    # +107 on 2026-09-17 (review-stages Chunk 04): the "Short plan" bullet in
+    # the Critic-mode heuristic — what inference picks on a plan of three
+    # chunks or fewer touching no risk surface (nothing per chunk; the last
+    # chunk's `cumulative` is every chunk's review) and how a `Critic mode:`
+    # on any chunk opts the plan back in. The on-demand class: declared,
+    # paid by the reader.
+    "methodology/planning.md": 5704,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
@@ -4898,7 +4920,11 @@ class TestCriticSkillRoutesByMode:
         # RAISED 3478 -> 3485 (2026-09-17, review-stages Chunk 03). The stage
         # rule on the per-mode scope line, funded first by the fall-through
         # bullet's retired clauses — see LAST_MEASURED_TOKENS.
-        assert tokens < 3485, f"SKILL.md is ~{tokens} tokens, should be <3485"
+        # RAISED 3485 -> 3616 (2026-09-17, review-stages Chunk 04). The
+        # `deferred` bullet: a fifth helper answer the fork must not forward to
+        # `critic-begin` — see LAST_MEASURED_TOKENS. Same allowed kind: a
+        # control that removes review work (the per-chunk round on short plans).
+        assert tokens < 3616, f"SKILL.md is ~{tokens} tokens, should be <3616"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))
@@ -5209,7 +5235,10 @@ class TestReviewCycle:
         # LAST_MEASURED_TOKENS.
         # HELD at 10865 (2026-09-17, review-stages Chunk 03): the canonical
         # default-when-unsure statement, paid in place — see LAST_MEASURED_TOKENS.
-        assert tokens < 10865, f"review-cycle.md is ~{tokens} tokens, should be <10865"
+        # RAISED 10865 -> 11091 (2026-09-17, review-stages Chunk 04): the
+        # short-plan deferral on the three surfaces that say when a review is
+        # owed — see LAST_MEASURED_TOKENS. A control that removes whole rounds.
+        assert tokens < 11091, f"review-cycle.md is ~{tokens} tokens, should be <11091"
 
     def test_framework_checks_token_budget(self):
         # Ceiling 1150. This file is `final`/`cumulative` payload: SKILL.md's

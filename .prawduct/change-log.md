@@ -54,9 +54,33 @@ fallback now pin its absence (five files, the count it keyed on, is single-pass)
 escalators that survive; token readings — SKILL +7 raised by declaration, review-cycle net 0 (its
 chunk review found the `final` row's "any time the right answer is unclear", the retired rule reworded,
 and the cut paid for the new canonical statement), building −6 and discovery −34 ratcheted, planning
-+22 recorded. Chunks 04–06 (short plans owe one
-boundary review; the inner-loop verification ceiling; product-facing surfaces and the one-time
-risk-surface ask) are open.
++22 recorded. **Chunk 04:** a short plan owes one boundary review, not one per chunk (#292). A
+plan of at most three chunks, declaring no `Critic mode:` on any chunk, whose branch has changed no
+risk-surface path (the tier predicate — declared `risk_surfaces:` when present, else the derived
+defaults plus contract paths — over the paths committed since the merge-base and in the working
+tree) and is not the base branch itself, defers its per-chunk reviews: `infer_mode` answers a fifth,
+output-only token `deferred` on such a plan whenever code is in flight (between rules 2 and 3, so a
+fix-in-progress still gets `verify-resolutions` and a committed bundle still gets `cumulative`), the
+skill dispatches nothing on it and reports the rationale, and the Stop gate's Critic check on a
+non-final chunk emits a WARNING naming the deferred boundary review instead of blocking — delivered
+as a JSON `systemMessage` plus `additionalContext` on stdout, because at exit 0 the harness logs
+stderr and delivers it to no one. On the last chunk the gate blocks as ever and says the boundary
+review is that chunk's review (`Type: cumulative-final` sequencing without the declaration); a
+`blocked` verdict or an unreadable store still blocks on any chunk, and `check-cumulative-critic` is
+untouched — one `cumulative` fact spanning merge-base…HEAD passes it alone. Every condition fails
+closed (an unreadable plan, an unresolvable base, a detached HEAD, a failed git listing, an
+unparseable `risk_surfaces:` all leave per-chunk review standing), and `buildplan_refs` exports the
+roster's chunk ids (`status_chunk_ids`) so the opt-out scan reads Status through its one owner. The
+predicate is one function read by both consumers; `tests/test_short_plan_deferral.py` carries the
+guardrail #292 made load-bearing — a four-chunk plan, a risk-surface plan, an opted-out plan and
+base-branch work all still infer `chunk` and still block — with every guard mutation-verified red.
+`review-cycle.md` (the required-review row, the precedence list, the cumulative-final paragraph),
+`SKILL.md` (the `deferred` bullet) and `planning.md` (the "Short plan" heuristic) say it; SKILL
+3484 → 3615 and review-cycle 10864 → 11090 raised by declaration, planning 5597 → 5704 recorded.
+Three inference fixtures widened from three chunks to four, one of them a renegotiated contract
+(the last chunk of a short plan is no longer a rule-3 `final`). Chunks 05–06 (the inner-loop
+verification ceiling, which also owes `building.md` and the build-plan template the short-plan
+sentence; product-facing surfaces and the one-time risk-surface ask) are open.
 
 ## 2026-09-03: learnings v2 docs — the guides say what the code does; the discipline corpus has a home; the program ships
 

@@ -311,6 +311,32 @@ branch `docs/consumer-overhead-program` (checked out in an agent worktree under
 - **Acceptance criteria:** on a fixture 3-chunk plan, the only review facts on the branch after all
   three chunks are one `cumulative` (plus any `verify-resolutions` its blockers bought); the PR gate
   passes on that alone.
+- **Built (2026-09-17):** `[DECISION: short plans defer per-chunk review to the boundary | the
+  owner's 2026-09-17 trade; #292's evidence (chunk-mode yield ≈ 1 actionable per 7 reviews) and the
+  assessment's small-scope medians (5 rounds, 20 minutes, for ≤ 5-file scopes) | user can
+  veto/override]`. One predicate, `critic_mode.short_plan_deferral`, read by inference and by the
+  Stop gate; `tests/test_short_plan_deferral.py` carries #292's guardrail (a 4-chunk plan, a plan
+  touching a risk surface, a plan declaring `Critic mode:`, and work on the base branch itself all
+  still infer `chunk` and still block at Stop), and every guard was mutation-verified red. **Where
+  the mechanism departs from the description above**, each with its reason: **(1)** `infer_mode`
+  answers a fifth, output-only token `deferred` rather than "treating the chunk as reviewed at the
+  boundary" inside a mode — every mode dispatches, and any dispatch spends the round the chunk exists
+  to remove; a non-zero exit was rejected because the skill reads that as inference *failing* and
+  falls back to `chunk`. **(2)** "Declared risk surface" is the tier predicate
+  (`risk.paths_touch_risk_surface`: the declared list when present, else the derived defaults plus
+  the product's contract paths), evaluated against the paths the BRANCH has changed — committed since
+  the merge-base and in the working tree — so the same fact has one home and eligibility is re-asked
+  at every inference and every Stop; a later chunk that lands on a surface owes its review like any
+  other. **(3)** One condition the description did not name: the branch must not be the base itself,
+  because on the base merge-base…HEAD is empty and the "boundary review" would defer every chunk to
+  nothing. **(4)** The Stop WARNING's channel: at exit 0 the harness *logs* stderr and delivers it to
+  nobody (Claude Code hooks reference, checked 2026-09-17), so the gate emits one JSON object on stdout
+  — `systemMessage` (the user's transcript) and `additionalContext` (the model's context; `Stop` is
+  among the events that honor it) — the first JSON the Stop hook has ever written; stderr keeps a copy
+  for the log. Blast radius: three inference fixtures widened from three chunks to four so they keep
+  testing rule 4's grounding and rule 3's last-chunk arm; the last is a renegotiated contract, stated
+  in the test. Token readings: SKILL 3484 → 3615 and review-cycle 10864 → 11090 raised by
+  declaration (a control that removes review work), planning 5597 → 5704 recorded.
 - **Done when:** tests pass; `/prawduct:critic`; #292 moved to `stage: shipped` at merge; tick.
 
 ## Chunk 05: The inner loop has a verification ceiling; the suite runs at Verify and at the boundary
@@ -335,7 +361,13 @@ branch `docs/consumer-overhead-program` (checked out in an agent worktree under
   (rows 1–2 of `docs/discipline.md`): keep the cheap half at record time — *for each new test, name
   what would turn it red* — and move the mutation-watch sentence to the PR skill's pre-review step
   (boundary). Update the discipline table's channel and anchor cells for both rows in the same
-  commit; `tests/test_discipline_table.py` pins them.
+  commit; `tests/test_discipline_table.py` pins them. **(f)** Owed by Chunk 04, carried here because
+  the partition gives this chunk `building.md` and `templates/`: the build cycle's "Critic review"
+  paragraph and its "Skipping `final` mode" trap, and the build-plan template's "Done when" steps and
+  `cumulative-final` example, must state the short-plan rule (a plan of at most 3 chunks touching no
+  risk surface owes one `cumulative` at its last chunk, inference answers `deferred` mid-chunk, and a
+  `Critic mode:` on any chunk opts back in) — the canonical statement is `review-cycle.md`'s "When
+  Review Is Required" row, and these surfaces point at it rather than restate the conditions.
 - **Tests:** discipline-table pins green on the moved anchors; the `building.md` ceiling
   (4786) — pay in place from the class the delegate paragraph and the new one now share, or raise
   with reason; a pin that the template example names no test runner outside the preferences

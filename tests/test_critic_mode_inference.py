@@ -1062,8 +1062,12 @@ class TestRule4ChunkDefault:
         on a repo running several plans across worktrees that is a different
         question, and rule 4 used to inherit whichever plan it named. The
         pointer's plan here has one chunk left (which would make rule 3 fire);
-        the branch's plan has three, so an inference reading the pointer answers
-        `final` and one reading the branch answers `chunk`.
+        the branch's plan has four, so an inference reading the pointer answers
+        `final` and one reading the branch answers `chunk`. (Four rather than
+        three: a plan of three or fewer chunks on a feature branch touching no
+        risk surface is the short-plan shape, whose inner-stage answer is
+        `deferred` — `test_short_plan_deferral.py` — and this test is about
+        which plan rule 4 grounds on, not about that shape.)
         """
         _init_repo(tmp_path)
         _write(tmp_path, "README.md", "x\n")
@@ -1080,6 +1084,7 @@ class TestRule4ChunkDefault:
             "---\nartifact: build-plan\nscope: mine\n---\n\n"
             "# Build Plan\n\n## Status\n\n"
             "- [x] Chunk 01: done\n- [ ] Chunk 02: current\n- [ ] Chunk 03: later\n"
+            "- [ ] Chunk 04: last\n"
         )
         (tmp_path / ".prawduct" / "project-state.yaml").write_text(
             "active_build_plan: artifacts/build-plan-other.md\n"
@@ -1313,8 +1318,11 @@ class TestRule4ChunkDefault:
         _write(tmp_path, "README.md", "x\n")
         _commit(tmp_path, "initial")
         _checkout_new_branch(tmp_path, "feature/no-plan-of-its-own")
+        # Four chunks, not three: three is the short-plan shape and would defer
+        # instead of grounding (`test_short_plan_deferral.py`).
         _write_build_plan(
-            tmp_path / ".prawduct", [("x", "Chunk 1"), (" ", "Chunk 2"), (" ", "Chunk 3")]
+            tmp_path / ".prawduct",
+            [("x", "Chunk 1"), (" ", "Chunk 2"), (" ", "Chunk 3"), (" ", "Chunk 4")],
         )
         _write(tmp_path, "src/work.py", "# in progress\n")
 
@@ -1854,9 +1862,14 @@ class TestBranchProgressCRT7B4M:
         assert "plan-override" in rationale
 
     def test_last_chunk_infers_final(self, tmp_path):
-        # 3-chunk plan, chunks 01-02 done, last chunk in progress → rule-3.
-        three = [(" ", f"Chunk 0{i}: step {i}") for i in range(1, 4)]
-        _setup_progressed_branch(tmp_path, three, committed=["01", "02"])
+        # 4-chunk plan, chunks 01-03 done, last chunk in progress → rule-3.
+        # Renegotiated in the open: this was a 3-chunk plan, and a plan of three
+        # or fewer chunks on a feature branch touching no risk surface now
+        # answers `deferred` on its last chunk — the boundary review IS that
+        # chunk's review (#292; `test_short_plan_deferral.py` pins it). Rule 3's
+        # last-chunk arm is unchanged for every plan the deferral does not cover.
+        four = [(" ", f"Chunk 0{i}: step {i}") for i in range(1, 5)]
+        _setup_progressed_branch(tmp_path, four, committed=["01", "02", "03"])
         mode, rationale = infer_mode(tmp_path, None)
         assert mode == "final"
         assert "rule-3" in rationale

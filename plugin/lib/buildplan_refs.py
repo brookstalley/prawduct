@@ -245,6 +245,24 @@ def unticked_chunk_items(content: str) -> list[str]:
     return [text for checked, text in _iter_status_section_items(content) if not checked]
 
 
+def status_chunk_ids(content: str) -> list[str]:
+    """Every chunk id the ``## Status`` roster names, ticked or not, in order.
+
+    The same export-the-answer discipline as :func:`unticked_chunk_items`, for
+    the caller that needs the WHOLE roster rather than the open half — the
+    short-plan deferral asks every chunk whether it declares a ``Critic mode:``,
+    because a declaration on any chunk is the plan opting out. Items whose text
+    names no chunk (a roster line that is not ``Chunk N: …``) are skipped, the
+    same silence :func:`_chunk_id_from_item_text` gives every other reader.
+    """
+    ids: list[str] = []
+    for _checked, text in _iter_status_section_items(content):
+        chunk_id = _chunk_id_from_item_text(text)
+        if chunk_id is not None:
+            ids.append(chunk_id)
+    return ids
+
+
 def incompleteness_reason(content: str) -> "str | None":
     """Why this plan's own ``## Status`` says it is not finished, or ``None``.
 
