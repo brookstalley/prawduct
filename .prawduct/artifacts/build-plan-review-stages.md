@@ -126,7 +126,7 @@ own acceptance.
 - [x] Chunk 01: The stage norm — ratified, and the two "thoroughness is safe" sentences retired
 - [x] Chunk 02: Stage reaches every reviewer — derived once, carried on the manifest, severity keyed on it
 - [x] Chunk 03: Defaults fail cheap at the inner stage — mode inference and the roster
-- [ ] Chunk 04: A short plan owes one boundary review, not one per chunk (#292)
+- [x] Chunk 04: A short plan owes one boundary review, not one per chunk (#292)
 - [ ] Chunk 05: The inner loop has a verification ceiling; the suite runs at Verify and at the boundary
 - [ ] Chunk 06: Product-facing surfaces say it, and a product is asked once where its risk lives
 Context: Drawn 2026-09-17 from `review-proportionality-assessment-2026-09-17.md`. Chunk 01 shipped
@@ -135,7 +135,10 @@ Chunk 02 shipped 2026-09-17 on the same branch (chunk review + two verify passes
 correcting a sentence the first demoted; both live runs of the new protocol). Chunk 03 shipped 2026-09-17
 (chunk review clean, one verify pass for two observations answered in the tree; the fleet measurement it
 ran overturned the plan's inherited "no blocking finding attributable to the fallback" claim — see the
-chunk's `[DECISION]`, owner-vetoable). Chunk 04 is next. The consumer-overhead program and its five plans are on the unmerged
+chunk's `[DECISION]`, owner-vetoable). Chunk 04 shipped 2026-09-17 (chunk review clean with
+four observations, two fixed and covered by one verify pass, two accepted on the record; the
+mechanism departs from the description in four recorded places). Chunk 05 is next, delegable
+with 06. The consumer-overhead program and its five plans are on the unmerged
 branch `docs/consumer-overhead-program` (checked out in an agent worktree under
 `.claude/worktrees/`); this plan is written to sit beside them, not replace them.
 
