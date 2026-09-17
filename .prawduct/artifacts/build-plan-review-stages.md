@@ -123,14 +123,14 @@ own acceptance.
 
 ## Status
 
-- [ ] Chunk 01: The stage norm — ratified, and the two "thoroughness is safe" sentences retired
+- [x] Chunk 01: The stage norm — ratified, and the two "thoroughness is safe" sentences retired
 - [ ] Chunk 02: Stage reaches every reviewer — derived once, carried on the manifest, severity keyed on it
 - [ ] Chunk 03: Defaults fail cheap at the inner stage — mode inference and the roster
 - [ ] Chunk 04: A short plan owes one boundary review, not one per chunk (#292)
 - [ ] Chunk 05: The inner loop has a verification ceiling; the suite runs at Verify and at the boundary
 - [ ] Chunk 06: Product-facing surfaces say it, and a product is asked once where its risk lives
-Context: Drawn 2026-09-17 from `review-proportionality-assessment-2026-09-17.md`. Nothing built.
-Branch not yet created. The consumer-overhead program and its five plans are on the unmerged
+Context: Drawn 2026-09-17 from `review-proportionality-assessment-2026-09-17.md`. Chunk 01 shipped
+2026-09-17 on `feature/review-stages` (owner ratified the entry and the Principle 11 sentence the same day). The consumer-overhead program and its five plans are on the unmerged
 branch `docs/consumer-overhead-program` (checked out in an agent worktree under
 `.claude/worktrees/`); this plan is written to sit beside them, not replace them.
 
