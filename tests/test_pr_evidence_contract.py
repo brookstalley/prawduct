@@ -1,8 +1,12 @@
-"""Guards for the two carriers of the PR-review evidence contract, and for the
-class of claim that a GitHub closing keyword closes a backlog item.
+"""Guards for three things the PR flow gets wrong quietly: the two carriers of
+the PR-review evidence contract, the class of claim that a GitHub closing
+keyword closes a backlog item, and whether Step 1 names the command that
+records a suite run as well as the one that dates it.
 
-Both defects these guards close were found the same way: by a PR that merged
-cleanly and left something undone.
+All three defects these guards close were found the same way: by a PR that
+completed cleanly and left something undone — two that merged with work
+outstanding, and one that merged correctly having paid for a second full suite
+run to get there.
 
 **The evidence contract has two carriers.** `skills/pr/review-protocol.md`
 tells the reviewer what to write; `skills/pr/SKILL.md` tells the caller what to
@@ -421,7 +425,9 @@ class TestStepOneNamesTheRecorder:
     posture available), and the hand-run emitted no report to ingest instead —
     leaving a second full suite run as the only way forward. Bare
     `prawduct-hook test-evidence record` runs the declared command, substitutes
-    `{junit_xml}` and writes the record in one step.
+    `{junit_xml}` where the repo declares `test_command:`, and falls back to
+    pytest where it does not — which is the default, since the template ships
+    that key commented out.
 
     Bounded to the paragraph rather than the file: `SKILL.md` names
     `test-evidence` in other steps, so a file-wide substring check would pass
@@ -449,6 +455,29 @@ class TestStepOneNamesTheRecorder:
             "cannot record it — `--from-counts` is refused when `test_command:` is "
             "declared — so the omission costs a second full suite run."
         )
+
+    def test_the_recorder_clause_survives_for_a_repo_that_declares_nothing(self):
+        """Naming the recorder is only safe prose while the sentence also covers
+        the repo that declares no `test_command:`.
+
+        `plugin/templates/project-state.yaml` ships that key commented out, so
+        undeclared is the DEFAULT consumer state: there `record` falls back to
+        pytest, which exits 2 for a non-Python product. An earlier draft of this
+        clause asserted the declared command unconditionally and left such a
+        reader with nowhere to go, because the same edit dropped the ingest
+        on-ramps from the skill's view. Without this guard that draft comes back
+        green — the sibling above only asks whether the recorder is *named*.
+        """
+        para = self._suite_paragraph()
+        assert "fallback" in para or "else a pytest" in para, (
+            "Step 1 names the recorder without saying what it runs for a repo "
+            "that declares no `test_command:` — the default consumer state."
+        )
+        for route in ("--from-junit", "--from-counts"):
+            assert route in para, (
+                f"Step 1 no longer names `{route}`. A product whose toolchain the "
+                "fallback cannot run needs an on-ramp named where it is reading."
+            )
 
     def test_the_instruction_still_leads_with_the_freshness_check(self):
         """The recorder sentence must not displace the cheaper answer. Running

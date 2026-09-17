@@ -2009,9 +2009,9 @@ class TestFromCountsIngest:
 
     def test_rejects_combination_with_test_command(self, tmp_path):
         # A declared test_command emits JUnit, so hand-typed counts (no artifact)
-        # stay rejected — but the error redirects to --from-junit, which ingests
-        # that report without a re-run (fixes the discoverability half: the agent
-        # need not guess the escape hatch).
+        # stay rejected. This test owns the refusal and the --from-junit route;
+        # whether the message also serves a caller who has NOT run yet is the
+        # sibling's subject.
         repo = self._repo(tmp_path)
         (repo / ".prawduct" / "project-state.yaml").write_text(
             "test_command: python3 -m pytest --junit-xml={junit_xml} -q\n"
@@ -2040,8 +2040,12 @@ class TestFromCountsIngest:
                       "passed=1", "failed=0")
         assert res.returncode == 2
         err = res.stderr.lower()
-        # The one-command path, asserted by the property (a bare `record` runs
-        # them) rather than by one spelling of the sentence.
+        # The command is the load-bearing token: without it the message can be
+        # read sympathetically and still leave the caller with nowhere to go.
+        assert "test-evidence record" in err, res.stderr
+        # These two are literal fragments, not a property — they pin THIS
+        # phrasing of "you have not run yet / this does it in one step", and a
+        # reworded message must update them rather than silently pass.
         assert "have not run" in err and "one step" in err, res.stderr
         # ...without displacing the answer for the caller who HAS a report.
         assert "from-junit" in err, res.stderr

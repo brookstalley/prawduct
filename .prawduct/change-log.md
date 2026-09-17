@@ -9,8 +9,13 @@
 
 <!-- prawduct: type=fix | scope=pr-step1-recorder -->
 
-**Small work, no build plan** — two prose surfaces, a version bump and the consumer note the bump
-makes load-bearing. Found by dogfooding: creating PR #821 cost two full suite runs instead of one.
+**Small work, no build plan** — two prose surfaces, one machine-read grant, a version bump and the
+consumer note the bump makes load-bearing. The grant is the surface easiest to miss in a change
+described as prose: naming a command in `SKILL.md` is inert until `allowed-tools` permits it, so
+`Bash(prawduct-hook test-evidence record*)` joins the pr skill's no-prompt list. It permits running
+whatever the repo's own `project-state.yaml` declares as `test_command:` — the same checked-in
+trust boundary `building.md` already relies on, stated here because a no-prompt list should never
+grow silently. Found by dogfooding: creating PR #821 cost two full suite runs instead of one.
 
 **The defect, and it was paid in wall clock rather than correctness.** `/prawduct:pr` Step 1 told
 the caller to run the suite and then *"write fresh evidence so the next caller can skip it"* — and
@@ -18,17 +23,28 @@ named no command. Following it literally means running the declared suite by han
 `test-evidence record` to ingest the counts afterwards. With a `test_command:` declared that is
 refused (the runner emits JUnit, so hand-typed counts are the weakest posture available), and a
 hand-run emits no report to ingest instead, because `{junit_xml}` is the hook's to substitute — so
-the only way forward is a second full suite run. Step 1 now says to run it AS the recorder: bare
-`prawduct-hook test-evidence record` executes the declared command, substitutes `{junit_xml}` and
-writes the record in one step. `test-status` still leads the paragraph, because running nothing at
+the only way forward is a second full suite run. Step 1 now says to run it AS the recorder:
+`prawduct-hook test-evidence record` runs the suite and writes the record in one step — the
+declared `test_command` where the repo has one, else a pytest fallback, which is the DEFAULT
+consumer state because the template ships the key commented out. That fallback is why the
+sentence names the ingest routes too: a non-Python product declares the command or ingests an
+existing run. `test-status` still leads the paragraph, because running nothing at
 all is the better outcome and that exit code is what licenses it.
 
 **The same claim had a second carrier, and it is the one that actually misrouted the caller.** The
 `--from-counts` refusal said *"run each once and ingest the report(s) with `--from-junit`"* — advice
 for someone already holding a report, and useless to someone who has not run yet, which is who hits
 it. It now names both ways out, and its comment and the `cmd_test_evidence` docstring say why both
-are named rather than one. Enumerating carriers first is what found it: `building.md` and
-`delegation.md` were already correct, so the claim set was two, not one.
+are named rather than one. Enumerating carriers first found that one: `building.md` and
+`delegation.md` were already correct.
+
+**The enumeration still stopped short, and the correction is the more useful record.** It swept
+sibling FILES and missed a third carrier inside the file being edited — `SKILL.md`'s own
+`## Important` checklist, which restated the procedure and named only `test-status`. An independent
+review found it. The remedy is a construction rather than a third copy: that bullet now points at
+Step 1 and says why it deliberately does not restate it, so there is one home. The general form is
+that a cross-file sweep reads as exhaustive precisely because it crossed files, and the carrier
+sitting a hundred lines below your own edit is the one it cannot see.
 
 **Guards.** `TestStepOneNamesTheRecorder` bounds itself to the Step 1 paragraph rather than the file
 (`SKILL.md` names `test-evidence` elsewhere, so a file-wide check passes with the instruction

@@ -46,6 +46,15 @@ all leave per-chunk review standing — and `check-cumulative-critic` is unchang
 `risk_surfaces:` key, one advisory asks where a missed defect would cost you most. Any declared
 value silences it, `[]` included.
 
+**`/prawduct:pr` Step 1 names the command that records a suite run, not just the one that dates
+it.** It used to say "write fresh evidence" and name nothing, so the natural reading was to run your
+suite by hand and record it afterwards — which costs a second full run wherever `test_command:` is
+declared, because hand-typed counts are refused there and a hand-run emits no JUnit report to ingest
+instead. `prawduct-hook test-evidence record` does both in one step: your declared `test_command` if
+you have one, a pytest fallback if you do not. **If your product is not Python, declare
+`test_command:`** (the template ships it commented out) or ingest an existing run with
+`--from-junit` / `--from-counts`.
+
 **Your learnings corpus moves, and this release deletes the old files.** Rules leave
 `.prawduct/learnings.md` and become ordinary `.claude/rules/` files the harness loads by path match:
 `core.md` is in context from launch, and each `<area>.md` declares `paths:` globs so its rules arrive
