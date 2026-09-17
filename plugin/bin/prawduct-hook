@@ -109,6 +109,77 @@ def _buildplan_refs():
     return buildplan_refs
 
 
+def _critic_mode():
+    """Lazy-import the mode-inference module (lib/critic_mode). The Stop gate
+    asks it ONE question — the short-plan deferral predicate — so the gate and
+    `infer-critic-mode` answer "does this plan owe a per-chunk review" from
+    the same function rather than two readings of the plan."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    from lib import critic_mode  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+
+    return critic_mode
+
+
+def _short_plan_deferral(project_dir: Path, prawduct_dir: Path, plan):
+    """The Stop gate's read of the short-plan deferral (#292), or ``None``.
+
+    ``plan`` is the ``ReviewedPlan`` the gate already resolved for the branch —
+    passed in, not re-resolved, so "is there governed work", "what does the
+    chunk declare" and "does the plan defer" all read one file. Progress comes
+    from its single owner and both go to ``critic_mode.short_plan_deferral``.
+    ``None`` on ANY failure — an import error, an unreadable plan, a git
+    failure — and the caller treats ``None`` as "does not defer": the deferral
+    relaxes a gate, so a predicate that could not run must not relax it.
+    """
+    try:
+        progress = _buildplan_refs().resolve_chunk_progress(project_dir, plan.path)
+        return _critic_mode().short_plan_deferral(project_dir, prawduct_dir, plan, progress)
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- a gate relaxation that cannot be evaluated must not relax the gate
+        # Fail closed AND say so: a crashed predicate otherwise reads exactly
+        # like an ineligible plan, and the builder runs the round the owner
+        # traded away without learning that the deferral never got a look.
+        print(
+            "\nNOTE: the short-plan deferral could not be evaluated "
+            f"({type(exc).__name__}: {exc}) — the Critic gate is applied in full "
+            "below, whether or not this plan would have deferred its review.",
+            file=sys.stderr,
+        )
+        return None
+
+
+#: Stable token on every deferred-review WARNING the Stop gate emits — one
+#: grep-able word for the transcript, so a reader (or the test that pins the
+#: message) finds the deferral without matching its prose. Nothing in the
+#: tree counts it; the deferral's yield is measured where its cost lands, at
+#: the boundary, by `review-stats --json`'s `by_stage`.
+DEFERRED_REVIEW_TOKEN = "deferred-boundary-review"
+
+
+def _emit_stop_advisories(advisories: list[str]) -> None:
+    """Deliver the Stop gate's non-blocking advisories on the one channel the
+    harness reads at exit 0.
+
+    Plain stdout/stderr at exit 0 is LOGGED by Claude Code and reaches nobody
+    (hooks reference: "exit 0 with non-JSON stdout is logged but doesn't affect
+    the turn"). A JSON object on stdout is read on every exit code:
+    ``systemMessage`` is shown to the user in the transcript and
+    ``additionalContext`` is added to the model's context — and ``Stop`` is one
+    of the events that honors ``additionalContext``. Both are set to the same
+    text so the deferral is never silent to either reader; "advice fails soft,
+    never silent" (architecture § Direction) is what this function exists for.
+
+    Printed LAST and only when there is something to say: the object must be
+    the whole of stdout for the harness to parse it, and ``cmd_stop`` writes
+    everything else to stderr.
+    """
+    if not advisories:
+        return
+    text = "\n\n".join(advisories)
+    print(json.dumps({"systemMessage": text, "additionalContext": text}))
+
+
 def _record_lint():
     """Lazy-import the deterministic record-lint checks (lib/record_lint). Same
     lazy idiom as _gitstate() — seeds sys.path so the hook's top level stays
@@ -1796,6 +1867,11 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
         f"{len(manifest['files_changed'])} file(s) changed, "
         f"tree {manifest['head_tree'][:12]}. Manifest: {result['path']}"
     )
+    # The signals line every reviewer is handed, rendered by code from the
+    # manifest (`stage`, `judgeable_files`, `chunk_type`) and stored there as
+    # `signals`. Printed so the dispatching context has it in hand; a
+    # coordinator copies it into each reviewer prompt and composes none.
+    print(f"PRAWDUCT: signals — {consolidate.signals_line(manifest)}")
     # PDT-WT9K: surface the resolved target so a wrong-tree review is obvious.
     base_ref = manifest.get("base_commit") or manifest.get("base_tree") or "?"
     print(
@@ -2271,6 +2347,10 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
 
     blockers: list[str] = []
     canary_findings: list[str] = []
+    # Non-blocking advisories the gate wants BOTH readers to see at exit 0 —
+    # delivered through `_emit_stop_advisories` at every `return 0` below,
+    # because stderr at exit 0 reaches neither the user nor the model.
+    stop_advisories: list[str] = []
 
     # STH-3W7F: is harness-tracked background work still producing the diff?
     # When so, defer the session-end blockers (return 0 + a note) instead of
@@ -2382,7 +2462,8 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # decides whether the others run at all. Falls back to the pointer whenever
     # the branch names no declared scope, so repos whose branch names differ from
     # their scopes are unaffected.
-    gate_plan = _buildplan_refs().resolve_branch_plan(project_dir, prawduct_dir).path
+    gate_plan_obj = _buildplan_refs().resolve_branch_plan(project_dir, prawduct_dir)
+    gate_plan = gate_plan_obj.path
     has_build_plan = (
         _gates()._has_active_build_plan_file(prawduct_dir, gate_plan)
         or _gates()._has_build_plan_in_state(prawduct_dir)
@@ -3130,18 +3211,55 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
             target = (critic_verdict.get("target") or "")[:12]
             span = f" ({base} → {target})" if base and target else ""
             detail = critic_verdict.get("reason", "no review evidence composes")
-            blockers.append(_attributed("critic",
-                "CRITIC REVIEW: no composed review coverage spans this session's\n"
-                f"  changes{span}: {detail}\n"
-                "  If you have completed a chunk, run `/prawduct:critic` now. It runs as an\n"
-                "  independent agent and records a review fact the gates compose over.\n"
-                "  If a review already ran and you edited files afterward (fixes, or a\n"
-                "  SELECTIVE commit of only part of the reviewed state), the current tree was\n"
-                "  never reviewed — run /prawduct:critic verify-resolutions to review the\n"
-                "  delta and close the gap. If unreviewed changes were committed mid-session,\n"
-                "  /prawduct:critic cumulative reviews the whole branch span.\n"
-                + _escape_hatch
-            ))
+            # Short-plan deferral (#292): a plan of few chunks touching no risk
+            # surface owes ONE boundary review, not one per chunk. Only the
+            # `uncovered` verdict is eligible — `blocked` (unresolved blocking
+            # findings) and every error status above this branch keep failing
+            # closed, because a recorded blocker is authority and an unread
+            # store is no verdict at all. On a non-final chunk the gate WARNS,
+            # naming the boundary review it defers to; on the last chunk it
+            # blocks as ever (the boundary is never inferred away) and says
+            # what the boundary review is. `None` from the predicate is "does
+            # not defer": a relaxation that could not be evaluated does not
+            # relax anything.
+            deferral = (
+                _short_plan_deferral(project_dir, prawduct_dir, gate_plan_obj)
+                if verdict_status == "uncovered"
+                else None
+            )
+            if deferral is not None and deferral.defers and not deferral.last_chunk:
+                stop_advisories.append(_attributed("critic",
+                    f"WARNING ({DEFERRED_REVIEW_TOKEN}): no review covers this session's\n"
+                    f"  changes{span}, and none is owed yet — {deferral.reason}.\n"
+                    "  This chunk's review is deferred to the boundary: commit it and carry\n"
+                    "  on; the `cumulative` review at the last chunk (inferred by\n"
+                    "  `/prawduct:critic` once that chunk is committed) covers every chunk\n"
+                    "  and is the PR gate's evidence. To review this chunk anyway, run\n"
+                    "  `/prawduct:critic chunk`, or declare `Critic mode:` on any chunk of\n"
+                    "  the plan to restore per-chunk review for the whole plan.\n"
+                ))
+            else:
+                last_chunk_note = (
+                    "  This plan is short and its per-chunk reviews were deferred to this\n"
+                    f"  boundary review ({deferral.reason}): commit the chunk, then run\n"
+                    "  `/prawduct:critic` — it infers `cumulative`, which is this chunk's\n"
+                    "  review and the PR gate's evidence; no separate `final` is owed.\n"
+                    if deferral is not None and deferral.defers and deferral.last_chunk
+                    else ""
+                )
+                blockers.append(_attributed("critic",
+                    "CRITIC REVIEW: no composed review coverage spans this session's\n"
+                    f"  changes{span}: {detail}\n"
+                    + last_chunk_note +
+                    "  If you have completed a chunk, run `/prawduct:critic` now. It runs as an\n"
+                    "  independent agent and records a review fact the gates compose over.\n"
+                    "  If a review already ran and you edited files afterward (fixes, or a\n"
+                    "  SELECTIVE commit of only part of the reviewed state), the current tree was\n"
+                    "  never reviewed — run /prawduct:critic verify-resolutions to review the\n"
+                    "  delta and close the gap. If unreviewed changes were committed mid-session,\n"
+                    "  /prawduct:critic cumulative reviews the whole branch span.\n"
+                    + _escape_hatch
+                ))
 
     # v1.5 Chunk 04: Type: trivial enforcement runs alongside the Critic
     # gate (not in place of it). The chunk is still treated as `code`
@@ -3291,6 +3409,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
         for blocker in blockers:
             # First line of each blocker names the gate — enough to show what's pending.
             print(f"  deferred: {blocker.splitlines()[0]}", file=sys.stderr)
+        _emit_stop_advisories(stop_advisories)
         return 0
 
     # Report blockers or exit clean
@@ -3315,6 +3434,11 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
         for f in canary_findings:
             print(f"  {f}", file=sys.stderr)
 
+    # Mirrored on stderr for the log, then delivered where exit 0 is read.
+    for advisory in stop_advisories:
+        print("", file=sys.stderr)
+        print(advisory, file=sys.stderr)
+    _emit_stop_advisories(stop_advisories)
     return 0
 
 
@@ -3378,6 +3502,17 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
 #: it was "tracked separately" while naming no item, which is how it stayed open
 #: long enough to be worth this warning: a tracking reference that points at no
 #: id is not a tracking reference.
+#:
+#: **The mutation half is NOT here, on purpose.** This directive keeps the cheap
+#: check — for each test, name what would turn it red — because that is
+#: answerable in the seconds a builder has at ``record``. The mutation-watch
+#: rule (a mutant you did not watch go red applied nothing; a revert is blind to
+#: what your change broke beside it) is a BOUNDARY check instead: it costs a RUN
+#: PER CLAIM, and the inner loop is the stage whose wall clock is worth buying
+#: back. It lives in ``skills/pr/SKILL.md``'s pre-review step, before the one
+#: cumulative review, and ``docs/discipline.md`` row 1 names that surface.
+#: Adding either half back here re-prices every ``record`` call — pinned by
+#: ``test_the_mutation_half_stays_at_the_boundary_not_at_record_time``.
 _GREEN_IS_EVIDENCE_DIRECTIVE = (
     "\nGreen is evidence only about what could have made it red. For each test"
     " you just added or changed, name the change that would flip it — and"
@@ -3386,11 +3521,6 @@ _GREEN_IS_EVIDENCE_DIRECTIVE = (
     " the thing they name is broken: a fixture whose input cannot trigger the"
     " guard, an assertion that cannot tell the two orderings apart, and a"
     " branch that depends on a file which happens to exist on this machine."
-    " Mutation answers this only for the line you ADDED — reverting removes the"
-    " damage alongside the fix, so it is blind to what your change broke beside"
-    " it; pair it with branch coverage of every path in the function you"
-    " touched. And a mutation you did not watch go red applied nothing — count"
-    " only the reds you saw, and restore each the way you made it."
 )
 
 
@@ -5370,14 +5500,21 @@ def cmd_infer_critic_mode(project_dir: Path, args: str | None) -> int:
 
     Output format: a single stdout line ``<mode>|<rationale>`` where
     ``<mode>`` is one of the short tokens (``chunk`` / ``final`` /
-    ``cumulative`` / ``verify-resolutions``) and ``<rationale>`` is the
+    ``cumulative`` / ``verify-resolutions``) — or ``deferred``, the
+    output-only answer that NO review is owed now because the branch's plan
+    is short and touches no risk surface (#292; ``critic_mode.MODE_DEFERRED``):
+    the skill dispatches nothing on it and reports the rationale, which says
+    whether to commit and carry on or, on the last chunk, commit and run the
+    ``cumulative`` that is that chunk's review. ``<rationale>`` is the
     human-readable explanation suitable for both stdout reporting and
     the ``mode_chosen_by`` field in ``.critic-findings.json``.
 
     Fail-safe: if the bundled ``lib/`` cannot be imported (an incomplete plugin
     install), print a clear message and return 1 rather than crashing — mirroring
     ``cmd_advisory``. The Critic SKILL treats a non-zero exit as inference
-    failure and defaults to ``final`` (fail-safe to thoroughness).
+    failure and defaults to ``chunk`` — the inner-stage review of the
+    uncommitted interval, which is what inference itself answers when no rule
+    fires (the stage-keyed rigor norm: unsure defaults cheap).
     """
     lib_root = _plugin_root()
     if lib_root not in sys.path:
@@ -5501,6 +5638,15 @@ def cmd_coverage_status(project_dir: Path, argv: list[str]) -> int:
     § Enforcement — proportionality, not a hard one-at-a-time invariant). ``--json``
     emits the structured status for the doctor skill; default is human-readable.
 
+    A fourth row sits OUTSIDE the chain — **risk surfaces**: has the product said
+    where a missed defect would cost it most (``risk_surfaces:`` in
+    ``project-state.yaml``)? Asked of ``lib/risk_surface_probes.risk_surfaces_status``,
+    the same classification the ambient advisory fires on, so the row cannot drift
+    from the nudge; ``undeclared`` and ``unparseable`` are the degraded answers and
+    each carries its own fix. Not staged behind the layers: discovery asks it
+    beside them, and an unanswered question here changes review depth for the
+    life of the product rather than what artifacts it owes.
+
     Read-only and informational — always exits 0. A broken plugin import or a
     faulty sub-check degrades to a NOTE / "unknown", never a crash (a health
     *report* must not fail the operator's shell)."""
@@ -5553,6 +5699,20 @@ def cmd_coverage_status(project_dir: Path, argv: list[str]) -> int:
         print(f"NOTE: coverage-status layer-2 (norm ratification) check skipped: {exc}", file=sys.stderr)
         norms_unratified = None
 
+    # Risk surfaces — asked of the probe module, never re-derived here, for the
+    # same reason the layers are: the row's whole claim is that it mirrors the
+    # ambient nudge. Guarded like layer 2: a report degrades to "unknown" and
+    # names why on stderr; it does not crash and it does not go quiet.
+    risk_status: str | None
+    try:
+        from lib import risk_surface_probes  # noqa: PLC0415
+
+        risk_status = risk_surface_probes.risk_surfaces_status(project_dir)
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- report must not crash; degrade the risk-surfaces row to unknown + log
+        print(f"NOTE: coverage-status risk-surfaces check skipped: {exc}", file=sys.stderr)
+        risk_status = None
+    risk_fix = _RISK_SURFACE_FIXES.get(risk_status)
+
     # Which single layer currently owns the nudge (the chain stages). Layers 0 and 1
     # are asked of the probe module, never re-derived here: this report's whole claim
     # is that it mirrors the ambient nudge, and it earns that only by composing the
@@ -5580,6 +5740,10 @@ def cmd_coverage_status(project_dir: Path, argv: list[str]) -> int:
             "norms_unratified": norms_unratified,
             "active_layer": active_layer,
             "fix": fix,
+            # Outside the chain; `status` is one of risk_surface_probes.STATUS_*
+            # or null when the check could not run. `fix` is set for the two
+            # degraded statuses only.
+            "risk_surfaces": {"status": risk_status, "fix": risk_fix},
         }, indent=2))
         return 0
 
@@ -5634,7 +5798,44 @@ def cmd_coverage_status(project_dir: Path, argv: list[str]) -> int:
               "once the repo has source code or docs/.")
     else:
         print("  Active nudge → none: the coverage chain is satisfied.")
+
+    # The row outside the chain. Every status renders its own line — the two
+    # non-findings say WHY they are not findings, because "declared" and "not
+    # owed yet" are different answers and a bare "ok" would render them alike.
+    label = "  Risk surfaces (review depth)  : "
+    if risk_status is None:
+        print(f"{label}unknown (check unavailable)")
+    elif risk_status == "undeclared":
+        print(f"{label}NOT DECLARED — this repo has code under review and has never "
+              "said where a missed defect would cost it most, so every change is "
+              "reviewed at the depth its size suggests")
+        print(f"       fix: {risk_fix}")
+    elif risk_status == "unparseable":
+        print(f"{label}declared in a shape prawduct cannot read, so review escalates "
+              "rather than read a syntax slip as low risk")
+        print(f"       fix: {risk_fix}")
+    elif risk_status == "declared":
+        print(f"{label}declared (`risk_surfaces:` in project-state.yaml; `[]` is the "
+              "opt-out)")
+    else:
+        print(f"{label}not owed yet — no source code that this scan recognises")
     return 0
+
+
+#: The fix each degraded risk-surfaces status names, keyed on
+#: ``risk_surface_probes.STATUS_*``. Declared and not-owed carry none.
+_RISK_SURFACE_FIXES = {
+    "undeclared": (
+        "answer where a missed defect would cost most and record it under "
+        "`risk_surfaces:` in .prawduct/project-state.yaml "
+        "(/prawduct:methodology discovery, \"Surface Risk Surfaces\"); "
+        "`risk_surfaces: []` is the deliberate opt-out"
+    ),
+    "unparseable": (
+        "rewrite `risk_surfaces:` as a block sequence of plain strings "
+        "(one `- path` per line), or `[]` to opt out"
+    ),
+}
 
 
 def cmd_coverage_scaffold(project_dir: Path, argv: list[str]) -> int:
@@ -6245,8 +6446,10 @@ def cmd_norm_index_scaffold(project_dir: Path, argv: list[str]) -> int:
 
 
 def cmd_reanchor(project_dir: Path, argv: list[str]) -> int:
-    """Detect — and on ``--apply`` replace — a governance anchor that predates the
-    plugin-absent notice.
+    """Detect — and on ``--apply`` replace — a governance anchor that lacks one of
+    the current text's load-bearing sentences: the plugin-absent notice, or the
+    rule that review rigor is stage-keyed (``lib/anchor_repair.SUBSTANCE`` is the
+    roster; the command's detail names which one is missing).
 
     ``apply_claude_anchor`` returns the moment it sees the sentinel, so it converges
     repos that have NO anchor and never repairs one that is merely old. That was

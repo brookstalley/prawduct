@@ -60,6 +60,7 @@ def _event(
     duration: float | None = 100,
     findings: list[dict] | None = None,
     observations: list[dict] | None = None,
+    stage: str | None = None,
 ) -> dict:
     event = {
         "schema_version": 1,
@@ -83,6 +84,11 @@ def _event(
     # review that demoted nothing.
     if observations is not None:
         event["review"]["observations"] = observations
+    # Same posture: absent by default. `stage` was stamped by `critic-begin`
+    # from a given release on, and an event without it must group as
+    # "unrecorded", never as a stage this reader guessed from the mode.
+    if stage is not None:
+        event["review"]["stage"] = stage
     return event
 
 
@@ -289,6 +295,62 @@ class TestObservationCounts:
         assert "observations not recorded" in old
 
 
+class TestStageRollup:
+    """The yield-by-stage query the stage-keyed rigor norm was drawn to answer
+    (`nonfunctional-requirements.md` § Direction). `critic-begin` stamps
+    `stage` on the manifest, it rides the fact and the findings cache, and the
+    `review.critic` event copies the cache — so this report READS it. It never
+    derives a stage from the mode: `critic_consolidate.STAGE_OF_MODE` is that
+    mapping's one home, and an event written before the field existed says
+    nothing about its stage."""
+
+    VERIFY_MODE = "verify-resolutions (delta review, prior findings only)"
+
+    def test_groups_by_recorded_stage_with_the_unrecorded_bucket_last(self, tmp_path):
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [
+            _event(mode=CHUNK_MODE, stage="inner",
+                   observations=[{"name": "o", "goal": "2", "recommendation": "r"}]),
+            _event(mode=self.VERIFY_MODE, stage="inner"),
+            _event(mode=CUMULATIVE_MODE, stage="boundary", findings=[
+                {"goal": "2", "severity": "warning", "summary": "w"},
+            ]),
+            _event(mode=CUMULATIVE_MODE),  # written before the field existed
+        ])
+        report = json.loads(_run(repo, "--json").stdout)
+        assert [e["stage"] for e in report["by_stage"]] == ["inner", "boundary", None]
+        by = {e["stage"]: e for e in report["by_stage"]}
+        assert by["inner"]["reviews"] == 2 and by["inner"]["observations"] == 1
+        assert by["boundary"]["reviews"] == 1 and by["boundary"]["findings"]["warning"] == 1
+        assert by[None]["reviews"] == 1
+
+    def test_an_unrecorded_stage_is_never_derived_from_the_mode(self, tmp_path):
+        """The falsifying case for a reader that quietly backfilled from the
+        mode: a `cumulative` event with no `stage` would then land under
+        `boundary`. It must land under the unrecorded bucket."""
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_event(mode=CUMULATIVE_MODE), _event(mode=CHUNK_MODE)])
+        report = json.loads(_run(repo, "--json").stdout)
+        assert [e["stage"] for e in report["by_stage"]] == [None]
+        assert report["by_stage"][0]["reviews"] == 2
+
+    def test_an_unknown_stage_value_groups_as_unrecorded(self, tmp_path):
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_event(stage="middle")])
+        report = json.loads(_run(repo, "--json").stdout)
+        assert [e["stage"] for e in report["by_stage"]] == [None]
+
+    def test_human_rendering_names_the_stages_and_the_unrecorded_bucket(self, tmp_path):
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_event(stage="inner"), _event(stage="boundary"), _event()])
+        out = _run(repo).stdout
+        assert "by stage:" in out
+        block = out.split("by stage:", 1)[1].split("\n\n", 1)[0]
+        assert "  inner: 1 review(s)" in block
+        assert "  boundary: 1 review(s)" in block
+        assert "  (unrecorded): 1 review(s)" in block
+
+
 class TestModelCanonicalization:
     """Model-id aliases for one model fold to a single family bucket so the
     reviewer-model A/B isn't fragmented across id strings; distinct families
@@ -369,7 +431,7 @@ class TestJsonSchemaStability:
         report = json.loads(_run(repo, "--json").stdout)
         assert list(report) == [
             "schema_version", "project", "generated_at", "events_total",
-            "skipped", "overall", "by_role_model_mode", "by_scope",
+            "skipped", "overall", "by_role_model_mode", "by_scope", "by_stage",
             "top_files", "files_attributed_total", "learning",
         ]
         # 1 -> 2 when the `learning` block arrived. A key change, so the
@@ -378,7 +440,9 @@ class TestJsonSchemaStability:
         # 2 -> 3 on 2026-09-03: `learning` gained `units_uncited` (a key change).
         # 3 -> 4 on 2026-09-16 (develop sync): every stat block gained
         # `observations` and `reviews_recording_observations` (a key change).
-        assert report["schema_version"] == 4
+        # 4 -> 5 on 2026-09-17 (review-stages Chunk 02): a `by_stage` grouping
+        # joined the top level (a key change).
+        assert report["schema_version"] == 5
         assert report["project"] == "repo"
 
     def test_group_entry_keys_pinned(self, tmp_path):
@@ -395,6 +459,7 @@ class TestJsonSchemaStability:
         assert list(report["overall"]) == stat_keys
         assert list(report["by_role_model_mode"][0]) == ["role", "model", "mode", *stat_keys]
         assert list(report["by_scope"][0]) == ["scope", *stat_keys]
+        assert list(report["by_stage"][0]) == ["stage", *stat_keys]
         assert list(report["top_files"][0]) == ["path", "actionable_findings", "findings"]
 
 

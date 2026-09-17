@@ -171,6 +171,84 @@ def test_shipped_prior_anchor_is_stale_and_repairable(tmp_path: Path):
     assert result["repairable"] is True
 
 
+def test_the_anchor_that_predates_the_stage_rule_is_stale_and_repairable(tmp_path: Path):
+    """The brief's first anchor fixture: an already-onboarded repo carrying the
+    v3.5.0 anchor verbatim is prawduct's to repair, not the owner's to reword.
+
+    This is the case the archive-first ordering exists for now: that anchor
+    CARRIES the install command, so a notice-first check would grade it healthy
+    and the stage rule would never reach the fleet that onboarded on v3.5.0.
+    The detail names the one sentence it lacks and not the one it has.
+    """
+    root = _write_claude(tmp_path / "v350", ar.ANCHOR_V3)
+    result = ar.check(root)
+    assert result["status"] == ar.STATUS_STALE
+    assert result["repairable"] is True
+    assert "stage-keyed review rule" in result["detail"]
+    assert "plugin-absent notice" not in result["detail"]
+
+    ar.repair(root, apply=True)
+    assert (root / "CLAUDE.md").read_text(encoding="utf-8") == (
+        _PRODUCT_HEAD + STATIC_ANCHOR.strip() + _PRODUCT_TAIL
+    )
+
+
+def test_a_hand_edited_anchor_lacking_the_stage_rule_is_stale_modified(tmp_path: Path):
+    """The brief's second anchor fixture, and the one that catches a wrong
+    registration: an owner-edited v3.5.0 anchor carries the notice, matches no
+    shipped text, and says nothing about stages. Registered wrongly — or graded
+    by the notice alone — it reads `ok` and the owner is never told.
+    """
+    edited = ar.ANCHOR_V3.replace(
+        "- **Tests are contracts** — fix the code, never weaken a test.",
+        "- **Tests are contracts** — and in THIS repo, also run `make lint`.",
+    )
+    assert ar.NOTICE_PROBE in edited, "fixture must carry the notice, or it tests the older probe"
+    root = _write_claude(tmp_path / "v350-edited", edited)
+    result = ar.check(root)
+    assert result["status"] == ar.STATUS_STALE_MODIFIED
+    assert result["repairable"] is False
+    assert "stage-keyed review rule" in result["detail"]
+    assert "plugin-absent notice" not in result["detail"]
+
+
+def test_a_notice_era_stale_anchor_is_told_both_things_it_lacks(tmp_path: Path):
+    """The other rendered branch of the derived detail: an anchor from before
+    the notice lacks both sentences, and the report says so — the wording is
+    computed from the archive entry, never written for one revision."""
+    result = ar.check(_write_claude(tmp_path / "v2", ar.ANCHOR_V2))
+    assert result["status"] == ar.STATUS_STALE
+    assert "plugin-absent notice and the stage-keyed review rule" in result["detail"]
+
+
+def test_a_fresh_scaffold_carries_the_stage_sentence(tmp_path: Path):
+    """The static half of the chunk's acceptance: `init-product` writes the
+    current anchor, so a new onboard grades `ok` and its CLAUDE.md states the
+    stage rule. Pinned here because the repair can never reach this population
+    — new onboards are the one cohort with no second line of defence."""
+    from lib.init_product import init_product
+
+    root = tmp_path / "fresh"
+    root.mkdir()
+    init_product(root, "demo", apply=True)
+    text = (root / "CLAUDE.md").read_text(encoding="utf-8")
+    assert ar.STAGE_PROBE in text
+    assert ar.check(root)["status"] == ar.STATUS_OK
+
+
+def test_a_healthy_grade_and_a_finished_repair_describe_the_same_anchor(tmp_path: Path):
+    """Two user-facing sentences, one source: the `ok` detail and the post-repair
+    report both say what a current anchor carries — both load-bearing sentences
+    by name — so neither can lag the other when the table grows."""
+    healthy = ar.check(_write_claude(tmp_path / "healthy", STATIC_ANCHOR.strip()))["detail"]
+    repaired = ar.repair(_write_claude(tmp_path / "repaired", ar.ANCHOR_V3), apply=True)["detail"]
+    for detail in (healthy, repaired):
+        assert ar.NOTICE_PROBE in detail
+        assert ar.STAGE_PROBE in detail
+    assert repaired.startswith(f"{ar.CLAUDE_REL}'s governance anchor was rewritten — it now ")
+    assert healthy.startswith("the anchor tells ")
+
+
 def test_owner_edited_anchor_is_reported_not_repaired(tmp_path: Path):
     """The refusal that protects an owner who reworded their own anchor.
 
@@ -189,12 +267,17 @@ def test_owner_edited_anchor_is_reported_not_repaired(tmp_path: Path):
     assert result["repairable"] is False
 
 
-def test_owner_rewritten_anchor_carrying_the_notice_grades_ok(tmp_path: Path):
+def test_owner_rewritten_anchor_carrying_every_load_bearing_sentence_grades_ok(tmp_path: Path):
     """Substance-based detection has to accept a correct anchor it did not write.
 
     A revision tag would call this stale and offer to overwrite prose already
     doing the job — the wrong answer, and the reason the probe asks what the
     anchor SAYS rather than which version it is.
+
+    Renegotiated when the stage-keyed rule became the second load-bearing
+    sentence: this fixture used to carry the notice alone and grade `ok`, and
+    now carries both, because an owner's rewrite that says nothing about what a
+    mid-build review blocks on is not current (the sibling below pins that).
 
     The fixture is an anchor the owner **rewrote**, which is what that sentence
     actually describes. An earlier version of this test used a verbatim shipped
@@ -208,10 +291,34 @@ def test_owner_rewritten_anchor_carrying_the_notice_grades_ok(tmp_path: Path):
         "<!-- PRAWDUCT:ANCHOR — ours, kept deliberately short -->\n\n"
         "## Governance\n\n"
         "Prawduct governs this repo. If `/prawduct:*` is missing the plugin is not\n"
-        f"installed and nothing here is enforced — run `{ar.NOTICE_PROBE}` first."
+        f"installed and nothing here is enforced — run `{ar.NOTICE_PROBE}` first.\n"
+        f"Review rigor is {ar.STAGE_PROBE}: the mid-build review is the cheap one."
     )
     root = _write_claude(tmp_path / "homegrown", home_grown)
     assert ar.check(root)["status"] == ar.STATUS_OK
+
+
+def test_owner_rewrite_carrying_only_the_notice_is_stale_modified_and_says_what_is_missing(
+    tmp_path: Path,
+):
+    """The second substance probe, pinned on the population it exists for.
+
+    Before the stage rule joined the table, an anchor naming the install
+    command graded `ok` however little else it said. Now each load-bearing
+    sentence is asked for separately, and the detail is DERIVED from which
+    rows are missing — so an owner is told the one thing to add, and is not
+    accused of predating a notice their anchor plainly carries.
+    """
+    notice_only = (
+        "<!-- PRAWDUCT:ANCHOR — ours -->\n\n## Governance\n\n"
+        f"If `/prawduct:*` is missing, run `{ar.NOTICE_PROBE}` first."
+    )
+    root = _write_claude(tmp_path / "notice-only", notice_only)
+    result = ar.check(root)
+    assert result["status"] == ar.STATUS_STALE_MODIFIED
+    assert result["repairable"] is False
+    assert "stage-keyed review rule" in result["detail"]
+    assert "plugin-absent notice" not in result["detail"]
 
 
 def test_a_shipped_stale_anchor_is_stale_even_when_the_file_names_the_command(tmp_path: Path):
@@ -444,18 +551,19 @@ def test_absent_anchor_is_inserted_through_the_one_inserter(tmp_path: Path):
 # =============================================================================
 
 
-@pytest.mark.parametrize("archived", ["ANCHOR_V1", "ANCHOR_V2"])
-def test_every_archived_anchor_grades_stale_and_repairs(tmp_path: Path, archived):
+@pytest.mark.parametrize("index", range(len(ar.SUPERSEDED_ANCHORS)))
+def test_every_archived_anchor_grades_stale_and_repairs(tmp_path: Path, index):
     """Each entry in the archive must actually be reachable as `stale`.
 
     An entry nobody exercises is indistinguishable from an entry that is subtly
     wrong — and being subtly wrong here does not fail, it reports `stale-modified`
     and tells the owner they edited an anchor prawduct wrote. Parametrized over
-    the archive so a newly appended entry is covered by existing tests rather than
-    by remembering to add one.
+    the archive ITSELF so a newly appended entry is covered by existing tests
+    rather than by remembering to add one — an earlier version listed the entry
+    names by hand, which is the remembering this docstring claimed to remove.
     """
-    anchor = getattr(ar, archived)
-    root = _write_claude(tmp_path / f"archived-{archived}", anchor)
+    anchor = ar.SUPERSEDED_ANCHORS[index]
+    root = _write_claude(tmp_path / f"archived-{index}", anchor)
     assert ar.check(root)["status"] == ar.STATUS_STALE
 
     ar.repair(root, apply=True)

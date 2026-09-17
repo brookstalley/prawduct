@@ -115,7 +115,10 @@ Hardest rules:
 - **No "pre-existing" exception** — fix what you find, or flag why you can't.
 - **Never silently drop a requirement** — say so explicitly.
 - **Run `/prawduct:critic` after medium+ work** — never write findings
-  yourself; the independence is the value.
+  yourself; the independence is the value. Rigor is stage-keyed: a mid-build
+  review blocks only on what would ship broken, the review at the merge
+  boundary runs everything and is never skipped, and unsure defaults to the
+  cheaper mid-build review.
 
 **Enforcement is structural — while the plugin is loaded:** its Stop hook runs at
 session end and **blocks** if code changed against an active build plan with no

@@ -613,7 +613,7 @@ def observations_index(read_result: dict) -> dict[tuple[str, str], dict]:
     """``(review_id, oid)`` → the observation entry its review fact recorded.
 
     The sibling of :func:`findings_index`, kept a SEPARATE walk on purpose.
-    An observation is what a ``verify-resolutions`` pass demoted: real, worth
+    An observation is what an inner-stage pass demoted: real, worth
     reading, and deliberately not work the record demands. It is recorded so a
     builder can answer it and so the demotion's yield is queryable — never so a
     gate can read it. Merging the two indexes would put observations one

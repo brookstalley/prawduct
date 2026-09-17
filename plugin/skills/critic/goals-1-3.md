@@ -3,11 +3,18 @@
 **Self-contained by design**: do not open `review-protocol.md` or `review-cycle.md`. Target wall-clock: 1-2 minutes.
 
 **Never run tests, builds, or executables**: review test quality and coverage by reading
-code. Both modes are **always single-pass** — no subagents, no coordinator. In `verify-resolutions`,
-only **BLOCKING** is a finding — report anything lesser, record-lint entries included, as an
-observation, never in `findings`. **Deliver every observation pre-priced:** ACCEPT is the default
-disposition; fixing one re-opens the gate and costs a round; batch any survivor into an
-already-planned commit.
+code. Both modes are **always single-pass** — no subagents, no coordinator.
+
+**Both modes are the inner stage** (the manifest's `stage` is `inner`; the boundary is `cumulative`
+and the PR review). Here a finding is one of the **inner BLOCKING set** — a test failure in the
+evidence; a test deleted or weakened; changed behavior with no test at all; a silently dropped
+requirement; exploitable security in changed code; a cross-component contract break; a norm
+departure without a recorded decision; an unlisted dependency — and nothing else:
+only **BLOCKING** is a finding, and only from that set. Every other verdict the goals below state
+(`→ WARNING`, `→ NOTE`, a `→ BLOCKING` outside the set) is the boundary rating — report it,
+record-lint entries included, as an observation, never in `findings`. **Deliver every observation
+pre-priced:** ACCEPT is the default disposition; fixing one re-opens the gate and costs a round;
+batch any survivor into an already-planned commit.
 
 ## Before you review
 
@@ -42,7 +49,7 @@ reasons. Do not re-raise one absent material change in its cited files** — one
 = older answers dropped; `unavailable` = the join failed, so you know nothing.
 
 **Record checks are already answered — read the manifest's `record_lint`.** Never
-recount it: that is how a record defect buys a review round. Each entry carries its explanation — raise it. `chunk-ref-missing`, `learnings-budget-unreasoned` and `learnings-over-budget` → **BLOCKING**.
+recount it: that is how a record defect buys a review round. Each entry carries its explanation — raise it. `chunk-ref-missing` → **BLOCKING** (a declared deliverable that does not exist is a dropped requirement, so it is in the inner set); `learnings-budget-unreasoned` and `learnings-over-budget` → **BLOCKING** at the boundary, an observation here.
 `governed-by-gap`, `learnings-area-dead` → **WARNING** under Goal 2.
 `suite-total-claim` → **NOTE**.
 **`unchecked` is not a pass: an entry inherits one step below its check's severity** (BLOCKING
@@ -137,15 +144,15 @@ dies in your context, and the builder is what terminates the review loop.
 ```
 
 `files` per finding is attribution — omit when not file-specific. `findings` is `[]` for a clean pass.
-**`observations` is `verify-resolutions` mode ONLY** — what you demoted: a finding minus
-`severity`. Recording it lets the builder ACCEPT one instead of fixing it to leave a trace; one you
-would rate `blocking` belongs in `findings`.
+**`observations` — both modes** (the inner stage's carrier): what you demoted — a finding minus
+`severity`, and carry no `severity` key. Recording it lets the builder ACCEPT one instead of fixing
+it to leave a trace; one from the inner BLOCKING set belongs in `findings`.
 **`resolutions` is `verify-resolutions` mode ONLY** — your judgment on each prior BLOCKING/WARNING
 finding, joined by `(review_id, fid)` from the prior findings record; `disposition` is `fixed` or
 `waived` (`waived` requires a `rationale`). Consolidation validates every entry and fails closed on a
 mismatch, so match this schema exactly.
 
-Then report to the user: signals (size, type, files, boundaries crossed), what you reviewed, each
-finding with goal, severity and recommendation, and a summary by severity saying whether the changes
-are ready. No findings, no observations: "No issues found." A clean pass is not an exemption from
+Then report to the user: the manifest's `signals` line verbatim, what you reviewed, each finding
+with goal, severity and recommendation, the observations, and a summary by severity saying whether
+the changes are ready. No findings, no observations: "No issues found." A clean pass is not an exemption from
 the `NEXT-ACTION:` last line — it is where that line matters most.

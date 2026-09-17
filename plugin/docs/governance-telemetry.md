@@ -147,8 +147,8 @@ questions. A `learning.` kind this report has no column for stays
 `unknown_kinds`, which is what that key has always meant. Missing ledger → "no
 review history", exit 0. Exit 1 only on bad arguments.
 
-Per grouping — overall, `actor.role` × `actor.model` × review mode, and
-per-`scope` — it reports: review count, total/median `duration_seconds`,
+Per grouping — overall, `actor.role` × `actor.model` × review mode,
+per-`scope`, and per review `stage` — it reports: review count, total/median `duration_seconds`,
 findings by severity, **actionable rate** (share of reviews with ≥1
 blocking/warning), and findings-per-review. Plus a findings-by-file rollup
 from per-finding `files` attribution (top paths by actionable findings,
@@ -169,6 +169,7 @@ skipped          {corrupt_lines, unknown_kinds, invalid_payloads}
 overall          one stat block (below)
 by_role_model_mode  [{role, model, mode, ...stat block}]
 by_scope         [{scope, ...stat block}]
+by_stage         [{stage, ...stat block}] — `inner` / `boundary` / null
 top_files        [{path, actionable_findings, findings}]
 files_attributed_total  count behind the top_files cap
 learning         {written, fired, units_written, units_fired, units_uncited}
@@ -186,11 +187,18 @@ such; and they are no longer skips.
 Stat block: `reviews`, `duration_total_seconds`, `duration_median_seconds`
 (null when no event carried a duration), `findings`
 (`{blocking, warning, note, other}`), `findings_per_review`,
-`actionable_rate` (0–1), `observations` (items `verify-resolutions` demoted below
-BLOCKING — never counted in `findings`), `reviews_recording_observations`
+`actionable_rate` (0–1), `observations` (items an inner-stage pass demoted —
+never counted in `findings`), `reviews_recording_observations`
 (reviews whose event carried the array; events written before it existed are
 excluded, so `observations: 0` over `0` recording reviews means *not measured*,
 not *nothing demoted*). Schema 4 added the last two keys.
+
+`by_stage` groups on the record's `stage` — `inner` (`chunk`, `final`, `verify-resolutions`) or
+`boundary` (`cumulative`), stamped by `critic-begin` and carried through the fact and the findings
+cache onto `review.critic` events. It is **read, never derived from the mode**: an event written
+before the field existed groups under `null` (rendered "(unrecorded)"), and so does a `review.pr`
+event, which carries no stage yet. Schema 5 added the key. This is the yield-by-stage query the
+stage-keyed rigor norm (`nonfunctional-requirements.md` § Direction) was drawn to answer.
 
 Mode keys are the short tokens (`chunk` / `final` / `cumulative` /
 `verify-resolutions`), derived from the persisted verbose strings. PR-review

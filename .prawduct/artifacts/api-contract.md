@@ -180,7 +180,7 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   place:** two verbs added; three retired to deprecated-inert (below) rather than removed, because the
   deprecation norm above governs every verb a human or a skill can call and the release is a minor;
   `ledger-append` gained two event kinds it refuses at the CLI; `review-stats --json` moved to
-  `schema_version` 4 (a `learning` block added, then its `units_uncited` key, then the verify-pass `observations` counts; no key repurposed). Nothing a consumer allowlisted
+  `schema_version` 5 (a `learning` block added, then its `units_uncited` key, then the verify-pass `observations` counts, then a `by_stage` grouping; no key repurposed). Nothing a consumer allowlisted
   changed meaning.
 - **Learnings lifecycle (retired with learnings v2)** — `audit-learnings`, `learnings-obligation`,
   `check-learnings-pairing` (deprecated, inert): the corpus they graded — `.prawduct/learnings.md`
@@ -376,7 +376,10 @@ files to touch previews first. That framing is descriptive — the binding rule 
     null. **`coverage-scaffold --json` has no consumer** — #11 runs it bare and with `--apply`.
     Keys (`structural_recorded`,
     `discovery_expected`, `missing_artifacts[]`, `norms_unratified`, `active_layer`, `fix` /
-    `applied`, `created[]`). `discovery_expected` is the layer-0 staging half, and it has **three**
+    `applied`, `created[]`, and `risk_surfaces: {status, fix}` — outside the chain; `status` is
+    `declared` / `undeclared` / `unparseable` / `not-owed`, or null when the check could not run,
+    read from the same classification the ambient risk-surfaces advisory fires on; Health Check
+    #20 consumes it). `discovery_expected` is the layer-0 staging half, and it has **three**
     states, not two. **False** = no product work *this scan recognises* — it reads source by suffix
     allowlist (`#561`), so a repo in an unlisted language reads the same as an empty one; with
     `active_layer: null` that means "nothing owed yet", never "chain satisfied". **Null** on

@@ -95,6 +95,56 @@ MODE_TOKEN_TO_VERBOSE = {
 }
 _VERBOSE_VERIFY_RESOLUTIONS = MODE_TOKEN_TO_VERBOSE["verify-resolutions"]
 
+#: The two review STAGES (`nonfunctional-requirements.md` § Direction, *Review
+#: rigor is stage-keyed*). A stage is a fact about the review INTERVAL, and
+#: ``begin_review`` chooses the interval by mode — ``chunk``/``final`` review
+#: the uncommitted diff, ``verify-resolutions`` the delta since the prior fact,
+#: ``cumulative`` merge-base → HEAD — so the stage is a function of the mode
+#: token. This mapping is that function's one home: the dispatch writes the
+#: result onto the manifest as ``stage``, and every reader downstream (the
+#: reviewer prompt, the fact, the findings cache, the ledger event,
+#: ``review-stats``) READS it rather than re-deriving it.
+STAGE_INNER = "inner"
+STAGE_BOUNDARY = "boundary"
+STAGE_VALUES = frozenset({STAGE_INNER, STAGE_BOUNDARY})
+STAGE_OF_MODE = {
+    "chunk": STAGE_INNER,
+    "final": STAGE_INNER,
+    "verify-resolutions": STAGE_INNER,
+    "cumulative": STAGE_BOUNDARY,
+}
+
+
+def stage_of(mode_token: str) -> str:
+    """The review stage a mode token dispatches at — ``inner`` for a review of
+    an uncommitted or delta interval, ``boundary`` for the committed bundle.
+
+    Raises ``ValueError`` on an unknown token: every caller holds a token that
+    :data:`MODE_TOKEN_TO_VERBOSE` already accepted, so an unknown one here is a
+    vocabulary drift to fail loudly on, never a value to default.
+    """
+    try:
+        return STAGE_OF_MODE[mode_token]
+    except KeyError:
+        raise ValueError(
+            f"unknown mode token {mode_token!r} — expected one of {sorted(STAGE_OF_MODE)}"
+        ) from None
+
+
+def stage_of_manifest(manifest: dict) -> str:
+    """The stage a manifest was dispatched at.
+
+    Reads the recorded ``stage`` first. A manifest written before the field
+    existed — a review restored from the archive, or a leftover consolidated by
+    the session-end backstop — carries none, and for those the same function
+    that would have written it answers from the recorded mode. That is the
+    one derivation applied late, not a second home for it.
+    """
+    stage = manifest.get("stage")
+    if isinstance(stage, str) and stage in STAGE_VALUES:
+        return stage
+    return stage_of(mode_token_of(manifest.get("mode")))
+
 
 def mode_token_of(mode: object) -> str:
     """The mode TOKEN behind a persisted verbose mode string —
@@ -162,29 +212,37 @@ FULL_ROUND_MODES = tuple(t for t in MODE_TOKEN_TO_VERBOSE if t != "verify-resolu
 SINGLE_PASS_ROSTER = ("reviewer",)
 COORDINATOR_ROSTER = ("correctness", "design", "sustainability")
 
-# **Scope of that replay, and the fallback it forces.** Every figure above came
-# from THIS repo's evidence store, where the derived risk surfaces match 77% of
-# reviews. An onboarded product is the opposite case: the derived defaults are
-# framework-shaped, the `project-state.yaml` template ships no `risk_surfaces:`,
-# and the `boundary-patterns.md` template yields no parseable paths — so the
-# risk predicate would never fire and the rule would collapse to "judgeable >=
-# 12" ALONE, which is precisely row 2 of the table (54% of blockers demoted),
-# replacing a rule that gave that product a coordinator at 5 files.
+# **Scope of that replay.** Every figure above came from THIS repo's evidence
+# store, where the declared risk surfaces match 77% of reviews. An onboarded
+# product that declares no `risk_surfaces:` has no risk signal of its own — the
+# derived defaults are framework-shaped, the `project-state.yaml` template
+# ships no list, and the `boundary-patterns.md` template yields no parseable
+# paths — so for it the rule is "judgeable >= 12" alone, row 2 of the table.
+# Until the review-stages plan that gap was closed by retaining the
+# pre-2026-07-30 file-count rule (coordinator at 5+ changed files) as a fallback
+# for undeclared repos, on the argument that "no surface matched" and "no
+# signal to give" are indistinguishable at the match site and the cheaper
+# review was the unsafe direction. The stage-keyed rigor norm
+# (`nonfunctional-requirements.md` § Direction) retired that argument: redundant
+# review is a cost, not a margin, and the boundary review still runs. Measured
+# fleet-wide before retiring, 2026-08-01 → 09-17, six undeclared product repos:
 #
-# So the risk-keyed rule applies only where there IS a risk signal. A repo that
-# has declared none keeps the previous file-count escalator unchanged — no
-# behaviour change where there is no evidence to justify one. This repo opts in
-# by declaring `risk_surfaces:` in its own project-state.yaml, which is also
-# what makes the replay above describe the rule that actually runs here.
+#   fallback-only coordinator reviews     87 reviews, 48 blocking   0.55 / review
+#   single-pass reviews beside them       18 reviews, 14 blocking   0.78 / review
+#
+# The reviews the fallback escalated found blockers at a LOWER per-review rate
+# than the single-pass reviews in the same repos, so the record shows no yield
+# advantage for the third reviewer; how many of the 48 one reviewer would have
+# missed is not measurable from the store, and the owner's recorded decision
+# accepts that bounded miss as the price of removing three reviewers from the
+# commonest product change size. Recomputable:
+# `python3 tests/spikes/fallback_roster_yield.py`. The remedy for a product that
+# has not said where its risk lives is the question (`methodology/discovery.md`
+# § Surface Risk Surfaces), not an escalator that never asks.
 
 #: Judgeable-file count at which volume alone buys the coordinator, with no
 #: risk surface touched. Below it the replay shows an empty blocking record.
 COORDINATOR_JUDGEABLE_THRESHOLD = 12
-
-#: The pre-2026-07-30 rule, retained as the conservative fallback for repos that
-#: have declared no risk surfaces. NOT the primary rule any more — see
-#: ``_derive_roster``.
-COORDINATOR_FILE_THRESHOLD = 5
 
 # Background reviewers run for minutes after the dispatching fork returns, so
 # an early consolidate correctly finds zero partials — a silence the parent
@@ -667,9 +725,10 @@ def next_action_line(
             + price
         )
     if not (warning or note):
-        # `verify-resolutions` demotes everything below BLOCKING to an
-        # observation, so "0 findings, N observations" is that mode's MODAL
-        # close, not an edge — and this arm is the text it prints. Saying
+        # An inner-stage pass (`verify-resolutions` first; every inner mode
+        # since rigor became stage-keyed) demotes what falls outside the inner
+        # BLOCKING set to an observation, so "0 findings, N observations" is
+        # its MODAL close, not an edge — and this arm is the text it prints. Saying
         # "nothing to disposition" there contradicts the reviewer's own
         # `### Observations` report in the same message, and leaves the
         # accept-on-the-record route unused on the path that produces most of
@@ -900,10 +959,13 @@ def account_for_prior_blockers_directive(carried: list[dict]) -> str:
 #: never reaches.
 VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE = (
     "PRAWDUCT: this pass answers ONE question — were the prior findings"
-    " resolved? A NEW finding here is BLOCKING, or it is not a finding."
-    " **The test is the SEVERITY you would assign, never membership in any"
-    " list.** Anything you would rate below BLOCKING — including a record-lint"
-    " entry the manifest rated below BLOCKING — goes in your report under an"
+    " resolved? A NEW finding here is one of the inner BLOCKING set, or it is"
+    " not a finding: a test failure in the evidence; a test deleted or weakened; changed behavior with no test at all; a silently dropped requirement; exploitable security in changed code; a cross-component contract break; a norm departure without a recorded decision; an unlisted dependency."
+    " **The test is membership in that set, never the severity a table"
+    " prints** — a `→ BLOCKING` outside it (a learnings budget row, an"
+    " undocumented decision that departs from no norm) is an observation here,"
+    " and so is everything a table rates lower, record-lint entries included."
+    " Observations go in your report under an"
     " `### Observations` heading, in prose, and NOT into `findings`: a name you"
     " would have chosen differently, prose that could be tighter, a test you"
     " would have structured another way. Put each one in your partial's"
@@ -911,18 +973,17 @@ VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE = (
     " finding minus its severity — which is what lets the builder ACCEPT it on"
     " the record instead of fixing it just to leave a trace. An entry you rate"
     " `blocking` is refused there: a BLOCKING item is a finding."
-    " Everything the protocol rates BLOCKING"
-    " stays BLOCKING, with no exceptions and no list to check. Five classes are"
-    " BLOCKING *in this mode whatever they are rated elsewhere*, because they"
-    " are what a fix delta actually gets wrong and demoting one is the only way"
-    " this rule could lose something real: a test weakened or deleted to make"
-    " the fix pass; a requirement dropped in the rewrite; changed behavior with"
-    " no test; anything security-relevant in the changed code — including the"
-    " auth/authz and known-vulnerable-dependency cases the protocol rates"
-    " WARNING; and fix-by-fudging — the spec edited to match the implementation,"
-    " or a workaround where the finding named the root cause, which is equally"
-    " grounds to leave that finding OUT of `resolutions`. This list only ADDS to"
-    " what the protocol blocks; it never narrows it. Then say how many"
+    " The set is the norm's and it is exact — it neither adds a class the norm"
+    " does not name nor drops one it does. Five shapes a fix delta actually"
+    " gets wrong sit inside it, and two of them are ESCALATIONS against the"
+    " ratings the protocol prints, so they are named: a test weakened or"
+    " deleted to make the fix pass; a requirement dropped in the rewrite;"
+    " changed behavior with no test; exploitable security in the changed code —"
+    " which covers the auth/authz and known-vulnerable-dependency cases the"
+    " protocol rates WARNING; and fix-by-fudging — the spec edited to match the"
+    " implementation (a dropped requirement), or a workaround where the finding"
+    " named the root cause, which is equally grounds to leave that finding OUT"
+    " of `resolutions`. Then say how many"
     " observations you demoted, in one line, so the builder meets the number"
     " without opening the record. The demotion is not politeness:"
     " a WARNING recorded here becomes a fix commit, the commit moves the tree,"
@@ -1696,13 +1757,75 @@ def _mark_cache_superseded(prawduct_dir: Path, review_id: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
+#: What the signals line prints when the dispatch read NO chunk type at all —
+#: no graded chunk, an unrecognised declaration, or a plan it could not read.
+#: A graded chunk whose ``Type:`` field is simply absent renders the parser's
+#: own ``code`` default as a plain ``Type: code``; this label marks the case
+#: where nothing was read, so the line never claims a declaration it did not
+#: see ("never honor an unknown Type" is the protocol's rule for both).
+CHUNK_TYPE_DEFAULT_LABEL = "code (default)"
+
+
+def signals_line(manifest: dict) -> str:
+    """The one-line signals summary a coordinator hands each reviewer —
+    ``Stage: <stage> · Judgeable files: <n> · Type: <chunk type>``.
+
+    Rendered FROM the manifest, by code, so no coordinator composes it: the
+    freeform ``Signals: [summary]`` it replaces was the one substitution in the
+    reviewer prompt that a model invented per dispatch, and the stage — the
+    field the severity table now keys on — was not in it. ``begin_review``
+    stores the rendering on the manifest as ``signals`` and the CLI prints it;
+    a reader that wants to check the stored line against the fields re-renders
+    with this function.
+    """
+    stage = manifest.get("stage")
+    judgeable = manifest.get("judgeable_files")
+    chunk_type = manifest.get("chunk_type") or CHUNK_TYPE_DEFAULT_LABEL
+    return (
+        f"Stage: {stage if stage in STAGE_VALUES else 'unknown'} · "
+        f"Judgeable files: {judgeable if isinstance(judgeable, int) else '?'} · "
+        f"Type: {chunk_type}"
+    )
+
+
+def _dispatch_chunk_type(prawduct_dir: Path, lint: dict) -> "str | None":
+    """The reviewed chunk's declared ``Type:``, read from the SAME plan and
+    chunk record-lint graded, or ``None`` when no recognised declaration
+    reached this dispatch.
+
+    ``record_lint`` already resolved which plan the review is about and which
+    chunk it grades (``plan_graded`` / ``chunk_graded``); reading the type from
+    any other plan would be two chunk-level fields resolving from two places,
+    the defect ``buildplan_refs.resolve_reviewed_plan`` exists to close. An
+    unrecognised value is ``None`` too: the protocol never honours an unknown
+    Type, and the Stop hook is the surface that reports the typo.
+    """
+    plan_rel = lint.get("plan_graded") if isinstance(lint, dict) else None
+    chunk_id = lint.get("chunk_graded") if isinstance(lint, dict) else None
+    if not isinstance(plan_rel, str) or not plan_rel or not isinstance(chunk_id, str) or not chunk_id:
+        return None
+    from . import buildplan_refs  # noqa: PLC0415 — lazy; keeps the import graph flat
+
+    try:
+        declared, _error = buildplan_refs._parse_build_plan_chunk_type(
+            prawduct_dir, chunk_id, prawduct_dir.parent / plan_rel
+        )
+    except (OSError, ValueError):  # a plan the lint could read but this read cannot
+        return None
+    return declared
+# ---------------------------------------------------------------------------
+
+
 def _derive_roster(
     mode_token: str, files_changed: list[str], prawduct_dir: Path
 ) -> tuple[list[str], str]:
     """The roster this dispatch requires, plus the rationale (Q7 debugging).
 
-    Risk surface first, judgeable volume second — see the roster config block
-    for the replay that ordered them that way.
+    Risk surface first, judgeable volume second, and nothing else — see the
+    roster config block for the replay that ordered them that way and for the
+    measured yield of the file-count fallback this used to carry for repos
+    with no declaration. A repo that declares nothing runs the same two
+    escalators as one that does; what a declaration buys is the paths it names.
     """
     if mode_token in ("chunk", "verify-resolutions"):
         return list(SINGLE_PASS_ROSTER), f"mode={mode_token} is always single-pass"
@@ -1720,23 +1843,6 @@ def _derive_roster(
         return list(COORDINATOR_ROSTER), (
             f"mode={mode_token}, no risk surface, {nj} judgeable file(s) >= "
             f"{COORDINATOR_JUDGEABLE_THRESHOLD} — coordinator"
-        )
-
-    # "No risk surface matched" means low risk only if this repo HAD a signal to
-    # give. With no declaration it means we learned nothing — and falling
-    # through on judgeable volume alone would silently adopt the rule the replay
-    # rejected. Keep the previous escalator until the repo says where its risk
-    # lives.
-    if not risk.has_product_risk_declaration(prawduct_dir):
-        n = len(files_changed)
-        if n >= COORDINATOR_FILE_THRESHOLD:
-            return list(COORDINATOR_ROSTER), (
-                f"mode={mode_token}, no declared risk surfaces, {n} file(s) >= "
-                f"{COORDINATOR_FILE_THRESHOLD} — coordinator (prior rule retained)"
-            )
-        return list(SINGLE_PASS_ROSTER), (
-            f"mode={mode_token}, no declared risk surfaces, {n} file(s) < "
-            f"{COORDINATOR_FILE_THRESHOLD} — single-pass (prior rule retained)"
         )
 
     return list(SINGLE_PASS_ROSTER), (
@@ -2711,6 +2817,19 @@ def begin_review(
         # without the key is still valid.
         "seed": capture.get("seed"),
     }
+    # The review STAGE, derived once here from the mode (which chose the
+    # interval above) and read everywhere else — the reviewer prompt's signals
+    # line, the review fact, the findings cache, the ledger event and
+    # `review-stats`. Nothing downstream re-derives it: the severity table keys
+    # on this value, and a second derivation is a second table.
+    from . import coverage_algebra  # noqa: PLC0415 — lazy; keeps the import graph flat
+
+    manifest["stage"] = stage_of(mode_token)
+    manifest["judgeable_files"] = len(coverage_algebra.judgeable_files(files_changed))
+    manifest["chunk_type"] = _dispatch_chunk_type(prawduct_dir, lint)
+    # Rendered from the three fields above, so the coordinator copies a line
+    # rather than composing one.
+    manifest["signals"] = signals_line(manifest)
     ok, reason = validate_manifest(manifest)
     if not ok:
         # A manifest this function derived failing its own validator is a bug
@@ -2778,9 +2897,10 @@ def _str_list(val) -> bool:
 def _validate_observations(observations) -> tuple[bool, str]:
     """Validate a partial's optional ``observations`` array.
 
-    An observation is what a ``verify-resolutions`` pass demoted: the reviewer
-    would have rated it below BLOCKING, so it is not a finding and no gate ever
-    reads it. It is recorded anyway, for two reasons the prose destination
+    An observation is what an inner-stage pass demoted (``verify-resolutions``
+    first; every inner-stage mode once rigor became stage-keyed): the reviewer
+    would have rated it below BLOCKING, or outside the inner BLOCKING set, so it
+    is not a finding and no gate ever reads it. It is recorded anyway, for two reasons the prose destination
     could not serve — the builder can ANSWER one (``prawduct-hook disposition``
     joins on its id), and the demotion's own yield becomes a query over the
     store instead of a count the reviewer asserts about itself.
@@ -2840,11 +2960,11 @@ def validate_partial(data) -> tuple[bool, str]:
     ``waived``, and ``waived`` REQUIRES a non-empty ``rationale`` (R7 — a
     waiver carries its justification).
 
-    ``observations`` is what a verify pass DEMOTED — validated by
+    ``observations`` is what an inner-stage pass DEMOTED — validated by
     :func:`_validate_observations`, and refused outright by :func:`consolidate`
-    on any dispatch that is not ``verify-resolutions``. Demotion is a
-    verify-mode rule; an array outside ``findings`` that every mode could write
-    would be a severity-laundering path.
+    on a boundary-stage dispatch. Demotion is a stage rule; an array outside
+    ``findings`` that the boundary could write would be a severity-laundering
+    path.
 
     ``dispatch_id`` is the id of the review that dispatched this reviewer, and
     it is deliberately NOT named ``review_id``: ``resolutions[].review_id`` in
@@ -2944,7 +3064,10 @@ def validate_manifest(data) -> tuple[bool, str]:
     Nullable: ``base_commit``/``head_commit`` (a prior review of a dirty tree
     has no commit), ``tier``/``scope``/``scope_chosen_by``/``chunk``/``model``/
     ``base_reviewed``, ``worktree``/``branch`` (visibility fields; ``branch`` is
-    None on a detached HEAD — PDT-WT9K).
+    None on a detached HEAD — PDT-WT9K). Optional and typed: ``stage``
+    (``inner``/``boundary`` — the severity rule keys on it), ``judgeable_files``,
+    ``chunk_type`` and ``signals`` (the code-rendered reviewer line), absent
+    only on a manifest written before they existed.
 
     The v2 (model-written) manifest shape carries none of the v3 interval
     fields, so it fails here loudly — a stale cached skill hand-authoring a
@@ -3015,10 +3138,23 @@ def validate_manifest(data) -> tuple[bool, str]:
     if data.get("files_oracle") is not None and not _str_list(data.get("files_oracle")):
         return False, "'files_oracle' must be a list of non-empty strings or null"
     for opt in ("base_commit", "head_commit", "tier", "scope", "scope_chosen_by",
-                "chunk", "model", "base_reviewed", "worktree", "branch"):
+                "chunk", "model", "base_reviewed", "worktree", "branch",
+                "chunk_type", "signals"):
         val = data.get(opt)
         if val is not None and not _nonempty_str(val):
             return False, f"'{opt}' must be a non-empty string or null"
+    # Optional for the same reason `files_oracle` is — a manifest restored from
+    # before the field existed still consolidates — and typed because the value
+    # reaches the fact and the severity rule keys on it: a misspelt stage must
+    # fail here, not read as "neither stage" downstream.
+    stage = data.get("stage")
+    if stage is not None and stage not in STAGE_VALUES:
+        return False, f"'stage' must be one of {sorted(STAGE_VALUES)} or null, got {stage!r}"
+    judgeable = data.get("judgeable_files")
+    if judgeable is not None and (
+        not isinstance(judgeable, int) or isinstance(judgeable, bool) or judgeable < 0
+    ):
+        return False, "'judgeable_files' must be a non-negative integer or null"
     return True, ""
 
 
@@ -3814,6 +3950,11 @@ def build_fact_body(manifest: dict, partials: list[dict]) -> dict:
         "dispatch_commit": manifest["commit_reviewed"],
         "mode": manifest["mode"],
         "mode_chosen_by": manifest["mode_chosen_by"],
+        # The stage the review was dispatched at (`inner` / `boundary`), carried
+        # so the store can answer "what did each stage find" without a reader
+        # re-deriving it from the mode. Null on a fact consolidated from a
+        # manifest written before the field existed.
+        "stage": manifest.get("stage"),
         "tier": manifest.get("tier"),
         "roster": [
             {"role": p["role"], "model": p.get("model")} for p in partials
@@ -3986,6 +4127,9 @@ def fact_to_cache_record(
         "duration_seconds": body.get("duration_seconds"),
         "mode": body.get("mode"),
         "mode_chosen_by": body.get("mode_chosen_by"),
+        # Rides the cache because the ledger's `review.critic` event copies this
+        # record verbatim — `review-stats --json` groups on it (`by_stage`).
+        "stage": body.get("stage"),
         "model": models[0] if models else None,
         "commit_reviewed": body.get("dispatch_commit"),
         "base_reviewed": body.get("base_reviewed"),
@@ -4356,27 +4500,33 @@ def consolidate(project_dir: Path) -> int:
             missing, len(partials), len(roster), review_id, prawduct_dir))
         return 0
 
-    # Observations may only arrive from a verify-resolutions dispatch, and the
-    # reason is the mirror image of the resolutions rule below. Demotion is a
-    # VERIFY-MODE rule: in every other mode an item the reviewer would rate
-    # below BLOCKING is a finding, and findings are what `counts` counts. An
-    # array outside `findings` that any mode could write is therefore a
-    # severity-laundering path — a `final` reviewer could put nine warnings in
-    # it and consolidate a 0/0/0 review with nothing anywhere reporting the
-    # difference. Refusing is the only answer that cannot record a falsehood,
-    # and it costs a conforming reviewer nothing, because outside this mode it
-    # has no reason to write the array at all.
-    for partial in partials:
-        if partial.get("observations") and not is_verify:
-            print(
-                f"critic-consolidate: partial {partial['role']!r} carries "
-                f"observations but the dispatch mode is {manifest['mode']!r} — "
-                "only a verify-resolutions dispatch demotes findings to "
-                "observations; anything you would rate below BLOCKING is a "
-                "finding here; fail-closed.",
-                file=sys.stderr,
-            )
-            return 1
+    # Observations may only arrive from an INNER-stage dispatch, and the reason
+    # is the mirror image of the resolutions rule below. Demotion is a stage
+    # rule (`nonfunctional-requirements.md` § Direction, *Review rigor is
+    # stage-keyed*): at the inner stage — `chunk`, `final`, `verify-resolutions`
+    # — a finding is one of the inner BLOCKING set and everything else the
+    # protocol rates is an observation; at the boundary — `cumulative` — the
+    # full table stands and every rated item is a finding, which is what
+    # `counts` counts. An array outside `findings` that the boundary could
+    # write is therefore a severity-laundering path — a `cumulative` reviewer
+    # could put nine warnings in it and consolidate a 0/0/0 review with nothing
+    # anywhere reporting the difference. Refusing is the only answer that
+    # cannot record a falsehood, and it costs a conforming reviewer nothing,
+    # because at the boundary it has no reason to write the array at all.
+    # `stage_of_manifest` reads the recorded stage and derives it only for a
+    # manifest written before the field existed.
+    if stage_of_manifest(manifest) == STAGE_BOUNDARY:
+        for partial in partials:
+            if partial.get("observations"):
+                print(
+                    f"critic-consolidate: partial {partial['role']!r} carries "
+                    f"observations but the dispatch is a {STAGE_BOUNDARY}-stage "
+                    f"review ({manifest['mode']!r}) — only an inner-stage review "
+                    "demotes findings to observations; at the boundary every "
+                    "item you would rate is a finding; fail-closed.",
+                    file=sys.stderr,
+                )
+                return 1
 
     # Resolutions may only arrive from a verify-resolutions dispatch — they
     # WEAKEN gates (they unblock findings), so off-protocol ones fail closed.

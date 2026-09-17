@@ -5,6 +5,133 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-17: review stages — rigor is stage-keyed; the inner loop blocks on eight things; unsure defaults cheap
+
+<!-- prawduct: type=feat | scope=review-stages -->
+
+The owner's 2026-09-17 trade (wall-clock for a bounded miss-rate increase; plan
+`build-plan-review-stages.md`, drawn from `review-proportionality-assessment-2026-09-17.md`), built
+as six chunks. **Chunk 01:** the norm — `nonfunctional-requirements.md` § Direction,
+*Review rigor is stage-keyed*: the inner stage (`chunk`, `final`, `verify-resolutions`) blocks only on
+the inner BLOCKING set and reports everything else as an observation; the boundary (`cumulative`, the
+PR review) runs the full table and is never inferred away; both failure directions are defects.
+Principle 11 gains one sentence (the inner loop proves the change, the boundary proves the bundle).
+Both ratified the same day. The entry names the sentences it retires and a strict-xfail grep pin held
+them red until Chunk 03. **Chunk 02:** `stage` derived once (`critic_consolidate.stage_of`) at
+`critic-begin`, written on the manifest with `judgeable_files`, `chunk_type` and a code-rendered
+`signals` line, carried to the review fact, the findings cache, the `review.critic` ledger event and
+`review-stats --json` (`by_stage`, report schema 5); the inner BLOCKING set stated in the norm's own
+sentence on `goals-1-3.md`, `review-protocol.md`, `review-cycle.md` and the verify directive, pinned
+identical; consolidation accepts `observations` from any inner-stage dispatch and refuses them at the
+boundary. **Chunk 03:** the defaults flip. `infer_mode` rule 4 answers `chunk` when nothing else
+fires — the inner-stage review of the uncommitted interval — and `cumulative` on a clean tree with a
+bundle; `final` is never a default (rule 3's size and last-chunk signals still infer it). The
+`SKILL.md` fall-through and failure path follow (`infer-failed-fallback-chunk`), and its per-mode
+scope line states the inner-set rule for every inner mode, not `verify-resolutions` alone.
+`_derive_roster` loses the file-count fallback (coordinator at 5+ changed files for a repo with no
+`risk_surfaces:`): an undeclared repo runs the same two escalators as a declared one — a matched
+surface at any size, or 12+ judgeable files — and what declaring buys is the paths it names.
+Measured before retiring, fleet-wide over 2026-08-01 → 09-17 (`python3
+tests/spikes/fallback_roster_yield.py`; six undeclared product repos, evidence stores deduplicated by
+clone): the fallback alone sent 87 `final`/`cumulative` reviews to three reviewers, and those reviews
+carried 48 blocking findings (0.55 per review) against 0.78 per review for the 18 single-pass reviews
+beside them. **That corrects the plan's inherited claim** that no blocking finding was attributable to
+the fallback in the window — the assessment's survey had not run the query. The record shows no
+per-review yield advantage for the third reviewer; how many of the 48 one reviewer would have missed
+is not measurable from the store, and the retirement stands on the owner's recorded decision, not on
+a zero. The prose sweep by grep: `review-cycle.md`'s canonical statement is now *default when unsure*
+(the inner-stage review of whatever interval exists) and its risk-surface paragraph no longer
+promises an undeclared repo is "never reviewed less than before"; `planning.md` stops calling
+under-declaring Type safe and its "Fail-safe default" paragraph is "Default when unsure";
+`discovery.md` § Surface Risk Surfaces promises size-independence on the named paths and nothing
+else; `building.md`'s Modes pointer, the build-plan and project-state templates, the
+`critic_mode.py` and `infer-critic-mode` docstrings and `risk.py`'s declaration predicate follow. The
+xfail pin flips to a plain assertion. The yield-floor sentence (a full round returns 13–18 findings
+regardless of round, diagnosis fix #6) was confirmed present in `review-cycle.md` ("Yield does not
+decay"), so nothing was added for it. Contracts renegotiated in the open: the per-mode scope pin asks
+the stage-keyed property instead of the fragment "BLOCKING only"; the roster tests that pinned the
+fallback now pin its absence (five files, the count it keyed on, is single-pass) and the two
+escalators that survive; token readings — SKILL +7 raised by declaration, review-cycle net 0 (its
+chunk review found the `final` row's "any time the right answer is unclear", the retired rule reworded,
+and the cut paid for the new canonical statement), building −6 and discovery −34 ratcheted, planning
++22 recorded. **Chunk 04:** a short plan owes one boundary review, not one per chunk (#292). A
+plan of at most three chunks, declaring no `Critic mode:` on any chunk, whose branch has changed no
+risk-surface path (the tier predicate — declared `risk_surfaces:` when present, else the derived
+defaults plus contract paths — over the paths committed since the merge-base and in the working
+tree) and is not the base branch itself, defers its per-chunk reviews: `infer_mode` answers a fifth,
+output-only token `deferred` on such a plan whenever code is in flight (between rules 2 and 3, so a
+fix-in-progress still gets `verify-resolutions` and a committed bundle still gets `cumulative`), the
+skill dispatches nothing on it and reports the rationale, and the Stop gate's Critic check on a
+non-final chunk emits a WARNING naming the deferred boundary review instead of blocking — delivered
+as a JSON `systemMessage` plus `additionalContext` on stdout, because at exit 0 the harness logs
+stderr and delivers it to no one. On the last chunk the gate blocks as ever and says the boundary
+review is that chunk's review (`Type: cumulative-final` sequencing without the declaration); a
+`blocked` verdict or an unreadable store still blocks on any chunk, and `check-cumulative-critic` is
+untouched — one `cumulative` fact spanning merge-base…HEAD passes it alone. Every condition fails
+closed (an unreadable plan, an unresolvable base, a detached HEAD, a failed git listing, an
+unparseable `risk_surfaces:` all leave per-chunk review standing), and `buildplan_refs` exports the
+roster's chunk ids (`status_chunk_ids`) so the opt-out scan reads Status through its one owner. The
+predicate is one function read by both consumers; `tests/test_short_plan_deferral.py` carries the
+guardrail #292 made load-bearing — a four-chunk plan, a risk-surface plan, an opted-out plan and
+base-branch work all still infer `chunk` and still block — with every guard mutation-verified red.
+`review-cycle.md` (the required-review row, the precedence list, the cumulative-final paragraph),
+`SKILL.md` (the `deferred` bullet) and `planning.md` (the "Short plan" heuristic) say it; SKILL
+3484 → 3615 and review-cycle 10864 → 11090 raised by declaration, planning 5597 → 5704 recorded.
+Three inference fixtures widened from three chunks to four, one of them a renegotiated contract
+(the last chunk of a short plan is no longer a rule-3 `final`). **Chunk 05:** the inner loop has a
+verification ceiling of its own, and the suite runs at Verify and at the boundary. `building.md`'s
+baseline leads with the evidence check (`test-status` current, else one run of the declared suite)
+instead of prescribing a suite run; a build-cycle paragraph states the ceiling once for the builder
+and the delegate — the project's `Inner-loop verification` row where it has one, else the tests for
+the files touched — and the delegation section keeps its mechanics and drops the duplicated why
+(building 4780 → 4910, the remainder raised by declaration because this file is the ceiling's only
+home). The preferences template gains the `Inner-loop verification` row beside `Delegate
+verification`, unset, in the product's own words, and the norm-table sentence names it as its own
+norm row; the test-specifications template says the testing floor is a product floor checked at the
+boundary, never a per-chunk bar; the build-plan template's example acceptance criterion reads "the
+declared suite passes" and a pin refuses a runner name on any acceptance line (the scaffolding
+section that declares the suite is exempt by design). The `test-evidence record` directive keeps the
+cheap half (name what would turn each test red; the three vacuous shapes) and the mutation-watch
+rule moves to the PR skill's Step 2, before the one cumulative run — the run-per-claim cost belongs
+at the boundary; `docs/discipline.md` row 1 follows it there, row 2 stays, and the header's channel
+enumeration gains the skill step. Chunk 04's owed short-plan sentence lands as one pointer per
+surface at `review-cycle.md`'s "When Review Is Required" row — the Critic-review step, the "Skipping
+`final` mode" trap, the build-plan template's field reference and its `cumulative-final` comment
+(which notes the example plan opts back in via `Critic mode:`) — with the conditions asserted absent
+from both files. Built by a delegate in an isolated worktree under a three-file verification ceiling
+and integrated by the coordinator. **Chunk 06:** the product-facing surfaces say it, and a product
+is asked once where its risk lives. The session digest gains one hardest-rules bullet (rigor is
+stage-keyed; inner-loop reviews block only on ships-broken; the boundary runs everything and is
+never skipped; unsure defaults cheap), paid in place by cutting the size-scale parenthetical
+`building.md` owns (9,361 → 9,422 stripped characters against the 10,000 spill wall). The scaffolded
+anchor's Critic line carries the same sentence in product terms, and `anchor_repair.py` archives the
+superseded text as a frozen literal beside V1 and V2 with a second substance probe (`stage-keyed`),
+so an onboarded repo carrying the previous anchor grades `stale` and is repaired, a hand-edited one
+lacking the sentence grades `stale-modified` and is told which sentence it lacks, and the detail is
+derived from the missing rows rather than fixed. A new probe family (`lib/risk_surface_probes.py`)
+fires once — one stable advisory id across repos and sessions — when a repo has product code and a
+state file but no `risk_surfaces:` key, in the product's terms (where would a missed defect cost you
+most?), landing on `discovery.md` § Surface Risk Surfaces; any declared key including `[]` is
+silent (the opt-out, read through `risk.read_declared_surfaces`, never the non-empty predicate),
+an unparseable key is the doctor row's finding rather than the ask's, and no judgeable work is
+silent. `coverage-status` reports the same classification as a row outside the chain
+(`risk_surfaces` in `--json`; doctor Check #20 grades `undeclared` and `unparseable` degraded with
+the fix). Doctor Check #18 widens to the third preferences row — an unset third row is the
+ordinary blank state, what excludes a row is shipping filled — and the Delegation Policy Flow
+drafts and ratifies it as its own norm row. At integration: `planning.md`'s mode heuristic bullets
+qualified to the short-plan condition, `risk.py`'s non-empty predicate docstring corrected to say
+the ask does not read it, `api-contract.md` documents the new key, and the delegation-policy test
+that Chunk 06 left red by construction (the template row it asserts is Chunk 05's) went green on
+the merge. The bundle's `cumulative` review found one correctness edge in Chunk 04's Stop gate:
+`last_chunk` was read from the working tree's ticks, so a chunk ticked and not yet committed at a
+Stop read as the last chunk and blocked for a boundary review one chunk early — chunk N would
+then owe a second one. It now reads the ticks committed at HEAD
+(`buildplan_refs.committed_chunk_progress`, the same checkbox parser on the committed plan, never a
+git-derived progress), falling back to the working tree only when the plan is not tracked; the
+two-tree fixture and the Stop-gate case are pinned and mutation-verified. Both chunks were built
+by delegates in isolated worktrees under named verification ceilings; the combined suite, the
+reviews, and the records are the coordinator's.
+
 ## 2026-09-03: learnings v2 docs — the guides say what the code does; the discipline corpus has a home; the program ships
 
 <!-- prawduct: type=feat | scope=learnings-v2-docs -->
