@@ -337,6 +337,19 @@ class TestProseCarriesTheConstant:
         text = (ROOT / rel).read_text()
         assert f"at most {critic_mode.SHORT_PLAN_MAX_CHUNKS} chunks" in text, rel
 
+    def test_planning_heuristic_bullets_are_qualified_by_the_short_plan_rule(self):
+        """`planning.md`'s single-chunk and multi-chunk heuristic bullets promise
+        `final` / `chunk`; on a short plan `infer_mode` answers `deferred` and
+        neither runs. Each bullet must carry the exception relationally, or
+        the two bullets contradict the third and the code. What turns this
+        red: dropping "unless the plan is short" from either bullet."""
+        text = (ROOT / "methodology/planning.md").read_text()
+        heuristic = text.split("**Heuristic — what inference will pick")[1]
+        single = next(l for l in heuristic.splitlines() if l.startswith("- **Single-chunk plan**"))
+        multi = next(l for l in heuristic.splitlines() if l.startswith("- **Multi-chunk plan**"))
+        assert "unless the plan is short" in single, single
+        assert "unless the plan is short" in multi, multi
+
 
 class TestStatusChunkIds:
     """The exporter the predicate reads the roster through — the answer, not

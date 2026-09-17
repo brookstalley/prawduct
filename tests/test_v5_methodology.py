@@ -994,7 +994,12 @@ LAST_MEASURED_TOKENS = {
     # chunk's `cumulative` is every chunk's review) and how a `Critic mode:`
     # on any chunk opts the plan back in. The on-demand class: declared,
     # paid by the reader.
-    "methodology/planning.md": 5704,
+    # +31 on 2026-09-17 (review-stages integration, Chunk 05's review R-5):
+    # the single-chunk and multi-chunk heuristic bullets each gained "unless
+    # the plan is short" — they promised `final`/`chunk` on plans where
+    # inference answers `deferred`, contradicting the bullet below them and
+    # the code. Pinned in `test_short_plan_deferral.py`. On-demand class.
+    "methodology/planning.md": 5735,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger

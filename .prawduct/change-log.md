@@ -11,7 +11,7 @@
 
 The owner's 2026-09-17 trade (wall-clock for a bounded miss-rate increase; plan
 `build-plan-review-stages.md`, drawn from `review-proportionality-assessment-2026-09-17.md`), built
-so far as three of six chunks. **Chunk 01:** the norm — `nonfunctional-requirements.md` § Direction,
+as six chunks. **Chunk 01:** the norm — `nonfunctional-requirements.md` § Direction,
 *Review rigor is stage-keyed*: the inner stage (`chunk`, `final`, `verify-resolutions`) blocks only on
 the inner BLOCKING set and reports everything else as an observation; the boundary (`cumulative`, the
 PR review) runs the full table and is never inferred away; both failure directions are defects.
@@ -78,9 +78,52 @@ base-branch work all still infer `chunk` and still block — with every guard mu
 `SKILL.md` (the `deferred` bullet) and `planning.md` (the "Short plan" heuristic) say it; SKILL
 3484 → 3615 and review-cycle 10864 → 11090 raised by declaration, planning 5597 → 5704 recorded.
 Three inference fixtures widened from three chunks to four, one of them a renegotiated contract
-(the last chunk of a short plan is no longer a rule-3 `final`). Chunks 05–06 (the inner-loop
-verification ceiling, which also owes `building.md` and the build-plan template the short-plan
-sentence; product-facing surfaces and the one-time risk-surface ask) are open.
+(the last chunk of a short plan is no longer a rule-3 `final`). **Chunk 05:** the inner loop has a
+verification ceiling of its own, and the suite runs at Verify and at the boundary. `building.md`'s
+baseline leads with the evidence check (`test-status` current, else one run of the declared suite)
+instead of prescribing a suite run; a build-cycle paragraph states the ceiling once for the builder
+and the delegate — the project's `Inner-loop verification` row where it has one, else the tests for
+the files touched — and the delegation section keeps its mechanics and drops the duplicated why
+(building 4780 → 4910, the remainder raised by declaration because this file is the ceiling's only
+home). The preferences template gains the `Inner-loop verification` row beside `Delegate
+verification`, unset, in the product's own words, and the norm-table sentence names it as its own
+norm row; the test-specifications template says the testing floor is a product floor checked at the
+boundary, never a per-chunk bar; the build-plan template's example acceptance criterion reads "the
+declared suite passes" and a pin refuses a runner name on any acceptance line (the scaffolding
+section that declares the suite is exempt by design). The `test-evidence record` directive keeps the
+cheap half (name what would turn each test red; the three vacuous shapes) and the mutation-watch
+rule moves to the PR skill's Step 2, before the one cumulative run — the run-per-claim cost belongs
+at the boundary; `docs/discipline.md` row 1 follows it there, row 2 stays, and the header's channel
+enumeration gains the skill step. Chunk 04's owed short-plan sentence lands as one pointer per
+surface at `review-cycle.md`'s "When Review Is Required" row — the Critic-review step, the "Skipping
+`final` mode" trap, the build-plan template's field reference and its `cumulative-final` comment
+(which notes the example plan opts back in via `Critic mode:`) — with the conditions asserted absent
+from both files. Built by a delegate in an isolated worktree under a three-file verification ceiling
+and integrated by the coordinator. **Chunk 06:** the product-facing surfaces say it, and a product
+is asked once where its risk lives. The session digest gains one hardest-rules bullet (rigor is
+stage-keyed; inner-loop reviews block only on ships-broken; the boundary runs everything and is
+never skipped; unsure defaults cheap), paid in place by cutting the size-scale parenthetical
+`building.md` owns (9,361 → 9,422 stripped characters against the 10,000 spill wall). The scaffolded
+anchor's Critic line carries the same sentence in product terms, and `anchor_repair.py` archives the
+superseded text as a frozen literal beside V1 and V2 with a second substance probe (`stage-keyed`),
+so an onboarded repo carrying the previous anchor grades `stale` and is repaired, a hand-edited one
+lacking the sentence grades `stale-modified` and is told which sentence it lacks, and the detail is
+derived from the missing rows rather than fixed. A new probe family (`lib/risk_surface_probes.py`)
+fires once — one stable advisory id across repos and sessions — when a repo has product code and a
+state file but no `risk_surfaces:` key, in the product's terms (where would a missed defect cost you
+most?), landing on `discovery.md` § Surface Risk Surfaces; any declared key including `[]` is
+silent (the opt-out, read through `risk.read_declared_surfaces`, never the non-empty predicate),
+an unparseable key is the doctor row's finding rather than the ask's, and no judgeable work is
+silent. `coverage-status` reports the same classification as a row outside the chain
+(`risk_surfaces` in `--json`; doctor Check #20 grades `undeclared` and `unparseable` degraded with
+the fix). Doctor Check #18 widens to the third preferences row — an unset third row is the
+ordinary blank state, what excludes a row is shipping filled — and the Delegation Policy Flow
+drafts and ratifies it as its own norm row. At integration: `planning.md`'s mode heuristic bullets
+qualified to the short-plan condition, `risk.py`'s non-empty predicate docstring corrected to say
+the ask does not read it, `api-contract.md` documents the new key, and the delegation-policy test
+that Chunk 06 left red by construction (the template row it asserts is Chunk 05's) went green on
+the merge. Both chunks were built by delegates in isolated worktrees under named verification
+ceilings; the combined suite, the reviews, and the records are the coordinator's.
 
 ## 2026-09-03: learnings v2 docs — the guides say what the code does; the discipline corpus has a home; the program ships
 

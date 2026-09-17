@@ -127,7 +127,7 @@ own acceptance.
 - [x] Chunk 02: Stage reaches every reviewer — derived once, carried on the manifest, severity keyed on it
 - [x] Chunk 03: Defaults fail cheap at the inner stage — mode inference and the roster
 - [x] Chunk 04: A short plan owes one boundary review, not one per chunk (#292)
-- [ ] Chunk 05: The inner loop has a verification ceiling; the suite runs at Verify and at the boundary
+- [x] Chunk 05: The inner loop has a verification ceiling; the suite runs at Verify and at the boundary
 - [ ] Chunk 06: Product-facing surfaces say it, and a product is asked once where its risk lives
 Context: Drawn 2026-09-17 from `review-proportionality-assessment-2026-09-17.md`. Chunk 01 shipped
 2026-09-17 on `feature/review-stages` (owner ratified the entry and the Principle 11 sentence the same day).
@@ -137,8 +137,12 @@ correcting a sentence the first demoted; both live runs of the new protocol). Ch
 ran overturned the plan's inherited "no blocking finding attributable to the fallback" claim — see the
 chunk's `[DECISION]`, owner-vetoable). Chunk 04 shipped 2026-09-17 (chunk review clean with
 four observations, two fixed and covered by one verify pass, two accepted on the record; the
-mechanism departs from the description in four recorded places). Chunk 05 is next, delegable
-with 06. The consumer-overhead program and its five plans are on the unmerged
+mechanism departs from the description in four recorded places). Chunks 05 and 06 were built
+2026-09-17 in parallel by two delegates in isolated worktrees (`feature/review-stages-c05`, Opus;
+`feature/review-stages-c06`, Fable) under named verification ceilings and merged by the coordinator;
+Chunk 05's review (inference chose `cumulative` on the clean merged tree) was clean with six
+warnings, all answered at integration or by Chunk 06's own diff; Chunk 06's review is the bundle's
+`cumulative`. The consumer-overhead program and its five plans are on the unmerged
 branch `docs/consumer-overhead-program` (checked out in an agent worktree under
 `.claude/worktrees/`); this plan is written to sit beside them, not replace them.
 

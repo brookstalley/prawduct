@@ -165,8 +165,8 @@ error handling go missing one context at a time.
 `Critic mode:` is the proportionality knob — it controls how heavy each per-chunk review is. Four modes: `chunk`, `final`, `cumulative`, `verify-resolutions`. The field is **optional**: at runtime `/prawduct:critic` (no args) infers the mode from git + build-plan state (see `methodology/building.md` and `skills/critic/review-protocol.md`). Declare it only to override inference.
 
 **Heuristic — what inference will pick, and when to override:**
-- **Single-chunk plan** → inference picks `final`. No declaration needed.
-- **Multi-chunk plan** → `chunk` for non-final chunks, `final` for the last. No declaration needed.
+- **Single-chunk plan** → inference picks `final` — unless the plan is short (next bullet), where the same plan owes only its boundary `cumulative`. No declaration needed.
+- **Multi-chunk plan** → `chunk` for non-final chunks, `final` for the last — again unless the plan is short. No declaration needed.
 - **Short plan** (at most 3 chunks, nothing the branch changes is a risk surface) → no per-chunk review is inferred at all: mid-chunk inference answers `deferred`, the Stop gate warns rather than blocks on a non-final chunk, and the last chunk's `cumulative` is every chunk's review (#292). Declaring `Critic mode:` on **any** chunk opts the whole plan back into per-chunk review — do it when an early chunk is a keystone you want seen before the rest is built on it.
 - **Override forward to `final`** on an early chunk that lands an architectural keystone whose coherence matters before later chunks build on it.
 - **Override forward to `cumulative`** on the last chunk of a plan that ships as a single PR — typically by declaring `Type: cumulative-final` (the chunk's review IS the one cumulative pass: commit the chunk, then run `/prawduct:critic cumulative` once — no separate `final` and no explicit `Critic mode:` needed).

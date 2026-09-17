@@ -206,10 +206,14 @@ def has_product_risk_declaration(prawduct_dir: Path) -> bool:
 
     The roster no longer reads this (the file-count fallback it gated is
     retired; ``critic_consolidate``'s roster config block has the measurement).
-    It answers "has this repo said where its risk lives" — the predicate an
-    ask about declaring keys on — and ``[]`` is deliberately *no* here while
-    being an exclusive opt-out for :func:`resolve_surfaces`, because an empty
-    list must not silence that ask.
+    It answers "is a NON-EMPTY ``risk_surfaces:`` list declared" — and ``[]``
+    is deliberately *no* here while being an exclusive opt-out for
+    :func:`resolve_surfaces`. The one-time ask (``lib/risk_surface_probes``)
+    does NOT read this predicate: ``[]`` is the opt-out that silences the ask
+    (``methodology/discovery.md`` § Surface Risk Surfaces), so the ask reads
+    :func:`read_declared_surfaces`'s status instead. This predicate is for a
+    consumer that needs to know whether any surface is actually named. No
+    runtime caller today.
 
     **When no key is declared**, both still feed :func:`resolve_surfaces`, so
     both still ESCALATE even though neither can relax anything. **When the key
