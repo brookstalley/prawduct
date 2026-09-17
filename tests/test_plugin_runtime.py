@@ -2022,6 +2022,30 @@ class TestFromCountsIngest:
         assert "test_command" in res.stderr
         assert "from-junit" in res.stderr.lower()
 
+    def test_refusal_names_the_path_for_a_caller_who_has_not_run_yet(self, tmp_path):
+        """The refusal serves two callers and must name both ways out.
+
+        `--from-junit` answers someone already holding a report. It is useless
+        to someone who has not run the suite — and naming only it sent such a
+        caller off to run the declared suite BY HAND, which emits no report to
+        ingest (the `{junit_xml}` path is the hook's to substitute), leaving a
+        second full suite run as the only way to record. A bare `record` runs
+        the declared command and records in one step; the message says so.
+        """
+        repo = self._repo(tmp_path)
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            "test_command: python3 -m pytest --junit-xml={junit_xml} -q\n"
+        )
+        res = _run_in(repo, "test-evidence", "record", "--from-counts",
+                      "passed=1", "failed=0")
+        assert res.returncode == 2
+        err = res.stderr.lower()
+        # The one-command path, asserted by the property (a bare `record` runs
+        # them) rather than by one spelling of the sentence.
+        assert "have not run" in err and "one step" in err, res.stderr
+        # ...without displacing the answer for the caller who HAS a report.
+        assert "from-junit" in err, res.stderr
+
     def test_head_tilde1_base_emits_advisory(self, tmp_path):
         # A repo NOT on main with no origin → the recorder's overlay base falls
         # back to the moving HEAD~1; record warns (naming base_branch:) even via

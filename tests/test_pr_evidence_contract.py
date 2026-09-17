@@ -406,3 +406,64 @@ class TestIssuesBackendCloseIsDeferred:
             "ledger's independent copy. Without it the field is self-certifying, and "
             "the prohibition on advancing it has nothing behind it."
         )
+
+
+class TestStepOneNamesTheRecorder:
+    """Step 1 tells the caller to run the suite; it must also name the command
+    that RECORDS one, because the two are the same command and only one of them
+    is discoverable.
+
+    The defect this closes was paid in wall clock, not correctness. Step 1 said
+    "when you do run, write fresh evidence so the next caller can skip it" and
+    named no command, so a caller ran the declared suite by hand and then asked
+    `test-evidence record` to ingest the counts. With a `test_command:` declared
+    that is refused (the runner emits JUnit, so hand-typed counts are the weakest
+    posture available), and the hand-run emitted no report to ingest instead —
+    leaving a second full suite run as the only way forward. Bare
+    `prawduct-hook test-evidence record` runs the declared command, substitutes
+    `{junit_xml}` and writes the record in one step.
+
+    Bounded to the paragraph rather than the file: `SKILL.md` names
+    `test-evidence` in other steps, so a file-wide substring check would pass
+    with the instruction itself silent — the shape this repo's learnings call a
+    guard that cannot go red.
+    """
+
+    def _suite_paragraph(self) -> str:
+        paras = [
+            p for p in _paragraphs(PR_SKILL.read_text())
+            if "test-status" in p and "run the suite" in p
+        ]
+        assert len(paras) == 1, (
+            "Expected exactly one Step 1 paragraph instructing the caller about the "
+            f"suite; found {len(paras)}. If the step was split, re-bound this guard "
+            "rather than widening it to the file."
+        )
+        return paras[0]
+
+    def test_the_instruction_names_the_recorder_command(self):
+        para = self._suite_paragraph()
+        assert "test-evidence record" in para, (
+            "Step 1 tells the caller to run the suite without naming "
+            "`test-evidence record`. A caller who runs the declared suite by hand "
+            "cannot record it — `--from-counts` is refused when `test_command:` is "
+            "declared — so the omission costs a second full suite run."
+        )
+
+    def test_the_instruction_still_leads_with_the_freshness_check(self):
+        """The recorder sentence must not displace the cheaper answer. Running
+        nothing at all is the best outcome, and `test-status` is what licenses
+        it; a paragraph that only named the recorder would spend a suite run on
+        every PR."""
+        para = self._suite_paragraph()
+        # Precondition, stated rather than assumed: without it `.index` raises
+        # ValueError and this test reports the SIBLING's defect as its own.
+        assert "test-evidence record" in para, (
+            "The recorder is not named at all — see "
+            "test_the_instruction_names_the_recorder_command; this guard asks "
+            "only about ORDER and cannot speak to its absence."
+        )
+        assert para.index("test-status") < para.index("test-evidence record"), (
+            "Step 1 now reaches for the recorder before the freshness check. "
+            "`test-status` exit 0 means no run is needed at all."
+        )

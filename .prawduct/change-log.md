@@ -5,6 +5,61 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-17: Step 1 names the recorder; develop opens 3.5.1-dev.1 so consumers pick up review-stages
+
+<!-- prawduct: type=fix | scope=pr-step1-recorder -->
+
+**Small work, no build plan** — two prose surfaces, a version bump and the consumer note the bump
+makes load-bearing. Found by dogfooding: creating PR #821 cost two full suite runs instead of one.
+
+**The defect, and it was paid in wall clock rather than correctness.** `/prawduct:pr` Step 1 told
+the caller to run the suite and then *"write fresh evidence so the next caller can skip it"* — and
+named no command. Following it literally means running the declared suite by hand and asking
+`test-evidence record` to ingest the counts afterwards. With a `test_command:` declared that is
+refused (the runner emits JUnit, so hand-typed counts are the weakest posture available), and a
+hand-run emits no report to ingest instead, because `{junit_xml}` is the hook's to substitute — so
+the only way forward is a second full suite run. Step 1 now says to run it AS the recorder: bare
+`prawduct-hook test-evidence record` executes the declared command, substitutes `{junit_xml}` and
+writes the record in one step. `test-status` still leads the paragraph, because running nothing at
+all is the better outcome and that exit code is what licenses it.
+
+**The same claim had a second carrier, and it is the one that actually misrouted the caller.** The
+`--from-counts` refusal said *"run each once and ingest the report(s) with `--from-junit`"* — advice
+for someone already holding a report, and useless to someone who has not run yet, which is who hits
+it. It now names both ways out, and its comment and the `cmd_test_evidence` docstring say why both
+are named rather than one. Enumerating carriers first is what found it: `building.md` and
+`delegation.md` were already correct, so the claim set was two, not one.
+
+**Guards.** `TestStepOneNamesTheRecorder` bounds itself to the Step 1 paragraph rather than the file
+(`SKILL.md` names `test-evidence` elsewhere, so a file-wide check passes with the instruction
+silent), asserts the recorder is named, and separately asserts `test-status` still precedes it — the
+second with its precondition stated as an assert, so it cannot report the first's defect as its own.
+`test_refusal_names_the_path_for_a_caller_who_has_not_run_yet` pins the message. All three
+red-verified against the exact pre-fix text; the ordering guard additionally red-verified against a
+reordering, since absence and disorder are different failures.
+
+**Scope deliberately NOT taken.** Step 1's sync-before-suite ordering is load-bearing and unchanged —
+running the suite before the base sync denies the base-advance coverage transfer, which line 51
+argues and line 53 closes with. Today's re-run was *correct*: the sync moved `documentation/`, which
+this repo declares in `suite_coupled_prefixes`. The freshness gate and that declaration are untouched.
+
+**`develop` opens `3.5.1-dev.1`.** `version` is the plugin cache key, so consumers pinned to the
+develop ref pick up the merged review-stages work only on a new key. Four files, per the release
+process: the manifest, `plugin/VERSION`, `pyproject.toml`, and the open `plugin/CHANGELOG.md`
+heading, which `test_changelog_has_current_version_entry` keys by the exact manifest string.
+`-dev.N` is the only prerelease form permitted — `banner.version_tuple` matches
+`dev(?:\.(\d+))?` and returns the malformed sentinel otherwise, which sorts below every real
+version and shows no banner at all; `3.5.1-dev2` was verified red against `test_version_is_semver`
+before the correct string was written.
+
+**The consumer note that bump makes load-bearing.** Shipping a new cache key means consumers receive
+review-stages, which reverses two statements v3.2.2 made them: *"no repo is reviewed less than
+before"* and *"beneath them the old 5-file rule stands untouched"*. `plugin/CHANGELOG.md` now quotes
+both and says what replaced them, carries the fleet measurement behind the retirement with its
+stated limit (no per-review yield advantage for the third reviewer; how many of the 48 blocking
+findings one reviewer would have missed is not measurable from the record), and names the short-plan
+deferral and the `risk_surfaces:` ask. This closes the PR review's note 3 on PR #821.
+
 ## 2026-09-17: review stages — rigor is stage-keyed; the inner loop blocks on eight things; unsure defaults cheap
 
 <!-- prawduct: type=feat | scope=review-stages -->

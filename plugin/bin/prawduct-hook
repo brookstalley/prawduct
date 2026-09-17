@@ -3698,7 +3698,9 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     rejects a second source (``--from-junit`` / extra args). It is also rejected
     when ``test_command:``/``test_commands:`` is declared — the declared
     command(s) emit JUnit, so ingest the report(s) with (repeated)
-    ``--from-junit`` (machine-backed) rather than hand-typed counts.
+    ``--from-junit`` (machine-backed) rather than hand-typed counts, or, if
+    they have not been run yet, let a bare ``record`` run them and record in
+    one step.
     ``passed`` and ``failed`` are required; ``skipped``/``duration`` default to 0.
 
     ``--no-rerun`` (alias ``--restamp``) reuses the existing record's counts and
@@ -3946,14 +3948,19 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             # A declared command MUST emit JUnit ({junit_xml} is required),
             # so the runner CAN produce a report. Hand-typed counts are both
             # unnecessary and the weakest posture — no artifact, and they reopen
-            # the scoped-subset trap the knob closes. Redirect to --from-junit,
-            # which ingests that report without a re-run.
+            # the scoped-subset trap the knob closes. The message names BOTH
+            # ways out, because they serve different callers: --from-junit for
+            # someone holding a report already, and a bare `record` for someone
+            # who has not run yet. Naming only the first sent a caller who had
+            # not run to run the suite BY HAND and come back, which is a second
+            # full suite run for evidence one command would have produced.
             print(
                 "error: --from-counts cannot be combined with a declared "
                 "test_command/test_commands — the declared command(s) emit "
-                "JUnit, so run each once and ingest the report(s) with "
-                "repeated `--from-junit <report>` instead (no re-run, "
-                "machine-backed evidence).",
+                "JUnit. If you have already run them, ingest the report(s) "
+                "with repeated `--from-junit <report>` (no re-run, "
+                "machine-backed evidence). If you have not run them yet, bare "
+                "`test-evidence record` runs them and records in one step.",
                 file=sys.stderr,
             )
             return 2
