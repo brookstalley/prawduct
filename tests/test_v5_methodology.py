@@ -494,7 +494,16 @@ LAST_MEASURED_TOKENS = {
     # bullets as goals-1-3.md, which this file must agree with
     # (tests/test_discipline_table.py pins the pair). Raised, not funded.
     # -33 on 2026-09-03 (PR-boundary review R-6): the same bullet left here.
-    "skills/critic/review-protocol.md": 4050,
+    # RAISED 4050 -> 4312 (2026-09-17, review-stages Chunk 02). DECLARED, not
+    # trimmed to fit: the stage-keyed rigor norm reaches this file's reader as
+    # a Stage paragraph (the inner BLOCKING set, stated in the norm's own
+    # sentence so the four carriers can be pinned identical), the coordinator
+    # prompt's `Signals: [summary]` becoming the manifest's code-rendered
+    # `<SIGNALS>`, the BLOCKING legend's stage clause, and the `observations`
+    # key in the single-pass schema — a key the reviewer must write while no
+    # example carries it is the seam where an identifier degrades. Nothing here
+    # was duplication to pay in place with; see the ceiling comment.
+    "skills/critic/review-protocol.md": 4312,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -561,7 +570,17 @@ LAST_MEASURED_TOKENS = {
     # discipline row 5 re-homed on the drift bullet. A CUT; the ceiling ratchets.
     # MERGE 2026-09-16 (#759 develop sync): develop's +26 observations key
     # (2373 learnings-v2 / 2399 develop) lands on this lineage; measured merge.
-    "skills/critic/goals-1-3.md": 2434,
+    # RAISED 2434 -> 2609 (2026-09-17, review-stages Chunk 02). DECLARED. This
+    # is the inner-stage file by construction, and it is forbidden to send its
+    # reader anywhere (`test_is_self_contained`), so the inner BLOCKING set has
+    # to be stated here in full, in the norm's sentence. The plan's candidate
+    # payment — dropping the per-rule severity tokens the set now covers as a
+    # group — is not available: the goal bullets are pinned identical to
+    # `review-protocol.md`'s (`test_discipline_table`, the verdict-count drift
+    # detector), and the per-rule ratings are the BOUNDARY ratings the reviewer
+    # relays as observations, so they still instruct. Paid in place where it
+    # could be: the verify-only sentence merged into the stage rule.
+    "skills/critic/goals-1-3.md": 2609,
     # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
     # a computed pass the gate can now print, which a reader who only knows
     # "uncovered means run a cumulative" will otherwise re-review straight
@@ -671,7 +690,17 @@ LAST_MEASURED_TOKENS = {
     # corpus is no longer under `.prawduct/`).
     # MERGE 2026-09-16 (#759 develop sync): develop's observations wording
     # (10452 learnings-v2 / 10429 develop); measured merge.
-    "skills/critic/review-cycle.md": 10448,
+    # RAISED 10448 -> 10864 (2026-09-17, review-stages Chunk 02). DECLARED: a
+    # `Stage` row and the re-keyed `New findings rated` row in the per-mode
+    # table, the "Severity is stage-keyed" subsection (the norm's one home on
+    # the maintainer's side, with the set sentence the reviewer files are
+    # pinned against), the manifest key list gaining `stage` / `judgeable_files`
+    # / `chunk_type` / `signals`, one sentence scoping the verify-specific
+    # reasoning under the general rule, and the supply-side section's two
+    # paragraphs re-keyed on the set (they described the directive's pre-norm
+    # severity test, which the chunk's own review falsified). Nothing to pay
+    # in place with.
+    "skills/critic/review-cycle.md": 10864,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -4306,7 +4335,9 @@ class TestCriticSkill:
         # RATCHETED 3849 -> 3816 (2026-09-03) with the reading.
         # MERGE 2026-09-15 (#759 develop sync): ceiling is one over the merged
         # reading — both lineages above are history and stand as written.
-        assert tokens < 4051, f"review-protocol.md is ~{tokens} tokens, should be <4051"
+        # RAISED 4051 -> 4313 (2026-09-17, review-stages Chunk 02): the stage
+        # rule reaches the final/cumulative reviewer — see LAST_MEASURED_TOKENS.
+        assert tokens < 4313, f"review-protocol.md is ~{tokens} tokens, should be <4313"
 
 
 # =============================================================================
@@ -4583,7 +4614,10 @@ class TestCriticGoals13:
         # MERGE 2026-09-16 (#759 develop sync): both raises above are real and
         # additive — learnings-v2's Goal 2 bullets and develop's observations key.
         # Ceiling is one over the measured merged reading; nothing banked.
-        assert tokens < 2435, f"goals-1-3.md is ~{tokens} tokens, should be <2435"
+        # RAISED 2435 -> 2610 (2026-09-17, review-stages Chunk 02): the inner
+        # BLOCKING set, stated in full because this file may point nowhere —
+        # see LAST_MEASURED_TOKENS.
+        assert tokens < 2610, f"goals-1-3.md is ~{tokens} tokens, should be <2610"
 
     def test_is_self_contained(self):
         """No follow-the-pointer reads at review time — the acceptance criterion
@@ -5116,7 +5150,10 @@ class TestReviewCycle:
         # RATCHETED 9592 -> 9591 (2026-09-03) with the reading.
         # MERGE 2026-09-15 (#759 develop sync): ceiling is one over the merged
         # reading — both lineages above are history and stand as written.
-        assert tokens < 10453, f"review-cycle.md is ~{tokens} tokens, should be <10453"
+        # RAISED 10453 -> 10865 (2026-09-17, review-stages Chunk 02): the Stage
+        # row, the stage-keyed severity subsection and the manifest keys — see
+        # LAST_MEASURED_TOKENS.
+        assert tokens < 10865, f"review-cycle.md is ~{tokens} tokens, should be <10865"
 
     def test_framework_checks_token_budget(self):
         # Ceiling 1150. This file is `final`/`cumulative` payload: SKILL.md's
@@ -5172,13 +5209,21 @@ class TestReviewCycle:
             "the table's verify-resolutions cell no longer records the "
             "narrowing the reviewer is actually instructed to apply"
         )
-        # Three modes rate everything; only one is narrowed. A row that said
-        # "BLOCKING only" everywhere would pass a presence check and describe a
-        # framework nobody built.
-        assert row.count("Every severity") == 3, (
-            "the table no longer distinguishes the narrowed mode from the "
-            "three that rate every severity"
+        # Renegotiated 2026-09-17 (review-stages Chunk 02): rigor is
+        # stage-keyed, so ONE mode — the boundary, `cumulative` — rates every
+        # severity and the three inner-stage modes rate the inner BLOCKING set.
+        # It used to be three-and-one the other way. A row that said "Every
+        # severity" everywhere, or nowhere, would pass a presence check and
+        # describe a framework nobody built.
+        assert row.count("Every severity") == 1, (
+            "the table no longer distinguishes the boundary mode from the "
+            "three inner-stage modes"
         )
+        cells = [c.strip() for c in row.strip().strip("|").split("|")]
+        assert len(cells) == 5, row
+        assert "inner BLOCKING set" in cells[1], "the chunk cell does not name the inner set"
+        assert "chunk" in cells[2], "the final cell does not follow chunk's"
+        assert cells[3] == "Every severity", "the cumulative cell is not the boundary"
 
     def test_the_stopping_rule_carries_its_measured_figure(self):
         """The paragraph this replaces said review yield DECAYS by round 3. The
@@ -5523,6 +5568,120 @@ class TestRigorIsStageKeyed:
             "these surfaces still state that more review is the safe failure "
             "direction, which the stage-keyed rigor norm retired: " + ", ".join(sites)
         )
+
+
+class TestInnerBlockingSetIsOneSentence:
+    """The inner BLOCKING set is carried on purpose by four surfaces, and the
+    module that reads all four is what keeps them one rule.
+
+    The norm (`nonfunctional-requirements.md` § Direction, *Review rigor is
+    stage-keyed*) states the set. `goals-1-3.md` must restate it in full — it
+    is the inner-stage file and is forbidden to send its reader anywhere
+    (`test_is_self_contained`); `review-protocol.md` restates it because an
+    inner-stage `final` reviewer decides finding-or-observation per bullet and
+    a pointer would cost it the 10k-token maintainer file; `review-cycle.md`
+    is the rule's one home on the maintainer's side. A bar reworded in one
+    carrier is two bars for one decision, and no single-file guard sees that.
+    """
+
+    SET = ("a test failure in the evidence; a test deleted or weakened; changed behavior with no "
+           "test at all; a silently dropped requirement; exploitable security in changed code; a "
+           "cross-component contract break; a norm departure without a recorded decision; an "
+           "unlisted dependency")
+
+    CARRIERS = (
+        "skills/critic/goals-1-3.md",
+        "skills/critic/review-protocol.md",
+        "skills/critic/review-cycle.md",
+    )
+
+    @staticmethod
+    def _flowed(rel: str) -> str:
+        return " ".join(read_file(rel).split())
+
+    def test_the_norm_states_the_set_this_pin_carries(self):
+        """The source of truth first: if the norm's sentence moves, this class's
+        constant is the stale copy, and the failure must say so."""
+        norm = self._flowed(".prawduct/artifacts/nonfunctional-requirements.md")
+        assert self.SET in norm, (
+            "the stage-keyed rigor norm no longer states the inner BLOCKING set in "
+            "the sentence this pin carries — update SET from the norm, then the "
+            "three carriers below"
+        )
+
+    @pytest.mark.parametrize("rel", CARRIERS)
+    def test_each_carrier_states_the_set_verbatim(self, rel):
+        assert self.SET in self._flowed(rel), (
+            f"{rel} no longer states the inner BLOCKING set in the norm's sentence "
+            "— a reworded copy is a second bar for the same decision"
+        )
+
+    @pytest.mark.parametrize("rel", CARRIERS)
+    def test_each_carrier_states_it_exactly_once(self, rel):
+        assert self._flowed(rel).count(self.SET) == 1, (
+            f"{rel} states the set more than once — one statement per surface"
+        )
+
+    def test_the_verify_dispatch_directive_carries_the_same_sentence(self):
+        """The fourth carrier is CODE: `VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE`
+        is printed at every verify-resolutions dispatch, and it used to rate
+        against "everything the protocol rates BLOCKING" — a second bar this
+        chunk's own review caught. Pinned here, beside the prose carriers, so
+        a re-worded set in either kind of home fails the same module."""
+        import sys
+        sys.path.insert(0, str(ROOT))
+        from lib import critic_consolidate as cc
+        directive = " ".join(cc.VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE.split())
+        assert directive.count(self.SET) == 1
+        for stale in ("no list to check", "never membership in any list", "whatever they are rated elsewhere"):
+            assert stale not in directive, f"the directive still carries the pre-norm clause {stale!r}"
+
+    def test_the_set_precedes_the_first_goal_in_both_reviewer_files(self):
+        """Ordering beats presence: a reviewer assigns a severity as it reads
+        each goal, so a rule stated after the goals is read after the
+        decisions it governs."""
+        for rel in ("skills/critic/goals-1-3.md", "skills/critic/review-protocol.md"):
+            text = self._flowed(rel)
+            first_goal = text.index("1. Nothing Is Broken")
+            assert text.index(self.SET) < first_goal, f"{rel} states the set below Goal 1"
+
+    def test_the_per_mode_table_carries_a_stage_row(self):
+        cycle = read_file("skills/critic/review-cycle.md")
+        row = next((ln for ln in cycle.split("\n") if ln.startswith("| **Stage**")), None)
+        assert row is not None, "review-cycle.md's per-mode table has no Stage row"
+        cells = [c.strip() for c in row.strip().strip("|").split("|")]
+        assert cells[1:] == ["`inner`", "`inner`", "`boundary`", "`inner`"], cells
+
+    def test_the_stage_row_agrees_with_the_code(self):
+        """The table describes what `critic-begin` writes; the code is the
+        authority. Column order is the table's own header row."""
+        import sys
+        sys.path.insert(0, str(ROOT))
+        from lib import critic_consolidate as cc
+        cycle = read_file("skills/critic/review-cycle.md")
+        header = next(ln for ln in cycle.split("\n") if ln.startswith("| Aspect |"))
+        modes = [c.strip().strip("`") for c in header.strip().strip("|").split("|")][1:]
+        row = next(ln for ln in cycle.split("\n") if ln.startswith("| **Stage**"))
+        stages = [c.strip().strip("`") for c in row.strip().strip("|").split("|")][1:]
+        assert dict(zip(modes, stages)) == cc.STAGE_OF_MODE
+
+    def test_the_reviewer_agent_hands_the_stage_to_the_dispatched_reviewer(self):
+        """The coordinator's reviewers read neither protocol file's Stage
+        paragraph before their prompt; the agent definition is where they
+        learn what the `Signals:` line means and where the severity rule lives."""
+        agent = self._flowed("agents/critic-reviewer.md")
+        assert "Stage: <inner|boundary>" in agent
+        assert "`Stage` decides what is a finding" in agent
+        assert '"observations"' in agent, (
+            "the dispatched reviewer's partial schema has no observations arm — at "
+            "inner stage it has nowhere to put what it demotes"
+        )
+        protocol = read_file("skills/critic/review-protocol.md")
+        assert "Signals: <SIGNALS>" in protocol and "`signals` verbatim" in protocol, (
+            "the coordinator prompt template no longer substitutes the manifest's "
+            "code-rendered signals line — a coordinator composes one again"
+        )
+        assert "Signals: [summary]" not in protocol
 
 
 # =============================================================================

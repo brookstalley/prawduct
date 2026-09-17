@@ -112,9 +112,11 @@ An absent file is the empty store.
 | `body` | object | Kind-specific payload (see below) |
 
 - **Review fact `body`** — the tree interval reviewed (`base_tree`/`head_tree` and their commits),
-  `mode`, `roster` (roles + models), `files_reviewed`/`files_changed`, `findings[]` (each with a
+  `mode`, `stage` (`inner` | `boundary`, derived once at dispatch from the mode's interval; null on a
+  fact consolidated from a manifest written before the field), `roster` (roles + models),
+  `files_reviewed`/`files_changed`, `findings[]` (each with a
   stable `fid`, `goal`, `severity`, `title`, `recommendation`), `counts`, and `observations[]` —
-  what a `verify-resolutions` pass DEMOTED, each with an `oid`, `goal`, `title` and
+  what an inner-stage pass DEMOTED, each with an `oid`, `goal`, `title` and
   `recommendation` and no severity. An observation is carried on `record_lint`'s terms: data
   *about* the review, not a finding *in* it. It never reaches `counts`, composition walks
   `findings` alone, and so no gate can read one. What it buys is an id the builder can answer
@@ -225,8 +227,9 @@ only a compact `change_log_history`). **Bounded:** once it passes the oversized 
   still leave the last completed review anchorable. Consolidation rewrites the whole record, so the
   keys clear themselves.
 - **Dispatch manifest + partials** — `.prawduct/.critic-partials/manifest.json` (code-written at
-  `critic-begin`: the tree interval, the roster a review will attest, and `rendezvous`, the resolved
-  per-role write paths) and one partial per reviewer at those paths (model-written, schema-validated
+  `critic-begin`: the tree interval, the roster a review will attest, `rendezvous`, the resolved
+  per-role write paths, and the review `stage` with the code-rendered `signals` line every reviewer
+  is handed) and one partial per reviewer at those paths (model-written, schema-validated
   before consolidation, each declaring the `dispatch_id` that binds it to its review). Partial paths
   are keyed by review id, so two reviews in one worktree never share a name; the shape lives in
   `critic_consolidate.partial_path` and nothing else spells it. The whole directory is removed on

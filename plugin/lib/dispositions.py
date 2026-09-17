@@ -40,7 +40,8 @@ load-bearing safety property here, and it is pinned by a regression test
 rather than left resting on the filter staying where it is.
 
 **Observations are answerable too, and the id domain is what carries that.**
-A ``verify-resolutions`` pass demotes every non-BLOCKING finding to an
+An inner-stage pass (``verify-resolutions``, and every inner mode since rigor
+became stage-keyed) demotes what falls outside the inner BLOCKING set to an
 *observation*. Until observations reached the review fact they could be
 discharged in exactly two ways — FIX one, which moves the tree and buys a
 review round, or say nothing, which loses the reasoning. So an agent that had
@@ -455,8 +456,8 @@ def record(
 
     # The id domain is findings PLUS observations — the widening
     # ``api-contract.md``'s additive-first norm sanctions, and the reason
-    # ``--accept`` needed no new spelling. An observation is a
-    # ``verify-resolutions`` demotion: it gates nothing, and before it had an
+    # ``--accept`` needed no new spelling. An observation is an
+    # inner-stage demotion: it gates nothing, and before it had an
     # id the only ways to discharge one were to FIX it (moving the tree and
     # buying a round) or to say nothing (losing the reasoning). Findings are
     # tried first and the namespaces are disjoint (``R-1`` against ``O-1``), so
@@ -831,7 +832,7 @@ def _summarize(rows: list[dict], observations: "list[dict] | None" = None) -> di
         "owner_ruled": sum(1 for r in rows if _nonempty(r.get("owner_ruling"))),
         "conflicts": sum(1 for r in rows if r["conflict"]),
         # Reported beside the findings and never mixed into them. The pair is
-        # the demotion control's yield: how much a verify pass declined to
+        # the demotion control's yield: how much an inner-stage pass declined to
         # raise, and how much of that the builder went on to answer. Before the
         # observations reached the fact body the first number could only be
         # asserted by the reviewer about its own output.
@@ -949,9 +950,8 @@ def _observation_block(observations: list[dict]) -> list[str]:
     """The observations a review demoted, as their own table — or nothing.
 
     Rendered only when there are some: a heading over an empty table trains its
-    reader to skip the section, and most reviews demote nothing because only
-    ``verify-resolutions`` demotes at all. No severity column, because an
-    observation has no severity to show.
+    reader to skip the section, and a boundary review never demotes. No
+    severity column, because an observation has no severity to show.
     """
     if not observations:
         return []

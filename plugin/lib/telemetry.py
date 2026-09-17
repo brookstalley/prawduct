@@ -6,7 +6,9 @@ review-stats`` turns the append-only event history
 arguments need — cost and actionable-finding yield per reviewer role × model ×
 mode (the build plan's data requirement 1), a findings-by-file rollup from
 finding-level attribution (requirement 2's first cut), and per-``scope``
-rollups (the seam requirement 3's phase events will join later).
+rollups (the seam requirement 3's phase events will join later), and a
+per-``stage`` rollup (``inner`` / ``boundary``, read from the record
+``critic-begin`` stamped — the yield query behind the stage-keyed rigor norm).
 
 v1 reports on ``review.*`` event kinds only; other kinds are skipped WITH A
 COUNT (forward-compat: a future ``build.chunk`` producer must not crash or
@@ -43,9 +45,16 @@ from .ledger import ledger_path
 
 #: Report schema. Bumped to 2 when the learning-loop block arrived, to 3 when
 #: `units_uncited` joined it, to 4 when verify-pass `observations` joined every
-#: stat block: the `--json` shape gained keys each time, and TEL-7A4X keys on
-#: this shape.
-REPORT_SCHEMA_VERSION = 4
+#: stat block, to 5 when `by_stage` joined the groupings: the `--json` shape
+#: gained keys each time, and TEL-7A4X keys on this shape.
+REPORT_SCHEMA_VERSION = 5
+
+#: The two review stages a `review.critic` record can carry (`stage`, written
+#: by `critic-begin` onto the manifest and carried through the fact and the
+#: findings cache). Anything else — a missing key on an event written before
+#: the field existed, or a value this reader does not know — groups as
+#: ``None``, rendered "(unrecorded)": "not measured" must not read as a stage.
+_STAGES = ("inner", "boundary")
 
 #: Ledger kind -> the tally it feeds. Exact kinds, never a `learning.` prefix
 #: match: a future kind this report has no column for must surface as
@@ -206,8 +215,9 @@ def _extract_row(event: dict) -> dict:
         duration = None
     scope = event.get("scope")
     findings = [f for f in event["review"]["findings"] if isinstance(f, dict)]
-    # A verify pass demotes everything below BLOCKING into `observations`, so
-    # its `findings` undercount what it saw by construction; the demoted count
+    # An inner-stage pass demotes what falls outside the inner BLOCKING set
+    # into `observations`, so its `findings` undercount what it saw by
+    # construction; the demoted count
     # is the only way an over-firing narrowing shows up here. None, not 0, when
     # the event carries no list — events written before the array was persisted
     # say nothing about demotion, and counting them as zero would read as a
@@ -222,10 +232,16 @@ def _extract_row(event: dict) -> dict:
         for f in findings
         if isinstance(f.get("severity"), str)
     ]
+    # Read, never derived from the mode: `critic-begin` is the one home of the
+    # mode → stage mapping, and an event that predates the field says nothing
+    # about its stage. Deriving it here would silently backfill history with a
+    # mapping this reader would then own a second copy of.
+    stage = event["review"].get("stage")
     return {
         "role": role if isinstance(role, str) else None,
         "model": _canonical_model(model),
         "mode": _short_mode(event["review"].get("mode")),
+        "stage": stage if stage in _STAGES else None,
         "scope": scope if isinstance(scope, str) else None,
         "duration": duration,
         "severities": severities,
@@ -437,9 +453,11 @@ def aggregate_review_stats(
 
     by_rmm: dict[tuple, list[dict]] = {}
     by_scope: dict[str | None, list[dict]] = {}
+    by_stage: dict[str | None, list[dict]] = {}
     for row in rows:
         by_rmm.setdefault((row["role"], row["model"], row["mode"]), []).append(row)
         by_scope.setdefault(row["scope"], []).append(row)
+        by_stage.setdefault(row["stage"], []).append(row)
 
     top_files, files_attributed_total = _top_files(rows)
     return {
@@ -456,6 +474,17 @@ def aggregate_review_stats(
         "by_scope": [
             {"scope": scope, **_group_stats(group)}
             for scope, group in sorted(by_scope.items(), key=lambda kv: kv[0] or "")
+        ],
+        # The yield query the stage-keyed rigor norm was drawn to answer: what
+        # each stage finds, and what the inner stage demotes. Recorded stages
+        # first in their own order, the unrecorded bucket last — an event
+        # written before the field existed is "not measured", never a stage.
+        "by_stage": [
+            {"stage": stage, **_group_stats(group)}
+            for stage, group in sorted(
+                by_stage.items(),
+                key=lambda kv: _STAGES.index(kv[0]) if kv[0] in _STAGES else len(_STAGES),
+            )
         ],
         "top_files": top_files,
         "files_attributed_total": files_attributed_total,
@@ -510,6 +539,9 @@ def _render_human(report: dict, ledger_rel: str) -> str:
     lines += ["", "by scope:"]
     for entry in report["by_scope"]:
         lines.append(f"  {entry['scope'] or '(none)'}: {_fmt_stats(entry)}")
+    lines += ["", "by stage:"]
+    for entry in report["by_stage"]:
+        lines.append(f"  {entry['stage'] or '(unrecorded)'}: {_fmt_stats(entry)}")
     lines += ["", f"top files by actionable findings (cap {TOP_FILES_LIMIT}):"]
     if report["top_files"]:
         for entry in report["top_files"]:

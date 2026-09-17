@@ -124,13 +124,15 @@ own acceptance.
 ## Status
 
 - [x] Chunk 01: The stage norm — ratified, and the two "thoroughness is safe" sentences retired
-- [ ] Chunk 02: Stage reaches every reviewer — derived once, carried on the manifest, severity keyed on it
+- [x] Chunk 02: Stage reaches every reviewer — derived once, carried on the manifest, severity keyed on it
 - [ ] Chunk 03: Defaults fail cheap at the inner stage — mode inference and the roster
 - [ ] Chunk 04: A short plan owes one boundary review, not one per chunk (#292)
 - [ ] Chunk 05: The inner loop has a verification ceiling; the suite runs at Verify and at the boundary
 - [ ] Chunk 06: Product-facing surfaces say it, and a product is asked once where its risk lives
 Context: Drawn 2026-09-17 from `review-proportionality-assessment-2026-09-17.md`. Chunk 01 shipped
-2026-09-17 on `feature/review-stages` (owner ratified the entry and the Principle 11 sentence the same day). The consumer-overhead program and its five plans are on the unmerged
+2026-09-17 on `feature/review-stages` (owner ratified the entry and the Principle 11 sentence the same day).
+Chunk 02 shipped 2026-09-17 on the same branch (chunk review + two verify passes, the second bought by
+correcting a sentence the first demoted; both live runs of the new protocol). Chunk 03 is next. The consumer-overhead program and its five plans are on the unmerged
 branch `docs/consumer-overhead-program` (checked out in an agent worktree under
 `.claude/worktrees/`); this plan is written to sit beside them, not replace them.
 
@@ -202,6 +204,45 @@ branch `docs/consumer-overhead-program` (checked out in an agent worktree under
 - **Acceptance criteria:** a `chunk` review of a fixture diff that adds an untested error path and a
   substring assertion returns those as observations, not findings; the same diff under `cumulative`
   returns them as findings. This is the property Chunk 01's norm states; the fixture is the pin.
+- **Built 2026-09-17 — what the code decided where the plan guessed:**
+  (1) `goals-1-3.md` cannot *point at* `review-cycle.md` for the set — `test_is_self_contained`
+  forbids any read-directive there — so the inner BLOCKING set is stated in full on three carriers
+  (`goals-1-3.md`, `review-protocol.md`, `review-cycle.md`) in the norm's own sentence, and
+  `TestInnerBlockingSetIsOneSentence` pins all three against the norm's text (the "module that
+  reads both", widened to the four surfaces). `review-protocol.md` carries it inline rather than
+  pointing because an inner-stage `final` reviewer decides finding-or-observation per bullet.
+  (2) `critic-consolidate` *refused* an `observations` array from any non-verify dispatch; the
+  gate now keys on the manifest's stage (`stage_of_manifest`, deriving from the mode only for a
+  manifest written before the field) and refuses at `boundary` alone. (3) The coordinator's
+  reviewer schema (`agents/critic-reviewer.md`) had no `observations` arm, so an inner-stage
+  `final` under a coordinator roster had nowhere to put a demotion; added, with the stage
+  condition. (4) Record-lint at the inner stage: `chunk-ref-missing` stays a finding (a declared
+  deliverable that does not exist is a dropped requirement — a set member); the two learnings
+  budget checks are BLOCKING at the boundary and observations here, per the norm's "records".
+  **Contracts renegotiated in the open:** `TestReviewCycle::test_the_per_mode_table_records_the_
+  severity_narrowing` (one boundary column rates every severity, not three);
+  `TestResolutionFacts::test_observations_outside_verify_mode_fail_closed` → the boundary refusal
+  plus the inner-stage `final` persisting them; `test_review_stats` key pins (`by_stage`, report
+  schema 4 → 5). **Schema readings:** the review fact gains an optional body key — the store's
+  `SCHEMA_VERSION` versions the *envelope*, and `observations` set the precedent of an optional
+  body key with no bump, so no bump; the report schema bumps on any key-set change and did.
+  **Token ceilings raised by declaration** (goals-1-3 2434 → 2609, review-protocol 4050 → 4312,
+  review-cycle 10448 → 10864): the plan's payment candidate — the per-rule severity tokens — is
+  pinned identical across the two protocol files by `test_discipline_table` and the verdict-count
+  drift detector, and the ratings still instruct as the boundary ratings the reviewer relays.
+  **Acceptance criterion, split:** the mechanical half is pinned (an inner-stage dispatch's
+  demoted error-path and substring items reach the fact as observations with 0/0/0 counts; the
+  same array from a `cumulative` dispatch is refused) — the live half, a model reviewer *choosing*
+  observation over finding on such a diff, is this chunk's own Critic review, whose `Signals:` line
+  and partial are the first real run of the new protocol. `review.pr` events carry no `stage`
+  yet (the PR skill is untouched here); `review-stats` renders them "(unrecorded)".
+  **The live half held:** the chunk review (rev-20260917T172352Z-83aa1965) rendered
+  `Stage: inner · Judgeable files: 12 · Type: code` and demoted two items to observations. Its one
+  BLOCKING was a fourth carrier the plan never named — `VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE`,
+  printed at every verify dispatch, still said "everything the protocol rates BLOCKING stays
+  BLOCKING, no list to check". Re-keyed on the set (its two escalations named as such), pinned as the
+  fourth carrier in `TestInnerBlockingSetIsOneSentence`; the directive's token pin moved 770 → 843
+  with the reason.
 - **Done when:** tests pass; `/prawduct:critic`; tick.
 
 ## Chunk 03: Defaults fail cheap at the inner stage — mode inference and the roster

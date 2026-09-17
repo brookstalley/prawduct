@@ -55,6 +55,7 @@ MARKER_REL = ".prawduct/.critic-active"
 LEDGER_REL = ".prawduct/.governance-ledger.jsonl"
 FINAL_MODE = "final (full review, ready for push)"
 VERIFY_MODE = "verify-resolutions (delta review, prior findings only)"
+CUMULATIVE_MODE = "cumulative (bundle review, ready for merge)"
 
 
 # ---------------------------------------------------------------------------
@@ -2311,12 +2312,20 @@ class TestVerifyRatesBlockingOnlyDirective:
         trace. The text has to name the array, its entry shape, and the refusal
         of a `blocking` entry — a shape a reviewer must transcribe cannot be
         left to inference.
+
+        770 -> 843 on 2026-09-17 (review-stages Chunk 02): the directive is
+        re-keyed on the inner BLOCKING set the stage norm states (it used to
+        say "everything the protocol rates BLOCKING stays BLOCKING, no list to
+        check" — a second bar against the norm's exact set, caught by this
+        chunk's own review). PAID FOR by the two "no list" clauses it replaced;
+        the set sentence itself is the norm's, stated once here so the four
+        carriers can be pinned identical (`TestInnerBlockingSetIsOneSentence`).
         """
         tokens = int(len(cc.VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE.split()) * 1.3)
 
-        assert tokens == 770, (
+        assert tokens == 843, (
             f"VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE is ~{tokens} tokens; this pin "
-            f"says 770. Update it to {tokens} and say in the docstring what paid "
+            f"says 843. Update it to {tokens} and say in the docstring what paid "
             f"for the change — the ceiling below is not a budget to spend."
         )
         assert tokens < 900, (
@@ -3692,19 +3701,26 @@ class TestResolutionFacts:
         assert "verify-resolutions" in result.stderr
         assert len(_store_facts(repo, "resolution")) == 0
 
-    def test_observations_outside_verify_mode_fail_closed(self, tmp_path):
+    def test_observations_at_the_boundary_fail_closed(self, tmp_path):
         """The mirror of the rule above, and it closes a laundering path rather
-        than a weakening one. Demotion is a VERIFY-MODE rule: in every other
-        mode an item the reviewer would rate below BLOCKING is a finding, and
-        findings are what `counts` counts. An array outside `findings` that any
-        mode could write would let a final reviewer file nine warnings where
-        nothing counts them and consolidate a 0/0/0 review."""
+        than a weakening one. Demotion is a STAGE rule (`nonfunctional-
+        requirements.md` § Direction, *Review rigor is stage-keyed*): at the
+        boundary every item the reviewer rates is a finding, and findings are
+        what `counts` counts. An array outside `findings` that the boundary
+        could write would let a cumulative reviewer file nine warnings where
+        nothing counts them and consolidate a 0/0/0 review.
+
+        Renegotiated 2026-09-17 (review-stages Chunk 02): this pin used to hold
+        `final` to the same refusal, because demotion was a verify-mode rule.
+        `final` is an inner-stage review now and carries observations like
+        `chunk` does (the test below); the boundary keeps the refusal."""
         repo = tmp_path / "r"
         _init_repo(repo)
         head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
 
         _set_marker(repo)
-        _write_manifest(repo, head, id="rev-final-0002")  # final mode
+        _write_manifest(repo, head, id="rev-cumul-0002", mode=CUMULATIVE_MODE,
+                        stage="boundary")
         _full_roster_partials(repo, head)
         _write_partial(repo, "correctness", head, observations=[
             {"name": "Prose could be tighter", "goal": "Nothing Is Unintended",
@@ -3712,8 +3728,68 @@ class TestResolutionFacts:
         ])
         result = _run_consolidate(repo)
         assert result.returncode == 1
-        assert "verify-resolutions" in result.stderr
+        assert "boundary" in result.stderr
         assert len(_store_facts(repo, "review")) == 0
+
+    def test_observations_from_an_inner_stage_final_persist(self, tmp_path):
+        """The half the old pin forbade: an inner-stage `final` demotes what it
+        would have rated below the inner BLOCKING set, and the fact carries it
+        beside an honest 0/0/0 — the items are recorded, answerable, and
+        counted by nothing."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+
+        _set_marker(repo)
+        _write_manifest(repo, head, id="rev-final-0002", stage="inner")  # final mode
+        _full_roster_partials(repo, head)
+        _write_partial(repo, "correctness", head, observations=[
+            {"name": "Error path untested", "goal": "Nothing Is Missing",
+             "recommendation": "Add the error case"},
+            {"name": "Substring assertion", "goal": "Nothing Is Broken",
+             "recommendation": "Assert the exact output"},
+        ])
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        fact = _store_facts(repo, "review")[0]
+        assert fact["body"]["stage"] == "inner"
+        assert fact["body"]["counts"] == {"blocking": 0, "warning": 0, "note": 0}
+        assert [o["title"] for o in fact["body"]["observations"]] == [
+            "Error path untested", "Substring assertion",
+        ]
+
+    def test_a_manifest_without_a_stage_is_gated_by_its_mode(self, tmp_path):
+        """A manifest written before the field existed (a restored archive, a
+        leftover the backstop consolidates) carries no `stage`; the same
+        function that would have written it answers from the mode, so an old
+        `cumulative` still refuses the array and an old `final` still takes it.
+        Both arms, because a gate that read `None` as "not boundary" would
+        launder at exactly the boundary."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        obs = [{"name": "Tighter prose", "goal": "Nothing Is Unintended",
+                "recommendation": "Tighten"}]
+
+        _set_marker(repo)
+        _write_manifest(repo, head, id="rev-old-cumul", mode=CUMULATIVE_MODE)
+        manifest = json.loads((_partials_dir(repo) / "manifest.json").read_text())
+        assert "stage" not in manifest
+        _full_roster_partials(repo, head)
+        _write_partial(repo, "design", head, observations=obs)
+        assert _run_consolidate(repo).returncode == 1
+        assert _store_facts(repo, "review") == []
+
+        cc.remove_partials(repo / ".prawduct")
+        _set_marker(repo)
+        _write_manifest(repo, head, id="rev-old-final")  # final, no stage key
+        _full_roster_partials(repo, head)
+        _write_partial(repo, "design", head, observations=obs)
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        fact = _store_facts(repo, "review")[0]
+        assert fact["body"]["stage"] is None  # recorded as absent, never invented
+        assert len(fact["body"]["observations"]) == 1
 
     def test_observations_persist_from_a_verify_dispatch(self, tmp_path):
         """The path that must work: a verify pass's demoted items reach the
@@ -3934,6 +4010,191 @@ class TestCriticBeginCLI:
         assert manifest["roster"] == ["correctness", "design", "sustainability"]
         assert str(cc.COORDINATOR_JUDGEABLE_THRESHOLD) in manifest["roster_chosen_by"]
         assert manifest["tier"] == "escalate"
+
+
+class TestStageReachesEveryReader:
+    """`stage` is derived ONCE at dispatch and READ everywhere else — the
+    manifest, the reviewer's signals line, the fact, the findings cache, the
+    ledger event and `review-stats` (`nonfunctional-requirements.md`
+    § Direction, *Review rigor is stage-keyed*; `architecture.md`: every fact
+    has one home).
+
+    The mode → stage table is the one home (`STAGE_OF_MODE`), and it IS the
+    interval classification: `begin_review` picks the interval by mode, so
+    `cumulative` (merge-base → HEAD) is the only boundary-stage dispatch and
+    the three uncommitted/delta intervals are inner.
+    """
+
+    def test_the_one_home_maps_every_mode_token(self):
+        assert cc.stage_of("chunk") == "inner"
+        assert cc.stage_of("final") == "inner"
+        assert cc.stage_of("verify-resolutions") == "inner"
+        assert cc.stage_of("cumulative") == "boundary"
+        # Every token the dispatcher accepts has a stage — a token added to one
+        # table and not the other would dispatch a review no stage rule covers.
+        assert set(cc.STAGE_OF_MODE) == set(cc.MODE_TOKEN_TO_VERBOSE)
+        with pytest.raises(ValueError):
+            cc.stage_of("thorough")
+
+    def test_stage_of_manifest_reads_before_it_derives(self):
+        recorded = _manifest_dict(mode=FINAL_MODE, stage="boundary")  # lies, deliberately
+        assert cc.stage_of_manifest(recorded) == "boundary", (
+            "a recorded stage is read as written — the reader never overrides "
+            "the dispatch's answer with its own derivation"
+        )
+        absent = _manifest_dict(mode=CUMULATIVE_MODE)
+        assert "stage" not in absent
+        assert cc.stage_of_manifest(absent) == "boundary"
+        assert cc.stage_of_manifest(_manifest_dict(mode=VERIFY_MODE)) == "inner"
+
+    @pytest.mark.parametrize("field,bad,ok", [
+        ("stage", "middle", "inner"),
+        ("stage", 3, "boundary"),
+        ("judgeable_files", -1, 0),
+        ("judgeable_files", True, 4),
+        ("judgeable_files", "3", 3),
+        ("chunk_type", "", "doc-only"),
+        ("signals", 7, "Stage: inner · Judgeable files: 1 · Type: code (default)"),
+    ])
+    def test_the_validator_types_the_new_keys_and_admits_their_absence(self, field, bad, ok):
+        assert cc.validate_manifest(_manifest_dict(**{field: ok}))[0]
+        assert cc.validate_manifest(_manifest_dict(**{field: None}))[0]
+        base = _manifest_dict()
+        assert field not in base and cc.validate_manifest(base)[0], (
+            "a manifest written before the field existed must still validate"
+        )
+        valid, reason = cc.validate_manifest(_manifest_dict(**{field: bad}))
+        assert not valid and field in reason
+
+    def _dirty(self, tmp_path):
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        (repo / ".prawduct").mkdir()
+        (repo / "src/app.py").write_text("x = 2\n")
+        return repo
+
+    def _manifest(self, repo):
+        return json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+
+    @pytest.mark.parametrize("mode", ["chunk", "final"])
+    def test_an_uncommitted_diff_review_is_inner(self, tmp_path, mode):
+        repo = self._dirty(tmp_path)
+        result = _run_begin(repo, "--mode", mode)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = self._manifest(repo)
+        assert manifest["stage"] == "inner"
+        assert manifest["stage"] != "boundary"
+        assert manifest["judgeable_files"] == 1
+        assert manifest["signals"] == cc.signals_line(manifest)
+        assert f"PRAWDUCT: signals — {manifest['signals']}" in result.stdout, (
+            "the dispatch must print the line the coordinator copies"
+        )
+
+    def test_the_committed_bundle_review_is_boundary(self, tmp_path):
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _git(repo, "checkout", "-q", "-b", "feature/demo")
+        _commit_file(repo, "src/feat.py", "z = 1\n", "feature work")
+        (repo / ".prawduct").mkdir()
+        result = _run_begin(repo, "--mode", "cumulative")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = self._manifest(repo)
+        assert manifest["stage"] == "boundary"
+        assert manifest["stage"] != "inner"
+        assert manifest["signals"].startswith("Stage: boundary · ")
+
+    def test_a_verify_pass_is_inner_whichever_head_it_anchors(self, tmp_path):
+        """Both anchors — the working tree, and committed HEAD after a fix
+        landed — are delta reviews against the prior fact's tree, never the
+        merge-base, so both are inner. The committed-head arm is the one a
+        reader might mistake for the boundary."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        head_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        (repo / ".prawduct").mkdir()
+        _seed_prior_review_with_blocker(repo, head, head_tree=head_tree, head_commit=head)
+        _commit_file(repo, "src/app.py", "x = 2  # fixed\n", "fix blocker")
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = self._manifest(repo)
+        assert manifest["head_commit"] is not None  # the committed-head anchor
+        assert manifest["stage"] == "inner"
+        assert manifest["stage"] != "boundary"
+
+    def test_the_signals_line_is_rendered_from_the_manifest(self):
+        manifest = _manifest_dict(stage="inner", judgeable_files=3, chunk_type="doc-only")
+        assert cc.signals_line(manifest) == "Stage: inner · Judgeable files: 3 · Type: doc-only"
+        # Mutate the manifest, watch the line change — the line is a view of
+        # these three fields and of nothing a coordinator could invent.
+        manifest["stage"] = "boundary"
+        assert cc.signals_line(manifest).startswith("Stage: boundary · ")
+        manifest["judgeable_files"] = 12
+        assert "Judgeable files: 12" in cc.signals_line(manifest)
+        manifest["chunk_type"] = None
+        assert cc.signals_line(manifest).endswith(f"Type: {cc.CHUNK_TYPE_DEFAULT_LABEL}")
+
+    def test_the_chunk_type_is_read_from_the_plan_record_lint_graded(self, tmp_path):
+        """The same plan and chunk `record_lint` resolved — never a second
+        resolution. A plan declaring the scope with a `Type: doc-only` chunk
+        renders that type; an undeclared one renders the protocol's default."""
+        repo = self._dirty(tmp_path)
+        (repo / ".prawduct" / "artifacts").mkdir(parents=True)
+        (repo / ".prawduct" / "artifacts" / "build-plan-demo.md").write_text(
+            "---\nartifact: build-plan\nscope: demo\n---\n\n# Plan\n\n## Status\n\n"
+            "- [ ] Chunk 01: The chunk\n\n## Chunk 01: The chunk\n\n"
+            "- **Type:** doc-only\n- **Description:** words.\n- **Deliverables:** `src/app.py`\n"
+        )
+        result = _run_begin(repo, "--mode", "chunk", "--scope", "demo", "--chunk", "01")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = self._manifest(repo)
+        assert manifest["record_lint"]["plan_graded"].endswith("build-plan-demo.md")
+        assert manifest["chunk_type"] == "doc-only"
+        assert manifest["signals"].endswith("Type: doc-only")
+
+    def test_stage_reaches_the_fact_the_cache_and_the_ledger(self, tmp_path):
+        """One dispatch, end to end: the fact body, the derived cache and the
+        `review.critic` ledger event all carry the stage the manifest recorded,
+        and `review-stats --json` groups on it. Each hop is a different writer,
+        so each is asserted; a stage that reached the fact and not the event
+        would leave `by_stage` reading "(unrecorded)" forever."""
+        repo = self._dirty(tmp_path)
+        begin = _run_begin(repo, "--mode", "chunk", "--scope", "demo")
+        assert begin.returncode == 0, f"stderr={begin.stderr!r}"
+        manifest = self._manifest(repo)
+        _write_partial(repo, "reviewer", manifest["commit_reviewed"], observations=[
+            {"name": "Error path untested", "goal": "Nothing Is Missing",
+             "recommendation": "Add the error case"},
+        ])
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+
+        fact = _store_facts(repo, "review")[0]
+        assert fact["body"]["stage"] == "inner"
+        record = json.loads((repo / FINDINGS_REL).read_text())
+        assert record["stage"] == "inner"
+        events = [json.loads(ln) for ln in (repo / LEDGER_REL).read_text().splitlines()
+                  if '"review.critic"' in ln]
+        assert len(events) == 1 and events[0]["review"]["stage"] == "inner"
+
+        stats = subprocess.run(
+            ["python3", str(HOOK), "review-stats", "--json"],
+            cwd=str(repo), capture_output=True, text=True,
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
+        )
+        assert stats.returncode == 0, stats.stderr
+        by_stage = {e["stage"]: e for e in json.loads(stats.stdout)["by_stage"]}
+        assert by_stage["inner"]["reviews"] == 1
+        assert by_stage["inner"]["observations"] == 1
+        assert "boundary" not in by_stage
+
+    def test_the_fact_body_and_cache_carry_a_null_stage_for_an_old_manifest(self):
+        body = cc.build_fact_body(_manifest_dict(), [_partial("reviewer", "abc123")])
+        assert "stage" in body and body["stage"] is None
+        record = cc.fact_to_cache_record({"ts": "2026-09-17T00:00:00Z", "body": body})
+        assert "stage" in record and record["stage"] is None
 
 
 class TestRosterKeyedToRiskSurface:
