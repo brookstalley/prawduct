@@ -5424,6 +5424,107 @@ class TestPrinciplesDoc:
         )
 
 
+class TestRigorIsStageKeyed:
+    """Principle 11 names the two review stages, and no plugin surface still
+    tells a reader that more review is the safe failure direction.
+
+    The norm is `nonfunctional-requirements.md` § Direction, *Review rigor is
+    stage-keyed* (owner decision 2026-09-17): the inner loop proves the change,
+    the boundary proves the bundle, and the failure direction is symmetric.
+    Three sentence families in `plugin/` said the opposite — that unsure
+    defaults to the fullest review and redundant review is the cheap error.
+    The norm records their retirement; the sweep that performs it lands under
+    the same scope (`review-stages`), so the grep is held red here until then.
+    """
+
+    TWO_STAGES = "Rigor also has two stages: the inner loop proves the change, the boundary proves the bundle."
+
+    def test_principle_11_names_the_two_stages(self):
+        principles = read_file("docs/principles.md")
+        start = principles.index("### 11. Proportional Effort")
+        end = principles.index("### 12. ")
+        assert self.TWO_STAGES in principles[start:end], (
+            "Principle 11 must carry the two-stage sentence — it is the principle "
+            "the stage-keyed rigor norm amends, and the norm's `Ratified:` line "
+            "records the owner's yes to this exact wording"
+        )
+
+    # The property, not a spelling: every phrasing under `plugin/` that names
+    # thoroughness / the fuller review as the SAFE direction to fail toward.
+    # `CHANGELOG.md` is excluded on purpose — the v3.2.2 section quotes the
+    # "never reviewed less than before" promise as released history, and a
+    # released section is not a surface a reader is instructed by.
+    THOROUGHNESS_IS_SAFE = re.compile(
+        r"fails?[- ]safe to thoroughness"
+        r"|under-declaring[^.\n]{0,40}is safe"
+        r"|never reviewed \*?less\*? than before",
+        re.IGNORECASE,
+    )
+
+    def _scan(self) -> tuple[set[str], list[str]]:
+        """``(files scanned, sites hit)`` — the scanned set is returned so a
+        caller can assert the walk reached the surfaces it is about; a walker
+        that visits nothing returns no sites and would read as a clean sweep."""
+        scanned: set[str] = set()
+        hits = []
+        for path in sorted(ROOT.rglob("*")):
+            if not path.is_file() or path.name == "CHANGELOG.md":
+                continue
+            if path.suffix not in {".md", ".py", ".yaml", ".yml", ".json", ""}:
+                continue
+            try:
+                text = path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                continue
+            rel = str(path.relative_to(ROOT))
+            scanned.add(rel)
+            for n, line in enumerate(text.splitlines(), 1):
+                if self.THOROUGHNESS_IS_SAFE.search(line):
+                    hits.append(f"{rel}:{n}")
+        return scanned, hits
+
+    def test_the_walk_reaches_every_surface_the_norm_names(self):
+        """The norm's Retires line enumerates the carriers by file; the sweep
+        is only a sweep if the walk visits each of them. Asserted outside the
+        xfail below, where a walker that visited nothing would pass as red."""
+        scanned, _ = self._scan()
+        for rel in (
+            "methodology/planning.md",
+            "methodology/discovery.md",
+            "skills/critic/review-cycle.md",
+            "skills/critic/SKILL.md",
+            "lib/critic_mode.py",
+            "bin/prawduct-hook",
+            "templates/project-state.yaml",
+        ):
+            assert rel in scanned, f"the retired-sentence walk never read {rel}"
+
+    def test_the_grep_can_see_the_sentences_it_hunts(self):
+        """A zero from this scan is only evidence once the scan has returned
+        non-zero on text it should catch — the canonical fail-safe statement
+        and the under-declaring sentence are the two the norm names."""
+        assert self.THOROUGHNESS_IS_SAFE.search("Every layer fails safe to thoroughness.")
+        assert self.THOROUGHNESS_IS_SAFE.search("defaults to `final` (fail-safe to thoroughness)")
+        assert self.THOROUGHNESS_IS_SAFE.search("Under-declaring Type is safe (worst case: redundant Critic work)")
+        assert self.THOROUGHNESS_IS_SAFE.search("is never reviewed *less* than before")
+        assert not self.THOROUGHNESS_IS_SAFE.search("a control that never fires is removed")
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason=(
+            "red until the review-stages plan's retirement sweep lands — the norm "
+            "names the sites; the sweep removes them and flips this to a plain "
+            "assertion (strict: the day it passes, this decoration must go)"
+        ),
+    )
+    def test_no_plugin_surface_still_says_thoroughness_is_the_safe_direction(self):
+        _, sites = self._scan()
+        assert sites == [], (
+            "these surfaces still state that more review is the safe failure "
+            "direction, which the stage-keyed rigor norm retired: " + ", ".join(sites)
+        )
+
+
 # =============================================================================
 # Subject vs oracle — judgeability governs review SCOPE, not review READING
 # =============================================================================
