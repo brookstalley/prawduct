@@ -3448,17 +3448,49 @@ class TestGreenIsEvidenceTrigger:
 
         Pins the three failure modes it exists to prevent — an unreachable
         fixture, a non-discriminating assertion, and a machine-dependent branch
-        — plus the one-directional-mutation caveat that is the reason a builder
-        who already ran a mutation pass still needs to read it.
+        — which together ARE the cheap half this directive keeps: for each test,
+        name what would turn it red.
         """
         hook = _load_hook_module()
         text = hook._GREEN_IS_EVIDENCE_DIRECTIVE
+        assert "name the change that would flip it" in text
         assert "REACHES the subject" in text
         assert "cannot tell the two orderings apart" in text
         assert "happens to exist on this machine" in text
-        assert "blind to what your change broke beside it" in text
-        # discipline.md row 1: a mutation not watched going red applied nothing.
-        assert "a mutation you did not watch go red applied nothing" in text
+
+    def test_the_mutation_half_stays_at_the_boundary_not_at_record_time(self):
+        """The inner/boundary split, asserted on BOTH sides of the move.
+
+        A mutation costs a run per claim, which is the wall clock the
+        stage-keyed rigor norm buys back at the inner stage — so the
+        mutation-watch rule is owed once, over the bundle, at PR pre-review.
+
+        The NEGATIVE half matches the exact strings that CARRY the two moved
+        behaviours (the watch-it-go-red rule and the one-directional caveat),
+        not a loose phrase about mutation: `record`'s remaining text may say
+        whatever else it likes about tests. It is paired with the positive half
+        above and with the presence assertion at the surface the rule moved to
+        — `docs/discipline.md` row 1 names that surface, and
+        `tests/test_discipline_table.py` reads the row.
+        """
+        hook = _load_hook_module()
+        text = hook._GREEN_IS_EVIDENCE_DIRECTIVE
+        assert "a mutation you did not watch go red applied nothing" not in text, (
+            "the mutation-watch rule is back at record time; it is a per-claim "
+            "run and belongs at the boundary, where it is paid once"
+        )
+        assert "blind to what your change broke beside it" not in text, (
+            "the one-directional-revert caveat is back at record time — it is "
+            "the mutation rule's other half and moves with it"
+        )
+        skill = (
+            Path(__file__).resolve().parent.parent
+            / "plugin" / "skills" / "pr" / "SKILL.md"
+        ).read_text()
+        assert "a mutation you did not watch go red applied nothing" in skill, (
+            "the mutation-watch rule left record time and did not arrive at the "
+            "boundary — deleted, not moved"
+        )
 
 
 # =============================================================================

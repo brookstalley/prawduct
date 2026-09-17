@@ -550,6 +550,47 @@ class TestPrReviewSkillContent:
         for flow in ("Create Flow", "Update Flow", "Merge Flow", "Status Flow"):
             assert flow in content, f"skills/pr/SKILL.md missing flow: {flow}"
 
+    def test_the_mutation_sweep_lands_before_the_one_boundary_review(self):
+        """PLACEMENT, not presence — the sweep is a PRE-review obligation.
+
+        The rule moved here from the `test-evidence record` directive because a
+        mutation costs a run per claim: the inner loop keeps only the cheap half
+        (name what would turn each test red) and the boundary pays for the
+        mutations, once, over the whole bundle. `docs/discipline.md` row 1 names
+        this file as its surface and `tests/test_discipline_table.py` reads the
+        row, so presence is already covered there; what nothing else can see is
+        WHICH step carries it.
+
+        Step 2 is the boundary: it is the step that composes/dispatches the one
+        `cumulative` review, and its Sequencing paragraph already says to land
+        everything BEFORE that run.
+
+        What turns this red (each verified by relocating the real sentence):
+        deleting it; MOVING it into the wait-time paragraph, which is prose read
+        DURING the review and so too late to change the tree it grades; MOVING
+        it into Step 3, whose reviewer owns release readiness and by protocol
+        does not re-derive test quality, so the sweep would be addressed to the
+        wrong reader. What it does NOT catch: a second copy parked elsewhere in
+        the file — this asserts where the rule IS, not that it is stated once.
+        """
+        content = (FRAMEWORK_DIR / "skills" / "pr" / "SKILL.md").read_text()
+        rule = "a mutation you did not watch go red applied nothing"
+        assert rule in content, "the mutation sweep is gone from the PR flow"
+        step2 = content.split("### Step 2: Cumulative-Critic gate", 1)
+        assert len(step2) == 2, "the cumulative-Critic gate step is gone"
+        step2 = step2[1].split("### Step 2b:", 1)[0]
+        assert rule in step2, (
+            "the mutation sweep left Step 2 — wherever it went, it no longer "
+            "reaches the builder before the one boundary review runs"
+        )
+        wait = step2.split("While `/prawduct:critic cumulative` runs", 1)
+        assert len(wait) == 2, "Step 2's wait-time paragraph is gone"
+        assert rule in wait[0], (
+            "the mutation sweep is inside the wait-time paragraph — that prose "
+            "runs WHILE the review does, so the sweep would arrive too late to "
+            "change the tree it grades"
+        )
+
     def test_pr_skill_has_review_gate(self):
         """The /pr skill must enforce review before PR creation."""
         content = (FRAMEWORK_DIR / "skills" / "pr" / "SKILL.md").read_text()

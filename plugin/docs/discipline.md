@@ -2,8 +2,10 @@
 
 Ten lessons that governed products learned independently, two to five repos each (learning-system
 audit 2026-09-01 §3.5). None ships as an always-loaded corpus: each is delivered where the evidence
-says rules fire — **in code at the moment of the action**, **in a Critic goal** the review reads, or
-**in a methodology sentence** at the step that needs it — and this table records which. A rule
+says rules fire — **in code at the moment of the action**, **in a Critic goal** the review reads,
+**in a methodology sentence** at the step that needs it, or **in a skill step** at the moment that
+step runs — and this table records which. A rule whose check costs a run per claim is delivered at
+the BOUNDARY (row 1), not in the inner loop, where the cheap half of it goes instead (row 2). A rule
 enters only if it passes all three of the promotion tests the owner ratified (#343): stack-agnostic;
 not about prawduct internals; about building software with an agent rather than about one codebase.
 A product that writes one of these as its own rule has paid for a rule it already inherited; its
@@ -14,7 +16,7 @@ its surface, so a sentence that moves or goes has to take its row with it.
 
 | # | Rule | Learned by | Channel | Surface | Anchor |
 |---|---|---|---|---|---|
-| 1 | A mutation must be shown to have applied — a mutant you did not watch go red proved nothing | discodon, samsung, hallucinote | code directive at `test-evidence record` | `bin/prawduct-hook` | `a mutation you did not watch go red applied nothing` |
+| 1 | A mutation must be shown to have applied — a mutant you did not watch go red proved nothing | discodon, samsung, hallucinote | skill step at PR pre-review (boundary) | `skills/pr/SKILL.md` | `a mutation you did not watch go red applied nothing` |
 | 2 | A test that passes identically when its subject is broken is vacuous | metallm, samsung, cordyceps, scriob | code directive at `test-evidence record` | `bin/prawduct-hook` | `Green is evidence only about what could have made it red` |
 | 3 | A partial run is a verification ceiling, never the verdict — green is claimed only on the suite the repo declares | scriob, metallm, puzzles, discodon | mechanism (`test-evidence record` runs the declared suite) + methodology | `methodology/delegation.md` | `A cost bound, not a rigor discount` |
 | 4 | An interface change means a census of every consumer | hallucinote, scriob, discodon, metallm | methodology | `methodology/building.md` | `grep for consumers across layers` |
