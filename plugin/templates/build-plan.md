@@ -181,7 +181,7 @@ Routes never touch SQLite directly — persistence goes through `store.py`. Temp
      default. Field reference:
        `Critic mode:` / `Type:` — methodology/planning.md "Critic Mode Per Chunk" /
          "Choosing a Chunk Type"; behavior tables in skills/critic/review-cycle.md.
-         Mode missing, unrecognized, or inference unconfident → the review runs `final`.
+         Mode missing or unrecognized → inferred; no rule firing → `chunk`, the inner-stage review.
        `Foreign API:` / `Exposed API:` / `Visual change:` — methodology/planning.md.
        `Trivial because:` — required iff `Type: trivial`. -->
 

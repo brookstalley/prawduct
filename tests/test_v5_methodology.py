@@ -374,7 +374,12 @@ LAST_MEASURED_TOKENS = {
     # -3 on 2026-09-03 (learnings-v2-docs Chunk 01): the standing-block pointer
     # now names `session-hygiene.md` instead of a section of reflection.md. A
     # CUT; the ceiling ratchets by the same -3.
-    "methodology/building.md": 4786,
+    # -6 on 2026-09-17 (review-stages Chunk 03): the Modes pointer said "the
+    # fail-safe that a missing, unrecognized or unconfidently-inferred mode runs
+    # `final`", which the stage-keyed rigor norm retired; it now says "the
+    # default when no rule fires" and lets `review-cycle.md`, the sentence's own
+    # pointer target, carry what that default is. A CUT; the ceiling ratchets.
+    "methodology/building.md": 4780,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -700,6 +705,19 @@ LAST_MEASURED_TOKENS = {
     # paragraphs re-keyed on the set (they described the directive's pre-norm
     # severity test, which the chunk's own review falsified). Nothing to pay
     # in place with.
+    # +/-0 net on 2026-09-17 (review-stages Chunk 03): the canonical
+    # fail-safe statement ("run `final`; every layer fails safe to
+    # thoroughness") is now the canonical default-when-unsure statement — the
+    # inner-stage review of whatever interval exists, two modes named because
+    # a clean tree and a dirty one have different intervals, and `final` never
+    # a default (+10 on its own). Paid in full inside the file: the
+    # risk-surface paragraph SHRANK (the "never reviewed less than before"
+    # promise and the 5-file fallback it described are retired; the measurement
+    # lives in the roster config block, pointed at), and the per-mode table's
+    # `final` row lost "or any time the right answer is unclear" — the retired
+    # rule reworded, fourteen lines below the statement that replaced it, found
+    # by the chunk's Critic rather than by the grep (it shares no token with
+    # the sentence families the norm names). The ceiling holds at 10865.
     "skills/critic/review-cycle.md": 10864,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
@@ -792,7 +810,18 @@ LAST_MEASURED_TOKENS = {
     # still holds, and the standing rule (the next addition trims or relocates)
     # is unchanged by a grant line that has no prose to trim. 2026-09-02: +7 for the
     # two `learnings-files` grants (hook and python3 twin) — same kind, nothing to trim.
-    "skills/critic/SKILL.md": 3477,
+    # +7 on 2026-09-17 (review-stages Chunk 03), DECLARED: the per-mode scope
+    # line now says that every inner-stage mode rates only the inner BLOCKING
+    # set, where it used to say so for `verify-resolutions` alone — the fork
+    # reads this line before it opens its protocol, so a `chunk` or `final`
+    # reviewer that learned the rule only from the protocol file was reading
+    # it one step late. Funded first: the fall-through bullet lost its
+    # `chunk`-if-plan / `final`-otherwise split, its "fail-safe to
+    # thoroughness" gloss and "never silently downgrade" (the default IS the
+    # light review now, recorded in `mode_chosen_by`), which is where the rest
+    # of the sentence came from. The allowed kind of raise: a control that
+    # removes review work (findings become observations at every inner mode).
+    "skills/critic/SKILL.md": 3484,
     "skills/critic/framework-checks.md": 1116,
     # The on-demand class, first recorded 2026-08-19 (#688) — readings, no
     # ceilings; the block above this dict is the decision and its reasoning.
@@ -827,7 +856,12 @@ LAST_MEASURED_TOKENS = {
     # says in terms that the table is the floor and the ceiling is the agent's.
     # Unfunded, and it is the on-demand class -- growth here is declared, not
     # blocked (#688), and paid only by a session that opens the guide.
-    "methodology/discovery.md": 5150,
+    # -34 on 2026-09-17 (review-stages Chunk 03): § Surface Risk Surfaces no
+    # longer promises that an undeclared product is "never reviewed less than
+    # before" or that declaring raises a file-count threshold — the fallback
+    # both sentences described is retired, so the paragraph states the one
+    # effect that remains (size-independence on the named paths). A CUT.
+    "methodology/discovery.md": 5116,
     # 4301 -> 4791 on 2026-08-21 (Chunk 02): `### Partition: Serial or
     # Delegated`, the plan-time half of the placement bet. The partition prompt
     # where chunk boundaries are drawn (R6), the `partition:` field the decision
@@ -906,7 +940,13 @@ LAST_MEASURED_TOKENS = {
     # form. Advice that names an escape which is not one costs more than the
     # words it saves.
     # 2026-09-02 (learnings-v2 chunk 05, cumulative R-6): the "program, not a plan" bullet names the learnings rules, not a file.
-    "methodology/planning.md": 5575,
+    # +22 on 2026-09-17 (review-stages Chunk 03): the "Fail-safe default"
+    # paragraph became "Default when unsure" (inference, then `chunk`; never
+    # `final` by default), and the orthogonality sentence stopped calling
+    # under-declaring Type safe — both are sentences the stage-keyed rigor norm
+    # names as retired; "the safe option" left the Type default's gloss. The
+    # on-demand class: declared, paid by the reader.
+    "methodology/planning.md": 5597,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
@@ -2675,7 +2715,9 @@ class TestBuildingMethodology:
         # got shorter when the block moved to its own guide.
         # MERGE 2026-09-15 (#759 develop sync): ceiling is one over the merged
         # reading — both lineages above are history and stand as written.
-        assert tokens < 4787, f"building.md is ~{tokens} tokens, should be <4787"
+        # RATCHETED 4787 -> 4781 (2026-09-17, review-stages Chunk 03): the
+        # retired fail-safe clause left the Modes pointer; see LAST_MEASURED_TOKENS.
+        assert tokens < 4781, f"building.md is ~{tokens} tokens, should be <4781"
 
 
 # =============================================================================
@@ -4852,7 +4894,11 @@ class TestCriticSkillRoutesByMode:
         # Funded first: exit 3's guard-refusal parenthetical went (a fact no gate
         # reads, documented in `api-contract.md`), and the row is a route rather
         # than a copy of `review-cycle.md`'s explanation.
-        assert tokens < 3478, f"SKILL.md is ~{tokens} tokens, should be <3478"
+        #
+        # RAISED 3478 -> 3485 (2026-09-17, review-stages Chunk 03). The stage
+        # rule on the per-mode scope line, funded first by the fall-through
+        # bullet's retired clauses — see LAST_MEASURED_TOKENS.
+        assert tokens < 3485, f"SKILL.md is ~{tokens} tokens, should be <3485"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))
@@ -4954,12 +5000,20 @@ class TestCriticSkillRoutesByMode:
             (ln for ln in self.content.split("\n") if "Per-mode scope" in ln), None
         )
         assert line is not None, "SKILL.md no longer summarises per-mode scope"
-        assert "BLOCKING only" in line, (
-            "SKILL.md's per-mode scope line no longer states that "
-            "verify-resolutions rates new findings BLOCKING only — the fork "
-            "reads this before its protocol, so the omission is read as "
-            "'this mode rates everything'"
+        # The narrowing is stage-keyed now, not verify-specific: every inner
+        # mode rates from the inner BLOCKING set and demotes the rest. The pin
+        # used to match the fragment "BLOCKING only"; it asks the property.
+        assert "inner BLOCKING set" in line and "observation" in line, (
+            "SKILL.md's per-mode scope line no longer states that inner-stage "
+            "modes rate new findings from the inner BLOCKING set only and demote "
+            "the rest to observations — the fork reads this before its protocol, "
+            "so the omission is read as 'this mode rates everything'"
         )
+        narrowing = line[line.index("inner BLOCKING set") - 200 : line.index("inner BLOCKING set")]
+        for mode in ("chunk", "final", "verify-resolutions"):
+            assert f"`{mode}`" in narrowing, (
+                f"the narrowing sentence no longer names `{mode}` as an inner-stage mode"
+            )
 
     def test_review_cycle_table_records_the_routing(self):
         """`review-cycle.md` owns per-mode behavior, so the routing is recorded
@@ -5153,6 +5207,8 @@ class TestReviewCycle:
         # RAISED 10453 -> 10865 (2026-09-17, review-stages Chunk 02): the Stage
         # row, the stage-keyed severity subsection and the manifest keys — see
         # LAST_MEASURED_TOKENS.
+        # HELD at 10865 (2026-09-17, review-stages Chunk 03): the canonical
+        # default-when-unsure statement, paid in place — see LAST_MEASURED_TOKENS.
         assert tokens < 10865, f"review-cycle.md is ~{tokens} tokens, should be <10865"
 
     def test_framework_checks_token_budget(self):
@@ -5554,15 +5610,10 @@ class TestRigorIsStageKeyed:
         assert self.THOROUGHNESS_IS_SAFE.search("is never reviewed *less* than before")
         assert not self.THOROUGHNESS_IS_SAFE.search("a control that never fires is removed")
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "red until the review-stages plan's retirement sweep lands — the norm "
-            "names the sites; the sweep removes them and flips this to a plain "
-            "assertion (strict: the day it passes, this decoration must go)"
-        ),
-    )
     def test_no_plugin_surface_still_says_thoroughness_is_the_safe_direction(self):
+        """Born `xfail(strict=True)` with the norm, flipped to a plain assertion
+        by the sweep that performed the retirement — so a sentence that comes
+        back, in any file under `plugin/`, is red on the day it lands."""
         _, sites = self._scan()
         assert sites == [], (
             "these surfaces still state that more review is the safe failure "

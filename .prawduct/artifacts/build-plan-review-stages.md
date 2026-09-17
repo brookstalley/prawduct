@@ -125,14 +125,17 @@ own acceptance.
 
 - [x] Chunk 01: The stage norm — ratified, and the two "thoroughness is safe" sentences retired
 - [x] Chunk 02: Stage reaches every reviewer — derived once, carried on the manifest, severity keyed on it
-- [ ] Chunk 03: Defaults fail cheap at the inner stage — mode inference and the roster
+- [x] Chunk 03: Defaults fail cheap at the inner stage — mode inference and the roster
 - [ ] Chunk 04: A short plan owes one boundary review, not one per chunk (#292)
 - [ ] Chunk 05: The inner loop has a verification ceiling; the suite runs at Verify and at the boundary
 - [ ] Chunk 06: Product-facing surfaces say it, and a product is asked once where its risk lives
 Context: Drawn 2026-09-17 from `review-proportionality-assessment-2026-09-17.md`. Chunk 01 shipped
 2026-09-17 on `feature/review-stages` (owner ratified the entry and the Principle 11 sentence the same day).
 Chunk 02 shipped 2026-09-17 on the same branch (chunk review + two verify passes, the second bought by
-correcting a sentence the first demoted; both live runs of the new protocol). Chunk 03 is next. The consumer-overhead program and its five plans are on the unmerged
+correcting a sentence the first demoted; both live runs of the new protocol). Chunk 03 shipped 2026-09-17
+(chunk review clean, one verify pass for two observations answered in the tree; the fleet measurement it
+ran overturned the plan's inherited "no blocking finding attributable to the fallback" claim — see the
+chunk's `[DECISION]`, owner-vetoable). Chunk 04 is next. The consumer-overhead program and its five plans are on the unmerged
 branch `docs/consumer-overhead-program` (checked out in an agent worktree under
 `.claude/worktrees/`); this plan is written to sit beside them, not replace them.
 
@@ -270,6 +273,22 @@ branch `docs/consumer-overhead-program` (checked out in an agent worktree under
   (from the assessment: no blocking finding attributable to the fallback in the window — re-derive
   it against the ledger with the query in the change-log body); the grep pin from Chunk 01 goes
   green.
+- **Measured at build (2026-09-17):** the fleet query the Tests line asked for
+  (`python3 tests/spikes/fallback_roster_yield.py`, 2026-08-01 → 09-17, six undeclared product
+  repos, stores deduplicated by clone) does NOT return the zero the disposition above inherited from
+  the assessment: the fallback alone sent 87 `final`/`cumulative` reviews to three reviewers and those
+  reviews carried 48 blocking findings (0.55 per review; 45 of them in one product), against 0.78 per
+  review for the 18 single-pass reviews in the same repos. So the ratchet norm's removal-by-default
+  trigger ("fires and never blocks") is not what retires this control. What does is the owner's
+  decision recorded on the norm, applied here with the number attached: `[DECISION: the 5-file
+  coordinator fallback is retired outright with 48 blocking findings on its record | the record shows
+  no per-review yield advantage for three reviewers over one on the same repos, and how many of the
+  48 a single reviewer would have missed is not measurable from the store — the plan's HIGH-impact
+  assumption was made knowing a bounded miss is the price, and this is that price stated rather than
+  assumed | user can veto/override — restoring the fallback at a higher count is one branch in
+  `_derive_roster` and its config-block row]`. The `governed_by` disposition that says "none found"
+  is left as written and corrected by this line, so the plan's own text shows the measurement
+  overturning the claim.
 - **Done when:** tests pass; `/prawduct:critic`; tick.
 
 ## Chunk 04: A short plan owes one boundary review, not one per chunk (#292)

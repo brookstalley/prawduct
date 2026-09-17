@@ -29,7 +29,7 @@ Four modes: `chunk`, `final`, `cumulative`, `verify-resolutions`. The canonical 
 
 Authoring heuristic (what inference picks per plan shape, when an explicit declaration earns the override): `methodology/planning.md` "Critic Mode Per Chunk".
 
-**Fail-safe default (canonical statement):** If the mode is missing, unrecognized, or inference cannot make a confident call, run `final`. Every layer — the build cycle, the inference helper, and the Critic itself — fails safe to thoroughness.
+**Default when unsure (canonical statement):** If the mode is missing, unrecognized, or no inference rule fires, run the inner-stage review of whatever interval exists — `chunk` on a dirty tree, `cumulative` on a clean tree with a committed bundle. `final` is never a default: it is inferred on a signal or declared. The boundary is never inferred away, and neither direction of error is safe ("Severity is stage-keyed", below).
 
 ## Per-Mode Behavior
 
@@ -43,16 +43,14 @@ Authoring heuristic (what inference picks per plan shape, when an explicit decla
 | **Review interval** (derived by `critic-begin`, recorded in the manifest) | HEAD's tree → captured working tree (the uncommitted diff) | Same as `chunk` | Merge-base tree → HEAD's tree (base branch from `prawduct-hook resolve-base`) — the committed PR bundle | Prior review fact's tree → captured working tree (see "Verify-resolutions anchoring and demotion") |
 | **Execution** (roster derived by `critic-begin`) | Always single-pass | Coordinator when a risk surface is touched or 12+ judgeable files change; else single-pass | Coordinator when a risk surface is touched or 12+ judgeable files change; else single-pass | Always single-pass |
 | **Target wall-clock** | 1-2 min | 4-10 min | 4-10 min | 1-2 min |
-| **When invoked** | Between chunks of a multi-chunk plan, before committing | End of work cycle (last chunk), non-chunked medium+ work, or any time the right answer is unclear | Before opening a PR (gated by `/prawduct:pr create`). Catches cross-chunk integration cracks. | After fixing prior BLOCKING/WARNING findings — its resolution facts unblock the same evidence, and its review fact extends coverage over the fix delta. Demotes to `chunk`/`final` when no usable prior fact exists or scope widens past the threshold. |
+| **When invoked** | Between chunks of a multi-chunk plan, before committing | End of work cycle (last chunk), non-chunked medium+ work | Before opening a PR (gated by `/prawduct:pr create`). Catches cross-chunk integration cracks. | After fixing prior BLOCKING/WARNING findings — its resolution facts unblock the same evidence, and its review fact extends coverage over the fix delta. Demotes to `chunk`/`final` when no usable prior fact exists or scope widens past the threshold. |
 
 **Risk surface** = a changed path matching this repo's `risk_surfaces:` in `project-state.yaml` — the
-same predicate `prawduct-hook classify-diff-risk` reports as the review tier (`lib/risk.py`). A repo that declares none is
-never reviewed *less* than before: the framework-shaped derived defaults (`skills/`, `lib/gates*`,
-`bin/*hook*`, plus contract paths in `boundary-patterns.md`) still escalate, and below that the older
-rule stands (coordinator at 5+ changed files). Declaring the list is what opts a repo into the
-judgeable-12 threshold — because "no surface matched" and "this repo never had a risk signal" are
-indistinguishable at the match site, and defaulting the second to a cheaper review is the unsafe
-direction.
+same predicate `prawduct-hook classify-diff-risk` reports as the review tier (`lib/risk.py`). A repo that declares none runs
+the same two escalators — the framework-shaped derived defaults (`skills/`, `lib/gates*`,
+`bin/*hook*`, plus contract paths in `boundary-patterns.md`) and volume at 12 judgeable files — and
+no file-count fallback beneath them (the roster config block in `lib/critic_consolidate.py` carries
+the measurement that retired it). What declaring buys is the paths it names.
 
 **Two-form rule for the `mode` value:**
 - **Caller-side** (in `$ARGUMENTS`, build plan field `Critic mode:`, slash-command argument, `critic-begin --mode`): the short token — `chunk`, `final`, `cumulative`, or `verify-resolutions`.

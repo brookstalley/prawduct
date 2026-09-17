@@ -5,6 +5,59 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-17: review stages — rigor is stage-keyed; the inner loop blocks on eight things; unsure defaults cheap
+
+<!-- prawduct: type=feat | scope=review-stages -->
+
+The owner's 2026-09-17 trade (wall-clock for a bounded miss-rate increase; plan
+`build-plan-review-stages.md`, drawn from `review-proportionality-assessment-2026-09-17.md`), built
+so far as three of six chunks. **Chunk 01:** the norm — `nonfunctional-requirements.md` § Direction,
+*Review rigor is stage-keyed*: the inner stage (`chunk`, `final`, `verify-resolutions`) blocks only on
+the inner BLOCKING set and reports everything else as an observation; the boundary (`cumulative`, the
+PR review) runs the full table and is never inferred away; both failure directions are defects.
+Principle 11 gains one sentence (the inner loop proves the change, the boundary proves the bundle).
+Both ratified the same day. The entry names the sentences it retires and a strict-xfail grep pin held
+them red until Chunk 03. **Chunk 02:** `stage` derived once (`critic_consolidate.stage_of`) at
+`critic-begin`, written on the manifest with `judgeable_files`, `chunk_type` and a code-rendered
+`signals` line, carried to the review fact, the findings cache, the `review.critic` ledger event and
+`review-stats --json` (`by_stage`, report schema 5); the inner BLOCKING set stated in the norm's own
+sentence on `goals-1-3.md`, `review-protocol.md`, `review-cycle.md` and the verify directive, pinned
+identical; consolidation accepts `observations` from any inner-stage dispatch and refuses them at the
+boundary. **Chunk 03:** the defaults flip. `infer_mode` rule 4 answers `chunk` when nothing else
+fires — the inner-stage review of the uncommitted interval — and `cumulative` on a clean tree with a
+bundle; `final` is never a default (rule 3's size and last-chunk signals still infer it). The
+`SKILL.md` fall-through and failure path follow (`infer-failed-fallback-chunk`), and its per-mode
+scope line states the inner-set rule for every inner mode, not `verify-resolutions` alone.
+`_derive_roster` loses the file-count fallback (coordinator at 5+ changed files for a repo with no
+`risk_surfaces:`): an undeclared repo runs the same two escalators as a declared one — a matched
+surface at any size, or 12+ judgeable files — and what declaring buys is the paths it names.
+Measured before retiring, fleet-wide over 2026-08-01 → 09-17 (`python3
+tests/spikes/fallback_roster_yield.py`; six undeclared product repos, evidence stores deduplicated by
+clone): the fallback alone sent 87 `final`/`cumulative` reviews to three reviewers, and those reviews
+carried 48 blocking findings (0.55 per review) against 0.78 per review for the 18 single-pass reviews
+beside them. **That corrects the plan's inherited claim** that no blocking finding was attributable to
+the fallback in the window — the assessment's survey had not run the query. The record shows no
+per-review yield advantage for the third reviewer; how many of the 48 one reviewer would have missed
+is not measurable from the store, and the retirement stands on the owner's recorded decision, not on
+a zero. The prose sweep by grep: `review-cycle.md`'s canonical statement is now *default when unsure*
+(the inner-stage review of whatever interval exists) and its risk-surface paragraph no longer
+promises an undeclared repo is "never reviewed less than before"; `planning.md` stops calling
+under-declaring Type safe and its "Fail-safe default" paragraph is "Default when unsure";
+`discovery.md` § Surface Risk Surfaces promises size-independence on the named paths and nothing
+else; `building.md`'s Modes pointer, the build-plan and project-state templates, the
+`critic_mode.py` and `infer-critic-mode` docstrings and `risk.py`'s declaration predicate follow. The
+xfail pin flips to a plain assertion. The yield-floor sentence (a full round returns 13–18 findings
+regardless of round, diagnosis fix #6) was confirmed present in `review-cycle.md` ("Yield does not
+decay"), so nothing was added for it. Contracts renegotiated in the open: the per-mode scope pin asks
+the stage-keyed property instead of the fragment "BLOCKING only"; the roster tests that pinned the
+fallback now pin its absence (five files, the count it keyed on, is single-pass) and the two
+escalators that survive; token readings — SKILL +7 raised by declaration, review-cycle net 0 (its
+chunk review found the `final` row's "any time the right answer is unclear", the retired rule reworded,
+and the cut paid for the new canonical statement), building −6 and discovery −34 ratcheted, planning
++22 recorded. Chunks 04–06 (short plans owe one
+boundary review; the inner-loop verification ceiling; product-facing surfaces and the one-time
+risk-surface ask) are open.
+
 ## 2026-09-03: learnings v2 docs — the guides say what the code does; the discipline corpus has a home; the program ships
 
 <!-- prawduct: type=feat | scope=learnings-v2-docs -->

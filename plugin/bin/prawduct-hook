@@ -5382,7 +5382,9 @@ def cmd_infer_critic_mode(project_dir: Path, args: str | None) -> int:
     Fail-safe: if the bundled ``lib/`` cannot be imported (an incomplete plugin
     install), print a clear message and return 1 rather than crashing — mirroring
     ``cmd_advisory``. The Critic SKILL treats a non-zero exit as inference
-    failure and defaults to ``final`` (fail-safe to thoroughness).
+    failure and defaults to ``chunk`` — the inner-stage review of the
+    uncommitted interval, which is what inference itself answers when no rule
+    fires (the stage-keyed rigor norm: unsure defaults cheap).
     """
     lib_root = _plugin_root()
     if lib_root not in sys.path:

@@ -42,13 +42,17 @@ return the first that fires:
      AND uncommitted work is present (the builder is on the last chunk),
      OR no build plan + uncommitted diff has ≥5 files (medium+
      non-chunked work).
-  4. ``chunk`` when a build plan grounds the choice **and the working tree
-     holds something to review** (default for mid-plan reviews);
-     ``cumulative`` when the tree is clean, since ``chunk``/``final`` scope to
-     the uncommitted diff and dispatching one would refuse on an empty
-     interval; ``final`` otherwise (no plan + no other rule fired — fail-safe
-     to thoroughness, matching the SKILL's historical
-     "missing/unrecognized → final" norm).
+  4. ``cumulative`` when the tree is clean and a committed bundle is
+     dispatchable, since ``chunk``/``final`` scope to the uncommitted diff and
+     dispatching one would refuse on an empty interval; otherwise ``chunk`` —
+     grounded on the plan when one exists, and the bare default when none
+     does. ``final`` is never a default: the stage-keyed rigor norm
+     (`nonfunctional-requirements.md` § Direction) says unsure defaults to the
+     inner-stage review of whatever interval exists, and the boundary is
+     never inferred away. The size escalator in rule 3 (no plan, 5+ files →
+     ``final``) is untouched: ``final`` there is still an inner-stage review,
+     rated on the inner BLOCKING set, and it fires on a signal rather than on
+     the absence of one.
 
 The plan rule 4 grounds on is **this branch's**, not necessarily the
 ``active_build_plan`` pointer's: a branch whose name matches a scope some plan
@@ -248,10 +252,11 @@ def infer_mode(
 
     # An unreadable plan escalates rather than falling through. Rule 4 would
     # answer `chunk` — the narrowest mode there is — on the strength of a plan
-    # nobody could parse, which is the canonical rule inverted: "missing,
-    # unrecognized, or inference cannot make a confident call → final". The
-    # reason travels with it, so the rationale names the plan instead of
-    # reporting a confident `chunk`.
+    # nobody could parse, and "unsure defaults cheap" is about the ABSENCE of a
+    # signal; a plan that exists and cannot be read is a signal, like rule 3's
+    # last-chunk and size signals, that the builder's declared state and the
+    # tree disagree. The reason travels with it, so the rationale names the
+    # plan instead of reporting a confident `chunk`.
     if plan_read.unreadable:
         return "final", f"rule-0 final (plan unreadable): {plan_read.unreadable}"
 
@@ -288,19 +293,21 @@ def infer_mode(
     if final_reason:
         return "final", f"rule-3 final: {final_reason}"
 
-    # Rule 4: chunk only when a build plan grounds the choice AND there is
-    # something a working-tree-scoped mode could review; otherwise fall through
-    # to ``final`` (the historical fail-safe norm documented in the SKILL
-    # files). Without a plan there's no "chunk" for chunk-mode to scope to —
-    # defaulting to ``final`` matches the rule "missing/unrecognized → final"
-    # the SKILL has always promised.
-    #
-    # `chunk` and `final` both review the uncommitted diff (HEAD tree → captured
-    # working tree), so on a clean tree their interval is EMPTY and
-    # `critic-begin` refuses — correctly, but only after the round-trip. A mode
-    # that cannot review anything is not the answer to "what should I run",
-    # whichever rule matched. `cumulative` is the mode whose interval is
-    # committed, and it is what the refusal message named as the remedy.
+    # Rule 4: the default when nothing else fired is the INNER-STAGE review of
+    # whatever interval exists (the stage-keyed rigor norm). `chunk` and
+    # `final` both review the uncommitted diff (HEAD tree → captured working
+    # tree), so on a clean tree their interval is EMPTY and `critic-begin`
+    # refuses — correctly, but only after the round-trip. A mode that cannot
+    # review anything is not the answer to "what should I run", whichever rule
+    # matched. `cumulative` is the mode whose interval is committed, and it is
+    # what the refusal message named as the remedy — so a clean tree with a
+    # dispatchable bundle answers `cumulative`, and everything else answers
+    # `chunk`. A plan grounds the choice when one exists; without one, `chunk`
+    # is still the answer, because a planless diff is an uncommitted interval
+    # and the cheap review of it is the default. `final` is never the
+    # fall-through: it used to be, on the belief that more review is the safe
+    # failure direction, and the norm retired that belief — an inner-stage
+    # review run at boundary rigor is a defect priced in minutes and rounds.
     if _working_tree_is_empty(project_dir):
         redirect = _clean_tree_redirect(prawduct_dir, project_dir)
         if redirect:
@@ -310,9 +317,9 @@ def infer_mode(
             f"rule-4 chunk: {_plan_relation_note(plan)}, prior chunks "
             "committed, no fix-in-progress signal, no cumulative precondition"
         )
-    return "final", (
-        "rule-4 final: no active build plan and no other rule fired — "
-        "fail-safe to thoroughness"
+    return "chunk", (
+        "rule-4 chunk: no active build plan and no other rule fired — unsure "
+        "defaults to the inner-stage review of the uncommitted interval"
     )
 
 
@@ -387,8 +394,8 @@ def _clean_tree_redirect(prawduct_dir: Path, project_dir: Path) -> str:
     fresh cumulative record already covering HEAD means the bundle review was
     just run, so re-recommending it is the noise rule 2 declines to make. When
     none of that holds there is genuinely nothing dispatchable, and the caller
-    keeps the fail-safe answer with its honest refusal rather than a redirect to
-    a second refusal.
+    keeps the inner-stage answer (``chunk``) with its honest refusal rather
+    than a redirect to a second refusal.
     """
     base_branch, _ = _resolve_base_branch(project_dir)
     if not base_branch:
@@ -705,9 +712,9 @@ def _working_tree_is_empty(project_dir: Path) -> bool:
     flight", which the size-based rules want and this does not.
 
     Fails toward NOT empty: any git failure returns False, so an unreadable
-    state keeps the caller on the fail-safe answer rather than redirecting on a
-    tree it could not read. The guard covers the *raise* class too — an absent
-    binary or the timeout — because a docstring promising a return value while
+    state keeps the caller on the inner-stage answer rather than redirecting
+    to the boundary on a tree it could not read. The guard covers the *raise*
+    class too — an absent binary or the timeout — because a docstring promising a return value while
     the call propagates is a promise the code does not keep.
     """
     try:

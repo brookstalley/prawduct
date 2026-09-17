@@ -201,9 +201,15 @@ def has_product_risk_declaration(prawduct_dir: Path) -> bool:
     are framework-shaped (``skills/``, ``lib/gates*``, ``bin/*hook*``), so in an
     onboarded product they describe the *plugin's* hot spots and typically match
     nothing in the product's own tree. The contract paths are a product
-    documenting its API, which says nothing about how much review depth it
-    wants — counting them let a repo that had merely written that file be
-    reviewed *less* than before.
+    documenting its API, which says nothing about whether it has answered the
+    risk question.
+
+    The roster no longer reads this (the file-count fallback it gated is
+    retired; ``critic_consolidate``'s roster config block has the measurement).
+    It answers "has this repo said where its risk lives" — the predicate an
+    ask about declaring keys on — and ``[]`` is deliberately *no* here while
+    being an exclusive opt-out for :func:`resolve_surfaces`, because an empty
+    list must not silence that ask.
 
     **When no key is declared**, both still feed :func:`resolve_surfaces`, so
     both still ESCALATE even though neither can relax anything. **When the key
@@ -213,15 +219,14 @@ def has_product_risk_declaration(prawduct_dir: Path) -> bool:
     direction that loses review, so it is stated in both places rather than
     once.
 
-    So any consumer deciding on "no risk surface matched" MUST distinguish
-    *"this diff is low-risk"* from *"this repo never had a risk signal to
-    give"* — they look identical at the match site and mean opposite things.
-    :func:`critic_consolidate._derive_roster` is the caller that cares.
+    "No risk surface matched" and "this repo never had a risk signal to give"
+    look identical at the match site; this is the predicate that tells them
+    apart, for a consumer that needs to know whether the question was answered
+    rather than whether a path matched.
 
-    An explicit ``risk_surfaces: []`` reads as no signal here, not as an opt-in
-    to risk-keyed behaviour. That is the safe direction: the empty list turns
-    the risk predicate off permanently, and a consumer that treated it as a
-    declaration would fall through to whatever its no-risk branch does.
+    An explicit ``risk_surfaces: []`` reads as no signal here, not as an
+    answer: the empty list turns the risk predicate off permanently, and a
+    consumer that treated it as a declaration would stop asking.
     """
     # Only the explicit key. Absent -> None -> False; declared-empty -> [] ->
     # False (a present key is EXCLUSIVE in :func:`resolve_surfaces`, so it must
@@ -230,14 +235,11 @@ def has_product_risk_declaration(prawduct_dir: Path) -> bool:
     # A filled `boundary-patterns.md` deliberately does NOT count. It still
     # feeds :func:`resolve_surfaces` — and so can still ESCALATE — but ONLY
     # while no `risk_surfaces:` key is declared; a present key is exclusive and
-    # drops those paths entirely. Those paths
-    # are a product documenting its contract surfaces — `discovery.md` asks
-    # every contract-bearing product to write them — which says nothing about
-    # how much review depth it wants. Counting them as consent let a repo that
-    # had merely documented its API skip the conservative fallback and be
-    # reviewed *less* than before, silently, while every instruction surface
-    # promised the opposite. Escalating is a safe inference from a documented
-    # contract; relaxing is not.
+    # drops those paths entirely. Those paths are a product documenting its
+    # contract surfaces — `discovery.md` asks every contract-bearing product to
+    # write them — which says nothing about whether it has named where its
+    # risk concentrates. Escalating is a safe inference from a documented
+    # contract; treating it as an answer to a question nobody asked is not.
     declared = _read_list_yaml_key(prawduct_dir / "project-state.yaml", "risk_surfaces")
     return bool(declared)
 

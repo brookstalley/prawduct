@@ -212,29 +212,37 @@ FULL_ROUND_MODES = tuple(t for t in MODE_TOKEN_TO_VERBOSE if t != "verify-resolu
 SINGLE_PASS_ROSTER = ("reviewer",)
 COORDINATOR_ROSTER = ("correctness", "design", "sustainability")
 
-# **Scope of that replay, and the fallback it forces.** Every figure above came
-# from THIS repo's evidence store, where the derived risk surfaces match 77% of
-# reviews. An onboarded product is the opposite case: the derived defaults are
-# framework-shaped, the `project-state.yaml` template ships no `risk_surfaces:`,
-# and the `boundary-patterns.md` template yields no parseable paths — so the
-# risk predicate would never fire and the rule would collapse to "judgeable >=
-# 12" ALONE, which is precisely row 2 of the table (54% of blockers demoted),
-# replacing a rule that gave that product a coordinator at 5 files.
+# **Scope of that replay.** Every figure above came from THIS repo's evidence
+# store, where the declared risk surfaces match 77% of reviews. An onboarded
+# product that declares no `risk_surfaces:` has no risk signal of its own — the
+# derived defaults are framework-shaped, the `project-state.yaml` template
+# ships no list, and the `boundary-patterns.md` template yields no parseable
+# paths — so for it the rule is "judgeable >= 12" alone, row 2 of the table.
+# Until the review-stages plan that gap was closed by retaining the
+# pre-2026-07-30 file-count rule (coordinator at 5+ changed files) as a fallback
+# for undeclared repos, on the argument that "no surface matched" and "no
+# signal to give" are indistinguishable at the match site and the cheaper
+# review was the unsafe direction. The stage-keyed rigor norm
+# (`nonfunctional-requirements.md` § Direction) retired that argument: redundant
+# review is a cost, not a margin, and the boundary review still runs. Measured
+# fleet-wide before retiring, 2026-08-01 → 09-17, six undeclared product repos:
 #
-# So the risk-keyed rule applies only where there IS a risk signal. A repo that
-# has declared none keeps the previous file-count escalator unchanged — no
-# behaviour change where there is no evidence to justify one. This repo opts in
-# by declaring `risk_surfaces:` in its own project-state.yaml, which is also
-# what makes the replay above describe the rule that actually runs here.
+#   fallback-only coordinator reviews     87 reviews, 48 blocking   0.55 / review
+#   single-pass reviews beside them       18 reviews, 14 blocking   0.78 / review
+#
+# The reviews the fallback escalated found blockers at a LOWER per-review rate
+# than the single-pass reviews in the same repos, so the record shows no yield
+# advantage for the third reviewer; how many of the 48 one reviewer would have
+# missed is not measurable from the store, and the owner's recorded decision
+# accepts that bounded miss as the price of removing three reviewers from the
+# commonest product change size. Recomputable:
+# `python3 tests/spikes/fallback_roster_yield.py`. The remedy for a product that
+# has not said where its risk lives is the question (`methodology/discovery.md`
+# § Surface Risk Surfaces), not an escalator that never asks.
 
 #: Judgeable-file count at which volume alone buys the coordinator, with no
 #: risk surface touched. Below it the replay shows an empty blocking record.
 COORDINATOR_JUDGEABLE_THRESHOLD = 12
-
-#: The pre-2026-07-30 rule, retained as the conservative fallback for repos that
-#: have declared no risk surfaces. NOT the primary rule any more — see
-#: ``_derive_roster``.
-COORDINATOR_FILE_THRESHOLD = 5
 
 # Background reviewers run for minutes after the dispatching fork returns, so
 # an early consolidate correctly finds zero partials — a silence the parent
@@ -1813,8 +1821,11 @@ def _derive_roster(
 ) -> tuple[list[str], str]:
     """The roster this dispatch requires, plus the rationale (Q7 debugging).
 
-    Risk surface first, judgeable volume second — see the roster config block
-    for the replay that ordered them that way.
+    Risk surface first, judgeable volume second, and nothing else — see the
+    roster config block for the replay that ordered them that way and for the
+    measured yield of the file-count fallback this used to carry for repos
+    with no declaration. A repo that declares nothing runs the same two
+    escalators as one that does; what a declaration buys is the paths it names.
     """
     if mode_token in ("chunk", "verify-resolutions"):
         return list(SINGLE_PASS_ROSTER), f"mode={mode_token} is always single-pass"
@@ -1832,23 +1843,6 @@ def _derive_roster(
         return list(COORDINATOR_ROSTER), (
             f"mode={mode_token}, no risk surface, {nj} judgeable file(s) >= "
             f"{COORDINATOR_JUDGEABLE_THRESHOLD} — coordinator"
-        )
-
-    # "No risk surface matched" means low risk only if this repo HAD a signal to
-    # give. With no declaration it means we learned nothing — and falling
-    # through on judgeable volume alone would silently adopt the rule the replay
-    # rejected. Keep the previous escalator until the repo says where its risk
-    # lives.
-    if not risk.has_product_risk_declaration(prawduct_dir):
-        n = len(files_changed)
-        if n >= COORDINATOR_FILE_THRESHOLD:
-            return list(COORDINATOR_ROSTER), (
-                f"mode={mode_token}, no declared risk surfaces, {n} file(s) >= "
-                f"{COORDINATOR_FILE_THRESHOLD} — coordinator (prior rule retained)"
-            )
-        return list(SINGLE_PASS_ROSTER), (
-            f"mode={mode_token}, no declared risk surfaces, {n} file(s) < "
-            f"{COORDINATOR_FILE_THRESHOLD} — single-pass (prior rule retained)"
         )
 
     return list(SINGLE_PASS_ROSTER), (

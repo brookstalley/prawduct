@@ -175,7 +175,7 @@ error handling go missing one context at a time.
 
 **Per-chunk commit is the contract.** `chunk`-mode reviews assume the previous chunk was committed, so the working-tree diff is just the current chunk. Batch-commit-at-end plans break this — if you need that, override every chunk to `final` (heavy but safe; squash-at-end with `chunk`-mode has unbounded diff scope and is wrong).
 
-**Fail-safe default.** If the mode is missing, unrecognized, or inference cannot make a confident call, the review runs `final` (canonical rule: `skills/critic/review-cycle.md`) — but rely on inference rather than omitting the field as a shortcut to `final`.
+**Default when unsure.** A missing or unrecognized mode is inferred, and when no rule fires the review is the inner-stage `chunk` of the uncommitted interval — never `final` by default (canonical rule: `skills/critic/review-cycle.md`). Rely on inference rather than declaring a mode to buy depth the chunk has not earned.
 
 See `methodology/building.md` for runtime behavior and `skills/critic/review-cycle.md` for the per-mode behavior table.
 
@@ -183,7 +183,7 @@ See `methodology/building.md` for runtime behavior and `skills/critic/review-cyc
 
 Chunks also declare `Type:` — a separate axis from `Critic mode:`. Mode controls *how deep* the review is; Type controls *what kind of work* is under review. The Critic reads both and selects protocol per the matrix in `skills/critic/review-cycle.md`.
 
-Allowed values: `code` | `doc-only` | `cleanup` | `designer-handoff` | `cumulative-final` | `trivial`. Default is `code` — the fully-armed protocol — so a missing field is the safe option, not a carveout. Declare a non-default Type only when the chunk actually deviates:
+Allowed values: `code` | `doc-only` | `cleanup` | `designer-handoff` | `cumulative-final` | `trivial`. Default is `code` — the full protocol — so a missing field is the default, not a carveout. Declare a non-default Type only when the chunk actually deviates:
 
 - **`code`** — code or behavior changes. The default; rarely written explicitly.
 - **`doc-only`** — methodology, template, or prose-only edits. Critic skips test-evidence checks but still reviews prose deliverables for coverage.
@@ -196,7 +196,7 @@ Allowed values: `code` | `doc-only` | `cleanup` | `designer-handoff` | `cumulati
 
   **Over-declaration is unsafe and BLOCKING**: a `Type: trivial` chunk violating either bound is treated as `code` AND the stop-hook emits a named blocker (e.g., `skill-file-edited: …`) — fix the violation or change the Type, never both quietly.
 
-**Type vs. mode orthogonality.** A `doc-only` chunk can be `Critic mode: final`; a `code` chunk can be `chunk`. Declare each on its own merits. Under-declaring Type is safe (worst case: redundant Critic work); over-declaring is unsafe, per each Type's own bullet above.
+**Type vs. mode orthogonality.** A `doc-only` chunk can be `Critic mode: final`; a `code` chunk can be `chunk`. Declare each on its own merits: over-declaring is unsafe per each Type's own bullet above, and under-declaring buys review work the stage norm prices as a defect, not a margin.
 
 **Don't open a LINE or a sentence with a field marker unless you mean to declare it.** These fields are read mid-line — chunk headers compose them, and a period separates them as freely as a `·` — so a Description *starting* `**Type:** designer-handoff …` declares that type, the one that bypasses the Critic entirely. Backticks do not escape it: a line-opening ``` `**Type:** code` ``` is a declaration and binds deliberately. To write *about* a field, keep the marker inside the sentence (`unlike a **Type:** trivial chunk`) or drop the asterisks (`Type:`).
 

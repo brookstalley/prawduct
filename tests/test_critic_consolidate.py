@@ -4215,7 +4215,7 @@ class TestRosterKeyedToRiskSurface:
         NOT match, so the repo has opted into the risk-keyed rule and the
         risk predicate is genuinely "on but not matched" — the state that
         exercises the judgeable-volume branch. ``declare=False`` leaves the
-        repo undeclared, which is the product case that keeps the prior rule.
+        repo undeclared, the as-scaffolded product case.
         """
         prawduct_dir = tmp_path / ".prawduct"
         prawduct_dir.mkdir(exist_ok=True)
@@ -4276,41 +4276,67 @@ class TestRosterKeyedToRiskSurface:
         roster, why = self._roster(tmp_path, files)
         assert roster == ["reviewer"], why
 
-    def test_undeclared_repo_keeps_the_prior_file_count_rule(self, tmp_path):
-        """The product case, and the reason the risk-keyed rule is gated.
+    def test_undeclared_repo_is_single_pass_below_the_volume_threshold(self, tmp_path):
+        """The product case. An as-scaffolded product declares no
+        `risk_surfaces:` and its boundary-patterns template yields no parseable
+        paths, so nothing in its tree matches a surface — and below 12 judgeable
+        files that is a single reviewer, the same as a declared repo whose diff
+        matches nothing.
 
-        An as-scaffolded product declares no `risk_surfaces:` and its
-        boundary-patterns template yields no parseable paths, so the
-        framework-shaped derived defaults match nothing in its tree. If "no
-        surface matched" fell straight through to judgeable volume, the
-        effective product rule would be `judgeable >= 12` alone — the row the
-        replay rejected at 54% of historical blockers demoted — and it would
-        REPLACE a rule that gave that product a coordinator at 5 files.
-
-        So an undeclared repo keeps the prior escalator unchanged.
+        It used to be three: a file-count fallback (coordinator at 5+ changed
+        files) was retained for undeclared repos on the argument that "no
+        surface matched" and "no signal to give" are indistinguishable at the
+        match site. The stage-keyed rigor norm retired that argument — redundant
+        review is a cost, not a margin — and the fallback was measured before
+        it went (`tests/spikes/fallback_roster_yield.py`): the reviews it
+        escalated found blockers at a lower per-review rate than the
+        single-pass reviews beside them. Five files is the exact count the
+        retired rule keyed on; a coordinator here is the fallback coming back.
         """
-        files = [f"src/mod_{i}.py" for i in range(6)]  # 6 judgeable, < 12
-        roster, why = self._roster(tmp_path, files, declare=False)
+        for n in (2, 5, 6):
+            files = [f"src/mod_{i}.py" for i in range(n)]
+            roster, why = self._roster(tmp_path, files, declare=False)
+            assert roster == ["reviewer"], (n, why)
+            assert "judgeable" in why and "prior rule" not in why, why
+
+    def test_undeclared_repo_still_escalates_on_volume(self, tmp_path):
+        """Retiring the fallback removed one escalator, not both: volume alone
+        still buys the coordinator at the threshold, declaration or not."""
+        n = cc.COORDINATOR_JUDGEABLE_THRESHOLD
+        roster, why = self._roster(
+            tmp_path, [f"src/m{i}.py" for i in range(n)], declare=False
+        )
         assert roster == ["correctness", "design", "sustainability"], why
-        assert "prior rule retained" in why
+        assert "judgeable" in why
 
-    def test_undeclared_repo_below_the_prior_threshold_is_single_pass(self, tmp_path):
-        roster, why = self._roster(tmp_path, ["src/a.py", "src/b.py"], declare=False)
-        assert roster == ["reviewer"], why
-        assert "prior rule retained" in why
+    def test_a_declared_surface_touched_escalates_at_one_file(self, tmp_path):
+        """The other surviving escalator, on a product's OWN declaration: one
+        file under a declared surface outranks every size rule."""
+        prawduct_dir = tmp_path / ".prawduct"
+        prawduct_dir.mkdir(exist_ok=True)
+        (prawduct_dir / "project-state.yaml").write_text(
+            "risk_surfaces:\n  - src/payments/\n"
+        )
+        roster, why = cc._derive_roster(
+            "final", ["src/payments/ledger.py"], prawduct_dir
+        )
+        assert roster == ["correctness", "design", "sustainability"], why
+        assert "risk surface" in why
 
-    def test_declared_empty_is_no_signal_not_an_opt_in(self, tmp_path):
-        """Pins a DELIBERATE asymmetry between two readers of one key.
+    def test_declared_empty_is_an_opt_out_for_matching_only(self, tmp_path):
+        """Pins what `risk_surfaces: []` still means once the roster stops
+        reading the declaration predicate.
 
-        ``resolve_surfaces`` tests ``declared is not None`` (an empty list is an
-        exclusive opt-out, so no surface ever matches). ``has_product_risk_
-        declaration`` tests truthiness, so ``risk_surfaces: []`` reads as *no
-        signal* and the conservative file-count rule is retained.
-
-        The obvious tidy-up — aligning the two for symmetry — would turn the
-        opt-out into "risk-keyed rule with an empty surface list", i.e.
-        single-pass for every final/cumulative under 12 judgeable files, which
-        is the rejected rule reached by accident. This test is what fails first.
+        ``resolve_surfaces`` tests ``declared is not None``: an empty list is an
+        exclusive opt-out, so the derived defaults and `boundary-patterns.md`
+        paths stop matching — a one-file change to a gate-kernel path that
+        escalates in an UNDECLARED repo reviews single-pass here. The volume
+        escalator is not a surface and survives the opt-out. And
+        ``has_product_risk_declaration`` still reads `[]` as *no declaration*
+        (truthiness): the roster no longer consults it, but "has this repo
+        named its surfaces" is a different question from "does this path
+        match one", and the two readers of one key are kept distinct on
+        purpose so an ask about declaring cannot be silenced by an empty list.
         """
         import sys
         sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "plugin"))
@@ -4321,80 +4347,52 @@ class TestRosterKeyedToRiskSurface:
         (prawduct_dir / "project-state.yaml").write_text("risk_surfaces: []\n")
 
         assert risk_mod.has_product_risk_declaration(prawduct_dir) is False
-
-        # …and it stays False even with a FILLED boundary-patterns.md. A present
-        # `risk_surfaces:` key is exclusive in resolve_surfaces, so if this fell
-        # through to boundary paths the repo would report "has a signal" while
-        # its surface set is empty — the predicate could never fire, the
-        # conservative fallback would be skipped, and judgeable-volume alone
-        # would decide. That is the rejected rule reached by accident.
-        (prawduct_dir / "artifacts").mkdir(exist_ok=True)
-        (prawduct_dir / "artifacts" / "boundary-patterns.md").write_text(
-            "The shared contract is `src/api/contract.py`.\n"
-        )
-        assert risk_mod.has_product_risk_declaration(prawduct_dir) is False
-        roster_again, why_again = cc._derive_roster(
-            "final", [f"src/m{i}.py" for i in range(6)], prawduct_dir
-        )
-        assert roster_again == ["correctness", "design", "sustainability"], why_again
-        assert "prior rule retained" in why_again
-        # …while resolve_surfaces still treats it as an exclusive declaration.
         surfaces, source = risk_mod.resolve_surfaces(prawduct_dir)
         assert surfaces == [] and source == risk_mod.SOURCE_DECLARED
 
-        roster, why = cc._derive_roster(
-            "final", [f"src/m{i}.py" for i in range(6)], prawduct_dir
+        # The derived-default path escalates only while the key is absent.
+        kernel = ["plugin/lib/gates.py"]
+        opted_out, why_out = cc._derive_roster("final", kernel, prawduct_dir)
+        assert opted_out == ["reviewer"], why_out
+        (prawduct_dir / "project-state.yaml").unlink()
+        absent, why_absent = cc._derive_roster("final", kernel, prawduct_dir)
+        assert absent == ["correctness", "design", "sustainability"], why_absent
+
+        # Volume is not a surface, so the opt-out cannot switch it off.
+        (prawduct_dir / "project-state.yaml").write_text("risk_surfaces: []\n")
+        n = cc.COORDINATOR_JUDGEABLE_THRESHOLD
+        big, why_big = cc._derive_roster(
+            "final", [f"src/m{i}.py" for i in range(n)], prawduct_dir
         )
-        assert roster == ["correctness", "design", "sustainability"], why
-        assert "prior rule retained" in why
+        assert big == ["correctness", "design", "sustainability"], why_big
 
-    def test_a_documented_contract_surface_is_not_consent_to_less_review(self, tmp_path):
-        """`boundary-patterns.md` escalates but can never relax.
-
-        `discovery.md` asks every contract-bearing product to fill that file. If
-        those paths counted as a risk declaration, merely documenting your API
-        would opt you into the 12-judgeable threshold and skip the conservative
-        fallback — so a 6-file diff touching no contract path would go from
-        coordinator to single-pass, silently, while four instruction surfaces
-        promise an undeclared repo is never reviewed less than before.
-
-        Escalating is a safe inference from a documented contract; relaxing is
-        not. The paths still feed resolve_surfaces, so they still escalate.
-        """
+    def test_a_documented_contract_surface_escalates_at_any_size(self, tmp_path):
+        """`boundary-patterns.md` paths feed ``resolve_surfaces`` while the key
+        is absent, so a one-file change to a documented contract draws the
+        coordinator — and a six-file diff touching none of them reviews
+        single-pass, because documenting a contract is not a file-count rule."""
         prawduct_dir = tmp_path / ".prawduct"
         (prawduct_dir / "artifacts").mkdir(parents=True, exist_ok=True)
         (prawduct_dir / "artifacts" / "boundary-patterns.md").write_text(
             "The shared shape is `src/api/contract.py`.\n"
         )
-        import sys
-        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "plugin"))
-        from lib import risk as risk_mod
-
-        assert risk_mod.has_product_risk_declaration(prawduct_dir) is False
-        roster, why = cc._derive_roster(
-            "final", [f"src/m{i}.py" for i in range(6)], prawduct_dir
-        )
-        assert roster == ["correctness", "design", "sustainability"], why
-        assert "prior rule retained" in why
-
-        # …but the documented contract path still ESCALATES at any size.
         hot, why_hot = cc._derive_roster(
             "final", ["src/api/contract.py"], prawduct_dir
         )
         assert hot == ["correctness", "design", "sustainability"], why_hot
-
-    def test_declaring_surfaces_opts_into_the_risk_keyed_rule(self, tmp_path):
-        """The same 6-file diff reviews single-pass once the repo has said where
-        its risk lives — the saving is bought by the declaration, not assumed."""
-        prawduct_dir = tmp_path / ".prawduct"
-        prawduct_dir.mkdir(exist_ok=True)
-        (prawduct_dir / "project-state.yaml").write_text(
-            "risk_surfaces:\n  - src/payments/\n"
+        cold, why_cold = cc._derive_roster(
+            "final", [f"src/m{i}.py" for i in range(6)], prawduct_dir
         )
+        assert cold == ["reviewer"], why_cold
+
+    def test_declaring_buys_the_named_paths_not_a_different_size_rule(self, tmp_path):
+        """The same six-file diff touching no declared path reviews single-pass
+        whether the repo has declared or not: a declaration is size-independence
+        on the paths it names, and nothing else about the roster changes."""
         files = [f"src/mod_{i}.py" for i in range(6)]
-        roster, why = cc._derive_roster("final", files, prawduct_dir)
-        assert roster == ["reviewer"], why
-        assert "prior rule retained" not in why
+        undeclared, why_u = self._roster(tmp_path, files, declare=False)
+        declared, why_d = self._roster(tmp_path, files, declare=True)
+        assert undeclared == declared == ["reviewer"], (why_u, why_d)
 
     def test_this_repo_declares_its_surfaces(self):
         """The framework repo must opt in, or its own replay describes a rule it
