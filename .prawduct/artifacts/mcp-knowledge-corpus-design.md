@@ -110,6 +110,10 @@ observability, not the human's*; *intent over mechanism*. Stances produce rules 
 fire-sites and belong in a short preamble, kept strictly separate from the rule corpus, as
 principles are kept separate from learnings.
 
+**A third shape was added 2026-09-18 — see §11.2.** An **ADJUDICATION** records a question the
+corpus has not settled, where filing it as a rule would force a verdict that does not exist. So the
+record shapes are rules, stances, and adjudications; the kind axis in §3.3 applies to rules only.
+
 Validated: *intent over mechanism* generated both the tool-surface rule (R1) and the collateral rule
 (R9), at two different fire-sites.
 
@@ -132,7 +136,7 @@ introducing a second clock (`architecture.md` § Direction: *never re-implements
   Example: R8's remedy requires R4's same-device deployment. Without this, the corpus hands remote
   deployments un-followable advice.
 
-## 4. Packaging — open
+## 4. Packaging — DISCHARGED by §10.1 (directory of layer files); the reasoning below is retained
 
 One file with headings, or a directory of layer files. **Deferred pending a size measurement**,
 because the harness auto-load is file-granular and whole-file: one file is fine at ~30KB and a
@@ -211,8 +215,12 @@ repos worse to make one tidier, with no mechanism shipping it back.
 
 ## 7. Open questions
 
-- Packaging: one file or a directory (§4) — blocked on the size measurement from mining.
+- ~~Packaging: one file or a directory (§4) — blocked on the size measurement from mining.~~
+  **Discharged 2026-09-17 by §10.1: a directory of layer files, addressed by reference.**
 - Is stage 2 in scope for this work, or a separate piece? Owner said in scope on 2026-09-17.
+  **Now entangled with #343 (§12.4)** — stage 2 is that item's delivery mechanism generalized, so the
+  two are built as one design or separated with a stated reason. Also open there: the three questions
+  in §12.3.
 - Whether the facts surface (§3.5) can ride the existing norm-lifecycle sweep unchanged, or needs
   its own probe.
 
@@ -243,6 +251,10 @@ Re-derive the absence with: `grep -rn "additionalContext" plugin/` (one file: `h
 
 - **(a) Pull-only.** Corpus ships under `plugin/`; a skill reads it on demand. Conforms fully, no
   ruling needed. Absolute 2 degrades to "when someone invokes it."
+  **Corrected 2026-09-18 (§12.2): "degrades" is the wrong word.** #343's owner ruling of 2026-08-01
+  decided that query-time reading from the plugin is the *correct* shape for framework knowledge,
+  because a copy freezes at the adopting product's vintage. Route (a) is not a concession to a norm;
+  it is the ruled-on answer. What (c) adds is *discoverability* at build time, not a better read.
 - **(b) Critic-side routing.** A plugin-shipped review perspective consults the corpus when the diff
   is MCP-shaped. The Critic already computes its learnings read-set via `learnings-files
   --for-diff`. **No norm change**, and it fires automatically at review time.
@@ -303,6 +315,12 @@ rules is reported **unchecked**, never silently passed.
 ---
 
 ## 9. RULING (knowledge-may-be-routed-into-a-consumer-repo), 2026-09-17
+
+> **§12 (2026-09-18) found a parent ruling this section does not cite** — #343's owner ruling of
+> 2026-08-01 already settled that a framework corpus is read at query time from the plugin, stays a
+> distinct store, and is surfaced labelled by origin. The conclusion below **stands and is
+> strengthened** by it; two of #343's three clauses are **unaddressed here** and are owed an owner
+> answer before stage 2 is designed. Read §12 with this section.
 
 **Owner ruled: yes to route (c)** — the plugin may scaffold a small product-owned pointer file into
 a consumer's `.claude/rules/learnings/` so that plugin-shipped domain knowledge auto-loads at build
@@ -415,6 +433,11 @@ taxonomy. Re-measure at authoring time — no rule count here is trustworthy eno
 
 ### 10.3 Cross-repo disagreements to adjudicate (the most valuable output)
 
+> **Qualified by §11.3 (2026-09-18).** The list below is the right list; "disagreements" overstates
+> what three of the four are. Read §11 before acting on this section: #1, #3 and #4 dissolve into a
+> single rule with a stated precondition, #2 is a dated fact rather than an adjudication, and the
+> corpus's one genuinely open disagreement is R1 in §10.2 above.
+
 1. **Clamp vs refuse an out-of-range value.** bankmachine: *refuse and quote the ceiling, never
    clamp* — clamping makes a trimmed answer byte-identical to a complete one. discodon and
    hallucinote: *clamp and say you clamped* — a bare refusal costs a round-trip the agent spends
@@ -435,8 +458,190 @@ taxonomy. Re-measure at authoring time — no rule count here is trustworthy eno
 
 Every citation in `mcp-mining/` is agent-reported. Before anything ships: re-derive each number and
 path against its source repo, and re-anchor on symbols and headings rather than line numbers
-(`core.md`: *a `file:line` you did not resolve yourself is a claim, not a citation*). Two miners
+(`core.md`: *a `file:line` you did not resolve yourself is a claim, not a citation*).
+
+**Corrected 2026-09-18 — the debt is larger than this section described, and different in kind.**
+Four of the five captures carry **no provenance at all**: zero `PROVENANCE:` lines and between zero
+and four distinct source paths each, across ~20KB of rules apiece, while stating hard measured
+figures (49% docs-token reduction, ~32 minutes of silence, 37/43 parameters, 10→8 tools). Only
+`hallucinote-server-structured.md` is addressed (106 `PROVENANCE:` lines, 52 distinct paths).
+Re-derive with the command in `mcp-mining/README.md` § *No provenance at all in four of five
+captures*.
+
+So for four sources this is not "re-check the citations" — there are none to re-check, and
+*verifying* an unaddressed claim is re-mining with extra steps. Three re-mines and one citation
+audit were dispatched 2026-09-18; the dispatch record is in that README.
+
+**This makes the debt a precondition rather than hygiene.** Desirable 3 is periodic revalidation,
+and a claim that cannot be located cannot be revalidated — so an unaddressed corpus forecloses the
+absolute that keeps it true as MCP moves. It also absorbs the marker-unification blocker: the target
+marker is this document's own §3 schema, so addressing a capture and unifying its marker are one
+pass. Two miners
 already found doc-vs-code drift in their own repos, which is worth reporting back to cordyceps
 (a testing guide that would make a tester file a false regression; an architecture doc describing an
 SSE server that does not exist) and hallucinote (two surfaces telling agents a call "always works"
 that a blocked host times out at 30s).
+
+---
+
+## 11. How a disagreement is filed (2026-09-18)
+
+§10.3 lists four "cross-repo disagreements to adjudicate" and calls them the most valuable output of
+the mining pass. That is right, and it leaves a structural question unanswered: **the corpus has no
+shape to put them in.** §3.4 separates stances from rules; §3.6 names tension pairs and precondition
+chains. A cross-repo disagreement is none of those.
+
+- A **tension pair** is two rules *in the corpus* whose reconciliation is known and stated.
+- A **cross-repo disagreement** is two repos' shipped *practices* in conflict, where the corpus may
+  not yet know which is right — and §10.2's owner-facing commitment for R1 is explicitly *state it
+  as a live disagreement with the evidence on each side, not resolved by majority.*
+
+An unresolved disagreement therefore **cannot be filed as a rule**, because a rule is a single
+imperative and filing one would force a verdict the corpus does not have. That is the whole failure
+mode the commitment exists to prevent.
+
+### 11.1 Three outcomes, and the filing decision is which one applies
+
+- **(a) DISSOLVED.** The disagreement was never one: it is a single rule whose precondition nobody
+  had stated. Both repos were right locally. Files as an ordinary rule, with the precondition
+  promoted into the rule sentence rather than trailing it as a caveat (`core.md`: *a spec that deltas
+  a parent reads complete*; a caveat reads as optional, a precondition does not).
+- **(b) TENSION PAIR.** Both rules are real, both stay, and the reconciliation is stated. §3.6's
+  existing shape.
+- **(c) OPEN.** No coherent answer is in evidence. Files as a fourth record shape — an
+  **ADJUDICATION** — beside rules and stances.
+
+### 11.2 The ADJUDICATION shape
+
+An open adjudication still has to **fire at the fire-site**: someone designing a clamp policy needs
+to know the question is contested *while they design it*, not later. So it carries the same routing
+apparatus a rule does — `paths:` reach and a layer tag — and adds the slots a rule has no room for:
+
+```
+**ADJUDICATION:** the question, stated so that both answers are visibly answers to it.
+FIRE-SITE: where someone meets this question.
+LAYER: L0–L4
+POSITION A: <repo> does X — <evidence, addressed>
+POSITION B: <repo> does Y — <evidence, addressed>
+PRECONDITION IF DISSOLVABLE: the condition under which each is right, or "none found".
+VERDICT: dissolved → <rule> | tension-pair | OPEN
+WHAT WOULD SETTLE IT: the instrument, not an opinion.
+```
+
+`WHAT WOULD SETTLE IT` is the field that keeps this honest and makes revalidation (desirable 3)
+mechanical: an adjudication with no named instrument is an opinion wearing a schema, and one with an
+instrument becomes a check somebody can run later (`core.md`: *a rule you must recall at the right
+moment is its weakest form*).
+
+### 11.3 Triage of the four — and most of them are not disagreements
+
+Applying 11.1 to §10.3's list, reading only what §10.3 itself already states:
+
+| # | Question | Outcome implied by §10.3's own words | Verdict slot |
+|---|---|---|---|
+| 1 | Clamp vs refuse an out-of-range value | **(a)** — §10.3 supplies the candidate precondition itself: refuse where silence would be indistinguishable from completeness; clamp-and-announce where the parameter is a resource budget | **awaiting** the discodon audit: which parameters actually clamp, and whether the announcement reaches the surface an agent reads |
+| 2 | Tool-count ceiling (20 / 40 / 128 / a 10–20 band) | **Not an adjudication at all.** §10.3: *"One dated-facts entry, not three rules."* These are client constants, which §3.5 already routes to the dated-facts surface | **awaiting** both audits for the real numbers; the filing decision needs nothing further |
+| 3 | Progress notifications | **(a)** — §10.3: *"One coherent answer exists that no single repo held."* That is a dissolution by definition | **awaiting** the hallucinote audit of the timeout fact, and whether cordyceps recorded a reason |
+| 4 | Rename policy | **(a)** — §10.3: *"Both are right under different preconditions, and the precondition is the rule"* | **awaiting** the hallucinote audit of design-doc-vs-shipped-policy |
+
+**So §10.3's framing overstates the disagreement.** Three of its four dissolve into one rule with a
+precondition, and the fourth is a dated fact. That is not a downgrade of §10.3's value — a
+dissolution is the *most* valuable outcome, because it produces a rule no single repo could have
+written. It does mean the corpus's **one genuinely open disagreement lives in §10.2, not §10.3:**
+
+> **R1 — the shape of the tool surface.** cordyceps consolidated and measured a 49% docs-token
+> reduction; hallucinote consolidated on borrowed benchmarks with its own required baseline
+> measurement never performed; bankmachine **rejects the framing outright** — both "one tool per
+> question" and "one tool with an action enum" share the false premise that a boundary tracks the
+> *question*, where it should be drawn where the **answer shape** changes. discodon supplies the
+> consumer-side reason width matters at all.
+
+That is the corpus's flagship ADJUDICATION, and §10.2 already commits to filing it as one. Note the
+asymmetry that makes it genuinely open rather than merely contested: of the three positions, **one is
+measured, one is borrowed, and one is a reframing** — so a majority here would be counting
+evidence tiers as though they were equal.
+
+### 11.4 What is deliberately not settled here
+
+Every `VERDICT` above says *awaiting*, because three of the four rest on citations under audit as of
+2026-09-18 (`mcp-mining/README.md` § *Re-mining in flight*). Writing verdicts from the compressed
+captures would derive a durable record from unaddressed claims, which is the defect §10.4 exists to
+prevent. **The structure is settled; the verdicts are not, and the distinction is the point** —
+`core.md`: *a filed item's stated mechanism is a hypothesis, not a finding.*
+
+---
+
+## 12. §9's ruling has a parent ruling it never cites — OWNER DECISION NEEDED
+
+Found 2026-09-18 while filing this work as a backlog item (#826). Searching the *mechanism* rather
+than the subject surfaced **#343 `learnings: ship a framework corpus products read at query time`**,
+open at `stage: design`, carrying an **owner ruling of 2026-08-01** on exactly the question §8.1 and
+§9 treated as needing a fresh one.
+
+Read from the issue directly, not from a report about it.
+
+### 12.1 What #343 already ruled
+
+> *"Hoist at onboard is clearly wrong. Learnings should be a corpus that gets updated and which
+> stays distinct from per-project learnings so they can update."*
+
+Three things decided:
+
+- **(a) The framework-shipped corpus is READ AT QUERY TIME from the plugin — never copied into the
+  product at onboard.** A copy freezes at that product's adoption date, so every product runs a
+  different vintage and none ever gets a correction.
+- **(b) It stays a DISTINCT store** — the reader presents both together; the *stores* stay separate.
+  "Design against the store boundary, not the reader's presentation."
+- **(c) Both are surfaced LABELLED BY ORIGIN**, so a reader can always tell a framework rule from a
+  local one.
+
+And the asymmetry that reconciles it with the norms ruling MET-8K4R: **norms are ratifiable, so a
+copy is the point; learnings are knowledge, so a copy is pure staleness.**
+
+### 12.2 This strengthens §9 rather than overturning it — but §9's framing was wrong in one place
+
+§9's conclusion survives intact: route (c) scaffolds a **pointer**, not corpus content, so nothing
+prohibited by (a) happens. And 12.1's asymmetry is a *better warrant than the one §9 built*: MCP
+engineering knowledge is **knowledge**, not a ratifiable norm, so it must not be copied — which is
+precisely why pointer-not-copy is the right shape. §9 reached that by analogy to `scaffold_core()`;
+#343 reaches it from the principle.
+
+**What §9 got wrong:** it presented route (a) as a concession — *"Conforms fully… Absolute 2 degrades
+to 'when someone invokes it'."* #343 ruled query-time reading is **correct**, not a degradation. The
+`core.md` rule about deriving an answer without its constraints attached fires here exactly as
+written: the ruling existed, in this repo, six weeks earlier, and §9's survey did not find it because
+it searched the subject (MCP, knowledge packs) and not the mechanism (a plugin-shipped corpus).
+
+### 12.3 The constraint §9 does not answer — this is the owner's call
+
+**#343's ruling (b) and (c) are not addressed by §9 at all.** Route (c) scaffolds a framework-authored
+pointer file *into* `.claude/rules/learnings/` — which is the product's own learnings store. So:
+
+1. **Does a framework-scaffolded pointer inside the product's own learnings directory respect the
+   store boundary (b) requires?** It carries no framework *content*, which argues yes. It is
+   nonetheless a file the framework wrote into the product's store, which is the shape (b) exists to
+   forbid for the corpus. The distinction is real but it is the owner's to draw, not mine.
+2. **How is the pointer labelled by origin (c)?** §9's mechanism constraints require "a distinct
+   filename, so it cannot collide with a product's own area file" — that is collision-avoidance, not
+   origin-labelling. They are different requirements and only one is currently specified.
+3. **§9 buys build-time auto-load; #343 ruled the corpus is read at query time.** Not a
+   contradiction — the pointer is not the corpus, and what auto-loads is ten lines telling the agent
+   where to look. But the owner should confirm build-time auto-load of a *pointer* is what was
+   intended, given the corpus itself was ruled query-time.
+
+**A governance change cannot supply its own authority, and this is a ruling amending the scope of an
+earlier ruling. It is recorded here and owed an answer before stage 2 is designed, not resolved by
+this artifact.**
+
+### 12.4 The convergence worth taking
+
+#343's own closing says: *"If the owner is content to build a hand-authored corpus first and defer
+the mechanical-promotion half, this item is immediately `ready` — one word moves it."* Its open fork
+is a hand-authored corpus versus a rendered derived view.
+
+**This work already takes that fork, and for an independently-reached reason** — §2.1 rules derived
+views out entirely (`regen-views` deprecated and inert; 14 of 220 learnings once encoded nothing but
+the view format's own rules). So the MCP corpus *is* the hand-authored path #343 says would move it
+to `ready`, and stage 2's "plugin-shipped path-routed knowledge packs" is #343's delivery mechanism
+generalized beyond learnings. **Stage 2 should reconcile with #343's ruling rather than re-answer
+it**, and the two items should be built as one design or explicitly separated with a stated reason.

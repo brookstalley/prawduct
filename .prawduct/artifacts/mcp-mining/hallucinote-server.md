@@ -1,11 +1,57 @@
-# hallucinote — 92 rules (Python/FastMCP stdio server, the most sophisticated sibling)
+# hallucinote — compressed reading (Python/FastMCP stdio server, the most sophisticated sibling)
 
 **Topology that generates most of its knowledge:** 13 action-dispatch tools + 13 resources, a
 length-prefixed TCP bridge into a **vendored second copy of the same source tree** running inside
 Ableton Live's embedded Python, a content-fingerprint version handshake, async start+poll jobs, and
 a Claude Code plugin install path. *Two deployed halves, two runtimes, one source tree.*
 
-By layer: L0 3 · L1 30 · L2 25 · L3 22 · L4 12. Read ~110–120k words.
+## ⚠ This file is a LOSSY compression, and its own counts are wrong
+
+Two things found 2026-09-18, both checkable in one command each. Read them before quoting anything
+here or authoring from this file alone.
+
+**1. Every per-layer count this file stated was wrong against its own body.** The header claimed
+`L0 3 · L1 30 · L2 25 · L3 22 · L4 12` (= 92, the count that was also in the title). Measured
+2026-09-18: `L0 3 · L1 29 · L2 22 · L3 23 · L4 17` (= 94), plus 5 bullets in the dated-facts
+section. Four of the five rows disagreed; L4 was off by five. The section headings below still
+carry the old claimed number in parentheses — left in place deliberately, because the command
+prints the claim and the reading side by side:
+
+    awk '/^## /{s=$0} /^- \*\*/{c[s]++} END{for(k in c) printf "%3d  %s\n", c[k], k}' hallucinote-server.md
+
+**2. This file is not a superset of its structured twin, in either direction.** Measured against
+`hallucinote-server-structured.md` (106 rule blocks, `L0 4 · L1 29 · L2 21 · L3 24 · L4 28`,
+re-derive with `grep -o '^LAYER: L[0-9]' hallucinote-server-structured.md | sort | uniq -c`):
+
+- **Roughly eight rules are absent here**, including the whole **L0 observability** rule (*for a
+  single-user local server, decide explicitly there is no fleet to observe, then name the
+  substitutes*); `os.walk` swallowing errors inside a completeness check; fingerprinting installed
+  binaries by raw bytes to skip a spurious overwrite prompt; post-install hooks and `register`
+  console scripts being degraded in modern Python packaging; conservative uninstall env cleanup;
+  pinning an environment *before Python starts*; the two-channel CLI seam (JSON on stdout, human
+  text on stderr); and the declarative-action-fraction rule.
+
+  Verified by keyword probe. **Scope the probe to the rule body, not the whole file** — this section
+  names those same terms, so a whole-file grep now matches its own description of the gap and
+  returns 1 for each:
+
+      for p in preflight 'os.walk' 'raw bytes' 'console script' declarative 'env cleanup' 'before Python starts'; do
+        printf '%-22s body:%s structured:%s\n' "$p" \
+          "$(sed -n '/^## ⚠ The dated facts/,$p' hallucinote-server.md | grep -ic "$p")" \
+          "$(grep -ic "$p" hallucinote-server-structured.md)"
+      done
+
+  Reading 2026-09-18 — body 0 for all seven; structured 7 / 2 / 1 / 2 / 2 / 1 / 1 respectively.
+- **Three rules were re-filed to better layers than the structured capture gave them** — "schema in
+  one module imported by both halves" and "an action-surface change is a fan-out edit" moved L4→L2,
+  and "a version mismatch has three causes" moved L4→L3. Those calls look right and are worth
+  keeping.
+
+**So: author from the structured twin for CONTENT; read this file for PHRASING and for its layer
+assignments.** The earlier guidance that this is "the better read" holds and is not the same claim
+as "the complete one."
+
+Read ~110–120k words.
 
 ## ⚠ The dated facts that change other people's designs
 

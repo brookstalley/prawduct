@@ -20,6 +20,22 @@ reconciled here.
 **Unverified.** Every `file:line`, symbol and number below is an agent's claim about another repo;
 none has been resolved against hallucinote's tree from here. See README.md.
 
+**Amended 2026-09-18 — the relationship above is right and incomplete.** "Neither supersedes the
+other" is true, but it reads as though the two files hold the same rules in two renderings. They do
+not. The compressed file is **missing roughly eight rules** that are here, including the entire L0
+observability rule; and it **re-files three rules to better layers** than this capture gave them
+(schema-in-one-module and action-surface-fan-out L4→L2, three-causes-of-a-version-mismatch L4→L3).
+So: author from **this** file for content, read **that** one for phrasing and layer assignment. The
+gap list and its probe command are in that file's header.
+
+**Verification in flight (2026-09-18).** An audit resolving every `PROVENANCE:` line below against
+hallucinote's tree is being written to `hallucinote-verification.md` — per-rule verdicts
+(RESOLVED / MOVED / NOT-FOUND / CONTRADICTED / UNVERIFIABLE), a constants audit, and a durable
+anchor for each citation stated as a bare line number. **Until that file exists and is read, treat
+every citation below as an unresolved claim, and do not lift a rule into the corpus on the strength
+of its address alone.** This file is deliberately left exactly as the mining coordinator wrote it —
+it is the record under audit, so the verdicts live beside it rather than in it.
+
 ---
 
 Both miners returned; I verified their flagged claims against the tree. Findings below.
