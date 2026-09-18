@@ -295,8 +295,22 @@ rules is reported **unchecked**, never silently passed.
 
 ### 8.4 Early corroboration of the seed rules (cordyceps, 60 rules mined)
 
+> **Two corrections from the 2026-09-18 re-mine of cordyceps** (`mcp-mining/cordyceps-server-structured.md`,
+> 95 rules, all addressed at `develop` `f07eb797`):
+> - **The 49% reduction is real and re-derivable — 1636 → 835 lines at commit `02b800d`, 49.0%.** The
+>   "before" figure stated below as 1648 is wrong, and **the corpus has since grown back to 1361 at
+>   HEAD, 63% of the way**. A one-off reduction is not a steady state, which changes what the number
+>   is evidence *for*: the consolidation worked and nothing holds it.
+> - **That reduction did not ship in v1.4.5**, whose change-log claims it. The commit landed 21s after
+>   the release commit and is not an ancestor of the tag; it first shipped in v1.4.6. Owed back to
+>   cordyceps as drift (`mcp-mining/drift-owed-upstream.md`).
+>
+> The re-mine also found the first pass had missed a whole layer: it captured liveness *detection*
+> thoroughly and missed the *prevention* layer beneath it (the deferred host refresh that is the root
+> of the incident the detection rules describe) — 27 new rules, 0 unaddressed.
+
 - **R1 confirmed and bounded with numbers.** Cordyceps runs 7 tools / 100+ actions with a mandatory
-  `action='help'`, measured at a **49% token reduction** (1648 → 835 lines) on its docs. The cost is
+  `action='help'`, measured at a **49% token reduction** on its docs. The cost is
   also measurable in its tree: `gh_canvas` declares **37** parameters and `rhino_render` **43**, all
   optional, in one `inputSchema`. The real saving is moving per-action detail out of `tools/list`
   into a runtime `help` call — which is exactly the owner's "the help action pays for the collapse."

@@ -17,11 +17,11 @@ layer happens after all five miners report.
 
 | Source | Rules (headline) | Status |
 |---|---|---|
-| cordyceps (C# server, wide production use) | 60 | compressed capture, unaddressed; **re-mine dispatched 2026-09-18** |
-| bankmachine (Python server, measured evidence trail) | 84 | compressed capture, unaddressed; **re-mine dispatched 2026-09-18** |
+| cordyceps (C# server, wide production use) | 60 | **re-mined 2026-09-18 → `cordyceps-server-structured.md`, 95 rules, all addressed** (verified: 0 UNADDRESSED, 0 bare line-number citations, all 7 schema fields on all 95) |
+| bankmachine (Python server, measured evidence trail) | 84 | **re-mined 2026-09-18 → `bankmachine-server-structured.md`, 147 rules, all addressed** (verified: 0 UNADDRESSED, all 7 fields on all 147; marker normalized at integration) |
 | discodon (client/bridge — consumer's view of arbitrary servers) | 48 | compressed capture, unaddressed; **re-mine dispatched 2026-09-18** |
 | prawduct (own research + delivery-surface map) | ~15 | in `../mcp-knowledge-corpus-design.md` §8 |
-| hallucinote (Python server) | 92 | two renderings; addressed twin in `hallucinote-server-structured.md`; **citation audit dispatched 2026-09-18** |
+| hallucinote (Python server) | 92 | two renderings; addressed twin in `hallucinote-server-structured.md`; **audited 2026-09-18 → `hallucinote-verification.md`** — 106 verdicts: 95 RESOLVED · 7 MOVED · 0 NOT-FOUND · 2 CONTRADICTED · 2 UNVERIFIABLE |
 
 Every number in the middle column is the headline its own mining agent wrote and **none re-derives** —
 see the next section. They are kept only because removing them would hide the discrepancy.
@@ -120,3 +120,49 @@ re-files 3 rules to better layers. **Author from the structured one for content;
 one for phrasing and layer assignment.** Each file's header carries the gap list and its probe
 command. The compressed file's own per-layer counts were also wrong against its body — every row but
 L0 — which is recorded in its header rather than here.
+
+## The next debt: a capture's QUOTED EVIDENCE drifts, and it drifts toward the generalization
+
+Found 2026-09-18 by the hallucinote citation audit, and it is a finding about **mining as a method**,
+not about one file.
+
+The audit extracted every `*"..."*` fragment from every `EVIDENCE:` field — 202 of them after
+splitting on the capture's own ellipses — normalised them and searched the whole tree. **170 of 202
+matched exactly. Nineteen quotations are not what the tree says, and one appears nowhere in it.**
+Every address resolved (0 NOT-FOUND); the defects were of *wording*, which no path check can see.
+
+**The direction is the finding.** The two edits that matter both drift **toward the generalisation
+the corpus wants**:
+
+- one rewrote an error-model rationale from *"its quality directly determines"* to *"its **structure**
+  decides"*;
+- one substituted *"the host"* for the tree's *"Live"* — in a corpus whose subject is the host/server
+  boundary.
+
+Both read *better* as corpus material than the source does. That is exactly why nobody re-checks
+them: a paraphrase that sharpens a rule is invisible to a reader looking for errors, and it
+launders a specific observation into a general claim the source never made. `core.md`'s
+transcription rule names the mechanism (*its identifiers are the part that silently degrades — a
+paraphrase reads exactly like a faithful copy*); this adds the direction, and the direction is what
+makes it undetectable.
+
+**So a quotation in an `EVIDENCE:` field is a claim, exactly like a `file:line`.** The schema's
+PROVENANCE line invites a reader to believe the quote was checked because the address was.
+
+### What is owed, and the cheap way to pay it
+
+`cordyceps-server-structured.md` (95 rules) and `bankmachine-server-structured.md` (147) have had
+their **addresses** verified as they were written, and their **quotations not at all**.
+`discodon-consumer-structured.md` inherits the same debt.
+
+This does not need an agent. The audit's instrument is mechanical and is described in
+`hallucinote-verification.md` § *What was done*: extract the `*"..."*` runs, normalise whitespace,
+case and trailing punctuation, split on ellipses, search the tree, and binary-search the longest
+matching prefix so a divergence **point** is located rather than an absence merely reported. Two
+controls make it evidence rather than reassurance, and both are worth copying: **a nonsense string
+must return zero** (the search is not matching everything) and **a large known-good set must return
+hits** (it is not dead).
+
+Note what the instrument still cannot see, stated in that file rather than glossed: a quotation
+*stitched* from two non-adjacent sentences with no ellipsis marked shows up as a prefix match and has
+to be read. So the script narrows the set a human must read; it does not empty it.
