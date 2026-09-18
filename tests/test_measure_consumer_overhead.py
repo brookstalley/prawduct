@@ -20,14 +20,15 @@ other's name, is the hazard the clock was added to retire.
 
 from __future__ import annotations
 
-import functools
 import importlib.util
+import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-
-_TOOL = Path(__file__).resolve().parent.parent / "tools" / "measure-consumer-overhead.py"
+_TOOL = REPO_ROOT / "tools" / "measure-consumer-overhead.py"
 
 
 def _load():
@@ -124,32 +125,76 @@ class TestTheTwoMeasurementsStayApart:
         assert tool._clock_columns(1800.0, 2)["pr_clock_minutes_per_review"] == 15.0
 
 
-@functools.lru_cache(maxsize=1)
-def _built_report() -> dict:
-    """One real `build_report` per test session.
+def _fixture_repo(root: Path) -> Path:
+    """A repo that is its own product AND its own framework.
 
-    It walks this repo's git log and ledger, which is seconds rather than
-    milliseconds — paid once here rather than once per test.
+    Hermetic on purpose. The first version of these tests pointed `build_report`
+    at this checkout, and `.prawduct/.governance-ledger.jsonl` is GITIGNORED — so
+    on a fresh clone `build_report` hits its own `sys.exit("no governance
+    ledger")` and every renderer test dies. CI runs a bare `python -m pytest` on
+    exactly that clone, so the local green was evidence about one machine.
+
+    Skipping when the ledger is absent would be worse than the bug: the test
+    would be red only where it can already see, and green in the one environment
+    that cannot. So the fixture brings its own ledger, its own commits and its
+    own release tags.
     """
-    return tool.build_report(
-        REPO_ROOT, REPO_ROOT,
-        tool._parse_instant("2026-01-01"),
-        want_prs=False,
-        until_override=tool._parse_instant("2026-09-18"),
+    repo = root / "repo"
+    (repo / ".prawduct").mkdir(parents=True)
+    env = dict(
+        os.environ,
+        GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t",
+        GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t",
+        GIT_AUTHOR_DATE="2026-05-01T00:00:00", GIT_COMMITTER_DATE="2026-05-01T00:00:00",
     )
 
+    def git(*args, when: str | None = None):
+        e = dict(env)
+        if when:
+            e["GIT_AUTHOR_DATE"] = e["GIT_COMMITTER_DATE"] = when
+        return subprocess.run(["git", *args], cwd=repo, capture_output=True, env=e, text=True)
 
-def _report(**row_overrides) -> dict:
-    """A `report` built by the tool's OWN producer, then perturbed.
+    def event(kind: str, ts: str, duration: int, dispatched_at: str | None = None) -> dict:
+        row = {
+            "schema_version": 1, "event": kind, "ts": ts,
+            "duration_seconds": duration, "project": "p", "scope": "s", "chunk": None,
+            "actor": {"role": "pr" if kind == "review.pr" else "critic", "model": "opus"},
+            "git": {"head": "a" * 40, "base": "main"},
+            "review": {"mode": "pr", "files_reviewed": ["a.py"], "findings": []},
+        }
+        if dispatched_at:
+            row["dispatched_at"] = dispatched_at
+        return row
+
+    git("init", "-q", "-b", "main")
+    (repo / ".prawduct" / ".governance-ledger.jsonl").write_text(
+        "\n".join(json.dumps(e) for e in [
+            event("review.pr", "2026-05-02T12:00:00Z", 600),
+            event("review.critic", "2026-05-02T13:00:00Z", 300),
+        ]) + "\n"
+    )
+    (repo / "app.py").write_text("print(1)\n")
+    git("add", "-A"); git("commit", "-qm", "feat: a thing"); git("tag", "v1.0.0")
+    (repo / "b.py").write_text("print(2)\n")
+    git("add", "-A", when="2026-05-10T00:00:00")
+    git("commit", "-qm", "feat: two", when="2026-05-10T00:00:00")
+    git("tag", "v1.1.0", when="2026-05-10T00:00:00")
+    return repo
+
+
+def _report(tmp_path: Path, **row_overrides) -> dict:
+    """A report built by the tool's OWN producer over the hermetic fixture.
 
     Hand-authoring this dict encodes a belief about the row's shape rather than
-    the shape itself — the first attempt invented `hours` and `lines_written`
-    where the real keys are `engaged_hours` and a nested `lines` map, so it
-    could only ever have confirmed what its author already thought. Taking the
-    row from `build_report` against this repo means the renderer is tested
-    against the artifact it actually receives.
+    the shape itself — an earlier attempt invented `hours` and `lines_written`
+    where the real keys are `engaged_hours` and a nested `lines` map, so it could
+    only ever have confirmed what its author already thought.
     """
-    report = _built_report()
+    repo = _fixture_repo(tmp_path)
+    report = tool.build_report(
+        repo, repo, tool._parse_instant("2026-05-01"),
+        want_prs=False, until_override=tool._parse_instant("2026-06-01"),
+    )
     assert report["windows"], "build_report produced no windows — the test would be vacuous"
     row = dict(report["windows"][-1])
     row.update(row_overrides)
@@ -200,20 +245,32 @@ class TestTheHumanRenderer:
     """The default output — the surface a reader actually meets. Every assertion
     here exists because the `--json`-only tests above could not see it."""
 
-    def test_the_clock_columns_reach_the_default_output(self, capsys):
-        """The fix's own promise. The trio was `--json`-only while the tool's
-        docstring told readers to consult it."""
-        tool.render(_report(pr_clock_runs=3, pr_clock_hours=0.5,
-                            pr_clock_minutes_per_review=10.0))
+    def test_the_clock_columns_reach_the_default_output(self, tmp_path, capsys):
+        """The fix's own promise, and the POSITIVE half of the dash control.
+
+        A window the clock reached prints its figure in the clock column. Paired
+        with the dash test below, this is what makes either one a control: a
+        renderer that dashed the whole trio would pass the dash test alone, and
+        one that printed 0.0 everywhere would pass this one alone.
+
+        The earlier version of this pair used `min/review != "—"` as its
+        positive — but that column is printed `{...:12.1f}` with no `None`
+        branch, so it can never be a dash and the assertion could not fail.
+        """
+        report = _report(tmp_path, pr_clock_runs=3, pr_clock_hours=0.5,
+                         pr_clock_minutes_per_review=10.0)
+        series = report["windows"][0]["series"]
+        tool.render(report)
         out = capsys.readouterr().out
         assert "clk runs" in out
         assert "clk min/rev" in out
-        assert "10.0" in out
+        assert _column(out, "C. PR LAYER", series, "clk min/rev") == "10.0"
+        assert _column(out, "C. PR LAYER", series, "clk runs") == "3"
 
-    def test_a_window_the_clock_never_reached_renders_a_dash_not_a_zero(self, capsys):
+    def test_a_window_the_clock_never_reached_renders_a_dash_not_a_zero(self, tmp_path, capsys):
         """A 0.0 in the minutes column would read as reviews that took no time,
         rather than as a window the clock had not reached."""
-        report = _report()
+        report = _report(tmp_path)
         series = report["windows"][0]["series"]
         tool.render(report)
         # Scoped to the PR-layer section: EVERY section prints a row starting
@@ -223,16 +280,13 @@ class TestTheHumanRenderer:
         # The CLOCK column specifically — not "is there a dash anywhere in the
         # row", which every unfetched `--prs` run satisfies for free.
         assert _column(out, "C. PR LAYER", series, "clk min/rev") == "—"
-        # Paired positive: a window the clock DID reach prints its figure, so
-        # this cannot be satisfied by a renderer that dashes everything.
-        assert _column(out, "C. PR LAYER", series, "min/review") != "—"
 
-    def test_every_rule_line_matches_the_header_above_it(self, capsys):
+    def test_every_rule_line_matches_the_header_above_it(self, tmp_path, capsys):
         """Red if any section's rule is a hand-counted second copy of its
         header's width. Section C drifted to two characters short the moment two
         columns were added, and no test had ever run this function.
         """
-        tool.render(_report())
+        tool.render(_report(tmp_path, ))
         lines = capsys.readouterr().out.splitlines()
         rules = [(i, ln) for i, ln in enumerate(lines) if set(ln) == {"-"} and len(ln) > 10]
         assert rules, "found no rule lines — the test would be vacuous"
@@ -242,9 +296,9 @@ class TestTheHumanRenderer:
                 f"rule is {len(rule)} chars under a {len(header)}-char header: {header!r}"
             )
 
-    def test_the_pr_section_says_which_population_its_hours_are(self, capsys):
+    def test_the_pr_section_says_which_population_its_hours_are(self, tmp_path, capsys):
         """Section B names its population ("the ledger's self-report"); C did
         not, so its `hours` column was unlabelled beside a clock column."""
-        tool.render(_report())
+        tool.render(_report(tmp_path, ))
         out = capsys.readouterr().out
         assert "self-rep" in out
