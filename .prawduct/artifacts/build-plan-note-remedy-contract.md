@@ -86,51 +86,64 @@ where that question belongs. Out of scope here, deliberately.
 
 ## Status
 
-- [ ] Chunk 01: The instrument — an era-split over the review ledger, with its own positive control
+- [ ] Chunk 01: The instrument — an era split and a remedy dimension on `review-stats`
 - [ ] Chunk 02: The NOTE contract — one home, three references, and the ratio that grades it
 
 ---
 
-## Chunk 01: The instrument — an era-split over the review ledger, with its own positive control
+## Chunk 01: The instrument — an era split and a remedy dimension on `review-stats`
 
 **Type:** code
-**Description:** Ship `tools/review-era-split.py`: classify `review.critic` ledger events into eras
-around a given date and report, per era, the verify-resolutions output mix, the wall clock spent on
-verify rounds following a zero-blocking review, and the share of findings carrying a remedy broken
-down by severity. This is the emission `nonfunctional-requirements.md` requires of any added
-control, and it is the only thing that can grade Chunk 02.
+**Description:** Extend `review-stats` with `--since` / `--until` window bounds and a per-severity
+**remedy dimension** (how many findings carry a non-empty `recommendation`, and the median word
+count). This is the emission `nonfunctional-requirements.md` requires of any added control, and it
+is the only thing that can grade Chunk 02.
+
+**Route changed from the plan as first written, and why.** This chunk was drafted as a new
+`tools/review-era-split.py`, modelled on `tools/pr-review-yield.py`. Reading the surfaces first
+showed that wrong on the plan's own `governed_by` terms: `review-stats` already aggregates B/W/N,
+actionable share, observations and durations by role × model × mode × scope × stage, over the same
+ledger. A second tool would have been a second home for every one of those facts — the exact norm
+this plan disposes of under `architecture.md`. What `review-stats` genuinely lacks is a **date
+window** and **any notion of a remedy**; those two gaps are what this chunk fills. Recorded here
+rather than silently taken, per `architecture.md` *goals and verification bind; prescribed method is
+advice*.
 
 **Why it leads.** Chunk 02 changes prose whose effect is a rate. A rate measured only after the
-change has no before, and a claim with no before is unfalsifiable — the failure mode the governing
-norm names explicitly.
+change has no before, and a claim with no before is unfalsifiable.
 
 **Deliverables:**
-- new `tools/review-era-split.py` — stdlib only, reads `.prawduct/.governance-ledger.jsonl`, takes
-  an optional ledger path and cut date.
-- new `tests/test_review_era_split.py`.
+- `plugin/lib/telemetry.py` — window filtering and the remedy dimension; `REPORT_SCHEMA_VERSION`
+  bumped (6 → 7).
+- `plugin/bin/prawduct-hook` — the `review-stats` usage string and arg handling.
+- new `tests/test_telemetry.py` — the module has **no test file today**, which this chunk does not
+  get to inherit as an excuse for testing only its own delta.
 
 **Done when:**
-1. The tool prints the mode histogram **before** any classification, and exits non-zero on an empty
-   or unparseable corpus rather than reporting clean zeros. A scan that cannot return non-zero has
-   measured nothing, and this tool's own first draft did exactly that.
-2. Tests pin, on a hand-built fixture ledger: the era split lands each event on the correct side of
-   the cut; a finding with an empty/whitespace `recommendation` counts as *without* a remedy; an
-   event whose `mode` is an unknown string is counted and not silently dropped; and the
-   zero-blocking-predecessor classification keys on `(scope, chunk)` order.
-3. **A control that must fail:** a fixture whose every finding carries a remedy and one whose none
-   do produce *different* reported rates. Assert the difference, not the presence of a number — a
-   rate assertion that passes on both is the container-assertion defect.
-4. Run against the real ledger and record the numbers in the chunk close. Real-corpus run is
-   required: a predicate whose job is to classify real artifacts needs at least one test that reads
-   the real artifact.
-5. `/prawduct:critic` per the plan's inference (short plan — the boundary cumulative covers it).
+1. `--since` / `--until` accept the same forms `tools/pr-review-yield.py` already accepts, and the
+   five window cases its `TestReport` pins are **ported before new ones are written**: a date-only
+   `--until` covers that whole day, a month-only one covers that whole month, a zoneless bound
+   matches the same instant in UTC, a full timestamp is used as given, and the bounds actually
+   filter. Citing that tool as precedent obliges copying its test file, not just its design.
+2. The remedy dimension counts a finding whose `recommendation` is absent, empty, or whitespace as
+   **without** a remedy, and this is pinned. That distinction is the whole measurement.
+3. **A control that must fail:** two fixtures identical but for remedy presence report *different*
+   rates. Assert the difference, not that a number is present — a rate assertion that passes on
+   both measured nothing.
+4. Absence stays distinguishable from zero, matching how `observations` is already handled in
+   `_extract_row`: a corpus with no remedy data reports null, never 0%, or the change reads as a
+   narrowing that never fired.
+5. `--json` gains keys and repurposes none; existing keys keep their meanings (`api-contract.md`,
+   additive-first). A test pins that an existing key survives the bump.
+6. **Real-corpus reconciliation:** run against `.prawduct/.governance-ledger.jsonl` with
+   `--since 2026-08-04` and reproduce the verify-resolutions totals recorded on issue #829
+   (99 blocking / 470 non-blocking across both eras; 26 non-blocking post-cut). A tool that cannot
+   reproduce a number already written down is wrong about something.
+7. `/prawduct:critic` per inference (short plan — the boundary cumulative covers it).
 
-**Verification beyond tests:** run it against `.prawduct/.governance-ledger.jsonl` and reconcile the
-pre-2026-08-04 + post-2026-08-04 verify-resolutions finding totals against the figures recorded on
-issue #829 (99 blocking / 470 non-blocking). A tool that cannot reproduce a number already written
-down is wrong about something.
-
----
+**Verification beyond tests:** run `review-stats --since 2026-08-04` and `--until 2026-08-04` and
+confirm the two partitions sum to the unwindowed totals. A window that drops or double-counts events
+is invisible in any single run.
 
 ## Chunk 02: The NOTE contract — one home, three references, and the ratio that grades it
 
