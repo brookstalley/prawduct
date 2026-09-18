@@ -330,6 +330,10 @@ rules is reported **unchecked**, never silently passed.
 
 ## 9. RULING (knowledge-may-be-routed-into-a-consumer-repo), 2026-09-17
 
+> **§13 (2026-09-18) rules on the route below: the pointer is approved as the STARTING shape**, with
+> the owner's explicit reservation that it may not be sufficient. §13.1 shows the pointer this section
+> describes is the *globbed* variant, which cannot reach L0's 34 rules by construction.
+>
 > **§12 (2026-09-18) found a parent ruling this section does not cite** — #343's owner ruling of
 > 2026-08-01 already settled that a framework corpus is read at query time from the plugin, stays a
 > distinct store, and is surfaced labelled by origin. The conclusion below **stands and is
@@ -667,10 +671,10 @@ it searched the subject (MCP, knowledge packs) and not the mechanism (a plugin-s
 **#343's ruling (b) and (c) are not addressed by §9 at all.** Route (c) scaffolds a framework-authored
 pointer file *into* `.claude/rules/learnings/` — which is the product's own learnings store. So:
 
-1. **Does a framework-scaffolded pointer inside the product's own learnings directory respect the
-   store boundary (b) requires?** It carries no framework *content*, which argues yes. It is
-   nonetheless a file the framework wrote into the product's store, which is the shape (b) exists to
-   forbid for the corpus. The distinction is real but it is the owner's to draw, not mine.
+1. ~~**Does a framework-scaffolded pointer inside the product's own learnings directory respect the
+   store boundary (b) requires?**~~ **ANSWERED 2026-09-18 — see §13.** Owner ruled yes, with the
+   explicit reservation that it may not be sufficient. §13.1 shows why that reservation is
+   well-founded: the pointer §9 describes cannot reach L0's 34 rules by construction.
 2. **How is the pointer labelled by origin (c)?** §9's mechanism constraints require "a distinct
    filename, so it cannot collide with a product's own area file" — that is collision-avoidance, not
    origin-labelling. They are different requirements and only one is currently specified.
@@ -681,7 +685,7 @@ pointer file *into* `.claude/rules/learnings/` — which is the product's own le
 
 **A governance change cannot supply its own authority, and this is a ruling amending the scope of an
 earlier ruling. It is recorded here and owed an answer before stage 2 is designed, not resolved by
-this artifact.**
+this artifact.** — *Question 1 answered 2026-09-18 (§13); questions 2 and 3 still owed.*
 
 ### 12.4 The convergence worth taking
 
@@ -695,3 +699,72 @@ the view format's own rules). So the MCP corpus *is* the hand-authored path #343
 to `ready`, and stage 2's "plugin-shipped path-routed knowledge packs" is #343's delivery mechanism
 generalized beyond learnings. **Stage 2 should reconcile with #343's ruling rather than re-answer
 it**, and the two items should be built as one design or explicitly separated with a stated reason.
+
+---
+
+## 13. RULING (the-pointer-is-the-starting-shape), 2026-09-18
+
+**Owner ruled on §12.3 question 1: yes, the pointer is good** — a framework-scaffolded pointer file
+inside a consumer's `.claude/rules/learnings/` respects the store boundary #343's ruling (b)
+requires, because it carries a routing declaration and no framework content.
+
+**The ruling carries an explicit reservation, and the reservation is part of it, not a hedge:**
+*"I am not sure it's sufficient but let's start there."*
+
+So this is a decision to **begin** with the pointer, taken in the open expectation that it may not
+reach far enough. Recording it without the reservation would convert a provisional start into a
+settled answer, which is the shape a later reader acts on.
+
+**Questions 2 and 3 of §12.3 are NOT answered by this ruling** — how the pointer is labelled by
+origin, and whether build-time auto-load of a pointer is intended given the corpus itself was ruled
+query-time. They stay open.
+
+### 13.1 The reservation is well-founded, and the mechanism says exactly why
+
+Verified against `plugin/lib/learnings_files.py` rather than against §2.2's summary of it:
+
+> *"`core.md` carries no `paths:` frontmatter and is in context from launch; every `<area>.md`
+> declares `paths:` globs and arrives when Claude **reads a file those globs match**."*
+
+And, decisively, from `parse_frontmatter`'s contract:
+
+> *"It is empty for a file with no frontmatter and for one whose frontmatter declares no `paths:`;
+> **both cases mean the same thing to the harness, which loads such a file unconditionally**."*
+
+**Always-loaded is a property of an absent `paths:` key, not of the filename `core.md`.** So route (c)
+is not one mechanism. It is two, and §9 described only the first:
+
+| Shape | Fires when | Reaches | Costs |
+|---|---|---|---|
+| **(c-globbed)** — pointer with `paths:` | someone reads a file matching the globs | build-time work inside an existing MCP server | nothing when it does not match |
+| **(c-always)** — pointer with no `paths:` | every session, unconditionally | design-time, including L0 | a fixed ~10 lines in **every** governed repo forever, MCP or not |
+
+**The gap is specific and countable.** L0 is *"whether to build a server at all; what to plumb MCP
+into"* — **34 rules** in the addressed corpus. Those fire at a moment when there is no server file in
+the repo to match a glob against, so **(c-globbed) cannot reach them, by construction rather than by
+tuning.** A second, softer instance: §9's own mechanism constraints already note that `record_lint`
+flags an area file whose globs match nothing tracked, so a globbed pointer in a repo with no MCP
+server trips a lint — the same fact seen from the other side.
+
+### 13.2 The honest coverage map — no single route covers it
+
+Route (b) from §8.1 (the Critic consulting the corpus when the diff is MCP-shaped) needs **no
+amendment at all** and was never in competition with (c); it covers a third moment.
+
+| Moment | Route that reaches it |
+|---|---|
+| **Design-time / L0** — before any server file exists | **(c-always)**, or a skill the user invokes |
+| **Build-time** — editing an existing server's files | **(c-globbed)** |
+| **Review-time** — the diff is MCP-shaped | **(b)**, already conforming |
+
+They compose rather than compete, and that is the sufficiency answer in one line: **the pointer as
+§9 describes it is (c-globbed), which covers the middle row only.** Starting there is a coherent
+decision — it is the cheapest of the three and the one the ruling now authorises — and what makes it
+provisional is that the corpus's most reusable layer is in the row it cannot reach.
+
+### 13.3 What this does not decide
+
+Stage 2 is not designed here. Choosing between (c-globbed) and (c-always) is a real cost decision
+(a permanent per-session charge in every repo against unreachable design-time rules) and it belongs
+in stage 2's requirements alongside §12.3's open questions 2 and 3 and #343's own reconciliation.
+Recorded so the next reader inherits the fork rather than re-deriving it.
