@@ -66,9 +66,9 @@ measurement.
 
 ## Status
 
-- [ ] Chunk 01: The data plane — a measured dispatch clock and one deterministic payload call
+- [x] Chunk 01: The data plane — a measured dispatch clock and one deterministic payload call
 - [ ] Chunk 02: The protocol — new goals, a new reader, and the loop closed
-Context: Plan authored 2026-09-18 from `pr-review-payload-discovery.md`, on `feat/pr-review-payload` cut from `develop` at 996766e5. Re-partitioned from five chunks to two on 2026-09-18 (see § Partition decision). Nothing built yet. Next: Chunk 01.
+Context: Plan authored 2026-09-18 from `pr-review-payload-discovery.md`, on `feat/pr-review-payload` cut from `develop` at 996766e5. Re-partitioned from five chunks to two on 2026-09-18 (see § Partition decision). Chunk 01 built and reviewed (chunk review plus two verify rounds, all clean). Next: Chunk 02, whose Done-when step 0 is the `verify-api` probe.
 
 ### Partition decision
 
@@ -337,6 +337,14 @@ while the instruction has no effect. Two verifications beyond the suite:
   review; the measured duration of this plan's own PR review is recorded beside the 420s pre-change
   median, including if it missed the projection; `#652` and `#678` are updated through
   `/prawduct:backlog`.
+- **Carried in from Chunk 01's reviews** (accepted there, not dropped — they ride this chunk's
+  commit because it is being made anyway, which buys no extra round):
+  1. `tools/measure-consumer-overhead.py` has coverage only where Chunk 01 touched it. Its
+     commit-density attribution, window logic and PR fetching remain untested. Not this chunk's
+     subject; raise it with the owner rather than letting it sit only here.
+  2. The branch's cumulative gate is deliberately left uncovered at the end of Chunk 01 — this
+     chunk's own `cumulative` review spans merge-base..HEAD and closes it. `check-cumulative-critic`
+     reporting `uncovered` before that review is expected, not a defect to chase with another round.
 - **Done when:**
   0. verify-api — confirm `omitClaudeMd` is honored for a **plugin-supplied** agent definition, by
      reading the current Claude Code subagent documentation AND dispatching one throwaway agent

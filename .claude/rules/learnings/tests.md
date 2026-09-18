@@ -224,3 +224,18 @@ The cost was one wasted five-minute suite run at a PR boundary. The generalisabl
 governance step names a hook that produces an artifact, the hook is the entry point, not a
 formality wrapped around a command you would have run anyway. Reaching for the familiar raw command
 first means the hook has to either re-run it or reject what you brought back.
+
+### An assertion against a CONTAINER passes on any part of it — bind it to the smallest span carrying the behaviour, and pair it with a control that can actually fail. Four in one chunk, none found by reading: `"unreadable" in stdout` matched pytest's `tmp_path`, which is NAMED AFTER THE TEST and appears in the path the command prints; `line.startswith(series)` bound to the first section's row because every section prints one row per window; `"—" in row` matched two neighbouring columns that are dashes on every run without `--prs`; and `min/review != "—"` was offered as the positive control for a dash on a column printed `{:12.1f}` with no `None` branch, so it could not fail. The tell is that the assertion names a property but the subject you search is a container the property does not own — whole stdout, a whole row, a whole file. Slice by the header's own span, grep the line that carries the behaviour, and make the control a case where the value must DIFFER, not merely be present
+
+The first was caught by a mutation sweep that reported a survivor; three of the four were caught by
+mutation or review and none by re-reading the assertion, because each one reads as obviously correct
+— `assert "unreadable" in r.stdout` in a test called `test_an_unreadable_mark_...` is exactly what
+you meant to write, and pytest's tmpdir naming makes it true for free.
+
+**The sharpest sub-case is the environment one.** A fixture built from the REAL repo is not hermetic
+if anything it reads is gitignored: `build_report` opens with `sys.exit("no governance ledger")` and
+`.prawduct/.governance-ledger.jsonl` is untracked, so four renderer tests would have died on the
+fresh clone CI runs while passing on the machine that wrote them. The remedy is NOT to skip when the
+file is absent — that leaves the test red only where it can already see and green in the one
+environment that cannot. Give the fixture its own copy of everything it reads, then PROVE it by
+hiding the real file and re-running.

@@ -128,16 +128,17 @@ class TestTheTwoMeasurementsStayApart:
 def _fixture_repo(root: Path) -> Path:
     """A repo that is its own product AND its own framework.
 
-    Hermetic on purpose. The first version of these tests pointed `build_report`
-    at this checkout, and `.prawduct/.governance-ledger.jsonl` is GITIGNORED — so
-    on a fresh clone `build_report` hits its own `sys.exit("no governance
-    ledger")` and every renderer test dies. CI runs a bare `python -m pytest` on
-    exactly that clone, so the local green was evidence about one machine.
+    Hermetic because `build_report` reads a GITIGNORED file:
+    `.prawduct/.governance-ledger.jsonl` is untracked, and without it the
+    function hits its own `sys.exit("no governance ledger")`. CI runs a bare
+    `python -m pytest` on a fresh clone, where that file does not exist, so any
+    fixture pointing at the real checkout passes only on a machine that has
+    already been used.
 
-    Skipping when the ledger is absent would be worse than the bug: the test
-    would be red only where it can already see, and green in the one environment
-    that cannot. So the fixture brings its own ledger, its own commits and its
-    own release tags.
+    Skipping when the ledger is absent is the wrong remedy: it leaves the test
+    red only where it can already see and green in the one environment that
+    cannot. So the fixture brings its own ledger, commits and release tags, and
+    is its own framework repo — nothing reaches outside `tmp_path`.
     """
     repo = root / "repo"
     (repo / ".prawduct").mkdir(parents=True)
@@ -185,10 +186,10 @@ def _fixture_repo(root: Path) -> Path:
 def _report(tmp_path: Path, **row_overrides) -> dict:
     """A report built by the tool's OWN producer over the hermetic fixture.
 
-    Hand-authoring this dict encodes a belief about the row's shape rather than
-    the shape itself — an earlier attempt invented `hours` and `lines_written`
-    where the real keys are `engaged_hours` and a nested `lines` map, so it could
-    only ever have confirmed what its author already thought.
+    Built by the producer rather than hand-authored: a dict written out here
+    would encode a belief about the row's shape rather than the shape itself, and
+    could only ever confirm that belief. The real keys are `engaged_hours` and a
+    nested `lines` map, which is not what they look like from memory.
     """
     repo = _fixture_repo(tmp_path)
     report = tool.build_report(
@@ -253,9 +254,9 @@ class TestTheHumanRenderer:
         renderer that dashed the whole trio would pass the dash test alone, and
         one that printed 0.0 everywhere would pass this one alone.
 
-        The earlier version of this pair used `min/review != "—"` as its
-        positive — but that column is printed `{...:12.1f}` with no `None`
-        branch, so it can never be a dash and the assertion could not fail.
+        The control has to be the CLOCK column: `min/review` is printed
+        `{...:12.1f}` with no `None` branch, so asserting it is not a dash holds
+        for a renderer that dashes the entire clock trio.
         """
         report = _report(tmp_path, pr_clock_runs=3, pr_clock_hours=0.5,
                          pr_clock_minutes_per_review=10.0)
