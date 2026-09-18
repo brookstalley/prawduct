@@ -26,6 +26,9 @@ WHAT THIS INSTRUMENT CANNOT SEE, stated rather than glossed:
   formatting does not read as drift. A quotation that differs from its source ONLY in
   emphasis is therefore reported as matching. That is deliberate: the corpus is prose,
   and `**bold**` added around a true sentence is not a false claim.
+* Line-leading comment markers (`///`, `#`, `>`, `--`) are stripped from BOTH sides before
+  searching, so a quotation spanning two lines of a docstring resolves. A consequence: text
+  that is only adjacent *because* a marker was removed can now be matched as continuous.
 * It answers *does this string appear in the tree*, not *does it appear at the address
   the PROVENANCE line names*. A quote that matches somewhere else in the repo reads as
   RESOLVED here. Addresses were verified when these captures were written; this pass
@@ -84,13 +87,30 @@ SOURCES: dict[str, dict[str, object]] = {
 }
 
 RULE_MARKER = "**RULE:**"
+# LINE-INITIAL only. Splitting on the bare marker also catches it mentioned in prose —
+# these captures' headers discuss the marker itself — which shifts every rule id after
+# the header and makes citations in the report unresolvable. This regex is the same
+# anchor as the corpus's own counting command, `grep -c '^\*\*RULE:\*\*'`, so the ids
+# here and the counts recorded in `mcp-mining/README.md` cannot disagree.
+_RULE_SPLIT_RE = re.compile(r"^\*\*RULE:\*\*", re.M)
 _FIELD_RE = re.compile(r"^([A-Z][A-Z -]{2,20}):\s*(.*)$")
 _ITALIC_QUOTE_RE = re.compile(r'\*"([^"]+)"\*')
-_PLAIN_QUOTE_RE = re.compile(r'"([^"]+)"')
+# Escape-aware: these captures embed JSON (`{\"accountId\": 1}`), and a naive
+# `"([^"]+)"` terminates on the BACKSLASH-ESCAPED quote, yielding a truncated fragment
+# that ends in `\` and misses on its last character. Measured: that artifact was most of
+# what first read as tail-rewrite drift.
+_PLAIN_QUOTE_RE = re.compile(r'"((?:[^"\\]|\\.)*)"')
 _BACKTICK_RE = re.compile(r"`([^`]+)`")
 _ELLIPSIS_SPLIT_RE = re.compile(r"\s*(?:\.\.\.|…)\s*")
 _EMPHASIS_RE = re.compile(r"[*_`]")
 _WS_RE = re.compile(r"\s+")
+# Line-leading comment and continuation markers. A quotation that spans two lines of a
+# C# `///` docstring normalises to `…no liveness /// feature` unless these are stripped,
+# so the fragment misses on its last word and reads as drift. Measured: this alone
+# accounted for most of cordyceps' apparent misses — the captures quote docstrings, and
+# a docstring wraps. Stripping can only DELETE characters, so it cannot invent a match
+# that the corrupted-fragment control would not still catch.
+_LINE_MARKER_RE = re.compile(r"^[ \t]*(?:///?|#+|>+|--(?!-)|<!--|-->)[ \t]*", re.M)
 
 TEXT_SUFFIXES = {
     ".py", ".cs", ".ts", ".tsx", ".js", ".jsx", ".md", ".txt", ".json", ".yaml", ".yml",
@@ -109,9 +129,11 @@ def normalize(s: str) -> str:
     s = s.replace("’", "'").replace("‘", "'")
     s = s.replace("“", '"').replace("”", '"')
     s = s.replace("—", "-").replace("–", "-").replace("‑", "-")
+    s = s.replace('\\"', '"').replace("\\'", "'")
+    s = _LINE_MARKER_RE.sub("", s)
     s = _EMPHASIS_RE.sub("", s)
     s = _WS_RE.sub(" ", s)
-    return s.strip().strip(".,;:!?-— ").casefold()
+    return s.strip().strip(".,;:!?-— ()[]{}'\"\\").casefold()
 
 
 @dataclass
@@ -199,7 +221,7 @@ def iter_rule_blocks(text: str):
     quotations are not confined to EVIDENCE. Both were checked against the files rather
     than assumed; a field-per-line reading silently truncates cordyceps' evidence.
     """
-    blocks = text.split(RULE_MARKER)[1:]
+    blocks = _RULE_SPLIT_RE.split(text)[1:]
     for i, block in enumerate(blocks, 1):
         fields: dict[str, list[str]] = {}
         current = "RULE"
@@ -376,6 +398,20 @@ def self_test() -> int:
             print(f"  PASS corrupted fragment misses (mutated word {len(words)//2} of {len(words)})")
         else:
             print("  FAIL corrupted fragment still matched — cannot detect drift"); ok = False
+
+    # Control 4 — rule ids must agree with the corpus's own counting command, or every
+    # citation this instrument emits points at the wrong rule. Splitting on the bare
+    # marker instead of a line-initial one shifted ids past each capture's header, which
+    # is invisible in the output and fatal in a durable record.
+    for source, cfg in SOURCES.items():
+        cap = CAPTURES / str(cfg["capture"])
+        body = cap.read_text(encoding="utf-8")
+        n = len(list(iter_rule_blocks(body)))
+        canon = sum(1 for line in body.splitlines() if line.startswith(RULE_MARKER))
+        if n == canon:
+            print(f"  PASS {source} rule ids reconcile with grep -c '^**RULE:**' ({n})")
+        else:
+            print(f"  FAIL {source} rule-block count {n} != canonical {canon}"); ok = False
 
     print("self-test:", "PASS" if ok else "FAIL")
     return 0 if ok else 1

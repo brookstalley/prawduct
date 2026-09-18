@@ -1800,7 +1800,7 @@ EVIDENCE: measured — `### Rhino Package Manager (recommended)` is three steps 
 *"The Package Manager downloads the plugin, places it in the right folder, and unblocks it for you —
 and future updates are one click."* `### Manual install` then carries the step the package manager
 absorbs, per OS: *"Windows: right-click → Properties → check "Unblock""* and *"macOS: clear the
-quarantine flag (e.g. `xattr -dr com.apple.quarantine <path>`)"*. The scoping is deliberate:
+quarantine flag (e.g. `xattr -dr com.apple.quarantine <path-to-Cordyceps.gha>`)"*. The scoping is deliberate:
 *"Clarified that file-unblocking (Windows) / quarantine-clearing (macOS) is only needed for manual
 installs."*
 PROVENANCE: `README.md` `## Installation`; `CHANGELOG.md` `## [1.5.0]` → `### Changed` →

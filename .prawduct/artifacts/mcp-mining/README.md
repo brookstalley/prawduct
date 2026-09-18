@@ -121,52 +121,46 @@ one for phrasing and layer assignment.** Each file's header carries the gap list
 command. The compressed file's own per-layer counts were also wrong against its body — every row but
 L0 — which is recorded in its header rather than here.
 
-## The next debt: a capture's QUOTED EVIDENCE drifts, and it drifts toward the generalization
+## PAID 2026-09-18: the quoted-evidence audit — and the recipe this section recorded was wrong
 
-Found 2026-09-18 by the hallucinote citation audit, and it is a finding about **mining as a method**,
-not about one file.
+Found by the hallucinote citation audit, and it is a finding about **mining as a method**, not about
+one file: a capture's quoted evidence drifts, and it drifts *toward the generalisation the corpus
+wants*. Of 202 quoted fragments there, 170 matched the tree exactly, **19 do not and 1 appears
+nowhere** — with every address resolving, so no path check can see it. The two that matter rewrote
+*"its quality directly determines"* to *"its **structure** decides"*, and substituted *"the host"*
+for the tree's *"Live"*. Both read *better* as corpus material than the source does, which is why
+nobody re-checks them. **So a quotation in an `EVIDENCE:` field is a claim, exactly like a
+`file:line`** — the schema's `PROVENANCE:` line invites a reader to believe the quote was checked
+because the address was.
 
-The audit extracted every `*"..."*` fragment from every `EVIDENCE:` field — 202 of them after
-splitting on the capture's own ellipses — normalised them and searched the whole tree. **170 of 202
-matched exactly. Nineteen quotations are not what the tree says, and one appears nowhere in it.**
-Every address resolved (0 NOT-FOUND); the defects were of *wording*, which no path check can see.
+**cordyceps, bankmachine and discodon have now been audited. Results, method, what was corrected and
+what is still owed: `capture-quotation-verification.md`.** The numbers have one home, which is that
+file and the instrument it cites; they are not restated here.
 
-**The direction is the finding.** The two edits that matter both drift **toward the generalisation
-the corpus wants**:
+**This section previously recorded the instrument as "extract the `*"…"*` runs" and said it did not
+need an agent. The second half was right and the first was wrong twice**, which is why the
+instrument is now committed as `tools/verify-capture-quotations.py` with its controls rather than
+described in prose:
 
-- one rewrote an error-model rationale from *"its quality directly determines"* to *"its **structure**
-  decides"*;
-- one substituted *"the host"* for the tree's *"Live"* — in a corpus whose subject is the host/server
-  boundary.
+- it read only the **italic** form — but only cordyceps uses that convention; bankmachine and
+  discodon quote with plain `"…"` almost exclusively, so nearly every fragment in two of the three
+  captures went unaudited;
+- and as a `grep -oE` it is **line-based**, so any quotation that *wraps* is invisible — and these
+  captures wrap prose at ~95 chars. Run `tools/verify-capture-quotations.py --counts`: it reproduces
+  the grep figure and checks that it equals exactly the non-wrapping subset.
 
-Both read *better* as corpus material than the source does. That is exactly why nobody re-checks
-them: a paraphrase that sharpens a rule is invisible to a reader looking for errors, and it
-launders a specific observation into a general claim the source never made. `core.md`'s
-transcription rule names the mechanism (*its identifiers are the part that silently degrades — a
-paraphrase reads exactly like a faithful copy*); this adds the direction, and the direction is what
-makes it undetectable.
+That second defect is the same species as the thing being hunted — `core.md`: *the query is itself a
+mechanism and can carry the defect it hunts; normalize the text before searching, because line
+structure is not semantic structure.*
 
-**So a quotation in an `EVIDENCE:` field is a claim, exactly like a `file:line`.** The schema's
-PROVENANCE line invites a reader to believe the quote was checked because the address was.
+**Two controls make a scan evidence rather than reassurance, and a third makes it discriminate:** a
+nonsense string must return zero, a large known-good set must return hits, and — the one the recipe
+here never had — **a deliberately corrupted real fragment must miss.** Under a search that matches
+everything, the known-good control reports a false 120/120 green and only the other two catch it.
 
-### What is owed, and the cheap way to pay it
-
-`cordyceps-server-structured.md` (95 rules) and `bankmachine-server-structured.md` (147) have had
-their **addresses** verified as they were written, and their **quotations not at all**.
-`discodon-consumer-structured.md` inherits the same debt.
-
-This does not need an agent. The audit's instrument is mechanical and is described in
-`hallucinote-verification.md` § *What was done*: extract the `*"..."*` runs, normalise whitespace,
-case and trailing punctuation, split on ellipses, search the tree, and binary-search the longest
-matching prefix so a divergence **point** is located rather than an absence merely reported. Two
-controls make it evidence rather than reassurance, and both are worth copying: **a nonsense string
-must return zero** (the search is not matching everything) and **a large known-good set must return
-hits** (it is not dead).
-
-Note what the instrument still cannot see, stated in that file rather than glossed: a quotation
-*stitched* from two non-adjacent sentences with no ellipsis marked shows up as a prefix match and has
-to be read. So the script narrows the set a human must read; it does not empty it.
-
+Note what no instrument can see: a quotation *stitched* from two non-adjacent sentences with no
+ellipsis marked shows up as a prefix match and has to be read. The script narrows the set a human
+must read; it does not empty it.
 
 ## The marker is now uniform; the FIELD LAYOUT is not — measured 2026-09-18
 
