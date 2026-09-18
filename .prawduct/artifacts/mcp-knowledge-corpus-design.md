@@ -537,8 +537,8 @@ already found doc-vs-code drift in their own repos, which is worth reporting bac
 SSE server that does not exist) and hallucinote (two surfaces telling agents a call "always works"
 that a blocked host times out at 30s).
 
-**Quotation half PAID 2026-09-18 for the three re-mined captures.** The debt had two halves — the
-*address* and the *quotation* — and only the first was ever named here. cordyceps, bankmachine and
+**Quotation half PAID 2026-09-18 for the two published re-mined captures.** The debt had two
+halves — the *address* and the *quotation* — and only the first was ever named here. cordyceps and
 bankmachine have now had their quoted evidence searched against their source trees at their declared
 SHAs, and **no fabrication was found in the drift-signature bucket**, which was chased by hand in
 full. One capture was corrected (a shortened placeholder inside a quoted shell command). **Counts,

@@ -42,12 +42,13 @@ self-test green, which an independent review found by walking each control again
 should have caught.
 
 **Controls are code, not prose, because a scan nobody has falsified has measured nothing.** Their
-count is deliberately not stated here; it has grown three times. `--self-test` covers a non-empty
-corpus and *every* corpus non-empty rather than only the first, a nonsense string returning zero, a
-known-good set returning hits, **a deliberately corrupted real fragment that must miss**, rule ids
-reconciling with the corpus's own counting command, the working-tree fallback proving it sees
-gitignored files, an emptied corpus refusing the run, the exit-2 contract, every emitted form being
-selectable, and **extraction itself** against an inline fixture. The corruption control is the one
+count is deliberately not stated here; it has grown four times. `--self-test` covers a non-empty
+corpus, a nonsense string returning zero, a known-good set returning hits, **a deliberately
+corrupted real fragment that must miss**, rule ids reconciling with the corpus's own counting
+command, the working-tree fallback proving it sees gitignored files, an emptied corpus refusing the
+run **in both the primary and the secondary position**, the exit-2 contract, every emitted form
+being selectable, **extraction itself** against an inline fixture, the two refusals in `main()`, and
+a roster check asserting every production refusal is one somebody decided how to pin. The corruption control is the one
 the recorded recipe never had and it is not optional: under a mutant that matches everything, the
 *known-good* control reports a false green while only the nonsense and corruption controls go red.
 

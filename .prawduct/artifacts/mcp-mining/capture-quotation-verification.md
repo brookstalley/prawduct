@@ -60,13 +60,21 @@ guards written to close findings were themselves the unpinned ones.
 `--self-test` runs them, and they are code rather than prose because a scan nobody has falsified has
 measured nothing. **Do not state their count here** — it has grown three times and a number in this
 sentence would be the first thing to go stale; run the command. They cover: a non-empty corpus (a
-green scan over nothing is not green) and *every* corpus non-empty rather than only the first; a
-nonsense string returning zero; a large known-good set returning hits; **a corrupted real fragment
-that must miss**; rule ids reconciling with the corpus's own `grep -c '^\*\*RULE:\*\*'`; the
-working-tree fallback seeing gitignored files; an emptied corpus refusing the run; `die`'s exit-2
-contract; every emitted form being selectable; and **extraction itself**, pinned against an inline
-fixture carrying a wrapped quotation, embedded escaped-quote JSON, and the rule marker discussed in
-prose.
+green scan over nothing is not green); a nonsense string returning zero; a large known-good set
+returning hits; **a corrupted real fragment that must miss**; rule ids reconciling with the corpus's
+own `grep -c '^\*\*RULE:\*\*'`; the working-tree fallback seeing gitignored files; an emptied
+corpus refusing the run **in both the primary and the secondary position**; `die`'s exit-2 contract;
+every emitted form being selectable; **extraction itself**, pinned against an inline fixture carrying
+a wrapped quotation, embedded escaped-quote JSON, and the rule marker discussed in prose; the two
+refusals in `main()`; and a roster check asserting every production `die()` site is one somebody
+decided how to pin.
+
+**The primary/secondary split in that list is not pedantry — it is defect 6 recurring inside its own
+fix.** The first version of that control emptied the *primary* loader, which also empties
+`corpora[0]`, so the weaker `if not corpora[0].blobs` check it was written to replace passed it. The
+control claimed the class and pinned the instance, and that false claim shipped in this file and in
+the change-log entry before a review caught it. Both halves are now separate cases, each falsified
+against the reverted guard.
 
 The corrupted-fragment control is the one the recorded recipe never had, and it is not optional.
 Falsified against a mutant that matches everything, the *known-good* control reports a false
@@ -149,9 +157,11 @@ written, and hallucinote's compressed twin was not.
   bankmachine. Bare symbols and paths are address-class and were checked when these captures were
   written; the multi-token code lines are a claim of the same kind as a prose quotation and are owed
   the same pass.
-- **Fragments under 25 normalised characters are skipped, not searched** — 300 and 230. They are
-  counted, never silently dropped. Short strings match everywhere and a verdict on them would be
-  meaningless.
+- **Fragments under 25 normalised characters are skipped, not searched.** They are counted and
+  reported per capture by the instrument, never silently dropped — short strings match everywhere and
+  a verdict on them would be meaningless. The reported figure is **form-agnostic**: it counts skipped
+  `code-span` fragments alongside prose ones, so it is not the remainder of the prose tables above
+  and must not be read as one.
 - **hallucinote's capture still carries its 19 known-wrong quotations.** That audit reported without
   editing, deliberately — it is the record under audit and its anchors are keyed to it. The
   consequence is that an author lifting from `hallucinote-server-structured.md` at stage 1 has no
@@ -169,6 +179,13 @@ Stated here rather than glossed, and repeated in the script's own docstring:
   only adjacent *because* a marker was removed can be matched as continuous.
 - Markdown emphasis is stripped, so a quotation differing from its source **only** in emphasis reads
   as matching. Deliberate: `**bold**` added around a true sentence is not a false claim.
+- **The working-tree fallback currently yields no verdict, and that is worth knowing before
+  relying on it.** Every row above satisfies `resolved + miss = fragments`, so no fragment resolved
+  as `WORKING-TREE-ONLY`: the two gitignored references it was built for are an address and a
+  numeric figure that the 25-character floor drops before the search. The mechanism is correct and
+  proven live by a control; it is simply unexercised by this corpus. `MOVED-IN-WINDOW` is likewise
+  **structurally unreachable** here — it fires only for a capture declaring two SHAs, and no
+  published capture does.
 - **cordyceps' working-tree corpus includes untracked build output**, because the fallback lists
   `--cached --others` to reach gitignored files and cannot distinguish "gitignored because it is a
   local record" from "gitignored because it is generated". Since RESOLVED means "matched anywhere",
@@ -179,6 +196,11 @@ Stated here rather than glossed, and repeated in the script's own docstring:
   searchable pieces and misses whole. The other is the multi-token backtick filter, which only
   affects the separately-reported `code-span` class. The next commit that touches this file should
   close it.
+- **The mined source clones must be reachable, and the default assumes one machine's layout.**
+  `--source-root` (or `MCP_CAPTURE_SOURCE_ROOT`) points the audit at wherever the clones live; the
+  default is `~/source`. Without them the run refuses with exit 2 and says so, rather than reporting
+  a clean result over nothing — but "cite the command, never the digits" only delivers falsifiability
+  for a reader who has the clones.
 - **Only the extensions in `TEXT_SUFFIXES` are searched.** A quotation whose source file has an
   extension missing from that allowlist is reported as a miss and reads exactly like drift, so the
   allowlist is a limit on this audit rather than an implementation detail.

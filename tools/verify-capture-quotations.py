@@ -39,12 +39,22 @@ WHAT THIS INSTRUMENT CANNOT SEE, stated rather than glossed:
   an extension missing from that allowlist is reported as a miss and reads exactly like
   drift, so the allowlist is a limit on the audit rather than an implementation detail.
 
-Exit 1 if any fragment misses, 2 on a usage or environment error.
+Exit codes are distinct on purpose — this instrument's own thesis is that a broken run must be
+distinguishable from a run that worked:
+
+* **0** — the audit ran and every selected fragment resolved, or a check passed.
+* **1** — the audit ran and some fragment MISSED. A result, not a failure.
+* **2** — a usage or environment refusal: nothing was audited (see `PINNED_REFUSALS`).
+* **3** — a self-check failed (`--self-test`, `--counts`). The instrument is not trustworthy.
 """
 
 from __future__ import annotations
 
 import argparse
+import ast
+import os
+import contextlib
+import io
 import re
 import subprocess
 import sys
@@ -60,6 +70,12 @@ MIN_LENGTH_DEFAULT = 25
 and the verdict is meaningless. One home: `--min-length` overrides it, and the controls
 and `--counts` read it rather than each carrying a copy."""
 
+#: Where the mined source repositories are checked out. Overridable, because three
+#: records stake this audit's falsifiability on "cite the command, never the digits" —
+#: and a command a second reader cannot run does not deliver that. `--source-root`, or
+#: `MCP_CAPTURE_SOURCE_ROOT`, or this default.
+DEFAULT_SOURCE_ROOT = Path.home() / "source"
+
 REPO = Path(__file__).resolve().parent.parent
 CAPTURES = REPO / ".prawduct" / "artifacts" / "mcp-mining"
 
@@ -68,7 +84,7 @@ CAPTURES = REPO / ".prawduct" / "artifacts" / "mcp-mining"
 SOURCES: dict[str, dict[str, object]] = {
     "cordyceps": {
         "capture": "cordyceps-server-structured.md",
-        "repo": Path.home() / "source" / "cordyceps",
+        "repo_name": "cordyceps",
         "shas": ["f07eb79373cd84583a67ae0c6090c931c30ca7a6"],
         # This capture's header flags two gitignored files it cites, which are NOT at
         # the SHA. Searching the working tree as a secondary corpus is what lets a
@@ -77,7 +93,7 @@ SOURCES: dict[str, dict[str, object]] = {
     },
     "bankmachine": {
         "capture": "bankmachine-server-structured.md",
-        "repo": Path.home() / "source" / "bankmachine",
+        "repo_name": "bankmachine",
         "shas": ["bf83e63329436e1189db1eb5a316ab8760100ffc"],
         "working_tree_fallback": False,
     },
@@ -125,6 +141,20 @@ searched."""
 # would be unselectable, and the duplication is exactly the drift this branch is about.
 FORM_ITALIC, FORM_PLAIN, FORM_CODE = "italic-quote", "plain-quote", "code-span"
 KNOWN_FORMS = frozenset({FORM_ITALIC, FORM_PLAIN, FORM_CODE})
+
+#: Every refusal this module can make. A refusal is what stands between a broken run and a
+#: vacuous pass, so an UNPINNED one is the same defect class as an unpinned guard — which
+#: this instrument shipped twice. `--self-test` asserts this roster covers every `die(`
+#: site in the file, so adding a refusal without deciding how it is pinned goes red.
+PINNED_REFUSALS = (
+    "git-archive-failed",       # load_tree: the source commit could not be read
+    "no-such-capture",          # audit: the capture file is absent
+    "no-source-repo",           # audit: the sibling repo is absent
+    "no-corpora",               # audit: nothing to search at all
+    "empty-corpus",             # audit: ANY corpus empty, primary or secondary
+    "unknown-forms",            # main: --forms names a form that does not exist
+    "vacuous-selection",        # main: the run would audit zero fragments
+)
 PROSE_FORMS = (FORM_ITALIC, FORM_PLAIN)
 
 
@@ -319,14 +349,17 @@ def longest_prefix(corpus: Corpus, needle: str) -> int:
 
 
 def audit(source: str, min_length: int = MIN_LENGTH_DEFAULT,
-          _corpora_out: list | None = None) -> tuple[list[Fragment], int]:
+          _corpora_out: list | None = None,
+          source_root: Path = DEFAULT_SOURCE_ROOT) -> tuple[list[Fragment], int]:
     cfg = SOURCES[source]
     capture = CAPTURES / str(cfg["capture"])
     if not capture.is_file():
         die(f"error: no such capture: {capture}")
-    repo = Path(str(cfg["repo"]))
+    repo = source_root / str(cfg["repo_name"])
     if not (repo / ".git").exists():
-        die(f"error: source repo not found: {repo}")
+        die(f"error: source repo not found: {repo}. This audit reads the mined source "
+            f"repositories from {source_root}; point --source-root (or "
+            f"MCP_CAPTURE_SOURCE_ROOT) at the directory holding your clones.")
 
     frags, skipped = extract(source, capture, min_length)
     corpora = [load_tree(repo, str(s)) for s in cfg["shas"]]  # type: ignore[arg-type]
@@ -398,10 +431,11 @@ def counts(min_length: int = MIN_LENGTH_DEFAULT) -> int:
             print(f"  NOTE {source}: no plain-quote fragments — widening bought nothing here")
     print("\ncheck:", "PASS — the line-based recipe reads exactly the non-wrapping subset"
           if ok else "FAIL")
-    return 0 if ok else 1
+    return 0 if ok else 3
 
 
-def self_test(min_length: int = MIN_LENGTH_DEFAULT) -> int:
+def self_test(min_length: int = MIN_LENGTH_DEFAULT,
+              source_root: Path = DEFAULT_SOURCE_ROOT) -> int:
     """Every control, as code that runs rather than prose that claims.
 
     A scan nobody has falsified has measured nothing. Control 3 is the one the recipe
@@ -415,7 +449,7 @@ def self_test(min_length: int = MIN_LENGTH_DEFAULT) -> int:
     """
     print("self-test: loading a real corpus (bankmachine)…")
     cfg = SOURCES["bankmachine"]
-    corpus = load_tree(Path(str(cfg["repo"])), str(cfg["shas"][0]))  # type: ignore[index]
+    corpus = load_tree(source_root / str(cfg["repo_name"]), str(cfg["shas"][0]))  # type: ignore[index]
     ok = True
 
     # Control 0 — the subject is a non-empty SET. A green scan over nothing is not green.
@@ -472,7 +506,7 @@ def self_test(min_length: int = MIN_LENGTH_DEFAULT) -> int:
     # citations it was added for landed in "not in the tree at all" and read like drift.
     # A secondary corpus that is silently empty degrades a verdict without ever failing.
     cordy = SOURCES["cordyceps"]
-    repo = Path(str(cordy["repo"]))
+    repo = source_root / str(cordy["repo_name"])
     wt = load_working_tree(repo)
     ignored = repo / ".prawduct" / "reflections.md"
     if not wt.blobs:
@@ -500,22 +534,27 @@ def self_test(min_length: int = MIN_LENGTH_DEFAULT) -> int:
             print("  FAIL working-tree fallback cannot see the gitignored files it exists for")
             ok = False
 
-    # Control 6 — the every-corpus non-empty guard. This is R-2's CLASS half and the
-    # consequential one: a silently-empty SECONDARY corpus reports "nothing matched"
-    # and "nothing was there to match" identically.
-    real_load = globals()["load_tree"]
-    try:
-        globals()["load_tree"] = lambda repo, sha: Corpus(label=f"{sha[:12]}-emptied")
+    # Control 6 — the every-corpus non-empty guard, BOTH halves. The primary half was
+    # pinned before and the SECONDARY half — the consequential one — was not: emptying
+    # `load_tree` also empties `corpora[0]`, so the weaker `if not corpora[0].blobs`
+    # check passed the control that claimed to pin its replacement. That is this
+    # instrument's own headline defect recurring inside the fix for it, which is why
+    # the secondary case is now its own case rather than a wider comment.
+    for label, target in (("primary", "load_tree"), ("secondary", "load_working_tree")):
+        real = globals()[target]
         try:
-            audit("cordyceps")
-            print("  FAIL an empty corpus did not stop the audit"); ok = False
-        except SystemExit as exc:
-            if exc.code == 2:
-                print("  PASS an empty corpus refuses the run (exit 2)")
-            else:
-                print(f"  FAIL empty corpus exited {exc.code}, want 2"); ok = False
-    finally:
-        globals()["load_tree"] = real_load
+            globals()[target] = (lambda repo, sha=None, _l=label:
+                                 Corpus(label=f"{_l}-emptied"))
+            try:
+                audit("cordyceps")   # cordyceps is the source with a secondary corpus
+                print(f"  FAIL an empty {label} corpus did not stop the audit"); ok = False
+            except SystemExit as exc:
+                if exc.code == 2:
+                    print(f"  PASS an empty {label} corpus refuses the run (exit 2)")
+                else:
+                    print(f"  FAIL empty {label} corpus exited {exc.code}, want 2"); ok = False
+        finally:
+            globals()[target] = real
 
     # Control 7 — `die` exits 2, distinct from 1 (a genuine miss result). The whole point
     # of the code split is that a broken run is distinguishable from a run that worked.
@@ -585,8 +624,46 @@ def self_test(min_length: int = MIN_LENGTH_DEFAULT) -> int:
         print(f"  PASS extractor pins wrap-join, escaped quotes and the prose marker "
               f"({len(fx)} fragments from the fixture)")
 
+    # Control 10 — main()'s two refusals. Both prevent a vacuous pass and neither was
+    # pinned: an unknown `--forms` value and a selection that would audit nothing.
+    for argv, what in (
+        (["x", "--forms", "no-such-form", "cordyceps"], "unknown --forms"),
+        (["x", "--forms", FORM_ITALIC, "--min-length", "100000", "cordyceps"],
+         "a selection that audits nothing"),
+    ):
+        try:
+            # The vacuous-selection refusal fires after the audit runs, so its ordinary
+            # report would land in the middle of the control output. Swallow it.
+            with contextlib.redirect_stdout(io.StringIO()):
+                main(argv)
+            print(f"  FAIL {what} did not refuse"); ok = False
+        except SystemExit as exc:
+            if exc.code == 2:
+                print(f"  PASS {what} refuses the run (exit 2)")
+            else:
+                print(f"  FAIL {what} exited {exc.code}, want 2"); ok = False
+
+    # Control 11 — the roster covers every refusal the module can make. A `die()` added
+    # without a decision about how it is pinned is the unpinned-guard class, and this is
+    # the construction that catches it rather than a list somebody remembers to extend.
+    tree = ast.parse(Path(__file__).read_text(encoding="utf-8"))
+    # Scope: PRODUCTION refusals. `self_test` calls `die()` itself to pin the exit-2
+    # contract, and counting that would make the roster grow with its own controls.
+    production = [n for n in tree.body
+                  if not (isinstance(n, ast.FunctionDef) and n.name == "self_test")]
+    actual = sum(
+        1 for top in production for node in ast.walk(top)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+        and node.func.id == "die"
+    )
+    if actual == len(PINNED_REFUSALS):
+        print(f"  PASS every refusal is on the pinned roster ({actual})")
+    else:
+        print(f"  FAIL {actual} die() site(s) vs {len(PINNED_REFUSALS)} on the roster — "
+              f"a refusal was added without deciding how it is pinned"); ok = False
+
     print("self-test:", "PASS" if ok else "FAIL")
-    return 0 if ok else 1
+    return 0 if ok else 3
 
 
 def main(argv: list[str]) -> int:
@@ -600,10 +677,14 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--forms", default=",".join(PROSE_FORMS),
                     help="comma-separated forms to audit (default: prose quotations only)")
     ap.add_argument("--show-hits", action="store_true", help="print the matching file for each hit")
+    ap.add_argument("--source-root", type=Path,
+                    default=Path(os.environ.get("MCP_CAPTURE_SOURCE_ROOT",
+                                                str(DEFAULT_SOURCE_ROOT))),
+                    help=f"directory holding the mined source clones (default {DEFAULT_SOURCE_ROOT})")
     args = ap.parse_args(argv[1:])
 
     if args.self_test:
-        return self_test(args.min_length)
+        return self_test(args.min_length, args.source_root)
     if args.counts:
         return counts(args.min_length)
 
@@ -618,7 +699,7 @@ def main(argv: list[str]) -> int:
     total_miss = 0
     for source in sources:
         corpora_used: list = []
-        frags, skipped = audit(source, args.min_length, corpora_used)
+        frags, skipped = audit(source, args.min_length, corpora_used, args.source_root)
         sel = [f for f in frags if f.form in wanted]
         by_verdict: dict[str, int] = {}
         for f in sel:

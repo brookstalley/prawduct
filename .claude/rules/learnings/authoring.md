@@ -178,6 +178,24 @@ a mutant that matched everything, the known-good control reported a false **120/
 only the nonsense and corruption controls went red. A control that passes more easily the more
 broken the instrument is measures nothing.
 
+**Controls on the SEARCH do not cover the EXTRACTOR, and that gap survives every round you spend on
+the search.** Of six defects found paying this debt, three lived in extraction — the quote regex,
+the cross-line field join, the record-splitting anchor — and *every* search-side control stayed
+green through all three: reverting the escape-aware regex, the defect that manufactured a whole
+batch of false drift candidates, left the self-test fully passing. Pin extraction directly, against
+an inline fixture carrying one instance of each defect the record's conventions can produce. **And
+when you write the control that closes a class, check it discriminates the CLASS and not just the
+instance**: the first version here emptied the primary corpus loader, which also empties the first
+corpus, so the weaker check it replaced passed it — the control claimed the class, pinned the
+instance, and shipped that false claim into two durable records before a reviewer caught it.
+
+**A refusal is a guard.** The paths that stop a vacuous pass — an unreadable input, an empty corpus,
+an unknown flag value, a selection that would examine nothing — are what stand between a broken run
+and a clean-looking result, and they go unpinned because they read as error handling rather than as
+logic. Derive the roster from the source (parse the module for its own refusal sites and assert each
+is registered) rather than maintaining a list, or the next refusal ships unpinned exactly like the
+last one.
+
 **And the extraction pattern is itself a claim about the record's conventions — probe it before
 trusting a clean result.** Paying this debt for three more captures found four defects in the
 recipe, two of them in the recipe as first written here: it read only the `*"…"*` form, when only
