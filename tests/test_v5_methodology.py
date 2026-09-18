@@ -405,7 +405,20 @@ LAST_MEASURED_TOKENS = {
     # said "per-chunk reviews accumulate", which the short-plan rule makes
     # false for a plan of at most 3 chunks touching no risk surface. It now
     # reads "the reviews it owes accumulate" — net -1 word.
-    "methodology/building.md": 4910,
+    # +110 on 2026-09-18 (test-report-scope): § Test Discipline gains the two
+    # properties a product's test setup must have — the machine-readable report
+    # is a side effect of every run, and the invocation's scope is recorded
+    # beside it. A DECLARED RAISE (ceiling 4911 -> 5021, narrated at the
+    # assertion), not a pay-in-place: the two candidates were both refused.
+    # Deduping against the always-injected digest is a dedup for the main agent
+    # and a DELETION for a delegate, which reads this file without the digest
+    # (the standing learnings rule); and the only in-file overlap is the Verify
+    # bullet's ingest on-ramp list, which is the step-level instruction a
+    # builder acts on and is not this bullet's content. The addition itself was
+    # written to pointer form — the schema, the reader's rules and the
+    # per-ecosystem wiring all live in `docs/test-report-contract.md`, and this
+    # file carries only what a builder needs before opening it.
+    "methodology/building.md": 5020,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -2890,7 +2903,17 @@ class TestBuildingMethodology:
         # further would have spent a clause nothing defends to fund a clause
         # nothing defends, which is the move the standing rule refuses. One
         # over the reading, so nothing is banked.
-        assert tokens < 4911, f"building.md is ~{tokens} tokens, should be <4911"
+        # RAISED 4911 -> 5021 (2026-09-18, test-report-scope), by declaration
+        # and with its reason. § Test Discipline gains a standing requirement
+        # that had no surface reaching the builder: the report is a side effect
+        # of every run, and the invocation's scope is recorded beside it. The
+        # detail — schema, reader's rules, per-ecosystem wiring — went to
+        # `docs/test-report-contract.md`, which is on-demand, so the bullet here
+        # is the only thing a builder who never opens that file will read. The
+        # payment alternatives are argued in LAST_MEASURED_TOKENS above; both
+        # would have spent a clause to fund a clause. One over the reading, so
+        # nothing is banked.
+        assert tokens < 5021, f"building.md is ~{tokens} tokens, should be <5021"
 
 
 # =============================================================================
