@@ -157,7 +157,7 @@ def minor_windows(framework: Path, since: dt.datetime, until: dt.datetime) -> li
         iso = git(framework, "log", "-1", "--format=%aI", tag).strip()
         if not iso:
             continue
-        tags.append(((int(m[1]), int(m[2])), dt.datetime.fromisoformat(iso).astimezone(UTC)))
+        tags.append(((int(m[1]), int(m[2])), _parse_instant(iso)))
     if not tags:
         sys.exit(f"no vN.N.N release tags in {framework} — cannot derive windows")
 
@@ -211,7 +211,7 @@ def read_commits(repo: Path, since: dt.datetime) -> list[dict]:
             sha, iso, author, subject = line[3:].split("|", 3)
             cur = {
                 "sha": sha,
-                "when": dt.datetime.fromisoformat(iso).astimezone(UTC),
+                "when": _parse_instant(iso),
                 "author": author, "subject": subject, "files": [],
             }
             if author.endswith("[bot]"):
@@ -308,13 +308,21 @@ def _dispatch_clock_seconds(obj: dict) -> float | None:
 
 
 def _parse_instant(text: str) -> dt.datetime:
-    """Parse an ISO date/instant to UTC.
+    """Parse an ISO date/instant to UTC. **The one home for this parse.**
 
     A stated offset is CONVERTED, never overridden: `.replace(tzinfo=UTC)` on an
     already-aware value silently relabels it, which moved a `-06:00` boundary by
     six hours and is most of a short window.
+
+    **`Z` is normalised here because `fromisoformat` only learned it in 3.11.**
+    This tool is tested on 3.10, where a `Z`-suffixed stamp raises
+    `ValueError: Invalid isoformat string`. Three call sites used to reach
+    `fromisoformat` directly and each one was a 3.10 crash the maintainer's 3.11
+    machine could not see; they route through here now, which is the point of a
+    single home — the version bound is stated once and cannot be forgotten at a
+    fourth site.
     """
-    parsed = dt.datetime.fromisoformat(text)
+    parsed = dt.datetime.fromisoformat(text.strip().replace("Z", "+00:00"))
     if parsed.tzinfo is None:
         return parsed.replace(tzinfo=UTC)
     return parsed.astimezone(UTC)
@@ -777,7 +785,7 @@ def main() -> int:
         iso = git(product, "log", "--diff-filter=M", "--format=%aI", "-1",
                   "--grep=migrate to plugin distribution", "--", ".claude/settings.json").strip()
         if iso:
-            since = dt.datetime.fromisoformat(iso).astimezone(UTC)
+            since = _parse_instant(iso)
         else:
             # No migration commit (repo onboarded straight onto the plugin, or
             # the commit was worded differently). The first ledger event is the

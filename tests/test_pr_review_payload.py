@@ -73,6 +73,15 @@ def _repo(tmp_path: Path, *, with_plan: bool = True, with_change_log: bool = Tru
     repo = tmp_path / "repo"
     (repo / ".prawduct" / "artifacts").mkdir(parents=True)
     _git(repo, "init", "-q", "-b", "develop")
+    # Hermetic by construction. `_section_default_branch` falls back to
+    # `git config --get init.defaultBranch` when a repo has no `origin/HEAD`,
+    # and that read reaches the HOST's global config — so on a machine that
+    # sets it (most developers') the section answers, and on one that does not
+    # (the CI runner) it degrades. The suite was green for its maintainer and
+    # red in CI for four tests on exactly this. Set it in the fixture's own
+    # config so the repo answers for itself; `TestDegradations` covers the
+    # unset case explicitly rather than leaving it to the host.
+    _git(repo, "config", "init.defaultBranch", "main")
 
     (repo / "app.py").write_text("print(1)\n")
     (repo / ".prawduct" / "project-state.yaml").write_text(
@@ -371,7 +380,24 @@ class TestDegradations:
         )
         mine = self._envelope({"resolved": False})
         assert set(mine) == {"status", "data", "warnings"}
-        assert set(mine) <= set(real) | {"warnings"}
+        # **The producer has TWO shapes and this test sees only one of them per
+        # environment**, so the comparison branches explicitly rather than
+        # assuming the `ok` one. `.prawduct/` caches are gitignored: the
+        # maintainer's machine has a synced cache and answers `ok`, a fresh
+        # clone and CI answer `error`. `set(mine) <= set(real)` held on the
+        # first and failed on the second, which is how this went green for
+        # months and red on its first CI run. Each branch asserts something,
+        # so neither is a silent skip.
+        if real["status"] == "ok":
+            assert "data" in real, real
+            assert set(mine) <= set(real) | {"warnings"}
+        else:
+            assert "error" in real, real
+            assert "data" not in real, (
+                "an error envelope must not carry `data` — the section reads "
+                "`data` only after checking `status`, and a producer that sent "
+                "both would make that check meaningless"
+            )
 
     def test_a_backlog_lookup_failure_is_reported_as_partial_not_dropped(self, monkeypatch, tmp_path):
         """A short list of resolved ids reads as the whole set. The ids that

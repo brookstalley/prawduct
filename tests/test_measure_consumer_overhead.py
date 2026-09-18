@@ -303,3 +303,65 @@ class TestTheHumanRenderer:
         tool.render(_report(tmp_path, ))
         out = capsys.readouterr().out
         assert "self-rep" in out
+
+
+class TestEveryIsoParseSurvivesPython310:
+    """`datetime.fromisoformat` only learned the `Z` suffix in **3.11**, and CI
+    runs 3.10.
+
+    This shipped broken and the maintainer could not see it, because reproducing
+    it needs TWO independent environment facts at once:
+
+    * **A UTC host.** `git log --format=%aI` renders `Z` only when the commit's
+      stored zone is `+0000`. On a developer machine in any other zone the same
+      fixture yields `-06:00`, which every Python version parses. CI runs UTC.
+    * **Python < 3.11.** On 3.11+ the `Z` parses regardless, so the bug is
+      invisible even on a UTC host.
+
+    Neither alone reproduces it; the local suite was green for months and four
+    tests failed on the branch's first CI run.
+
+    **A behavioural test here would be vacuous** — this suite's own interpreter
+    parses `Z` fine, so `_parse_instant("...Z")` passes with or without the fix.
+    So the pin is the source property, which holds on every version: no call
+    reaches `fromisoformat` with a stamp that has not been normalised, either by
+    routing through the one home or by replacing the suffix at the call site.
+    """
+
+    TOOLS = ("tools/measure-consumer-overhead.py", "tools/pr-review-yield.py")
+
+    def test_no_unnormalised_fromisoformat_call(self):
+        offenders = []
+        for rel in self.TOOLS:
+            text = (REPO_ROOT / rel).read_text()
+            for n, line in enumerate(text.splitlines(), 1):
+                if "fromisoformat(" not in line:
+                    continue
+                normalised = 'replace("Z"' in line or "replace('Z'" in line
+                # The one home normalises on the line that does the parse, so it
+                # satisfies the same rule rather than needing an exemption.
+                if not normalised:
+                    offenders.append(f"{rel}:{n}: {line.strip()}")
+        assert not offenders, (
+            "these parse an ISO stamp without normalising a `Z` suffix, which "
+            "raises ValueError on Python 3.10 (in CI) while passing on 3.11+ "
+            "(locally). Route them through the tool's `_parse_instant`:\n  "
+            + "\n  ".join(offenders)
+        )
+
+    def test_the_guard_can_see_an_offender(self):
+        """The control: a rule asserting a set is empty is satisfied by looking
+        at nothing, so prove the scan reaches real lines and can reject one."""
+        sample = 'x = dt.datetime.fromisoformat(iso).astimezone(UTC)'
+        assert "fromisoformat(" in sample
+        assert 'replace("Z"' not in sample
+        scanned = sum(
+            1
+            for rel in self.TOOLS
+            for line in (REPO_ROOT / rel).read_text().splitlines()
+            if "fromisoformat(" in line
+        )
+        assert scanned >= 5, (
+            f"the scan found only {scanned} parse sites across {self.TOOLS} — "
+            "it is not reaching the code it is meant to police"
+        )
