@@ -127,12 +127,35 @@ while the instruction has no effect. Two verifications beyond the suite:
     consumes and clears the marker, writing `dispatched_at` into the envelope when one is present
     and omitting the key when none is; `review-stats` splits measured from self-reported.
   - `plugin/lib/ledger.py` — envelope acceptance of the optional key.
+  - `tools/measure-consumer-overhead.py` — read `dispatched_at` where present and report
+    the measured and self-reported populations separately, as `tools/pr-review-yield.py`
+    already does. **This is a deliverable, not a follow-up:** the persisted-format decision
+    above names four consumers that must be able to split the two populations, and Chunk 05's
+    Done-when step 0 instructs recording this tool's reading. A field whose consumers are
+    enumerated in a lock-in decision and then half-built is the accumulation that decision
+    exists to prevent. The fourth consumer, the janitor's Norm Health yield sweep, does not
+    exist yet (`#563`) and is named so the query has a specification, not built here.
   - `plugin/skills/pr/SKILL.md` — Step 3 marks dispatch immediately before spawning; Step 4's
     existing `ledger-append` line gains no new argument (the marker is ambient, so a caller cannot
     fabricate the value or forget to pass it — it can only fail to mark, which is the honest
     degradation).
   - `.prawduct/artifacts/data-model.md` — the envelope key and its absence semantics.
 - **Exposed API:** prawduct-hook-cli
+- **Carried into this chunk's commit from the 2026-09-18 planning reviews** (two deletions in
+  `tools/pr-review-yield.py` and `tests/test_pr_review_yield_tool.py`, deferred here rather than
+  fixed in place because that commit was already verified and these buy no round riding one that
+  is being made anyway — this chunk edits both files for `dispatched_at` regardless):
+  1. **Delete the history narration from three docstrings.** `_exceeds_upper` ("The earlier fix
+     here special-cased the 10-character date…"), the `_event_nested_duration_only` helper ("a
+     verify pass flagged that its green measured nothing"), and the month-only test ("This is the
+     case the first fix missed"). Keep each docstring's RULE and drop the episode — a shipped
+     comment narrating review history is a deletion finding, not a rewording one. The same
+     sentences carry an inert "122 real rows" count that nothing reads and that drifts as the
+     ledger grows; it goes with them.
+  2. **Delete `_parse`'s `TypeError` arm.** It is unreachable: every stamp arrives from
+     `json.loads`, so a non-`str` raises `AttributeError` at `.replace()` before `fromisoformat`
+     is reached, and only `bytes` would reach `TypeError`, which JSON cannot produce. Pin the
+     guarantee, not the mechanism — the `AttributeError` path is already covered.
 - **Tests:** `tests/test_governance_ledger.py` — a marked dispatch produces `dispatched_at`; an
   unmarked one omits the key entirely (**never** a null or a zero); a stale marker from an
   abandoned run does not attach to an unrelated later append; `review-stats` reports the two
@@ -192,9 +215,14 @@ while the instruction has no effect. Two verifications beyond the suite:
 
 - **Description:** Three edits to one file, which is why they are one chunk. (a) Replace the six
   numbered "When You Are Activated" reads with the single payload call plus the diff and the
-  targeted artifact read that actually yields. (b) **Delete step 6's learnings read** — the file
-  is already in the reviewer's context by auto-injection, and the one goal that consumes it has
-  returned 1 finding in 122 reviews. (c) Delete the output the caller never consumes: the markdown
+  targeted artifact read that actually yields. (b) **Delete step 6's learnings read.** The reason
+  is deliberately NOT "the file is already in context by auto-injection" — Chunk 04 removes that
+  auto-injection, so a reason resting on it is false one chunk later, and the recorded reason is
+  what the next author edits against. The two reasons that survive Chunk 04: the goal that
+  consumes the read has returned **1 finding in 122 reviews**, and the protocol's own Learnings
+  Cross-Check section assigns that scan to the `final`/`cumulative` Critic, so this reviewer is
+  forbidden to perform it. The duplication is why the waste is currently doubled; it is not why
+  the read goes. (c) Delete the output the caller never consumes: the markdown
   `## PR Review` block, which duplicates the JSON the caller actually reads, and the PR Draft,
   which `SKILL.md` Step 5 re-drafts from work context anyway. Then re-point the four goals at what
   the ledger shows this reviewer catches — governance bookkeeping coherence — rather than the
@@ -217,6 +245,12 @@ while the instruction has no effect. Two verifications beyond the suite:
   PR reviewer's reads, and the budget pins in `tests/test_v5_methodology.py`.
 - **Deliverables:** `plugin/skills/pr/review-protocol.md`, `plugin/skills/pr/SKILL.md`,
   `plugin/methodology/building.md`
+- **Sweep the step-6 references in the same file, not just the step.** Deleting a numbered step
+  leaves every sentence that cites it by number dangling, and the worst carrier is in the file
+  being edited — the Learnings Cross-Check paragraph says "You read the learnings for context
+  (step 6)", a hundred lines below the deletion. Grep `review-protocol.md` for `step 6` **before**
+  the sibling files, then renumber what follows. A cross-file sweep feels exhaustive precisely
+  because it crossed files, which is what leaves the same-file carrier standing.
 - **Budget note:** this chunk is a net **deletion** from `review-protocol.md`, so where a hard
   ceiling and its drift pin both read the same file, lower the ceiling in the same commit — an
   unratcheted slack is a loan the next edit collects silently and green. Assert between the two
@@ -256,6 +290,14 @@ while the instruction has no effect. Two verifications beyond the suite:
 - **Deliverables:** new `plugin/agents/pr-reviewer.md`; `plugin/skills/pr/SKILL.md` Step 3 (spawn
   the named agent rather than a generic one); `.claude/rules/learnings/core.md` (retire or keep the
   contradicted rule, per the probe); new `tests/test_pr_reviewer_agent.py`
+- **The allowlist must carry the backlog cache grant.** `plugin/skills/backlog/cache-reads.md`
+  already wrote the warning for exactly this move — add the grant in the same edit that narrows
+  the tool set. Scoping an allowlist is where a capability silently disappears, and this one is
+  load-bearing: `review-protocol.md` marks **R-2** as the check no other layer in the pipeline
+  owns, so an agent that cannot read the backlog cache reports "reconciled" having reconciled
+  nothing. The grant is `Bash(prawduct-hook backlog cache-query *)` plus its
+  `python3 plugin/bin/prawduct-hook` form, as `critic-reviewer.md` carries it. Pin it: a test
+  asserting the narrowed allowlist still admits a cache read, red-verified by removing the grant.
 - **Tests:** **port `tests/test_critic_reviewer_agent.py` first, then add** — that file enumerates
   the branches the precedent's design creates (frontmatter shape, tool allowlist bounds, the
   write-path restriction, the dispatch name matching what the caller spawns), and citing a

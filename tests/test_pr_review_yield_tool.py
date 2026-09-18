@@ -20,8 +20,6 @@ import json
 import sys
 from pathlib import Path
 
-import pytest
-
 _TOOL = Path(__file__).resolve().parent.parent / "tools" / "pr-review-yield.py"
 
 
@@ -35,6 +33,23 @@ def _load():
 
 
 yield_tool = _load()
+
+
+def _event_nested_duration_only(ts, seconds):
+    """A row carrying the estimate ONLY under `review`, never at the envelope top level.
+
+    Every one of the 122 real rows carries both keys, so nothing in the corpus reaches
+    `duration()`'s second operand — a verify pass flagged that its green measured
+    nothing. This is the shape an evidence file written straight through by the PR
+    reviewer has (`review-protocol.md`'s JSON schema puts `duration_seconds` inside the
+    record), so the fallback is real and now pinned rather than deleted.
+    """
+    return {
+        "schema_version": 1,
+        "event": "review.pr",
+        "ts": ts,
+        "review": {"duration_seconds": seconds, "findings": [], "files_reviewed": []},
+    }
 
 
 def _event(ts, *, dispatched_at=None, duration=None, findings=(), files=()):
@@ -91,12 +106,66 @@ class TestDurationProvenance:
         assert measured is False
         assert secs == 420
 
+    def test_the_estimate_is_read_from_the_nested_record_when_that_is_where_it_is(self):
+        """Red if `duration()` stops falling back to `review.duration_seconds`.
+
+        Deleting that operand turned nothing red before this test existed, because
+        every real row and every fixture carried the top-level key too.
+        """
+        secs, measured = yield_tool.duration(
+            _event_nested_duration_only("2026-09-18T12:00:00Z", 360)
+        )
+        assert measured is False
+        assert secs == 360
+
     def test_a_row_with_neither_reports_no_duration_rather_than_zero(self):
         """Red if absence degrades to 0 — which would average a missing value
         into the real ones and drag every median down silently."""
         secs, measured = yield_tool.duration(_event("2026-09-18T12:05:00Z"))
         assert secs is None
         assert measured is False
+
+    def test_a_stamp_after_the_write_is_refused_not_labelled_measured(self):
+        """Red if the ordering bound goes. A clock skew or a hand-edited row yields a
+        NEGATIVE interval that parses fine; labelling it measured is worse than the
+        estimate it displaces, which is at least honest about being one."""
+        secs, measured = yield_tool.duration(
+            _event(
+                "2026-09-18T12:00:00Z",
+                dispatched_at="2026-09-18T12:05:00Z",
+                duration=420,
+            )
+        )
+        assert measured is False
+        assert secs == 420
+
+    def test_a_stale_marker_interval_is_refused(self):
+        """Red if the upper bound goes. A run that dies between marking dispatch and
+        appending leaves the marker behind, so the NEXT append attaches a stamp hours
+        old — parseable, positive, and wrong."""
+        secs, measured = yield_tool.duration(
+            _event(
+                "2026-09-18T20:00:00Z",
+                dispatched_at="2026-09-18T02:00:00Z",
+                duration=420,
+            )
+        )
+        assert measured is False
+        assert secs == 420
+
+    def test_a_long_but_plausible_review_is_still_measured(self):
+        """The control for the two above: the bound must refuse stale stamps WITHOUT
+        refusing real long reviews. 25 minutes is longer than anything in this corpus
+        and must still count."""
+        secs, measured = yield_tool.duration(
+            _event(
+                "2026-09-18T12:25:00Z",
+                dispatched_at="2026-09-18T12:00:00Z",
+                duration=9999,
+            )
+        )
+        assert measured is True
+        assert secs == 1500
 
     def test_an_unparseable_dispatch_timestamp_degrades_to_self_reported(self):
         """Red if a malformed stamp raises instead of falling back. The tool is
@@ -170,21 +239,89 @@ class TestReport:
         assert len(yield_tool.load(repo, "2026-09-01", None)) == 1
         assert len(yield_tool.load(repo, None, "2026-09-01")) == 1
 
+    def test_a_date_only_until_covers_that_whole_day(self, tmp_path):
+        """Red if `--until` reverts to a bare string compare.
 
-class TestAgainstTheRealLedger:
-    """One test reads the real artifact, because a fixture I wrote encodes my belief
-    about the input and can only confirm it.
+        `--until` documents itself inclusive. Compared as a raw string, a date-only
+        bound excludes every timestamp on that date, which silently shortens the
+        newest window — the one a before/after comparison is read from.
+        """
+        repo = _ledger(tmp_path, [_event("2026-09-01T23:59:00Z", duration=300)])
+        assert len(yield_tool.load(repo, None, "2026-09-01")) == 1
+        assert len(yield_tool.load(repo, None, "2026-08-31")) == 0
 
-    This asserts the corpus is REACHABLE and classifiable, never a count — a count
-    would pin this repo's current phase as an invariant and go red on the next PR.
+    def test_a_month_only_until_covers_that_whole_month(self, tmp_path):
+        """Red if the bound reverts to special-casing the 10-character date.
+
+        This is the case the first fix missed: `--until 2026-09` excluded every row in
+        September while `--since 2026-09` included them, so the two flags disagreed
+        about what the same string meant.
+        """
+        repo = _ledger(tmp_path, [_event("2026-09-30T23:59:00Z", duration=300)])
+        assert len(yield_tool.load(repo, None, "2026-09")) == 1
+        assert len(yield_tool.load(repo, None, "2026-08")) == 0
+
+    def test_a_zoneless_until_matches_the_same_instant_in_utc(self, tmp_path):
+        """Red if a bound typed without `Z` goes back to excluding its own instant —
+        or, worse, raises on comparing a naive bound to an aware row."""
+        repo = _ledger(tmp_path, [_event("2026-09-01T12:00:00Z", duration=300)])
+        assert len(yield_tool.load(repo, None, "2026-09-01T12:00:00")) == 1
+        assert len(yield_tool.load(repo, None, "2026-09-01T11:59:59")) == 0
+
+    def test_a_full_timestamp_until_is_used_as_given(self, tmp_path):
+        repo = _ledger(tmp_path, [_event("2026-09-01T12:00:00Z", duration=300)])
+        assert len(yield_tool.load(repo, None, "2026-09-01T13:00:00Z")) == 1
+        assert len(yield_tool.load(repo, None, "2026-09-01T11:00:00Z")) == 0
+
+
+class TestAgainstRealLedgerRows:
+    """These rows are REAL, captured verbatim from this repo's ledger and committed at
+    `tests/fixtures/real-pr-reviews.jsonl`.
+
+    The earlier version of this class read `.prawduct/.governance-ledger.jsonl` directly
+    and skipped when absent. That file is gitignored, so the test was red only where it
+    could see and silently skipped in CI — the one environment nobody watches — which is
+    a `core.md` rule verbatim ("an exemption filter ... is red where it can see and GREEN
+    where it cannot"). A skip is also indistinguishable from a pass in a summary. Real
+    rows in the tree fix both: the point of reading a real artifact is that a fixture I
+    wrote can only confirm what I already believed about the input, and that survives
+    being committed.
     """
 
-    def test_this_repos_ledger_parses_and_yields_pr_reviews(self):
-        repo = Path(__file__).resolve().parent.parent
-        if not (repo / yield_tool.LEDGER).is_file():
-            pytest.skip("no governance ledger in this checkout")
-        rows = yield_tool.load(repo, None, None)
-        assert rows, "the real ledger yielded no review.pr rows — the tool examined nothing"
-        data = yield_tool.report(rows)
+    FIXTURE = Path(__file__).resolve().parent / "fixtures" / "real-pr-reviews.jsonl"
+
+    def _repo(self, tmp_path):
+        repo = tmp_path / "repo"
+        (repo / ".prawduct").mkdir(parents=True)
+        (repo / ".prawduct" / ".governance-ledger.jsonl").write_bytes(
+            self.FIXTURE.read_bytes()
+        )
+        return repo
+
+    def test_the_fixture_is_present_and_non_trivial(self):
+        """Red if the fixture is deleted or emptied — without which every assertion
+        below would pass having examined nothing."""
+        assert self.FIXTURE.is_file(), "the captured real rows are missing"
+        rows = [ln for ln in self.FIXTURE.read_text().splitlines() if ln.strip()]
+        assert len(rows) >= 5
+
+    def test_real_rows_parse_and_classify(self, tmp_path):
+        """Red if the tool stops handling the shape real reviewers actually write —
+        which is the shape no fixture of mine would have predicted."""
+        data = yield_tool.report(yield_tool.load(self._repo(tmp_path), None, None))
+        assert data["reviews"] >= 5
         assert data["findings"] > 0
-        assert data["by_goal"], "findings exist but none classified by goal"
+        assert data["by_goal"], "real findings exist but none classified by goal"
+        assert data["median_seconds"] is not None
+
+    def test_real_rows_are_all_self_reported_today(self, tmp_path):
+        """The provenance split, asserted against real data rather than my fixtures.
+
+        Every historical row predates `dispatched_at`, so all of them must land in the
+        self-reported population. This is the pre-change control for Chunk 01: when a
+        measured row exists, it is because the mechanism works, not because the tool
+        started guessing.
+        """
+        data = yield_tool.report(yield_tool.load(self._repo(tmp_path), None, None))
+        assert data["with_duration"] == data["reviews"]
+        assert data["measured_durations"] == 0
