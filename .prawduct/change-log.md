@@ -5,6 +5,90 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-18: the quotation half of the MCP mining debt, and the recipe that could not have paid it
+
+<!-- prawduct: type=feature | scope=mcp-quotation-audit -->
+
+**Two chunks: an instrument, and the audit it made possible.** `hallucinote-verification.md` had
+found 19 of 202 quoted evidence fragments wrong and one absent in a mined capture **with every
+cited address resolving** — and the two that mattered drifted *toward the generalisation the corpus
+wants*, which is why reading does not catch them. Three captures (cordyceps 95 rules, bankmachine
+147, discodon 87) carried the same unpaid debt: addresses verified as they were written,
+quotations not at all. This pays it. **1,034 prose fragments searched against each capture's own
+declared SHA; 755 resolved, 279 miss, no fabrication found.** Record and method:
+`.prawduct/artifacts/mcp-mining/capture-quotation-verification.md`. Numbers are cited by command,
+never transcribed — `tools/verify-capture-quotations.py`.
+
+**Chunk 01 — the instrument, and the finding is that the recorded recipe could not have worked.**
+`mcp-mining/README.md` recorded the method as "extract the `*\"…\"*` runs". Run as written it audits
+a small unrepresentative slice, and returns a mostly-clean answer over a set it never opened. Two
+independent defects: it reads only the *italic* form, when only one of four captures uses that
+convention (bankmachine has 368 plain-quoted fragments, discodon 392); and as a `grep -oE` it is
+**line-based**, so any quotation that *wraps* is invisible — 136 of cordyceps' 200 italic
+quotations. The second is the same species as the thing being hunted (`core.md`: *the query is
+itself a mechanism and can carry the defect it hunts; line structure is not semantic structure*),
+and the measurement that justified the work inherited it: recorded as 64/10/4, actually 200/17/4.
+`--counts` reproduces the grep figure and checks it equals exactly the non-wrapping subset, so the
+undercount is shown rather than asserted.
+
+**Three more defects were in the replacement, which is the more useful half of the record.** A
+naive `"([^"]+)"` is not escape-aware and these captures embed JSON, so fragments truncated at the
+escaped quote — 39 apparent tail-rewrite "drift" candidates that were all artifacts. Splitting on a
+bare `**RULE:**` marker also caught the marker *discussed in each capture's own header*, shifting
+every rule id; a chased finding landed on a rule whose text did not contain it, which is a report
+that reads as precise and cannot be resolved. And the working-tree fallback — added so cordyceps'
+two gitignored citations could resolve — was built on `git ls-files`, which lists **tracked** files
+only, so it had never once seen them and those citations were landing in "not in the tree at all",
+indistinguishable from drift. Misses fell 432 → 316 → 280 → 279 as each was fixed.
+
+**Controls are code, not prose, because a scan nobody has falsified has measured nothing.**
+`--self-test` runs eleven: a non-empty corpus, a nonsense string returning zero, a known-good set
+returning hits, **a deliberately corrupted real fragment that must miss**, rule ids reconciling with
+the corpus's own `grep -c '^**RULE:**'` (95/147/87), the working-tree fallback proving it sees
+gitignored files, an emptied corpus refusing the run, `die`'s exit-2 contract, and every emitted
+form being selectable. The corruption control is the one the recorded recipe never had and it is
+not optional: falsified against a mutant that matches everything, the *known-good* control reports
+a false **120/120 green** while only the nonsense and corruption controls go red. A control that
+passes more easily the more broken the instrument is measures nothing.
+
+**Chunk 02 — the audit.** A miss is not drift, and the record says so rather than letting a rate
+imply it: 176 of the 279 are text absent from the source tree entirely, which for a plain-quoted
+span is usually the capture author's own words. Misses are bucketed by how far the longest prefix
+reaches, because depth separates the classes; the 90–100% bucket is the drift signature and was
+chased **by hand in full**. Four of five were markup normalisation (a dropped markdown link, a
+Sphinx `:meth:` role, a re-quoted literal), one was the extractor's own false positive, and one was
+a real alteration — cordyceps had shortened `<path-to-Cordyceps.gha>` to `<path>` **inside a quoted
+shell command**, so a reader copying it gets a different command. Corrected in the capture.
+
+**The durable finding is a schema gap, and it outranks the debt.** `italic-quote` fragments resolve
+at 80–92%; `plain-quote` at a flat 68–74% across three independently-written captures. cordyceps
+uses `*"…"*` as a verbatim convention; the other two use plain quotes for **both** source
+quotations and their own emphasis. So the corpus schema specifies the `EVIDENCE:` field but not
+**how a quotation inside it declares itself a claim of verbatim source text** — and without that
+marker, two of three captures are not auditable at the fragment level by any instrument, only rule
+by rule by a human. Recorded in the design notes' verification-debt section, because it constrains
+authoring rather than merely the ledger.
+
+**Also fixed, and it was a real defect rather than a gate to satisfy.** Five re-derivation commands
+in the bankmachine and discodon captures cited paths relative to their *source* repo with nothing
+naming which repo they run in, so a reader running them from here got nothing — the repo-local
+path-resolution gate was right to call them broken references. Each is now pinned to its repo
+(`git -C`) and to the SHA its capture declares, with a `:(top)` pathspec. All five were run before
+and after: three confirm positive claims, and two confirm NEGATIVE claims (zero hits **is** the
+assertion), which reads as a broken citation until you notice the capture says so.
+
+**Scope deliberately NOT taken, stated in the artifact rather than implied.** The 275 fragments in
+the shallower buckets are unchased; the `code-span` class is extracted and counted but not audited;
+and hallucinote's own 19 known-wrong quotations stay, because that audit reported without editing
+on purpose — it is the record under audit and its anchors are keyed to it. The consequence for
+stage 1 is named: an author lifting from that capture has no in-place signal and must read its
+verification file alongside it.
+
+**`authoring.md` amended rather than extended.** Its quotation-drift rule prescribed two controls;
+it now prescribes three including the discriminator, carries the measured false-green that proves
+the third is load-bearing, and adds that the extraction pattern is itself a claim about the
+record's conventions — probe it before trusting a clean result.
+
 ## 2026-09-17: Step 1 names the recorder; develop opens 3.5.1-dev.1 so consumers pick up review-stages
 
 <!-- prawduct: type=fix | scope=pr-step1-recorder -->
