@@ -352,3 +352,81 @@ is not what was asked for and not what is needed.
 - `record_lint` flags an area file whose globs match nothing tracked; a pointer in a repo with no
   MCP server would trip it. The globs, or that lint, need an answer.
 - `architecture.md` § Direction needs the amendment recorded beneath its clause, citing this ruling.
+
+---
+
+## 10. Mining complete (2026-09-17) — measurement and synthesis questions
+
+### 10.1 Size measurement settles the packaging question: DIRECTORY, not one file
+
+~299 rules mined before dedup (cordyceps 60, bankmachine 84, discodon 48, hallucinote 92, prawduct
+~15). Raw captures in `mcp-mining/`; re-derive the count with
+`grep -c '^- \*\*\|^\*\*RULE' .prawduct/artifacts/mcp-mining/*.md`.
+
+At ~50–80 words per rule carrying its evidence, that is 15,000–24,000 words ≈ 100–160 KB. Dedup will
+cut it (several rules arrived independently from two or three repos), plausibly to ~150–180 distinct
+— still 50–90 KB. `.claude/rules/learnings/core.md` is ~100 KB today and is the file the size
+advisories already complain about, and harness auto-load is **whole-file**.
+
+**Therefore: a directory of layer files, addressed by reference.** §4's deferral is discharged. The
+outline is unchanged — layers become filenames instead of top-level headings — so nothing authored
+against the one-file plan is lost. The single shippable artifact (desirable 1) is produced by
+concatenating at send time, never committed.
+
+L1 will likely still be too large as one file (~80 rules before dedup) and may need splitting along
+the clusters the material produced rather than by a further taxonomy.
+
+### 10.2 The seed rules after contact with the evidence
+
+- **R1 (minimize tools, use action params) — CONTESTED, and this is the corpus's biggest
+  disagreement.** cordyceps did it and measured a 49% docs-token reduction, at a cost also visible in
+  its tree (37 and 43 parameters in single schemas). hallucinote did it — *and its every
+  consolidation number is borrowed from published benchmarks, with its own design doc's requirement
+  for a baseline measurement never performed.* bankmachine **rejects the framing outright**: both
+  "one tool per question" and "one tool with an action enum" share the false premise that a boundary
+  tracks the *question*; draw it where the **answer shape** changes, which took 10 tools to 8 with no
+  `outputSchema` loss. discodon supplies the consumer-side evidence for why width matters at all
+  (silent truncation past its cap). **The corpus must state this as a live disagreement with the
+  evidence on each side, not resolve it by majority.**
+- **R2 (>60s → async handle) — QUALIFIED, hard.** MCP progress notifications are received but **do
+  not reset or extend the tool-call timeout** (Claude Code #58687), and transport choice is not a
+  lever (identical across stdio/HTTP+SSE/Streamable HTTP; HTTP/SSE imposes a 60s first-byte
+  minimum). So the remedy is not "report progress" but start+poll with progress *inside* the status
+  payload. cordyceps reached the same design independently without recording the reason.
+- **R5 (sign of life) — SUPERSEDED BY A STRONGER FORM.** cordyceps rides a status block on *every*
+  response so the agent never spends a call asking, plus one cached-only probe. Evidence: ~32 minutes
+  of measured silence during one solve.
+- **R8 (shared storage → paths) — CONFIRMED THREE TIMES INDEPENDENTLY**, precondition included, by
+  cordyceps, hallucinote and bankmachine's absence of any binary path. Strongest-attested rule here.
+- **R6 (refactor freely) — the precondition is now explicit.** hallucinote may skip back-compat
+  entirely *because one installer deploys both halves and a handshake makes "old client meets new
+  server" unreachable*. discodon proves the converse: a published schema is **frozen** in a client
+  that already registered it, and a correct server-side `list_changed` implementation "did not help."
+
+### 10.3 Cross-repo disagreements to adjudicate (the most valuable output)
+
+1. **Clamp vs refuse an out-of-range value.** bankmachine: *refuse and quote the ceiling, never
+   clamp* — clamping makes a trimmed answer byte-identical to a complete one. discodon and
+   hallucinote: *clamp and say you clamped* — a bare refusal costs a round-trip the agent spends
+   guessing. Candidate synthesis: refuse where silence would be indistinguishable from completeness
+   (row/data reads); clamp-and-announce where the parameter is a resource budget (duration, wait) and
+   every value is semantically valid.
+2. **Tool-count ceiling.** discodon caps at 20 and silently slices; hallucinote cites Cursor 40
+   (silent drops) and Copilot 128, plus a 10–20 selection-accuracy band. One dated-facts entry, not
+   three rules.
+3. **Progress notifications.** cordyceps declined them without recording why; discodon demands
+   progress above ~30s; hallucinote verified they do not affect the timeout. One coherent answer
+   exists that no single repo held — good evidence the corpus earns its keep.
+4. **Rename policy.** hallucinote's design doc says never rename/always alias; its shipped policy
+   says no aliases at all. Both are right under different preconditions, and the precondition is the
+   rule.
+
+### 10.4 Verification debt
+
+Every citation in `mcp-mining/` is agent-reported. Before anything ships: re-derive each number and
+path against its source repo, and re-anchor on symbols and headings rather than line numbers
+(`core.md`: *a `file:line` you did not resolve yourself is a claim, not a citation*). Two miners
+already found doc-vs-code drift in their own repos, which is worth reporting back to cordyceps
+(a testing guide that would make a tester file a false regression; an architecture doc describing an
+SSE server that does not exist) and hallucinote (two surfaces telling agents a call "always works"
+that a blocked host times out at 30s).
