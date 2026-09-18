@@ -5,8 +5,9 @@ The derivation behind `documentation/consumer-build-metrics.md`, kept runnable s
 its numbers are falsifiable. A count transcribed into prose goes stale silently as
 a corpus grows; cite this command rather than the digits.
 
-    tools/measure-consumer-overhead.py ../discodon
-    tools/measure-consumer-overhead.py ../discodon --since 2026-06-11 --json
+    tools/measure-consumer-overhead.py ../discodon --prs
+    tools/measure-consumer-overhead.py ../discodon --marker
+    tools/measure-consumer-overhead.py ../bankmachine --since 2026-09-13T08:55:57-06:00
 
 It buckets a consumer repo's history into windows, one per prawduct MINOR series,
 and reports per window: engaged wall clock, lines written by class, Critic and PR
@@ -20,12 +21,14 @@ Four sources, three of them independent of each other:
 * this repo's release tags, which define the window boundaries
 * optionally GitHub, for merged-PR cadence (`--prs`; needs `gh` authenticated)
 
-Five things to know before citing a number from this script:
+Things to know before citing a number from this script — the full list, with
+the ones that have actually burned someone, is `## Hazards` in that document:
 
 * **`duration_seconds` in the ledger is self-reported by the reviewing model**,
-  not a measured wall clock: the values are round (74 distinct values over 1,912
-  events). This script cross-checks them against interval-measured time and prints
-  the ratio per window. Trust the self-reports only where that ratio is near 1.
+  not a measured wall clock: the values are round (74 distinct values across
+  discodon's 1,318 review events). This script cross-checks them against
+  interval-measured time and prints the ratio per window. Trust the self-reports
+  only where that ratio is near 1.
 * **Interval attribution is biased by commit density.** Time is attributed to the
   event that ENDS each interval, so in a window with few commits, coding time gets
   absorbed into whatever governance event happened to come next. The `ratio`
@@ -40,6 +43,11 @@ Five things to know before citing a number from this script:
   Matching the full commit body (as here) versus only its first 600 characters
   moves the per-window product-bug rate by up to 60%. The SHAPE is robust to that
   choice — flat, no trend, in either variant — but treat the level as a band.
+* **A repo that does not use conventional-commit prefixes cannot report fix or
+  test commit counts.** Those columns print `—`, never `0`, because a zero there
+  reads as "no bugs" and means "not measurable this way".
+* **Release tags do not tell you what version a consumer actually ran.** Use
+  `--marker`; it dates the most recent version transition.
 * **Version windows are confounded with what the consumer was building.** These
   are correlations across a handful of windows, not a controlled comparison.
 * **Window boundaries are fuzzy by up to one session.** Consumers that pin the
@@ -244,6 +252,19 @@ def read_ledger(path: Path) -> list[dict]:
     return events
 
 
+def _parse_instant(text: str) -> dt.datetime:
+    """Parse an ISO date/instant to UTC.
+
+    A stated offset is CONVERTED, never overridden: `.replace(tzinfo=UTC)` on an
+    already-aware value silently relabels it, which moved a `-06:00` boundary by
+    six hours and is most of a short window.
+    """
+    parsed = dt.datetime.fromisoformat(text)
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
 def first_ledger_event(product: Path) -> dt.datetime | None:
     """Timestamp of the consumer's earliest governance-ledger event, if any."""
     path = product / ".prawduct" / ".governance-ledger.jsonl"
@@ -355,7 +376,7 @@ def merged_prs(repo: Path, since: dt.datetime) -> list[dict]:
 
 
 def build_report(product: Path, framework: Path, since: dt.datetime,
-                 want_prs: bool) -> dict:
+                 want_prs: bool, until_override: dt.datetime | None = None) -> dict:
     ledger_path = product / ".prawduct" / ".governance-ledger.jsonl"
     if not ledger_path.is_file():
         sys.exit(f"no governance ledger at {ledger_path} — nothing to measure")
@@ -366,8 +387,22 @@ def build_report(product: Path, framework: Path, since: dt.datetime,
         sys.exit(f"no commits in {product} since {since.date()}")
     bodies = read_commit_bodies(product, since)
 
-    until = max(commits[-1]["when"], ledger[-1]["when"] if ledger else commits[-1]["when"])
+    # Tables D and E are derived from conventional-commit prefixes. A repo that
+    # does not use them yields 0 fix commits and 0 test commits, which reads as
+    # "no bugs, no tests" when it means "not measurable this way". Measure the
+    # convention before trusting anything derived from it.
+    typed = sum(1 for c in commits if re.match(r"[a-z]+(\(.*?\))?(!)?:", c["subject"]))
+    conventional_share = typed / len(commits)
+    commit_kinds_usable = conventional_share >= 0.5
+
+    # An explicit --until clips the last window; events past it then fall outside
+    # every window and drop out of every count, which is what isolates a
+    # sub-window the release tags cannot delimit.
+    until = until_override or max(
+        commits[-1]["when"], ledger[-1]["when"] if ledger else commits[-1]["when"])
     windows = minor_windows(framework, since, until)
+    if not windows:
+        sys.exit(f"no prawduct release window overlaps {since.date()}..{until.date()}")
     bounds = [(w["series"], w["start"], w["end"]) for w in windows]
 
     def window_of(when: dt.datetime) -> str | None:
@@ -465,6 +500,7 @@ def build_report(product: Path, framework: Path, since: dt.datetime,
             "critic_ratio_measured_over_self": (
                 round(measured.get("critic", 0) / crit_self, 2) if crit_self else None),
             "critic_share_pct": round(100 * crit_self / engaged, 1) if engaged else 0,
+            "critic_minutes_per_run": round(crit_self * 60 / n_crit, 1) if n_crit else 0,
             "critic_findings_per_run": round(crit_findings / n_crit, 2) if n_crit else 0,
             "critic_blocking": reviews[s]["critic:blocking"],
             "critic_blocking_per_run": (
@@ -476,6 +512,8 @@ def build_report(product: Path, framework: Path, since: dt.datetime,
                              if k.startswith("critic:mode:")},
             "pr_runs": reviews[s]["pr:runs"],
             "pr_hours_self_reported": round(pr_self, 1),
+            "pr_minutes_per_review": (
+                round(pr_self * 60 / reviews[s]["pr:runs"], 1) if reviews[s]["pr:runs"] else 0),
             "pr_blocking": reviews[s]["pr:blocking"],
             "pr_findings": sum(reviews[s][f"pr:{k}"] for k in ("blocking", "warning", "note")),
             # None, not 0, when --prs was not passed: a zero that means "not
@@ -504,8 +542,11 @@ def build_report(product: Path, framework: Path, since: dt.datetime,
         "product": product.resolve().name,
         "framework": framework.resolve().name,
         "generated_at": dt.datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "since": since.date().isoformat(),
+        "since": since.isoformat(timespec="minutes"),
+        "until": until.isoformat(timespec="minutes"),
         "prs_fetched": want_prs,
+        "conventional_commit_share": round(conventional_share, 3),
+        "commit_kind_metrics_usable": commit_kinds_usable,
         "backfilled_event_kinds": detect_backfills(ledger),
         "windows": rows,
     }
@@ -513,8 +554,9 @@ def build_report(product: Path, framework: Path, since: dt.datetime,
 
 def render(report: dict) -> None:
     rows = report["windows"]
-    print(f"# {report['product']} vs {report['framework']} versions "
-          f"(since {report['since']}, generated {report['generated_at']})\n")
+    print(f"# {report['product']} vs {report['framework']} versions\n"
+          f"# window {report['since']} -> {report['until']}"
+          f"  (generated {report['generated_at']})\n")
 
     for kind, info in report["backfilled_event_kinds"].items():
         print(f"!! BACKFILL DETECTED: all {info['events']} '{kind}' events span "
@@ -532,42 +574,53 @@ def render(report: dict) -> None:
               f"{ln.get('governance+', 0):9}{r['lines_per_hour']:9}{r['code_share_pct']:7.1f}")
 
     print("\nB. CRITIC (hours are the ledger's self-report — see VALIDATION)")
-    print(f"{'series':7}{'runs':>7}{'hours':>8}{'%engaged':>10}{'runs/day':>10}"
-          f"{'find/run':>10}{'blk/run':>9}{'blocking':>10}")
-    print("-" * 71)
+    print(f"{'series':7}{'runs':>7}{'hours':>8}{'min/run':>9}{'%engaged':>10}"
+          f"{'runs/day':>10}{'find/run':>10}{'blk/run':>9}{'blocking':>10}")
+    print("-" * 80)
     for r in rows:
         print(f"{r['series']:7}{r['critic_runs']:7}{r['critic_hours_self_reported']:8.1f}"
-              f"{r['critic_share_pct']:10.1f}{r['critic_runs'] / r['days']:10.2f}"
+              f"{r['critic_minutes_per_run']:9.1f}{r['critic_share_pct']:10.1f}"
+              f"{r['critic_runs'] / r['days']:10.2f}"
               f"{r['critic_findings_per_run']:10.2f}{r['critic_blocking_per_run']:9.2f}"
               f"{r['critic_blocking']:10}")
 
     print("\nC. PR LAYER")
     if not report["prs_fetched"]:
         print("(merged/open columns not measured — re-run with --prs)")
-    print(f"{'series':7}{'merged':>8}{'reviews':>9}{'hours':>7}{'findings':>10}"
-          f"{'blocking':>10}{'median open h':>15}")
-    print("-" * 66)
+    print(f"{'series':7}{'merged':>8}{'reviews':>9}{'hours':>7}{'min/review':>12}"
+          f"{'findings':>10}{'blocking':>10}{'median open h':>15}")
+    print("-" * 78)
     for r in rows:
         opened = "—" if r["pr_median_open_hours"] is None else f"{r['pr_median_open_hours']:.3f}"
         merged = "—" if r["merged_prs"] is None else str(r["merged_prs"])
         print(f"{r['series']:7}{merged:>8}{r['pr_runs']:9}"
-              f"{r['pr_hours_self_reported']:7.1f}{r['pr_findings']:10}"
-              f"{r['pr_blocking']:10}{opened:>15}")
+              f"{r['pr_hours_self_reported']:7.1f}{r['pr_minutes_per_review']:12.1f}"
+              f"{r['pr_findings']:10}{r['pr_blocking']:10}{opened:>15}")
 
     print("\nD. DEFECT SIGNAL")
+    if not report["commit_kind_metrics_usable"]:
+        print(f"(fix/test commit columns NOT MEASURABLE here — only "
+              f"{report['conventional_commit_share']:.0%} of subjects carry a "
+              f"conventional-commit prefix. The line counts above are path-derived "
+              f"and unaffected; blocking/1k code is ledger-derived and unaffected.)")
     print(f"{'series':7}{'fix cmts':>10}{'review-drv':>12}{'prod-bug':>10}"
           f"{'prod/1k code':>14}{'blocking/1k code':>18}")
     print("-" * 71)
     for r in rows:
-        print(f"{r['series']:7}{r['fix_commits']:10}{r['fix_review_driven']:12}"
-              f"{r['product_bug_fixes']:10}{r['product_bug_fixes_per_1k_code']:14.2f}"
+        na = not report["commit_kind_metrics_usable"]
+        cell = (lambda v, w, f="d": f"{'—':>{w}}" if na else f"{v:>{w}{f}}")
+        print(f"{r['series']:7}{cell(r['fix_commits'], 10)}"
+              f"{cell(r['fix_review_driven'], 12)}{cell(r['product_bug_fixes'], 10)}"
+              f"{cell(r['product_bug_fixes_per_1k_code'], 14, '.2f')}"
               f"{r['critic_blocking_per_1k_code']:18.2f}")
 
     print("\nE. TESTING")
     print(f"{'series':7}{'test cmts':>11}{'test+ lines':>13}{'test:code':>11}")
     print("-" * 42)
     for r in rows:
-        print(f"{r['series']:7}{r['commit_kinds'].get('test', 0):11}"
+        tc = ("—" if not report["commit_kind_metrics_usable"]
+              else str(r["commit_kinds"].get("test", 0)))
+        print(f"{r['series']:7}{tc:>11}"
               f"{r['lines'].get('test+', 0):13}{r['test_to_code_ratio']:11.2f}")
 
     print("\nVALIDATION — measured-interval Critic hours over the ledger's self-report.")
@@ -601,6 +654,14 @@ def main() -> int:
     parser.add_argument("--since", default=None,
                         help="ISO date to start from (default: the consumer's plugin-migration "
                              "commit, else its first prawduct ledger event)")
+    parser.add_argument("--until", default=None,
+                        help="ISO instant to stop at (default: now). With --since, isolates an "
+                             "arbitrary sub-window — which is how you measure a version the tags "
+                             "cannot delimit, such as an unreleased dev build. See --marker.")
+    parser.add_argument("--marker", action="store_true",
+                        help="print the consumer's last-seen plugin version and the instant it "
+                             "changed, then exit. The banner rewrites the marker only when the "
+                             "version DIFFERS, so its mtime dates that transition.")
     parser.add_argument("--prs", action="store_true",
                         help="also fetch merged-PR cadence via gh (slower, needs auth)")
     parser.add_argument("--json", action="store_true", help="emit the full report as JSON")
@@ -612,8 +673,21 @@ def main() -> int:
     if not (product / ".git").exists():
         sys.exit(f"{product} is not a git repo")
 
+    if args.marker:
+        marker = product / ".prawduct" / ".prawduct-version"
+        if not marker.is_file():
+            print(f"{product.name}: no version marker (never ran the plugin banner here)")
+            return 0
+        changed = dt.datetime.fromtimestamp(marker.stat().st_mtime).astimezone()
+        print(f"{product.name}: last-seen plugin version "
+              f"{marker.read_text(encoding='utf-8').strip()}, "
+              f"which it first saw at {changed.isoformat(timespec='seconds')}")
+        print("  (mtime dates the TRANSITION, not the last session: the banner returns "
+              "early without writing when the version is unchanged.)")
+        return 0
+
     if args.since:
-        since = dt.datetime.fromisoformat(args.since).replace(tzinfo=UTC)
+        since = _parse_instant(args.since)
     else:
         # The plugin migration is the natural floor: before it the consumer ran
         # file-synced framework files and the ledger does not exist.
@@ -642,7 +716,8 @@ def main() -> int:
                 print(f"  ... and {len(paths) - 15} more")
         return 0
 
-    report = build_report(product, args.framework.resolve(), since, args.prs)
+    until = _parse_instant(args.until) if args.until else None
+    report = build_report(product, args.framework.resolve(), since, args.prs, until)
     if args.json:
         print(json.dumps(report, indent=2))
     else:
