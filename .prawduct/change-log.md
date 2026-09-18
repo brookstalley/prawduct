@@ -26,11 +26,22 @@ those readers was written against tree identity.
 the command — dropping or gating the session-fresh disjunct — was the obvious remedy and is
 rejected: it forces a full suite re-run after every commit inside a session, which is precisely
 the cost the disjunct was chosen to avoid and precisely what #653 was filed about. So exit codes
-are unchanged, no new run is forced anywhere, and `test-status` now prints which disjunct answered
-— `current (tree-valid): …` or `current (session-fresh, tree not verified): …`. The tree check
-that label rests on is a git diff the other code path already computes; asking it on both costs
-nothing. `stale:` is untouched, prefix and reason text both, because nothing answered and there is
-no clause to name.
+are unchanged, no new suite run is forced anywhere, and `test-status` now prints which disjunct
+answered — `current (tree-valid): …` or `current (session-fresh, not tree-vouched): …`, both
+module constants in `lib.gates` so the skill prose that instructs a reader to look for them can be
+pinned to them. `stale:` is untouched, prefix and reason text both, because nothing answered and
+there is no clause to name.
+
+**The tree clause is now asked FIRST and unconditionally, and that is a real cost deliberately
+taken.** The session-fresh path used to return before `evidence_tree` was read at all, which the
+tree-validity spike built on purpose — once fresh evidence existed, `test-status` short-circuited
+on the timestamp and never captured a tree. Keeping that short-circuit would make the weaker label
+a lie in the expensive direction: evidence that is BOTH session-fresh and byte-identical to the
+recorded tree would print "not tree-vouched", and a caller reading an under-claim re-runs the suite
+this disjunction exists to avoid. So the check is paid on every call — one git tree-diff plus a
+path classification, measured at ~0.12s on this repo and ~0.36s on a 42k-file worktree, against
+minutes for the run a false under-claim invites. `"session"` therefore means the tree question was
+ASKED and could not vouch, never that nobody looked, and the reason line names which paths moved.
 
 `tests_are_current` returns that answer as a third element (`"session"` / `"tree"` / `"none"`)
 rather than as a marker inside `reason`: `reason` is human-readable prose a later wording pass is

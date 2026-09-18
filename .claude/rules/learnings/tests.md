@@ -215,6 +215,16 @@ own constraints:
 - `--from-counts` and `--no-rerun` are also mutually exclusive with each other, so there is no
   combination that launders a bare run into evidence.
 
+**Correction 2026-09-18:** the lead sentence above said a declared command refuses `--no-rerun`
+too. It does not, and has not since v3.0.2 — `--no-rerun` and `--from-junit` both set `will_run`
+false, which is what skips the declared-command constraints (`prawduct-hook:3987`), and only
+`--from-counts` and extra args are gated on `declared_commands`. So **`--from-junit` is the
+supported ingest**, and the thing that makes a hand-run unrecoverable is not the declared command —
+it is dropping `--junit-xml` while retyping it. Re-offended 2026-09-18 with this rule already in
+the corpus and its tell stated verbatim, which is the argument that recall is the wrong carrier
+here; #825 tracks moving it to a pre-run check, the only point where the wall clock is still
+recoverable.
+
 The supported paths are `test-evidence record` with no flags (it runs the declared command itself,
 substituting `{junit_xml}`), or running the declared command by hand *with* `--junit-xml` and
 ingesting the report with `--from-junit`. Either way the JUnit report is the artifact; a green

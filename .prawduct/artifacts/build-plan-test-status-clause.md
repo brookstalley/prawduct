@@ -13,6 +13,14 @@ governed_by:
       - "message vocabulary (`CRITICAL:`/`WARNING:`/`NOTE:`/`PRAWDUCT:`/`BLOCKED —`) → inapplicable because `test-status` prints a verdict line (`current:`/`stale:`), not a diagnostic in that vocabulary; the change extends the existing verdict prefix and introduces no new vocabulary"
   - artifact: data-model
     dispositions:
+      - "verdicts computed from the append-only fact ledger, no model in a fact's write path → inapplicable because this plan writes no fact and adds no verdict; it reads `.test-evidence.json`, which that norm's Status explicitly scopes OUT of the store (`test-run` is reserved, not ratified)"
+      - "facts are immutable and append-only → inapplicable because this plan appends no fact"
+      - "derived views are disposable and never authoritative → conforms: the new `clause` is computed per call from the record and the tree, never persisted, so no gate can come to read a stored view of it"
+      - "a governance document reaches a terminal state, never deletion → inapplicable because this plan deletes no document"
+      - "every backlog issue conforms to the issue standard's §1 title rules → inapplicable because this plan writes no backlog item (the close of #767 is bookkeeping at merge, not a deliverable here)"
+      - "a fact from a newer schema is a loud block, never silently dropped → inapplicable because no schema version changes: `evidence_tree` is read, not written, and `.test-evidence.json`'s shape is untouched"
+      - "two stores, two lifetimes — shared committed answers vs per-clone gitignored nags → conforms: `.test-evidence.json` stays the per-clone gitignored artifact it already is, and nothing moves across that line"
+      - "`backlog_service_repo` selects the authoritative backlog store → inapplicable because this plan reads no backlog store"
       - "tree-keying: facts reference git tree SHAs → conforms: this reads `evidence_tree` through the existing `_test_evidence_tree_valid` helper and stores nothing new"
 partition: serial — one chunk, one reviewer roster
 last_validated: 2026-09-18
@@ -38,14 +46,14 @@ Context: Plan written 2026-09-18 against `documentation/issues/767-design.md`. B
 
 ### Chunk 01: `test-status` says which disjunct answered, and the three call sites claim only that
 
-- **Description:** `gates.tests_are_current` returns on the session-fresh disjunct before `evidence_tree` is ever read, so within one session `test-status` exits 0 for any tree however far HEAD has advanced. Three governing skill files tell their readers that exit 0 means the evidence covers the current *tree*, which is what that disjunct does not establish. This chunk makes the command disclose which disjunct answered and corrects the three claims to match. Exit codes do not change and no new suite run is forced — the tree check it piggybacks on is a git diff already computed on the other code path.
+- **Description:** `gates.tests_are_current` returns on the session-fresh disjunct before `evidence_tree` is ever read, so within one session `test-status` exits 0 for any tree however far HEAD has advanced. Three governing skill files tell their readers that exit 0 means the evidence covers the current *tree*, which is what that disjunct does not establish. This chunk makes the command disclose which disjunct answered and corrects the three claims to match. Exit codes do not change and no new suite run is forced. The tree check is asked on BOTH paths, which the session path previously short-circuited past: that costs one git tree-diff per call (~0.1s here, ~0.4s on a 42k-file worktree) and buys the stronger answer whenever it is available, because reporting only "session-fresh" of evidence that is also tree-identical under-claims, and an under-claim is what sends a caller to re-run the suite.
 
 - **Depends on:** none
 
 - **Artifacts consumed:** `documentation/issues/767-design.md` (Decisions 1–4, the files-touched table, and the corrected call-site wording, which is quoted there in full and is the text to use)
 
 - **Deliverables:**
-  - `plugin/lib/gates.py` — `tests_are_current` returns `tuple[bool, str, str]`, the third element `clause` being `"session"` / `"tree"` / `"none"`; `test_status` prints `current (tree-valid): …`, `current (session-fresh, tree not verified): …`, or `stale: …`
+  - `plugin/lib/gates.py` — `tests_are_current` asks the tree clause unconditionally and returns `tuple[bool, str, str]`, the third element `clause` being `"session"` / `"tree"` / `"none"`; `test_status` prints `CURRENT_TREE_LABEL`, `CURRENT_SESSION_LABEL` (both module constants, so prose can be pinned to them) or `stale: …`
   - `plugin/lib/release_readiness.py` — `_suite_verdict` drops the new third element before returning; its own 2-tuple contract to its one caller is unchanged
   - `plugin/skills/pr/SKILL.md` — correct line 53's tree-coverage claim
   - `plugin/skills/critic/SKILL.md` — correct line 65's tree-coverage claim
@@ -53,8 +61,9 @@ Context: Plan written 2026-09-18 against `documentation/issues/767-design.md`. B
   - `tests/test_plugin_runtime.py`, `tests/test_release_readiness.py` — the five cases below
 
 - **Tests:** the design's Decision 4 matrix, each red-verified against the pre-change source before it is believed —
-  1. session-fresh evidence on an advanced judgeable tree → exit 0 **and** stdout carries `session-fresh, tree not verified`
-  2. tree-valid evidence → exit 0, stdout carries `tree-valid` and not `tree not verified`
+  1. session-fresh evidence on an advanced judgeable tree → exit 0 **and** stdout carries `CURRENT_SESSION_LABEL`
+  2. tree-valid evidence → exit 0, stdout carries `CURRENT_TREE_LABEL`; and evidence that is BOTH session-fresh and tree-identical takes the tree label, which is the under-claim guard
+  2b. the corrected skill prose contains the two labels, derived by import from `lib.gates` rather than retyped
   3. the existing degraded and no-marker `stale:` cases re-asserted verbatim — the `stale` branch and its `reason` text are untouched
   4. unit on `tests_are_current` — one case per disjunct, asserting the `clause` field rather than parsing `reason`
   5. `release_readiness._suite_verdict` — its two print strings byte-identical after the caller update (new coverage; nothing exercises it directly today)

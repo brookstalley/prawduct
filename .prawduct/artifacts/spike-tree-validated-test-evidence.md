@@ -124,4 +124,15 @@ Two nuances the matrix pinned down:
 
 - `[ASSUMPTION: the additive "OR tree-valid" framing was never specifically evaluated in the prior rejections | MED impact | the history shows the *replace-timestamp* direction was rejected for false-stale modes; user with full context can confirm/veto]`
 - Cost: `test-status` runs `capture_tree` (a `git add -A` + `write-tree`) — but ONLY in the stale-but-has-`evidence_tree` branch (a new session on an unchanged tree); once fresh evidence exists it short-circuits on the timestamp and never captures. **Measured (2026-07-14) on the largest available target, the `wt-discodon-backlog` worktree — 2,174 tracked / 41,888 working-tree files / 538 MB:** `capture_tree` 0.74s cold, **~0.36s warm** (vs `git status` 0.043s); `tree_diff` (only on the change path) 0.027s; **non-mutation verified** — the worktree's real index is byte-identical before/after (temp-index R1 holds on a real large repo). Paid ~once per session, in the exact branch that *replaces* a multi-minute suite re-run, and it's the same operation the review gates already run at that repo's Stop/PR gates — no new cost category, just one more call site. Open item closed: accept.
+- **Superseded 2026-09-18 (#767, scope `test-status-clause`): the short-circuit described above is
+  gone.** The cost note in the bullet above turns on `test-status` capturing a tree ONLY in the
+  stale-but-has-`evidence_tree` branch, because a session-fresh verdict returned before
+  `evidence_tree` was read. `tests_are_current` now asks the tree clause first and
+  unconditionally, so the capture is paid on every call, not once per session. The reason is that
+  the disjunct which answered became *visible* — `test-status` reports it — and a session-fresh
+  answer given about evidence that is also tree-identical under-claims, sending a reader to re-run
+  the suite. The measurement in that bullet still stands (~0.36s warm on the 42k-file worktree;
+  ~0.12s on this repo); what changed is how often it is paid. Everything else in this spike —
+  relax-only, paths-classify-not-contents, the §9 matrix — is unaffected.
+
 - Should the clause require the recorded tree to be an **ancestor-reachable** tree (composition), or is **exact judgeable-scope identity** sufficient? Exact identity is simpler and sufficient for the three frictions; composition is a later refinement if cross-tree validity is ever wanted.
