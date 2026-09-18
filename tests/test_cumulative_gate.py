@@ -218,6 +218,7 @@ def _fact(
     counts: "dict | None" = None,
     dispatch_commit: "str | None" = None,
     duration_seconds: "float | None" = None,
+    observations: "list[dict] | None" = None,
 ) -> str:
     fact_id = f"rev-test-{next(_ids):04d}"
     body = {
@@ -243,6 +244,8 @@ def _fact(
         body["dispatch_commit"] = dispatch_commit
     if duration_seconds is not None:
         body["duration_seconds"] = duration_seconds
+    if observations is not None:
+        body["observations"] = observations
     result = evidence.append_fact(repo, "review", fact_id, body)
     assert result["status"] == "appended", result
     return fact_id
@@ -921,6 +924,105 @@ class TestTransferYieldSignal:
         assert "base-advance-transfer" in capsys.readouterr().out
 
 
+class TestBranchCoverageVerdictIsTheSameAnswer:
+    """``branch_coverage_verdict`` is the gate's verdict as data, for the one
+    consumer that needs the answer without the exit code.
+
+    ``critic_consolidate`` joins it onto a clean ``verify-resolutions`` close,
+    where "this delta is clean" and "this branch is covered" are different
+    claims and only the first is that review's to make. It must be the SAME
+    computation, not a second one that agrees today: the copy the builder reads
+    while deciding what to report upward is the advisory one, which is the
+    worse half to be stale.
+    """
+
+    def test_it_agrees_with_the_gate_on_every_verdict_the_gate_has(
+        self, tmp_path, capsys
+    ):
+        # Built as three repos in one test on purpose: what is being pinned is
+        # the AGREEMENT, and a per-shape test can drift into asserting each side
+        # separately.
+        for sub in ("a", "b", "c"):
+            (tmp_path / sub).mkdir()
+        covered = _branch_repo(tmp_path / "a")
+        _fact(covered, _tree(covered, "main"), _tree(covered), ["feature.py"])
+
+        blocked = _branch_repo(tmp_path / "b")
+        _fact(
+            blocked,
+            _tree(blocked, "main"),
+            _tree(blocked),
+            ["feature.py"],
+            findings=[{"fid": "R-1", "severity": "BLOCKING", "title": "boom"}],
+        )
+
+        uncovered = _branch_repo(tmp_path / "c")
+
+        for repo, status, exit_code in (
+            (covered, "covered", 0),
+            (blocked, "blocked", 1),
+            (uncovered, "uncovered", 1),
+        ):
+            answer = gates.branch_coverage_verdict(repo)
+            assert answer["status"] == status, repo
+            assert _run_gate(repo, capsys)[0] == exit_code, repo
+
+    def test_a_transferred_span_reads_as_covered_on_both_surfaces(
+        self, tmp_path, capsys
+    ):
+        # The one verdict where "covered" is a computed grant rather than a
+        # review anyone ran. A reader told the branch is uncovered here would be
+        # sent to buy the round the transfer exists to remove.
+        repo, _prior_base, _prior_head = _advanced_base_repo(tmp_path)
+        _write_test_evidence(repo)
+        assert gates.branch_coverage_verdict(repo)["status"] == "transferred"
+        assert _run_gate(repo, capsys)[0] == 0
+
+    def test_the_advisory_read_records_no_grant(self, tmp_path, capsys):
+        # Authority records its own yield; advice observes and writes nothing.
+        # An append from here would file a transfer grant under a gate that
+        # never ran — and would move the store fingerprint the verdict memo is
+        # keyed on, evicting it on a read taken to be cheap.
+        repo, _prior_base, _prior_head = _advanced_base_repo(tmp_path)
+        _write_test_evidence(repo)
+        store = evidence.store_path(repo)
+        before = store.read_bytes()
+        assert gates.branch_coverage_verdict(repo)["status"] == "transferred"
+        assert store.read_bytes() == before
+        assert _guard_records(repo) == []
+        # ...and the gate on the same span still does record one, so this is a
+        # caller-side choice rather than the signal having been dropped.
+        assert _run_gate(repo, capsys)[0] == 0
+        assert len(_guard_records(repo)) == 1
+
+    def test_it_carries_the_span_the_caller_has_to_describe(self, tmp_path):
+        repo = _branch_repo(tmp_path)
+        answer = gates.branch_coverage_verdict(repo)
+        assert answer["resolved"]["base_branch"] == "main"
+        assert answer["resolved"]["merge_base"] == _git(repo, "rev-parse", "main")
+        assert answer["head_tree"] == _tree(repo)
+
+    def test_the_printer_context_stays_private_to_the_printer(self, tmp_path):
+        # The memo closures are returned to the PRINTER so it need not re-pay a
+        # `git ls-tree` per tree; a public caller seeing them would be free to
+        # build a second composition on top of this one, which is the duplicate
+        # this function exists to prevent.
+        repo = _branch_repo(tmp_path)
+        answer = gates.branch_coverage_verdict(repo)
+        assert not [k for k in answer if k.startswith("_")]
+
+    def test_an_unresolvable_span_says_so_rather_than_guessing(self, tmp_path):
+        # No commits, no merge-base: the honest answer is that the question
+        # could not be asked, and the consumer degrades to its old text.
+        repo = tmp_path / "empty"
+        repo.mkdir()
+        _git(repo, "init", "-q", "-b", "main")
+        assert gates.branch_coverage_verdict(repo)["status"] in (
+            "no-base",
+            "no-head",
+        )
+
+
 class TestFixChurnDiagnosis:
     """An ``uncovered`` gap whose whole content is the builder's own
     non-blocking fixes must SAY so and name ``disposition`` — otherwise the
@@ -1048,6 +1150,22 @@ class TestFixChurnDiagnosis:
         # the review loop did not cause, so the round it needs is real.
         repo, _rid = self._reviewed_feature(tmp_path)
         _commit(repo, "other.py", "z = 9\n", "unrelated work")
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 1
+        assert "uncovered" in err
+        assert "fix churn" not in err
+
+    def test_a_file_only_an_observation_named_is_not_churn(self, tmp_path, capsys):
+        # Observations carry `files` too, and are deliberately not read: the
+        # subset test is already only file-level evidence that an edit is a
+        # fix, and an item the reviewer did not rate as a finding is weaker
+        # ground still. Widening it would widen what the gate calls churn.
+        repo, _rid = self._reviewed_feature(
+            tmp_path,
+            observations=[{"oid": "O-1", "name": "o", "goal": "g",
+                           "recommendation": "r", "files": ["helper.py"]}],
+        )
+        _commit(repo, "helper.py", "h = 1\n", "act on the observation")
         rc, _out, err = _run_gate(repo, capsys)
         assert rc == 1
         assert "uncovered" in err

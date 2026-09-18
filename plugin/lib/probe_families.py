@@ -51,6 +51,7 @@ def register_all() -> None:
     from .onboarding_probes import register as register_onboarding
     from .adhoc_delegate_probes import register as register_adhoc_delegate
     from .oversized_state_probes import register as register_oversized_state
+    from .risk_surface_probes import register as register_risk_surfaces
 
     register_backlog()  # the backlog feature's probes (incl. legacy-backlog-format)
     register_upstream()  # upstream-bug-reporting receiving-side probe
@@ -65,3 +66,4 @@ def register_all() -> None:
     register_onboarding()  # plugin enabled but /prawduct:onboard never run in this repo
     register_adhoc_delegate()  # ad-hoc delegate worktree left unintegrated (its brief is the signal)
     register_oversized_state()  # governance files over this repo's size threshold
+    register_risk_surfaces()  # code under review, and no answer to where a missed defect costs most

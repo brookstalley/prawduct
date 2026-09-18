@@ -25,9 +25,14 @@ validates the partial and treats anything else as out of bounds.
 
 Your dispatch prompt carries: your **role** (`correctness` | `design` | `sustainability`),
 your **assigned goals**, the **project directory**, the **changed-files list** (subject and oracle
-sets alike — the split is explained below), a **signals**
-summary, the **commit under review** (a SHA), the **review id**, and the **two paths you
-write** — your started marker and your partial. Those paths and the review id are recorded in
+sets alike — the split is explained below), a **`Signals:` line**, the **commit under review** (a
+SHA), the **review id**, and the **two paths you write** — your started marker and your partial.
+The `Signals:` line reads `Stage: <inner|boundary> · Judgeable files: <n> · Type: <chunk type>`;
+`critic-begin` rendered it from the manifest (`signals`) and the coordinator copied it — nobody
+composed it. **`Stage` decides what is a finding**, and the severity definitions come from
+`review-protocol.md` ("Stage"): at `inner` only the inner BLOCKING set is a finding and everything
+else you would rate goes in your partial's `observations` array; at `boundary` every rating is a
+finding and consolidation refuses the array. Those paths and the review id are recorded in
 `.prawduct/.critic-partials/manifest.json` as `rendezvous.<your role>` and `id`; read them there
 if your prompt omits them, and never compose the filenames yourself. **Both paths must be absolute
 when you write** — your `Write` tool requires it, and the manifest records them relative to the
@@ -134,12 +139,21 @@ whole consolidation closed, so match it exactly):
       "files": ["<file the finding is about>"]
     }
   ],
+  "observations": [
+    {
+      "name": "<short title>",
+      "goal": "<the goal name>",
+      "recommendation": "<what to do about it>",
+      "files": ["<optional attribution>"]
+    }
+  ],
   "summary": "<one or two sentences: what you reviewed and the verdict>"
 }
 ```
 
 `files` on a finding is optional (omit when not file-specific). `findings` is `[]` for a
-clean pass. `commit_reviewed` and `dispatch_id` MUST be the SHA and the review id you were
+clean pass. `observations` is written only at `inner` stage — a finding minus its `severity` (carry
+no `severity` key); omit it, or leave it `[]`, at `boundary`, where consolidation refuses one. `commit_reviewed` and `dispatch_id` MUST be the SHA and the review id you were
 given — the consolidator checks that every reviewer reviewed the commit the manifest dispatched
 *and* was dispatched by the review it is consolidating; either mismatch fails closed. Note that
 `dispatch_id` is your OWN review; `resolutions[].review_id`, which you never write, means a

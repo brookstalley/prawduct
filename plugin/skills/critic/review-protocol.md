@@ -29,6 +29,8 @@ The Critic reviews changes against principles and specifications as a **separate
 
 **Subject and oracle — records govern SCOPE, not READING.** The manifest's `files_reviewed` is the **subject** set: everything but the records *about* the work. Eligibility is its own predicate, never "is it judgeable" — a deliverable, and prose that governs behaviour, are subjects however the gate prices them. `files_oracle` is what the code is judged *against* — read every one; a finding you DERIVE is never about one. *"The code violates this spec"* has the **code** as its subject and stays fully in scope at full severity. Three passes own oracle findings and are not narrowed — the record-lint relay, the Learnings Cross-Check, and the Records Pass, which rates the excluded set against its bars (`review-cycle.md` is the one home for this rule, BLOCKING included).
 
+**Stage — the manifest's `stage` decides what is a finding** (`review-cycle.md` "Severity is stage-keyed"). At `inner` (`final`: the uncommitted diff) a finding is one of the **inner BLOCKING set** — a test failure in the evidence; a test deleted or weakened; changed behavior with no test at all; a silently dropped requirement; exploitable security in changed code; a cross-component contract break; a norm departure without a recorded decision; an unlisted dependency — and every other verdict below, Goals 4–7 included, is the boundary rating: report it as an observation (a finding minus `severity`, in your report and in your partial's `observations` array), never in `findings`. At `boundary` (`cumulative`, and the PR review) the table stands as written. The `Signals:` line you were handed carries the stage; you never infer it.
+
 ## Review Goals
 
 Your goals, in priority order — you run all seven.
@@ -118,7 +120,7 @@ Self-gating (SKILL step 1). Read `framework-checks.md` for the definitions: **Ge
 
 ## Severity Levels
 
-- **BLOCKING**: Must fix before proceeding (broken tests, dropped requirements, security vulnerabilities, unlisted deps).
+- **BLOCKING**: Must fix before proceeding (broken tests, dropped requirements, security vulnerabilities, unlisted deps). At `inner` stage only the inner BLOCKING set (Stage, above) is a finding at all; every other rating here is an observation.
 - **WARNING**: True *and* worth the builder's time (missing coverage, scope drift, stale artifacts, design problems). Name the consequence — *who does what wrong because of this?* No answer → NOTE. Confidence is not importance.
 - **NOTE**: Genuinely ambiguous; or prose whose being wrong changes nothing anyone does. **Prose is NOTE unless load-bearing** — a test or a gate reads it, or you name the concrete wrong action a maintainer takes because of it. It never lowers a severity another rule assigns explicitly — Goal 4's actively-misleading **BLOCKING** and its stale-artifact **WARNING** both stand. On an ORACLE target the Records Pass decides first whether there is a finding at all (`review-cycle.md` owns that order). That covers comment, docstring and doc wording inside a subject file, counts and phrasing alike; rating any of it WARNING turns it into a fix commit, which is how one round manufactures the next — `review-cycle.md`, "The review loop terminates." An inert count is the recurring instance — state the true figure, that nothing reads it, and that no edit is wanted.
 - **A finding's subject is never another finding.** One that restates a finding, names its consequence, or cross-checks it against learnings folds in or is dropped. Test it on your own partial — the others are invisible — so the question is "is a finding the subject of this one?", not "does this duplicate R-13?".
@@ -138,11 +140,11 @@ The manifest is authoritative; its derivation rule lives in `review-cycle.md`.
 
 Persistence is **decoupled from the review**: reviewers write partials, `critic-consolidate` merges them against the code-written manifest, and no model authors a file the data plane trusts.
 
-1. **Assess** (coordinator): read project state and the manifest (review id, `commit_reviewed`, `files_changed`), run git diff, and determine signals (size, type, boundaries). The manifest's `tier` is telemetry only and selects no model.
+1. **Assess** (coordinator): read project state and the manifest (review id, `commit_reviewed`, `files_changed`, and `signals` — the code-rendered `Stage · Judgeable files · Type` line; you compose none), run git diff. The manifest's `tier` is telemetry only and selects no model.
 
-2. **Dispatch** three **`critic-reviewer`** subagents (Agent tool, `subagent_type: critic-reviewer`) — **all three Agent calls in ONE message, concurrently.** With **no `model:` override** — they inherit the session model (`critic-reviewer` declares `model: inherit`). Each reviews ONLY its goals and writes ONLY the two files the manifest's `rendezvous` names for its role — never `.critic-findings.json`, `critic-consolidate`, or `critic-end`. Prompt template — substitute `<ROLE>`/`<GOALS>`/`<SHA>`/`<ID>`/`<STARTED>`/`<PARTIAL>` from the manifest (`commit_reviewed`, `id`, `rendezvous.<ROLE>`) and `[dir]` from its `worktree`:
+2. **Dispatch** three **`critic-reviewer`** subagents (Agent tool, `subagent_type: critic-reviewer`) — **all three Agent calls in ONE message, concurrently.** With **no `model:` override** — they inherit the session model (`critic-reviewer` declares `model: inherit`). Each reviews ONLY its goals and writes ONLY the two files the manifest's `rendezvous` names for its role — never `.critic-findings.json`, `critic-consolidate`, or `critic-end`. Prompt template — substitute `<ROLE>`/`<GOALS>`/`<SHA>`/`<ID>`/`<STARTED>`/`<PARTIAL>`/`<SIGNALS>` from the manifest (`commit_reviewed`, `id`, `rendezvous.<ROLE>`, `signals` verbatim) and `[dir]` from its `worktree`:
 
-   > "Critic reviewer (`<ROLE>`). FIRST: write your liveness marker `<STARTED>` (content: `<ROLE>`). Then read `[critic path]` for goal definitions. Review ONLY <GOALS>. Project (absolute): `[dir]` — anchor every path and every `git -C` there, never your cwd. Subject files (findings-eligible): [`files_reviewed`]. Oracle files (read, do not rate): [`files_oracle`]. Signals: [summary]. Commit under review: `<SHA>` — record it verbatim as `commit_reviewed`, and confirm `git -C [dir] rev-parse HEAD` equals it before reading anything. Review id: `<ID>` — record it verbatim as `dispatch_id`. NO tests/builds. Write ONLY your partial to `<PARTIAL>`; nothing else."
+   > "Critic reviewer (`<ROLE>`). FIRST: write your liveness marker `<STARTED>` (content: `<ROLE>`). Then read `[critic path]` for goal definitions. Review ONLY <GOALS>. Project (absolute): `[dir]` — anchor every path and every `git -C` there, never your cwd. Subject files (findings-eligible): [`files_reviewed`]. Oracle files (read, do not rate): [`files_oracle`]. Signals: <SIGNALS>. Commit under review: `<SHA>` — record it verbatim as `commit_reviewed`, and confirm `git -C [dir] rev-parse HEAD` equals it before reading anything. Review id: `<ID>` — record it verbatim as `dispatch_id`. NO tests/builds. Write ONLY your partial to `<PARTIAL>`; nothing else."
 
    - **`[dir]` is the manifest's `worktree`** — already absolute, and the tree `critic-begin` measured. A subagent does not inherit your cwd, so a relative path resolves into the primary checkout: a different tree at a different commit, which reviews clean.
    - **correctness reviewer** (role `correctness`) — Goals 1, 2, 3.
@@ -157,7 +159,7 @@ Persistence is **decoupled from the review**: reviewers write partials, `critic-
 ## Critic Review
 
 ### Signals
-[Work size, work type, files changed, boundaries crossed]
+[The manifest's `signals` line verbatim; boundaries crossed]
 
 ### Changes Reviewed
 [List of files and what changed]
@@ -189,11 +191,14 @@ If no findings: "No issues found. Changes are ready to proceed."
   "findings": [
     {"name": "<short title>", "goal": "Nothing Is Unintended", "severity": "warning", "recommendation": "<what to do>", "files": ["file1"]}
   ],
+  "observations": [
+    {"name": "<short title>", "goal": "Nothing Is Missing", "recommendation": "<what to do>"}
+  ],
   "summary": "N warnings. Changes ready to proceed."
 }
 ```
 
-`files` (per finding): attribution; omit when not file-specific. `findings` is `[]` for a clean pass. Match this schema exactly — consolidation validates every entry and fails closed. No `resolutions` key in these modes: it is `verify-resolutions`-only, and emitting one here fails consolidation.
+`files` (per finding): attribution; omit when not file-specific. `findings` is `[]` for a clean pass. `observations` is the `inner`-stage carrier for what you demoted (a finding minus `severity`, no `severity` key) — consolidation refuses the array from a `boundary` dispatch. Match this schema exactly — consolidation validates every entry and fails closed. No `resolutions` key in these modes: it is `verify-resolutions`-only, and emitting one here fails consolidation.
 
 ## Review Cycle
 

@@ -43,7 +43,7 @@ Development tooling, debug scaffolding, and verification infrastructure are remo
 ## Process
 
 ### 11. Proportional Effort
-Match rigor to risk and impact. A personal utility needs less governance than a payment system. Discovery depth, review intensity, test coverage, documentation detail — all scale to the stakes. Over-engineering a family app is as wasteful as under-engineering a financial platform. The depth varies; the habits don't.
+Match rigor to risk and impact. A personal utility needs less governance than a payment system. Discovery depth, review intensity, test coverage, documentation detail — all scale to the stakes. Over-engineering a family app is as wasteful as under-engineering a financial platform. Rigor also has two stages: the inner loop proves the change, the boundary proves the bundle. The depth varies; the habits don't.
 
 ### 12. Scope Discipline
 Do what was asked. Don't add unrequested features, don't refactor adjacent code, don't over-engineer for hypothetical futures. When scope needs to change, discuss it explicitly. Three similar lines of code is better than a premature abstraction.

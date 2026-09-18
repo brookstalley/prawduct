@@ -181,7 +181,10 @@ Routes never touch SQLite directly — persistence goes through `store.py`. Temp
      default. Field reference:
        `Critic mode:` / `Type:` — methodology/planning.md "Critic Mode Per Chunk" /
          "Choosing a Chunk Type"; behavior tables in skills/critic/review-cycle.md.
-         Mode missing, unrecognized, or inference unconfident → the review runs `final`.
+         Mode missing or unrecognized → inferred; no rule firing → `chunk`, the inner-stage review.
+         Each chunk's "Done when" runs `/prawduct:critic`; a SHORT plan owes fewer runs
+         than one per chunk, and which and when is stated by review-cycle.md's
+         "When Review Is Required" row — not restated here.
        `Foreign API:` / `Exposed API:` / `Visual change:` — methodology/planning.md.
        `Trivial because:` — required iff `Type: trivial`. -->
 
@@ -192,7 +195,7 @@ Routes never touch SQLite directly — persistence goes through `store.py`. Temp
 - **Artifacts consumed:** `data-model.md` (Item entity), `test-specifications.md` §1
 - **Deliverables:** new `pantry/main.py`, new `pantry/store.py`, new `templates/list.html`, seeded dev database
 - **Tests:** unit — `store.py` CRUD; integration — GET / renders seeded items (httpx)
-- **Acceptance criteria:** `uv run pytest -q` passes; browser shows the seeded list at /
+- **Acceptance criteria:** the declared suite passes; browser shows the seeded list at /
 - **Done when:**
   1. Acceptance criteria met and tests pass
   2. `/prawduct:critic` run and blocking findings resolved
@@ -225,7 +228,9 @@ Routes never touch SQLite directly — persistence goes through `store.py`. Temp
 - **Acceptance criteria:** a known barcode prefills the name; API down → the form still works manually
 - **Type:** cumulative-final
   <!-- Last chunk: its review IS the one `/prawduct:critic cumulative` — commit
-       first, run it once, no separate `final`. -->
+       first, run it once, no separate `final`. On a short plan that one run is every
+       earlier chunk's review too (review-cycle.md's "When Review Is Required" row);
+       not on THIS plan, because Chunk 02 declares a `Critic mode:`. -->
 - **Foreign API:** openfoodfacts-http
 - **Done when:**
   0. verify-api — probe the live API for two barcodes; capture the actual response shape in `.prawduct/artifacts/api-notes-off.md`

@@ -46,6 +46,24 @@ The cheap discipline: before cascading anything, write down what is no longer tr
 the list has one item, ask what else the change made false. The enumeration takes a minute; a
 carrier that survives it reads as current until someone trips on it.
 
+**The amendment, 2026-09-17 — the sweep that crosses FILES is blind to the carrier in the file you
+are editing.** Fixing `/prawduct:pr` Step 1 to name `test-evidence record`, the enumeration ran
+exactly as prescribed: grep the claim, find the carriers, check each. It reported two, and it was
+right about both — `building.md` and `delegation.md` already said it correctly. A cumulative review
+then found a third, `SKILL.md`'s own `## Important` checklist, a hundred and fifty lines below the
+edited sentence and still naming only `test-status`.
+
+What makes this worth a second amendment rather than a shrug is the specific false confidence.
+A cross-file sweep *feels* exhaustive precisely because it crossed files: having proved you looked
+beyond your own edit, the file under your cursor reads as territory you have already covered — and
+you have, in the sense that you are looking right at it, which is not the sense that matters. The
+same-file carrier is usually the worst kind, too, because it sits under a heading like `## Important`
+or `## Summary` whose whole job is to restate the procedure a reader might not scroll to.
+
+**The cheap discipline, extended: grep your own file first, then the siblings.** And when the
+same-file carrier is a restatement, the remedy is a construction, not a third copy — point it at the
+one home and say that it deliberately does not restate, or the next editor updates two of three.
+
 ### A reflection written at speed is a HYPOTHESIS, and re-reading your own note later feels like evidence — re-derive a diagnosis from provenance before building on it, because the mechanism freshest in context is the one you will blame. A session reflection named the doc-only fast path as the cause of a red integration branch; the actual cause was two commits pushed directly to it with CI failing unread, found only by asking the API which PR carried them. The fix built on the wrong reading would have been inert. Tell: your causal claim names the file you happened to be reading when the symptom appeared
 
 ### A ruling recorded only where the deciding team reads it is NOT recorded — put it in the artifact the ASKERS receive, because finding the rule, seeing it filed as a bug twice, and finding no statement that the answer is settled reads as "known bug, still open". Tell: the ruling is in your governance state and the change-log, and the shipped copy got only the rule

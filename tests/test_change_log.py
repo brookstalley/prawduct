@@ -431,15 +431,22 @@ class TestAgainstTheRealChangeLog:
     and this is the tag side. Every assertion here is a property of this repo's
     actual change log, so it keeps discriminating after the old parser is gone.
 
+    The corpus is the whole history — the live log plus `change-log-archive/` —
+    because archiving moves released entries out of the live file, and a
+    property of "this repo's change log" is a property of every entry it has.
+
     Skipped when `.prawduct/change-log.md` is absent so the plugin's own suite
     still runs from a checkout without product state.
     """
 
     def _entries(self):
-        log = Path(__file__).resolve().parents[1] / ".prawduct" / "change-log.md"
-        if not log.is_file():
+        from lib import change_log_archive
+
+        prawduct = Path(__file__).resolve().parents[1] / ".prawduct"
+        text = change_log_archive.load_all_text(prawduct)
+        if text is None:
             pytest.skip("no .prawduct/change-log.md in this checkout")
-        return change_log.parse_change_log(log.read_text(encoding="utf-8"))
+        return change_log.parse_change_log(text)
 
     def test_the_real_log_parses_into_tagged_and_untagged_entries(self):
         entries = self._entries()

@@ -392,7 +392,7 @@ lives at exactly one delivery surface.
 - **Depends on:** Chunk 04
 - **Artifacts consumed:** `documentation/release-process.md` § Release checklist; the runbook
   Phases 0–3; `release-plan-v3.4.0.md` as the shape precedent (a minor call recorded against the
-  conservative-versioning norm); `plugin/hooks/gates.json`'s three `since: "3.5.0"` rows; the
+  conservative-versioning norm); `plugin/hooks/gates.json`'s three `since` rows (they must equal the version this release cuts); the
   Wave 2 handoff's #661 caveat.
 - **Deliverables:**
   - **Owner decision, framed before Phase 1:** version 3.5.0 (minor — the discovery's D1: a

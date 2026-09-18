@@ -388,7 +388,12 @@ def _scope_declared_in_change_log(prawduct_dir: Path, scope: "str | None") -> bo
     """
     if not scope or not scope.strip():
         return False
-    text = _read_text(prawduct_dir / "change-log.md")
+    from . import change_log_archive  # noqa: PLC0415 — lazy; mirrors the module's import posture
+
+    # Archived entries count: a scope declared by an entry that has since moved to
+    # the archive is still declared, and reading the live log alone would turn a
+    # late review of finished work back into the blocking read.
+    text = change_log_archive.load_all_text(prawduct_dir)
     if text is None:
         return False  # unreadable witness proves nothing — keep the block
     from . import change_log  # noqa: PLC0415 — lazy; mirrors the module's import posture

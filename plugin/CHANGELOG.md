@@ -10,12 +10,50 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
-## v3.5.1-dev
+## v3.5.1-dev.1
 
 **Prerelease under test — this build is the develop branch ahead of the next release.** The version
 says so wherever it appears, so a repo pinned to the develop ref can tell what it is running, and a
 cached review verdict from the released plugin is not replayed against this one. Rolling release
 notes accumulate here, and this section is renamed to the release number at the cut.
+
+**Review rigor is now stage-keyed, and this one reverses two promises v3.2.2 made you.** Reviews
+run at two stages. The **inner** stage — a chunk review, a `final`, a `verify-resolutions` — blocks
+only on the ships-broken set and reports everything else as an observation. The **boundary** — a
+`cumulative`, and the PR review — runs the full table and is never inferred away. When the mode is
+unclear the default is now the *cheaper* inner review, where it used to be the more thorough one.
+
+Two v3.2.2 statements no longer hold, and they are quoted here rather than quietly dropped:
+*"no repo is reviewed less than before"* and *"beneath them the old 5-file rule stands untouched"*.
+The 5-file coordinator fallback is **retired**: a repo that has declared no `risk_surfaces:` now runs
+the same two escalators as a declared one — a matched surface at any size, or 12+ judgeable files —
+and what declaring buys you is the paths it names, not a lower threshold. Some changes that drew
+three reviewers will now draw one. That is a deliberate trade of a bounded miss-rate increase for
+review wall-clock, made on the record, and the boundary review is what still runs everything.
+
+Measured before it was retired, across six undeclared repos over 2026-08-01 → 09-17: the fallback
+alone sent 87 reviews to three reviewers, and those carried 0.55 blocking findings per review against
+0.78 for the 18 single-pass reviews beside them — no per-review yield advantage for the third
+reviewer. How many of those 48 findings one reviewer would have missed is **not** measurable from the
+record, so the retirement rests on the recorded decision, not on a zero.
+
+**A short plan now owes one boundary review, not one per chunk.** A plan of at most three chunks
+that declares no `Critic mode:` and touches no risk-surface path defers its per-chunk reviews to the
+boundary. Every condition fails closed — an unreadable plan, an unresolvable base, a detached HEAD
+all leave per-chunk review standing — and `check-cumulative-critic` is unchanged.
+
+**A product is asked once where its risk lives.** If your repo has product code and state but no
+`risk_surfaces:` key, one advisory asks where a missed defect would cost you most. Any declared
+value silences it, `[]` included.
+
+**`/prawduct:pr` Step 1 names the command that records a suite run, not just the one that dates
+it.** It used to say "write fresh evidence" and name nothing, so the natural reading was to run your
+suite by hand and record it afterwards — which costs a second full run wherever `test_command:` is
+declared, because hand-typed counts are refused there and a hand-run emits no JUnit report to ingest
+instead. `prawduct-hook test-evidence record` does both in one step: your declared `test_command` if
+you have one, a pytest fallback if you do not. **If your product is not Python, declare
+`test_command:`** (the template ships it commented out) or ingest an existing run with
+`--from-junit` / `--from-counts`.
 
 **Your learnings corpus moves, and this release deletes the old files.** Rules leave
 `.prawduct/learnings.md` and become ordinary `.claude/rules/` files the harness loads by path match:
@@ -28,12 +66,6 @@ never committed, or carrying uncommitted changes), will not write into a gitigno
 proves the move lossless before it unlinks anything. `--propose-map` and a dry run come first, so you
 see the mapping before any of that happens. Until you migrate, the new **`learnings-unmigrated`**
 Stop gate reports the repo is still on the legacy corpus.
-
-**Deprecated and inert this release:** `audit-learnings`, `learnings-obligation` and
-`check-learnings-pairing` still exit 0 and write nothing — they graded a corpus that no longer
-exists. Their notices name where rules live now. `check-learnings-pairing`'s former exit codes (1 a
-duplicate active heading, 3 an unreadable pair) are RETIRED, so a script still branching on them
-takes the clean arm forever.
 
 **The reflection guide is about the learning loop again, and the standing block has its own
 guide.** `methodology/reflection.md` halves: its Step 4 is now a routing decision with four
@@ -66,7 +98,9 @@ gate would block.
 `learnings-obligation` and `check-learnings-pairing` graded a `.prawduct/learnings.md` that the
 harness-loaded layout replaced. Each still runs — exit 0, one `WARNING:` on stderr naming the
 replacement, nothing written — so a doctor skill on an older pin or a copied runbook does not break;
-removal waits for a major. The `/prawduct:learnings` lookup skill is gone: the harness loads
+removal waits for a major. `check-learnings-pairing`'s former exit codes (1 a duplicate active
+heading, 3 an unreadable pair) are RETIRED, so a script still branching on them takes the clean arm
+forever. The `/prawduct:learnings` lookup skill is gone: the harness loads
 `.claude/rules/learnings/core.md` every session and an area file when you read a file its `paths:`
 match, so there is nothing to look up. Doctor's learnings checks, the `sentinel_command` key and the
 record-lint `learnings-entry-shape` check go with them.
@@ -82,7 +116,13 @@ and `learning.fired` when a Critic finding quotes a rule's opening words (record
 `critic-consolidate`, joined to the review). Both are written by the plugin, never by hand.
 `review-stats` reports them: a `learning` block counting writes, citations and the distinct
 rules behind each, closing with the number the corpus cannot ask itself — how many written
-rules no review has ever cited. Its `--json` `schema_version` moves to 3 (2 for the block, 3 for `units_uncited`, the set of written rules no review cited).
+rules no review has ever cited. Its `--json` `schema_version` moves to 4 (2 for the block, 3 for `units_uncited`, the set of written rules no review cited, 4 for the verify-pass `observations` counts).
+
+**The change log stays bounded.** Once `.prawduct/change-log.md` passes its size threshold, `/prawduct:pr`
+moves shipped history verbatim into `.prawduct/change-log-archive/YYYY-MM.md` (release-pending entries
+stay live), and the size nudge hands the agent that command instead of advice nobody could act on.
+**Downgrade caution:** an older plugin reads only the live log, so after your repo has archived, do not
+roll back past this release — or copy the archived entries back into `change-log.md` first.
 
 ## v3.5.0
 

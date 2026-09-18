@@ -428,6 +428,11 @@ def diagnose_fix_churn(
         # this.
         return None
 
+    # Findings only — a review fact's `observations` carry `files` too, and
+    # are deliberately not read here. Counting them would widen the set of
+    # edits this calls churn, and that set is already only file-level
+    # evidence (see the bound above); an item the reviewer did not even rate
+    # as a finding is weaker ground still for calling its edits a mere fix.
     named: set[str] = set()
     for finding in body.get("findings") or []:
         for path in finding.get("files") or []:

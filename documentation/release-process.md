@@ -146,8 +146,8 @@ same set in executable running order, and is the document to work from when actu
 1. **Merge `develop` → `main`.**
 2. **Bump the version** in `plugin/.claude-plugin/plugin.json` `version` **and** `plugin/VERSION` **and** `pyproject.toml`
    (they mirror each other). This is the release trigger — without it, nothing ships.
-3. **Tag the shipped entries `release=vX.Y.Z`.** This is the *only* change-log edit the
-   release makes. An entry arrives at release-prep with a `scope=` tag and **no
+3. **Tag the shipped entries `release=vX.Y.Z`.** This is the *only* edit the release makes
+   to an entry's content (step 4 may then move tagged entries, verbatim, into the archive). An entry arrives at release-prep with a `scope=` tag and **no
    `release=`**, and that absence IS the release-pending state — `check-releasability`
    enumerates what is pending by looking for it. Adding the tag is what ships the entry:
    ```
@@ -205,6 +205,17 @@ same set in executable running order, and is the document to work from when actu
    A plan whose work was **descoped** rather than shipped has no `release=` tag and is not
    swept; give it its end of life by hand, naming what replaced it:
    `prawduct-hook archive-plan <path> --state superseded --superseded-by "<what/why>"`.
+
+   **Then bound the live change log** — tagging just turned pending entries into shipped
+   history, so this is the moment the most of it can move:
+   ```
+   prawduct-hook archive-change-log --apply
+   ```
+   A no-op while `.prawduct/change-log.md` is within its size threshold; past it, shipped
+   entries move verbatim into `.prawduct/change-log-archive/YYYY-MM.md` and release-pending
+   ones stay. Its order relative to `plan-backfill` does not matter: that sweep reads the live
+   log and the archive together.
+
 5. **Write the consumer-facing narrative — two files, not one.** `plugin/CHANGELOG.md` gets a
    `## vX.Y.Z` section every release; `README.md`'s `## Recent Changes` gets refreshed on a
    **minor or major bump only**. Both are written at **Phase 1 step 10** of

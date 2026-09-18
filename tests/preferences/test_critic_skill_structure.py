@@ -6,8 +6,8 @@ The mode definitions live in two source files — the plugin Critic skill
 (review-protocol) and the per-chunk lifecycle (review-cycle). (The file-sync
 product-repo template carried a third copy until M4 Chunk 4 retired it.) If
 either loses the mode terminology, the build cycle silently falls back to
-ambiguous behavior (and the fail-safe default `final` masks the regression by
-always running the full review, hiding the proportionality benefit).
+ambiguous behavior — and since the unsure default is the inner-stage `chunk`,
+the regression would read as an ordinary light review rather than fail loud.
 
 This is a structural assertion, not a content audit: it checks that the files
 *name* both modes and *advertise* the mode-aware behavior. It does not check

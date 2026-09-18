@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import json
 import subprocess
+
+import pytest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent / "plugin"
@@ -308,22 +310,26 @@ class TestReportAgreesWithTheNudge:
         assert "may not be the first thing owed" in result.stdout
 
 
-def _run_with_broken_staging(tmp_path: Path) -> subprocess.CompletedProcess:
-    """Run `coverage-status` with `coverage_probes.layer_status` raising.
+def _run_with_broken_staging(
+    tmp_path: Path, target: str = "lib.coverage_probes", attr: str = "layer_status"
+) -> subprocess.CompletedProcess:
+    """Run `coverage-status` with `<target>.<attr>` raising — by default
+    `coverage_probes.layer_status`.
 
     Shared by the two staging-unavailable cases so they exercise the SAME
-    failure, not two hand-rolled approximations of it.
+    failure, not two hand-rolled approximations of it; the risk-surfaces row
+    reuses it against its own predicate for the same reason.
     """
     broken = tmp_path.parent / "_broken_lib"
     broken.mkdir(exist_ok=True)
-    # A sitecustomize that lets `lib.coverage_probes` import normally and then
+    # A sitecustomize that lets the target module import normally and then
     # breaks the one call the report makes. Poisoning `lib.gitstate` outright
     # would not reach this branch — the hook resolves its project dir through
     # gitstate before dispatching, so the crash would land upstream of the code
     # under test, which is its own lesson about fixtures that never arrive.
     (broken / "sitecustomize.py").write_text(
         "import importlib, importlib.abc, importlib.util, sys\n"
-        "TARGET = 'lib.coverage_probes'\n"
+        f"TARGET = {target!r}\n"
         "class _Wrap(importlib.abc.MetaPathFinder, importlib.abc.Loader):\n"
         "    busy = False\n"
         "    def find_spec(self, name, path=None, target=None):\n"
@@ -338,7 +344,7 @@ def _run_with_broken_staging(tmp_path: Path) -> subprocess.CompletedProcess:
         "            _Wrap.busy = False\n"
         "        def _boom(*a, **k):\n"
         "            raise RuntimeError('staging predicate is broken')\n"
-        "        mod.layer_status = _boom\n"
+        f"        mod.{attr} = _boom\n"
         "        return mod\n"
         "    def exec_module(self, module):\n"
         "        pass\n"
@@ -359,6 +365,123 @@ def _run_with_broken_staging(tmp_path: Path) -> subprocess.CompletedProcess:
             "PYTHONDONTWRITEBYTECODE": "1",
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# The risk-surfaces row — outside the chain, mirroring its own ambient nudge
+# ---------------------------------------------------------------------------
+
+
+def _write_state_with_risk(project_dir: Path, risk_block: str) -> None:
+    """A state file with characteristics recorded (so the chain is quiet and the
+    row is what varies) plus the given `risk_surfaces` text, verbatim."""
+    _write_state(project_dir, _GATE_OPEN)
+    path = project_dir / ".prawduct" / "project-state.yaml"
+    path.write_text(path.read_text(encoding="utf-8") + risk_block, encoding="utf-8")
+
+
+class TestRiskSurfacesRow:
+    """The doctor surface for the same condition the `risk-surfaces-undeclared`
+    advisory raises once: judgeable work and no `risk_surfaces:` key. The row
+    is asked of the probe module, so the two cannot disagree — and that
+    agreement is pinned per fixture with its DIRECTION, because "both silent"
+    and "both firing" agree equally well and only one is right each time.
+    """
+
+    def _row(self, project_dir: Path) -> dict:
+        result = _run("coverage-status", project_dir, "--json")
+        assert result.returncode == 0, result.stderr
+        return json.loads(result.stdout)["risk_surfaces"]
+
+    def _nudged(self, project_dir: Path) -> bool:
+        from lib import advisory_store, risk_surface_probes  # noqa: PLC0415
+
+        return bool(
+            risk_surface_probes.probe_risk_surfaces_undeclared(
+                advisory_store.load_project_state(project_dir),
+                advisory_store.make_codebase(project_dir),
+            )
+        )
+
+    def test_undeclared_with_code_is_degraded_and_names_the_fix(self, tmp_path):
+        _write_state_with_risk(tmp_path, "")
+        _write_product_work(tmp_path)
+        row = self._row(tmp_path)
+        assert row["status"] == "undeclared"
+        assert "risk_surfaces:" in row["fix"]
+        assert "discovery" in row["fix"]
+        assert "Surface Risk Surfaces" in row["fix"]
+        assert self._nudged(tmp_path) is True
+
+    @pytest.mark.parametrize(
+        "risk_block",
+        ["risk_surfaces:\n  - src/auth/\n", "risk_surfaces: []\n"],
+        ids=["listed", "opt-out"],
+    )
+    def test_a_declared_key_is_healthy_including_the_opt_out(self, tmp_path, risk_block):
+        _write_state_with_risk(tmp_path, risk_block)
+        _write_product_work(tmp_path)
+        row = self._row(tmp_path)
+        assert row["status"] == "declared"
+        assert row["fix"] is None
+        assert self._nudged(tmp_path) is False
+
+    def test_an_unparseable_key_is_degraded_with_the_shape_fix_and_the_nudge_is_silent(self, tmp_path):
+        # The one state where the two surfaces deliberately differ in FORM while
+        # agreeing in substance: the question was answered (so the "please
+        # answer" advisory is silent) and answered unreadably (so the row says).
+        _write_state_with_risk(tmp_path, "risk_surfaces: [src/auth/, src/billing/]\n")
+        _write_product_work(tmp_path)
+        row = self._row(tmp_path)
+        assert row["status"] == "unparseable"
+        assert "block sequence" in row["fix"]
+        assert self._nudged(tmp_path) is False
+
+    def test_no_code_yet_is_not_owed_and_not_a_finding(self, tmp_path):
+        _write_state_with_risk(tmp_path, "")
+        row = self._row(tmp_path)
+        assert row["status"] == "not-owed"
+        assert row["fix"] is None
+        assert self._nudged(tmp_path) is False
+
+    def test_human_output_renders_every_status_distinctly(self, tmp_path):
+        """The `--json` path never exercises the formatter; each status has its
+        own line, and the two non-findings say WHY they are not findings."""
+        _write_state_with_risk(tmp_path, "")
+        _write_product_work(tmp_path)
+        out = _run("coverage-status", tmp_path).stdout
+        assert "Risk surfaces (review depth)" in out
+        assert "NOT DECLARED" in out
+        assert "fix: " in out
+
+        _write_state_with_risk(tmp_path, "risk_surfaces: []\n")
+        out = _run("coverage-status", tmp_path).stdout
+        assert "declared (`risk_surfaces:`" in out
+        assert "NOT DECLARED" not in out
+
+        _write_state_with_risk(tmp_path, "risk_surfaces: [a, b]\n")
+        out = _run("coverage-status", tmp_path).stdout
+        assert "cannot read" in out
+
+        (tmp_path / "src" / "app.py").unlink()
+        _write_state_with_risk(tmp_path, "")
+        out = _run("coverage-status", tmp_path).stdout
+        assert "not owed yet" in out
+        assert "recognises" in out
+
+    def test_a_broken_check_reports_unknown_rather_than_crashing_or_going_quiet(self, tmp_path):
+        """A report degrades, never crashes — and never drops the row, because a
+        missing row reads as a repo with nothing to say."""
+        _write_state_with_risk(tmp_path, "")
+        _write_product_work(tmp_path)
+        result = _run_with_broken_staging(
+            tmp_path, target="lib.risk_surface_probes", attr="risk_surfaces_status"
+        )
+        assert result.returncode == 0, result.stderr
+        assert "Traceback" not in result.stderr
+        assert "risk-surfaces check skipped" in result.stderr
+        assert "Risk surfaces (review depth)  : unknown" in result.stdout
+        assert "NOT DECLARED" not in result.stdout
 
 
 # ---------------------------------------------------------------------------

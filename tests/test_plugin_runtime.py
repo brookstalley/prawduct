@@ -2009,9 +2009,9 @@ class TestFromCountsIngest:
 
     def test_rejects_combination_with_test_command(self, tmp_path):
         # A declared test_command emits JUnit, so hand-typed counts (no artifact)
-        # stay rejected — but the error redirects to --from-junit, which ingests
-        # that report without a re-run (fixes the discoverability half: the agent
-        # need not guess the escape hatch).
+        # stay rejected. This test owns the refusal and the --from-junit route;
+        # whether the message also serves a caller who has NOT run yet is the
+        # sibling's subject.
         repo = self._repo(tmp_path)
         (repo / ".prawduct" / "project-state.yaml").write_text(
             "test_command: python3 -m pytest --junit-xml={junit_xml} -q\n"
@@ -2021,6 +2021,34 @@ class TestFromCountsIngest:
         assert res.returncode == 2
         assert "test_command" in res.stderr
         assert "from-junit" in res.stderr.lower()
+
+    def test_refusal_names_the_path_for_a_caller_who_has_not_run_yet(self, tmp_path):
+        """The refusal serves two callers and must name both ways out.
+
+        `--from-junit` answers someone already holding a report. It is useless
+        to someone who has not run the suite — and naming only it sent such a
+        caller off to run the declared suite BY HAND, which emits no report to
+        ingest (the `{junit_xml}` path is the hook's to substitute), leaving a
+        second full suite run as the only way to record. A bare `record` runs
+        the declared command and records in one step; the message says so.
+        """
+        repo = self._repo(tmp_path)
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            "test_command: python3 -m pytest --junit-xml={junit_xml} -q\n"
+        )
+        res = _run_in(repo, "test-evidence", "record", "--from-counts",
+                      "passed=1", "failed=0")
+        assert res.returncode == 2
+        err = res.stderr.lower()
+        # The command is the load-bearing token: without it the message can be
+        # read sympathetically and still leave the caller with nowhere to go.
+        assert "test-evidence record" in err, res.stderr
+        # These two are literal fragments, not a property — they pin THIS
+        # phrasing of "you have not run yet / this does it in one step", and a
+        # reworded message must update them rather than silently pass.
+        assert "have not run" in err and "one step" in err, res.stderr
+        # ...without displacing the answer for the caller who HAS a report.
+        assert "from-junit" in err, res.stderr
 
     def test_head_tilde1_base_emits_advisory(self, tmp_path):
         # A repo NOT on main with no origin → the recorder's overlay base falls
@@ -3448,17 +3476,49 @@ class TestGreenIsEvidenceTrigger:
 
         Pins the three failure modes it exists to prevent — an unreachable
         fixture, a non-discriminating assertion, and a machine-dependent branch
-        — plus the one-directional-mutation caveat that is the reason a builder
-        who already ran a mutation pass still needs to read it.
+        — which together ARE the cheap half this directive keeps: for each test,
+        name what would turn it red.
         """
         hook = _load_hook_module()
         text = hook._GREEN_IS_EVIDENCE_DIRECTIVE
+        assert "name the change that would flip it" in text
         assert "REACHES the subject" in text
         assert "cannot tell the two orderings apart" in text
         assert "happens to exist on this machine" in text
-        assert "blind to what your change broke beside it" in text
-        # discipline.md row 1: a mutation not watched going red applied nothing.
-        assert "a mutation you did not watch go red applied nothing" in text
+
+    def test_the_mutation_half_stays_at_the_boundary_not_at_record_time(self):
+        """The inner/boundary split, asserted on BOTH sides of the move.
+
+        A mutation costs a run per claim, which is the wall clock the
+        stage-keyed rigor norm buys back at the inner stage — so the
+        mutation-watch rule is owed once, over the bundle, at PR pre-review.
+
+        The NEGATIVE half matches the exact strings that CARRY the two moved
+        behaviours (the watch-it-go-red rule and the one-directional caveat),
+        not a loose phrase about mutation: `record`'s remaining text may say
+        whatever else it likes about tests. It is paired with the positive half
+        above and with the presence assertion at the surface the rule moved to
+        — `docs/discipline.md` row 1 names that surface, and
+        `tests/test_discipline_table.py` reads the row.
+        """
+        hook = _load_hook_module()
+        text = hook._GREEN_IS_EVIDENCE_DIRECTIVE
+        assert "a mutation you did not watch go red applied nothing" not in text, (
+            "the mutation-watch rule is back at record time; it is a per-claim "
+            "run and belongs at the boundary, where it is paid once"
+        )
+        assert "blind to what your change broke beside it" not in text, (
+            "the one-directional-revert caveat is back at record time — it is "
+            "the mutation rule's other half and moves with it"
+        )
+        skill = (
+            Path(__file__).resolve().parent.parent
+            / "plugin" / "skills" / "pr" / "SKILL.md"
+        ).read_text()
+        assert "a mutation you did not watch go red applied nothing" in skill, (
+            "the mutation-watch rule left record time and did not arrive at the "
+            "boundary — deleted, not moved"
+        )
 
 
 # =============================================================================

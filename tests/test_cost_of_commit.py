@@ -556,6 +556,10 @@ class TestOutput:
             # itself is the subject. It printed "5-10 minute rounds" until the
             # round price became derivable, which put it on this list.
             ("critic_consolidate._BATCH_FIX_DIRECTIVE", critic_consolidate._BATCH_FIX_DIRECTIVE),
+            # Moved out of `next_action_line`'s source into a constant, so the
+            # source scan above no longer sees it.
+            ("critic_consolidate._IF_YOU_FIX_SOME", critic_consolidate._IF_YOU_FIX_SOME),
+            ("critic_consolidate._RIDE_ALONG_ROUTE", critic_consolidate._RIDE_ALONG_ROUTE),
         ]
         for name, source in scanned.items():
             emitted.extend((name, text) for text in _emitted_strings(source))

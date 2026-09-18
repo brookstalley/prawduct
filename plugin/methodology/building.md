@@ -64,7 +64,7 @@ retroactivity). Departing from a norm that already governs your change is a reco
 
 **Establish a clean baseline.** Before the first work cycle of a session:
 
-- *Tests*: Run the full suite. Every test must pass. **A delegate skips this**, inheriting the main agent's baseline.
+- *Tests*: `test-status` current is the baseline (exit 0 — don't re-run); else one run of the declared suite, all passing. **A delegate skips this**, inheriting the main agent's baseline.
 - *A red baseline is diagnosed before it is fixed*: re-run the failure on a clean checkout of the base commit. Red there too → not yours; record it (`test-evidence record --degraded`) and name it in the handoff rather than folding a fix into your diff. Green there → yours, and you fix it first.
 - *Git state*: Commit or stash unrelated work. Medium+ work gets a feature branch (`feature/...`, `fix/...`) unless `project-preferences.md` allows direct commits.
 - *Canary findings*: Address or explicitly acknowledge each compliance finding in the session briefing.
@@ -80,6 +80,8 @@ There is no "pre-existing" exception: every session starts clean.
 Test at the right level — **unit** (functions, logic), **integration** (component interactions, data flow, state), **end-to-end** (critical user flows, acceptance criteria). Depth proportionate to risk.
 
 **Implement.** Write the code that makes the tests pass, following `project-preferences.md` conventions. Prefer simplicity — the minimum abstraction the current chunk needs. Add observability alongside features, not after.
+
+**A verification ceiling — yours and a delegate's.** While building, run the narrowest thing that proves the change: the project's `Inner-loop verification` row where it has one, else the tests for the files you touched. The declared suite runs at Verify and at the boundary. A cost bound, not a rigor discount, and what it prevents fails *silently*: a partial or contended run reports a green that skipped a part nobody can name.
 
 **Update artifacts as you go.** When implementation changes something an artifact describes — API surface, data model, architecture — update that artifact as part of implementation, not at the end. Artifact drift is the #1 recurring quality issue at scale.
 
@@ -100,7 +102,7 @@ Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 **In-flight background work auto-defers — don't waive.** When the gate would block only because harness-tracked background work (`Workflow`/`Task`) is still producing the diff, the Stop hook defers and re-arms when it lands. An *untrackable* wait (CI, a remote queue) still blocks.
 
-**Critic review.** Run `/prawduct:critic` (no args) — the SKILL infers mode from git + build-plan state via `prawduct-hook infer-critic-mode` and records `mode_chosen_by`. Pass an explicit mode (e.g. `/prawduct:critic cumulative`) only to override; report override cases so inference can improve.
+**Critic review.** Run `/prawduct:critic` (no args) — the SKILL infers mode from git + build-plan state via `prawduct-hook infer-critic-mode` and records `mode_chosen_by`. Pass an explicit mode (e.g. `/prawduct:critic cumulative`) only to override; report override cases so inference can improve. A short plan owes fewer runs than one per chunk — `review-cycle.md`'s "When Review Is Required" row states which and when.
 
 **Resolve findings.** Consolidate before reading `.critic-findings.json` where the digest says to; single-pass reviews consolidate themselves. **Disposition them ALL in ONE pass — fix everything in the working tree, then ONE `/prawduct:critic verify-resolutions`, then ONE commit** (in that order — committing first re-anchors the pass; `review-cycle.md`) — fix-commit-verify per finding multiplies rounds. **Once zero blocking remain the review is over — then fix, accept, or file** (`skills/critic/review-cycle.md`). Accept (won't-fix, reasoned) is the default. **Record it as a fact (`prawduct-hook disposition`), then `render-dispositions` into the entry — never hand-count.** Re-run the gate, don't infer a round from stale output. Document disagreements with rationale.
 
@@ -112,7 +114,7 @@ Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 ## Session Scope Discipline
 
-**Size a work cycle by the diff its review must cover, not by a chunk count.** Critic quality degrades across a large diff, and the constraint is the reviewer's *attention* rather than its window. The roster rule names the honest unit: a risk surface, or 12+ judgeable files. A multi-chunk plan spans sessions: per-chunk reviews accumulate, and the final/cumulative lands with the last chunk.
+**Size a work cycle by the diff its review must cover, not by a chunk count.** Critic quality degrades across a large diff, and the constraint is the reviewer's *attention* rather than its window. The roster rule names the honest unit: a risk surface, or 12+ judgeable files. A multi-chunk plan spans sessions: the reviews it owes accumulate, and the final/cumulative lands with the last chunk.
 
 **Complete required governance at chunk boundaries, then signal — never *ask* whether to prepare a handoff; prepare it and say so.** At a chunk boundary, or when the user switches tasks, complete in order:
 
@@ -150,7 +152,7 @@ Research scales to impact: **medium** (pervasive pattern, non-core dep) → quic
 
 **When the user asks you to work in a subagent, do it** (Principle 23). Otherwise the default is **delegate when the same work finishes in less wall clock and the delegates will not fight each other** — recorded as the plan's `partition:`, re-checked at each chunk close, and asked again of a tangent or anything you were about to backlog. **Read `/prawduct:methodology delegation` before fanning out** — it is the judgment; this section is the mechanics.
 
-**How:** give it the chunk spec and referenced artifacts, the project directory path, the instruction **"Read the build cycle via `/prawduct:methodology building`"**, and **a verification ceiling** — the project's `Delegate verification` row where it has one, else the narrowest run covering its own change; never the full suite. A cost bound, not a rigor discount, and what it prevents fails *silently*: a contended run reports a green that skipped a part nobody can name. Add **"then `.prawduct/.subagent-briefing.md`"** only for a *shared*-worktree agent — it is gitignored, so an isolated one never sees it; inline what that agent needs.
+**How:** give it the chunk spec and referenced artifacts, the project directory path, the instruction **"Read the build cycle via `/prawduct:methodology building`"**, and **a verification ceiling** — the project's `Delegate verification` row where it has one, else the narrowest run covering its own change; never the full suite. Add **"then `.prawduct/.subagent-briefing.md`"** only for a *shared*-worktree agent — it is gitignored, so an isolated one never sees it; inline what that agent needs.
 
 **Parallel chunks:** launch independent chunks as separate subagents and await results. **Worktree-isolated (`isolation: "worktree"`) subagents read HEAD** — uncommitted artifacts, the plan you just amended included, are invisible; commit first or inline it in the prompt, say the prompt outranks any file, then tell it not to write `.prawduct/` (`prawduct-hook` refuses only on the harness's scratch branch, not one the agent creates). **Shared-worktree subagents share your git *index*** — `git rm` stages into *yours*, and `git add <paths>` does not scope a later `git commit`; use `git commit -- <paths>`. Prefer isolation for truly independent chunks. The canary may fire O(agents × edits) — expected; note it in the reflection.
 
@@ -192,7 +194,7 @@ Every consolidated review appends a **fact** to a store shared by all worktrees 
 
 ### Modes
 
-`Critic mode:` in the plan and an explicit slash arg are successive overrides on the inference described above. Four modes: `chunk`, `final`, `cumulative`, `verify-resolutions`. What each covers — and the fail-safe that a missing, unrecognized or unconfidently-inferred mode runs `final` — is `skills/critic/review-cycle.md`, not restated here. Two facts are worth having before you open it: `cumulative` feeds `/prawduct:pr create`'s gate, and `verify-resolutions` alone records resolution facts.
+`Critic mode:` in the plan and an explicit slash arg are successive overrides on the inference described above. Four modes: `chunk`, `final`, `cumulative`, `verify-resolutions`. What each covers — and the default when no rule fires — is `skills/critic/review-cycle.md`, not restated here. Two facts are worth having before you open it: `cumulative` feeds `/prawduct:pr create`'s gate, and `verify-resolutions` alone records resolution facts.
 
 **The Critic takes minutes, not seconds** (per-mode targets: `review-cycle.md`). Don't poll; deep-scrub your own changes while it runs, which often pre-resolves findings — but **read** the reviewed files, never **edit** them. `critic-begin` snapshots a tree: an edit under review voids the review and the suite evidence together, and `test-status` is blind to it. Scrub the free surfaces instead (the plan, the change-log, `.prawduct/`) and fold the rest into the fix commit the findings need. If it fails, tell the user and re-invoke — never write `.critic-findings.json` yourself.
 
@@ -226,4 +228,4 @@ A broad catch is legitimate at system boundaries, event loops and top-level supe
 
 **Opinionated defaults without configuration**: If a workflow-affecting feature could reasonably work two ways, make it a `project-preferences.md` preference with a safe default.
 
-**Skipping `final` mode**: `chunk` mode covers Goals 1-3 only. After all chunks are `[x]`, run `final` — or on a `cumulative-final` plan, the single `cumulative` that serves as the last chunk's review. The stop hook WARNs otherwise.
+**Skipping `final` mode**: `chunk` mode covers Goals 1-3 only. After all chunks are `[x]`, run `final` — or on a `cumulative-final` plan, the single `cumulative` that serves as the last chunk's review. The stop hook WARNs otherwise. On a short plan that one boundary run is every chunk's review — `review-cycle.md`'s "When Review Is Required" row.

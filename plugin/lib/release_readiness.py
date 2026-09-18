@@ -705,6 +705,21 @@ def _suite_verdict(project_dir: Path) -> tuple[bool, str]:
     return gates.tests_are_current(project_dir)
 
 
+def _history_entries(project_dir: Path, live_entries: list) -> list:
+    """Live entries plus every archived one, for questions about what already shipped.
+
+    Falls back to the live entries when the archive cannot be read: that is what
+    this gate answered from before archiving existed, and an unreadable archive
+    must not turn a history lookup into a refusal.
+    """
+    from . import change_log_archive  # noqa: PLC0415 — lazy; change_log_archive imports this module lazily too
+
+    text = change_log_archive.load_all_text(project_dir / ".prawduct")
+    if text is None:
+        return live_entries
+    return change_log_mod.parse_change_log(text)
+
+
 def _tagged_count(entries: list) -> int:
     """How many entries a ``prawduct:`` tag line heads.
 
@@ -827,7 +842,7 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
         detail = f"{len(entries)} change-log entries scanned, {_tagged_count(entries)} tagged"
         if release:
             asked = normalize_version(release)
-            stamped = len(scopes_tagged_for(entries, asked))
+            stamped = len(scopes_tagged_for(_history_entries(project_dir, entries), asked))
             detail += f", {stamped} scope(s) already tagged release={asked}"
         print(f"releasable: no release-pending scopes — nothing to classify ({detail}).")
         return 0
@@ -945,7 +960,11 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
     stale_blockers: list[str] = []
     orphans: list[str] = []
 
-    already_shipped = scopes_tagged_for(entries, version)
+    # Tagged-for-this-release entries may already have moved to the change-log
+    # archive (the release checklist archives right after tagging), so this
+    # history question reads the whole log. Pending questions above stay on the
+    # live file, which holds every pending entry by construction.
+    already_shipped = scopes_tagged_for(_history_entries(project_dir, entries), version)
     contradictions: list[str] = []
     for scope, (disposition, blocker) in classification.items():
         shipped_now = scope in already_shipped

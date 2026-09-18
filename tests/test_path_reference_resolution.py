@@ -123,6 +123,7 @@ _RECORD_PREFIXES = (
     # A fixture corpus is DATA by construction — a legacy learnings file kept precisely so a
     # migrator can be shown stripping its dead links — never an instruction a reader follows.
     "tests/fixtures/",
+    ".prawduct/change-log-archive/",  # the archive half of change-log.md: entries moved verbatim
 )
 # An archived build plan is a record of what was built, and its instructions were
 # true when written — `tools/product-hook` really was the entry point before the

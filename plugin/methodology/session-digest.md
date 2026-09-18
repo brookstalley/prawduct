@@ -5,8 +5,7 @@ the plugin and is read on demand (see "Read on demand" below).
 ## How work is governed here
 
 Every unit of work follows **understand → plan → build → verify → Critic → reflect**, scaled by
-size (trivial builds and verifies; medium adds a build plan and Critic review; large adds
-discovery and a review per chunk) and by type — the table is in `/prawduct:methodology building`.
+size and by type — the table is in `/prawduct:methodology building`.
 
 Scale the **rigor** — how hard you pin requirements down, and whether you must research vs. rely
 on intrinsic knowledge — to **stakes × knowledge-confidence × volatility** (fast-moving /
@@ -38,6 +37,8 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
   yourself — the independence is the whole value. After a coordinator review (`final`/
   `cumulative` given a three-reviewer roster), run `prawduct-hook
   critic-consolidate` before reading the findings (safe to re-run; never read a stale file).
+- **Rigor is stage-keyed:** inner-loop reviews block only on ships-broken; the boundary review
+  runs everything and is never skipped. Unsure defaults to the cheaper inner review.
 - **Catch specific exceptions.** Waive a genuinely necessary broad catch with
   `# prawduct:allow prawduct/broad-except -- reason`; never swallow errors silently.
   (`prawduct:allow <scope>/<rule-id> -- reason` is the general pragma — `docs/waivers.md`.)

@@ -1316,3 +1316,49 @@ rather than as an error the reader should go fix.
 3. Move the backlog cache aside (`<git-common-dir>/prawduct/`) and run it again. The line must say
    the count is **unknown**, not report zero and not vanish. Put the cache back.
 4. If the count is right but the sentence reads wrong, say so — the copy is the deliverable here.
+
+
+## VRF-020 — Chunk 04 (review-stages) — the deferral WARNING's channel, observed from the model's seat
+
+**Status:** pending
+
+**Raised:** 2026-09-17, from the bundle review's R-9 (accepted) — the static half is pinned in
+`tests/test_short_plan_deferral.py`; the harness half has never been observed.
+
+**What is in question:** the Stop gate's short-plan deferral (#292) is the first message this hook
+ever delivered as a JSON object on stdout at exit 0 (`systemMessage` for the user,
+`additionalContext` for the model), because at exit 0 the harness logs stderr and delivers it to
+nobody. Whether Claude Code actually hands that `additionalContext` to the model on a `Stop` hook
+is a fact about the harness, checkable only by ending a session in the deferring state. This
+six-chunk plan cannot fire it, and this repo's plans touch `plugin/skills/` or the hook and are
+never eligible.
+
+**Verify (any product repo, the first plan of ≤ 3 chunks touching no risk surface):**
+
+1. With a non-final chunk's code uncommitted and no review run, end the session (`Stop`).
+2. The user should see the WARNING text (the `systemMessage`); the transcript should show the
+   model received the same text as additional context, and the session should end (no block).
+3. If the user sees it and the model does not: the `additionalContext` half is undelivered on
+   `Stop` — file it against the hook's Stop channel; the `systemMessage` half then carries the
+   whole warning and the model must be told by the user.
+4. If neither arrives: the JSON was not parsed — check the transcript log for the raw stdout line.
+
+**Why a human check:** the harness reads the channel; no test in this repo can observe what the
+harness delivers, only what the hook emits.
+
+> === 2026-09-17 — DRAIN DISPOSITION: STAYS PENDING — LIVE HARNESS, AND THIS REPO CANNOT FIRE IT ===
+>
+> **Split at the moment it was written.** The static half — that the hook emits ONE JSON object on
+> stdout at exit 0 carrying identical `systemMessage` and `additionalContext`, attributed to the
+> gate, only on a deferring plan's non-final chunk — is `tests/test_short_plan_deferral.py`
+> (`TestStopGateOnShortPlans`), red-verified. Nothing here waits on that.
+>
+> **What it turns on:** whether Claude Code delivers a `Stop` hook's `additionalContext` to the
+> model (the hooks reference says it does; the previous session fetched the page rather than
+> recalling it). **Whose harness answers it:** Claude Code's, at a real session end — no test in
+> this repo can observe what the harness delivers, only what the hook emits.
+>
+> **Why this repo cannot drain it:** every plan here touches `plugin/skills/`, `plugin/lib/gates*`
+> or the hook, so the tier predicate never lets a prawduct plan defer; only a PRODUCT's short plan
+> reaches the state. It answers itself the first time one does — the user sees the WARNING or
+> does not, and the transcript shows whether the model got the same text. It gates nothing.
