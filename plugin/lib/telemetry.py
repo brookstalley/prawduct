@@ -45,9 +45,10 @@ from .ledger import ledger_path
 
 #: Report schema. Bumped to 2 when the learning-loop block arrived, to 3 when
 #: `units_uncited` joined it, to 4 when verify-pass `observations` joined every
-#: stat block, to 5 when `by_stage` joined the groupings: the `--json` shape
-#: gained keys each time, and TEL-7A4X keys on this shape.
-REPORT_SCHEMA_VERSION = 5
+#: stat block, to 5 when `by_stage` joined the groupings, and to 6 when every
+#: stat block gained `duration_measured` / `duration_self_reported`: the
+#: `--json` shape gained keys each time, and TEL-7A4X keys on this shape.
+REPORT_SCHEMA_VERSION = 6
 
 #: The two review stages a `review.critic` record can carry (`stage`, written
 #: by `critic-begin` onto the manifest and carried through the fact and the
@@ -204,6 +205,19 @@ def _read_events(path: Path) -> "tuple[list[dict], dict, dict, str | None]":
     return events, skipped, _finish(), None
 
 
+def _measured_duration(event: dict) -> "float | None":
+    """The interval this event's dispatch mark attests, or ``None``.
+
+    The predicate itself lives in :func:`lib.review_dispatch.measured_interval_seconds`
+    — one home, shared with the two `tools/` readers, because all three grade the
+    same field for the same comparison and a per-reader copy diverges on the bound
+    that makes it safe.
+    """
+    from .review_dispatch import measured_interval_seconds  # noqa: PLC0415 — lazy, as the module's other imports are
+
+    return measured_interval_seconds(event.get("dispatched_at"), event.get("ts"))
+
+
 def _extract_row(event: dict) -> dict:
     """The per-event record aggregation runs over (envelope + payload reads
     in one place, so every grouping sees identical values)."""
@@ -213,6 +227,14 @@ def _extract_row(event: dict) -> dict:
     duration = event.get("duration_seconds")
     if not isinstance(duration, (int, float)) or isinstance(duration, bool):
         duration = None
+    # Where the duration CAME FROM, which is a different question from what it
+    # is. `dispatched_at` is a clock code read before the reviewer was spawned;
+    # `duration_seconds` is the reviewing model's own recollection. Pooling the
+    # two re-creates the hazard the field was added to retire, so provenance
+    # travels with the row and every grouping reports the two populations apart.
+    # Absence is NOT MEASURED, never zero — an event written before the field
+    # existed says nothing about its own duration's provenance.
+    measured = _measured_duration(event)
     scope = event.get("scope")
     findings = [f for f in event["review"]["findings"] if isinstance(f, dict)]
     # An inner-stage pass demotes what falls outside the inner BLOCKING set
@@ -244,9 +266,24 @@ def _extract_row(event: dict) -> dict:
         "stage": stage if stage in _STAGES else None,
         "scope": scope if isinstance(scope, str) else None,
         "duration": duration,
+        # The measured interval where there is one, else None — never a fallback
+        # to the estimate, because the whole point is that the two are counted
+        # separately.
+        "duration_measured": measured,
         "severities": severities,
         "findings": findings,
         "observations": observations,
+    }
+
+
+def _population(values: list) -> dict:
+    """One duration population's count and median. ``reviews: 0`` with a null
+    median is the honest rendering of an empty one — never a zero median, which
+    reads as reviews that took no time."""
+    return {
+        "reviews": len(values),
+        "total_seconds": round(sum(values), 1) if values else 0,
+        "median_seconds": round(median(values), 1) if values else None,
     }
 
 
@@ -265,11 +302,24 @@ def _group_stats(rows: list[dict]) -> dict:
         if any(sev in _ACTIONABLE for sev in r["severities"]):
             actionable_reviews += 1
     recording = [r["observations"] for r in rows if r["observations"] is not None]
+    # The two populations, never pooled. `duration_total_seconds` and
+    # `duration_median_seconds` below are the POOLED figures every existing
+    # consumer already reads; they are kept because dropping a published key is a
+    # breaking change, but a caller grading a protocol change reads the split —
+    # a median over a mixture of clock readings and model recollections is not a
+    # measurement of anything.
+    measured = [r["duration_measured"] for r in rows if r["duration_measured"] is not None]
+    self_reported = [
+        r["duration"] for r in rows
+        if r["duration"] is not None and r["duration_measured"] is None
+    ]
     n = len(rows)
     return {
         "reviews": n,
         "duration_total_seconds": round(sum(durations), 1) if durations else 0,
         "duration_median_seconds": round(median(durations), 1) if durations else None,
+        "duration_measured": _population(measured),
+        "duration_self_reported": _population(self_reported),
         "findings": by_severity,
         "findings_per_review": round(total_findings / n, 2) if n else 0.0,
         "actionable_rate": round(actionable_reviews / n, 3) if n else 0.0,
@@ -505,6 +555,7 @@ def aggregate_review_stats(
 def _fmt_stats(stats: dict) -> str:
     """One stat block as a human line fragment (shared by every grouping)."""
     f = stats["findings"]
+    meas, self_rep = stats["duration_measured"], stats["duration_self_reported"]
     med = stats["duration_median_seconds"]
     pct = round(stats["actionable_rate"] * 100)
     recording = stats["reviews_recording_observations"]
@@ -512,9 +563,17 @@ def _fmt_stats(stats: dict) -> str:
         f"observations {stats['observations']} in {recording} recording review(s)"
         if recording else "observations not recorded"
     )
+    # Provenance is stated wherever a duration is, so a reader cannot take a
+    # median for a measurement without being told how much of it was measured.
+    provenance = (
+        f"measured {meas['reviews']}"
+        + (f" (median {meas['median_seconds']}s)" if meas["median_seconds"] is not None else "")
+        + f", self-reported {self_rep['reviews']}"
+        + (f" (median {self_rep['median_seconds']}s)" if self_rep["median_seconds"] is not None else "")
+    )
     return (
         f"{stats['reviews']} review(s) | duration total {stats['duration_total_seconds']}s, "
-        f"median {med if med is not None else '-'}s | "
+        f"median {med if med is not None else '-'}s [{provenance}] | "
         f"B/W/N/other {f['blocking']}/{f['warning']}/{f['note']}/{f['other']} | "
         f"actionable {pct}% | {stats['findings_per_review']} findings/review | "
         f"{observations}"

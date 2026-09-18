@@ -59,12 +59,11 @@ no tooling is built for this until a real ledger needs it.
 from __future__ import annotations
 
 import json
-import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import gitstate
+from . import gitstate, review_dispatch
 from .core import resolve_build_plan_path
 
 LEDGER_BASENAME = ".governance-ledger.jsonl"
@@ -99,22 +98,6 @@ def _cli_appendable() -> list[str]:
 
 def ledger_path(prawduct_dir: Path) -> Path:
     return prawduct_dir / LEDGER_BASENAME
-
-
-def _git_capture(project_dir: Path, *args: str) -> str | None:
-    """One git read; ``None`` on any failure (the writer must not crash —
-    a repo-less fixture still gets an honest ``git: {head: null, ...}``)."""
-    try:
-        proc = subprocess.run(
-            ["git", *args],
-            cwd=str(project_dir), capture_output=True, text=True, timeout=30,
-        )
-    except Exception:  # prawduct:allow prawduct/broad-except -- envelope fields are nullable, never fatal
-        return None
-    if proc.returncode != 0:
-        return None
-    out = proc.stdout.strip()
-    return out or None
 
 
 def _scope_from_plan(prawduct_dir: Path) -> str | None:
@@ -193,9 +176,19 @@ def _append_event(
     a fleet away from the code that caused it. The kind-specific part is one
     argument pair: the family key and the payload beneath it.
 
-    Returns the ledger path, for the caller's own message.
+    Returns ``(ledger path, dispatch reason)`` — the path for the caller's own
+    message, and the reason for what it did about the dispatch clock, which is
+    always a NAMED outcome (``lib.review_dispatch``: an unnamed degradation on an
+    advisory path manufactures the false success it exists to prevent).
+
+    The dispatch mark is consumed HERE rather than at the CLI so that the ``head``
+    the marker is checked against is the identical value the envelope records — two
+    ``rev-parse`` calls could in principle straddle a commit and disagree, and the
+    disagreement would read as an abandoned run.
     """
     base, _reason = _resolve_base(project_dir)
+    head = review_dispatch.head_sha(project_dir)
+    dispatched_at, dispatch_reason = review_dispatch.consume(prawduct_dir, event_kind, head)
     event = {
         "schema_version": LEDGER_SCHEMA_VERSION,
         "event": event_kind,
@@ -206,18 +199,23 @@ def _append_event(
         "chunk": chunk,
         "actor": {"role": _EVENT_ROLES[event_kind], "model": actor_model},
         "git": {
-            "head": _git_capture(project_dir, "rev-parse", "HEAD"),
+            "head": head,
             "base": base,
         },
         payload_key: payload,
     }
+    # Present only when measured. An absent key is "not measured"; a null or a zero
+    # would be a VALUE naming the absence, which reads as deliberate and which every
+    # consumer would then have to special-case to avoid averaging into a real one.
+    if dispatched_at is not None:
+        event["dispatched_at"] = dispatched_at
     path = ledger_path(prawduct_dir)
     prawduct_dir.mkdir(parents=True, exist_ok=True)
     line = json.dumps(event) + "\n"
     # "a" opens O_APPEND; one write() call keeps concurrent appends whole.
     with open(path, "a", encoding="utf-8") as fh:
         fh.write(line)
-    return path
+    return path, dispatch_reason
 
 
 def ledger_append(project_dir: Path, argv: list[str]) -> int:
@@ -352,7 +350,7 @@ def ledger_append(project_dir: Path, argv: list[str]) -> int:
     if scope is None:
         scope = _scope_from_plan(prawduct_dir)
 
-    path = _append_event(
+    path, dispatch_reason = _append_event(
         project_dir,
         prawduct_dir,
         event_kind,
@@ -367,6 +365,7 @@ def ledger_append(project_dir: Path, argv: list[str]) -> int:
         f"appended: {event_kind} -> {path} "
         f"(scope={scope or '-'}, chunk={chunk or '-'}, model={actor_model or '-'})"
     )
+    print(f"duration: {dispatch_reason}")
     return 0
 
 
@@ -510,7 +509,9 @@ def append_learning_event(
         session=session, review_id=review_id,
     ):
         return False
-    _append_event(
+    # `learning.*` is not a consuming kind, so the reason is always the "does not
+    # consume" one — read and dropped rather than ignored by accident.
+    _path, _dispatch_reason = _append_event(
         project_dir,
         prawduct_dir,
         kind,

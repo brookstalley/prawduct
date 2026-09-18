@@ -61,6 +61,7 @@ def _event(
     findings: list[dict] | None = None,
     observations: list[dict] | None = None,
     stage: str | None = None,
+    dispatched_at: str | None = None,
 ) -> dict:
     event = {
         "schema_version": 1,
@@ -89,6 +90,11 @@ def _event(
     # "unrecorded", never as a stage this reader guessed from the mode.
     if stage is not None:
         event["review"]["stage"] = stage
+    # Same posture again, and here it is the whole point: absence means NOT
+    # MEASURED. Every one of the 1,008 real events in this repo's ledger lacks
+    # the key, so the default is the population the split exists to separate.
+    if dispatched_at is not None:
+        event["dispatched_at"] = dispatched_at
     return event
 
 
@@ -442,7 +448,12 @@ class TestJsonSchemaStability:
         # `observations` and `reviews_recording_observations` (a key change).
         # 4 -> 5 on 2026-09-17 (review-stages Chunk 02): a `by_stage` grouping
         # joined the top level (a key change).
-        assert report["schema_version"] == 5
+        # 5 -> 6 on 2026-09-18 (pr-review-payload Chunk 01): every stat block
+        # gained `duration_measured` / `duration_self_reported`, because a
+        # duration read from a dispatch clock and one recollected by the
+        # reviewing model are two populations and a median over the mixture
+        # measures neither.
+        assert report["schema_version"] == 6
         assert report["project"] == "repo"
 
     def test_group_entry_keys_pinned(self, tmp_path):
@@ -453,6 +464,7 @@ class TestJsonSchemaStability:
         report = json.loads(_run(repo, "--json").stdout)
         stat_keys = [
             "reviews", "duration_total_seconds", "duration_median_seconds",
+            "duration_measured", "duration_self_reported",
             "findings", "findings_per_review", "actionable_rate",
             "observations", "reviews_recording_observations",
         ]
@@ -461,6 +473,8 @@ class TestJsonSchemaStability:
         assert list(report["by_scope"][0]) == ["scope", *stat_keys]
         assert list(report["by_stage"][0]) == ["stage", *stat_keys]
         assert list(report["top_files"][0]) == ["path", "actionable_findings", "findings"]
+        for key in ("duration_measured", "duration_self_reported"):
+            assert list(report["overall"][key]) == ["reviews", "total_seconds", "median_seconds"]
 
 
 def _learning(
@@ -593,3 +607,79 @@ class TestLearningLoopBlock:
         assert "learning loop:" in out
         # The DIFFERENCE, computed for the reader: 3 written, 1 cited.
         assert "2 written rule(s) no review has cited" in out
+
+
+class TestDurationProvenanceSplit:
+    """A duration read from a dispatch clock and one recollected by the
+    reviewing model are two populations. Reporting a median over the mixture
+    measures neither, which is the hazard `dispatched_at` was added to retire —
+    so the split, not the pooled figure, is what a protocol change is graded on.
+    """
+
+    def test_a_measured_and_an_estimated_review_land_in_different_populations(self, tmp_path):
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [
+            # Dispatched 12:00:00, appended 12:00:00 + 240s. The estimate on the
+            # SAME event says 100 — deliberately disagreeing, so a reader that
+            # silently prefers one cannot pass by coincidence.
+            _event(duration=100, dispatched_at="2026-06-10T11:56:00Z"),
+            _event(duration=600),
+        ])
+        overall = json.loads(_run(repo, "--json").stdout)["overall"]
+        assert overall["duration_measured"] == {
+            "reviews": 1, "total_seconds": 240.0, "median_seconds": 240.0,
+        }
+        assert overall["duration_self_reported"] == {
+            "reviews": 1, "total_seconds": 600, "median_seconds": 600,
+        }
+
+    def test_an_event_with_no_mark_is_never_counted_as_measured(self, tmp_path):
+        """Red if absence is ever read as zero. A zero-second review averaged
+        into the measured population is the exact inverse of the signal."""
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_event(duration=300), _event(duration=300)])
+        overall = json.loads(_run(repo, "--json").stdout)["overall"]
+        assert overall["duration_measured"]["reviews"] == 0
+        assert overall["duration_measured"]["median_seconds"] is None
+        assert overall["duration_self_reported"]["reviews"] == 2
+
+    def test_an_out_of_order_pair_is_refused_not_rendered_negative(self, tmp_path):
+        """A hand-edited row or a clock skew can stamp the dispatch AFTER the
+        write. A negative interval parses cleanly and would be labelled
+        measured, which is worse than no measurement: the estimate it displaces
+        at least knows it is one."""
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_event(duration=300, dispatched_at="2026-06-10T13:00:00Z")])
+        overall = json.loads(_run(repo, "--json").stdout)["overall"]
+        assert overall["duration_measured"]["reviews"] == 0
+        assert overall["duration_self_reported"]["reviews"] == 1
+
+    def test_an_unparseable_mark_falls_back_rather_than_ending_the_report(self, tmp_path):
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_event(duration=300, dispatched_at="not-a-timestamp")])
+        overall = json.loads(_run(repo, "--json").stdout)["overall"]
+        assert overall["duration_measured"]["reviews"] == 0
+        assert overall["duration_self_reported"]["reviews"] == 1
+
+    def test_the_split_reaches_every_grouping_not_just_overall(self, tmp_path):
+        """The groupings are what a role-vs-role or before/after comparison is
+        actually read from, so a split present only at the top level would leave
+        every comparison pooled."""
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_event(duration=100, dispatched_at="2026-06-10T11:56:00Z")])
+        report = json.loads(_run(repo, "--json").stdout)
+        for grouping in ("by_role_model_mode", "by_scope", "by_stage"):
+            assert report[grouping][0]["duration_measured"]["reviews"] == 1, grouping
+            assert report[grouping][0]["duration_self_reported"]["reviews"] == 0, grouping
+
+    def test_the_human_rendering_states_the_provenance_beside_the_median(self, tmp_path):
+        """A median printed without its provenance invites the reader to take an
+        estimate for a measurement, which is the whole failure being retired."""
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [
+            _event(duration=100, dispatched_at="2026-06-10T11:56:00Z"),
+            _event(duration=600),
+        ])
+        out = _run(repo).stdout
+        assert "measured 1 (median 240.0s)" in out
+        assert "self-reported 1 (median 600s)" in out

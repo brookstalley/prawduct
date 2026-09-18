@@ -86,6 +86,7 @@ GITIGNORE_ENTRIES = [
     ".prawduct/.handoff-notes.md",
     ".prawduct/.test-evidence.json",
     ".prawduct/.pr-reviews/",
+    ".prawduct/.pr-review-dispatch.json",
     ".prawduct/.session-base-tree",
     ".prawduct/.session-git-baseline",
     ".prawduct/.session-handoff.md",

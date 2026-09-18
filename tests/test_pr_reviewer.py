@@ -599,6 +599,42 @@ class TestPrReviewSkillContent:
         assert "Do NOT proceed" in content or "DO NOT proceed" in content
         assert "evidence file" in content
 
+    def test_the_dispatch_is_marked_before_the_reviewer_is_spawned(self):
+        """The clock measures the interval between the mark and the append, so
+        the mark's POSITION is the behaviour — marking after the spawn would
+        measure nothing but the caller's own bookkeeping.
+
+        Ordering is asserted, not mere presence: `pr-review-dispatch --begin`
+        appearing anywhere in the file would satisfy a presence check while
+        sitting after the spawn instruction and silently measuring zero.
+        """
+        content = (FRAMEWORK_DIR / "skills" / "pr" / "SKILL.md").read_text()
+        mark = content.index("pr-review-dispatch --begin", content.index("### Step 3"))
+        spawn = content.index("Tell the reviewer agent:")
+        assert mark < spawn, "the dispatch must be marked BEFORE the agent is spawned"
+
+    def test_marking_the_dispatch_is_granted_by_exact_op_name(self):
+        """Red if the grant ever widens to `pr-review*`.
+
+        A Bash grant is a PREFIX match, and `pr-review-dispatch` has a read-only
+        sibling `pr-review-payload`. More to the point, the WRITER is the one
+        being granted here: a prefix grant on this family is how a reviewer
+        agent would inherit a write it was never meant to have.
+        """
+        content = (FRAMEWORK_DIR / "skills" / "pr" / "SKILL.md").read_text()
+        frontmatter = content.split("---")[1]
+        assert "Bash(prawduct-hook pr-review-dispatch --begin)" in frontmatter
+        assert "pr-review*" not in frontmatter
+        assert "Bash(prawduct-hook pr-review-dispatch *)" not in frontmatter
+
+    def test_a_failed_mark_never_blocks_the_review(self):
+        """The clock is advice. A review that cannot be marked still runs and is
+        reported as self-reported — the population every prior review is in."""
+        content = (FRAMEWORK_DIR / "skills" / "pr" / "SKILL.md").read_text()
+        step3 = content[content.index("### Step 3"):content.index("### Step 4")]
+        assert "never a reason to delay the review" in step3
+        assert "self-reported" in step3
+
     def test_merge_flow_buildplan_cleanup_is_conditioned(self):
         """PR-7Q3M: build-plan lifecycle (the Merge Flow's "Confirm the
         bookkeeping merged WITH the PR" step -- named rather than numbered

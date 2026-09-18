@@ -3,7 +3,7 @@ description: PR lifecycle management — create, update, merge, or check status 
 argument-hint: "[create|update|merge|status]"
 user-invocable: true
 disable-model-invocation: false
-allowed-tools: Bash(gh pr *), Bash(gh repo view *), Bash(gh issue view *), Bash(git *), Bash(prawduct-hook test-status), Bash(prawduct-hook test-evidence record*), Bash(prawduct-hook check-cumulative-critic), Bash(prawduct-hook check-branch-pushed*), Bash(prawduct-hook cost-of-commit*), Bash(prawduct-hook verify-records*), Bash(prawduct-hook check-operator-verification), Bash(prawduct-hook accept-operator-verification*), Bash(prawduct-hook verify-operator-verification*), Bash(prawduct-hook check-pr-doc-only), Bash(prawduct-hook check-change-log-entry), Bash(prawduct-hook resolve-base), Bash(prawduct-hook archive-plan*), Bash(prawduct-hook archive-change-log*), Bash(prawduct-hook ledger-append*), Bash(python3 plugin/bin/prawduct-hook ledger-append*), Read, Write, Agent
+allowed-tools: Bash(gh pr *), Bash(gh repo view *), Bash(gh issue view *), Bash(git *), Bash(prawduct-hook test-status), Bash(prawduct-hook test-evidence record*), Bash(prawduct-hook check-cumulative-critic), Bash(prawduct-hook check-branch-pushed*), Bash(prawduct-hook cost-of-commit*), Bash(prawduct-hook verify-records*), Bash(prawduct-hook check-operator-verification), Bash(prawduct-hook accept-operator-verification*), Bash(prawduct-hook verify-operator-verification*), Bash(prawduct-hook check-pr-doc-only), Bash(prawduct-hook check-change-log-entry), Bash(prawduct-hook resolve-base), Bash(prawduct-hook archive-plan*), Bash(prawduct-hook archive-change-log*), Bash(prawduct-hook ledger-append*), Bash(python3 plugin/bin/prawduct-hook ledger-append*), Bash(prawduct-hook pr-review-dispatch --begin), Bash(python3 plugin/bin/prawduct-hook pr-review-dispatch --begin), Read, Write, Agent
 ---
 
 You are managing the PR lifecycle for this project. Detect the current state and take the appropriate action.
@@ -122,6 +122,17 @@ Spawn a **separate agent** (via the Task tool) for the independent review — do
 First, compute the evidence file path: take the current branch name, replace every `/` with `--`, append `.json`. For example, `feature/add-auth` becomes `feature--add-auth.json`. The full path is `.prawduct/.pr-reviews/<computed-filename>`.
 
 Create the `.prawduct/.pr-reviews/` directory if it doesn't exist.
+
+**Then mark the dispatch, immediately before spawning: `prawduct-hook pr-review-dispatch --begin`.**
+This starts a clock that code reads, so the review's duration becomes a measured interval rather
+than the reviewing model's recollection of one. Mark it *here* — after the path is computed, before
+the agent is spawned — because everything between the mark and the append is what gets counted.
+You choose when to mark; you never supply the value, and Step 4's `ledger-append` picks the mark up
+on its own, so there is no argument to pass and none to forget.
+
+If the command fails it says so and you carry on: an unmarked review records no `dispatched_at` at
+all and its duration is reported as self-reported, which is what every review before this one
+already is. A failure to mark is never a reason to delay the review.
 
 Tell the reviewer agent: "You are the PR reviewer. Read `${CLAUDE_SKILL_DIR}/review-protocol.md` for your review instructions. The project is at `[project directory]`. The base branch is `[base branch]`. The cumulative-Critic gate has passed: composed review coverage spans the bundle with zero unresolved blocking findings. Review the changes on the current branch. Write your findings to the exact path: `.prawduct/.pr-reviews/[computed-filename]` — use this path exactly as given, do not compute your own filename."
 

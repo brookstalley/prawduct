@@ -34,6 +34,11 @@ import statistics
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "plugin" / "lib"))
+
+from review_dispatch import measured_interval_seconds  # noqa: E402
+
+
 LEDGER = ".prawduct/.governance-ledger.jsonl"
 
 
@@ -65,22 +70,6 @@ def load(repo: Path, since: str | None, until: str | None) -> list[dict]:
     return rows
 
 
-# A dispatch marker is written before the reviewer is spawned and cleared when the
-# review is appended. A run that dies in between leaves the marker behind, so the next
-# append can attach a stale stamp — and a clock skew or a hand-edited row can put the
-# stamp AFTER the write. Both parse cleanly, and both would be labelled `measured`,
-# which is worse than no measurement: the estimate it displaces is at least honest
-# about being one. The producer guards staleness at the marker; this is the consumer's
-# own bound, because this is the number the before/after comparison is made from.
-#
-# 6 hours is chosen to be far outside any real review (this corpus's longest
-# self-reported run is 1,500s) while still refusing the multi-hour intervals a stale
-# marker produces. A rejected stamp does not discard the row — it falls back to the
-# self-reported value and is counted in that population, so absence of a measurement
-# never reads as absence of a review.
-MAX_PLAUSIBLE_REVIEW_SECONDS = 6 * 60 * 60
-
-
 _FULL_TIMESTAMP_LEN = len("YYYY-MM-DDTHH:MM:SS")
 
 
@@ -93,7 +82,7 @@ def _parse(stamp: str) -> dt.datetime | None:
     """
     try:
         parsed = dt.datetime.fromisoformat(stamp.replace("Z", "+00:00"))
-    except (ValueError, AttributeError, TypeError):
+    except (ValueError, AttributeError):
         return None
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=dt.timezone.utc)
 
@@ -108,9 +97,7 @@ def _exceeds_upper(ts: str, bound: str) -> bool:
     That silently shortens whichever window the bound closes, and the newest window is
     the one a before/after comparison is read from.
 
-    The earlier fix here special-cased the 10-character date and left `2026-09` and a
-    zone-less `2026-09-01T12:00:00` with the original defect. The rule the instance was
-    an instance of: compare only the part the bound actually specifies.
+    The rule: compare only the part the bound actually specifies.
     """
     if len(bound) < _FULL_TIMESTAMP_LEN:
         return ts[: len(bound)] > bound
@@ -123,18 +110,19 @@ def _exceeds_upper(ts: str, bound: str) -> bool:
 def duration(row: dict) -> tuple[int | None, bool]:
     """Return (seconds, measured).
 
-    A measured interval wins over the self-reported estimate, but only when it is
-    PLAUSIBLE — see MAX_PLAUSIBLE_REVIEW_SECONDS. An implausible stamp is not an
-    error; it falls back to the estimate exactly as a missing stamp does.
+    A measured interval wins over the self-reported estimate, but only when the
+    mark attests one: `measured_interval_seconds` is the framework's own
+    predicate — the plausibility bound, the out-of-order refusal and the
+    not-measured semantics — shared with `review-stats` and
+    `measure-consumer-overhead.py` so the three readers of this field cannot
+    disagree about what it says. A refused stamp is not an error; it falls back
+    to the estimate exactly as a missing stamp does, and the row is counted in
+    the self-reported population rather than dropped.
     """
     review = row.get("review") or {}
-    dispatched, wrote = row.get("dispatched_at"), row.get("ts")
-    if dispatched and wrote:
-        a, b = _parse(dispatched), _parse(wrote)
-        if a is not None and b is not None:
-            secs = int((b - a).total_seconds())
-            if 0 <= secs <= MAX_PLAUSIBLE_REVIEW_SECONDS:
-                return secs, True
+    secs = measured_interval_seconds(row.get("dispatched_at"), row.get("ts"))
+    if secs is not None:
+        return int(secs), True
     reported = row.get("duration_seconds") or review.get("duration_seconds")
     return (int(reported), False) if reported else (None, False)
 

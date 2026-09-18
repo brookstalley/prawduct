@@ -38,11 +38,10 @@ yield_tool = _load()
 def _event_nested_duration_only(ts, seconds):
     """A row carrying the estimate ONLY under `review`, never at the envelope top level.
 
-    Every one of the 122 real rows carries both keys, so nothing in the corpus reaches
-    `duration()`'s second operand — a verify pass flagged that its green measured
-    nothing. This is the shape an evidence file written straight through by the PR
-    reviewer has (`review-protocol.md`'s JSON schema puts `duration_seconds` inside the
-    record), so the fallback is real and now pinned rather than deleted.
+    This is the shape an evidence file written straight through by the PR reviewer has
+    (`review-protocol.md`'s JSON schema puts `duration_seconds` inside the record), so
+    `duration()`'s nested fallback is a real path and this is the fixture that reaches
+    it — rows carrying both keys never do.
     """
     return {
         "schema_version": 1,
@@ -176,6 +175,24 @@ class TestDurationProvenance:
         assert measured is False
         assert secs == 420
 
+    def test_a_non_string_dispatch_timestamp_degrades_to_self_reported(self):
+        """Red if `_parse` raises on a stamp that is not a string.
+
+        Sibling of the malformed-string case above, and the same GUARANTEE reached by
+        three routes: a malformed string fails inside `fromisoformat`, a number or a
+        mapping fails one call earlier at `.replace()`, and a null never reaches
+        `_parse` at all because `duration()`'s truthiness guard refuses it first. All
+        three must fall back rather than raise — a hand-edited row or a writer from
+        another toolchain produces them, and the tool is advice over a corpus it does
+        not control.
+        """
+        for stamp in (1758196800, None, {"at": "2026-09-18T12:00:00Z"}):
+            row = _event("2026-09-18T12:05:00Z", duration=420)
+            row["dispatched_at"] = stamp
+            secs, measured = yield_tool.duration(row)
+            assert measured is False, stamp
+            assert secs == 420, stamp
+
 
 class TestReport:
     def test_the_split_is_counted_not_pooled(self, tmp_path):
@@ -253,9 +270,8 @@ class TestReport:
     def test_a_month_only_until_covers_that_whole_month(self, tmp_path):
         """Red if the bound reverts to special-casing the 10-character date.
 
-        This is the case the first fix missed: `--until 2026-09` excluded every row in
-        September while `--since 2026-09` included them, so the two flags disagreed
-        about what the same string meant.
+        A month-only bound names a PERIOD: `--until 2026-09` covers the whole of
+        September, and must agree with `--since 2026-09` about what the string means.
         """
         repo = _ledger(tmp_path, [_event("2026-09-30T23:59:00Z", duration=300)])
         assert len(yield_tool.load(repo, None, "2026-09")) == 1
