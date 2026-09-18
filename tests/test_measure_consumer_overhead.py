@@ -5,6 +5,13 @@ surface that was added, not the whole tool — its commit-density attribution, i
 window logic and its PR fetching remain uncovered, and that gap is named in the
 chunk's handoff rather than silently inherited.
 
+`render()` is covered only where this change touched it. That is deliberate but
+it was also a real gap: the clock columns were added to the row dict and to the
+`--json` output while the human renderer printed neither, so the docstring
+telling readers to consult them described output that did not exist. Nothing
+caught it, and nothing caught the rule line that went two characters short of
+its header either, because no test had ever run the renderer.
+
 What matters here is the SPLIT. The tool already uses the word "measured" for
 interval-attributed time, which is a weaker and differently-biased thing than a
 clock read either side of a dispatch. Pooling the two, or letting one borrow the
@@ -13,9 +20,12 @@ other's name, is the hazard the clock was added to retire.
 
 from __future__ import annotations
 
+import functools
 import importlib.util
 import sys
 from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
 _TOOL = Path(__file__).resolve().parent.parent / "tools" / "measure-consumer-overhead.py"
 
@@ -112,3 +122,129 @@ class TestTheTwoMeasurementsStayApart:
         rather than the clocked ones — that would silently dilute a real
         measurement with reviews the clock never saw."""
         assert tool._clock_columns(1800.0, 2)["pr_clock_minutes_per_review"] == 15.0
+
+
+@functools.lru_cache(maxsize=1)
+def _built_report() -> dict:
+    """One real `build_report` per test session.
+
+    It walks this repo's git log and ledger, which is seconds rather than
+    milliseconds — paid once here rather than once per test.
+    """
+    return tool.build_report(
+        REPO_ROOT, REPO_ROOT,
+        tool._parse_instant("2026-01-01"),
+        want_prs=False,
+        until_override=tool._parse_instant("2026-09-18"),
+    )
+
+
+def _report(**row_overrides) -> dict:
+    """A `report` built by the tool's OWN producer, then perturbed.
+
+    Hand-authoring this dict encodes a belief about the row's shape rather than
+    the shape itself — the first attempt invented `hours` and `lines_written`
+    where the real keys are `engaged_hours` and a nested `lines` map, so it
+    could only ever have confirmed what its author already thought. Taking the
+    row from `build_report` against this repo means the renderer is tested
+    against the artifact it actually receives.
+    """
+    report = _built_report()
+    assert report["windows"], "build_report produced no windows — the test would be vacuous"
+    row = dict(report["windows"][-1])
+    row.update(row_overrides)
+    report = dict(report)
+    report["windows"] = [row]
+    return report
+
+
+def _column(out: str, section_heading: str, series: str, label: str) -> str:
+    """The value under `label` in `series`'s row of the named section.
+
+    Asserting against the whole ROW is not asserting against the column: section
+    C already prints an em dash for `merged` and for `median open h`, so a bare
+    `assert "—" in line` passes whenever EITHER of those is absent — which is
+    always, without `--prs`. A mutation sweep caught exactly that. The columns
+    are fixed-width and right-aligned, so the header's own span for a label is
+    the span the value occupies.
+    """
+    lines = out.splitlines()
+    start = next(i for i, ln in enumerate(lines) if ln.startswith(section_heading))
+    header = next(ln for ln in lines[start:] if label in ln)
+    end = header.index(label) + len(label)
+    begin = end - len(label)
+    # Widen left to the previous column's end so a right-aligned value that is
+    # longer than its header still falls inside the slice.
+    while begin > 0 and header[begin - 1] == " ":
+        begin -= 1
+    row = _section_row(out, section_heading, series)
+    return row[begin:end].strip()
+
+
+def _section_row(out: str, section_heading: str, series: str) -> str:
+    """The window row for `series` inside the named section.
+
+    Every section prints a row per window, each starting with the series name,
+    so an assertion that greps the whole output binds to whichever section came
+    first — which is not the one under test.
+    """
+    lines = out.splitlines()
+    start = next(i for i, ln in enumerate(lines) if ln.startswith(section_heading))
+    for ln in lines[start:]:
+        if ln.startswith(series):
+            return ln
+    raise AssertionError(f"no {series!r} row under {section_heading!r}")
+
+
+class TestTheHumanRenderer:
+    """The default output — the surface a reader actually meets. Every assertion
+    here exists because the `--json`-only tests above could not see it."""
+
+    def test_the_clock_columns_reach_the_default_output(self, capsys):
+        """The fix's own promise. The trio was `--json`-only while the tool's
+        docstring told readers to consult it."""
+        tool.render(_report(pr_clock_runs=3, pr_clock_hours=0.5,
+                            pr_clock_minutes_per_review=10.0))
+        out = capsys.readouterr().out
+        assert "clk runs" in out
+        assert "clk min/rev" in out
+        assert "10.0" in out
+
+    def test_a_window_the_clock_never_reached_renders_a_dash_not_a_zero(self, capsys):
+        """A 0.0 in the minutes column would read as reviews that took no time,
+        rather than as a window the clock had not reached."""
+        report = _report()
+        series = report["windows"][0]["series"]
+        tool.render(report)
+        # Scoped to the PR-layer section: EVERY section prints a row starting
+        # with the series name, so an unscoped match grades section A and passes
+        # or fails for reasons that have nothing to do with the clock.
+        out = capsys.readouterr().out
+        # The CLOCK column specifically — not "is there a dash anywhere in the
+        # row", which every unfetched `--prs` run satisfies for free.
+        assert _column(out, "C. PR LAYER", series, "clk min/rev") == "—"
+        # Paired positive: a window the clock DID reach prints its figure, so
+        # this cannot be satisfied by a renderer that dashes everything.
+        assert _column(out, "C. PR LAYER", series, "min/review") != "—"
+
+    def test_every_rule_line_matches_the_header_above_it(self, capsys):
+        """Red if any section's rule is a hand-counted second copy of its
+        header's width. Section C drifted to two characters short the moment two
+        columns were added, and no test had ever run this function.
+        """
+        tool.render(_report())
+        lines = capsys.readouterr().out.splitlines()
+        rules = [(i, ln) for i, ln in enumerate(lines) if set(ln) == {"-"} and len(ln) > 10]
+        assert rules, "found no rule lines — the test would be vacuous"
+        for i, rule in rules:
+            header = lines[i - 1]
+            assert len(rule) == len(header), (
+                f"rule is {len(rule)} chars under a {len(header)}-char header: {header!r}"
+            )
+
+    def test_the_pr_section_says_which_population_its_hours_are(self, capsys):
+        """Section B names its population ("the ledger's self-report"); C did
+        not, so its `hours` column was unlabelled beside a clock column."""
+        tool.render(_report())
+        out = capsys.readouterr().out
+        assert "self-rep" in out

@@ -657,10 +657,15 @@ def render(report: dict) -> None:
           "the dispatch clock)")
     if not report["prs_fetched"]:
         print("(merged/open columns not measured — re-run with --prs)")
-    print(f"{'series':7}{'merged':>8}{'reviews':>9}{'self-rep h':>12}{'min/review':>12}"
-          f"{'clk runs':>10}{'clk min/rev':>13}"
-          f"{'findings':>10}{'blocking':>10}{'median open h':>15}")
-    print("-" * 104)
+    # The rule is DERIVED from the header, never a second hand-counted copy of
+    # the same width: this pair drifted the moment two columns were added, and a
+    # number that must be recounted whenever the line above changes is a defect
+    # waiting for the next edit rather than a one-off typo.
+    header = (f"{'series':7}{'merged':>8}{'reviews':>9}{'self-rep h':>12}{'min/review':>12}"
+                                          f"{'clk runs':>10}{'clk min/rev':>13}"
+              f"{'findings':>10}{'blocking':>10}{'median open h':>15}")
+    print(header)
+    print("-" * len(header))
     for r in rows:
         opened = "—" if r["pr_median_open_hours"] is None else f"{r['pr_median_open_hours']:.3f}"
         merged = "—" if r["merged_prs"] is None else str(r["merged_prs"])
