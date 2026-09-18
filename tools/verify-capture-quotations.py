@@ -234,7 +234,7 @@ def load_tree(repo: Path, sha: str) -> Corpus:
             capture_output=True, check=False,
         )
         if proc.returncode != 0:
-            die(f"error: git archive failed for {repo} {sha}: "
+            die(f"error: git archive failed for {repo} {sha}: "  # refusal: git-archive-failed
                 f"{proc.stderr.decode('utf-8', 'replace')[:300]}")
         tf = Path(td) / "t.tar"
         tf.write_bytes(proc.stdout)
@@ -354,10 +354,10 @@ def audit(source: str, min_length: int = MIN_LENGTH_DEFAULT,
     cfg = SOURCES[source]
     capture = CAPTURES / str(cfg["capture"])
     if not capture.is_file():
-        die(f"error: no such capture: {capture}")
+        die(f"error: no such capture: {capture}")  # refusal: no-such-capture
     repo = source_root / str(cfg["repo_name"])
     if not (repo / ".git").exists():
-        die(f"error: source repo not found: {repo}. This audit reads the mined source "
+        die(f"error: source repo not found: {repo}. This audit reads the mined source "  # refusal: no-source-repo
             f"repositories from {source_root}; point --source-root (or "
             f"MCP_CAPTURE_SOURCE_ROOT) at the directory holding your clones.")
 
@@ -369,10 +369,10 @@ def audit(source: str, min_length: int = MIN_LENGTH_DEFAULT,
     # working tree, or a capture's end-of-read SHA) cannot be distinguished from "nothing matched
     # there", so it degrades a verdict without ever failing.
     if not corpora:
-        die(f"error: no corpus for {source} — the search would pass vacuously")
+        die(f"error: no corpus for {source} — the search would pass vacuously")  # refusal: no-corpora
     for c in corpora:
         if not c.blobs:
-            die(f"error: empty corpus '{c.label}' for {source} — "
+            die(f"error: empty corpus '{c.label}' for {source} — "  # refusal: empty-corpus
                 f"the search against it would pass vacuously")
 
     if _corpora_out is not None:
@@ -394,6 +394,35 @@ def audit(source: str, min_length: int = MIN_LENGTH_DEFAULT,
     return frags, skipped
 
 
+def line_based_reads_non_wrapping(text: str) -> tuple[int, int, int]:
+    """(line-based count, single-line spans, wrapped spans) for one capture's text.
+
+    Factored out of :func:`counts` so a control can reach its FAIL branch with a
+    synthetic input. The branch asserts the README's line-based recipe reads exactly
+    the non-wrapping subset; a check nobody can drive is not a check.
+    """
+    spans = _ITALIC_QUOTE_RE.findall(text)
+    grep_n = sum(len(_ITALIC_QUOTE_RE.findall(line)) for line in text.splitlines())
+    single = sum(1 for s in spans if "\n" not in s)
+    return grep_n, single, len(spans) - single
+
+
+def dropped_warnings(corpora: "list[Corpus]") -> list[str]:
+    """One warning line per corpus that could not read some of its files.
+
+    Factored out of :func:`main` for the same reason: a source file that failed to load
+    makes every quotation from it read as drift, so the report is load-bearing and needs
+    a control that can drive it.
+    """
+    lines: list[str] = []
+    for c in corpora:
+        if c.dropped:
+            names = ", ".join(c.dropped[:4]) + (" …" if len(c.dropped) > 4 else "")
+            lines.append(f"  WARNING corpus {c.label}: {len(c.dropped)} file(s) unreadable "
+                         f"and NOT searched — quotations from them will read as misses: {names}")
+    return lines
+
+
 def counts(min_length: int = MIN_LENGTH_DEFAULT) -> int:
     """Per capture: what each extraction reads, and what the line-based recipe cannot see.
 
@@ -413,16 +442,13 @@ def counts(min_length: int = MIN_LENGTH_DEFAULT) -> int:
     for source, cfg in SOURCES.items():
         cap = CAPTURES / str(cfg["capture"])
         text = cap.read_text(encoding="utf-8")
-        spans = _ITALIC_QUOTE_RE.findall(text)
-        # Reproduce the README's line-based recipe exactly.
-        grep_n = sum(len(_ITALIC_QUOTE_RE.findall(line)) for line in text.splitlines())
-        single = sum(1 for s in spans if "\n" not in s)
-        wrapped = len(spans) - single
+        grep_n, single, wrapped = line_based_reads_non_wrapping(text)
+        spans_total = grep_n + wrapped
         frags, _ = extract(source, cap, min_length)
         by = {}
         for f in frags:
             by[f.form] = by.get(f.form, 0) + 1
-        print(f"{source:12} {grep_n:>9} {single:>12} {wrapped:>8} {len(spans):>13} "
+        print(f"{source:12} {grep_n:>9} {single:>12} {wrapped:>8} {spans_total:>13} "
               f"{by.get('plain-quote', 0):>7} {by.get('code-span', 0):>10}")
         if grep_n != single:
             print(f"  FAIL {source}: line-based grep ({grep_n}) != single-line subset ({single})")
@@ -440,13 +466,37 @@ def self_test(min_length: int = MIN_LENGTH_DEFAULT,
 
     A scan nobody has falsified has measured nothing. Control 3 is the one the recipe
     recorded in `mcp-mining/README.md` never had: it proves the search DISCRIMINATES,
-    rather than merely that it runs. Controls 4-8 each pin a guard added in response to
-    a review finding — a guard with no control is one a later edit deletes silently, and
-    three of these were added and left unpinned in exactly that way.
+    rather than merely that it runs. From Control 4 onward each one pins a guard added in
+    response to a review finding — a guard with no control is one a later edit deletes
+    silently, and several were added and left unpinned in exactly that way. Stated
+    relationally because the list keeps growing and a range here would go stale first.
 
     No count is stated here on purpose: the list grows, and a number in this docstring
     would be the first thing to go stale.
     """
+    def _refuses(call, marker: str, what: str) -> bool:
+        """True iff `call` refuses with exit 2 AND the refusal is the one named.
+
+        Asserting the exit CODE alone is not enough: every refusal in this module exits
+        2, so a control whose fixture never reaches its subject catches an unrelated
+        refusal — a missing source repo, say — and prints PASS. That is the
+        environment-shaped hole, and it is what this helper exists to close.
+        """
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stderr(buf):
+                call()
+        except SystemExit as exc:
+            text = buf.getvalue()
+            if exc.code != 2:
+                print(f"  FAIL {what} exited {exc.code}, want 2"); return False
+            if marker not in text:
+                print(f"  FAIL {what} refused, but NOT on its own subject — got: "
+                      f"{text.strip()[:110]}"); return False
+            print(f"  PASS {what} refuses the run (exit 2, on its own subject)")
+            return True
+        print(f"  FAIL {what} did not refuse at all"); return False
+
     print("self-test: loading a real corpus (bankmachine)…")
     cfg = SOURCES["bankmachine"]
     corpus = load_tree(source_root / str(cfg["repo_name"]), str(cfg["shas"][0]))  # type: ignore[index]
@@ -545,14 +595,9 @@ def self_test(min_length: int = MIN_LENGTH_DEFAULT,
         try:
             globals()[target] = (lambda repo, sha=None, _l=label:
                                  Corpus(label=f"{_l}-emptied"))
-            try:
-                audit("cordyceps")   # cordyceps is the source with a secondary corpus
-                print(f"  FAIL an empty {label} corpus did not stop the audit"); ok = False
-            except SystemExit as exc:
-                if exc.code == 2:
-                    print(f"  PASS an empty {label} corpus refuses the run (exit 2)")
-                else:
-                    print(f"  FAIL empty {label} corpus exited {exc.code}, want 2"); ok = False
+            if not _refuses(lambda: audit("cordyceps", source_root=source_root),
+                            "empty corpus", f"an empty {label} corpus"):
+                ok = False
         finally:
             globals()[target] = real
 
@@ -626,41 +671,69 @@ def self_test(min_length: int = MIN_LENGTH_DEFAULT,
 
     # Control 10 — main()'s two refusals. Both prevent a vacuous pass and neither was
     # pinned: an unknown `--forms` value and a selection that would audit nothing.
-    for argv, what in (
-        (["x", "--forms", "no-such-form", "cordyceps"], "unknown --forms"),
-        (["x", "--forms", FORM_ITALIC, "--min-length", "100000", "cordyceps"],
-         "a selection that audits nothing"),
+    root_args = ["--source-root", str(source_root)]
+    for argv, marker, what in (
+        (["x", *root_args, "--forms", "no-such-form", "cordyceps"],
+         "unknown --forms", "unknown --forms"),
+        (["x", *root_args, "--forms", FORM_ITALIC, "--min-length", "100000", "cordyceps"],
+         "0 fragments selected", "a selection that audits nothing"),
     ):
-        try:
-            # The vacuous-selection refusal fires after the audit runs, so its ordinary
-            # report would land in the middle of the control output. Swallow it.
+        # The vacuous-selection refusal fires after the audit runs, so its ordinary
+        # report would land in the middle of the control output. Swallow it.
+        def _run(a=argv):
             with contextlib.redirect_stdout(io.StringIO()):
-                main(argv)
-            print(f"  FAIL {what} did not refuse"); ok = False
-        except SystemExit as exc:
-            if exc.code == 2:
-                print(f"  PASS {what} refuses the run (exit 2)")
-            else:
-                print(f"  FAIL {what} exited {exc.code}, want 2"); ok = False
+                main(a)
+        if not _refuses(_run, marker, what):
+            ok = False
 
     # Control 11 — the roster covers every refusal the module can make. A `die()` added
     # without a decision about how it is pinned is the unpinned-guard class, and this is
     # the construction that catches it rather than a list somebody remembers to extend.
-    tree = ast.parse(Path(__file__).read_text(encoding="utf-8"))
+    # Compares NAMED IDS, not a count: a count is satisfied by any seven refusals, so it
+    # could not tell a renamed or replaced one from the roster it claims to cover. Each
+    # production `die()` carries a `# refusal: <id>` tag and the two sets must be equal.
+    source_text = Path(__file__).read_text(encoding="utf-8")
+    tagged = set(re.findall(r"#\s*refusal:\s*([a-z0-9-]+)", source_text))
+    tree = ast.parse(source_text)
     # Scope: PRODUCTION refusals. `self_test` calls `die()` itself to pin the exit-2
     # contract, and counting that would make the roster grow with its own controls.
     production = [n for n in tree.body
                   if not (isinstance(n, ast.FunctionDef) and n.name == "self_test")]
-    actual = sum(
+    die_sites = sum(
         1 for top in production for node in ast.walk(top)
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
         and node.func.id == "die"
     )
-    if actual == len(PINNED_REFUSALS):
-        print(f"  PASS every refusal is on the pinned roster ({actual})")
+    roster = set(PINNED_REFUSALS)
+    if tagged == roster and die_sites == len(roster):
+        print(f"  PASS every refusal is tagged and on the roster ({sorted(roster)[0]} …, "
+              f"{len(roster)} ids)")
     else:
-        print(f"  FAIL {actual} die() site(s) vs {len(PINNED_REFUSALS)} on the roster — "
-              f"a refusal was added without deciding how it is pinned"); ok = False
+        if tagged != roster:
+            print(f"  FAIL roster/tag mismatch — only on roster: "
+                  f"{sorted(roster - tagged)}; only tagged: {sorted(tagged - roster)}")
+        if die_sites != len(roster):
+            print(f"  FAIL {die_sites} die() site(s) vs {len(roster)} roster ids — a "
+                  f"refusal was added without deciding how it is pinned")
+        ok = False
+
+    # Control 12 — the other two FAIL emitters, which a die()-only roster cannot reach.
+    # R-1 asked for a roster over die() AND FAIL sites; these are the FAIL half.
+    wrapped_fixture = 'a *"one line"* and *"a quotation that\nwraps"* here'
+    grep_n, single, wrapped = line_based_reads_non_wrapping(wrapped_fixture)
+    if wrapped >= 1 and grep_n == single and single < grep_n + wrapped:
+        print(f"  PASS the line-based check sees a wrapped span it cannot count "
+              f"(grep {grep_n}, wrapped {wrapped})")
+    else:
+        print(f"  FAIL line-based check did not detect the wrap "
+              f"(grep {grep_n}, single {single}, wrapped {wrapped})"); ok = False
+
+    noisy = Corpus(label="probe"); noisy.dropped = ["a.py", "b.py"]
+    warnings = dropped_warnings([noisy, Corpus(label="clean")])
+    if len(warnings) == 1 and "2 file(s) unreadable" in warnings[0]:
+        print("  PASS unreadable files are reported, not swallowed")
+    else:
+        print(f"  FAIL dropped-file reporting produced {warnings}"); ok = False
 
     print("self-test:", "PASS" if ok else "FAIL")
     return 0 if ok else 3
@@ -694,7 +767,7 @@ def main(argv: list[str]) -> int:
     # nothing — the shape of a green that measured no set at all.
     unknown = wanted - KNOWN_FORMS
     if unknown or not wanted:
-        die(f"error: unknown --forms value(s): {sorted(unknown) or '(empty)'}; "
+        die(f"error: unknown --forms value(s): {sorted(unknown) or '(empty)'}; "  # refusal: unknown-forms
             f"known forms are {sorted(KNOWN_FORMS)}")
     total_miss = 0
     for source in sources:
@@ -709,20 +782,14 @@ def main(argv: list[str]) -> int:
             by_form[f.form] = by_form.get(f.form, 0) + 1
         print(f"\n===== {source} =====")
         if not sel:
-            die(f"error: {source} — 0 fragments selected for forms {sorted(wanted)} at "
+            die(f"error: {source} — 0 fragments selected for forms {sorted(wanted)} at "  # refusal: vacuous-selection
                 f"--min-length {args.min_length}; nothing was audited, so a clean result "
                 f"would be a pass over the empty set")
         print(f"  fragments audited {len(sel)} (forms: {sorted(wanted)}); "
               f"skipped under {args.min_length} chars: {skipped}")
         print(f"  all extracted forms: " + " · ".join(f"{k} {v}" for k, v in sorted(by_form.items())))
-        dropped = [(c.label, c.dropped) for c in corpora_used if c.dropped]
-        if dropped:
-            # A source file that failed to load makes every quotation from it read as
-            # drift, so this is reported rather than swallowed.
-            for label, names in dropped:
-                print(f"  WARNING corpus {label}: {len(names)} file(s) unreadable and NOT "
-                      f"searched — quotations from them will read as misses: "
-                      f"{', '.join(names[:4])}{' …' if len(names) > 4 else ''}")
+        for warning in dropped_warnings(corpora_used):
+            print(warning)
         print("  verdicts: " + " · ".join(f"{k} {v}" for k, v in sorted(by_verdict.items())))
         for f in sel:
             if f.verdict == "RESOLVED" and not args.show_hits:
