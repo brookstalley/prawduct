@@ -19,7 +19,7 @@ layer happens after all five miners report.
 |---|---|---|
 | cordyceps (C# server, wide production use) | 60 | **re-mined 2026-09-18 → `cordyceps-server-structured.md`, 95 rules, all addressed** (verified: 0 UNADDRESSED, 0 bare line-number citations, all 7 schema fields on all 95) |
 | bankmachine (Python server, measured evidence trail) | 84 | **re-mined 2026-09-18 → `bankmachine-server-structured.md`, 147 rules, all addressed** (verified: 0 UNADDRESSED, all 7 fields on all 147; marker normalized at integration) |
-| discodon (client/bridge — consumer's view of arbitrary servers) | 48 | compressed capture, unaddressed; **re-mine dispatched 2026-09-18** |
+| discodon (client/bridge — consumer's view of arbitrary servers) | 48 | **re-mined 2026-09-18 → `discodon-consumer-structured.md`, 87 rules** (1 UNADDRESSED, 11 CONTRADICTED, 0 bare line-cites, all 7 fields × 87) |
 | prawduct (own research + delivery-surface map) | ~15 | in `../mcp-knowledge-corpus-design.md` §8 |
 | hallucinote (Python server) | 92 | two renderings; addressed twin in `hallucinote-server-structured.md`; **audited 2026-09-18 → `hallucinote-verification.md`** — 106 verdicts: 95 RESOLVED · 7 MOVED · 0 NOT-FOUND · 2 CONTRADICTED · 2 UNVERIFIABLE |
 
@@ -166,3 +166,34 @@ hits** (it is not dead).
 Note what the instrument still cannot see, stated in that file rather than glossed: a quotation
 *stitched* from two non-adjacent sentences with no ellipsis marked shows up as a prefix match and has
 to be read. So the script narrows the set a human must read; it does not empty it.
+
+
+## The marker is now uniform; the FIELD LAYOUT is not — measured 2026-09-18
+
+All four addressed captures are reaped. **One marker, one command, and for the first time a count of
+this corpus that reproduces:**
+
+    grep -c '^\*\*RULE:\*\*' *-structured.md      # discodon 87 · cordyceps 95 · bankmachine 147 · hallucinote 106
+    cat *-structured.md | wc -cw                  # 634,701 bytes / 88,813 words
+
+**435 rules, 1 UNADDRESSED.** Two marker variants were normalized at integration — bankmachine's
+newness flag (moved to `FIRST-SEEN:`) and discodon's provisional flag (moved to `STATUS:`) — because
+each put its payload *inside* the `RULE:` token, which is invisible to the count that reads it.
+
+**The remaining non-uniformity is the field layout, and it bites the same way.** Three captures put
+one field per line; `hallucinote-server-structured.md` combines `LAYER · KIND · EVIDENCE` on one line
+and `VOLATILE · TENSION` on another. Per-file field counts are unaffected (`grep -c '^LAYER:'` is 106
+there, correctly), but **a corpus-wide layer tally silently matches a different set per file** —
+`grep -h '^LAYER: L' | sort | uniq -c` returns 435 rows of garbage, because each combined line is
+unique. Use the layout-agnostic form, which anchors and stops:
+
+    grep -ohE '^LAYER: L[0-4]' *-structured.md | sort | uniq -c
+    # L0 34 · L1 146 · L2 97 · L3 112 · L4 46 = 435
+
+**hallucinote's layout was deliberately left alone**: it is the record under audit, and
+`hallucinote-verification.md`'s per-rule anchors are keyed to it. Normalize it when it is lifted into
+the corpus, not before, and never by a script that has not been run against the verification file's
+rule ids.
+
+This is the same lesson as the marker, one layer down: **a shared field NAME is not a shared
+format**, and the command that appears to read every capture is the one that reads none of them.

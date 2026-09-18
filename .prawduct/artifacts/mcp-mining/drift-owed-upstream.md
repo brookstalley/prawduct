@@ -67,3 +67,25 @@ owed back.
 The capture said the shipped code *"names the doc as wrong."* It does not — `wire.py` says *"despite
 some early scratch notes saying otherwise"* and names no document. Worth knowing before quoting the
 capture at that repo.
+
+## discodon — read across `9d54e8f8` → `77d10443`, mined 2026-09-18
+
+**20 items, enumerated in that capture's own clearly-marked drift section.** The three highest-cost:
+
+1. **`EVL-D2WN` does not exist.** Two records redirect a reader to a tracker item that was never
+   filed — the unbuilt billed-vs-stored reconciliation, now invisible to `pick`. A pointer to nothing
+   is worse than no pointer: it reads as tracked work.
+2. **`ChannelBridge`'s re-evaluation trigger is on the wrong axis** — multi-principal token management
+   sitting over a principal-blind notification fan-out, with the recorded trigger naming a second
+   *source* rather than a second principal.
+3. **The 1800s "client" abort is probably the server's own reaper.** If true, it changes the open
+   diagnosis on that repo's `[MCP-H3ZP]`.
+
+### A note on reading a tree that moves under you
+
+discodon's HEAD advanced **four times mid-read**, under another session. The miner re-verified every
+citation against the far end and recorded both SHAs in the capture's header; current HEAD matches its
+end-of-read value. **One cited symbol survived while moving from line 1196 to line 1165** — so a
+`:1196` citation would now be silently wrong and still look precise. That is the symbol-anchoring
+requirement earning its keep in a single observation, and it is worth telling discodon only insofar as
+it explains why this capture cites no line numbers.

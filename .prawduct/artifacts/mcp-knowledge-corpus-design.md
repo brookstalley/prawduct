@@ -418,6 +418,36 @@ L1 is the layer every capture returned most of, and will likely still be too lar
 it needs splitting, split along the clusters the material produced rather than by a further
 taxonomy. Re-measure at authoring time — no rule count here is trustworthy enough to size it now.
 
+**Re-measured 2026-09-18, after all four sources were addressed. The ruling holds; its margin grew by
+an order of magnitude, and the L1 question is now answered.**
+
+The corpus finally has a count that reproduces, because it finally has a marker every capture shares:
+
+    cd .prawduct/artifacts/mcp-mining
+    grep -c '^\*\*RULE:\*\*' *-structured.md                    # 87 · 95 · 147 · 106
+    grep -ohE '^LAYER: L[0-4]' *-structured.md | sort | uniq -c   # layout-agnostic; see below
+    cat *-structured.md | wc -cw
+
+**435 rules — L0 34 · L1 146 · L2 97 · L3 112 · L4 46 — in 634,701 bytes / 88,813 words, with exactly
+1 UNADDRESSED.**
+
+Two consequences:
+
+- **The packaging ruling is safe by a much wider margin than it was made on.** §10.1 above decided
+  "directory, not one file" on 87,596 bytes of *compressed, unaddressed* captures against `core.md`'s
+  100,336. The addressed captures are **7.2× that measurement** and 6.3× `core.md`. Nothing about the
+  direction changes; the one-file option is not merely inadvisable now but absurd.
+- **L1 splits.** §10.1 predicted it and deferred it; 146 rules answers it. Split along the clusters
+  the material produced — the captures already group them (wire-format, error-as-next-turn's-input,
+  round-trip economics, teaching the gaps, correctness traps) rather than by a further taxonomy.
+
+**These are capture bytes, not corpus bytes, and the distinction is load-bearing.** A capture carries
+its full evidence quotation and provenance apparatus per rule; the authored corpus will be terser and
+will dedup across sources (R8 alone is attested three times). So 634,701 is an upper bound on the
+*input*, not a prediction of the output. What it does bound firmly is the reading cost of authoring:
+88,813 words is the material a corpus author must get through, which is a planning number for stage 1
+rather than a size estimate for the artifact.
+
 ### 10.2 The seed rules after contact with the evidence
 
 - **R1 (minimize tools, use action params) — CONTESTED, and this is the corpus's biggest
@@ -461,9 +491,15 @@ taxonomy. Re-measure at authoring time — no rule count here is trustworthy eno
 2. **Tool-count ceiling.** discodon caps at 20 and silently slices; hallucinote cites Cursor 40
    (silent drops) and Copilot 128, plus a 10–20 selection-accuracy band. One dated-facts entry, not
    three rules.
-3. **Progress notifications.** cordyceps declined them without recording why; discodon demands
-   progress above ~30s; hallucinote verified they do not affect the timeout. One coherent answer
+3. **Progress notifications.** cordyceps declined them without recording why; ~~discodon demands
+   progress above ~30s~~; hallucinote verified they do not affect the timeout. One coherent answer
    exists that no single repo held — good evidence the corpus earns its keep.
+   **Corrected 2026-09-18: discodon's position was invented.** Its audit found no `~30s` constant, no
+   doc rule, and no MCP progress mechanism to hang one on. The tree's actual rule is **categorical**,
+   not duration-based — *runs have `get_run`, generations have no equivalent* — and a duration
+   threshold is the framing its own incident refutes. This makes the dissolution cleaner rather than
+   harder: two real positions, not three, and the surviving disagreement is about *what kind of
+   operation* gets a handle, never about how many seconds.
 4. **Rename policy.** hallucinote's design doc says never rename/always alias; its shipped policy
    says no aliases at all. Both are right under different preconditions, and the precondition is the
    rule.
@@ -555,7 +591,7 @@ Applying 11.1 to §10.3's list, reading only what §10.3 itself already states:
 |---|---|---|---|
 | 1 | Clamp vs refuse an out-of-range value | **(a)** — §10.3 supplies the candidate precondition itself: refuse where silence would be indistinguishable from completeness; clamp-and-announce where the parameter is a resource budget | **awaiting** the discodon audit: which parameters actually clamp, and whether the announcement reaches the surface an agent reads |
 | 2 | Tool-count ceiling (20 / 40 / 128 / a 10–20 band) | **Not an adjudication at all.** §10.3: *"One dated-facts entry, not three rules."* These are client constants, which §3.5 already routes to the dated-facts surface | **awaiting** both audits for the real numbers; the filing decision needs nothing further |
-| 3 | Progress notifications | **(a)** — §10.3: *"One coherent answer exists that no single repo held."* That is a dissolution by definition | **awaiting** the hallucinote audit of the timeout fact, and whether cordyceps recorded a reason |
+| 3 | Progress notifications | **(a)** — §10.3: *"One coherent answer exists that no single repo held."* That is a dissolution by definition | **narrowed 2026-09-18** — discodon's `~30s` position was invented and is withdrawn; hallucinote's timeout fact RESOLVED against its tree. Still awaiting whether cordyceps recorded a reason. The rule is categorical, not duration-based |
 | 4 | Rename policy | **(a)** — §10.3: *"Both are right under different preconditions, and the precondition is the rule"* | **awaiting** the hallucinote audit of design-doc-vs-shipped-policy |
 
 **So §10.3's framing overstates the disagreement.** Three of its four dissolve into one rule with a
