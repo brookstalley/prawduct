@@ -237,3 +237,13 @@ fresh clone CI runs while passing on the machine that wrote them. The remedy is 
 file is absent — that leaves the test red only where it can already see and green in the one
 environment that cannot. Give the fixture its own copy of everything it reads, then PROVE it by
 hiding the real file and re-running.
+
+### An environment dependency with ONE variable is found by the second machine; one with TWO is found only by a machine differing in BOTH — so when a green suite meets a red CI, enumerate the axes before fixing. `fromisoformat` rejected a `Z` suffix before Python 3.11, and `git log --format=%aI` emits `Z` only when the commit's stored zone is `+0000`: in MDT the same fixture yields `-06:00`, which every version parses. Thousands of local runs could not see it; CI was Linux **and** UTC **and** 3.10. Corollary, and it nearly shipped a false all-clear: **prove the reproduction can FAIL before believing it passes** — `GIT_CONFIG_SYSTEM=/dev/null` does not suppress Xcode's bundled `git-core/gitconfig`, so a "CI-like" run still answered `init.defaultBranch=main` and went green over the unfixed bug. `GIT_CONFIG_NOSYSTEM=1` is the lever. Tell: your CI-reproduction went green on the first try
+
+The rule above it covers the fixture that reads a gitignored file — one axis, and the fresh clone
+finds it. This is the harder shape: no single difference between the two machines exposes it, so
+the usual reasoning ("CI is Linux, I am on macOS") lands on the wrong axis and the fix that follows
+is inert. Enumerate every axis the two environments differ on *before* forming a hypothesis, and
+treat the CI-reproduction harness as a measurement needing its own positive control — the wrong
+lever produced a green run over the unfixed bug, which is the exact failure a reproduction exists
+to prevent.
