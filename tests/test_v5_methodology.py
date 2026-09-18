@@ -868,7 +868,17 @@ LAST_MEASURED_TOKENS = {
     # bullet says dispatch NOTHING, report the rationale, stop, and that an
     # explicit token still wins. Same kind of raise as the row above it: a
     # control that removes review work (the per-chunk round on a short plan).
-    "skills/critic/SKILL.md": 3615,
+    # RAISED 3615 -> 3649 (2026-09-18, test-status-clause). DECLARED, and a
+    # DIFFERENT kind from the two above it: not a control, a CORRECTION. Step 5
+    # told the reviewer that `test-status` exit 0 validates "evidence covers the
+    # current tree", which `gates.tests_are_current`'s session-fresh disjunct
+    # does not establish — it never reads the tree. The replacement states both
+    # disjuncts, points at the printed label, and says neither needs action,
+    # because the alternative reading (a WARNING on every session-fresh answer)
+    # manufactures a finding per review. NOT paid in place: the sentences a trim
+    # would have reached are the ones no test asserts, and this file has already
+    # funded three raises that way.
+    "skills/critic/SKILL.md": 3649,
     "skills/critic/framework-checks.md": 1116,
     # The on-demand class, first recorded 2026-08-19 (#688) — readings, no
     # ceilings; the block above this dict is the decision and its reasoning.
@@ -5093,7 +5103,11 @@ class TestCriticSkillRoutesByMode:
         # `deferred` bullet: a fifth helper answer the fork must not forward to
         # `critic-begin` — see LAST_MEASURED_TOKENS. Same allowed kind: a
         # control that removes review work (the per-chunk round on short plans).
-        assert tokens < 3616, f"SKILL.md is ~{tokens} tokens, should be <3616"
+        # RAISED 3616 -> 3650 (2026-09-18, test-status-clause). Step 5's
+        # `test-status` claim corrected: exit 0 does not establish tree
+        # coverage on the session-fresh disjunct — see LAST_MEASURED_TOKENS,
+        # where the reason is recorded. One over the reading, nothing banked.
+        assert tokens < 3650, f"SKILL.md is ~{tokens} tokens, should be <3650"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))

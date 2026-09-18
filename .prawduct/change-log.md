@@ -5,6 +5,53 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-18: `test-status` says which disjunct bought the exit 0, and three skills stop claiming tree coverage
+
+<!-- prawduct: type=fix | scope=test-status-clause -->
+
+**Build plan:** `build-plan-test-status-clause.md` (one chunk).
+
+`gates.tests_are_current` has two disjuncts and either is sufficient: the evidence was written
+during this session, or the judgeable-scoped working tree is byte-identical to the one the
+recorded run met. The first returns before `evidence_tree` is read at all, so within one session
+`test-status` exits 0 for any tree however far HEAD has advanced — which is correct under the
+trust-the-cycle model and is NOT what three governing surfaces told their readers. `pr/SKILL.md`
+said exit 0 means the evidence "already covers the current tree (HEAD + uncommitted edits)";
+`critic/SKILL.md` told the reviewer to run it "to validate evidence covers the current tree";
+`pr/review-protocol.md` made that exit code the only freshness signal under a heading asserting
+evidence covers the shippable changeset. The implementation delivers session recency; every one of
+those readers was written against tree identity.
+
+**The fix is disclosure, not a new gate, and this is the load-bearing distinction.** Tree-keying
+the command — dropping or gating the session-fresh disjunct — was the obvious remedy and is
+rejected: it forces a full suite re-run after every commit inside a session, which is precisely
+the cost the disjunct was chosen to avoid and precisely what #653 was filed about. So exit codes
+are unchanged, no new run is forced anywhere, and `test-status` now prints which disjunct answered
+— `current (tree-valid): …` or `current (session-fresh, tree not verified): …`. The tree check
+that label rests on is a git diff the other code path already computes; asking it on both costs
+nothing. `stale:` is untouched, prefix and reason text both, because nothing answered and there is
+no clause to name.
+
+`tests_are_current` returns that answer as a third element (`"session"` / `"tree"` / `"none"`)
+rather than as a marker inside `reason`: `reason` is human-readable prose a later wording pass is
+free to rewrite, and a consumer branching on it would break silently. Its two callers are
+`gates.test_status`, which labels on it, and `release_readiness._suite_verdict`, which drops it —
+that gate's own docstring already argues session-freshness is the correct bound at its phase
+(Phase 0 runs before the release rewrites four files, so nothing checkable there can vouch for the
+tree the tag will carry), so it makes no claim the clause would qualify.
+
+**What the corrected prose does NOT do is add a WARNING for session-fresh evidence.** A reviewer
+meeting that label needs no action: reading the diff is its own next step, and a finding
+manufactured on every session-fresh answer is the false-positive shape this repo has already
+ruled against paying for. The three corrections keep every operational instruction identical —
+exit 0 still means skip the re-run — and change only what the reader is told that means.
+
+One ceiling raise, declared: `skills/critic/SKILL.md` 3616 → 3650, for the corrected step 5. Not
+paid in place, because the sentences a trim would have reached are the ones no test asserts and
+this file has funded three raises that way already.
+
+Closes brookstalley/prawduct#767.
+
 ## 2026-09-17: Step 1 names the recorder; develop opens 3.5.1-dev.1 so consumers pick up review-stages
 
 <!-- prawduct: type=fix | scope=pr-step1-recorder -->
