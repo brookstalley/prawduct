@@ -2,7 +2,7 @@
 artifact: build-plan
 version: 2
 scope: mcp-quotation-audit
-branch: feature/mcp-corpus-quotation-audit
+branch: feature/mcp-corpus-audit
 depends_on:
   - artifact: mcp-knowledge-corpus-design
 governed_by:
