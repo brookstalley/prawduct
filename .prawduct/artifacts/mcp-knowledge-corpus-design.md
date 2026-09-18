@@ -1,0 +1,301 @@
+# MCP Knowledge Corpus — Design Notes
+
+**Status:** discovery, in progress. Design decisions below are settled with the owner in
+conversation on 2026-09-17; mining of source repos was dispatched the same day and had not
+reported when this was written.
+**Owner:** brooks@tangentry.com
+**Parents:** `.prawduct/artifacts/data-model.md` § Direction, `.prawduct/artifacts/architecture.md`
+§ Direction, `documentation/governance-artifact-lifecycle-requirements.md`
+
+---
+
+## 1. Goal
+
+Prawduct becomes the single home for hard-won MCP server engineering knowledge, so that products
+(cordyceps, hallucinote, bankmachine, discodon, and future ones) stop independently re-deriving the
+same lessons.
+
+Owner's **absolutes**:
+
+1. Prawduct is the source of truth for collected MCP best-practice knowledge.
+2. Prawduct *uses* that knowledge when consumers design, refine, test, plan and review MCP work.
+3. The structure accommodates ongoing learning and changes to MCP itself.
+
+Owner's **desirables**:
+
+1. A centralization that can be handed to someone whole — "here is everything I know about writing
+   great MCP servers."
+2. A path to relocate sibling-repo research here, so improvement happens once.
+3. A way to periodically revalidate the collected knowledge.
+
+## 2. Constraints discovered
+
+### 2.1 Derived views are a settled question — do not reopen
+
+`data-model.md` § Direction: *derived views are disposable and never authoritative — no gate reads
+a view to reach a verdict.* `regen-views` is deprecated and inert.
+
+The retirement rationale (`documentation/governance-artifact-lifecycle-requirements.md`) is the
+part that matters here: views were removed because **nothing they produced was read to reach a
+decision**, at a cost of ~4,800 lines of machinery — and because **14 of 220 learnings encoded
+nothing but the view format's own rules**. That last figure is the warning. Any mechanism that
+generates duplicate rule text into other files rebuilds this.
+
+**Decision: pointers, not copies.** The corpus has one authored home. Selection and routing may
+reference it; nothing regenerates it. A human-handoff export (desirable 1) is generated at send
+time and never committed, which keeps it disposable and unread-by-any-gate, so it conforms.
+
+### 2.2 The routing mechanism that exists
+
+`.claude/rules/learnings/<area>.md` carries `paths:` globs. The harness auto-loads an area file when
+a matching path is read; the Critic reads the same set via `prawduct-hook learnings-files
+--for-diff` (`plugin/lib/learnings_files.py`, `plugin/agents/critic-reviewer.md`,
+`plugin/lib/gates.py`). One authored file, two automatic consumers, no reliance on recall.
+
+Routing is **file-granular**. There is no section-level load.
+
+### 2.3 The gap that makes this a framework feature, not a document
+
+`.claude/rules/learnings/` is **product-owned and per-repo**; `init-product` scaffolds only a starter
+`core.md` into a consumer repo. Everything the plugin ships (`docs/`, `methodology/`, `skills/`,
+`templates/`, `agents/`) is **pull-based** — someone must invoke or open it.
+
+So absolute 2 is not satisfiable with today's mechanisms. It requires a new capability:
+**plugin-shipped, path-routed knowledge packs**. MCP would be pack #1; the capability is reusable
+beyond MCP. (A mining agent was asked to confirm this absence with evidence; treat it as unverified
+until that report lands.)
+
+## 3. Structure
+
+### 3.1 Layers — the subject axis, ordered by half-life
+
+| Layer | Contents | Half-life |
+|---|---|---|
+| **L0 applicability** | whether to build a server at all; what to plumb MCP into | stable |
+| **L1 agent-interface design** | tool naming/granularity, intent-shaped tools, teaching errors, result shaping, context budget | years; survives MCP itself |
+| **L2 protocol semantics** | tools vs resources vs prompts, schemas, capability negotiation, versioning | spec revisions |
+| **L3 transport & operations** | stdio/HTTP/SSE, timeouts, concurrency, lifecycle, secrets | transport churn |
+| **L4 client/host integration** | per-client quirks, config, discovery, install UX | months; most volatile |
+
+The layering exists so that a transport change cannot invalidate interface-paradigm knowledge, and
+vice versa. Owner's test: "when MCP moves to Jabber or SOAP, L1 must be unaffected."
+
+L0 was added after testing the taxonomy against a real rule ("plumb MCP into applications so agents
+developing them can exercise capabilities") that fit nowhere in L1–L4.
+
+### 3.2 Layer is a tag, not the filing key — fire-site is
+
+Tested against nine real owner rules: **only one was single-layer.** The rest have their cause in
+one layer and their remedy in another (a transport fact forcing a tool shape; a client caching
+behavior forcing a version-reporting surface). Filing by cause hides a rule from the only person who
+can act on it.
+
+Because routing is `paths:`-based, the filing question is *"what files is someone editing when this
+must fire?"* — not *"what is this about?"* A rule may have two fire-sites (design-time and
+debug-time) without being copied.
+
+### 3.3 Kind — the shape axis
+
+`pattern` · `decision-point` · `diagnostic` · `constraint` · `permission` (myth-buster) · `stance`.
+
+Kind determines phrasing and consumption moment. Diagnostics are phrased symptom-first so they are
+findable while debugging — reusing prawduct's existing `Tell:` convention from
+`.claude/rules/learnings/core.md`, which already encodes the observable signal and is read natively
+by the Critic's cross-check.
+
+### 3.4 Stances are separate from rules
+
+A stance is a generative heuristic with no fire-site of its own — e.g. *design for the agent's
+observability, not the human's*; *intent over mechanism*. Stances produce rules at multiple
+fire-sites and belong in a short preamble, kept strictly separate from the rule corpus, as
+principles are kept separate from learnings.
+
+Validated: *intent over mechanism* generated both the tool-surface rule (R1) and the collateral rule
+(R9), at two different fire-sites.
+
+### 3.5 Dated facts are cited, not inlined
+
+Rules routinely combine a stable shape with a volatile constant ("long operations return a handle" +
+"the threshold is ~60s"; "prefer the transport with broadest client support" + "that's stdio").
+Inlining the constant means revalidation re-litigates the stable half.
+
+Ecosystem/client/spec constants live in one dated facts surface that rules cite. Revalidation
+(absolute 3, desirable 3) then means re-checking a short facts list rather than re-reading the
+corpus, and can ride prawduct's existing norm-lifecycle sweep and advisory machinery rather than
+introducing a second clock (`architecture.md` § Direction: *never re-implements*).
+
+### 3.6 Two relations the corpus must express
+
+- **Tension pairs.** Rules that give opposite advice when read separately need their reconciliation
+  stated, not just both filed. Example below: R3 vs R6.
+- **Precondition chains.** A rule's remedy may be available only given another rule's decision.
+  Example: R8's remedy requires R4's same-device deployment. Without this, the corpus hands remote
+  deployments un-followable advice.
+
+## 4. Packaging — open
+
+One file with headings, or a directory of layer files. **Deferred pending a size measurement**,
+because the harness auto-load is file-granular and whole-file: one file is fine at ~30KB and a
+context-budget problem at ~150KB (`.claude/rules/learnings/core.md` is ~100KB today; re-derive with
+`wc -c .claude/rules/learnings/*.md`).
+
+The outline is identical either way — layers are top-level headings or filenames — so splitting
+later is mechanical and lossless. Addressing is **by reference** (a skill or review perspective
+cites a section), never **by extraction** (a parser slicing the file), unless a measurement forces
+otherwise: a slicer is a parser over hand-authored markdown whose format rules become their own
+learnings, which is the failure recorded in §2.1.
+
+If sections are ever cited by heading, those headings become machine-read identifiers and something
+must verify the anchors resolve — a reworded heading otherwise degrades to a silent no-op
+(`core.md`: *naming a thing freely writes into a machine-read field*).
+
+## 5. Seed rules
+
+Nine rules stated by the owner in conversation, 2026-09-17. **Evidence tier: owner-stated
+experience** — real, but not independently verified against code or measurement; the mining pass
+should corroborate, sharpen or contradict each. Numbering is local to this artifact and carries no
+meaning outside it.
+
+| # | Rule | Fires when | Layer (cause → remedy) | Kind |
+|---|---|---|---|---|
+| R1 | Minimize tool count; group capabilities under an `action` parameter (`gh_canvas(action="clear")` over `gh_canvas_clear()`) — separates verb from object and enables a contextual `action="help"` | designing the tool surface | L1 | pattern |
+| R2 | Anything that could exceed ~60s returns quickly with an async handle for progress | shaping a handler | L3/L4 → L1 | pattern |
+| R3 | Clients cache server capabilities, so updates are not immediately visible; expose version from both server and client so the model can detect a mismatch | writing version reporting; **also** debugging "my change isn't visible" | L4 → L2 | diagnostic |
+| R4 | Prefer stdio for same-device servers (broadest client support); warn when moving to HTTP/network that compatibility narrows | choosing transport, at plan time | L4 → L3 | decision-point |
+| R5 | A wedged host and a long-running action are hard to tell apart — emit progress, or failing that a sign of life; design for what the consuming agent will see | shaping a long-running handler | L4 → L1 | pattern |
+| R6 | Agents hold no state across versions — refactor tools for efficiency rather than fearing breakage, while respecting users and doc accuracy | contemplating a breaking change | L4 → L1/L2 | permission |
+| R7 | Plumb MCP into applications so agents developing them can exercise real capabilities — excellent at data/network layers, not for pixels | planning, before a server exists | **L0** | decision-point |
+| R8 | **If** caller and server share access to the same storage, pass file paths rather than contents — MCP carries large binaries poorly over stdio *and* HTTP | designing a tool signature | L3 → L1 | optimization w/ precondition |
+| R9 | Collateral describing a server should be intent-driven and must not assume tool names or params are immutable | authoring docs, skills, CLAUDE.md referencing a server | L1 (stance-derived) | constraint |
+
+### Recorded reconciliations and dependencies
+
+- **R3 ↔ R6 (tension).** Read separately these oppose. Reconciliation: refactor freely *across*
+  sessions; the risk window is a live session holding a stale capability list, which is exactly what
+  R3's version reporting exists to expose. R3 is R6's enabling condition, not its opponent.
+- **R6 boundary.** Agents hold no state; their *configuration* does — CLAUDE.md, skills, saved
+  prompts, memory, scripts naming tools. A rename breaks those silently (the agent calls a tool that
+  no longer exists and improvises). R9 is the fix for the instructional half.
+- **R9 exception.** Instructional collateral must be intent-driven; **authorization** collateral
+  cannot be, because a permission grant must name what it grants (this repo's own
+  `plugin/agents/critic-reviewer.md` carries a literal `tools:` list; MCP tools are granted by name,
+  e.g. `mcp__<server>__<tool>`). A refactor's blast radius therefore shrinks to the permission layer
+  rather than to zero — and that failure is silent, which is why it is worth naming.
+- **R8 ← R4 (precondition).** R8's remedy requires the shared-storage condition, which holds for
+  same-device subprocess servers and fails for daemons, containers with independent mounts, and
+  anything remote. Where it fails, a client-named path is a privileged-access surface rather than a
+  shared one — a different rule, not a caveat on this one.
+- **R2 / R5 cluster.** Same fire-site, same cause; likely one rule with two facets.
+- **R8 cost claim unresolved.** "More efficient" wants a number, and the dominant cost is likely
+  *agent context* consumed by a large tool result rather than wire encoding. Unverified — flagged to
+  the discodon mining pass, which was asked for the bridge's real size limits.
+
+### Candidate mechanization
+
+R9 converts into a check: scan a repo's instructional collateral for literal MCP tool names,
+exempting authorization surfaces. `core.md` holds that a rule requiring recall at the right moment is
+its weakest form; rules that can become checks should.
+
+## 6. Staging
+
+Each stage stands alone if the next slips.
+
+1. Mine and author the corpus + a skill to open it. Delivers desirable 1 immediately.
+2. **Plugin-shipped path-routed knowledge packs.** The capability that satisfies absolute 2.
+3. Critic review perspective for MCP surfaces, reading the same files.
+4. Revalidation wiring + sibling intake.
+
+**Sequencing constraint:** desirable 2 (relocating sibling research here) must not happen before
+stage 2 exists. Today that knowledge fires locally in each sibling; removing it first makes four
+repos worse to make one tidier, with no mechanism shipping it back.
+
+## 7. Open questions
+
+- Packaging: one file or a directory (§4) — blocked on the size measurement from mining.
+- Is stage 2 in scope for this work, or a separate piece? Owner said in scope on 2026-09-17.
+- Whether the facts surface (§3.5) can ride the existing norm-lifecycle sweep unchanged, or needs
+  its own probe.
+
+---
+
+## 8. Findings from the delivery-surface survey (2026-09-17)
+
+### 8.1 BLOCKER — absolute 2 collides with a steady-state norm
+
+`.prawduct/artifacts/architecture.md` § Direction, steady-state:
+
+> The plugin writes nothing into a governed repo except its own `.prawduct/` state, the shared
+> evidence store, and the files it must reconcile — `.gitignore`, `.claude/settings*.json`, and
+> `CLAUDE.md`'s governance anchor — **never framework files.**
+
+Combined with the confirmed absence of any plugin-side push channel, this forecloses shipping the
+corpus as `.claude/rules/learnings/mcp.md` into a consumer repo. `paths:` routing is a **harness**
+feature over repo-committed `.claude/rules/` only (`learnings_files.resolve()` roots at
+`project_dir` and never consults `CLAUDE_PLUGIN_ROOT`). The one push channel is the SessionStart
+digest: a single unrouted file under a hard 10,000-char harness limit with ~200 chars of practical
+headroom — it cannot carry a corpus.
+
+Re-derive the absence with: `grep -rn "additionalContext" plugin/` (one file: `hooks/digest.py`);
+`find plugin -name "rules" -o -name "*.mdc"` (empty); `grep -rn "CLAUDE_PLUGIN_ROOT" plugin/`
+(hook paths and root resolution only, no content loading).
+
+**Three routes, for owner decision:**
+
+- **(a) Pull-only.** Corpus ships under `plugin/`; a skill reads it on demand. Conforms fully, no
+  ruling needed. Absolute 2 degrades to "when someone invokes it."
+- **(b) Critic-side routing.** A plugin-shipped review perspective consults the corpus when the diff
+  is MCP-shaped. The Critic already computes its learnings read-set via `learnings-files
+  --for-diff`. **No norm change**, and it fires automatically at review time.
+- **(c) Minimal carve-out, requires an owner ruling.** The plugin scaffolds a small *product-owned*
+  pointer file into `.claude/rules/learnings/` carrying `paths:` globs and a body that says "open
+  the corpus at `<curated plugin path>`". Precedent: `scaffold_core()` already writes `core.md`
+  (header only, never overwrites). The pointer is ~10 lines; framework content still stays in the
+  plugin. This is the only route that reaches **build time** auto-load.
+
+A governance change cannot supply its own authority — (c) needs the owner's ruling recorded
+somewhere the amendment is not.
+
+### 8.2 Prior art that must be reconciled, not re-derived
+
+- **`documentation/prompt-management-requirements.md` §15** defers exactly this work by name: *"MCP
+  is a Foreign API class with its own concerns… MCP-server review is a separate future concern."*
+  There is no backlog item for MCP best practices.
+- The same document is a **1,003-line design for this exact shape** — a framework-shipped catalog
+  plus a pull-based filtering skill — that **shipped nothing**. Its decisions bind or must be
+  overturned: D4 (checks adaptive, no fixed checklist), D7 (framework prescribes shape and
+  guidelines, not vendor specifics), **D8 (ship comprehensive, filter by skill — pull, not push)**,
+  D14 (`runtime-instruction` role kind, which is what an MCP server is), §9.3 (per-project extension
+  at `.prawduct/<name>-local.md`, not by growing the framework catalog), Q6 (open: pin vs. latest).
+- D8 independently reaches the same conclusion as 8.1's route (a). That convergence is evidence, not
+  coincidence.
+
+### 8.3 Packaging constraints
+
+`tests/test_plugin_packaging.py`: `documentation/` is in `NOT_DISTRIBUTED_DIRS` and ships nowhere, so
+the corpus must live under `plugin/`. `test_no_shipped_file_points_at_an_unshipped_plugin_root_path`
+requires every reference in a shipped file to resolve inside the curated root. Plugin caches are
+version-keyed and accumulate (~90 MB measured across versions), so corpus size carries a real
+per-install cost.
+
+Also binding: *never Python-specific* (`architecture.md`, in-transition, LNG-5W8R) — MCP servers are
+TypeScript-first, so any language-keyed treatment must dispatch per file, and a language with no
+rules is reported **unchecked**, never silently passed.
+
+### 8.4 Early corroboration of the seed rules (cordyceps, 60 rules mined)
+
+- **R1 confirmed and bounded with numbers.** Cordyceps runs 7 tools / 100+ actions with a mandatory
+  `action='help'`, measured at a **49% token reduction** (1648 → 835 lines) on its docs. The cost is
+  also measurable in its tree: `gh_canvas` declares **37** parameters and `rhino_render` **43**, all
+  optional, in one `inputSchema`. The real saving is moving per-action detail out of `tools/list`
+  into a runtime `help` call — which is exactly the owner's "the help action pays for the collapse."
+- **R5 superseded by a stronger form.** Rather than progress on long calls only, cordyceps rides a
+  compact **status block on every response**, injected at one choke point, so an agent never spends a
+  call asking whether the host is alive — plus one probe answering from cache that never touches the
+  host. Evidence: a read-only probe measured **~32 minutes of silence** during one solve; "a busy
+  solver and a dead bridge were indistinguishable."
+- **R8 independently rediscovered, precondition included.** Binaries return `{filePath, hint}`, never
+  base64 — and cordyceps records the same boundary unprompted: *"sound for a localhost server and
+  wrong for a remote one."* Two repos converging on both the rule and its precondition.
+- **R2 refined.** Cordyceps deliberately does **not** use MCP progress notifications; it exposes a
+  pollable progress reading plus a bounded wait returning `timedOut: true` with partial progress.
+  Whether that choice is still right is a dated-fact question (§3.5).
