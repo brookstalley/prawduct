@@ -75,3 +75,6 @@ scratchpad/
 # untracked) is what makes that impossible. Its presence in a worktree is also the
 # only signal the unintegrated-delegate advisory has, so it must never come from HEAD.
 .prawduct/.delegate-brief.md
+
+# Prawduct session files
+.prawduct/.pr-review-dispatch.json

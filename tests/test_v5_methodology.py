@@ -405,7 +405,15 @@ LAST_MEASURED_TOKENS = {
     # said "per-chunk reviews accumulate", which the short-plan rule makes
     # false for a plan of at most 3 chunks touching no risk surface. It now
     # reads "the reviews it owes accumulate" — net -1 word.
-    "methodology/building.md": 4910,
+    # -4 on 2026-09-18 (pr-review-payload Chunk 02): the PR section gained the
+    # concurrency fact — the cumulative review and the PR review are dispatched
+    # together and neither consumes the other's verdict — which a builder
+    # sequencing them by habit pays ~7 minutes for. PAID IN PLACE and then some:
+    # the lifecycle sentence restated "full lifecycle" as "(it detects git state
+    # and routes to create, update, merge, or status)", which is the skill's own
+    # mechanics and its own routing table. Net a CUT, so the ceiling ratchets
+    # with it (4911 -> 4907) rather than banking the difference.
+    "methodology/building.md": 4906,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -2890,7 +2898,11 @@ class TestBuildingMethodology:
         # further would have spent a clause nothing defends to fund a clause
         # nothing defends, which is the move the standing rule refuses. One
         # over the reading, so nothing is banked.
-        assert tokens < 4911, f"building.md is ~{tokens} tokens, should be <4911"
+        # RATCHETED 4911 -> 4907 (2026-09-18, pr-review-payload Chunk 02) in the
+        # same commit as the cut that earned it — an unratcheted slack is a loan
+        # the next edit collects silently and green. The accounting is at the
+        # reading in LAST_MEASURED_TOKENS.
+        assert tokens < 4907, f"building.md is ~{tokens} tokens, should be <4907"
 
 
 # =============================================================================

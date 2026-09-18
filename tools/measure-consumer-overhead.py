@@ -34,6 +34,15 @@ the ones that have actually burned someone, is `## Hazards` in that document:
   absorbed into whatever governance event happened to come next. The `ratio`
   column in the VALIDATION table is the tell: where it is far above 1, the
   measured phase split is inflated and the self-reported one is the better series.
+* **Two different things are called "measured" here, deliberately kept apart.**
+  `critic_hours_measured` is INTERVAL-measured — wall time attributed to the event
+  that ends each interval, and biased by commit density (hazard 2 above). The
+  `pr_clock_*` columns are something stronger: a clock read in code before the
+  reviewer was spawned and again when its record was appended (`dispatched_at` on
+  the ledger envelope). Read `pr_clock_runs` before `pr_clock_hours` — a clock
+  figure covering 2 of a window's 40 reviews is not that window's cost, and the
+  two populations are never pooled, because a median over a mixture of clock
+  readings and model recollections measures neither.
 * **`prawduct-hook review-stats` pools Critic and PR reviews** under one `reviews`
   count and one duration total. This script keeps them separate. A figure labelled
   "Critic hours" that came from `review-stats` includes PR review hours too: for
@@ -71,6 +80,11 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "plugin" / "lib"))
+
+from review_dispatch import measured_interval_seconds  # noqa: E402
+
 
 UTC = dt.timezone.utc
 
@@ -143,7 +157,7 @@ def minor_windows(framework: Path, since: dt.datetime, until: dt.datetime) -> li
         iso = git(framework, "log", "-1", "--format=%aI", tag).strip()
         if not iso:
             continue
-        tags.append(((int(m[1]), int(m[2])), dt.datetime.fromisoformat(iso).astimezone(UTC)))
+        tags.append(((int(m[1]), int(m[2])), _parse_instant(iso)))
     if not tags:
         sys.exit(f"no vN.N.N release tags in {framework} — cannot derive windows")
 
@@ -197,7 +211,7 @@ def read_commits(repo: Path, since: dt.datetime) -> list[dict]:
             sha, iso, author, subject = line[3:].split("|", 3)
             cur = {
                 "sha": sha,
-                "when": dt.datetime.fromisoformat(iso).astimezone(UTC),
+                "when": _parse_instant(iso),
                 "author": author, "subject": subject, "files": [],
             }
             if author.endswith("[bot]"):
@@ -242,6 +256,14 @@ def read_ledger(path: Path) -> list[dict]:
             "cat": cat,
             "mode": (review.get("mode") or "").split(" ")[0],
             "duration": obj.get("duration_seconds"),
+            # NAMING, because this script already uses "measured" for something
+            # else: `critic_hours_measured` below is INTERVAL-measured time,
+            # attributed by commit density and biased by it (hazard 2). This is
+            # a different and stronger thing — a clock read before the reviewer
+            # was spawned and again when its record was appended. Calling both
+            # "measured" would collide on a key readers already trust, so this
+            # one is "dispatch clock" everywhere it appears.
+            "clock_seconds": _dispatch_clock_seconds(obj),
             "severities": collections.Counter(
                 f.get("severity", "unlabelled") for f in review.get("findings", [])
             ),
@@ -252,14 +274,55 @@ def read_ledger(path: Path) -> list[dict]:
     return events
 
 
+def _clock_columns(total_seconds: float, runs: int) -> dict:
+    """The dispatch-clock trio for one window, built together so they cannot
+    disagree.
+
+    The count is not decoration: 0.3 hours over 2 of a window's 40 reviews is
+    not that window's cost, and a figure without its denominator invites exactly
+    that reading. With no clocked runs both figures are ``None`` — NOT ZERO,
+    which would read as reviews that took no time rather than as a window the
+    clock had not reached.
+    """
+    if not runs:
+        return {
+            "pr_clock_runs": 0,
+            "pr_clock_hours": None,
+            "pr_clock_minutes_per_review": None,
+        }
+    return {
+        "pr_clock_runs": runs,
+        "pr_clock_hours": round(total_seconds / 3600, 2),
+        "pr_clock_minutes_per_review": round(total_seconds / 60 / runs, 1),
+    }
+
+
+def _dispatch_clock_seconds(obj: dict) -> float | None:
+    """The interval this event's dispatch mark attests, or ``None``.
+
+    Delegates to the framework's own predicate rather than restating it: the
+    plausibility bound, the out-of-order refusal and the not-measured semantics
+    are one rule with three readers, and a copy here is a copy that drifts.
+    """
+    return measured_interval_seconds(obj.get("dispatched_at"), obj.get("ts"))
+
+
 def _parse_instant(text: str) -> dt.datetime:
-    """Parse an ISO date/instant to UTC.
+    """Parse an ISO date/instant to UTC. **The one home for this parse.**
 
     A stated offset is CONVERTED, never overridden: `.replace(tzinfo=UTC)` on an
     already-aware value silently relabels it, which moved a `-06:00` boundary by
     six hours and is most of a short window.
+
+    **`Z` is normalised here because `fromisoformat` only learned it in 3.11.**
+    This tool is tested on 3.10, where a `Z`-suffixed stamp raises
+    `ValueError: Invalid isoformat string`. Three call sites used to reach
+    `fromisoformat` directly and each one was a 3.10 crash the maintainer's 3.11
+    machine could not see; they route through here now, which is the point of a
+    single home — the version bound is stated once and cannot be forgotten at a
+    fourth site.
     """
-    parsed = dt.datetime.fromisoformat(text)
+    parsed = dt.datetime.fromisoformat(text.strip().replace("Z", "+00:00"))
     if parsed.tzinfo is None:
         return parsed.replace(tzinfo=UTC)
     return parsed.astimezone(UTC)
@@ -448,6 +511,11 @@ def build_report(product: Path, framework: Path, since: dt.datetime,
 
     reviews: dict[str, collections.Counter] = collections.defaultdict(collections.Counter)
     selfreported: dict[str, collections.Counter] = collections.defaultdict(collections.Counter)
+    # The dispatch-clock population, kept APART from the self-reported one
+    # rather than preferred over it: pooling the two is the hazard the clock was
+    # added to retire, and a window part-measured part-estimated must say so.
+    clock: dict[str, collections.Counter] = collections.defaultdict(collections.Counter)
+    clock_runs: dict[str, collections.Counter] = collections.defaultdict(collections.Counter)
     for e in ledger:
         series = window_of(e["when"])
         if series is None or e["cat"] == "reflect":
@@ -458,6 +526,9 @@ def build_report(product: Path, framework: Path, since: dt.datetime,
         for sev, n in e["severities"].items():
             reviews[series][f"{e['cat']}:{sev}"] += n
         selfreported[series][e["cat"]] += e["duration"] or 0
+        if e["clock_seconds"] is not None:
+            clock[series][e["cat"]] += e["clock_seconds"]
+            clock_runs[series][e["cat"]] += 1
 
     pr_rows: dict[str, list[float]] = collections.defaultdict(list)
     if want_prs:
@@ -514,6 +585,12 @@ def build_report(product: Path, framework: Path, since: dt.datetime,
             "pr_hours_self_reported": round(pr_self, 1),
             "pr_minutes_per_review": (
                 round(pr_self * 60 / reviews[s]["pr:runs"], 1) if reviews[s]["pr:runs"] else 0),
+            # The dispatch-clock population for PR reviews, reported BESIDE the
+            # self-reported one. `pr_clock_runs` is what makes the pair readable:
+            # a clock figure over 2 of 40 reviews is not a window's cost, and
+            # without the count nothing says which it is. Zero runs means the
+            # clock had not reached this window, never that reviews were free.
+            **_clock_columns(clock[s]["pr"], clock_runs[s]["pr"]),
             "pr_blocking": reviews[s]["pr:blocking"],
             "pr_findings": sum(reviews[s][f"pr:{k}"] for k in ("blocking", "warning", "note")),
             # None, not 0, when --prs was not passed: a zero that means "not
@@ -584,17 +661,31 @@ def render(report: dict) -> None:
               f"{r['critic_findings_per_run']:10.2f}{r['critic_blocking_per_run']:9.2f}"
               f"{r['critic_blocking']:10}")
 
-    print("\nC. PR LAYER")
+    print("\nC. PR LAYER (self-rep hours are the ledger's self-report; clk columns are "
+          "the dispatch clock)")
     if not report["prs_fetched"]:
         print("(merged/open columns not measured — re-run with --prs)")
-    print(f"{'series':7}{'merged':>8}{'reviews':>9}{'hours':>7}{'min/review':>12}"
-          f"{'findings':>10}{'blocking':>10}{'median open h':>15}")
-    print("-" * 78)
+    # The rule is DERIVED from the header, never a second hand-counted copy of
+    # the same width: this pair drifted the moment two columns were added, and a
+    # number that must be recounted whenever the line above changes is a defect
+    # waiting for the next edit rather than a one-off typo.
+    header = (f"{'series':7}{'merged':>8}{'reviews':>9}{'self-rep h':>12}{'min/review':>12}"
+                                          f"{'clk runs':>10}{'clk min/rev':>13}"
+              f"{'findings':>10}{'blocking':>10}{'median open h':>15}")
+    print(header)
+    print("-" * len(header))
     for r in rows:
         opened = "—" if r["pr_median_open_hours"] is None else f"{r['pr_median_open_hours']:.3f}"
         merged = "—" if r["merged_prs"] is None else str(r["merged_prs"])
+        # The clock trio was `--json`-only while this tool's own docstring told
+        # readers to "read pr_clock_runs before pr_clock_hours" — advice about a
+        # column the default output never printed. The run COUNT leads, because a
+        # clock figure over 2 of a window's 40 reviews is not that window's cost,
+        # and an em dash (never 0.0) says the clock had not reached this window.
+        clk = "—" if r["pr_clock_minutes_per_review"] is None else f"{r['pr_clock_minutes_per_review']:.1f}"
         print(f"{r['series']:7}{merged:>8}{r['pr_runs']:9}"
-              f"{r['pr_hours_self_reported']:7.1f}{r['pr_minutes_per_review']:12.1f}"
+              f"{r['pr_hours_self_reported']:12.1f}{r['pr_minutes_per_review']:12.1f}"
+              f"{r['pr_clock_runs']:10}{clk:>13}"
               f"{r['pr_findings']:10}{r['pr_blocking']:10}{opened:>15}")
 
     print("\nD. DEFECT SIGNAL")
@@ -694,7 +785,7 @@ def main() -> int:
         iso = git(product, "log", "--diff-filter=M", "--format=%aI", "-1",
                   "--grep=migrate to plugin distribution", "--", ".claude/settings.json").strip()
         if iso:
-            since = dt.datetime.fromisoformat(iso).astimezone(UTC)
+            since = _parse_instant(iso)
         else:
             # No migration commit (repo onboarded straight onto the plugin, or
             # the commit was worded differently). The first ledger event is the
