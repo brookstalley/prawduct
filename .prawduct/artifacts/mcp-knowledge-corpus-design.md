@@ -359,22 +359,32 @@ is not what was asked for and not what is needed.
 
 ### 10.1 Size measurement settles the packaging question: DIRECTORY, not one file
 
-~299 rules mined before dedup (cordyceps 60, bankmachine 84, discodon 48, hallucinote 92, prawduct
-~15). Raw captures in `mcp-mining/`; re-derive the count with
-`grep -c '^- \*\*\|^\*\*RULE' .prawduct/artifacts/mcp-mining/*.md`.
+**Measured 2026-09-17, on bytes rather than on a rule count.** The four compressed captures weigh
+**87,596 bytes / 13,530 words** — `wc -cw .prawduct/artifacts/mcp-mining/{cordyceps-server,bankmachine-server,discodon-consumer,hallucinote-server}.md`.
+Against `.claude/rules/learnings/core.md` at 100,336 bytes (`wc -c .claude/rules/learnings/*.md`),
+which is the file the size advisories already complain about and which the harness auto-loads
+**whole**, the captures are already ~87% of it.
 
-At ~50–80 words per rule carrying its evidence, that is 15,000–24,000 words ≈ 100–160 KB. Dedup will
-cut it (several rules arrived independently from two or three repos), plausibly to ~150–180 distinct
-— still 50–90 KB. `.claude/rules/learnings/core.md` is ~100 KB today and is the file the size
-advisories already complain about, and harness auto-load is **whole-file**.
+That floor is firm in one direction only, and both directions point the same way: it is measured
+*before* the prawduct rules (§8) are folded in, *before* each rule is expanded from a terse capture
+bullet into the corpus form carrying its own evidence and provenance — and only dedup pulls the
+other way. A one-file corpus lands in the same size class as the file whose size is already a
+standing complaint.
+
+Rule *counts* are deliberately not the basis for this, because no count of this corpus reproduces:
+the per-repo headlines (60 / 84 / 48 / 92) and the command once cited here to re-derive them
+(68 / 97 / 53 / 99) disagree on every row, and hallucinote disagrees a third way. See
+`mcp-mining/README.md` § *The headline counts do not reproduce*. Fixing that needs a shared rule
+marker across the captures before it needs a better estimator.
 
 **Therefore: a directory of layer files, addressed by reference.** §4's deferral is discharged. The
 outline is unchanged — layers become filenames instead of top-level headings — so nothing authored
 against the one-file plan is lost. The single shippable artifact (desirable 1) is produced by
 concatenating at send time, never committed.
 
-L1 will likely still be too large as one file (~80 rules before dedup) and may need splitting along
-the clusters the material produced rather than by a further taxonomy.
+L1 is the layer every capture returned most of, and will likely still be too large as one file; if
+it needs splitting, split along the clusters the material produced rather than by a further
+taxonomy. Re-measure at authoring time — no rule count here is trustworthy enough to size it now.
 
 ### 10.2 The seed rules after contact with the evidence
 
