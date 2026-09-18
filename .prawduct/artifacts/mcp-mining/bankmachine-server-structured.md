@@ -1642,7 +1642,7 @@ remove.
 opens "All four commands below WRITE per-environment state, so each needs two things:
 `BANKMACHINE_PLAID_CLIENT_ID` (every aggregator-touching command needs it) and 🔴 **an environment
 that somebody chose**". Two of the four (`store init`, `connector set-secret`) never read
-`plaid_client_id` — `grep -n plaid_client_id src/bankmachine/cli/store.py src/bankmachine/cli/connector.py`
+`plaid_client_id` — `git -C ~/source/bankmachine grep -n plaid_client_id bf83e63329436e1189db1eb5a316ab8760100ffc -- ':(top)src/bankmachine/cli/store.py' ':(top)src/bankmachine/cli/connector.py'`
 returns nothing, and `.env.example` says so explicitly ("The commands that only touch the local
 datastore (`store *`, `sync shell`, `mcp`) do not"). The parenthetical hedges correctly; the lead
 clause does not, and the lead is what a reader follows. The environment half is correct for all four.
