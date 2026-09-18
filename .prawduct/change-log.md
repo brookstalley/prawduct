@@ -57,6 +57,8 @@ manufactured on every session-fresh answer is the false-positive shape this repo
 ruled against paying for. The three corrections keep every operational instruction identical —
 exit 0 still means skip the re-run — and change only what the reader is told that means.
 
+`methodology/building.md`'s Critic paragraph is corrected in the same bundle: it said `test-status` "is blind to" a mid-review edit, which the unconditional tree clause makes false — the printed line now names the changed paths, while the part the sentence exists for (the exit code still does not refuse) is unchanged. The correction is shorter than what it replaced, so that reading went 4910 → 4908 and its ceiling ratcheted 4911 → 4909 rather than leaving slack behind.
+
 One ceiling raise, declared: `skills/critic/SKILL.md` 3616 → 3650, for the corrected step 5. Not
 paid in place, because the sentences a trim would have reached are the ones no test asserts and
 this file has funded three raises that way already.

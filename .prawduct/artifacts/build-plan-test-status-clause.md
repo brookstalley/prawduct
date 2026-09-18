@@ -44,7 +44,7 @@ Context: Built 2026-09-18 on `fix/767-test-status-clause` (cut from `develop` at
 
 Two departures from `767-design.md`, both made at the review's direction and both recorded above: the labels became `lib.gates` constants so prose can be pinned to them by import, and the tree clause is asked FIRST and unconditionally rather than only on the timestamp-stale path. The second is the substantive one — the design's Decision 1 specified it, the first build silently narrowed it, and the review caught that the records still carried the design's rationale. Asking it costs ~0.12s here and ~0.36s on a 42k-file worktree, against the multi-minute re-run an under-claim invites.
 
-Next: nothing within this plan. The branch is PR-ready — `check-cumulative-critic` composes across `develop..HEAD` — and `/prawduct:pr` should close #767, descoping `plugin/skills/critic/review-protocol.md` and `plugin/methodology/building.md` from its `affected:` list explicitly (both were read; neither claimed tree coverage).
+Next: nothing within this plan. The branch is PR-ready — `check-cumulative-critic` composes across `develop..HEAD` — and `/prawduct:pr` should close #767, descoping `plugin/skills/critic/review-protocol.md` from its `affected:` list explicitly (it was read; it does not claim tree coverage). **Not** `plugin/methodology/building.md` — the chunk-close commit edited it, so it belongs on `affected:` and descoping it would hide a changed file from `backlog affecting <path>`.
 
 ## Build Chunks
 
