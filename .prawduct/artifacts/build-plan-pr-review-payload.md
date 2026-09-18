@@ -67,7 +67,7 @@ measurement.
 ## Status
 
 - [x] Chunk 01: The data plane — a measured dispatch clock and one deterministic payload call
-- [ ] Chunk 02: The protocol — new goals, a new reader, and the loop closed
+- [x] Chunk 02: The protocol — new goals, a new reader, and the loop closed
 Context: Plan authored 2026-09-18 from `pr-review-payload-discovery.md`, on `feat/pr-review-payload` cut from `develop` at 996766e5. Re-partitioned from five chunks to two on 2026-09-18 (see § Partition decision). Chunk 01 built and reviewed (chunk review plus two verify rounds, all clean). Next: Chunk 02, whose Done-when step 0 is the `verify-api` probe.
 
 ### Partition decision
@@ -415,6 +415,16 @@ while the instruction has no effect. Two verifications beyond the suite:
     ~51k-token subagent briefing) is the builder-context half of the same problem and is untouched
     by this bundle. Re-derive with `prawduct-hook backlog cache-query resolve 678 --repo
     brookstalley/prawduct --json` and read `updated_at`.
+  - **Two observations ACCEPTED at the final verify round** (`rev-20260918T210516Z-bf9c904c`,
+    dispositions recorded), both carried here because an acceptance routed nowhere is a drop.
+    (1) `skills/pr/SKILL.md`'s Step 3 prompt literal says `prawduct-hook pr-review-payload` with no
+    `<project dir>`, while both authoritative surfaces the reviewer reads first — `agents/pr-reviewer.md`
+    and `review-protocol.md` — mandate the argument. Append ` <project dir>` on the next judgeable
+    commit that touches this file, and widen the existing agent-file assertion to cover the prompt
+    literal. (2) `_CLAIM_REGION`'s run separator `[\s,]*` matches a newline, so `closes #41` followed
+    by a bare `#999` on the next line marks both as claimed. **The direction is deliberate** — a
+    commit trailer block IS one closure list — but nothing pins it; add the fixture, not a
+    `[^\S\n]` bound, when this file is next edited.
   - **Two backlog items name a file this bundle edited and were not assessed** (cumulative review
     R-17, flagged in passing, not work): `#672` (*coverage composes by tree but its gates key on
     identity*) and `#767` (*test-status: `current` on a stale tree*) both list
