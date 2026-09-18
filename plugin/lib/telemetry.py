@@ -42,12 +42,18 @@ from statistics import median
 
 from . import gitstate
 from .ledger import ledger_path
+from .timewindow import in_window, is_usable_bound
 
 #: Report schema. Bumped to 2 when the learning-loop block arrived, to 3 when
 #: `units_uncited` joined it, to 4 when verify-pass `observations` joined every
 #: stat block, to 5 when `by_stage` joined the groupings, and to 6 when every
 #: stat block gained `duration_measured` / `duration_self_reported`: the
 #: `--json` shape gained keys each time, and TEL-7A4X keys on this shape.
+#: Bumped to 7 when a `window` header and a per-severity `remedies` block
+#: joined — the first states the bounds in force so a slice is never mistaken
+#: for the whole corpus, the second reports whether a finding ships a fix plan.
+#: The contract's prose home is ``docs/governance-telemetry.md``; a bump that
+#: does not reach it leaves the published shape and its description disagreeing.
 REPORT_SCHEMA_VERSION = 7
 
 #: The two review stages a `review.critic` record can carry (`stage`, written
@@ -118,94 +124,9 @@ def _canonical_model(model) -> str | None:
     return model.strip()
 
 
-import re
-
-_FULL_TIMESTAMP_LEN = len("YYYY-MM-DDTHH:MM:SS")
-#: A bound shorter than a full timestamp names a PERIOD — `2026` a year,
-#: `2026-09` a month, `2026-09-01` a day. These are the forms `_exceeds_upper`
-#: compares by prefix, so they are exactly the ones accepted without parsing.
-_LOOKS_LIKE_PERIOD = re.compile(r"^\d{4}(-\d{2}(-\d{2})?)?$")
-
-
-def _parse_instant(stamp) -> "datetime | None":
-    """Parse an ISO stamp, treating a missing zone as UTC.
-
-    The zone default is not cosmetic: ledger rows are written ``...Z``, and a
-    bound typed without one would be naive — comparing naive to aware raises
-    rather than answering. A window bound is a FILTER, so it must never be able
-    to end the run.
-    """
-    if not isinstance(stamp, str):
-        return None
-    try:
-        parsed = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
-
-
-def _exceeds_upper(ts: str, bound: str) -> bool:
-    """True when ``ts`` falls after an INCLUSIVE upper bound.
-
-    ``--until`` is inclusive, and a bound shorter than a full timestamp names a
-    PERIOD rather than an instant — ``2026-09`` is the whole of September,
-    ``2026-09-01`` the whole of that day. Compared as bare strings every one of
-    those excludes its own period, because ``2026-09-01T00:00:01Z`` sorts after
-    ``2026-09-01``. That silently shortens whichever window the bound closes,
-    and the newest window is the one a before/after comparison is read from.
-
-    The rule: compare only the part the bound actually specifies. Ported from
-    ``tools/pr-review-yield.py``, which answers the same question for the PR
-    reviewer; the two are a known second home, tracked rather than tidied here.
-    """
-    if len(bound) < _FULL_TIMESTAMP_LEN:
-        return ts[: len(bound)] > bound
-    a, b = _parse_instant(ts), _parse_instant(bound)
-    if a is None or b is None:
-        return ts > bound
-    return a > b
-
-
-def _precedes_lower(ts: str, bound: str) -> bool:
-    """True when ``ts`` falls before an INCLUSIVE lower bound.
-
-    The mirror of :func:`_exceeds_upper`, and it must exist separately rather
-    than fall back to a bare string compare. For a PERIOD bound the two agree by
-    luck — a period's inclusive start IS its own string prefix, so every
-    timestamp inside it already sorts at or after the bare bound — which is why
-    a mutation swapping this for `ts < bound` survived a full suite. What does
-    NOT agree is a full timestamp carrying a zone offset: `2026-08-04T12:00:00+02:00`
-    is 10:00Z, and compared as text against a `...Z` ledger stamp it means
-    nothing at all. Parsed here for the same reason the upper bound parses.
-    """
-    if len(bound) < _FULL_TIMESTAMP_LEN:
-        return ts[: len(bound)] < bound
-    a, b = _parse_instant(ts), _parse_instant(bound)
-    if a is None or b is None:
-        return ts < bound
-    return a < b
-
-
-def in_window(ts, since: "str | None", until: "str | None") -> bool:
-    """Whether an event's ``ts`` falls inside an inclusive ``[since, until]``.
-
-    An event with no usable ``ts`` is KEPT when no bound is given and DROPPED
-    once either is — a row that cannot say when it happened cannot be claimed
-    for a window, and silently counting it in both halves of a before/after
-    split is the error that would flatter every comparison.
-    """
-    if since is None and until is None:
-        return True
-    if not isinstance(ts, str) or not ts:
-        return False
-    if since and _precedes_lower(ts, since):
-        return False
-    if until and _exceeds_upper(ts, until):
-        return False
-    return True
-
-
-def _read_events(path: Path) -> "tuple[list[dict], dict, dict, str | None]":
+def _read_events(
+    path: Path, since: "str | None" = None, until: "str | None" = None,
+) -> "tuple[list[dict], dict, dict, str | None]":
     """All reportable ``review.*`` events oldest-first, skip counts, the
     learning-loop tallies, and the read failure if the file could not be
     opened at all.
@@ -231,6 +152,14 @@ def _read_events(path: Path) -> "tuple[list[dict], dict, dict, str | None]":
     shape to carry an internal signal is how a payload acquires a key nobody
     registered, which is the defect this bundle's own review caught one
     command over.
+
+    **The window scopes THIS pass, not its result.** Every tally here —
+    reviews, skips and the learning counts — must describe the same
+    population, or a windowed report prints whole-corpus learning and skip
+    numbers under a banner saying it is a slice, and two windows summed by a
+    `--json` consumer double-count them. Filtering after the fact re-scopes
+    only whichever aggregate the filter happens to touch, which is the shape
+    that makes a before/after split show identical numbers in both halves.
     """
     skipped = {"corrupt_lines": 0, "unknown_kinds": 0, "invalid_payloads": 0}
     learning = {"written": 0, "fired": 0}
@@ -269,6 +198,10 @@ def _read_events(path: Path) -> "tuple[list[dict], dict, dict, str | None]":
             continue
         if not isinstance(event, dict) or not isinstance(event.get("event"), str):
             skipped["corrupt_lines"] += 1
+            continue
+        # Before any counter moves: an out-of-window line is not this
+        # report's business at all, so it is neither counted nor skipped.
+        if not in_window(event.get("ts"), since, until):
             continue
         kind = event["event"]
         if kind in _LEARNING_KINDS:
@@ -752,7 +685,7 @@ def _fmt_remedies(remedies: dict) -> str:
     be a claim about behaviour the schema cannot support.
     """
     parts = []
-    for sev in _SEVERITIES:
+    for sev in (*_SEVERITIES, "other"):
         d = remedies.get(sev) or {}
         if not d.get("findings"):
             continue
@@ -845,7 +778,7 @@ def review_stats(project_dir: Path, argv: list[str]) -> int:
             # comparison, so a bound that silently means something other than
             # what was typed moves events between the two halves and the
             # resulting delta is attributed to the change under test.
-            if _parse_instant(value) is None and not _LOOKS_LIKE_PERIOD.match(value):
+            if not is_usable_bound(value):
                 print(
                     f"review-stats: {arg} value {value!r} is not a date, month or"
                     f" ISO timestamp ({usage})",
@@ -868,13 +801,11 @@ def review_stats(project_dir: Path, argv: list[str]) -> int:
         # renders as the empty report it truthfully is, with the cause on
         # stderr beside it. `round_price` is the caller that must distinguish
         # them, because its reason string gets persisted.
-        events, skipped, learning, _unreadable = _read_events(path)
+        events, skipped, learning, _unreadable = _read_events(path, since, until)
     else:
         events, skipped = [], {"corrupt_lines": 0, "unknown_kinds": 0, "invalid_payloads": 0}
         learning = {"written": 0, "fired": 0, "units_written": 0, "units_fired": 0, "units_uncited": 0}
 
-    if since is not None or until is not None:
-        events = [e for e in events if in_window(e.get("ts"), since, until)]
     report = aggregate_review_stats(events, skipped, learning)
     # Header fields the pure aggregation can't know — added once, here, so the
     # JSON and human renderings always agree.

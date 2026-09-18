@@ -454,7 +454,7 @@ class TestJsonSchemaStability:
         # duration read from a dispatch clock and one recollected by the
         # reviewing model are two populations and a median over the mixture
         # measures neither.
-        # 6 -> 7 (note-remedy-contract Chunk 01): a `window` header, stated even
+        # 6 -> 7 (review-yield-instrument): a `window` header, stated even
         # when null so a windowed report is never mistaken for a whole-corpus
         # one, and a `remedies` block on every stat block. Both ADDED; no key
         # was removed or repurposed, which is what `api-contract.md`'s
@@ -917,3 +917,92 @@ class TestHumanRenderOfWindowAndRemedies:
         repo = tmp_path / "repo"
         _write_ledger(repo, [_event(findings=[])])
         assert "remedies: (no findings)" in _run(repo).stdout
+
+
+class TestWindowScopesEveryTally:
+    """The window scopes the READ, not the result.
+
+    Three reviewers converged on this independently: filtering after
+    `_read_events` re-scopes only the review list, so a windowed report printed
+    whole-corpus `learning` and `skipped` counts under a banner saying it was a
+    slice — and two windows summed by a `--json` consumer double-counted them.
+    A before/after split, which is this command's whole purpose, showed
+    identical learning numbers in both halves.
+    """
+
+    def _report(self, repo, *args):
+        return json.loads(_run(repo, "--json", *args).stdout)
+
+    def test_learning_counts_partition_across_the_window(self, tmp_path):
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [
+            _learning(unit="old"), _learning(unit="new"), _event(ts="2026-09-01T00:00:00Z"),
+        ])
+        # Both learning rows carry the helper's own ts; pin that the two halves
+        # SUM to the whole rather than each reporting it.
+        whole = self._report(repo)["learning"]["written"]
+        pre = self._report(repo, "--until", "2026-06-10")["learning"]["written"]
+        post = self._report(repo, "--since", "2026-06-11")["learning"]["written"]
+        assert whole == 2
+        assert pre + post == whole, "a windowed report must not print whole-corpus learning counts"
+
+    def test_skip_counts_partition_across_the_window(self, tmp_path):
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [
+            json.dumps({"event": "deploy.thing", "ts": "2026-06-10T12:00:00Z"}),
+            json.dumps({"event": "deploy.thing", "ts": "2026-12-01T00:00:00Z"}),
+            _event(),
+        ])
+        whole = self._report(repo)["skipped"]["unknown_kinds"]
+        pre = self._report(repo, "--until", "2026-06-30")["skipped"]["unknown_kinds"]
+        post = self._report(repo, "--since", "2026-07-01")["skipped"]["unknown_kinds"]
+        assert whole == 2
+        assert pre + post == whole, "skips must describe the windowed population too"
+
+    def test_an_out_of_window_corrupt_line_is_not_counted(self, tmp_path):
+        # A line with no `ts` cannot be claimed for a window at all.
+        repo = tmp_path / "repo"
+        _write_ledger(repo, ["{not json", _event(ts="2026-09-01T00:00:00Z")])
+        assert self._report(repo)["skipped"]["corrupt_lines"] == 1
+        assert self._report(repo, "--since", "2026-01-01")["skipped"]["corrupt_lines"] == 1
+
+
+class TestBoundValidation:
+    def test_an_impossible_date_is_refused_not_silently_shifted(self, tmp_path):
+        # `2026-09-31` matches the period shape and is not a date; accepting it
+        # silently means 2026-10-01 — a bound meaning something other than what
+        # was typed, which is the one failure a window must never have.
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_event()])
+        r = _run(repo, "--since", "2026-09-31")
+        assert r.returncode == 1
+        assert "not a date, month or ISO timestamp" in r.stderr
+
+    def test_a_real_period_bound_is_still_accepted(self, tmp_path):
+        # The control: the refusal above must not be refusing every period.
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_event()])
+        assert _run(repo, "--json", "--since", "2026-09-30").returncode == 0
+        assert _run(repo, "--json", "--since", "2026-02-29").returncode == 1, "2026 is not a leap year"
+
+
+class TestRemedyLineCoversTheWholePopulation:
+    def test_an_unknown_severity_appears_on_the_remedies_line(self, tmp_path):
+        # `_group_stats` and `_fmt_stats` both carry `other`; a remedies line
+        # iterating only the three named severities makes the two lines of one
+        # report disagree about the population they describe.
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_event(findings=[
+            {"goal": "g", "severity": "nitpick", "summary": "s",
+             "recommendation": "one two", "files": ["a.py"]},
+        ])])
+        out = _run(repo).stdout
+        findings_line = next(ln for ln in out.splitlines() if ln.startswith("overall:"))
+        remedies_line = next(ln for ln in out.splitlines() if ln.startswith("remedies:"))
+        # The findings line already counts it under `other` — that is the
+        # population the remedies line must agree with, and asserting on the
+        # whole report would be satisfied by this line alone.
+        assert "0/0/0/1" in findings_line
+        assert "other" in remedies_line, (
+            "the remedies line omits a population the findings line counts, so "
+            "the two lines of one report describe different sets")

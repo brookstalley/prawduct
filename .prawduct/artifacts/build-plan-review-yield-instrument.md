@@ -81,6 +81,23 @@ instrument is complete, green and useful under every option on the table, while 
 it was built to grade is now the wrong change; holding it hostage to a re-plan buys nothing and
 loses a measurement that only gets less useful as the corpus moves | user can veto]`
 
+## Routes departed from, recorded rather than taken silently
+
+Both are departures from this plan as first written, under `architecture.md` *goals and verification
+bind; prescribed method is advice*. **Neither abandoned path is written in backticks anywhere in a
+chunk body**: record-lint reads a backticked path there as a declared deliverable, and declaring a
+file that was deliberately never built is a BLOCKING ref-drift finding — which is exactly what the
+first draft of this plan earned.
+
+1. **A new era-split script under `tools/` became an extension of `review-stats`.** Reading the
+   surface first showed the new tool would be a second home for severity, duration and observation
+   aggregation over the same ledger — the exact norm this plan disposes of under `architecture.md`.
+2. **A new telemetry test module became an extension of the existing test home.** The plan asserted
+   the module had *no test file today*. False — 685 lines of one, including the
+   `TestJsonSchemaStability` pins this change had to renegotiate. The claim came from a
+   `grep -rln … | head` whose output was cut below the fold; the slice is invisible in what you read
+   back.
+
 ## Status
 
 - [x] Chunk 01: A window and a remedy dimension on `review-stats`
@@ -99,23 +116,16 @@ finding ships a fix plan. Both gaps are filled here.
   rendering of both, `REPORT_SCHEMA_VERSION` 6 → 7.
 - `plugin/bin/prawduct-hook` — the `review-stats` usage string.
 - `tests/test_review_stats.py` — the module's existing test home, extended.
-
-**Route changes recorded, not taken silently.** Both were departures from this plan as first
-written, under `architecture.md` *goals and verification bind; prescribed method is advice*:
-
-1. **A new `tools/review-era-split.py` became an extension of `review-stats`.** Reading the surface
-   first showed the new tool would be a second home for severity, duration and observation
-   aggregation over the same ledger — the exact norm this plan disposes of.
-2. **A new `tests/test_telemetry.py` became an extension of `tests/test_review_stats.py`.** The plan
-   asserted the module had *no test file today*. False — 685 lines of one, including the
-   `TestJsonSchemaStability` pins this change had to renegotiate. The claim came from a
-   `grep -rln … | head` whose output was cut below the fold; the slice is invisible in what you read
-   back.
+- new `plugin/lib/timewindow.py` — the window predicate's one home, shared with
+  `tools/pr-review-yield.py`; and new `tests/test_window_bounds_one_home.py`, its agreement pin.
 
 **Done when — all met:**
 1. Window bounds accept the forms `tools/pr-review-yield.py` accepts, and its period cases are
-   ported rather than re-derived. **Met** — a date-only bound covers its whole day, a month-only
-   bound its whole month, and both halves partition the corpus.
+   ported rather than re-derived. **Met, and then superseded by the cumulative review** — the two
+   instruments no longer hold two copies at all. `plugin/lib/timewindow.py` is the one home and both
+   import it, because three reviewers found the copies had *already* diverged on the lower bound.
+   Porting was the plan's goal; sharing is strictly stronger, and the plan's own deliverable list is
+   updated rather than left describing the weaker outcome.
 2. The remedy dimension counts three outcomes: present, blank, and **absent**. **Met, and it was a
    real defect in the first cut** — the PR reviewer's findings carry `{goal, severity, file, line,
    summary}` with no remedy key, so folding absence into "wrote no remedy" reported that role at 0%,

@@ -19,8 +19,13 @@ nothing in the repo could measure the before-state of any of them.
 shorter than a full timestamp names a *period*: `2026-09` is the whole of September. Compared as
 bare strings every such bound excludes its own period, which silently shortens whichever window it
 closes — and the window a before/after comparison closes is the one the conclusion is read from. The
-period cases are ported from `tools/pr-review-yield.py`, which answers the same question for the PR
-reviewer. A bound this reader cannot interpret is refused rather than filtered on, and a windowed
+period cases are not merely modelled on `tools/pr-review-yield.py`, which answers the same question
+for the PR reviewer — the two now **share** the predicate. `plugin/lib/timewindow.py` is its one
+home, and both instruments import it: written out at each of them it had already diverged, with the
+tool comparing a lower bound as a bare string while the library parsed it, so the same `--since`
+selected different populations in the two reports a person would naturally compare against each
+other. `tests/test_window_bounds_one_home.py` pins that both readers resolve to the one source and
+that neither has re-grown a private copy. A bound this reader cannot interpret is refused rather than filtered on, and a windowed
 report carries a `WINDOW:` banner and a `window` header so it can never be mistaken for a
 whole-corpus one.
 

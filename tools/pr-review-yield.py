@@ -28,7 +28,6 @@ from __future__ import annotations
 
 import argparse
 import collections
-import datetime as dt
 import json
 import statistics
 import sys
@@ -37,6 +36,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "plugin" / "lib"))
 
 from review_dispatch import measured_interval_seconds  # noqa: E402
+from timewindow import in_window  # noqa: E402
 
 
 LEDGER = ".prawduct/.governance-ledger.jsonl"
@@ -59,52 +59,17 @@ def load(repo: Path, since: str | None, until: str | None) -> list[dict]:
             continue
         if obj.get("event") != "review.pr":
             continue
-        ts = obj.get("ts") or ""
-        if since and ts < since:
-            continue
-        if until and _exceeds_upper(ts, until):
+        # One home, shared with `review-stats` (`lib/timewindow`): these two
+        # instruments grade the same before/after split, and while each kept
+        # its own copy the lower bound had already diverged — this one
+        # compared it as a bare string while the library parsed it, so the
+        # same `--since` selected different populations in each.
+        if not in_window(obj.get("ts") or "", since, until):
             continue
         rows.append(obj)
     if corrupt:
         print(f"note: skipped {corrupt} corrupt line(s)", file=sys.stderr)
     return rows
-
-
-_FULL_TIMESTAMP_LEN = len("YYYY-MM-DDTHH:MM:SS")
-
-
-def _parse(stamp: str) -> dt.datetime | None:
-    """Parse an ISO stamp, treating a missing zone as UTC.
-
-    The zone default is not cosmetic: ledger rows are written `...Z` and a bound typed
-    without one would otherwise be naive, and comparing naive to aware raises rather
-    than answering. A bound is a filter, so it must never be able to end the run.
-    """
-    try:
-        parsed = dt.datetime.fromisoformat(stamp.replace("Z", "+00:00"))
-    except (ValueError, AttributeError):
-        return None
-    return parsed if parsed.tzinfo else parsed.replace(tzinfo=dt.timezone.utc)
-
-
-def _exceeds_upper(ts: str, bound: str) -> bool:
-    """True when `ts` falls after an INCLUSIVE upper bound.
-
-    `--until` documents itself inclusive, and a bound shorter than a full timestamp
-    names a PERIOD rather than an instant — `2026-09` is the whole of September,
-    `2026-09-01` the whole of that day. Compared as bare strings every one of those
-    excludes its own period, because `2026-09-01T00:00:01Z` sorts after `2026-09-01`.
-    That silently shortens whichever window the bound closes, and the newest window is
-    the one a before/after comparison is read from.
-
-    The rule: compare only the part the bound actually specifies.
-    """
-    if len(bound) < _FULL_TIMESTAMP_LEN:
-        return ts[: len(bound)] > bound
-    a, b = _parse(ts), _parse(bound)
-    if a is None or b is None:
-        return ts > bound
-    return a > b
 
 
 def duration(row: dict) -> tuple[int | None, bool]:
