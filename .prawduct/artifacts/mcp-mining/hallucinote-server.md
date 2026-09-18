@@ -65,7 +65,7 @@ Read ~110–120k words.
   commands. All 7 prompts shipped in v0.9.0 were deleted in the next release. "There is no
   assistant-callable `prompts/get` path." Cross-client path would be resources, not prompts.
 - **Client tool-count caps: Cursor 40 (silent drops above), Copilot 128.** Selection accuracy
-  "degrades sharply past roughly ten to twenty". *Reconcile with the withdrawn consumer capture's own observed client cap.*
+  "degrades sharply past roughly ten to twenty". *Reconcile with the consumer-side cap evidence, which is withheld — see the design notes §10.5.*
 - **A plugin manifest's `timeout` governs TOOL EXECUTION, not the startup handshake.** The startup
   window is `MCP_TIMEOUT` (env, ms, default **30000**), a plugin manifest cannot set it, and the
   only channel reaching a plugin-provided server's spawn is `env` in user settings. Cold dependency

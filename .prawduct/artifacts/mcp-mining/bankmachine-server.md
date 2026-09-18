@@ -63,7 +63,7 @@ Distilled non-generic material ≈ 6–8k words out of ~34k read.
 - **Refuse an out-of-range argument and QUOTE the ceiling; never clamp.** Clamping makes a trimmed
   answer byte-identical to a complete one; refusing means any ACCEPTED request is structurally known
   not to have been trimmed. `limit:0`→1 row and `limit:-5`→1 row against a true count of 16.
-  *(Note this is in direct tension with the withdrawn consumer capture's "clamp and say you clamped" — see the synthesis
+  *(Note this is in direct tension with the opposite policy held elsewhere in the corpus — see the synthesis
   question in the README.)*
 - **Treat `limit:0` returning one row as a CLAMP hypothesis, not a coincidence** — the tester nearly
   filed it as fixed; only a second probe revealed the mechanism.
@@ -123,7 +123,7 @@ Distilled non-generic material ≈ 6–8k words out of ~34k read.
 - **Put the error object's compact JSON in the `content` TEXT as well as `structuredContent`.**
   Measured through a real client, only the error STRING was visible and `structuredContent.error.
   code` never reached the model at all — so recovery fields placed only in `structuredContent` are
-  invisible to the agent they exist for. *Corroborates the withdrawn consumer capture independently.*
+  invisible to the agent they exist for. *Corroborates discodon independently.*
 - **Do NOT shape a refusal to match the tool's `outputSchema`** — that schema describes an ANSWER;
   a client holds `structuredContent` to it only where `isError` is false, so dressing a refusal as
   an answer costs the `error` block a consumer branches on.

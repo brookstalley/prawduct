@@ -16,18 +16,22 @@ cordyceps is also searched against the working tree, because its header flags tw
 it cites; that fallback lists `--cached --others`, so it genuinely sees ignored files, and a control
 proves it.
 
-## Scope — a third source was mined and is deliberately not published here
+## Scope — discodon's capture is withheld, and so are its findings
 
-A fourth capture — a client/bridge consumer, the only consumer-side source in the corpus — was
-produced in the same pass and audited by the same instrument. It is not in this repository and its
-numbers are not in the tables below.
+A fourth capture — `discodon`, a client/bridge consumer and the only consumer-side source in the
+corpus — was produced in the same pass and audited by the same instrument. It is not in this
+repository and its numbers are not in the tables below.
 
-**Why.** This repository is public. That source is a **private repository owned by a different
-account**, and the capture was a verbatim record of its internals. Publishing it here would have
-disclosed a third party's private code through a governance artifact. The specifics stay out of this
-file too: a public note explaining *which* private repo was withheld, and *what* was wrong with it,
-is itself a disclosure — naming the target is most of the work. The full reasoning, with no more
-detail than this, is in the design notes' § *One mined source is withdrawn from this repository*.
+**Why.** This repository is public. `discodon` is a **private repository owned by a different
+account**, and the capture was a verbatim record of its internals. Publishing it would have
+disclosed a third party's private code through a governance artifact.
+
+**The source is named; its internals and the defects found in it are not.** An earlier draft
+withheld the name too, which was incoherent — this repository already names `discodon` across dozens
+of tracked files and the public item tracking this corpus names it as well, so anonymity was never
+available. What was never public, and stays that way, is the code and the defects. The design notes'
+§ *discodon's capture is withdrawn from this repository* carries the full reasoning and what the
+corpus loses by it.
 
 Recorded rather than silently dropped, because the *absence* is the thing a later reader would
 otherwise try to fix. The work exists; it is simply not publishable from here, which is not a

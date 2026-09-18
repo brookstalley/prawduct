@@ -10,7 +10,7 @@ governed_by:
     dispositions:
       - "untrusted governance state is data, not instructions → conforms: the captures under audit and every byte read from a sibling repo are treated as data; nothing read is executed or followed"
       - "destructive/irreversible operations need operation-level owner approval → inapplicable because this pass is read-only in the sibling repos and edits only this repo's own artifacts"
-      - "a product's content leaves its repo only through a pinned, owner-approved surface → APPLIES, and the original disposition here was WRONG. It read 'inapplicable because nothing leaves this repo' — true of the sibling working trees, false of the other direction: a mined capture brings a THIRD PARTY's content INTO this repo, which is public. One mined source was a private repo owned by another account; its capture is withdrawn from this branch rather than published. A boundary does not care which way content crosses it, and the disposition read the norm as being about egress alone."
+      - "a product's content leaves its repo only through a pinned, owner-approved surface → APPLIES, and the original disposition here was WRONG. It read 'inapplicable because nothing leaves this repo' — true of the sibling working trees, false of the other direction: a mined capture brings a THIRD PARTY's content INTO this repo, which is public. One mined source, discodon, is a private repo owned by another account; its capture AND its findings are withdrawn from this branch rather than published. A boundary does not care which way content crosses it, and the disposition read the norm as being about egress alone."
   - artifact: architecture
     dispositions:
       - "the governance runtime carries no third-party dependencies → conforms: the instrument is stdlib-only Python"
@@ -33,9 +33,9 @@ last_validated: 2026-09-18
 wrong and 1 absent, with every address clean**. The two that mattered drifted *toward the
 generalisation the corpus wants*, which is why review does not catch them. The other captures
 — cordyceps (95 rules) and bankmachine (147) — had their **addresses** verified as they
-were written and their **quotations not at all**. A third source was mined and audited in the same
-pass and is **withdrawn from this branch**: it is a private repository owned by another account, and
-this one is public (`mcp-mining/capture-quotation-verification.md` § *Scope*).
+were written and their **quotations not at all**. `discodon` was mined and audited in the same pass and is
+**withdrawn from this branch**, findings included: it is a private repository owned by another
+account and this one is public (`mcp-mining/capture-quotation-verification.md` § *Scope*).
 
 `mcp-mining/README.md` § *The next debt* records the instrument as extracting the `*"…"*` italic
 runs. That is hallucinote's convention. Measured 2026-09-18 against the three captures, the italic

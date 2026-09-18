@@ -17,11 +17,11 @@ undercount.** Corrected 2026-09-18 after counting rather than estimating:
 | cordyceps | 6 of 6, plus 1 governance note and 2 wrong-mechanism notes | 6 | complete here |
 | hallucinote | 3 of 3 | 3 | complete here |
 
-So this file is the **complete** record for cordyceps and hallucinote. A third source was mined in
-the same pass; its drift items are **not** recorded here, because it is a private third-party
-repository and this one is public — the reasoning is in
-`capture-quotation-verification.md` § *Scope*. Those items are still owed to their owner and are
-not discharged by this file's existence.
+So this file is the **complete** record for cordyceps and hallucinote. `discodon` was mined in the
+same pass and its drift items are **not** recorded here: it is a private repository owned by a
+different account and this one is public, so its defects are not ours to publish
+(`capture-quotation-verification.md` § *Scope*). **Those items are still owed to that repo's owner
+and are not discharged by being absent from this file.**
 
 Do not quote the count below without running it:
 

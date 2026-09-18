@@ -27,19 +27,26 @@ see the next section. They are kept only because removing them would hide the di
 
 ## The headline counts do not reproduce — do not quote them
 
-Each row's count is the number its mining agent wrote in its own headline. None re-derives. The
-command `../mcp-knowledge-corpus-design.md` §10.1 names for re-deriving them
-(`grep -c '^- \*\*\|^\*\*RULE' *.md`) returns 68 / 97 / 53 / 99 against headlines of 60 / 84 / 48 / 92 —
-every row disagrees, and the sums differ by 33 (284 vs 317). hallucinote disagrees a third way: its
-structured twin's own summary says 78 while its body carries 106 rule blocks.
+**This section records the state of the COMPRESSED captures before the 2026-09-18 re-mine, and its
+readings are historical.** They are kept because they are why the re-mine happened; do not read them
+as describing the shipped tree, and do not re-run its receipt expecting them — the structured
+captures that replaced those inputs carry a shared marker and a count that reproduces (see the last
+section of this file).
+
+As measured then: each row's count was the number its own mining agent wrote in its headline, and
+none re-derived. The command §10.1 named for re-deriving them disagreed with every headline, and the
+sums differed. hallucinote disagreed a third way: its structured twin's own summary said 78 while its
+body carried 106 rule blocks.
 
 So there is no count of this corpus that anything has verified. The discrepancy does not disturb the
 packaging ruling (§10.1 — every reading is far above the one-file threshold), but the number stated
 there is unsourced and the command cited as its receipt returns something else. A count that ships
 needs a derivation that runs, over a rule marker the captures actually share — which they currently
-do not. **Corrected 2026-09-18: the split is one file and four, not "two and three" as this section
-originally said.** Only `hallucinote-server-structured.md` uses `**RULE:**` blocks (106 of them);
-all four others use `- **bold**` bullets exclusively, and carry zero `**RULE:**` blocks. Re-derive:
+did not. **Corrected 2026-09-18: the split was one file and four, not "two and three" as this
+section originally said.** At that point only `hallucinote-server-structured.md` used `**RULE:**`
+blocks and the compressed captures used `- **bold**` bullets exclusively. That is no longer the
+shipped state — every structured capture now uses the shared marker — so run this over the tree
+rather than trusting the sentence:
 
     for f in *-server.md *-consumer.md *-structured.md; do
       printf '%-36s RULE-blocks:%-5s bold-bullets:%s\n' "$f" \
@@ -55,8 +62,8 @@ never the digits*; *a number that disagrees with another number is a bug report.
 ## No provenance at all in four of five captures — measured 2026-09-18
 
 The note at the top of this file says each citation "must be re-checked against the source repo."
-That framing was wrong about four of the five files, in a way that matters: **there are no citations
-to re-check.**
+That framing was wrong about the compressed captures, in a way that matters: **there were no
+citations to re-check.** The readings below are over the files this repository still ships.
 
     for f in cordyceps-server.md bankmachine-server.md \
              hallucinote-server.md hallucinote-server-structured.md; do
@@ -65,13 +72,12 @@ to re-check.**
         "$(grep -oE '`[A-Za-z0-9_./-]+\.(py|cs|ts|tsx|md|json|yaml|toml)`' "$f" | sort -u | wc -l | tr -d ' ')"
     done
 
-Reading: `0 / 4`, `0 / 1`, `0 / 0`, `0 / 3` — against `106 / 52` for
-`hallucinote-server-structured.md`. Four files, zero `PROVENANCE` lines, and between zero and four
-distinct source paths named across ~20KB of rules each. Meanwhile those rules carry hard measured
-figures — a 49% docs-token reduction, ~32 minutes of observed silence, 37 and 43 parameters in one
-schema, ten tools becoming eight.
+Reading: `0 / 4`, `0 / 1`, `0 / 3` for the three compressed captures — against `106 / 52` for
+`hallucinote-server-structured.md`, the one addressed file. Zero `PROVENANCE` lines each, and a
+handful of distinct source paths across ~20KB of rules apiece, while those same rules carry hard
+measured figures.
 
-So the debt is not "re-anchor the line numbers on symbols." It is that for four of five sources
+So the debt was not "re-anchor the line numbers on symbols." It was that for the compressed sources
 **nothing was ever addressed**, while the rules read as though they had been.
 
 **Why this is a precondition and not hygiene.** Desirable 3 in the design notes is periodic
@@ -86,8 +92,9 @@ evidence about the other four, not only about hallucinote.
 
 ## Re-mining in flight — dispatched 2026-09-18
 
-Four read-only agents, recorded here because they hold no worktree and a dispatch that lives only in
-a session's context evaporates at the next `/clear`.
+The read-only agents dispatched that day, recorded here because they held no worktree and a dispatch
+that lives only in a session's context evaporates at the next `/clear`. **One row is absent: the
+consumer-side miner, whose capture is withheld** (`capture-quotation-verification.md` § *Scope*).
 
 | Agent | Source repo | Owns exactly | Task |
 |---|---|---|---|

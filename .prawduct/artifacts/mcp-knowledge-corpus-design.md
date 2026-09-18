@@ -192,7 +192,7 @@ meaning outside it.
 - **R2 / R5 cluster.** Same fire-site, same cause; likely one rule with two facets.
 - **R8 cost claim unresolved.** "More efficient" wants a number, and the dominant cost is likely
   *agent context* consumed by a large tool result rather than wire encoding. Unverified — flagged to
-  the withdrawn consumer capture's mining pass, which was asked for the bridge's real size limits.
+  the consumer-side mining pass, which was asked for the bridge's real size limits (§10.5).
 
 ### Candidate mechanization
 
@@ -462,9 +462,10 @@ rather than a size estimate for the artifact.
   for a baseline measurement never performed.* bankmachine **rejects the framing outright**: both
   "one tool per question" and "one tool with an action enum" share the false premise that a boundary
   tracks the *question*; draw it where the **answer shape** changes, which took 10 tools to 8 with no
-  `outputSchema` loss. the withdrawn consumer capture supplied the consumer-side evidence for why width matters at
-  all — a client silently truncating past a roster limit. **The corpus must state this as a live disagreement with the
-  evidence on each side, not resolve it by majority.**
+  `outputSchema` loss. A consumer-side source supplied evidence for why width matters at all, and
+  that evidence is **not available to this corpus** (§10.5), so R1 ships with its server-side positions
+  only. **The corpus must state this as a live disagreement with the evidence on each side, not
+  resolve it by majority.**
 - **R2 (>60s → async handle) — QUALIFIED, hard.** MCP progress notifications are received but **do
   not reset or extend the tool-call timeout** (Claude Code #58687), and transport choice is not a
   lever (identical across stdio/HTTP+SSE/Streamable HTTP; HTTP/SSE imposes a 60s first-byte
@@ -477,8 +478,9 @@ rather than a size estimate for the artifact.
   cordyceps, hallucinote and bankmachine's absence of any binary path. Strongest-attested rule here.
 - **R6 (refactor freely) — the precondition is now explicit.** hallucinote may skip back-compat
   entirely *because one installer deploys both halves and a handshake makes "old client meets new
-  server" unreachable*. the withdrawn consumer capture showed the converse: a published schema is **frozen** in a client
-  that already registered it, and a correct server-side `list_changed` implementation "did not help."
+  server" unreachable*. The converse case — what a client does with a schema it has already
+  registered — was evidenced only by the withheld capture (§10.5), so R6's precondition is stated here
+  without the consumer-side half that motivated it.
 
 ### 10.3 Cross-repo disagreements to adjudicate (the most valuable output)
 
@@ -488,23 +490,19 @@ rather than a size estimate for the artifact.
 > corpus's one genuinely open disagreement is R1 in §10.2 above.
 
 1. **Clamp vs refuse an out-of-range value.** bankmachine: *refuse and quote the ceiling, never
-   clamp* — clamping makes a trimmed answer byte-identical to a complete one. the withdrawn consumer capture and
-   hallucinote: *clamp and say you clamped* — a bare refusal costs a round-trip the agent spends
+   clamp* — clamping makes a trimmed answer byte-identical to a complete one. hallucinote takes the
+   other side: *clamp and say you clamped* — a bare refusal costs a round-trip the agent spends
    guessing. Candidate synthesis: refuse where silence would be indistinguishable from completeness
    (row/data reads); clamp-and-announce where the parameter is a resource budget (duration, wait) and
-   every value is semantically valid.
-2. **Tool-count ceiling.** the withdrawn consumer capture recorded a client-side cap with silent slicing; hallucinote cites Cursor 40
-   (silent drops) and Copilot 128, plus a 10–20 selection-accuracy band. One dated-facts entry, not
-   three rules.
-3. **Progress notifications.** cordyceps declined them without recording why; ~~the withdrawn consumer capture demands
-   progress above ~30s~~; hallucinote verified they do not affect the timeout. One coherent answer
-   exists that no single repo held — good evidence the corpus earns its keep.
-   **Corrected 2026-09-18: that capture's position was invented.** Its audit found no `~30s` constant, no
-   doc rule, and no MCP progress mechanism to hang one on. The tree's actual rule is **categorical**,
-   not duration-based — *runs have `get_run`, generations have no equivalent* — and a duration
-   threshold is the framing its own incident refutes. This makes the dissolution cleaner rather than
-   harder: two real positions, not three, and the surviving disagreement is about *what kind of
-   operation* gets a handle, never about how many seconds.
+   every value is semantically valid. **A third position sat in the withheld capture and is not
+   reproduced** (§10.5).
+2. **Tool-count ceiling.** hallucinote cites Cursor 40 (silent drops) and Copilot 128, plus a 10–20
+   selection-accuracy band. One dated-facts entry, not three rules. A directly-observed client cap
+   was evidenced only by the withheld capture and is not reproduced (§10.5).
+3. **Progress notifications.** cordyceps declined them without recording why; hallucinote verified
+   they do not affect the timeout. A third position was recorded in the withheld capture, and its
+   audit found that position unsupported by its own source; neither the position nor the audit's
+   detail is reproduced here (§10.5). What survives is that the two remaining positions compose.
 4. **Rename policy.** hallucinote's design doc says never rename/always alias; its shipped policy
    says no aliases at all. Both are right under different preconditions, and the precondition is the
    rule.
@@ -566,35 +564,41 @@ Two consequences for authoring rather than for the debt ledger:
 Still owed on the quotation half: the fragments in the shallower miss buckets, the `code-span` class,
 and hallucinote's own 19 known-wrong quotations, which its audit reported without editing.
 
-### 10.5 One mined source is withdrawn from this repository (2026-09-18)
+### 10.5 discodon's capture is withdrawn from this repository (2026-09-18)
 
-A fourth capture — a client/bridge consumer, the only consumer-side source in the corpus — was
-mined and audited in the same pass and is **not published here.**
+The fourth capture — `discodon`, a client/bridge consumer and the only consumer-side source in the
+corpus — was mined and audited in the same pass and is **not published here.** Neither are its
+findings: §10.2 and §10.3 name where its evidence would have sat and do not reproduce it.
 
-**Why.** This repository is public. That source is a **private repository owned by a different
-account**, and the capture was a verbatim record of its internals. Publishing it would have
-disclosed a third party's private code through a governance artifact. Caught by the PR reviewer
-before the branch was ever pushed.
+**Why.** This repository is public. `discodon` is a **private repository owned by a different
+account**, and the capture was a verbatim record of its internals — source, docstrings, internal
+paths and tracker ids — together with a drift section the capture itself described as bug reports
+owed back to that repo, none of which had been reported. Publishing it would have disclosed a third
+party's private code, including unfixed defects, through a governance artifact. Caught by a PR
+reviewer before the branch was ever pushed.
 
-**This section deliberately says no more than that.** Naming the repository, or enumerating what the
-capture found wrong with it, would re-create in the explanation the exposure the withdrawal exists
-to prevent — a public note saying "we withheld X because X has unreported defects" tells a reader
-exactly where to look. That trap caught this very section on its first draft.
+**Why the source IS named here, and the findings are not.** An earlier draft of this section
+withheld the name as well. That was incoherent: this repository already names `discodon` across
+dozens of tracked files, and the public backlog item that tracks this corpus names it too, so
+anonymity was never available and could not be what protects anyone. What is actually withheld is
+the thing that was never public — **its code and the defects found in it.** Naming a repository
+whose existence is already public costs nothing; reproducing a private repository's internals is the
+whole exposure, and no amount of not saying its name would have changed that.
 
 **What it costs the corpus, stated rather than glossed.** It was the *only* consumer-side source —
-the only evidence of how an arbitrary client actually treats a server's declared surface — so its
+the only evidence of how an arbitrary client actually treats a server's declared surface — so the
 loss is not proportional to its rule count:
 
-- §10.2's **R1** loses the consumer-side reason tool-surface width matters at all.
-- §10.3 item 1 (**clamp vs refuse**) loses one of its two positions and is now **blocked**, not
-  awaiting: bankmachine's *refuse* side is still evidenced here, the *clamp* side is not.
-- §10.3 item 2 (**tool-count ceiling**) keeps hallucinote's client constants and loses the
-  directly-observed one.
-- §11.3's triage stands as reasoning, but two of its rows now rest on evidence a reader of this
+- §10.2's **R1** loses the consumer-side reason tool-surface width matters at all, and ships with
+  its server-side positions only.
+- §10.2's **R6** keeps its precondition and loses the converse case that motivated it.
+- §10.3 item 1 (**clamp vs refuse**) loses one side's evidence and is **BLOCKED**, not awaiting.
+- §10.3 items 2 and 3 lose a directly-observed client cap and a third position respectively.
+- §11.3's triage stands as reasoning, but several rows now rest on evidence a reader of this
   repository cannot check.
 
 **What is NOT lost.** The work exists; it is unpublishable from here, not wrong. Its drift items are
-still owed to their owner and are not discharged by being removed from this repo
+still owed to their owner and are **not** discharged by being removed from this repo
 (`mcp-mining/drift-owed-upstream.md`).
 
 **The governance lesson, because it generalises past this corpus.** The build plan's `governed_by`
@@ -605,8 +609,6 @@ content **into** a public repo. An exposure boundary does not care which way con
 a disposition written from the norm's example rather than its predicate will read the wrong
 direction as settled. **Any future mining pass asks, before the first read: is the source repo
 public, and is it ours?**
-
----
 
 ---
 
@@ -665,7 +667,7 @@ Applying 11.1 to §10.3's list, reading only what §10.3 itself already states:
 
 | # | Question | Outcome implied by §10.3's own words | Verdict slot |
 |---|---|---|---|
-| 1 | Clamp vs refuse an out-of-range value | **(a)** — §10.3 supplies the candidate precondition itself: refuse where silence would be indistinguishable from completeness; clamp-and-announce where the parameter is a resource budget | **BLOCKED, not awaiting** — the evidence for the clamp side sat in the withdrawn consumer capture (§10.5), so this adjudication cannot be settled from what this repository holds |
+| 1 | Clamp vs refuse an out-of-range value | **(a)** — §10.3 supplies the candidate precondition itself: refuse where silence would be indistinguishable from completeness; clamp-and-announce where the parameter is a resource budget | **BLOCKED, not awaiting** — one side's evidence sat in the withheld capture (§10.5), so this adjudication cannot be settled from what this repository holds |
 | 2 | Tool-count ceiling (20 / 40 / 128 / a 10–20 band) | **Not an adjudication at all.** §10.3: *"One dated-facts entry, not three rules."* These are client constants, which §3.5 already routes to the dated-facts surface | **awaiting** both audits for the real numbers; the filing decision needs nothing further |
 | 3 | Progress notifications | **(a)** — §10.3: *"One coherent answer exists that no single repo held."* That is a dissolution by definition | **narrowed 2026-09-18** — that capture's `~30s` position was invented and is withdrawn; hallucinote's timeout fact RESOLVED against its tree. Still awaiting whether cordyceps recorded a reason. The rule is categorical, not duration-based |
 | 4 | Rename policy | **(a)** — §10.3: *"Both are right under different preconditions, and the precondition is the rule"* | **awaiting** the hallucinote audit of design-doc-vs-shipped-policy |
@@ -679,8 +681,8 @@ written. It does mean the corpus's **one genuinely open disagreement lives in §
 > reduction; hallucinote consolidated on borrowed benchmarks with its own required baseline
 > measurement never performed; bankmachine **rejects the framing outright** — both "one tool per
 > question" and "one tool with an action enum" share the false premise that a boundary tracks the
-> *question*, where it should be drawn where the **answer shape** changes. the withdrawn consumer capture supplies the
-> consumer-side reason width matters at all.
+> *question*, where it should be drawn where the **answer shape** changes. The consumer-side reason
+> width matters at all was evidenced only by the withheld capture (§10.5).
 
 That is the corpus's flagship ADJUDICATION, and §10.2 already commits to filing it as one. Note the
 asymmetry that makes it genuinely open rather than merely contested: of the three positions, **one is

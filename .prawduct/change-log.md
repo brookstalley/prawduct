@@ -9,6 +9,13 @@
 
 <!-- prawduct: type=feature | scope=mcp-quotation-audit -->
 
+**This entry also publishes the mining corpus itself, which has never been in this repository
+before.** `.prawduct/artifacts/mcp-mining/` arrives whole: three source captures in both compressed
+and structured form, a citation audit of one of them, the drift owed back to two source repos, and
+the README that explains what a capture is. The quotation audit below is the work this entry is
+*about*; the corpus is the larger part of it by volume and had no change-log entry of its own,
+which would have made ~7,200 lines read as pre-existing to anyone reconstructing the release.
+
 **Two chunks: an instrument, and the audit it made possible.** `hallucinote-verification.md` had
 found quoted evidence fragments wrong, and one absent, in a mined capture **with every cited address
 resolving** — and the ones that mattered drifted *toward the generalisation the corpus wants*, which
@@ -70,12 +77,15 @@ plain quotes for **both** source quotations and its own emphasis. So the corpus 
 text** — and without that marker a capture is not auditable at the fragment level by any instrument,
 only rule by rule by a human.
 
-**One mined source is withdrawn and not published here.** A fourth capture — the only consumer-side
-source — is a verbatim record of a **private repository owned by a different account**, and this
-repository is public. It is not in this bundle. The design notes carry the reasoning and what the
-corpus loses by it; the explanation deliberately names neither the repo nor what the capture found,
-because a public note saying which private repo was withheld and why is itself most of the
-disclosure. Caught by the PR reviewer before the branch was ever pushed. The governance lesson is
+**`discodon`'s capture is withdrawn, and so are its findings.** The fourth capture — the only
+consumer-side source — is a verbatim record of a **private repository owned by a different
+account**, and this repository is public. Neither the capture nor the defects it found ship here;
+the design notes name where its evidence would have sat and do not reproduce it. **The source IS
+named and its internals are not**, which is the correction a PR reviewer forced: an earlier draft
+withheld the name too, and that was incoherent, since this repository already names `discodon` in
+dozens of tracked files and the public item tracking this corpus names it as well. Anonymity was
+never available; what was never public is the code and the defects, and that is what stays
+withheld. Caught before the branch was ever pushed. The governance lesson is
 recorded with it: the build plan's disposition for *a product's content leaves its repo only through
 a pinned, owner-approved surface* read "inapplicable because nothing leaves this repo" — true of the
 sibling working trees, false of the direction that mattered, because mining brings a third party's
@@ -93,10 +103,13 @@ buckets are unchased; the `code-span` class is extracted and counted but not aud
 hallucinote's own known-wrong quotations stay, because that audit reported without editing on
 purpose — it is the record under audit and its anchors are keyed to it.
 
-**`authoring.md` amended rather than extended.** Its quotation-drift rule prescribed two controls;
-it now prescribes three including the discriminator, carries the measured false-green that proves
-the third is load-bearing, and adds that the extraction pattern is itself a claim about the record's
-conventions — probe it before trusting a clean result.
+**`authoring.md` gains the quotation-drift rule, which does not exist on `develop`.** An earlier
+draft of this entry said the rule was "amended rather than extended, from two controls to three" —
+that described a predecessor branch that never merged, and is false of what ships here: this bundle
+introduces the rule whole. It carries the corrupted-fragment discriminator with the measured
+false-green that proves it load-bearing, that controls on the SEARCH do not cover the EXTRACTOR,
+that a control closing a class must discriminate the class and not the instance, and that a refusal
+is a guard whose roster is derived from the source rather than remembered.
 
 ## 2026-09-17: Step 1 names the recorder; develop opens 3.5.1-dev.1 so consumers pick up review-stages
 
