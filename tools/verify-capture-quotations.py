@@ -110,8 +110,8 @@ _FIELD_RE = re.compile(r"^([A-Z][A-Z -]{2,20}):\s*(.*)$")
 _ITALIC_QUOTE_RE = re.compile(r'\*"([^"]+)"\*')
 # Escape-aware: these captures embed JSON (`{\"accountId\": 1}`), and a naive
 # `"([^"]+)"` terminates on the BACKSLASH-ESCAPED quote, yielding a truncated fragment
-# that ends in `\` and misses on its last character. Measured: that artifact was most of
-# what first read as tail-rewrite drift.
+# that ends in `\` and misses on its last character — a truncation that presents as
+# tail-rewrite drift rather than as a broken pattern.
 _PLAIN_QUOTE_RE = re.compile(r'"((?:[^"\\]|\\.)*)"')
 _BACKTICK_RE = re.compile(r"`([^`]+)`")
 _ELLIPSIS_SPLIT_RE = re.compile(r"\s*(?:\.\.\.|…)\s*")
@@ -132,10 +132,10 @@ TEXT_SUFFIXES = {
 }
 """Text extensions searched. This allowlist is a LIMIT on the audit, not a neutral
 detail: a quotation whose source file has an extension missing here is reported as a
-miss, and reads exactly like drift. `.gitignore` was listed here as a suffix and matched nothing: `Path('.gitignore').suffix`
-is `''`, not `'.gitignore'`. Extensionless names are matched by NAME in `_is_text`, whose
-set is `{"Dockerfile", "Makefile"}` — `.gitignore` is in neither branch and is simply not
-searched."""
+miss, and reads exactly like drift. Note the shape trap: `Path('.gitignore').suffix` is
+`''`, not `'.gitignore'`, so a dotfile cannot be admitted by adding it to this set.
+Extensionless names are matched by NAME in `_is_text`, whose set is `{"Dockerfile",
+"Makefile"}`."""
 
 # Derived, not a second hand-maintained copy: a form added to `extract` and not here
 # would be unselectable, and two hand-kept copies of one list drift apart silently.
@@ -143,9 +143,9 @@ FORM_ITALIC, FORM_PLAIN, FORM_CODE = "italic-quote", "plain-quote", "code-span"
 KNOWN_FORMS = frozenset({FORM_ITALIC, FORM_PLAIN, FORM_CODE})
 
 #: Every refusal this module can make. A refusal is what stands between a broken run and a
-#: vacuous pass, so an UNPINNED one is the same defect class as an unpinned guard — which
-#: this instrument shipped twice. `--self-test` asserts this roster covers every `die(`
-#: site in the file, so adding a refusal without deciding how it is pinned goes red.
+#: vacuous pass, so an UNPINNED one is the same defect class as an unpinned guard.
+#: `--self-test` asserts this roster covers every `die(` site in the file, so adding a
+#: refusal without deciding how it is pinned goes red.
 PINNED_REFUSALS = (
     "git-archive-failed",       # load_tree: the source commit could not be read
     "no-such-capture",          # audit: the capture file is absent
@@ -162,9 +162,9 @@ def die(message: str, code: int = 2) -> NoReturn:
     """Environment/usage failure. Exit 2, distinct from 1 (a real miss result).
 
     `raise SystemExit("...")` prints the string but exits **1**, which is the code a
-    genuine miss uses — so a broken run was indistinguishable from a run that worked and
-    found drift. That ambiguity mattered most for the vacuous-corpus guard, whose whole
-    job is to refuse a pass nothing was searched for.
+    genuine miss uses — a broken run must not be indistinguishable from a run that
+    worked and found drift. The distinction matters most for the vacuous-corpus guard,
+    whose whole job is to refuse a pass nothing was searched for.
     """
     print(message, file=sys.stderr)
     raise SystemExit(code)
@@ -279,8 +279,8 @@ def iter_rule_blocks(text: str):
     """Yield (rule_no, {field: text}) for each `**RULE:**` block.
 
     Fields WRAP across lines — a continuation line belongs to the field above it — and
-    quotations are not confined to EVIDENCE. Both were checked against the files rather
-    than assumed; a field-per-line reading silently truncates cordyceps' evidence.
+    quotations are not confined to EVIDENCE. A field-per-line reading silently truncates
+    any evidence field that wraps, which cordyceps' routinely do.
     """
     blocks = _RULE_SPLIT_RE.split(text)[1:]
     for i, block in enumerate(blocks, 1):
@@ -443,10 +443,10 @@ def counts(min_length: int = MIN_LENGTH_DEFAULT) -> int:
         cap = CAPTURES / str(cfg["capture"])
         text = cap.read_text(encoding="utf-8")
         grep_n, single, wrapped = line_based_reads_non_wrapping(text)
-        # single + wrapped IS the span total by definition. `grep_n + wrapped` agrees
-        # only while grep_n == single — that is, everywhere EXCEPT the state the FAIL
-        # branch below exists to report, so the column would misreport exactly when it
-        # matters.
+        # single + wrapped IS the span total by definition. Do not reconstruct it from
+        # `grep_n`: that agrees only while grep_n == single, which is every state except
+        # the one the FAIL branch below exists to report — so such a column would be
+        # wrong precisely where it is being read.
         spans_total = single + wrapped
         frags, _ = extract(source, cap, min_length)
         by = {}
@@ -475,9 +475,8 @@ def self_test(min_length: int = MIN_LENGTH_DEFAULT,
 
     A scan nobody has falsified has measured nothing. Control 3 is the one the recipe
     recorded in `mcp-mining/README.md` never had: it proves the search DISCRIMINATES,
-    rather than merely that it runs. From Control 4 onward each one pins a guard added in
-    response to a review finding — a guard with no control is one a later edit deletes
-    silently, and several were added and left unpinned in exactly that way. Stated
+    rather than merely that it runs. From Control 4 onward each one pins a specific guard,
+    because a guard with no control is one a later edit deletes silently. Stated
     relationally because the list keeps growing and a range here would go stale first.
 
     No count is stated here on purpose: the list grows, and a number in this docstring
@@ -561,9 +560,9 @@ def self_test(min_length: int = MIN_LENGTH_DEFAULT,
             print(f"  FAIL {source} rule-block count {n} != canonical {canon}"); ok = False
 
     # Control 5 — the working-tree fallback must actually SEE gitignored files, which is
-    # its only reason to exist. Built on `git ls-files`, it saw only TRACKED files, so the
-    # citations it was added for landed in "not in the tree at all" and read like drift.
-    # A secondary corpus that is silently empty degrades a verdict without ever failing.
+    # its only reason to exist. `git ls-files` alone lists only TRACKED files, under which
+    # the citations this fallback exists for land in "not in the tree at all" and read
+    # like drift. A silently-empty secondary corpus degrades a verdict without failing.
     cordy = SOURCES["cordyceps"]
     repo = source_root / str(cordy["repo_name"])
     wt = load_working_tree(repo)
@@ -593,12 +592,11 @@ def self_test(min_length: int = MIN_LENGTH_DEFAULT,
             print("  FAIL working-tree fallback cannot see the gitignored files it exists for")
             ok = False
 
-    # Control 6 — the every-corpus non-empty guard, BOTH halves. The primary half was
-    # pinned before and the SECONDARY half — the consequential one — was not: emptying
-    # `load_tree` also empties `corpora[0]`, so the weaker `if not corpora[0].blobs`
-    # check passed the control that claimed to pin its replacement. That is this
-    # instrument's own headline defect recurring inside the fix for it, which is why
-    # the secondary case is now its own case rather than a wider comment.
+    # Control 6 — the every-corpus non-empty guard, BOTH halves, as separate cases.
+    # They must be separate: emptying `load_tree` also empties `corpora[0]`, so a single
+    # case built that way is satisfied by the weaker `if not corpora[0].blobs` check and
+    # cannot tell it from the every-corpus loop it is meant to pin. Only emptying a
+    # SECONDARY corpus discriminates the two.
     for label, target in (("primary", "load_tree"), ("secondary", "load_working_tree")):
         real = globals()[target]
         try:
@@ -678,8 +676,8 @@ def self_test(min_length: int = MIN_LENGTH_DEFAULT,
         print(f"  PASS extractor pins wrap-join, escaped quotes and the prose marker "
               f"({len(fx)} fragments from the fixture)")
 
-    # Control 10 — main()'s two refusals. Both prevent a vacuous pass and neither was
-    # pinned: an unknown `--forms` value and a selection that would audit nothing.
+    # Control 10 — main()'s two refusals, each of which prevents a vacuous pass: an
+    # unknown `--forms` value, and a selection that would audit nothing.
     root_args = ["--source-root", str(source_root)]
     for argv, marker, what in (
         (["x", *root_args, "--forms", "no-such-form", "cordyceps"],
@@ -731,12 +729,12 @@ def self_test(min_length: int = MIN_LENGTH_DEFAULT,
     # both halves need pinning.
     wrapped_fixture = 'a *"one line"* and *"a quotation that\nwraps"* here'
     grep_n, single, wrapped = line_based_reads_non_wrapping(wrapped_fixture)
-    # Two independently falsifiable conjuncts, and no third: a wrapped span exists, and
-    # the line scan does not count it. A `single < single + wrapped` clause was dropped
-    # because `wrapped >= 1` already makes it true — a conjunct no input can falsify
-    # reads as coverage and is none. The span-total formulas themselves cannot be
-    # discriminated by any input (`grep_n == single` holds by construction under today's
-    # regex — see the note in `counts`), so neither can be pinned against the other.
+    # Exactly two conjuncts, each independently falsifiable: a wrapped span exists, and
+    # the line scan does not count it. Deliberately no third comparing span totals —
+    # given these two, any such clause is implied and so can never fail, and a conjunct
+    # no input can falsify reads as coverage while providing none. The span-total
+    # formulas cannot be discriminated by any input either (`grep_n == single` holds by
+    # construction under today's regex — see the note in `counts`).
     if wrapped >= 1 and grep_n == single:
         print(f"  PASS the line-based check sees a wrapped span it cannot count "
               f"(grep {grep_n}, wrapped {wrapped})")
