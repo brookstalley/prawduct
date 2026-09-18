@@ -181,6 +181,14 @@ Stated here rather than glossed, and repeated in the script's own docstring:
   direction. Effect on this run is zero and measurably so (cordyceps' plain-quote column is
   unchanged at 45/66, and the single italic gain is the tracked `README.md` correction below), so
   it is harmless **by coincidence rather than by construction** and is recorded as a standing limit.
+- **Two extraction mechanisms are not pinned by any control**, and one is on the verdict path: the
+  ellipsis split (`_ELLIPSIS_SPLIT_RE`). Break it and a quotation carrying the capture's own `…`
+  stops being split into searchable pieces and misses whole, which is the shape of the
+  escape-awareness defect above. The other is `_BACKTICK_RE`'s multi-token filter, which only
+  affects the separately-reported `code-span` class. Control 9's fixture has no ellipsis and no
+  multi-token backtick span, so neither is reached. Recorded rather than fixed: at a PR boundary a
+  fix here buys a full review round for a gap nothing currently exercises, and the next commit that
+  touches this file should close it.
 - **Only the extensions in `TEXT_SUFFIXES` are searched.** A quotation whose source file has an
   extension missing from that allowlist is reported as a miss and reads exactly like drift, so the
   allowlist is a limit on this audit rather than an implementation detail.
