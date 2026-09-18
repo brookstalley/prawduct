@@ -443,7 +443,11 @@ def counts(min_length: int = MIN_LENGTH_DEFAULT) -> int:
         cap = CAPTURES / str(cfg["capture"])
         text = cap.read_text(encoding="utf-8")
         grep_n, single, wrapped = line_based_reads_non_wrapping(text)
-        spans_total = grep_n + wrapped
+        # single + wrapped IS the span total by definition. `grep_n + wrapped` agrees
+        # only while grep_n == single — that is, everywhere EXCEPT the state the FAIL
+        # branch below exists to report, so the column would misreport exactly when it
+        # matters.
+        spans_total = single + wrapped
         frags, _ = extract(source, cap, min_length)
         by = {}
         for f in frags:
@@ -451,6 +455,11 @@ def counts(min_length: int = MIN_LENGTH_DEFAULT) -> int:
         print(f"{source:12} {grep_n:>9} {single:>12} {wrapped:>8} {spans_total:>13} "
               f"{by.get('plain-quote', 0):>7} {by.get('code-span', 0):>10}")
         if grep_n != single:
+            # Under today's `_ITALIC_QUOTE_RE` this cannot fire: `[^"]+` crosses newlines,
+            # so a per-line scan finds exactly the non-wrapping spans. It is a guard
+            # against a future regex change that would break that equivalence, not a
+            # condition this corpus can reach — stated so the green is not read as a
+            # measurement.
             print(f"  FAIL {source}: line-based grep ({grep_n}) != single-line subset ({single})")
             ok = False
         if by.get("plain-quote", 0) == 0:
@@ -728,12 +737,33 @@ def self_test(min_length: int = MIN_LENGTH_DEFAULT,
         print(f"  FAIL line-based check did not detect the wrap "
               f"(grep {grep_n}, single {single}, wrapped {wrapped})"); ok = False
 
-    noisy = Corpus(label="probe"); noisy.dropped = ["a.py", "b.py"]
-    warnings = dropped_warnings([noisy, Corpus(label="clean")])
-    if len(warnings) == 1 and "2 file(s) unreadable" in warnings[0]:
-        print("  PASS unreadable files are reported, not swallowed")
-    else:
-        print(f"  FAIL dropped-file reporting produced {warnings}"); ok = False
+    # Driven through `main()`, not through the formatter alone: calling
+    # `dropped_warnings` directly pins the string and leaves BOTH the loaders that
+    # populate `Corpus.dropped` and main's render loop unreached, so deleting that loop
+    # would keep the control green. That is this branch's recurring defect, so the
+    # control takes the long way round.
+    real_tree = globals()["load_tree"]
+    try:
+        def _one_file_with_a_drop(repo, sha):
+            c = Corpus(label=f"{sha[:12]}")
+            c.blobs = [("probe.md", normalize("a quotation long enough to clear the floor"))]
+            c.dropped = ["unreadable-a.py", "unreadable-b.py"]
+            return c
+        globals()["load_tree"] = _one_file_with_a_drop
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(io.StringIO()):
+                main(["x", "--source-root", str(source_root), "bankmachine"])
+        except SystemExit:
+            pass
+        rendered = buf.getvalue()
+        if "2 file(s) unreadable" in rendered and "unreadable-a.py" in rendered:
+            print("  PASS unreadable files reach the report through main(), not swallowed")
+        else:
+            print("  FAIL the unreadable-file warning did not reach main()'s output")
+            ok = False
+    finally:
+        globals()["load_tree"] = real_tree
 
     print("self-test:", "PASS" if ok else "FAIL")
     return 0 if ok else 3
