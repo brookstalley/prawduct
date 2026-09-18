@@ -173,7 +173,6 @@ def normalize(s: str) -> str:
 class Fragment:
     source: str
     rule_no: int
-    rule_head: str
     field: str
     form: str          # italic-quote | plain-quote | code-span
     raw: str
@@ -188,6 +187,9 @@ class Fragment:
 class Corpus:
     label: str
     blobs: list[tuple[str, str]] = dc_field(default_factory=list)  # (path, normalized text)
+    #: Files skipped for decode/IO reasons. NOT cosmetic: a source file that failed to
+    #: load makes every quotation from it read as drift, so the count is reported.
+    dropped: list[str] = dc_field(default_factory=list)
 
     def find(self, needle: str) -> str:
         for path, text in self.blobs:
@@ -228,7 +230,7 @@ def load_tree(repo: Path, sha: str) -> Corpus:
                 try:
                     corpus.blobs.append((member.name, normalize(fh.read().decode("utf-8"))))
                 except UnicodeDecodeError:
-                    continue
+                    corpus.dropped.append(member.name)
     return corpus
 
 
@@ -251,12 +253,12 @@ def load_working_tree(repo: Path) -> Corpus:
         try:
             corpus.blobs.append((rel, normalize(p.read_text(encoding="utf-8"))))
         except (OSError, UnicodeDecodeError):
-            continue
+            corpus.dropped.append(rel)
     return corpus
 
 
 def iter_rule_blocks(text: str):
-    """Yield (rule_no, rule_head, {field: text}) for each `**RULE:**` block.
+    """Yield (rule_no, {field: text}) for each `**RULE:**` block.
 
     Fields WRAP across lines — a continuation line belongs to the field above it — and
     quotations are not confined to EVIDENCE. Both were checked against the files rather
@@ -266,7 +268,6 @@ def iter_rule_blocks(text: str):
     for i, block in enumerate(blocks, 1):
         fields: dict[str, list[str]] = {}
         current = "RULE"
-        head = ""
         for line in block.splitlines():
             m = _FIELD_RE.match(line)
             if m:
@@ -274,16 +275,25 @@ def iter_rule_blocks(text: str):
                 fields.setdefault(current, []).append(m.group(2))
             else:
                 fields.setdefault(current, []).append(line)
-            if current == "RULE" and not head and line.strip():
-                head = line.strip()
-        yield i, head[:70], {k: " ".join(v).strip() for k, v in fields.items()}
+        yield i, {k: " ".join(v).strip() for k, v in fields.items()}
 
 
 def extract(source: str, capture: Path, min_length: int) -> tuple[list[Fragment], int]:
+    return extract_from_text(source, capture.read_text(encoding="utf-8"), min_length)
+
+
+def extract_from_text(source: str, text: str, min_length: int) -> tuple[list[Fragment], int]:
+    """Extraction proper, on TEXT — so a control can pin it against an inline fixture.
+
+    Three of this instrument's five known defects lived HERE, in the extractor, while
+    every search-side control stayed green: the non-escape-aware quote regex, the
+    line-based reading that missed wrapped quotations, and the rule split that counted a
+    marker discussed in prose. A guard with no control is one a later edit deletes
+    silently, so `--self-test` exercises this function directly.
+    """
     frags: list[Fragment] = []
     skipped = 0
-    text = capture.read_text(encoding="utf-8")
-    for rule_no, head, fields in iter_rule_blocks(text):
+    for rule_no, fields in iter_rule_blocks(text):
         for fname, fvalue in fields.items():
             spans: list[tuple[str, str]] = []
             italics = _ITALIC_QUOTE_RE.findall(fvalue)
@@ -304,7 +314,7 @@ def extract(source: str, capture: Path, min_length: int) -> tuple[list[Fragment]
                     if len(norm) < min_length:
                         skipped += 1
                         continue
-                    frags.append(Fragment(source, rule_no, head, fname, form, piece, norm))
+                    frags.append(Fragment(source, rule_no, fname, form, piece, norm))
     return frags, skipped
 
 
@@ -320,7 +330,8 @@ def longest_prefix(corpus: Corpus, needle: str) -> int:
     return lo
 
 
-def audit(source: str, min_length: int = MIN_LENGTH_DEFAULT) -> tuple[list[Fragment], int]:
+def audit(source: str, min_length: int = MIN_LENGTH_DEFAULT,
+          _corpora_out: list | None = None) -> tuple[list[Fragment], int]:
     cfg = SOURCES[source]
     capture = CAPTURES / str(cfg["capture"])
     if not capture.is_file():
@@ -343,6 +354,8 @@ def audit(source: str, min_length: int = MIN_LENGTH_DEFAULT) -> tuple[list[Fragm
             die(f"error: empty corpus '{c.label}' for {source} — "
                 f"the search against it would pass vacuously")
 
+    if _corpora_out is not None:
+        _corpora_out.extend(corpora)
     for f in frags:
         for c in corpora:
             hit = c.find(f.norm)
@@ -539,6 +552,51 @@ def self_test(min_length: int = MIN_LENGTH_DEFAULT) -> int:
         print(f"  FAIL forms emitted but not selectable: {sorted(emitted - KNOWN_FORMS)}")
         ok = False
 
+    # Control 9 — the EXTRACTOR, pinned against an inline fixture. Controls 0-8 all target
+    # the SEARCH, yet three of this instrument's five known defects lived in extraction and
+    # left every search-side control green. This fixture carries one of each: a quotation
+    # that WRAPS a line (the field-join), an embedded JSON sample with ESCAPED quotes (the
+    # escape-aware regex), and the rule marker discussed IN PROSE (the line-anchored split).
+    fixture = (
+        "Header prose that mentions the **RULE:** marker mid-sentence.\n"
+        "\n"
+        "**RULE:** A rule whose evidence wraps.\n"
+        "FIRE-SITE: somewhere.\n"
+        "LAYER: L1\n"
+        "KIND: pattern\n"
+        'EVIDENCE: measured — *"a quotation that wraps across\n'
+        'two lines of the capture"* and a sample "{\\"accountId\\": 1, \\"since\\": null}" and\n'
+        '"a plain quotation long enough to survive the length floor".\n'
+        "PROVENANCE: `x.py` `sym`\n"
+    )
+    blocks = list(iter_rule_blocks(fixture))
+    fx, _ = extract_from_text("fixture", fixture, min_length)
+    got = {f.raw for f in fx}
+    # The field join collapses the wrap to a space — that IS the join's behaviour, and
+    # pinning the joined form is what makes removing the join go red.
+    wrapped = "a quotation that wraps across two lines of the capture"
+    json_frag = '{\\"accountId\\": 1, \\"since\\": null}'
+    plain = "a plain quotation long enough to survive the length floor"
+    problems = []
+    if len(blocks) != 1:
+        problems.append(f"rule split saw {len(blocks)} blocks, want 1 "
+                        f"(a marker in prose must not split)")
+    if wrapped not in got:
+        problems.append("the wrapped italic quotation was not extracted whole "
+                        "(the cross-line field join)")
+    if json_frag not in got:
+        problems.append("the escaped-quote JSON sample was not extracted whole "
+                        "(the escape-aware quote regex)")
+    if plain not in got:
+        problems.append("the plain quotation was not extracted")
+    if problems:
+        for pr in problems:
+            print(f"  FAIL extractor: {pr}")
+        ok = False
+    else:
+        print(f"  PASS extractor pins wrap-join, escaped quotes and the prose marker "
+              f"({len(fx)} fragments from the fixture)")
+
     print("self-test:", "PASS" if ok else "FAIL")
     return 0 if ok else 1
 
@@ -571,7 +629,8 @@ def main(argv: list[str]) -> int:
             f"known forms are {sorted(KNOWN_FORMS)}")
     total_miss = 0
     for source in sources:
-        frags, skipped = audit(source, args.min_length)
+        corpora_used: list = []
+        frags, skipped = audit(source, args.min_length, corpora_used)
         sel = [f for f in frags if f.form in wanted]
         by_verdict: dict[str, int] = {}
         for f in sel:
@@ -587,6 +646,14 @@ def main(argv: list[str]) -> int:
         print(f"  fragments audited {len(sel)} (forms: {sorted(wanted)}); "
               f"skipped under {args.min_length} chars: {skipped}")
         print(f"  all extracted forms: " + " · ".join(f"{k} {v}" for k, v in sorted(by_form.items())))
+        dropped = [(c.label, c.dropped) for c in corpora_used if c.dropped]
+        if dropped:
+            # A source file that failed to load makes every quotation from it read as
+            # drift, so this is reported rather than swallowed.
+            for label, names in dropped:
+                print(f"  WARNING corpus {label}: {len(names)} file(s) unreadable and NOT "
+                      f"searched — quotations from them will read as misses: "
+                      f"{', '.join(names[:4])}{' …' if len(names) > 4 else ''}")
         print("  verdicts: " + " · ".join(f"{k} {v}" for k, v in sorted(by_verdict.items())))
         for f in sel:
             if f.verdict == "RESOLVED" and not args.show_hits:

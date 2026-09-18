@@ -539,18 +539,22 @@ that a blocked host times out at 30s).
 **Quotation half PAID 2026-09-18 for the three re-mined captures.** The debt had two halves — the
 *address* and the *quotation* — and only the first was ever named here. cordyceps, bankmachine and
 discodon have now had their quoted evidence searched against their source trees at their declared
-SHAs: **1,034 prose fragments, 754 resolved, 280 miss, and no fabrication in the drift-signature
-bucket.** One capture was corrected (a shortened placeholder inside a quoted shell command). Method,
-verdicts and what is still owed: `mcp-mining/capture-quotation-verification.md`; the instrument is
-`tools/verify-capture-quotations.py`, committed so the numbers are falsifiable.
+SHAs, and **no fabrication was found in the drift-signature bucket**, which was chased by hand in
+full. One capture was corrected (a shortened placeholder inside a quoted shell command). **Counts,
+per-source resolve rates, verdicts, method and what is still owed all live in
+`mcp-mining/capture-quotation-verification.md`** — deliberately not restated here, because a copy of
+them in this section went stale within a day of being written (it is one home per fact, and this is
+the section that broke the rule). Re-derive with `tools/verify-capture-quotations.py`, committed so
+the numbers are falsifiable rather than transcribed.
 
 Two consequences for authoring rather than for the debt ledger:
 
-- **A miss is not drift, and "72% resolved" must not be read as "28% drift."** 176 of the 280 misses
-  are text that is not in the source tree at all, which for a plain-quoted span is usually the
-  capture author's own words.
-- **A schema gap, which is the durable finding.** `italic-quote` fragments resolve at 79–92%;
-  `plain-quote` at a flat 68–74% across three independently-written captures. cordyceps uses
+- **A miss is not drift, and the resolve rate must not be read as a drift rate.** The clear majority
+  of misses are text that is not in the source tree at all, which for a plain-quoted span is
+  usually the capture author's own words rather than a corrupted quotation.
+- **A schema gap, which is the durable finding.** `italic-quote` fragments resolve markedly higher
+  than `plain-quote` ones, and the plain-quote rate is near-identical across three
+  independently-written captures — that consistency is the signal. cordyceps uses
   `*"…"*` as a verbatim-quotation convention; the other two use plain quotes for **both** source
   quotations and their own emphasis. So §3's schema specifies the `EVIDENCE:` field but not **how a
   quotation inside it declares itself as a claim of verbatim source text** — and without that
@@ -558,7 +562,7 @@ Two consequences for authoring rather than for the debt ledger:
   corpus is to carry evidence that revalidation (desirable 3) can re-check, the schema owes that
   distinction.
 
-Still owed on the quotation half: the 275 fragments in the shallower buckets, the `code-span` class,
+Still owed on the quotation half: the fragments in the shallower miss buckets, the `code-span` class,
 and hallucinote's own 19 known-wrong quotations, which its audit reported without editing.
 
 ---
