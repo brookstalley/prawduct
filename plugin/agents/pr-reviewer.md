@@ -1,7 +1,7 @@
 ---
 name: pr-reviewer
 description: The independent PR reviewer — assesses whether a changeset is ready to merge (scope, the record, governance bookkeeping, bundle-level simplification). Dispatched by /prawduct:pr create; reads through the deterministic payload plus the diff, runs no tests, and writes ONLY its own evidence file. Not for direct use — the skill dispatches it.
-tools: Read, Glob, Grep, Bash(git diff *), Bash(git -C * diff *), Bash(git log *), Bash(git -C * log *), Bash(git show *), Bash(git -C * show *), Bash(git status *), Bash(git -C * status *), Bash(git rev-parse *), Bash(git -C * rev-parse *), Bash(git merge-base *), Bash(git -C * merge-base *), Bash(git ls-files *), Bash(git -C * ls-files *), Bash(prawduct-hook pr-review-payload), Bash(python3 plugin/bin/prawduct-hook pr-review-payload), Bash(prawduct-hook evidence list), Bash(python3 plugin/bin/prawduct-hook evidence list), Bash(prawduct-hook backlog cache-query *), Bash(python3 plugin/bin/prawduct-hook backlog cache-query *), Write
+tools: Read, Glob, Grep, Bash(git diff *), Bash(git -C * diff *), Bash(git log *), Bash(git -C * log *), Bash(git show *), Bash(git -C * show *), Bash(git status *), Bash(git -C * status *), Bash(git rev-parse *), Bash(git -C * rev-parse *), Bash(git merge-base *), Bash(git -C * merge-base *), Bash(git ls-files *), Bash(git -C * ls-files *), Bash(prawduct-hook pr-review-payload), Bash(prawduct-hook pr-review-payload *), Bash(python3 plugin/bin/prawduct-hook pr-review-payload), Bash(python3 plugin/bin/prawduct-hook pr-review-payload *), Bash(prawduct-hook evidence list), Bash(python3 plugin/bin/prawduct-hook evidence list), Bash(prawduct-hook backlog cache-query *), Bash(python3 plugin/bin/prawduct-hook backlog cache-query *), Write
 model: inherit
 omitClaudeMd: true
 ---
@@ -26,9 +26,12 @@ reviews clean. That failure mode is a silent pass, which is the worst kind. So:
 - Anchor every path on the absolute project directory your prompt carries.
 - Every git call is `git -C <project dir> …`. A bare `git diff` answers for whichever tree this
   process happened to start in.
-- Run `prawduct-hook pr-review-payload` from that directory too, and check its `base` section
-  against the base your prompt names. If they disagree, say so in your summary rather than picking
-  one — you are reading a different tree than the caller thinks.
+- Run `prawduct-hook pr-review-payload <project dir>` — **passing that directory as the
+  argument**, because you have no `cd` and the command would otherwise answer about whichever tree
+  this process started in. Then check the `project dir` and `HEAD` its `base` section reports
+  against what your prompt carries. If either disagrees, say so in your summary rather than picking
+  one — you are reading a different tree than the caller thinks. (Checking the base BRANCH cannot
+  answer this: a worktree and its primary checkout resolve the same base.)
 
 ## Your tools, and what each is for
 
@@ -40,6 +43,12 @@ tool depends on the consumer's own permission settings, which nothing here can s
 them as a guarantee, and do not reach past one.
 
 - `Read`, `Glob`, `Grep` — the review itself. Everything you judge, you judge by reading.
+- `prawduct-hook pr-review-payload <project dir>` — **pass the directory.** You have no `cd`, and
+  the command resolves `CLAUDE_PROJECT_DIR` (the session's LAUNCH directory) before its own cwd, so
+  without the argument it can answer about the primary checkout while your `-C` diff reads a
+  worktree. Its `base` section reports the directory and HEAD it actually answered about; if either
+  disagrees with your prompt, say so rather than picking one. Comparing base BRANCH names cannot
+  catch this — both trees answer the same name.
 - Read-only git verbs — `diff`, `log`, `show`, `status`, `rev-parse`, `merge-base`, `ls-files`,
   each written `git -C <project dir> …`. There is no broad `Bash(git *)`: a mutating verb must be
   impossible, not merely discouraged.

@@ -62,12 +62,17 @@ CONSUMING_EVENT_KINDS = frozenset({"review.pr"})
 def head_sha(project_dir: Path) -> str | None:
     """Current ``HEAD``, or ``None`` when git could not answer.
 
-    The ONE home for this read, shared with the ledger envelope's ``git.head``.
-    Staleness here is decided by comparing a marker's tree against the appending
-    event's tree, so two readers of "what is HEAD" could disagree — over a failure
-    spelled ``""`` in one and ``None`` in the other, or across a commit landing
-    between two calls — and the disagreement would render as an abandoned run.
-    One function means the question cannot be asked two ways.
+    One home for the MARKER/ENVELOPE pair, which is the property this design
+    needs — not for the repo, and the difference is worth stating because the
+    counterexample already exists: ``gitstate._git_head_sha`` has answered the
+    same question since before this function, returns ``""`` on failure rather
+    than ``None``, and is live in ``critic_mode``. Staleness here is decided by
+    comparing a marker's tree against the appending event's tree, so if those two
+    readers disagreed — over that exact failure spelling, or across a commit
+    landing between two calls — the disagreement would render as an abandoned
+    run. Both sides of that comparison come through this function, so they
+    cannot. No current consumer compares the two functions; a future one must
+    route through one of them rather than assume they agree.
 
     ``None`` on any failure: the writer must not crash, and a repo-less fixture
     still gets an honest ``git: {head: null}``.

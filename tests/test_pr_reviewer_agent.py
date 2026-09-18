@@ -310,30 +310,63 @@ class TestReviewerAnchorsToTheDispatchedTree:
             "verb answers for whichever tree the subagent process started in"
         )
 
-    def test_agent_reconciles_the_payloads_base_against_the_prompts(self):
-        """The payload resolves the base itself. Two answers for one fact is a
+    def test_agent_reconciles_the_payload_against_the_prompt_on_a_discriminating_fact(self):
+        """The payload answers about SOME tree. Two answers for one fact is a
         disagreement worth surfacing, not one to silently pick from.
 
-        **Both operands or neither.** The earlier version of this test asserted
-        only the agent's half (`"If they disagree, say so"`), and stayed green
-        when the dispatch template dropped the base it names — a cross-check
-        with one operand cannot fire, and the failure it exists to catch (a
-        reviewer reading a different tree than the caller thinks) is a silent
-        pass. So the assertion is the property: if the agent is told to compare
-        the payload's base against a prompt-side base, the dispatch prompt has
-        to carry one.
+        **Contract renegotiated, in the open (cumulative R-1/R-9).** This pinned
+        the base BRANCH as the reconciled fact, and both halves have since moved:
+        the base cannot discriminate (a worktree and its primary checkout resolve
+        the same name, which is precisely the wrong-tree case the cross-check
+        exists for), and the payload now reports the project directory and HEAD
+        it actually answered about. So the pin is the same property over the
+        operand that can actually differ — and it stays a BOTH-OR-NEITHER, which
+        is what caught the earlier regression: a cross-check with one operand
+        cannot fire, and its failure mode is a silent pass.
         """
         body = AGENT_DEF.read_text()
-        assert "If they disagree, say so" in body
-        names_a_prompt_side_base = "the base your prompt names" in body
+        assert "If either disagrees" in body, (
+            "the agent must be told to surface a payload/prompt disagreement "
+            "rather than pick one"
+        )
+        reconciles = "project dir" in body and "HEAD" in body
         step3 = _step3_of(SKILL.read_text())
-        carries_a_base = "The base branch is" in step3
-        assert names_a_prompt_side_base == carries_a_base, (
-            "the agent's base cross-check and Step 3's dispatch prompt are two "
-            "halves of one check: the agent names a prompt-side base "
-            f"({names_a_prompt_side_base}) while the prompt carries one "
-            f"({carries_a_base}). Restore the base to the prompt, or rewrite "
-            "the agent line to make the payload the single source."
+        prompt_carries_the_directory = "(absolute)" in step3
+        assert reconciles == prompt_carries_the_directory, (
+            "the agent's cross-check and Step 3's dispatch prompt are two halves "
+            f"of one check: the agent reconciles dir/HEAD ({reconciles}) while "
+            f"the prompt carries an absolute directory "
+            f"({prompt_carries_the_directory})"
+        )
+
+    def test_the_agent_is_told_to_pass_the_directory_not_assume_it(self):
+        """The fix R-1/R-9 asked for, and the half a prose-only rewrite would
+        miss: the agent holds no `cd` grant, and `pr-review-payload` resolves
+        `CLAUDE_PROJECT_DIR` — the LAUNCH dir — before its own cwd. So "run it
+        from that directory" was an act the tool set cannot perform."""
+        body = AGENT_DEF.read_text()
+        # Bound to each SECTION that carries it, not to the file. The file
+        # states the mandate twice for two readers — the anchoring rules a
+        # reviewer follows before touching anything, and the per-tool notes it
+        # consults while working — and a file-wide `in body` is satisfied by
+        # either one, so it went green when a mutation reverted the anchoring
+        # bullet alone. A mutation sweep found that; reading it did not.
+        anchoring = body[body.index("## The project directory is not necessarily your cwd"):
+                         body.index("## Your tools, and what each is for")]
+        tools = body[body.index("## Your tools, and what each is for"):
+                     body.index("## What your context does not contain")]
+        for section, where in ((anchoring, "the anchoring rules"), (tools, "the tool notes")):
+            assert "pr-review-payload <project dir>" in section, (
+                f"{where} no longer tell the reviewer to PASS the directory. "
+                "Without the argument the payload can answer about the primary "
+                "checkout while the reviewer's `-C` diff reads a worktree — and "
+                "it reads clean, which is the silent pass this file's own "
+                "premise is written against"
+            )
+        tools = _frontmatter(AGENT_DEF)
+        assert "Bash(prawduct-hook pr-review-payload *)" in tools, (
+            "the argument form is mandated by the prose and must be granted, or "
+            "the reviewer meets a refusal on its first read"
         )
 
     def test_the_skill_passes_an_absolute_project_directory(self):

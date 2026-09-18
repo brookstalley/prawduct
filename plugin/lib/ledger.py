@@ -10,7 +10,12 @@ cross-project aggregation (TEL-7A4X). Fields exist to serve those questions.
 
 **Envelope/payload split.** Every event shares the envelope —
 ``{schema_version, event, ts, duration_seconds, project, scope, chunk,
-actor: {role, model}, git: {head, base}}`` — and nests its kind-specific
+actor: {role, model}, git: {head, base}}`` — plus one OPTIONAL envelope key,
+``dispatched_at``, written only when a ``review.pr`` append finds a dispatch
+marker (``data-model.md`` carries its semantics). It is enumerated here because
+this sentence is what a maintainer reads to decide whether a key is envelope or
+payload, and an aggregator written from an enumeration that omits it will not
+find it. The event then nests its kind-specific
 payload beneath a family-named key (``review`` for both ``review.critic``
 and ``review.pr``; ``learning`` for both ``learning.*``). Aggregators key on
 the envelope without understanding every payload; consumers skip unknown

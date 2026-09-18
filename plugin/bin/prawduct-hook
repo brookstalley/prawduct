@@ -5418,7 +5418,11 @@ def cmd_pr_review_dispatch(project_dir: Path, argv: list[str]) -> int:
 def cmd_pr_review_payload(project_dir: Path, argv: list[str]) -> int:
     """One deterministic call assembling everything the PR reviewer reads.
 
-    Usage: ``pr-review-payload [--json]``. Thin wrapper — body lives in
+    Usage: ``pr-review-payload [--json] [<project dir>]``. The positional names
+    the tree to answer about: a review subagent holds no ``cd`` grant and this
+    command resolves ``CLAUDE_PROJECT_DIR`` (the LAUNCH dir) before its own cwd,
+    so without it the payload can describe the primary checkout while the
+    reviewer's ``git -C`` diff reads a worktree. Thin wrapper — body lives in
     ``lib.pr_payload.emit``. Read-only, and it emits no verdict, so it is ADVICE
     and fails soft per section with every degradation named in the output
     (``architecture.md``: a command's failure posture follows what it produces).
@@ -7456,7 +7460,7 @@ _USAGE = (
     "verify-records [--base <t>] [--head <t>] [--chunk <id>] [--scope <s>] [--json]|verify-coverage|"
     "ledger-append --event <kind> [--scope <s>] [--chunk <id>] [--model <id>]|"
     "handoff preview|"
-    "pr-review-dispatch --begin|pr-review-payload [--json]|"
+    "pr-review-dispatch --begin|pr-review-payload [--json] [<project dir>]|"
     "review-stats [--json]|classify-diff-risk [<base>]|"
     "cost-of-commit [--json] [<paths>...]|"
     "check-operator-verification|accept-operator-verification <rationale>|"

@@ -405,6 +405,16 @@ while the instruction has no effect. Two verifications beyond the suite:
     the number; what must not happen is a table that reads as a like-for-like before/after, which
     is the same not-pooling discipline this bundle enforces on `duration_measured` vs
     `duration_self_reported`.
+  - **The `#652` / `#678` acceptance criterion is MET, and "updated" does not mean "closed".**
+    Both were updated through `/prawduct:backlog` on 2026-09-18 at 18:48Z and both deliberately stay
+    open, each carrying a dated `Reconciliation, 2026-09-18 (pr-review-payload Chunk 02)` block
+    saying why. `#678`'s block records that this bundle shipped the cumulative-review/PR-review
+    concurrency while the issue was filed about the **test gate vs. the Critic** — a different pair
+    — and that whether a `test-evidence record` write voids a live `critic-begin` tree snapshot is
+    unverified, which is the reason it stays open rather than an oversight. `#652` (role-scope the
+    ~51k-token subagent briefing) is the builder-context half of the same problem and is untouched
+    by this bundle. Re-derive with `prawduct-hook backlog cache-query resolve 678 --repo
+    brookstalley/prawduct --json` and read `updated_at`.
   - **Two backlog items name a file this bundle edited and were not assessed** (cumulative review
     R-17, flagged in passing, not work): `#672` (*coverage composes by tree but its gates key on
     identity*) and `#767` (*test-status: `current` on a stale tree*) both list

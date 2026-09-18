@@ -98,11 +98,13 @@ review is owed at all. The concurrency is between that review and Step 3's PR re
 gate sends you to `/prawduct:critic cumulative`, dispatch the PR reviewer in the SAME message.**
 **Dispatching it means doing Step 3's preparation here, in its own order — compute the evidence
 path, create `.prawduct/.pr-reviews/`, run `prawduct-hook pr-review-dispatch --begin`, then spawn
-the agent with Step 3's verbatim prompt.** Do not compose a prompt at this step: the mark is what
-makes the review a *measured* interval rather than the reviewing model's recollection of one, and
-an unmarked review reports as `self-reported`, which is indistinguishable from the legacy case and
-so loses the measurement silently. Step 2b STOPs between these two steps; the dispatch is already
-in flight by then and that is deliberate.
+the agent with Step 3's verbatim prompt.** Two things go wrong if you improvise instead. A prompt
+composed here is not Step 3's, so the agent runs against a different contract than the one this
+skill is tested on. And a dispatch that skips the mark records no `dispatched_at`, so its duration
+reports as `self-reported` — indistinguishable from every review before this one, which is how the
+measurement is lost silently rather than loudly. **Having dispatched here, do NOT dispatch again at
+Step 3**; that step opens by naming which route you are on. Step 2b STOPs between these two steps,
+with the reviewer already in flight, deliberately.
 `nonfunctional-requirements.md` § Performance requires it — the cumulative Critic and the PR review
 "run in parallel, never sequentially — any sequencing that exists is for narrative framing, not a
 data dependency". Serially they are ~4-10 min plus ~7 min against a ≤ 7-minute boundary target;
@@ -147,6 +149,16 @@ If the user did NOT supply the override flag and pending entries exist, **STOP**
 
 ### Step 3: Independent review — MANDATORY
 **STOP. Do NOT proceed to step 4 until the reviewer agent has completed and written its evidence file.**
+
+**Which route you are on — this step has two, and only one of them dispatches.**
+
+- **Step 2 sent you to `/prawduct:critic cumulative`.** You already dispatched the reviewer in that
+  same message, with the preparation below. **This step is then Wait / Read / Present only** — skip
+  to "Wait for the agent to complete". Dispatching again spawns a second reviewer against the same
+  evidence path (last writer wins) and re-marks the clock, spending exactly the review this
+  concurrency exists to save.
+- **The gate at Step 2 was already satisfied.** There was no cumulative to dispatch beside, so no
+  reviewer has been spawned. **Do the preparation and the dispatch here, now.**
 
 Dispatch the **`pr-reviewer` plugin agent** (Agent tool, `subagent_type: pr-reviewer`) — do **not** pass a `model:` override, so the reviewer runs on the **current session model** (opus reviews as opus, fable as fable; the agent declares `model: inherit`). Prawduct no longer selects a reviewer model from the diff's risk tier; the reviewer inherits whatever model the session is on, and intelligent model switching has been removed. Record which model actually ran.
 

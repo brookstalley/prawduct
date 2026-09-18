@@ -56,6 +56,17 @@ def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
     )
 
 
+def _claimed(item_id: str) -> "pr_payload.Citation":
+    """A citation that CLAIMS a closure — the shape R-2 is stated over.
+
+    The degradation tests below are about the lookup, not about the citing form,
+    so they use the claiming shape deliberately: a merely-mentioned id takes a
+    different render path, and `TestTheCitationFormReachesTheSection` is where
+    that distinction is graded.
+    """
+    return pr_payload.Citation(item_id, True)
+
+
 def _repo(tmp_path: Path, *, with_plan: bool = True, with_change_log: bool = True) -> Path:
     """A governed repo with a base branch, a commit on a feature branch, and the
     `.prawduct/` state the payload reads."""
@@ -313,7 +324,7 @@ class TestDegradations:
         """R-2's degradation is the sharp one: `review-protocol.md` marks it as
         the check no other layer in the pipeline owns, so silence here is read as
         "reconciled" by the only thing that reconciles."""
-        section = pr_payload._section_backlog(tmp_path, None, ["ABC-1234"])
+        section = pr_payload._section_backlog(tmp_path, None, [_claimed("ABC-1234")])
         assert not section.ok
         assert "R-1 and R-2 are NOT answered" in section.degraded
         assert "ABC-1234" in section.degraded
@@ -376,7 +387,7 @@ class TestDegradations:
             raise RuntimeError("cache is gone")
 
         monkeypatch.setattr(cq, "resolve", _resolve)
-        section = pr_payload._section_backlog(tmp_path, "owner/repo", ["ABC-1111", "ABC-2222"])
+        section = pr_payload._section_backlog(tmp_path, "owner/repo", [_claimed("ABC-1111"), _claimed("ABC-2222")])
         assert section.ok, "a partial result is still a result"
         assert "ABC-1111: status=open" in section.body
         assert "NOT ANSWERED for: ABC-2222" in section.body
@@ -388,7 +399,7 @@ class TestDegradations:
             raise RuntimeError("cache is gone")
 
         monkeypatch.setattr(cq, "resolve", _resolve)
-        section = pr_payload._section_backlog(tmp_path, "owner/repo", ["ABC-1111"])
+        section = pr_payload._section_backlog(tmp_path, "owner/repo", [_claimed("ABC-1111")])
         assert not section.ok
         assert "R-1 and R-2 are NOT answered" in section.degraded
 
@@ -408,7 +419,7 @@ class TestDegradations:
             "status": "error",
             "error": {"code": "unavailable", "message": "the cache has no home"},
         })
-        section = pr_payload._section_backlog(tmp_path, "owner/repo", ["ABC-1111"])
+        section = pr_payload._section_backlog(tmp_path, "owner/repo", [_claimed("ABC-1111")])
         assert not section.ok, "an unreadable cache is a degradation, not a verdict"
         assert "R-1 and R-2 are NOT answered" in section.degraded
         assert "the cache has no home" in section.degraded, (
@@ -425,7 +436,7 @@ class TestDegradations:
             "resolved": True, "status": "shipped", "dead": True,
             "title": "a shipped thing", "via": "alias",
         }))
-        section = pr_payload._section_backlog(tmp_path, "owner/repo", ["ABC-1111"])
+        section = pr_payload._section_backlog(tmp_path, "owner/repo", [_claimed("ABC-1111")])
         assert section.ok
         assert "ABC-1111: status=shipped (closed)" in section.body
         assert "matched via alias" in section.body
@@ -637,24 +648,273 @@ class TestTheSilentDegradationIsCoupledToALoudOne:
         assert "--format=%B" in seen["bodies"][0]
 
 
+class TestThePayloadCanBeAimedAtATree:
+    """The command's own premise is that its reader cannot trust its cwd.
+
+    `agents/pr-reviewer.md` states it ("a relative path here resolves into the
+    primary checkout — a different tree ... which reviews clean") and mandates
+    `git -C <dir>` for every git read; the payload then had no way to be told
+    which tree at all, and the reviewer's allow-list grants no `cd`. The named
+    mitigation — compare the payload's `base` against the prompt's base — cannot
+    discriminate, because both trees in a gitflow repo answer `develop`.
+    """
+
+    def test_a_directory_argument_aims_the_read(self, tmp_path):
+        """Run from a DIFFERENT cwd and assert the answer is about the argument.
+        `_run` pins `CLAUDE_PROJECT_DIR` and cwd to the fixture, which is exactly
+        why no existing test could reach this path."""
+        target = _repo(tmp_path / "target")
+        elsewhere = _repo(tmp_path / "elsewhere")
+        r = _run(elsewhere, "--json", str(target))
+        assert r.returncode == 0, r.stderr
+        base = {x["name"]: x for x in json.loads(r.stdout)["sections"]}["base"]
+        assert str(target.resolve()) in base["body"], base
+
+    def test_without_the_argument_it_answers_about_its_own_tree(self, tmp_path):
+        """The control: the positional must not become the only way to get an
+        answer, and it must not leak the previous case's directory."""
+        here = _repo(tmp_path / "here")
+        r = _run(here, "--json")
+        assert r.returncode == 0, r.stderr
+        base = {x["name"]: x for x in json.loads(r.stdout)["sections"]}["base"]
+        assert str(here.resolve()) in base["body"], base
+
+    def test_the_base_section_names_the_tree_it_answered_about(self, tmp_path):
+        """The discriminator the base BRANCH cannot be: a worktree and its
+        primary checkout both resolve the same base name."""
+        repo = _repo(tmp_path)
+        base = _sections(repo)["base"]["body"]
+        assert "project dir:" in base
+        assert "HEAD:" in base
+        assert "different tree than the caller thinks" in base
+
+    def test_a_directory_that_is_not_a_project_is_refused_not_guessed(self, tmp_path):
+        """Hard failure, deliberately: a degraded section here would answer about
+        the wrong tree, which is the silent pass the argument exists to stop."""
+        empty = tmp_path / "not-a-repo"
+        empty.mkdir()
+        r = _run(_repo(tmp_path / "real"), str(empty))
+        assert r.returncode == 1
+        assert "is not a project directory" in r.stderr
+
+
+class TestAnAnswerIsNotADegradation:
+    """The module says it three times — "NOT a degradation: an empty range is a
+    real, reviewable answer", "An absent block is therefore an ANSWER", "this is
+    an answer, not a failure" — and the change-log section broke its own rule.
+
+    The cost is not cosmetic: `render_human`'s banner says "N of M sections
+    degraded — each says which of your checks it leaves unanswered", which is
+    false of a healthy read with a negative result, and `--json` consumers read
+    `ok: false` for it. The pair below is the point — the answer case must be a
+    body AND the genuinely-unreadable case must still degrade, or "fix" here
+    just means "never degrade".
+    """
+
+    def _repo_with_a_log_naming_another_scope(self, tmp_path: Path) -> Path:
+        repo = _repo(tmp_path)
+        (repo / ".prawduct" / "change-log.md").write_text(
+            "# Change Log\n\n## Something else\n<!-- prawduct: scope=elsewhere -->\n\n"
+            "Not this bundle.\n"
+        )
+        return repo
+
+    def test_no_entry_for_this_scope_is_an_answer(self, tmp_path):
+        section = _sections(self._repo_with_a_log_naming_another_scope(tmp_path))["change_log"]
+        assert section["ok"] is True, (
+            "a parsed log that simply has no entry for this scope is a READ that "
+            "succeeded — the missing entry is the finding, not a failure to look"
+        )
+        assert "ships with nothing describing it" in section["body"]
+
+    def test_an_unreadable_log_still_degrades(self, tmp_path):
+        """The control. Without it, `ok is True` above is satisfied by a section
+        that never degrades at all."""
+        repo = _repo(tmp_path)
+        (repo / ".prawduct" / "change-log.md").unlink()
+        section = _sections(repo)["change_log"]
+        assert section["ok"] is False
+        assert section["degraded"]
+
+
+class TestTheCitationFormReachesTheSection:
+    """R-2 asks whether a commit CLAIMED a closure the backlog does not show —
+    not whether an id appears somewhere.
+
+    Widening the scan to commit BODIES is what made this load-bearing: bodies
+    discuss ids as context far more than they claim closures, and an id list with
+    the form stripped renders every mention as `STILL OPEN`. A reviewer applying
+    R-2 literally then files a closure-that-never-happened against work nobody
+    claimed to close — or re-reads `git log` to find out, which is the round-trip
+    this command exists to remove.
+    """
+
+    def test_a_closing_keyword_marks_the_citation_as_a_claim(self):
+        cited = pr_payload.cited_backlog_citations("fix(x): closes #41", "")
+        assert [(c.id, c.claims_closure) for c in cited] == [("41", True)]
+
+    def test_a_mere_mention_is_not_a_claim(self):
+        """The discriminating case, and the one this bundle's own commits are:
+        an id discussed as context carries no closing keyword."""
+        cited = pr_payload.cited_backlog_citations(
+            "the open question from #672 is whether the tree snapshot is voided", ""
+        )
+        assert [(c.id, c.claims_closure) for c in cited] == [("672", False)]
+
+    def test_a_claim_anywhere_wins_over_a_mention(self):
+        """One id, cited twice — discussed in one commit, closed in another.
+        R-2's question is whether the branch claimed it, so any claim wins; the
+        opposite order must give the same answer."""
+        mention_first = pr_payload.cited_backlog_citations(
+            "context for #41\nfix: closes #41", ""
+        )
+        claim_first = pr_payload.cited_backlog_citations(
+            "fix: closes #41\ncontext for #41", ""
+        )
+        assert [(c.id, c.claims_closure) for c in mention_first] == [("41", True)]
+        assert [(c.id, c.claims_closure) for c in claim_first] == [("41", True)]
+
+    def test_a_keyword_bearing_citation_with_no_hash_is_a_claim(self):
+        """The case the first implementation inverted, and the reason the answer
+        is derived from a claim REGION rather than a lookback.
+
+        `_ID_PATTERNS[2]` BEGINS at the closing keyword, so "the text before this
+        match" stops one character short of the word that proves the claim. With
+        a `#` present the bare-`#N` pattern re-matched the number and the
+        any-claim-wins upgrade hid it; remove the `#` and the citation renders as
+        `mentioned only — no closing keyword` on text that literally reads
+        `closes:`. That is `review-protocol.md`'s R-2 predicate inverted, on the
+        check it assigns to no other layer.
+        """
+        cited = pr_payload.cited_backlog_citations("fix(x): closes: 678", "")
+        assert [(c.id, c.claims_closure) for c in cited] == [("678", True)]
+
+    def test_every_id_in_a_run_shares_the_claim(self):
+        """Second member of the same class: only the FIRST id of a run follows
+        the keyword directly. Every later one is preceded by its siblings, which
+        no fixed lookback can cross."""
+        cited = pr_payload.cited_backlog_citations("fix: closes #41 and BKL-9V2W", "")
+        assert {(c.id, c.claims_closure) for c in cited} == {
+            ("41", True), ("BKL-9V2W", True),
+        }
+        commas = pr_payload.cited_backlog_citations("closed-by: a/b#7, #8", "")
+        assert {(c.id, c.claims_closure) for c in commas} == {
+            ("a/b#7", True), ("8", True),
+        }
+
+    def test_the_run_ends_at_prose_rather_than_swallowing_the_sentence(self):
+        """The control for both tests above, and the failure mode a region-based
+        answer could have instead of a lookback's: a region bounded too loosely
+        marks every id after a claim as claimed. `#999` here is discussed, not
+        closed, and the two must come apart in ONE fixture."""
+        cited = pr_payload.cited_backlog_citations(
+            "resolves 678 and then we discuss #999 separately", ""
+        )
+        assert [(c.id, c.claims_closure) for c in cited] == [("678", True), ("999", False)]
+
+    def test_the_section_says_which_it_is(self, tmp_path, monkeypatch):
+        """Both renderings, in one assertion pair — a test of only the claim
+        branch would pass with the form hard-coded."""
+        import lib.backlog.cachequery as cq
+
+        def _resolve(project_dir, *, scope, id_raw, now, default_owner=None):
+            return TestDegradations._envelope(
+                {"resolved": True, "status": "open", "dead": False, "title": "a thing"}
+            )
+
+        monkeypatch.setattr(cq, "resolve", _resolve)
+        claimed = pr_payload._section_backlog(
+            tmp_path, "owner/repo", [pr_payload.Citation("41", True)]
+        )
+        mentioned = pr_payload._section_backlog(
+            tmp_path, "owner/repo", [pr_payload.Citation("41", False)]
+        )
+        assert "CLAIMS this closure" in claimed.body
+        assert "R-2 does not apply" not in claimed.body
+        assert "R-2 does not apply" in mentioned.body
+        assert "CLAIMS this closure" not in mentioned.body
+
+    def test_an_unresolved_token_does_not_assert_it_was_ever_an_id(self, tmp_path, monkeypatch):
+        """`_ID_PATTERNS[0]` matches any `AAA-9999` token, so `ISO-8601` in a
+        commit body reaches the lookup. Rendering that as "a dangling citation"
+        invites a finding about an id that never existed, on the one check
+        nothing else in the pipeline owns."""
+        import lib.backlog.cachequery as cq
+
+        monkeypatch.setattr(
+            cq, "resolve",
+            lambda *a, **k: TestDegradations._envelope({"resolved": False}),
+        )
+        section = pr_payload._section_backlog(
+            tmp_path, "owner/repo", [pr_payload.Citation("ISO-8601", False)]
+        )
+        assert "or not an id at all" in section.body
+        assert "check the citing text before filing" in section.body
+
+
+class TestTheWorkSectionNeverFabricatesABranch:
+    """`briefing._get_current_branch` returns the STRING "main" on git failure or
+    a detached HEAD — a display default for the briefing, and a fabrication in
+    the one command whose contract is that an absent answer is always named.
+
+    The damage is not the printed word: `_parse_wip` keys off it, so a repo with
+    a `main:` block under `work_in_progress:` hands the reviewer ANOTHER branch's
+    description, size and type as this PR's stated scope — the operand Goal 1
+    grades the diff against — and the section never degrades, because a
+    description IS present.
+    """
+
+    def _repo_with_a_main_wip_block(self, tmp_path: Path) -> Path:
+        repo = _repo(tmp_path)
+        state = repo / ".prawduct" / "project-state.yaml"
+        state.write_text(
+            state.read_text()
+            + "\nwork_in_progress:\n  main:\n    description: SOMEBODY ELSE'S WORK\n"
+              "    size: large\n    type: feature\n"
+        )
+        return repo
+
+    def test_an_unreadable_branch_is_named_not_guessed(self, tmp_path, monkeypatch):
+        repo = self._repo_with_a_main_wip_block(tmp_path)
+        monkeypatch.setattr(pr_payload._lib().gitstate, "current_branch", lambda _d: None)
+        section = pr_payload._section_work(repo, repo / ".prawduct", None)
+        rendered = (section.body or "") + (section.degraded or "")
+        assert "could not be read" in rendered, rendered
+        assert "SOMEBODY ELSE'S WORK" not in rendered, (
+            "a failed branch read reached `_parse_wip` as a branch NAME and "
+            "matched another branch's work block"
+        )
+        assert "branch: main" not in rendered
+
+    def test_a_readable_branch_still_resolves_its_own_work(self, tmp_path, monkeypatch):
+        """The control: the guard must not blank out the healthy path."""
+        repo = self._repo_with_a_main_wip_block(tmp_path)
+        monkeypatch.setattr(pr_payload._lib().gitstate, "current_branch", lambda _d: "main")
+        section = pr_payload._section_work(repo, repo / ".prawduct", None)
+        assert "SOMEBODY ELSE'S WORK" in (section.body or "")
+        assert "could not be read" not in (section.body or "")
+
+
 class TestBacklogIdExtraction:
-    """`cited_backlog_ids` is R-2's input set: a change-log entry or a commit
+    """`cited_backlog_citations` is R-2's input set: a change-log entry or a commit
     that CLAIMS a closure."""
 
     def test_both_id_spellings_are_found(self):
-        ids = pr_payload.cited_backlog_ids(
+        cited = pr_payload.cited_backlog_citations(
             "abc1234 fix(thing): closes: #41 and BKL-9V2W", ""
         )
-        assert ids == ["BKL-9V2W", "41"]
+        assert [c.id for c in cited] == ["BKL-9V2W", "41"]
 
     def test_ids_are_deduped_in_first_seen_order(self):
-        ids = pr_payload.cited_backlog_ids("BKL-9V2W once", "BKL-9V2W again, and ABC-1A2B")
-        assert ids == ["BKL-9V2W", "ABC-1A2B"]
+        cited = pr_payload.cited_backlog_citations(
+            "BKL-9V2W once", "BKL-9V2W again, and ABC-1A2B"
+        )
+        assert [c.id for c in cited] == ["BKL-9V2W", "ABC-1A2B"]
 
     def test_a_bare_number_after_a_slash_is_not_a_citation(self):
         """Red if the `#N` pattern stops requiring the `#`. `refs/pull/12` is a
         path, not a citation."""
-        assert pr_payload.cited_backlog_ids("see refs/pull/12 for context", "") == []
+        assert pr_payload.cited_backlog_citations("see refs/pull/12 for context", "") == []
 
     def test_a_qualified_citation_is_captured_whole_and_only_once(self):
         """The lookbehind's actual job, and the case that discriminates it.
@@ -665,17 +925,17 @@ class TestBacklogIdExtraction:
         `#249` in whatever repo the cache defaults to — a different item. Drop
         the lookbehind and this returns both.
         """
-        assert pr_payload.cited_backlog_ids("fix: closes owner/repo#249", "") == [
-            "owner/repo#249"
-        ]
+        cited = pr_payload.cited_backlog_citations("fix: closes owner/repo#249", "")
+        assert [c.id for c in cited] == ["owner/repo#249"]
 
     def test_a_qualified_and_a_bare_citation_both_survive(self):
         """Paired positive: the lookbehind must not swallow a genuine bare `#N`
         that merely shares a line with a qualified one."""
-        assert pr_payload.cited_backlog_ids("a/b#7 supersedes #8", "") == ["a/b#7", "8"]
+        cited = pr_payload.cited_backlog_citations("a/b#7 supersedes #8", "")
+        assert [c.id for c in cited] == ["a/b#7", "8"]
 
     def test_nothing_cited_is_an_empty_list_not_a_guess(self):
-        assert pr_payload.cited_backlog_ids("abc1234 chore: tidy up", "") == []
+        assert pr_payload.cited_backlog_citations("abc1234 chore: tidy up", "") == []
 
 
 class TestCli:

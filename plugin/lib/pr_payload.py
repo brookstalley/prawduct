@@ -60,6 +60,51 @@ SECTION_NAMES = (
     "default_branch",
 )
 
+
+class Citation(NamedTuple):
+    """One cited backlog id and HOW it was cited.
+
+    `claims_closure` is what R-2 is stated over. It is deliberately not "is this
+    id closed" — that is the cache's answer — but "did the branch say it closed
+    it", which only the citing text knows and which nothing downstream can
+    recover once the id is stripped out of its sentence.
+    """
+
+    id: str
+    claims_closure: bool
+
+
+#: The verb set of the closing-keyword rule in `skills/pr/review-protocol.md`
+#: (`closes`/`fixes`/`resolves` and their inflections), plus the `closed-by:` and
+#: `closes:` spellings the change-log uses.
+_CLOSING_VERB = (
+    r"(?:clos(?:e|es|ed|ing)|fix(?:es|ed|ing)?|resolv(?:e|es|ed|ing)|closed-by)"
+)
+
+#: A whole CLAIM REGION: one closing keyword and the run of citations it
+#: introduces — `closes: #41 and BKL-9V2W`, `resolves 678`, `closed-by: a/b#7,
+#: #8`. Matching the REGION rather than looking backwards from each id is what
+#: makes this correct for two cases a lookback cannot reach, and both were live:
+#:
+#: * The keyword can be part of the id pattern itself (`closes: 678` is matched
+#:   by `_ID_PATTERNS[2]`, which BEGINS at `closes`), so text before the match
+#:   stops one character short of the word that proves the claim. That rendered
+#:   a citation literally reading `closes:` as "mentioned only" — R-2's own
+#:   predicate, inverted, on the check no other layer owns.
+#: * Only the FIRST id of a run follows the keyword directly; every later one is
+#:   preceded by the ids before it, which no fixed lookback can cross.
+#:
+#: The region is deliberately bounded by what may appear BETWEEN citations —
+#: ids, separators, `and` — so ordinary prose after a claim ends the run rather
+#: than sweeping the rest of the sentence into it.
+_CITATION_RUN = (
+    r"(?:[A-Z]{3}-[A-Z0-9]{4}|(?:[\w.-]+/[\w.-]+)?\#?\d+)"
+)
+_CLAIM_REGION = re.compile(
+    r"(?i)\b" + _CLOSING_VERB + r"\b[\s:,\-]*"
+    r"(?:" + _CITATION_RUN + r"[\s,]*(?:and\s+)?)+"
+)
+
 #: Backlog ids as they are actually written in commits and change-log entries.
 #: Both the hand-minted `PFX-1A2B` form and the bare `#123` / `closes: 123`
 #: provider form, because `cachequery.resolve` accepts every spelling and the
@@ -201,12 +246,29 @@ def _section_work(project_dir: Path, prawduct_dir: Path, scope: str | None) -> S
     goal has nothing at all to compare the diff against.
     """
     lib = _lib()
-    branch = lib.briefing._get_current_branch(project_dir)
-    wip = lib.briefing._parse_wip(prawduct_dir, branch or None)
+    # `gitstate.current_branch`, NOT `briefing._get_current_branch` — the latter
+    # returns the STRING "main" on a git failure or a detached HEAD, which is a
+    # display default for the briefing and a fabrication here (its own docstring
+    # says so and points at this alternative, PDT-WT9K). This module's contract
+    # is that an absent answer is always named; a fabricated branch would also
+    # key `_parse_wip` off it, handing the reviewer ANOTHER branch's work
+    # description as this PR's stated scope — the operand Goal 1 grades the diff
+    # against.
+    branch = lib.gitstate.current_branch(project_dir)
+    # And when the branch is unreadable, do not ASK for the work block:
+    # `_parse_wip(dir, None)` auto-detects the branch through the same
+    # `_get_current_branch` fabrication, so handing it `None` routes straight
+    # back into the value this call exists to avoid.
+    wip = lib.briefing._parse_wip(prawduct_dir, branch) if branch else {}
 
     fields = []
     if branch:
         fields.append(f"branch: {branch}")
+    else:
+        fields.append(
+            "branch: could not be read (detached HEAD, or git failed) — no work "
+            "description was resolved, because resolving one requires the branch"
+        )
     if scope:
         fields.append(f"scope: {scope} (derived from the branch against declared plan scopes)")
     if wip.get("description"):
@@ -222,11 +284,21 @@ def _section_work(project_dir: Path, prawduct_dir: Path, scope: str | None) -> S
         )
 
     if not scope and not wip.get("description"):
+        # Two different causes, and saying the wrong one is its own defect: a
+        # branch that could not be READ has not "matched no declared scope" —
+        # nothing was matched against anything.
+        cause = (
+            "project-state.yaml carries no `work_in_progress:` description and "
+            "the branch name matches no declared plan scope"
+            if branch else
+            "the branch could not be read (detached HEAD, or git failed), so "
+            "neither the declared plan scopes nor the branch-scoped "
+            "`work_in_progress:` block could be consulted"
+        )
         return Section("work", degraded=(
-            "no stated scope for this branch — project-state.yaml carries no "
-            "`work_in_progress:` description and the branch name matches no "
-            "declared plan scope. The scope goal has nothing to compare the diff "
-            "against; judge it from the commits and the build plan instead"
+            f"no stated scope for this branch — {cause}. The scope goal has "
+            "nothing to compare the diff against; judge it from the commits and "
+            "the build plan instead"
         ))
     return Section("work", body="\n".join(fields))
 
@@ -310,14 +382,21 @@ def _section_change_log(project_dir: Path, prawduct_dir: Path, scope: str | None
         ))
     matched = [e for e in entries if e.tags.get("scope") == scope]
     if not matched:
-        return Section("change_log", degraded=(
+        # An ANSWER, not a degradation: the log was read and parsed, and the
+        # result is that nothing describes this bundle — which is the finding,
+        # not a failure to look. Rendering it `degraded` counts it into
+        # `render_human`'s "N of M sections degraded — each says which of your
+        # checks it leaves unanswered", which is false of this one, and hands
+        # `--json` consumers `ok: false` for a healthy read. The degraded channel
+        # stays for unreadable/unparseable, which genuinely leave R-2 unanswered.
+        return Section("change_log", body=(
             f"no change-log entry tagged `scope={scope}` — this bundle currently "
             "ships with nothing describing it, which is itself the finding"
         ))
     # The BODY, not just the head. Two consumers need it and both were being
     # served a heading: the reviewer is told to read this entry against the
     # diffstat (the entry IS the release note, so a deliverable its prose omits
-    # ships invisibly), and `cited_backlog_ids` scans this section's text — an
+    # ships invisibly), and `cited_backlog_citations` scans this section's text — an
     # id written in the entry's prose rather than its title is the ordinary
     # case, and without the body it renders as "no ids cited", which is a false
     # clean on the one check nothing else in the pipeline owns.
@@ -342,9 +421,11 @@ def _section_change_log(project_dir: Path, prawduct_dir: Path, scope: str | None
     return Section("change_log", body="\n".join(lines))
 
 
-def cited_backlog_ids(commit_text: str, change_log_text: str) -> list[str]:
+def cited_backlog_citations(
+    commit_text: str, change_log_text: str
+) -> list[Citation]:
     """Every backlog id the branch's commits or change-log entry cite, deduped
-    and in first-seen order.
+    and in first-seen order, each with HOW it was cited.
 
     **Both arguments must carry the full text, not a rendering of it.** The
     sentence above is the contract three records state (`review-protocol.md`,
@@ -358,17 +439,42 @@ def cited_backlog_ids(commit_text: str, change_log_text: str) -> list[str]:
     reviewer's R-2 check is stated over exactly this set: a change-log entry or
     commit that claims a closure. A caller that re-derived the set privately
     would give a third answer to a question that has one.
+    **Each citation carries whether a CLOSING KEYWORD introduced it**, because
+    R-2's predicate is not "an id appears" but "a commit or entry *claims a
+    closure* the backlog does not show". Scanning commit bodies (which is where
+    the citations are) means most cited ids are discussed rather than claimed —
+    this bundle's own bodies mention several as context — and an id list with the
+    form stripped renders every one of them as `STILL OPEN`, inviting a reviewer
+    to file a closure-that-never-happened against work nobody claimed to close.
+    The alternative is the reviewer re-reading `git log` to find out, which is
+    the round-trip this command exists to remove.
     """
-    seen: list[str] = []
+    seen: dict[str, Citation] = {}
+    text = f"{commit_text}\n{change_log_text}"
+    claim_spans = [m.span() for m in _CLAIM_REGION.finditer(text)]
     for pattern in _ID_PATTERNS:
-        for match in pattern.finditer(f"{commit_text}\n{change_log_text}"):
+        for match in pattern.finditer(text):
             token = match.group(1)
+            # Does this id fall INSIDE a claim region? Asked of the id's own
+            # span rather than of the text before it, because the keyword can be
+            # inside the id match and because later ids in a run are preceded by
+            # their siblings, not by the verb.
+            claimed = any(
+                start <= match.start() and match.end() <= end
+                for start, end in claim_spans
+            )
             if token not in seen:
-                seen.append(token)
-    return seen
+                seen[token] = Citation(token, claimed)
+            elif claimed and not seen[token].claims_closure:
+                # One id can be cited twice — discussed here, claimed there. The
+                # CLAIM is what R-2 asks about, so any claim wins over a mention.
+                seen[token] = Citation(token, True)
+    return list(seen.values())
 
 
-def _section_backlog(project_dir: Path, backlog_scope: str | None, ids: list[str]) -> Section:
+def _section_backlog(
+    project_dir: Path, backlog_scope: str | None, citations: list[Citation]
+) -> Section:
     """Resolve every cited id. **This is R-2's only data source anywhere in the
     pipeline**, so its degradation must be loud: `review-protocol.md` assigns
     that check to this reviewer and to no other layer, and an unnamed failure
@@ -380,7 +486,8 @@ def _section_backlog(project_dir: Path, backlog_scope: str | None, ids: list[str
     `cachequery.resolve` and made every id report as needing a repo. The names
     differ now because the types cannot tell them apart.
     """
-    if not ids:
+    ids = [c.id for c in citations]
+    if not citations:
         return Section("backlog", body=(
             "no backlog ids cited in the commits or the change-log entry — "
             "R-2 has nothing to check (this is an answer, not a failure)"
@@ -404,7 +511,8 @@ def _section_backlog(project_dir: Path, backlog_scope: str | None, ids: list[str
 
     now = datetime.now(timezone.utc)
     lines, failures = [], []
-    for item_id in ids:
+    for citation in citations:
+        item_id = citation.id
         try:
             envelope = cachequery.resolve(
                 project_dir,
@@ -432,15 +540,27 @@ def _section_backlog(project_dir: Path, backlog_scope: str | None, ids: list[str
         if not result.get("resolved"):
             reason = result.get("reason")
             lines.append(
-                f"{item_id}: did NOT resolve — a dangling citation"
-                + (f" ({reason})" if reason else "")
+                # NOT flatly "a dangling citation": `_ID_PATTERNS[0]` matches any
+                # `AAA-9999` token, so a standards reference (`ISO-8601`,
+                # `RFC-3339`) in a commit body reaches here and would otherwise be
+                # rendered as a finding about an id that never existed.
+                f"{item_id}: did not resolve — either a dangling citation or not "
+                "an id at all (check the citing text before filing)"
+                + (f" [{reason}]" if reason else "")
             )
             continue
         # `dead` is the complement of the open set, taken from the cache's own
         # source of truth — which is precisely R-2's question: the branch claims
         # a closure, so is the item actually closed?
         state = "closed" if result.get("dead") else "STILL OPEN"
-        line = f"{item_id}: status={result.get('status')} ({state})"
+        # The citation FORM is R-2's actual predicate. Without it every merely
+        # mentioned id reads as a closure claim the backlog contradicts.
+        form = (
+            "the branch CLAIMS this closure"
+            if citation.claims_closure
+            else "mentioned only — no closing keyword, so R-2 does not apply"
+        )
+        line = f"{item_id}: status={result.get('status')} ({state}) — {form}"
         if result.get("via"):
             line += f", matched via {result['via']}"
         if result.get("redirected_from"):
@@ -514,7 +634,18 @@ def assemble(project_dir: Path) -> tuple[list[Section], str | None]:
     scope = reviewed.scope
 
     sections = [
-        Section("base", body=f"{base}\nresolved by: {base_reason}"),
+        # The tree this ANSWERED about, so a reviewer can tell it apart from the
+        # tree it was asked about. The base branch cannot do that job — both the
+        # primary checkout and a worktree of the same repo resolve `develop` — so
+        # the discriminating facts are the absolute directory and its HEAD, which
+        # the reviewer already holds from its prompt and its `git -C` reads.
+        Section("base", body=(
+            f"{base}\nresolved by: {base_reason}\n"
+            f"project dir: {project_dir}\n"
+            f"HEAD: {_git(project_dir, 'rev-parse', 'HEAD')[1] or '(unreadable)'}\n"
+            "If either disagrees with what your prompt carries, you are reading a "
+            "different tree than the caller thinks — say so rather than picking one."
+        )),
         commits,
         _section_diffstat(project_dir, base),
         _section_work(project_dir, prawduct_dir, scope),
@@ -534,7 +665,7 @@ def assemble(project_dir: Path) -> tuple[list[Section], str | None]:
             ),
             # `_commit_bodies`, NOT `commits.body` — that section is `--oneline`,
             # and a citation in a commit's body is the ordinary case here.
-            cited_backlog_ids(
+            cited_backlog_citations(
                 _commit_bodies(project_dir, base),
                 change_log_section.body or "",
             ),
@@ -586,18 +717,51 @@ def render_human(sections: list[Section]) -> str:
 
 
 def emit(project_dir: Path, argv: list[str]) -> int:
-    """Body of ``prawduct-hook pr-review-payload [--json]``."""
+    """Body of ``prawduct-hook pr-review-payload [--json] [<project dir>]``.
+
+    **The positional exists because the caller that needs it cannot use a
+    `cd`.** This command's own premise, stated in `agents/pr-reviewer.md` and
+    repeated in `review-protocol.md`, is that a review subagent does not inherit
+    the caller's working directory and must anchor every read on the absolute
+    project dir its prompt carries — which is why every git call there is
+    `git -C <dir>`. That reviewer's tool allow-list grants this op by exact name
+    and grants no `cd`, so without an argument the one reader the command was
+    built for can only ask about whatever tree the process started in.
+    `get_project_dir()` resolves `CLAUDE_PROJECT_DIR` — the LAUNCH dir — first,
+    so in a mid-session worktree move the payload would describe the primary
+    checkout while the reviewer's `-C` diff describes the worktree, and every
+    section (the `## Status` boxes, the `scope=` entry, the cited ids, the test
+    verdict) would be graded against a bundle nobody asked about, reading clean.
+    """
     as_json = False
+    target: Path | None = None
     for arg in argv:
         if arg == "--json":
             as_json = True
+        elif not arg.startswith("-") and target is None:
+            target = Path(arg).expanduser()
         else:
             print(
                 f"pr-review-payload: unknown argument {arg!r} "
-                "(usage: pr-review-payload [--json])",
+                "(usage: pr-review-payload [--json] [<project dir>])",
                 file=sys.stderr,
             )
             return 1
+
+    if target is not None:
+        # A hard failure, not a degradation, and deliberately so: every section
+        # would otherwise answer about the WRONG tree, which is the silent pass
+        # the argument exists to prevent. Naming the directory is the caller
+        # asserting which tree it means, so failing to find it is unambiguous.
+        if not (target / ".git").exists() and not (target / ".prawduct").is_dir():
+            print(
+                f"pr-review-payload: {target} is not a project directory "
+                "(no `.git` and no `.prawduct/`) — pass the absolute path your "
+                "prompt carries, or omit the argument to use the current one",
+                file=sys.stderr,
+            )
+            return 1
+        project_dir = target.resolve()
 
     try:
         sections, hard_failure = assemble(project_dir)

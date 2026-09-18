@@ -942,6 +942,55 @@ class TestPrReviewerScoping:
         assert ".critic-findings.json" in content
         assert "prawduct-hook evidence list" in content
 
+    def test_only_one_of_the_two_steps_dispatches(self):
+        """Concurrency put the dispatch instruction in Step 2 while Step 3 still
+        opened with it unconditionally, so an agent walking the steps in order
+        spawns a SECOND reviewer against the same evidence path (last writer
+        wins), re-marks the clock, and spends exactly the review this bundle
+        exists to save. One owner has to decide which route LEADS.
+        """
+        content = self.skill
+        step3 = content[content.index("### Step 3"):content.index("### Step 4")]
+        assert "only one of them dispatches" in step3, (
+            "Step 3 must open by naming the two routes — a reader arriving from "
+            "Step 2's dispatch has to be told this step is Wait/Read/Present"
+        )
+        lead = step3[:step3.index("Dispatch the **`pr-reviewer` plugin agent**")]
+        assert "already dispatched" in lead and "Wait / Read / Present" in lead, (
+            "the conditional must come BEFORE the dispatch instruction; appended "
+            "after it, the advice still leads with the act it is excepting"
+        )
+        step2 = content[content.index("### Step 2"):content.index("### Step 2b")]
+        assert "do NOT dispatch again at" in step2, (
+            "Step 2 must say its dispatch is the only one; a reader who never "
+            "returns to Step 2 is not the one this protects"
+        )
+
+    def test_the_closing_keyword_rule_uses_a_tool_the_reviewer_holds(self):
+        """The producer-with-no-consumer case, and both halves of it.
+
+        Chunk 01 built `_section_default_branch` FOR the closing-keyword rule —
+        its docstring says so — while that rule still sent the reviewer to `gh
+        repo view`, and the same bundle narrowed the reviewer to a tool set with
+        no `gh` grant at all. A compliant reviewer could not answer the question,
+        and the two possible behaviours give OPPOSITE advice about whether a
+        close was owed or missed.
+        """
+        protocol = self.protocol
+        assert "gh repo view" not in protocol, (
+            "`review-protocol.md` routes the reviewer to `gh`, which its agent "
+            "definition grants no verb of — see `test_no_network_tool`"
+        )
+        assert "`default_branch`" in protocol, (
+            "the payload section built for this rule must be named where the "
+            "rule is stated, or it is a channel nobody consumes"
+        )
+        activation = protocol[:protocol.index("## Review Goals")]
+        assert "default_branch" in activation, (
+            "every other section is enumerated in the activation list; an "
+            "unenumerated one is a section the reviewer does not know it has"
+        )
+
     def test_the_two_boundary_reviews_are_dispatched_concurrently(self):
         """The bundle's whole wall-clock win, pinned where it can be deleted.
 

@@ -30,10 +30,16 @@ to file findings that are worth what they cost.
 
 **Three reads, and everything else is assembled for you.**
 
-1. **Run `prawduct-hook pr-review-payload`.** One call, one pass. It returns the base branch and
-   how it resolved, the commit log, the diffstat, the work description, the `test-status` verdict,
-   the build plan's `## Status` boxes verbatim, this bundle's change-log entry, and every backlog
-   item the commits or that entry cite — already resolved against the live backlog. None of it is
+1. **Run `prawduct-hook pr-review-payload <project dir>`** — passing the absolute directory your
+   prompt carries, because you have no `cd` and the command resolves the session's launch directory
+   before its own cwd. One call, one pass. It returns the base branch and how it resolved **plus
+   the project directory and HEAD it actually answered about** (reconcile those two against your
+   prompt — the base *branch* cannot catch a wrong tree, since a worktree and its primary checkout
+   resolve the same name), the commit log, the diffstat, the work description, the `test-status`
+   verdict, the build plan's `## Status` boxes verbatim, this bundle's change-log entry, every
+   backlog item the commits or that entry cite — already resolved against the live backlog, **each
+   marked as either a closure the branch CLAIMS or a mere mention** (R-2 below turns on that
+   difference) — and **the repo's `default_branch`**, which the closing-keyword rule needs. None of it is
    the builder's reasoning: it is the same words out of the same files you would have opened
    yourself, which is why reading it costs your independence nothing.
    **It fails per section, and a degraded section names the check it leaves unanswered.** An
@@ -183,7 +189,7 @@ by severity. If no findings: "No issues found. PR is ready to create."
 
 `commit_reviewed`: **the full SHA of the branch HEAD you actually read**, captured with `git rev-parse HEAD` **at the moment you resolve the diff**, not when you write the file. This is the one field a later caller cannot reconstruct: `/prawduct:pr`'s Update Flow needs `git diff --name-only <commit_reviewed>..HEAD` to decide whether the branch has moved since the review, and without the field it has only your `timestamp` and `commits_reviewed` to infer from — which fails silently in exactly the case that matters, a commit landing *during* your run. Capture it early and report the SHA you read, even if HEAD has moved by the time you finish; a review that under-claims its coverage costs one re-review, while one that over-claims ships unreviewed code.
 
-**Do not credit a closing keyword with closing anything.** `Closes #N` / `Fixes #N` / `Resolves #N` in a PR body fires only when the PR merges into the repository's **default** branch, so on a gitflow base (feature→`develop`) it is inert. If you are dispositioning a backlog item as handled-by-this-merge, check `gh repo view --json defaultBranchRef -q .defaultBranchRef.name` against the PR's base before saying so — and on an Issues backend the close is a step the operator owes at merge (`/prawduct:pr`'s Merge Flow "Close the backlog items this PR resolves"), not something the merge performs. An item this PR resolves being still open at review time is therefore **correct state**, not a finding — say the close is owed, never that it was skipped.
+**Do not credit a closing keyword with closing anything.** `Closes #N` / `Fixes #N` / `Resolves #N` in a PR body fires only when the PR merges into the repository's **default** branch, so on a gitflow base (feature→`develop`) it is inert. If you are dispositioning a backlog item as handled-by-this-merge, read the payload's **`default_branch`** section and compare it to the PR's base before saying so — you hold no `gh` grant, and that section exists for exactly this rule. **When it is degraded the rule cannot be applied at all**, and the section says what that means: do NOT read an open item on this PR as a missed close. And on an Issues backend the close is a step the operator owes at merge (`/prawduct:pr`'s Merge Flow "Close the backlog items this PR resolves"), not something the merge performs. An item this PR resolves being still open at review time is therefore **correct state**, not a finding — say the close is owed, never that it was skipped.
 
 After PR creation, update `pr_number` in the evidence file — `pr_number` is the only field the caller may edit after the fact. **Never rewrite `commit_reviewed` to a newer HEAD**: it records what was read, and moving it forward silently launders unreviewed commits into the reviewed set. That binds the *caller*, not a later review — a re-dispatched reviewer writes its own `commit_reviewed` for the tree it just read, which is the field working as intended. The rule is: only the agent that read a tree may name it. After merge, delete the evidence file with the branch.
 
