@@ -28,6 +28,14 @@ nothing found". `review-stats --json` went to schema 6 for the measured/self-rep
 dispatch-interval predicate — including its 6-hour plausibility bound — now has one home
 (`review_dispatch.measured_interval_seconds`) that all three readers call.
 
+**The measurement toolchain ships with it**, and it is roughly a fifth of this bundle rather than a
+footnote. `tools/pr-review-yield.py` is **new**: it reads the ledger's `review.pr` events and
+reports PR-review duration, findings per review and yield by goal and severity, splitting measured
+rows from self-reported ones rather than pooling them. `tools/measure-consumer-overhead.py` gains a
+`pr_clock_*` trio so the same split is visible in a consumer repo's history. Both are what make the
+before/after in `nonfunctional-requirements.md` § Performance re-derivable from a command instead of
+quotable from prose — the tools are the deliverable, not the figures.
+
 **Chunk 02 — the protocol.** The reviewer's six numbered activation reads collapse to three: the
 payload, the diff, and the artifacts the diff sends it to. The learnings read is **deleted** — not
 because the corpus arrives another way, but because the goal consuming it returned **1 finding in

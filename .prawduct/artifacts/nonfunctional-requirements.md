@@ -132,6 +132,37 @@ Targets we want to hold:
   | PR review duration, a consumer (`discodon`, v3.5) | **14.1 min/review** over 12 reviews, `clk runs` **0** | `python3 tools/measure-consumer-overhead.py ../discodon --prs` |
   | sequencing | `pr/SKILL.md` ran Step 2 then Step 3 (**#678**) | — |
 
+  **After, measured on this bundle's own PR review, 2026-09-18.** The first PR review this repo has
+  timed rather than asked a model to recall:
+
+  | reading | after | re-derive with |
+  |---|---|---|
+  | PR review duration, this repo | **1 measured / 122 self-reported**; the measured run's interval **385s** | `python3 tools/pr-review-yield.py` |
+  | the same run, self-reported by the reviewer | **330s** | the evidence file's `duration_seconds` |
+  | the same run, as the harness timed the agent | **353s** | the dispatch's own completion record |
+  | PR review duration, a consumer (`discodon`, v3.5) | **14.1 min/review**, `clk runs` still **0** — unchanged, and it cannot move until a plugin release carrying the marker reaches that repo | `python3 tools/measure-consumer-overhead.py ../discodon --prs` |
+
+  **Read the three numbers as three different spans, not as one number measured three times** —
+  pooling them re-creates exactly the hazard `dispatched_at` was added to retire, which is why
+  `telemetry._extract_row` carries provenance with every row and reports the two populations apart.
+
+  - **385s is `dispatched_at` → `ledger-append`**, marked at Step 3 before the spawn and closed at
+    Step 4. It therefore includes the caller's Step 4 verification, and under a blocking cumulative
+    it would include fix time until the re-dispatch re-marks. It is the span an *operator waits*,
+    which is what the ≤ 7-minute target is about — and at 6m25s this run met it.
+  - **353s is the harness's own measure of the agent**, i.e. the reviewer's runtime alone. The ~32s
+    difference from 385s is the caller's Step 4 work, which is the expected gap rather than noise.
+  - **330s is the reviewing model's estimate of its own runtime** — the thing the baseline column is
+    made of, 122 times over. It is **~6% under** the harness's measure of the same run. One data
+    point is not a bias estimate, but it is the first time the two have been comparable at all, and
+    it is the reason the baseline's 420s median is not directly comparable to the 385s above.
+
+  **The ≤ 7-minute target was met on a bundle whose review-round count was the real cost.** This
+  boundary cost 6m25s of wall clock; the branch spent roughly six hours, almost all of it in
+  *repeated* Critic rounds. `run-count` and `unit-cost` are both named as design variables at the
+  top of this section — this bundle moved unit-cost, and the measurement it installs is what will
+  let the next one argue about run-count with numbers instead of impressions.
+
   The `0 measured` column is the positive control: before this scope no review duration in either
   repo was a code-written interval, so the 420s and the 14.1 min are both the reviewing model's own
   recollection and the target had never actually been measured against. **The post-change reading is

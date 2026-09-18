@@ -68,7 +68,7 @@ measurement.
 
 - [x] Chunk 01: The data plane — a measured dispatch clock and one deterministic payload call
 - [x] Chunk 02: The protocol — new goals, a new reader, and the loop closed
-Context: Plan authored 2026-09-18 from `pr-review-payload-discovery.md`, on `feat/pr-review-payload` cut from `develop` at 996766e5. Re-partitioned from five chunks to two on 2026-09-18 (see § Partition decision). Chunk 01 built and reviewed (chunk review plus two verify rounds, all clean). Next: Chunk 02, whose Done-when step 0 is the `verify-api` probe.
+Context: Plan authored 2026-09-18 from `pr-review-payload-discovery.md`, on `feat/pr-review-payload` cut from `develop` at 996766e5. Re-partitioned from five chunks to two on 2026-09-18 (see § Partition decision). **Both chunks are built, reviewed and ticked as of 2026-09-18**; the bundle's cumulative review and its verify rounds are clean and `check-cumulative-critic` is satisfied at HEAD. What remains is the PR itself — the plan is RETAINED live rather than archived because the base is gitflow, and the release archives it by scope. Re-derive with `prawduct-hook check-cumulative-critic` and the `## Status` boxes above.
 
 ### Partition decision
 
