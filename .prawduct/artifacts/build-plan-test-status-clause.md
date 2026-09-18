@@ -38,9 +38,13 @@ last_validated: 2026-09-18
 
 ## Status
 
-- [ ] Chunk 01: `test-status` says which disjunct answered, and the three call sites claim only that
+- [x] Chunk 01: `test-status` says which disjunct answered, and the three call sites claim only that
 
-Context: Plan written 2026-09-18 against `documentation/issues/767-design.md`. Branch `fix/767-test-status-clause` cut from `develop` at `ded04e89`. Nothing built yet.
+Context: Built 2026-09-18 on `fix/767-test-status-clause` (cut from `develop` at `ded04e89`), two commits: the chunk, then the fix for the cumulative review's six warnings. Reviewed `cumulative` (coordinator roster — `plugin/lib/gates*` is a declared risk surface) then `verify-resolutions`, which came back 0 blocking / 0 warning with 3 observations, all answered on the record and all fixed rather than accepted.
+
+Two departures from `767-design.md`, both made at the review's direction and both recorded above: the labels became `lib.gates` constants so prose can be pinned to them by import, and the tree clause is asked FIRST and unconditionally rather than only on the timestamp-stale path. The second is the substantive one — the design's Decision 1 specified it, the first build silently narrowed it, and the review caught that the records still carried the design's rationale. Asking it costs ~0.12s here and ~0.36s on a 42k-file worktree, against the multi-minute re-run an under-claim invites.
+
+Next: nothing within this plan. The branch is PR-ready — `check-cumulative-critic` composes across `develop..HEAD` — and `/prawduct:pr` should close #767, descoping `plugin/skills/critic/review-protocol.md` and `plugin/methodology/building.md` from its `affected:` list explicitly (both were read; neither claimed tree coverage).
 
 ## Build Chunks
 
@@ -50,7 +54,7 @@ Context: Plan written 2026-09-18 against `documentation/issues/767-design.md`. B
 
 - **Depends on:** none
 
-- **Artifacts consumed:** `documentation/issues/767-design.md` (Decisions 1–4, the files-touched table, and the corrected call-site wording, which is quoted there in full and is the text to use)
+- **Artifacts consumed:** `documentation/issues/767-design.md` (Decisions 1–4 and the files-touched table). Its quoted call-site wording is a PRE-BUILD SNAPSHOT and is no longer the text to use: the build departed from it twice, at the review's direction — the labels became `lib.gates` constants, and `reason`'s text did change on the session path, which that document says it would not. Take the wording from the shipped files.
 
 - **Deliverables:**
   - `plugin/lib/gates.py` — `tests_are_current` asks the tree clause unconditionally and returns `tuple[bool, str, str]`, the third element `clause` being `"session"` / `"tree"` / `"none"`; `test_status` prints `CURRENT_TREE_LABEL`, `CURRENT_SESSION_LABEL` (both module constants, so prose can be pinned to them) or `stale: …`

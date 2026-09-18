@@ -405,7 +405,14 @@ LAST_MEASURED_TOKENS = {
     # said "per-chunk reviews accumulate", which the short-plan rule makes
     # false for a plan of at most 3 chunks touching no risk surface. It now
     # reads "the reviews it owes accumulate" — net -1 word.
-    "methodology/building.md": 4910,
+    # -2 on 2026-09-18 (test-status-clause): the Critic paragraph said
+    # `test-status` "is blind to" a mid-review edit. It is not, since the tree
+    # clause is now asked on every call — the printed line names the changed
+    # paths. What stayed true is the part the sentence is FOR: the exit code
+    # still does not refuse, so the reader's caution is unchanged. Corrected to
+    # "still exits 0", which is shorter than what it replaced; ceiling ratcheted
+    # with the cut rather than banked.
+    "methodology/building.md": 4908,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -2900,7 +2907,9 @@ class TestBuildingMethodology:
         # further would have spent a clause nothing defends to fund a clause
         # nothing defends, which is the move the standing rule refuses. One
         # over the reading, so nothing is banked.
-        assert tokens < 4911, f"building.md is ~{tokens} tokens, should be <4911"
+        # RATCHETED 4911 -> 4909 (2026-09-18, test-status-clause) with the
+        # correction that shrank the reading — see LAST_MEASURED_TOKENS.
+        assert tokens < 4909, f"building.md is ~{tokens} tokens, should be <4909"
 
 
 # =============================================================================
@@ -5979,6 +5988,58 @@ class TestSubjectAndOracleReachTheReviewer:
         assert "files_oracle" in content, (
             f"{rel_path} narrows the subject set without delivering the oracle — "
             "a reviewer reading it would rate less AND read less"
+        )
+
+    #: The surfaces corrected when `test-status` stopped claiming tree coverage.
+    #: Parametrized rather than asserted once, because the defect they were
+    #: corrected for is a claim repeated across surfaces: pinning the one that
+    #: happened to be noticed is what left the other two rewritable in silence.
+    TEST_STATUS_CLAIM_SURFACES = [
+        "skills/critic/SKILL.md",
+        "skills/pr/review-protocol.md",
+        "skills/pr/SKILL.md",
+    ]
+
+    @pytest.mark.parametrize("rel_path", TEST_STATUS_CLAIM_SURFACES)
+    def test_no_surface_claims_exit_0_proves_tree_coverage(self, rel_path):
+        """`test-status` exit 0 does not establish that the run met this tree.
+
+        Its session-fresh disjunct answers *when* a run happened; these three
+        surfaces each told their reader it answers *which tree*. Negative and
+        positive together: the negative alone is satisfied by deleting the
+        sentence, which would leave a reader unable to act on the exit code at
+        all, so each surface must still say the exit code is what it reads.
+
+        Goes red if any of the three is reworded back toward tree coverage.
+        """
+        content = read_file(rel_path)
+        assert "covers the current tree" not in content, (
+            f"{rel_path} again tells its reader that `test-status` exit 0 means "
+            "the evidence covers the current tree. The session-fresh disjunct "
+            "never establishes that — it is satisfied by a run from earlier in "
+            "the session, on a tree it never met."
+        )
+        assert "test-status" in content, (
+            f"{rel_path} no longer names `test-status` at all — the correction "
+            "must narrow the claim, not remove the instruction that carries it."
+        )
+
+    @pytest.mark.parametrize("rel_path", TEST_STATUS_CLAIM_SURFACES)
+    def test_every_corrected_surface_states_both_grounds(self, rel_path):
+        """Each corrected surface says exit 0 rests on one of TWO grounds.
+
+        Without this, a surface satisfies the negative above while leaving its
+        reader with a bare exit code and no way to read the label the command
+        prints — which is the state these corrections exist to end.
+        """
+        content = read_file(rel_path)
+        assert "session-fresh" in content, (
+            f"{rel_path} does not name the session-fresh ground, so its reader "
+            "cannot tell which guarantee an exit 0 rests on."
+        )
+        assert "tree-valid" in content, (
+            f"{rel_path} does not name the tree-valid ground — the stronger of "
+            "the two, and the one the reader was previously told was the only one."
         )
 
     @pytest.mark.parametrize("rel_path", ["skills/critic/goals-1-3.md",
