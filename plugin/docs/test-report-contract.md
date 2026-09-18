@@ -88,7 +88,8 @@ degraded on top of it.
 | Unreadable, not JSON, or not a JSON object | **Refuse** — ambiguous state on a path that feeds a gate verdict fails closed. |
 | `v` missing, or a version this reader does not know | **Refuse**, naming the version it found. |
 | `scope` missing or neither `full` nor `partial` | **Refuse**. |
-| `report` missing, or naming a different file than the one handed in | **Refuse** — the record is about some other run. |
+| `report` naming a different file than the one handed in | **Refuse** — the record is about some other run. |
+| `report` missing | **Refuse** — the record is about nothing; it was never written correctly. |
 | `scope: "partial"` | **Refuse**, quoting `why` and `at`. |
 | `scope: "full"` | **Proceed.** |
 

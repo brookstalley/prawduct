@@ -82,9 +82,9 @@ classifier is built on these exact attributes:
 
 Context: built 2026-09-18 on `feature/test-report-scope` (cut from `develop` at `ded04e89`).
 Three commits: the contract, the mechanism, then the review's fixes. One `cumulative` (coordinator
-roster — `plugin/bin/*hook*` is a declared risk surface) returning 16 findings, then two
-`verify-resolutions` rounds; 14 fixed, 3 accepted on the record, 0 outstanding. The suite is green
-and recorded (7272 passed / 0 failed), tree-valid for the reviewed tree.
+roster — `plugin/bin/*hook*` is a declared risk surface) returning 16 findings, then three
+`verify-resolutions` rounds; 14 fixed, 3 accepted on the record, 0 outstanding. Suite state is the
+`test-status` exit code, not a total copied into prose.
 
 Three of the review's warnings were design gaps rather than records nits, and all three are the
 same shape — *the warrant is narrower than the thing it licenses*: a refusal written for one of six
