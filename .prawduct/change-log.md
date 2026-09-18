@@ -5,6 +5,76 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-18: The PR reviewer reads one payload, reviews what it actually catches, and is timed
+
+<!-- prawduct: type=feat | scope=pr-review-payload -->
+
+**Two chunks, one loop: build the instrument, then change the thing it measures.** The PR review at
+the boundary was ~115k tokens of context assembled over 13–18 sequential tool round-trips, against a
+≤ 7-minute wall-clock target that had never been measured — `duration_seconds` was the reviewing
+model's own estimate of its own runtime, 122 times running.
+
+**Chunk 01 — the data plane.** `prawduct-hook pr-review-dispatch --begin` marks a dispatch and
+`ledger-append` consumes the mark, so a review's duration becomes an interval two clocks in code
+agree on rather than a recollection. The mark is tree-anchored (it records its `HEAD`; consumption
+requires the same one) rather than age-thresholded, and only `review.pr` may consume it — a
+`review.critic` append that cleared it would silently delete a concurrent PR review's measurement,
+which is exactly the timing Chunk 02 introduces. `prawduct-hook pr-review-payload` assembles the
+reviewer's whole context in one deterministic pass — base, commits, diffstat, work description, the
+`test-status` verdict, the build plan's `## Status` boxes, the change-log entry, and every backlog
+id the commits or that entry cite, already resolved. It fails **per section**, and every degraded
+section names the check it leaves unanswered, because a silent empty section reads as "checked,
+nothing found". `review-stats --json` went to schema 6 for the measured/self-reported split, and the
+dispatch-interval predicate — including its 6-hour plausibility bound — now has one home
+(`review_dispatch.measured_interval_seconds`) that all three readers call.
+
+**Chunk 02 — the protocol.** The reviewer's six numbered activation reads collapse to three: the
+payload, the diff, and the artifacts the diff sends it to. The learnings read is **deleted** — not
+because the corpus arrives another way, but because the goal consuming it returned **1 finding in
+122 reviews** and `review-protocol.md`'s own Learnings Cross-Check assigns that scan to the
+`final`/`cumulative` Critic, so the reviewer was carrying a corpus it was forbidden to use. The
+markdown `## PR Review` block and the `### PR Draft` go too: the caller reads the JSON and re-drafts
+the description at Step 5, so both were outputs with no consumer.
+
+**The four goals are re-pointed, and that is a recorded decision rather than documentation
+freshness.** They were written for product code; across 279 findings the subject is governance
+bookkeeping — 48% change-log coherence, 25% build-plan status and dangling pointers, 15% backlog
+reconciliation, 10% tag keys, against 0.7% on the debug-code and stray-file bullets the goals led
+with. `.prawduct/` is non-judgeable by the coverage algebra, so no Critic layer reads it and this
+reviewer is its only reader. Goals 2 and 3 are renamed to *The Record Matches What Ships* and
+*Governance Bookkeeping Is Coherent*; every bullet survives, the merge-hygiene set now carrying its
+measured rarity beside it.
+
+**A named agent, and the rule it retires.** `plugin/agents/pr-reviewer.md` ships with a scoped tool
+allow-list and `omitClaudeMd: true` — measured against Claude Code 2.1.277 before it was written: an
+agent carrying the field reported `CLAUDE.md`, `.claude/rules/learnings/core.md` and `MEMORY.md` all
+absent, while the identical agent without it quoted a `core.md` heading verbatim. That is ~108KB of
+prose the reviewer no longer receives. The payload grant names `pr-review-payload` **exactly**,
+because a Bash grant is a prefix match and the sibling `pr-review-dispatch` writes. A `core.md` rule
+forbidding named tool-restricted reviewer agents is **superseded** (owner-confirmed): its warrant
+was that the frontmatter cannot express `Bash(...)` granularity, and the tool-level bound is real —
+an agent granted no `Bash` has no Bash tool at all. What replaces it is the half that survives: a
+`Bash(pattern)` grant is *declared*, not verified-enforcing, so scope by which tools exist and never
+call a pattern structural. Whether patterns narrow within an exposed tool could not be measured
+here — every probe ran under a `permissions.defaultMode: dontAsk` that no flag overrode — and that
+limit is written down rather than rounded off.
+
+**And the two boundary reviews now run concurrently (#678)**, which `nonfunctional-requirements.md`
+§ Performance has required all along and `pr/SKILL.md` did not do. Neither consumes the other's
+verdict; the one real cost — a blocking cumulative spends the concurrent PR review — is stated in
+the step rather than discovered.
+
+**Measured, not projected.** The before-readings and the commands that re-derive them are in
+`nonfunctional-requirements.md` § Performance: 420s median over 122 reviews, **0 measured / 122
+self-reported**, and 14.1 min/review on a consumer repo with zero clock rows. The after-reading is
+owed at this bundle's own PR — the first dispatch that can produce a `measured` row — and is
+recorded there beside them, including if it misses.
+
+**A defect surfaced, not fixed:** `nonfunctional-requirements.md`'s 2026-09-16 ruling keeping the
+`pr-scoped` review mode graded a control that had been collapsed into `pr` two months earlier. The
+ruling stands and is annotated with what it actually decided; amending a norm to match the tree is
+the laundering tell.
+
 ## 2026-09-17: Step 1 names the recorder; develop opens 3.5.1-dev.1 so consumers pick up review-stages
 
 <!-- prawduct: type=fix | scope=pr-step1-recorder -->

@@ -345,6 +345,56 @@ while the instruction has no effect. Two verifications beyond the suite:
   2. The branch's cumulative gate is deliberately left uncovered at the end of Chunk 01 — this
      chunk's own `cumulative` review spans merge-base..HEAD and closes it. `check-cumulative-critic`
      reporting `uncovered` before that review is expected, not a defect to chase with another round.
+- **What Chunk 02 actually found and decided** (recorded here because the plan's own text was the
+  thing corrected, and because a governance change cannot be its own only witness):
+  - **`verify-api` (Done-when step 0) settled the assumption and is the reason deliverable (e) kept
+    its shape.** Measured against Claude Code 2.1.277, 2026-09-18, with a control: a *plugin-supplied*
+    agent declaring `omitClaudeMd: true` reported `CLAUDE.md`, `.claude/rules/learnings/core.md` and
+    `MEMORY.md` all absent and listed only system-reminders; the identical agent without the field
+    quoted the `### RETIRED RULING (regen-views-is-advice)` heading verbatim and listed all three.
+    The probe agents had `tools: Glob` and were instructed to use none, so neither could read the
+    files it was asked about. Re-derive by writing two throwaway agents under `plugin/agents/` and
+    dispatching each from a fresh `claude -p` (a plugin agent added mid-session is not dispatchable —
+    agent types are enumerated at session start).
+  - **The plan's claim that the contradicted `core.md` rule carries "no why" is FALSE, and the
+    correction changed its disposition.** Compaction ate the body; `git log -S` finds it at `a8031c29`
+    (v2.0.0, 2026-06-02): *"A named plugin subagent's `tools`/`disallowedTools` frontmatter is
+    bare-tool-names-only (no `Bash(git diff:*)` granularity), so listing `Bash` grants unrestricted
+    Bash."* That warrant is half-falsified and half-unreachable, so the rule was **rewritten, not
+    retired**. Falsified: an agent declaring `tools: Read` has no Bash tool at all, so the tool-level
+    bound is real and a fork skill is not required for it. Unreachable here: every probe of whether
+    `Bash(git status *)` narrows *within* Bash ran under this machine's `permissions.defaultMode:
+    dontAsk`, which neither `--permission-mode` nor `--settings` overrode — a `deny` rule did reach
+    the subagent, but deny is absolute under permissive modes, so that control licenses nothing.
+    `[DECISION: the 2026-06-02 prohibition on named tool-restricted reviewer agents is superseded by
+    a rule stating what survives — the tool SET binds, a `Bash(pattern)` grant is declared rather
+    than verified-enforcing, so scope by which tools exist and never call a pattern structural | the
+    prohibition was already dead (shipped `critic-reviewer.md` violates it) and a `context: fork`
+    skill inherits the whole parent context, so the fallback route could not deliver this chunk's
+    point at all; the granularity half is unproven rather than disproven and is written down as such
+    | user can veto/override]` **Owner-confirmed 2026-09-18, in session, before the edit was made** —
+    the options put were rewrite / retire outright / keep the rule and build (e) as a fork skill, and
+    the owner chose rewrite. The confirmation is recorded here rather than only in `core.md`, because
+    an amendment that is its own only witness is indistinguishable from laundering.
+  - **The same overclaim was live in two places this chunk's evidence bears on**, and both were
+    corrected in the same pass rather than left for the next reviewer: `agents/critic-reviewer.md`
+    said its restricted tools ARE the no-execution enforcement, and
+    `tests/test_critic_reviewer_agent.py::TestAgentToolsAreRestricted`'s docstring said an agent
+    type's tools "DO bind it" without distinguishing set from pattern. Neither test assertion
+    changed; the prose now states what is verified and what is not.
+  - **DESCOPED, with its reason:** the *Budget note* above assumes `skills/pr/review-protocol.md`
+    carries a hard ceiling and a drift pin. It carries neither — no `skills/pr/*` entry exists in
+    `LAST_MEASURED_TOKENS` or in any `test_token_budget`. Verified by grep before descoping, not
+    assumed. `methodology/building.md` *is* budgeted and was touched: net a **cut** (4910 → 4906),
+    so the ceiling ratcheted with it (4911 → 4907) in the same commit rather than banking the slack.
+  - **The `pr-scoped` finding was surfaced and the owner ruled**, 2026-09-18: record that the keep
+    was about a retired subject. Annotation landed in `nonfunctional-requirements.md` beside the
+    ruling; nothing amended, nothing withdrawn.
+  - **The measured after-reading cannot land before this chunk's own review.** Only a real dispatch
+    produces a `measured` row, and the only one in this bundle is `/prawduct:pr create`'s dogfood
+    run. Sequence: cumulative review → resolve → tick → `/prawduct:pr create` Steps 1-4 → write the
+    after-reading into `nonfunctional-requirements.md` and commit it (`.prawduct/`, non-judgeable, so
+    it moves no coverage) → Step 5 creates the PR.
 - **Done when:**
   0. verify-api — confirm `omitClaudeMd` is honored for a **plugin-supplied** agent definition, by
      reading the current Claude Code subagent documentation AND dispatching one throwaway agent

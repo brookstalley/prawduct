@@ -142,8 +142,20 @@ class TestSubagentStopMatcherMatchesRuntimeAgentType:
 
 
 class TestAgentToolsAreRestricted:
-    """The agent-def tools allow-list is the structural no-execution guarantee for
-    reviewers (unlike a skill's allowed-tools, an agent type's tools DO bind it)."""
+    """The agent-def tools allow-list, and what it is and is not evidence of.
+
+    **Verified** (Claude Code 2.1.277, 2026-09-18): the tool SET binds — a plugin
+    agent declaring `tools: Read` has no Bash tool at all. So "no unrestricted
+    `Bash` entry" is a real bound, which is what `test_no_broad_bash` holds.
+
+    **Not verified:** whether a `Bash(pattern)` grant narrows *within* an exposed
+    Bash. Every probe ran under a machine whose `permissions.defaultMode` is
+    `dontAsk`, which neither `--permission-mode` nor `--settings` overrode, so an
+    ungranted command running is fully explained by the mode. These assertions
+    therefore pin what this file DECLARES; do not read them as proof the harness
+    refuses. Where the guarantee has to be real, remove the tool rather than
+    narrowing its pattern.
+    """
 
     def _tools(self) -> list[str]:
         raw = _field(_frontmatter(AGENT_DEF), "tools")

@@ -222,7 +222,7 @@
 
 ### "Structurally enforced" requires verifying the harness actually enforces it
 
-### Tool-restricted reviewer agents must be context:fork SKILLS, not named plugin subagents
+### A named agent's `tools:` BINDS by tool, and its `Bash(pattern)` granularity is DECLARED rather than verified — so scope by which tools exist, and never write "structurally enforced" about a pattern. **Supersedes the 2026-06-02 prohibition** (*tool-restricted reviewer agents must be context:fork skills, not named plugin subagents*), whose warrant was that the frontmatter is bare-tool-names-only so listing `Bash` grants unrestricted Bash. Measured 2026-09-18 against Claude Code 2.1.277, owner-confirmed: a plugin agent with `tools: Read` had **no Bash tool at all**, so the tool-level bound is real and a fork skill is not required for it — `critic-reviewer` and `pr-reviewer` both ship this way. What stays unproven is the other half: every probe of whether `Bash(git status *)` narrows *within* Bash ran under a machine whose `permissions.defaultMode` is `dontAsk`, which neither `--permission-mode` nor `--settings` overrode, so an ungranted command running is fully explained by the mode. A `deny` rule DID reach the subagent — but deny is absolute under permissive modes, so that control licenses nothing. Consequence: choose the tool SET as the safety boundary (no `Bash` entry at all is a guarantee; `Bash(narrow)` is a statement of intent), and a fork skill's `allowed-tools` is a different layer, not a stronger one. Tell: you are about to call a `Bash(...)` grant a structural guarantee, on a consumer whose permission settings you have not read
 
 ### When a deliberate change turns a passing test red, renegotiate the contract in the open
 

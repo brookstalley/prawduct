@@ -438,17 +438,39 @@ class TestPrReviewSkillContent:
         Change, Proportionality). With the layering now explicit — per-chunk
         Critic = local correctness, final/cumulative Critic = bundle synthesis,
         PR reviewer = release readiness — the reviewer owns only the
-        release-specific lens: scope, narrative/coherence, merge hygiene, and
-        bundle-level simplification. The dropped goals are asserted absent in
+        release-specific lens. The dropped goals are asserted absent in
         test_review_protocol_dropped_critic_overlap_goals so the trim doesn't
         silently regrow.
+
+        **Contract renegotiated, in the open: goals 2 and 3 were RENAMED, not
+        dropped.** They were written as though the subject were product code,
+        and across 279 recorded findings it is not — 48% change-log coherence,
+        25% build-plan status and dangling pointers, 15% backlog reconciliation,
+        10% tag keys, against 0.7% on the debug-code and stray-file bullets
+        those goals led with. `.prawduct/` is non-judgeable by the coverage
+        algebra, so no Critic layer reads it and this reviewer is its only
+        reader. A goal naming a subject its reviewer does not review is a
+        binding statement that is simply false, which is why this is a recorded
+        decision (`build-plan-pr-review-payload.md`, Chunk 02) rather than doc
+        freshness. Every bullet the old names covered survives — the merge
+        hygiene set is now a bullet under goal 3 with its measured rarity
+        stated, which is why the old names are asserted GONE below rather than
+        merely un-asserted.
         """
         content = (FRAMEWORK_DIR / "skills" / "pr" / "review-protocol.md").read_text()
         for goal in (
-            "Right Scope", "Clear Narrative", "Merge Hygiene",
-            "Bundle-Level Simplification",
+            "Right Scope", "The Record Matches What Ships",
+            "Governance Bookkeeping Is Coherent", "Bundle-Level Simplification",
         ):
             assert goal in content, f"skills/pr/review-protocol.md missing goal: {goal}"
+        # The retired HEADINGS, not the bare terms — "merge hygiene" survives as
+        # a bullet and in the severity legend, and forbidding the phrase outright
+        # would outlaw the content this rename kept.
+        for retired in ("### 2. Clear Narrative", "### 3. Merge Hygiene"):
+            assert retired not in content, (
+                f"{retired!r} is back as a goal heading — the rename is what "
+                "makes the goal statement true of what this reviewer reviews"
+            )
 
     def test_findings_carry_their_cost_before_any_finding_is_written(self):
         """A v3.2.4 consumer was reading the PR reviewer's findings when it
@@ -471,8 +493,13 @@ class TestPrReviewSkillContent:
         content = (FRAMEWORK_DIR / "skills" / "pr" / "review-protocol.md").read_text()
         assert "costs the builder a review round" in content
         cost_at = content.index("costs the builder a review round")
+        # `### Findings` was an anchor inside the markdown `## PR Review` block
+        # the Output Format section used to ask for. That block had no consumer
+        # and was deleted; the surviving "here is where findings go" surface is
+        # `## Record Findings`, so the anchor moved with the shape rather than
+        # being dropped.
         for later in ("## Review Goals", "### 1. Right Scope", "## Severity Levels",
-                      "## Output Format", "### Findings"):
+                      "## Output Format", "## Record Findings"):
             assert cost_at < content.index(later), (
                 f"the round-cost statement sits BELOW {later!r} — the reviewer forms "
                 "findings before reaching it, which is the placement failure that made "
@@ -762,21 +789,40 @@ class TestPrReviewSkillContent:
             "release-process.md must say the benign exit-1 is not a waiver case"
         )
 
-    def test_review_protocol_references_learnings(self):
-        """PR reviewer must read the product's learnings during setup.
+    def test_review_protocol_does_not_send_the_reviewer_to_the_learnings(self):
+        """Contract INVERTED, in the open (pr-review-payload Chunk 02).
 
-        Post-cutover that is not one file: `core.md` is always loaded and each
-        area file arrives only when the diff intersects its `paths:` globs, so
-        the read list is computed, not written down. The protocol names the
-        command that computes it — a reviewer told to "read the learnings" with
-        no way to enumerate them reads `core.md` and silently misses every area
-        rule the session actually had in context.
+        This used to assert the protocol names `core.md` and the command that
+        enumerates the area files. Both reads are gone, and the reason is not
+        "they arrive by auto-injection" — the `pr-reviewer` agent's
+        `omitClaudeMd: true` removes that path too, so a reason resting on it
+        would be false in the same change. The two that survive: the goal
+        consuming the read returned 1 finding in 122 reviews, and the protocol's
+        own Learnings Cross-Check assigns that scan to the final/cumulative
+        Critic, so this reviewer was forbidden to perform it.
+
+        **The negative is bounded to the two reads, and paired with a positive.**
+        A bare "learnings" ban would forbid the Cross-Check paragraph naming the
+        owner — the sentence that makes the deletion safe — so the paragraph is
+        asserted present, and separately that it states the reviewer is not
+        given the corpus at all.
         """
         content = (FRAMEWORK_DIR / "skills" / "pr" / "review-protocol.md").read_text()
-        assert ".claude/rules/learnings/core.md" in content
-        assert "prawduct-hook learnings-files --for-diff" in content
-        assert "learnings.md" not in content, (
-            "the PR protocol still names the pre-cutover corpus — nothing reads it"
+        # NEGATIVE: the two reads, named exactly. Not the word "learnings".
+        assert ".claude/rules/learnings/core.md" not in content, (
+            "the protocol sends the reviewer to core.md again — a ~25k-token read "
+            "for a scan it is forbidden to perform"
+        )
+        assert "learnings-files" not in content, (
+            "the protocol names the area-file enumerator again"
+        )
+        # POSITIVE: the owner of the scan, and the fact that the omission is
+        # deliberate, both survive.
+        assert "Critic owns this scan" in content
+        assert "not given the learnings at all" in content
+        assert "1 finding in 122 reviews" in content, (
+            "the deletion's measured reason has to travel with it, or the next "
+            "editor reads the absence as an oversight and restores the read"
         )
 
     def test_review_protocol_has_learnings_crosscheck(self):
@@ -805,13 +851,31 @@ class TestPrReviewerScoping:
     def skill(self) -> str:
         return (FRAMEWORK_DIR / "skills" / "pr" / "SKILL.md").read_text()
 
-    def test_protocol_consumes_gate_certified_soundness(self):
-        """The reviewer must not re-derive code soundness — the composition
-        gate certifies it structurally before dispatch."""
+    def test_protocol_scopes_off_code_soundness_without_claiming_a_verdict(self):
+        """The reviewer must not re-derive code soundness. What changed is the
+        WARRANT, not the scoping: under concurrent dispatch the cumulative review
+        may still be running when this reviewer finishes, so "the gate certified
+        it before you were dispatched" is false at the moment it is read.
+
+        The scoping never actually rested on that verdict — it rests on the
+        Critic OWNING the layer, which holds while its review is in flight. So
+        the ownership sentence and the gate's name are asserted, and the
+        before-dispatch certification is asserted GONE: leaving it would tell a
+        reviewer that soundness had been cleared when nothing had yet cleared it,
+        which is the one reading that could make it skip a real release blocker.
+        """
         content = self.protocol
         assert "re-derive code soundness" in content
         assert "check-cumulative-critic" in content
-        assert "zero unresolved blocking findings" in content
+        assert "the Critic **owns** that layer" in content
+        assert "does not rest on that gate having reported" in content
+        for stale in ("zero unresolved blocking findings",
+                      "before you are dispatched",
+                      "before you were dispatched"):
+            assert stale not in content, (
+                f"{stale!r} is back — under concurrent dispatch it asserts a "
+                "verdict that may not exist yet"
+            )
 
     def test_protocol_audit_machinery_stays_deleted(self):
         """The deleted two-reviewer overlap machinery must not regrow: no
@@ -833,13 +897,28 @@ class TestPrReviewerScoping:
         assert ".critic-findings.json" in content
         assert "prawduct-hook evidence list" in content
 
-    def test_skill_states_gate_certification(self):
-        """Step 3's reviewer handoff states the gate has passed and scopes the
-        reviewer to release readiness (no ledger-fallback record plumbing)."""
+    def test_skill_scopes_the_reviewer_off_code_soundness(self):
+        """Contract renegotiated: the handoff can no longer claim the gate has
+        PASSED, because Step 2 now dispatches the cumulative review and this
+        reviewer concurrently (`nonfunctional-requirements.md` § Performance).
+
+        What the scoping actually rests on is unchanged and never was the gate's
+        verdict: the Critic OWNS code soundness, which is true while its review
+        is still running. So the handoff states which of the two situations the
+        reviewer is in, and the scoping sentence is asserted independent of it.
+        """
         content = self.skill
-        assert "cumulative-Critic gate has passed" in content
+        assert "Code soundness belongs to the Critic and is not yours to re-derive" in content
+        assert "running beside you, or has already passed" in content, (
+            "the dispatch must say WHICH — they are different facts and the "
+            "reviewer should not have to guess"
+        )
         assert "release readiness" in content
         assert "ledger-fallback" not in content
+        assert "cumulative-Critic gate has passed" not in content, (
+            "under concurrent dispatch that sentence is false at the moment it "
+            "is spoken"
+        )
 
     def test_skill_appends_review_pr_ledger_event(self):
         """Step 4 appends the review.pr event so both review roles are in the
