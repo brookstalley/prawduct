@@ -19,7 +19,6 @@ layer happens after all five miners report.
 |---|---|---|
 | cordyceps (C# server, wide production use) | 60 | **re-mined 2026-09-18 → `cordyceps-server-structured.md`, 95 rules, all addressed** (verified: 0 UNADDRESSED, 0 bare line-number citations, all 7 schema fields on all 95) |
 | bankmachine (Python server, measured evidence trail) | 84 | **re-mined 2026-09-18 → `bankmachine-server-structured.md`, 147 rules, all addressed** (verified: 0 UNADDRESSED, all 7 fields on all 147; marker normalized at integration) |
-| discodon (client/bridge — consumer's view of arbitrary servers) | 48 | **re-mined 2026-09-18 → `discodon-consumer-structured.md`, 87 rules** (1 UNADDRESSED, 11 CONTRADICTED, 0 bare line-cites, all 7 fields × 87) |
 | prawduct (own research + delivery-surface map) | ~15 | in `../mcp-knowledge-corpus-design.md` §8 |
 | hallucinote (Python server) | 92 | two renderings; addressed twin in `hallucinote-server-structured.md`; **audited 2026-09-18 → `hallucinote-verification.md`** — 106 verdicts: 95 RESOLVED · 7 MOVED · 0 NOT-FOUND · 2 CONTRADICTED · 2 UNVERIFIABLE |
 
@@ -59,7 +58,7 @@ The note at the top of this file says each citation "must be re-checked against 
 That framing was wrong about four of the five files, in a way that matters: **there are no citations
 to re-check.**
 
-    for f in cordyceps-server.md bankmachine-server.md discodon-consumer.md \
+    for f in cordyceps-server.md bankmachine-server.md \
              hallucinote-server.md hallucinote-server-structured.md; do
       printf '%-36s ^PROVENANCE:%-5s distinct-tree-paths:%s\n' "$f" \
         "$(grep -c '^PROVENANCE:' "$f")" \
@@ -94,7 +93,6 @@ a session's context evaporates at the next `/clear`.
 |---|---|---|---|
 | miner | `/Users/brookstalley/source/cordyceps` (`develop`) | `cordyceps-server-structured.md` | re-mine under the structured schema |
 | miner | `/Users/brookstalley/source/bankmachine` (`feature/mcp-error-recovery-and-types`) | `bankmachine-server-structured.md` | re-mine; establish the answer-shape tool-boundary claim |
-| miner | `/Users/brookstalley/source/discodon` (`feat/eval-candidate-kind-seam`) | `discodon-consumer-structured.md` | re-mine; establish the tool cap, the clamp policy, the frozen-schema observation |
 | verifier | `/Users/brookstalley/source/hallucinote` (detached HEAD) | `hallucinote-verification.md` | resolve all 106 `PROVENANCE:` lines against the tree |
 
 Each was briefed to: anchor on a symbol or heading and never a bare line number; carry no digit
@@ -133,18 +131,19 @@ nobody re-checks them. **So a quotation in an `EVIDENCE:` field is a claim, exac
 `file:line`** — the schema's `PROVENANCE:` line invites a reader to believe the quote was checked
 because the address was.
 
-**cordyceps, bankmachine and discodon have now been audited. Results, method, what was corrected and
-what is still owed: `capture-quotation-verification.md`.** The numbers have one home, which is that
-file and the instrument it cites; they are not restated here.
+**cordyceps and bankmachine have now been audited. Results, method, what was corrected and what is
+still owed: `capture-quotation-verification.md`.** The numbers have one home, which is that file and
+the instrument it cites; they are not restated here. A third source mined in the same pass is
+deliberately not published in this repository — that file's § *Scope* says why, and the reason is
+not a quality judgement about the capture.
 
 **This section previously recorded the instrument as "extract the `*"…"*` runs" and said it did not
 need an agent. The second half was right and the first was wrong twice**, which is why the
 instrument is now committed as `tools/verify-capture-quotations.py` with its controls rather than
 described in prose:
 
-- it read only the **italic** form — but only cordyceps uses that convention; bankmachine and
-  discodon quote with plain `"…"` almost exclusively, so nearly every fragment in two of the three
-  captures went unaudited;
+- it read only the **italic** form — but only cordyceps uses that convention; bankmachine quotes
+  with plain `"…"` almost exclusively, so nearly every fragment in that capture went unaudited;
 - and as a `grep -oE` it is **line-based**, so any quotation that *wraps* is invisible — and these
   captures wrap prose at ~95 chars. Run `tools/verify-capture-quotations.py --counts`: it reproduces
   the grep figure and checks that it equals exactly the non-wrapping subset.
@@ -167,22 +166,25 @@ must read; it does not empty it.
 All four addressed captures are reaped. **One marker, one command, and for the first time a count of
 this corpus that reproduces:**
 
-    grep -c '^\*\*RULE:\*\*' *-structured.md      # discodon 87 · cordyceps 95 · bankmachine 147 · hallucinote 106
-    cat *-structured.md | wc -cw                  # 634,701 bytes / 88,813 words
+    grep -c '^\*\*RULE:\*\*' *-structured.md      # per capture; run it rather than quoting it
+    cat *-structured.md | wc -cw                  # bytes / words — run it, do not quote it
 
-**435 rules, 1 UNADDRESSED.** Two marker variants were normalized at integration — bankmachine's
-newness flag (moved to `FIRST-SEEN:`) and discodon's provisional flag (moved to `STATUS:`) — because
+**One marker, one command, and for the first time a count of this corpus that reproduces.** Run the
+commands above rather than quoting a total here: the corpus lost a source after these lines were
+written (see `capture-quotation-verification.md` § *Scope*), and every transcribed total in this
+directory went stale the moment it did — which is the defect this whole section exists to describe.
+Two marker variants were normalized at integration — bankmachine's
+newness flag (moved to `FIRST-SEEN:`) and a second capture's provisional flag (moved to `STATUS:`) — because
 each put its payload *inside* the `RULE:` token, which is invisible to the count that reads it.
 
 **The remaining non-uniformity is the field layout, and it bites the same way.** Three captures put
 one field per line; `hallucinote-server-structured.md` combines `LAYER · KIND · EVIDENCE` on one line
 and `VOLATILE · TENSION` on another. Per-file field counts are unaffected (`grep -c '^LAYER:'` is 106
 there, correctly), but **a corpus-wide layer tally silently matches a different set per file** —
-`grep -h '^LAYER: L' | sort | uniq -c` returns 435 rows of garbage, because each combined line is
+`grep -h '^LAYER: L' | sort | uniq -c` returns one row per rule — garbage — because each combined line is
 unique. Use the layout-agnostic form, which anchors and stops:
 
     grep -ohE '^LAYER: L[0-4]' *-structured.md | sort | uniq -c
-    # L0 34 · L1 146 · L2 97 · L3 112 · L4 46 = 435
 
 **hallucinote's layout was deliberately left alone**: it is the record under audit, and
 `hallucinote-verification.md`'s per-rule anchors are keyed to it. Normalize it when it is lifted into

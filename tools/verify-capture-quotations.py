@@ -5,8 +5,8 @@ The derivation behind `.prawduct/artifacts/mcp-mining/capture-quotation-verifica
 kept runnable so its numbers are falsifiable. Cite this command, never the digits.
 
     tools/verify-capture-quotations.py --self-test
-    tools/verify-capture-quotations.py cordyceps bankmachine discodon
-    tools/verify-capture-quotations.py discodon --show-hits
+    tools/verify-capture-quotations.py cordyceps bankmachine
+    tools/verify-capture-quotations.py bankmachine --show-hits
 
 Why it exists: `hallucinote-verification.md` found 19 of 202 quotations wrong and 1
 absent in one capture **with every address clean**. A `PROVENANCE:` line invites a
@@ -79,18 +79,6 @@ SOURCES: dict[str, dict[str, object]] = {
         "capture": "bankmachine-server-structured.md",
         "repo": Path.home() / "source" / "bankmachine",
         "shas": ["bf83e63329436e1189db1eb5a316ab8760100ffc"],
-        "working_tree_fallback": False,
-    },
-    "discodon": {
-        "capture": "discodon-consumer-structured.md",
-        "repo": Path.home() / "source" / "discodon",
-        # HEAD moved during that read; the header names both ends and says citations
-        # were re-checked against the far one. A fragment matching ONLY at the end SHA
-        # is reported as such rather than counted clean.
-        "shas": [
-            "9d54e8f8f6d364f0c4c4c40a36f559ff48c54266",
-            "77d104432dfcb8348a6d1ef5755b574ca330a8ed",
-        ],
         "working_tree_fallback": False,
     },
 }
@@ -345,7 +333,7 @@ def audit(source: str, min_length: int = MIN_LENGTH_DEFAULT,
     if cfg["working_tree_fallback"]:
         corpora.append(load_working_tree(repo))
     # Every corpus, not just the first. A silently-empty SECONDARY corpus (cordyceps'
-    # working tree, discodon's end SHA) cannot be distinguished from "nothing matched
+    # working tree, or a capture's end-of-read SHA) cannot be distinguished from "nothing matched
     # there", so it degrades a verdict without ever failing.
     if not corpora:
         die(f"error: no corpus for {source} — the search would pass vacuously")

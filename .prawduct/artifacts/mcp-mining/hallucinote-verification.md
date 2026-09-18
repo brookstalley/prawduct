@@ -142,7 +142,7 @@ Two figures are not right, and neither is a constant:
 1. **"Four of six verification boxes were UNREACHABLE"** — the cited box list has three UNREACHABLE and one FAILS. The capture copied the section header instead of counting the list, and the header is itself loose (its "TWO BOXES PASS" includes a box labelled "NOT REPRODUCIBLE AS WRITTEN, and the escalation half FAILS"). See R066.
 2. **"~23 MB per surface-minute"** — correct, but not at the two symbols R003 cites. Its homes are `docs/running-the-engine.md:63` and `CHANGELOG.md:437`.
 
-**Out of scope, and worth saying so:** the brief asks about "37 and 43 parameter counts". Those figures appear nowhere in `hallucinote-server-structured.md` or in `hallucinote-server.md`. `.prawduct/artifacts/mcp-mining/README.md:72` attributes them to the *other* captures (cordyceps / bankmachine / discodon), alongside "a 49% docs-token reduction" and "~32 minutes of observed silence" — and those four files carry zero `PROVENANCE:` lines, so nothing in them is addressed at all. They are a separate debt, not this file's.
+**Out of scope, and worth saying so:** the brief asks about "37 and 43 parameter counts". Those figures appear nowhere in `hallucinote-server-structured.md` or in `hallucinote-server.md`. `.prawduct/artifacts/mcp-mining/README.md:72` attributes them to the *other* captures (cordyceps / bankmachine), alongside "a 49% docs-token reduction" and "~32 minutes of observed silence" — and those four files carry zero `PROVENANCE:` lines, so nothing in them is addressed at all. They are a separate debt, not this file's.
 
 ---
 

@@ -192,7 +192,7 @@ meaning outside it.
 - **R2 / R5 cluster.** Same fire-site, same cause; likely one rule with two facets.
 - **R8 cost claim unresolved.** "More efficient" wants a number, and the dominant cost is likely
   *agent context* consumed by a large tool result rather than wire encoding. Unverified — flagged to
-  the discodon mining pass, which was asked for the bridge's real size limits.
+  the withdrawn consumer capture's mining pass, which was asked for the bridge's real size limits.
 
 ### Candidate mechanization
 
@@ -396,7 +396,8 @@ is not what was asked for and not what is needed.
 ### 10.1 Size measurement settles the packaging question: DIRECTORY, not one file
 
 **Measured 2026-09-17, on bytes rather than on a rule count.** The four compressed captures weigh
-**87,596 bytes / 13,530 words** — `wc -cw .prawduct/artifacts/mcp-mining/{cordyceps-server,bankmachine-server,discodon-consumer,hallucinote-server}.md`.
+measured with `wc -cw` over the compressed captures — run it rather than quoting a figure, since
+the corpus has since lost a source (§10.5).
 Against `.claude/rules/learnings/core.md` at 100,336 bytes (`wc -c .claude/rules/learnings/*.md`),
 which is the file the size advisories already complain about and which the harness auto-loads
 **whole**, the captures are already ~87% of it.
@@ -461,8 +462,8 @@ rather than a size estimate for the artifact.
   for a baseline measurement never performed.* bankmachine **rejects the framing outright**: both
   "one tool per question" and "one tool with an action enum" share the false premise that a boundary
   tracks the *question*; draw it where the **answer shape** changes, which took 10 tools to 8 with no
-  `outputSchema` loss. discodon supplies the consumer-side evidence for why width matters at all
-  (silent truncation past its cap). **The corpus must state this as a live disagreement with the
+  `outputSchema` loss. the withdrawn consumer capture supplied the consumer-side evidence for why width matters at
+  all — a client silently truncating past a roster limit. **The corpus must state this as a live disagreement with the
   evidence on each side, not resolve it by majority.**
 - **R2 (>60s → async handle) — QUALIFIED, hard.** MCP progress notifications are received but **do
   not reset or extend the tool-call timeout** (Claude Code #58687), and transport choice is not a
@@ -476,7 +477,7 @@ rather than a size estimate for the artifact.
   cordyceps, hallucinote and bankmachine's absence of any binary path. Strongest-attested rule here.
 - **R6 (refactor freely) — the precondition is now explicit.** hallucinote may skip back-compat
   entirely *because one installer deploys both halves and a handshake makes "old client meets new
-  server" unreachable*. discodon proves the converse: a published schema is **frozen** in a client
+  server" unreachable*. the withdrawn consumer capture showed the converse: a published schema is **frozen** in a client
   that already registered it, and a correct server-side `list_changed` implementation "did not help."
 
 ### 10.3 Cross-repo disagreements to adjudicate (the most valuable output)
@@ -487,18 +488,18 @@ rather than a size estimate for the artifact.
 > corpus's one genuinely open disagreement is R1 in §10.2 above.
 
 1. **Clamp vs refuse an out-of-range value.** bankmachine: *refuse and quote the ceiling, never
-   clamp* — clamping makes a trimmed answer byte-identical to a complete one. discodon and
+   clamp* — clamping makes a trimmed answer byte-identical to a complete one. the withdrawn consumer capture and
    hallucinote: *clamp and say you clamped* — a bare refusal costs a round-trip the agent spends
    guessing. Candidate synthesis: refuse where silence would be indistinguishable from completeness
    (row/data reads); clamp-and-announce where the parameter is a resource budget (duration, wait) and
    every value is semantically valid.
-2. **Tool-count ceiling.** discodon caps at 20 and silently slices; hallucinote cites Cursor 40
+2. **Tool-count ceiling.** the withdrawn consumer capture recorded a client-side cap with silent slicing; hallucinote cites Cursor 40
    (silent drops) and Copilot 128, plus a 10–20 selection-accuracy band. One dated-facts entry, not
    three rules.
-3. **Progress notifications.** cordyceps declined them without recording why; ~~discodon demands
+3. **Progress notifications.** cordyceps declined them without recording why; ~~the withdrawn consumer capture demands
    progress above ~30s~~; hallucinote verified they do not affect the timeout. One coherent answer
    exists that no single repo held — good evidence the corpus earns its keep.
-   **Corrected 2026-09-18: discodon's position was invented.** Its audit found no `~30s` constant, no
+   **Corrected 2026-09-18: that capture's position was invented.** Its audit found no `~30s` constant, no
    doc rule, and no MCP progress mechanism to hang one on. The tree's actual rule is **categorical**,
    not duration-based — *runs have `get_run`, generations have no equivalent* — and a duration
    threshold is the framing its own incident refutes. This makes the dissolution cleaner rather than
@@ -538,7 +539,7 @@ that a blocked host times out at 30s).
 
 **Quotation half PAID 2026-09-18 for the three re-mined captures.** The debt had two halves — the
 *address* and the *quotation* — and only the first was ever named here. cordyceps, bankmachine and
-discodon have now had their quoted evidence searched against their source trees at their declared
+bankmachine have now had their quoted evidence searched against their source trees at their declared
 SHAs, and **no fabrication was found in the drift-signature bucket**, which was chased by hand in
 full. One capture was corrected (a shortened placeholder inside a quoted shell command). **Counts,
 per-source resolve rates, verdicts, method and what is still owed all live in
@@ -564,6 +565,48 @@ Two consequences for authoring rather than for the debt ledger:
 
 Still owed on the quotation half: the fragments in the shallower miss buckets, the `code-span` class,
 and hallucinote's own 19 known-wrong quotations, which its audit reported without editing.
+
+### 10.5 One mined source is withdrawn from this repository (2026-09-18)
+
+A fourth capture — a client/bridge consumer, the only consumer-side source in the corpus — was
+mined and audited in the same pass and is **not published here.**
+
+**Why.** This repository is public. That source is a **private repository owned by a different
+account**, and the capture was a verbatim record of its internals. Publishing it would have
+disclosed a third party's private code through a governance artifact. Caught by the PR reviewer
+before the branch was ever pushed.
+
+**This section deliberately says no more than that.** Naming the repository, or enumerating what the
+capture found wrong with it, would re-create in the explanation the exposure the withdrawal exists
+to prevent — a public note saying "we withheld X because X has unreported defects" tells a reader
+exactly where to look. That trap caught this very section on its first draft.
+
+**What it costs the corpus, stated rather than glossed.** It was the *only* consumer-side source —
+the only evidence of how an arbitrary client actually treats a server's declared surface — so its
+loss is not proportional to its rule count:
+
+- §10.2's **R1** loses the consumer-side reason tool-surface width matters at all.
+- §10.3 item 1 (**clamp vs refuse**) loses one of its two positions and is now **blocked**, not
+  awaiting: bankmachine's *refuse* side is still evidenced here, the *clamp* side is not.
+- §10.3 item 2 (**tool-count ceiling**) keeps hallucinote's client constants and loses the
+  directly-observed one.
+- §11.3's triage stands as reasoning, but two of its rows now rest on evidence a reader of this
+  repository cannot check.
+
+**What is NOT lost.** The work exists; it is unpublishable from here, not wrong. Its drift items are
+still owed to their owner and are not discharged by being removed from this repo
+(`mcp-mining/drift-owed-upstream.md`).
+
+**The governance lesson, because it generalises past this corpus.** The build plan's `governed_by`
+disposition for the security-model norm *a product's content leaves its repo only through a pinned,
+owner-approved surface* read **"inapplicable because nothing leaves this repo."** That was true of
+the sibling working trees and false of the direction that mattered: mining brings a third party's
+content **into** a public repo. An exposure boundary does not care which way content crosses it, and
+a disposition written from the norm's example rather than its predicate will read the wrong
+direction as settled. **Any future mining pass asks, before the first read: is the source repo
+public, and is it ours?**
+
+---
 
 ---
 
@@ -622,9 +665,9 @@ Applying 11.1 to §10.3's list, reading only what §10.3 itself already states:
 
 | # | Question | Outcome implied by §10.3's own words | Verdict slot |
 |---|---|---|---|
-| 1 | Clamp vs refuse an out-of-range value | **(a)** — §10.3 supplies the candidate precondition itself: refuse where silence would be indistinguishable from completeness; clamp-and-announce where the parameter is a resource budget | **awaiting** the discodon audit: which parameters actually clamp, and whether the announcement reaches the surface an agent reads |
+| 1 | Clamp vs refuse an out-of-range value | **(a)** — §10.3 supplies the candidate precondition itself: refuse where silence would be indistinguishable from completeness; clamp-and-announce where the parameter is a resource budget | **BLOCKED, not awaiting** — the evidence for the clamp side sat in the withdrawn consumer capture (§10.5), so this adjudication cannot be settled from what this repository holds |
 | 2 | Tool-count ceiling (20 / 40 / 128 / a 10–20 band) | **Not an adjudication at all.** §10.3: *"One dated-facts entry, not three rules."* These are client constants, which §3.5 already routes to the dated-facts surface | **awaiting** both audits for the real numbers; the filing decision needs nothing further |
-| 3 | Progress notifications | **(a)** — §10.3: *"One coherent answer exists that no single repo held."* That is a dissolution by definition | **narrowed 2026-09-18** — discodon's `~30s` position was invented and is withdrawn; hallucinote's timeout fact RESOLVED against its tree. Still awaiting whether cordyceps recorded a reason. The rule is categorical, not duration-based |
+| 3 | Progress notifications | **(a)** — §10.3: *"One coherent answer exists that no single repo held."* That is a dissolution by definition | **narrowed 2026-09-18** — that capture's `~30s` position was invented and is withdrawn; hallucinote's timeout fact RESOLVED against its tree. Still awaiting whether cordyceps recorded a reason. The rule is categorical, not duration-based |
 | 4 | Rename policy | **(a)** — §10.3: *"Both are right under different preconditions, and the precondition is the rule"* | **awaiting** the hallucinote audit of design-doc-vs-shipped-policy |
 
 **So §10.3's framing overstates the disagreement.** Three of its four dissolve into one rule with a
@@ -636,7 +679,7 @@ written. It does mean the corpus's **one genuinely open disagreement lives in §
 > reduction; hallucinote consolidated on borrowed benchmarks with its own required baseline
 > measurement never performed; bankmachine **rejects the framing outright** — both "one tool per
 > question" and "one tool with an action enum" share the false premise that a boundary tracks the
-> *question*, where it should be drawn where the **answer shape** changes. discodon supplies the
+> *question*, where it should be drawn where the **answer shape** changes. the withdrawn consumer capture supplies the
 > consumer-side reason width matters at all.
 
 That is the corpus's flagship ADJUDICATION, and §10.2 already commits to filing it as one. Note the
