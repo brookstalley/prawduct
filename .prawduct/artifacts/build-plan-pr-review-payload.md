@@ -425,6 +425,20 @@ while the instruction has no effect. Two verifications beyond the suite:
     by a bare `#999` on the next line marks both as claimed. **The direction is deliberate** — a
     commit trailer block IS one closure list — but nothing pins it; add the fixture, not a
     `[^\S\n]` bound, when this file is next edited.
+  - **Carried, accepted at the final rounds — one batch for the next judgeable commit on these
+    surfaces.** Each costs a full review round alone and none blocks; recorded here because an
+    acceptance routed nowhere is a drop. (a) `skills/pr/SKILL.md` Step 3's prompt literal omits
+    `<project dir>` while both surfaces the reviewer reads first mandate it. (b) **A FALSE CLAIM to
+    delete, not a nit:** `tools/measure-consumer-overhead.py`'s `_parse_instant` docstring says the
+    3.10 version bound "is stated once and cannot be forgotten at a fourth site", while four sites
+    in that same file still parse inline with their own `.replace("Z", ...)` — either route them
+    through it or delete the sentence. (c) `plugin/skills/pr/review-protocol.md:12` points the
+    reviewer at `cost-of-commit`, which `agents/pr-reviewer.md` does not grant — **the same
+    producer/consumer shape as the `gh repo view` seam that was BLOCKING when found earlier on this
+    branch**, so treat it as a known live instance rather than a cosmetic gap. (d) the
+    `fromisoformat` guard's positive control asserts reachability but never runs the predicate it
+    grades. (e) `_CLAIM_REGION`'s separator crosses a newline — deliberate (a commit trailer block
+    is one closure list) and simply unpinned.
   - **Two backlog items name a file this bundle edited and were not assessed** (cumulative review
     R-17, flagged in passing, not work): `#672` (*coverage composes by tree but its gates key on
     identity*) and `#767` (*test-status: `current` on a stale tree*) both list

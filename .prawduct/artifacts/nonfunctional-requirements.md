@@ -165,10 +165,9 @@ Targets we want to hold:
 
   The `0 measured` column is the positive control: before this scope no review duration in either
   repo was a code-written interval, so the 420s and the 14.1 min are both the reviewing model's own
-  recollection and the target had never actually been measured against. **The post-change reading is
-  owed at this bundle's own PR** — it is the first dispatch that can produce a `measured` row, and
-  it is recorded here beside the numbers above, including if it misses. Until that row exists this
-  table states a baseline and nothing else; do not read it as a result.
+  recollection and the target had never actually been measured against. The after-table above is
+  that control coming back non-zero — had it still read `0 measured`, the clock would not have
+  fired and the figures beside it would have meant nothing.
 - **Validating a comment-only change: ≤ 30s.** A change confined to comments must be cleared in
   under half a minute or the check is not worth keeping — at that price the question of whether
   it is proportionate stops being interesting. The budget is met by *deterministic* checks over
