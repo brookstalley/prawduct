@@ -75,6 +75,113 @@ Fourteen mutants were run against the mechanism: thirteen died, and the one expe
 (record keys stop being sorted) did, which is what shows the sweep can report a survivor rather
 than killing everything by construction.
 
+**What the review changed, because two of the three are not records nits.** Three reviewers
+converged on one class from different directions: *the refusal was written for one of its six
+causes*. The `partial` advice — "editing or deleting the scope record is not a way forward" — was
+printed for the mismatched-`report` case too, where the contract's own remedy is to fetch the report
+WITHOUT its record. An operator holding a CI report+record pair was being told to re-run the suite,
+which is the cost this branch exists to remove. The reader now returns a cause alongside the reason
+and the caller maps it to a remedy, with each case pinned on the message it gets AND the message it
+must not get. Second: the guard's ingest-only warrant did not cover the **interpreter-fallback run
+path**, which has no declaration to define the suite and appends the operator's args verbatim — so
+`test-evidence record -k billing` in an undeclared repo would have run a subset and recorded it as
+suite evidence, reaching the false green by a shorter command than the one already refused. That
+path now consults the record before the cleanup deletes it. Third: the conventional path is
+resolved by the runner against the INVOCATION directory, so `cd tests && pytest` wrote
+`tests/.prawduct/.test-report.xml` — outside the root-anchored ignore patterns and outside the
+boundary sweep, untracked output one `git add -A` from being committed. The producer now anchors a
+relative report path to the project root before the runner resolves it, and the contract states the
+property so every producer author inherits the answer rather than the question.
+
+**Three defects found by scrubbing my own diff while the review ran**, each now pinned: a record
+whose `report` field carries an embedded NUL made `Path(...).resolve()` raise out of a function
+whose contract is that errors are return values; a producer whose write failed (read-only
+directory, full disk) took the suite down with it, where it should degrade to absence and say so;
+and the temp-record cleanup resolved its path inside a `finally`, which is the worst place for a
+first import. **And one defect in the test that found nothing:** the cleanup test globbed THIS
+process's temp dir while the recorder subprocess used its own, so it passed with the cleanup
+deleted. The mutation sweep is what said so — the run harness now pins `TMPDIR` and the test has a
+positive control asserting the stand-in runner really writes both files.
+
+**What the second round added, and it was the same shape as the first.** The verification pass
+found one blocking gap: the degraded-write path shipped with no test. I had written the guard AND
+written the obligation into the contract — *"a failed write must leave the run alone and say so on
+stderr"* — and pinned neither half, in the framework's own worked example, which is where a
+producer author looks. Both halves are pinned now (returns rather than raises; the NOTE names the
+consequence, not just the errno), forced structurally by making the record's parent a regular file
+rather than by a chmod, so it holds for root too. Five observations rode the same commit: the new
+citation guard's pattern allowed one backtick and so saw two of the five instances it was born
+from — widened, given a positive control, and it then found two PRE-EXISTING misattributions in
+`prawduct-hook`'s own docstrings; `tests/conftest.py` still carried the citation in the file whose
+comment calls it the copy a consumer takes; a record naming NO report was tagged `mismatch`, so it
+got the "fetch the report without its record" remedy, which is nonsense advice for a record that
+was never written correctly (it is `malformed`); and the cause tags are now asserted where each
+condition is defined rather than in one CLI test.
+
+**Also shipped, and easy to miss in a change described as a contract:** a new shipped-tree
+invariant — no file under `plugin/` may cite a Direction norm out of an `artifacts/<x>.md`
+document, because in a consumer repo that path resolves to THEIR artifact and the citation
+misattributes prawduct's governance to a document they never ratified; the contract's new § *What a
+producer owes beyond writing the record*, which is where the degradation posture and the two
+obligations on a producer author live; and a dated row in `.prawduct/cross-cutting-concerns.md`
+recording that this requirement ships with **no detection leg** and why — absence has to stay
+permissive, so a detector would be asserting a requirement the framework cannot check without the
+declaration this cycle deliberately cut. A detector and that key are one decision, not two.
+
+**Review dispositions** (rendered, never hand-counted):
+
+**rev-20260918T045444Z-6da0e807** — scope `test-report-scope`, chunk 01, 2026-09-18T04:59:59Z
+
+| Finding | Severity | State | Detail |
+|---|---|---|---|
+| R-1 | blocking | fixed | record-lint: chunk-ref-missing — a deliverable line the check reads as a path, and a stale module name the `new ` exemption is currently hiding |
+| R-2 | warning | fixed | record-lint: governed-by-gap — three cited artifacts carry more Direction norms than the plan disposes of |
+| R-3 | warning | fixed | The run path's new scope-record unlink is the one changed behaviour with no test |
+| R-4 | warning | fixed | the shipped contract doc cites an artifact the plugin does not ship |
+| R-5 | warning | fixed | one remedy text is printed for five refusal causes, and contradicts the contract for one of them |
+| R-6 | warning | fixed | the guard's warrant does not cover the undeclared-command run path, and the record there is deleted unread |
+| R-7 | warning | fixed | the conventional report path is CWD-relative while its ignore entries are root-anchored |
+| R-8 | note | fixed | a new standing product requirement with no detection leg, and no registry row |
+| R-9 | note | fixed | the worked producer's hardest piece is prose-only, and its real implementation does not ship |
+| R-10 | warning | fixed | the ingest refusal speaks for one of its six conditions, and contradicts the contract's own remedy for another |
+| R-11 | warning | fixed | the contract specifies the producer's happy path only — a silently broken producer is indistinguishable from an un-wired repo |
+| R-12 | warning | fixed | the conventional report path is invocation-relative, so a subdirectory run writes an unignored `.prawduct/` nothing cleans up |
+| R-13 | note | fixed | Records Pass: the plan's deliverable names a module that shipped under another name |
+| R-14 | note | accepted | Informational: the learnings cross-check came back clean (no rule added or changed this cycle, no reintroduced pattern). Nothing to action — recorded so the pass is visible rather than absent. |
+| R-15 | note | accepted | Correct, and its timing is not mine to choose: this repo runs the Issues backend, where the backlog skill's 'When to mark shipped' rule defers the close to the MERGE (an API close on an unmerged branch leaves the item wrongly closed if the PR is reworked). /prawduct:pr's Merge Flow owns that step, so the close is carried by a mechanism rather than by memory. The dissolved-not-built reasoning is recorded in the build plan's Done-when step 4 and will ride the PR body, which is what the finding asks for. |
+| R-16 | note | accepted | Assessed, none close. #680 (a declared test_command refuses every external ingest) is narrowed by this work, not closed: the branch checks WHAT --from-junit ingests and lifts none of the --from-counts/--no-rerun refusals the item names — the reviewer reached the same reading independently. #767's fix is on an unmerged branch parked by owner sequencing, and #820 (project control over when the full suite runs) is untouched policy work whose real pairing is #653. Updating any of the three today would record a change this branch did not make. |
+
+**rev-20260918T051450Z-37f847fa** — scope `test-report-scope`, chunk 01, 2026-09-18T05:17:03Z
+
+| Finding | Severity | State | Detail |
+|---|---|---|---|
+| R-1 | blocking | fixed | the producer's new degraded-write path is changed behaviour with no test |
+
+_Observations — read, not owed. Answering one is optional._
+
+| Observation | State | Detail |
+|---|---|---|
+| O-1 | noted | the new packaging guard catches two of the five instances R-4 named |
+| O-2 | noted | the conftest a consumer is invited to copy still carries the misattribution R-4 closed |
+| O-3 | noted | the change-log's review paragraph covers three of the review's changes and omits three |
+| O-4 | noted | `cause` is unpacked in ten reader tests and asserted in one |
+| O-5 | noted | a record with no `report` field is tagged CAUSE_MISMATCH |
+
+**rev-20260918T052614Z-a688b13f** — scope `test-report-scope`, chunk 01, 2026-09-18T05:27:21Z
+
+_No findings._
+
+_Observations — read, not owed. Answering one is optional._
+
+| Observation | State | Detail |
+|---|---|---|
+| O-1 | noted | the guard's new comment claims a newline collapse the code does not perform |
+| O-2 | noted | CAUSE_MALFORMED's inline enumeration no longer lists every condition it tags |
+| O-3 | accepted | The reader is the layer the retag happened at, and it is pinned there; both CLI remedy branches (mismatch and the generic 'nothing readable says what that run covered') already have cases in TestTheRefusalSpeaksForItsOwnCause, so what is unpinned is the JOIN — which cause a no-report record maps to at the CLI — and that join is one dict lookup with no branch of its own. Recorded rather than fixed because a third CLI subprocess case costs a second of suite time per run to pin a mapping the reader test already fixes. |
+
+**17 findings** (2 blocking, 9 warning, 6 note) — accepted: 3, fixed: 14.
+**8 observations demoted** — 1 answered. An observation gates nothing; answering one is optional.
+
 **Budget.** `building.md`'s ceiling is a declared raise (4911 → 5021) with its reason at both the
 reading and the assertion. Neither payment route was honest: deduping against the always-injected
 digest is a dedup for the main agent and a deletion for a delegate, which reads that file without

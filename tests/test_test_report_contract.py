@@ -19,6 +19,7 @@ from __future__ import annotations
 import ast
 import json
 import re
+import textwrap
 from pathlib import Path
 
 import pytest
@@ -133,12 +134,22 @@ def test_the_readers_rules_keep_both_directions(contract):
     assert "Refuse" in partial[1], "a partial record must refuse"
 
 
-def test_the_worked_producer_parses(contract):
-    """The Python example is copied, not read. A snippet that does not parse
-    fails in the consumer's repo, where nothing of ours is watching."""
+def test_every_python_snippet_parses(contract):
+    """The Python examples are copied, not read. A snippet that does not parse
+    fails in the consumer's repo, where nothing of ours is watching.
+
+    EVERY block, not the first: the doc grew a second one (the two lines that
+    anchor a relative report path) and a check bounded to one block would have
+    stopped looking exactly where the new content is. Fragments are dedented
+    before parsing, because an indented insert is a legitimate shape for
+    "add this inside that function"."""
     blocks = _fenced_blocks(contract, "python")
-    assert len(blocks) == 1, "expected exactly one Python producer example"
-    ast.parse(blocks[0])
+    assert blocks, "the contract has no Python producer example at all"
+    for i, block in enumerate(blocks):
+        try:
+            ast.parse(textwrap.dedent(block))
+        except SyntaxError as exc:
+            raise AssertionError(f"python block {i} in the contract does not parse: {exc}") from exc
 
 
 def test_the_builders_guide_points_here(contract):

@@ -1686,8 +1686,8 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
     edge (`--force` dispatches anyway; no session state is written and no marker
     is set, so a 3 needs no `critic-end` — it does append one inert
     `guard-refusal` fact, which no gate reads); exit 1 = any other dispatch failure (reason
-    on stderr). The scheme these cite is `artifacts/api-contract.md`
-    § Error Model.
+    on stderr). The scheme these cite is prawduct's own API contract — its
+    Error Model section, in the framework repo rather than in yours.
 
     Also resets `.critic-partials/` before writing the fresh manifest —
     archive-first, and `critic_consolidate.remove_partials` states why (it is
@@ -3661,6 +3661,46 @@ def _parse_evidence_counts(tokens: list[str]) -> tuple[dict | None, str]:
     return vals, ""
 
 
+def _scope_refusal_remedy(cause: str | None) -> str:
+    """The way forward for ONE refusal cause from ``lib.report_scope``.
+
+    Six conditions refuse an ingest and they do not share a remedy. The first
+    version of this message was written for `partial` and printed for all of
+    them, which told an operator holding a report+record pair downloaded from
+    CI that deleting the record "buys a record that says the suite passed when
+    part of it never ran" — true of a narrowed run, false of theirs, and the
+    advice it crowded out is the one `docs/test-report-contract.md` gives for
+    that case. The generalisation is the standing one: a gate folding several
+    conditions into one answer must not also decide how hard to fail.
+    """
+    rs = _report_scope()
+    recorder = "    prawduct-hook test-evidence record\n"
+    if cause == rs.CAUSE_NARROWED:
+        return (
+            "  Two ways forward: run the suite through the recorder, which "
+            "records what it runs —\n" + recorder
+            + "  or ingest a report from a run that was not narrowed. Editing "
+            "or deleting the scope record is not one of them: it buys a record "
+            "that says the suite passed when part of it never ran."
+        )
+    if cause == rs.CAUSE_MISMATCH:
+        return (
+            "  The record is about a different run, so it says nothing about "
+            "this report. Ingest the report where it was produced (its record "
+            "is valid there), or fetch the report WITHOUT its record — a report "
+            "with no record is the un-wired case, and you are then asserting "
+            "its scope yourself. Or run the suite here:\n" + recorder
+        )
+    return (
+        "  Nothing readable says what that run covered, so the report cannot "
+        "vouch for the suite. Fix the producer that wrote the record (its "
+        "contract is `docs/test-report-contract.md`) and re-run, or run the "
+        "suite through the recorder:\n" + recorder
+        + "  Deleting the record to get past this is not a way forward: it "
+        "makes the run's scope unknown rather than known-good."
+    )
+
+
 def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     """Run the suite and WRITE ``.prawduct/.test-evidence.json`` (TST-6V2N).
 
@@ -4145,18 +4185,11 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             # parsed, because the question is whether this report may be
             # ingested at all, not what it contains. Absence proceeds: it is
             # indistinguishable from a repo that has never wired a producer.
-            may_ingest, why_not = _report_scope().read_scope_record(junit)
-            if not may_ingest:
+            verdict = _report_scope().read_scope_record(junit)
+            if not verdict.ok:
                 print(
                     f"error: refusing to record {from_junit} as suite evidence "
-                    f"— {why_not}.\n"
-                    "  Two ways forward: run the suite through the recorder, "
-                    "which records what it runs —\n"
-                    "    prawduct-hook test-evidence record\n"
-                    "  or ingest a report from a run that was not narrowed. "
-                    "Editing or deleting the scope record is not one of them: "
-                    "it buys a record that says the suite passed when part of "
-                    "it never ran.",
+                    f"— {verdict.reason}.\n" + _scope_refusal_remedy(verdict.cause),
                     file=sys.stderr,
                 )
                 return 2
@@ -4197,6 +4230,10 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             fd, junit_name = tempfile.mkstemp(suffix=".xml", prefix="prawduct-junit-")
             os.close(fd)
             junit = Path(junit_name)
+            # Resolved HERE rather than in the `finally`: a cleanup handler is
+            # the worst place for a first import, because a failure there
+            # replaces whatever error was already travelling.
+            junit_scope = _report_scope().record_path(junit)
             try:
                 if command is not None:
                     run_argv = [
@@ -4226,6 +4263,24 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
                     )
                     return 2
                 run_returncodes.append(proc.returncode)
+                if command is None:
+                    # THE FALLBACK PATH IS NOT COVERED BY THE DECLARATION.
+                    # Consulting the record on ingest only is warranted by the
+                    # declared command BEING the definition of the suite — and
+                    # extra args are refused there. Here there is no
+                    # declaration and `extra` is appended verbatim, so
+                    # `record -k billing` would run a subset and record it as
+                    # the suite's. Asked before the unlink below, which would
+                    # otherwise delete the answer unread.
+                    verdict = _report_scope().read_scope_record(junit)
+                    if not verdict.ok:
+                        print(
+                            "error: refusing to record this run as suite "
+                            f"evidence — {verdict.reason}.\n"
+                            + _scope_refusal_remedy(verdict.cause),
+                            file=sys.stderr,
+                        )
+                        return 2
                 try:
                     roots.append(ET.parse(junit).getroot())
                 except (ET.ParseError, OSError) as exc:
@@ -4241,7 +4296,7 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
                 # producer-wired repo writes one next to this temp file too;
                 # leaving it behind would litter the temp directory once per
                 # recorded run. Best-effort, like the report's own unlink.
-                for leftover in (junit, _report_scope().record_path(junit)):
+                for leftover in (junit, junit_scope):
                     try:
                         leftover.unlink()
                     except OSError:
@@ -6172,10 +6227,11 @@ def cmd_build_index(project_dir: Path, argv: list[str] | None = None) -> int:
     a pre-3.3.2 ``hooks.json``, and the harness pins a plugin version per project
     and updates those pins lazily — so a repo routinely runs an old registration
     against a new binary. The deprecation norm, its falsified warrant and the
-    retention rule all live at ``.prawduct/artifacts/api-contract.md`` § Direction
-    (additive-first evolution); this docstring cites it rather than restating it,
-    because the last copy of that reasoning to live in a docstring is the one
-    that went wrong.
+    retention rule all live in prawduct's own API-contract artifact, under the
+    additive-first evolution norm — in the framework repo, not in the governed
+    product's `.prawduct/`, where that filename means the product's own
+    contract. This docstring cites it rather than restating it, because the last
+    copy of that reasoning to live in a docstring is the one that went wrong.
 
     **Silent, unlike ``regen-views`` and ``stamp-merged``.** They warn because a
     human reads their output and can drop the call; nobody reads this one, so a

@@ -22,6 +22,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -70,71 +71,93 @@ class TestTheReader:
     def test_no_record_proceeds(self, report):
         # The permissive case, and the reason it is permissive: every repo that
         # has not wired a producer looks exactly like this.
-        assert report_scope.read_scope_record(report) == (True, None)
+        assert report_scope.read_scope_record(report) == (True, None, None)
 
     def test_a_full_record_proceeds(self, report):
         _record_beside(report)
-        assert report_scope.read_scope_record(report) == (True, None)
+        assert report_scope.read_scope_record(report) == (True, None, None)
 
     def test_a_partial_record_refuses_and_quotes_its_own_reason(self, report):
         _record_beside(report, scope=PARTIAL, why="-k 'billing' narrowed the selection")
-        ok, reason = report_scope.read_scope_record(report)
+        ok, reason, cause = report_scope.read_scope_record(report)
         assert ok is False
+        assert cause == report_scope.CAUSE_NARROWED
         assert "billing" in reason, "the refusal must say what narrowed the run"
         assert "2026-09-18T05:00:00Z" in reason, "and when the record was written"
 
     def test_a_partial_record_with_no_reason_still_refuses(self, report):
         _record_beside(report, scope=PARTIAL, why=None)
-        ok, reason = report_scope.read_scope_record(report)
+        ok, reason, cause = report_scope.read_scope_record(report)
         assert ok is False
         assert "no reason recorded" in reason
 
     def test_malformed_json_refuses(self, report):
         report_scope.record_path(report).write_text("{not json")
-        ok, reason = report_scope.read_scope_record(report)
+        ok, reason, cause = report_scope.read_scope_record(report)
         assert ok is False and "not valid JSON" in reason
+        assert cause == report_scope.CAUSE_MALFORMED
 
     def test_a_non_object_record_refuses(self, report):
         report_scope.record_path(report).write_text("[]")
-        ok, reason = report_scope.read_scope_record(report)
+        ok, reason, cause = report_scope.read_scope_record(report)
         assert ok is False and "not a JSON object" in reason
+        assert cause == report_scope.CAUSE_MALFORMED
 
     def test_an_unreadable_record_refuses(self, report):
         # A directory at the record's path: the OSError branch, which would
         # otherwise traceback out of a command whose errors are return values.
         report_scope.record_path(report).mkdir()
-        ok, reason = report_scope.read_scope_record(report)
+        ok, reason, cause = report_scope.read_scope_record(report)
         assert ok is False and "could not be read" in reason
+        assert cause == report_scope.CAUSE_UNREADABLE
 
     @pytest.mark.parametrize("version", [2, "1", None, 0])
     def test_an_unknown_schema_version_refuses(self, report, version):
         _record_beside(report, v=version)
-        ok, reason = report_scope.read_scope_record(report)
+        ok, reason, cause = report_scope.read_scope_record(report)
         assert ok is False
         assert "schema version" in reason and repr(version) in reason
+        assert cause == report_scope.CAUSE_SCHEMA
 
     @pytest.mark.parametrize("scope", ["complete", "", None, "FULL"])
     def test_an_unknown_scope_value_refuses(self, report, scope):
         _record_beside(report, scope=scope)
-        ok, reason = report_scope.read_scope_record(report)
+        ok, reason, cause = report_scope.read_scope_record(report)
         assert ok is False and "scope=" in reason
+        assert cause == report_scope.CAUSE_SCOPE
 
     def test_a_record_naming_another_report_refuses(self, report):
         # A copied or moved report does not inherit the record's authority.
         _record_beside(report, report=str(report.parent / "somewhere-else.xml"))
-        ok, reason = report_scope.read_scope_record(report)
+        ok, reason, cause = report_scope.read_scope_record(report)
         assert ok is False and "some other run" in reason
+        assert cause == report_scope.CAUSE_MISMATCH
 
     def test_a_record_with_no_report_field_refuses(self, report):
         _record_beside(report, report=None)
-        ok, reason = report_scope.read_scope_record(report)
+        ok, reason, cause = report_scope.read_scope_record(report)
         assert ok is False and "does not name the report" in reason
+        assert cause == report_scope.CAUSE_MALFORMED, (
+            "a record naming NO report is malformed, not a record about another "
+            "run — the mismatch remedy ('fetch the report without its record') "
+            "is nonsense advice for a record that was never written correctly"
+        )
+
+    def test_a_report_path_that_cannot_be_resolved_refuses_rather_than_raising(self, report):
+        """`Path("\\x00").resolve()` raises ValueError, and this module's
+        contract is that errors come back as values — a traceback out of
+        `test-evidence record` is not a refusal, it is a crash."""
+        _record_beside(report, report="\x00")
+        ok, reason, cause = report_scope.read_scope_record(report)
+        assert ok is False
+        assert cause == report_scope.CAUSE_MISMATCH
+        assert "cannot be" in reason
 
     def test_unknown_keys_are_tolerated(self, report):
         # Additive-first (`artifacts/api-contract.md` § Direction): a v1 reader
         # must not refuse a record that grew a field it does not know.
         _record_beside(report, selected=417, runner="dotnet test")
-        assert report_scope.read_scope_record(report) == (True, None)
+        assert report_scope.read_scope_record(report) == (True, None, None)
 
     def test_the_record_path_is_the_reports_path_plus_the_suffix(self, tmp_path):
         assert report_scope.record_path(tmp_path / "r.xml") == tmp_path / ("r.xml" + SCOPE_RECORD_SUFFIX)
@@ -145,7 +168,15 @@ class TestTheReader:
 # =============================================================================
 
 
-def _run_hook(repo: Path, *args: str) -> subprocess.CompletedProcess:
+def _run_hook(repo: Path, *args: str, **env_extra: str) -> subprocess.CompletedProcess:
+    """Run the hook against `repo` with a pinned environment.
+
+    `env_extra` exists for `TMPDIR`: a test that asserts on the recorder's temp
+    files has to look where the SUBPROCESS put them, and the subprocess does not
+    inherit this process's `TMPDIR` — the first version of the cleanup test
+    globbed this process's temp dir, found nothing either way, and passed with
+    the cleanup deleted.
+    """
     home = repo.parent / "_home"
     home.mkdir(exist_ok=True)
     return subprocess.run(
@@ -154,7 +185,7 @@ def _run_hook(repo: Path, *args: str) -> subprocess.CompletedProcess:
         env={"HOME": str(home), "CLAUDE_PROJECT_DIR": str(repo),
              "CLAUDE_PLUGIN_ROOT": str(PLUGIN_ROOT),
              "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
-             "PYTHONDONTWRITEBYTECODE": "1"},
+             "PYTHONDONTWRITEBYTECODE": "1", **env_extra},
     )
 
 
@@ -242,6 +273,147 @@ class TestTheCliRefusal:
 
         assert res.returncode == 2, res.stdout + res.stderr
         assert self._evidence(repo) == before
+
+
+class TestTheRefusalSpeaksForItsOwnCause:
+    """Six conditions refuse, and they do not share a remedy.
+
+    The first version printed the `partial` advice for all of them, which told
+    an operator holding a CI report+record pair that deleting the record "buys
+    a record that says the suite passed when part of it never ran" — true of a
+    narrowed run, false of theirs, and it crowds out the remedy the contract
+    actually gives for that case. Each cause is asserted on the message it
+    gets AND on the message it must not get.
+    """
+
+    def test_a_mismatched_record_is_not_told_that_deleting_it_is_laundering(self, repo_with_report):
+        repo, report = repo_with_report
+        _record_beside(report, report=str(report.parent / "produced-on-ci.xml"))
+        res = _run_hook(repo, "test-evidence", "record", "--from-junit", str(report))
+        assert res.returncode == 2, res.stdout + res.stderr
+        assert "different run" in res.stderr
+        assert "WITHOUT its record" in res.stderr, (
+            "the mismatched case must name the contract's own remedy — fetch the "
+            "report alone, which lands in the permissive absent case"
+        )
+        assert "says the suite passed when part of it never ran" not in res.stderr
+
+    def test_an_unreadable_record_is_not_told_to_find_an_unnarrowed_report(self, repo_with_report):
+        repo, report = repo_with_report
+        report_scope.record_path(report).write_text("{not json")
+        res = _run_hook(repo, "test-evidence", "record", "--from-junit", str(report))
+        assert res.returncode == 2, res.stdout + res.stderr
+        assert "Fix the producer" in res.stderr
+        assert "was not narrowed" not in res.stderr, (
+            "a malformed record says nothing about narrowing, so advice about "
+            "finding an un-narrowed report answers a question nobody asked"
+        )
+        # It still refuses the cheap way out, for a different reason than the
+        # narrowed case does: unknown scope is not known-good scope.
+        assert "not a way forward" in res.stderr
+
+    def test_the_narrowed_case_keeps_the_clause_that_was_written_for_it(self, repo_with_report):
+        repo, report = repo_with_report
+        _record_beside(report, scope=PARTIAL, why="-k 'billing' narrowed the selection")
+        res = _run_hook(repo, "test-evidence", "record", "--from-junit", str(report))
+        assert "says the suite passed when part of it never ran" in res.stderr
+
+
+class TestTheUndeclaredRunPath:
+    """The record is consulted on ingest because a DECLARED command is the
+    definition of the suite — and extra args are refused there. The interpreter
+    fallback has no declaration and appends the operator's args verbatim, so
+    `record -k billing` would run a subset and record it as the suite's.
+    """
+
+    @pytest.fixture
+    def undeclared_repo(self, tmp_path) -> Path:
+        repo = tmp_path / "undeclared"
+        (repo / ".prawduct").mkdir(parents=True)
+        shutil.copy(REPO_ROOT / "tests" / "conftest.py", repo / "conftest.py")
+        (repo / "test_two.py").write_text(
+            "def test_a():\n    assert True\n\n\ndef test_b():\n    assert True\n"
+        )
+        # No `test_command:` — this is the interpreter-fallback state, which the
+        # template ships as the default.
+        (repo / ".prawduct" / "project-state.yaml").write_text("project_name: undeclared\n")
+        for cmd in (("init", "-b", "main"), ("add", "-A"), ("-c", "user.email=t@t",
+                    "-c", "user.name=t", "commit", "-m", "c1")):
+            subprocess.run(["git", *cmd], cwd=repo, capture_output=True, check=True)
+        return repo
+
+    def test_a_full_fallback_run_records(self, undeclared_repo):
+        """The control. Without it the refusal below could be any failure of the
+        fallback path rather than the guard doing its job."""
+        res = _run_hook(undeclared_repo, "test-evidence", "record")
+        assert res.returncode == 0, res.stdout + res.stderr
+        evidence = json.loads(
+            (undeclared_repo / ".prawduct" / ".test-evidence.json").read_text()
+        )
+        assert evidence["passed"] == 2
+
+    def test_a_narrowed_fallback_run_is_refused(self, undeclared_repo):
+        res = _run_hook(undeclared_repo, "test-evidence", "record", "-k", "test_a")
+        assert res.returncode == 2, res.stdout + res.stderr
+        assert "did not cover the whole suite" in res.stderr
+        assert not (undeclared_repo / ".prawduct" / ".test-evidence.json").exists(), (
+            "a refused run must write no evidence at all"
+        )
+
+
+#: A minimal producer-wired runner: emits the JUnit report the recorder asked
+#: for, and the scope record the contract says rides beside it.
+_FAKE_RUNNER = (
+    "import json, sys\n"
+    "from pathlib import Path\n"
+    "report = Path(sys.argv[1])\n"
+    "report.write_text('<testsuites><testsuite name=\"t\" tests=\"1\" "
+    "failures=\"0\" errors=\"0\" skipped=\"0\" time=\"0.1\">"
+    "<testcase name=\"a\"/></testsuite></testsuites>')\n"
+    "record = report.with_name(report.name + '.scope.json')\n"
+    "record.write_text(json.dumps({'v': 1, 'scope': 'full', "
+    "'report': str(report.resolve()), 'at': '2026-09-18T05:00:00Z'}))\n"
+)
+
+
+class TestTheRunPathCleansUpAfterItself:
+    """The recorder's temp report gets a scope record beside it, because the
+    product's runner writes one wherever the report lands. Nothing paired the
+    producer's write location with the recorder's delete location until this.
+    """
+
+    def test_the_temp_scope_record_does_not_survive_a_recorded_run(self, tmp_path):
+        repo = tmp_path / "declared"
+        (repo / ".prawduct").mkdir(parents=True)
+        # A stand-in runner: writes a JUnit report AND a scope record beside it,
+        # exactly as a producer-wired repo's real runner would.
+        (repo / "fake_runner.py").write_text(_FAKE_RUNNER)
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            f"test_command: {sys.executable} {repo / 'fake_runner.py'} {{junit_xml}}\n"
+        )
+        for cmd in (("init", "-b", "main"), ("add", "-A"), ("-c", "user.email=t@t",
+                    "-c", "user.name=t", "commit", "-m", "c1")):
+            subprocess.run(["git", *cmd], cwd=repo, capture_output=True, check=True)
+
+        tmpdir = tmp_path / "hooktmp"
+        tmpdir.mkdir()
+        res = _run_hook(repo, "test-evidence", "record", TMPDIR=str(tmpdir))
+        assert res.returncode == 0, res.stdout + res.stderr
+
+        left = sorted(tmpdir.glob("prawduct-junit-*"))
+        assert not left, f"the recorded run left temp files behind: {left}"
+
+    def test_the_stand_in_runner_really_does_write_both_files(self, tmp_path):
+        """The positive control for the test above. Its subject is an ABSENCE,
+        and an absence is what a fixture that never reached the subject also
+        produces — so the runner is driven once on its own and both files are
+        asserted present."""
+        report = tmp_path / "r.xml"
+        runner = tmp_path / "fake_runner.py"
+        runner.write_text(_FAKE_RUNNER)
+        subprocess.run([sys.executable, str(runner), str(report)], check=True)
+        assert report.is_file()
+        assert report_scope.record_path(report).is_file()
 
 
 # =============================================================================
@@ -360,13 +532,42 @@ class TestTheWriter:
         config = _Config(tmp_path, xmlpath=str(report))
         written = write_scope_record(config, FULL, None)
         assert written == report_scope.record_path(report)
-        assert report_scope.read_scope_record(report) == (True, None)
+        assert report_scope.read_scope_record(report) == (True, None, None)
 
     def test_a_partial_record_it_writes_is_one_the_reader_refuses(self, tmp_path):
         report = tmp_path / "r.xml"
         write_scope_record(_Config(tmp_path, xmlpath=str(report)), PARTIAL, "because")
-        ok, reason = report_scope.read_scope_record(report)
+        ok, reason, cause = report_scope.read_scope_record(report)
         assert ok is False and "because" in reason
+
+    def test_a_write_that_fails_degrades_to_absence_and_says_so(self, tmp_path, capsys):
+        """Both halves, because the contract now demands both of every producer.
+
+        A record that cannot be written must not take the SUITE down with it —
+        this describes the run, it is not part of it — and it must not fail
+        SILENTLY either, because absence is the permissive case, so a producer
+        that quietly stops writing turns the guard off and nothing anywhere
+        notices. The obligation is on every producer author
+        (`docs/test-report-contract.md` § What a producer owes), and the
+        framework's own worked example is where it has to hold first.
+
+        The failure is forced structurally rather than with a chmod: the
+        record's parent is a regular FILE, so `mkdir` raises `FileExistsError`
+        — deterministic, and it works for root, who can write anywhere.
+        """
+        blocked = tmp_path / "blocked"
+        blocked.write_text("a file where the record's directory should be\n")
+        report = blocked / "r.xml"
+
+        written = write_scope_record(_Config(tmp_path, xmlpath=str(report)), FULL, None)
+
+        assert written is None, "a failed write must return None, not raise"
+        err = capsys.readouterr().err
+        assert "could not write the test-report scope record" in err
+        assert "trusted rather than checked" in err, (
+            "the NOTE must name the CONSEQUENCE — that an ingest of this report "
+            "is now trusted rather than checked — not merely report an errno"
+        )
 
     def test_the_record_lands_beside_a_report_in_a_directory_that_does_not_exist_yet(self, tmp_path):
         # pytest creates the report's directory when it writes; the record is
@@ -469,15 +670,39 @@ class TestUnderRealPytest:
         assert record["scope"] == FULL
         assert Path(record["report"]) == report.resolve()
         # The reader is what this is for.
-        assert report_scope.read_scope_record(report) == (True, None)
+        assert report_scope.read_scope_record(report) == (True, None, None)
 
     def test_a_narrowed_run_leaves_a_record_the_reader_refuses(self, scratch):
         res = self._run(scratch, "-k", "test_a")
         assert res.returncode == 0, res.stdout + res.stderr
         report = scratch / "report.xml"
-        ok, reason = report_scope.read_scope_record(report)
+        ok, reason, cause = report_scope.read_scope_record(report)
         assert ok is False, "a -k run must not read as suite evidence"
         assert "test_a" in reason
+
+    def test_a_run_from_a_SUBDIRECTORY_still_writes_under_the_project_root(self, scratch):
+        """pytest resolves `--junit-xml` against the invocation directory, so
+        without the anchoring in `pytest_configure` this run would leave
+        `tests/.prawduct/` — untracked output that the managed ignore patterns
+        do not match (a pattern with a slash anchors to the repo root) and the
+        session boundary does not clear, one `git add -A` from being committed.
+        """
+        (scratch / "pytest.ini").write_text(
+            "[pytest]\ntestpaths = tests\naddopts = --junit-xml=.prawduct/.test-report.xml\n"
+        )
+        res = subprocess.run(
+            [sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "-q"],
+            cwd=scratch / "tests", capture_output=True, text=True, timeout=180,
+        )
+        assert res.returncode == 0, res.stdout + res.stderr
+        assert (scratch / ".prawduct" / ".test-report.xml").is_file()
+        assert not (scratch / "tests" / ".prawduct").exists(), (
+            "the report landed under the invocation directory, not the project root"
+        )
+        # And the record beside it still describes the report it sits beside.
+        assert report_scope.read_scope_record(
+            scratch / ".prawduct" / ".test-report.xml"
+        ) == (True, None, None)
 
     def test_a_run_that_writes_no_report_writes_no_record(self, tmp_path):
         """No `--junit-xml` anywhere, so there is nothing to describe. A record

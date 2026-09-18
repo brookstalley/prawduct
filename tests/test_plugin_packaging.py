@@ -220,6 +220,62 @@ def test_every_top_level_directory_is_shipped_or_explicitly_excluded(shipped: se
         )
 
 
+def test_no_shipped_file_cites_a_NORM_from_an_artifact_the_reader_does_not_have():
+    """A shipped file may name the product's own `artifacts/<x>.md`; it may not
+    cite a *norm* out of one.
+
+    The sibling below asks whether a referenced path SHIPS. This asks something
+    it cannot: `artifacts/architecture.md` resolves fine in a consumer repo —
+    to THEIR architecture artifact, carrying norms they never ratified. A
+    citation of the form ``artifacts/<x>.md` § Direction` therefore misattributes
+    prawduct's own governance to the reader's document, and nothing about the
+    path is wrong.
+
+    **Why this narrow shape rather than all `artifacts/` references.** Three
+    shipped sites legitimately name a consumer's own artifacts (`core.py`'s
+    `artifacts/build-plan.md`, `onboarding_probes.py`'s
+    `artifacts/project-preferences.md`), so path-shaped bans cannot separate the
+    two. What separates them is the *claim*: a Direction section is where norms
+    live, so citing one is claiming authority. What this does NOT catch: the
+    same misattribution phrased without the section name — that half is left to
+    review, and is why the instances found with this were fixed by hand rather
+    than only by the guard. It also reaches only the SHIPPED tree, so the copy
+    of `tests/conftest.py` a consumer takes as the worked example is outside it;
+    that instance was found by review and fixed by hand too.
+    """
+    import re
+
+    # `\x60{0,2}` because a Python docstring writes the path in RST double
+    # backticks and markdown writes it in one: the first cut allowed at most
+    # one, so it saw two of the five instances it was written for and its
+    # docstring still read as covering the shape. A hard-wrapped citation is
+    # still caught without normalising the text, because the pattern's own
+    # `\s*` spans the one place a wrap can fall inside a match.
+    cite = re.compile(r"artifacts/[A-Za-z0-9_-]+\.md`{0,2}\s*(?:§|section)\s*Direction")
+    # Positive control, stated rather than assumed: a guard nobody has seen
+    # fail is a guard that has measured nothing.
+    assert cite.search("see ``artifacts/architecture.md`` § Direction for the rule")
+    assert cite.search("see `artifacts/data-model.md` section Direction")
+    assert not cite.search("the product's own artifacts/build-plan.md lists the chunks")
+
+    scanned = _tracked("plugin")
+    assert len(scanned) > 50, f"expected to scan the shipped tree, got {len(scanned)} files"
+    offenders = []
+    for rel in scanned:
+        try:
+            text = (REPO / rel).read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+        for hit in cite.findall(text):
+            offenders.append(f"{rel} -> {hit}")
+    assert not offenders, (
+        "shipped file(s) cite a Direction norm out of an `artifacts/` document "
+        "the reader does not have — in a consumer repo that path is THEIR "
+        "artifact. Name it as prawduct's own, or cite the shipped home "
+        "(`docs/norms.md`):\n  " + "\n  ".join(sorted(offenders))
+    )
+
+
 def test_no_shipped_file_points_at_an_unshipped_plugin_root_path():
     """A shipped doc must not send a model to ``${CLAUDE_PLUGIN_ROOT}/<path>`` that does not ship.
 

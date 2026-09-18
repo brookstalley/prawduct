@@ -182,7 +182,7 @@ Tests are the most important artifact you produce: contracts that define correct
 
 **Idiomatic tooling, honest coverage.** Use language-native incremental runners to skip re-runs when nothing changed. The framework asserts the *contract* (judged changes land in `.test-evidence.json`'s `changes_referenced`; the rest in `changes_unjudged`, ungated), not a specific verifier. `bin/test-reference-verify` is a **floor**: symbol-grep catches untested new code but can't prove execution. For real coverage, plug in a language-native tool and emit `coverage_level: executed`.
 
-**Every run leaves a machine-readable report, and says what it covered.** The report path belongs in the runner's own default-arguments file (pytest `addopts`, a `.runsettings`, Jest `reporters`) rather than in the command someone types, so no run is unrecordable and one made outside the recorder is ingested instead of repeated. Its pre/post-run hook records, beside the report, whether that invocation was narrowed — which is what stops a `-k`-scoped report being recorded as the suite's evidence. Both properties, the schema, and the per-ecosystem wiring: `docs/test-report-contract.md`.
+**Every run leaves a machine-readable report, and says what it covered.** The report path belongs in the runner's default-arguments file (pytest `addopts`, a `.runsettings`, Jest `reporters`) rather than in the command someone types, so no run in a session is unrecordable and one made outside the recorder is ingested instead of repeated. Its pre/post-run hook records, beside the report, whether that invocation was narrowed — which is what stops a `-k`-scoped report being recorded as the suite's evidence. The schema and the per-ecosystem wiring: `docs/test-report-contract.md`.
 
 ## The Critic
 

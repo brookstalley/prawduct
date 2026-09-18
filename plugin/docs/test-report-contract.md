@@ -6,7 +6,8 @@ again. That record is only as honest as what feeds it.
 
 Two properties make it honest, and a product's test setup is where they are implemented. They are
 a **requirement** — prawduct states them and reads their output; it installs nothing and edits no
-runner config (`artifacts/architecture.md` § Direction).
+runner config, because prawduct's own ratified norms say it guides and never implements
+(`docs/norms.md` for how norms bind; the norm itself lives in prawduct's repo, not in yours).
 
 1. **The machine-readable report is a side effect of every run.** The report path lives in the
    runner's own default-arguments file, not in the command someone types. Nobody can run the suite
@@ -38,6 +39,15 @@ recoverable inside the session that made it.
 The convention is what lets prose and refusals name an exact command. A repo whose runner cannot
 write there is not excluded — it passes its own path to `--from-junit`, and the scope record is
 looked for beside whatever path that is.
+
+**The path is relative to the project root, and that is the producer's job to guarantee.** Runners
+resolve a relative report path against the *invocation directory*, not the project root — pytest
+uses `os.path.abspath`, and most runners do the same — so `cd tests && <runner>` writes
+`tests/.prawduct/.test-report.xml`. That copy is outside the managed `.gitignore` entries (a
+pattern containing a slash is anchored to the repo root) and outside the session boundary's sweep:
+untracked run output, one `git add -A` from being committed. The producer closes this by anchoring
+a relative path against the project root before the runner resolves it — the worked example below
+does it in three lines.
 
 ## The scope record
 
@@ -93,10 +103,11 @@ a repo whose canonical command is deliberately narrow is not second-guessed by t
 
 ## Producing one
 
-**Advice, not contract** (`artifacts/architecture.md` § Direction — goals and verification bind;
-prescribed method is advice). Every ecosystem has the two surfaces this needs: a file holding the
-runner's default arguments, and a pre/post-run hook. What must be true is the two properties
-above; the pairing below is a starting point.
+**Advice, not contract.** What binds is the two properties above and the record this reads;
+*how* you produce it is yours (prawduct's own norms put goals and verification in the binding half
+and prescribed method in the advisory one). Every ecosystem has the two surfaces this needs: a file
+holding the runner's default arguments, and a pre/post-run hook. The pairing below is a starting
+point.
 
 | Ecosystem | Default-arguments file | Pre/post-run hook | What narrows a run there |
 |---|---|---|---|
@@ -137,14 +148,63 @@ def pytest_configure(config):
     _write(config, "partial", "the run did not finish")
 
 def pytest_sessionfinish(session, exitstatus):
-    scope, why = classify(session.config, exitstatus)   # see below
-    _write(session.config, scope, why)
+    _write(session.config, *classify(session.config, exitstatus))
+
+def classify(config, exitstatus):
+    """Was anything narrowed? A question about the INVOCATION, never the result."""
+    o = config.option
+    if exitstatus in (2, 3, 4, 5):      # interrupted, internal error, bad usage, nothing collected
+        return "partial", f"pytest exited {exitstatus}, so the report may be truncated"
+    if getattr(o, "keyword", ""):
+        return "partial", f"-k {o.keyword!r} narrowed the selection"
+    if getattr(o, "markexpr", ""):
+        return "partial", f"-m {o.markexpr!r} narrowed the selection"
+    if getattr(o, "deselect", None) or getattr(o, "ignore", None):
+        return "partial", "--deselect/--ignore removed tests from the selection"
+    if getattr(o, "lf", False) or getattr(o, "stepwise", False):
+        return "partial", "the run was scoped to a previous run's failures"
+    if getattr(o, "collectonly", False):
+        return "partial", "--collect-only ran no tests"
+    if getattr(o, "maxfail", 0):
+        return "partial", "--maxfail/-x can stop the run before the end"
+    if list(config.args) != [str(Path(config.rootpath) / p) for p in config.getini("testpaths")]:
+        return "partial", "the invocation named specific paths rather than the whole suite"
+    return "full", None
 ```
 
-`classify` answers one question — *was anything narrowed?* — from the invocation: a selection
-expression, a marker expression, explicit paths or node ids, a deselection, a last-failed rerun,
-a collect-only run, a run that could stop early (`-x` / `--maxfail`), or an exit status saying the
-run was interrupted, errored, mis-invoked, or collected nothing. Anything else is `full`.
+Exit status `1` — a red suite — is `full`: that run is complete, and recording a failing suite is
+the point of recording on red. `--ff` is absent for the same kind of reason: it reorders the
+selection without reducing it.
+
+To anchor a relative path (the paragraph above), add this as the first two lines of
+`pytest_configure`, which runs before the report writer is built:
+
+```python
+    xmlpath = getattr(config.option, "xmlpath", None)
+    if xmlpath and not os.path.isabs(xmlpath):
+        config.option.xmlpath = str(Path(config.rootpath) / xmlpath)
+```
+
+## What a producer owes beyond writing the record
+
+The record is only worth reading while it is still being written, and **absence is permissive** —
+so a producer that quietly stops (a runner upgrade renaming the option, a config edit dropping the
+report path, a refactor of the hook) does not fail loudly. It degrades straight into the trusting
+path, and the next ingest of a narrowed run records a subset as suite evidence with nothing
+anywhere having noticed. Two obligations follow, and they are cheap:
+
+- **Pin the configuration entry itself.** One assertion that the runner's default-arguments file
+  still carries the report path. Nothing else in a suite fails when that line is deleted — the
+  tests stay green, and the only symptom arrives months later as a run somebody has to repeat.
+- **Drive the real runner once.** A test that runs the runner against a scratch project and
+  asserts the record reads `full` for a plain run and `partial` for a narrowed one. Unit tests over
+  a fake config assert what you believe the runner passes; this asserts what it does, and it is the
+  only check that the hook is wired at all.
+
+**A record that cannot be written is not an error to raise.** The producer describes the run; it is
+not part of it. A failed write (read-only directory, full disk) must leave the run alone and say so
+on stderr — absence is the permissive case, so the cost is the guard, never a false green, and an
+advisory that fails *silently* manufactures the confidence it exists to check.
 
 ## What this does not do
 

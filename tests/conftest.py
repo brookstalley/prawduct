@@ -59,9 +59,11 @@ def pytest_collection_modifyitems(config, items):
 # and look alike. This writes the record that tells them apart.
 #
 # The framework does not install this: prawduct states the requirement and reads
-# the record, and each product wires its own runner (`artifacts/architecture.md`
-# § Direction — it guides and reviews, it never implements). This repo is a
-# product like any other, and this is its implementation.
+# the record, and each product wires its own runner — its ratified norms say it
+# guides and reviews and never implements. This repo is a product like any
+# other, and this is its implementation. (No `artifacts/…` citation here on
+# purpose: this file is also the worked example a consumer copies, and in their
+# repo that path resolves to THEIR artifact.)
 
 SCOPE_RECORD_SUFFIX = ".scope.json"
 
@@ -161,27 +163,52 @@ def write_scope_record(config, scope: str, why: str | None) -> Path | None:
     if why:
         record["why"] = why
     target = report.with_name(report.name + SCOPE_RECORD_SUFFIX)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=str(target.parent), prefix=".scope-", suffix=".tmp")
-    with os.fdopen(fd, "w") as handle:
-        handle.write(json.dumps(record, indent=2, sort_keys=True) + "\n")
-    # `mkstemp` creates 0600. The report beside this is world-readable, and the
-    # recorder can be a different user from the one who ran the suite (a
-    # container, a CI runner) — where it is, an unreadable record REFUSES the
-    # ingest, because the reader fails closed on what it cannot read.
-    os.chmod(tmp, 0o644)
-    os.replace(tmp, target)
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=str(target.parent), prefix=".scope-", suffix=".tmp")
+        with os.fdopen(fd, "w") as handle:
+            handle.write(json.dumps(record, indent=2, sort_keys=True) + "\n")
+        # `mkstemp` creates 0600. The report beside this is world-readable, and
+        # the recorder can be a different user from the one who ran the suite (a
+        # container, a CI runner) — where it is, an unreadable record REFUSES
+        # the ingest, because the reader fails closed on what it cannot read.
+        os.chmod(tmp, 0o644)
+        os.replace(tmp, target)
+    except OSError as exc:
+        # A read-only directory or a full disk must not take the suite down
+        # with it: this describes the run, it is not part of it. Absence is the
+        # permissive case, so failing here costs the guard and never produces a
+        # false green — but it is said out loud, because an advisory that fails
+        # silently manufactures the confidence it was meant to check.
+        print(f"NOTE: could not write the test-report scope record ({exc}) — "
+              f"{target} will be absent, and an ingest of this report will be "
+              "trusted rather than checked", file=sys.stderr)
+        return None
     return target
 
 
 def pytest_configure(config):
-    """Claim the report as incomplete before a single test runs.
+    """Anchor the report to the project root, then claim it as incomplete.
 
-    A run that is killed, crashes, or is interrupted never reaches
-    `pytest_sessionfinish`, and what it leaves behind is a truncated report.
-    Writing `partial` first means the record beside such a report says so,
-    rather than the PREVIOUS run's `full` verdict sitting there vouching for it.
+    **The anchoring is not cosmetic.** pytest resolves `--junit-xml` against the
+    INVOCATION directory (`os.path.abspath`), not the rootdir, so
+    `cd tests && pytest` would write `tests/.prawduct/.test-report.xml` — a path
+    the managed `.gitignore` entries do not match (a pattern containing a slash
+    is anchored to the repo root) and the session boundary does not clear, which
+    is untracked run output one `git add -A` from being committed. Rewriting the
+    option here, before the junitxml plugin builds its writer, makes the
+    conventional path mean the same thing from any working directory. Only a
+    RELATIVE path is touched: an explicit absolute one is the caller's choice.
+
+    **Then the record is claimed as incomplete.** A run that is killed, crashes,
+    or is interrupted never reaches `pytest_sessionfinish`, and what it leaves
+    behind is a truncated report. Writing `partial` first means the record
+    beside such a report says so, rather than the PREVIOUS run's `full` verdict
+    sitting there vouching for it.
     """
+    xmlpath = getattr(config.option, "xmlpath", None)
+    if xmlpath and not os.path.isabs(xmlpath):
+        config.option.xmlpath = str(Path(config.rootpath) / xmlpath)
     write_scope_record(config, PARTIAL, "the run did not finish")
 
 
