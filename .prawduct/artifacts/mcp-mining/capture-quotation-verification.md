@@ -66,8 +66,11 @@ own `grep -c '^\*\*RULE:\*\*'`; the working-tree fallback seeing gitignored file
 corpus refusing the run **in both the primary and the secondary position**; `die`'s exit-2 contract;
 every emitted form being selectable; **extraction itself**, pinned against an inline fixture carrying
 a wrapped quotation, embedded escaped-quote JSON, and the rule marker discussed in prose; the two
-refusals in `main()`; and a roster check asserting every production `die()` site is one somebody
-decided how to pin.
+refusals in `main()`; a roster check comparing the NAMED ids of every production `die()` site against
+a registry; that a wrapped span is seen and is not counted by a line scan; and that an unreadable
+source file reaches the report through `main()` rather than being swallowed. Every refusal control
+also asserts the refusal **named its own subject**, because all of them share one exit code and a
+fixture that never arrives would otherwise be congratulated.
 
 **The primary/secondary split in that list is not pedantry — it is defect 6 recurring inside its own
 fix.** The first version of that control emptied the *primary* loader, which also empties

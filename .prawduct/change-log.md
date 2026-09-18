@@ -47,8 +47,11 @@ corpus, a nonsense string returning zero, a known-good set returning hits, **a d
 corrupted real fragment that must miss**, rule ids reconciling with the corpus's own counting
 command, the working-tree fallback proving it sees gitignored files, an emptied corpus refusing the
 run **in both the primary and the secondary position**, the exit-2 contract, every emitted form
-being selectable, **extraction itself** against an inline fixture, the two refusals in `main()`, and
-a roster check asserting every production refusal is one somebody decided how to pin. The corruption control is the one
+being selectable, **extraction itself** against an inline fixture, the two refusals in `main()`, a
+roster check comparing the NAMED ids of every production refusal against a registry, that a wrapped
+span is seen and not counted by a line scan, and that an unreadable source file reaches the report
+rather than being swallowed. Every refusal control also asserts the refusal named its own subject —
+they share one exit code, so a fixture that never arrives would otherwise be congratulated. The corruption control is the one
 the recorded recipe never had and it is not optional: under a mutant that matches everything, the
 *known-good* control reports a false green while only the nonsense and corruption controls go red.
 

@@ -138,7 +138,7 @@ set is `{"Dockerfile", "Makefile"}` — `.gitignore` is in neither branch and is
 searched."""
 
 # Derived, not a second hand-maintained copy: a form added to `extract` and not here
-# would be unselectable, and the duplication is exactly the drift this branch is about.
+# would be unselectable, and two hand-kept copies of one list drift apart silently.
 FORM_ITALIC, FORM_PLAIN, FORM_CODE = "italic-quote", "plain-quote", "code-span"
 KNOWN_FORMS = frozenset({FORM_ITALIC, FORM_PLAIN, FORM_CODE})
 
@@ -397,9 +397,9 @@ def audit(source: str, min_length: int = MIN_LENGTH_DEFAULT,
 def line_based_reads_non_wrapping(text: str) -> tuple[int, int, int]:
     """(line-based count, single-line spans, wrapped spans) for one capture's text.
 
-    Factored out of :func:`counts` so a control can reach its FAIL branch with a
-    synthetic input. The branch asserts the README's line-based recipe reads exactly
-    the non-wrapping subset; a check nobody can drive is not a check.
+    Factored out of :func:`counts` so a control can drive it with a synthetic input and
+    check it distinguishes a wrapped span from a non-wrapping one — which is the property
+    the whole line-based/wrapped distinction rests on.
     """
     spans = _ITALIC_QUOTE_RE.findall(text)
     grep_n = sum(len(_ITALIC_QUOTE_RE.findall(line)) for line in text.splitlines())
@@ -726,11 +726,18 @@ def self_test(min_length: int = MIN_LENGTH_DEFAULT,
                   f"refusal was added without deciding how it is pinned")
         ok = False
 
-    # Control 12 — the other two FAIL emitters, which a die()-only roster cannot reach.
-    # R-1 asked for a roster over die() AND FAIL sites; these are the FAIL half.
+    # Control 12 — the two FAIL emitters, which a die()-only roster cannot reach. A
+    # refusal and a FAIL are both ways this instrument reports it cannot be trusted, so
+    # both halves need pinning.
     wrapped_fixture = 'a *"one line"* and *"a quotation that\nwraps"* here'
     grep_n, single, wrapped = line_based_reads_non_wrapping(wrapped_fixture)
-    if wrapped >= 1 and grep_n == single and single < grep_n + wrapped:
+    # Two independently falsifiable conjuncts, and no third: a wrapped span exists, and
+    # the line scan does not count it. A `single < single + wrapped` clause was dropped
+    # because `wrapped >= 1` already makes it true — a conjunct no input can falsify
+    # reads as coverage and is none. The span-total formulas themselves cannot be
+    # discriminated by any input (`grep_n == single` holds by construction under today's
+    # regex — see the note in `counts`), so neither can be pinned against the other.
+    if wrapped >= 1 and grep_n == single:
         print(f"  PASS the line-based check sees a wrapped span it cannot count "
               f"(grep {grep_n}, wrapped {wrapped})")
     else:
@@ -740,7 +747,8 @@ def self_test(min_length: int = MIN_LENGTH_DEFAULT,
     # Driven through `main()`, not through the formatter alone: calling
     # `dropped_warnings` directly pins the string and leaves BOTH the loaders that
     # populate `Corpus.dropped` and main's render loop unreached, so deleting that loop
-    # would keep the control green. That is this branch's recurring defect, so the
+    # would keep the control green. A control that pins a formatter while claiming to
+    # pin a pipeline is the failure this whole self-test exists to prevent, so the
     # control takes the long way round.
     real_tree = globals()["load_tree"]
     try:
