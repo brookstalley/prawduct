@@ -234,6 +234,20 @@ def _coverage_algebra():
     return coverage_algebra
 
 
+def _report_scope():
+    """Lazy-import the test-report scope-record reader (lib/report_scope). Same
+    lazy idiom as _coverage_algebra() — the module is stdlib-only, reads one
+    file and imports no sibling. NOT named `test_report`: a module matching
+    `test_*.py` is a test file to every Python tool that walks the tree, and
+    this repo's own `tests/preferences/test_test_location.py` says so."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    from lib import report_scope  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+
+    return report_scope
+
+
 def _plan_archive():
     """Lazy-import the build-plan end-of-life operation (lib/plan_archive).
     Same lazy idiom as _release_readiness() — seeds sys.path so the hook's top
@@ -632,6 +646,8 @@ _SESSION_GITIGNORED_PATHS = (
     ".prawduct/.governance-ledger.jsonl",
     ".prawduct/.handoff-notes.md",
     ".prawduct/.test-evidence.json",
+    ".prawduct/.test-report.xml",
+    ".prawduct/.test-report.xml.scope.json",
     ".prawduct/.pr-reviews",
     ".prawduct/.session-base-tree",
     ".prawduct/.session-git-baseline",
@@ -859,6 +875,14 @@ def _boundary_close_session(project_dir: Path, prawduct_dir: Path) -> None:
         ".session-git-baseline",
         ".session-base-tree",
         ".gates-waived",
+        # The last run's report and its scope record. Deleted rather than
+        # carried, because ingesting them in the NEXT session would stamp that
+        # session's tree onto a run made against the previous one — the record
+        # says what the invocation selected, never when it ran, and evidence
+        # freshness is what would have caught it and is exactly what the ingest
+        # rewrites. A run is recoverable inside the session that made it.
+        ".test-report.xml",
+        ".test-report.xml.scope.json",
     ]
     # The reflection is deleted iff the handoff CARRIED it (or there was nothing
     # to carry) — keyed on delivery, never on "a handoff was attempted", the
@@ -3926,7 +3950,10 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         # emit JUnit — {junit_xml} is required) and ingest its report here,
         # rather than pay for the suite a second time inside `record`. Trust
         # posture matches the other ingest on-ramps — the operator asserts the
-        # report is the declared command's full output, not a scoped subset.
+        # report is the declared command's full output, not a scoped subset —
+        # EXCEPT where the product's runner writes a scope record beside the
+        # report (`docs/test-report-contract.md`), which the ingest loop below
+        # reads: there the assertion is checked rather than taken.
         if extra:
             print(
                 "error: extra pytest args are not allowed with --from-junit — "
@@ -4113,6 +4140,26 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
                     file=sys.stderr,
                 )
                 return 2
+            # The scope record, where the product's runner writes one
+            # (`docs/test-report-contract.md`). Asked BEFORE the report is
+            # parsed, because the question is whether this report may be
+            # ingested at all, not what it contains. Absence proceeds: it is
+            # indistinguishable from a repo that has never wired a producer.
+            may_ingest, why_not = _report_scope().read_scope_record(junit)
+            if not may_ingest:
+                print(
+                    f"error: refusing to record {from_junit} as suite evidence "
+                    f"— {why_not}.\n"
+                    "  Two ways forward: run the suite through the recorder, "
+                    "which records what it runs —\n"
+                    "    prawduct-hook test-evidence record\n"
+                    "  or ingest a report from a run that was not narrowed. "
+                    "Editing or deleting the scope record is not one of them: "
+                    "it buys a record that says the suite passed when part of "
+                    "it never ran.",
+                    file=sys.stderr,
+                )
+                return 2
             try:
                 roots.append(ET.parse(junit).getroot())
             except (ET.ParseError, OSError) as exc:
@@ -4190,10 +4237,15 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
                     )
                     return 2
             finally:
-                try:
-                    junit.unlink()
-                except OSError:
-                    pass
+                # The scope record rides beside the report by contract, so a
+                # producer-wired repo writes one next to this temp file too;
+                # leaving it behind would litter the temp directory once per
+                # recorded run. Best-effort, like the report's own unlink.
+                for leftover in (junit, _report_scope().record_path(junit)):
+                    try:
+                        leftover.unlink()
+                    except OSError:
+                        pass
 
     # Aggregate across ALL top-level <testsuite> elements (skipped entirely when
     # counts come from --from-counts or --no-rerun — there is no XML root).

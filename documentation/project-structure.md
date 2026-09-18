@@ -37,7 +37,8 @@ prawduct/
 │   │   ├── delegation.md              # What a delegate verifies, and what a brief must say
 │   │   └── session-digest.md          # SessionStart additionalContext digest
 │   ├── docs/                          # principles.md (the 26), norms.md, waivers.md, discipline.md,
-│   │                                  #   doctor-vs-janitor.md, governance-telemetry.md, runbook-authoring.md, examples/
+│   │                                  #   doctor-vs-janitor.md, governance-telemetry.md, runbook-authoring.md,
+│   │                                  #   test-report-contract.md, examples/
 │   └── templates/                     # Place-once + planning artifact templates for product repos
 │       ├── project-state.yaml         # Product state template (health_check, build_state)
 │       ├── boundary-patterns.md       # Contract surfaces between components

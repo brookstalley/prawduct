@@ -5,6 +5,82 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-18: A test report from every run, and the invocation's scope recorded beside it
+
+<!-- prawduct: type=feat | scope=test-report-scope -->
+
+**Two properties, stated as a language-agnostic requirement and then implemented here.** A governed
+product configures its runner so the machine-readable report is a side effect of **every** run
+(the path belongs in the runner's default-arguments file, not in the command someone types), and
+its pre/post-run hook records **beside that report** whether the invocation ran the whole suite or
+a narrowed part of it. The first means no run inside a session is unrecordable: a hand-run of the
+suite is ingested with `--from-junit` instead of paid for twice, which is the wall-clock defect
+`#824` fixed in prose and this fixes in configuration. The second is what makes the first safe —
+once a report always sits at a known path, one from `pytest -k billing` is indistinguishable from
+the suite's, and ingesting it would record a subset as the suite's evidence. That is a false green,
+not a lost ten minutes, so the two ship together or not at all.
+
+**What prawduct does and does not do here.** It states the requirement (`building.md` § Test
+Discipline), publishes the contract (new `docs/test-report-contract.md`), and READS the record. It
+installs no runner config and writes no `conftest.py` into anyone's repo — the norm that prawduct
+guides and never implements is the reason the deliverable is a contract plus a worked example
+rather than a plugin. The example is this repo's own `pyproject.toml` and `tests/conftest.py`,
+under that norm's own scope note: prawduct-the-product is a product like any other. The contract's
+per-ecosystem table (pytest, .NET, Go, Jest/Vitest, CTest) is labelled advice, because every
+ecosystem has the two surfaces this needs — a default-arguments file and a pre/post-run hook — and
+which flags they spell is not prawduct's call.
+
+**The reader, and why every refusal fails closed.** `lib/report_scope.read_scope_record` applies the
+contract's table in order: no record proceeds; unreadable, non-object, unknown `v`, missing or
+invalid `scope`, a `report` field naming some other file, and `scope: partial` each refuse with
+exit 2 and write nothing. Writing nothing is the design — recording a narrowed run as degraded
+would overwrite a green record with counts covering less than they appear to. The one permissive
+case is absence, and it is permissive because a missing record cannot be told apart from a repo
+that has never wired a producer, which is every repo today: no existing caller's behaviour changes,
+which is what keeps this additive under the api-contract's evolution norm.
+
+**The paths are a convention, not a new declaration.** `.prawduct/.test-report.xml` and
+`.prawduct/.test-report.xml.scope.json` join the managed `GITIGNORE_ENTRIES`, so an onboarded repo
+gets the ignore rules from the section it already has. A declared `test_report_path:` was
+considered and cut: it would let `test-status` point at the exact report, and it costs a template
+key, a doctor check and a migration for a benefit the fixed path mostly delivers. Both files are
+also DELETED at the session boundary, with the rest of the session set — a report outliving its
+session invites an ingest that stamps the new session's tree onto the old session's run, and the
+scope record cannot catch that, because it says what the invocation selected and never when it ran.
+
+**The producer classifies the invocation, never the result.** `-k`, `-m`, a node id or path subset,
+`--deselect`, `--ignore`, `--lf`/`--sw`, `--collect-only`, a `--maxfail`/`-x` that *could* stop
+early, and an exit status meaning interrupted, errored, mis-invoked or nothing-collected all read
+as `partial`; `--ff` does not, because it reorders without reducing. Exit 1 — a red suite — is
+`full`, which record-on-red depends on. The record is written first at `pytest_configure` saying
+the run did not finish, then overwritten at `pytest_sessionfinish`, so a killed run leaves a record
+saying so rather than the previous run's verdict vouching for a truncated report.
+
+**Cascaded claims.** `pr/SKILL.md` Step 1 said a hand-run "emitted no report to ingest" — true of a
+run that drops the flag, false for a repo that emits one from every run, and it now says which.
+`cmd_test_evidence`'s trust-posture comment said the operator's assertion is taken rather than
+checked, which is now true only where no record exists. The four-site session-file registry
+(`GITIGNORE_ENTRIES`, the hook's untrack set, this repo's own `.gitignore`, the boundary
+disposition) was updated in one commit, which is what its guard is for.
+
+**Guards.** The contract doc's JSON example and its field table are pinned against each other, so
+neither can be edited alone; the reader has one test per rule; the CLI refusal is tested at the CLI
+with a no-record control, so a refusal cannot be a fixture that never reached the subject; and the
+producer is pinned twice — a branch matrix over fake configs, and one run of REAL pytest against a
+COPY of `tests/conftest.py`, which is the only check that the hooks are wired at all. The
+conventional path is pinned across its four carriers, and this repo's own `addopts` is pinned where
+it is configured — nothing else fails if that flag is dropped, and the only symptom would be a
+hand-run that stops being recoverable, months later, for whoever next runs the suite by hand.
+Fourteen mutants were run against the mechanism: thirteen died, and the one expected to survive
+(record keys stop being sorted) did, which is what shows the sweep can report a survivor rather
+than killing everything by construction.
+
+**Budget.** `building.md`'s ceiling is a declared raise (4911 → 5021) with its reason at both the
+reading and the assertion. Neither payment route was honest: deduping against the always-injected
+digest is a dedup for the main agent and a deletion for a delegate, which reads that file without
+it, and the only in-file overlap is the Verify bullet's on-ramp list, which is the step-level
+instruction a builder acts on.
+
 ## 2026-09-17: Step 1 names the recorder; develop opens 3.5.1-dev.1 so consumers pick up review-stages
 
 <!-- prawduct: type=fix | scope=pr-step1-recorder -->

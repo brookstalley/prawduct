@@ -10,9 +10,9 @@ runner config (`artifacts/architecture.md` § Direction).
 
 1. **The machine-readable report is a side effect of every run.** The report path lives in the
    runner's own default-arguments file, not in the command someone types. Nobody can run the suite
-   in a way that produces no report, so no run is ever unrecoverable: whatever happened, it can be
-   ingested with `prawduct-hook test-evidence record --from-junit <report>` instead of being run
-   again.
+   in a way that produces no report, so no run in a session is unrecoverable: whatever happened, it
+   can be ingested with `prawduct-hook test-evidence record --from-junit <report>` instead of being
+   run again.
 2. **The invocation's scope is recorded beside the report.** The runner's pre/post-run hook writes
    a small JSON record saying whether that invocation ran the whole suite or a narrowed part of it.
 
@@ -29,7 +29,11 @@ is how the recorder tells them apart.
 | Its scope record | `.prawduct/.test-report.xml.scope.json` — the report's path plus `.scope.json` |
 
 Both are per-clone run output, never committed; prawduct's managed `.gitignore` section carries
-them, so an onboarded repo gets the ignore rules without doing anything.
+them, so an onboarded repo gets the ignore rules without doing anything. Both are also **deleted at
+the session boundary** (`/clear`), with the rest of the session files: a report outliving its
+session invites an ingest that stamps the new session's tree onto the old session's run, and the
+scope record cannot catch that — it says what the invocation selected, never when it ran. A run is
+recoverable inside the session that made it.
 
 The convention is what lets prose and refusals name an exact command. A repo whose runner cannot
 write there is not excluded — it passes its own path to `--from-junit`, and the scope record is
@@ -57,8 +61,9 @@ looked for beside whatever path that is.
 
 Unknown keys are ignored, so the record can grow without breaking a reader shipped at `v: 1`.
 
-Write it atomically (temp file in the same directory, then rename): a reader that catches the file
-half-written sees malformed JSON, and malformed refuses.
+Write it atomically (temp file in the same directory, then rename) and world-readable: a reader
+that catches the file half-written sees malformed JSON, and malformed refuses — and a report
+written by one user (a container, a CI runner) has to stay readable by whoever records it.
 
 ## What prawduct does with it
 
@@ -123,6 +128,7 @@ def _write(config, scope, why):
     fd, tmp = tempfile.mkstemp(dir=str(target.parent))
     with os.fdopen(fd, "w") as fh:
         fh.write(json.dumps(record, indent=2) + "\n")
+    os.chmod(tmp, 0o644)   # mkstemp is 0600; the recorder may run as another user
     os.replace(tmp, target)
 
 def pytest_configure(config):
@@ -150,5 +156,15 @@ run was interrupted, errored, mis-invoked, or collected nothing. Anything else i
 - **A run that *could* stop early is `partial` even if it did not.** `-x` on a green whole-suite
   run produces a complete report and is still recorded as narrowed, because the producer classifies
   the invocation rather than measuring the result. Drop the flag to record the run.
+- **It says nothing about *when* the run happened.** Ingesting any old report stamps today's tree
+  onto that run, which is the standing posture of `--from-junit` and not something this changes; the
+  boundary deletion above is what keeps it from becoming routine. `at` is in the record for an
+  operator to check, and the reader does not compare it.
+- **A report carried away from where it was produced, WITH its record, is refused.** The record
+  names the report it describes by absolute path, so a report and record downloaded from CI and
+  ingested on a developer's machine do not match and the ingest refuses. That is deliberate — a
+  present-but-mismatched record is not the un-wired population that absence is, so it is surfaced
+  rather than ignored — but it is a real cost: ingest the report where it was produced, or download
+  the report alone, which lands in the permissive absent case.
 - **It says nothing about the report's contents.** A hand-edited report is out of scope; this
   answers what the invocation selected, not whether the XML is truthful.
