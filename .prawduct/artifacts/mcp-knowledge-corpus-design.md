@@ -299,3 +299,56 @@ rules is reported **unchecked**, never silently passed.
 - **R2 refined.** Cordyceps deliberately does **not** use MCP progress notifications; it exposes a
   pollable progress reading plus a bounded wait returning `timedOut: true` with partial progress.
   Whether that choice is still right is a dated-fact question (§3.5).
+
+---
+
+## 9. RULING (knowledge-may-be-routed-into-a-consumer-repo), 2026-09-17
+
+**Owner ruled: yes to route (c)** — the plugin may scaffold a small product-owned pointer file into
+a consumer's `.claude/rules/learnings/` so that plugin-shipped domain knowledge auto-loads at build
+time. Confirmation is the owner's message in the 2026-09-17 session, recorded here rather than in
+the norm it amends.
+
+Owner's stated reasoning: *"Best practices for MCP are no different from best practices for testing
+or anything else. That's the core value prawduct brings. We can't be shy about that. We won't write
+a C# scaffold for an MCP server, but we'll build MCP expertise in, and critic and others will
+leverage it."*
+
+**The conclusion stands; one premise in its support does not, and the corrected warrant is
+narrower.** The owner's argument included *"prawduct already writes `.prawduct/` and critic and
+janitor and lots of other framework files into consuming repos."* That is **false for the current
+architecture and true only of the retired pre-2.0 file-sync model** (engine removed in M4/v2.0.3).
+Today `/prawduct:critic`, `/prawduct:janitor` and every other skill live in the version-keyed
+plugin cache; a governed repo commits its own `.prawduct/` state plus a small install reference and
+**no framework files** (`plugin/skills/onboard/SKILL.md`; `init_product._SCAFFOLD_DIRS` /
+`_STATE_TEMPLATES`). `.prawduct/` is the product's own state — its backlog, change log and
+decisions — not framework content.
+
+Recording the false premise would set a precedent licensing framework-file writes generally, which
+is not what was asked for and not what is needed.
+
+**The accurate warrant, which is sufficient:**
+
+1. The knowledge itself ships in the plugin, exactly as testing and review expertise already does.
+   Nothing about the corpus is written into a consumer repo.
+2. What is scaffolded is a **routing declaration** (~10 lines of `paths:` frontmatter plus a
+   pointer), not framework content. The distinction the norm turns on — *framework code stays in
+   the plugin, read-only from the repo's perspective* — is preserved.
+3. **There is already precedent in exactly this directory.** `learnings_files.scaffold_core()`
+   writes `.claude/rules/learnings/core.md` at `init-product`. Route (c) extends an accepted
+   practice rather than opening a new class of write.
+4. Route (b) — the Critic consulting the corpus — needs no amendment at all and delivers the
+   owner's stated goal ("critic and others will leverage it") on its own. (c) buys **build-time**
+   auto-load, which (b) cannot reach.
+
+**Mechanism constraints for the build plan:**
+
+- Never overwrite: the directory is the product's own authored corpus, and `scaffold_core` already
+  establishes absence as the only trigger.
+- A distinct filename, so it cannot collide with a product's own area file.
+- Reaching **already-onboarded** repos requires a migrate/doctor refresh step, not a template edit
+  (`core.md`: *a format's schema legend lives in `templates/` — an addition reaches onboarded repos
+  only via a refresh step*).
+- `record_lint` flags an area file whose globs match nothing tracked; a pointer in a repo with no
+  MCP server would trip it. The globs, or that lint, need an answer.
+- `architecture.md` § Direction needs the amendment recorded beneath its clause, citing this ruling.
