@@ -100,7 +100,8 @@ the pinned SHA, and locate the divergence point for each miss.
   So the README's recipe has TWO independent defects, not the one this plan was written to fix.
   Replacement criterion: the instrument reports, per capture, the italic-only and both-forms
   fragment counts, and a committed check shows the line-based grep equals the single-line subset —
-  which is what makes the undercount visible rather than asserted.
+  which is what makes the undercount visible rather than asserted. **The figures quoted in this
+  block are from the four-capture set and no longer reproduce; run `--counts`.**
 - The script reports a per-file fragment count that reconciles with a hand count on one sampled rule.
 
 ### Chunk 2: The audit
@@ -115,7 +116,12 @@ the pinned SHA, and locate the divergence point for each miss.
 - Design doc §10.4 updated if the audit changes what the debt is.
 
 **Done when**
-- Every extracted prose fragment in all three captures has a verdict; none is silently dropped.
+- **[AMENDED at build time — the capture set shrank after this criterion was written.]** It read
+  *"every extracted prose fragment in all three captures has a verdict."* Two captures shipped, not
+  three: `discodon`'s was withdrawn after the criterion was written (`mcp-knowledge-corpus-design.md`
+  §10.5), and its audit is not published. Replacement criterion: **every extracted prose fragment in
+  every PUBLISHED capture has a verdict, and none is silently dropped** — which the verification
+  record's tables satisfy, with `resolved + miss = fragments` on every row.
 - **[AMENDED at build time — the original criterion was not met, and the descope is deliberate.]**
   It read: *"every miss was chased **by hand** against the source region."* Only the
   drift-signature bucket (90–100% prefix reach) was chased in full; the shallower buckets were not.

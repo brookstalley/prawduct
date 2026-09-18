@@ -395,12 +395,12 @@ is not what was asked for and not what is needed.
 
 ### 10.1 Size measurement settles the packaging question: DIRECTORY, not one file
 
-**Measured 2026-09-17, on bytes rather than on a rule count.** The four compressed captures weigh
-measured with `wc -cw` over the compressed captures — run it rather than quoting a figure, since
-the corpus has since lost a source (§10.5).
-Against `.claude/rules/learnings/core.md` at 100,336 bytes (`wc -c .claude/rules/learnings/*.md`),
-which is the file the size advisories already complain about and which the harness auto-loads
-**whole**, the captures are already ~87% of it.
+**Measured 2026-09-17, on bytes rather than on a rule count.** The compressed captures were weighed
+with `wc -cw` against `.claude/rules/learnings/core.md` (`wc -c .claude/rules/learnings/*.md`) —
+the file whose size the advisories already complain about, and which the harness auto-loads
+**whole**. Even compressed and unaddressed, the captures were within an order of magnitude of it.
+**Run both commands rather than quoting a figure from this paragraph**: the set has since lost a
+source (§10.5) and gained addressed rewrites, so every number once written here has moved.
 
 That floor is firm in one direction only, and both directions point the same way: it is measured
 *before* the prawduct rules (§8) are folded in, *before* each rule is expanded from a terse capture
@@ -408,11 +408,12 @@ bullet into the corpus form carrying its own evidence and provenance — and onl
 other way. A one-file corpus lands in the same size class as the file whose size is already a
 standing complaint.
 
-Rule *counts* are deliberately not the basis for this, because no count of this corpus reproduces:
-the per-repo headlines (60 / 84 / 48 / 92) and the command once cited here to re-derive them
-(68 / 97 / 53 / 99) disagree on every row, and hallucinote disagrees a third way. See
-`mcp-mining/README.md` § *The headline counts do not reproduce*. Fixing that needs a shared rule
-marker across the captures before it needs a better estimator.
+Rule *counts* were deliberately not the basis for this, because at the time **no count of this
+corpus reproduced**: each capture's headline disagreed with the command cited to re-derive it, and
+one disagreed a third way. See `mcp-mining/README.md` § *The headline counts do not reproduce*,
+which records those readings as the history they are. Fixing it needed a shared rule marker across
+the captures before it needed a better estimator — which the structured rewrites supplied, and the
+re-measurement below uses.
 
 **Therefore: a directory of layer files, addressed by reference.** §4's deferral is discharged. The
 outline is unchanged — layers become filenames instead of top-level headings — so nothing authored
@@ -423,35 +424,39 @@ L1 is the layer every capture returned most of, and will likely still be too lar
 it needs splitting, split along the clusters the material produced rather than by a further
 taxonomy. Re-measure at authoring time — no rule count here is trustworthy enough to size it now.
 
-**Re-measured 2026-09-18, after all four sources were addressed. The ruling holds; its margin grew by
-an order of magnitude, and the L1 question is now answered.**
+**Re-measured after the sources were addressed, and again after one was withdrawn (§10.5). The
+ruling holds and its margin grew; the L1 question is answered.**
 
-The corpus finally has a count that reproduces, because it finally has a marker every capture shares:
+The corpus has a count that reproduces, because it has a marker every capture shares. **Run these
+rather than quoting a total from this section** — every figure once written here went stale the day
+a source was withdrawn, which is the defect this document spends §10.4 on:
 
     cd .prawduct/artifacts/mcp-mining
-    grep -c '^\*\*RULE:\*\*' *-structured.md                    # 87 · 95 · 147 · 106
-    grep -ohE '^LAYER: L[0-4]' *-structured.md | sort | uniq -c   # layout-agnostic; see below
-    cat *-structured.md | wc -cw
+    grep -c '^\*\*RULE:\*\*' *-structured.md                   # rules per capture
+    grep -ohE '^LAYER: L[0-4]' *-structured.md | sort | uniq -c   # layout-agnostic layer tally
+    cat *-structured.md | wc -cw                                  # words / bytes
+    grep -c 'PROVENANCE: UNADDRESSED' *-structured.md             # what is still unaddressed
 
-**435 rules — L0 34 · L1 146 · L2 97 · L3 112 · L4 46 — in 634,701 bytes / 88,813 words, with exactly
-1 UNADDRESSED.**
+Two consequences, neither of which depends on the exact figures:
 
-Two consequences:
+- **The packaging ruling is safe by a far wider margin than it was made on.** §10.1 above decided
+  "directory, not one file" by comparing *compressed, unaddressed* captures against `core.md`. The
+  addressed captures are several times both, so the direction does not change and the one-file
+  option is not merely inadvisable but absurd. Re-derive the ratio with the `wc` above against
+  `wc -c .claude/rules/learnings/core.md`.
+- **L1 splits.** §10.1 predicted it and deferred it; the layer tally answers it — L1 is by a wide
+  margin the largest layer and too large for one file. Split along the clusters the material
+  produced (wire-format, error-as-next-turn's-input, round-trip economics, teaching the gaps,
+  correctness traps) rather than by a further taxonomy.
 
-- **The packaging ruling is safe by a much wider margin than it was made on.** §10.1 above decided
-  "directory, not one file" on 87,596 bytes of *compressed, unaddressed* captures against `core.md`'s
-  100,336. The addressed captures are **7.2× that measurement** and 6.3× `core.md`. Nothing about the
-  direction changes; the one-file option is not merely inadvisable now but absurd.
-- **L1 splits.** §10.1 predicted it and deferred it; 146 rules answers it. Split along the clusters
-  the material produced — the captures already group them (wire-format, error-as-next-turn's-input,
-  round-trip economics, teaching the gaps, correctness traps) rather than by a further taxonomy.
-
-**These are capture bytes, not corpus bytes, and the distinction is load-bearing.** A capture carries
-its full evidence quotation and provenance apparatus per rule; the authored corpus will be terser and
-will dedup across sources (R8 alone is attested three times). So 634,701 is an upper bound on the
-*input*, not a prediction of the output. What it does bound firmly is the reading cost of authoring:
-88,813 words is the material a corpus author must get through, which is a planning number for stage 1
-rather than a size estimate for the artifact.
+**These are capture bytes, not corpus bytes, and the distinction is load-bearing.** A capture
+carries its full evidence quotation and provenance apparatus per rule; the authored corpus will be
+terser and will dedup across sources. So the byte figure is an upper bound on the *input*, never a
+prediction of the output. What it bounds firmly is the reading cost of authoring — the word count is
+the material a corpus author must get through, and it is a planning number for stage 1 rather than a
+size estimate for the artifact. **Take it from the command, not from this paragraph:** the figure
+that stood here was ~46% high once a source was withdrawn, and a planning number that wrong is worse
+than none.
 
 ### 10.2 The seed rules after contact with the evidence
 
@@ -512,17 +517,18 @@ Every citation in `mcp-mining/` is agent-reported. Before anything ships: re-der
 path against its source repo, and re-anchor on symbols and headings rather than line numbers
 (`core.md`: *a `file:line` you did not resolve yourself is a claim, not a citation*).
 
-**Corrected 2026-09-18 — the debt is larger than this section described, and different in kind.**
-Four of the five captures carry **no provenance at all**: zero `PROVENANCE:` lines and between zero
-and four distinct source paths each, across ~20KB of rules apiece, while stating hard measured
-figures (49% docs-token reduction, ~32 minutes of silence, 37/43 parameters, 10→8 tools). Only
-`hallucinote-server-structured.md` is addressed (106 `PROVENANCE:` lines, 52 distinct paths).
-Re-derive with the command in `mcp-mining/README.md` § *No provenance at all in four of five
-captures*.
+**Corrected 2026-09-18 — the debt was larger than this section described, and different in kind.
+The following describes the state BEFORE the re-mine; it is kept because it is why the re-mine
+happened.** At that point the compressed captures carried **no provenance at all** — zero
+`PROVENANCE:` lines and a handful of distinct source paths each, across ~20KB of rules apiece,
+while stating hard measured figures — and only one capture was addressed. Re-derive the current
+state with the command in `mcp-mining/README.md`; **the structured captures that shipped are all
+addressed**, and what remains unaddressed is countable with
+`grep -c 'PROVENANCE: UNADDRESSED' *-structured.md`.
 
-So for four sources this is not "re-check the citations" — there are none to re-check, and
-*verifying* an unaddressed claim is re-mining with extra steps. Three re-mines and one citation
-audit were dispatched 2026-09-18; the dispatch record is in that README.
+So for those sources it was not "re-check the citations" — there were none to re-check, and
+*verifying* an unaddressed claim is re-mining with extra steps. Re-mines and a citation audit were
+dispatched 2026-09-18; the dispatch record is in that README.
 
 **This makes the debt a precondition rather than hygiene.** Desirable 3 is periodic revalidation,
 and a claim that cannot be located cannot be revalidated — so an unaddressed corpus forecloses the
