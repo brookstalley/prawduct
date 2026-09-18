@@ -86,7 +86,7 @@ where that question belongs. Out of scope here, deliberately.
 
 ## Status
 
-- [ ] Chunk 01: The instrument — an era split and a remedy dimension on `review-stats`
+- [x] Chunk 01: The instrument — an era split and a remedy dimension on `review-stats`
 - [ ] Chunk 02: The NOTE contract — one home, three references, and the ratio that grades it
 
 ---
@@ -116,8 +116,15 @@ change has no before, and a claim with no before is unfalsifiable.
 - `plugin/lib/telemetry.py` — window filtering and the remedy dimension; `REPORT_SCHEMA_VERSION`
   bumped (6 → 7).
 - `plugin/bin/prawduct-hook` — the `review-stats` usage string and arg handling.
-- new `tests/test_telemetry.py` — the module has **no test file today**, which this chunk does not
-  get to inherit as an excuse for testing only its own delta.
+- `tests/test_review_stats.py` — the module's existing test home, extended.
+
+  **Corrected mid-build.** This line first read *"new `tests/test_telemetry.py` — the module has no
+  test file today"*. False: `tests/test_review_stats.py` is 685 lines covering exactly this module,
+  including a `TestJsonSchemaStability` class that pins the `--json` key set and version. The claim
+  came from a `grep -rln ... | head`, and the file sorted below the cut — the sliced-sample rule,
+  where the slice is invisible in the output you read back. A second test file was written and then
+  folded into the existing one; the pins there are renegotiated in the open rather than worked
+  around.
 
 **Done when:**
 1. `--since` / `--until` accept the same forms `tools/pr-review-yield.py` already accepts, and the

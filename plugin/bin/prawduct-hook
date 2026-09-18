@@ -7461,7 +7461,7 @@ _USAGE = (
     "ledger-append --event <kind> [--scope <s>] [--chunk <id>] [--model <id>]|"
     "handoff preview|"
     "pr-review-dispatch --begin|pr-review-payload [--json] [<project dir>]|"
-    "review-stats [--json]|classify-diff-risk [<base>]|"
+    "review-stats [--json] [--since <stamp>] [--until <stamp>]|classify-diff-risk [<base>]|"
     "cost-of-commit [--json] [<paths>...]|"
     "check-operator-verification|accept-operator-verification <rationale>|"
     "verify-operator-verification <vrf-id>|"

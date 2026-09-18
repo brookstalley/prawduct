@@ -48,7 +48,7 @@ from .ledger import ledger_path
 #: stat block, to 5 when `by_stage` joined the groupings, and to 6 when every
 #: stat block gained `duration_measured` / `duration_self_reported`: the
 #: `--json` shape gained keys each time, and TEL-7A4X keys on this shape.
-REPORT_SCHEMA_VERSION = 6
+REPORT_SCHEMA_VERSION = 7
 
 #: The two review stages a `review.critic` record can carry (`stage`, written
 #: by `critic-begin` onto the manifest and carried through the fact and the
@@ -116,6 +116,93 @@ def _canonical_model(model) -> str | None:
         if family in lowered:
             return family
     return model.strip()
+
+
+import re
+
+_FULL_TIMESTAMP_LEN = len("YYYY-MM-DDTHH:MM:SS")
+#: A bound shorter than a full timestamp names a PERIOD — `2026` a year,
+#: `2026-09` a month, `2026-09-01` a day. These are the forms `_exceeds_upper`
+#: compares by prefix, so they are exactly the ones accepted without parsing.
+_LOOKS_LIKE_PERIOD = re.compile(r"^\d{4}(-\d{2}(-\d{2})?)?$")
+
+
+def _parse_instant(stamp) -> "datetime | None":
+    """Parse an ISO stamp, treating a missing zone as UTC.
+
+    The zone default is not cosmetic: ledger rows are written ``...Z``, and a
+    bound typed without one would be naive — comparing naive to aware raises
+    rather than answering. A window bound is a FILTER, so it must never be able
+    to end the run.
+    """
+    if not isinstance(stamp, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def _exceeds_upper(ts: str, bound: str) -> bool:
+    """True when ``ts`` falls after an INCLUSIVE upper bound.
+
+    ``--until`` is inclusive, and a bound shorter than a full timestamp names a
+    PERIOD rather than an instant — ``2026-09`` is the whole of September,
+    ``2026-09-01`` the whole of that day. Compared as bare strings every one of
+    those excludes its own period, because ``2026-09-01T00:00:01Z`` sorts after
+    ``2026-09-01``. That silently shortens whichever window the bound closes,
+    and the newest window is the one a before/after comparison is read from.
+
+    The rule: compare only the part the bound actually specifies. Ported from
+    ``tools/pr-review-yield.py``, which answers the same question for the PR
+    reviewer; the two are a known second home, tracked rather than tidied here.
+    """
+    if len(bound) < _FULL_TIMESTAMP_LEN:
+        return ts[: len(bound)] > bound
+    a, b = _parse_instant(ts), _parse_instant(bound)
+    if a is None or b is None:
+        return ts > bound
+    return a > b
+
+
+def _precedes_lower(ts: str, bound: str) -> bool:
+    """True when ``ts`` falls before an INCLUSIVE lower bound.
+
+    The mirror of :func:`_exceeds_upper`, and it must exist separately rather
+    than fall back to a bare string compare. For a PERIOD bound the two agree by
+    luck — a period's inclusive start IS its own string prefix, so every
+    timestamp inside it already sorts at or after the bare bound — which is why
+    a mutation swapping this for `ts < bound` survived a full suite. What does
+    NOT agree is a full timestamp carrying a zone offset: `2026-08-04T12:00:00+02:00`
+    is 10:00Z, and compared as text against a `...Z` ledger stamp it means
+    nothing at all. Parsed here for the same reason the upper bound parses.
+    """
+    if len(bound) < _FULL_TIMESTAMP_LEN:
+        return ts[: len(bound)] < bound
+    a, b = _parse_instant(ts), _parse_instant(bound)
+    if a is None or b is None:
+        return ts < bound
+    return a < b
+
+
+def in_window(ts, since: "str | None", until: "str | None") -> bool:
+    """Whether an event's ``ts`` falls inside an inclusive ``[since, until]``.
+
+    An event with no usable ``ts`` is KEPT when no bound is given and DROPPED
+    once either is — a row that cannot say when it happened cannot be claimed
+    for a window, and silently counting it in both halves of a before/after
+    split is the error that would flatter every comparison.
+    """
+    if since is None and until is None:
+        return True
+    if not isinstance(ts, str) or not ts:
+        return False
+    if since and _precedes_lower(ts, since):
+        return False
+    if until and _exceeds_upper(ts, until):
+        return False
+    return True
 
 
 def _read_events(path: Path) -> "tuple[list[dict], dict, dict, str | None]":
@@ -254,6 +341,36 @@ def _extract_row(event: dict) -> dict:
         for f in findings
         if isinstance(f.get("severity"), str)
     ]
+    # Does a finding SHIP A FIX PLAN? The severity label says how much a finding
+    # is worth; the remedy beside it is what makes it read as work, and the two
+    # can disagree — a NOTE carrying a finished fix plan is indistinguishable
+    # from a WARNING at the point the builder decides what to do. Counted here
+    # so a change to the severity contract can be graded on what reviewers
+    # actually write rather than on what the protocol tells them to.
+    # Absent, empty and whitespace-only all count as NO remedy: the field being
+    # present but blank is not a fix plan, and treating it as one would report
+    # the contract already satisfied.
+    # Three outcomes, not two. ABSENT (no `recommendation` key at all) is not
+    # the same claim as BLANK (the key is there and says nothing): the PR
+    # reviewer's findings carry `{goal, severity, file, line, summary}` and have
+    # no remedy field in their schema, so folding absence into "wrote no
+    # remedy" reports that role at 0% — a statement about its behaviour that
+    # its schema makes meaningless. Counted apart so a rate is only ever
+    # computed over findings whose contract HAS the field.
+    remedies = []
+    for f in findings:
+        if not isinstance(f.get("severity"), str):
+            continue
+        sev = f["severity"] if f["severity"] in _SEVERITIES else "other"
+        if "recommendation" not in f:
+            remedies.append((sev, "absent", None))
+            continue
+        rec = f.get("recommendation")
+        rec = rec.strip() if isinstance(rec, str) else ""
+        if rec:
+            remedies.append((sev, "present", len(rec.split())))
+        else:
+            remedies.append((sev, "blank", None))
     # Read, never derived from the mode: `critic-begin` is the one home of the
     # mode → stage mapping, and an event that predates the field says nothing
     # about its stage. Deriving it here would silently backfill history with a
@@ -271,6 +388,7 @@ def _extract_row(event: dict) -> dict:
         # separately.
         "duration_measured": measured,
         "severities": severities,
+        "remedies": remedies,
         "findings": findings,
         "observations": observations,
     }
@@ -301,6 +419,36 @@ def _group_stats(rows: list[dict]) -> dict:
         total_findings += len(r["severities"])
         if any(sev in _ACTIONABLE for sev in r["severities"]):
             actionable_reviews += 1
+    # Per severity: how many findings carry a remedy, and how long it runs.
+    # `rate` and `median_words` are None rather than 0 when the severity had no
+    # findings at all — "nobody wrote one" and "there was nothing to write one
+    # for" are different answers, and a 0% that means the latter reads as the
+    # contract already holding.
+    remedy_words: dict[str, list[int]] = {sev: [] for sev in (*_SEVERITIES, "other")}
+    remedy_kinds: dict[str, dict] = {
+        sev: {"present": 0, "blank": 0, "absent": 0} for sev in (*_SEVERITIES, "other")
+    }
+    for r in rows:
+        for sev, kind, words in r["remedies"]:
+            remedy_kinds[sev][kind] += 1
+            if words is not None:
+                remedy_words[sev].append(words)
+    remedies = {}
+    for sev in (*_SEVERITIES, "other"):
+        kinds, words = remedy_kinds[sev], remedy_words[sev]
+        total = kinds["present"] + kinds["blank"] + kinds["absent"]
+        # The denominator is findings whose schema CARRIES the field. All-absent
+        # means the question does not apply to this population, which is a null,
+        # never a zero.
+        eligible = kinds["present"] + kinds["blank"]
+        remedies[sev] = {
+            "findings": total,
+            "with_remedy": kinds["present"],
+            "blank_remedy": kinds["blank"],
+            "no_remedy_field": kinds["absent"],
+            "rate": round(kinds["present"] / eligible, 3) if eligible else None,
+            "median_words": round(median(words), 1) if words else None,
+        }
     recording = [r["observations"] for r in rows if r["observations"] is not None]
     # The two populations, never pooled. `duration_total_seconds` and
     # `duration_median_seconds` below are the POOLED figures every existing
@@ -321,6 +469,7 @@ def _group_stats(rows: list[dict]) -> dict:
         "duration_measured": _population(measured),
         "duration_self_reported": _population(self_reported),
         "findings": by_severity,
+        "remedies": remedies,
         "findings_per_review": round(total_findings / n, 2) if n else 0.0,
         "actionable_rate": round(actionable_reviews / n, 3) if n else 0.0,
         "observations": sum(recording),
@@ -580,6 +729,47 @@ def _fmt_stats(stats: dict) -> str:
     )
 
 
+def _window_line(window: dict) -> list[str]:
+    """The windowed banner, or nothing at all.
+
+    A windowed report and a whole-corpus one are otherwise the same shape, and a
+    reader who cannot tell them apart will compare one against the other — which
+    is the mistake a before/after measurement exists to avoid. Printed loudly
+    rather than as a footnote for that reason.
+    """
+    since, until = window.get("since"), window.get("until")
+    if not since and not until:
+        return []
+    span = f"{since or 'the beginning'} .. {until or 'now'}"
+    return [f"WINDOW: {span} — this is a SLICE, not the whole corpus"]
+
+
+def _fmt_remedies(remedies: dict) -> str:
+    """Per severity: how often a finding ships a fix plan, and how long it runs.
+
+    `n/a` is not 0% — it is the answer for a population whose findings carry no
+    `recommendation` field at all (the PR reviewer's schema), where a rate would
+    be a claim about behaviour the schema cannot support.
+    """
+    parts = []
+    for sev in _SEVERITIES:
+        d = remedies.get(sev) or {}
+        if not d.get("findings"):
+            continue
+        if d.get("rate") is None:
+            parts.append(f"{sev} n/a ({d['no_remedy_field']} with no remedy field)")
+            continue
+        pct = round(d["rate"] * 100)
+        words = d["median_words"]
+        frag = f"{sev} {pct}% of {d['with_remedy'] + d['blank_remedy']}"
+        if words is not None:
+            frag += f", median {words:g} words"
+        if d.get("no_remedy_field"):
+            frag += f" (+{d['no_remedy_field']} no field)"
+        parts.append(frag)
+    return " | ".join(parts) if parts else "(no findings)"
+
+
 def _render_human(report: dict, ledger_rel: str) -> str:
     sk = report["skipped"]
     lines = [
@@ -587,8 +777,10 @@ def _render_human(report: dict, ledger_rel: str) -> str:
         f"events: {report['events_total']} review event(s); skipped: "
         f"{sk['corrupt_lines']} corrupt line(s), {sk['unknown_kinds']} unknown kind(s), "
         f"{sk['invalid_payloads']} invalid payload(s)",
+        *_window_line(report.get("window") or {}),
         "",
         f"overall: {_fmt_stats(report['overall'])}",
+        f"remedies: {_fmt_remedies(report['overall']['remedies'])}",
         "",
         "by role x model x mode:",
     ]
@@ -635,12 +827,37 @@ def review_stats(project_dir: Path, argv: list[str]) -> int:
     Exit 0 always when the report can be produced, including a missing ledger
     ("no review history" is an answer, not an error); exit 1 only on bad args.
     """
+    usage = "usage: review-stats [--json] [--since <stamp>] [--until <stamp>]"
     as_json = False
-    for arg in argv:
+    since = until = None
+    rest = list(argv)
+    while rest:
+        arg = rest.pop(0)
         if arg == "--json":
             as_json = True
+        elif arg in ("--since", "--until"):
+            if not rest:
+                print(f"review-stats: {arg} needs a value ({usage})", file=sys.stderr)
+                return 1
+            value = rest.pop(0)
+            # Refuse a bound this reader cannot interpret rather than filtering
+            # on it as a bare string. A window is read as a before/after
+            # comparison, so a bound that silently means something other than
+            # what was typed moves events between the two halves and the
+            # resulting delta is attributed to the change under test.
+            if _parse_instant(value) is None and not _LOOKS_LIKE_PERIOD.match(value):
+                print(
+                    f"review-stats: {arg} value {value!r} is not a date, month or"
+                    f" ISO timestamp ({usage})",
+                    file=sys.stderr,
+                )
+                return 1
+            if arg == "--since":
+                since = value
+            else:
+                until = value
         else:
-            print(f"review-stats: unknown argument {arg!r} (usage: review-stats [--json])", file=sys.stderr)
+            print(f"review-stats: unknown argument {arg!r} ({usage})", file=sys.stderr)
             return 1
 
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
@@ -656,6 +873,8 @@ def review_stats(project_dir: Path, argv: list[str]) -> int:
         events, skipped = [], {"corrupt_lines": 0, "unknown_kinds": 0, "invalid_payloads": 0}
         learning = {"written": 0, "fired": 0, "units_written": 0, "units_fired": 0, "units_uncited": 0}
 
+    if since is not None or until is not None:
+        events = [e for e in events if in_window(e.get("ts"), since, until)]
     report = aggregate_review_stats(events, skipped, learning)
     # Header fields the pure aggregation can't know — added once, here, so the
     # JSON and human renderings always agree.
@@ -663,6 +882,10 @@ def review_stats(project_dir: Path, argv: list[str]) -> int:
         "schema_version": report.pop("schema_version"),
         "project": project_dir.resolve().name,
         "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        # Stated even when null. A windowed report and a whole-corpus one are
+        # the same shape, and a consumer that cannot tell them apart will
+        # compare one against the other.
+        "window": {"since": since, "until": until},
         **report,
     }
 
