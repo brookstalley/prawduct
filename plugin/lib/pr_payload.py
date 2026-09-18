@@ -167,8 +167,13 @@ def _commit_bodies(project_dir: Path, base: str) -> str:
     against 15 subject lines, so scanning subjects alone renders the ordinary
     citation as "no ids cited" — a false clean on the one check
     `review-protocol.md` gives this reviewer and no other layer. A failed read
-    degrades to the empty string: the section that consumes this names its own
-    unavailability, and an id missed here is missed loudly there.
+    degrades to the empty string, which is SILENT — the backlog section would
+    then render "no backlog ids cited", the false clean it exists to remove.
+    What makes that safe is a coupling rather than a guard: `_section_commits`
+    issues the same `git log` over the same range, so whatever empties this also
+    degrades a section the reviewer reads. `TestTheSilentDegradationIsCoupledTo
+    ALoudOne` asserts the coupling, because a sentence is not a check and these
+    two calls are near-identical enough to be edited apart by accident.
     """
     code, out = _git(project_dir, "log", "--format=%B", f"{base}..HEAD")
     return out if code == 0 else ""

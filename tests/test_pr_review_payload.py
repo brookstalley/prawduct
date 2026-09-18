@@ -582,6 +582,61 @@ class TestTheCommitBodyReachesTheIdScan:
         )
 
 
+class TestTheSilentDegradationIsCoupledToALoudOne:
+    """`_commit_bodies` returns `""` when its `git log` fails, and nothing
+    downstream names that: the backlog section would render *"no backlog ids
+    cited ... this is an answer, not a failure"* — the exact false clean the
+    whole section exists to remove.
+
+    What makes the silence safe is a COUPLING, not a guard: `_section_commits`
+    issues the same `git log` over the same range, so anything that empties the
+    scan also degrades a section the reviewer reads. That was a sentence in a
+    docstring and nothing else, on two textually-separate calls — near-identical
+    enough that a file-wide mutation restore had already rewritten the wrong one
+    of the pair. A sentence is not a check, so here is the check.
+    """
+
+    def _ranges(self, monkeypatch, tmp_path) -> dict[str, list[tuple[str, ...]]]:
+        """Every `git log` invocation each function issues, by caller."""
+        calls: list[tuple[str, ...]] = []
+        real_git = pr_payload._git
+
+        def _recording(project_dir, *args):
+            if args and args[0] == "log":
+                calls.append(args)
+            return real_git(project_dir, *args)
+
+        monkeypatch.setattr(pr_payload, "_git", _recording)
+        repo = _repo(tmp_path)
+        base, _ = pr_payload._lib().coverage._resolve_base_branch(repo)
+        calls.clear()
+        pr_payload._section_commits(repo, base)
+        section = list(calls)
+        calls.clear()
+        pr_payload._commit_bodies(repo, base)
+        return {"section": section, "bodies": list(calls)}
+
+    def test_both_reads_cover_the_same_range(self, monkeypatch, tmp_path):
+        seen = self._ranges(monkeypatch, tmp_path)
+        assert len(seen["section"]) == 1 and len(seen["bodies"]) == 1, seen
+        assert seen["section"][0][-1] == seen["bodies"][0][-1], (
+            "the scan and the commits section no longer ask about the same "
+            f"range ({seen}). The scan's empty-on-failure degradation is silent "
+            "and is only safe because a failure also degrades the section the "
+            "reviewer reads — diverge the ranges and one can fail alone, "
+            "rendering 'no backlog ids cited' over commits that cite plenty"
+        )
+
+    def test_they_differ_only_in_the_format(self, monkeypatch, tmp_path):
+        """The control for the assertion above: same range is worth asserting
+        only because the two calls are otherwise NOT identical — one renders,
+        one scans. Without this, `_commit_bodies` could be made a second
+        `--oneline` read and the coupling test would still pass."""
+        seen = self._ranges(monkeypatch, tmp_path)
+        assert "--oneline" in seen["section"][0]
+        assert "--format=%B" in seen["bodies"][0]
+
+
 class TestBacklogIdExtraction:
     """`cited_backlog_ids` is R-2's input set: a change-log entry or a commit
     that CLAIMS a closure."""
