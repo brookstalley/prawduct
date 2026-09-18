@@ -86,8 +86,17 @@ the pinned SHA, and locate the divergence point for each miss.
   hits; a large known-good set returns hits; **a deliberately corrupted real fragment returns a
   miss** (the control the recorded recipe never had, and the one that proves the instrument
   discriminates rather than merely runs).
-- Running it with the italic-only pattern reproduces 64 / 10 / 4, and with both forms returns
-  strictly more — the measurement that justifies this chunk, re-derived by the artifact itself.
+- **[AMENDED at build time — the original criterion was falsified, and by the defect class this
+  chunk exists for.]** It read: *"running it with the italic-only pattern reproduces 64 / 10 / 4."*
+  It does not, and 64 / 10 / 4 is wrong. That figure came from `grep -oE '\*"[^"]+"\*'`, which is
+  **line-based**, so it counts only quotations that do not wrap. The real italic totals are
+  **200 / 17 / 4**; 136 of cordyceps' 200 wrap a line and are invisible to the recorded recipe.
+  `core.md` names this exactly — *the query is itself a mechanism and can carry the defect it
+  hunts: normalize the text before searching, because line structure is not semantic structure.*
+  So the README's recipe has TWO independent defects, not the one this plan was written to fix.
+  Replacement criterion: the instrument reports, per capture, the italic-only and both-forms
+  fragment counts, and a committed check shows the line-based grep equals the single-line subset —
+  which is what makes the undercount visible rather than asserted.
 - The script reports a per-file fragment count that reconciles with a hand count on one sampled rule.
 
 ### Chunk 2: The audit
