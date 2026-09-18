@@ -344,6 +344,15 @@ class TestDegradations:
         real = cq.resolve(
             REPO_ROOT, scope="brookstalley/prawduct", id_raw="1", now=datetime.now(timezone.utc)
         )
+        # Reachability first. `.prawduct/` caches are gitignored, so on a fresh
+        # clone this gets an ERROR envelope rather than an `ok` one — which is
+        # still the producer answering, and still carries `status` at the top
+        # level, which is the shape under test. Without this line a producer
+        # that returned `None` or blew up into a caught default would satisfy
+        # both assertions below by vacuity.
+        assert isinstance(real, dict) and "status" in real, (
+            f"`cachequery.resolve` returned no envelope at all: {real!r}"
+        )
         assert set(real) <= {"status", "data", "warnings", "error"}, real
         assert "resolved" not in real, (
             "`resolved` is INSIDE `data`; a fixture that puts it at the top level "
@@ -525,6 +534,52 @@ class TestTheChangeLogBodyReachesTheIdScan:
         sections = _sections(self._repo_citing_in_the_body(tmp_path))
         assert "9999" not in sections["change_log"]["body"]
         assert "9999" not in (sections["backlog"]["degraded"] or sections["backlog"]["body"] or "")
+
+
+class TestTheCommitBodyReachesTheIdScan:
+    """R-2's other input: a commit MESSAGE, not a commit subject.
+
+    `_section_commits` renders `--oneline` because that is what the narrative
+    goal reads, and the id scan was handed that rendering — so a citation in a
+    commit body was invisible. That is the ordinary case, not the exotic one:
+    across 120 commits on this repo's own integration branch a backlog `#N`
+    appears on 69 body lines against 15 subject lines.
+
+    The two assertions are a pair by design. The body id must be FOUND, and the
+    `--oneline` section must stay a rendering rather than quietly becoming the
+    scan set's carrier — a fix that simply widened the section would pass the
+    first and dissolve the separation the second pins.
+    """
+
+    def _repo_citing_in_a_commit_body(self, tmp_path: Path) -> Path:
+        repo = _repo(tmp_path)
+        (repo / "widget.py").write_text("# the widget\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-qm",
+             "feat(widget): the widget thing\n\nA body paragraph.\n\nresolves #4242\n")
+        return repo
+
+    def test_an_id_in_a_commit_body_is_scanned(self, tmp_path):
+        repo = self._repo_citing_in_a_commit_body(tmp_path)
+        sections = _sections(repo)
+        haystack = (sections["backlog"]["degraded"] or "") + (sections["backlog"]["body"] or "")
+        assert "4242" in haystack, (
+            "an id written in a commit's body never reached the id scan — the "
+            "scan read `git log --oneline`, which is subjects only"
+        )
+
+    def test_the_commits_section_stays_a_rendering(self, tmp_path):
+        """The subject line is what the narrative goal reads; the body belongs
+        to the scan and nowhere else. If the trailer shows up here, the section
+        became `--format=%B` and the reviewer pays for the whole log."""
+        repo = self._repo_citing_in_a_commit_body(tmp_path)
+        sections = _sections(repo)
+        commits = sections["commits"]["body"]
+        assert "the widget thing" in commits
+        assert "A body paragraph." not in commits, (
+            "the commits section is `--oneline` by design — widening IT is not "
+            "the fix for the scan set"
+        )
 
 
 class TestBacklogIdExtraction:

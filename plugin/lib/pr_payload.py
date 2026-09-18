@@ -158,6 +158,22 @@ def _section_commits(project_dir: Path, base: str) -> Section:
     return Section("commits", body=out)
 
 
+def _commit_bodies(project_dir: Path, base: str) -> str:
+    """The commit messages in FULL, for the id scan only — never rendered.
+
+    `_section_commits` carries `--oneline`, which is what the narrative goal
+    wants to read, and subjects are the WRONG scan set: across 120 commits on
+    this repo's own integration branch a backlog `#N` appears on 69 body lines
+    against 15 subject lines, so scanning subjects alone renders the ordinary
+    citation as "no ids cited" — a false clean on the one check
+    `review-protocol.md` gives this reviewer and no other layer. A failed read
+    degrades to the empty string: the section that consumes this names its own
+    unavailability, and an id missed here is missed loudly there.
+    """
+    code, out = _git(project_dir, "log", "--format=%B", f"{base}..HEAD")
+    return out if code == 0 else ""
+
+
 def _section_diffstat(project_dir: Path, base: str) -> Section:
     code, out = _git(project_dir, "diff", "--stat", f"{base}...HEAD")
     if code != 0:
@@ -324,6 +340,14 @@ def _section_change_log(project_dir: Path, prawduct_dir: Path, scope: str | None
 def cited_backlog_ids(commit_text: str, change_log_text: str) -> list[str]:
     """Every backlog id the branch's commits or change-log entry cite, deduped
     and in first-seen order.
+
+    **Both arguments must carry the full text, not a rendering of it.** The
+    sentence above is the contract three records state (`review-protocol.md`,
+    the Chunk 01 deliverable, and the backlog section's own "no ids cited"
+    answer), and it is false the moment a caller passes a summary: subjects
+    without bodies, or an entry's head without its prose. Callers pass
+    `_commit_bodies` and the change-log section's body, both of which carry the
+    whole text.
 
     Exported because it is the ANSWER the backlog section needs, and because the
     reviewer's R-2 check is stated over exactly this set: a change-log entry or
@@ -503,7 +527,12 @@ def assemble(project_dir: Path) -> tuple[list[Section], str | None]:
             lib.briefing.read_str_yaml_key(
                 prawduct_dir / "project-state.yaml", "backlog_service_repo"
             ),
-            cited_backlog_ids(commits.body or "", change_log_section.body or ""),
+            # `_commit_bodies`, NOT `commits.body` — that section is `--oneline`,
+            # and a citation in a commit's body is the ordinary case here.
+            cited_backlog_ids(
+                _commit_bodies(project_dir, base),
+                change_log_section.body or "",
+            ),
         )
     )
     sections.append(_section_default_branch(project_dir))

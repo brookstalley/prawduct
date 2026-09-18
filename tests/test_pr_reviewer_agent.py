@@ -171,7 +171,11 @@ class TestAgentToolsAreRestricted:
 
     def test_git_is_read_only(self):
         tools = self._tools()
-        assert "Bash(git *)" not in tools, "no broad git — mutating verbs must be impossible"
+        assert "Bash(git *)" not in tools, (
+            "no broad git — the read-only verbs are granted one by one, which "
+            "is the intent this file declares; whether a pattern narrows WITHIN "
+            "an exposed Bash is the consumer's permission settings' answer"
+        )
         for verb in ("Bash(git diff *)", "Bash(git log *)", "Bash(git show *)"):
             assert verb in tools, f"pr-reviewer missing read-only git verb {verb}"
 
@@ -181,8 +185,10 @@ class TestAgentToolsAreRestricted:
         for cmd in ("pytest", "python -m pytest", "python3 -m pytest tests/",
                     "cd x && python3 -m pytest"):
             assert not _admits(patterns, cmd), (
-                f"an allow pattern would permit `{cmd}` — the reviewer must be "
-                "structurally unable to run tests"
+                f"an allow pattern would permit `{cmd}` — no grant here may "
+                "name a test run. The guarantee is the tool SET (no unrestricted "
+                "`Bash` entry); this asserts the declared patterns do not "
+                "contradict it"
             )
 
     def test_the_payload_grant_does_not_reach_its_writer_sibling(self):
