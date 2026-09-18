@@ -91,14 +91,14 @@ same way, against all three extraction defects, each going red with its own diag
 
 ## What the audit found
 
-    ALL   640 prose fragments   486 resolved   154 miss   75%
+    ALL   639 prose fragments   486 resolved   153 miss   76%
 
 | source | form | fragments | resolved | miss | resolve rate |
 |---|---|---|---|---|---|
 | cordyceps | italic-quote | 192 | 154 | 38 | 80% |
 | cordyceps | plain-quote | 66 | 45 | 21 | 68% |
 | bankmachine | italic-quote | 14 | 13 | 1 | 92% |
-| bankmachine | plain-quote | 368 | 274 | 94 | 74% |
+| bankmachine | plain-quote | 367 | 274 | 93 | 74% |
 
 **A miss is not drift.** Misses are bucketed by how far the fragment's longest prefix reaches before
 diverging, because the depth is what separates the classes:
@@ -107,14 +107,14 @@ diverging, because the depth is what separates the classes:
 |---|---|---|---|
 | **A** | 90–100% | **2** | the drift signature — the source is there and the *tail* was rewritten |
 | B | 70–89% | 14 | partial; usually a stitched quotation or a mid-sentence paraphrase |
-| C | 40–69% | 38 | loosely related wording |
+| C | 40–69% | 37 | loosely related wording |
 | D | <40% | 100 | the text is not in the tree at all |
 
 ### The structural finding: bankmachine cannot be audited at the fragment level
 
 `italic-quote` resolves at **80% / 92%**; `plain-quote` at **68% / 74%**. cordyceps uses `*"…"*` as
 a deliberate verbatim-quotation convention (192 of its 258 fragments); bankmachine essentially does
-not (14 of 382) and uses plain double quotes for **both** source quotations and the author's own
+not (14 of 381) and uses plain double quotes for **both** source quotations and the author's own
 scare-quotes, emphasis and named concepts.
 
 So for bankmachine **there is no syntactic marker distinguishing a claim of verbatim source text
@@ -159,9 +159,9 @@ written, and hallucinote's compressed twin was not.
 - **Buckets B, C and D are not chased by hand.** Bucket A was chased in full. The triage makes the
   rest tractable (the instrument reports each miss's divergence point), but reading them is a work
   cycle of its own, and most of D is expected to be the author's own words rather than drift.
-  **Do not read "75% resolved" as "25% drift."**
-- **`code-span` fragments are extracted and counted but not audited** — 143 in cordyceps, 74 in
-  bankmachine. Bare symbols and paths are address-class and were checked when these captures were
+  **Do not read "76% resolved" as "24% drift."**
+- **`code-span` fragments are extracted and counted but not audited** — the instrument reports the
+  per-capture figure; run it rather than quoting one here. Bare symbols and paths are address-class and were checked when these captures were
   written; the multi-token code lines are a claim of the same kind as a prose quotation and are owed
   the same pass.
 - **Fragments under 25 normalised characters are skipped, not searched.** They are counted and

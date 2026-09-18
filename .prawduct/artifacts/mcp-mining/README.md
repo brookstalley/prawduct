@@ -48,7 +48,7 @@ blocks and the compressed captures used `- **bold**` bullets exclusively. That i
 shipped state — every structured capture now uses the shared marker — so run this over the tree
 rather than trusting the sentence:
 
-    for f in *-server.md *-consumer.md *-structured.md; do
+    for f in *-server.md *-structured.md; do
       printf '%-36s RULE-blocks:%-5s bold-bullets:%s\n' "$f" \
         "$(grep -c '^\*\*RULE:\*\*' "$f")" "$(grep -c '^- \*\*' "$f")"
     done

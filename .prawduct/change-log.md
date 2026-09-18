@@ -9,12 +9,14 @@
 
 <!-- prawduct: type=feature | scope=mcp-quotation-audit -->
 
-**This entry also publishes the mining corpus itself, which has never been in this repository
-before.** `.prawduct/artifacts/mcp-mining/` arrives whole: three source captures in both compressed
-and structured form, a citation audit of one of them, the drift owed back to two source repos, and
-the README that explains what a capture is. The quotation audit below is the work this entry is
-*about*; the corpus is the larger part of it by volume and had no change-log entry of its own,
-which would have made ~7,200 lines read as pre-existing to anyone reconstructing the release.
+**This entry also publishes material that has never been in this repository before**, and which is
+the larger part of the bundle by volume: `.prawduct/artifacts/mcp-mining/` arrives whole — three
+source captures in both compressed and structured form, a citation audit of one of them, the drift
+owed back to two source repos, and the README that explains what a capture is — together with
+`mcp-knowledge-corpus-design.md`, the corpus's design of record, and a `learnings_budgets` ceiling
+raise for `authoring.md` in `project-state.yaml` carrying its own reason. None of it had a
+change-log entry, so all of it would have read as pre-existing to anyone reconstructing the release.
+Re-derive the volume with `git diff --stat origin/develop...HEAD` rather than quoting a figure.
 
 **Two chunks: an instrument, and the audit it made possible.** `hallucinote-verification.md` had
 found quoted evidence fragments wrong, and one absent, in a mined capture **with every cited address

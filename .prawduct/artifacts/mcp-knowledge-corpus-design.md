@@ -500,9 +500,8 @@ rather than a size estimate for the artifact.
    selection-accuracy band. One dated-facts entry, not three rules. A directly-observed client cap
    was evidenced only by the withheld capture and is not reproduced (§10.5).
 3. **Progress notifications.** cordyceps declined them without recording why; hallucinote verified
-   they do not affect the timeout. A third position was recorded in the withheld capture, and its
-   audit found that position unsupported by its own source; neither the position nor the audit's
-   detail is reproduced here (§10.5). What survives is that the two remaining positions compose.
+   they do not affect the timeout. A third source contributed to this item and is withheld (§10.5),
+   so nothing from it is reproduced. What survives is that the two remaining positions compose.
 4. **Rename policy.** hallucinote's design doc says never rename/always alias; its shipped policy
    says no aliases at all. Both are right under different preconditions, and the precondition is the
    rule.
@@ -669,7 +668,7 @@ Applying 11.1 to §10.3's list, reading only what §10.3 itself already states:
 |---|---|---|---|
 | 1 | Clamp vs refuse an out-of-range value | **(a)** — §10.3 supplies the candidate precondition itself: refuse where silence would be indistinguishable from completeness; clamp-and-announce where the parameter is a resource budget | **BLOCKED, not awaiting** — one side's evidence sat in the withheld capture (§10.5), so this adjudication cannot be settled from what this repository holds |
 | 2 | Tool-count ceiling (20 / 40 / 128 / a 10–20 band) | **Not an adjudication at all.** §10.3: *"One dated-facts entry, not three rules."* These are client constants, which §3.5 already routes to the dated-facts surface | **awaiting** both audits for the real numbers; the filing decision needs nothing further |
-| 3 | Progress notifications | **(a)** — §10.3: *"One coherent answer exists that no single repo held."* That is a dissolution by definition | **narrowed 2026-09-18** — that capture's `~30s` position was invented and is withdrawn; hallucinote's timeout fact RESOLVED against its tree. Still awaiting whether cordyceps recorded a reason. The rule is categorical, not duration-based |
+| 3 | Progress notifications | **(a)** — §10.3: *"One coherent answer exists that no single repo held."* That is a dissolution by definition | **narrowed 2026-09-18** — hallucinote's timeout fact RESOLVED against its tree; a third source's contribution is withheld (§10.5). Still awaiting whether cordyceps recorded a reason |
 | 4 | Rename policy | **(a)** — §10.3: *"Both are right under different preconditions, and the precondition is the rule"* | **awaiting** the hallucinote audit of design-doc-vs-shipped-policy |
 
 **So §10.3's framing overstates the disagreement.** Three of its four dissolve into one rule with a
