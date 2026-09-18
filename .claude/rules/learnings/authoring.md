@@ -124,3 +124,39 @@ irreversible act.
 The general form is worth more than the instance: **a check is only a check if it can disagree with
 the thing it grades.** Three green signals here were all downstream of the same stale ref. When
 something can be stale, verify it against a source that does not share its staleness.
+
+### A QUOTATION you lift into a durable record drifts toward the generalisation you are writing toward, and that direction is why it survives review — verify quoted evidence mechanically, exactly as you would a `file:line`, because a paraphrase that SHARPENS the source reads as good writing rather than as an error. Tell: the address resolved, so the quote felt checked
+
+Measured 2026-09-18 by the audit of `mcp-mining/hallucinote-server-structured.md`, a 106-rule capture
+in which **every cited address resolved** — 0 NOT-FOUND, every constant matching the tree.
+
+Of 202 quoted evidence fragments, 170 matched the source exactly. **Nineteen did not, and one appeared
+nowhere in the tree at all.** No path check can see this class, which is the trap: the schema puts a
+`PROVENANCE:` line under every quote, so verifying the address creates the impression that the
+quotation came with it.
+
+**The direction is the finding, and it is what makes the class undetectable.** The two edits that
+mattered both moved *toward* the generalisation the corpus was being written for:
+
+- an error-model rationale was rewritten from *"its quality directly determines"* to *"its
+  **structure** decides"*;
+- *"Live"* — one specific host — became *"the host"*, in a corpus whose subject is the host/server
+  boundary.
+
+Both read **better** as durable material than the source does. A reviewer scanning for errors sees a
+well-turned sentence, and the specific observation has been quietly laundered into a general claim the
+source never made. `core.md`'s transcription rule already names the mechanism (*a paraphrase reads
+exactly like a faithful copy*); this adds that the drift is not random, and that its direction is
+always toward what you wanted the source to say.
+
+**The instrument is mechanical, so build it rather than resolving to read more carefully.** Extract the
+quoted runs, normalise whitespace, case and trailing punctuation, split on the record's own ellipses,
+search the corpus of sources, and binary-search the longest matching prefix so a divergence *point* is
+located instead of an absence merely reported. Two controls make the result evidence rather than
+reassurance, and both are cheap: **a nonsense string must return zero** (the search is not matching
+everything) and **a large known-good set must return hits** (it is not dead) — `core.md`'s
+positive-control rule, applied to a search instead of a test.
+
+State what the instrument cannot see, in the artifact rather than in your head: a quotation *stitched*
+from two non-adjacent sentences with no ellipsis marked shows up as a prefix match and has to be read.
+The script narrows the set a human must read; it never empties it.

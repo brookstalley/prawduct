@@ -9,6 +9,25 @@ down* — and its bound, that the handoff carries state one hop, not indefinitel
 Each item is an agent's claim, read against the commit named. None has been re-verified from here,
 and **none has been reported to the owning repo yet.**
 
+**What this file holds, exactly — it is not uniformly complete, and reading it as a list would
+undercount.** Corrected 2026-09-18 after counting rather than estimating:
+
+| Repo | Enumerated here | Total reported | Where the rest are |
+|---|---|---|---|
+| cordyceps | 6 of 6, plus 1 governance note and 2 wrong-mechanism notes | 6 | complete here |
+| hallucinote | 3 of 3 | 3 | complete here |
+| discodon | **3 of 20** | 20 | that capture's own drift section |
+
+So this file is the **complete** record for cordyceps and hallucinote and a **top-three** for discodon.
+Before reporting anything to discodon, read its capture's drift section, which is its own top-level
+heading (`# Doc-vs-code drift in discodon itself`). Anchor the search, because a bare `grep -n 'drift'`
+returns the word from inside a dozen rule bodies and not the heading:
+
+    grep -nE '^#{1,3} .*[Dd]rift' discodon-consumer-structured.md A total across all three is 29 claims, not the
+12 enumerated below, and neither number should be quoted without running the count:
+
+    grep -c '^[0-9]\+\. \*\*' drift-owed-upstream.md      # items enumerated here
+
 ## cordyceps — at `develop` `f07eb797`, mined 2026-09-18
 
 Two re-confirmed from the first mining pass, four new.
