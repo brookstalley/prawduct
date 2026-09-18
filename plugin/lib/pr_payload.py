@@ -28,9 +28,11 @@ reports "reconciled" having reconciled nothing. Every degradation therefore
 carries its own reason, in the reviewer's own words, where the content would have
 been.
 
-**One hard failure: an unresolvable base.** No base means no review interval,
-which means there is nothing to review — that is exit 1 carrying the resolver's
-own reason, not a degraded section.
+**Two hard failures, both exit 1 carrying their own reason rather than a degraded
+section.** An unresolvable base: no base means no review interval, which means
+there is nothing to review. And an incomplete ``lib/``: ``_lib`` imports six
+sibling modules at first use, so without them there is no section to degrade —
+``emit`` attributes it rather than letting it surface as a traceback.
 """
 
 from __future__ import annotations
@@ -126,8 +128,12 @@ class _Lib(NamedTuple):
 
 def _lib() -> _Lib:
     """The modules, imported lazily and together so a broken install degrades at
-    the call rather than at import of this module — the CLI wrapper reports that
-    case."""
+    the call rather than at import of this module. ``emit`` is what reports that
+    case — the CLI wrapper's own ``ImportError`` handler covers only
+    ``from lib import pr_payload`` and this import runs later, inside
+    ``assemble``, so without ``emit``'s handler an incomplete ``lib/`` exits as a
+    traceback (``api-contract.md`` § Direction: errors are attributed, never
+    stack traces)."""
     from . import briefing, buildplan_refs, change_log, coverage, gates, gitstate  # noqa: PLC0415
 
     return _Lib(briefing, buildplan_refs, change_log, coverage, gates, gitstate)
@@ -268,7 +274,8 @@ def _section_change_log(project_dir: Path, prawduct_dir: Path, scope: str | None
             "check has nothing to compare the diff against"
         ))
     try:
-        entries = lib.change_log.parse_change_log(path.read_text(encoding="utf-8"))
+        raw = path.read_text(encoding="utf-8")
+        entries = lib.change_log.parse_change_log(raw)
     except (OSError, ValueError) as exc:
         return Section("change_log", degraded=(
             f"change log unparseable ({exc.__class__.__name__}) — the "
@@ -286,8 +293,20 @@ def _section_change_log(project_dir: Path, prawduct_dir: Path, scope: str | None
             f"no change-log entry tagged `scope={scope}` — this bundle currently "
             "ships with nothing describing it, which is itself the finding"
         ))
+    # The BODY, not just the head. Two consumers need it and both were being
+    # served a heading: the reviewer is told to read this entry against the
+    # diffstat (the entry IS the release note, so a deliverable its prose omits
+    # ships invisibly), and `cited_backlog_ids` scans this section's text — an
+    # id written in the entry's prose rather than its title is the ordinary
+    # case, and without the body it renders as "no ids cited", which is a false
+    # clean on the one check nothing else in the pipeline owns.
+    starts = sorted(e.line_number for e in entries)
+    all_lines = raw.splitlines()
     lines = []
     for entry in matched:
+        after = [s for s in starts if s > entry.line_number]
+        end = (after[0] - 1) if after else len(all_lines)
+        body = "\n".join(all_lines[entry.line_number:end]).strip()
         lines.append(f"line {entry.line_number}: {entry.title}")
         lines.append(f"  tags: {json.dumps(entry.tags, sort_keys=True, default=str)}")
         if entry.tag_conflicts:
@@ -297,6 +316,8 @@ def _section_change_log(project_dir: Path, prawduct_dir: Path, scope: str | None
                 f"  {entry.unconsumed_tag_lines} tag line(s) past the entry head — "
                 "parsed by nothing"
             )
+        lines.append("  body:")
+        lines.extend(f"    {ln}" for ln in (body.splitlines() or ["(empty)"]))
     return Section("change_log", body="\n".join(lines))
 
 
@@ -318,21 +339,28 @@ def cited_backlog_ids(commit_text: str, change_log_text: str) -> list[str]:
     return seen
 
 
-def _section_backlog(project_dir: Path, scope: str | None, ids: list[str]) -> Section:
+def _section_backlog(project_dir: Path, backlog_scope: str | None, ids: list[str]) -> Section:
     """Resolve every cited id. **This is R-2's only data source anywhere in the
     pipeline**, so its degradation must be loud: `review-protocol.md` assigns
     that check to this reviewer and to no other layer, and an unnamed failure
     here renders as "reconciled" having reconciled nothing.
+
+    **`backlog_scope` is the BACKLOG repo (`owner/repo`), never the build-plan
+    scope.** Both are called "scope" one call frame apart and every other section
+    here takes the plan one, which is how the plan scope reached
+    `cachequery.resolve` and made every id report as needing a repo. The names
+    differ now because the types cannot tell them apart.
     """
     if not ids:
         return Section("backlog", body=(
             "no backlog ids cited in the commits or the change-log entry — "
             "R-2 has nothing to check (this is an answer, not a failure)"
         ))
-    if scope is None:
+    if backlog_scope is None:
         return Section("backlog", degraded=(
-            "backlog reconciliation unavailable — no scope resolved to query the "
-            f"cache with; R-1 and R-2 are NOT answered for {', '.join(ids)}"
+            "backlog reconciliation unavailable — this repo sets no "
+            "`backlog_service_repo:`, so there is no cache scope to resolve the "
+            f"cited ids against; R-1 and R-2 are NOT answered for {', '.join(ids)}"
         ))
     try:
         from datetime import datetime, timezone  # noqa: PLC0415
@@ -349,12 +377,31 @@ def _section_backlog(project_dir: Path, scope: str | None, ids: list[str]) -> Se
     lines, failures = [], []
     for item_id in ids:
         try:
-            result = cachequery.resolve(project_dir, scope=scope, id_raw=item_id, now=now)
+            envelope = cachequery.resolve(
+                project_dir,
+                scope=backlog_scope,
+                id_raw=item_id,
+                now=now,
+                default_owner=backlog_scope.split("/", 1)[0],
+            )
         except Exception as exc:  # prawduct:allow prawduct/broad-except -- one id's failure must not hide the others
             failures.append(f"{item_id}: {exc.__class__.__name__}")
             continue
-        if not isinstance(result, dict) or not result.get("resolved"):
-            reason = (result or {}).get("reason") if isinstance(result, dict) else None
+        # `resolve` speaks the transport ENVELOPE — `{status, data, warnings}` —
+        # and REPORTS a failed lookup rather than raising it, so the guard above
+        # cannot see one. Both halves matter here: reading `resolved` off the
+        # envelope finds nothing and renders every id as dangling, and treating
+        # an `error` envelope as a resolution result turns "the cache could not
+        # be read" into fabricated dangling citations, which is the exact false
+        # clean this section's degradation exists to prevent.
+        if not isinstance(envelope, dict) or envelope.get("status") != "ok":
+            err = (envelope or {}).get("error") if isinstance(envelope, dict) else None
+            detail = (err or {}).get("message") or (err or {}).get("code") or "unknown error"
+            failures.append(f"{item_id}: {detail}")
+            continue
+        result = envelope.get("data") or {}
+        if not result.get("resolved"):
+            reason = result.get("reason")
             lines.append(
                 f"{item_id}: did NOT resolve — a dangling citation"
                 + (f" ({reason})" if reason else "")
@@ -450,7 +497,12 @@ def assemble(project_dir: Path) -> tuple[list[Section], str | None]:
     sections.append(
         _section_backlog(
             project_dir,
-            scope,
+            # `backlog_service_repo:`, the same key `briefing._backlog_pending_line`
+            # and `norm_probes._live_scope` read — NOT `scope` above, which is the
+            # build plan's.
+            lib.briefing.read_str_yaml_key(
+                prawduct_dir / "project-state.yaml", "backlog_service_repo"
+            ),
             cited_backlog_ids(commits.body or "", change_log_section.body or ""),
         )
     )
@@ -513,7 +565,19 @@ def emit(project_dir: Path, argv: list[str]) -> int:
             )
             return 1
 
-    sections, hard_failure = assemble(project_dir)
+    try:
+        sections, hard_failure = assemble(project_dir)
+    except ImportError as exc:
+        # `_lib()` imports six sibling modules at first use, inside `assemble`
+        # and outside the wrapper's handler. An incomplete `lib/` is the one
+        # failure this module cannot degrade per section, because no section
+        # can be built without them.
+        print(
+            f"pr-review-payload: the plugin lib/ is incomplete ({exc}) — "
+            "reinstall or update the prawduct plugin",
+            file=sys.stderr,
+        )
+        return 1
     if hard_failure:
         print(f"pr-review-payload: {hard_failure}", file=sys.stderr)
         return 1

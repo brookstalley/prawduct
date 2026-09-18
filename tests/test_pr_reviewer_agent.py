@@ -35,6 +35,14 @@ PROTOCOL = PLUGIN / "skills" / "pr" / "review-protocol.md"
 SKILL = PLUGIN / "skills" / "pr" / "SKILL.md"
 
 
+def _step3_of(skill_text: str) -> str:
+    """Step 3 alone — the dispatch template's span. Bound to the smallest
+    region carrying the behaviour: a match anywhere in `SKILL.md` would be
+    satisfied by Step 2's prose about the base, which is not what the reviewer
+    is handed."""
+    return skill_text[skill_text.index("### Step 3"):skill_text.index("### Step 4")]
+
+
 def _frontmatter(path: Path) -> str:
     text = path.read_text()
     m = re.match(r"^---\n(.*?)\n---\n", text, re.DOTALL)
@@ -225,6 +233,30 @@ class TestAgentToolsAreRestricted:
                 "reconciled nothing"
             )
 
+    def test_the_grants_admit_the_git_dash_C_form_the_file_mandates(self):
+        """The grant and the instruction have to agree, and they did not.
+
+        Both files tell the reviewer every git call is `git -C <project dir>
+        <verb>` — the anchoring that stops a subagent reviewing the primary
+        checkout — while the grants read `Bash(git <verb> *)`, which does not
+        match a command whose second token is `-C`. On a consumer that actually
+        enforces its allow-list, every mandated call is the one shape not
+        granted: the reviewer is stopped at the first read, or worse, quietly
+        does the un-anchored thing that IS granted and reviews the wrong tree.
+        Discriminating by construction — the asserted command carries `-C`, so
+        the old grants fail it and the new ones pass.
+        """
+        patterns = _bash_patterns(self._tools())
+        for verb in ("diff", "log", "show"):
+            cmd = f"git -C /abs/project {verb} origin/develop...HEAD"
+            assert _admits(patterns, cmd), (
+                f"the allow-list does not admit {cmd!r}, which this agent "
+                f"definition requires the reviewer to run"
+            )
+        # The un-anchored form stays granted too: the caller may dispatch into a
+        # cwd that IS the project, and removing it would trade one gap for another.
+        assert _admits(patterns, "git diff origin/develop...HEAD")
+
     def test_no_network_tool(self):
         """The payload carries the default branch, so the reviewer needs no `gh`
         — and a release reviewer that can reach the network is a reviewer whose
@@ -274,9 +306,29 @@ class TestReviewerAnchorsToTheDispatchedTree:
 
     def test_agent_reconciles_the_payloads_base_against_the_prompts(self):
         """The payload resolves the base itself. Two answers for one fact is a
-        disagreement worth surfacing, not one to silently pick from."""
+        disagreement worth surfacing, not one to silently pick from.
+
+        **Both operands or neither.** The earlier version of this test asserted
+        only the agent's half (`"If they disagree, say so"`), and stayed green
+        when the dispatch template dropped the base it names — a cross-check
+        with one operand cannot fire, and the failure it exists to catch (a
+        reviewer reading a different tree than the caller thinks) is a silent
+        pass. So the assertion is the property: if the agent is told to compare
+        the payload's base against a prompt-side base, the dispatch prompt has
+        to carry one.
+        """
         body = AGENT_DEF.read_text()
         assert "If they disagree, say so" in body
+        names_a_prompt_side_base = "the base your prompt names" in body
+        step3 = _step3_of(SKILL.read_text())
+        carries_a_base = "The base branch is" in step3
+        assert names_a_prompt_side_base == carries_a_base, (
+            "the agent's base cross-check and Step 3's dispatch prompt are two "
+            "halves of one check: the agent names a prompt-side base "
+            f"({names_a_prompt_side_base}) while the prompt carries one "
+            f"({carries_a_base}). Restore the base to the prompt, or rewrite "
+            "the agent line to make the payload the single source."
+        )
 
     def test_the_skill_passes_an_absolute_project_directory(self):
         """The agent definition alone does not bind a reviewer whose prompt

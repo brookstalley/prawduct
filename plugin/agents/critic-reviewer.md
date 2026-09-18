@@ -1,7 +1,7 @@
 ---
 name: critic-reviewer
 description: One independent Critic review subagent covering an assigned subset of the review goals. Dispatched by the /prawduct:critic coordinator (final/cumulative reviews whose derived roster is the three-reviewer one); reviews ONLY its assigned goals through code analysis and writes ONLY its liveness marker and its own partial findings file. Not for direct use — the coordinator dispatches it.
-tools: Read, Glob, Grep, Bash(git diff *), Bash(git log *), Bash(git status *), Bash(git show *), Bash(git ls-files *), Bash(git rev-parse *), Bash(git merge-base *), Bash(prawduct-hook backlog cache-query *), Bash(python3 plugin/bin/prawduct-hook backlog cache-query *), Bash(prawduct-hook test-status), Bash(python3 plugin/bin/prawduct-hook test-status), Bash(prawduct-hook verify-coverage), Bash(python3 plugin/bin/prawduct-hook verify-coverage), Bash(prawduct-hook learnings-files*), Bash(python3 plugin/bin/prawduct-hook learnings-files*), Write
+tools: Read, Glob, Grep, Bash(git diff *), Bash(git -C * diff *), Bash(git log *), Bash(git -C * log *), Bash(git status *), Bash(git -C * status *), Bash(git show *), Bash(git -C * show *), Bash(git ls-files *), Bash(git -C * ls-files *), Bash(git rev-parse *), Bash(git -C * rev-parse *), Bash(git merge-base *), Bash(git -C * merge-base *), Bash(prawduct-hook backlog cache-query *), Bash(python3 plugin/bin/prawduct-hook backlog cache-query *), Bash(prawduct-hook test-status), Bash(python3 plugin/bin/prawduct-hook test-status), Bash(prawduct-hook verify-coverage), Bash(python3 plugin/bin/prawduct-hook verify-coverage), Bash(prawduct-hook learnings-files*), Bash(python3 plugin/bin/prawduct-hook learnings-files*), Write
 model: inherit
 ---
 

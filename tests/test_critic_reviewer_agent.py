@@ -179,6 +179,24 @@ class TestAgentToolsAreRestricted:
         for verb in ("Bash(git diff *)", "Bash(git log *)", "Bash(git show *)"):
             assert verb in tools, f"critic-reviewer missing read-only git verb {verb}"
 
+    def test_the_grants_admit_the_git_dash_C_form_this_file_mandates(self):
+        """Same defect, same commit: `test_agent_requires_git_dash_c_on_git_calls`
+        asserts the definition MANDATES `git -C <dir>`, and nothing checked that
+        the grants admit one. `Bash(git diff *)` does not match a command whose
+        second token is `-C`."""
+        import fnmatch as _fn
+
+        patterns = [
+            t[len("Bash("):-1] for t in self._tools()
+            if t.startswith("Bash(") and t.endswith(")")
+        ]
+        for verb in ("diff", "log", "show"):
+            cmd = f"git -C /abs/project {verb} HEAD~1"
+            assert any(_fn.fnmatch(cmd, p) for p in patterns), (
+                f"the allow-list does not admit {cmd!r}, which this agent "
+                f"definition requires the reviewer to run"
+            )
+
     def test_no_allow_pattern_permits_pytest(self):
         """The negative probe: no Bash allow pattern may match a pytest invocation."""
         bash_patterns = [

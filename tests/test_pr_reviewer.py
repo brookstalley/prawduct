@@ -662,6 +662,38 @@ class TestPrReviewSkillContent:
         assert "never a reason to delay the review" in step3
         assert "self-reported" in step3
 
+    def test_step_4_catches_a_branch_that_moved_under_the_review(self):
+        """Step 2 licenses concurrent dispatch on the claim that a review of a
+        superseded tree "is spent ... and it runs again". Nothing performed that
+        re-run: the ancestor check passes for every commit on the branch (Step 4
+        says so itself), the one "Dispatch again" fires on a MISSING SHA, and the
+        Stop hook's PR gate reads no SHA at all. On the common path — cumulative
+        blocks, fix, commit, Step 4 green — the boundary review never saw the
+        fixes, and the concurrency that bought the wall clock is what created the
+        gap.
+
+        Pinned as the PREDICATE, not a spelling: the check must ask the delta
+        between `commit_reviewed` and HEAD, and must route a judgeable one back
+        to a dispatch.
+        """
+        content = (FRAMEWORK_DIR / "skills" / "pr" / "SKILL.md").read_text()
+        step4 = content[content.index("### Step 4"):content.index("### Step 5")]
+        assert "<commit_reviewed>..HEAD" in step4, (
+            "Step 4 never asks what landed since the review it is verifying"
+        )
+        assert "cost-of-commit" in step4 and "explicit file arguments" in step4, (
+            "the judgeable question has one home; a bare invocation prices the "
+            "working tree and answers about none of the delta"
+        )
+        assert "dispatch it again" in step4.lower()
+        # The claim in Step 2 must point AT this check rather than assert the
+        # re-run happens by itself — a safety argument whose mechanism is
+        # elsewhere is how this shipped.
+        step2 = content[content.index("### Step 2:"):content.index("### Step 2b")]
+        assert "Step 4's delta check" in step2, (
+            "the concurrency rationale must name what performs the re-run"
+        )
+
     def test_merge_flow_buildplan_cleanup_is_conditioned(self):
         """PR-7Q3M: build-plan lifecycle (the Merge Flow's "Confirm the
         bookkeeping merged WITH the PR" step -- named rather than numbered
@@ -876,6 +908,19 @@ class TestPrReviewerScoping:
                 f"{stale!r} is back — under concurrent dispatch it asserts a "
                 "verdict that may not exist yet"
             )
+        # The spelling list above is a PREFIX of the real set, and the rewrite
+        # proved it: three more carriers survived it in this same file (the
+        # evidence-schema note, the Relationship table, Extending This Skill),
+        # each saying "gate-certified"/"certified structurally" in words no
+        # entry above matches. Ban the ROOT, which is the property — this
+        # reviewer never certifies and is never told something was certified
+        # for it. The positive assertions above are what must survive, so a
+        # rewrite cannot satisfy this by deleting the scoping instead.
+        assert "certif" not in content.lower(), (
+            "`review-protocol.md` claims something is certified. Under "
+            "concurrent dispatch no verdict exists when this reviewer reads "
+            "its protocol; say the Critic OWNS code soundness instead."
+        )
 
     def test_protocol_audit_machinery_stays_deleted(self):
         """The deleted two-reviewer overlap machinery must not regrow: no
@@ -896,6 +941,47 @@ class TestPrReviewerScoping:
         content = self.protocol
         assert ".critic-findings.json" in content
         assert "prawduct-hook evidence list" in content
+
+    def test_the_two_boundary_reviews_are_dispatched_concurrently(self):
+        """The bundle's whole wall-clock win, pinned where it can be deleted.
+
+        Serially the boundary costs ~4-10 min of cumulative Critic plus ~7 min
+        of PR review against a <= 7-minute target; concurrently it costs the
+        longer of the two. Nothing else asserts the ordering — the scoping test
+        above pins what the reviewer is told about its LAYER, which reads as if
+        it covered this and does not — so an editor "simplifying" Step 2 back
+        to run-then-dispatch goes green and the minutes return silently.
+
+        Three properties, and the third is the one a rewrite is most likely to
+        break: the same-message instruction, the route into Step 3's
+        preparation (a dispatch that skips the `pr-review-dispatch --begin`
+        mark records no measured interval and reports as `self-reported`,
+        which is indistinguishable from the legacy case), and the ABSENCE of a
+        data dependency either way. `methodology/building.md` carries the same
+        claim for the reader who never opens the skill, so it is asserted here
+        too rather than left to agree by luck.
+        """
+        content = self.skill
+        step2 = content[content.index("### Step 2"):content.index("### Step 2b")]
+        assert "dispatch the PR reviewer in the SAME message" in step2, (
+            "Step 2 no longer orders the concurrent dispatch — the boundary is "
+            "back to paying both reviews' wall clock end to end"
+        )
+        assert "pr-review-dispatch --begin" in step2, (
+            "Step 2 orders the dispatch without routing the reader through "
+            "Step 3's preparation, so the clock can be skipped with nothing "
+            "noticing: an unmarked review reports as self-reported"
+        )
+        assert "There is no data dependency in either direction" in step2, (
+            "the concurrency's warrant is that neither review consumes the "
+            "other's verdict; without it stated, sequencing looks required"
+        )
+        building = (Path(__file__).resolve().parents[1] / "plugin" / "methodology"
+                    / "building.md").read_text()
+        assert "neither consuming the other's verdict" in building, (
+            "methodology/building.md is the carrier for readers who never open "
+            "skills/pr/SKILL.md — the two must not drift apart on this"
+        )
 
     def test_skill_scopes_the_reviewer_off_code_soundness(self):
         """Contract renegotiated: the handoff can no longer claim the gate has

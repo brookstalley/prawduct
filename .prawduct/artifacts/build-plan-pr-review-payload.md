@@ -395,6 +395,21 @@ while the instruction has no effect. Two verifications beyond the suite:
     run. Sequence: cumulative review → resolve → tick → `/prawduct:pr create` Steps 1-4 → write the
     after-reading into `nonfunctional-requirements.md` and commit it (`.prawduct/`, non-judgeable, so
     it moves no coverage) → Step 5 creates the PR.
+  - **When that after-reading lands, say WHICH SPAN it measures — the two numbers are not
+    like-for-like** (cumulative review R-6, accepted as an instruction rather than an edit).
+    `dispatched_at` → `ledger-append` is marked at Step 3 before the spawn and closed at Step 4, so
+    a measured row includes the Step 2b operator-verification drain and every Step 4 gate, and
+    under a blocking cumulative it can include fix time until the re-dispatch re-marks. The
+    baseline it sits beside — 420s median over 122 reviews — is each reviewing model's estimate of
+    its *own* runtime, a strictly narrower span. The mark position is deliberate and no gate reads
+    the number; what must not happen is a table that reads as a like-for-like before/after, which
+    is the same not-pooling discipline this bundle enforces on `duration_measured` vs
+    `duration_self_reported`.
+  - **Two backlog items name a file this bundle edited and were not assessed** (cumulative review
+    R-17, flagged in passing, not work): `#672` (*coverage composes by tree but its gates key on
+    identity*) and `#767` (*test-status: `current` on a stale tree*) both list
+    `plugin/skills/pr/SKILL.md` in `affected:`. Neither is plausibly resolved here and both stay
+    open; this is the statement the reviewer asked for rather than a deferral.
 - **Done when:**
   0. verify-api — confirm `omitClaudeMd` is honored for a **plugin-supplied** agent definition, by
      reading the current Claude Code subagent documentation AND dispatching one throwaway agent
