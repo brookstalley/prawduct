@@ -152,10 +152,23 @@ always toward what you wanted the source to say.
 **The instrument is mechanical, so build it rather than resolving to read more carefully.** Extract the
 quoted runs, normalise whitespace, case and trailing punctuation, split on the record's own ellipses,
 search the corpus of sources, and binary-search the longest matching prefix so a divergence *point* is
-located instead of an absence merely reported. Two controls make the result evidence rather than
-reassurance, and both are cheap: **a nonsense string must return zero** (the search is not matching
-everything) and **a large known-good set must return hits** (it is not dead) — `core.md`'s
-positive-control rule, applied to a search instead of a test.
+located instead of an absence merely reported. **THREE controls, not two** — a nonsense string must
+return zero (the search is not matching everything), a large known-good set must return hits (it is
+not dead), and **a deliberately CORRUPTED real fragment must miss.** The third is what proves the
+search *discriminates* rather than merely runs, and it is not optional: measured 2026-09-18 against
+a mutant that matched everything, the known-good control reported a false **120/120 green** while
+only the nonsense and corruption controls went red. A control that passes more easily the more
+broken the instrument is measures nothing.
+
+**And the extraction pattern is itself a claim about the record's conventions — probe it before
+trusting a clean result.** Paying this debt for three more captures found four defects in the
+recipe, two of them in the recipe as first written here: it read only the `*"…"*` form, when only
+one of the four captures uses that convention; as a `grep -oE` it was **line-based**, so every
+quotation that wrapped was invisible (136 of 200 in one capture); a naive `"([^"]+)"` is not
+escape-aware and truncates on the embedded JSON these records are full of; and splitting on a bare
+`**RULE:**` marker also caught the marker *discussed in the record's own header*, shifting every
+rule id so the report's citations pointed at the wrong rules while reading as precise. Anchor the
+splitter on the same command the corpus counts itself with, and assert the two agree.
 
 State what the instrument cannot see, in the artifact rather than in your head: a quotation *stitched*
 from two non-adjacent sentences with no ellipsis marked shows up as a prefix match and has to be read.

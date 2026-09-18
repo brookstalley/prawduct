@@ -18,6 +18,9 @@ governed_by:
       - "prawduct must never be specific to Python → conforms and is load-bearing: cordyceps is C#, discodon is Python+TS, so the instrument searches text and parses no language"
       - "every fact has one home → conforms: the audit's numbers live in the verification file; README and the design doc reference it and restate no digits"
       - "goals and verification bind; prescribed method is advice → noted: the `## Done when` lines below bind; the implementation sketch does not"
+      - "an independent reviewer never mutates the session it reviews → inapplicable because this plan adds no reviewer surface; the Critic reviews it as an ordinary consumer"
+      - "authority fails closed; advice fails soft → conforms: the instrument is ADVICE (it reports, gates nothing), and it still fails closed on its own preconditions — an absent capture, an unreachable repo, an unknown --forms value and ANY empty corpus each exit 2 rather than reporting a clean run over nothing"
+      - "prawduct guides and reviews; it never implements → conforms: this writes no product code in the sibling repos, which are read-only at a pinned SHA; the instrument lives in this framework repo's own tools/ and measures its own artifacts"
 partition: serial — Chunk 02 cannot start until the instrument exists, and Chunk 01's controls are only falsifiable by running it against the real trees
 last_validated: 2026-09-18
 ---
@@ -102,11 +105,11 @@ the pinned SHA, and locate the divergence point for each miss.
 ### Chunk 2: The audit
 
 **Deliverables**
-- `mcp-mining/capture-quotation-verification.md` — one verdict per fragment, using
+- `.prawduct/artifacts/mcp-mining/capture-quotation-verification.md` — one verdict per fragment, using
   `hallucinote-verification.md`'s conventions (RESOLVED / MOVED / NOT-FOUND / CONTRADICTED /
   UNVERIFIABLE), each miss carrying its divergence point and the source's actual wording.
 - Corrections applied to the three captures per the decision above.
-- `mcp-mining/README.md` § *The next debt* corrected: the recorded recipe is wrong about the
+- `.prawduct/artifacts/mcp-mining/README.md` § *The next debt* corrected: the recorded recipe is wrong about the
   quotation form, and the correction names the command rather than restating its digits.
 - Design doc §10.4 updated if the audit changes what the debt is.
 
@@ -121,5 +124,5 @@ the pinned SHA, and locate the divergence point for each miss.
 
 ## Status
 
-- [ ] Chunk 1: The instrument
-- [ ] Chunk 2: The audit
+- [x] Chunk 1: The instrument
+- [x] Chunk 2: The audit

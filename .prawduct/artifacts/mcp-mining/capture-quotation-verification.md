@@ -13,7 +13,8 @@ Every number below is produced by a committed instrument. Cite the command, neve
 Each capture is searched against **the SHA its own provenance header declares**, read through
 `git archive` — read-only in the sibling repos: no checkout, no branch, no working-tree touch.
 discodon is searched at both ends of the five-commit window its header records; cordyceps also
-against the working tree, because its header flags two gitignored files it cites.
+against the working tree, because its header flags two gitignored files it cites — that fallback
+lists `--cached --others`, so it genuinely sees ignored files, and a control proves it (defect 5).
 
 ---
 
@@ -30,8 +31,9 @@ four are the same species — *the query is itself a mechanism and can carry the
 | 2 | `grep -oE` is **line-based** | a quotation that wraps is invisible; **136 of cordyceps' 200** italic quotations | `--counts`, which reproduces the grep figure and checks it equals the non-wrapping subset |
 | 3 | Naive `"([^"]+)"` is **not escape-aware** | the captures embed JSON (`{\"accountId\": 1}`); fragments truncate at the escaped quote and miss on their last character | 39 "tail-rewrite drift" candidates that were all artifacts |
 | 4 | Splitting on the bare `**RULE:**` marker | the captures' headers *discuss* the marker, so every rule id shifted past the header — citations unresolvable | a chased finding landing on a rule whose text did not contain it |
+| 5 | The working-tree fallback used `git ls-files` | that lists **tracked** files only, so the fallback added for cordyceps' two gitignored citations could never see them — they landed in "not in the tree at all" and read like drift | the Critic; confirmed by `git ls-files` returning 0 for `.prawduct/reflections.md` where `--cached --others` returns 1 |
 
-Defects 1 and 2 were in the recorded recipe. Defects 3 and 4 were mine, in the replacement, and
+Defects 1 and 2 were in the recorded recipe. Defects 3, 4 and 5 were mine, in the replacement, and
 **4 is the dangerous one**: it produced a report that was wrong in exactly the way a report cannot
 afford, since a reader resolves a citation by its id. It is now a permanent control — the
 instrument's rule-block count must equal `grep -c '^\*\*RULE:\*\*'` (95 / 147 / 87), the corpus's
@@ -51,7 +53,14 @@ measured nothing:
 - a **large known-good set returns hits** — it is not dead;
 - a **corrupted real fragment must miss** — the control the recorded recipe never had, and the only
   one that shows the search *discriminates* rather than merely runs;
-- **rule ids reconcile** with the corpus's own counting command (defect 4).
+- **rule ids reconcile** with the corpus's own counting command (defect 4);
+- the **working-tree fallback sees gitignored files** — a real sentence from
+  `.prawduct/reflections.md` is found there and, as it must be, *absent* at the SHA (defect 5).
+
+**Every corpus is asserted non-empty, not just the first.** That was the class behind defect 5: a
+silently-empty *secondary* corpus — cordyceps' working tree, discodon's end SHA — degrades a verdict
+without ever failing, because "nothing matched there" and "nothing was there to match" are the same
+output.
 
 Falsified against three mutants — empty corpus, always-match, collapsing `normalize()`. All three go
 red. Worth recording: under always-match the *known-good* control reports a false **120/120 green**,
@@ -60,11 +69,11 @@ alone would have passed a search that matched everything.
 
 ## What the audit found
 
-    ALL                     1,034 prose fragments   754 resolved   280 miss   72%
+    ALL                     1,034 prose fragments   755 resolved   279 miss   73%
 
 | source | form | fragments | resolved | miss | resolve rate |
 |---|---|---|---|---|---|
-| cordyceps | italic-quote | 192 | 153 | 39 | 79% |
+| cordyceps | italic-quote | 192 | 154 | 38 | 80% |
 | cordyceps | plain-quote | 66 | 45 | 21 | 68% |
 | bankmachine | italic-quote | 14 | 13 | 1 | 92% |
 | bankmachine | plain-quote | 368 | 274 | 94 | 74% |
@@ -76,14 +85,14 @@ diverging, because the depth is what separates the classes:
 
 | bucket | prefix reach | count | what it means |
 |---|---|---|---|
-| **A** | 90–100% | **5** | the drift signature — the source is there and the *tail* was rewritten |
+| **A** | 90–100% | **4** | the drift signature — the source is there and the *tail* was rewritten |
 | B | 70–89% | 27 | partial; usually a stitched quotation or a mid-sentence paraphrase |
 | C | 40–69% | 72 | loosely related wording |
 | D | <40% | 176 | the text is not in the tree at all |
 
 ### The structural finding: two of three captures cannot be audited at the fragment level
 
-`italic-quote` resolves at **79% / 92%**; `plain-quote` at a flat **68% / 74% / 68%** across three
+`italic-quote` resolves at **80% / 92%**; `plain-quote` at a flat **68% / 74% / 68%** across three
 independently-written captures. That consistency is the signal. cordyceps uses `*"…"*` as a
 deliberate verbatim-quotation convention (192 of its 258 fragments); bankmachine and discodon
 essentially do not (14 of 382, 2 of 394) and use plain double quotes for **both** source quotations
@@ -95,7 +104,11 @@ is therefore not auditable at the fragment level *by any instrument*, only rule 
 reading each one. That is a finding about the mining schema, not about this pass: §3's schema
 specifies the `EVIDENCE:` field but not how a quotation inside it declares itself.
 
-### Bucket A, chased by hand — all five
+### Bucket A, chased by hand — all five as first measured
+
+(Bucket A reads **4** against the corrected captures, because item 2 below now resolves. All five
+are kept here: the fifth is the one correction this audit made, and deleting it would erase the
+record of why.)
 
 Each was resolved against its source tree at the declared SHA.
 
@@ -120,7 +133,7 @@ Each was resolved against its source tree at the declared SHA.
    `timed out after 120s`**"*. The capture dropped `operator's` and re-quoted the literal.
    **Faithful in substance; not verbatim.**
 
-**No fabrication was found in bucket A.** Four of five are markup normalisation, one is a genuine
+**No fabrication was found in bucket A.** Three of five are markup normalisation, one is a genuine
 alteration of a quoted command (corrected), and one is the instrument's own false positive. This is
 a materially better result than hallucinote's — where 19 of 202 were wrong and one appeared nowhere
 — and the difference is worth stating rather than assumed: these three were re-mined under the
@@ -134,7 +147,7 @@ was not.
 - **Buckets B, C and D — 275 fragments — have not been chased by hand.** Bucket A was chased in
   full. The triage above makes the rest tractable (the instrument reports each one's divergence
   point), but reading them is a work cycle of its own, and most of D is expected to be the
-  author's own words rather than drift. **Do not read "72% resolved" as "28% drift."**
+  author's own words rather than drift. **Do not read "73% resolved" as "27% drift."**
 - **`code-span` fragments are extracted and counted but not audited.** 148 / 86 / 231 of them. Bare
   symbols and paths are address-class and were checked when these captures were written; the
   multi-token code lines are a claim of the same kind as a prose quotation and are owed the same
@@ -157,5 +170,19 @@ Stated here rather than glossed, and repeated in the script's own docstring:
   `PROVENANCE:` line names*. A quote matching elsewhere in the repo reads as RESOLVED.
 - Line-leading comment markers (`///`, `#`, `>`, `--`) are stripped from both sides, so text that is
   only adjacent *because* a marker was removed can be matched as continuous.
+- **cordyceps' working-tree corpus includes untracked build output**, because the fallback lists
+  `--cached --others` to reach gitignored files and cannot distinguish "gitignored because it is a
+  local record" from "gitignored because it is generated". The text-suffix corpus grows, and the
+  large majority of what it gains is compiler output under `bin/` and `obj/` — re-derive with
+  `git -C ~/source/cordyceps ls-files --cached --others` against a plain `ls-files`, rather than
+  trusting a count here (this review and the audit disagreed by one on it, and nothing branches on
+  the figure). Since RESOLVED means
+  "matched anywhere", generated output could in principle supply a match — the **false-clean**
+  direction. Effect on this run is zero and measurably so (cordyceps' plain-quote column is
+  unchanged at 45/66, and the single italic gain is the tracked `README.md` correction below), so
+  it is harmless **by coincidence rather than by construction** and is recorded as a standing limit.
+- **Only the extensions in `TEXT_SUFFIXES` are searched.** A quotation whose source file has an
+  extension missing from that allowlist is reported as a miss and reads exactly like drift, so the
+  allowlist is a limit on this audit rather than an implementation detail.
 - Markdown emphasis is stripped, so a quotation differing from its source **only** in emphasis reads
   as matching. Deliberate: `**bold**` added around a true sentence is not a false claim.

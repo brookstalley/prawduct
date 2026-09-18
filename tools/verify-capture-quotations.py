@@ -35,6 +35,9 @@ WHAT THIS INSTRUMENT CANNOT SEE, stated rather than glossed:
   is the half that was not.
 * `--show-hits` prints the matching file for each hit; without it only counts are
   reported, and a hit's LOCATION is not checked against the rule's provenance.
+* Only the extensions in `TEXT_SUFFIXES` are searched. A quotation whose source file has
+  an extension missing from that allowlist is reported as a miss and reads exactly like
+  drift, so the allowlist is a limit on the audit rather than an implementation detail.
 
 Exit 1 if any fragment misses, 2 on a usage or environment error.
 """
@@ -50,6 +53,12 @@ import tempfile
 import unicodedata
 from dataclasses import dataclass, field as dc_field
 from pathlib import Path
+from typing import NoReturn
+
+MIN_LENGTH_DEFAULT = 25
+"""Shortest normalised fragment worth searching. Below this, a string matches everywhere
+and the verdict is meaningless. One home: `--min-length` overrides it, and the controls
+and `--counts` read it rather than each carrying a copy."""
 
 REPO = Path(__file__).resolve().parent.parent
 CAPTURES = REPO / ".prawduct" / "artifacts" / "mcp-mining"
@@ -115,8 +124,32 @@ _LINE_MARKER_RE = re.compile(r"^[ \t]*(?:///?|#+|>+|--(?!-)|<!--|-->)[ \t]*", re
 TEXT_SUFFIXES = {
     ".py", ".cs", ".ts", ".tsx", ".js", ".jsx", ".md", ".txt", ".json", ".yaml", ".yml",
     ".toml", ".cfg", ".ini", ".sh", ".sql", ".html", ".css", ".csproj", ".props", ".xml",
-    ".example", ".gitignore", ".j2", ".jinja", ".rst",
+    ".example", ".j2", ".jinja", ".rst",
 }
+"""Text extensions searched. This allowlist is a LIMIT on the audit, not a neutral
+detail: a quotation whose source file has an extension missing here is reported as a
+miss, and reads exactly like drift. `.gitignore` was listed here as a suffix and matched nothing: `Path('.gitignore').suffix`
+is `''`, not `'.gitignore'`. Extensionless names are matched by NAME in `_is_text`, whose
+set is `{"Dockerfile", "Makefile"}` — `.gitignore` is in neither branch and is simply not
+searched."""
+
+# Derived, not a second hand-maintained copy: a form added to `extract` and not here
+# would be unselectable, and the duplication is exactly the drift this branch is about.
+FORM_ITALIC, FORM_PLAIN, FORM_CODE = "italic-quote", "plain-quote", "code-span"
+KNOWN_FORMS = frozenset({FORM_ITALIC, FORM_PLAIN, FORM_CODE})
+PROSE_FORMS = (FORM_ITALIC, FORM_PLAIN)
+
+
+def die(message: str, code: int = 2) -> NoReturn:
+    """Environment/usage failure. Exit 2, distinct from 1 (a real miss result).
+
+    `raise SystemExit("...")` prints the string but exits **1**, which is the code a
+    genuine miss uses — so a broken run was indistinguishable from a run that worked and
+    found drift. That ambiguity mattered most for the vacuous-corpus guard, whose whole
+    job is to refuse a pass nothing was searched for.
+    """
+    print(message, file=sys.stderr)
+    raise SystemExit(code)
 
 
 def normalize(s: str) -> str:
@@ -181,8 +214,8 @@ def load_tree(repo: Path, sha: str) -> Corpus:
             capture_output=True, check=False,
         )
         if proc.returncode != 0:
-            raise SystemExit(f"error: git archive failed for {repo} {sha}: "
-                             f"{proc.stderr.decode('utf-8', 'replace')[:300]}")
+            die(f"error: git archive failed for {repo} {sha}: "
+                f"{proc.stderr.decode('utf-8', 'replace')[:300]}")
         tf = Path(td) / "t.tar"
         tf.write_bytes(proc.stdout)
         with tarfile.open(tf) as tar:
@@ -200,8 +233,16 @@ def load_tree(repo: Path, sha: str) -> Corpus:
 
 
 def load_working_tree(repo: Path) -> Corpus:
+    """Working-tree corpus INCLUDING gitignored files — which is the only reason it exists.
+
+    `git ls-files` lists TRACKED files only, so the fallback added for cordyceps' two
+    flagged gitignored citations could never see them: those citations landed in the
+    "not in the tree at all" bucket, indistinguishable from drift. `--cached --others`
+    lists tracked plus every untracked file, ignored ones included (`--exclude-standard`
+    is deliberately NOT passed — it is what would filter them back out).
+    """
     corpus = Corpus(label="working-tree")
-    out = subprocess.run(["git", "-C", str(repo), "ls-files"],
+    out = subprocess.run(["git", "-C", str(repo), "ls-files", "--cached", "--others"],
                          capture_output=True, text=True, check=False).stdout.split("\n")
     for rel in out:
         if not rel or not _is_text(rel):
@@ -247,16 +288,16 @@ def extract(source: str, capture: Path, min_length: int) -> tuple[list[Fragment]
             spans: list[tuple[str, str]] = []
             italics = _ITALIC_QUOTE_RE.findall(fvalue)
             for s in italics:
-                spans.append(("italic-quote", s))
+                spans.append((FORM_ITALIC, s))
             remainder = _ITALIC_QUOTE_RE.sub(" ", fvalue)
             for s in _PLAIN_QUOTE_RE.findall(remainder):
-                spans.append(("plain-quote", s))
+                spans.append((FORM_PLAIN, s))
             for s in _BACKTICK_RE.findall(fvalue):
                 # Bare symbols and paths are address-class and were already checked when
                 # these captures were written; only multi-token code lines are claims of
                 # the same kind as a prose quotation. Reported as a separate class.
                 if " " in s.strip():
-                    spans.append(("code-span", s))
+                    spans.append((FORM_CODE, s))
             for form, raw in spans:
                 for piece in _ELLIPSIS_SPLIT_RE.split(raw):
                     norm = normalize(piece)
@@ -279,21 +320,28 @@ def longest_prefix(corpus: Corpus, needle: str) -> int:
     return lo
 
 
-def audit(source: str, min_length: int, show_hits: bool) -> tuple[list[Fragment], int]:
+def audit(source: str, min_length: int = MIN_LENGTH_DEFAULT) -> tuple[list[Fragment], int]:
     cfg = SOURCES[source]
     capture = CAPTURES / str(cfg["capture"])
     if not capture.is_file():
-        raise SystemExit(f"error: no such capture: {capture}")
+        die(f"error: no such capture: {capture}")
     repo = Path(str(cfg["repo"]))
     if not (repo / ".git").exists():
-        raise SystemExit(f"error: source repo not found: {repo}")
+        die(f"error: source repo not found: {repo}")
 
     frags, skipped = extract(source, capture, min_length)
     corpora = [load_tree(repo, str(s)) for s in cfg["shas"]]  # type: ignore[arg-type]
     if cfg["working_tree_fallback"]:
         corpora.append(load_working_tree(repo))
-    if not corpora or not corpora[0].blobs:
-        raise SystemExit(f"error: empty corpus for {source} — the search would pass vacuously")
+    # Every corpus, not just the first. A silently-empty SECONDARY corpus (cordyceps'
+    # working tree, discodon's end SHA) cannot be distinguished from "nothing matched
+    # there", so it degrades a verdict without ever failing.
+    if not corpora:
+        die(f"error: no corpus for {source} — the search would pass vacuously")
+    for c in corpora:
+        if not c.blobs:
+            die(f"error: empty corpus '{c.label}' for {source} — "
+                f"the search against it would pass vacuously")
 
     for f in frags:
         for c in corpora:
@@ -312,7 +360,7 @@ def audit(source: str, min_length: int, show_hits: bool) -> tuple[list[Fragment]
     return frags, skipped
 
 
-def counts() -> int:
+def counts(min_length: int = MIN_LENGTH_DEFAULT) -> int:
     """Per capture: what each extraction reads, and what the line-based recipe cannot see.
 
     `mcp-mining/README.md` recorded the instrument as extracting the `*"..."*` runs. That
@@ -336,7 +384,7 @@ def counts() -> int:
         grep_n = sum(len(_ITALIC_QUOTE_RE.findall(line)) for line in text.splitlines())
         single = sum(1 for s in spans if "\n" not in s)
         wrapped = len(spans) - single
-        frags, _ = extract(source, cap, 25)
+        frags, _ = extract(source, cap, min_length)
         by = {}
         for f in frags:
             by[f.form] = by.get(f.form, 0) + 1
@@ -352,12 +400,17 @@ def counts() -> int:
     return 0 if ok else 1
 
 
-def self_test() -> int:
-    """The three controls, as code that runs rather than prose that claims.
+def self_test(min_length: int = MIN_LENGTH_DEFAULT) -> int:
+    """Every control, as code that runs rather than prose that claims.
 
     A scan nobody has falsified has measured nothing. Control 3 is the one the recipe
     recorded in `mcp-mining/README.md` never had: it proves the search DISCRIMINATES,
-    not merely that it runs.
+    rather than merely that it runs. Controls 4-8 each pin a guard added in response to
+    a review finding — a guard with no control is one a later edit deletes silently, and
+    three of these were added and left unpinned in exactly that way.
+
+    No count is stated here on purpose: the list grows, and a number in this docstring
+    would be the first thing to go stale.
     """
     print("self-test: loading a real corpus (bankmachine)…")
     cfg = SOURCES["bankmachine"]
@@ -378,7 +431,7 @@ def self_test() -> int:
         print("  FAIL nonsense string matched — the search matches everything"); ok = False
 
     # Control 2 — a large known-good set must return hits. The search is not dead.
-    frags, _ = extract("bankmachine", CAPTURES / str(cfg["capture"]), 25)
+    frags, _ = extract("bankmachine", CAPTURES / str(cfg["capture"]), min_length)
     sample = frags[:120]
     hits = sum(1 for f in sample if corpus.find(f.norm))
     if hits > 0:
@@ -403,8 +456,8 @@ def self_test() -> int:
     # citation this instrument emits points at the wrong rule. Splitting on the bare
     # marker instead of a line-initial one shifted ids past each capture's header, which
     # is invisible in the output and fatal in a durable record.
-    for source, cfg in SOURCES.items():
-        cap = CAPTURES / str(cfg["capture"])
+    for source, source_cfg in SOURCES.items():
+        cap = CAPTURES / str(source_cfg["capture"])
         body = cap.read_text(encoding="utf-8")
         n = len(list(iter_rule_blocks(body)))
         canon = sum(1 for line in body.splitlines() if line.startswith(RULE_MARKER))
@@ -412,6 +465,79 @@ def self_test() -> int:
             print(f"  PASS {source} rule ids reconcile with grep -c '^**RULE:**' ({n})")
         else:
             print(f"  FAIL {source} rule-block count {n} != canonical {canon}"); ok = False
+
+    # Control 5 — the working-tree fallback must actually SEE gitignored files, which is
+    # its only reason to exist. Built on `git ls-files`, it saw only TRACKED files, so the
+    # citations it was added for landed in "not in the tree at all" and read like drift.
+    # A secondary corpus that is silently empty degrades a verdict without ever failing.
+    cordy = SOURCES["cordyceps"]
+    repo = Path(str(cordy["repo"]))
+    wt = load_working_tree(repo)
+    ignored = repo / ".prawduct" / "reflections.md"
+    if not wt.blobs:
+        print("  FAIL working-tree corpus is empty"); ok = False
+    elif not ignored.is_file():
+        # A SKIP is indistinguishable from a PASS in a summary, so this FAILS. The probe
+        # file is gitignored, which is the property under test — if it is absent, the
+        # control cannot reach its subject and must say so rather than stay quiet.
+        print(f"  FAIL working-tree fallback control cannot reach its subject: "
+              f"{ignored} is absent, so the gitignored-visibility claim is untested")
+        ok = False
+    elif not [l for l in ignored.read_text(encoding="utf-8").splitlines()
+              if len(l.strip()) > 80]:
+        print(f"  FAIL {ignored} has no line over 80 chars to probe with")
+        ok = False
+    else:
+        long_lines = [l.strip() for l in ignored.read_text(encoding="utf-8").splitlines()
+                      if len(l.strip()) > 80]
+        probe = normalize(long_lines[len(long_lines) // 2])[:90]
+        at_sha = load_tree(repo, str(cordy["shas"][0]))  # type: ignore[index]
+        if wt.find(probe) and not at_sha.find(probe):
+            print(f"  PASS working-tree fallback sees gitignored files "
+                  f"({len(wt.blobs)} files; probe absent at the SHA, as it must be)")
+        else:
+            print("  FAIL working-tree fallback cannot see the gitignored files it exists for")
+            ok = False
+
+    # Control 6 — the every-corpus non-empty guard. This is R-2's CLASS half and the
+    # consequential one: a silently-empty SECONDARY corpus reports "nothing matched"
+    # and "nothing was there to match" identically.
+    real_load = globals()["load_tree"]
+    try:
+        globals()["load_tree"] = lambda repo, sha: Corpus(label=f"{sha[:12]}-emptied")
+        try:
+            audit("cordyceps")
+            print("  FAIL an empty corpus did not stop the audit"); ok = False
+        except SystemExit as exc:
+            if exc.code == 2:
+                print("  PASS an empty corpus refuses the run (exit 2)")
+            else:
+                print(f"  FAIL empty corpus exited {exc.code}, want 2"); ok = False
+    finally:
+        globals()["load_tree"] = real_load
+
+    # Control 7 — `die` exits 2, distinct from 1 (a genuine miss result). The whole point
+    # of the code split is that a broken run is distinguishable from a run that worked.
+    try:
+        die("control: expected")
+        print("  FAIL die() returned instead of exiting"); ok = False
+    except SystemExit as exc:
+        if exc.code == 2:
+            print("  PASS die() exits 2, distinct from a miss result's 1")
+        else:
+            print(f"  FAIL die() exited {exc.code}, want 2"); ok = False
+
+    # Control 8 — KNOWN_FORMS must cover exactly what `extract` emits. A form the
+    # extractor produces but the selector rejects is unauditable and silently so.
+    emitted_frags, _ = extract("cordyceps",
+                               CAPTURES / str(SOURCES["cordyceps"]["capture"]),
+                               min_length)
+    emitted = {f.form for f in emitted_frags}
+    if emitted and emitted <= KNOWN_FORMS:
+        print(f"  PASS every emitted form is selectable ({len(emitted)} forms)")
+    else:
+        print(f"  FAIL forms emitted but not selectable: {sorted(emitted - KNOWN_FORMS)}")
+        ok = False
 
     print("self-test:", "PASS" if ok else "FAIL")
     return 0 if ok else 1
@@ -423,22 +549,29 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--self-test", action="store_true", help="run the instrument's controls and exit")
     ap.add_argument("--counts", action="store_true",
                     help="show what each extraction reads, and what the line-based recipe misses")
-    ap.add_argument("--min-length", type=int, default=25, help="skip fragments shorter than this (default 25)")
-    ap.add_argument("--forms", default="italic-quote,plain-quote",
+    ap.add_argument("--min-length", type=int, default=MIN_LENGTH_DEFAULT,
+                    help=f"skip fragments shorter than this (default {MIN_LENGTH_DEFAULT})")
+    ap.add_argument("--forms", default=",".join(PROSE_FORMS),
                     help="comma-separated forms to audit (default: prose quotations only)")
     ap.add_argument("--show-hits", action="store_true", help="print the matching file for each hit")
     args = ap.parse_args(argv[1:])
 
     if args.self_test:
-        return self_test()
+        return self_test(args.min_length)
     if args.counts:
-        return counts()
+        return counts(args.min_length)
 
     sources = args.sources or list(SOURCES)
     wanted = {f.strip() for f in args.forms.split(",") if f.strip()}
+    # A misspelled form otherwise selects nothing and the run exits 0 having audited
+    # nothing — the shape of a green that measured no set at all.
+    unknown = wanted - KNOWN_FORMS
+    if unknown or not wanted:
+        die(f"error: unknown --forms value(s): {sorted(unknown) or '(empty)'}; "
+            f"known forms are {sorted(KNOWN_FORMS)}")
     total_miss = 0
     for source in sources:
-        frags, skipped = audit(source, args.min_length, args.show_hits)
+        frags, skipped = audit(source, args.min_length)
         sel = [f for f in frags if f.form in wanted]
         by_verdict: dict[str, int] = {}
         for f in sel:
@@ -447,6 +580,10 @@ def main(argv: list[str]) -> int:
         for f in frags:
             by_form[f.form] = by_form.get(f.form, 0) + 1
         print(f"\n===== {source} =====")
+        if not sel:
+            die(f"error: {source} — 0 fragments selected for forms {sorted(wanted)} at "
+                f"--min-length {args.min_length}; nothing was audited, so a clean result "
+                f"would be a pass over the empty set")
         print(f"  fragments audited {len(sel)} (forms: {sorted(wanted)}); "
               f"skipped under {args.min_length} chars: {skipped}")
         print(f"  all extracted forms: " + " · ".join(f"{k} {v}" for k, v in sorted(by_form.items())))
