@@ -439,6 +439,17 @@ while the instruction has no effect. Two verifications beyond the suite:
     `fromisoformat` guard's positive control asserts reachability but never runs the predicate it
     grades. (e) `_CLAIM_REGION`'s separator crosses a newline — deliberate (a commit trailer block
     is one closure list) and simply unpinned.
+  - **FOUND BY DOGFOODING, 2026-09-18: the Update Flow can lose a measurement, and nothing warns
+    you.** The second PR review of this branch was marked at tree `bcfca9bb`, then its one warning
+    was fixed and committed (`11a3d78c`) before `ledger-append` ran — so the mark no longer matched
+    HEAD and was correctly discarded (`dispatch mark is for a different tree … an abandoned run's
+    mark, recorded as not measured`). **The guard did its job**: a wrong number was refused rather
+    than recorded. But the Create Flow orders `ledger-append` (Step 4) before any further commit,
+    and the Update Flow does not say so at all — its step 4 reads "update evidence file; if the
+    reviewer re-ran, append a fresh `review.pr` ledger event", with no ordering constraint, while
+    its natural reading (fix the findings, then append) is exactly what loses the interval. Fix:
+    state in the Update Flow that the append comes BEFORE any commit answering the review. Carried
+    rather than fixed because `skills/pr/SKILL.md` is judgeable and this branch is at the merge.
   - **Two backlog items name a file this bundle edited and were not assessed** (cumulative review
     R-17, flagged in passing, not work): `#672` (*coverage composes by tree but its gates key on
     identity*) and `#767` (*test-status: `current` on a stale tree*) both list
