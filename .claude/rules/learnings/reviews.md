@@ -71,3 +71,35 @@ not tree-vouched)` and names the changed paths. The gate now TELLS you and still
 which is a deliberate choice — a refusal here would tax every consumer for a rare edge case (owner
 ruling, 2026-09-19) — so the rule stands and its remedy is unchanged: read the label, because
 nothing will stop you. `building.md` carries the boundary explicitly.
+
+### A CLASS fixed at a SUBSET is worse than one left alone — the partial repair removes the symptom that would have made the next reader look, and can leave prose that now argues FOR the defect. Fix every member or accept the finding; never the three you can see. Tell: your fix came from the report's ROW COUNT rather than from re-running its own falsifying query
+
+**Measured 2026-09-19 on `review-cost-decision`, and it cost two of that branch's five review
+rounds (~10 min of a ~45 min total).** A mechanical `stage`→`route` rename over-applied into prose
+that was *about* the stage concept. The first repair fixed three of seven sites — the three the
+review had listed. The result was a heading reading *"Not `stage`, which was the first cut and was
+wrong"* sitting directly above a clause blaming route-keying, on top of a route-keyed dict. The
+next reviewer's words: the inverted-repair risk was **better supported after the fix than before
+it**, because a maintainer chasing the contradiction re-keys back to stage and reinstates the very
+defect the round before had fixed.
+
+**Why the subset is selected, every time.** A review reports the members it happened to see, and
+reading a report for *what to change* rather than for *what it says is in scope* stops at the rows.
+The same branch produced the same shape twice more: a guard bound to the blank-line block instead
+of the bullet, so a neighbouring `**BLOCKING**` satisfied the check for a whole list and two true
+reversions survived green; and a release-note sweep where the report named two stale carriers and
+its own suggested grep found three.
+
+**The discipline is mechanical, and it is the report's own query, not its summary.** A summary
+DEDUPES — one row per `(artifact, id)` — so its row count is a lower bound on the sites needing the
+change, and the hidden ones are exactly those nobody re-checks. Re-run the falsifying search, fix
+every hit, then re-run it and require zero. Where the sweep is a rename, the query must be about the
+CONCEPT rather than the token, because the sites that survive are the ones that say the old word
+correctly.
+
+**And the accept is a real option with no shame in it.** Both partial repairs here would have been
+strictly better left alone: the prose was merely stale, and stale prose does not argue for a
+defect. What made them expensive was choosing FIX and then delivering a prefix of it. Relates to
+[[A fix lands at the instance a review named; the defect lives in the class]] — that rule is about
+the class being wider than the instance; this one is about what happens when you *know* the class
+and ship part of it anyway.
