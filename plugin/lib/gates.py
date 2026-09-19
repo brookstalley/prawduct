@@ -161,7 +161,15 @@ def _load_test_evidence(prawduct_dir: Path) -> "tuple[dict | None, str]":
     return record, ""
 
 
-def tests_are_current(project_dir: Path) -> tuple[bool, str]:
+#: What ``test-status`` prints in front of its reason on each exit-0 path.
+#: Module constants because three skill files instruct a reader to look for
+#: these strings; a test pins that prose against these names, so a reword here
+#: cannot leave an instruction pointing at a string the command never prints.
+CURRENT_TREE_LABEL = "current (tree-valid)"
+CURRENT_SESSION_LABEL = "current (session-fresh, not tree-vouched)"
+
+
+def tests_are_current(project_dir: Path) -> tuple[bool, str, str]:
     """Decide whether saved test evidence is fresh enough to trust.
 
     Two ways evidence is current, either sufficient (a disjunction), with
@@ -176,7 +184,9 @@ def tests_are_current(project_dir: Path) -> tuple[bool, str]:
        ever relaxes a timestamp-stale verdict to current, never the reverse:
        structurally incapable of a false stale, the failure class that retired
        the removed content-hash "fingerprint" and ``git_sha`` mechanisms. It
-       classifies *paths* (git tree-diff + ``is_judgeable_path``), never file
+       classifies *paths* (git tree-diff + ``affects_test_outcome``, which is
+       a strict superset of ``is_judgeable_path`` and the predicate
+       :func:`_test_evidence_tree_valid` actually calls), never file
        *contents* — the standing ``coverage_algebra`` rule that kept those
        mechanisms dead. Records without ``evidence_tree`` (pre-clause, or a
        ``--from-counts`` on-ramp) skip clause 2 and behave exactly as before.
@@ -196,42 +206,91 @@ def tests_are_current(project_dir: Path) -> tuple[bool, str]:
     documented commitment for an absent anchor is that freshness gates fail
     closed. The remedy is one command: re-record the run.
 
-    Returns (is_current, reason). reason is a short human-readable string suitable
-    for printing back to the agent.
+    Returns ``(is_current, reason, clause)``. ``reason`` is a short
+    human-readable string suitable for printing back to the agent. ``clause``
+    names which disjunct answered — ``"session"``, ``"tree"``, or ``"none"``
+    when neither did — because the two are **different guarantees** and a
+    caller that prints only "current" tells its reader the stronger one.
+    Clause 1 answers *when* a run happened; clause 2 answers *which tree* it
+    covered. Both are sufficient to skip a re-run under the trust-the-cycle
+    model, and the field exists so a surface can say which it rests on rather
+    than implying tree coverage it does not have.
+
+    **Clause 2 is asked first and unconditionally**, so ``"session"`` means the
+    tree question was ASKED and could not vouch — never that nobody looked.
+    That ordering is what makes the weaker label honest: reporting
+    "session-fresh" of evidence that is ALSO tree-identical under-claims, and a
+    caller reading an under-claim pays the re-run this disjunction exists to
+    avoid.
+
+    A structural field rather than a marker inside ``reason``: ``reason`` is
+    human-readable prose that a later wording pass is free to change, and a
+    consumer branching on it would break silently.
     """
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     evidence, why_not = _load_test_evidence(prawduct_dir)
     if evidence is None:
-        return False, why_not
+        return False, why_not, "none"
 
     # Timestamp check — evidence must have been written during this session.
     evidence_ts = evidence.get("timestamp")
     if not isinstance(evidence_ts, str) or not evidence_ts:
-        return False, "no timestamp in evidence"
+        return False, "no timestamp in evidence", "none"
 
     session_start = _read_session_start(prawduct_dir)
-    if session_start and evidence_ts >= session_start:
-        return True, f"evidence from this session ({evidence_ts})"
+    session_fresh = bool(session_start and evidence_ts >= session_start)
 
-    # Clause 2, asked on BOTH paths. When a marker exists this is the
-    # relax-only disjunct: timestamp-stale evidence can still be vouched for
-    # by an unchanged judgeable tree. When no marker exists it is the ONLY
-    # thing that can vouch — see the no-marker return below.
+    # Clause 2, asked on BOTH paths — including the session-fresh one, which
+    # used to short-circuit before reading ``evidence_tree`` at all. Asking it
+    # there buys the STRONGER answer whenever it is available: evidence that is
+    # both session-fresh and tree-identical is tree-valid, and saying only
+    # "session-fresh" of it under-claims, which costs a caller the suite re-run
+    # this disjunction exists to avoid. The check is a git tree-diff plus a path
+    # classification — ~0.1s on this repo, ~0.4s on a 42k-file worktree —
+    # against minutes for the run a false under-claim invites, so it is paid
+    # unconditionally rather than saved on the common path.
     recorded_tree = evidence.get("evidence_tree")
     if isinstance(recorded_tree, str) and recorded_tree:
         tree_valid, tree_reason = _test_evidence_tree_valid(project_dir, recorded_tree)
-        if tree_valid:
-            if session_start:
-                return True, f"tree-valid despite predating session: {tree_reason}"
-            return True, f"tree-valid, no session marker to date it against: {tree_reason}"
+    else:
+        tree_valid, tree_reason = False, (
+            "the saved run records no evidence_tree, so nothing can say which "
+            "tree it ran against"
+        )
+
+    if tree_valid:
+        if session_fresh:
+            return (
+                True,
+                f"tree-valid, and recorded this session ({evidence_ts}): {tree_reason}",
+                "tree",
+            )
+        if session_start:
+            return True, f"tree-valid despite predating session: {tree_reason}", "tree"
+        return (
+            True,
+            f"tree-valid, no session marker to date it against: {tree_reason}",
+            "tree",
+        )
+
+    if session_fresh:
+        return (
+            True,
+            f"evidence from this session ({evidence_ts}), but {tree_reason}",
+            "session",
+        )
 
     if session_start:
-        return False, f"evidence predates session ({evidence_ts} < {session_start})"
+        return (
+            False,
+            f"evidence predates session ({evidence_ts} < {session_start})",
+            "none",
+        )
 
     return False, (
         f"no session marker to date the evidence against ({evidence_ts}), and "
         "it does not vouch for the current tree — run the suite and record it"
-    )
+    ), "none"
 
 
 def _test_evidence_tree_valid(
@@ -1515,15 +1574,22 @@ def test_status(project_dir: Path) -> int:
     Used by builders, the Critic, and the PR reviewer to decide whether to
     re-run the test suite.
 
-    stdout: one line — `current: <reason>` or `stale: <reason>`
+    stdout: one line — :data:`CURRENT_TREE_LABEL`,
+    :data:`CURRENT_SESSION_LABEL`, or `stale:`, each followed by its reason.
+    The parenthetical names which of :func:`tests_are_current`'s two disjuncts
+    answered, because they are different guarantees and a bare `current` told
+    every reader it had the stronger one. Both still mean "safe to skip the
+    re-run" — this is disclosure, not a new gate, and the exit codes are
+    unchanged.
 
     Exit codes:
       0  - tests are current; safe to skip re-running
       1  - tests are stale or no evidence
     """
-    is_current, reason = tests_are_current(project_dir)
+    is_current, reason, clause = tests_are_current(project_dir)
     if is_current:
-        print(f"current: {reason}")
+        label = CURRENT_TREE_LABEL if clause == "tree" else CURRENT_SESSION_LABEL
+        print(f"{label}: {reason}")
     else:
         print(f"stale: {reason}")
     return 0 if is_current else 1

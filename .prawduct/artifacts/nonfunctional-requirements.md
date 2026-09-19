@@ -76,6 +76,17 @@ last_validated: null
   thin evidence for retiring a control whose miss surfaces in a merged PR rather than a
   rerunnable round; retiring it trades a small measured cost against an unmeasured tail
   risk | user can veto/override]` Owner ruling, 2026-09-16.
+  **Annotation, 2026-09-18 (owner-directed, `pr-review-payload` Chunk 02): the ruling above graded a
+  control that no longer exists.** `grep -rn "pr-scoped" plugin/` returns nothing — the mode was
+  collapsed into `pr` (`artifacts/archive/build-plan-kernel-evidence-store.md`), and its 30 ledger
+  rows run 2026-06-10 → 2026-07-10 and stop. So the removal arm's first evidence-based run was
+  computed from historical rows for a subject that had been gone two months. **Nothing is amended
+  here and the ruling is not withdrawn** — keeping a retired thing is inert, and editing a norm to
+  match the tree is the laundering tell. What is recorded is what the ruling actually decided: a
+  `keep` about a retired subject, whose clause (c) — has `pr` converged in yield with `pr-scoped`? —
+  is unanswerable and therefore protects nothing about the reviewer that runs today. The arm's next
+  run against the live `pr` mode is a separate exercise with its own evidence, and the
+  `pr-review-payload` measurements above are the first numbers it would have to work from.
   Clock: the janitor's Norm Health sweep re-reads the three conditions above each run.
   Retroactivity: contain — existing controls are not swept on adoption, because the evidence to judge them does not exist yet (the very defect this norm names). The boundary is explicit and dated: controls added **from 2026-07-29** carry the observable-yield obligation at birth; controls predating it are assessed as the janitor's sweep gains yield data, not before. `compliance_canary` is the worked example and the first case — it emits nothing, so it cannot be judged, and LNG-5W8R fixes that rather than retiring it on argument.
 - **State-file growth past its size threshold is surfaced as an advisory warning that prompts compaction — it is never a hard block or mechanical enforcement.**
@@ -111,6 +122,52 @@ Targets we want to hold:
   reviews at the PR boundary **run in parallel, never sequentially** — wall clock is the slowest
   run, not the sum. Any sequencing that exists is for narrative framing, not a data dependency, and
   is a target for removal.
+
+  **Measured against this target, `pr-review-payload` scope, 2026-09-18.** Two readings, each with
+  the command that re-derives it rather than a figure to be trusted:
+
+  | reading | on 2026-09-18, before the change | re-derive with |
+  |---|---|---|
+  | PR review duration, this repo | median **420s** over 122 reviews, **0 measured / 122 self-reported** | `python3 tools/pr-review-yield.py` |
+  | PR review duration, a consumer (`discodon`, v3.5) | **14.1 min/review** over 12 reviews, `clk runs` **0** | `python3 tools/measure-consumer-overhead.py ../discodon --prs` |
+  | sequencing | `pr/SKILL.md` ran Step 2 then Step 3 (**#678**) | — |
+
+  **After, measured on this bundle's own PR review, 2026-09-18.** The first PR review this repo has
+  timed rather than asked a model to recall:
+
+  | reading | after | re-derive with |
+  |---|---|---|
+  | PR review duration, this repo | **1 measured / 122 self-reported**; the measured run's interval **385s** | `python3 tools/pr-review-yield.py` |
+  | the same run, self-reported by the reviewer | **330s** | the evidence file's `duration_seconds` |
+  | the same run, as the harness timed the agent | **353s** | the dispatch's own completion record |
+  | PR review duration, a consumer (`discodon`, v3.5) | **14.1 min/review**, `clk runs` still **0** — unchanged, and it cannot move until a plugin release carrying the marker reaches that repo | `python3 tools/measure-consumer-overhead.py ../discodon --prs` |
+
+  **Read the three numbers as three different spans, not as one number measured three times** —
+  pooling them re-creates exactly the hazard `dispatched_at` was added to retire, which is why
+  `telemetry._extract_row` carries provenance with every row and reports the two populations apart.
+
+  - **385s is `dispatched_at` → `ledger-append`**, marked at Step 3 before the spawn and closed at
+    Step 4. It therefore includes the caller's Step 4 verification, and under a blocking cumulative
+    it would include fix time until the re-dispatch re-marks. It is the span an *operator waits*,
+    which is what the ≤ 7-minute target is about — and at 6m25s this run met it.
+  - **353s is the harness's own measure of the agent**, i.e. the reviewer's runtime alone. The ~32s
+    difference from 385s is the caller's Step 4 work, which is the expected gap rather than noise.
+  - **330s is the reviewing model's estimate of its own runtime** — the thing the baseline column is
+    made of, 122 times over. It is **~6% under** the harness's measure of the same run. One data
+    point is not a bias estimate, but it is the first time the two have been comparable at all, and
+    it is the reason the baseline's 420s median is not directly comparable to the 385s above.
+
+  **The ≤ 7-minute target was met on a bundle whose review-round count was the real cost.** This
+  boundary cost 6m25s of wall clock; the branch spent roughly six hours, almost all of it in
+  *repeated* Critic rounds. `run-count` and `unit-cost` are both named as design variables at the
+  top of this section — this bundle moved unit-cost, and the measurement it installs is what will
+  let the next one argue about run-count with numbers instead of impressions.
+
+  The `0 measured` column is the positive control: before this scope no review duration in either
+  repo was a code-written interval, so the 420s and the 14.1 min are both the reviewing model's own
+  recollection and the target had never actually been measured against. The after-table above is
+  that control coming back non-zero — had it still read `0 measured`, the clock would not have
+  fired and the figures beside it would have meant nothing.
 - **Validating a comment-only change: ≤ 30s.** A change confined to comments must be cleared in
   under half a minute or the check is not worth keeping — at that price the question of whether
   it is proportionate stops being interesting. The budget is met by *deterministic* checks over

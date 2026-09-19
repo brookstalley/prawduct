@@ -61,11 +61,13 @@ def _event(
     findings: list[dict] | None = None,
     observations: list[dict] | None = None,
     stage: str | None = None,
+    dispatched_at: str | None = None,
+    ts: str = "2026-06-10T12:00:00Z",
 ) -> dict:
     event = {
         "schema_version": 1,
         "event": kind,
-        "ts": "2026-06-10T12:00:00Z",
+        "ts": ts,
         "duration_seconds": duration,
         "project": "proj",
         "scope": scope,
@@ -89,6 +91,11 @@ def _event(
     # "unrecorded", never as a stage this reader guessed from the mode.
     if stage is not None:
         event["review"]["stage"] = stage
+    # Same posture again, and here it is the whole point: absence means NOT
+    # MEASURED. Every one of the 1,008 real events in this repo's ledger lacks
+    # the key, so the default is the population the split exists to separate.
+    if dispatched_at is not None:
+        event["dispatched_at"] = dispatched_at
     return event
 
 
@@ -430,7 +437,7 @@ class TestJsonSchemaStability:
         _write_ledger(repo, [_event()])
         report = json.loads(_run(repo, "--json").stdout)
         assert list(report) == [
-            "schema_version", "project", "generated_at", "events_total",
+            "schema_version", "project", "generated_at", "window", "events_total",
             "skipped", "overall", "by_role_model_mode", "by_scope", "by_stage",
             "top_files", "files_attributed_total", "learning",
         ]
@@ -442,7 +449,17 @@ class TestJsonSchemaStability:
         # `observations` and `reviews_recording_observations` (a key change).
         # 4 -> 5 on 2026-09-17 (review-stages Chunk 02): a `by_stage` grouping
         # joined the top level (a key change).
-        assert report["schema_version"] == 5
+        # 5 -> 6 on 2026-09-18 (pr-review-payload Chunk 01): every stat block
+        # gained `duration_measured` / `duration_self_reported`, because a
+        # duration read from a dispatch clock and one recollected by the
+        # reviewing model are two populations and a median over the mixture
+        # measures neither.
+        # 6 -> 7 (review-yield-instrument): a `window` header, stated even
+        # when null so a windowed report is never mistaken for a whole-corpus
+        # one, and a `remedies` block on every stat block. Both ADDED; no key
+        # was removed or repurposed, which is what `api-contract.md`'s
+        # additive-first norm permits and what this pin exists to hold you to.
+        assert report["schema_version"] == 7
         assert report["project"] == "repo"
 
     def test_group_entry_keys_pinned(self, tmp_path):
@@ -453,7 +470,8 @@ class TestJsonSchemaStability:
         report = json.loads(_run(repo, "--json").stdout)
         stat_keys = [
             "reviews", "duration_total_seconds", "duration_median_seconds",
-            "findings", "findings_per_review", "actionable_rate",
+            "duration_measured", "duration_self_reported",
+            "findings", "remedies", "findings_per_review", "actionable_rate",
             "observations", "reviews_recording_observations",
         ]
         assert list(report["overall"]) == stat_keys
@@ -461,6 +479,12 @@ class TestJsonSchemaStability:
         assert list(report["by_scope"][0]) == ["scope", *stat_keys]
         assert list(report["by_stage"][0]) == ["stage", *stat_keys]
         assert list(report["top_files"][0]) == ["path", "actionable_findings", "findings"]
+        for key in ("duration_measured", "duration_self_reported"):
+            assert list(report["overall"][key]) == ["reviews", "total_seconds", "median_seconds"]
+        assert list(report["overall"]["remedies"]) == ["blocking", "warning", "note", "other"]
+        assert list(report["overall"]["remedies"]["note"]) == [
+            "findings", "with_remedy", "blank_remedy", "no_remedy_field", "rate", "median_words",
+        ]
 
 
 def _learning(
@@ -593,3 +617,393 @@ class TestLearningLoopBlock:
         assert "learning loop:" in out
         # The DIFFERENCE, computed for the reader: 3 written, 1 cited.
         assert "2 written rule(s) no review has cited" in out
+
+
+class TestDurationProvenanceSplit:
+    """A duration read from a dispatch clock and one recollected by the
+    reviewing model are two populations. Reporting a median over the mixture
+    measures neither, which is the hazard `dispatched_at` was added to retire —
+    so the split, not the pooled figure, is what a protocol change is graded on.
+    """
+
+    def test_a_measured_and_an_estimated_review_land_in_different_populations(self, tmp_path):
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [
+            # Dispatched 12:00:00, appended 12:00:00 + 240s. The estimate on the
+            # SAME event says 100 — deliberately disagreeing, so a reader that
+            # silently prefers one cannot pass by coincidence.
+            _event(duration=100, dispatched_at="2026-06-10T11:56:00Z"),
+            _event(duration=600),
+        ])
+        overall = json.loads(_run(repo, "--json").stdout)["overall"]
+        assert overall["duration_measured"] == {
+            "reviews": 1, "total_seconds": 240.0, "median_seconds": 240.0,
+        }
+        assert overall["duration_self_reported"] == {
+            "reviews": 1, "total_seconds": 600, "median_seconds": 600,
+        }
+
+    def test_an_event_with_no_mark_is_never_counted_as_measured(self, tmp_path):
+        """Red if absence is ever read as zero. A zero-second review averaged
+        into the measured population is the exact inverse of the signal."""
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_event(duration=300), _event(duration=300)])
+        overall = json.loads(_run(repo, "--json").stdout)["overall"]
+        assert overall["duration_measured"]["reviews"] == 0
+        assert overall["duration_measured"]["median_seconds"] is None
+        assert overall["duration_self_reported"]["reviews"] == 2
+
+    def test_an_out_of_order_pair_is_refused_not_rendered_negative(self, tmp_path):
+        """A hand-edited row or a clock skew can stamp the dispatch AFTER the
+        write. A negative interval parses cleanly and would be labelled
+        measured, which is worse than no measurement: the estimate it displaces
+        at least knows it is one."""
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_event(duration=300, dispatched_at="2026-06-10T13:00:00Z")])
+        overall = json.loads(_run(repo, "--json").stdout)["overall"]
+        assert overall["duration_measured"]["reviews"] == 0
+        assert overall["duration_self_reported"]["reviews"] == 1
+
+    def test_an_unparseable_mark_falls_back_rather_than_ending_the_report(self, tmp_path):
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_event(duration=300, dispatched_at="not-a-timestamp")])
+        overall = json.loads(_run(repo, "--json").stdout)["overall"]
+        assert overall["duration_measured"]["reviews"] == 0
+        assert overall["duration_self_reported"]["reviews"] == 1
+
+    def test_the_split_reaches_every_grouping_not_just_overall(self, tmp_path):
+        """The groupings are what a role-vs-role or before/after comparison is
+        actually read from, so a split present only at the top level would leave
+        every comparison pooled."""
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_event(duration=100, dispatched_at="2026-06-10T11:56:00Z")])
+        report = json.loads(_run(repo, "--json").stdout)
+        for grouping in ("by_role_model_mode", "by_scope", "by_stage"):
+            assert report[grouping][0]["duration_measured"]["reviews"] == 1, grouping
+            assert report[grouping][0]["duration_self_reported"]["reviews"] == 0, grouping
+
+    def test_the_human_rendering_states_the_provenance_beside_the_median(self, tmp_path):
+        """A median printed without its provenance invites the reader to take an
+        estimate for a measurement, which is the whole failure being retired."""
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [
+            _event(duration=100, dispatched_at="2026-06-10T11:56:00Z"),
+            _event(duration=600),
+        ])
+        out = _run(repo).stdout
+        assert "measured 1 (median 240.0s)" in out
+        assert "self-reported 1 (median 600s)" in out
+
+
+def _finding(severity: str = "note", *, recommendation=..., files=("a.py",)) -> dict:
+    """A finding, with the remedy field present / blank / ABSENT on demand.
+
+    The three-way default matters: `recommendation` is omitted entirely unless
+    asked for, because the PR reviewer's findings carry no such key and folding
+    that into "wrote no remedy" is the defect these tests exist to prevent.
+    """
+    f = {"goal": "Nothing Is Missing", "severity": severity,
+         "summary": "s", "files": list(files)}
+    if recommendation is not ...:
+        f["recommendation"] = recommendation
+    return f
+
+
+class TestWindowBounds:
+    """`--since` / `--until` are inclusive, and a bound shorter than a full
+    timestamp names a PERIOD — `2026-09` is the whole of September. Compared as
+    bare strings every such bound excludes its own period, silently shortening
+    whichever window it closes; the window a before/after comparison closes is
+    the one the conclusion is read from. The predicate is SHARED with
+    `tools/pr-review-yield.py`, which answers the same question for the PR
+    reviewer: `plugin/lib/timewindow.py` is its one home and both import it.
+    """
+
+    def _report(self, repo, *args):
+        return json.loads(_run(repo, "--json", *args).stdout)
+
+    def test_the_bounds_filter(self, tmp_path):
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_event(ts="2026-08-01T00:00:00Z"), _event(ts="2026-09-01T00:00:00Z")])
+        assert self._report(repo, "--since", "2026-08-15")["events_total"] == 1
+        assert self._report(repo, "--until", "2026-08-15")["events_total"] == 1
+
+    def test_a_date_only_until_covers_that_whole_day(self, tmp_path):
+        # "2026-09-01T18:00:00Z" > "2026-09-01" as strings, so a naive compare
+        # drops events from the bound's own day.
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_event(ts="2026-09-01T18:00:00Z")])
+        assert self._report(repo, "--until", "2026-09-01")["events_total"] == 1
+
+    def test_a_month_only_until_covers_that_whole_month(self, tmp_path):
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_event(ts="2026-09-30T23:59:59Z")])
+        assert self._report(repo, "--until", "2026-09")["events_total"] == 1
+        assert self._report(repo, "--until", "2026-08")["events_total"] == 0
+
+    def test_a_since_bound_is_inclusive_of_its_own_period(self, tmp_path):
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_event(ts="2026-08-04T09:00:00Z")])
+        assert self._report(repo, "--since", "2026-08-04")["events_total"] == 1
+
+    def test_an_event_with_no_timestamp_is_dropped_once_a_bound_exists(self, tmp_path):
+        # Keeping it would claim it for BOTH halves of a before/after split.
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_event(ts="")])
+        assert self._report(repo)["events_total"] == 1
+        assert self._report(repo, "--since", "2026-08-04")["events_total"] == 0
+
+    def test_the_two_halves_partition_the_corpus(self, tmp_path):
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_event(ts=f"2026-08-{d:02d}T00:00:00Z") for d in range(1, 11)])
+        pre = self._report(repo, "--until", "2026-08-04")["events_total"]
+        post = self._report(repo, "--since", "2026-08-05")["events_total"]
+        assert pre + post == self._report(repo)["events_total"] == 10
+
+    def test_the_window_is_stated_even_when_absent(self, tmp_path):
+        # A windowed report and a whole-corpus one are the same shape; a
+        # consumer that cannot tell them apart will compare one against the other.
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_event()])
+        assert self._report(repo)["window"] == {"since": None, "until": None}
+        assert self._report(repo, "--since", "2026-01-01")["window"] == {
+            "since": "2026-01-01", "until": None}
+
+    def test_a_bad_bound_is_refused_rather_than_filtered_on(self, tmp_path):
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_event()])
+        r = _run(repo, "--since", "nonsense")
+        assert r.returncode == 1
+        assert "not a date, month or ISO timestamp" in r.stderr
+
+    def test_a_bound_with_no_value_is_refused(self, tmp_path):
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_event()])
+        r = _run(repo, "--until")
+        assert r.returncode == 1
+        assert "needs a value" in r.stderr
+
+
+class TestZonedBounds:
+    """A full-timestamp bound carrying a zone offset must be INTERPRETED.
+
+    Found by a mutation that survived the whole suite: for period bounds a bare
+    string compare agrees with the prefix compare by luck — a period's inclusive
+    start is its own string prefix — so no period fixture can discriminate the
+    two. Only a zoned instant can, and `2026-08-04T12:00:00+02:00` is 10:00Z.
+    """
+
+    def _report(self, repo, *args):
+        return json.loads(_run(repo, "--json", *args).stdout)
+
+    def test_a_zoned_since_is_interpreted_not_string_compared(self, tmp_path):
+        # 11:00Z is AFTER 10:00Z and must be kept; a bare compare drops it,
+        # because "2026-08-04T11" sorts before "2026-08-04T12".
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_event(ts="2026-08-04T11:00:00Z")])
+        assert self._report(repo, "--since", "2026-08-04T12:00:00+02:00")["events_total"] == 1
+
+    def test_a_zoned_since_still_excludes_what_precedes_it(self, tmp_path):
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_event(ts="2026-08-04T09:59:59Z")])
+        assert self._report(repo, "--since", "2026-08-04T12:00:00+02:00")["events_total"] == 0
+
+    def test_a_zoned_until_is_interpreted_not_string_compared(self, tmp_path):
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_event(ts="2026-08-04T11:00:00Z")])
+        assert self._report(repo, "--until", "2026-08-04T12:00:00+02:00")["events_total"] == 0
+        assert self._report(repo, "--until", "2026-08-04T14:00:00+02:00")["events_total"] == 1
+
+
+class TestRemedyDimension:
+    """Does a finding SHIP A FIX PLAN? The severity label says what a finding is
+    worth; the remedy beside it is what makes it read as work, and the two can
+    disagree — a NOTE carrying a finished fix plan is indistinguishable from a
+    WARNING at the point the builder decides what to do.
+    """
+
+    def _note(self, repo, *args):
+        return json.loads(_run(repo, "--json", *args).stdout)["overall"]["remedies"]["note"]
+
+    def test_present_blank_and_absent_are_counted_apart(self, tmp_path):
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_event(findings=[
+            _finding(recommendation="do the thing properly"),
+            _finding(recommendation="   "),
+            _finding(),
+        ])])
+        note = self._note(repo)
+        assert (note["findings"], note["with_remedy"], note["blank_remedy"],
+                note["no_remedy_field"]) == (3, 1, 1, 1)
+
+    def test_the_rate_is_null_when_no_finding_carries_the_field(self, tmp_path):
+        # The PR reviewer's real shape: `{goal, severity, file, line, summary}`,
+        # no remedy slot. Reporting 0% would be a claim about behaviour the
+        # schema makes meaningless.
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_event(findings=[_finding(), _finding()])])
+        note = self._note(repo)
+        assert note["rate"] is None and note["no_remedy_field"] == 2
+
+    def test_the_rate_is_null_when_there_are_no_findings_at_all(self, tmp_path):
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_event(findings=[])])
+        assert self._note(repo)["rate"] is None
+
+    def test_the_rate_ignores_findings_whose_schema_lacks_the_field(self, tmp_path):
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_event(findings=[
+            _finding(recommendation="a remedy"), _finding(), _finding()])])
+        assert self._note(repo)["rate"] == 1.0
+
+    def test_the_measurement_discriminates(self, tmp_path):
+        """The control: two corpora identical but for remedy presence must report
+        DIFFERENT rates. A rate assertion that passes on both measured nothing."""
+        with_r, without = tmp_path / "with", tmp_path / "without"
+        _write_ledger(with_r, [_event(findings=[_finding(recommendation="x y z")] * 4)])
+        _write_ledger(without, [_event(findings=[_finding(recommendation="")] * 4)])
+        a, b = self._note(with_r)["rate"], self._note(without)["rate"]
+        assert (a, b) == (1.0, 0.0) and a != b
+
+    def test_median_words_counts_words_not_characters(self, tmp_path):
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_event(findings=[_finding(recommendation="one two three four five")])])
+        assert self._note(repo)["median_words"] == 5
+
+    def test_severities_are_reported_apart(self, tmp_path):
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_event(findings=[
+            _finding("note", recommendation="n"),
+            _finding("warning", recommendation="w w"),
+            _finding("blocking", recommendation=""),
+        ])])
+        rem = json.loads(_run(repo, "--json").stdout)["overall"]["remedies"]
+        assert rem["note"]["with_remedy"] == 1
+        assert rem["warning"]["median_words"] == 2
+        assert rem["blocking"]["with_remedy"] == 0
+
+
+class TestHumanRenderOfWindowAndRemedies:
+    """The formatter is exercised by no `--json` test, and both surfaces added
+    here render through it."""
+
+    def test_a_windowed_report_says_so(self, tmp_path):
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_event(ts="2026-09-01T00:00:00Z")])
+        out = _run(repo, "--since", "2026-08-04").stdout
+        banner = [ln for ln in out.splitlines() if ln.startswith("WINDOW:")]
+        assert banner and "SLICE" in banner[0]
+
+    def test_an_unwindowed_report_prints_no_banner(self, tmp_path):
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_event()])
+        assert not [ln for ln in _run(repo).stdout.splitlines() if ln.startswith("WINDOW:")]
+
+    def test_the_remedy_line_reports_the_rate(self, tmp_path):
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_event(findings=[
+            _finding("note", recommendation="one two three"),
+            _finding("note", recommendation=""),
+        ])])
+        line = next(ln for ln in _run(repo).stdout.splitlines() if ln.startswith("remedies:"))
+        assert "note 50% of 2" in line
+
+    def test_a_population_with_no_remedy_field_renders_n_a_not_zero_percent(self, tmp_path):
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_event(findings=[_finding("note")])])
+        line = next(ln for ln in _run(repo).stdout.splitlines() if ln.startswith("remedies:"))
+        assert "n/a" in line and "0%" not in line
+
+    def test_the_remedy_line_survives_a_corpus_with_no_findings(self, tmp_path):
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_event(findings=[])])
+        assert "remedies: (no findings)" in _run(repo).stdout
+
+
+class TestWindowScopesEveryTally:
+    """The window scopes the READ, not the result.
+
+    Filtering after `_read_events` re-scopes only the review list, so a windowed
+    report prints whole-corpus `learning` and `skipped` counts under a banner
+    saying it is a slice — and two windows summed by a `--json` consumer
+    double-count them.
+    A before/after split, which is this command's whole purpose, showed
+    identical learning numbers in both halves.
+    """
+
+    def _report(self, repo, *args):
+        return json.loads(_run(repo, "--json", *args).stdout)
+
+    def test_learning_counts_partition_across_the_window(self, tmp_path):
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [
+            _learning(unit="old"), _learning(unit="new"), _event(ts="2026-09-01T00:00:00Z"),
+        ])
+        # Both learning rows carry the helper's own ts; pin that the two halves
+        # SUM to the whole rather than each reporting it.
+        whole = self._report(repo)["learning"]["written"]
+        pre = self._report(repo, "--until", "2026-06-10")["learning"]["written"]
+        post = self._report(repo, "--since", "2026-06-11")["learning"]["written"]
+        assert whole == 2
+        assert pre + post == whole, "a windowed report must not print whole-corpus learning counts"
+
+    def test_skip_counts_partition_across_the_window(self, tmp_path):
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [
+            json.dumps({"event": "deploy.thing", "ts": "2026-06-10T12:00:00Z"}),
+            json.dumps({"event": "deploy.thing", "ts": "2026-12-01T00:00:00Z"}),
+            _event(),
+        ])
+        whole = self._report(repo)["skipped"]["unknown_kinds"]
+        pre = self._report(repo, "--until", "2026-06-30")["skipped"]["unknown_kinds"]
+        post = self._report(repo, "--since", "2026-07-01")["skipped"]["unknown_kinds"]
+        assert whole == 2
+        assert pre + post == whole, "skips must describe the windowed population too"
+
+    def test_an_out_of_window_corrupt_line_is_not_counted(self, tmp_path):
+        # A line with no `ts` cannot be claimed for a window at all.
+        repo = tmp_path / "repo"
+        _write_ledger(repo, ["{not json", _event(ts="2026-09-01T00:00:00Z")])
+        assert self._report(repo)["skipped"]["corrupt_lines"] == 1
+        assert self._report(repo, "--since", "2026-01-01")["skipped"]["corrupt_lines"] == 1
+
+
+class TestBoundValidation:
+    def test_an_impossible_date_is_refused_not_silently_shifted(self, tmp_path):
+        # `2026-09-31` matches the period shape and is not a date; accepting it
+        # silently means 2026-10-01 — a bound meaning something other than what
+        # was typed, which is the one failure a window must never have.
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_event()])
+        r = _run(repo, "--since", "2026-09-31")
+        assert r.returncode == 1
+        assert "not a date, month or ISO timestamp" in r.stderr
+
+    def test_a_real_period_bound_is_still_accepted(self, tmp_path):
+        # The control: the refusal above must not be refusing every period.
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_event()])
+        assert _run(repo, "--json", "--since", "2026-09-30").returncode == 0
+        assert _run(repo, "--json", "--since", "2026-02-29").returncode == 1, "2026 is not a leap year"
+
+
+class TestRemedyLineCoversTheWholePopulation:
+    def test_an_unknown_severity_appears_on_the_remedies_line(self, tmp_path):
+        # `_group_stats` and `_fmt_stats` both carry `other`; a remedies line
+        # iterating only the three named severities makes the two lines of one
+        # report disagree about the population they describe.
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_event(findings=[
+            {"goal": "g", "severity": "nitpick", "summary": "s",
+             "recommendation": "one two", "files": ["a.py"]},
+        ])])
+        out = _run(repo).stdout
+        findings_line = next(ln for ln in out.splitlines() if ln.startswith("overall:"))
+        remedies_line = next(ln for ln in out.splitlines() if ln.startswith("remedies:"))
+        # The findings line already counts it under `other` — that is the
+        # population the remedies line must agree with, and asserting on the
+        # whole report would be satisfied by this line alone.
+        assert "0/0/0/1" in findings_line
+        assert "other" in remedies_line, (
+            "the remedies line omits a population the findings line counts, so "
+            "the two lines of one report describe different sets")

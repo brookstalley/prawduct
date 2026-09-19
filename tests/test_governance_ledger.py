@@ -875,3 +875,539 @@ class TestLearningEventProbe:
             repo / ".prawduct", "learning.fired",
             file="a.md", unit_hash="h1", session=None, review_id="rev-1",
         ) is True
+
+
+# ---------------------------------------------------------------------------
+# The dispatch clock: `dispatched_at` on the envelope (pr-review-payload ch.01)
+# ---------------------------------------------------------------------------
+
+
+MARKER_REL = ".prawduct/.pr-review-dispatch.json"
+CRITIC_MARKER_REL = ".prawduct/.critic-review-dispatch.json"
+
+
+def _duration_reason(result: subprocess.CompletedProcess) -> str:
+    """The `duration:` line `ledger-append` printed, and nothing else.
+
+    Asserting a phrase against the whole of stdout does not test the reason: the
+    append prints the ledger's absolute path, and under pytest that path contains
+    the TEST's own name, so `assert "unreadable" in result.stdout` passed for
+    `test_an_unreadable_mark_...` with the reason blanked out. A mutation sweep
+    found it; reading could not. Bind each assertion to the line that carries the
+    behaviour.
+    """
+    lines = [ln for ln in result.stdout.splitlines() if ln.startswith("duration: ")]
+    assert len(lines) == 1, f"expected exactly one duration line, got {lines!r}"
+    return lines[0][len("duration: "):]
+
+
+class TestDispatchClock:
+    """`duration_seconds` is the reviewing model's estimate; `dispatched_at` is a
+    clock this code read. The whole value of the field is that its ABSENCE is
+    unambiguous, so most of what follows asserts degradations: every one of them
+    must omit the key entirely and say why, because a null or a zero is a VALUE
+    naming the absence and would be averaged into a real population."""
+
+    def _pr_append(self, repo: Path, **kw):
+        return _run_hook(
+            repo, "ledger-append", "--event", "review.pr",
+            "--findings", PR_EVIDENCE_REL, **kw
+        )
+
+    def test_a_marked_dispatch_produces_dispatched_at(self, tmp_path):
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _commit_file(repo, "app.py", "print(1)\n", "init")
+        _write_pr_evidence(repo, duration_seconds=240)
+
+        marked = _run_hook(repo, "pr-review-dispatch", "--begin")
+        assert marked.returncode == 0, marked.stderr
+        # The WRITING run's own output is what an operator reads; checking only
+        # the state afterwards would not verify what it reported.
+        assert "dispatch marked:" in marked.stdout
+
+        r = self._pr_append(repo)
+        assert r.returncode == 0, r.stderr
+        ev = _ledger_events(repo)[0]
+        # The stamp the writing run reported is the stamp that lands on the event.
+        reported = marked.stdout.split("dispatch marked:", 1)[1].split("(")[0].strip()
+        assert ev["dispatched_at"] == reported
+        assert ev["dispatched_at"].endswith("Z")
+        # The estimate is NOT displaced — both populations stay readable.
+        assert ev["duration_seconds"] == 240
+        assert "measured from a dispatch mark" in _duration_reason(r)
+
+    def test_an_unmarked_dispatch_omits_the_key_entirely(self, tmp_path):
+        """Red if absence is ever rendered as a null or a zero.
+
+        `not in` rather than `is None`: a key present with a null value is the
+        exact failure this field was designed against, and `.get()` cannot tell
+        the two apart.
+        """
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _commit_file(repo, "app.py", "print(1)\n", "init")
+        _write_pr_evidence(repo, duration_seconds=240)
+
+        r = self._pr_append(repo)
+        assert r.returncode == 0, r.stderr
+        ev = _ledger_events(repo)[0]
+        assert "dispatched_at" not in ev
+        assert "no dispatch mark" in _duration_reason(r)
+
+    def test_the_mark_is_cleared_so_it_cannot_attach_twice(self, tmp_path):
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _commit_file(repo, "app.py", "print(1)\n", "init")
+        _write_pr_evidence(repo)
+
+        _run_hook(repo, "pr-review-dispatch", "--begin")
+        assert (repo / MARKER_REL).is_file()
+        self._pr_append(repo)
+        assert not (repo / MARKER_REL).is_file()
+
+        self._pr_append(repo)
+        events = _ledger_events(repo)
+        assert len(events) == 2
+        assert "dispatched_at" in events[0]
+        assert "dispatched_at" not in events[1]
+
+    def test_a_stale_mark_from_another_tree_does_not_attach(self, tmp_path):
+        """The abandoned-run case, and the reason staleness is a TREE question.
+
+        A review dispatched, never appended, then work committed on top: the
+        marker survives, and attaching it would report an interval spanning
+        everything that happened in between as if it were review time.
+        """
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _commit_file(repo, "app.py", "print(1)\n", "init")
+        _write_pr_evidence(repo)
+
+        _run_hook(repo, "pr-review-dispatch", "--begin")
+        _commit_file(repo, "app.py", "print(2)\n", "work landed while the review was abandoned")
+
+        r = self._pr_append(repo)
+        assert r.returncode == 0, r.stderr
+        ev = _ledger_events(repo)[0]
+        assert "dispatched_at" not in ev
+        assert "different tree" in _duration_reason(r)
+        # Cleared even though it did not attach: HEAD only moves forward, so a
+        # mark that does not match today can never match later.
+        assert not (repo / MARKER_REL).is_file()
+
+    def test_a_critic_append_leaves_a_live_pr_mark_alone(self, tmp_path):
+        """The concurrency case. The Critic and the PR reviewer run at the same
+        time, so a `review.critic` append that consumed this marker would delete
+        a live PR review's measurement — silently, and only on the timing where
+        the two actually overlap, which is the timing the design wants."""
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _commit_file(repo, "app.py", "print(1)\n", "init")
+        _write_pr_evidence(repo, duration_seconds=240)
+        _write_findings(repo)
+
+        _run_hook(repo, "pr-review-dispatch", "--begin")
+        critic = _run_hook(repo, "ledger-append", "--event", "review.critic")
+        assert critic.returncode == 0, critic.stderr
+        assert (repo / MARKER_REL).is_file(), "the critic append consumed the PR mark"
+
+        r = self._pr_append(repo)
+        assert r.returncode == 0, r.stderr
+        events = _ledger_events(repo)
+        assert "dispatched_at" not in events[0], (
+            "the critic event carried a measurement no critic mark was written for "
+            "— it can only have come from the PR reviewer's slot"
+        )
+        assert "dispatched_at" in events[1]
+
+    def test_an_unreadable_mark_degrades_with_a_named_reason(self, tmp_path):
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _commit_file(repo, "app.py", "print(1)\n", "init")
+        _write_pr_evidence(repo)
+
+        (repo / MARKER_REL).parent.mkdir(parents=True, exist_ok=True)
+        (repo / MARKER_REL).write_text("{not json")
+
+        r = self._pr_append(repo)
+        assert r.returncode == 0, r.stderr
+        ev = _ledger_events(repo)[0]
+        assert "dispatched_at" not in ev
+        assert "unreadable" in _duration_reason(r)
+        assert not (repo / MARKER_REL).is_file()
+
+    def test_a_mark_with_no_timestamp_degrades_with_a_named_reason(self, tmp_path):
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        head = _commit_file(repo, "app.py", "print(1)\n", "init")
+        _write_pr_evidence(repo)
+
+        (repo / MARKER_REL).parent.mkdir(parents=True, exist_ok=True)
+        (repo / MARKER_REL).write_text(json.dumps({"head": head}))
+
+        r = self._pr_append(repo)
+        assert r.returncode == 0, r.stderr
+        assert "dispatched_at" not in _ledger_events(repo)[0]
+        assert "carries no timestamp" in _duration_reason(r)
+
+    def test_the_marker_head_and_the_envelope_head_are_the_same_read(self, tmp_path):
+        """Red if the marker and the envelope ever ask git separately.
+
+        This is the pin on `head_sha` being one home: staleness is decided by
+        comparing these two values, so a second reader spelling failure `""`
+        instead of `None` — or landing either side of a commit — renders a live
+        dispatch as an abandoned one.
+        """
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        head = _commit_file(repo, "app.py", "print(1)\n", "init")
+        _write_pr_evidence(repo)
+
+        _run_hook(repo, "pr-review-dispatch", "--begin")
+        marker = json.loads((repo / MARKER_REL).read_text())
+        assert marker["head"] == head
+
+        self._pr_append(repo)
+        ev = _ledger_events(repo)[0]
+        assert ev["git"]["head"] == marker["head"]
+        assert "dispatched_at" in ev
+
+    def test_a_mark_that_cannot_be_checked_against_a_tree_is_not_measured(self, tmp_path):
+        """Two nulls compare EQUAL — so the tree check passed vacuously on the one
+        input where it cannot show the mark belongs to this review.
+
+        When git cannot answer at mark time, the marker records `head: null`; if
+        it also cannot answer at append time, `None != None` is false and the
+        mark attached with no staleness protection whatsoever. Unverifiable is
+        not the same as verified, so this now degrades by name.
+        """
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _commit_file(repo, "app.py", "print(1)\n", "init")
+        _write_pr_evidence(repo)
+
+        (repo / MARKER_REL).parent.mkdir(parents=True, exist_ok=True)
+        (repo / MARKER_REL).write_text(
+            json.dumps({"dispatched_at": "2026-09-18T12:00:00Z", "head": None})
+        )
+
+        r = self._pr_append(repo)
+        assert r.returncode == 0, r.stderr
+        ev = _ledger_events(repo)[0]
+        assert "dispatched_at" not in ev, "a mark with no tree attached anyway"
+        assert "cannot be checked against a tree" in _duration_reason(r)
+
+    def test_bad_arguments_are_refused_without_writing_a_mark(self, tmp_path):
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _commit_file(repo, "app.py", "print(1)\n", "init")
+        for argv in ([], ["--bogus"], ["--begin", "extra"]):
+            r = _run_hook(repo, "pr-review-dispatch", *argv)
+            assert r.returncode == 1, argv
+            assert "usage:" in r.stderr
+            assert not (repo / MARKER_REL).is_file(), argv
+
+
+class TestCriticDispatchClock:
+    """The Critic's own stopwatch — the same contract as the PR reviewer's, on
+    its own slot.
+
+    Why this class exists at all, measured rather than supposed: across the
+    first 1,026 ledger rounds, exactly 2 carried a measured duration and both
+    were ``review.pr``. The other 1,024 were reviewer estimates taking 63
+    distinct values, 80% of them multiples of 30 seconds. Every wall-clock
+    figure the review-economics work is argued from was a sum of those.
+
+    **The first two tests are a treatment and its control on one fixture**, and
+    they are the reason the rest can be believed: an instrument whose tests pass
+    against a clock that never ticks is exactly the failure this whole chunk
+    exists to end, so one test must show the key ARRIVING and its twin must show
+    the same fixture reporting self-reported when the mark is withheld.
+    """
+
+    def _mark_critic(self, repo: Path) -> dict:
+        """Write a Critic dispatch mark the way ``critic-begin`` does."""
+        from lib import review_dispatch
+
+        return review_dispatch.begin(
+            repo / ".prawduct", "review.critic", review_dispatch.head_sha(repo)
+        )
+
+    def _critic_append(self, repo: Path):
+        return _run_hook(repo, "ledger-append", "--event", "review.critic")
+
+    def test_a_marked_critic_dispatch_produces_dispatched_at(self, tmp_path):
+        """The TREATMENT half of the control pair."""
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _commit_file(repo, "app.py", "print(1)\n", "init")
+        _write_findings(repo, duration_seconds=240)
+
+        record = self._mark_critic(repo)
+        # The literal path is pinned independently of the helper that wrote it:
+        # three registries and `.gitignore` name this string, and a marker that
+        # silently moved would be uncommitted state in every consumer's repo.
+        assert (repo / CRITIC_MARKER_REL).is_file()
+
+        r = self._critic_append(repo)
+        assert r.returncode == 0, r.stderr
+        ev = _ledger_events(repo)[0]
+        assert ev["dispatched_at"] == record["dispatched_at"]
+        assert ev["dispatched_at"].endswith("Z")
+        # The estimate is NOT displaced — both populations stay readable, which
+        # is what makes the before/after comparison possible at all.
+        assert ev["duration_seconds"] == 240
+        assert "measured from a dispatch mark" in _duration_reason(r)
+        assert not (repo / CRITIC_MARKER_REL).is_file(), "the mark was not consumed"
+
+    def test_an_unmarked_critic_append_omits_the_key_entirely(self, tmp_path):
+        """The CONTROL half: same fixture, mark withheld.
+
+        Without this, the treatment above proves only that the plumbing carries
+        a value it was handed — not that withholding the mark is distinguishable
+        from supplying one.
+        """
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _commit_file(repo, "app.py", "print(1)\n", "init")
+        _write_findings(repo, duration_seconds=240)
+
+        r = self._critic_append(repo)
+        assert r.returncode == 0, r.stderr
+        ev = _ledger_events(repo)[0]
+        assert "dispatched_at" not in ev
+        assert ev["duration_seconds"] == 240
+        assert "no dispatch mark" in _duration_reason(r)
+
+    def test_the_two_clocks_do_not_contend(self, tmp_path):
+        """Both reviews in flight at once, both measured.
+
+        This is the assertion that makes the per-kind split CHECKABLE rather
+        than argued. The two boundary reviews run in parallel by deliberate
+        arrangement, so the interleaving below is the ordinary case and not an
+        edge: mark both, append both, and neither may lose its measurement.
+        A single shared marker passes every other test in this class and fails
+        precisely here.
+        """
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _commit_file(repo, "app.py", "print(1)\n", "init")
+        _write_findings(repo)
+        _write_pr_evidence(repo)
+
+        _run_hook(repo, "pr-review-dispatch", "--begin")
+        self._mark_critic(repo)
+
+        critic = self._critic_append(repo)
+        assert critic.returncode == 0, critic.stderr
+        assert (repo / MARKER_REL).is_file(), (
+            "the critic append consumed the PR reviewer's mark"
+        )
+
+        pr = _run_hook(
+            repo, "ledger-append", "--event", "review.pr",
+            "--findings", PR_EVIDENCE_REL,
+        )
+        assert pr.returncode == 0, pr.stderr
+
+        events = _ledger_events(repo)
+        assert "dispatched_at" in events[0], "the critic review lost its measurement"
+        assert "dispatched_at" in events[1], "the PR review lost its measurement"
+
+    def test_a_pr_append_leaves_a_live_critic_mark_alone(self, tmp_path):
+        """The mirror of the PR-side concurrency test, in the other direction.
+
+        Asserted separately because consumption is per-kind on BOTH sides and a
+        one-directional guard would pass against a design that special-cased
+        only the direction someone happened to test.
+        """
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _commit_file(repo, "app.py", "print(1)\n", "init")
+        _write_findings(repo)
+        _write_pr_evidence(repo)
+
+        self._mark_critic(repo)
+        pr = _run_hook(
+            repo, "ledger-append", "--event", "review.pr",
+            "--findings", PR_EVIDENCE_REL,
+        )
+        assert pr.returncode == 0, pr.stderr
+        assert (repo / CRITIC_MARKER_REL).is_file(), (
+            "the PR append consumed the Critic's mark"
+        )
+        assert "dispatched_at" not in _ledger_events(repo)[0]
+
+    def test_a_critic_mark_from_another_tree_is_refused(self, tmp_path):
+        """Staleness is a tree question here too — the degradation direction
+        that matters, since a stale mark attests an interval nobody spent."""
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _commit_file(repo, "app.py", "print(1)\n", "init")
+        self._mark_critic(repo)
+        _commit_file(repo, "app.py", "print(2)\n", "work landed after dispatch")
+        _write_findings(repo)
+
+        r = self._critic_append(repo)
+        assert r.returncode == 0, r.stderr
+        assert "dispatched_at" not in _ledger_events(repo)[0]
+        assert "different tree" in _duration_reason(r)
+        assert not (repo / CRITIC_MARKER_REL).is_file()
+
+    def test_an_unreadable_critic_mark_degrades_with_a_named_reason(self, tmp_path):
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _commit_file(repo, "app.py", "print(1)\n", "init")
+        _write_findings(repo)
+
+        (repo / CRITIC_MARKER_REL).parent.mkdir(parents=True, exist_ok=True)
+        (repo / CRITIC_MARKER_REL).write_text("{not json")
+
+        r = self._critic_append(repo)
+        assert r.returncode == 0, r.stderr
+        assert "dispatched_at" not in _ledger_events(repo)[0]
+        assert "unreadable" in _duration_reason(r)
+        assert not (repo / CRITIC_MARKER_REL).is_file()
+
+    def test_a_critic_mark_with_no_timestamp_degrades_with_a_named_reason(self, tmp_path):
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        head = _commit_file(repo, "app.py", "print(1)\n", "init")
+        _write_findings(repo)
+
+        (repo / CRITIC_MARKER_REL).parent.mkdir(parents=True, exist_ok=True)
+        (repo / CRITIC_MARKER_REL).write_text(json.dumps({"head": head}))
+
+        r = self._critic_append(repo)
+        assert r.returncode == 0, r.stderr
+        assert "dispatched_at" not in _ledger_events(repo)[0]
+        assert "carries no timestamp" in _duration_reason(r)
+
+    def test_a_kind_with_no_slot_marks_nothing_and_consumes_nothing(self, tmp_path):
+        """The mapping is the design, so a kind outside it must get no cell —
+        never a fallback into someone else's, which is the contention the split
+        exists to make unreachable."""
+        from lib import review_dispatch
+
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        (repo / ".prawduct").mkdir(parents=True, exist_ok=True)
+
+        assert "learning.written" not in review_dispatch.CONSUMING_EVENT_KINDS
+        stamp, reason = review_dispatch.consume(
+            repo / ".prawduct", "learning.written", "abc123"
+        )
+        assert stamp is None
+        assert "does not consume" in reason
+        with pytest.raises(KeyError):
+            review_dispatch.marker_path(repo / ".prawduct", "learning.written")
+
+
+class TestTheMarkerNormKeepsItsReason:
+    """The amended `data-model.md` norm must carry its WHY, not just its verdict.
+
+    An amendment that keeps the conclusion and drops the reason is how the next
+    shape change loses the argument: a reader who finds "each kind owns its own
+    marker" with no stated cause has no way to know that merging them back is the
+    exact failure the norm was written against, and the concurrency it protects is
+    invisible from the code alone — the two reviews only contend on the timing the
+    parallel design deliberately produces.
+
+    Bound to the norm's own bullet rather than the file, so a matching phrase
+    elsewhere in a 1,000-line artifact cannot satisfy it.
+    """
+
+    NORM = Path(__file__).resolve().parent.parent / ".prawduct" / "artifacts" / "data-model.md"
+
+    def _bullet(self) -> str:
+        text = self.NORM.read_text(encoding="utf-8")
+        marker = "- **Each consuming event kind owns its OWN marker"
+        assert marker in text, (
+            "the per-kind marker norm is gone from data-model.md — if it was "
+            "renamed, this pin must move with it rather than be deleted"
+        )
+        start = text.index(marker)
+        end = text.index("\n- ", start + 1)
+        return text[start:end]
+
+    def test_the_norm_states_the_concurrency_it_protects(self):
+        bullet = self._bullet()
+        assert "concurrent" in bullet, "the norm no longer says the two reviews overlap"
+        assert "unreachable" in bullet, (
+            "the norm dropped the distinction that makes the per-kind split worth "
+            "its cost — unreachable by construction, not merely avoided by care"
+        )
+
+    def test_the_norm_records_the_alternative_it_rejected(self):
+        """The reader's first instinct is the shared marker with a wider consumer
+        set. A norm that does not name what it refused invites exactly that."""
+        bullet = self._bullet()
+        assert "shared" in bullet
+        assert "[DECISION:" in bullet, "the amendment landed with no recorded decision"
+
+    def test_the_amendment_points_outside_itself_for_its_authority(self):
+        """A governance change cannot supply its own authority, so the amendment
+        must name where the confirmation landed — somewhere that is not this
+        artifact."""
+        bullet = self._bullet()
+        assert "build-plan-critic-dispatch-clock" in bullet, (
+            "the amendment cites no confirmation outside data-model.md"
+        )
+
+
+class TestThePrDispatchClockAlsoFailsSoft:
+    """The Critic arm's sibling, ported rather than left behind.
+
+    `TestTheClockFailsSoft` pins `begin_review`'s degraded path; this is the
+    same guarantee at `cmd_pr_review_dispatch`, which had no test at all. Both
+    arms exist because a stopwatch that cannot be written must never cost the
+    review it precedes — and an untested error arm is where that promise decays
+    silently, since nobody exercises it by hand.
+
+    Driven through the command rather than the library, because the promise
+    being pinned is the EXIT CODE and the operator-facing sentence, neither of
+    which `review_dispatch.begin` owns.
+    """
+
+    def _hook_module(self):
+        import importlib.machinery
+        import importlib.util
+
+        hook = Path(__file__).resolve().parent.parent / "plugin" / "bin" / "prawduct-hook"
+        loader = importlib.machinery.SourceFileLoader("prawduct_hook_clock", str(hook))
+        spec = importlib.util.spec_from_loader("prawduct_hook_clock", loader)
+        module = importlib.util.module_from_spec(spec)
+        loader.exec_module(module)
+        return module
+
+    def test_an_unwritable_pr_mark_tells_the_operator_to_carry_on(self, tmp_path, capsys):
+        from lib import review_dispatch
+
+        hook = self._hook_module()
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _commit_file(repo, "app.py", "print(1)\n", "init")
+
+        def _boom(*_a, **_k):
+            raise OSError("injected: marker unwritable")
+
+        original = review_dispatch.begin
+        review_dispatch.begin = _boom
+        try:
+            rc = hook.cmd_pr_review_dispatch(repo, ["--begin"])
+        finally:
+            review_dispatch.begin = original
+
+        err = capsys.readouterr().err
+        assert rc == 1, "a failed stopwatch must report, not succeed silently"
+        assert "could not write the dispatch mark" in err
+        assert "self-reported" in err, (
+            "the operator is not told what they get instead — an unnamed "
+            "degradation manufactures the false success it exists to prevent"
+        )
+        assert "dispatch the review anyway" in err, (
+            "the message does not say the review should still run, so a caller "
+            "reading an exit 1 may abandon a review that was going to work"
+        )
+        assert not (repo / MARKER_REL).is_file()

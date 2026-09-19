@@ -198,7 +198,7 @@ Every consolidated review appends a **fact** to a store shared by all worktrees 
 
 `Critic mode:` in the plan and an explicit slash arg are successive overrides on the inference described above. Four modes: `chunk`, `final`, `cumulative`, `verify-resolutions`. What each covers — and the default when no rule fires — is `skills/critic/review-cycle.md`, not restated here. Two facts are worth having before you open it: `cumulative` feeds `/prawduct:pr create`'s gate, and `verify-resolutions` alone records resolution facts.
 
-**The Critic takes minutes, not seconds** (per-mode targets: `review-cycle.md`). Don't poll; deep-scrub your own changes while it runs, which often pre-resolves findings — but **read** the reviewed files, never **edit** them. `critic-begin` snapshots a tree: an edit under review voids the review and the suite evidence together, and `test-status` is blind to it. Scrub the free surfaces instead (the plan, the change-log, `.prawduct/`) and fold the rest into the fix commit the findings need. If it fails, tell the user and re-invoke — never write `.critic-findings.json` yourself.
+**The Critic takes minutes, not seconds** (per-mode targets: `review-cycle.md`). Don't poll; deep-scrub your own changes while it runs, which often pre-resolves findings — but **read** the reviewed files, never **edit** them. `critic-begin` snapshots a tree: an edit under review voids the review and the suite evidence together, and `test-status` still exits 0. Scrub the free surfaces instead (the plan, the change-log, `.prawduct/`) and fold the rest into the fix commit the findings need. If it fails, tell the user and re-invoke — never write `.critic-findings.json` yourself.
 
 **Warnings and notes gate nothing** — every fix commit extends HEAD, which is how a passing review buys another round. Think before dismissing one anyway: the Critic catches blind spots the builder can't see.
 
@@ -206,9 +206,9 @@ Every consolidated review appends a **fact** to a store shared by all worktrees 
 
 **Default: wait for the user to ask** — unless `project-preferences.md` sets `PR creation: automatic`.
 
-`/prawduct:pr` handles the full lifecycle (it detects git state and routes to create, update, merge, or status) and invokes the PR reviewer agent for independent release-readiness assessment of the full changeset. Review criteria: the plugin's `skills/pr/review-protocol.md`. After merge, `/prawduct:pr` cleans up the build plan.
+`/prawduct:pr` handles the full lifecycle and dispatches the `pr-reviewer` agent for independent release-readiness review. Criteria: the plugin's `skills/pr/review-protocol.md`. After merge, `/prawduct:pr` cleans up the build plan.
 
-**Cumulative-Critic gate.** `/prawduct:pr create` blocks unless composed coverage spans merge-base → HEAD with zero unresolved blocking findings; the skill owns the mechanics.
+**Cumulative-Critic gate.** `/prawduct:pr create` blocks unless composed coverage spans merge-base → HEAD with zero unresolved blocking findings; the skill owns the mechanics — including dispatching that review *concurrently* with the PR review, neither consuming the other's verdict.
 
 ## Exception Handling
 

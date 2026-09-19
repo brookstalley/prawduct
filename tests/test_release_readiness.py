@@ -1633,6 +1633,25 @@ class TestTheSuiteMustBeProvenGreen:
         assert "suite: green" in out, "the passing run must emit its own yield"
         assert "releasable:" in out
 
+    def test_the_verdict_forwards_the_reason_and_nothing_about_the_clause(self, tmp_path):
+        """`_suite_verdict` drops the reader's clause element; its own shape holds.
+
+        `gates.tests_are_current` names which of its two disjuncts answered, so
+        a surface can avoid implying tree coverage it does not have. This gate
+        makes no such claim — its docstring states session-freshness as the
+        correct bound at this phase — so it drops that element rather than
+        forwarding it, and its one caller keeps destructuring a pair. A
+        three-element return reaching that caller is a ValueError at release
+        time, which is the worst moment to find one.
+        """
+        project = self._project(tmp_path)
+        verdict = release_readiness._suite_verdict(project)
+        assert len(verdict) == 2, "the caller destructures a pair"
+        is_current, reason = verdict
+        assert is_current is True
+        assert reason and "clause" not in reason, \
+            "the reason is the reader's prose, carried through verbatim"
+
     def test_missing_evidence_refuses(self, tmp_path, capsys):
         project = self._project(tmp_path, evidence=None)
         assert release_readiness.check_releasability(project) == 1

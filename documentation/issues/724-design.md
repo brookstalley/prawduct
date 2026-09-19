@@ -86,7 +86,7 @@ reproduced here.
     if mode_token == "verify-resolutions" and not force:
         from . import gates  # noqa: PLC0415 — lazy; mirrors the coverage_algebra import below
 
-        current, why_not = gates.tests_are_current(project_dir)
+        current, why_not, _clause = gates.tests_are_current(project_dir)
         if not current:
             recorded = evidence.append_guard_refusal(
                 project_dir,

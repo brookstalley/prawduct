@@ -405,6 +405,25 @@ LAST_MEASURED_TOKENS = {
     # said "per-chunk reviews accumulate", which the short-plan rule makes
     # false for a plan of at most 3 chunks touching no risk surface. It now
     # reads "the reviews it owes accumulate" — net -1 word.
+    # -2 on 2026-09-18 (test-status-clause): the Critic paragraph said
+    # `test-status` "is blind to" a mid-review edit. It is not, since the tree
+    # clause is now asked on every call — the printed line names the changed
+    # paths. What stayed true is the part the sentence is FOR: the exit code
+    # still does not refuse, so the reader's caution is unchanged. Corrected to
+    # "still exits 0", which is shorter than what it replaced; ceiling ratcheted
+    # with the cut rather than banked.
+    # -4 on 2026-09-18 (pr-review-payload Chunk 02): the PR section gained the
+    # concurrency fact — the cumulative review and the PR review are dispatched
+    # together and neither consumes the other's verdict — which a builder
+    # sequencing them by habit pays ~7 minutes for. PAID IN PLACE and then some:
+    # the lifecycle sentence restated "full lifecycle" as "(it detects git state
+    # and routes to create, update, merge, or status)", which is the skill's own
+    # mechanics and its own routing table. Net a CUT, so the ceiling ratchets
+    # with it rather than banking the difference.
+    # MERGED 2026-09-19 (767 develop sync): both cuts above landed in one tree,
+    # so the merged file is smaller than EITHER side claimed (4908 and 4906).
+    # The number is the measured merge, not a side — the same resolution the
+    # 2026-09-02 merge note below records. Both lineages stand as written.
     # +110 on 2026-09-18 (test-report-scope): § Test Discipline gains the two
     # properties a product's test setup must have — the machine-readable report
     # is a side effect of every run, and the invocation's scope is recorded
@@ -418,7 +437,11 @@ LAST_MEASURED_TOKENS = {
     # written to pointer form — the schema, the reader's rules and the
     # per-ecosystem wiring all live in `docs/test-report-contract.md`, and this
     # file carries only what a builder needs before opening it.
-    "methodology/building.md": 5020,
+    # MERGED 2026-09-19 (test-report-scope develop sync): develop's two cuts
+    # and this branch's +110 landed in one tree, so the reading is neither
+    # side's — 5021 was measured against a file without the cuts, 4905 against
+    # one without the addition. Re-measured with the suite's own estimator.
+    "methodology/building.md": 5015,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -881,7 +904,17 @@ LAST_MEASURED_TOKENS = {
     # bullet says dispatch NOTHING, report the rationale, stop, and that an
     # explicit token still wins. Same kind of raise as the row above it: a
     # control that removes review work (the per-chunk round on a short plan).
-    "skills/critic/SKILL.md": 3615,
+    # RAISED 3615 -> 3649 (2026-09-18, test-status-clause). DECLARED, and a
+    # DIFFERENT kind from the two above it: not a control, a CORRECTION. Step 5
+    # told the reviewer that `test-status` exit 0 validates "evidence covers the
+    # current tree", which `gates.tests_are_current`'s session-fresh disjunct
+    # does not establish — it never reads the tree. The replacement states both
+    # disjuncts, points at the printed label, and says neither needs action,
+    # because the alternative reading (a WARNING on every session-fresh answer)
+    # manufactures a finding per review. NOT paid in place: the sentences a trim
+    # would have reached are the ones no test asserts, and this file has already
+    # funded three raises that way.
+    "skills/critic/SKILL.md": 3649,
     "skills/critic/framework-checks.md": 1116,
     # The on-demand class, first recorded 2026-08-19 (#688) — readings, no
     # ceilings; the block above this dict is the decision and its reasoning.
@@ -2903,6 +2936,14 @@ class TestBuildingMethodology:
         # further would have spent a clause nothing defends to fund a clause
         # nothing defends, which is the move the standing rule refuses. One
         # over the reading, so nothing is banked.
+        # RATCHETED 4911 -> 4909 (2026-09-18, test-status-clause) with the
+        # correction that shrank the reading — see LAST_MEASURED_TOKENS.
+        # RATCHETED 4911 -> 4907 (2026-09-18, pr-review-payload Chunk 02) in the
+        # same commit as the cut that earned it — an unratcheted slack is a loan
+        # the next edit collects silently and green.
+        # MERGE 2026-09-19 (767 develop sync): ceiling is one over the MERGED
+        # reading (4904), which is below both lineages because both cuts landed.
+        # Taking either side's number would bank the other side's cut as slack.
         # RAISED 4911 -> 5021 (2026-09-18, test-report-scope), by declaration
         # and with its reason. § Test Discipline gains a standing requirement
         # that had no surface reaching the builder: the report is a side effect
@@ -2913,7 +2954,10 @@ class TestBuildingMethodology:
         # payment alternatives are argued in LAST_MEASURED_TOKENS above; both
         # would have spent a clause to fund a clause. One over the reading, so
         # nothing is banked.
-        assert tokens < 5021, f"building.md is ~{tokens} tokens, should be <5021"
+        # MERGE 2026-09-19 (test-report-scope develop sync): one over the
+        # MEASURED merged reading (5015). Taking either side would bank the
+        # other's delta as silent slack.
+        assert tokens < 5016, f"building.md is ~{tokens} tokens, should be <5016"
 
 
 # =============================================================================
@@ -5116,7 +5160,11 @@ class TestCriticSkillRoutesByMode:
         # `deferred` bullet: a fifth helper answer the fork must not forward to
         # `critic-begin` — see LAST_MEASURED_TOKENS. Same allowed kind: a
         # control that removes review work (the per-chunk round on short plans).
-        assert tokens < 3616, f"SKILL.md is ~{tokens} tokens, should be <3616"
+        # RAISED 3616 -> 3650 (2026-09-18, test-status-clause). Step 5's
+        # `test-status` claim corrected: exit 0 does not establish tree
+        # coverage on the session-fresh disjunct — see LAST_MEASURED_TOKENS,
+        # where the reason is recorded. One over the reading, nothing banked.
+        assert tokens < 3650, f"SKILL.md is ~{tokens} tokens, should be <3650"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))
@@ -5988,6 +6036,58 @@ class TestSubjectAndOracleReachTheReviewer:
         assert "files_oracle" in content, (
             f"{rel_path} narrows the subject set without delivering the oracle — "
             "a reviewer reading it would rate less AND read less"
+        )
+
+    #: The surfaces corrected when `test-status` stopped claiming tree coverage.
+    #: Parametrized rather than asserted once, because the defect they were
+    #: corrected for is a claim repeated across surfaces: pinning the one that
+    #: happened to be noticed is what left the other two rewritable in silence.
+    TEST_STATUS_CLAIM_SURFACES = [
+        "skills/critic/SKILL.md",
+        "skills/pr/review-protocol.md",
+        "skills/pr/SKILL.md",
+    ]
+
+    @pytest.mark.parametrize("rel_path", TEST_STATUS_CLAIM_SURFACES)
+    def test_no_surface_claims_exit_0_proves_tree_coverage(self, rel_path):
+        """`test-status` exit 0 does not establish that the run met this tree.
+
+        Its session-fresh disjunct answers *when* a run happened; these three
+        surfaces each told their reader it answers *which tree*. Negative and
+        positive together: the negative alone is satisfied by deleting the
+        sentence, which would leave a reader unable to act on the exit code at
+        all, so each surface must still say the exit code is what it reads.
+
+        Goes red if any of the three is reworded back toward tree coverage.
+        """
+        content = read_file(rel_path)
+        assert "covers the current tree" not in content, (
+            f"{rel_path} again tells its reader that `test-status` exit 0 means "
+            "the evidence covers the current tree. The session-fresh disjunct "
+            "never establishes that — it is satisfied by a run from earlier in "
+            "the session, on a tree it never met."
+        )
+        assert "test-status" in content, (
+            f"{rel_path} no longer names `test-status` at all — the correction "
+            "must narrow the claim, not remove the instruction that carries it."
+        )
+
+    @pytest.mark.parametrize("rel_path", TEST_STATUS_CLAIM_SURFACES)
+    def test_every_corrected_surface_states_both_grounds(self, rel_path):
+        """Each corrected surface says exit 0 rests on one of TWO grounds.
+
+        Without this, a surface satisfies the negative above while leaving its
+        reader with a bare exit code and no way to read the label the command
+        prints — which is the state these corrections exist to end.
+        """
+        content = read_file(rel_path)
+        assert "session-fresh" in content, (
+            f"{rel_path} does not name the session-fresh ground, so its reader "
+            "cannot tell which guarantee an exit 0 rests on."
+        )
+        assert "tree-valid" in content, (
+            f"{rel_path} does not name the tree-valid ground — the stronger of "
+            "the two, and the one the reader was previously told was the only one."
         )
 
     @pytest.mark.parametrize("rel_path", ["skills/critic/goals-1-3.md",

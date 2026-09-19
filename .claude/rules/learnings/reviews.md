@@ -49,7 +49,7 @@ independence, distinct from a second opinion on the same evidence.
 **Generalizes:** any heuristic derived from a tool's output, carried forward as a rule, drifts into
 a replacement for the tool. When a learnings rule names a command, the rule is to RUN it.
 
-### While a Critic review is LIVE, read the reviewed files and edit only the free surfaces (`.prawduct/`, the plan, the change-log) — `critic-begin` snapshots a tree, so editing a reviewed file leaves reviewers grading code that is gone and the suite covering the pre-edit tree. Tell: `test-status` still exits 0, blind to an edit after the run it graded
+### While a Critic review is LIVE, read the reviewed files and edit only the free surfaces (`.prawduct/`, the plan, the change-log) — `critic-begin` snapshots a tree, so editing a reviewed file leaves reviewers grading code that is gone and the suite covering the pre-edit tree. Tell: `test-status` still exits 0 — it now NAMES the changed paths (#767), so the blindness is gone and the permission is not
 
 Earned on the operator-verification drain fix (2026-09-12). `building.md` said "Don't poll;
 deep-scrub your own changes while it runs, which often pre-resolves findings", and that was read as
@@ -63,8 +63,11 @@ read the lib twice minutes apart and got different blobs, the other noticed its 
 against a state that no longer existed. `.test-evidence.json` recorded the PRE-edit tree, so the
 reviewed code had no green suite behind it and the green suite described code nobody reviewed.
 
-**The tell is the part worth keeping.** `prawduct-hook test-status` exited 0 throughout. It is
-session-scoped: it answers "did a suite pass in this session over these paths", not "does the
-evidence describe the bytes on disk now", so it is structurally blind to an edit made after the run
-it graded. The one probe that looks like it would catch this cannot. `building.md` now carries the
-boundary explicitly, which is the fix the rule exists to make unnecessary.
+**The tell is the part worth keeping, and #767 changed half of it (2026-09-19).** `prawduct-hook
+test-status` exited 0 throughout, and still does — that half is unchanged, and it is the half that
+matters, because exit 0 is what a reader treats as permission. What is no longer true is the
+blindness: the tree clause is asked on every call, so the printed line reads `current (session-fresh,
+not tree-vouched)` and names the changed paths. The gate now TELLS you and still lets you through,
+which is a deliberate choice — a refusal here would tax every consumer for a rare edge case (owner
+ruling, 2026-09-19) — so the rule stands and its remedy is unchanged: read the label, because
+nothing will stop you. `building.md` carries the boundary explicitly.
