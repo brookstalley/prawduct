@@ -3669,8 +3669,10 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     and writes the record atomically — so the gate judges output the plugin itself
     produced, tied to a real run.
 
-    Freshness identity is the ``timestamp`` alone (``test-status`` compares it
-    against ``.session-start``). No ``git_sha`` is stamped: it was dead-read by
+    Freshness is a disjunction over two recorded facts — the ``timestamp``
+    (compared against ``.session-start``) and ``evidence_tree`` (compared
+    against the judgeable-scoped working tree); see ``lib.gates`` for which
+    answers when. No ``git_sha`` is stamped: it was dead-read by
     every runtime consumer and actively misleading — a record-before-commit run
     stamped the *prior* commit, which review agents eyeballed and wrongly flagged
     "stale" (TST-4K2P). Content-hash freshness is deliberately NOT reintroduced
@@ -5215,8 +5217,11 @@ def cmd_check_released(project_dir: Path, args: list[str] | None = None) -> int:
 
 
 def cmd_test_status(project_dir: Path) -> int:
-    """Report whether ``.test-evidence.json`` covers the current tree. Thin
-    wrapper — body lives in ``lib.gates.test_status`` (STH-9V4K ch.6)."""
+    """Report whether the saved suite run is fresh enough to trust, and on
+    which of the two grounds — the tree it ran against, or the session it ran
+    in. Exit 0 does NOT by itself establish that the evidence covers the
+    current tree; the printed label says which clause answered. Thin wrapper —
+    body lives in ``lib.gates.test_status`` (STH-9V4K ch.6)."""
     return _gates().test_status(project_dir)
 
 

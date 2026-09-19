@@ -306,14 +306,24 @@ def _section_work(project_dir: Path, prawduct_dir: Path, scope: str | None) -> S
 def _section_test_evidence(project_dir: Path) -> Section:
     lib = _lib()
     try:
-        is_current, reason = lib.gates.tests_are_current(project_dir)
+        is_current, reason, clause = lib.gates.tests_are_current(project_dir)
     except Exception as exc:  # prawduct:allow prawduct/broad-except -- an evidence read must not end the run
         return Section("test_evidence", degraded=(
             f"test evidence unreadable ({exc.__class__.__name__}) — treat the "
             "changeset as having NO fresh evidence, which is the warning "
             "condition, not the clear one"
         ))
-    verdict = "current" if is_current else "stale"
+    # The CLAUSE rides the payload, not just the verdict. Both disjuncts exit 0
+    # and they are different evidence: `tree` means the recorded run met this
+    # exact tree, `session` means a run from earlier this session that never
+    # did. `review-protocol.md` tells the reviewer to read which one a bundle
+    # rests on, and a payload that reports only "current" makes that
+    # unanswerable from the section it was told to read.
+    verdict = (
+        lib.gates.CURRENT_TREE_LABEL if clause == "tree"
+        else lib.gates.CURRENT_SESSION_LABEL if is_current
+        else "stale"
+    )
     return Section("test_evidence", body=(
         f"test-status: {verdict} (exit {0 if is_current else 1})\nreason: {reason}"
     ))

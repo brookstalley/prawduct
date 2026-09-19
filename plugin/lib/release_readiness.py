@@ -701,8 +701,15 @@ def _suite_verdict(project_dir: Path) -> tuple[bool, str]:
     builder's ``test-status``, the Stop hook and this gate all read the same
     record through the same reader, so a repo cannot be green for one and stale
     for another.
+
+    The reader's third element — which disjunct answered — is dropped here
+    rather than forwarded. It exists so a surface can avoid implying tree
+    coverage it does not have, and this gate makes no such claim to begin with:
+    the paragraph above states session-freshness as the correct bound at this
+    phase, and its one caller prints the reason verbatim.
     """
-    return gates.tests_are_current(project_dir)
+    is_current, reason, _clause = gates.tests_are_current(project_dir)
+    return is_current, reason
 
 
 def _history_entries(project_dir: Path, live_entries: list) -> list:

@@ -2651,6 +2651,159 @@ class TestTreeValidatedFreshness:
             "backdated --from-counts is stale (timestamp-only; no tree clause)"
 
 
+class TestTestStatusNamesWhichClauseAnswered:
+    """`test-status` says which disjunct bought the exit 0, and they differ.
+
+    Session-freshness asks WHEN the recorded run happened and never consults
+    the tree, so it is satisfied by evidence from a tree the run could not have
+    met. Tree-validity asks WHICH TREE the run covered. Both are sufficient to
+    skip the re-run, so the exit code is the same for each — which is exactly
+    why a bare `current:` was a problem: three governing skill files told their
+    readers exit 0 meant the evidence covered the current tree, and on the
+    session-fresh path it never did.
+
+    These pin the disclosure, not a new gate. Every case asserts the exit code
+    is UNCHANGED alongside the label, because a regression that started
+    refusing session-fresh evidence would satisfy a label-only assertion while
+    reversing the trade this command exists to make.
+    """
+
+    def _seed(self, tmp_path, name: str, *, backdate: bool) -> Path:
+        """Recorded green evidence, with the timestamp on either side of the marker.
+
+        `backdate=False` leaves the record session-fresh, so clause 1 answers.
+        `backdate=True` predates it, so only clause 2 can.
+        """
+        repo = tmp_path / name
+        repo.mkdir()
+        (repo / ".prawduct").mkdir()
+        (repo / "src").mkdir()
+        (repo / "src" / "app.py").write_text("def add(a, b):\n    return a + b\n")
+        (repo / "test_app.py").write_text("def test_ok():\n    assert True\n")
+        _git(repo, "init", "-b", "main")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "c1")
+        _make_session_start(repo / ".prawduct", offset_seconds=-60)
+        assert _run_in(repo, "test-evidence", "record").returncode == 0, "seed record"
+        if backdate:
+            ev_path = repo / ".prawduct" / ".test-evidence.json"
+            ev = json.loads(ev_path.read_text())
+            ev["timestamp"] = "2000-01-01T00:00:00Z"
+            ev_path.write_text(json.dumps(ev))
+        return repo
+
+    def test_session_fresh_evidence_on_a_moved_tree_says_it_is_not_tree_vouched(self, tmp_path):
+        """The reported defect's own repro: record, advance the tree, ask.
+
+        The judgeable edit means the recorded run demonstrably did not cover
+        this tree. Exit 0 is correct and deliberate (trust-the-cycle), and the
+        line must not let a reader conclude the tree was checked and agreed.
+        """
+        from lib import gates  # noqa: PLC0415 — in-process import, mirrors other lib unit tests
+
+        repo = self._seed(tmp_path, "sessionfresh", backdate=False)
+        (repo / "src" / "app.py").write_text("def add(a, b):\n    return a + b + 1\n")
+        result = _run_in(repo, "test-status")
+        assert result.returncode == 0, \
+            "session-fresh evidence still skips the re-run — the trade is unchanged"
+        assert gates.CURRENT_SESSION_LABEL in result.stdout, \
+            "a session-fresh answer must not read as tree coverage"
+
+    def test_tree_valid_evidence_is_labelled_as_such(self, tmp_path):
+        from lib import gates  # noqa: PLC0415 — in-process import, mirrors other lib unit tests
+
+        repo = self._seed(tmp_path, "treevalid", backdate=True)
+        result = _run_in(repo, "test-status")
+        assert result.returncode == 0, "an unchanged judgeable tree is current"
+        assert gates.CURRENT_TREE_LABEL in result.stdout
+        assert gates.CURRENT_SESSION_LABEL not in result.stdout, \
+            "the stronger guarantee must not carry the weaker one's caveat"
+
+    def test_evidence_that_is_both_fresh_and_tree_identical_takes_the_tree_label(self, tmp_path):
+        """The under-claim guard, and the reason the tree clause is asked FIRST.
+
+        Session-freshness alone would answer this case, and answering it that
+        way is what the earlier shape did: it returned before `evidence_tree`
+        was read, so a record that DID meet this exact tree still printed the
+        weaker label. A caller reading that under-claim re-runs the suite the
+        disjunction exists to avoid — which is the expensive direction, so the
+        cheap tree check is paid unconditionally to buy the stronger answer.
+
+        Goes red if the tree clause is moved back behind the session return.
+        """
+        from lib import gates  # noqa: PLC0415 — in-process import, mirrors other lib unit tests
+
+        repo = self._seed(tmp_path, "bothclauses", backdate=False)
+        result = _run_in(repo, "test-status")
+        assert result.returncode == 0
+        assert gates.CURRENT_TREE_LABEL in result.stdout, \
+            "fresh AND tree-identical is tree-valid; saying only session-fresh under-claims"
+
+    def test_a_session_fresh_record_with_no_tree_still_reads_current(self, tmp_path):
+        """--from-counts records no tree, so the clause cannot be asked at all.
+
+        The tree check now runs on the session path, which must not turn an
+        un-askable question into a refusal: this record is session-fresh and
+        has no `evidence_tree`, and it stays current on clause 1 alone. Goes
+        red if the unconditional tree check is made a REQUIREMENT rather than
+        an opportunity.
+        """
+        from lib import gates  # noqa: PLC0415 — in-process import, mirrors other lib unit tests
+
+        repo = tmp_path / "notree"
+        repo.mkdir()
+        (repo / ".prawduct").mkdir()
+        (repo / "test_ok.py").write_text("def test_ok():\n    assert True\n")
+        _git(repo, "init", "-b", "main")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "c1")
+        _make_session_start(repo / ".prawduct", offset_seconds=-60)
+        assert _run_in(repo, "test-evidence", "record", "--from-counts",
+                       "passed=1", "failed=0").returncode == 0
+        result = _run_in(repo, "test-status")
+        assert result.returncode == 0, "session-freshness alone still vouches"
+        assert gates.CURRENT_SESSION_LABEL in result.stdout
+
+    def test_the_stale_line_is_untouched(self, tmp_path):
+        """The label rides only the exit-0 paths.
+
+        A `stale:` line that grew a parenthetical would break every reader
+        matching the prefix, and there is no clause to name — nothing answered.
+        """
+        repo = self._seed(tmp_path, "stale", backdate=True)
+        (repo / "src" / "app.py").write_text("def add(a, b):\n    return a + b + 1\n")
+        result = _run_in(repo, "test-status")
+        assert result.returncode == 1
+        assert result.stdout.startswith("stale: "), \
+            "the stale verdict keeps its bare prefix"
+        assert "evidence predates session" in result.stdout, \
+            "and its reason text is unchanged"
+
+    def test_tests_are_current_returns_the_clause_for_each_disjunct(self, tmp_path):
+        """The field itself, one case per value.
+
+        Asserted structurally rather than by matching `reason`, which is prose
+        a wording pass may rewrite. `none` is pinned on the same footing as the
+        two positive answers: a caller that labels on `clause == "tree"` is
+        deciding what a False verdict prints too.
+        """
+        from lib import gates  # noqa: PLC0415 — in-process import, mirrors other lib unit tests
+
+        # "session" needs BOTH a fresh timestamp and a tree the run did not
+        # meet — on an unchanged tree the stronger clause answers first, which
+        # is the under-claim guard two tests above.
+        fresh = self._seed(tmp_path, "clause_session", backdate=False)
+        (fresh / "src" / "app.py").write_text("def add(a, b):\n    return a + b + 1\n")
+        assert gates.tests_are_current(fresh)[2] == "session"
+
+        tree = self._seed(tmp_path, "clause_tree", backdate=True)
+        assert gates.tests_are_current(tree)[2] == "tree"
+
+        (tree / "src" / "app.py").write_text("def add(a, b):\n    return a + b + 1\n")
+        is_current, _reason, clause = gates.tests_are_current(tree)
+        assert (is_current, clause) == (False, "none")
+
+
 class TestUnanchoredFreshnessFailsClosed:
     """STH-6D4Q — with no `.session-start`, the tree clause is the ONLY clause.
 

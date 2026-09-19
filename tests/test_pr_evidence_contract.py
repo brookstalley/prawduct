@@ -479,6 +479,51 @@ class TestStepOneNamesTheRecorder:
                 "fallback cannot run needs an on-ramp named where it is reading."
             )
 
+    def test_the_paragraph_quotes_the_labels_the_command_actually_prints(self):
+        """The prose tells a PR agent to read a printed label; pin both ends.
+
+        Step 1 hard-codes the two strings `test-status` puts in front of its
+        reason. Nothing otherwise ties them to the code, so a reword on either
+        side leaves the skill instructing an agent to look for a string the
+        command never prints — with the suite green, because the only other
+        assertions on this file are token counts.
+
+        The literals are IMPORTED, never retyped here: a second hand-copy would
+        make this guard agree with a stale prose copy instead of grading it.
+        Goes red if either constant is reworded without the prose following.
+        """
+        import sys  # noqa: PLC0415
+        sys.path.insert(0, str(PR_SKILL.parents[3]))
+        from lib import gates  # noqa: PLC0415 — mirrors the other lib unit tests
+
+        para = self._suite_paragraph()
+        for label in (gates.CURRENT_TREE_LABEL, gates.CURRENT_SESSION_LABEL):
+            assert label in para, (
+                f"Step 1 tells the caller to read the printed label but does not "
+                f"quote {label!r}, which is what `test-status` prints. Update the "
+                "prose to match `lib.gates`, not this test."
+            )
+
+    def test_the_paragraph_does_not_claim_exit_0_proves_tree_coverage(self):
+        """The #767 claim, pinned negative AND positive.
+
+        The negative alone is satisfied by deleting the sentence; the positive
+        alone is satisfied by a paragraph that states the disjunction and then
+        overclaims anyway. Both are needed, and the negative is matched on the
+        exact phrasing that carried the defect rather than on any sentence
+        containing the word "tree".
+        """
+        para = self._suite_paragraph()
+        assert "covers the current tree" not in para, (
+            "Step 1 again claims exit 0 means the evidence covers the current "
+            "tree. The session-fresh disjunct never reads the tree (#767)."
+        )
+        assert "session-fresh" in para and "tree-valid" in para, (
+            "Step 1 must still state BOTH grounds for exit 0 — a paragraph that "
+            "merely drops the false claim leaves the caller unable to read the "
+            "label it is told to read."
+        )
+
     def test_the_instruction_still_leads_with_the_freshness_check(self):
         """The recorder sentence must not displace the cheaper answer. Running
         nothing at all is the best outcome, and `test-status` is what licenses

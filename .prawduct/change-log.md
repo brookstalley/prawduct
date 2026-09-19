@@ -5,6 +5,110 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-18: `test-status` says which disjunct bought the exit 0, and three skills stop claiming tree coverage
+
+<!-- prawduct: type=fix | scope=test-status-clause -->
+
+**Landed 2026-09-19 after a 55-commit base advance, and the advance grew a new caller.** The
+signature became a 3-tuple when the clause was added; `pr_payload._section_test_evidence` arrived on
+`develop` after this branch was cut and unpacks two, so the merge produced a `ValueError` that the
+payload's own broad-except converted into `test evidence unreadable` — a degraded section reading as
+a plausible environment problem rather than as the signature break it was. Three tests caught it;
+nothing else would have, because the except names its consequence honestly and a reviewer reading
+that section would have believed it. Grepping the function found its callers, which is the search
+that has to be done separately from grepping the thing itself.
+
+The caller now carries the CLAUSE rather than just the verdict, which is what this scope is for:
+both disjuncts exit 0 and they are different evidence, `review-protocol.md` tells the reviewer to
+read which one a bundle rests on, and a payload reporting a bare `current` makes that unanswerable
+from the one section the reviewer was told to read — and the reviewer does not run the suite, so
+there is no second source. Pinned by a test parametrized over the clause and reading the
+`lib.gates` labels rather than spelling them, so a reword cannot leave the pin asserting a string
+nothing prints; mutation-verified against the exact pre-fix rendering.
+
+**Two merge conflicts, neither resolved by keeping both sides.** A `building.md` token budget had
+been cut on BOTH lineages (-2 here, -4 by `pr-review-payload` Chunk 02), so the merged file measures
+4904 — below either side's claim — and taking a side would have banked the other's cut as silent
+slack; re-measured with the suite's own estimator, ceiling set to reading + 1 as its own assertion
+requires. And `review-protocol.md` had been restructured wholesale on `develop`, so its structure is
+taken entire and this branch's one substantive sentence folded into the rewritten bullet, rather
+than resurrecting the superseded bullets a both-sides resolution would have brought back.
+
+**Build plan:** `build-plan-test-status-clause.md` (one chunk).
+
+`gates.tests_are_current` has two disjuncts and either is sufficient: the evidence was written
+during this session, or the judgeable-scoped working tree is byte-identical to the one the
+recorded run met. The first returns before `evidence_tree` is read at all, so within one session
+`test-status` exits 0 for any tree however far HEAD has advanced — which is correct under the
+trust-the-cycle model and is NOT what three governing surfaces told their readers. `pr/SKILL.md`
+said exit 0 means the evidence "already covers the current tree (HEAD + uncommitted edits)";
+`critic/SKILL.md` told the reviewer to run it "to validate evidence covers the current tree";
+`pr/review-protocol.md` made that exit code the only freshness signal under a heading asserting
+evidence covers the shippable changeset. The implementation delivers session recency; every one of
+those readers was written against tree identity.
+
+**The fix is disclosure, not a new gate, and this is the load-bearing distinction.** Tree-keying
+the command — dropping or gating the session-fresh disjunct — was the obvious remedy and is
+rejected: it forces a full suite re-run after every commit inside a session, which is precisely
+the cost the disjunct was chosen to avoid and precisely what #653 was filed about. So exit codes
+are unchanged, no new suite run is forced anywhere, and `test-status` now prints which disjunct
+answered — `current (tree-valid): …` or `current (session-fresh, not tree-vouched): …`, both
+module constants in `lib.gates` so the skill prose that instructs a reader to look for them can be
+pinned to them. `stale:` is untouched, prefix and reason text both, because nothing answered and
+there is no clause to name.
+
+**The tree clause is now asked FIRST and unconditionally, and that is a real cost deliberately
+taken.** The session-fresh path used to return before `evidence_tree` was read at all, which the
+tree-validity spike built on purpose — once fresh evidence existed, `test-status` short-circuited
+on the timestamp and never captured a tree. Keeping that short-circuit would make the weaker label
+a lie in the expensive direction: evidence that is BOTH session-fresh and byte-identical to the
+recorded tree would print "not tree-vouched", and a caller reading an under-claim re-runs the suite
+this disjunction exists to avoid. So the check is paid on every call — one git tree-diff plus a
+path classification, measured at ~0.12s on this repo and ~0.36s on a 42k-file worktree, against
+minutes for the run a false under-claim invites. `"session"` therefore means the tree question was
+ASKED and could not vouch, never that nobody looked, and the reason line names which paths moved.
+
+`tests_are_current` returns that answer as a third element (`"session"` / `"tree"` / `"none"`)
+rather than as a marker inside `reason`: `reason` is human-readable prose a later wording pass is
+free to rewrite, and a consumer branching on it would break silently. Its two callers are
+`gates.test_status`, which labels on it, and `release_readiness._suite_verdict`, which drops it —
+that gate's own docstring already argues session-freshness is the correct bound at its phase
+(Phase 0 runs before the release rewrites four files, so nothing checkable there can vouch for the
+tree the tag will carry), so it makes no claim the clause would qualify.
+
+**What the corrected prose does NOT do is add a WARNING for session-fresh evidence.** A reviewer
+meeting that label needs no action: reading the diff is its own next step, and a finding
+manufactured on every session-fresh answer is the false-positive shape this repo has already
+ruled against paying for. The three corrections keep every operational instruction identical —
+exit 0 still means skip the re-run — and change only what the reader is told that means.
+
+`methodology/building.md`'s Critic paragraph is corrected in the same bundle: it said `test-status` "is blind to" a mid-review edit, which the unconditional tree clause makes false — the printed line now names the changed paths, while the part the sentence exists for (the exit code still does not refuse) is unchanged. The correction is shorter than what it replaced, so that reading went 4910 → 4908 and its ceiling ratcheted 4911 → 4909 rather than leaving slack behind.
+
+Two ceiling raises, both declared. `skills/critic/SKILL.md` 3616 → 3650, for the corrected step 5:
+not paid in place, because the sentences a trim would have reached are the ones no test asserts and
+this file has funded three raises that way already. And `learnings_budgets.core.md` 100 → 102 KB,
+which arrived with the learnings surface below — paid in place first (351 B of genuine duplication,
+one rule folded into the rule it was a second copy of), and the balance declared with its reason.
+
+**The learnings surface this bundle also ships, narrated because the entry is the release note.**
+`core.md` gains the rule that a trend, not the instance, answers "why is this a problem NOW" —
+earned when a fail-open freshness gate started costing CI round-trips and the measurement showed the
+gate unchanged while the surface it fails open over had grown ~17× since July (real-repo path
+anchors in `tests/` 51 → 201, the corpora they sweep 63 → 265 files). Its sibling rule — read the
+function that RETURNS a verdict before blaming the data it consults — is folded into the
+unread-mechanism rule it duplicated rather than added beside it, and **this bundle then falsified
+its own worked example**: that example says `tests_are_current` returns on session-freshness without
+examining the tree, which is exactly what the clause reordering here removes. Re-dated to the past
+tense in the same commit, with what the repair did NOT do stated beside it — the gate still exits 0
+on the weaker disjunct, so a short-circuit became an honest label, not a refusal. `tests.md`'s
+`--no-rerun` correction moves up into the heading that carried the claim it retracts, because a
+reader who stops at the heading pays the re-run the correction exists to prevent. And `reviews.md`'s
+live-review rule — the one the harness loads into every session here — had its tell corrected: it
+now reads *"`test-status` still exits 0 — it now NAMES the changed paths (#767), so the blindness is
+gone and the permission is not."* That file was the load-bearing survivor of a class finding this
+bundle first closed at only one of its three carriers.
+
+Closes brookstalley/prawduct#767.
 ## 2026-09-19: three files the freshness gate called untestable, and the clause that made it moot
 
 <!-- prawduct: type=fix | scope=critic-dispatch-clock -->
