@@ -80,47 +80,21 @@ file, where the editing will naturally concentrate in one of them.
 
 ### A CLASS finding closed at the site where it was NOTICED is not closed — fix every site it names AND check a test fails for each, because fixing both while pinning one lets the other be deleted green. Tell: your fix cites a finding saying "two owners" / "every row" / "both writers", and touches or tests one
 
-**Two instances in one verify round (2026-08-25, plugin-absent-governance-anchor).** Both findings
-said, in their own text, that they covered more than one site. Both were fixed at one.
-
-* **R-12 (blocking)** named two owners: `anchor_repair.repair`'s swap branch, and
-  `migrate_plugin.apply_claude_anchor`'s writes *"that the `absent` branch delegates to"*. The fix
-  wrapped the swap. `repair()`'s `absent` branch calls `apply_claude_anchor` outside that `try`, and
-  `core.atomic_write_text`'s contract is explicitly that OSErrors propagate to the caller — so an
-  unwritable `CLAUDE.md` still raised `PermissionError` out of a doctor session. Worse than a random
-  miss: `absent` is the status Health Check #4 *advertises* ("the repair inserts one"), so the branch
-  left unguarded was the advertised one.
-* **R-4 (warning)** asked that *every* `--json` row be checked. Only the row it named was fixed, and
-  the sibling row went on claiming a JSON consumer that parses nothing.
-
-**Why the tests did not catch either.** The new test for R-12 used a `stale` fixture, because that
-was the branch being fixed — so it exercised the guarded path and asserted the guard worked. A test
-written from the fix inherits the fix's blind spot; parametrizing it over both writing branches is
-what closes that, and it is the same shape as "tests written from the same mental model inherit its
-blind spot".
-
-**A fourth instance, and a sharper sub-shape: the CODE was fixed at both sites and only one was
-PINNED.** `repair`'s success report was corrected on both write branches, but both new assertions
-started from a `stale` fixture — so deleting the `absent` branch's two success lines shipped green,
-reinstating the defect on the one status Health Check #4 advertises as repairable. The test file had
-*already learned this shape one round earlier*: `test_an_unwritable_claude_md_is_reported_not_raised`
-is parametrized over these same two branches for exactly this reason, and the next test written
-against those same branches was not.
-
-So the rule has two halves, and the second is the one that keeps recurring: **fix every site the
-finding names, then check that a test fails for each of them.** A fix verified only where it was
-noticed is a fix that can be deleted anywhere else.
+**Why the tests miss it.** A test written for the fix uses a fixture from the branch being fixed, so
+it exercises the guarded path and asserts the guard works — a test written from the fix inherits the
+fix's blind spot. Parametrizing over every branch the finding names is what closes that. The sharper
+sub-shape: the CODE fixed at both sites while only one is PINNED ships green, and deleting the
+unpinned site reinstates the defect.
 
 **Root cause.** Reading a finding for *what to change* rather than for *what it says is in scope*.
-The severity and the recommendation get read; the sentence enumerating the owners is skimmed,
-because by then the fix already feels identified. The cheap counter is mechanical: before committing
-a fix, re-read the finding's own text and list the sites it names — the words are right there
-("two owners", "every row", "both writers", "re-sweep all three").
+The severity and the recommendation get read; the sentence enumerating the owners is skimmed, because
+by then the fix already feels identified. The counter is mechanical: before committing, re-read the
+finding's own text and list the sites it names — the words are right there ("two owners", "every
+row", "both writers", "re-sweep all three").
 
-**A second, smaller lesson from the same round.** The verify review's `NEXT-ACTION` line said "0
-blocking, 0 findings — THE REVIEW IS OVER" while its own body said R-12 survived. The body was
-right, and it took three lines of running the code to confirm. A summary line is not evidence about
-the analysis above it; when they disagree, the specific and checkable half wins.
+**And a summary line is not evidence about the analysis above it.** A verify `NEXT-ACTION` read "0
+blocking, 0 findings — THE REVIEW IS OVER" while its own body said a blocking finding survived. The
+body was right. When the two disagree, the specific and checkable half wins.
 
 ### When a fix NARROWS a detector, the verification set must contain the TRUE POSITIVES it exists to catch, not only the false alarms you narrowed it to stop — suppressing a real detection and removing a false one read identically at the call site: zero findings. Tell: every shape you tested is one you were told was legal
 
