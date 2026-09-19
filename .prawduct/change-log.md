@@ -62,6 +62,19 @@ loses whichever clause is least defended. The digest's 500-character reserve, he
 framework-wide default, is untouched: its sentence is written at that surface's compressed register
 (9,497 of 9,500).
 
+**A clean verify close now says WHEN it was true, at both carriers.** The cumulative review found
+that a clause measured from the live working tree was being frozen into `.critic-findings.json` and
+replayed by the briefing in later sessions — so a review run against a dirty tree told a future
+session "a fix buys no extra round" after the builder had already committed, inverting the advice at
+the moment it is acted on. Closed as a class rather than at the site that surfaced it: the other
+live-state clause is `span_clause`'s covered arm, and **that one changes a sentence every governed
+product reads.** It now reads *"The BRANCH was covered too, at the HEAD this review saw … work you
+had not committed yet is not in that span. Re-derive with `prawduct-hook check-cumulative-critic`
+if the branch has moved since."* Past tense plus a re-derivation, in place of a present-tense claim
+about a branch that may have moved. Its negative arms already sent the reader to the gate, so only
+the arm making a durable positive claim changed — a stale "not covered" costs a gate call the reader
+was told to make anyway, while a stale "covered" reads as clearance for work no review has seen.
+
 **#850 — the reviewer's payload gets an owner, and the item's own number was wrong.** Every
 governance prose file carries a budget and every budget is green; nothing priced the total, and the
 total is what a reviewer pays. The item quoted ~26k tokens read before a line of diff. The dispatch

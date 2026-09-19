@@ -90,7 +90,9 @@ Chunk 01 built and committed; its mutation sweep ran seven mutants, six dying an
 to survive surviving. Chunk 02 landed the full-reach amendment the owner directed (ten carriers, consumer
 CLAUDE.md text included), and surfaced a consumer regression in the process: the v3.5.0 anchor is
 now archived as `ANCHOR_V4`. All three chunks built. Next: cumulative review, then PR. This plan is the first of two covering the review-cost
-program; the convergence half (#640 re-apply, #847, #167) is `build-plan-review-convergence.md`.
+program. The convergence half (#640 re-apply, #847, #167, and #851) has no plan yet — it is
+scoped in this repo's backlog, not on disk, and naming a file that does not exist is the
+present-tense state claim `core.md` forbids in a durable document.
 
 ## Verification Strategy
 
@@ -171,8 +173,10 @@ deliverable is a sentence a human acts on.
   This is #850 — prevention, not relief: it shrinks nothing today and stops 4.6x becoming 9x.
 - **Depends on:** Chunks 01–02, whose edits land inside the set this chunk then bounds
 - **Artifacts consumed:** `review-cost-investigation-2026-09-19.md` §4
-- **Deliverables:** an aggregate assertion in `tests/test_v5_methodology.py` over the reviewer's
-  payload set, modelled on the existing injected-session aggregate ("the total is the budget") —
+- **Deliverables:** an aggregate assertion over the reviewer's payload set, modelled on the
+  existing injected-session aggregate in `tests/test_v5_methodology.py` ("the total is the budget")
+  and SHIPPED as new `tests/test_reviewer_payload_budget.py` — a separate module, because the
+  readings are keyed by route rather than by file and belong beside the routing they derive from —
   its own test, with a docstring naming what turns it red, what it deliberately does not cover, and
   the yield the NFR norm requires it to emit; the raise rule stated where a raiser meets it
 - **Tests:** the aggregate goes red when any member file grows past the sum, verified by mutating
