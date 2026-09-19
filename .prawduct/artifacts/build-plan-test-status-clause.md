@@ -44,7 +44,23 @@ Context: Built 2026-09-18 on `fix/767-test-status-clause` (cut from `develop` at
 
 Two departures from `767-design.md`, both made at the review's direction and both recorded above: the labels became `lib.gates` constants so prose can be pinned to them by import, and the tree clause is asked FIRST and unconditionally rather than only on the timestamp-stale path. The second is the substantive one — the design's Decision 1 specified it, the first build silently narrowed it, and the review caught that the records still carried the design's rationale. Asking it costs ~0.12s here and ~0.36s on a 42k-file worktree, against the multi-minute re-run an under-claim invites.
 
-Next: nothing within this plan. The branch is PR-ready — `check-cumulative-critic` composes across `develop..HEAD` — and `/prawduct:pr` should close #767, descoping `plugin/skills/critic/review-protocol.md` from its `affected:` list explicitly (it was read; it does not claim tree coverage). **Not** `plugin/methodology/building.md` — the chunk-close commit edited it, so it belongs on `affected:` and descoping it would hide a changed file from `backlog affecting <path>`.
+Next: nothing within this plan.
+
+**Updated 2026-09-19, after a 55-commit base advance — the list below predated it and was wrong by
+omission.** The branch sat unmerged from 09-17 to 09-19 while the defect it fixes cost two red CI
+runs. Landing it added three files the original descope list could not have named: `plugin/lib/pr_payload.py`
+(develop grew a new caller that unpacked the old 2-tuple — the advance's integration defect, fixed
+and pinned here), `plugin/bin/prawduct-hook`, and `documentation/issues/724-requirements.md`, which
+still documented the 2-tuple. All three belong on `affected:`.
+
+`plugin/skills/critic/review-protocol.md` is still descoped explicitly (it was read; it does not
+claim tree coverage). **Not** `plugin/methodology/building.md` — the chunk-close commit edited it, so
+it belongs on `affected:` and descoping it would hide a changed file from `backlog affecting <path>`.
+
+**At close, say what #767 did NOT get.** Its **Expected** asks for a non-zero exit when evidence is
+only session-fresh; the design declines that deliberately — the gate still exits 0 and reports which
+disjunct answered, because a refusal here is a tax on every consumer for a rare edge case (owner
+ruling, 2026-09-19). Closing silently would read as the stronger fix having shipped.
 
 ## Build Chunks
 

@@ -184,7 +184,9 @@ def tests_are_current(project_dir: Path) -> tuple[bool, str, str]:
        ever relaxes a timestamp-stale verdict to current, never the reverse:
        structurally incapable of a false stale, the failure class that retired
        the removed content-hash "fingerprint" and ``git_sha`` mechanisms. It
-       classifies *paths* (git tree-diff + ``is_judgeable_path``), never file
+       classifies *paths* (git tree-diff + ``affects_test_outcome``, which is
+       a strict superset of ``is_judgeable_path`` and the predicate
+       :func:`_test_evidence_tree_valid` actually calls), never file
        *contents* — the standing ``coverage_algebra`` rule that kept those
        mechanisms dead. Records without ``evidence_tree`` (pre-clause, or a
        ``--from-counts`` on-ramp) skip clause 2 and behave exactly as before.

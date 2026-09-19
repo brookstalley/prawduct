@@ -84,9 +84,25 @@ exit 0 still means skip the re-run — and change only what the reader is told t
 
 `methodology/building.md`'s Critic paragraph is corrected in the same bundle: it said `test-status` "is blind to" a mid-review edit, which the unconditional tree clause makes false — the printed line now names the changed paths, while the part the sentence exists for (the exit code still does not refuse) is unchanged. The correction is shorter than what it replaced, so that reading went 4910 → 4908 and its ceiling ratcheted 4911 → 4909 rather than leaving slack behind.
 
-One ceiling raise, declared: `skills/critic/SKILL.md` 3616 → 3650, for the corrected step 5. Not
-paid in place, because the sentences a trim would have reached are the ones no test asserts and
-this file has funded three raises that way already.
+Two ceiling raises, both declared. `skills/critic/SKILL.md` 3616 → 3650, for the corrected step 5:
+not paid in place, because the sentences a trim would have reached are the ones no test asserts and
+this file has funded three raises that way already. And `learnings_budgets.core.md` 100 → 102 KB,
+which arrived with the learnings surface below — paid in place first (351 B of genuine duplication,
+one rule folded into the rule it was a second copy of), and the balance declared with its reason.
+
+**The learnings surface this bundle also ships, narrated because the entry is the release note.**
+`core.md` gains the rule that a trend, not the instance, answers "why is this a problem NOW" —
+earned when a fail-open freshness gate started costing CI round-trips and the measurement showed the
+gate unchanged while the surface it fails open over had grown ~17× since July (real-repo path
+anchors in `tests/` 51 → 201, the corpora they sweep 63 → 265 files). Its sibling rule — read the
+function that RETURNS a verdict before blaming the data it consults — is folded into the
+unread-mechanism rule it duplicated rather than added beside it, and **this bundle then falsified
+its own worked example**: that example says `tests_are_current` returns on session-freshness without
+examining the tree, which is exactly what the clause reordering here removes. Re-dated to the past
+tense in the same commit, with what the repair did NOT do stated beside it — the gate still exits 0
+on the weaker disjunct, so a short-circuit became an honest label, not a refusal. `tests.md`'s
+`--no-rerun` correction moves up into the heading that carried the claim it retracts, because a
+reader who stops at the heading pays the re-run the correction exists to prevent.
 
 Closes brookstalley/prawduct#767.
 ## 2026-09-19: three files the freshness gate called untestable, and the clause that made it moot

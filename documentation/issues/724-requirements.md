@@ -31,7 +31,7 @@ round cannot end cheaply once it fires.
 Re-verified against the current tree (v3.4.1-dev, 2026-09-05):
 
 - **The verdict is already computed, synchronously, with no reviewer involved.**
-  `plugin/lib/gates.py::tests_are_current` (`:161-231`) returns `(is_current, reason)` from the
+  `plugin/lib/gates.py::tests_are_current` (`:161-231`) returns `(is_current, reason, clause)` from the
   saved `.prawduct/.test-evidence.json` alone: invalid whenever the saved run reports `failed > 0`
   or a self-reported `degraded` run (`_load_test_evidence`, `:130-158`), or whenever neither the
   session-fresh clause nor the tree-valid clause (`_test_evidence_tree_valid`, `:234-`) holds. This

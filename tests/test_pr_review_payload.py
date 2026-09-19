@@ -338,9 +338,7 @@ class TestDegradations:
         What turns this red: unpacking `tests_are_current` without the clause,
         or rendering a bare "current" for either disjunct.
         """
-        import sys
-        sys.path.insert(0, str(REPO_ROOT / "plugin"))
-        from lib import gates
+        from lib import gates  # via conftest's sys.path shim, like every sibling
 
         seen = {}
         for clause, expected in (
@@ -355,7 +353,11 @@ class TestDegradations:
                     self._c = c
 
                 def tests_are_current(self, *a, **k):
-                    return True, f"reason for {self._c}", self._c
+                    # ONE reason string for both clauses on purpose: if it
+                    # varied, the closing assertion below would differ because
+                    # of the reason and pass even when both labels render the
+                    # same, which is the defect it exists to catch.
+                    return True, "a reason that does not vary by clause", self._c
 
             import unittest.mock as _m
             with _m.patch.object(
@@ -373,9 +375,14 @@ class TestDegradations:
             )
             seen[clause] = section.body
 
-        assert seen["tree"] != seen["session"], (
-            "both clauses render identically, so the payload carries the verdict "
-            "but not the guarantee — which is the whole distinction"
+        # The `test-status:` LINE, not the whole body — the body also carries
+        # `reason:`, so comparing bodies passes on a difference that is not the
+        # label's.
+        first = {k: v.splitlines()[0] for k, v in seen.items()}
+        assert first["tree"] != first["session"], (
+            f"both clauses render their test-status line identically ({first['tree']!r}), "
+            "so the payload carries the verdict but not the guarantee — which is "
+            "the whole distinction"
         )
 
     def test_no_default_branch_forbids_the_closing_keyword_reading(self, monkeypatch, tmp_path):
