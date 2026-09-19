@@ -15,7 +15,7 @@ a `chunk` / `verify-resolutions` reviewer to `goals-1-3.md` and tells it to read
 *"nothing else — not the two files below"*, while `final` / `cumulative` gets
 the seven-goal protocol, the lifecycle table and the framework checks. Those are
 8,743 and 22,714 tokens respectively, so a single ceiling over the union would
-price a payload nobody loads and would let the inner route's cost double without
+price a payload nobody loads and would let the cheap route's cost double without
 anything going red. The split mirrors `review-cycle.md`'s own stage-keyed rigor
 rule, and it is the reason the `goals-1-3.md` split was built in the first
 place.
@@ -35,7 +35,7 @@ via an explicit `${CLAUDE_SKILL_DIR}/…` route without joining its sum.
 
 **What it deliberately does NOT cover, because a ceiling that overstates its
 reach is worse than none.** `_routed_protocol_files` matches only the explicit
-`${CLAUDE_SKILL_DIR}/…` form, so three classes of read are outside these sums
+`${CLAUDE_SKILL_DIR}/…` form, so four classes of read are outside these sums
 and outside the "cannot join the dispatch without joining a sum" guarantee:
 
 * **Bare-name sibling reads.** `SKILL.md` blesses them explicitly ("When the
@@ -44,8 +44,9 @@ and outside the "cannot join the dispatch without joining a sum" guarantee:
   in by a citation this deriver cannot see.
 * **Files one level up.** The same paragraph routes reviewers to
   `../../docs/principles.md` and `../../docs/norms.md`; neither is summed
-  here, and nor is `skills/backlog/cache-reads.md`, which the backlog
-  reconciliation pass opens.
+  here.
+* **Files the protocol reaches by a different route entirely.**
+  `skills/backlog/cache-reads.md`, which the backlog reconciliation pass opens.
 * **Product-side reads.** A reviewer opens the governed product's own
   `.claude/rules/learnings/` — `core.md` alone is ~22,514 tokens in THIS repo,
   comparable to the whole priced single-pass-full route below, so the largest
@@ -72,9 +73,9 @@ PLUGIN = Path(__file__).resolve().parent.parent / "plugin"
 #: a mode routes to, and which actor is reading.
 #:
 #: **Not `stage`, which was the first cut and was wrong.** `review-cycle.md`
-#: puts `final` in the *inner* route ("any review of an uncommitted or delta
+#: puts `final` in the *inner* STAGE ("any review of an uncommitted or delta
 #: interval — `chunk`, `final`, `verify-resolutions`") while routing it to the
-#: seven-goal protocol, so a route-keyed model priced `final` at a third of
+#: seven-goal protocol, so a STAGE-keyed model priced `final` at a third of
 #: what it loads and its keys collided with the manifest's own `stage` field.
 #: The governing norm names the right axis: `nonfunctional-requirements.md`
 #: § Direction says unit-cost is "the reviewer's *payload* (what a given MODE
@@ -114,8 +115,8 @@ PAYLOAD_ROUTES = {
 #: exactly one over it, so nothing is banked.
 LAST_MEASURED_PAYLOAD_TOKENS = {
     # Established 2026-09-19 (#850, review-cost-decision Chunk 03), re-keyed the
-    # same day from `route` to route after the cumulative review found `final`
-    # is an inner-route mode carrying the full protocol. Baseline, so nothing
+    # same day from `stage` to route after the cumulative review found `final`
+    # is an inner-STAGE mode carrying the full protocol. Baseline, so nothing
     # "paid" for it — it records where each route stood when it first got an
     # owner. All three are AFTER Chunk 02's declared raise.
     # +30 to every route on 2026-09-19: finding R-12's correction to the

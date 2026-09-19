@@ -899,6 +899,18 @@ class TestNextActionLine:
                 "one home (`coverage_algebra.is_judgeable_path`) and this message "
                 "asks it via `cost-of-commit` rather than copying it"
             )
+        # The pointer has exactly ONE carrier. R-10 removed `_IF_YOU_FIX_SOME`'s
+        # copy because the close stated the verdict and then sent the reader to
+        # compute it — #831's own defect, surviving its own fix. A count, not an
+        # absence assertion: `core.md` says a negative assertion forbids
+        # everything its wording matches, so "the string is gone" would go green
+        # under any rewording AND outlaw any other output containing it.
+        # Reintroducing the second copy turns this red; rewording either copy
+        # does not.
+        assert line.count("prawduct-hook cost-of-commit") == 1, (
+            "the re-derivation pointer has two carriers again — it belongs with "
+            "the clause making the claim that needs re-deriving, and nowhere else"
+        )
         hook = (ROOT / "bin" / "prawduct-hook").read_text()
         assert '"cost-of-commit"' in hook, (
             "next_action_line cites `prawduct-hook cost-of-commit`, which the hook "
