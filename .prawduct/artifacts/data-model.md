@@ -206,9 +206,10 @@ clock — and a performance target stated against an estimate is a target stated
   Critic rounds and not one was measured | user can veto/override]` The rejected alternative is
   recorded because it is the one a reader will reach for: widening a single marker's consumer set
   keeps the shared cell and asks every future caller to be careful around it, which is the failure
-  the norm exists to forbid. What that section holds is the DECISION, proposed for
-  veto, and that is the whole separate-act claim: it landed in commit `592b9db3`, ahead of both
-  Chunk 01's code and this amendment, so the amendment is not its own only witness. It is not a
+  the norm exists to forbid. This amendment's authority sits outside this artifact, in
+  `build-plan-critic-dispatch-clock.md` § The norm departure, recorded — and what sits there is the
+  DECISION, proposed for veto, landed in commit `592b9db3` ahead of both Chunk 01's code and this
+  amendment. That separation is the claim: the amendment is not its own only witness. It is not a
   confirmation record, and calling it one would assert a reader-check as a fact — the plan's own
   next paragraph says confirmation is what Chunk 02 must cite.
 - The markers themselves (`.prawduct/.critic-review-dispatch.json`,
