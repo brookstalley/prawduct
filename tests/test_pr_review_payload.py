@@ -320,6 +320,64 @@ class TestDegradations:
         assert not section.ok
         assert "NO fresh evidence" in section.degraded
 
+    def test_the_payload_says_WHICH_freshness_clause_answered(self):
+        """Both disjuncts exit 0 and they are NOT the same evidence.
+
+        `review-protocol.md` tells the reviewer to read which guarantee a bundle
+        rests on — `tree-valid` means the recorded run met this exact tree,
+        `session-fresh` means a run from earlier in the session that never did.
+        A payload reporting only "current" makes that unanswerable from the one
+        section the reviewer was told to read, and the reviewer does not run the
+        suite itself, so there is no second source.
+
+        Parametrized over the clause rather than asserting one spelling: the
+        labels are `lib.gates` constants precisely so prose and payload cannot
+        drift apart, and reading them here is what keeps this test honest if
+        they are reworded.
+
+        What turns this red: unpacking `tests_are_current` without the clause,
+        or rendering a bare "current" for either disjunct.
+        """
+        import sys
+        sys.path.insert(0, str(REPO_ROOT / "plugin"))
+        from lib import gates
+
+        seen = {}
+        for clause, expected in (
+            ("tree", gates.CURRENT_TREE_LABEL),
+            ("session", gates.CURRENT_SESSION_LABEL),
+        ):
+            class _Stub:
+                CURRENT_TREE_LABEL = gates.CURRENT_TREE_LABEL
+                CURRENT_SESSION_LABEL = gates.CURRENT_SESSION_LABEL
+
+                def __init__(self, c):
+                    self._c = c
+
+                def tests_are_current(self, *a, **k):
+                    return True, f"reason for {self._c}", self._c
+
+            import unittest.mock as _m
+            with _m.patch.object(
+                pr_payload, "_lib",
+                lambda c=clause: pr_payload._Lib(
+                    briefing=None, buildplan_refs=None, change_log=None,
+                    coverage=None, gates=_Stub(c), gitstate=None,
+                ),
+            ):
+                section = pr_payload._section_test_evidence(REPO_ROOT)
+            assert section.ok, clause
+            assert expected in section.body, (
+                f"the {clause} clause renders as {section.body!r}, which does not "
+                f"name {expected!r} — the reviewer cannot tell the two apart"
+            )
+            seen[clause] = section.body
+
+        assert seen["tree"] != seen["session"], (
+            "both clauses render identically, so the payload carries the verdict "
+            "but not the guarantee — which is the whole distinction"
+        )
+
     def test_no_default_branch_forbids_the_closing_keyword_reading(self, monkeypatch, tmp_path):
         """`Closes #N` fires only on merges into the default branch, so on a
         gitflow PR an open item is CORRECT state. Not knowing the default branch

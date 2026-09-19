@@ -9,6 +9,31 @@
 
 <!-- prawduct: type=fix | scope=test-status-clause -->
 
+**Landed 2026-09-19 after a 55-commit base advance, and the advance grew a new caller.** The
+signature became a 3-tuple when the clause was added; `pr_payload._section_test_evidence` arrived on
+`develop` after this branch was cut and unpacks two, so the merge produced a `ValueError` that the
+payload's own broad-except converted into `test evidence unreadable` — a degraded section reading as
+a plausible environment problem rather than as the signature break it was. Three tests caught it;
+nothing else would have, because the except names its consequence honestly and a reviewer reading
+that section would have believed it. Grepping the function found its callers, which is the search
+that has to be done separately from grepping the thing itself.
+
+The caller now carries the CLAUSE rather than just the verdict, which is what this scope is for:
+both disjuncts exit 0 and they are different evidence, `review-protocol.md` tells the reviewer to
+read which one a bundle rests on, and a payload reporting a bare `current` makes that unanswerable
+from the one section the reviewer was told to read — and the reviewer does not run the suite, so
+there is no second source. Pinned by a test parametrized over the clause and reading the
+`lib.gates` labels rather than spelling them, so a reword cannot leave the pin asserting a string
+nothing prints; mutation-verified against the exact pre-fix rendering.
+
+**Two merge conflicts, neither resolved by keeping both sides.** A `building.md` token budget had
+been cut on BOTH lineages (-2 here, -4 by `pr-review-payload` Chunk 02), so the merged file measures
+4904 — below either side's claim — and taking a side would have banked the other's cut as silent
+slack; re-measured with the suite's own estimator, ceiling set to reading + 1 as its own assertion
+requires. And `review-protocol.md` had been restructured wholesale on `develop`, so its structure is
+taken entire and this branch's one substantive sentence folded into the rewritten bullet, rather
+than resurrecting the superseded bullets a both-sides resolution would have brought back.
+
 **Build plan:** `build-plan-test-status-clause.md` (one chunk).
 
 `gates.tests_are_current` has two disjuncts and either is sufficient: the evidence was written
