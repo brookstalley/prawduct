@@ -68,6 +68,18 @@ published-surface record a future kind-adder opens first. The plan had pre-dispo
 as "likely no edit" on the strength of `critic-begin`'s unchanged signature, which was true of the
 entry it reasoned about and never reached the `ledger-append` clause.
 
+**`develop` opens `3.5.1-dev.2`.** `version` is the plugin cache key, so a consumer pinned to the
+develop ref resolves the cache directory by that string and picks up this work only on a new one.
+Four files, per `release-process.md`'s intra-cycle rule: the manifest, `plugin/VERSION`,
+`pyproject.toml`, and the open `plugin/CHANGELOG.md` heading, which
+`test_changelog_has_current_version_entry` keys by the exact manifest string — bumping the three
+version files alone turns `develop` red on the next push. `-dev.N` remains the only permitted
+prerelease form; `banner.version_tuple` parses that shape and returns the malformed sentinel
+otherwise, which sorts below every real version and shows no banner at all. The consumer-facing
+section under that heading gains the note this work makes load-bearing: a Critic `duration_seconds`
+a consumer reads out of their own ledger is now sometimes measured and sometimes the reviewer's
+estimate, and `review-stats` is what tells the two apart.
+
 ## 2026-09-18: the quotation half of the MCP mining debt, and the recipe that could not have paid it
 
 <!-- prawduct: type=feature | scope=mcp-quotation-audit -->
