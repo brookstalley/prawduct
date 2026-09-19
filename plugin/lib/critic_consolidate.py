@@ -429,6 +429,19 @@ def span_clause(answer: "dict | None", commits: "int | None" = None) -> str:
     :data:`_COVERAGE_IS_A_SEPARATE_QUESTION`, which is the pre-existing text and
     the honest one for "unknown".
 
+    **Why the positive arm is past-tense and the negative arms are not.** Like
+    :func:`cost_lead`, this clause is measured live and then FROZEN into
+    ``.critic-findings.json``, which ``briefing._summarize_critic_findings``
+    replays in later sessions. Those two are the whole class — every argument
+    :func:`next_action_line` receives that is not derived from the review fact —
+    and the class is decided here rather than one member at a time. The
+    asymmetry is deliberate: an *unclear* branch that later became clear costs
+    the reader a gate call they were already told to make, while a *covered*
+    claim that went stale is read as clearance for work no review has seen,
+    which is the misread this clause exists to prevent. So only the arm making
+    the durable positive claim is stamped and given its re-derivation; the
+    others already name ``check-cumulative-critic`` as the answer.
+
     **It names no prawduct-internal identifier** (``observability-strategy.md``:
     text emitted into a governed product names none) — no tree hashes, no
     review ids, no fids. A count and a branch name are the product's own facts.
@@ -469,17 +482,20 @@ def span_clause(answer: "dict | None", commits: "int | None" = None) -> str:
         # way, and it trains the reader to discount the clause on the branch
         # where it is load-bearing.
         #
-        # **"at HEAD" is precision, not a hedge, and it is the one thing this
-        # arm cannot leave out.** The span ends at the last COMMIT, and a verify
+        # **"at the HEAD this review saw" is precision, not a hedge, and it is
+        # the one thing this arm cannot leave out.** The span ends at the last
+        # COMMIT, and a verify
         # pass routinely reviews a dirty tree — so the fix the builder is about
         # to commit is not in the span this sentence just called covered, and
         # committing it re-opens the gate. Reporting "the branch is covered"
         # from that state is the very misread this whole clause exists to stop,
         # arriving one minute later by the other door.
         return (
-            f" The BRANCH is covered too{how}, at HEAD: composed review evidence"
-            f" spans {width} with no blocking findings outstanding — work you"
-            " have not committed yet is not in that span."
+            f" The BRANCH was covered too{how}, at the HEAD this review saw:"
+            f" composed review evidence spanned {width} with no blocking findings"
+            " outstanding — work you had not committed yet is not in that span."
+            " Re-derive with `prawduct-hook check-cumulative-critic` if the"
+            " branch has moved since."
             + _WORK_CYCLE_STILL_OWES
         )
 
@@ -543,13 +559,19 @@ _RIDE_ALONG_ROUTE = (
 #: might fix — findings or demoted observations. Fixing is the one response to
 #: those items that moves the tree, so a close that offers "accept" without also
 #: saying what the alternative costs is weighing one route and hiding the other.
+#:
+#: **It no longer sends the builder to price the batch.** It used to name
+#: ``cost-of-commit <paths>`` and explain that a `free` batch needs no pass —
+#: which is the question :func:`cost_lead` now ANSWERS in this message's first
+#: sentence. Carrying both made the close state the answer and then ask the
+#: reader to go compute it, which is the state #831 was filed about, surviving
+#: its own fix. The re-derivation pointer still ships, once, inside the clause
+#: that makes the claim needing re-deriving.
 _IF_YOU_FIX_SOME = (
     " If you do choose to fix some, batch them into"
     " ONE commit — and re-cover with ONE `/prawduct:critic verify-resolutions`"
-    " ONLY if that commit touched judgeable files. `prawduct-hook cost-of-commit"
-    " <paths>` answers that for the exact batch BEFORE you commit it; a batch it"
-    " prices `free` moves no coverage and needs no pass at all. AFTER committing,"
-    " you no longer have to judge it either: dispatch asks the same predicate and"
+    " ONLY if that commit touched judgeable files. AFTER committing,"
+    " you no longer have to judge that either: dispatch asks the same predicate and"
     " exits 3 (`no review needed`, under a second, no session state written) rather than"
     " spending a reviewer on a free interval — so asking costs nothing, and a"
     " refusal is the answer, not a reason to retry in another mode."
@@ -557,6 +579,104 @@ _IF_YOU_FIX_SOME = (
     " not infer that you need one from gate output printed before your fix —"
     " commit, then re-run the gate and let it answer."
 )
+
+
+#: Why every clause here is past-tense and carries a re-derivation.
+#:
+#: This sentence is measured from LIVE state at consolidation and then FROZEN:
+#: ``fact_to_cache_record`` writes it into ``.critic-findings.json``, whose
+#: designated later reader is ``briefing._summarize_critic_findings`` — the one
+#: its own comment calls definitionally the reader who lost the reviewer's
+#: report. The modal sequence inverts the advice: a review runs against a dirty
+#: judgeable tree, the record freezes "a fix buys no extra round", the builder
+#: commits, and a later session reads that against a clean tree where each fix
+#: buys the whole round this scope exists to remove.
+#:
+#: ``core.md``: never write a present-tense state claim into a durable
+#: document — write the dated measurement plus the command that re-derives it.
+#: So the tense says when it was true and the pointer says how to re-ask, which
+#: makes ONE wording honest on both the relayed in-session line and the
+#: persisted record. Splitting them into two variants was the alternative and
+#: it fails the same file's one-home rule.
+_REDERIVE_COST = (
+    "Re-derive with `prawduct-hook cost-of-commit` if the tree has moved since."
+)
+
+
+#: The mechanical question, answered — not handed to the builder to go run.
+#:
+#: #831's finding: the fix/accept call is EVALUATIVE today ("is this worth
+#: fixing?"), which is unanswerable with a complete remedy already in hand —
+#: it always feels yes. The mechanical question that replaces it is *"am I
+#: already making a judgeable commit?"*, because that is what decides whether
+#: a fix is free or costs a whole round. Both inputs were already computed
+#: somewhere and neither reached this message: :func:`coverage.commit_cost`
+#: prices the tree, :func:`telemetry.round_price` prices a round, and
+#: ``_IF_YOU_FIX_SOME`` told the builder to go run the first one himself.
+#: Measured 2026-09-19: that decision was made ~30 times across two branches
+#: with neither number in front of it.
+#:
+#: **Why the working tree and not the findings' own files.** Pricing the files
+#: the findings NAME answers a different question — "what would fixing all of
+#: these cost" — which is not the one the builder is asking and not the one
+#: #831 states. The tree is what makes the question answerable without
+#: guessing which findings the builder intends to act on.
+#:
+#: **Why this adds information rather than removing it.** #832 was closed
+#: NOT_PLANNED on the ground that suppressing finding content is satisfiable
+#: by rating WARNING instead, which displaces work up a severity while every
+#: metric reads as success. That closure is the design steer for this whole
+#: scope: the lever has to ADD cost information. Nothing here hides a finding.
+#:
+#: Pure, like :func:`next_action_line` beside it — the caller reads git and the
+#: ledger once per consolidation and passes both results in, so the two
+#: carriers of this sentence cannot quote different numbers and no digit is
+#: restated in this module (``architecture.md``: every fact has one home).
+def cost_lead(cost: "dict | None") -> str:
+    """The leading sentence of a zero-blocking close: what fixing costs here,
+    and what that implies.
+
+    ``cost`` is :func:`coverage.commit_cost`'s verdict for the WORKING TREE. It
+    may carry a degraded state, and a degraded state renders its REASON — never
+    a reassuring default. What a round COSTS is deliberately not rendered here:
+    :func:`telemetry.format_round_price` owns that sentence and the close
+    already carries it, so stating it twice would put two carriers on one fact. ``architecture.md`` § Direction makes this advice, so it fails
+    soft; ``core.md`` makes "advice fails soft" not "advice fails silent", so
+    an unpriceable tree says it could not be priced and recommends the
+    conservative read, which is the one that does not spend a round by
+    surprise.
+
+    Returns ``""`` when ``cost`` is absent, so a caller that did not compute it
+    renders exactly the message it rendered before this existed.
+    """
+    if not cost:
+        return ""
+    if cost.get("reason"):
+        return (
+            "Fixing could not be priced at review time"
+            f" ({cost['reason']}) — that is a missing number, not a small one."
+            " Decide as if a fix buys a round."
+        )
+    judgeable = cost.get("judgeable") or []
+    if judgeable:
+        return (
+            f"AT REVIEW TIME you were already making a judgeable commit"
+            f" ({len(judgeable)} uncommitted judgeable file(s)), so a fix"
+            " batched into it bought NO extra round."
+            f" {_REDERIVE_COST} Recommended while that holds: fix what is worth"
+            " fixing, accept the rest."
+        )
+    tree = (
+        "nothing judgeable was uncommitted"
+        if cost.get("paths")
+        else "your tree was clean"
+    )
+    return (
+        f"AT REVIEW TIME you were not making a judgeable commit ({tree}), so the"
+        " first judgeable fix bought a whole review round."
+        f" {_REDERIVE_COST} Recommended while that holds: accept these unless a"
+        " fix is worth that."
+    )
 
 
 def carried_blocking(facts: list[dict], base_tree: "str | None",
@@ -625,6 +745,7 @@ def next_action_line(
     carried: "list[dict] | None" = None,
     span: "str | None" = None,
     observations: int = 0,
+    cost: "str | None" = None,
 ) -> str:
     """The one sentence the BUILDER needs, computed from the fact's own counts
     and written into ``.critic-findings.json`` by :func:`fact_to_cache_record`.
@@ -666,6 +787,11 @@ def next_action_line(
     only in the arm the builder does not reach when something is blocking."""
     ref = fact_id or "<review-id>"
     price = f" {price_sentence}" if price_sentence else ""
+    # Leads the two zero-blocking arms that still carry a fix decision, and
+    # ONLY those. The blocking arm's next move is to fix regardless of price,
+    # and the truly-empty close has nothing to fix — a cost verdict on either
+    # would be a number with no decision attached to it.
+    lead = f"{cost} " if cost else ""
     # `span` is :func:`span_clause`'s output, rendered by the caller for the
     # same reason `price_sentence` is. Absent (every mode but a clean
     # `verify-resolutions` close) the clause stays what it always was: go ask
@@ -735,7 +861,8 @@ def next_action_line(
         # the items it was built for.
         if observations:
             return (
-                f"0 blocking, 0 findings — THE REVIEW IS OVER and nothing in THIS"
+                lead
+                + f"0 blocking, 0 findings — THE REVIEW IS OVER and nothing in THIS"
                 f" review requires another round. {observations} item(s) were"
                 " demoted to observations, and each can be answered on the record"
                 " instead of fixed:"
@@ -758,7 +885,8 @@ def next_action_line(
             + coverage_clause
         )
     return (
-        f"0 blocking — THE REVIEW IS OVER. The {warning} warning + {note} note"
+        lead
+        + f"0 blocking — THE REVIEW IS OVER. The {warning} warning + {note} note"
         " finding(s) gate NOTHING: no gate reads them, so nothing in THIS review"
         " requires another round."
         + coverage_clause
@@ -4090,6 +4218,7 @@ def fact_to_cache_record(
     price_sentence: "str | None" = None,
     carried: "list[dict] | None" = None,
     span: "str | None" = None,
+    cost: "str | None" = None,
 ) -> dict:
     """Render the derived ``.critic-findings.json`` record from a review fact
     (D7: the cache is a code-regenerated VIEW of the latest fact — builders
@@ -4172,6 +4301,7 @@ def fact_to_cache_record(
         "next_action": next_action_line(
             fact.get("id"), blocking, warning, note, price_sentence,
             carried=carried, span=span, observations=len(observations),
+            cost=cost,
         ),
         # Recomputed from the fact's own findings, so this advisory grouping
         # adds nothing to the persisted schema and keeps no model in the write
@@ -4659,6 +4789,15 @@ def consolidate(project_dir: Path) -> int:
 
     price_sentence = telemetry.format_round_price(telemetry.round_price(prawduct_dir))
 
+    # One git read per consolidation, beside the one ledger read, for the same
+    # reason: the relayed NEXT-ACTION and the cache record must not be able to
+    # answer the same question differently. `commit_cost` asks the SAME
+    # predicate the coverage gate will charge on — never a cheaper proxy for
+    # it — so the sentence cannot promise a price the gate then disagrees with.
+    from . import coverage  # noqa: PLC0415 — lazy, matching this module's other lib imports
+
+    cost_sentence = cost_lead(coverage.commit_cost(project_dir))
+
     carried = (
         carried_blocking(
             store.get("facts") or [], manifest.get("base_tree"), review_id
@@ -4684,7 +4823,7 @@ def consolidate(project_dir: Path) -> int:
         answer = gates.branch_coverage_verdict(project_dir)
         span = span_clause(answer, _span_commits(project_dir, answer))
 
-    record = fact_to_cache_record(fact, price_sentence, carried, span)
+    record = fact_to_cache_record(fact, price_sentence, carried, span, cost_sentence)
     findings_path = prawduct_dir / ".critic-findings.json"
     atomic_write_text(findings_path, json.dumps(record, indent=2))
 
@@ -4845,6 +4984,7 @@ def consolidate(project_dir: Path) -> int:
             carried=carried,
             span=span,
             observations=len(fact_body.get("observations") or []),
+            cost=cost_sentence,
         )
     )
     return 0

@@ -113,6 +113,7 @@ Hardest rules:
 
 - **Tests are contracts** — fix the code, never weaken a test.
 - **No "pre-existing" exception** — fix what you find, or flag why you can't.
+  The fix half is bounded to BLOCKING; below it, the flag is the whole answer.
 - **Never silently drop a requirement** — say so explicitly.
 - **Run `/prawduct:critic` after medium+ work** — never write findings
   yourself; the independence is the value. Rigor is stage-keyed: a mid-build

@@ -19,7 +19,8 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
 
 - **Tests are contracts.** Fix the code, never weaken the test. Write tests alongside code, not after.
 - **There is no "pre-existing" exception.** If you find a problem — failing test, broad catch,
-  stale artifact — fix it or explicitly flag why it can't be fixed now.
+  stale artifact — fix it or explicitly flag why it can't be fixed now. Fix-half bounded to
+  BLOCKING; below it a recorded accept discharges it.
 - **Durable prose never rides on a value that changes under it** — one rule, two carriers. Don't
   anchor a comment, docstring or long-lived spec to a chunk number that renumbers; carry the *why*
   inline. (Bookkeeping that records the work is exempt; a pointer to a plan is fine — completed

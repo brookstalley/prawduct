@@ -211,7 +211,27 @@ Hardest rules:
 session end and **blocks** if code changed against an active build plan with no
 Critic findings."""
 
-SUPERSEDED_ANCHORS: tuple[str, ...] = (ANCHOR_V1, ANCHOR_V2, ANCHOR_V3)
+
+
+#: The DEVELOP anchor superseded by #833 (2026-09-19) before any release
+#: carried it — no release tag ships these bytes, so this entry is deliberately
+#: absent from the tag-derived set the module header tells you to build. Keep
+#: it: repos onboarded off the develop track between v3.5.0 and that commit
+#: hold exactly this text, and they are the only cohort that does.
+#:
+#: **Why it is not optional, stated as the grade it actually prevents.**
+#: Unarchived, `_match_superseded` misses and `_missing_substance` comes back
+#: EMPTY — these bytes carry both `SUBSTANCE` probes, including `stage-keyed` —
+#: so `check()` falls through to `STATUS_OK`. That cohort would be reported
+#: healthy, `repairable: False`, and never offered the repair; no owner is ever
+#: told. A silent `ok` is less visible than a refusal, which is why this entry
+#: matters more than the V1-V3 ones, not less. (Those predate `stage-keyed`, so
+#: an unarchived V1-V3 anchor DOES grade `stale-modified` and surfaces.)
+#: Generated from the bytes HEAD rendered, not retyped.
+ANCHOR_V4 = '<!-- PRAWDUCT:ANCHOR — governance pointer managed by the prawduct plugin; keep it small and version-free. -->\n\n## Governance (Prawduct)\n\nThis repo is governed by **Prawduct**, a Claude Code plugin; its methodology and\nprotocols are read on demand via `/prawduct:methodology`.\n\n**Check first: is the plugin loaded?** If `/prawduct:*` commands are unavailable it\nis not, and **governance is OFF** — no Stop gate, no Critic, nothing below enforced.\nA clone registers the marketplace but installs nothing. Tell the user to\nrun `claude plugin install prawduct@prawduct`, then restart — don\'t proceed as if governed.\n\n**With the plugin loaded — before writing any code, STOP and read the build cycle:\n`/prawduct:methodology building`.** Skipping it is the #1 governance failure.\n\nHardest rules:\n\n- **Tests are contracts** — fix the code, never weaken a test.\n- **No "pre-existing" exception** — fix what you find, or flag why you can\'t.\n- **Never silently drop a requirement** — say so explicitly.\n- **Run `/prawduct:critic` after medium+ work** — never write findings\n  yourself; the independence is the value. Rigor is stage-keyed: a mid-build\n  review blocks only on what would ship broken, the review at the merge\n  boundary runs everything and is never skipped, and unsure defaults to the\n  cheaper mid-build review.\n\n**Enforcement is structural — while the plugin is loaded:** its Stop hook runs at\nsession end and **blocks** if code changed against an active build plan with no\nCritic findings.\n'
+
+
+SUPERSEDED_ANCHORS: tuple[str, ...] = (ANCHOR_V1, ANCHOR_V2, ANCHOR_V3, ANCHOR_V4)
 
 
 #: What a current anchor says, rendered once for both the ``ok`` grade and the

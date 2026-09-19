@@ -69,7 +69,7 @@ retroactivity). Departing from a norm that already governs your change is a reco
 - *Git state*: Commit or stash unrelated work. Medium+ work gets a feature branch (`feature/...`, `fix/...`) unless `project-preferences.md` allows direct commits.
 - *Canary findings*: Address or explicitly acknowledge each compliance finding in the session briefing.
 
-There is no "pre-existing" exception: every session starts clean.
+There is no "pre-existing" exception: every session starts clean. The obligation to FIX is bounded to BLOCKING — below it, a recorded accept discharges it in full.
 
 **Read the spec.** Read the chunk's entry in `.prawduct/artifacts/build-plan.md` and any referenced artifacts — what this chunk delivers, its acceptance criteria, its dependencies. Flag ambiguity before building; don't guess silently. Validate that referenced files and components still exist — plans go stale. Open the `.claude/rules/learnings/` area files covering this chunk.
 

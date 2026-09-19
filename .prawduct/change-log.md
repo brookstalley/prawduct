@@ -5,6 +5,106 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-19: The fix/accept decision is priced, and the two over-fixing rules are bounded
+
+<!-- prawduct: type=feat | scope=review-cost-decision -->
+
+**The measured problem.** `verify-resolutions` is 58% of all review volume at the worst yield of
+any mode — 26.3 minutes per blocking finding against `chunk`'s 10.2 — and **41 of the 83 scopes
+with two or more verify rounds found ZERO blocking findings across all of them**. Half the
+repeat-verify population is pure cost. Re-derive with `prawduct-hook review-stats` and the scan in
+`.prawduct/artifacts/review-cost-investigation-2026-09-19.md` §6; the program is #724, and this
+scope lands #831 and #833 from it.
+
+**#831 — the close answers the cost question instead of delegating it.** The fix/accept call was
+evaluative ("is this worth fixing?"), which is unanswerable with a complete remedy already in hand
+because it always reads yes. The mechanical replacement is *"am I already making a judgeable
+commit?"* — and both inputs were already computed and neither reached the builder:
+`coverage.commit_cost` prices the working tree, `telemetry.round_price` prices a round, and the
+message told the builder to go run the first himself. `critic_consolidate.cost_lead` now renders
+the verdict and its recommendation, and the two zero-blocking arms that carry a fix decision lead
+with it. The blocking arm and the empty close deliberately do not: a cost verdict where there is no
+fix decision is a number with nothing attached, and on the blocking arm it would read as a reason
+to weigh not fixing a blocker. No digit is restated — `format_round_price` keeps sole ownership of
+what a round costs, and a degraded git read renders its reason rather than a reassuring default.
+
+**#833 — the two over-fixing rules carry a severity bound, at every carrier.** "There is no
+pre-existing exception" and "deep context on a small problem is a FIX signal" are both correct
+about blockers and actively harmful about notes: unbounded, they are the pull that #831 prices.
+Each now states that the obligation to FIX is bounded to BLOCKING, and that below it a recorded
+accept is the complete discharge rather than the lesser half of the sentence.
+
+**[DECISION: the bound reaches all ten carriers, consumer-facing text included | the four-surface
+option — the Critic protocol files plus `core.md` — was offered against it and declined, because a
+rule stated with its bound in the reviewer's file and without it in the always-injected digest, in
+Principle 22, and in the `CLAUDE.md` anchor every governed product carries is the drift this scope
+exists to end | owner-directed 2026-09-19, and the owner may still narrow it]**. The witness is not
+this amendment: #833 was filed by the owner on 2026-09-18 carrying the ledger measurement above,
+and `core.md` requires an amended norm's authority to live somewhere the amendment is not.
+
+**What the full reach cost, and the two regressions it surfaced.** `anchor_repair` grades a repo
+by matching its `CLAUDE.md` anchor byte for byte, so changing the current anchor strands whatever
+was current before it. **The stranded cohort is the develop track, not v3.5.0** — v3.5.0 ships
+`ANCHOR_V3`, which was already archived. `ANCHOR_V4` archives the develop anchor no release tag
+carries, and it is the entry that matters most: those bytes hold both `SUBSTANCE` probes, so an
+unarchived V4 grades silently **`ok`** rather than `stale-modified`, reporting the cohort healthy
+and never offering the repair. (V1–V3 predate `stage-keyed`, so an unarchived one of those DOES
+refuse loudly.) Separately, two edits to `ANCHOR_V1`/`ANCHOR_V3` were made and reverted: that tuple
+is the bytes sitting in already-onboarded repos, and rewriting it breaks repair for exactly the
+cohorts it serves. `test_the_archive_covers_every_anchor_prawduct_ever_shipped` caught that, and
+the cumulative review caught the warrant this paragraph originally recorded for the first.
+
+**Budgets: a declared raise, and a reserve deliberately not spent.** Four per-file readings and
+both injected-session aggregates moved, each ratcheted in the same commit. This is a declared raise
+with its reason, not a trim — the bound is a new obligation, not a restatement, so there was no
+duplication to pay from, and funding it by cutting someone else's clause is the failure mode that
+loses whichever clause is least defended. The digest's 500-character reserve, held for the next
+framework-wide default, is untouched: its sentence is written at that surface's compressed register
+(9,497 of 9,500).
+
+**A clean verify close now says WHEN it was true, at both carriers.** The cumulative review found
+that a clause measured from the live working tree was being frozen into `.critic-findings.json` and
+replayed by the briefing in later sessions — so a review run against a dirty tree told a future
+session "a fix buys no extra round" after the builder had already committed, inverting the advice at
+the moment it is acted on. Closed as a class rather than at the site that surfaced it: the other
+live-state clause is `span_clause`'s covered arm, and **that one changes a sentence every governed
+product reads.** It now reads *"The BRANCH was covered too, at the HEAD this review saw … work you
+had not committed yet is not in that span. Re-derive with `prawduct-hook check-cumulative-critic`
+if the branch has moved since."* Past tense plus a re-derivation, in place of a present-tense claim
+about a branch that may have moved. Its negative arms already sent the reader to the gate, so only
+the arm making a durable positive claim changed — a stale "not covered" costs a gate call the reader
+was told to make anyway, while a stale "covered" reads as clearance for work no review has seen.
+
+**#850 — the reviewer's payload gets an owner, and the item's own number was wrong.** Every
+governance prose file carries a budget and every budget is green; nothing priced the total, and the
+total is what a reviewer pays. The item quoted ~26k tokens read before a line of diff. The dispatch
+path falsifies it: `SKILL.md` sends a `chunk`/`verify-resolutions` reviewer to `goals-1-3.md` and
+tells it to read *"nothing else"*, so the cheap protocol route is a fraction of the full one. That
+changes the control rather than just the arithmetic — `verify-resolutions` is 58% of review volume
+and pays the SMALL payload, so one ceiling over the union would price what nobody loads and let the
+cheap route double with nothing red. `tests/test_reviewer_payload_budget.py` ships **three**
+ceilings keyed by **route**, not by stage: the cumulative review found that `review-cycle.md` puts
+`final` in the INNER stage while routing it to the full protocol, so a stage-keyed sum priced it at
+a third of what it loads — and that single-pass modes dispatch no subagent, so charging them the
+agent definition priced a file nobody reads. The three routes are the single-pass fork on each
+protocol and one dispatched reviewer, whose system prompt replaces `SKILL.md`. A relational pin
+keeps the cheap route under half the full one — the property the `goals-1-3.md` split exists for,
+which survives every number moving. Member lists are derived from `SKILL.md`'s routing prose, not
+listed here, so a protocol file cannot join the dispatch without joining a sum; the classes that
+derivation cannot see are enumerated in the module's own docstring rather than left implied.
+Re-derive the readings with `python3 -m pytest tests/test_reviewer_payload_budget.py` — they are in
+the module, dated, and they moved once already inside this same bundle. Per the NFR
+norm's requirement that a new control name its expected yield: this refuses an undeclared payload
+raise and shrinks nothing today; if a year passes with no reading moved and no raise declared, it
+fired zero times and should be retired rather than defended.
+
+**The bound is enforced, not remembered.** `tests/test_severity_bounded_rules.py` walks the tree
+for either rule and asserts every carrier states its bound — including carriers added later, which
+a hand-maintained list cannot see. It carries a positive control, and five mutations against the
+real corpus were run to prove it discriminates: the first cut bound the assertion to the blank-line
+block, so a neighbouring bullet's `**BLOCKING**` satisfied the check for a whole list and two true
+reversions survived green.
+
 ## 2026-09-18: A test report from every run, and the invocation's scope recorded beside it
 
 <!-- prawduct: type=feat | scope=test-report-scope -->

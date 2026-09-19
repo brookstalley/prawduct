@@ -1362,3 +1362,58 @@ harness delivers, only what the hook emits.
 > or the hook, so the tier predicate never lets a prawduct plan defer; only a PRODUCT's short plan
 > reaches the state. It answers itself the first time one does — the user sees the WARNING or
 > does not, and the transcript shows whether the model got the same text. It gates nothing.
+
+## VRF-021 — Chunk 01 (review-cost-decision) — the cost lead, read at the moment the decision is made
+
+**Status:** pending
+**Added:** 2026-09-19 (review-cost-decision Chunk 01, #831)
+
+**What no test can speak to:** whether the leading sentence functions as a DECISION AID or as one
+more sentence to skim. The tests pin that the verdict is correct, that it leads the two arms
+carrying a fix decision, and that a degraded read renders its reason. None of them can tell whether
+a builder, mid-cycle and holding a complete remedy, actually reads it and changes what they do —
+which is the entire yield #831 claims.
+
+**Verify (this repo or any governed product, at a real zero-blocking close):**
+
+1. Reach a zero-blocking Critic close with warnings or notes outstanding — the ordinary case.
+2. Read the NEXT-ACTION block's FIRST sentence before reading anything else. It should answer, with
+   no command to run: are you already making a judgeable commit, and what is therefore recommended.
+3. Check the verdict against the tree: `git status --short` plus `prawduct-hook cost-of-commit`.
+   The lead and the command must agree — they ask the same predicate, so a disagreement is a bug
+   in the sentence, not a judgement call.
+4. **The thing to watch for**, and the reason this is queued rather than asserted: the block now
+   states the tree-level verdict at the top and still points at `cost-of-commit <paths>` for a
+   chosen batch further down. Those are genuinely different questions. If, reading it cold, the two
+   read as the same thing said twice, the later pointer is the one to cut — say so, because a
+   message a builder learns to skim delivers none of this.
+
+**Why a human check:** the deliverable is a sentence a person acts on; only a person can report
+whether it changed the action.
+
+> === 2026-09-19 — DRAIN DISPOSITION: SPLIT, AND THE LIVE HALF IS GENUINELY LIVE ===
+>
+> **The static half is already a test and nothing here waits on it.** That the verdict is correct
+> for all three states, that it LEADS the two arms carrying a fix decision and appears on neither
+> of the other two, that a degraded read renders its reason rather than a cheap default, and that
+> the price sentence keeps its single home — all of that is
+> `tests/test_critic_consolidate.py::TestCostLeadAnswersTheMechanicalQuestion`, red-verified by a
+> seven-mutant sweep that included a predicted survivor.
+>
+> **What it turns on:** whether reading the sentence changes what a builder DOES. That is a claim
+> about a person under time pressure holding a finished remedy, and no assertion in this repo can
+> observe it.
+>
+> **Whose harness answers it:** any real zero-blocking close, here or in a governed product. This
+> repo reaches that state routinely, so unlike VRF-017 it is not waiting on a release — it is
+> waiting on the next ordinary review that ends clean.
+>
+> **It gates nothing**, and the one question it was queued with has since been ANSWERED without a
+> human: the cumulative review found (R-10/R-17) that the close did state the verdict and then send
+> the builder to compute it, and `_IF_YOU_FIX_SOME` lost its copy in the same bundle. So what
+> remains here is only the part no assertion can reach — whether the leading sentence changes what a
+> builder does. Report that, not the duplication.
+>
+> **Noted because it bears on when this drains:** `operator_verification_required` is `false` in
+> this repo, so nothing blocks on this entry. That is the standing configuration, not a lapse, and
+> it means the entry drains when someone chooses to read it rather than at a gate.

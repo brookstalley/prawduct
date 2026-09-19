@@ -441,7 +441,14 @@ LAST_MEASURED_TOKENS = {
     # and this branch's +110 landed in one tree, so the reading is neither
     # side's — 5021 was measured against a file without the cuts, 4905 against
     # one without the addition. Re-measured with the suite's own estimator.
-    "methodology/building.md": 5015,
+    # +23 on 2026-09-19 (#833, review-cost-decision Chunk 02): the two over-fixing
+    # rules gain an explicit severity bound. Paid by a DECLARED RAISE at the owner's
+    # direction, not by a trim — the owner chose the full-reach amendment (all ten
+    # carriers, consumer CLAUDE.md text included) over the four-surface option, and a
+    # rule stated without its bound at one carrier is the drift this scope exists to
+    # end. Nothing was cut to fund it: the digest's share was written at that surface's
+    # own compressed register instead, which is why its 500-char reserve is untouched.
+    "methodology/building.md": 5038,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -570,7 +577,21 @@ LAST_MEASURED_TOKENS = {
     # key in the single-pass schema — a key the reviewer must write while no
     # example carries it is the seam where an identifier degrades. Nothing here
     # was duplication to pay in place with; see the ceiling comment.
-    "skills/critic/review-protocol.md": 4312,
+    # +13 on 2026-09-19 (#833, review-cost-decision Chunk 02): the two over-fixing
+    # rules gain an explicit severity bound. Paid by a DECLARED RAISE at the owner's
+    # direction, not by a trim — the owner chose the full-reach amendment (all ten
+    # carriers, consumer CLAUDE.md text included) over the four-surface option, and a
+    # rule stated without its bound at one carrier is the drift this scope exists to
+    # end. Nothing was cut to fund it: the digest's share was written at that surface's
+    # own compressed register instead, which is why its 500-char reserve is untouched.
+    # +30 on 2026-09-19 (#833 follow-up, cumulative finding R-12): the severity
+    # bound was written in the BUILDER's voice on a REVIEWER surface, readable as
+    # licence to omit a non-blocking pre-existing finding — finding suppression,
+    # the lever #832's closure ruled out. Restated in the reviewer's voice (rate it
+    # regardless; the bound is on the builder) with an explicit never-omit clause.
+    # A declared raise: correcting a rule that could suppress findings is not
+    # fundable by trimming, and the wrong reading cost more than 30 tokens would.
+    "skills/critic/review-protocol.md": 4355,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -647,7 +668,21 @@ LAST_MEASURED_TOKENS = {
     # detector), and the per-rule ratings are the BOUNDARY ratings the reviewer
     # relays as observations, so they still instruct. Paid in place where it
     # could be: the verify-only sentence merged into the stage rule.
-    "skills/critic/goals-1-3.md": 2609,
+    # +13 on 2026-09-19 (#833, review-cost-decision Chunk 02): the two over-fixing
+    # rules gain an explicit severity bound. Paid by a DECLARED RAISE at the owner's
+    # direction, not by a trim — the owner chose the full-reach amendment (all ten
+    # carriers, consumer CLAUDE.md text included) over the four-surface option, and a
+    # rule stated without its bound at one carrier is the drift this scope exists to
+    # end. Nothing was cut to fund it: the digest's share was written at that surface's
+    # own compressed register instead, which is why its 500-char reserve is untouched.
+    # +30 on 2026-09-19 (#833 follow-up, cumulative finding R-12): the severity
+    # bound was written in the BUILDER's voice on a REVIEWER surface, readable as
+    # licence to omit a non-blocking pre-existing finding — finding suppression,
+    # the lever #832's closure ruled out. Restated in the reviewer's voice (rate it
+    # regardless; the bound is on the builder) with an explicit never-omit clause.
+    # A declared raise: correcting a rule that could suppress findings is not
+    # fundable by trimming, and the wrong reading cost more than 30 tokens would.
+    "skills/critic/goals-1-3.md": 2652,
     # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
     # a computed pass the gate can now print, which a reader who only knows
     # "uncovered means run a cumulative" will otherwise re-review straight
@@ -794,7 +829,14 @@ LAST_MEASURED_TOKENS = {
     # diff and `final` comes only by declaration, so the row says which. Raised
     # by declaration — the row is the table's one home for what inference does
     # on planless small work, and no duplicate exists to pay it from.
-    "skills/critic/review-cycle.md": 11105,
+    # +47 on 2026-09-19 (#833, review-cost-decision Chunk 02): the two over-fixing
+    # rules gain an explicit severity bound. Paid by a DECLARED RAISE at the owner's
+    # direction, not by a trim — the owner chose the full-reach amendment (all ten
+    # carriers, consumer CLAUDE.md text included) over the four-surface option, and a
+    # rule stated without its bound at one carrier is the drift this scope exists to
+    # end. Nothing was cut to fund it: the digest's share was written at that surface's
+    # own compressed register instead, which is why its 500-char reserve is untouched.
+    "skills/critic/review-cycle.md": 11152,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -1573,8 +1615,14 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # declared raise — it is the only governance text a plugin-less clone ever
     # loads, so nothing in it is duplicated by a surface that reader receives.
     # The digest sits at 9,422 of the 10,000-character wall, checked first.
-    "framework": 3266,
-    "product": 2187,
+    # +14 framework / +34 product on 2026-09-19 (#833, review-cost-decision Chunk 02):
+    # the digest's copy of "no pre-existing exception" gains its severity bound. The
+    # shapes move by different amounts because the PRODUCT shape carries the rule
+    # TWICE — the digest (+14, shared by both shapes) and `STATIC_ANCHOR` (+20), which
+    # gained the same bound — while the framework shape's other member, `CLAUDE.md`,
+    # is unchanged at 1,380. Dilution plays no part: these are absolute deltas.
+    "framework": 3280,
+    "product": 2221,
 }
 
 #: Ceilings. HARD, like the per-file prose ceilings in this module and
@@ -1705,8 +1753,17 @@ INJECTED_FOOTPRINT_CEILINGS = {
     # RAISED 3259 -> 3267, 2137 -> 2188 on 2026-09-17 (review-stages Chunk 06),
     # by declaration and with its reason: the stage-keyed review rule on the
     # digest and the anchor. One over each reading, so nothing is banked.
-    "framework": 3267,
-    "product": 2188,
+    # RAISED 3267 -> 3281, 2188 -> 2222 on 2026-09-19 (#833, review-cost-decision
+    # Chunk 02). A DECLARED raise, which is one of the two legitimate moves when an
+    # addition breaches a ceiling — the other is paying in place from genuine
+    # duplication, and there is none here: the bound is a NEW obligation, not a
+    # restatement. The owner directed the full-reach amendment over a narrower one,
+    # and the digest is a required carrier of it. The 500-char emitted RESERVE was
+    # deliberately NOT spent: the digest's sentence is written at that surface's
+    # compressed register, inside the 9,500-character working budget, so the next
+    # framework-wide default still has the room this reserve is held for.
+    "framework": 3281,
+    "product": 2222,
 }
 
 
@@ -2957,7 +3014,7 @@ class TestBuildingMethodology:
         # MERGE 2026-09-19 (test-report-scope develop sync): one over the
         # MEASURED merged reading (5015). Taking either side would bank the
         # other's delta as silent slack.
-        assert tokens < 5016, f"building.md is ~{tokens} tokens, should be <5016"
+        assert tokens < 5039, f"building.md is ~{tokens} tokens, should be <5039"
 
 
 # =============================================================================
@@ -4637,7 +4694,7 @@ class TestCriticSkill:
         # reading — both lineages above are history and stand as written.
         # RAISED 4051 -> 4313 (2026-09-17, review-stages Chunk 02): the stage
         # rule reaches the final/cumulative reviewer — see LAST_MEASURED_TOKENS.
-        assert tokens < 4313, f"review-protocol.md is ~{tokens} tokens, should be <4313"
+        assert tokens < 4356, f"review-protocol.md is ~{tokens} tokens, should be <4356"
 
 
 # =============================================================================
@@ -4917,7 +4974,7 @@ class TestCriticGoals13:
         # RAISED 2435 -> 2610 (2026-09-17, review-stages Chunk 02): the inner
         # BLOCKING set, stated in full because this file may point nowhere —
         # see LAST_MEASURED_TOKENS.
-        assert tokens < 2610, f"goals-1-3.md is ~{tokens} tokens, should be <2610"
+        assert tokens < 2653, f"goals-1-3.md is ~{tokens} tokens, should be <2653"
 
     def test_is_self_contained(self):
         """No follow-the-pointer reads at review time — the acceptance criterion
@@ -5481,7 +5538,7 @@ class TestReviewCycle:
         # RAISED 11091 -> 11106 (2026-09-17, review-stages integration, R-5): the
         # Small row now states what inference answers (`chunk`; `final` by
         # declaration). Declared, not paid — reading + 1.
-        assert tokens < 11106, f"review-cycle.md is ~{tokens} tokens, should be <11106"
+        assert tokens < 11153, f"review-cycle.md is ~{tokens} tokens, should be <11153"
 
     def test_framework_checks_token_budget(self):
         # Ceiling 1150. This file is `final`/`cumulative` payload: SKILL.md's
