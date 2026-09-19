@@ -5,6 +5,113 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-18: the quotation half of the MCP mining debt, and the recipe that could not have paid it
+
+<!-- prawduct: type=feature | scope=mcp-quotation-audit -->
+
+**This entry also publishes material that has never been in this repository before**, and which is
+the larger part of the bundle by volume: `.prawduct/artifacts/mcp-mining/` arrives whole — three
+source captures in both compressed and structured form, a citation audit of one of them, the drift
+owed back to two source repos, and the README that explains what a capture is — together with
+`mcp-knowledge-corpus-design.md`, the corpus's design of record, and a `learnings_budgets` ceiling
+raise for `authoring.md` in `project-state.yaml` carrying its own reason. None of it had a
+change-log entry, so all of it would have read as pre-existing to anyone reconstructing the release.
+Re-derive the volume with `git diff --stat origin/develop...HEAD` rather than quoting a figure.
+
+**Two chunks: an instrument, and the audit it made possible.** `hallucinote-verification.md` had
+found quoted evidence fragments wrong, and one absent, in a mined capture **with every cited address
+resolving** — and the ones that mattered drifted *toward the generalisation the corpus wants*, which
+is why reading does not catch them. The other captures carried the same unpaid debt: addresses
+verified as they were written, quotations not at all. This pays it for cordyceps and bankmachine.
+Record, method, counts and what is still owed:
+`.prawduct/artifacts/mcp-mining/capture-quotation-verification.md`. **No digit from that audit is
+transcribed into this entry** — the first draft of it restated two and got both wrong, which is the
+defect the work exists to fight. Re-derive with `tools/verify-capture-quotations.py`.
+
+**Chunk 01 — the instrument, and the finding is that the recorded recipe could not have worked.**
+`mcp-mining/README.md` recorded the method as "extract the `*"…"*` runs". Run as written it audits a
+small unrepresentative slice and returns a mostly-clean answer over a set it never opened. Two
+independent defects: it reads only the *italic* form, when only one capture uses that convention and
+another quotes with plain `"…"` almost exclusively; and as a `grep -oE` it is **line-based**, so any
+quotation that *wraps* is invisible — which is most of one capture's italic quotations. The second
+is the same species as the thing being hunted (`core.md`: *the query is itself a mechanism and can
+carry the defect it hunts; line structure is not semantic structure*), and the measurement that
+justified the work inherited it. `--counts` reproduces the grep figure and checks it equals exactly
+the non-wrapping subset, so the undercount is shown rather than asserted.
+
+**Four more defects were found in the replacement, which is the more useful half of the record.** A
+naive `"([^"]+)"` is not escape-aware and these captures embed JSON, so fragments truncated at the
+escaped quote and manufactured a batch of false "drift" candidates. Splitting on a bare `**RULE:**`
+marker also caught the marker *discussed in each capture's own header*, shifting every rule id — a
+report that reads as precise and cannot be resolved. The working-tree fallback, added so one
+capture's gitignored citations could resolve, was built on `git ls-files`, which lists **tracked**
+files only, so it had never once seen them. And the controls themselves covered only the *search*
+while three of those defects live in *extraction* — reverting the escape-aware regex left the whole
+self-test green, which an independent review found by walking each control against a defect it
+should have caught.
+
+**Controls are code, not prose, because a scan nobody has falsified has measured nothing.** Their
+count is deliberately not stated here; it has grown four times. `--self-test` covers a non-empty
+corpus, a nonsense string returning zero, a known-good set returning hits, **a deliberately
+corrupted real fragment that must miss**, rule ids reconciling with the corpus's own counting
+command, the working-tree fallback proving it sees gitignored files, an emptied corpus refusing the
+run **in both the primary and the secondary position**, the exit-2 contract, every emitted form
+being selectable, **extraction itself** against an inline fixture, the two refusals in `main()`, a
+roster check comparing the NAMED ids of every production refusal against a registry, that a wrapped
+span is seen and not counted by a line scan, and that an unreadable source file reaches the report
+rather than being swallowed. Every refusal control also asserts the refusal named its own subject —
+they share one exit code, so a fixture that never arrives would otherwise be congratulated. The corruption control is the one
+the recorded recipe never had and it is not optional: under a mutant that matches everything, the
+*known-good* control reports a false green while only the nonsense and corruption controls go red.
+
+**Chunk 02 — the audit.** A miss is not drift, and the record says so rather than letting a rate
+imply it: most misses are text absent from the source tree entirely, which for a plain-quoted span
+is usually the capture author's own words. Misses are bucketed by how far the longest prefix
+reaches, because depth separates the classes; the drift-signature bucket was chased **by hand in
+full**. **No fabrication was found.** One genuine alteration was corrected — a capture had shortened
+a placeholder inside a quoted shell command, so a reader copying it got a different command.
+
+**The durable finding is a schema gap, and it outranks the debt.** Italic-quoted fragments resolve
+markedly higher than plain-quoted ones, and the plain-quote rate is near-identical across
+independently-written captures. One capture uses `*"…"*` as a verbatim convention; another uses
+plain quotes for **both** source quotations and its own emphasis. So the corpus schema specifies the
+`EVIDENCE:` field but not **how a quotation inside it declares itself a claim of verbatim source
+text** — and without that marker a capture is not auditable at the fragment level by any instrument,
+only rule by rule by a human.
+
+**`discodon`'s capture is withdrawn, and so are its findings.** The fourth capture — the only
+consumer-side source — is a verbatim record of a **private repository owned by a different
+account**, and this repository is public. Neither the capture nor the defects it found ship here;
+the design notes name where its evidence would have sat and do not reproduce it. **The source IS
+named and its internals are not**, which is the correction a PR reviewer forced: an earlier draft
+withheld the name too, and that was incoherent, since this repository already names `discodon` in
+dozens of tracked files and the public item tracking this corpus names it as well. Anonymity was
+never available; what was never public is the code and the defects, and that is what stays
+withheld. Caught before the branch was ever pushed. The governance lesson is
+recorded with it: the build plan's disposition for *a product's content leaves its repo only through
+a pinned, owner-approved surface* read "inapplicable because nothing leaves this repo" — true of the
+sibling working trees, false of the direction that mattered, because mining brings a third party's
+content **into** a public repo. An exposure boundary does not care which way content crosses it.
+
+**Also fixed, and it was a real defect rather than a gate to satisfy.** Re-derivation commands in
+the captures cited paths relative to their *source* repo with nothing naming which repo they run in,
+so a reader running them from here got nothing — the repo-local path-resolution gate was right to
+call them broken references. Each is now pinned to its repo and to the SHA its capture declares. All
+were run before and after: some confirm positive claims, and some confirm NEGATIVE claims (zero hits
+**is** the assertion), which reads as a broken citation until you notice the capture says so.
+
+**Scope deliberately NOT taken, stated in the artifact rather than implied.** The shallower miss
+buckets are unchased; the `code-span` class is extracted and counted but not audited; and
+hallucinote's own known-wrong quotations stay, because that audit reported without editing on
+purpose — it is the record under audit and its anchors are keyed to it.
+
+**`authoring.md` gains the quotation-drift rule, which does not exist on `develop`.** An earlier
+draft of this entry said the rule was "amended rather than extended, from two controls to three" —
+that described a predecessor branch that never merged, and is false of what ships here: this bundle
+introduces the rule whole. It carries the corrupted-fragment discriminator with the measured
+false-green that proves it load-bearing, that controls on the SEARCH do not cover the EXTRACTOR,
+that a control closing a class must discriminate the class and not the instance, and that a refusal
+is a guard whose roster is derived from the source rather than remembered.
 ## 2026-09-18: `review-stats` can slice by date and see whether a finding ships a fix plan
 
 <!-- prawduct: type=feat | scope=review-yield-instrument -->
