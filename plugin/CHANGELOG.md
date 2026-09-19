@@ -17,6 +17,23 @@ says so wherever it appears, so a repo pinned to the develop ref can tell what i
 cached review verdict from the released plugin is not replayed against this one. Rolling release
 notes accumulate here, and this section is renamed to the release number at the cut.
 
+**Your test runner can make every run recordable — `test-report-scope`.** Two properties, stated in
+`building.md` § Test Discipline and specified in `docs/test-report-contract.md`: put the
+machine-readable report path in your runner's default-arguments file so a report is a side effect
+of every run (nothing typed, nothing to forget), and have its pre/post-run hook write a small JSON
+record beside that report saying whether the invocation was narrowed. The payoff is that a suite
+you ran by hand is ingested with `prawduct-hook test-evidence record --from-junit <report>` instead
+of run a second time; the record is what stops a `-k`-scoped report being ingested as the whole
+suite's evidence. Prawduct installs none of this — the contract names the two surfaces every
+ecosystem has (pytest, .NET, Go, Jest, CTest) and reads what your runner writes.
+
+**Nothing changes for a repo that does not wire it.** `--from-junit` behaves exactly as before when
+no scope record sits beside the report. If one does, a narrowed, truncated, malformed or
+schema-ahead record refuses the ingest (exit 2) and writes nothing, so a green record is never
+overwritten by a partial one. Two conventional paths — `.prawduct/.test-report.xml` and its
+`.scope.json` — join the managed `.gitignore` section, so `/prawduct:doctor` will offer to add them;
+both are cleared at the session boundary with the rest of the session files.
+
 **Review rigor is now stage-keyed, and this one reverses two promises v3.2.2 made you.** Reviews
 run at two stages. The **inner** stage — a chunk review, a `final`, a `verify-resolutions` — blocks
 only on the ships-broken set and reports everything else as an observation. The **boundary** — a

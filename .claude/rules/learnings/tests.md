@@ -173,7 +173,7 @@ between the real rule and the plausible wrong ones. Related: the docstring-as-as
 consequence, and the sharpest tell is that behaviour was correct throughout, so nothing but the
 prose was ever wrong.
 
-### When test evidence is stale, run the suite THROUGH `prawduct-hook test-evidence record` rather than running it bare and recording the counts after — because a declared `test_command:` refuses `--from-counts` (it wants the machine-readable report, not your transcription) and a bare run drops the `--junit-xml` that `--from-junit` would ingest, so a bare `pytest` run buys nothing and the suite runs twice. Two five-minute runs at a PR boundary, for the same green. Tell: you just read `stale:` from `test-status` and your next thought is the pytest command you already know
+### When test evidence is stale, run the suite THROUGH `prawduct-hook test-evidence record` — UNLESS the repo emits a report from every run (`docs/test-report-contract.md`, 2026-09-19), in which case a bare run leaves a report and its scope record behind and `--from-junit` ingests it, which is what the contract is for. Where no producer is wired the original rule stands: a declared `test_command:` refuses `--from-counts` (it wants the machine-readable report, not your transcription) and a bare run drops the `--junit-xml` that `--from-junit` would ingest, so the suite runs twice. Two five-minute runs at a PR boundary, for the same green. Tell: you just read `stale:` from `test-status` and your next thought is the pytest command you already know
 
 **2026-09-12, PR #807 (`branch-pushed-gate`).** `/prawduct:pr` Step 1 says to check
 `prawduct-hook test-status` first and only run the suite if it reports `stale`. It reported stale, and
