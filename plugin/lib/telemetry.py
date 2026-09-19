@@ -42,13 +42,19 @@ from statistics import median
 
 from . import gitstate
 from .ledger import ledger_path
+from .timewindow import in_window, is_usable_bound
 
 #: Report schema. Bumped to 2 when the learning-loop block arrived, to 3 when
 #: `units_uncited` joined it, to 4 when verify-pass `observations` joined every
 #: stat block, to 5 when `by_stage` joined the groupings, and to 6 when every
 #: stat block gained `duration_measured` / `duration_self_reported`: the
 #: `--json` shape gained keys each time, and TEL-7A4X keys on this shape.
-REPORT_SCHEMA_VERSION = 6
+#: Bumped to 7 when a `window` header and a per-severity `remedies` block
+#: joined — the first states the bounds in force so a slice is never mistaken
+#: for the whole corpus, the second reports whether a finding ships a fix plan.
+#: The contract's prose home is ``docs/governance-telemetry.md``; a bump that
+#: does not reach it leaves the published shape and its description disagreeing.
+REPORT_SCHEMA_VERSION = 7
 
 #: The two review stages a `review.critic` record can carry (`stage`, written
 #: by `critic-begin` onto the manifest and carried through the fact and the
@@ -118,7 +124,9 @@ def _canonical_model(model) -> str | None:
     return model.strip()
 
 
-def _read_events(path: Path) -> "tuple[list[dict], dict, dict, str | None]":
+def _read_events(
+    path: Path, since: "str | None" = None, until: "str | None" = None,
+) -> "tuple[list[dict], dict, dict, str | None]":
     """All reportable ``review.*`` events oldest-first, skip counts, the
     learning-loop tallies, and the read failure if the file could not be
     opened at all.
@@ -144,6 +152,14 @@ def _read_events(path: Path) -> "tuple[list[dict], dict, dict, str | None]":
     shape to carry an internal signal is how a payload acquires a key nobody
     registered, which is the defect this bundle's own review caught one
     command over.
+
+    **The window scopes THIS pass, not its result.** Every tally here —
+    reviews, skips and the learning counts — must describe the same
+    population, or a windowed report prints whole-corpus learning and skip
+    numbers under a banner saying it is a slice, and two windows summed by a
+    `--json` consumer double-count them. Filtering after the fact re-scopes
+    only whichever aggregate the filter happens to touch, which is the shape
+    that makes a before/after split show identical numbers in both halves.
     """
     skipped = {"corrupt_lines": 0, "unknown_kinds": 0, "invalid_payloads": 0}
     learning = {"written": 0, "fired": 0}
@@ -182,6 +198,10 @@ def _read_events(path: Path) -> "tuple[list[dict], dict, dict, str | None]":
             continue
         if not isinstance(event, dict) or not isinstance(event.get("event"), str):
             skipped["corrupt_lines"] += 1
+            continue
+        # Before any counter moves: an out-of-window line is not this
+        # report's business at all, so it is neither counted nor skipped.
+        if not in_window(event.get("ts"), since, until):
             continue
         kind = event["event"]
         if kind in _LEARNING_KINDS:
@@ -254,6 +274,36 @@ def _extract_row(event: dict) -> dict:
         for f in findings
         if isinstance(f.get("severity"), str)
     ]
+    # Does a finding SHIP A FIX PLAN? The severity label says how much a finding
+    # is worth; the remedy beside it is what makes it read as work, and the two
+    # can disagree — a NOTE carrying a finished fix plan is indistinguishable
+    # from a WARNING at the point the builder decides what to do. Counted here
+    # so a change to the severity contract can be graded on what reviewers
+    # actually write rather than on what the protocol tells them to.
+    # Three outcomes, not two. ABSENT (no `recommendation` key at all) is not
+    # the same claim as BLANK (the key is there and says nothing): the PR
+    # reviewer's findings carry `{goal, severity, file, line, summary}` and have
+    # no remedy field in their schema, so folding absence into "wrote no
+    # remedy" reports that role at 0% — a statement about its behaviour that
+    # its schema makes meaningless. BLANK, by contrast, does count as no
+    # remedy — a field present and saying nothing is not a fix plan, and
+    # treating it as one would report the contract already satisfied. Counted
+    # apart so a rate is only ever computed over findings whose contract HAS
+    # the field.
+    remedies = []
+    for f in findings:
+        if not isinstance(f.get("severity"), str):
+            continue
+        sev = f["severity"] if f["severity"] in _SEVERITIES else "other"
+        if "recommendation" not in f:
+            remedies.append((sev, "absent", None))
+            continue
+        rec = f.get("recommendation")
+        rec = rec.strip() if isinstance(rec, str) else ""
+        if rec:
+            remedies.append((sev, "present", len(rec.split())))
+        else:
+            remedies.append((sev, "blank", None))
     # Read, never derived from the mode: `critic-begin` is the one home of the
     # mode → stage mapping, and an event that predates the field says nothing
     # about its stage. Deriving it here would silently backfill history with a
@@ -271,6 +321,7 @@ def _extract_row(event: dict) -> dict:
         # separately.
         "duration_measured": measured,
         "severities": severities,
+        "remedies": remedies,
         "findings": findings,
         "observations": observations,
     }
@@ -301,6 +352,36 @@ def _group_stats(rows: list[dict]) -> dict:
         total_findings += len(r["severities"])
         if any(sev in _ACTIONABLE for sev in r["severities"]):
             actionable_reviews += 1
+    # Per severity: how many findings carry a remedy, and how long it runs.
+    # `rate` and `median_words` are None rather than 0 when the severity had no
+    # findings at all — "nobody wrote one" and "there was nothing to write one
+    # for" are different answers, and a 0% that means the latter reads as the
+    # contract already holding.
+    remedy_words: dict[str, list[int]] = {sev: [] for sev in (*_SEVERITIES, "other")}
+    remedy_kinds: dict[str, dict] = {
+        sev: {"present": 0, "blank": 0, "absent": 0} for sev in (*_SEVERITIES, "other")
+    }
+    for r in rows:
+        for sev, kind, words in r["remedies"]:
+            remedy_kinds[sev][kind] += 1
+            if words is not None:
+                remedy_words[sev].append(words)
+    remedies = {}
+    for sev in (*_SEVERITIES, "other"):
+        kinds, words = remedy_kinds[sev], remedy_words[sev]
+        total = kinds["present"] + kinds["blank"] + kinds["absent"]
+        # The denominator is findings whose schema CARRIES the field. All-absent
+        # means the question does not apply to this population, which is a null,
+        # never a zero.
+        eligible = kinds["present"] + kinds["blank"]
+        remedies[sev] = {
+            "findings": total,
+            "with_remedy": kinds["present"],
+            "blank_remedy": kinds["blank"],
+            "no_remedy_field": kinds["absent"],
+            "rate": round(kinds["present"] / eligible, 3) if eligible else None,
+            "median_words": round(median(words), 1) if words else None,
+        }
     recording = [r["observations"] for r in rows if r["observations"] is not None]
     # The two populations, never pooled. `duration_total_seconds` and
     # `duration_median_seconds` below are the POOLED figures every existing
@@ -321,6 +402,7 @@ def _group_stats(rows: list[dict]) -> dict:
         "duration_measured": _population(measured),
         "duration_self_reported": _population(self_reported),
         "findings": by_severity,
+        "remedies": remedies,
         "findings_per_review": round(total_findings / n, 2) if n else 0.0,
         "actionable_rate": round(actionable_reviews / n, 3) if n else 0.0,
         "observations": sum(recording),
@@ -580,6 +662,47 @@ def _fmt_stats(stats: dict) -> str:
     )
 
 
+def _window_line(window: dict) -> list[str]:
+    """The windowed banner, or nothing at all.
+
+    A windowed report and a whole-corpus one are otherwise the same shape, and a
+    reader who cannot tell them apart will compare one against the other — which
+    is the mistake a before/after measurement exists to avoid. Printed loudly
+    rather than as a footnote for that reason.
+    """
+    since, until = window.get("since"), window.get("until")
+    if not since and not until:
+        return []
+    span = f"{since or 'the beginning'} .. {until or 'now'}"
+    return [f"WINDOW: {span} — this is a SLICE, not the whole corpus"]
+
+
+def _fmt_remedies(remedies: dict) -> str:
+    """Per severity: how often a finding ships a fix plan, and how long it runs.
+
+    `n/a` is not 0% — it is the answer for a population whose findings carry no
+    `recommendation` field at all (the PR reviewer's schema), where a rate would
+    be a claim about behaviour the schema cannot support.
+    """
+    parts = []
+    for sev in (*_SEVERITIES, "other"):
+        d = remedies.get(sev) or {}
+        if not d.get("findings"):
+            continue
+        if d.get("rate") is None:
+            parts.append(f"{sev} n/a ({d['no_remedy_field']} with no remedy field)")
+            continue
+        pct = round(d["rate"] * 100)
+        words = d["median_words"]
+        frag = f"{sev} {pct}% of {d['with_remedy'] + d['blank_remedy']}"
+        if words is not None:
+            frag += f", median {words:g} words"
+        if d.get("no_remedy_field"):
+            frag += f" (+{d['no_remedy_field']} no field)"
+        parts.append(frag)
+    return " | ".join(parts) if parts else "(no findings)"
+
+
 def _render_human(report: dict, ledger_rel: str) -> str:
     sk = report["skipped"]
     lines = [
@@ -587,8 +710,10 @@ def _render_human(report: dict, ledger_rel: str) -> str:
         f"events: {report['events_total']} review event(s); skipped: "
         f"{sk['corrupt_lines']} corrupt line(s), {sk['unknown_kinds']} unknown kind(s), "
         f"{sk['invalid_payloads']} invalid payload(s)",
+        *_window_line(report.get("window") or {}),
         "",
         f"overall: {_fmt_stats(report['overall'])}",
+        f"remedies: {_fmt_remedies(report['overall']['remedies'])}",
         "",
         "by role x model x mode:",
     ]
@@ -635,12 +760,37 @@ def review_stats(project_dir: Path, argv: list[str]) -> int:
     Exit 0 always when the report can be produced, including a missing ledger
     ("no review history" is an answer, not an error); exit 1 only on bad args.
     """
+    usage = "usage: review-stats [--json] [--since <stamp>] [--until <stamp>]"
     as_json = False
-    for arg in argv:
+    since = until = None
+    rest = list(argv)
+    while rest:
+        arg = rest.pop(0)
         if arg == "--json":
             as_json = True
+        elif arg in ("--since", "--until"):
+            if not rest:
+                print(f"review-stats: {arg} needs a value ({usage})", file=sys.stderr)
+                return 1
+            value = rest.pop(0)
+            # Refuse a bound this reader cannot interpret rather than filtering
+            # on it as a bare string. A window is read as a before/after
+            # comparison, so a bound that silently means something other than
+            # what was typed moves events between the two halves and the
+            # resulting delta is attributed to the change under test.
+            if not is_usable_bound(value):
+                print(
+                    f"review-stats: {arg} value {value!r} is not a date, month or"
+                    f" ISO timestamp ({usage})",
+                    file=sys.stderr,
+                )
+                return 1
+            if arg == "--since":
+                since = value
+            else:
+                until = value
         else:
-            print(f"review-stats: unknown argument {arg!r} (usage: review-stats [--json])", file=sys.stderr)
+            print(f"review-stats: unknown argument {arg!r} ({usage})", file=sys.stderr)
             return 1
 
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
@@ -651,7 +801,7 @@ def review_stats(project_dir: Path, argv: list[str]) -> int:
         # renders as the empty report it truthfully is, with the cause on
         # stderr beside it. `round_price` is the caller that must distinguish
         # them, because its reason string gets persisted.
-        events, skipped, learning, _unreadable = _read_events(path)
+        events, skipped, learning, _unreadable = _read_events(path, since, until)
     else:
         events, skipped = [], {"corrupt_lines": 0, "unknown_kinds": 0, "invalid_payloads": 0}
         learning = {"written": 0, "fired": 0, "units_written": 0, "units_fired": 0, "units_uncited": 0}
@@ -663,6 +813,10 @@ def review_stats(project_dir: Path, argv: list[str]) -> int:
         "schema_version": report.pop("schema_version"),
         "project": project_dir.resolve().name,
         "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        # Stated even when null. A windowed report and a whole-corpus one are
+        # the same shape, and a consumer that cannot tell them apart will
+        # compare one against the other.
+        "window": {"since": since, "until": until},
         **report,
     }
 

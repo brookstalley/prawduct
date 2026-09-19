@@ -5,6 +5,63 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-18: `review-stats` can slice by date and see whether a finding ships a fix plan
+
+<!-- prawduct: type=feat | scope=review-yield-instrument -->
+
+**A before-measurement, shipped before the change it exists to grade.** `nonfunctional-requirements.md`
+requires that adding a control name the yield it expects *and emit that yield observably* — a control
+whose findings are printed and forgotten can never be retired on evidence, only defended on
+principle. The review-economics program (#829–#834) proposes six changes to what reviews cost, and
+nothing in the repo could measure the before-state of any of them.
+
+`review-stats` gains two things. **`--since` / `--until`** window bounds, inclusive, where a bound
+shorter than a full timestamp names a *period*: `2026-09` is the whole of September. Compared as
+bare strings every such bound excludes its own period, which silently shortens whichever window it
+closes — and the window a before/after comparison closes is the one the conclusion is read from. The
+period cases are not merely modelled on `tools/pr-review-yield.py`, which answers the same question
+for the PR reviewer — the two now **share** the predicate. `plugin/lib/timewindow.py` is its one
+home, and both instruments import it: written out at each of them it had already diverged, with the
+tool comparing a lower bound as a bare string while the library parsed it, so the same `--since`
+selected different populations in the two reports a person would naturally compare against each
+other. `tests/test_window_bounds_one_home.py` pins that both readers resolve to the one source and
+that neither has re-grown a private copy. A bound this reader cannot interpret is refused rather than filtered on, and a windowed
+report carries a `WINDOW:` banner and a `window` header so it can never be mistaken for a
+whole-corpus one.
+
+**A remedy dimension**: per severity, how many findings carry a non-empty `recommendation` and how
+long it runs. It counts three outcomes rather than two — present, blank, and *absent*. The PR
+reviewer's findings carry `{goal, severity, file, line, summary}` and have no remedy key at all, so
+folding absence into "wrote no remedy" reported that role at 0%, a claim about its behaviour its
+schema cannot support; `rate` is null for such a population.
+
+What it says about this repo, measured at `--since 2026-08-04`: **every one of 1,141 Critic notes
+carries a remedy, at a median of 122 words.** The severity label says *not worth your time* and the
+payload says otherwise.
+
+**The window scopes the read, not the result.** Reviews, skips and the `learning` tallies all
+describe the windowed population, so two adjacent windows partition the corpus and a consumer
+summing them double-counts nothing — a filter applied afterwards re-scopes only whichever aggregate
+it happens to touch, which is how a before/after split shows identical learning counts in both
+halves.
+
+`REPORT_SCHEMA_VERSION` 6 → 7. Both additions are additive — no `--json` key removed or repurposed —
+and `TestJsonSchemaStability`'s pins are renegotiated in the open, continuing that class's documented
+version history. **`plugin/docs/governance-telemetry.md` is updated with them** — it is named by both
+`api-contract.md` and the module docstring as the `--json` contract's prose home, and a bump that
+does not reach it leaves the published shape and its description disagreeing. That pass also closes
+**schema 6's** drift: `duration_measured` / `duration_self_reported` had shipped with no prose home
+at all.
+
+**This branch was wave 1 of #832 and stopped after one chunk, deliberately.** #832 would have
+stripped the remedy text from notes; the owner questioned it mid-build and the measurement agreed.
+The direct lever is what a note *costs*, not what it says — at inner stage a note is already
+demoted to a free-to-accept observation, and that change alone took `verify-resolutions` from 2.04
+non-blocking findings per round to 0.09. The 87% of notes that still buy rounds (992 of 1,141) come
+from the boundary stage, which is **#830**'s territory and departs from a ratified norm, so it gets
+its own plan. The instrument survives the pivot unchanged, because it is what will grade whatever
+ships.
+
 ## 2026-09-18: The PR reviewer reads one payload, reviews what it actually catches, and is timed
 
 <!-- prawduct: type=feat | scope=pr-review-payload -->
