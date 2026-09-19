@@ -139,6 +139,22 @@ The `final`/`cumulative` Critic owns this scan (`skills/critic/review-cycle.md` 
 
 **You are not given the learnings at all, and that is deliberate.** Two reasons, neither of which is "they are in context already": the goal that consumed them returned **1 finding in 122 reviews**, and the scan itself belongs to the Critic by the paragraph above — so this reviewer was reading a corpus it was forbidden to use. A reintroduced pattern you recognise anyway while reading for your own goals is still a WARNING at minimum; recognising one is not the scan you are forbidden.
 
+**One exception to that severity, and it applies to your own goals too: when the rule exists and
+nothing enforces it, the finding is the rule — once.** If what you are about to file is the Nth
+occurrence of something already written down (a `.claude/rules/learnings/` rule, a methodology guide, a `## Direction`
+norm) that no deterministic check owns (`record_lint`'s `CHECKS`, a hook, a gate), file ONE finding
+naming the rule and what would mechanize it, at the severity an instance would have carried, opening
+its `summary` with `rule-unenforced:` so its yield stays countable — not one finding per occurrence.
+This is the cheapest thing you can do about run-count (`nonfunctional-requirements.md` § Direction:
+review cost is unit-cost × run-count, and *both* are levers): a class re-filed per instance buys a
+round every branch, forever. **Substitution, not suppression** — the report still happens, it just
+names the enforceable cause. Scope is **this review**; deduping across branches is the builder's
+disposition to make, not yours to infer. Check the second condition rather than assuming it: stale
+line-number citations qualify (a written rule, and no check since `dangling-ref` was measured and
+removed), but counts only partly do — `record_lint`'s `suite-total-claim` already owns suite totals,
+so only the figures it deliberately excludes are unenforced. A first-time defect, or one a check
+already covers, is an ordinary finding — file it normally.
+
 ## Severity Levels
 
 - **BLOCKING**: Must fix before creating PR. Release blockers — secrets or credentials in the diff, an incoherent changeset that doesn't match what the PR claims to ship.

@@ -124,15 +124,31 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # one of which every route loads. Declared, and the first thing this control
     # priced: the per-file tests saw two +30s, and only this sum shows that a
     # dispatched reviewer on a three-reviewer roster pays it three times.
+    # 2026-09-19 (#640 re-apply, review-convergence Chunk 01): the
+    # `rule-unenforced` substitution lands in `critic-reviewer.md` (+289) and
+    # `review-cycle.md` (+83). A DECLARED raise — the rule is a new obligation,
+    # not a restatement, and it exists to REMOVE rounds by substituting one
+    # finding for N.
+    #
+    # This is the first edit the route sums priced that the per-file budgets
+    # could not, and the asymmetry is the whole argument for them:
+    # `critic-reviewer.md` carries NO per-file ceiling, so its +289 was
+    # invisible to every other control — and a coordinator roster pays it once
+    # per reviewer, so the dispatched route moves +372 against single-pass-full's
+    # +83. The cheap route is untouched, which is the split working.
     "single-pass-inner": 6301,
-    "single-pass-full": 20272,
-    "dispatched-reviewer": 19095,
+    "single-pass-full": 20355,
+    # +2 in the same chunk: adapting the ported prose off the retired
+    # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
+    # single-resolver guard requires and which a near-verbatim port carries
+    # in from its source branch by construction.
+    "dispatched-reviewer": 19469,
 }
 
 PAYLOAD_CEILINGS = {
     "single-pass-inner": 6302,
-    "single-pass-full": 20273,
-    "dispatched-reviewer": 19096,
+    "single-pass-full": 20356,
+    "dispatched-reviewer": 19470,
 }
 
 

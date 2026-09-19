@@ -75,11 +75,11 @@ Every mechanism named below was read at its call site on 2026-09-19.
 
 ## Status
 
-- [ ] Chunk 01: Re-apply the `rule-unenforced` substitution (#640, stranded branch)
+- [x] Chunk 01: Re-apply the `rule-unenforced` substitution (#640, stranded branch)
 - [ ] Chunk 02: Refuse a verify pass anchored on a verify pass that found only its own churn (#167)
 - [ ] Chunk 03: The cost lead knows an anchor makes the next edit cost a round (#851)
 Context: Plan written 2026-09-19 on `feature/review-convergence`, cut from `develop` at 4f2911e6
-(the `review-cost-decision` merge). Nothing built yet. Next: Chunk 01.
+(the `review-cost-decision` merge). Chunk 01 re-applied and committed. Next: Chunk 02 (#167).
 
 ## Deferred, with its reason — #847 / #694 is not a chunk
 

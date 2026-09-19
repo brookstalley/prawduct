@@ -836,7 +836,12 @@ LAST_MEASURED_TOKENS = {
     # rule stated without its bound at one carrier is the drift this scope exists to
     # end. Nothing was cut to fund it: the digest's share was written at that surface's
     # own compressed register instead, which is why its 500-char reserve is untouched.
-    "skills/critic/review-cycle.md": 11152,
+    # +83 on 2026-09-19 (#640 re-apply, review-convergence Chunk 01): the pointer to
+    # the `rule-unenforced` substitution, whose canonical statement lives in
+    # `agents/critic-reviewer.md` so this surface carries a pointer rather than a
+    # second copy. A declared raise; the rule removes review rounds by substituting
+    # ONE finding for N occurrences, which is worth more than 83 tokens of payload.
+    "skills/critic/review-cycle.md": 11235,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -5538,7 +5543,7 @@ class TestReviewCycle:
         # RAISED 11091 -> 11106 (2026-09-17, review-stages integration, R-5): the
         # Small row now states what inference answers (`chunk`; `final` by
         # declaration). Declared, not paid — reading + 1.
-        assert tokens < 11153, f"review-cycle.md is ~{tokens} tokens, should be <11153"
+        assert tokens < 11236, f"review-cycle.md is ~{tokens} tokens, should be <11236"
 
     def test_framework_checks_token_budget(self):
         # Ceiling 1150. This file is `final`/`cumulative` payload: SKILL.md's

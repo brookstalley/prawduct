@@ -103,3 +103,28 @@ defect. What made them expensive was choosing FIX and then delivering a prefix o
 [[A fix lands at the instance a review named; the defect lives in the class]] — that rule is about
 the class being wider than the instance; this one is about what happens when you *know* the class
 and ship part of it anyway.
+
+### Before recommending that something be BUILT, check whether it was already built and REMOVED — a removal comment is a decision with measurement behind it, and re-proposing it spends that measurement twice. Absence invites a proposal; a decision demands new evidence to reopen it. Tell: you are proposing a control and have not opened the module that would host it
+
+**The case.** An audit of 141 PR-review records led with "lint pinned figures and citations at the
+source." Both halves were already answered in the tree. `record_lint`'s `suite-total-claim` had
+covered pinned suite totals since it shipped. The citation half — `dangling-ref` — had been built,
+**measured at 3 findings and 0 true positives**, deleted under `nonfunctional-requirements.md`
+§ Direction (*a control that fires and catches nothing is removed by default*), and annotated with
+the exact bar for re-adding it: evidence that the class costs review rounds. The audit did not clear
+that bar; of its two citation-drift findings, one sat in a file every check excludes by design and
+the other was a wrong symbol name that path resolution would not catch.
+
+**The evidence was in hand before the recommendation was made.** One reviewed finding cited
+`record_lint.py` by name. It was read as an *example of citation drift* rather than as proof that a
+record-lint subsystem existed — the file was named in the input and never opened.
+
+**The cheap check** is opening the module that would host the thing you are about to recommend. The
+removal comment exists *specifically* to stop a helpful future reader restoring the check.
+
+**Re-homed 2026-09-19** from the pre-migration `learnings.md`/`learnings-detail.md` pair, where it
+stranded on an unmerged branch for nine days. Filed in `reviews.md` because its trigger is
+recommending a control while auditing — but it generalizes to planning, and the 2026-09-19
+convergence pass is the confirming instance in the other direction: `documentation/issues/167-design.md`
+was a complete design three separate searches had missed, and the mechanical seeder
+(`prawduct-hook jurisdiction`) is what surfaced it, not a more careful read.
