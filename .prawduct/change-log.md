@@ -66,14 +66,21 @@ framework-wide default, is untouched: its sentence is written at that surface's 
 governance prose file carries a budget and every budget is green; nothing priced the total, and the
 total is what a reviewer pays. The item quoted ~26k tokens read before a line of diff. The dispatch
 path falsifies it: `SKILL.md` sends a `chunk`/`verify-resolutions` reviewer to `goals-1-3.md` and
-tells it to read *"nothing else"*, so the real figures are **inner 8,743 / boundary 22,714**. That
+tells it to read *"nothing else"*, so the cheap protocol route is a fraction of the full one. That
 changes the control rather than just the arithmetic — `verify-resolutions` is 58% of review volume
 and pays the SMALL payload, so one ceiling over the union would price what nobody loads and let the
-inner stage double with nothing red. `tests/test_reviewer_payload_budget.py` ships two stage-keyed
-ceilings instead, mirroring the stage-keyed rigor rule they protect, plus a relational pin that the
-inner payload stays under half the boundary's — the property the `goals-1-3.md` split exists for,
-which survives both numbers moving. Its member list is derived from `SKILL.md`'s routing prose, not
-listed here, so a sixth protocol file cannot join the dispatch without joining a sum. Per the NFR
+cheap route double with nothing red. `tests/test_reviewer_payload_budget.py` ships **three**
+ceilings keyed by **route**, not by stage: the cumulative review found that `review-cycle.md` puts
+`final` in the INNER stage while routing it to the full protocol, so a stage-keyed sum priced it at
+a third of what it loads — and that single-pass modes dispatch no subagent, so charging them the
+agent definition priced a file nobody reads. The three routes are the single-pass fork on each
+protocol and one dispatched reviewer, whose system prompt replaces `SKILL.md`. A relational pin
+keeps the cheap route under half the full one — the property the `goals-1-3.md` split exists for,
+which survives every number moving. Member lists are derived from `SKILL.md`'s routing prose, not
+listed here, so a protocol file cannot join the dispatch without joining a sum; the classes that
+derivation cannot see are enumerated in the module's own docstring rather than left implied.
+Re-derive the readings with `python3 -m pytest tests/test_reviewer_payload_budget.py` — they are in
+the module, dated, and they moved once already inside this same bundle. Per the NFR
 norm's requirement that a new control name its expected yield: this refuses an undeclared payload
 raise and shrinks nothing today; if a year passes with no reading moved and no raise declared, it
 fired zero times and should be retired rather than defended.

@@ -86,13 +86,17 @@ diff**: `review-cycle.md` (11,105 tokens), `review-protocol.md` (4,312), `SKILL.
 > `chunk` / `verify-resolutions` reviewer to `goals-1-3.md` and tells it to read *"nothing else —
 > not the two files below"*; only `final` / `cumulative` opens the seven-goal protocol, the
 > lifecycle table and the framework checks. Measured from the dispatch path rather than from this
-> list: **inner 8,743 tokens, boundary 22,714** (the ~26k figure is the boundary payload, slightly
-> over-counted). The distinction matters for the conclusion, not just the arithmetic —
+> list: the cheap protocol route is a fraction of the full one (the ~26k figure is closest to the
+> full-protocol payload, slightly over-counted). The distinction matters for the conclusion, not just the arithmetic —
 > `verify-resolutions` is 58% of review volume and pays the SMALL one, so a single ceiling over the
 > union would have priced a payload nobody loads while letting the inner stage double unnoticed.
-> The control shipped is two stage-keyed ceilings: `tests/test_reviewer_payload_budget.py`, which
-> derives its member list from `SKILL.md`'s routing prose so a sixth protocol file cannot join the
-> dispatch without joining a sum. The growth claim in the table below is unaffected and stands.
+> The control shipped is THREE ceilings keyed by ROUTE — `tests/test_reviewer_payload_budget.py`,
+> which derives its member lists from `SKILL.md`'s routing prose so a protocol file cannot join the
+> dispatch without joining a sum. Keyed by route rather than stage because `review-cycle.md` puts
+> `final` in the inner stage while routing it to the full protocol, and because single-pass modes
+> dispatch no subagent. The readings live in that module, dated; do not copy them here, since they
+> moved once inside the bundle that introduced them. The growth claim in the table below is
+> unaffected and stands.
 
 Every one of those files carries a token budget and every budget is green. **Nothing prices the
 sum:**

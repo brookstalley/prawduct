@@ -70,9 +70,11 @@ levers that suppress finding content. Each chunk's mechanism was read at its cal
 - ~~[ASSUMPTION: the reviewer payload set for Chunk 03's ceiling is the five `skills/critic/` files
   plus `agents/critic-reviewer.md`]~~ **FALSIFIED at Chunk 03's first step, 2026-09-19.** The
   payload is stage-keyed and no reviewer loads all five: `SKILL.md` routes `chunk` /
-  `verify-resolutions` to `goals-1-3.md` and forbids the rest. Measured inner 8,743 / boundary
-  22,714 against the artifact's single ~26k. Chunk 03 ships two stage-keyed ceilings instead of
-  one, and the artifact's §4 carries the correction. This is why the chunk's first step was
+  `verify-resolutions` to `goals-1-3.md` and forbids the rest. Chunk 03 shipped ceilings per stage
+  against the artifact's single ~26k — and the cumulative review then falsified the STAGE key too
+  (`final` is an inner-stage mode carrying the full protocol), so the shipped control is three
+  ceilings keyed by route and actor. The readings live in the module, not here: they moved twice
+  inside this bundle, which is the argument for not copying them into prose at all. This is why the chunk's first step was
   written as a re-derivation rather than as a build against the list.
 
 **What would raise confidence:** N/A — the two assumptions above are cheap to correct in-chunk and
