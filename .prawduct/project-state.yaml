@@ -129,11 +129,18 @@ suite_coupled_prefixes:
   # held-out residual above; this is the live location that replaced it, and
   # nothing carried the coupling across the move.
   #
-  # Accepted cost: reflections write here, so a session that adds a rule marks
-  # its evidence stale and the next gate re-runs the suite. That is the correct
-  # answer — a corpus edit really can flip this suite — and it is stated rather
-  # than discovered.
-  - .claude/rules/learnings/
+  # Accepted cost: reflections write to `core.md`, so a session that adds a rule
+  # there marks its evidence stale and the next gate re-runs the suite. That is
+  # the correct answer — a corpus edit really can flip this suite.
+  #
+  # The FILE, not the directory: `TestAgainstTheRealCorpus` reads
+  # `RULES_DIR_REL / CORE_NAME` and no real-repo test reads an area file, so a
+  # directory prefix would buy a suite re-run on every area-file write that no
+  # test outcome depends on. That is exactly what the control assertion below
+  # forbids two entries above ("Name the file, not its parent"), and the guard
+  # cannot see this one because its registry key IS `core.md` — narrowing leaves
+  # all nine cases green. Found by review, not by the guard.
+  - .claude/rules/learnings/core.md
 
 # Files carrying the release version, read by `check-released` FROM THE TAG'S
 # TREE — which files carried a release's version is a fact about that release,

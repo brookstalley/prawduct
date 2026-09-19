@@ -12,11 +12,19 @@
 **`suite_coupled_prefixes` gains three named files, each read by a test that anchors on the real
 repo.** `.prawduct/artifacts/data-model.md` (`TestTheMarkerNormKeepsItsReason`),
 `.prawduct/operator-verification.md` (`test_operator_verification`'s `LIVE_QUEUE`), and
-`.claude/rules/learnings/` (`TestAgainstTheRealCorpus`, which asserts distinct rules get distinct
-ids, so a colliding heading turns the suite red). Named files rather than `.prawduct/artifacts/`,
-which is the cost argument the build-plan prefix beside them already makes and which still holds.
-The learnings entry carries a stated cost: reflections write there, so adding a rule now marks
-evidence stale.
+`.claude/rules/learnings/core.md` (`TestAgainstTheRealCorpus`, which asserts distinct rules get
+distinct ids, so a colliding heading turns the suite red). Named files rather than
+`.prawduct/artifacts/`, which is the cost argument the build-plan prefix beside them already makes
+and which still holds. The learnings entry carries a stated cost: reflections write to `core.md`,
+so adding a rule there now marks evidence stale.
+
+**The learnings entry was a DIRECTORY for one commit, and review caught it.** `TestAgainstTheRealCorpus`
+reads `RULES_DIR_REL / CORE_NAME` and no real-repo test reads an area file, so the directory form
+bought a suite re-run on every area-file reflection write that no test outcome depends on — the
+exact tax the same commit's own control assertion forbids two entries above, whose message reads
+*"Name the file, not its parent."* The guard could not see it: its registry key IS `core.md`, so
+narrowing leaves all nine cases green. A guard pins what it was told to pin, and the thing it was
+told is the thing worth reviewing.
 
 **`.prawduct/change-log.md` is deliberately NOT added.** It is read by a real-repo test too, and its
 exclusion is a priced decision pinned by `test_the_held_out_bookkeeping_files_are_recorded_as_a_residual`.
