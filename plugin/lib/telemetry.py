@@ -280,16 +280,16 @@ def _extract_row(event: dict) -> dict:
     # from a WARNING at the point the builder decides what to do. Counted here
     # so a change to the severity contract can be graded on what reviewers
     # actually write rather than on what the protocol tells them to.
-    # Absent, empty and whitespace-only all count as NO remedy: the field being
-    # present but blank is not a fix plan, and treating it as one would report
-    # the contract already satisfied.
     # Three outcomes, not two. ABSENT (no `recommendation` key at all) is not
     # the same claim as BLANK (the key is there and says nothing): the PR
     # reviewer's findings carry `{goal, severity, file, line, summary}` and have
     # no remedy field in their schema, so folding absence into "wrote no
     # remedy" reports that role at 0% — a statement about its behaviour that
-    # its schema makes meaningless. Counted apart so a rate is only ever
-    # computed over findings whose contract HAS the field.
+    # its schema makes meaningless. BLANK, by contrast, does count as no
+    # remedy — a field present and saying nothing is not a fix plan, and
+    # treating it as one would report the contract already satisfied. Counted
+    # apart so a rate is only ever computed over findings whose contract HAS
+    # the field.
     remedies = []
     for f in findings:
         if not isinstance(f.get("severity"), str):
