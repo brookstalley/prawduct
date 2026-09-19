@@ -95,31 +95,58 @@ reads. So every raise is scrutinised individually and approved on its merits —
 one, `core.md` 100→102 KB, with a carefully argued reason — while the sum quadruples and no gate
 ever sees it. That is why "it keeps getting slower" is true and why no single decision looks wrong.
 
-## 5. Interventions, ranked by measured size
+## 5. The program that already exists, and where this fits
 
-**A. Make a class finding's members mechanical (cheapest, attacks the 18%).**
-23% of findings are class-shaped and they are what produce consecutive rounds. Candidate: a class
-finding must carry its members as a checkable list, and the verify pass grades *each member* rather
-than the instance. Today that would have collapsed rounds 3, 4 and 5 into one.
+Filed 2026-09-18 from a repo-wide scan (1,020 reviews, 114h). **Read these before building
+anything.**
 
-**B. #167 — refuse a full re-round when zero blocking findings remain (biggest volume lever).**
-Already filed, at `stage: design`, and it targets exactly the 58%. **It is blocked on a design flaw
-already recorded upstream:** since `cdcac17d` a verify pass demotes everything below BLOCKING into
-`observations`, so a clean anchor's `findings` is empty *by construction* and D3's subset test can
-never fire — measured 0 of 22 post-2026-09-16 rounds. The intent is right; the predicate needs
-redesigning against the current demotion behaviour. **Do not build D3 as written.**
+| item | state | what |
+|---|---|---|
+| **#724** | open | the parent report. R1–R4, R7, R8 are unclaimed and still live there |
+| **#831** | open | make fix/accept mechanical and SHOW THE ROUND COST at the decision |
+| **#833** | open | bound "no pre-existing exception" and "deep context is a FIX signal" to blocking severity |
+| **#830** | open | severity selects the CHANNEL — notes are 53% of findings and 0% of what gates |
+| **#167** | open | refuse a full re-round when zero blocking remain (D3 unbuildable as written — see §5.1) |
+| **#262** | open | aggregate review cost and yield across governed products |
+| **#832** | **closed NOT_PLANNED** | suppress remedies on NOTEs — **declined deliberately**; do not re-propose |
+| **#829** | shipped | verify-resolutions no longer emits new non-blocking findings (verified live 2026-09-19) |
 
-**C. An aggregate ceiling on the reviewer payload.**
-Stops 4.6x becoming 9x. Does not shrink anything today, so it is prevention rather than relief. It
-is a maintainer-side cap on our own prose whose purpose is to remove cost, not the consumer-facing
-kind of tax the 2026-09-19 ruling refused.
+**#832's closing reasoning is the steer for everything else here**, and it is the owner's: the lever
+*"removes information rather than changing an incentive"*, and is *"satisfiable by rating WARNING
+instead"*, which displaces work up a severity while every metric reads as success. Prefer levers
+that **add cost information** over levers that suppress finding content.
 
-**D. Roster narrowing — smaller than it looked, and currently unmeasurable.**
-The ledger does not record roster size. The only proxy (`likely_duplicate_groups`, which populates
-only when duplicates are found) gives a LOWER BOUND of 50 of 219 cumulatives. The 0.55-vs-0.78
-yield figure in `plugin/CHANGELOG.md` was measured on the **fallback** population, not the
-risk-surface escalator that fires on this repo. **Instrument roster size first; do not act on the
-fallback measurement.**
+## 5.1 Recommended sequence
+
+**1. #831 — show the round cost at the decision.** The single largest avoidable cost measured
+today. `cost-of-commit` already knows that the FIRST non-blocking fix on a judgeable file buys a
+whole ~5-minute round and the next thirteen cost nothing — and that fact is invisible at the moment
+the fix/accept call is made. On 2026-09-19 that call was made ~30 times across two branches without
+it. It adds information rather than removing it, which is the direction #832's closure endorses.
+
+**2. #833 — bound the over-fixing rules to blocking.** Pairs with #831 and is nearly free: #831
+shows the price, #833 removes the pull. Both correct about blockers, both harmful about notes.
+Note the constraint in its own Scope-out: these are ratified rules, so the amendment needs a
+recorded decision and a witness that is not the amendment itself.
+
+**3. Convergence — `fix/reviewer-rule-over-instance`, then #847.** 18% of verify rounds find a
+BLOCKING finding, meaning the fix they verify is itself broken; that is what turns one round into
+three. **#640 is CLOSED while its fix sits unmerged on that branch** (#843), and it is the
+REPORTING half of #847's resolution half. Land the branch first — smallest of the four stranded,
+and the prerequisite. Verified 2026-09-19: `rule-unenforced` appears nowhere on `develop`.
+
+**4. #167 — needs a redesign, not a build.** Since `cdcac17d` a verify pass demotes everything
+below BLOCKING into `observations`, so a clean anchor's `findings` is empty by construction and
+D3's subset test can never fire (0 of 22 measured). The intent is right; the predicate is not.
+
+**5. The aggregate payload ceiling (§4) — not in the program, filed separately.** Prevention, not
+relief: it shrinks nothing today and stops 4.6x becoming 9x.
+
+**Deliberately NOT first: the roster.** The ledger does not record roster size, and the yield figure
+that would justify narrowing was measured on the fallback population, not the risk-surface
+escalator. Instrument before acting. Counter-evidence worth keeping: on 2026-09-19 two reviewers of a
+three-reviewer roster independently found the same defect from different goals with no visibility
+into each other.
 
 ## 6. Re-derive everything here
 
