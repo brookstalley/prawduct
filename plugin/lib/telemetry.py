@@ -482,13 +482,19 @@ def round_price(prawduct_dir: Path, *, mode: str = PRICED_MODE) -> dict:
     **Provenance, recorded so the figure is not defended as more than it is.**
     ``duration_seconds`` reaches the ledger from the reviewer's own partial —
     ``build_fact_body`` takes ``max()`` over the partials, and the reviewer
-    contract asks for a best-estimate wall-clock. So this is a median of
-    self-reported estimates, not of measured time, and estimates cluster on
-    round numbers. It is the right order of magnitude and the honest thing to
-    quote today; making it *measurable* means timing the
-    ``critic-begin``→``critic-consolidate`` interval in code instead of
-    trusting the partial, which is a change to what gets recorded and not to
-    what gets read here.
+    contract asks for a best-estimate wall-clock. So a median over THAT field is
+    a median of self-reported estimates, not of measured time, and estimates
+    cluster on round numbers: across the first 1,026 rounds it took 63 distinct
+    values, 80% of them multiples of 30 seconds.
+
+    Both review kinds now also carry a code-read clock where their dispatch was
+    marked (``review_dispatch``; ``critic-begin`` marks a Critic round,
+    ``pr-review-dispatch --begin`` a PR one), so a row can be measured rather
+    than estimated. The two never pool: :func:`review_stats` reports
+    ``duration_measured`` and ``duration_self_reported`` separately, because a
+    median over the mixture measures neither. An estimate remains the honest
+    fallback on every unmarked or degraded row, and the historical rows are all
+    estimates — the clock could not be read backwards.
 
     Unavailable is a first-class answer, not a failure: this is advice, and
     advice fails soft (``architecture.md`` § Direction). It is deliberately

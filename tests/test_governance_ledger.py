@@ -1015,7 +1015,10 @@ class TestDispatchClock:
         r = self._pr_append(repo)
         assert r.returncode == 0, r.stderr
         events = _ledger_events(repo)
-        assert "dispatched_at" not in events[0], "the critic event must never carry it"
+        assert "dispatched_at" not in events[0], (
+            "the critic event carried a measurement no critic mark was written for "
+            "— it can only have come from the PR reviewer's slot"
+        )
         assert "dispatched_at" in events[1]
 
     def test_an_unreadable_mark_degrades_with_a_named_reason(self, tmp_path):
@@ -1299,3 +1302,55 @@ class TestCriticDispatchClock:
         assert "does not consume" in reason
         with pytest.raises(KeyError):
             review_dispatch.marker_path(repo / ".prawduct", "learning.written")
+
+
+class TestTheMarkerNormKeepsItsReason:
+    """The amended `data-model.md` norm must carry its WHY, not just its verdict.
+
+    An amendment that keeps the conclusion and drops the reason is how the next
+    shape change loses the argument: a reader who finds "each kind owns its own
+    marker" with no stated cause has no way to know that merging them back is the
+    exact failure the norm was written against, and the concurrency it protects is
+    invisible from the code alone — the two reviews only contend on the timing the
+    parallel design deliberately produces.
+
+    Bound to the norm's own bullet rather than the file, so a matching phrase
+    elsewhere in a 1,000-line artifact cannot satisfy it.
+    """
+
+    NORM = Path(__file__).resolve().parent.parent / ".prawduct" / "artifacts" / "data-model.md"
+
+    def _bullet(self) -> str:
+        text = self.NORM.read_text(encoding="utf-8")
+        marker = "- **Each consuming event kind owns its OWN marker"
+        assert marker in text, (
+            "the per-kind marker norm is gone from data-model.md — if it was "
+            "renamed, this pin must move with it rather than be deleted"
+        )
+        start = text.index(marker)
+        end = text.index("\n- ", start + 1)
+        return text[start:end]
+
+    def test_the_norm_states_the_concurrency_it_protects(self):
+        bullet = self._bullet()
+        assert "concurrent" in bullet, "the norm no longer says the two reviews overlap"
+        assert "unreachable" in bullet, (
+            "the norm dropped the distinction that makes the per-kind split worth "
+            "its cost — unreachable by construction, not merely avoided by care"
+        )
+
+    def test_the_norm_records_the_alternative_it_rejected(self):
+        """The reader's first instinct is the shared marker with a wider consumer
+        set. A norm that does not name what it refused invites exactly that."""
+        bullet = self._bullet()
+        assert "shared" in bullet
+        assert "[DECISION:" in bullet, "the amendment landed with no recorded decision"
+
+    def test_the_amendment_points_outside_itself_for_its_authority(self):
+        """A governance change cannot supply its own authority, so the amendment
+        must name where the confirmation landed — somewhere that is not this
+        artifact."""
+        bullet = self._bullet()
+        assert "build-plan-critic-dispatch-clock" in bullet, (
+            "the amendment cites no confirmation outside data-model.md"
+        )

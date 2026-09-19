@@ -46,6 +46,23 @@ clock that never ticks is the failure this work exists to end.
 This chunk ships the instrument and takes no position on the decisions it informs — deliberately,
 and before them.
 
+**The ratified norm this changes, amended rather than quietly outgrown.** `data-model.md` § Direction
+read *"Only `review.pr` appends consume the marker"*, and its stated why — a `review.critic` append
+clearing a shared cell would silently delete a live PR review's measurement — is exactly the reason
+the marker was split instead of shared. So the why survives verbatim and the statement does not: it
+was written over a singular marker and there are now two. Amended on the owner's decision, with the
+confirmation landed outside the amendment (the build plan's recorded `[DECISION]`), because a
+governance change that is its own only witness is indistinguishable from laundering however sound
+the substance. Three tests pin the amendment against the failure that matters — an amendment keeping
+its conclusion and dropping its reason, which is how the next shape change loses the argument.
+
+**Prose that described the singular marker, swept in both vocabularies.** `telemetry.py`'s
+provenance docstring had described this very fix in the future tense; `ledger.py`'s envelope
+enumeration said the key appears only on a `review.pr`; `measure-consumer-overhead.py`'s hazard list
+told a reader to treat every `duration_seconds` as an estimate. A survivor of a shape change is
+usually phrased in neither the code's vocabulary nor the claim's, so both were searched, and the
+file being edited was searched before its siblings.
+
 ## 2026-09-18: the quotation half of the MCP mining debt, and the recipe that could not have paid it
 
 <!-- prawduct: type=feature | scope=mcp-quotation-audit -->

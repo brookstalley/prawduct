@@ -28,7 +28,10 @@ the ones that have actually burned someone, is `## Hazards` in that document:
   not a measured wall clock: the values are round (74 distinct values across
   discodon's 1,318 review events). This script cross-checks them against
   interval-measured time and prints the ratio per window. Trust the self-reports
-  only where that ratio is near 1.
+  only where that ratio is near 1. Rows dispatched under a plugin carrying the
+  per-kind dispatch clock also have a code-read interval, for BOTH review kinds —
+  but a consumer's history predates it, so expect the self-reported population to
+  dominate any window that reaches back.
 * **Interval attribution is biased by commit density.** Time is attributed to the
   event that ENDS each interval, so in a window with few commits, coding time gets
   absorbed into whatever governance event happened to come next. The `ratio`

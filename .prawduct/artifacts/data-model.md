@@ -171,9 +171,10 @@ here). Distinct from the evidence store: the ledger is *observability* (what hap
 audit/telemetry), the evidence store is *authority* (what the gate trusts). Intended to stay a
 thin event trail, not a second source of truth.
 
-**`dispatched_at` (optional envelope key, UTC ISO-8601).** Present only on a `review.pr` event
-whose dispatch was marked by `prawduct-hook pr-review-dispatch --begin` before the reviewer was
-spawned; written at append from a per-clone marker, once, never edited. It exists because the
+**`dispatched_at` (optional envelope key, UTC ISO-8601).** Present on a `review.*` event whose
+dispatch was marked before the reviewer was spawned — `prawduct-hook pr-review-dispatch --begin`
+for a `review.pr`, `critic-begin` itself for a `review.critic`; written at append from a per-clone
+marker, once, never edited. It exists because the
 envelope's `duration_seconds` is **self-reported by the reviewing model** — a recollection, not a
 clock — and a performance target stated against an estimate is a target stated against an estimate.
 
@@ -187,11 +188,29 @@ clock — and a performance target stated against an estimate is a target stated
   at, and consumption requires that same `HEAD` — a dispatch made against a different tree is not
   this review's dispatch. Same question the evidence store asks, and unlike an age threshold it
   invents no number. Consumers carry their own plausibility bound besides.
-- **Only `review.pr` appends consume the marker.** The Critic and the PR reviewer can run
-  concurrently, so a `review.critic` append that cleared it would delete a live PR review's
-  measurement, silently, on exactly the timing the concurrent design wants.
-- The marker itself (`.prawduct/.pr-review-dispatch.json`) is **Tier 3 per-clone state** — a
-  stopwatch, not an answer — and is gitignored.
+- **Each consuming event kind owns its OWN marker; no append can reach another kind's.** The
+  Critic and the PR reviewer run concurrently by deliberate arrangement
+  (`nonfunctional-requirements.md`: the two boundary reviews run in parallel, never sequentially),
+  so an append that cleared a *shared* marker would delete the other review's measurement —
+  silently, and on exactly the timing the concurrent design wants. One slot per kind makes that
+  failure **unreachable rather than avoided**: there is no shared cell, so no ordering of the two
+  appends can lose either measurement. `review_dispatch.MARKER_BASENAMES` is the mapping, and
+  adding a kind there gives it a file rather than a share of someone else's.
+  Amended: 2026-09-19, owner decision. `[DECISION: the marker becomes one slot per consuming event
+  kind, so a `review.critic` append consumes a Critic marker and never the PR reviewer's | the
+  norm previously read "Only `review.pr` appends consume the marker" and its stated why was that a
+  `review.critic` append clearing a shared marker would silently delete a live PR review's
+  measurement. That why is preserved by CONSTRUCTION and is the reason this shape was chosen over
+  the narrower one; what the old statement could not survive is that it was written over a singular
+  marker, and the Critic needed a clock of its own — 896 of the first 1,026 ledger rounds were
+  Critic rounds and not one was measured | user can veto/override]` The rejected alternative is
+  recorded because it is the one a reader will reach for: widening a single marker's consumer set
+  keeps the shared cell and asks every future caller to be careful around it, which is the failure
+  the norm exists to forbid. Confirmation landed outside this artifact, in
+  `build-plan-critic-dispatch-clock.md` § The norm departure, recorded.
+- The markers themselves (`.prawduct/.critic-review-dispatch.json`,
+  `.prawduct/.pr-review-dispatch.json`) are **Tier 3 per-clone state** — stopwatches, not answers —
+  and are gitignored.
 
 ### Tier 2 — Committed curated state (shared, source of truth for its domain)
 
