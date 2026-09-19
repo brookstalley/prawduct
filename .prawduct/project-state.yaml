@@ -103,6 +103,37 @@ suite_coupled_prefixes:
   # prevent. Price it before widening the prefix, not after.
   - .prawduct/artifacts/build-plan
   - .prawduct/artifacts/archive/build-plan
+  # Named files, for the same reason the build-plan prefix is narrow: each of
+  # these is READ BY A TEST that anchors on the real repo, so an edit to it can
+  # flip the suite red while the freshness gate reports day-old evidence as
+  # `current`. Added 2026-09-19 after exactly that: a reworded sentence in
+  # `data-model.md`'s per-kind marker norm dropped the plan citation
+  # `test_the_amendment_points_outside_itself_for_its_authority` requires, the
+  # local suite had already been recorded, `test-status` said `current`, and CI
+  # was the first thing to notice.
+  #
+  # Named rather than `.prawduct/artifacts/`, which is the same cost argument
+  # the build-plan comment above makes and which still holds: the wide prefix
+  # taxes architecture.md, api-contract.md and every requirements edit.
+  #
+  # `.prawduct/change-log.md` is NOT here on purpose. It is read by a real-repo
+  # test too, and its exclusion is a priced decision pinned by
+  # `test_the_held_out_bookkeeping_files_are_recorded_as_a_residual` — flipping
+  # it is a deliberate edit there, not a line added here.
+  - .prawduct/artifacts/data-model.md
+  - .prawduct/operator-verification.md
+  # The learnings corpus: `TestAgainstTheRealCorpus` reads the shipped
+  # `core.md` through the resolver's own constants and asserts distinct rules
+  # get distinct ids, so a rule whose heading collides with an existing one
+  # turns the suite red. The old `.prawduct/learnings.md` spelling sits in the
+  # held-out residual above; this is the live location that replaced it, and
+  # nothing carried the coupling across the move.
+  #
+  # Accepted cost: reflections write here, so a session that adds a rule marks
+  # its evidence stale and the next gate re-runs the suite. That is the correct
+  # answer — a corpus edit really can flip this suite — and it is stated rather
+  # than discovered.
+  - .claude/rules/learnings/
 
 # Files carrying the release version, read by `check-released` FROM THE TAG'S
 # TREE — which files carried a release's version is a fact about that release,

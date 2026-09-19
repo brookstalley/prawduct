@@ -5,6 +5,46 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-19: three files the freshness gate called untestable, and the clause that made it moot
+
+<!-- prawduct: type=fix | scope=critic-dispatch-clock -->
+
+**`suite_coupled_prefixes` gains three named files, each read by a test that anchors on the real
+repo.** `.prawduct/artifacts/data-model.md` (`TestTheMarkerNormKeepsItsReason`),
+`.prawduct/operator-verification.md` (`test_operator_verification`'s `LIVE_QUEUE`), and
+`.claude/rules/learnings/` (`TestAgainstTheRealCorpus`, which asserts distinct rules get distinct
+ids, so a colliding heading turns the suite red). Named files rather than `.prawduct/artifacts/`,
+which is the cost argument the build-plan prefix beside them already makes and which still holds.
+The learnings entry carries a stated cost: reflections write there, so adding a rule now marks
+evidence stale.
+
+**`.prawduct/change-log.md` is deliberately NOT added.** It is read by a real-repo test too, and its
+exclusion is a priced decision pinned by `test_the_held_out_bookkeeping_files_are_recorded_as_a_residual`.
+Flipping it is a deliberate edit there with its own reason, not a line quietly added to a
+declaration — so the new guard asserts it stays out, in the file where someone fixing a freshness
+miss will be standing.
+
+**The guard is mutation-verified, survivor included.** Six mutants: dropping each of the three
+entries turns exactly its own parametrized case red; widening the declaration to `.prawduct/` turns
+two red (the control artifact and the held-out change log); emptying it turns four red; and adding
+an inert prefix leaves all nine green. That last one is the point — a sweep where every mutant dies
+is a claim about the harness, not the subject, so the guard is shown to discriminate rather than to
+fail on any edit at all. The assertions ask `affects_test_outcome` rather than grepping the YAML,
+and a reachability case refuses an empty declaration or an empty registry.
+
+**What this does NOT fix, measured rather than assumed.** It would not have caught the failure that
+prompted it. `tests_are_current` is a disjunction and its first clause — evidence written during
+this session — returns `current` without ever examining the tree. Measured on the live tree with the
+new coupling in place: clause 2 answers `False, 2 suite-coupled path(s) changed since the run`, and
+the gate still answers `True, evidence from this session`. A suite run, an edit after it, and a push
+inside one session is therefore invisible to the gate at any setting of this declaration. This entry
+closes the *predates-session* path — the one that catches an inherited red at a base sync, which is
+how this branch found `develop` red at `4537d604` — and names the other as open. Making clause 2
+conjunctive would close it, and that is a deliberate reversal of the recorded relax-only decision
+(the clause is documented as *structurally incapable of a false stale*, the failure class that
+retired the `fingerprint` and `git_sha` mechanisms), so it is the owner's to take, not a fix to
+slip in beside this one.
+
 ## 2026-09-19: the review clock nobody was reading
 
 <!-- prawduct: type=feat | scope=critic-dispatch-clock -->
