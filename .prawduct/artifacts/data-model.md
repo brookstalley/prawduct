@@ -171,6 +171,28 @@ here). Distinct from the evidence store: the ledger is *observability* (what hap
 audit/telemetry), the evidence store is *authority* (what the gate trusts). Intended to stay a
 thin event trail, not a second source of truth.
 
+**`dispatched_at` (optional envelope key, UTC ISO-8601).** Present only on a `review.pr` event
+whose dispatch was marked by `prawduct-hook pr-review-dispatch --begin` before the reviewer was
+spawned; written at append from a per-clone marker, once, never edited. It exists because the
+envelope's `duration_seconds` is **self-reported by the reviewing model** — a recollection, not a
+clock — and a performance target stated against an estimate is a target stated against an estimate.
+
+- **Absence means NOT MEASURED, never zero.** The key is omitted entirely when there is no mark,
+  and every consumer (`review-stats`, `tools/pr-review-yield.py`,
+  `tools/measure-consumer-overhead.py`) reports the measured and self-reported populations
+  **separately** rather than averaging a missing value into a real one. Pooling them re-creates the
+  hazard the key was added to retire. A null or a zero would be a value NAMING the absence, which
+  reads as deliberate and is the harder failure to see.
+- **Staleness is a TREE question, not a clock one.** The marker records the `HEAD` it was written
+  at, and consumption requires that same `HEAD` — a dispatch made against a different tree is not
+  this review's dispatch. Same question the evidence store asks, and unlike an age threshold it
+  invents no number. Consumers carry their own plausibility bound besides.
+- **Only `review.pr` appends consume the marker.** The Critic and the PR reviewer can run
+  concurrently, so a `review.critic` append that cleared it would delete a live PR review's
+  measurement, silently, on exactly the timing the concurrent design wants.
+- The marker itself (`.prawduct/.pr-review-dispatch.json`) is **Tier 3 per-clone state** — a
+  stopwatch, not an answer — and is gitignored.
+
 ### Tier 2 — Committed curated state (shared, source of truth for its domain)
 
 #### Project State — `.prawduct/project-state.yaml`

@@ -80,47 +80,21 @@ file, where the editing will naturally concentrate in one of them.
 
 ### A CLASS finding closed at the site where it was NOTICED is not closed — fix every site it names AND check a test fails for each, because fixing both while pinning one lets the other be deleted green. Tell: your fix cites a finding saying "two owners" / "every row" / "both writers", and touches or tests one
 
-**Two instances in one verify round (2026-08-25, plugin-absent-governance-anchor).** Both findings
-said, in their own text, that they covered more than one site. Both were fixed at one.
-
-* **R-12 (blocking)** named two owners: `anchor_repair.repair`'s swap branch, and
-  `migrate_plugin.apply_claude_anchor`'s writes *"that the `absent` branch delegates to"*. The fix
-  wrapped the swap. `repair()`'s `absent` branch calls `apply_claude_anchor` outside that `try`, and
-  `core.atomic_write_text`'s contract is explicitly that OSErrors propagate to the caller — so an
-  unwritable `CLAUDE.md` still raised `PermissionError` out of a doctor session. Worse than a random
-  miss: `absent` is the status Health Check #4 *advertises* ("the repair inserts one"), so the branch
-  left unguarded was the advertised one.
-* **R-4 (warning)** asked that *every* `--json` row be checked. Only the row it named was fixed, and
-  the sibling row went on claiming a JSON consumer that parses nothing.
-
-**Why the tests did not catch either.** The new test for R-12 used a `stale` fixture, because that
-was the branch being fixed — so it exercised the guarded path and asserted the guard worked. A test
-written from the fix inherits the fix's blind spot; parametrizing it over both writing branches is
-what closes that, and it is the same shape as "tests written from the same mental model inherit its
-blind spot".
-
-**A fourth instance, and a sharper sub-shape: the CODE was fixed at both sites and only one was
-PINNED.** `repair`'s success report was corrected on both write branches, but both new assertions
-started from a `stale` fixture — so deleting the `absent` branch's two success lines shipped green,
-reinstating the defect on the one status Health Check #4 advertises as repairable. The test file had
-*already learned this shape one round earlier*: `test_an_unwritable_claude_md_is_reported_not_raised`
-is parametrized over these same two branches for exactly this reason, and the next test written
-against those same branches was not.
-
-So the rule has two halves, and the second is the one that keeps recurring: **fix every site the
-finding names, then check that a test fails for each of them.** A fix verified only where it was
-noticed is a fix that can be deleted anywhere else.
+**Why the tests miss it.** A test written for the fix uses a fixture from the branch being fixed, so
+it exercises the guarded path and asserts the guard works — a test written from the fix inherits the
+fix's blind spot. Parametrizing over every branch the finding names is what closes that. The sharper
+sub-shape: the CODE fixed at both sites while only one is PINNED ships green, and deleting the
+unpinned site reinstates the defect.
 
 **Root cause.** Reading a finding for *what to change* rather than for *what it says is in scope*.
-The severity and the recommendation get read; the sentence enumerating the owners is skimmed,
-because by then the fix already feels identified. The cheap counter is mechanical: before committing
-a fix, re-read the finding's own text and list the sites it names — the words are right there
-("two owners", "every row", "both writers", "re-sweep all three").
+The severity and the recommendation get read; the sentence enumerating the owners is skimmed, because
+by then the fix already feels identified. The counter is mechanical: before committing, re-read the
+finding's own text and list the sites it names — the words are right there ("two owners", "every
+row", "both writers", "re-sweep all three").
 
-**A second, smaller lesson from the same round.** The verify review's `NEXT-ACTION` line said "0
-blocking, 0 findings — THE REVIEW IS OVER" while its own body said R-12 survived. The body was
-right, and it took three lines of running the code to confirm. A summary line is not evidence about
-the analysis above it; when they disagree, the specific and checkable half wins.
+**And a summary line is not evidence about the analysis above it.** A verify `NEXT-ACTION` read "0
+blocking, 0 findings — THE REVIEW IS OVER" while its own body said a blocking finding survived. The
+body was right. When the two disagree, the specific and checkable half wins.
 
 ### When a fix NARROWS a detector, the verification set must contain the TRUE POSITIVES it exists to catch, not only the false alarms you narrowed it to stop — suppressing a real detection and removing a false one read identically at the call site: zero findings. Tell: every shape you tested is one you were told was legal
 
@@ -199,8 +173,6 @@ between the real rule and the plausible wrong ones. Related: the docstring-as-as
 consequence, and the sharpest tell is that behaviour was correct throughout, so nothing but the
 prose was ever wrong.
 
-### Proving a new guard can go red is half the question — ask whether each ASSERTION discriminates the two outcomes it names, because a substring check over a formatted message, or a fixture that never reaches the new branch, passes identically either way. Mutation grades lines you added, not paths you never enter. Tell: every test on the new path shares one fixture
-
 ### When test evidence is stale, run the suite THROUGH `prawduct-hook test-evidence record` rather than running it bare and recording the counts after — because a repo that declares a `test_command:` emitting JUnit refuses both `--from-counts` (it wants the machine-readable report, not your transcription) and `--no-rerun`, so a bare `pytest` run buys nothing and the suite runs twice. Two five-minute runs at a PR boundary, for the same green. Tell: you just read `stale:` from `test-status` and your next thought is the pytest command you already know
 
 **2026-09-12, PR #807 (`branch-pushed-gate`).** `/prawduct:pr` Step 1 says to check
@@ -224,3 +196,28 @@ The cost was one wasted five-minute suite run at a PR boundary. The generalisabl
 governance step names a hook that produces an artifact, the hook is the entry point, not a
 formality wrapped around a command you would have run anyway. Reaching for the familiar raw command
 first means the hook has to either re-run it or reject what you brought back.
+
+### An assertion against a CONTAINER passes on any part of it — bind it to the smallest span carrying the behaviour, and pair it with a control that can actually fail. Four in one chunk, none found by reading: `"unreadable" in stdout` matched pytest's `tmp_path`, which is NAMED AFTER THE TEST and appears in the path the command prints; `line.startswith(series)` bound to the first section's row because every section prints one row per window; `"—" in row` matched two neighbouring columns that are dashes on every run without `--prs`; and `min/review != "—"` was offered as the positive control for a dash on a column printed `{:12.1f}` with no `None` branch, so it could not fail. The tell is that the assertion names a property but the subject you search is a container the property does not own — whole stdout, a whole row, a whole file. Slice by the header's own span, grep the line that carries the behaviour, and make the control a case where the value must DIFFER, not merely be present. Going red is only half the question: mutation grades the lines you ADDED, never a path no fixture enters, so a test whose fixture cannot reach the new branch passes identically either way. Second tell: every test on the new path shares one fixture
+
+The first was caught by a mutation sweep that reported a survivor; three of the four were caught by
+mutation or review and none by re-reading the assertion, because each one reads as obviously correct
+— `assert "unreadable" in r.stdout` in a test called `test_an_unreadable_mark_...` is exactly what
+you meant to write, and pytest's tmpdir naming makes it true for free.
+
+**The sharpest sub-case is the environment one.** A fixture built from the REAL repo is not hermetic
+if anything it reads is gitignored: `build_report` opens with `sys.exit("no governance ledger")` and
+`.prawduct/.governance-ledger.jsonl` is untracked, so four renderer tests would have died on the
+fresh clone CI runs while passing on the machine that wrote them. The remedy is NOT to skip when the
+file is absent — that leaves the test red only where it can already see and green in the one
+environment that cannot. Give the fixture its own copy of everything it reads, then PROVE it by
+hiding the real file and re-running.
+
+### An environment dependency with ONE variable is found by the second machine; one with TWO is found only by a machine differing in BOTH — so when a green suite meets a red CI, enumerate the axes before fixing. `fromisoformat` rejected a `Z` suffix before Python 3.11, and `git log --format=%aI` emits `Z` only when the commit's stored zone is `+0000`: in MDT the same fixture yields `-06:00`, which every version parses. Thousands of local runs could not see it; CI was Linux **and** UTC **and** 3.10. Corollary, and it nearly shipped a false all-clear: **prove the reproduction can FAIL before believing it passes** — `GIT_CONFIG_SYSTEM=/dev/null` does not suppress Xcode's bundled `git-core/gitconfig`, so a "CI-like" run still answered `init.defaultBranch=main` and went green over the unfixed bug. `GIT_CONFIG_NOSYSTEM=1` is the lever. Tell: your CI-reproduction went green on the first try
+
+The rule above it covers the fixture that reads a gitignored file — one axis, and the fresh clone
+finds it. This is the harder shape: no single difference between the two machines exposes it, so
+the usual reasoning ("CI is Linux, I am on macOS") lands on the wrong axis and the fix that follows
+is inert. Enumerate every axis the two environments differ on *before* forming a hypothesis, and
+treat the CI-reproduction harness as a measurement needing its own positive control — the wrong
+lever produced a green run over the unfixed bug, which is the exact failure a reproduction exists
+to prevent.
