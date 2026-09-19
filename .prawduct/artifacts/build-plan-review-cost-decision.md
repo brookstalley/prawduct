@@ -77,11 +77,13 @@ neither changes the plan's shape.
 ## Status
 
 - [x] Chunk 01: The zero-blocking close leads with the computed cost and a recommendation (#831)
-- [ ] Chunk 02: The two over-fixing rules carry a severity bound (#833)
+- [x] Chunk 02: The two over-fixing rules carry a severity bound (#833)
 - [ ] Chunk 03: The reviewer payload gets an aggregate ceiling (#850)
 Context: Plan written 2026-09-19 on `feature/review-cost-decision`, cut from `develop` at 9224a55e.
 Chunk 01 built and committed; its mutation sweep ran seven mutants, six dying and the one predicted
-to survive surviving. Next: Chunk 02. This plan is the first of two covering the review-cost
+to survive surviving. Chunk 02 landed the full-reach amendment the owner directed (ten carriers, consumer
+CLAUDE.md text included), and surfaced a consumer regression in the process: the v3.5.0 anchor is
+now archived as `ANCHOR_V4`. Next: Chunk 03. This plan is the first of two covering the review-cost
 program; the convergence half (#640 re-apply, #847, #167) is `build-plan-review-convergence.md`.
 
 ## Verification Strategy

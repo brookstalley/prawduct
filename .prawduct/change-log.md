@@ -5,6 +5,66 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-19: The fix/accept decision is priced, and the two over-fixing rules are bounded
+
+<!-- prawduct: type=feat | scope=review-cost-decision -->
+
+**The measured problem.** `verify-resolutions` is 58% of all review volume at the worst yield of
+any mode — 26.3 minutes per blocking finding against `chunk`'s 10.2 — and **41 of the 83 scopes
+with two or more verify rounds found ZERO blocking findings across all of them**. Half the
+repeat-verify population is pure cost. Re-derive with `prawduct-hook review-stats` and the scan in
+`.prawduct/artifacts/review-cost-investigation-2026-09-19.md` §6; the program is #724, and this
+scope lands #831 and #833 from it.
+
+**#831 — the close answers the cost question instead of delegating it.** The fix/accept call was
+evaluative ("is this worth fixing?"), which is unanswerable with a complete remedy already in hand
+because it always reads yes. The mechanical replacement is *"am I already making a judgeable
+commit?"* — and both inputs were already computed and neither reached the builder:
+`coverage.commit_cost` prices the working tree, `telemetry.round_price` prices a round, and the
+message told the builder to go run the first himself. `critic_consolidate.cost_lead` now renders
+the verdict and its recommendation, and the two zero-blocking arms that carry a fix decision lead
+with it. The blocking arm and the empty close deliberately do not: a cost verdict where there is no
+fix decision is a number with nothing attached, and on the blocking arm it would read as a reason
+to weigh not fixing a blocker. No digit is restated — `format_round_price` keeps sole ownership of
+what a round costs, and a degraded git read renders its reason rather than a reassuring default.
+
+**#833 — the two over-fixing rules carry a severity bound, at every carrier.** "There is no
+pre-existing exception" and "deep context on a small problem is a FIX signal" are both correct
+about blockers and actively harmful about notes: unbounded, they are the pull that #831 prices.
+Each now states that the obligation to FIX is bounded to BLOCKING, and that below it a recorded
+accept is the complete discharge rather than the lesser half of the sentence.
+
+**[DECISION: the bound reaches all ten carriers, consumer-facing text included | the four-surface
+option — the Critic protocol files plus `core.md` — was offered against it and declined, because a
+rule stated with its bound in the reviewer's file and without it in the always-injected digest, in
+Principle 22, and in the `CLAUDE.md` anchor every governed product carries is the drift this scope
+exists to end | owner-directed 2026-09-19, and the owner may still narrow it]**. The witness is not
+this amendment: #833 was filed by the owner on 2026-09-18 carrying the ledger measurement above,
+and `core.md` requires an amended norm's authority to live somewhere the amendment is not.
+
+**What the full reach cost, and the regression it surfaced.** Editing the current `CLAUDE.md`
+anchor means the bytes v3.5.0 shipped are no longer current — and `anchor_repair` grades a repo by
+matching its anchor byte for byte, so every repo onboarded on v3.5.0 would have been graded
+`stale-modified` and refused a repair. `ANCHOR_V4` archives those bytes, generated from what HEAD
+renders rather than retyped. Two edits to `ANCHOR_V1`/`ANCHOR_V3` were reverted in the same pass:
+that tuple is history, and rewriting it would break repair for the repos it exists to serve.
+`test_the_archive_covers_every_anchor_prawduct_ever_shipped` caught all three.
+
+**Budgets: a declared raise, and a reserve deliberately not spent.** Four per-file readings and
+both injected-session aggregates moved, each ratcheted in the same commit. This is a declared raise
+with its reason, not a trim — the bound is a new obligation, not a restatement, so there was no
+duplication to pay from, and funding it by cutting someone else's clause is the failure mode that
+loses whichever clause is least defended. The digest's 500-character reserve, held for the next
+framework-wide default, is untouched: its sentence is written at that surface's compressed register
+(9,497 of 9,500).
+
+**The bound is enforced, not remembered.** `tests/test_severity_bounded_rules.py` walks the tree
+for either rule and asserts every carrier states its bound — including carriers added later, which
+a hand-maintained list cannot see. It carries a positive control, and five mutations against the
+real corpus were run to prove it discriminates: the first cut bound the assertion to the blank-line
+block, so a neighbouring bullet's `**BLOCKING**` satisfied the check for a whole list and two true
+reversions survived green.
+
 ## 2026-09-18: A test report from every run, and the invocation's scope recorded beside it
 
 <!-- prawduct: type=feat | scope=test-report-scope -->

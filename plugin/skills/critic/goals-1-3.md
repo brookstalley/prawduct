@@ -69,7 +69,7 @@ State every entry. `chunk_graded`/`plan_graded` name the subject.
 ## 1. Nothing Is Broken
 
 - `prawduct-hook test-status`: exit 0 = current; stale/missing → **WARNING** — that exit code is the *only* freshness signal; never infer staleness from a commit/SHA field in the evidence (it carries none). Test failures in evidence → **BLOCKING**.
-- No "pre-existing" exception — every finding is yours regardless of when introduced.
+- No "pre-existing" exception — every finding is yours regardless of when introduced. Bounded to BLOCKING: below it a recorded accept discharges it.
 - Tests verify behavior, not implementation.
 - Tests deleted or assertions weakened without documented reason → **BLOCKING**. Legitimate consolidation needs a change-log entry.
 - Changed/added behavior has test coverage → **BLOCKING** if untested.

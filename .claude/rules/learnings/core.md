@@ -92,7 +92,7 @@
 
 ### When you "correct" an inherited number, recount the SET and not just the count — re-measuring inside the frame you inherited reproduces the frame's error while feeling exactly like verification
 
-### A review ending is not a filing event — dispose every non-blocking finding as FIX or ACCEPT, and treat FILE as the narrow case clearing THREE bars: it names its trigger, the work is **large** (a chunk's worth, not an hour's), and it cannot be absorbed into the current work. **Deep context on a small problem is a FIX signal, not a filing signal.**
+### A review ending is not a filing event — dispose every non-blocking finding as FIX or ACCEPT, and treat FILE as the narrow case clearing THREE bars: it names its trigger, the work is **large** (a chunk's worth, not an hour's), and it cannot be absorbed into the current work. **Deep context on a small problem is a FIX signal, not a filing signal — FOR A BLOCKER.** Bounded to blocking severity 2026-09-19 at the owner's direction (#833): below BLOCKING the same deep context argues for a recorded ACCEPT, which costs no round, over a fix that buys one. Unbounded, the rule pulled builders into fixing notes, and 41 of 83 repeat-verify scopes found zero blocking findings across all their rounds.
 
 ### Surveying a shared thing takes TWO searches: grepping the thing finds its DUPLICATE COPIES, never what DEPENDS on it. Widen a predicate — grep the *shape*, then its *name* for callers that branch on it. Relocate a fact — grep the fact, then grep prose naming its OLD HOME, because "the rule lives in X" goes false the moment you empty X
 

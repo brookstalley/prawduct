@@ -1390,3 +1390,25 @@ which is the entire yield #831 claims.
 
 **Why a human check:** the deliverable is a sentence a person acts on; only a person can report
 whether it changed the action.
+
+> === 2026-09-19 — DRAIN DISPOSITION: SPLIT, AND THE LIVE HALF IS GENUINELY LIVE ===
+>
+> **The static half is already a test and nothing here waits on it.** That the verdict is correct
+> for all three states, that it LEADS the two arms carrying a fix decision and appears on neither
+> of the other two, that a degraded read renders its reason rather than a cheap default, and that
+> the price sentence keeps its single home — all of that is
+> `tests/test_critic_consolidate.py::TestCostLeadAnswersTheMechanicalQuestion`, red-verified by a
+> seven-mutant sweep that included a predicted survivor.
+>
+> **What it turns on:** whether reading the sentence changes what a builder DOES. That is a claim
+> about a person under time pressure holding a finished remedy, and no assertion in this repo can
+> observe it.
+>
+> **Whose harness answers it:** any real zero-blocking close, here or in a governed product. This
+> repo reaches that state routinely, so unlike VRF-017 it is not waiting on a release — it is
+> waiting on the next ordinary review that ends clean.
+>
+> **It gates nothing**, and the specific thing to report back is narrow: whether the tree-level
+> verdict at the top and the `cost-of-commit <paths>` pointer further down read as one thing said
+> twice. If they do, the pointer is the cut — recorded here so the question survives the session
+> that raised it.

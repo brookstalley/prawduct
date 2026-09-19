@@ -168,7 +168,9 @@ one of three dispositions, and **FILE is the narrowest, never the default**:
   now* is the worst option available: you pay the filing cost, the reader pays the triage cost, the next
   agent pays the re-derivation cost, and the item then sits unactioned because whoever picks it up has
   none of what you currently have in your head. **Deep context on a small problem is a FIX signal, not
-  a filing signal.** (Owner-requested rule, 2026-07-29.)
+  a filing signal — for a BLOCKER.** (Owner-requested rule, 2026-07-29; bounded to blocking
+  severity 2026-09-19 at the owner's direction, #833. Below BLOCKING the same deep context argues
+  for a recorded ACCEPT, which costs no round, rather than a fix that buys one.)
 
 ### A re-review does not manufacture work
 
