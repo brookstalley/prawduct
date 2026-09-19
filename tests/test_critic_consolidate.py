@@ -746,6 +746,104 @@ class TestMergeFindings:
         assert "next_action" in record
 
 
+class TestCostLeadAnswersTheMechanicalQuestion:
+    """#831: the fix/accept call was EVALUATIVE ("is this worth fixing?"), which
+    is unanswerable with a complete remedy in hand — it always feels yes. The
+    mechanical question that replaces it is "am I already making a judgeable
+    commit?", and until now the message told the builder to go run
+    `cost-of-commit` and answer it himself. Measured 2026-09-19: that decision
+    was made ~30 times across two branches with neither number in front of it.
+
+    What turns these red: dropping the lead from an arm that carries a fix
+    decision, inverting either verdict, rendering a degraded state as a
+    reassuring default, or leading an arm where no fix decision exists.
+    """
+
+    def test_already_judgeable_says_the_fix_is_free(self):
+        lead = cc.cost_lead({"paths": ["a.py"], "judgeable": ["a.py"], "free": []})
+        assert "ALREADY making a judgeable commit" in lead
+        assert "buys NO extra round" in lead
+        # The recommendation is the half that makes it a decision aid rather
+        # than a reading. Asserted positively, because a NEGATIVE assertion
+        # here would pass for any sentence that merely omits the word.
+        assert "Recommended: fix what is worth fixing" in lead
+
+    def test_clean_tree_says_the_first_fix_buys_a_round(self):
+        lead = cc.cost_lead({"paths": [], "judgeable": [], "free": []})
+        assert "NOT currently making a judgeable commit" in lead
+        assert "your tree is clean" in lead
+        assert "buys a whole review round" in lead
+        assert "Recommended: accept these" in lead
+
+    def test_free_paths_only_is_still_not_a_judgeable_commit(self):
+        """The dirty-but-free tree is the case the binary question hides: there
+        ARE uncommitted paths, so "your tree is clean" would be false, and the
+        verdict is nonetheless the same. Both halves are asserted because they
+        come apart — an implementation keying on `paths` rather than
+        `judgeable` inverts this one and passes the clean-tree test above."""
+        lead = cc.cost_lead({"paths": ["x.md"], "judgeable": [], "free": ["x.md"]})
+        assert "NOT currently making a judgeable commit" in lead
+        assert "nothing judgeable is uncommitted" in lead
+        assert "your tree is clean" not in lead
+
+    def test_a_degraded_git_read_renders_its_reason_never_a_default(self):
+        """`architecture.md` § Direction makes this advice, so it fails soft;
+        `core.md` makes "advice fails soft" not "advice fails silent". An
+        unpriceable tree that rendered the free verdict would send the builder
+        into exactly the commit this exists to price."""
+        lead = cc.cost_lead({
+            "paths": [], "judgeable": [], "free": [],
+            "reason": "git status could not be read",
+        })
+        assert "could not be priced" in lead
+        assert "git status could not be read" in lead
+        assert "that is a missing number, not a small one" in lead
+        # The conservative read, not the cheap one.
+        assert "as if a fix buys a round" in lead
+        assert "buys NO extra round" not in lead
+
+    def test_absent_cost_renders_exactly_the_prior_message(self):
+        """A caller that did not compute the verdict gets the message it got
+        before this existed — the parameter is additive, not a new required
+        input."""
+        assert cc.cost_lead(None) == ""
+        assert cc.cost_lead({}) == ""
+        assert cc.next_action_line("rev-1", 0, 1, 1) == cc.next_action_line(
+            "rev-1", 0, 1, 1, cost=None
+        )
+
+    def test_the_lead_leads_the_arms_that_carry_a_fix_decision(self):
+        """Position is the deliverable. #831 asks the block to LEAD with the
+        computed answer — a cost verdict buried after three sentences of
+        disposition guidance is the state this item already describes."""
+        lead = cc.cost_lead({"paths": [], "judgeable": [], "free": []})
+        warn = cc.next_action_line("rev-1", 0, 1, 1, cost=lead)
+        assert warn.startswith(lead), "the warning/note arm must lead with the cost verdict"
+        obs = cc.next_action_line("rev-1", 0, 0, 0, observations=2, cost=lead)
+        assert obs.startswith(lead), "the observations arm must lead with the cost verdict"
+
+    def test_no_lead_where_there_is_no_fix_decision(self):
+        """The blocking arm's next move is to fix regardless of price, and the
+        truly-empty close has nothing to fix. A cost verdict on either is a
+        number with no decision attached — and on the blocking arm it would
+        read as a reason to weigh not fixing a blocker."""
+        lead = cc.cost_lead({"paths": [], "judgeable": [], "free": []})
+        blocking = cc.next_action_line("rev-1", 2, 0, 0, cost=lead)
+        assert lead not in blocking
+        empty = cc.next_action_line("rev-1", 0, 0, 0, cost=lead)
+        assert lead not in empty
+
+    def test_the_price_sentence_keeps_its_single_home(self):
+        """`telemetry.format_round_price` owns what a round costs. The lead
+        states the VERDICT and never the number, so the close cannot quote two
+        prices — the failure `format_minutes` was consolidated to prevent, one
+        level up."""
+        lead = cc.cost_lead({"paths": [], "judgeable": [], "free": []})
+        assert "min" not in lead and "median" not in lead
+        line = cc.next_action_line("rev-1", 0, 1, 1, "One more round costs about 5 min here.", cost=lead)
+        assert line.count("One more round costs") == 1
+
+
 class TestNextActionLine:
     """``.critic-findings.json`` is the one carrier of the loop-termination
     rule that has a reader in the BUILDER role.

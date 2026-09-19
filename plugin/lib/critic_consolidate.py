@@ -559,6 +559,80 @@ _IF_YOU_FIX_SOME = (
 )
 
 
+#: The mechanical question, answered — not handed to the builder to go run.
+#:
+#: #831's finding: the fix/accept call is EVALUATIVE today ("is this worth
+#: fixing?"), which is unanswerable with a complete remedy already in hand —
+#: it always feels yes. The mechanical question that replaces it is *"am I
+#: already making a judgeable commit?"*, because that is what decides whether
+#: a fix is free or costs a whole round. Both inputs were already computed
+#: somewhere and neither reached this message: :func:`coverage.commit_cost`
+#: prices the tree, :func:`telemetry.round_price` prices a round, and
+#: ``_IF_YOU_FIX_SOME`` told the builder to go run the first one himself.
+#: Measured 2026-09-19: that decision was made ~30 times across two branches
+#: with neither number in front of it.
+#:
+#: **Why the working tree and not the findings' own files.** Pricing the files
+#: the findings NAME answers a different question — "what would fixing all of
+#: these cost" — which is not the one the builder is asking and not the one
+#: #831 states. The tree is what makes the question answerable without
+#: guessing which findings the builder intends to act on.
+#:
+#: **Why this adds information rather than removing it.** #832 was closed
+#: NOT_PLANNED on the ground that suppressing finding content is satisfiable
+#: by rating WARNING instead, which displaces work up a severity while every
+#: metric reads as success. That closure is the design steer for this whole
+#: scope: the lever has to ADD cost information. Nothing here hides a finding.
+#:
+#: Pure, like :func:`next_action_line` beside it — the caller reads git and the
+#: ledger once per consolidation and passes both results in, so the two
+#: carriers of this sentence cannot quote different numbers and no digit is
+#: restated in this module (``architecture.md``: every fact has one home).
+def cost_lead(cost: "dict | None") -> str:
+    """The leading sentence of a zero-blocking close: what fixing costs here,
+    and what that implies.
+
+    ``cost`` is :func:`coverage.commit_cost`'s verdict for the WORKING TREE. It
+    may carry a degraded state, and a degraded state renders its REASON — never
+    a reassuring default. What a round COSTS is deliberately not rendered here:
+    :func:`telemetry.format_round_price` owns that sentence and the close
+    already carries it, so stating it twice would put two carriers on one fact. ``architecture.md`` § Direction makes this advice, so it fails
+    soft; ``core.md`` makes "advice fails soft" not "advice fails silent", so
+    an unpriceable tree says it could not be priced and recommends the
+    conservative read, which is the one that does not spend a round by
+    surprise.
+
+    Returns ``""`` when ``cost`` is absent, so a caller that did not compute it
+    renders exactly the message it rendered before this existed.
+    """
+    if not cost:
+        return ""
+    if cost.get("reason"):
+        return (
+            "Fixing could not be priced here"
+            f" ({cost['reason']}) — that is a missing number, not a small one."
+            " Decide as if a fix buys a round."
+        )
+    judgeable = cost.get("judgeable") or []
+    if judgeable:
+        return (
+            f"You are ALREADY making a judgeable commit ({len(judgeable)}"
+            " uncommitted judgeable file(s)), so a fix batched into it buys NO"
+            " extra round. Recommended: fix what is worth fixing, accept the"
+            " rest."
+        )
+    tree = (
+        "nothing judgeable is uncommitted"
+        if cost.get("paths")
+        else "your tree is clean"
+    )
+    return (
+        f"You are NOT currently making a judgeable commit ({tree}), so the"
+        " first judgeable fix here buys a whole review round."
+        " Recommended: accept these unless a fix is worth that."
+    )
+
+
 def carried_blocking(facts: list[dict], base_tree: "str | None",
                      this_review_id: "str | None") -> list[dict]:
     """Blocking findings from the review this verify pass anchors to that the
@@ -625,6 +699,7 @@ def next_action_line(
     carried: "list[dict] | None" = None,
     span: "str | None" = None,
     observations: int = 0,
+    cost: "str | None" = None,
 ) -> str:
     """The one sentence the BUILDER needs, computed from the fact's own counts
     and written into ``.critic-findings.json`` by :func:`fact_to_cache_record`.
@@ -666,6 +741,11 @@ def next_action_line(
     only in the arm the builder does not reach when something is blocking."""
     ref = fact_id or "<review-id>"
     price = f" {price_sentence}" if price_sentence else ""
+    # Leads the two zero-blocking arms that still carry a fix decision, and
+    # ONLY those. The blocking arm's next move is to fix regardless of price,
+    # and the truly-empty close has nothing to fix — a cost verdict on either
+    # would be a number with no decision attached to it.
+    lead = f"{cost} " if cost else ""
     # `span` is :func:`span_clause`'s output, rendered by the caller for the
     # same reason `price_sentence` is. Absent (every mode but a clean
     # `verify-resolutions` close) the clause stays what it always was: go ask
@@ -735,7 +815,8 @@ def next_action_line(
         # the items it was built for.
         if observations:
             return (
-                f"0 blocking, 0 findings — THE REVIEW IS OVER and nothing in THIS"
+                lead
+                + f"0 blocking, 0 findings — THE REVIEW IS OVER and nothing in THIS"
                 f" review requires another round. {observations} item(s) were"
                 " demoted to observations, and each can be answered on the record"
                 " instead of fixed:"
@@ -758,7 +839,8 @@ def next_action_line(
             + coverage_clause
         )
     return (
-        f"0 blocking — THE REVIEW IS OVER. The {warning} warning + {note} note"
+        lead
+        + f"0 blocking — THE REVIEW IS OVER. The {warning} warning + {note} note"
         " finding(s) gate NOTHING: no gate reads them, so nothing in THIS review"
         " requires another round."
         + coverage_clause
@@ -4090,6 +4172,7 @@ def fact_to_cache_record(
     price_sentence: "str | None" = None,
     carried: "list[dict] | None" = None,
     span: "str | None" = None,
+    cost: "str | None" = None,
 ) -> dict:
     """Render the derived ``.critic-findings.json`` record from a review fact
     (D7: the cache is a code-regenerated VIEW of the latest fact — builders
@@ -4172,6 +4255,7 @@ def fact_to_cache_record(
         "next_action": next_action_line(
             fact.get("id"), blocking, warning, note, price_sentence,
             carried=carried, span=span, observations=len(observations),
+            cost=cost,
         ),
         # Recomputed from the fact's own findings, so this advisory grouping
         # adds nothing to the persisted schema and keeps no model in the write
@@ -4659,6 +4743,15 @@ def consolidate(project_dir: Path) -> int:
 
     price_sentence = telemetry.format_round_price(telemetry.round_price(prawduct_dir))
 
+    # One git read per consolidation, beside the one ledger read, for the same
+    # reason: the relayed NEXT-ACTION and the cache record must not be able to
+    # answer the same question differently. `commit_cost` asks the SAME
+    # predicate the coverage gate will charge on — never a cheaper proxy for
+    # it — so the sentence cannot promise a price the gate then disagrees with.
+    from . import coverage  # noqa: PLC0415 — lazy, matching this module's other lib imports
+
+    cost_sentence = cost_lead(coverage.commit_cost(project_dir))
+
     carried = (
         carried_blocking(
             store.get("facts") or [], manifest.get("base_tree"), review_id
@@ -4684,7 +4777,7 @@ def consolidate(project_dir: Path) -> int:
         answer = gates.branch_coverage_verdict(project_dir)
         span = span_clause(answer, _span_commits(project_dir, answer))
 
-    record = fact_to_cache_record(fact, price_sentence, carried, span)
+    record = fact_to_cache_record(fact, price_sentence, carried, span, cost_sentence)
     findings_path = prawduct_dir / ".critic-findings.json"
     atomic_write_text(findings_path, json.dumps(record, indent=2))
 
@@ -4845,6 +4938,7 @@ def consolidate(project_dir: Path) -> int:
             carried=carried,
             span=span,
             observations=len(fact_body.get("observations") or []),
+            cost=cost_sentence,
         )
     )
     return 0
