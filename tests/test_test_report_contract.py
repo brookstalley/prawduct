@@ -209,51 +209,59 @@ class TestTheShippedExampleMatchesTheRealProducer:
     def _classifiers(self, contract: str):
         """The doc's `classify` and this repo's, both ready to call.
 
-        Entered at `classify`, NOT at the selection predicate. A first cut of
-        this test called `_selection_is_the_default` directly and both real
-        mutants survived: reverting `classify`'s CALL to a string comparison
-        never enters the predicate, so the test could not see the very defect it
-        was written for. Pin the call, not the arithmetic.
+        Entered at `classify`, NOT at the selection predicate. A first cut
+        called `_selection_is_the_default` directly and both real mutants
+        survived: reverting `classify`'s CALL to a string comparison never
+        enters the predicate, so the test could not see the defect it was
+        written for. Pin the call, not the arithmetic.
         """
         import tests.conftest as real
 
         ns: dict = {}
         exec(  # noqa: S102 — executing the doc's own snippet is the point
-            "import json, os, tempfile\nfrom pathlib import Path\n"
+            "import json, os, sys, tempfile\nfrom pathlib import Path\n"
             + _doc_classifier_source(contract),
             ns,
         )
         return ns["classify"], real.classify_invocation
 
-    @pytest.mark.parametrize(
-        "args,testpaths,expected_scope",
-        [
-            # The case that was broken: a bare run, relative args, declared
-            # testpaths. A string comparison answers "partial" here.
-            (["tests"], ["tests"], "full"),
-            (["tests/"], ["tests"], "full"),
-            # Genuine narrowings.
-            (["tests/test_one.py"], ["tests"], "partial"),
-            (["tests/test_one.py::test_x"], ["tests"], "partial"),
-        ],
-    )
-    def test_the_two_classifiers_agree_and_are_right(
-        self, contract, args, testpaths, expected_scope
-    ):
-        doc_classify, real_classify = self._classifiers(contract)
+    #: The SAME matrix `TestTheClassifier` runs over the real producer, not a
+    #: hand-picked subset. A first cut picked four selection cases by hand and
+    #: was blind to `--ignore-glob`: neither `_Option` carried the attribute, so
+    #: both classifiers fell through `getattr(..., None)` and AGREED — a test
+    #: that passes because neither side was asked. Driving the real matrix is
+    #: what makes "the two agree" mean something, and it is what the finding
+    #: asked for.
+    NARROWING_OPTIONS = [
+        ({"keyword": "billing"}, "-k"),
+        ({"markexpr": "smoke"}, "-m"),
+        ({"deselect": ["tests/test_a.py::test_b"]}, "--deselect"),
+        ({"ignore": ["tests/slow"]}, "--ignore"),
+        ({"ignore_glob": ["tests/slow*"]}, "--ignore"),
+        ({"lf": True}, "--lf"),
+        ({"stepwise": True}, "--lf"),
+        ({"collectonly": True}, "--collect-only"),
+        ({"maxfail": 1}, "--maxfail"),
+    ]
+
+    def _config(self, *, args=("tests",), testpaths=("tests",), **opts):
+        class _Option:
+            def __init__(self):
+                self.keyword = ""
+                self.markexpr = ""
+                self.deselect = None
+                self.ignore = None
+                self.ignore_glob = None
+                self.lf = False
+                self.stepwise = False
+                self.failedfirst = False
+                self.collectonly = False
+                self.maxfail = 0
+                for k, v in opts.items():
+                    setattr(self, k, v)
 
         class _Params:
             dir = "/repo"
-
-        class _Option:
-            keyword = ""
-            markexpr = ""
-            deselect = None
-            ignore = None
-            lf = False
-            stepwise = False
-            collectonly = False
-            maxfail = 0
 
         class _Config:
             def __init__(self):
@@ -266,17 +274,75 @@ class TestTheShippedExampleMatchesTheRealProducer:
                 assert name == "testpaths"
                 return list(testpaths)
 
-        doc_scope, _ = doc_classify(_Config(), 0)
-        real_scope, _ = real_classify(_Config(), 0)
-        assert doc_scope == real_scope, (
-            f"the doc's producer and this repo's disagree on args={args!r} "
-            f"testpaths={testpaths!r}: doc says {doc_scope!r}, real says {real_scope!r}"
+        return _Config
+
+    def _agree(self, contract, make_config, exitstatus=0):
+        doc_classify, real_classify = self._classifiers(contract)
+        doc = doc_classify(make_config(), exitstatus)[0]
+        real = real_classify(make_config(), exitstatus)[0]
+        return doc, real
+
+    @pytest.mark.parametrize("opts,_token", NARROWING_OPTIONS)
+    def test_every_narrowing_option_is_partial_in_both(self, contract, opts, _token):
+        """`--ignore-glob` is the case that shipped wrong and that the first
+        version of this test could not see. A consumer copying the doc and
+        running `pytest --ignore-glob=...` recorded `full` for a narrowed run —
+        a FALSE GREEN, the inverse of the bug that prompted the review."""
+        doc, real = self._agree(contract, self._config(**opts))
+        assert doc == real == "partial", (
+            f"options {opts!r}: doc says {doc!r}, real says {real!r} — both must "
+            "read a narrowed invocation as partial"
         )
+
+    @pytest.mark.parametrize("args,expected", [
+        (("tests",), "full"),
+        (("tests/",), "full"),
+        (("tests/test_a.py",), "partial"),
+        (("tests/test_a.py::test_b",), "partial"),
+        (("tests", "extra"), "partial"),
+        ((), "partial"),
+    ])
+    def test_selection_cases_agree_and_are_right(self, contract, args, expected):
+        doc, real = self._agree(contract, self._config(args=args))
+        assert doc == real, f"args={args!r}: doc {doc!r} vs real {real!r}"
         # Pinned against the REQUIREMENT too — "make A agree with B" is also
         # satisfied by teaching A the defects of B.
-        assert doc_scope == expected_scope, (
-            f"both classifiers agree on args={args!r} testpaths={testpaths!r} "
-            f"and both are wrong: expected {expected_scope!r}, got {doc_scope!r}"
+        assert doc == expected, f"args={args!r}: both say {doc!r}, expected {expected!r}"
+
+    @pytest.mark.parametrize("exitstatus", [2, 3, 4, 5])
+    def test_an_incomplete_exit_status_is_partial_in_both(self, contract, exitstatus):
+        doc, real = self._agree(contract, self._config(), exitstatus=exitstatus)
+        assert doc == real == "partial"
+
+    def test_failed_first_alone_is_not_narrowing_in_either(self, contract):
+        """`--ff` reorders without reducing. Pinned because the obvious
+        grouping ("the last-failed family") would wrongly refuse it."""
+        doc, real = self._agree(contract, self._config(failedfirst=True))
+        assert doc == real == "full"
+
+    def test_the_example_guards_its_write_for_every_hook(self, contract):
+        """R-1's second member, and the one a fix closed at one site.
+
+        The guard belongs INSIDE `_write`, where one guard covers every hook
+        that writes — `pytest_configure` AND `pytest_sessionfinish`. Guarding
+        one call site leaves the other able to raise out of a hook, which this
+        same document forbids, and it must SAY so on stderr: the doc's own
+        "What a producer owes" requires it, because an advisory that fails
+        silently manufactures the confidence it exists to check.
+        """
+        writer = [b for b in _fenced_blocks(contract, "python") if "def _write(" in b]
+        assert writer, "the contract no longer ships a worked `_write`"
+        body = writer[0]
+        assert "except OSError" in body, (
+            "the example's `_write` can raise out of a pytest hook — a producer "
+            "that cannot write its record must not take the suite down with it"
+        )
+        assert "file=sys.stderr" in body, (
+            "the example's write failure does not reach stderr, which this "
+            "document's own 'What a producer owes' section forbids. Asserted as "
+            "`file=sys.stderr` rather than the word 'stderr': the block's own "
+            "comment says 'Say so on stderr', so a bare substring passes while "
+            "the code prints to stdout — verified by mutation."
         )
 
     def test_the_doc_resolves_rather_than_comparing_strings(self, contract):

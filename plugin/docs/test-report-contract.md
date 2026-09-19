@@ -126,7 +126,7 @@ A worked pytest producer, which is what this repo itself runs:
 
 ```python
 # conftest.py
-import json, os, tempfile
+import json, os, sys, tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -141,21 +141,32 @@ def _write(config, scope, why):
         record["why"] = why
     target = report.with_name(report.name + ".scope.json")
     target.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=str(target.parent))
-    with os.fdopen(fd, "w") as fh:
-        fh.write(json.dumps(record, indent=2) + "\n")
-    os.chmod(tmp, 0o644)   # mkstemp is 0600; the recorder may run as another user
-    os.replace(tmp, target)
+    try:
+        fd, tmp = tempfile.mkstemp(dir=str(target.parent))
+        with os.fdopen(fd, "w") as fh:
+            fh.write(json.dumps(record, indent=2) + "\n")
+        os.chmod(tmp, 0o644)   # mkstemp is 0600; the recorder may run as another user
+        os.replace(tmp, target)
+    except OSError as exc:
+        # Guarded HERE, not at the call sites: one guard then covers every hook
+        # that writes, and a second writer cannot be added unguarded. A
+        # read-only directory or a full disk must not take the suite down with
+        # it — this describes the run, it is not part of it. Absence is the
+        # permissive case, so failing costs the guard and never makes a false
+        # green. Say so on stderr: an advisory that fails silently manufactures
+        # the confidence it exists to check (see "What a producer owes").
+        print(f"NOTE: could not write the test-report scope record ({exc}) — "
+              f"{target} will be absent, and an ingest of this report will be "
+              "trusted rather than checked", file=sys.stderr)
+        return None
+    return target
 
 def pytest_configure(config):
     # Written FIRST, so a run that is killed or crashes leaves a record saying so
     # rather than the previous run's verdict sitting beside a truncated report.
     # Never raise out of a hook: a producer that cannot write its record must not
     # take the suite down with it (see "What a producer owes" above).
-    try:
-        _write(config, "partial", "the run did not finish")
-    except OSError:
-        pass
+    _write(config, "partial", "the run did not finish")
 
 def pytest_sessionfinish(session, exitstatus):
     _write(session.config, *classify(session.config, exitstatus))
@@ -169,8 +180,10 @@ def classify(config, exitstatus):
         return "partial", f"-k {o.keyword!r} narrowed the selection"
     if getattr(o, "markexpr", ""):
         return "partial", f"-m {o.markexpr!r} narrowed the selection"
-    if getattr(o, "deselect", None) or getattr(o, "ignore", None):
-        return "partial", "--deselect/--ignore removed tests from the selection"
+    if getattr(o, "deselect", None):
+        return "partial", "--deselect removed tests from the selection"
+    if getattr(o, "ignore", None) or getattr(o, "ignore_glob", None):
+        return "partial", "--ignore removed paths from the selection"
     if getattr(o, "lf", False) or getattr(o, "stepwise", False):
         return "partial", "the run was scoped to a previous run's failures"
     if getattr(o, "collectonly", False):
