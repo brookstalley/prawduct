@@ -167,6 +167,23 @@ def test_the_builders_guide_points_here(contract):
 # =============================================================================
 
 
+def _write_function_source(contract: str) -> str:
+    """Just `def _write(...)`, sliced by ast rather than by fence.
+
+    Bound to the FUNCTION because the contract ships one python fence carrying
+    `_write`, both hooks, `classify` and `_selection_is_the_default` — so a
+    substring check over the block passes for a guard sitting at a call site,
+    which is exactly the placement this pin exists to forbid.
+    """
+    for block in _fenced_blocks(contract, "python"):
+        if "def _write(" not in block:
+            continue
+        tree = ast.parse(textwrap.dedent(block))
+        for node in tree.body:
+            if isinstance(node, ast.FunctionDef) and node.name == "_write":
+                return ast.get_source_segment(textwrap.dedent(block), node) or ""
+    raise AssertionError("the contract no longer ships a worked `_write`")
+
 def _doc_classifier_source(contract: str) -> str:
     """The doc's `classify` + `_selection_is_the_default`, as source."""
     for block in _fenced_blocks(contract, "python"):
@@ -330,9 +347,7 @@ class TestTheShippedExampleMatchesTheRealProducer:
         "What a producer owes" requires it, because an advisory that fails
         silently manufactures the confidence it exists to check.
         """
-        writer = [b for b in _fenced_blocks(contract, "python") if "def _write(" in b]
-        assert writer, "the contract no longer ships a worked `_write`"
-        body = writer[0]
+        body = _write_function_source(contract)
         assert "except OSError" in body, (
             "the example's `_write` can raise out of a pytest hook — a producer "
             "that cannot write its record must not take the suite down with it"
@@ -343,6 +358,24 @@ class TestTheShippedExampleMatchesTheRealProducer:
             "`file=sys.stderr` rather than the word 'stderr': the block's own "
             "comment says 'Say so on stderr', so a bare substring passes while "
             "the code prints to stdout — verified by mutation."
+        )
+        # The guard must cover the FIRST filesystem call, not only the later
+        # ones. `mkdir` outside the `try` lets an unwritable parent directory
+        # escape both hooks — R-2's first named OSError source, and the one a
+        # whole-block substring check cannot see.
+        fn = ast.parse(textwrap.dedent(body)).body[0]
+        guarded = [n for n in fn.body if isinstance(n, ast.Try)]
+        assert guarded, "`_write` has no try block at all"
+        first_fs_call = next(
+            (n for n in ast.walk(fn) if isinstance(n, ast.Call)
+             and getattr(getattr(n.func, "attr", None), "__str__", str)() == "mkdir"),
+            None,
+        )
+        assert first_fs_call is not None, "the example no longer creates its parent directory"
+        assert any(first_fs_call in ast.walk(stmt) for stmt in guarded[0].body), (
+            "`mkdir` sits outside the try block, so an unwritable parent "
+            "directory still raises out of pytest_configure — the guard covers "
+            "the later calls and not the first one"
         )
 
     def test_the_doc_resolves_rather_than_comparing_strings(self, contract):

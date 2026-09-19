@@ -140,8 +140,8 @@ def _write(config, scope, why):
     if why:
         record["why"] = why
     target = report.with_name(report.name + ".scope.json")
-    target.parent.mkdir(parents=True, exist_ok=True)
     try:
+        target.parent.mkdir(parents=True, exist_ok=True)
         fd, tmp = tempfile.mkstemp(dir=str(target.parent))
         with os.fdopen(fd, "w") as fh:
             fh.write(json.dumps(record, indent=2) + "\n")
