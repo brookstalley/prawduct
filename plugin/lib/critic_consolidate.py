@@ -2869,7 +2869,9 @@ def begin_review(
     # be written must never cost a review that was going to run. The degradation
     # is NAMED rather than swallowed — an unnamed one manufactures the false
     # success it exists to prevent — and it rides `notes`, which the CLI already
-    # prints to stderr, because there is no other outcome to report here.
+    # prints to stderr as `PRAWDUCT NOTE: {note}`. The string therefore carries no
+    # severity token of its own; every sibling `notes.append` here is a bare
+    # sentence for the same reason.
     from . import review_dispatch  # noqa: PLC0415 — lazy, as this module's other lib imports are
 
     try:
@@ -2878,7 +2880,7 @@ def begin_review(
         )
     except OSError as exc:
         notes.append(
-            f"NOTE: the review dispatch clock could not be started ({exc}) — the "
+            f"the review dispatch clock could not be started ({exc}) — the "
             "review runs normally; its duration will be self-reported by the "
             "reviewer rather than measured."
         )

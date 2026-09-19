@@ -1354,3 +1354,60 @@ class TestTheMarkerNormKeepsItsReason:
         assert "build-plan-critic-dispatch-clock" in bullet, (
             "the amendment cites no confirmation outside data-model.md"
         )
+
+
+class TestThePrDispatchClockAlsoFailsSoft:
+    """The Critic arm's sibling, ported rather than left behind.
+
+    `TestTheClockFailsSoft` pins `begin_review`'s degraded path; this is the
+    same guarantee at `cmd_pr_review_dispatch`, which had no test at all. Both
+    arms exist because a stopwatch that cannot be written must never cost the
+    review it precedes — and an untested error arm is where that promise decays
+    silently, since nobody exercises it by hand.
+
+    Driven through the command rather than the library, because the promise
+    being pinned is the EXIT CODE and the operator-facing sentence, neither of
+    which `review_dispatch.begin` owns.
+    """
+
+    def _hook_module(self):
+        import importlib.machinery
+        import importlib.util
+
+        hook = Path(__file__).resolve().parent.parent / "plugin" / "bin" / "prawduct-hook"
+        loader = importlib.machinery.SourceFileLoader("prawduct_hook_clock", str(hook))
+        spec = importlib.util.spec_from_loader("prawduct_hook_clock", loader)
+        module = importlib.util.module_from_spec(spec)
+        loader.exec_module(module)
+        return module
+
+    def test_an_unwritable_pr_mark_tells_the_operator_to_carry_on(self, tmp_path, capsys):
+        from lib import review_dispatch
+
+        hook = self._hook_module()
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _commit_file(repo, "app.py", "print(1)\n", "init")
+
+        def _boom(*_a, **_k):
+            raise OSError("injected: marker unwritable")
+
+        original = review_dispatch.begin
+        review_dispatch.begin = _boom
+        try:
+            rc = hook.cmd_pr_review_dispatch(repo, ["--begin"])
+        finally:
+            review_dispatch.begin = original
+
+        err = capsys.readouterr().err
+        assert rc == 1, "a failed stopwatch must report, not succeed silently"
+        assert "could not write the dispatch mark" in err
+        assert "self-reported" in err, (
+            "the operator is not told what they get instead — an unnamed "
+            "degradation manufactures the false success it exists to prevent"
+        )
+        assert "dispatch the review anyway" in err, (
+            "the message does not say the review should still run, so a caller "
+            "reading an exit 1 may abandon a review that was going to work"
+        )
+        assert not (repo / MARKER_REL).is_file()

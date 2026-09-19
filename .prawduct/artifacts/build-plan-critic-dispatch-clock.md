@@ -79,7 +79,7 @@ the confirmation, and it is cheap because this branch's own review produces the 
 ## Status
 
 - [x] Chunk 01: A second stopwatch — the Critic's dispatch mark, and every enumeration that tracks one
-- [ ] Chunk 02: The norm the plural marker falsifies, and the prose written over the singular one
+- [x] Chunk 02: The norm the plural marker falsifies, and the prose written over the singular one
 
 **Short plan (2 chunks), so no per-chunk review is inferred** — the boundary `cumulative` on
 Chunk 02 is every chunk's review (`review-cycle.md`, "When Review Is Required"). One round, by

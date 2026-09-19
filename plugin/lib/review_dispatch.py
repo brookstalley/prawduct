@@ -11,8 +11,12 @@ How weak the estimate is, measured rather than supposed: across the first 1,026
 ledger rounds, ``duration_seconds`` took 63 distinct values, 80% of them
 multiples of 30 seconds and 23% of them exactly ``300``. That is a model
 answering "about five minutes", and no amount of averaging turns it into a
-clock. Re-derive it with ``prawduct-hook review-stats``, which reports the
-measured and self-reported populations separately for exactly this reason.
+clock. ``prawduct-hook review-stats`` reports the measured and self-reported
+populations separately for exactly this reason, but it publishes only
+``{reviews, total_seconds, median_seconds}`` per population — the distinct-value
+count and the clustering share come from a scan of
+``.prawduct/.governance-ledger.jsonl`` over ``duration_seconds``, and must be
+re-derived there rather than from the command.
 
 This module supplies the other half: a per-clone marker written **before** the
 reviewer is spawned, from a clock this code reads. The caller chooses *when* to

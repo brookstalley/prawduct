@@ -485,7 +485,10 @@ def round_price(prawduct_dir: Path, *, mode: str = PRICED_MODE) -> dict:
     contract asks for a best-estimate wall-clock. So a median over THAT field is
     a median of self-reported estimates, not of measured time, and estimates
     cluster on round numbers: across the first 1,026 rounds it took 63 distinct
-    values, 80% of them multiples of 30 seconds.
+    values, 80% of them multiples of 30 seconds. (Those two figures come from a
+    scan of the ledger over ``duration_seconds``, not from this report — it
+    publishes only ``{reviews, total_seconds, median_seconds}`` per population,
+    so it cannot re-derive them.)
 
     Both review kinds now also carry a code-read clock where their dispatch was
     marked (``review_dispatch``; ``critic-begin`` marks a Critic round,

@@ -91,38 +91,61 @@ class TestTheTwoMeasurementsStayApart:
         density (the tool's own hazard 2). The dispatch clock is a stronger
         reading. A shared name in a published row is a collision on a key
         readers already trust, and no test of either one alone would see it.
+
+        Asserted against the keys the function RENDERS rather than against
+        source literals: the columns are built per review kind now, so the
+        names are composed and a `"pr_clock_runs" in source` check would pass
+        for any spelling while testing nothing. Both kinds are covered, because
+        the collision this forbids is per-key.
         """
-        source = _TOOL.read_text(encoding="utf-8")
-        assert '"pr_clock_runs"' in source
-        assert '"pr_clock_hours"' in source
-        assert '"pr_clock_measured"' not in source
-        assert '"pr_hours_measured"' not in source
+        for kind in ("pr", "critic"):
+            cols = tool._clock_columns(kind, 1800.0, 2)
+            assert f"{kind}_clock_runs" in cols
+            assert f"{kind}_clock_hours" in cols
+            assert not any("measured" in k for k in cols), (
+                f"a {kind} clock column adopted the word `measured`, which "
+                "`critic_hours_measured` already means (interval-attributed, "
+                f"density-biased): {sorted(cols)}"
+            )
+
+    def test_each_kind_gets_its_own_columns_and_they_do_not_collide(self):
+        """The clock reaches both review kinds; a function that can only name
+        one is how the other's measurement is accumulated and then dropped at
+        render time."""
+        pr = tool._clock_columns("pr", 1800.0, 2)
+        critic = tool._clock_columns("critic", 600.0, 1)
+        assert set(pr).isdisjoint(critic), (
+            f"the two kinds' columns share a key: {set(pr) & set(critic)}"
+        )
+        assert critic["critic_clock_minutes_per_review"] == 10.0
 
     def test_a_window_the_clock_never_reached_reports_none_not_zero(self):
         """Zero clocked reviews must render as "not measured", never as a window
         whose reviews were free. Every window of every existing ledger is this
         case, so it is the default rendering rather than an edge one."""
-        assert tool._clock_columns(0, 0) == {
-            "pr_clock_runs": 0,
-            "pr_clock_hours": None,
-            "pr_clock_minutes_per_review": None,
-        }
+        for kind in ("pr", "critic"):
+            assert tool._clock_columns(kind, 0, 0) == {
+                f"{kind}_clock_runs": 0,
+                f"{kind}_clock_hours": None,
+                f"{kind}_clock_minutes_per_review": None,
+            }
 
     def test_the_hours_and_the_run_count_always_travel_together(self):
         """A clock figure without its denominator is unreadable: 0.3 hours over
         2 of a window's 40 reviews is not that window's cost. Red if a figure
         can ever ship without the count that makes it legible."""
-        for total, runs in ((1800.0, 2), (300.0, 1), (0.0, 3)):
-            cols = tool._clock_columns(total, runs)
-            assert cols["pr_clock_runs"] == runs
-            assert (cols["pr_clock_hours"] is None) == (cols["pr_clock_runs"] == 0)
-            assert (cols["pr_clock_minutes_per_review"] is None) == (cols["pr_clock_runs"] == 0)
+        for kind in ("pr", "critic"):
+            for total, runs in ((1800.0, 2), (300.0, 1), (0.0, 3)):
+                cols = tool._clock_columns(kind, total, runs)
+                assert cols[f"{kind}_clock_runs"] == runs
+                assert (cols[f"{kind}_clock_hours"] is None) == (runs == 0)
+                assert (cols[f"{kind}_clock_minutes_per_review"] is None) == (runs == 0)
 
     def test_the_per_review_figure_divides_by_the_clocked_runs_only(self):
         """Red if the average is ever taken over ALL of a window's reviews
         rather than the clocked ones — that would silently dilute a real
         measurement with reviews the clock never saw."""
-        assert tool._clock_columns(1800.0, 2)["pr_clock_minutes_per_review"] == 15.0
+        assert tool._clock_columns("pr", 1800.0, 2)["pr_clock_minutes_per_review"] == 15.0
 
 
 def _fixture_repo(root: Path) -> Path:
@@ -171,7 +194,14 @@ def _fixture_repo(root: Path) -> Path:
     (repo / ".prawduct" / ".governance-ledger.jsonl").write_text(
         "\n".join(json.dumps(e) for e in [
             event("review.pr", "2026-05-02T12:00:00Z", 600),
-            event("review.critic", "2026-05-02T13:00:00Z", 300),
+            # Marked, so the critic clock has a POSITIVE case at the render
+            # surface: 13:00:00 dispatched, 13:04:00 written = 240s clocked
+            # against a 300s self-report. Without a mark here the new
+            # `clocked`/`clock h` columns are only ever seen in their
+            # negative state, which passes identically if they are wired to
+            # the wrong kind.
+            event("review.critic", "2026-05-02T13:04:00Z", 300,
+                  dispatched_at="2026-05-02T13:00:00Z"),
         ]) + "\n"
     )
     (repo / "app.py").write_text("print(1)\n")
@@ -365,3 +395,53 @@ class TestEveryIsoParseSurvivesPython310:
             f"the scan found only {scanned} parse sites across {self.TOOLS} — "
             "it is not reaching the code it is meant to police"
         )
+
+
+class TestTheCriticClockReachesTheReader:
+    """The critic clock is accumulated per kind; these assert it is also
+    RENDERED, which is the half that was missing when the columns were added.
+
+    `clock[series]["critic"]` was populated and never read: `_clock_columns`
+    could only name `pr`, so an operator comparing Critic review cost — this
+    tool's stated job — read the estimate and could not tell from the output
+    whether any Critic round had been clocked at all. Produced and never
+    consumed.
+    """
+
+    def test_the_critic_clock_reaches_the_json_row(self, tmp_path):
+        repo = _fixture_repo(tmp_path)
+        report = tool.build_report(
+            repo, repo, tool._parse_instant("2026-05-01"),
+            want_prs=False, until_override=tool._parse_instant("2026-06-01"),
+        )
+        row = next(w for w in report["windows"] if w["critic_clock_runs"])
+        assert row["critic_clock_runs"] == 1, (
+            "the marked critic event did not reach the clock population"
+        )
+        # 13:00:00 -> 13:04:00 is 240s; the self-report on the same row is 300s,
+        # so an assertion on the clock cannot be satisfied by the estimate.
+        assert row["critic_clock_hours"] == round(240 / 3600, 2)
+        assert row["critic_clock_minutes_per_review"] == 4.0
+        assert row["critic_hours_self_reported"] != row["critic_clock_hours"]
+
+    def test_the_critic_clock_reaches_the_human_output(self, tmp_path, capsys):
+        """The `--json`-only tests cannot see the renderer, which is how the
+        columns came to be accumulated and never printed in the first place."""
+        repo = _fixture_repo(tmp_path)
+        tool.render(tool.build_report(
+            repo, repo, tool._parse_instant("2026-05-01"),
+            want_prs=False, until_override=tool._parse_instant("2026-06-01"),
+        ))
+        out = capsys.readouterr().out
+        # Anchored on the section's own full heading, not the bare word: table B
+        # names VALIDATION too, and `startswith("VALIDATION")` binds to whichever
+        # line comes first.
+        row = _section_row(out, "VALIDATION — measured-interval", "v1.0")
+        assert row.split()[-2:] == ["1", "0.07"], (
+            "the clocked run count and hours are not the row's last pair — the "
+            f"header and the values have drifted apart: {row!r}"
+        )
+        # The control: a window the clock never reached prints the count and an
+        # explicit n/a, never a zero that reads as reviews which took no time.
+        quiet = _section_row(out, "VALIDATION — measured-interval", "v1.1")
+        assert quiet.split()[-2:] == ["0", "n/a"], quiet

@@ -651,6 +651,29 @@ _SESSION_GITIGNORED_PATHS = (
 )
 
 
+# Session files deleted at a session boundary, by basename under `.prawduct/`.
+# Hoisted out of `_boundary_close_session` so a test can QUANTIFY over it: the
+# dispatch clocks are generated from `review_dispatch.MARKER_BASENAMES`, and a
+# kind added to that mapping but omitted here survives a session reset and can
+# attest a boundary-spanning interval — the exact failure the tree check is only
+# the second line of defence against.
+#
+# Spelled rather than imported: this module keeps its top level import-light (the
+# same reason `_SESSION_GITIGNORED_PATHS` above is an inline mirror rather than a
+# `core` import), so the mapping cannot be read here. The connection is a TEST
+# that quantifies over `review_dispatch.MARKER_BASENAMES` and requires every
+# basename to appear in all four registries — which is where the obligation
+# belongs, since recall is what was failing.
+_SESSION_RESET_DELETES = (
+    ".session-start",
+    ".session-git-baseline",
+    ".session-base-tree",
+    ".gates-waived",
+    ".critic-review-dispatch.json",
+    ".pr-review-dispatch.json",
+)
+
+
 def _untrack_session_files(project_dir: Path) -> list[str]:
     """Defensively `git rm --cached` any session files that are currently tracked.
 
@@ -856,24 +879,7 @@ def _boundary_close_session(project_dir: Path, prawduct_dir: Path) -> None:
     # (permissions, transient FS) must not traceback the SessionStart hook —
     # a survivor just carries stale state into the new session, which the
     # NOTE names so the user can remove it by hand.
-    doomed = [
-        ".session-start",
-        ".session-git-baseline",
-        ".session-base-tree",
-        ".gates-waived",
-        # The review dispatch clocks, one per review kind. A stopwatch, never an
-        # answer: a review marked in a previous session is not this session's
-        # review, and a mark that outlived its session can only ever attach a
-        # boundary-spanning interval to an unrelated append. The consumer's tree
-        # check would refuse it anyway; deleting here means that check is the
-        # second line of defence rather than the only one.
-        #
-        # Both are listed rather than globbed: this registry's whole job is to
-        # make a new session file declare its boundary disposition, and a glob
-        # would let the next one inherit an answer nobody gave.
-        ".critic-review-dispatch.json",
-        ".pr-review-dispatch.json",
-    ]
+    doomed = list(_SESSION_RESET_DELETES)
     # The reflection is deleted iff the handoff CARRIED it (or there was nothing
     # to carry) — keyed on delivery, never on "a handoff was attempted", the
     # same rule `_consume_handoff_notes` applies to the notes. The handoff is

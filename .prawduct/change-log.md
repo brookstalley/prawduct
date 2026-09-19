@@ -61,7 +61,12 @@ provenance docstring had described this very fix in the future tense; `ledger.py
 enumeration said the key appears only on a `review.pr`; `measure-consumer-overhead.py`'s hazard list
 told a reader to treat every `duration_seconds` as an estimate. A survivor of a shape change is
 usually phrased in neither the code's vocabulary nor the claim's, so both were searched, and the
-file being edited was searched before its siblings.
+file being edited was searched before its siblings. **Two vocabularies were not enough**, and the
+review is what proved it: `api-contract.md` phrased the same claim in a third — "a PR-review
+dispatch mark" — and three independent reviewers each found that one surviving sentence, in the
+published-surface record a future kind-adder opens first. The plan had pre-dispositioned that file
+as "likely no edit" on the strength of `critic-begin`'s unchanged signature, which was true of the
+entry it reasoned about and never reached the `ledger-append` clause.
 
 ## 2026-09-18: the quotation half of the MCP mining debt, and the recipe that could not have paid it
 

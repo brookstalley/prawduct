@@ -40,9 +40,9 @@ the ones that have actually burned someone, is `## Hazards` in that document:
 * **Two different things are called "measured" here, deliberately kept apart.**
   `critic_hours_measured` is INTERVAL-measured — wall time attributed to the event
   that ends each interval, and biased by commit density (hazard 2 above). The
-  `pr_clock_*` columns are something stronger: a clock read in code before the
+  `<kind>_clock_*` columns are something stronger: a clock read in code before the
   reviewer was spawned and again when its record was appended (`dispatched_at` on
-  the ledger envelope). Read `pr_clock_runs` before `pr_clock_hours` — a clock
+  the ledger envelope). Read `<kind>_clock_runs` before `<kind>_clock_hours` — a clock
   figure covering 2 of a window's 40 reviews is not that window's cost, and the
   two populations are never pooled, because a median over a mixture of clock
   readings and model recollections measures neither.
@@ -277,9 +277,14 @@ def read_ledger(path: Path) -> list[dict]:
     return events
 
 
-def _clock_columns(total_seconds: float, runs: int) -> dict:
-    """The dispatch-clock trio for one window, built together so they cannot
-    disagree.
+def _clock_columns(kind: str, total_seconds: float, runs: int) -> dict:
+    """The dispatch-clock trio for one window and one review KIND, built
+    together so they cannot disagree.
+
+    Keyed by kind rather than hardcoded to ``pr``: both review kinds carry a
+    code-read clock now, and a function that can only name one is how the other
+    kind's measurement gets accumulated and then silently dropped at render
+    time. The prefix is the kind, so a third kind needs no edit here.
 
     The count is not decoration: 0.3 hours over 2 of a window's 40 reviews is
     not that window's cost, and a figure without its denominator invites exactly
@@ -289,14 +294,14 @@ def _clock_columns(total_seconds: float, runs: int) -> dict:
     """
     if not runs:
         return {
-            "pr_clock_runs": 0,
-            "pr_clock_hours": None,
-            "pr_clock_minutes_per_review": None,
+            f"{kind}_clock_runs": 0,
+            f"{kind}_clock_hours": None,
+            f"{kind}_clock_minutes_per_review": None,
         }
     return {
-        "pr_clock_runs": runs,
-        "pr_clock_hours": round(total_seconds / 3600, 2),
-        "pr_clock_minutes_per_review": round(total_seconds / 60 / runs, 1),
+        f"{kind}_clock_runs": runs,
+        f"{kind}_clock_hours": round(total_seconds / 3600, 2),
+        f"{kind}_clock_minutes_per_review": round(total_seconds / 60 / runs, 1),
     }
 
 
@@ -575,6 +580,12 @@ def build_report(product: Path, framework: Path, since: dt.datetime,
                 round(measured.get("critic", 0) / crit_self, 2) if crit_self else None),
             "critic_share_pct": round(100 * crit_self / engaged, 1) if engaged else 0,
             "critic_minutes_per_run": round(crit_self * 60 / n_crit, 1) if n_crit else 0,
+            # The Critic's dispatch-clock population, reported BESIDE its
+            # self-report for the same reason the PR one is: these are two
+            # populations and a median over the mixture measures neither.
+            # Accumulated since the clock reached `review.critic`; a window
+            # older than that reads 0 runs, which is "not measured", not "free".
+            **_clock_columns("critic", clock[s]["critic"], clock_runs[s]["critic"]),
             "critic_findings_per_run": round(crit_findings / n_crit, 2) if n_crit else 0,
             "critic_blocking": reviews[s]["critic:blocking"],
             "critic_blocking_per_run": (
@@ -593,7 +604,7 @@ def build_report(product: Path, framework: Path, since: dt.datetime,
             # a clock figure over 2 of 40 reviews is not a window's cost, and
             # without the count nothing says which it is. Zero runs means the
             # clock had not reached this window, never that reviews were free.
-            **_clock_columns(clock[s]["pr"], clock_runs[s]["pr"]),
+            **_clock_columns("pr", clock[s]["pr"], clock_runs[s]["pr"]),
             "pr_blocking": reviews[s]["pr:blocking"],
             "pr_findings": sum(reviews[s][f"pr:{k}"] for k in ("blocking", "warning", "note")),
             # None, not 0, when --prs was not passed: a zero that means "not
@@ -653,7 +664,9 @@ def render(report: dict) -> None:
               f"{r['hours_per_day']:7.2f}{ln.get('code+', 0):9}{ln.get('test+', 0):9}"
               f"{ln.get('governance+', 0):9}{r['lines_per_hour']:9}{r['code_share_pct']:7.1f}")
 
-    print("\nB. CRITIC (hours are the ledger's self-report — see VALIDATION)")
+    # "self-report" describes the `hours` column only; the clock columns live in
+    # VALIDATION, which the header points at.
+    print("\nB. CRITIC (hours are the ledger's self-report — clocked time in VALIDATION)")
     print(f"{'series':7}{'runs':>7}{'hours':>8}{'min/run':>9}{'%engaged':>10}"
           f"{'runs/day':>10}{'find/run':>10}{'blk/run':>9}{'blocking':>10}")
     print("-" * 80)
@@ -721,8 +734,9 @@ def render(report: dict) -> None:
     print("Near 1.0: commits are dense enough that interval attribution is sound, and")
     print("the self-report is corroborated. Far above 1.0: the window's measured phase")
     print("split is absorbing coding time into review; cite the self-report instead.")
-    print(f"\n{'series':7}{'measured h':>12}{'self-rep h':>12}{'ratio':>8}{'verdict':>26}")
-    print("-" * 65)
+    print(f"\n{'series':7}{'measured h':>12}{'self-rep h':>12}{'ratio':>8}{'verdict':>26}"
+          f"{'clocked':>10}{'clock h':>10}")
+    print("-" * 85)
     for r in rows:
         ratio = r["critic_ratio_measured_over_self"]
         if ratio is None:
@@ -734,8 +748,15 @@ def render(report: dict) -> None:
         else:
             verdict = "density-inflated"
         shown = "n/a" if ratio is None else f"{ratio:.2f}"
+        # The last two columns are the CODE-READ clock, not the interval
+        # estimate the first two are -- the file's own "two different things
+        # called measured" hazard. `clocked` is the denominator: without it a
+        # clock figure over 2 of 40 reviews reads as the window's cost.
+        runs = r["critic_clock_runs"]
+        clock_h = "n/a" if r["critic_clock_hours"] is None else f"{r['critic_clock_hours']:.2f}"
         print(f"{r['series']:7}{r['critic_hours_measured']:12.1f}"
-              f"{r['critic_hours_self_reported']:12.1f}{shown:>8}{verdict:>26}")
+              f"{r['critic_hours_self_reported']:12.1f}{shown:>8}{verdict:>26}"
+              f"{runs:>10}{clock_h:>10}")
 
 
 def main() -> int:
