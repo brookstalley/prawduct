@@ -553,6 +553,11 @@ Fail-direction is deliberate and per-purpose:
 - **Special sentinels** (documented, not general): `critic-begin` **2** = scope-widened;
   `critic-begin` **3** = no review needed (added 2026-08-06);
   `critic-begin` **4** = round budget exhausted (added 2026-09-09);
+  `critic-begin` **5** = self-inflicted verify refusal (added 2026-09-19, #167) — this pass
+  would re-review a prior CLEAN verify pass's own churn. Deliberately not folded into 3 or
+  4: a 3 asserts the interval holds no judgeable file, which is false here, and a 4 sweeps
+  outstanding findings, which this anchor has none of. Three reasons stay separately
+  queryable and separately retireable;
   `evidence status` **2** = schema-ahead records present (gates can't be trusted until update).
   (`regen-views` **2** and **3** are RETIRED, not repurposed: the command is inert and exits 0
   unconditionally, so those two meanings were removed rather than given new ones. Retiring a

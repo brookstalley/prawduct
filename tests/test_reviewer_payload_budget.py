@@ -136,8 +136,12 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # invisible to every other control — and a coordinator roster pays it once
     # per reviewer, so the dispatched route moves +372 against single-pass-full's
     # +83. The cheap route is untouched, which is the split working.
-    "single-pass-inner": 6301,
-    "single-pass-full": 20355,
+    # +75 to BOTH single-pass routes on 2026-09-19 (#167 Chunk 02): exit 5's row
+    # in SKILL.md, which both single-pass routes load and the dispatched reviewer
+    # does not — the route split showing its shape a second time, in the opposite
+    # direction from Chunk 01's agent-definition edit.
+    "single-pass-inner": 6376,
+    "single-pass-full": 20430,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -146,8 +150,8 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
 }
 
 PAYLOAD_CEILINGS = {
-    "single-pass-inner": 6302,
-    "single-pass-full": 20356,
+    "single-pass-inner": 6377,
+    "single-pass-full": 20431,
     "dispatched-reviewer": 19470,
 }
 

@@ -1771,6 +1771,36 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
 
     consolidate = _critic_consolidate()
     result = consolidate.begin_review(project_dir, **opts)
+    if result["status"] == "self-inflicted-refusal":
+        # Exit 5, and the third distinct refusal reason: a 3 says the interval
+        # holds no judgeable file, a 4 says the loop is over budget, and a 5
+        # says THIS EXACT PASS would re-review a prior clean verify pass's own
+        # churn. Stdout, because like 3 and 4 it is a normal outcome the caller
+        # acts on rather than an error.
+        print(
+            f"PRAWDUCT: {result['reason']}\n"
+            f"  Anchor: {result['anchor_fact_id']}\n"
+            f"  Changed: {', '.join(result['delta_files'])}\n"
+            f"  Named by that pass: {', '.join(result['named_files'])}\n"
+            "  You are DONE for this delta — nothing here needs a review round. "
+            "Any still-open warning or note from the anchor takes a free "
+            "disposition instead: `prawduct-hook disposition "
+            f"{result['anchor_fact_id']} <fid|oid> --accept \"<reason>\"`, which "
+            "records an answer and moves no tree."
+        )
+        if not result.get("recorded"):
+            print(
+                "  (This firing was not recorded — see stderr. It is missing "
+                "from the guard-refusal query, so read that as a lower bound.)"
+            )
+        print(
+            "  To dispatch anyway: `/prawduct:critic verify-resolutions --force`. "
+            "Do that when the delta is genuinely new work that happens to live "
+            "in the same files — a merge, or a change you made for a reason "
+            "outside the review loop — and not merely because a round feels owed."
+        )
+        return 5
+
     if result["status"] == "budget-exhausted":
         # Exit 4, not 3: both refuse a dispatch, but they answer different
         # questions and have different remedies. A 3 says the gate does not want

@@ -2264,6 +2264,140 @@ def _refuse_over_budget(
     }
 
 
+def _anchor_named_files(prior_body: dict) -> set[str]:
+    """Every file the anchor's own items named — findings AND observations.
+
+    **The departure from `167-design.md` D3, and its warrant.** That design
+    reads `findings` only, and deferred the empty-``named`` case on the stated
+    ground that the anchor's observations are *"unrecoverable from either
+    store"*. That premise went false after it was written: the
+    ``review-loop-termination`` plan shipped observation recording, and an
+    observation carries a ``files`` list exactly as a finding does.
+
+    It matters because the inner stage demotes everything below BLOCKING into
+    observations, so on a `verify-resolutions` anchor ``findings`` is now empty
+    in the ordinary case rather than the exceptional one. Measured over this
+    clone's store, verify anchors with a non-empty named set: 139/186 (July),
+    129/300 (August), and 20/114 in September findings-only against **56/114**
+    once observations count. Reading findings alone would ship the guard at
+    roughly a quarter of the reach the design intends for it.
+
+    Re-derive rather than trusting those figures: they are a scan of
+    ``review`` facts whose ``body.mode`` starts with ``verify-resolutions``,
+    counting those with any item carrying ``files``.
+    """
+    named: set[str] = set()
+    for item in (prior_body.get("findings") or []) + (prior_body.get("observations") or []):
+        for path in item.get("files") or []:
+            if isinstance(path, str) and path:
+                named.add(path)
+    return named
+
+
+def is_self_inflicted_verify(
+    prior_body: dict, files_changed: "list | None", unresolved: "list | None"
+) -> bool:
+    """The #167 predicate, as ONE function the dispatch calls and tests drive.
+
+    Extracted rather than inlined in :func:`begin_review` for a reason the first
+    cut of its tests demonstrated: a test that re-implements the three conjuncts
+    pins its own copy, so deleting a conjunct from the dispatch leaves it green.
+    Pinning an extracted predicate proves the predicate; the dispatch still has
+    to be shown to CALL it, which ``test_the_dispatch_calls_the_real_predicate``
+    does structurally.
+
+    Three independently falsifiable conjuncts, in cost order:
+
+    1. the anchor is ITSELF a ``verify-resolutions`` fact — D2's floor, so the
+       first verify pass after any full round is never refused, whatever that
+       round's severity mix;
+    2. it left zero unresolved blocking — a round still owing a real fix is out
+       of scope before file identity is even asked;
+    3. the delta's judgeable files are a NON-EMPTY subset of what that pass's
+       own items named. Non-empty on both sides matters: ``set() <= set()`` is
+       vacuously true, so an empty named set would refuse everything.
+    """
+    if prior_body.get("mode") != _VERBOSE_VERIFY_RESOLUTIONS:
+        return False
+    if unresolved:
+        return False
+    named = _anchor_named_files(prior_body)
+    judgeable = list(files_changed or [])
+    # No explicit `named` non-emptiness test, and its absence is deliberate. D3
+    # says an empty named set "is not a match, by construction" — and the
+    # construction is right here: a non-empty `judgeable` can never be a subset
+    # of an empty `named`, and an empty `judgeable` is refused by the first
+    # conjunct. A `bool(named)` guard beside these reads as a third condition
+    # and is unreachable; a mutation sweep deleting it changed no answer, which
+    # is a claim about the code rather than about the tests.
+    return bool(judgeable) and set(judgeable) <= named
+
+
+def _refuse_self_inflicted(
+    project_dir: Path,
+    prior: dict,
+    judgeable: list,
+    named: set,
+    mode_token: str,
+    scope: "str | None",
+    chunk: "str | None",
+    dispatch_commit: "str | None",
+    notes: list,
+) -> dict:
+    """Refuse a verify pass whose whole delta is churn a CLEAN verify pass of
+    its own caused (#167, exit 5).
+
+    Distinct from its two sibling refusals on purpose (D4): exit 3 means the
+    interval holds no judgeable file, and this interval is judgeable and
+    non-empty; exit 4 is a count-based backstop that sweeps outstanding
+    findings, and there is nothing to sweep here because the anchor already
+    left zero unresolved blocking. Three separately queryable reasons, three
+    separately retireable controls.
+
+    Records its firing for the same reason the budget guard does: a control
+    ships under *name the yield you expect and emit it observably*, and only a
+    record of actual firings can retire it later on evidence.
+    """
+    reason = (
+        f"verify-resolutions anchored on {prior.get('id')}, itself a clean "
+        f"verify-resolutions pass (0 unresolved blocking) — the changed file(s) "
+        f"{sorted(judgeable)} are all among the {len(named)} file(s) that pass's "
+        f"own items already named. This looks like the round the fixing itself "
+        f"generated, not new work."
+    )
+    recorded = evidence.append_guard_refusal(
+        project_dir,
+        "critic-dispatch-self-inflicted-verify",
+        {
+            "mode": mode_token,
+            "anchor_fact_id": prior.get("id"),
+            "delta_files": sorted(judgeable),
+            "named_files": sorted(named),
+            "scope": scope,
+            "chunk": chunk,
+            "branch": gitstate.current_branch(project_dir),
+            "dispatch_commit": dispatch_commit,
+        },
+    )
+    if recorded.get("status") != "appended":
+        print(
+            "critic-begin: the self-inflicted refusal is correct but was NOT "
+            f"recorded ({recorded.get('reason', 'unknown')}) — this firing is "
+            "missing from `prawduct-hook evidence list --kind guard-refusal`, "
+            "so read that query as a lower bound.",
+            file=sys.stderr,
+        )
+    return {
+        "status": "self-inflicted-refusal",
+        "reason": reason,
+        "anchor_fact_id": prior.get("id"),
+        "delta_files": sorted(judgeable),
+        "named_files": sorted(named),
+        "notes": notes,
+        "recorded": recorded.get("status") == "appended",
+    }
+
+
 def begin_review(
     project_dir: Path,
     mode_token: str,
@@ -2817,6 +2951,37 @@ def begin_review(
             "notes": notes,
             "recorded": recorded.get("status") == "appended",
         }
+
+    # SELF-INFLICTED VERIFY (#167, exit 5) — the round the fixing generated.
+    #
+    # Keyed on the anchor this dispatch ALREADY resolved by pointer, never on a
+    # fresh `diagnose_fix_churn` lineage search: that helper re-derives "the
+    # nearest review fact on this lineage", which is right for its own caller
+    # (the cumulative gate has no dispatch to anchor to) and a second, coarser
+    # answer here — two anchors that can disagree with nothing to reconcile them.
+    #
+    # FAILS CLOSED the safe way: an unreadable store DISPATCHES. A refusal is
+    # authority, and authority computed from a degraded read would skip a round
+    # nobody judged (`architecture.md` § Direction).
+    if mode_token == "verify-resolutions" and not force:
+        if prior_body.get("mode") == _VERBOSE_VERIFY_RESOLUTIONS:
+            from . import coverage_algebra  # noqa: PLC0415 — lazy, matching this module's other lib imports
+
+            store = evidence.read_facts(project_dir)
+            if store.get("status") != "error":
+                resolved_idx = coverage_algebra.resolution_index(store.get("facts") or [])
+                # Both conjuncts are independently necessary. An anchor still
+                # owing a real fix is out of scope before file identity is even
+                # asked, which is what keeps "the discriminator is what moved
+                # the tree, never a round counter" true.
+                unresolved = coverage_algebra.unresolved_blocking(prior, resolved_idx)
+                judgeable = coverage_algebra.judgeable_files(files_changed)
+                if is_self_inflicted_verify(prior_body, judgeable, unresolved):
+                    return _refuse_self_inflicted(
+                        project_dir, prior, judgeable,
+                        _anchor_named_files(prior_body),
+                        mode_token, scope, chunk, dispatch_commit, notes,
+                    )
 
     # ROUND BUDGET — the terminating rule. Yield does not decay (13.5 → 15.4 →
     # 15.5 → 18.4 findings per full round across this clone's store, 99% of them
