@@ -81,7 +81,7 @@ classifier is built on these exact attributes:
 - [x] Chunk 01: The contract, and the mechanism derived from it
 
 Context: built 2026-09-18 on `feature/test-report-scope` (cut from `develop` at `ded04e89`).
-Three commits: the contract, the mechanism, then the review's fixes. One `cumulative` (coordinator
+Eleven commits (three at authoring, eight more landing it 2026-09-19): the contract, the mechanism, then the review's fixes. One `cumulative` (coordinator
 roster — `plugin/bin/*hook*` is a declared risk surface) returning 16 findings, then three
 `verify-resolutions` rounds; 14 fixed, 3 accepted on the record, 0 outstanding. Suite state is the
 `test-status` exit code, not a total copied into prose.

@@ -7,6 +7,19 @@ tracking: brookstalley/prawduct#167
 
 # Why a small amount of work takes hours
 
+> **Read #724 first — this is a third derivation, not a discovery.** The headline below
+> (`verify-resolutions` is the largest addressable cost) was already filed on 2026-09-18 as
+> **#724**, from a single-branch measurement, and again from a repo-wide scan of 1,020 reviews that
+> produced **#830, #831, #832, #833** and sized **#167**. This document adds a whole-ledger
+> derivation reaching the same number — which #724's own reconciliation note calls corroboration
+> rather than duplication — plus two findings I did not see in that program: the **per-round cost
+> trend** (§1) and the **missing aggregate budget** (§4).
+>
+> It was written without finding that program, because the search ran on "roster", "freshness" and
+> "branch audit" and never on "verify-resolutions" or "review cost". That is the rule about
+> searching the backlog before deriving, failed on vocabulary — and it is the meta-problem the
+> document is about, biting the attempt to describe it.
+
 Measured 2026-09-19 from `.prawduct/.governance-ledger.jsonl` after a session in which landing two
 finished branches took ~3 hours. Every figure below re-derives from that ledger; the commands are in
 §6 so nothing here has to be trusted.

@@ -191,6 +191,35 @@ hunk that reads as a clean addition, with the suite green throughout, because no
 list is hoisted rather than inline. Develop's registry is kept and this bundle's two basenames
 (`.test-report.xml`, `.test-report.xml.scope.json`) move INTO it with their reason.
 
+**What landed after 2026-09-18, which the entry above stopped short of.** The closing rounds changed
+what ships, not just the records:
+
+- **The shipped worked producer was broken for every consumer who copied it.**
+  `docs/test-report-contract.md`'s example compared relative `config.args` against absolute
+  `testpaths`, and pytest sets `config.args` to the RELATIVE results of its own glob expansion — so
+  a bare `pytest` classified every whole-suite run `partial`, `--from-junit` refused, and the
+  cheapest escape was deleting the record, the one lever this same doc forbids. It also omitted
+  `ignore_glob`, so `pytest --ignore-glob=...` recorded `full` for a NARROWED run — a false green,
+  the inverse direction. Both fixed, and the drift class closed by a test that runs the doc's
+  `classify` and this repo's over the same matrix and requires them to agree.
+- **The example's write guard moved inside `_write`**, where one guard covers both hooks and a
+  second writer cannot be added unguarded, with the stderr NOTE `§ What a producer owes` requires;
+  `mkdir` moved inside the `try` as its first statement, since it was the first filesystem call and
+  sat outside the guard.
+- **`.claude/rules/learnings/tests.md` amended** — it declares `paths: tests/**`, so the harness
+  loads it into every session that reads a test file, and its rule still said a bare run "buys
+  nothing", which this bundle falsifies wherever a producer is wired.
+- **`plugin/lib/report_scope.py`**: an unresolvable `report` path is `CAUSE_MALFORMED`, not
+  `CAUSE_MISMATCH` — the remedy is the difference, and "fetch the report without its record" is
+  nonsense for a record never written correctly.
+- **Out of scope and named rather than smuggled:** `.prawduct/artifacts/review-cost-investigation-2026-09-19.md`
+  ships with this branch. It declares `scope: review-cost`, tracks #167, and has no parent in this
+  plan. It is a measurement of why review takes as long as it does — a third derivation of #724's
+  finding, plus two things that program had not recorded.
+
+Five findings from the closing cumulative are deferred to **#848** (*the warrant is narrower than
+the thing it licenses* — the incompleteness verdict is produced and never consumed).
+
 **Budget.** `building.md`'s ceiling is a declared raise with its reason at both the reading and the
 assertion. **The numbers moved at the sync and are the MEASURED merge, not this branch's draft:**
 the raise was authored as 4911 → 5021 against a tree that predated develop's two cuts (−2 from
