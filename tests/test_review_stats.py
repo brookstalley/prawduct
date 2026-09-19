@@ -714,8 +714,9 @@ class TestWindowBounds:
     timestamp names a PERIOD — `2026-09` is the whole of September. Compared as
     bare strings every such bound excludes its own period, silently shortening
     whichever window it closes; the window a before/after comparison closes is
-    the one the conclusion is read from. Ported from `tools/pr-review-yield.py`,
-    which answers the same question for the PR reviewer.
+    the one the conclusion is read from. The predicate is SHARED with
+    `tools/pr-review-yield.py`, which answers the same question for the PR
+    reviewer: `plugin/lib/timewindow.py` is its one home and both import it.
     """
 
     def _report(self, repo, *args):
@@ -922,10 +923,10 @@ class TestHumanRenderOfWindowAndRemedies:
 class TestWindowScopesEveryTally:
     """The window scopes the READ, not the result.
 
-    Three reviewers converged on this independently: filtering after
-    `_read_events` re-scopes only the review list, so a windowed report printed
-    whole-corpus `learning` and `skipped` counts under a banner saying it was a
-    slice — and two windows summed by a `--json` consumer double-counted them.
+    Filtering after `_read_events` re-scopes only the review list, so a windowed
+    report prints whole-corpus `learning` and `skipped` counts under a banner
+    saying it is a slice — and two windows summed by a `--json` consumer
+    double-count them.
     A before/after split, which is this command's whole purpose, showed
     identical learning numbers in both halves.
     """

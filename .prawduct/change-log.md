@@ -39,9 +39,19 @@ What it says about this repo, measured at `--since 2026-08-04`: **every one of 1
 carries a remedy, at a median of 122 words.** The severity label says *not worth your time* and the
 payload says otherwise.
 
+**The window scopes the read, not the result.** Reviews, skips and the `learning` tallies all
+describe the windowed population, so two adjacent windows partition the corpus and a consumer
+summing them double-counts nothing — a filter applied afterwards re-scopes only whichever aggregate
+it happens to touch, which is how a before/after split shows identical learning counts in both
+halves.
+
 `REPORT_SCHEMA_VERSION` 6 → 7. Both additions are additive — no `--json` key removed or repurposed —
 and `TestJsonSchemaStability`'s pins are renegotiated in the open, continuing that class's documented
-version history.
+version history. **`plugin/docs/governance-telemetry.md` is updated with them** — it is named by both
+`api-contract.md` and the module docstring as the `--json` contract's prose home, and a bump that
+does not reach it leaves the published shape and its description disagreeing. That pass also closes
+**schema 6's** drift: `duration_measured` / `duration_self_reported` had shipped with no prose home
+at all.
 
 **This branch was wave 1 of #832 and stopped after one chunk, deliberately.** #832 would have
 stripped the remedy text from notes; the owner questioned it mid-build and the measurement agreed.
