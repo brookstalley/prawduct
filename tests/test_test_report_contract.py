@@ -175,14 +175,28 @@ def _write_function_source(contract: str) -> str:
     substring check over the block passes for a guard sitting at a call site,
     which is exactly the placement this pin exists to forbid.
     """
+    return _named_function_source(contract, "_write")
+
+def _named_function_source(contract: str, name: str) -> str:
+    """One named top-level function from the worked producer, sliced by ast.
+
+    A substring check over the fence cannot tell WHICH function carries a
+    construct, and the fence holds six of them.
+    """
     for block in _fenced_blocks(contract, "python"):
-        if "def _write(" not in block:
+        dedented = textwrap.dedent(block)
+        try:
+            tree = ast.parse(dedented)
+        except SyntaxError:
             continue
-        tree = ast.parse(textwrap.dedent(block))
         for node in tree.body:
-            if isinstance(node, ast.FunctionDef) and node.name == "_write":
-                return ast.get_source_segment(textwrap.dedent(block), node) or ""
-    raise AssertionError("the contract no longer ships a worked `_write`")
+            if isinstance(node, ast.FunctionDef) and node.name == name:
+                return ast.get_source_segment(dedented, node) or ""
+    raise AssertionError(f"the contract no longer ships a worked `{name}`")
+
+
+def _selection_function_source(contract: str) -> str:
+    return _named_function_source(contract, "_selection_is_the_default")
 
 def _doc_classifier_source(contract: str) -> str:
     """The doc's `classify` + `_selection_is_the_default`, as source."""
@@ -318,6 +332,12 @@ class TestTheShippedExampleMatchesTheRealProducer:
         (("tests/test_a.py::test_b",), "partial"),
         (("tests", "extra"), "partial"),
         ((), "partial"),
+        # The case that REQUIRES resolution, and the only one that does. An
+        # unresolved comparison sees "/repo/tests/../tests" != "/repo/tests"
+        # and calls a whole-suite run partial; every other fixture here agrees
+        # under both implementations, so without this the `.resolve()` can be
+        # deleted with the suite green — verified by mutation.
+        (("tests/../tests",), "full"),
     ])
     def test_selection_cases_agree_and_are_right(self, contract, args, expected):
         doc, real = self._agree(contract, self._config(args=args))
@@ -325,6 +345,22 @@ class TestTheShippedExampleMatchesTheRealProducer:
         # Pinned against the REQUIREMENT too — "make A agree with B" is also
         # satisfied by teaching A the defects of B.
         assert doc == expected, f"args={args!r}: both say {doc!r}, expected {expected!r}"
+
+    @pytest.mark.parametrize("args,testpaths,expected", [
+        # Reaches the `.resolve()` on the TESTPATHS side, which every other
+        # fixture leaves unexercised because both sides are already absolute
+        # and normalised. A repo whose declared paths climb out of rootdir is
+        # the only shape that tells the two apart — verified by mutation.
+        (("../shared",), ("../shared",), "full"),
+        (("tests",), ("../shared",), "partial"),
+    ])
+    def test_a_testpath_above_rootdir_still_agrees(
+        self, contract, args, testpaths, expected
+    ):
+        doc, real = self._agree(contract, self._config(args=args, testpaths=testpaths))
+        assert doc == real, f"args={args!r} testpaths={testpaths!r}: doc {doc!r} vs real {real!r}"
+        assert doc == expected, f"both say {doc!r}, expected {expected!r}"
+
 
     @pytest.mark.parametrize("exitstatus", [2, 3, 4, 5])
     def test_an_incomplete_exit_status_is_partial_in_both(self, contract, exitstatus):
@@ -368,7 +404,7 @@ class TestTheShippedExampleMatchesTheRealProducer:
         assert guarded, "`_write` has no try block at all"
         first_fs_call = next(
             (n for n in ast.walk(fn) if isinstance(n, ast.Call)
-             and getattr(getattr(n.func, "attr", None), "__str__", str)() == "mkdir"),
+             and getattr(n.func, "attr", None) == "mkdir"),
             None,
         )
         assert first_fs_call is not None, "the example no longer creates its parent directory"
@@ -377,16 +413,16 @@ class TestTheShippedExampleMatchesTheRealProducer:
             "directory still raises out of pytest_configure — the guard covers "
             "the later calls and not the first one"
         )
+        # ...and the hooks carry NO guard of their own, which is what "one
+        # guard covers every hook" means. Without this the test's own name is
+        # false: a silent `try/except OSError: pass` re-added at
+        # `pytest_configure` leaves every assertion above green.
+        for hook in ("pytest_configure", "pytest_sessionfinish"):
+            src = _named_function_source(contract, hook)
+            assert "try:" not in src, (
+                f"`{hook}` guards its own call to `_write`. One guard belongs "
+                "inside `_write`, where it covers every hook and a second "
+                "writer cannot be added unguarded; a guard here is the half-fix "
+                "this pin exists to forbid."
+            )
 
-    def test_the_doc_resolves_rather_than_comparing_strings(self, contract):
-        """The property, not one spelling of it.
-
-        A string comparison is the defect; asserting the absence of one exact
-        line would pass for every other way of writing the same mistake.
-        """
-        src = _doc_classifier_source(contract)
-        assert ".resolve()" in src, (
-            "the contract's selection test no longer resolves its paths — pytest "
-            "hands back relative args, so an unresolved comparison calls every "
-            "whole-suite run `partial`"
-        )
