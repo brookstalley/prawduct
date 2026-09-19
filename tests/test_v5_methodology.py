@@ -584,7 +584,14 @@ LAST_MEASURED_TOKENS = {
     # rule stated without its bound at one carrier is the drift this scope exists to
     # end. Nothing was cut to fund it: the digest's share was written at that surface's
     # own compressed register instead, which is why its 500-char reserve is untouched.
-    "skills/critic/review-protocol.md": 4325,
+    # +30 on 2026-09-19 (#833 follow-up, cumulative finding R-12): the severity
+    # bound was written in the BUILDER's voice on a REVIEWER surface, readable as
+    # licence to omit a non-blocking pre-existing finding — finding suppression,
+    # the lever #832's closure ruled out. Restated in the reviewer's voice (rate it
+    # regardless; the bound is on the builder) with an explicit never-omit clause.
+    # A declared raise: correcting a rule that could suppress findings is not
+    # fundable by trimming, and the wrong reading cost more than 30 tokens would.
+    "skills/critic/review-protocol.md": 4355,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -668,7 +675,14 @@ LAST_MEASURED_TOKENS = {
     # rule stated without its bound at one carrier is the drift this scope exists to
     # end. Nothing was cut to fund it: the digest's share was written at that surface's
     # own compressed register instead, which is why its 500-char reserve is untouched.
-    "skills/critic/goals-1-3.md": 2622,
+    # +30 on 2026-09-19 (#833 follow-up, cumulative finding R-12): the severity
+    # bound was written in the BUILDER's voice on a REVIEWER surface, readable as
+    # licence to omit a non-blocking pre-existing finding — finding suppression,
+    # the lever #832's closure ruled out. Restated in the reviewer's voice (rate it
+    # regardless; the bound is on the builder) with an explicit never-omit clause.
+    # A declared raise: correcting a rule that could suppress findings is not
+    # fundable by trimming, and the wrong reading cost more than 30 tokens would.
+    "skills/critic/goals-1-3.md": 2652,
     # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
     # a computed pass the gate can now print, which a reader who only knows
     # "uncovered means run a cumulative" will otherwise re-review straight
@@ -1603,8 +1617,10 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # The digest sits at 9,422 of the 10,000-character wall, checked first.
     # +14 framework / +34 product on 2026-09-19 (#833, review-cost-decision Chunk 02):
     # the digest's copy of "no pre-existing exception" gains its severity bound. The
-    # two shapes move by different amounts because the product shape carries the rule
-    # once and the framework shape's other members dilute it.
+    # shapes move by different amounts because the PRODUCT shape carries the rule
+    # TWICE — the digest (+14, shared by both shapes) and `STATIC_ANCHOR` (+20), which
+    # gained the same bound — while the framework shape's other member, `CLAUDE.md`,
+    # is unchanged at 1,380. Dilution plays no part: these are absolute deltas.
     "framework": 3280,
     "product": 2221,
 }
@@ -1744,8 +1760,8 @@ INJECTED_FOOTPRINT_CEILINGS = {
     # restatement. The owner directed the full-reach amendment over a narrower one,
     # and the digest is a required carrier of it. The 500-char emitted RESERVE was
     # deliberately NOT spent: the digest's sentence is written at that surface's
-    # compressed register (9497 of 9500), so the next framework-wide default still
-    # has the room this reserve is held for.
+    # compressed register, inside the 9,500-character working budget, so the next
+    # framework-wide default still has the room this reserve is held for.
     "framework": 3281,
     "product": 2222,
 }
@@ -4678,7 +4694,7 @@ class TestCriticSkill:
         # reading — both lineages above are history and stand as written.
         # RAISED 4051 -> 4313 (2026-09-17, review-stages Chunk 02): the stage
         # rule reaches the final/cumulative reviewer — see LAST_MEASURED_TOKENS.
-        assert tokens < 4326, f"review-protocol.md is ~{tokens} tokens, should be <4326"
+        assert tokens < 4356, f"review-protocol.md is ~{tokens} tokens, should be <4356"
 
 
 # =============================================================================
@@ -4958,7 +4974,7 @@ class TestCriticGoals13:
         # RAISED 2435 -> 2610 (2026-09-17, review-stages Chunk 02): the inner
         # BLOCKING set, stated in full because this file may point nowhere —
         # see LAST_MEASURED_TOKENS.
-        assert tokens < 2623, f"goals-1-3.md is ~{tokens} tokens, should be <2623"
+        assert tokens < 2653, f"goals-1-3.md is ~{tokens} tokens, should be <2653"
 
     def test_is_self_contained(self):
         """No follow-the-pointer reads at review time — the acceptance criterion

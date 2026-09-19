@@ -429,6 +429,19 @@ def span_clause(answer: "dict | None", commits: "int | None" = None) -> str:
     :data:`_COVERAGE_IS_A_SEPARATE_QUESTION`, which is the pre-existing text and
     the honest one for "unknown".
 
+    **Why the positive arm is past-tense and the negative arms are not.** Like
+    :func:`cost_lead`, this clause is measured live and then FROZEN into
+    ``.critic-findings.json``, which ``briefing._summarize_critic_findings``
+    replays in later sessions. Those two are the whole class — every argument
+    :func:`next_action_line` receives that is not derived from the review fact —
+    and the class is decided here rather than one member at a time. The
+    asymmetry is deliberate: an *unclear* branch that later became clear costs
+    the reader a gate call they were already told to make, while a *covered*
+    claim that went stale is read as clearance for work no review has seen,
+    which is the misread this clause exists to prevent. So only the arm making
+    the durable positive claim is stamped and given its re-derivation; the
+    others already name ``check-cumulative-critic`` as the answer.
+
     **It names no prawduct-internal identifier** (``observability-strategy.md``:
     text emitted into a governed product names none) — no tree hashes, no
     review ids, no fids. A count and a branch name are the product's own facts.
@@ -469,17 +482,20 @@ def span_clause(answer: "dict | None", commits: "int | None" = None) -> str:
         # way, and it trains the reader to discount the clause on the branch
         # where it is load-bearing.
         #
-        # **"at HEAD" is precision, not a hedge, and it is the one thing this
-        # arm cannot leave out.** The span ends at the last COMMIT, and a verify
+        # **"at the HEAD this review saw" is precision, not a hedge, and it is
+        # the one thing this arm cannot leave out.** The span ends at the last
+        # COMMIT, and a verify
         # pass routinely reviews a dirty tree — so the fix the builder is about
         # to commit is not in the span this sentence just called covered, and
         # committing it re-opens the gate. Reporting "the branch is covered"
         # from that state is the very misread this whole clause exists to stop,
         # arriving one minute later by the other door.
         return (
-            f" The BRANCH is covered too{how}, at HEAD: composed review evidence"
-            f" spans {width} with no blocking findings outstanding — work you"
-            " have not committed yet is not in that span."
+            f" The BRANCH was covered too{how}, at the HEAD this review saw:"
+            f" composed review evidence spanned {width} with no blocking findings"
+            " outstanding — work you had not committed yet is not in that span."
+            " Re-derive with `prawduct-hook check-cumulative-critic` if the"
+            " branch has moved since."
             + _WORK_CYCLE_STILL_OWES
         )
 
@@ -543,19 +559,47 @@ _RIDE_ALONG_ROUTE = (
 #: might fix — findings or demoted observations. Fixing is the one response to
 #: those items that moves the tree, so a close that offers "accept" without also
 #: saying what the alternative costs is weighing one route and hiding the other.
+#:
+#: **It no longer sends the builder to price the batch.** It used to name
+#: ``cost-of-commit <paths>`` and explain that a `free` batch needs no pass —
+#: which is the question :func:`cost_lead` now ANSWERS in this message's first
+#: sentence. Carrying both made the close state the answer and then ask the
+#: reader to go compute it, which is the state #831 was filed about, surviving
+#: its own fix. The re-derivation pointer still ships, once, inside the clause
+#: that makes the claim needing re-deriving.
 _IF_YOU_FIX_SOME = (
     " If you do choose to fix some, batch them into"
     " ONE commit — and re-cover with ONE `/prawduct:critic verify-resolutions`"
-    " ONLY if that commit touched judgeable files. `prawduct-hook cost-of-commit"
-    " <paths>` answers that for the exact batch BEFORE you commit it; a batch it"
-    " prices `free` moves no coverage and needs no pass at all. AFTER committing,"
-    " you no longer have to judge it either: dispatch asks the same predicate and"
+    " ONLY if that commit touched judgeable files. AFTER committing,"
+    " you no longer have to judge that either: dispatch asks the same predicate and"
     " exits 3 (`no review needed`, under a second, no session state written) rather than"
     " spending a reviewer on a free interval — so asking costs nothing, and a"
     " refusal is the answer, not a reason to retry in another mode."
     " Do NOT start another round to 'close coverage' before committing, and do"
     " not infer that you need one from gate output printed before your fix —"
     " commit, then re-run the gate and let it answer."
+)
+
+
+#: Why every clause here is past-tense and carries a re-derivation.
+#:
+#: This sentence is measured from LIVE state at consolidation and then FROZEN:
+#: ``fact_to_cache_record`` writes it into ``.critic-findings.json``, whose
+#: designated later reader is ``briefing._summarize_critic_findings`` — the one
+#: its own comment calls definitionally the reader who lost the reviewer's
+#: report. The modal sequence inverts the advice: a review runs against a dirty
+#: judgeable tree, the record freezes "a fix buys no extra round", the builder
+#: commits, and a later session reads that against a clean tree where each fix
+#: buys the whole round this scope exists to remove.
+#:
+#: ``core.md``: never write a present-tense state claim into a durable
+#: document — write the dated measurement plus the command that re-derives it.
+#: So the tense says when it was true and the pointer says how to re-ask, which
+#: makes ONE wording honest on both the relayed in-session line and the
+#: persisted record. Splitting them into two variants was the alternative and
+#: it fails the same file's one-home rule.
+_REDERIVE_COST = (
+    "Re-derive with `prawduct-hook cost-of-commit` if the tree has moved since."
 )
 
 
@@ -609,27 +653,29 @@ def cost_lead(cost: "dict | None") -> str:
         return ""
     if cost.get("reason"):
         return (
-            "Fixing could not be priced here"
+            "Fixing could not be priced at review time"
             f" ({cost['reason']}) — that is a missing number, not a small one."
             " Decide as if a fix buys a round."
         )
     judgeable = cost.get("judgeable") or []
     if judgeable:
         return (
-            f"You are ALREADY making a judgeable commit ({len(judgeable)}"
-            " uncommitted judgeable file(s)), so a fix batched into it buys NO"
-            " extra round. Recommended: fix what is worth fixing, accept the"
-            " rest."
+            f"AT REVIEW TIME you were already making a judgeable commit"
+            f" ({len(judgeable)} uncommitted judgeable file(s)), so a fix"
+            " batched into it bought NO extra round."
+            f" {_REDERIVE_COST} Recommended while that holds: fix what is worth"
+            " fixing, accept the rest."
         )
     tree = (
-        "nothing judgeable is uncommitted"
+        "nothing judgeable was uncommitted"
         if cost.get("paths")
-        else "your tree is clean"
+        else "your tree was clean"
     )
     return (
-        f"You are NOT currently making a judgeable commit ({tree}), so the"
-        " first judgeable fix here buys a whole review round."
-        " Recommended: accept these unless a fix is worth that."
+        f"AT REVIEW TIME you were not making a judgeable commit ({tree}), so the"
+        " first judgeable fix bought a whole review round."
+        f" {_REDERIVE_COST} Recommended while that holds: accept these unless a"
+        " fix is worth that."
     )
 
 

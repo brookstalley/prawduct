@@ -1408,7 +1408,12 @@ whether it changed the action.
 > repo reaches that state routinely, so unlike VRF-017 it is not waiting on a release — it is
 > waiting on the next ordinary review that ends clean.
 >
-> **It gates nothing**, and the specific thing to report back is narrow: whether the tree-level
-> verdict at the top and the `cost-of-commit <paths>` pointer further down read as one thing said
-> twice. If they do, the pointer is the cut — recorded here so the question survives the session
-> that raised it.
+> **It gates nothing**, and the one question it was queued with has since been ANSWERED without a
+> human: the cumulative review found (R-10/R-17) that the close did state the verdict and then send
+> the builder to compute it, and `_IF_YOU_FIX_SOME` lost its copy in the same bundle. So what
+> remains here is only the part no assertion can reach — whether the leading sentence changes what a
+> builder does. Report that, not the duplication.
+>
+> **Noted because it bears on when this drains:** `operator_verification_required` is `false` in
+> this repo, so nothing blocks on this entry. That is the standing configuration, not a lapse, and
+> it means the entry drains when someone chooses to read it rather than at a gate.

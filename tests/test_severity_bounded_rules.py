@@ -129,9 +129,13 @@ def test_the_sweep_finds_the_carriers_it_claims_to_scan():
     what the check names — otherwise green means "nothing was looked at", and
     it means that forever.
 
-    The four named files are the ones whose absence would be silent and
-    expensive: two propagate into consumer repos, one is always-injected, and
-    one is the principle itself.
+    The three named files are the ones whose absence would be silent and
+    expensive: `migrate_plugin.py` propagates into consumer repos,
+    `session-digest.md` is always-injected, and `principles.md` is the principle
+    itself. `anchor_repair.py` is the fourth consumer-facing carrier and is
+    deliberately NOT required here — it is exempt from the sweep as archived
+    history, and `test_the_anchor_archive_holds_no_current_anchor` guards it
+    instead.
     """
     carriers = _carriers()
     assert carriers, "the sweep found no carriers at all — it is scanning the wrong tree"

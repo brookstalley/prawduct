@@ -761,19 +761,25 @@ class TestCostLeadAnswersTheMechanicalQuestion:
 
     def test_already_judgeable_says_the_fix_is_free(self):
         lead = cc.cost_lead({"paths": ["a.py"], "judgeable": ["a.py"], "free": []})
-        assert "ALREADY making a judgeable commit" in lead
-        assert "buys NO extra round" in lead
+        assert "AT REVIEW TIME you were already making a judgeable commit" in lead
+        assert "bought NO extra round" in lead
+        # R-7 renegotiated this contract: the clause is FROZEN into
+        # `.critic-findings.json` and replayed by the briefing after the tree
+        # has moved, so it states when it was true and how to re-ask.
+        assert "Re-derive with `prawduct-hook cost-of-commit`" in lead
+        assert "You are ALREADY" not in lead, "present tense returned to a persisted clause"
         # The recommendation is the half that makes it a decision aid rather
         # than a reading. Asserted positively, because a NEGATIVE assertion
         # here would pass for any sentence that merely omits the word.
-        assert "Recommended: fix what is worth fixing" in lead
+        assert "Recommended while that holds: fix what is worth fixing" in lead
 
     def test_clean_tree_says_the_first_fix_buys_a_round(self):
         lead = cc.cost_lead({"paths": [], "judgeable": [], "free": []})
-        assert "NOT currently making a judgeable commit" in lead
-        assert "your tree is clean" in lead
-        assert "buys a whole review round" in lead
-        assert "Recommended: accept these" in lead
+        assert "AT REVIEW TIME you were not making a judgeable commit" in lead
+        assert "your tree was clean" in lead
+        assert "bought a whole review round" in lead
+        assert "Recommended while that holds: accept these" in lead
+        assert "Re-derive with `prawduct-hook cost-of-commit`" in lead
 
     def test_free_paths_only_is_still_not_a_judgeable_commit(self):
         """The dirty-but-free tree is the case the binary question hides: there
@@ -782,9 +788,9 @@ class TestCostLeadAnswersTheMechanicalQuestion:
         come apart — an implementation keying on `paths` rather than
         `judgeable` inverts this one and passes the clean-tree test above."""
         lead = cc.cost_lead({"paths": ["x.md"], "judgeable": [], "free": ["x.md"]})
-        assert "NOT currently making a judgeable commit" in lead
-        assert "nothing judgeable is uncommitted" in lead
-        assert "your tree is clean" not in lead
+        assert "AT REVIEW TIME you were not making a judgeable commit" in lead
+        assert "nothing judgeable was uncommitted" in lead
+        assert "your tree was clean" not in lead
 
     def test_a_degraded_git_read_renders_its_reason_never_a_default(self):
         """`architecture.md` § Direction makes this advice, so it fails soft;
@@ -873,9 +879,18 @@ class TestNextActionLine:
         The command being named must also exist — a message citing a command
         the hook does not dispatch is worse than the list it replaced.
         """
-        line = cc.next_action_line("rev-1", 0, 1, 1)
+        # The command moved carriers on 2026-09-19 (finding R-10): the close
+        # used to STATE the verdict and then send the reader to compute it, so
+        # `_IF_YOU_FIX_SOME` shed its copy and `cost_lead` — which makes the
+        # claim — carries the one re-derivation pointer. The property this test
+        # exists for is unchanged and is asserted at its new home: the free-path
+        # rule is DELEGATED to the classifier, never restated here.
+        line = cc.next_action_line(
+            "rev-1", 0, 1, 1,
+            cost=cc.cost_lead({"paths": [], "judgeable": [], "free": []}),
+        )
         assert "prawduct-hook cost-of-commit" in line
-        assert "needs no pass at all" in line
+        assert "ONLY if that commit touched judgeable files" in line
         # The enumeration is what was deleted; its return would reintroduce the
         # drift this delegation removes.
         for carve_out in ("`.prawduct/` prose", "`.claude/settings.json`", "`templates/`"):
@@ -1081,7 +1096,6 @@ class TestNextActionLine:
         # this whole change exists to prevent.
         line = cc.next_action_line("rev-1", 0, 3, 0)
         assert "ONLY if that commit touched judgeable files" in line
-        assert "needs no pass at all" in line
 
     def test_missing_fact_id_degrades_to_a_placeholder(self):
         # A record with no id must still produce a runnable-shaped instruction
@@ -1151,7 +1165,7 @@ class TestSpanClause:
 
     def test_a_covered_branch_says_so_and_manufactures_no_warning(self):
         clause = cc.span_clause(self.COVERED, 12)
-        assert "BRANCH is covered" in clause
+        assert "BRANCH was covered" in clause
         assert "NOT covered" not in clause
         # A caveat on the branch that IS covered trains the reader to discount
         # the clause on the branch where it is load-bearing.
@@ -1181,15 +1195,15 @@ class TestSpanClause:
         # re-creates the false clearance the clause exists to stop, one minute
         # later by the other door.
         clause = cc.span_clause(self.COVERED, 12)
-        assert "at HEAD" in clause
-        assert "have not committed yet is not in that span" in clause
+        assert "at the HEAD this review saw" in clause
+        assert "had not committed yet is not in that span" in clause
 
     def test_a_transfer_says_how_the_branch_came_to_be_covered(self):
         # Covered by a computed grant rather than by a review anyone ran. Same
         # verdict, and a reader deciding what to report upward needs the
         # difference.
         clause = cc.span_clause({**self.COVERED, "status": "transferred"}, 3)
-        assert "BRANCH is covered" in clause
+        assert "BRANCH was covered" in clause
         assert "base advance" in clause
 
     def test_a_blocked_span_names_the_count_and_not_the_ids(self):
@@ -3998,7 +4012,7 @@ class TestTheSpanVerdictRidesTheCleanVerifyClose:
         )["status"] == "appended"
 
         result = _clean_verify(repo, head)
-        assert "BRANCH is covered" in result.stdout
+        assert "BRANCH was covered" in result.stdout
         assert "1 commit(s) since main" in result.stdout
         assert "NOT covered" not in result.stdout
 
@@ -4012,7 +4026,7 @@ class TestTheSpanVerdictRidesTheCleanVerifyClose:
 
         result = _clean_verify(repo, head)
         assert "nothing on this branch for a review to span" in result.stdout
-        assert "BRANCH is covered" not in result.stdout
+        assert "BRANCH was covered" not in result.stdout
 
     def test_every_other_mode_still_ships_the_text_it_shipped_before(self, tmp_path):
         # Scope: a `final` close is read as clearance too, but this chunk
@@ -7211,3 +7225,98 @@ class TestGuardRefusalsReachTheirOwnQuery:
         assert "rounds=6/1" in out, out
         assert "accepted=6" in out, out
         assert "blocking-left=6" in out, out
+
+
+class TestTheCostLeadReachesBothCarriers:
+    """`cost_lead` had seven unit tests and no test that it was WIRED.
+
+    Found by the cumulative review as R-2, BLOCKING. Deleting either the
+    `fact_to_cache_record(..., cost=...)` argument or the `cost=cost_sentence`
+    on the printed `next_action_line` left the whole suite green — and the two
+    are carriers of one sentence, so a single deletion makes them disagree
+    while a double deletion silently falsifies Chunk 01's acceptance criterion.
+    `core.md`: green is evidence only about what could have made it red, and
+    nothing could have.
+
+    The two are asserted separately because they fail separately: the printed
+    line is what the single-pass reviewer relays in-session, and the cache
+    record is what the builder reads on the coordinator path and what the
+    briefing replays later.
+    """
+
+    def test_the_cache_record_carries_the_lead(self):
+        fact = {"id": "rev-x", "ts": "2026-09-19T00:00:00Z",
+                "body": {"counts": {"blocking": 0, "warning": 2, "note": 1},
+                         "findings": [], "roster": [{"model": "m"}]}}
+        lead = cc.cost_lead({"paths": [], "judgeable": [], "free": []})
+        record = cc.fact_to_cache_record(fact, None, None, None, lead)
+        assert record["next_action"].startswith(lead), (
+            "`.critic-findings.json` is the carrier that HAS a reader in the "
+            "builder role — dropping the lead here guts Chunk 01 on the "
+            "coordinator path with nothing red"
+        )
+
+    def test_the_persisted_lead_survives_being_replayed_later(self):
+        """R-16: the field's designated LATER reader is
+        `briefing._summarize_critic_findings`, which renders `NEXT-ACTION:` in
+        every subsequent session until another review runs — the reader its own
+        comment calls definitionally the one who lost the reviewer's report.
+
+        So the persisted string must not assert anything about a tree that has
+        since moved. Asserted as a property of the record, not of `cost_lead`,
+        because the record is what that consumer reads.
+        """
+        fact = {"id": "rev-x", "ts": "2026-09-19T00:00:00Z",
+                "body": {"counts": {"blocking": 0, "warning": 1, "note": 0},
+                         "findings": [], "roster": [{"model": "m"}]}}
+        lead = cc.cost_lead({"paths": ["a.py"], "judgeable": ["a.py"], "free": []})
+        persisted = cc.fact_to_cache_record(fact, None, None, None, lead)["next_action"]
+        assert "AT REVIEW TIME" in persisted
+        assert "Re-derive with `prawduct-hook cost-of-commit`" in persisted
+        for present_tense in ("You are ALREADY", "You are NOT currently",
+                              "is clean", "buys NO extra round"):
+            assert present_tense not in persisted, (
+                f"{present_tense!r} is a present-tense claim about the working "
+                "tree, frozen into a record the briefing replays after the tree "
+                "has moved — the advice then inverts"
+            )
+
+    def test_consolidate_wires_the_lead_into_both_carriers(self):
+        """The acquisition path, which injection makes untested by construction.
+
+        Every other assertion passes a lead IN. Nothing asserted that
+        `consolidate` BUILDS one, so the `coverage.commit_cost` call and either
+        hand-off could be deleted with the suite green. Asserted over the AST of
+        `consolidate` itself rather than by substring, so reformatting cannot
+        fool it and a deletion cannot hide behind a comment.
+        """
+        import ast  # noqa: PLC0415
+
+        src = (ROOT / "lib" / "critic_consolidate.py").read_text()
+        fn = next(n for n in ast.walk(ast.parse(src))
+                  if isinstance(n, ast.FunctionDef) and n.name == "consolidate")
+        calls = [c for c in ast.walk(fn) if isinstance(c, ast.Call)]
+
+        def _name(call):
+            f = call.func
+            return f.attr if isinstance(f, ast.Attribute) else getattr(f, "id", "")
+
+        assert any(_name(c) == "commit_cost" for c in calls), (
+            "consolidate no longer prices the working tree — the lead has no source"
+        )
+        priced = [c for c in calls if _name(c) == "commit_cost"]
+        assert all(len(c.args) == 1 for c in priced), (
+            "commit_cost must be asked about the WORKING TREE (one arg); passing "
+            "paths answers what fixing THOSE would cost, a different question"
+        )
+        for carrier in ("fact_to_cache_record", "next_action_line"):
+            hits = [c for c in calls if _name(c) == carrier]
+            assert hits, f"consolidate no longer calls {carrier}"
+            assert any(
+                any(isinstance(a, ast.Name) and a.id == "cost_sentence" for a in c.args)
+                or any(k.arg == "cost" for k in c.keywords)
+                for c in hits
+            ), (
+                f"{carrier} no longer receives the cost lead — the two carriers of "
+                f"one sentence would disagree, and nothing else would go red"
+            )

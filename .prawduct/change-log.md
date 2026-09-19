@@ -42,13 +42,17 @@ exists to end | owner-directed 2026-09-19, and the owner may still narrow it]**.
 this amendment: #833 was filed by the owner on 2026-09-18 carrying the ledger measurement above,
 and `core.md` requires an amended norm's authority to live somewhere the amendment is not.
 
-**What the full reach cost, and the regression it surfaced.** Editing the current `CLAUDE.md`
-anchor means the bytes v3.5.0 shipped are no longer current — and `anchor_repair` grades a repo by
-matching its anchor byte for byte, so every repo onboarded on v3.5.0 would have been graded
-`stale-modified` and refused a repair. `ANCHOR_V4` archives those bytes, generated from what HEAD
-renders rather than retyped. Two edits to `ANCHOR_V1`/`ANCHOR_V3` were reverted in the same pass:
-that tuple is history, and rewriting it would break repair for the repos it exists to serve.
-`test_the_archive_covers_every_anchor_prawduct_ever_shipped` caught all three.
+**What the full reach cost, and the two regressions it surfaced.** `anchor_repair` grades a repo
+by matching its `CLAUDE.md` anchor byte for byte, so changing the current anchor strands whatever
+was current before it. **The stranded cohort is the develop track, not v3.5.0** — v3.5.0 ships
+`ANCHOR_V3`, which was already archived. `ANCHOR_V4` archives the develop anchor no release tag
+carries, and it is the entry that matters most: those bytes hold both `SUBSTANCE` probes, so an
+unarchived V4 grades silently **`ok`** rather than `stale-modified`, reporting the cohort healthy
+and never offering the repair. (V1–V3 predate `stage-keyed`, so an unarchived one of those DOES
+refuse loudly.) Separately, two edits to `ANCHOR_V1`/`ANCHOR_V3` were made and reverted: that tuple
+is the bytes sitting in already-onboarded repos, and rewriting it breaks repair for exactly the
+cohorts it serves. `test_the_archive_covers_every_anchor_prawduct_ever_shipped` caught that, and
+the cumulative review caught the warrant this paragraph originally recorded for the first.
 
 **Budgets: a declared raise, and a reserve deliberately not spent.** Four per-file readings and
 both injected-session aggregates moved, each ratcheted in the same commit. This is a declared raise
