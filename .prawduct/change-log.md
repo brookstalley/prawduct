@@ -15,7 +15,7 @@ product configures its runner so the machine-readable report is a side effect of
 its pre/post-run hook records **beside that report** whether the invocation ran the whole suite or
 a narrowed part of it. The first means no run inside a session is unrecordable: a hand-run of the
 suite is ingested with `--from-junit` instead of paid for twice, which is the wall-clock defect
-`#824` fixed in prose and this fixes in configuration. The second is what makes the first safe —
+PR #824 (a pull request, not a backlog id — a bare `#N` resolves against the backlog here) fixed in prose and this fixes in configuration. The second is what makes the first safe —
 once a report always sits at a known path, one from `pytest -k billing` is indistinguishable from
 the suite's, and ingesting it would record a subset as the suite's evidence. That is a false green,
 not a lost ten minutes, so the two ship together or not at all.
