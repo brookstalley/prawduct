@@ -14,7 +14,7 @@ and it is now measurable.** `duration_seconds` on a ledger event is written by t
 from its own recollection. Across the first 1,026 rounds it took **63 distinct values**, 80% of them
 multiples of 30 seconds and 23% of them exactly `300` — a model answering "about five minutes". Two
 of those 1,026 carried a measured duration, and both were `review.pr`: the code-read stopwatch
-shipped with the PR reviewer and the Critic never had one, which is 896 of the rounds and the entire
+shipped with the PR reviewer and the Critic never had one, which is 901 of the rounds and the entire
 subject of the items arguing about them. `telemetry.py` already said so in its own provenance
 docstring and already named this fix. Re-derive any figure here with `prawduct-hook review-stats`,
 which reports the measured and self-reported populations separately for exactly this reason.
@@ -45,6 +45,28 @@ clock that never ticks is the failure this work exists to end.
 
 This chunk ships the instrument and takes no position on the decisions it informs — deliberately,
 and before them.
+
+**The consumer-overhead report gains the Critic's clock column, which is a report-shape change and
+not the prose sweep the paragraph below describes.** `_clock_columns` was hardcoded to `pr` and now
+takes the kind, so `tools/measure-consumer-overhead.py` emits `critic_clock_runs` /
+`critic_clock_hours` / `critic_clock_minutes_per_review` beside the PR trio, and the per-window
+VALIDATION block gains a column for each. A function that can only name one kind is how the other
+kind's measurement gets accumulated and then dropped silently at render time — the prefix is the
+kind, so a third kind needs no edit there. The runs count leads the hours on purpose, unchanged: a
+clock figure covering 2 of a window's 40 reviews is not that window's cost, and a window older than
+this plugin reads `0 runs`, which is NOT MEASURED rather than free.
+
+**A marker that survives a session reset can attest an interval nobody spent, so the delete list
+became quantifiable.** `_SESSION_RESET_DELETES` is hoisted out of `_boundary_close_session` for one
+reason: a test can now quantify over `review_dispatch.MARKER_BASENAMES` and require every basename
+to appear in all FOUR registries that track this boundary — the gitignore mirror, the untrack
+sweep, the reset deletes, and the mapping itself. A kind added to the mapping and forgotten in one
+of them survives the reset and hands the next session's append a boundary-spanning duration. The
+consumer's tree check would refuse that mark anyway, which is exactly why this is the first line of
+defence and not the only one. The list is spelled rather than imported because `prawduct-hook`
+keeps its top level import-light, the same reason `_SESSION_GITIGNORED_PATHS` beside it is an
+inline mirror — so the obligation lives in a test rather than in a comment asking someone to
+remember.
 
 **The ratified norm this changes, amended rather than quietly outgrown.** `data-model.md` § Direction
 read *"Only `review.pr` appends consume the marker"*, and its stated why — a `review.critic` append

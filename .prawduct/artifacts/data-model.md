@@ -202,12 +202,15 @@ clock — and a performance target stated against an estimate is a target stated
   `review.critic` append clearing a shared marker would silently delete a live PR review's
   measurement. That why is preserved by CONSTRUCTION and is the reason this shape was chosen over
   the narrower one; what the old statement could not survive is that it was written over a singular
-  marker, and the Critic needed a clock of its own — 896 of the first 1,026 ledger rounds were
+  marker, and the Critic needed a clock of its own — 901 of the first 1,026 ledger rounds were
   Critic rounds and not one was measured | user can veto/override]` The rejected alternative is
   recorded because it is the one a reader will reach for: widening a single marker's consumer set
   keeps the shared cell and asks every future caller to be careful around it, which is the failure
-  the norm exists to forbid. Confirmation landed outside this artifact, in
-  `build-plan-critic-dispatch-clock.md` § The norm departure, recorded.
+  the norm exists to forbid. What that section holds is the DECISION, proposed for
+  veto, and that is the whole separate-act claim: it landed in commit `592b9db3`, ahead of both
+  Chunk 01's code and this amendment, so the amendment is not its own only witness. It is not a
+  confirmation record, and calling it one would assert a reader-check as a fact — the plan's own
+  next paragraph says confirmation is what Chunk 02 must cite.
 - The markers themselves (`.prawduct/.critic-review-dispatch.json`,
   `.prawduct/.pr-review-dispatch.json`) are **Tier 3 per-clone state** — stopwatches, not answers —
   and are gitignored.
