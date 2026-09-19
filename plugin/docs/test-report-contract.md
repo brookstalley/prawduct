@@ -98,9 +98,13 @@ A refusal names the two honest ways forward — run the declared command through
 Deleting or editing the scope record is not one of them: it buys a silent false green, which is
 the thing this contract exists to prevent.
 
-The record is consulted on **ingest only**. On the run path the recorder invokes the repo's
-declared `test_command` / `test_commands`, and that declaration *is* the definition of the suite —
-a repo whose canonical command is deliberately narrow is not second-guessed by this.
+The record is consulted on **ingest, and on the undeclared-run fallback**. Where the repo declares
+a `test_command` / `test_commands`, that declaration *is* the definition of the suite on the run
+path and is not second-guessed by this — a repo whose canonical command is deliberately narrow is
+taken at its word. Where it declares none, the recorder runs its own pytest fallback and *does*
+consult the record, because there is no declaration standing behind that invocation: the fallback
+is the reader's own guess at the suite, so the scope it actually selected is the only evidence of
+what it covered. Pinned by `TestTheUndeclaredRunPath`.
 
 ## Producing one
 
@@ -146,7 +150,12 @@ def _write(config, scope, why):
 def pytest_configure(config):
     # Written FIRST, so a run that is killed or crashes leaves a record saying so
     # rather than the previous run's verdict sitting beside a truncated report.
-    _write(config, "partial", "the run did not finish")
+    # Never raise out of a hook: a producer that cannot write its record must not
+    # take the suite down with it (see "What a producer owes" above).
+    try:
+        _write(config, "partial", "the run did not finish")
+    except OSError:
+        pass
 
 def pytest_sessionfinish(session, exitstatus):
     _write(session.config, *classify(session.config, exitstatus))
@@ -168,9 +177,29 @@ def classify(config, exitstatus):
         return "partial", "--collect-only ran no tests"
     if getattr(o, "maxfail", 0):
         return "partial", "--maxfail/-x can stop the run before the end"
-    if list(config.args) != [str(Path(config.rootpath) / p) for p in config.getini("testpaths")]:
+    if not _selection_is_the_default(config):
         return "partial", "the invocation named specific paths rather than the whole suite"
     return "full", None
+
+def _selection_is_the_default(config):
+    """True when this invocation selected what a bare run selects.
+
+    Compare RESOLVED paths, never the strings. pytest sets `config.args` to the
+    RELATIVE results of its own glob expansion, while `testpaths` is declared
+    relative to rootdir — so a bare `pytest` gives `["tests"]` on one side and
+    `["/abs/root/tests"]` on the other, and a string comparison calls every
+    whole-suite run `partial`. Set-compare, because order is not selection.
+    """
+    args = list(config.args)
+    if any("::" in arg for arg in args):
+        return False          # a node id is a narrowing by definition
+    invocation_dir = Path(config.invocation_params.dir)
+    chosen = {(invocation_dir / arg).resolve() for arg in args}
+    testpaths = [str(x) for x in config.getini("testpaths")]
+    if testpaths:
+        return chosen == {(Path(config.rootpath) / p).resolve() for p in testpaths}
+    # No testpaths configured: a bare run collects from where it was invoked.
+    return chosen in ({invocation_dir.resolve()}, {Path(config.rootpath).resolve()})
 ```
 
 Exit status `1` — a red suite — is `full`: that run is complete, and recording a failing suite is

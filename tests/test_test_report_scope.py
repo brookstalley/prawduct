@@ -150,7 +150,12 @@ class TestTheReader:
         _record_beside(report, report="\x00")
         ok, reason, cause = report_scope.read_scope_record(report)
         assert ok is False
-        assert cause == report_scope.CAUSE_MISMATCH
+        assert cause == report_scope.CAUSE_MALFORMED, (
+            "an unresolvable report path is malformed content, not a record "
+            "about another run — the same reasoning the no-`report`-field "
+            "sibling above states, and the mismatch remedy ('fetch the report "
+            "without its record') is nonsense for both"
+        )
         assert "cannot be" in reason
 
     def test_unknown_keys_are_tolerated(self, report):
@@ -725,3 +730,85 @@ class TestUnderRealPytest:
         assert res.returncode == 0, res.stdout + res.stderr
         assert not list(bare.glob("*.scope.json"))
         assert not list(bare.glob("*.xml"))
+
+
+class TestConfigureClaimsTheRunIncomplete:
+    """`pytest_configure` writes `partial` BEFORE the run, and that one line is
+    the whole crash-safety guarantee.
+
+    A run that is killed, crashes or is interrupted never reaches
+    `pytest_sessionfinish`, so what it leaves behind is a truncated report. The
+    configure-time write means the record beside it says `partial` rather than
+    the PREVIOUS run's `full` verdict sitting there vouching for a report it
+    never saw.
+
+    That guarantee is published in the conftest docstring, in
+    `docs/test-report-contract.md` and in the change-log — and until this class
+    existed, deleting the line left the suite green: no test called
+    `pytest_configure`, and `TestUnderRealPytest` asserts only post-`sessionfinish`
+    state, which is written by a different hook and would repair the record
+    anyway.
+
+    What turns these red: removing the `write_scope_record(...PARTIAL...)` call
+    from `pytest_configure`, or writing any scope other than `partial` there.
+    Both verified by mutation.
+    """
+
+    def _conftest(self):
+        import tests.conftest as conftest  # the producer this repo runs
+
+        return conftest
+
+    def _config(self, tmp_path: Path, xmlpath: str):
+        class _Option:
+            pass
+
+        option = _Option()
+        option.xmlpath = xmlpath
+
+        class _Config:
+            def __init__(self):
+                self.option = option
+                self.rootpath = tmp_path
+                self.args = ["tests"]
+
+            def getini(self, name):
+                return ["tests"]
+
+        return _Config()
+
+    def test_configure_leaves_a_partial_record_before_the_run(self, tmp_path):
+        report = tmp_path / ".prawduct" / ".test-report.xml"
+        report.parent.mkdir(parents=True)
+        config = self._config(tmp_path, str(report))
+
+        conftest = self._conftest()
+        conftest.pytest_configure(config)
+
+        record = Path(str(report) + conftest.SCOPE_RECORD_SUFFIX)
+        assert record.is_file(), (
+            "pytest_configure wrote no scope record — a crashed run would leave "
+            "the previous run's verdict beside a truncated report"
+        )
+        assert json.loads(record.read_text())["scope"] == conftest.PARTIAL
+
+    def test_a_stale_full_record_is_overwritten_at_configure(self, tmp_path):
+        """The case the guarantee is actually FOR.
+
+        An empty directory makes the assertion above pass for a writer that
+        merely creates a file. The danger is a PREVIOUS run's `full` record
+        surviving beside this run's truncated report, so the fixture starts
+        from exactly that state.
+        """
+        report = tmp_path / ".prawduct" / ".test-report.xml"
+        report.parent.mkdir(parents=True)
+        conftest = self._conftest()
+        record = Path(str(report) + conftest.SCOPE_RECORD_SUFFIX)
+        record.write_text(json.dumps({"scope": conftest.FULL, "why": None}) + "\n")
+
+        conftest.pytest_configure(self._config(tmp_path, str(report)))
+
+        assert json.loads(record.read_text())["scope"] == conftest.PARTIAL, (
+            "a previous run's `full` verdict survived into this run — it now "
+            "vouches for a report it never saw"
+        )

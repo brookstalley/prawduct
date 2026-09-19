@@ -182,8 +182,22 @@ _Observations — read, not owed. Answering one is optional._
 **17 findings** (2 blocking, 9 warning, 6 note) — accepted: 3, fixed: 14.
 **8 observations demoted** — 1 answered. An observation gates nothing; answering one is optional.
 
-**Budget.** `building.md`'s ceiling is a declared raise (4911 → 5021) with its reason at both the
-reading and the assertion. Neither payment route was honest: deduping against the always-injected
+**Landed 2026-09-19, after a 55-commit base advance the branch sat through.** It was finished and
+plan-ticked on 09-17 and never PR'd — the gap that item #843 now tracks. One resolution is
+substantive to what ships rather than editorial: this branch still carried the INLINE session-reset
+delete list in `prawduct-hook`, and develop has since hoisted it to `_SESSION_RESET_DELETES` so a
+test can quantify over the registries. Keeping this side would have reverted that hoist inside a
+hunk that reads as a clean addition, with the suite green throughout, because nothing asserts the
+list is hoisted rather than inline. Develop's registry is kept and this bundle's two basenames
+(`.test-report.xml`, `.test-report.xml.scope.json`) move INTO it with their reason.
+
+**Budget.** `building.md`'s ceiling is a declared raise with its reason at both the reading and the
+assertion. **The numbers moved at the sync and are the MEASURED merge, not this branch's draft:**
+the raise was authored as 4911 → 5021 against a tree that predated develop's two cuts (−2 from
+`test-status-clause`, −4 from `pr-review-payload` Chunk 02), and develop had ratcheted to 4904/4905
+against a tree without this addition. The merged file measures **5015**, so the ceiling is 5016 —
+below either side, because both deltas landed. Taking a side would have banked the other's as
+silent slack. Neither payment route was honest: deduping against the always-injected
 digest is a dedup for the main agent and a deletion for a delegate, which reads that file without
 it, and the only in-file overlap is the Verify bullet's on-ramp list, which is the step-level
 instruction a builder acts on.

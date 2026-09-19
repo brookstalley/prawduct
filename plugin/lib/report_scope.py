@@ -147,12 +147,17 @@ def read_scope_record(report_path: str | Path) -> ScopeVerdict:
     except (OSError, ValueError) as exc:
         # `Path("\x00").resolve()` raises ValueError, and a path the OS refuses
         # to resolve raises OSError. Both are malformed CONTENT reaching a
-        # function whose contract is that errors come back as values.
+        # function whose contract is that errors come back as values — so the
+        # cause is MALFORMED, not MISMATCH. The distinction is the remedy: a
+        # mismatch tells the reader this record belongs to another run and the
+        # report can be fetched without it, which is nonsense advice for a
+        # record that was never written correctly. The no-`report`-field branch
+        # above already classifies its sibling case this way.
         return ScopeVerdict(
             False,
             f"the scope record {path} names a report path that cannot be "
             f"resolved ({exc})",
-            CAUSE_MISMATCH,
+            CAUSE_MALFORMED,
         )
     if not claims_this_report:
         return ScopeVerdict(

@@ -160,3 +160,134 @@ def test_the_builders_guide_points_here(contract):
     assert CONTRACT_REL in building, (
         "methodology/building.md no longer points at the test-report contract"
     )
+
+
+# =============================================================================
+# The shipped example against the real producer
+# =============================================================================
+
+
+def _doc_classifier_source(contract: str) -> str:
+    """The doc's `classify` + `_selection_is_the_default`, as source."""
+    for block in _fenced_blocks(contract, "python"):
+        if "def classify(" in block and "_selection_is_the_default" in block:
+            return block
+    raise AssertionError(
+        "the contract's worked producer no longer defines both `classify` and "
+        "`_selection_is_the_default` in one block — this pin cannot find its subject"
+    )
+
+
+class TestTheShippedExampleMatchesTheRealProducer:
+    """A consumer copies the DOC, not `tests/conftest.py`.
+
+    The example was hand-written from the real producer and nothing compared the
+    two, so every correction made to `conftest.py` during this branch's own
+    review left the copy consumers take still wrong. That is the class, and it
+    is what these tests close — not the one bug that exposed it.
+
+    The bug it exposed is worth naming because it is invisible by reading: the
+    example compared `list(config.args)` against absolute `testpaths`, and
+    pytest sets `config.args` to the RELATIVE results of its own glob expansion
+    (`_pytest/config/__init__.py::_decide_args`). So a bare `pytest` compared
+    `["tests"]` with `["/abs/root/tests"]`, classified every whole-suite run
+    `partial`, and made `--from-junit` refuse for every consumer who copied it —
+    the cheapest escape being to delete the record, which is the one lever this
+    same doc forbids.
+
+    What turns these red, verified by mutation rather than claimed: reverting
+    `classify`'s call to the string comparison that shipped (2 of 11 red).
+
+    What they do NOT discriminate, stated so the docstring does not imply
+    coverage it lacks: resolving only one side of the comparison survives,
+    because both sides here are absolute and already normalised — that is
+    unreachability, not a gap, and `.resolve()` earns its place on the RELATIVE
+    side, which these fixtures do exercise. A comment reword also survives,
+    which is the control proving the pin is not matching incidental text.
+    """
+
+    def _classifiers(self, contract: str):
+        """The doc's `classify` and this repo's, both ready to call.
+
+        Entered at `classify`, NOT at the selection predicate. A first cut of
+        this test called `_selection_is_the_default` directly and both real
+        mutants survived: reverting `classify`'s CALL to a string comparison
+        never enters the predicate, so the test could not see the very defect it
+        was written for. Pin the call, not the arithmetic.
+        """
+        import tests.conftest as real
+
+        ns: dict = {}
+        exec(  # noqa: S102 — executing the doc's own snippet is the point
+            "import json, os, tempfile\nfrom pathlib import Path\n"
+            + _doc_classifier_source(contract),
+            ns,
+        )
+        return ns["classify"], real.classify_invocation
+
+    @pytest.mark.parametrize(
+        "args,testpaths,expected_scope",
+        [
+            # The case that was broken: a bare run, relative args, declared
+            # testpaths. A string comparison answers "partial" here.
+            (["tests"], ["tests"], "full"),
+            (["tests/"], ["tests"], "full"),
+            # Genuine narrowings.
+            (["tests/test_one.py"], ["tests"], "partial"),
+            (["tests/test_one.py::test_x"], ["tests"], "partial"),
+        ],
+    )
+    def test_the_two_classifiers_agree_and_are_right(
+        self, contract, args, testpaths, expected_scope
+    ):
+        doc_classify, real_classify = self._classifiers(contract)
+
+        class _Params:
+            dir = "/repo"
+
+        class _Option:
+            keyword = ""
+            markexpr = ""
+            deselect = None
+            ignore = None
+            lf = False
+            stepwise = False
+            collectonly = False
+            maxfail = 0
+
+        class _Config:
+            def __init__(self):
+                self.args = list(args)
+                self.rootpath = Path("/repo")
+                self.invocation_params = _Params()
+                self.option = _Option()
+
+            def getini(self, name):
+                assert name == "testpaths"
+                return list(testpaths)
+
+        doc_scope, _ = doc_classify(_Config(), 0)
+        real_scope, _ = real_classify(_Config(), 0)
+        assert doc_scope == real_scope, (
+            f"the doc's producer and this repo's disagree on args={args!r} "
+            f"testpaths={testpaths!r}: doc says {doc_scope!r}, real says {real_scope!r}"
+        )
+        # Pinned against the REQUIREMENT too — "make A agree with B" is also
+        # satisfied by teaching A the defects of B.
+        assert doc_scope == expected_scope, (
+            f"both classifiers agree on args={args!r} testpaths={testpaths!r} "
+            f"and both are wrong: expected {expected_scope!r}, got {doc_scope!r}"
+        )
+
+    def test_the_doc_resolves_rather_than_comparing_strings(self, contract):
+        """The property, not one spelling of it.
+
+        A string comparison is the defect; asserting the absence of one exact
+        line would pass for every other way of writing the same mistake.
+        """
+        src = _doc_classifier_source(contract)
+        assert ".resolve()" in src, (
+            "the contract's selection test no longer resolves its paths — pytest "
+            "hands back relative args, so an unresolved comparison calls every "
+            "whole-suite run `partial`"
+        )
