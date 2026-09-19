@@ -839,6 +839,102 @@ class TestCostLeadAnswersTheMechanicalQuestion:
         empty = cc.next_action_line("rev-1", 0, 0, 0, cost=lead)
         assert lead not in empty
 
+    def test_an_anchored_tree_inverts_the_advice(self):
+        """#851, reproduced live while building this scope's predecessor.
+
+        `commit_cost` asks only whether paths are judgeable. It cannot know a
+        review just anchored on this tree — and once one has, the commit this
+        lead would call free is already covered, so the NEXT edit opens a new
+        delta needing its own pass whatever its paths are. The close told me a
+        batch of fixes was free; it bought a full round.
+        """
+        dirty = {"paths": ["a.py"], "judgeable": ["a.py"], "free": []}
+        assert "bought NO extra round" in cc.cost_lead(dirty, False)
+        anchored = cc.cost_lead(dirty, True)
+        assert "COVERS your working tree" in anchored
+        assert "opens a NEW delta" in anchored
+        assert "judgeable or not" in anchored, (
+            "the whole point is that judgeability stops being the question "
+            "once a review has anchored here"
+        )
+        assert "bought NO extra round" not in anchored
+
+    def test_the_anchored_arm_precedes_both_ordinary_arms(self):
+        """It has to win over BOTH, not just the dirty one: a clean tree that a
+        review just covered is the modal shape at a verify close, and the
+        clean-tree arm's advice ("the first judgeable fix buys a round") is
+        true but understates it — the first fix of ANY kind does."""
+        for cost in ({"paths": [], "judgeable": [], "free": []},
+                     {"paths": ["x.md"], "judgeable": [], "free": ["x.md"]},
+                     {"paths": ["a.py"], "judgeable": ["a.py"], "free": []}):
+            assert "COVERS your working tree" in cc.cost_lead(cost, True)
+
+    def test_a_degraded_capture_falls_back_rather_than_asserting_coverage(self):
+        """Fail soft in the safe direction. If the capture failed, the caller
+        passes False and the lead renders its ordinary advice — never a
+        coverage claim it could not verify."""
+        assert "COVERS your working tree" not in cc.cost_lead(
+            {"paths": [], "judgeable": [], "free": []}, False
+        )
+
+    def test_the_coverage_comparison_discriminates(self):
+        """The wiring's own logic, driven directly. Inlined in `consolidate` it
+        had three mutation survivors — always-covered, covered-on-a-degraded-
+        capture, and a regression to an unbound name — none of which the pure
+        renderer's tests or a structural check could see."""
+        assert cc.tree_is_covered_by({"status": "ok", "tree": "t1"}, "t1") is True
+        assert cc.tree_is_covered_by({"status": "ok", "tree": "t2"}, "t1") is False, (
+            "a DIFFERENT tree is not covered — without this, the comparison can "
+            "be deleted and every close claims coverage"
+        )
+        assert cc.tree_is_covered_by({"status": "error"}, "t1") is False, (
+            "a degraded capture must fail SOFT: an unverifiable coverage claim "
+            "is the one answer that sends a builder to commit unreviewed work"
+        )
+        assert cc.tree_is_covered_by({"status": "ok", "tree": "t1"}, None) is False
+        assert cc.tree_is_covered_by(None, "t1") is False
+        # The case that DISCRIMINATES the missing-anchor guard. With a real tree
+        # string on the left, deleting that guard changes no answer ("t1" is not
+        # None either way) — so the fixture above passes under both. Two absent
+        # values compare EQUAL, and the guard is the only thing standing between
+        # that and a false "you are covered".
+        assert cc.tree_is_covered_by({"status": "ok", "tree": None}, None) is False, (
+            "two missing trees must not read as a match — that is a fail-open "
+            "claiming coverage for a tree nothing reviewed"
+        )
+
+    def test_consolidate_reads_no_name_before_it_is_bound(self):
+        """The first cut of the #851 wiring read `fact_body`, which
+        `consolidate` does not bind until ~140 lines LATER — an
+        UnboundLocalError on every consolidation, invisible to every unit test
+        because they all call the pure renderer.
+
+        Asserted over ALL local reads rather than a hand-listed few: the
+        narrow version passed the very regression it was written for, because
+        the offending name was not on its list.
+        """
+        import ast  # noqa: PLC0415
+
+        src = (ROOT / "lib" / "critic_consolidate.py").read_text()
+        fn = next(n for n in ast.walk(ast.parse(src))
+                  if isinstance(n, ast.FunctionDef) and n.name == "consolidate")
+        args = {a.arg for a in fn.args.args} | {a.arg for a in fn.args.kwonlyargs}
+        bound_at: dict[str, int] = {}
+        for node in ast.walk(fn):
+            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+                bound_at[node.id] = min(bound_at.get(node.id, node.lineno), node.lineno)
+        assert "tree_now_covered" in bound_at, "the #851 wiring is gone"
+        late = []
+        for node in ast.walk(fn):
+            if (isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)
+                    and node.id in bound_at and node.id not in args
+                    and node.lineno < bound_at[node.id]):
+                late.append((node.id, node.lineno, bound_at[node.id]))
+        assert not late, (
+            "these locals are read before they are bound — an UnboundLocalError "
+            f"on the path that reaches them: {late}"
+        )
+
     def test_the_price_sentence_keeps_its_single_home(self):
         """`telemetry.format_round_price` owns what a round costs. The lead
         states the VERDICT and never the number, so the close cannot quote two

@@ -5,6 +5,57 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-19: The review loop converges — one finding per class, and the round the fixing generated is refused
+
+<!-- prawduct: type=feat | scope=review-convergence -->
+
+The convergence half of #724. Where `review-cost-decision` made the cost of a round VISIBLE, this
+makes three of them not happen.
+
+**#640 — when a written rule has no enforcer, the finding is the rule, once.** A reviewer files ONE
+finding naming the rule and what would mechanize it, at the severity an instance would have
+carried, opening its summary with `rule-unenforced:` so the yield stays countable. Substitution,
+never suppression: the report still happens and still carries its weight; it names the cause that
+can end the class rather than one member of it. A class re-filed per instance buys a round every
+branch, forever. The item was CLOSED while its fix sat unmerged for nine days on a branch 281
+commits behind — re-applied here rather than merged, because the branch predates the learnings-v2
+migration and its `learnings.md` edits have no destination.
+
+**#167 — a verify pass anchored on a CLEAN verify pass is refused, with new exit 5.** Built to
+`documentation/issues/167-design.md` D1–D5. The discriminator is what moved the tree, never a round
+counter: the refusal fires only when the anchor is itself a `verify-resolutions` fact, left zero
+unresolved blocking, and the whole delta sits inside files that pass's own items named. The first
+verify pass after any full round is never refused, whatever its severity mix — that is the pass
+establishing coverage over the fix commit, and its floor is unconditional.
+
+**One departure from that design, and it is the difference between shipping the control and
+shipping a quarter of it.** D3 reads `findings` only, having deferred the empty-`named` case
+because the anchor's observations were *"unrecoverable from either store"*. That premise went false
+in between: `review-loop-termination` shipped observation recording, and observations carry
+`files`. Since the inner stage demotes everything below BLOCKING into observations, a verify
+anchor's `findings` is now empty in the ORDINARY case. Measured over this clone's store, verify
+anchors carrying a non-empty named set: 139/186 (July), 129/300 (August), and in September **20/114
+findings-only against 56/114 with observations**. Re-derive it rather than trusting those figures —
+they are a scan of `review` facts whose `body.mode` starts with `verify-resolutions`.
+
+**Exit 5 is a third refusal reason, deliberately not folded into 3 or 4.** A 3 asserts the interval
+holds no judgeable file, which is false here; a 4 sweeps outstanding findings, and this anchor has
+none. Three reasons stay separately queryable and separately retireable, and each firing appends a
+`guard-refusal` fact so the control can be retired on evidence rather than defended on principle.
+
+**#851 — the cost lead stops saying "free" when it is not.** Filed the same day from a live
+reproduction in this scope's own predecessor: `commit_cost` asks only whether paths are judgeable
+and cannot know a review just anchored on this tree. Once one has, the commit the lead would call
+free is already covered and the next edit opens a NEW delta, judgeable or not. It told the builder
+a batch was free and it bought a full round.
+
+**Two mutation sweeps returned survivors that were findings about the code rather than the tests**,
+and both are recorded because the shape recurs: an explicit non-empty guard that a neighbouring
+conjunct already makes unreachable (deleted; the construction is written down where it can be
+checked), and a comparison inlined where only a pure renderer was under test (extracted, so the
+three survivors in it could be killed). The remaining known limit is stated rather than implied:
+the AST wiring check proves a call is PRESENT, not reachable.
+
 ## 2026-09-19: The fix/accept decision is priced, and the two over-fixing rules are bounded
 
 <!-- prawduct: type=feat | scope=review-cost-decision -->

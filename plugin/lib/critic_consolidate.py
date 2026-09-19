@@ -632,7 +632,27 @@ _REDERIVE_COST = (
 #: ledger once per consolidation and passes both results in, so the two
 #: carriers of this sentence cannot quote different numbers and no digit is
 #: restated in this module (``architecture.md``: every fact has one home).
-def cost_lead(cost: "dict | None") -> str:
+def tree_is_covered_by(capture: "dict | None", anchor_tree: "str | None") -> bool:
+    """Does the review that just landed COVER the working tree as it stands?
+
+    Extracted rather than inlined for the reason Chunk 02's predicate was: a
+    mutation sweep found three survivors in the inline version, all of them in
+    the comparison rather than in the message, because the only tests were of
+    the pure renderer and a structural check too narrow to see them.
+
+    **Fails soft in the safe direction.** A degraded capture returns False, so
+    the close renders its ordinary advice rather than a coverage claim nothing
+    verified — an unverifiable "you are covered" is the one answer that would
+    send a builder to commit work no review saw.
+    """
+    if not capture or capture.get("status") != "ok":
+        return False
+    if not anchor_tree:
+        return False
+    return capture.get("tree") == anchor_tree
+
+
+def cost_lead(cost: "dict | None", tree_now_covered: bool = False) -> str:
     """The leading sentence of a zero-blocking close: what fixing costs here,
     and what that implies.
 
@@ -646,6 +666,14 @@ def cost_lead(cost: "dict | None") -> str:
     conservative read, which is the one that does not spend a round by
     surprise.
 
+    ``tree_now_covered`` says the review just consolidated COVERS the current
+    working tree — which inverts the advice, and is #851. ``commit_cost`` asks
+    only whether paths are judgeable; it cannot know a review just anchored
+    here. Once one has, the commit this lead would call free is already covered,
+    and the next edit opens a NEW delta needing its own pass whatever its paths
+    are. Measured live on 2026-09-19 building this scope's own predecessor: the
+    close said a batch of fixes was free, and it bought a full round.
+
     Returns ``""`` when ``cost`` is absent, so a caller that did not compute it
     renders exactly the message it rendered before this existed.
     """
@@ -658,6 +686,19 @@ def cost_lead(cost: "dict | None") -> str:
             " Decide as if a fix buys a round."
         )
     judgeable = cost.get("judgeable") or []
+    if tree_now_covered:
+        # Ahead of BOTH ordinary arms: whether the tree is dirty stops being the
+        # question once a review has anchored on it. Saying "you are already
+        # making a judgeable commit" here is true of the tree and false about
+        # the cost, which is the exact inversion #851 records.
+        return (
+            "This review COVERS your working tree as it stands, so the commit"
+            " that carries it is already paid for — and the next edit after it,"
+            " judgeable or not, opens a NEW delta that needs its own"
+            " `/prawduct:critic verify-resolutions`. Recommended: commit this"
+            " tree verbatim and stop; fix anything further only if it is worth"
+            " a round of its own."
+        )
     if judgeable:
         return (
             f"AT REVIEW TIME you were already making a judgeable commit"
@@ -4961,7 +5002,14 @@ def consolidate(project_dir: Path) -> int:
     # it — so the sentence cannot promise a price the gate then disagrees with.
     from . import coverage  # noqa: PLC0415 — lazy, matching this module's other lib imports
 
-    cost_sentence = cost_lead(coverage.commit_cost(project_dir))
+    # #851: `commit_cost` cannot know a review just anchored on this tree, and
+    # after one has, "a fix rides free" is false regardless of paths. The fact
+    # was written moments ago, so its head_tree IS the anchor to compare.
+    tree_now_covered = tree_is_covered_by(
+        evidence.capture_tree(project_dir),
+        (fact.get("body") or {}).get("head_tree"),
+    )
+    cost_sentence = cost_lead(coverage.commit_cost(project_dir), tree_now_covered)
 
     carried = (
         carried_blocking(
