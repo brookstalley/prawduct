@@ -102,7 +102,11 @@ examining the tree, which is exactly what the clause reordering here removes. Re
 tense in the same commit, with what the repair did NOT do stated beside it — the gate still exits 0
 on the weaker disjunct, so a short-circuit became an honest label, not a refusal. `tests.md`'s
 `--no-rerun` correction moves up into the heading that carried the claim it retracts, because a
-reader who stops at the heading pays the re-run the correction exists to prevent.
+reader who stops at the heading pays the re-run the correction exists to prevent. And `reviews.md`'s
+live-review rule — the one the harness loads into every session here — had its tell corrected: it
+now reads *"`test-status` still exits 0 — it now NAMES the changed paths (#767), so the blindness is
+gone and the permission is not."* That file was the load-bearing survivor of a class finding this
+bundle first closed at only one of its three carriers.
 
 Closes brookstalley/prawduct#767.
 ## 2026-09-19: three files the freshness gate called untestable, and the clause that made it moot
