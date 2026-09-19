@@ -633,6 +633,7 @@ _SESSION_GITIGNORED_PATHS = (
     ".prawduct/.handoff-notes.md",
     ".prawduct/.test-evidence.json",
     ".prawduct/.pr-reviews",
+    ".prawduct/.critic-review-dispatch.json",
     ".prawduct/.pr-review-dispatch.json",
     ".prawduct/.session-base-tree",
     ".prawduct/.session-git-baseline",
@@ -860,12 +861,17 @@ def _boundary_close_session(project_dir: Path, prawduct_dir: Path) -> None:
         ".session-git-baseline",
         ".session-base-tree",
         ".gates-waived",
-        # The PR-review dispatch clock. A stopwatch, never an answer: a review
-        # marked in a previous session is not this session's review, and a mark
-        # that outlived its session can only ever attach a boundary-spanning
-        # interval to an unrelated append. The consumer's tree check would
-        # refuse it anyway; deleting here means that check is the second line of
-        # defence rather than the only one.
+        # The review dispatch clocks, one per review kind. A stopwatch, never an
+        # answer: a review marked in a previous session is not this session's
+        # review, and a mark that outlived its session can only ever attach a
+        # boundary-spanning interval to an unrelated append. The consumer's tree
+        # check would refuse it anyway; deleting here means that check is the
+        # second line of defence rather than the only one.
+        #
+        # Both are listed rather than globbed: this registry's whole job is to
+        # make a new session file declare its boundary disposition, and a glob
+        # would let the next one inherit an answer nobody gave.
+        ".critic-review-dispatch.json",
         ".pr-review-dispatch.json",
     ]
     # The reflection is deleted iff the handoff CARRIED it (or there was nothing
@@ -5398,7 +5404,9 @@ def cmd_pr_review_dispatch(project_dir: Path, argv: list[str]) -> int:
 
     head = review_dispatch.head_sha(project_dir)
     try:
-        record = review_dispatch.begin(gitstate.get_prawduct_dir(project_dir), head)
+        record = review_dispatch.begin(
+            gitstate.get_prawduct_dir(project_dir), "review.pr", head
+        )
     except OSError as exc:
         print(
             f"pr-review-dispatch: could not write the dispatch mark ({exc}) — "

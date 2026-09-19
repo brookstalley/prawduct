@@ -1213,3 +1213,68 @@ class TestDispatchAnchorsToTheWorktree:
         assert recorded, "the manifest must name the tree it measured"
         assert Path(recorded).is_absolute()
         assert Path(recorded).resolve() == wt.resolve()
+
+
+# ---------------------------------------------------------------------------
+# The dispatch clock starts where the reviewer does, and nowhere else
+# ---------------------------------------------------------------------------
+
+
+CRITIC_MARKER_REL = ".prawduct/.critic-review-dispatch.json"
+
+
+class TestDispatchStartsTheClock:
+    """`begin_review` starts this review's stopwatch — on the path that actually
+    dispatches, and on no other.
+
+    The placement is the whole content of these two tests. A mark written before
+    the refusals would attest an interval nobody spent, and it would then be
+    consumed by whatever append came next — handing a real review someone else's
+    abandoned duration. That is worse than no measurement, because an estimate at
+    least knows it is one.
+    """
+
+    def test_a_dispatched_review_starts_the_clock(self, tmp_path):
+        import lib.critic_consolidate as cc
+
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "README.md", "start\n", "chore: init")
+        _git(repo, "checkout", "--quiet", "-b", "feature/x")
+        _commit_file(repo, "src/app.py", "x = 1\n", "feat: a thing")
+
+        assert not (repo / CRITIC_MARKER_REL).is_file()
+        result = cc.begin_review(repo, "cumulative")
+        assert result["status"] == "ok", result
+
+        marker = repo / CRITIC_MARKER_REL
+        assert marker.is_file(), "a dispatched review started no clock"
+        record = json.loads(marker.read_text())
+        assert record["dispatched_at"].endswith("Z")
+        # The tree is half the staleness check; a mark that cannot name its tree
+        # is refused at consumption, so recording it is not optional detail.
+        assert record["head"] == _git(repo, "rev-parse", "HEAD").stdout.strip()
+
+    def test_a_refused_dispatch_starts_no_clock(self, tmp_path):
+        """The control, and the one that would actually bite.
+
+        A refusal spawns no reviewer. Seeding runs a real dispatch first — which
+        legitimately marks — so the mark is cleared before the refused call, or
+        this test would pass on the seed's leftover and assert nothing about the
+        refusal at all.
+        """
+        import lib.critic_consolidate as cc
+
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _seed_prior_review(repo, findings=[])
+        (repo / CRITIC_MARKER_REL).unlink(missing_ok=True)
+        _commit_file(repo, "docs/notes.md", "prose\n", "docs: a note")
+
+        result = cc.begin_review(repo, "verify-resolutions")
+
+        assert result["status"] == "no-review-needed", result
+        assert not (repo / CRITIC_MARKER_REL).is_file(), (
+            "a refused dispatch started a stopwatch — the next append would "
+            "attach an interval no reviewer spent"
+        )

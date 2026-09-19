@@ -1,11 +1,18 @@
-"""The PR reviewer's dispatch clock — a code-written stopwatch for review duration.
+"""The review dispatch clock — a code-written stopwatch for review duration.
 
-``duration_seconds`` on a ``review.pr`` ledger event is **self-reported by the
+``duration_seconds`` on a ``review.*`` ledger event is **self-reported by the
 reviewing model**: it is the reviewer's own recollection of how long it took,
 written into the evidence record it produces. That number is corroborated within
 16% where commits are dense enough to check it, which is what licenses using it
 at all — but a performance target stated against an estimate is a target stated
 against an estimate, and the whole point of a payload change is to be graded.
+
+How weak the estimate is, measured rather than supposed: across the first 1,026
+ledger rounds, ``duration_seconds`` took 63 distinct values, 80% of them
+multiples of 30 seconds and 23% of them exactly ``300``. That is a model
+answering "about five minutes", and no amount of averaging turns it into a
+clock. Re-derive it with ``prawduct-hook review-stats``, which reports the
+measured and self-reported populations separately for exactly this reason.
 
 This module supplies the other half: a per-clone marker written **before** the
 reviewer is spawned, from a clock this code reads. The caller chooses *when* to
@@ -34,10 +41,22 @@ written first: the interval predicate has one home and every reader calls it, so
 a second consumer cannot inherit the mechanism without the bound that makes it
 safe.
 
-**Only ``review.pr`` appends consume it.** The Critic and the PR reviewer can run
-concurrently, so a ``review.critic`` append that cleared this marker would delete
-a live PR review's measurement — and it would do it silently, on the timing where
-the two overlap most.
+**One slot PER CONSUMING EVENT KIND, and that is the whole concurrency design.**
+The Critic and the PR reviewer run at the same time by deliberate arrangement
+(``nonfunctional-requirements.md``: the two boundary reviews run in parallel,
+never sequentially), so a ``review.critic`` append that cleared a *shared*
+marker would delete a live PR review's measurement — silently, and only on the
+timing where the two actually overlap, which is the timing the design wants.
+Giving each kind its own file makes that failure **unreachable rather than
+avoided**: there is no shared cell to clear, so no ordering of the two appends
+can lose either measurement. That is the norm's own instruction — races are
+avoided by construction wherever a design choice can avoid them
+(``architecture.md`` § Direction) — applied in preference to the narrower fix of
+widening one consumer set, which keeps the shared cell and asks every future
+caller to be careful around it.
+
+A kind absent from :data:`MARKER_BASENAMES` consumes nothing and marks nothing;
+adding one is adding a file, never a second consumer of someone else's.
 
 This is per-clone state with a per-clone lifetime: a stopwatch, not an answer, so
 it is gitignored and never committed (``data-model.md``: two stores, two
@@ -51,12 +70,23 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
-MARKER_BASENAME = ".pr-review-dispatch.json"
+#: One marker file per consuming event kind — see the module docstring on
+#: concurrency. The mapping IS the design: two kinds cannot contend because they
+#: never address the same path, so this is the place a future kind is added, and
+#: adding one here gives it a slot rather than a share of someone else's.
+#:
+#: ``review.pr``'s basename is unchanged from when it was the only one. A rename
+#: would strand any marker a running PR review had already written, turning a
+#: plugin upgrade mid-review into a lost measurement for no benefit.
+MARKER_BASENAMES = {
+    "review.pr": ".pr-review-dispatch.json",
+    "review.critic": ".critic-review-dispatch.json",
+}
 
-#: The event kinds whose append consumes a dispatch mark. Deliberately a set of
-#: one: see the module docstring on concurrent Critic runs. A kind added here
-#: without that argument re-opens the race.
-CONSUMING_EVENT_KINDS = frozenset({"review.pr"})
+#: The event kinds whose append consumes a dispatch mark — derived from the
+#: mapping rather than restated, so a kind can never have a file and no
+#: consumer, or a consumer and no file.
+CONSUMING_EVENT_KINDS = frozenset(MARKER_BASENAMES)
 
 
 def head_sha(project_dir: Path) -> str | None:
@@ -135,23 +165,33 @@ def measured_interval_seconds(dispatched_at, wrote_at) -> "float | None":
     return seconds
 
 
-def marker_path(prawduct_dir: Path) -> Path:
-    return prawduct_dir / MARKER_BASENAME
+def marker_path(prawduct_dir: Path, event_kind: str) -> Path:
+    """This kind's marker file.
+
+    Raises ``KeyError`` for a kind that owns no slot. That is deliberate and it
+    is the safe direction: the alternative — falling back to some default path —
+    would silently hand a new kind another kind's cell, which is precisely the
+    contention the per-kind mapping exists to make unreachable.
+    """
+    return prawduct_dir / MARKER_BASENAMES[event_kind]
 
 
-def begin(prawduct_dir: Path, head: str | None) -> dict:
-    """Mark a dispatch now. Returns the record written.
+def begin(prawduct_dir: Path, event_kind: str, head: str | None) -> dict:
+    """Mark a dispatch of ``event_kind`` now. Returns the record written.
 
     Overwrites unconditionally — the newest dispatch is the one an append is
     measuring, and a previous mark that was never consumed is by definition
-    abandoned.
+    abandoned. Unconditional overwrite is scoped to THIS kind's slot; it has
+    never been, and must not become, a reason for one kind to touch another's.
     """
     record = {
         "dispatched_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "head": head,
     }
     prawduct_dir.mkdir(parents=True, exist_ok=True)
-    marker_path(prawduct_dir).write_text(json.dumps(record) + "\n", encoding="utf-8")
+    marker_path(prawduct_dir, event_kind).write_text(
+        json.dumps(record) + "\n", encoding="utf-8"
+    )
     return record
 
 
@@ -170,7 +210,7 @@ def consume(prawduct_dir: Path, event_kind: str, head: str | None) -> tuple[str 
     if event_kind not in CONSUMING_EVENT_KINDS:
         return None, f"{event_kind} does not consume a dispatch mark"
 
-    path = marker_path(prawduct_dir)
+    path = marker_path(prawduct_dir, event_kind)
     if not path.is_file():
         return None, "no dispatch mark (review was not marked before it was spawned)"
 

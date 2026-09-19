@@ -5,6 +5,47 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-19: the review clock nobody was reading
+
+<!-- prawduct: type=feat | scope=critic-dispatch-clock -->
+
+**Every wall-clock figure this project's review-economics work argues from was a sum of guesses,
+and it is now measurable.** `duration_seconds` on a ledger event is written by the reviewing model
+from its own recollection. Across the first 1,026 rounds it took **63 distinct values**, 80% of them
+multiples of 30 seconds and 23% of them exactly `300` — a model answering "about five minutes". Two
+of those 1,026 carried a measured duration, and both were `review.pr`: the code-read stopwatch
+shipped with the PR reviewer and the Critic never had one, which is 896 of the rounds and the entire
+subject of the items arguing about them. `telemetry.py` already said so in its own provenance
+docstring and already named this fix. Re-derive any figure here with `prawduct-hook review-stats`,
+which reports the measured and self-reported populations separately for exactly this reason.
+
+**The marker becomes one slot per consuming event kind, and that is the whole design.** The narrow
+fix — add `review.critic` to `CONSUMING_EVENT_KINDS` — is the one the module's own comment warns
+against in as many words, because the two boundary reviews run concurrently on purpose and a shared
+cell means whichever append lands first deletes the other's measurement, silently, on exactly the
+timing the parallelism exists to produce. Two files cannot contend, so the failure becomes
+unreachable rather than avoided. `review.pr`'s basename is deliberately unchanged: renaming it would
+strand a marker a running review had already written, making a mid-review plugin upgrade cost a
+measurement for no benefit.
+
+**A refused dispatch starts no clock.** The mark is written last in `begin_review`, after every
+refusal has had its chance, because a mark for a round that never dispatched attests an interval
+nobody spent and is then consumed by whatever append comes next — handing a real review someone
+else's abandoned duration. That is worse than no measurement, since an estimate at least knows it is
+one. Every degraded path (no mark, unreadable mark, mark from another tree, git silent on either
+side) omits the key entirely and names its reason, and the reviewer's estimate survives untouched as
+the fallback in all of them.
+
+**The concurrency claim is pinned rather than argued.** A test marks both kinds, appends both, and
+requires both measurements to survive; its mirror asserts each append leaves the other's mark alone.
+A shared marker passes every other test in the suite and fails precisely there — verified by
+mutation, which also turned the *pre-existing* PR-side concurrency guard red. The positive control
+and its withheld-mark twin run on one fixture, because an instrument whose tests pass against a
+clock that never ticks is the failure this work exists to end.
+
+This chunk ships the instrument and takes no position on the decisions it informs — deliberately,
+and before them.
+
 ## 2026-09-18: the quotation half of the MCP mining debt, and the recipe that could not have paid it
 
 <!-- prawduct: type=feature | scope=mcp-quotation-audit -->

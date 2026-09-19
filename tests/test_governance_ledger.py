@@ -883,6 +883,7 @@ class TestLearningEventProbe:
 
 
 MARKER_REL = ".prawduct/.pr-review-dispatch.json"
+CRITIC_MARKER_REL = ".prawduct/.critic-review-dispatch.json"
 
 
 def _duration_reason(result: subprocess.CompletedProcess) -> str:
@@ -1103,3 +1104,198 @@ class TestDispatchClock:
             assert r.returncode == 1, argv
             assert "usage:" in r.stderr
             assert not (repo / MARKER_REL).is_file(), argv
+
+
+class TestCriticDispatchClock:
+    """The Critic's own stopwatch — the same contract as the PR reviewer's, on
+    its own slot.
+
+    Why this class exists at all, measured rather than supposed: across the
+    first 1,026 ledger rounds, exactly 2 carried a measured duration and both
+    were ``review.pr``. The other 1,024 were reviewer estimates taking 63
+    distinct values, 80% of them multiples of 30 seconds. Every wall-clock
+    figure the review-economics work is argued from was a sum of those.
+
+    **The first two tests are a treatment and its control on one fixture**, and
+    they are the reason the rest can be believed: an instrument whose tests pass
+    against a clock that never ticks is exactly the failure this whole chunk
+    exists to end, so one test must show the key ARRIVING and its twin must show
+    the same fixture reporting self-reported when the mark is withheld.
+    """
+
+    def _mark_critic(self, repo: Path) -> dict:
+        """Write a Critic dispatch mark the way ``critic-begin`` does."""
+        from lib import review_dispatch
+
+        return review_dispatch.begin(
+            repo / ".prawduct", "review.critic", review_dispatch.head_sha(repo)
+        )
+
+    def _critic_append(self, repo: Path):
+        return _run_hook(repo, "ledger-append", "--event", "review.critic")
+
+    def test_a_marked_critic_dispatch_produces_dispatched_at(self, tmp_path):
+        """The TREATMENT half of the control pair."""
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _commit_file(repo, "app.py", "print(1)\n", "init")
+        _write_findings(repo, duration_seconds=240)
+
+        record = self._mark_critic(repo)
+        # The literal path is pinned independently of the helper that wrote it:
+        # three registries and `.gitignore` name this string, and a marker that
+        # silently moved would be uncommitted state in every consumer's repo.
+        assert (repo / CRITIC_MARKER_REL).is_file()
+
+        r = self._critic_append(repo)
+        assert r.returncode == 0, r.stderr
+        ev = _ledger_events(repo)[0]
+        assert ev["dispatched_at"] == record["dispatched_at"]
+        assert ev["dispatched_at"].endswith("Z")
+        # The estimate is NOT displaced — both populations stay readable, which
+        # is what makes the before/after comparison possible at all.
+        assert ev["duration_seconds"] == 240
+        assert "measured from a dispatch mark" in _duration_reason(r)
+        assert not (repo / CRITIC_MARKER_REL).is_file(), "the mark was not consumed"
+
+    def test_an_unmarked_critic_append_omits_the_key_entirely(self, tmp_path):
+        """The CONTROL half: same fixture, mark withheld.
+
+        Without this, the treatment above proves only that the plumbing carries
+        a value it was handed — not that withholding the mark is distinguishable
+        from supplying one.
+        """
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _commit_file(repo, "app.py", "print(1)\n", "init")
+        _write_findings(repo, duration_seconds=240)
+
+        r = self._critic_append(repo)
+        assert r.returncode == 0, r.stderr
+        ev = _ledger_events(repo)[0]
+        assert "dispatched_at" not in ev
+        assert ev["duration_seconds"] == 240
+        assert "no dispatch mark" in _duration_reason(r)
+
+    def test_the_two_clocks_do_not_contend(self, tmp_path):
+        """Both reviews in flight at once, both measured.
+
+        This is the assertion that makes the per-kind split CHECKABLE rather
+        than argued. The two boundary reviews run in parallel by deliberate
+        arrangement, so the interleaving below is the ordinary case and not an
+        edge: mark both, append both, and neither may lose its measurement.
+        A single shared marker passes every other test in this class and fails
+        precisely here.
+        """
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _commit_file(repo, "app.py", "print(1)\n", "init")
+        _write_findings(repo)
+        _write_pr_evidence(repo)
+
+        _run_hook(repo, "pr-review-dispatch", "--begin")
+        self._mark_critic(repo)
+
+        critic = self._critic_append(repo)
+        assert critic.returncode == 0, critic.stderr
+        assert (repo / MARKER_REL).is_file(), (
+            "the critic append consumed the PR reviewer's mark"
+        )
+
+        pr = _run_hook(
+            repo, "ledger-append", "--event", "review.pr",
+            "--findings", PR_EVIDENCE_REL,
+        )
+        assert pr.returncode == 0, pr.stderr
+
+        events = _ledger_events(repo)
+        assert "dispatched_at" in events[0], "the critic review lost its measurement"
+        assert "dispatched_at" in events[1], "the PR review lost its measurement"
+
+    def test_a_pr_append_leaves_a_live_critic_mark_alone(self, tmp_path):
+        """The mirror of the PR-side concurrency test, in the other direction.
+
+        Asserted separately because consumption is per-kind on BOTH sides and a
+        one-directional guard would pass against a design that special-cased
+        only the direction someone happened to test.
+        """
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _commit_file(repo, "app.py", "print(1)\n", "init")
+        _write_findings(repo)
+        _write_pr_evidence(repo)
+
+        self._mark_critic(repo)
+        pr = _run_hook(
+            repo, "ledger-append", "--event", "review.pr",
+            "--findings", PR_EVIDENCE_REL,
+        )
+        assert pr.returncode == 0, pr.stderr
+        assert (repo / CRITIC_MARKER_REL).is_file(), (
+            "the PR append consumed the Critic's mark"
+        )
+        assert "dispatched_at" not in _ledger_events(repo)[0]
+
+    def test_a_critic_mark_from_another_tree_is_refused(self, tmp_path):
+        """Staleness is a tree question here too — the degradation direction
+        that matters, since a stale mark attests an interval nobody spent."""
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _commit_file(repo, "app.py", "print(1)\n", "init")
+        self._mark_critic(repo)
+        _commit_file(repo, "app.py", "print(2)\n", "work landed after dispatch")
+        _write_findings(repo)
+
+        r = self._critic_append(repo)
+        assert r.returncode == 0, r.stderr
+        assert "dispatched_at" not in _ledger_events(repo)[0]
+        assert "different tree" in _duration_reason(r)
+        assert not (repo / CRITIC_MARKER_REL).is_file()
+
+    def test_an_unreadable_critic_mark_degrades_with_a_named_reason(self, tmp_path):
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _commit_file(repo, "app.py", "print(1)\n", "init")
+        _write_findings(repo)
+
+        (repo / CRITIC_MARKER_REL).parent.mkdir(parents=True, exist_ok=True)
+        (repo / CRITIC_MARKER_REL).write_text("{not json")
+
+        r = self._critic_append(repo)
+        assert r.returncode == 0, r.stderr
+        assert "dispatched_at" not in _ledger_events(repo)[0]
+        assert "unreadable" in _duration_reason(r)
+        assert not (repo / CRITIC_MARKER_REL).is_file()
+
+    def test_a_critic_mark_with_no_timestamp_degrades_with_a_named_reason(self, tmp_path):
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        head = _commit_file(repo, "app.py", "print(1)\n", "init")
+        _write_findings(repo)
+
+        (repo / CRITIC_MARKER_REL).parent.mkdir(parents=True, exist_ok=True)
+        (repo / CRITIC_MARKER_REL).write_text(json.dumps({"head": head}))
+
+        r = self._critic_append(repo)
+        assert r.returncode == 0, r.stderr
+        assert "dispatched_at" not in _ledger_events(repo)[0]
+        assert "carries no timestamp" in _duration_reason(r)
+
+    def test_a_kind_with_no_slot_marks_nothing_and_consumes_nothing(self, tmp_path):
+        """The mapping is the design, so a kind outside it must get no cell —
+        never a fallback into someone else's, which is the contention the split
+        exists to make unreachable."""
+        from lib import review_dispatch
+
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        (repo / ".prawduct").mkdir(parents=True, exist_ok=True)
+
+        assert "learning.written" not in review_dispatch.CONSUMING_EVENT_KINDS
+        stamp, reason = review_dispatch.consume(
+            repo / ".prawduct", "learning.written", "abc123"
+        )
+        assert stamp is None
+        assert "does not consume" in reason
+        with pytest.raises(KeyError):
+            review_dispatch.marker_path(repo / ".prawduct", "learning.written")
