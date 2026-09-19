@@ -64,6 +64,401 @@ paid in place, because the sentences a trim would have reached are the ones no t
 this file has funded three raises that way already.
 
 Closes brookstalley/prawduct#767.
+## 2026-09-19: three files the freshness gate called untestable, and the clause that made it moot
+
+<!-- prawduct: type=fix | scope=critic-dispatch-clock -->
+
+**`suite_coupled_prefixes` gains three named files, each read by a test that anchors on the real
+repo.** `.prawduct/artifacts/data-model.md` (`TestTheMarkerNormKeepsItsReason`),
+`.prawduct/operator-verification.md` (`test_operator_verification`'s `LIVE_QUEUE`), and
+`.claude/rules/learnings/core.md` (`TestAgainstTheRealCorpus`, which asserts distinct rules get
+distinct ids, so a colliding heading turns the suite red). Named files rather than
+`.prawduct/artifacts/`, which is the cost argument the build-plan prefix beside them already makes
+and which still holds. The learnings entry carries a stated cost: reflections write to `core.md`,
+so adding a rule there now marks evidence stale.
+
+**The learnings entry was a DIRECTORY for one commit, and review caught it.** `TestAgainstTheRealCorpus`
+reads `RULES_DIR_REL / CORE_NAME` and no real-repo test reads an area file, so the directory form
+bought a suite re-run on every area-file reflection write that no test outcome depends on — the
+exact tax the same commit's own control assertion forbids two entries above, whose message reads
+*"Name the file, not its parent."* The guard could not see it: its registry key IS `core.md`, so
+narrowing leaves all nine cases green. A guard pins what it was told to pin, and the thing it was
+told is the thing worth reviewing.
+
+**`.prawduct/change-log.md` is deliberately NOT added.** It is read by a real-repo test too, and its
+exclusion is a priced decision pinned by `test_the_held_out_bookkeeping_files_are_recorded_as_a_residual`.
+Flipping it is a deliberate edit there with its own reason, not a line quietly added to a
+declaration — so the new guard asserts it stays out, in the file where someone fixing a freshness
+miss will be standing.
+
+**The guard is mutation-verified, survivor included.** Six mutants: dropping each of the three
+entries turns exactly its own parametrized case red; widening the declaration to `.prawduct/` turns
+two red (the control artifact and the held-out change log); emptying it turns four red; and adding
+an inert prefix leaves all nine green. That last one is the point — a sweep where every mutant dies
+is a claim about the harness, not the subject, so the guard is shown to discriminate rather than to
+fail on any edit at all. The assertions ask `affects_test_outcome` rather than grepping the YAML,
+and a reachability case refuses an empty declaration or an empty registry.
+
+**What this does NOT fix, measured rather than assumed.** It would not have caught the failure that
+prompted it. `tests_are_current` is a disjunction and its first clause — evidence written during
+this session — returns `current` without ever examining the tree. Measured on the live tree with the
+new coupling in place: clause 2 answers `False, 2 suite-coupled path(s) changed since the run`, and
+the gate still answers `True, evidence from this session`. A suite run, an edit after it, and a push
+inside one session is therefore invisible to the gate at any setting of this declaration. This entry
+closes the *predates-session* path — the one that catches an inherited red at a base sync, which is
+how this branch found `develop` red at `4537d604` — and names the other as open. Making clause 2
+conjunctive would close it, and that is a deliberate reversal of the recorded relax-only decision
+(the clause is documented as *structurally incapable of a false stale*, the failure class that
+retired the `fingerprint` and `git_sha` mechanisms), so it is the owner's to take, not a fix to
+slip in beside this one.
+
+## 2026-09-19: the review clock nobody was reading
+
+<!-- prawduct: type=feat | scope=critic-dispatch-clock -->
+
+**Every wall-clock figure this project's review-economics work argues from was a sum of guesses,
+and it is now measurable.** `duration_seconds` on a ledger event is written by the reviewing model
+from its own recollection. Across the first 1,026 rounds it took **63 distinct values**, 80% of them
+multiples of 30 seconds and 23% of them exactly `300` — a model answering "about five minutes". Two
+of those 1,026 carried a measured duration, and both were `review.pr`: the code-read stopwatch
+shipped with the PR reviewer and the Critic never had one, which is 901 of the rounds and the entire
+subject of the items arguing about them. `telemetry.py` already said so in its own provenance
+docstring and already named this fix. Re-derive any figure here with `prawduct-hook review-stats`,
+which reports the measured and self-reported populations separately for exactly this reason.
+
+**The marker becomes one slot per consuming event kind, and that is the whole design.** The narrow
+fix — add `review.critic` to `CONSUMING_EVENT_KINDS` — is the one the module's own comment warns
+against in as many words, because the two boundary reviews run concurrently on purpose and a shared
+cell means whichever append lands first deletes the other's measurement, silently, on exactly the
+timing the parallelism exists to produce. Two files cannot contend, so the failure becomes
+unreachable rather than avoided. `review.pr`'s basename is deliberately unchanged: renaming it would
+strand a marker a running review had already written, making a mid-review plugin upgrade cost a
+measurement for no benefit.
+
+**A refused dispatch starts no clock.** The mark is written last in `begin_review`, after every
+refusal has had its chance, because a mark for a round that never dispatched attests an interval
+nobody spent and is then consumed by whatever append comes next — handing a real review someone
+else's abandoned duration. That is worse than no measurement, since an estimate at least knows it is
+one. Every degraded path (no mark, unreadable mark, mark from another tree, git silent on either
+side) omits the key entirely and names its reason, and the reviewer's estimate survives untouched as
+the fallback in all of them.
+
+**The concurrency claim is pinned rather than argued.** A test marks both kinds, appends both, and
+requires both measurements to survive; its mirror asserts each append leaves the other's mark alone.
+A shared marker passes every other test in the suite and fails precisely there — verified by
+mutation, which also turned the *pre-existing* PR-side concurrency guard red. The positive control
+and its withheld-mark twin run on one fixture, because an instrument whose tests pass against a
+clock that never ticks is the failure this work exists to end.
+
+This chunk ships the instrument and takes no position on the decisions it informs — deliberately,
+and before them.
+
+**The consumer-overhead report gains the Critic's clock column, which is a report-shape change and
+not the prose sweep the paragraph below describes.** `_clock_columns` was hardcoded to `pr` and now
+takes the kind, so `tools/measure-consumer-overhead.py` emits `critic_clock_runs` /
+`critic_clock_hours` / `critic_clock_minutes_per_review` beside the PR trio, and the per-window
+VALIDATION block gains a column for each. A function that can only name one kind is how the other
+kind's measurement gets accumulated and then dropped silently at render time — the prefix is the
+kind, so a third kind needs no edit there. The runs count leads the hours on purpose, unchanged: a
+clock figure covering 2 of a window's 40 reviews is not that window's cost, and a window older than
+this plugin reads `0 runs`, which is NOT MEASURED rather than free.
+
+**A marker that survives a session reset can attest an interval nobody spent, so the delete list
+became quantifiable.** `_SESSION_RESET_DELETES` is hoisted out of `_boundary_close_session` for one
+reason: a test can now quantify over `review_dispatch.MARKER_BASENAMES` and require every basename
+to appear in all FOUR registries that track this boundary — the gitignore mirror, the untrack
+sweep, the reset deletes, and the mapping itself. A kind added to the mapping and forgotten in one
+of them survives the reset and hands the next session's append a boundary-spanning duration. The
+consumer's tree check would refuse that mark anyway, which is exactly why this is the first line of
+defence and not the only one. The list is spelled rather than imported because `prawduct-hook`
+keeps its top level import-light, the same reason `_SESSION_GITIGNORED_PATHS` beside it is an
+inline mirror — so the obligation lives in a test rather than in a comment asking someone to
+remember.
+
+**The ratified norm this changes, amended rather than quietly outgrown.** `data-model.md` § Direction
+read *"Only `review.pr` appends consume the marker"*, and its stated why — a `review.critic` append
+clearing a shared cell would silently delete a live PR review's measurement — is exactly the reason
+the marker was split instead of shared. So the why survives verbatim and the statement does not: it
+was written over a singular marker and there are now two. Amended on the owner's decision, with the
+confirmation landed outside the amendment (the build plan's recorded `[DECISION]`), because a
+governance change that is its own only witness is indistinguishable from laundering however sound
+the substance. Three tests pin the amendment against the failure that matters — an amendment keeping
+its conclusion and dropping its reason, which is how the next shape change loses the argument.
+
+**Prose that described the singular marker, swept in both vocabularies.** `telemetry.py`'s
+provenance docstring had described this very fix in the future tense; `ledger.py`'s envelope
+enumeration said the key appears only on a `review.pr`; `measure-consumer-overhead.py`'s hazard list
+told a reader to treat every `duration_seconds` as an estimate. A survivor of a shape change is
+usually phrased in neither the code's vocabulary nor the claim's, so both were searched, and the
+file being edited was searched before its siblings. **Two vocabularies were not enough**, and the
+review is what proved it: `api-contract.md` phrased the same claim in a third — "a PR-review
+dispatch mark" — and three independent reviewers each found that one surviving sentence, in the
+published-surface record a future kind-adder opens first. The plan had pre-dispositioned that file
+as "likely no edit" on the strength of `critic-begin`'s unchanged signature, which was true of the
+entry it reasoned about and never reached the `ledger-append` clause.
+
+**The base sync brought a red suite with it, fixed here rather than carried.**
+`documentation/issues/834-requirements.md` landed on `develop` naming `Closes #N` in three
+paragraphs without the default-branch condition `TestClosingKeywordClaims` requires of any
+instruction surface — the guard is paragraph-scoped on purpose, because a qualification three
+sections away is not read by someone following the sentence in front of them. All three now state
+that GitHub fires the keyword only for a merge into the repository's **default** branch, which is
+what makes it inert on this repo's `develop` base. `develop` was red at `4537d604`; there is no
+pre-existing exception, and a sync is where one gets inherited silently.
+
+**`develop` opens `3.5.1-dev.2`.** `version` is the plugin cache key, so a consumer pinned to the
+develop ref resolves the cache directory by that string and picks up this work only on a new one.
+Four files, per `release-process.md`'s intra-cycle rule: the manifest, `plugin/VERSION`,
+`pyproject.toml`, and the open `plugin/CHANGELOG.md` heading, which
+`test_changelog_has_current_version_entry` keys by the exact manifest string — bumping the three
+version files alone turns `develop` red on the next push. `-dev.N` remains the only permitted
+prerelease form; `banner.version_tuple` parses that shape and returns the malformed sentinel
+otherwise, which sorts below every real version and shows no banner at all. The consumer-facing
+section under that heading gains the note this work makes load-bearing: a Critic `duration_seconds`
+a consumer reads out of their own ledger is now sometimes measured and sometimes the reviewer's
+estimate, and `review-stats` is what tells the two apart.
+
+## 2026-09-18: the quotation half of the MCP mining debt, and the recipe that could not have paid it
+
+<!-- prawduct: type=feature | scope=mcp-quotation-audit -->
+
+**This entry also publishes material that has never been in this repository before**, and which is
+the larger part of the bundle by volume: `.prawduct/artifacts/mcp-mining/` arrives whole — three
+source captures in both compressed and structured form, a citation audit of one of them, the drift
+owed back to two source repos, and the README that explains what a capture is — together with
+`mcp-knowledge-corpus-design.md`, the corpus's design of record, and a `learnings_budgets` ceiling
+raise for `authoring.md` in `project-state.yaml` carrying its own reason. None of it had a
+change-log entry, so all of it would have read as pre-existing to anyone reconstructing the release.
+Re-derive the volume with `git diff --stat origin/develop...HEAD` rather than quoting a figure.
+
+**Two chunks: an instrument, and the audit it made possible.** `hallucinote-verification.md` had
+found quoted evidence fragments wrong, and one absent, in a mined capture **with every cited address
+resolving** — and the ones that mattered drifted *toward the generalisation the corpus wants*, which
+is why reading does not catch them. The other captures carried the same unpaid debt: addresses
+verified as they were written, quotations not at all. This pays it for cordyceps and bankmachine.
+Record, method, counts and what is still owed:
+`.prawduct/artifacts/mcp-mining/capture-quotation-verification.md`. **No digit from that audit is
+transcribed into this entry** — the first draft of it restated two and got both wrong, which is the
+defect the work exists to fight. Re-derive with `tools/verify-capture-quotations.py`.
+
+**Chunk 01 — the instrument, and the finding is that the recorded recipe could not have worked.**
+`mcp-mining/README.md` recorded the method as "extract the `*"…"*` runs". Run as written it audits a
+small unrepresentative slice and returns a mostly-clean answer over a set it never opened. Two
+independent defects: it reads only the *italic* form, when only one capture uses that convention and
+another quotes with plain `"…"` almost exclusively; and as a `grep -oE` it is **line-based**, so any
+quotation that *wraps* is invisible — which is most of one capture's italic quotations. The second
+is the same species as the thing being hunted (`core.md`: *the query is itself a mechanism and can
+carry the defect it hunts; line structure is not semantic structure*), and the measurement that
+justified the work inherited it. `--counts` reproduces the grep figure and checks it equals exactly
+the non-wrapping subset, so the undercount is shown rather than asserted.
+
+**Four more defects were found in the replacement, which is the more useful half of the record.** A
+naive `"([^"]+)"` is not escape-aware and these captures embed JSON, so fragments truncated at the
+escaped quote and manufactured a batch of false "drift" candidates. Splitting on a bare `**RULE:**`
+marker also caught the marker *discussed in each capture's own header*, shifting every rule id — a
+report that reads as precise and cannot be resolved. The working-tree fallback, added so one
+capture's gitignored citations could resolve, was built on `git ls-files`, which lists **tracked**
+files only, so it had never once seen them. And the controls themselves covered only the *search*
+while three of those defects live in *extraction* — reverting the escape-aware regex left the whole
+self-test green, which an independent review found by walking each control against a defect it
+should have caught.
+
+**Controls are code, not prose, because a scan nobody has falsified has measured nothing.** Their
+count is deliberately not stated here; it has grown four times. `--self-test` covers a non-empty
+corpus, a nonsense string returning zero, a known-good set returning hits, **a deliberately
+corrupted real fragment that must miss**, rule ids reconciling with the corpus's own counting
+command, the working-tree fallback proving it sees gitignored files, an emptied corpus refusing the
+run **in both the primary and the secondary position**, the exit-2 contract, every emitted form
+being selectable, **extraction itself** against an inline fixture, the two refusals in `main()`, a
+roster check comparing the NAMED ids of every production refusal against a registry, that a wrapped
+span is seen and not counted by a line scan, and that an unreadable source file reaches the report
+rather than being swallowed. Every refusal control also asserts the refusal named its own subject —
+they share one exit code, so a fixture that never arrives would otherwise be congratulated. The corruption control is the one
+the recorded recipe never had and it is not optional: under a mutant that matches everything, the
+*known-good* control reports a false green while only the nonsense and corruption controls go red.
+
+**Chunk 02 — the audit.** A miss is not drift, and the record says so rather than letting a rate
+imply it: most misses are text absent from the source tree entirely, which for a plain-quoted span
+is usually the capture author's own words. Misses are bucketed by how far the longest prefix
+reaches, because depth separates the classes; the drift-signature bucket was chased **by hand in
+full**. **No fabrication was found.** One genuine alteration was corrected — a capture had shortened
+a placeholder inside a quoted shell command, so a reader copying it got a different command.
+
+**The durable finding is a schema gap, and it outranks the debt.** Italic-quoted fragments resolve
+markedly higher than plain-quoted ones, and the plain-quote rate is near-identical across
+independently-written captures. One capture uses `*"…"*` as a verbatim convention; another uses
+plain quotes for **both** source quotations and its own emphasis. So the corpus schema specifies the
+`EVIDENCE:` field but not **how a quotation inside it declares itself a claim of verbatim source
+text** — and without that marker a capture is not auditable at the fragment level by any instrument,
+only rule by rule by a human.
+
+**`discodon`'s capture is withdrawn, and so are its findings.** The fourth capture — the only
+consumer-side source — is a verbatim record of a **private repository owned by a different
+account**, and this repository is public. Neither the capture nor the defects it found ship here;
+the design notes name where its evidence would have sat and do not reproduce it. **The source IS
+named and its internals are not**, which is the correction a PR reviewer forced: an earlier draft
+withheld the name too, and that was incoherent, since this repository already names `discodon` in
+dozens of tracked files and the public item tracking this corpus names it as well. Anonymity was
+never available; what was never public is the code and the defects, and that is what stays
+withheld. Caught before the branch was ever pushed. The governance lesson is
+recorded with it: the build plan's disposition for *a product's content leaves its repo only through
+a pinned, owner-approved surface* read "inapplicable because nothing leaves this repo" — true of the
+sibling working trees, false of the direction that mattered, because mining brings a third party's
+content **into** a public repo. An exposure boundary does not care which way content crosses it.
+
+**Also fixed, and it was a real defect rather than a gate to satisfy.** Re-derivation commands in
+the captures cited paths relative to their *source* repo with nothing naming which repo they run in,
+so a reader running them from here got nothing — the repo-local path-resolution gate was right to
+call them broken references. Each is now pinned to its repo and to the SHA its capture declares. All
+were run before and after: some confirm positive claims, and some confirm NEGATIVE claims (zero hits
+**is** the assertion), which reads as a broken citation until you notice the capture says so.
+
+**Scope deliberately NOT taken, stated in the artifact rather than implied.** The shallower miss
+buckets are unchased; the `code-span` class is extracted and counted but not audited; and
+hallucinote's own known-wrong quotations stay, because that audit reported without editing on
+purpose — it is the record under audit and its anchors are keyed to it.
+
+**`authoring.md` gains the quotation-drift rule, which does not exist on `develop`.** An earlier
+draft of this entry said the rule was "amended rather than extended, from two controls to three" —
+that described a predecessor branch that never merged, and is false of what ships here: this bundle
+introduces the rule whole. It carries the corrupted-fragment discriminator with the measured
+false-green that proves it load-bearing, that controls on the SEARCH do not cover the EXTRACTOR,
+that a control closing a class must discriminate the class and not the instance, and that a refusal
+is a guard whose roster is derived from the source rather than remembered.
+## 2026-09-18: `review-stats` can slice by date and see whether a finding ships a fix plan
+
+<!-- prawduct: type=feat | scope=review-yield-instrument -->
+
+**A before-measurement, shipped before the change it exists to grade.** `nonfunctional-requirements.md`
+requires that adding a control name the yield it expects *and emit that yield observably* — a control
+whose findings are printed and forgotten can never be retired on evidence, only defended on
+principle. The review-economics program (#829–#834) proposes six changes to what reviews cost, and
+nothing in the repo could measure the before-state of any of them.
+
+`review-stats` gains two things. **`--since` / `--until`** window bounds, inclusive, where a bound
+shorter than a full timestamp names a *period*: `2026-09` is the whole of September. Compared as
+bare strings every such bound excludes its own period, which silently shortens whichever window it
+closes — and the window a before/after comparison closes is the one the conclusion is read from. The
+period cases are not merely modelled on `tools/pr-review-yield.py`, which answers the same question
+for the PR reviewer — the two now **share** the predicate. `plugin/lib/timewindow.py` is its one
+home, and both instruments import it: written out at each of them it had already diverged, with the
+tool comparing a lower bound as a bare string while the library parsed it, so the same `--since`
+selected different populations in the two reports a person would naturally compare against each
+other. `tests/test_window_bounds_one_home.py` pins that both readers resolve to the one source and
+that neither has re-grown a private copy. A bound this reader cannot interpret is refused rather than filtered on, and a windowed
+report carries a `WINDOW:` banner and a `window` header so it can never be mistaken for a
+whole-corpus one.
+
+**A remedy dimension**: per severity, how many findings carry a non-empty `recommendation` and how
+long it runs. It counts three outcomes rather than two — present, blank, and *absent*. The PR
+reviewer's findings carry `{goal, severity, file, line, summary}` and have no remedy key at all, so
+folding absence into "wrote no remedy" reported that role at 0%, a claim about its behaviour its
+schema cannot support; `rate` is null for such a population.
+
+What it says about this repo, measured at `--since 2026-08-04`: **every one of 1,141 Critic notes
+carries a remedy, at a median of 122 words.** The severity label says *not worth your time* and the
+payload says otherwise.
+
+**The window scopes the read, not the result.** Reviews, skips and the `learning` tallies all
+describe the windowed population, so two adjacent windows partition the corpus and a consumer
+summing them double-counts nothing — a filter applied afterwards re-scopes only whichever aggregate
+it happens to touch, which is how a before/after split shows identical learning counts in both
+halves.
+
+`REPORT_SCHEMA_VERSION` 6 → 7. Both additions are additive — no `--json` key removed or repurposed —
+and `TestJsonSchemaStability`'s pins are renegotiated in the open, continuing that class's documented
+version history. **`plugin/docs/governance-telemetry.md` is updated with them** — it is named by both
+`api-contract.md` and the module docstring as the `--json` contract's prose home, and a bump that
+does not reach it leaves the published shape and its description disagreeing. That pass also closes
+**schema 6's** drift: `duration_measured` / `duration_self_reported` had shipped with no prose home
+at all.
+
+**This branch was wave 1 of #832 and stopped after one chunk, deliberately.** #832 would have
+stripped the remedy text from notes; the owner questioned it mid-build and the measurement agreed.
+The direct lever is what a note *costs*, not what it says — at inner stage a note is already
+demoted to a free-to-accept observation, and that change alone took `verify-resolutions` from 2.04
+non-blocking findings per round to 0.09. The 87% of notes that still buy rounds (992 of 1,141) come
+from the boundary stage, which is **#830**'s territory and departs from a ratified norm, so it gets
+its own plan. The instrument survives the pivot unchanged, because it is what will grade whatever
+ships.
+
+## 2026-09-18: The PR reviewer reads one payload, reviews what it actually catches, and is timed
+
+<!-- prawduct: type=feat | scope=pr-review-payload -->
+
+**Two chunks, one loop: build the instrument, then change the thing it measures.** The PR review at
+the boundary was ~115k tokens of context assembled over 13–18 sequential tool round-trips, against a
+≤ 7-minute wall-clock target that had never been measured — `duration_seconds` was the reviewing
+model's own estimate of its own runtime, 122 times running.
+
+**Chunk 01 — the data plane.** `prawduct-hook pr-review-dispatch --begin` marks a dispatch and
+`ledger-append` consumes the mark, so a review's duration becomes an interval two clocks in code
+agree on rather than a recollection. The mark is tree-anchored (it records its `HEAD`; consumption
+requires the same one) rather than age-thresholded, and only `review.pr` may consume it — a
+`review.critic` append that cleared it would silently delete a concurrent PR review's measurement,
+which is exactly the timing Chunk 02 introduces. `prawduct-hook pr-review-payload` assembles the
+reviewer's whole context in one deterministic pass — base, commits, diffstat, work description, the
+`test-status` verdict, the build plan's `## Status` boxes, the change-log entry, and every backlog
+id the commits or that entry cite, already resolved. It fails **per section**, and every degraded
+section names the check it leaves unanswered, because a silent empty section reads as "checked,
+nothing found". `review-stats --json` went to schema 6 for the measured/self-reported split, and the
+dispatch-interval predicate — including its 6-hour plausibility bound — now has one home
+(`review_dispatch.measured_interval_seconds`) that all three readers call.
+
+**The measurement toolchain ships with it**, and it is roughly a fifth of this bundle rather than a
+footnote. `tools/pr-review-yield.py` is **new**: it reads the ledger's `review.pr` events and
+reports PR-review duration, findings per review and yield by goal and severity, splitting measured
+rows from self-reported ones rather than pooling them. `tools/measure-consumer-overhead.py` gains a
+`pr_clock_*` trio so the same split is visible in a consumer repo's history. Both are what make the
+before/after in `nonfunctional-requirements.md` § Performance re-derivable from a command instead of
+quotable from prose — the tools are the deliverable, not the figures.
+
+**Chunk 02 — the protocol.** The reviewer's six numbered activation reads collapse to three: the
+payload, the diff, and the artifacts the diff sends it to. The learnings read is **deleted** — not
+because the corpus arrives another way, but because the goal consuming it returned **1 finding in
+122 reviews** and `review-protocol.md`'s own Learnings Cross-Check assigns that scan to the
+`final`/`cumulative` Critic, so the reviewer was carrying a corpus it was forbidden to use. The
+markdown `## PR Review` block and the `### PR Draft` go too: the caller reads the JSON and re-drafts
+the description at Step 5, so both were outputs with no consumer.
+
+**The four goals are re-pointed, and that is a recorded decision rather than documentation
+freshness.** They were written for product code; across 279 findings the subject is governance
+bookkeeping — 48% change-log coherence, 25% build-plan status and dangling pointers, 15% backlog
+reconciliation, 10% tag keys, against 0.7% on the debug-code and stray-file bullets the goals led
+with. `.prawduct/` is non-judgeable by the coverage algebra, so no Critic layer reads it and this
+reviewer is its only reader. Goals 2 and 3 are renamed to *The Record Matches What Ships* and
+*Governance Bookkeeping Is Coherent*; every bullet survives, the merge-hygiene set now carrying its
+measured rarity beside it.
+
+**A named agent, and the rule it retires.** `plugin/agents/pr-reviewer.md` ships with a scoped tool
+allow-list and `omitClaudeMd: true` — measured against Claude Code 2.1.277 before it was written: an
+agent carrying the field reported `CLAUDE.md`, `.claude/rules/learnings/core.md` and `MEMORY.md` all
+absent, while the identical agent without it quoted a `core.md` heading verbatim. That is ~108KB of
+prose the reviewer no longer receives. The payload grant names `pr-review-payload` **exactly**,
+because a Bash grant is a prefix match and the sibling `pr-review-dispatch` writes. A `core.md` rule
+forbidding named tool-restricted reviewer agents is **superseded** (owner-confirmed): its warrant
+was that the frontmatter cannot express `Bash(...)` granularity, and the tool-level bound is real —
+an agent granted no `Bash` has no Bash tool at all. What replaces it is the half that survives: a
+`Bash(pattern)` grant is *declared*, not verified-enforcing, so scope by which tools exist and never
+call a pattern structural. Whether patterns narrow within an exposed tool could not be measured
+here — every probe ran under a `permissions.defaultMode: dontAsk` that no flag overrode — and that
+limit is written down rather than rounded off.
+
+**And the two boundary reviews now run concurrently (#678)**, which `nonfunctional-requirements.md`
+§ Performance has required all along and `pr/SKILL.md` did not do. Neither consumes the other's
+verdict; the one real cost — a blocking cumulative spends the concurrent PR review — is stated in
+the step rather than discovered.
+
+**Measured, not projected.** The before-readings and the commands that re-derive them are in
+`nonfunctional-requirements.md` § Performance: 420s median over 122 reviews, **0 measured / 122
+self-reported**, and 14.1 min/review on a consumer repo with zero clock rows. The after-reading is
+owed at this bundle's own PR — the first dispatch that can produce a `measured` row — and is
+recorded there beside them, including if it misses.
+
+**A defect surfaced, not fixed:** `nonfunctional-requirements.md`'s 2026-09-16 ruling keeping the
+`pr-scoped` review mode graded a control that had been collapsed into `pr` two months earlier. The
+ruling stands and is annotated with what it actually decided; amending a norm to match the tree is
+the laundering tell.
 
 ## 2026-09-17: Step 1 names the recorder; develop opens 3.5.1-dev.1 so consumers pick up review-stages
 

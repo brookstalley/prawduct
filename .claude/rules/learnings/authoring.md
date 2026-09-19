@@ -142,3 +142,69 @@ irreversible act.
 The general form is worth more than the instance: **a check is only a check if it can disagree with
 the thing it grades.** Three green signals here were all downstream of the same stale ref. When
 something can be stale, verify it against a source that does not share its staleness.
+
+### A QUOTATION you lift into a durable record drifts toward the generalisation you are writing toward, and that direction is why it survives review — verify quoted evidence mechanically, exactly as you would a `file:line`, because a paraphrase that SHARPENS the source reads as good writing rather than as an error. Tell: the address resolved, so the quote felt checked
+
+Measured 2026-09-18 by the audit of `mcp-mining/hallucinote-server-structured.md`, a 106-rule capture
+in which **every cited address resolved** — 0 NOT-FOUND, every constant matching the tree.
+
+Of 202 quoted evidence fragments, 170 matched the source exactly. **Nineteen did not, and one appeared
+nowhere in the tree at all.** No path check can see this class, which is the trap: the schema puts a
+`PROVENANCE:` line under every quote, so verifying the address creates the impression that the
+quotation came with it.
+
+**The direction is the finding, and it is what makes the class undetectable.** The two edits that
+mattered both moved *toward* the generalisation the corpus was being written for:
+
+- an error-model rationale was rewritten from *"its quality directly determines"* to *"its
+  **structure** decides"*;
+- *"Live"* — one specific host — became *"the host"*, in a corpus whose subject is the host/server
+  boundary.
+
+Both read **better** as durable material than the source does. A reviewer scanning for errors sees a
+well-turned sentence, and the specific observation has been quietly laundered into a general claim the
+source never made. `core.md`'s transcription rule already names the mechanism (*a paraphrase reads
+exactly like a faithful copy*); this adds that the drift is not random, and that its direction is
+always toward what you wanted the source to say.
+
+**The instrument is mechanical, so build it rather than resolving to read more carefully.** Extract the
+quoted runs, normalise whitespace, case and trailing punctuation, split on the record's own ellipses,
+search the corpus of sources, and binary-search the longest matching prefix so a divergence *point* is
+located instead of an absence merely reported. **THREE controls, not two** — a nonsense string must
+return zero (the search is not matching everything), a large known-good set must return hits (it is
+not dead), and **a deliberately CORRUPTED real fragment must miss.** The third is what proves the
+search *discriminates* rather than merely runs, and it is not optional: measured 2026-09-18 against
+a mutant that matched everything, the known-good control reported a false **120/120 green** while
+only the nonsense and corruption controls went red. A control that passes more easily the more
+broken the instrument is measures nothing.
+
+**The extraction pattern is itself a claim about the record's conventions, and controls on the
+SEARCH do not cover it.** Six defects were found paying this debt across four captures and every one
+lived in the measuring apparatus, not the records. Two were in the recipe as first written here: it
+read only the `*"…"*` form, when only one capture used that convention; and as a `grep -oE` it was
+**line-based**, so every quotation that wrapped was invisible — most of one capture's. Two more were
+in its replacement: a naive `"([^"]+)"` is not escape-aware and truncates on embedded JSON, and
+splitting on a bare `**RULE:**` marker also catches it *discussed in the record's own header*,
+shifting every rule id so citations point at the wrong rules while reading as precise. Anchor the
+splitter on the same command the corpus counts itself with, and assert the two agree.
+
+Three of those live in **extraction**, and every search-side control stayed green through all
+three — reverting the escape-aware regex left the self-test fully passing. So pin extraction
+directly, against an inline fixture carrying one instance of each defect the conventions can
+produce. **And when you write the control that closes a class, check it discriminates the CLASS and
+not just the instance**: the first attempt here emptied the primary corpus loader, which also
+empties the first corpus, so the weaker check it replaced passed it. The control claimed the class,
+pinned the instance, and shipped that false claim into two durable records before a reviewer caught
+it — which is the sixth defect, and the only one that was about the controls rather than the code.
+
+**A refusal is a guard.** The paths that stop a vacuous pass — an unreadable input, an empty corpus,
+an unknown flag value, a selection that would examine nothing — stand between a broken run and a
+clean-looking result, and they go unpinned because they read as error handling rather than as logic.
+Derive the roster from the source (parse the module for its own refusal sites, compare the NAMED ids
+against a registry) rather than maintaining a list. And **assert each control reached its subject**:
+where every refusal shares one exit code, a control whose fixture never arrives catches an unrelated
+refusal and prints PASS.
+
+State what the instrument cannot see, in the artifact rather than in your head: a quotation *stitched*
+from two non-adjacent sentences with no ellipsis marked shows up as a prefix match and has to be read.
+The script narrows the set a human must read; it never empties it.

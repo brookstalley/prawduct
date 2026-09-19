@@ -142,8 +142,20 @@ class TestSubagentStopMatcherMatchesRuntimeAgentType:
 
 
 class TestAgentToolsAreRestricted:
-    """The agent-def tools allow-list is the structural no-execution guarantee for
-    reviewers (unlike a skill's allowed-tools, an agent type's tools DO bind it)."""
+    """The agent-def tools allow-list, and what it is and is not evidence of.
+
+    **Verified** (Claude Code 2.1.277, 2026-09-18): the tool SET binds — a plugin
+    agent declaring `tools: Read` has no Bash tool at all. So "no unrestricted
+    `Bash` entry" is a real bound, which is what `test_no_broad_bash` holds.
+
+    **Not verified:** whether a `Bash(pattern)` grant narrows *within* an exposed
+    Bash. Every probe ran under a machine whose `permissions.defaultMode` is
+    `dontAsk`, which neither `--permission-mode` nor `--settings` overrode, so an
+    ungranted command running is fully explained by the mode. These assertions
+    therefore pin what this file DECLARES; do not read them as proof the harness
+    refuses. Where the guarantee has to be real, remove the tool rather than
+    narrowing its pattern.
+    """
 
     def _tools(self) -> list[str]:
         raw = _field(_frontmatter(AGENT_DEF), "tools")
@@ -163,9 +175,31 @@ class TestAgentToolsAreRestricted:
 
     def test_git_is_read_only(self):
         tools = self._tools()
-        assert "Bash(git *)" not in tools, "no broad git — mutating verbs must be impossible"
+        assert "Bash(git *)" not in tools, (
+            "no broad git — the read-only verbs are granted one by one, which "
+            "is the intent this file declares; whether a pattern narrows WITHIN "
+            "an exposed Bash is the consumer's permission settings' answer"
+        )
         for verb in ("Bash(git diff *)", "Bash(git log *)", "Bash(git show *)"):
             assert verb in tools, f"critic-reviewer missing read-only git verb {verb}"
+
+    def test_the_grants_admit_the_git_dash_C_form_this_file_mandates(self):
+        """Same defect, same commit: `test_agent_requires_git_dash_c_on_git_calls`
+        asserts the definition MANDATES `git -C <dir>`, and nothing checked that
+        the grants admit one. `Bash(git diff *)` does not match a command whose
+        second token is `-C`."""
+        import fnmatch as _fn
+
+        patterns = [
+            t[len("Bash("):-1] for t in self._tools()
+            if t.startswith("Bash(") and t.endswith(")")
+        ]
+        for verb in ("diff", "log", "show"):
+            cmd = f"git -C /abs/project {verb} HEAD~1"
+            assert any(_fn.fnmatch(cmd, p) for p in patterns), (
+                f"the allow-list does not admit {cmd!r}, which this agent "
+                f"definition requires the reviewer to run"
+            )
 
     def test_no_allow_pattern_permits_pytest(self):
         """The negative probe: no Bash allow pattern may match a pytest invocation."""
@@ -178,8 +212,10 @@ class TestAgentToolsAreRestricted:
                     "cd x && python3 -m pytest"):
             for pat in bash_patterns:
                 assert not fnmatch.fnmatch(cmd, pat), (
-                    f"agent tool `Bash({pat})` would permit `{cmd}` — reviewers must "
-                    f"be structurally unable to run tests"
+                    f"agent tool `Bash({pat})` would permit `{cmd}` — no grant "
+                    f"here may name a test run. The guarantee is the tool SET "
+                    f"(no unrestricted `Bash` entry); this asserts the declared "
+                    f"patterns do not contradict it"
                 )
 
 

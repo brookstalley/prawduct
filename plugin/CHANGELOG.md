@@ -10,7 +10,7 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
-## v3.5.1-dev.1
+## v3.5.1-dev.2
 
 **Prerelease under test — this build is the develop branch ahead of the next release.** The version
 says so wherever it appears, so a repo pinned to the develop ref can tell what it is running, and a
@@ -123,6 +123,16 @@ moves shipped history verbatim into `.prawduct/change-log-archive/YYYY-MM.md` (r
 stay live), and the size nudge hands the agent that command instead of advice nobody could act on.
 **Downgrade caution:** an older plugin reads only the live log, so after your repo has archived, do not
 roll back past this release — or copy the archived entries back into `change-log.md` first.
+
+**Critic reviews are now timed, not estimated.** Every review round records a `duration_seconds`,
+and until now the Critic's was written by the reviewing model from recollection — across the first
+1,026 recorded rounds it took 63 distinct values, 23% of them exactly `300`. The Critic now carries
+the same code-read stopwatch the PR reviewer has had, on its own marker slot so the two boundary
+reviews can run concurrently without either deleting the other's measurement. Nothing you do
+changes; `prawduct-hook review-stats` reports the measured and self-reported populations separately,
+so a figure derived from your ledger says which it is. A refused dispatch starts no clock, and every
+degraded path falls back to the reviewer's own estimate rather than attesting an interval nobody
+spent.
 
 ## v3.5.0
 

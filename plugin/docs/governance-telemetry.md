@@ -137,7 +137,7 @@ The format is lock-in, so the queries came before the fields:
 all four counts, and its human rendering closes with the number question 3
 asks for.
 
-## `prawduct-hook review-stats [--json]`
+## `prawduct-hook review-stats [--json] [--since <stamp>] [--until <stamp>]`
 
 Aggregates `review.*` events and tallies `learning.*` ones; skips corrupt
 lines, kinds it aggregates neither of, and unusable payloads **with counts**
@@ -145,7 +145,10 @@ lines, kinds it aggregates neither of, and unusable payloads **with counts**
 `invalid_payload`, not a skip nobody names — it can answer none of the four
 questions. A `learning.` kind this report has no column for stays
 `unknown_kinds`, which is what that key has always meant. Missing ledger → "no
-review history", exit 0. Exit 1 only on bad arguments.
+review history", exit 0. Exit 1 only on bad arguments — **including a window bound this reader
+cannot interpret**, which is refused rather than filtered on as a bare string: a bound silently
+meaning something other than what was typed moves events between the halves of a before/after
+comparison, and the difference is then attributed to whatever change was under test.
 
 Per grouping — overall, `actor.role` × `actor.model` × review mode,
 per-`scope`, and per review `stage` — it reports: review count, total/median `duration_seconds`,
@@ -164,6 +167,8 @@ schema_version   report schema (bumped on any key change — pinned by
                  tests/test_review_stats.py)
 project          repo directory name
 generated_at     ISO-8601 UTC
+window           {since, until} — the bounds in force, stated even when both
+                 are null so a slice is never mistaken for the whole corpus
 events_total     reportable review.* events
 skipped          {corrupt_lines, unknown_kinds, invalid_payloads}
 overall          one stat block (below)
@@ -185,13 +190,44 @@ by hand. They are **not** in `events_total`, which means reviews and is read as
 such; and they are no longer skips.
 
 Stat block: `reviews`, `duration_total_seconds`, `duration_median_seconds`
-(null when no event carried a duration), `findings`
-(`{blocking, warning, note, other}`), `findings_per_review`,
+(null when no event carried a duration), `duration_measured` /
+`duration_self_reported` (each `{reviews, total_seconds, median_seconds}` —
+a clock read either side of dispatch and the reviewing model's own
+recollection are two populations, and a median over the mixture measures
+neither; schema 6 added them), `findings`
+(`{blocking, warning, note, other}`), `remedies` (below), `findings_per_review`,
 `actionable_rate` (0–1), `observations` (items an inner-stage pass demoted —
 never counted in `findings`), `reviews_recording_observations`
 (reviews whose event carried the array; events written before it existed are
 excluded, so `observations: 0` over `0` recording reviews means *not measured*,
 not *nothing demoted*). Schema 4 added the last two keys.
+
+`remedies` reports, per severity (`blocking`/`warning`/`note`/`other`), whether a finding ships a
+fix plan: `{findings, with_remedy, blank_remedy, no_remedy_field, rate, median_words}`. The severity
+label says what a finding is worth and the remedy beside it is what makes it read as work, so the two
+can disagree — a NOTE carrying a finished fix plan is indistinguishable from a WARNING at the moment
+the builder decides what to do. Three outcomes are counted, not two: **absent** (no `recommendation`
+key at all) is a different claim from **blank**, because the PR reviewer's findings carry
+`{goal, severity, file, line, summary}` and have no remedy field in their schema. `rate` is over
+findings whose schema HAS the field, and is `null` when none does — reporting 0% there would be a
+claim about a population's behaviour that its schema cannot support. Schema 7 added the key.
+
+### Windowing (`--since` / `--until`)
+
+Both bounds are **inclusive**, and a bound shorter than a full timestamp names a **period** rather
+than an instant: `2026` is a year, `2026-09` the whole of September, `2026-09-01` that whole day.
+Compared as bare strings every one of those excludes its own period, which silently shortens
+whichever window the bound closes — and the window a before/after comparison closes is the one the
+conclusion is read from. A full timestamp is parsed, so a zone offset means what it says.
+
+**The window scopes the read, not the result.** Reviews, skips and the `learning` tallies all
+describe the windowed population, so two adjacent windows partition the corpus and a `--json`
+consumer summing them double-counts nothing. A human report carries a `WINDOW:` banner when either
+bound is set.
+
+The predicates live in `lib/timewindow.py` and are shared with `tools/pr-review-yield.py` — the two
+instruments grade the same before/after split, and while each kept its own copy the lower bound had
+already diverged.
 
 `by_stage` groups on the record's `stage` — `inner` (`chunk`, `final`, `verify-resolutions`) or
 `boundary` (`cumulative`), stamped by `critic-begin` and carried through the fact and the findings

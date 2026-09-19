@@ -633,6 +633,8 @@ _SESSION_GITIGNORED_PATHS = (
     ".prawduct/.handoff-notes.md",
     ".prawduct/.test-evidence.json",
     ".prawduct/.pr-reviews",
+    ".prawduct/.critic-review-dispatch.json",
+    ".prawduct/.pr-review-dispatch.json",
     ".prawduct/.session-base-tree",
     ".prawduct/.session-git-baseline",
     ".prawduct/.session-handoff.md",
@@ -646,6 +648,29 @@ _SESSION_GITIGNORED_PATHS = (
     # build plans are tracked artifacts (gate-soundness ch.3); this loop
     # used to force-untrack them at every session start, reverting any
     # product that tracked its plan.
+)
+
+
+# Session files deleted at a session boundary, by basename under `.prawduct/`.
+# Hoisted out of `_boundary_close_session` so a test can QUANTIFY over it: the
+# dispatch clocks are generated from `review_dispatch.MARKER_BASENAMES`, and a
+# kind added to that mapping but omitted here survives a session reset and can
+# attest a boundary-spanning interval — the exact failure the tree check is only
+# the second line of defence against.
+#
+# Spelled rather than imported: this module keeps its top level import-light (the
+# same reason `_SESSION_GITIGNORED_PATHS` above is an inline mirror rather than a
+# `core` import), so the mapping cannot be read here. The connection is a TEST
+# that quantifies over `review_dispatch.MARKER_BASENAMES` and requires every
+# basename to appear in all four registries — which is where the obligation
+# belongs, since recall is what was failing.
+_SESSION_RESET_DELETES = (
+    ".session-start",
+    ".session-git-baseline",
+    ".session-base-tree",
+    ".gates-waived",
+    ".critic-review-dispatch.json",
+    ".pr-review-dispatch.json",
 )
 
 
@@ -854,12 +879,7 @@ def _boundary_close_session(project_dir: Path, prawduct_dir: Path) -> None:
     # (permissions, transient FS) must not traceback the SessionStart hook —
     # a survivor just carries stale state into the new session, which the
     # NOTE names so the user can remove it by hand.
-    doomed = [
-        ".session-start",
-        ".session-git-baseline",
-        ".session-base-tree",
-        ".gates-waived",
-    ]
+    doomed = list(_SESSION_RESET_DELETES)
     # The reflection is deleted iff the handoff CARRIED it (or there was nothing
     # to carry) — keyed on delivery, never on "a handoff was attempted", the
     # same rule `_consume_handoff_notes` applies to the notes. The handoff is
@@ -5351,6 +5371,99 @@ def cmd_review_stats(project_dir: Path, argv: list[str]) -> int:
     return telemetry.review_stats(project_dir, argv)
 
 
+def cmd_pr_review_dispatch(project_dir: Path, argv: list[str]) -> int:
+    """Mark a PR review as dispatched, NOW, from a clock this code reads.
+
+    Usage: ``pr-review-dispatch --begin``. The caller chooses when to mark; it
+    never chooses the value, so no model sits in the write path. ``ledger-append
+    --event review.pr`` consumes the mark and writes ``dispatched_at`` into the
+    envelope, turning the review's duration from the reviewing model's estimate
+    into a measured interval.
+
+    This is the writing run, so it reports what it WROTE — checking the state
+    afterwards would not verify what the operator was told (hook-surface
+    learnings). Exit 0 on a mark, 1 on bad args or an unwritable marker; a
+    failure to mark is never fatal to the review it precedes, so the caller is
+    told to carry on and expect a self-reported duration.
+    """
+    if argv != ["--begin"]:
+        unknown = [a for a in argv if a != "--begin"]
+        detail = (
+            f"unknown argument(s) {', '.join(repr(a) for a in unknown)}"
+            if unknown else "no arguments"
+        )
+        print(
+            f"pr-review-dispatch: {detail} "
+            "(usage: pr-review-dispatch --begin) — nothing was marked.",
+            file=sys.stderr,
+        )
+        return 1
+
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import gitstate, review_dispatch  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+    except ImportError:
+        print(
+            "pr-review-dispatch unavailable (could not import the plugin lib/ from "
+            "${CLAUDE_PLUGIN_ROOT}) — dispatch the review anyway; its duration will "
+            "be self-reported rather than measured.",
+            file=sys.stderr,
+        )
+        return 1
+
+    head = review_dispatch.head_sha(project_dir)
+    try:
+        record = review_dispatch.begin(
+            gitstate.get_prawduct_dir(project_dir), "review.pr", head
+        )
+    except OSError as exc:
+        print(
+            f"pr-review-dispatch: could not write the dispatch mark ({exc}) — "
+            "dispatch the review anyway; its duration will be self-reported "
+            "rather than measured.",
+            file=sys.stderr,
+        )
+        return 1
+
+    print(
+        f"dispatch marked: {record['dispatched_at']} "
+        f"(tree {record['head'][:8] if record['head'] else 'unknown'})"
+    )
+    return 0
+
+
+def cmd_pr_review_payload(project_dir: Path, argv: list[str]) -> int:
+    """One deterministic call assembling everything the PR reviewer reads.
+
+    Usage: ``pr-review-payload [--json] [<project dir>]``. The positional names
+    the tree to answer about: a review subagent holds no ``cd`` grant and this
+    command resolves ``CLAUDE_PROJECT_DIR`` (the LAUNCH dir) before its own cwd,
+    so without it the payload can describe the primary checkout while the
+    reviewer's ``git -C`` diff reads a worktree. Thin wrapper — body lives in
+    ``lib.pr_payload.emit``. Read-only, and it emits no verdict, so it is ADVICE
+    and fails soft per section with every degradation named in the output
+    (``architecture.md``: a command's failure posture follows what it produces).
+    The one hard failure is an unresolvable base — no base means no review
+    interval, so there is nothing to review.
+    """
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import pr_payload  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+    except ImportError:
+        print(
+            "pr-review-payload unavailable (could not import the plugin lib/ from "
+            "${CLAUDE_PLUGIN_ROOT})",
+            file=sys.stderr,
+        )
+        return 1
+
+    return pr_payload.emit(project_dir, argv)
+
+
 def cmd_check_plugin_active(project_dir: Path, argv: list[str]) -> int:
     """Is the prawduct plugin actually LOADED for a repo? Thin wrapper — body
     lives in ``lib.plugin_activation``.
@@ -7366,7 +7479,8 @@ _USAGE = (
     "verify-records [--base <t>] [--head <t>] [--chunk <id>] [--scope <s>] [--json]|verify-coverage|"
     "ledger-append --event <kind> [--scope <s>] [--chunk <id>] [--model <id>]|"
     "handoff preview|"
-    "review-stats [--json]|classify-diff-risk [<base>]|"
+    "pr-review-dispatch --begin|pr-review-payload [--json] [<project dir>]|"
+    "review-stats [--json] [--since <stamp>] [--until <stamp>]|classify-diff-risk [<base>]|"
     "cost-of-commit [--json] [<paths>...]|"
     "check-operator-verification|accept-operator-verification <rationale>|"
     "verify-operator-verification <vrf-id>|"
@@ -7748,6 +7862,12 @@ _EPHEMERAL_SAFE_COMMANDS = frozenset({
     # inside a disposable agent worktree, where the fail-closed default would
     # refuse the reviewer's own read list.
     "learnings-files",
+    # Read-only: assembles a report from git, `.prawduct/` state and the backlog
+    # cache. Its SIBLING `pr-review-dispatch` writes a marker and is deliberately
+    # absent — the two share the `pr-review-` prefix, and a Bash grant is a PREFIX
+    # match, so any allowlist entry must name this op exactly (`pr-review-payload`)
+    # and never `pr-review*`, which would hand a reviewer the writer as well.
+    "pr-review-payload",
     "print-install-reference",
     "render-dispositions",
     "resolve-base",
@@ -8268,6 +8388,10 @@ def _dispatch() -> int:
         return cmd_ledger_append(project_dir, sys.argv[2:])
     elif command == "handoff":
         return cmd_handoff(project_dir, sys.argv[2:])
+    elif command == "pr-review-dispatch":
+        return cmd_pr_review_dispatch(project_dir, sys.argv[2:])
+    elif command == "pr-review-payload":
+        return cmd_pr_review_payload(project_dir, sys.argv[2:])
     elif command == "review-stats":
         return cmd_review_stats(project_dir, sys.argv[2:])
     elif command == "classify-diff-risk":
