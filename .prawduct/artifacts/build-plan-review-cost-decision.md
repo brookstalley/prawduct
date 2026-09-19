@@ -67,9 +67,13 @@ levers that suppress finding content. Each chunk's mechanism was read at its cal
   what makes it answerable without guessing which findings the builder intends to fix. Pricing the
   finding files instead would answer a different question — "what would fixing ALL of these cost" —
   which is not the one the issue asks.
-- [ASSUMPTION: the reviewer payload set for Chunk 03's ceiling is the five `skills/critic/` files
-  plus `agents/critic-reviewer.md` | MED impact | user can correct]. Derived from the artifact's §4
-  list; the chunk's first step re-derives it from the dispatch path rather than trusting the list.
+- ~~[ASSUMPTION: the reviewer payload set for Chunk 03's ceiling is the five `skills/critic/` files
+  plus `agents/critic-reviewer.md`]~~ **FALSIFIED at Chunk 03's first step, 2026-09-19.** The
+  payload is stage-keyed and no reviewer loads all five: `SKILL.md` routes `chunk` /
+  `verify-resolutions` to `goals-1-3.md` and forbids the rest. Measured inner 8,743 / boundary
+  22,714 against the artifact's single ~26k. Chunk 03 ships two stage-keyed ceilings instead of
+  one, and the artifact's §4 carries the correction. This is why the chunk's first step was
+  written as a re-derivation rather than as a build against the list.
 
 **What would raise confidence:** N/A — the two assumptions above are cheap to correct in-chunk and
 neither changes the plan's shape.
@@ -78,12 +82,12 @@ neither changes the plan's shape.
 
 - [x] Chunk 01: The zero-blocking close leads with the computed cost and a recommendation (#831)
 - [x] Chunk 02: The two over-fixing rules carry a severity bound (#833)
-- [ ] Chunk 03: The reviewer payload gets an aggregate ceiling (#850)
+- [x] Chunk 03: The reviewer payload gets an aggregate ceiling (#850)
 Context: Plan written 2026-09-19 on `feature/review-cost-decision`, cut from `develop` at 9224a55e.
 Chunk 01 built and committed; its mutation sweep ran seven mutants, six dying and the one predicted
 to survive surviving. Chunk 02 landed the full-reach amendment the owner directed (ten carriers, consumer
 CLAUDE.md text included), and surfaced a consumer regression in the process: the v3.5.0 anchor is
-now archived as `ANCHOR_V4`. Next: Chunk 03. This plan is the first of two covering the review-cost
+now archived as `ANCHOR_V4`. All three chunks built. Next: cumulative review, then PR. This plan is the first of two covering the review-cost
 program; the convergence half (#640 re-apply, #847, #167) is `build-plan-review-convergence.md`.
 
 ## Verification Strategy

@@ -58,6 +58,22 @@ loses whichever clause is least defended. The digest's 500-character reserve, he
 framework-wide default, is untouched: its sentence is written at that surface's compressed register
 (9,497 of 9,500).
 
+**#850 — the reviewer's payload gets an owner, and the item's own number was wrong.** Every
+governance prose file carries a budget and every budget is green; nothing priced the total, and the
+total is what a reviewer pays. The item quoted ~26k tokens read before a line of diff. The dispatch
+path falsifies it: `SKILL.md` sends a `chunk`/`verify-resolutions` reviewer to `goals-1-3.md` and
+tells it to read *"nothing else"*, so the real figures are **inner 8,743 / boundary 22,714**. That
+changes the control rather than just the arithmetic — `verify-resolutions` is 58% of review volume
+and pays the SMALL payload, so one ceiling over the union would price what nobody loads and let the
+inner stage double with nothing red. `tests/test_reviewer_payload_budget.py` ships two stage-keyed
+ceilings instead, mirroring the stage-keyed rigor rule they protect, plus a relational pin that the
+inner payload stays under half the boundary's — the property the `goals-1-3.md` split exists for,
+which survives both numbers moving. Its member list is derived from `SKILL.md`'s routing prose, not
+listed here, so a sixth protocol file cannot join the dispatch without joining a sum. Per the NFR
+norm's requirement that a new control name its expected yield: this refuses an undeclared payload
+raise and shrinks nothing today; if a year passes with no reading moved and no raise declared, it
+fired zero times and should be retired rather than defended.
+
 **The bound is enforced, not remembered.** `tests/test_severity_bounded_rules.py` walks the tree
 for either rule and asserts every carrier states its bound — including carriers added later, which
 a hand-maintained list cannot see. It carries a positive control, and five mutations against the
