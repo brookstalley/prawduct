@@ -68,6 +68,15 @@ published-surface record a future kind-adder opens first. The plan had pre-dispo
 as "likely no edit" on the strength of `critic-begin`'s unchanged signature, which was true of the
 entry it reasoned about and never reached the `ledger-append` clause.
 
+**The base sync brought a red suite with it, fixed here rather than carried.**
+`documentation/issues/834-requirements.md` landed on `develop` naming `Closes #N` in three
+paragraphs without the default-branch condition `TestClosingKeywordClaims` requires of any
+instruction surface — the guard is paragraph-scoped on purpose, because a qualification three
+sections away is not read by someone following the sentence in front of them. All three now state
+that GitHub fires the keyword only for a merge into the repository's **default** branch, which is
+what makes it inert on this repo's `develop` base. `develop` was red at `4537d604`; there is no
+pre-existing exception, and a sync is where one gets inherited silently.
+
 **`develop` opens `3.5.1-dev.2`.** `version` is the plugin cache key, so a consumer pinned to the
 develop ref resolves the cache directory by that string and picks up this work only on a new one.
 Four files, per `release-process.md`'s intra-cycle rule: the manifest, `plugin/VERSION`,
