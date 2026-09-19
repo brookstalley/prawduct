@@ -2860,6 +2860,31 @@ def begin_review(
     pdir.mkdir(parents=True, exist_ok=True)
     atomic_write_text(manifest_path(prawduct_dir), json.dumps(manifest, indent=2))
 
+    # Start this review's stopwatch — LAST, so the mark attests an interval a
+    # reviewer actually spends. Every refusal above returns before here, and a
+    # mark written for a round that never dispatched would attest time nobody
+    # spent and then be consumed by whichever append came next.
+    #
+    # Fail-soft by construction: a duration is advice, so a marker that cannot
+    # be written must never cost a review that was going to run. The degradation
+    # is NAMED rather than swallowed — an unnamed one manufactures the false
+    # success it exists to prevent — and it rides `notes`, which the CLI already
+    # prints to stderr as `PRAWDUCT NOTE: {note}`. The string therefore carries no
+    # severity token of its own; every sibling `notes.append` here is a bare
+    # sentence for the same reason.
+    from . import review_dispatch  # noqa: PLC0415 — lazy, as this module's other lib imports are
+
+    try:
+        review_dispatch.begin(
+            prawduct_dir, "review.critic", review_dispatch.head_sha(project_dir)
+        )
+    except OSError as exc:
+        notes.append(
+            f"the review dispatch clock could not be started ({exc}) — the "
+            "review runs normally; its duration will be self-reported by the "
+            "reviewer rather than measured."
+        )
+
     return {
         "status": "ok",
         "id": review_id,

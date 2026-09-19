@@ -154,9 +154,12 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   stranded review's partials, mutating), `critic-restore <review-id>` (copy an archived review's
   manifest + partials back so it consolidates under its own id, mutating — `critic-discard`'s
   inverse), `evidence status|list`, `ledger-append`
-  (single-writer, mutating — consumes a PR-review dispatch mark and writes the optional
-  `dispatched_at` envelope key when one is present), `pr-review-dispatch --begin` (write the
-  dispatch mark, mutating — a per-clone stopwatch, never an answer), `pr-review-payload [--json] [<project dir>]`
+  (single-writer, mutating — consumes the dispatch mark belonging to the APPENDING KIND, `review.critic`
+  as well as `review.pr`, and writes the optional `dispatched_at` envelope key when one is present;
+  each kind owns its own marker, so an append can never reach another kind's — `data-model.md`
+  § Direction), `pr-review-dispatch --begin` (write the PR reviewer's dispatch mark, mutating — a
+  per-clone stopwatch, never an answer; the Critic's equivalent is written by `critic-begin` itself
+  and has no separate verb), `pr-review-payload [--json] [<project dir>]`
   (assemble the PR reviewer's context in one pass; read-only, emits no verdict, fails soft per
   section with each degradation named), `review-stats`, `disposition` (append a finding's ACCEPT/FILE/FIXED
   disposition fact, mutating — `--fixed <paths>` records a fix that bought no round and is refused

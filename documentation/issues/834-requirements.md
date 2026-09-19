@@ -134,8 +134,10 @@ item does not touch that mechanism.
 **4. Issue linkage is derived from the same backlog-id resolution `pr-review-payload` already
 performs (ids cited by commits and by the entry), routed through the backend-aware
 `/prawduct:backlog update ... closed-by=<scope>` call — never through GitHub's `Closes #N`
-keyword.** The keyword is inert on this repo's own branch model (Grounding facts), so building on it
-would silently fail exactly where this item is meant to help. Reusing the existing resolution logic
+keyword.** GitHub fires a closing keyword only for a PR merged into the repository's **default**
+branch, and this repo's feature branches merge to `develop` while the default is `main` — so the
+keyword is inert here (Grounding facts) and building on it would silently fail exactly where this
+item is meant to help. Reusing the existing resolution logic
 means this item adds no second way of discovering which issues a change closes.
 
 **5. The narrative body is lifted from the PR's own description, verbatim or near-verbatim — this
@@ -168,7 +170,8 @@ MUST unless marked SHOULD.
 - **CLG5** Issues the change closes are linked in the derived entry using the same resolution
   `pr-review-payload` already performs over commits and the entry (Decision 4), routed through the
   existing backend-aware `/prawduct:backlog update ... closed-by=<scope>` call — never through
-  GitHub's `Closes #N` keyword, which is inert on this repo's branch model.
+  GitHub's `Closes #N` keyword, which fires only for a merge into the repository's **default**
+  branch and is therefore inert on this repo's `develop`-based branch model.
 - **CLG6** `check-releasability` (`release_readiness.py:754`) passes unmodified against derived
   entries — this item changes how the tag line and body are produced, not what the gate reads or how
   it validates `scope=`/`release=`.
@@ -233,8 +236,8 @@ MUST unless marked SHOULD.
 - `plugin/skills/pr/SKILL.md:6, :69-76, :82-86, :207, :226-227` — allowed-tools (no MCP GitHub
   grants), the Step 1c presence gate, the backend-aware backlog-close call and its timing note, PR
   description authorship, and the merge strategy.
-- `plugin/skills/pr/review-protocol.md:192` — corroborating note that `Closes #N` is inert on this
-  repo's branch model.
+- `plugin/skills/pr/review-protocol.md:192` — corroborating note that `Closes #N` fires only for a
+  merge into the repository's **default** branch, and is inert on this repo's branch model.
 - `.github/workflows/tests.yml`, `.github/workflows/verify-release.yml` — confirms no existing
   workflow reads PR bodies, merges, or issues.
 - GitHub issue #834 — problem statement, proposed change, and acceptance criteria this document

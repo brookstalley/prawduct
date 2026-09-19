@@ -77,4 +77,5 @@ scratchpad/
 .prawduct/.delegate-brief.md
 
 # Prawduct session files
+.prawduct/.critic-review-dispatch.json
 .prawduct/.pr-review-dispatch.json
