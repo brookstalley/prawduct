@@ -714,7 +714,12 @@ class TestAReviewerScopesToTheReviewInterval:
 
 
 class TestOneDefinitionOfTheDiff:
-    """The gate note and `learnings-files --for-diff` resolve the same change set.
+    """The gate note and `learnings-files --for-diff` resolve the same change set
+    WHENEVER THEY ARE ANSWERING THE SAME QUESTION — which is whenever no review
+    is dispatched. Under a live manifest they deliberately diverge, because the
+    reviewer is then asking about the review interval and the gate about this
+    session; that split is pinned by `TestAReviewerScopesToTheReviewInterval`
+    above, and the fixtures here write no manifest.
 
     They were built against different helpers — session-changed files versus the
     base BRANCH — so a builder who commits the chunk before Stop fires (the
