@@ -23,6 +23,13 @@ uv.lock
 .prawduct/.test-evidence.json
 .prawduct/.gates-waived
 
+# The conventional test report and its scope record (the plugin's
+# `docs/test-report-contract.md`). pytest writes both on every run — the report
+# because `addopts` carries `--junit-xml`, the record because `tests/conftest.py`
+# does. Run output: regenerated every run, never committed.
+.prawduct/.test-report.xml
+.prawduct/.test-report.xml.scope.json
+
 # Work-model vocabulary index — RETIRED in v3.3.2 with the tripwire that wrote it
 # (owner ruling 2026-07-12, #257). Nothing generates this file any more; the entry
 # stays so the copies left on disk by pre-3.3.2 sessions remain invisible rather
@@ -75,3 +82,7 @@ scratchpad/
 # untracked) is what makes that impossible. Its presence in a worktree is also the
 # only signal the unintegrated-delegate advisory has, so it must never come from HEAD.
 .prawduct/.delegate-brief.md
+
+# Prawduct session files
+.prawduct/.critic-review-dispatch.json
+.prawduct/.pr-review-dispatch.json

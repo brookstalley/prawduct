@@ -13,9 +13,11 @@ list is a deliberate opt-out); without it, the derived defaults (`skills/`,
 packaging layouts match) plus literal backticked paths from
 boundary-patterns.md apply.
 
-The declaration ALSO gates the Critic's risk-keyed roster: a repo that declares
-nothing keeps the older file-count rule, because `no surface matched` and `this
-repo never had a signal` are indistinguishable at the match site.
+The declaration ALSO feeds the Critic's roster: a diff touching a declared
+surface draws the coordinator at any size. A repo that declares nothing runs
+the same volume escalator as one that does — the file-count fallback it used
+to keep was retired by the review-stages plan (measured yield in
+`tests/spikes/fallback_roster_yield.py`).
 
 Real git repos, sterile env (HOME outside the repo — pyc-cache learning),
 mirroring tests/test_governance_ledger.py.

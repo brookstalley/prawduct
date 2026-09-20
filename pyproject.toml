@@ -2,7 +2,7 @@
 name = "prawduct"
 # Vestigial packaging metadata (the repo is not PyPI-published). The canonical
 # plugin version is VERSION / .claude-plugin/plugin.json; keep this in step on release.
-version = "3.5.0"
+version = "3.6.0"
 requires-python = ">=3.10"
 
 [project.optional-dependencies]
@@ -100,8 +100,22 @@ testpaths = ["tests"]
 # on an I/O-heavy suite is a plausible non-issue; it is named here so it is a
 # known state rather than an oversight. If runs begin timing out under
 # contention, the fix is an environment-driven count WITH that evidence.
+#
+# **`--junit-xml` lives here, not in the command someone types** — the report is
+# a side effect of EVERY run (the plugin's `docs/test-report-contract.md`). Its
+# point is that no run is ever unrecordable: a hand-run of the suite can be
+# handed to `prawduct-hook test-evidence record --from-junit` instead of being
+# paid for twice, which is exactly the cost that produced the contract. The
+# declared `test_command` passes its own `--junit-xml={junit_xml}` and a
+# command-line value overrides an `addopts` one, so the recorder's own run is
+# untouched by this and still writes to its temp file.
+#
+# It is safe only because `tests/conftest.py` writes the scope record beside the
+# report: with a report always sitting at this path, one from `pytest -k foo`
+# would otherwise be indistinguishable from the suite's.
 addopts = [
     "-n", "5",
+    "--junit-xml=.prawduct/.test-report.xml",
     "--dist", "loadfile",
     "--timeout", "30",
     "--timeout-method", "thread",

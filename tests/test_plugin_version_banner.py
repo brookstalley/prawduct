@@ -758,3 +758,32 @@ class TestHeadlineEmphasisStripping:
         """`**` must be tried before `*`, or the pair loop strips the inner
         markers and strands their partners."""
         assert banner._strip_list_and_emphasis("**Bold.** Rest.") == "Bold. Rest."
+
+
+def test_every_attributed_gate_id_has_a_registry_row():
+    """A gate `cmd_stop` attributes a blocker to must have a `gates.json` row.
+
+    `_gate_attribution` degrades on an unknown id — the name falls back to the
+    id and the NEW-this-release flag never fires — so a gate added without its
+    row ships to every consumer repo unannounced by the version-delta banner,
+    which is the one thing the registry exists to prevent. Three did (the
+    learnings cutover and budget gates), found by a Critic review; this makes
+    the set the code attributes the thing the registry is checked against.
+    The ids come from the source (the `_attributed("...")` literals) plus the
+    one dynamic site, record-lint's budget checks, which `cmd_stop` passes
+    through `_attributed(_check, ...)`.
+    """
+    hook = (ROOT / "bin" / "prawduct-hook").read_text()
+    literal_ids = set(re.findall(r'_attributed\("([a-z-]+)"', hook))
+    sys.path.insert(0, str(ROOT))
+    from lib import record_lint  # noqa: PLC0415 — the dynamic site's id set
+
+    attributed = literal_ids | set(record_lint._BUDGET_CHECKS)
+    # Reachability: the scan must have found the sites it exists to check.
+    assert {"reflection", "critic", "learnings-unmigrated", "learnings-over-budget"} <= attributed
+    registered = {g["id"] for g in json.loads(GATES_JSON.read_text())["gates"]}
+    missing = sorted(attributed - registered)
+    assert not missing, (
+        f"cmd_stop attributes blockers to {missing} but hooks/gates.json has no row "
+        "for them — add one with `since` = the release that introduces the gate"
+    )

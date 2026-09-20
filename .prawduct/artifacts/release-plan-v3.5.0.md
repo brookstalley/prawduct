@@ -1,6 +1,14 @@
 # Release Plan — v3.5.0, Whole-Develop Promotion
 
-**Status:** IN PROGRESS. Phase 0 completed 2026-09-12 on `develop` at `90f04b91`.
+**Status:** CUT 2026-09-13. `main` is at `45902920`, tag `v3.5.0` published with the CHANGELOG
+section as its Release notes, and `check-released v3.5.0` reports 3 of 3 verified. All thirty-two
+scopes shipped as classified; nothing withheld. Sixteen build plans archived,
+`build-plan-branch-claim-multiplicity.md` deliberately left live. `develop` reopened on `3.5.1-dev`.
+
+**One thing this cut found that the runbook did not have:** the Phase 1 edits turned the suite red
+in two ways, and Phase 0's `unproven-suite:` gate cannot see them because it grades the tree that
+exists before the prep. A suite re-run between Phase 1 and Phase 2 caught both, and the runbook now
+carries it as step 11a.
 
 **Version:** v3.5.0 — **minor**, and the call is a recorded decision rather than a reflex, because
 the ratified norm pulls the other way. The norm (`operational-spec.md` `## Direction`, 2026-07-17,

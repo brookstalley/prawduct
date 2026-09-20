@@ -1,8 +1,12 @@
-"""Guards for the two carriers of the PR-review evidence contract, and for the
-class of claim that a GitHub closing keyword closes a backlog item.
+"""Guards for three things the PR flow gets wrong quietly: the two carriers of
+the PR-review evidence contract, the class of claim that a GitHub closing
+keyword closes a backlog item, and whether Step 1 names the command that
+records a suite run as well as the one that dates it.
 
-Both defects these guards close were found the same way: by a PR that merged
-cleanly and left something undone.
+All three defects these guards close were found the same way: by a PR that
+completed cleanly and left something undone — two that merged with work
+outstanding, and one that merged correctly having paid for a second full suite
+run to get there.
 
 **The evidence contract has two carriers.** `skills/pr/review-protocol.md`
 tells the reviewer what to write; `skills/pr/SKILL.md` tells the caller what to
@@ -405,4 +409,135 @@ class TestIssuesBackendCloseIsDeferred:
             "The Update Flow no longer cross-checks `commit_reviewed` against the "
             "ledger's independent copy. Without it the field is self-certifying, and "
             "the prohibition on advancing it has nothing behind it."
+        )
+
+
+class TestStepOneNamesTheRecorder:
+    """Step 1 tells the caller to run the suite; it must also name the command
+    that RECORDS one, because the two are the same command and only one of them
+    is discoverable.
+
+    The defect this closes was paid in wall clock, not correctness. Step 1 said
+    "when you do run, write fresh evidence so the next caller can skip it" and
+    named no command, so a caller ran the declared suite by hand and then asked
+    `test-evidence record` to ingest the counts. With a `test_command:` declared
+    that is refused (the runner emits JUnit, so hand-typed counts are the weakest
+    posture available), and the hand-run emitted no report to ingest instead —
+    leaving a second full suite run as the only way forward. Bare
+    `prawduct-hook test-evidence record` runs the declared command, substitutes
+    `{junit_xml}` where the repo declares `test_command:`, and falls back to
+    pytest where it does not — which is the default, since the template ships
+    that key commented out.
+
+    Bounded to the paragraph rather than the file: `SKILL.md` names
+    `test-evidence` in other steps, so a file-wide substring check would pass
+    with the instruction itself silent — the shape this repo's learnings call a
+    guard that cannot go red.
+    """
+
+    def _suite_paragraph(self) -> str:
+        paras = [
+            p for p in _paragraphs(PR_SKILL.read_text())
+            if "test-status" in p and "run the suite" in p
+        ]
+        assert len(paras) == 1, (
+            "Expected exactly one Step 1 paragraph instructing the caller about the "
+            f"suite; found {len(paras)}. If the step was split, re-bound this guard "
+            "rather than widening it to the file."
+        )
+        return paras[0]
+
+    def test_the_instruction_names_the_recorder_command(self):
+        para = self._suite_paragraph()
+        assert "test-evidence record" in para, (
+            "Step 1 tells the caller to run the suite without naming "
+            "`test-evidence record`. A caller who runs the declared suite by hand "
+            "cannot record it — `--from-counts` is refused when `test_command:` is "
+            "declared — so the omission costs a second full suite run."
+        )
+
+    def test_the_recorder_clause_survives_for_a_repo_that_declares_nothing(self):
+        """Naming the recorder is only safe prose while the sentence also covers
+        the repo that declares no `test_command:`.
+
+        `plugin/templates/project-state.yaml` ships that key commented out, so
+        undeclared is the DEFAULT consumer state: there `record` falls back to
+        pytest, which exits 2 for a non-Python product. An earlier draft of this
+        clause asserted the declared command unconditionally and left such a
+        reader with nowhere to go, because the same edit dropped the ingest
+        on-ramps from the skill's view. Without this guard that draft comes back
+        green — the sibling above only asks whether the recorder is *named*.
+        """
+        para = self._suite_paragraph()
+        assert "fallback" in para or "else a pytest" in para, (
+            "Step 1 names the recorder without saying what it runs for a repo "
+            "that declares no `test_command:` — the default consumer state."
+        )
+        for route in ("--from-junit", "--from-counts"):
+            assert route in para, (
+                f"Step 1 no longer names `{route}`. A product whose toolchain the "
+                "fallback cannot run needs an on-ramp named where it is reading."
+            )
+
+    def test_the_paragraph_quotes_the_labels_the_command_actually_prints(self):
+        """The prose tells a PR agent to read a printed label; pin both ends.
+
+        Step 1 hard-codes the two strings `test-status` puts in front of its
+        reason. Nothing otherwise ties them to the code, so a reword on either
+        side leaves the skill instructing an agent to look for a string the
+        command never prints — with the suite green, because the only other
+        assertions on this file are token counts.
+
+        The literals are IMPORTED, never retyped here: a second hand-copy would
+        make this guard agree with a stale prose copy instead of grading it.
+        Goes red if either constant is reworded without the prose following.
+        """
+        import sys  # noqa: PLC0415
+        sys.path.insert(0, str(PR_SKILL.parents[3]))
+        from lib import gates  # noqa: PLC0415 — mirrors the other lib unit tests
+
+        para = self._suite_paragraph()
+        for label in (gates.CURRENT_TREE_LABEL, gates.CURRENT_SESSION_LABEL):
+            assert label in para, (
+                f"Step 1 tells the caller to read the printed label but does not "
+                f"quote {label!r}, which is what `test-status` prints. Update the "
+                "prose to match `lib.gates`, not this test."
+            )
+
+    def test_the_paragraph_does_not_claim_exit_0_proves_tree_coverage(self):
+        """The #767 claim, pinned negative AND positive.
+
+        The negative alone is satisfied by deleting the sentence; the positive
+        alone is satisfied by a paragraph that states the disjunction and then
+        overclaims anyway. Both are needed, and the negative is matched on the
+        exact phrasing that carried the defect rather than on any sentence
+        containing the word "tree".
+        """
+        para = self._suite_paragraph()
+        assert "covers the current tree" not in para, (
+            "Step 1 again claims exit 0 means the evidence covers the current "
+            "tree. The session-fresh disjunct never reads the tree (#767)."
+        )
+        assert "session-fresh" in para and "tree-valid" in para, (
+            "Step 1 must still state BOTH grounds for exit 0 — a paragraph that "
+            "merely drops the false claim leaves the caller unable to read the "
+            "label it is told to read."
+        )
+
+    def test_the_instruction_still_leads_with_the_freshness_check(self):
+        """The recorder sentence must not displace the cheaper answer. Running
+        nothing at all is the best outcome, and `test-status` is what licenses
+        it; a paragraph that only named the recorder would spend a suite run on
+        every PR."""
+        para = self._suite_paragraph()
+        # Precondition, stated rather than assumed: without it `.index` raises
+        # ValueError and this test reports the SIBLING's defect as its own.
+        assert "test-evidence record" in para, (
+            "The recorder is not named at all — see "
+            "test_the_instruction_names_the_recorder_command; this guard asks "
+            "only about ORDER and cannot speak to its absence."
+        )
+        assert para.index("test-status") < para.index("test-evidence record"), (
+            "Step 1 now reaches for the recorder before the freshness check. "
+            "`test-status` exit 0 means no run is needed at all."
         )

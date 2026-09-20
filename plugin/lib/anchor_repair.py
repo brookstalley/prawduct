@@ -17,12 +17,14 @@ reader that enforcement was structural and a Stop hook would block them, which i
 false in precisely the session that most needs the truth. So this module exists to
 converge the fleet onto an anchor that says what is actually true there.
 
-**Detection is by substance, not by a revision tag.** The question asked is "does
-this anchor tell a plugin-less reader how to end the condition?", answered by
-looking for the install command. A revision tag would be a second fact to keep in
-sync with the thing it describes, and it would grade an owner who wrote their own
-equivalent notice as stale — which is the wrong answer. Substance grades them
-correct, because they are.
+**Detection is by substance, not by a revision tag.** The anchor carries a small
+number of load-bearing sentences — the plugin-absent notice, and the rule that
+review rigor is stage-keyed — and each is detected by the one token an equivalent
+sentence would have to contain (:data:`SUBSTANCE`). The question asked is "does
+this anchor say each thing the current one says?", never "which revision is it?".
+A revision tag would be a second fact to keep in sync with the thing it describes,
+and it would grade an owner who wrote their own equivalent notice as stale — which
+is the wrong answer. Substance grades them correct, because they are.
 
 **Replacement is exact-match against what prawduct shipped, never a guess at where
 the anchor ends.** The sentinel is deliberately a single marker rather than a
@@ -74,9 +76,51 @@ STATUS_UNWRITABLE = "unwritable"
 #: anchor no longer contains.
 NOTICE_PROBE = f"claude plugin install {PLUGIN_ID}"
 
+#: What makes an anchor current on the review-rigor axis: the name of the norm
+#: it states (review rigor is *stage-keyed*), which is the one token an owner's
+#: own wording of the rule keeps. The sentence itself is free to be reworded; a
+#: rewording that drops the norm's name is graded as not stating it, and the
+#: detail names what is missing so the owner can judge.
+STAGE_PROBE = "stage-keyed"
+
+#: The load-bearing sentences, as ``(token, what it carries, what its absence
+#: costs)``. EVERY verdict below that describes a not-current anchor derives its
+#: wording from this table by asking which rows the anchor lacks — never from a
+#: sentence written for the one revision in mind, because the archive now holds
+#: anchors that carry the notice and lack the stage rule, and a fixed "predates
+#: the plugin-absent notice" would be flatly false of them.
+SUBSTANCE: tuple[tuple[str, str, str], ...] = (
+    (
+        NOTICE_PROBE,
+        "the plugin-absent notice",
+        "a session without the plugin is told a Stop hook will block it, which is "
+        "false, and a clone is not told how to install it",
+    ),
+    (
+        STAGE_PROBE,
+        "the stage-keyed review rule",
+        "a session here is told to run the Critic after medium+ work with no word "
+        "on what a mid-build review blocks on, so it either escalates every review "
+        "or skips the one at the boundary",
+    ),
+)
+
+
+def _missing_substance(text: str) -> list[tuple[str, str, str]]:
+    """The :data:`SUBSTANCE` rows ``text`` does not carry — empty means current."""
+    return [row for row in SUBSTANCE if row[0] not in text]
+
+
+def _lacks(rows: list[tuple[str, str, str]]) -> tuple[str, str]:
+    """``(what is missing, what that costs)`` rendered from the rows, for a detail."""
+    names = " and ".join(name for _token, name, _cost in rows)
+    costs = "; ".join(cost for _token, _name, cost in rows)
+    return names, costs
+
+
 # --- The archive ------------------------------------------------------------
-# Every anchor prawduct has shipped that predates the plugin-absent notice,
-# stripped exactly as ``apply_claude_anchor`` writes them, oldest first.
+# Every anchor prawduct has shipped that predates the current text, stripped
+# exactly as ``apply_claude_anchor`` writes them, oldest first.
 #
 # **Append, never edit.** An entry here is a historical artifact — the literal
 # bytes sitting in real repos — not a description of the current anchor, so
@@ -133,8 +177,69 @@ ANCHOR_V2 = ANCHOR_V1.replace(
     "`/prawduct:methodology building`",
 )
 
-SUPERSEDED_ANCHORS: tuple[str, ...] = (ANCHOR_V1, ANCHOR_V2)
+#: v3.5.0 (1 release). The first anchor carrying the plugin-absent notice, and the
+#: last one before the Critic line said review rigor is stage-keyed. Frozen as a
+#: literal rather than derived from the current anchor: history derived from the
+#: present changes every time the present does, which is the inverse of the V2
+#: coupling above (older history derived from older history, which never moves).
+#: The install command is the id v3.5.0 shipped, spelled out — a later rename of
+#: ``PLUGIN_ID`` must not rewrite the bytes this entry exists to match.
+ANCHOR_V3 = """<!-- PRAWDUCT:ANCHOR — governance pointer managed by the prawduct plugin; keep it small and version-free. -->
 
+## Governance (Prawduct)
+
+This repo is governed by **Prawduct**, a Claude Code plugin; its methodology and
+protocols are read on demand via `/prawduct:methodology`.
+
+**Check first: is the plugin loaded?** If `/prawduct:*` commands are unavailable it
+is not, and **governance is OFF** — no Stop gate, no Critic, nothing below enforced.
+A clone registers the marketplace but installs nothing. Tell the user to
+run `claude plugin install prawduct@prawduct`, then restart — don't proceed as if governed.
+
+**With the plugin loaded — before writing any code, STOP and read the build cycle:
+`/prawduct:methodology building`.** Skipping it is the #1 governance failure.
+
+Hardest rules:
+
+- **Tests are contracts** — fix the code, never weaken a test.
+- **No "pre-existing" exception** — fix what you find, or flag why you can't.
+- **Never silently drop a requirement** — say so explicitly.
+- **Run `/prawduct:critic` after medium+ work** — never write findings
+  yourself; the independence is the value.
+
+**Enforcement is structural — while the plugin is loaded:** its Stop hook runs at
+session end and **blocks** if code changed against an active build plan with no
+Critic findings."""
+
+
+
+#: The DEVELOP anchor superseded by #833 (2026-09-19) before any release
+#: carried it — no release tag ships these bytes, so this entry is deliberately
+#: absent from the tag-derived set the module header tells you to build. Keep
+#: it: repos onboarded off the develop track between v3.5.0 and that commit
+#: hold exactly this text, and they are the only cohort that does.
+#:
+#: **Why it is not optional, stated as the grade it actually prevents.**
+#: Unarchived, `_match_superseded` misses and `_missing_substance` comes back
+#: EMPTY — these bytes carry both `SUBSTANCE` probes, including `stage-keyed` —
+#: so `check()` falls through to `STATUS_OK`. That cohort would be reported
+#: healthy, `repairable: False`, and never offered the repair; no owner is ever
+#: told. A silent `ok` is less visible than a refusal, which is why this entry
+#: matters more than the V1-V3 ones, not less. (Those predate `stage-keyed`, so
+#: an unarchived V1-V3 anchor DOES grade `stale-modified` and surfaces.)
+#: Generated from the bytes HEAD rendered, not retyped.
+ANCHOR_V4 = '<!-- PRAWDUCT:ANCHOR — governance pointer managed by the prawduct plugin; keep it small and version-free. -->\n\n## Governance (Prawduct)\n\nThis repo is governed by **Prawduct**, a Claude Code plugin; its methodology and\nprotocols are read on demand via `/prawduct:methodology`.\n\n**Check first: is the plugin loaded?** If `/prawduct:*` commands are unavailable it\nis not, and **governance is OFF** — no Stop gate, no Critic, nothing below enforced.\nA clone registers the marketplace but installs nothing. Tell the user to\nrun `claude plugin install prawduct@prawduct`, then restart — don\'t proceed as if governed.\n\n**With the plugin loaded — before writing any code, STOP and read the build cycle:\n`/prawduct:methodology building`.** Skipping it is the #1 governance failure.\n\nHardest rules:\n\n- **Tests are contracts** — fix the code, never weaken a test.\n- **No "pre-existing" exception** — fix what you find, or flag why you can\'t.\n- **Never silently drop a requirement** — say so explicitly.\n- **Run `/prawduct:critic` after medium+ work** — never write findings\n  yourself; the independence is the value. Rigor is stage-keyed: a mid-build\n  review blocks only on what would ship broken, the review at the merge\n  boundary runs everything and is never skipped, and unsure defaults to the\n  cheaper mid-build review.\n\n**Enforcement is structural — while the plugin is loaded:** its Stop hook runs at\nsession end and **blocks** if code changed against an active build plan with no\nCritic findings.\n'
+
+
+SUPERSEDED_ANCHORS: tuple[str, ...] = (ANCHOR_V1, ANCHOR_V2, ANCHOR_V3, ANCHOR_V4)
+
+
+#: What a current anchor says, rendered once for both the ``ok`` grade and the
+#: post-repair report — two surfaces, one sentence, so they cannot drift apart.
+_CURRENT_DETAIL = (
+    "tells a session without the plugin that governance is off, names "
+    f"`{NOTICE_PROBE}`, and says review rigor is {STAGE_PROBE}"
+)
 
 def _record_success(result: dict, verb: str) -> None:
     """Turn a graded finding into a report of the write that closed it.
@@ -145,16 +250,15 @@ def _record_success(result: dict, verb: str) -> None:
     only ``applied`` distinguishing it from a refusal. The CLI prints exactly
     that and stops, ``--json`` publishes it, and doctor maps every non-``ok``
     status to degraded: a repair that worked would have been reported as the
-    problem it had just fixed. Both cited precedents (``learnings_obligation``,
-    ``norm_index_scaffold``) return their OK status on success, and this is that
-    line.
+    problem it had just fixed. ``norm_index_scaffold`` returns its OK status on
+    success, and this is that line. (``learnings_obligation`` was the second
+    precedent and was deleted in the v2 cutover -- named as history, since a
+    precedent a reader cannot open is not one.)
     """
     result["status"] = STATUS_OK
     result["repairable"] = False
-    result["detail"] = (
-        f"{CLAUDE_REL}'s governance anchor was {verb} — it now tells a session without "
-        f"the plugin that governance is off and names `{NOTICE_PROBE}`"
-    )
+    result["detail"] = f"{CLAUDE_REL}'s governance anchor was {verb} — it now {_CURRENT_DETAIL}"
+
 
 
 def _read(path: Path) -> tuple[str | None, str | None]:
@@ -265,46 +369,45 @@ def check(project_dir: Path) -> dict:
         }
 
     # ORDER IS THE CHECK. A verbatim shipped-stale anchor settles the question
-    # before the notice probe is asked, because the probe scans the WHOLE file:
-    # a repo whose anchor still promises an unconditional Stop gate, and which
-    # names the install command anywhere else — a contributing section, a
+    # before the substance probes are asked, because the probes scan the WHOLE
+    # file: a repo whose anchor still promises an unconditional Stop gate, and
+    # which names the install command anywhere else — a contributing section, a
     # troubleshooting note — would otherwise grade healthy while the anchor goes
-    # on lying. Asked in this order, the probe only ever decides files that carry
-    # no anchor prawduct shipped, which is exactly where its judgement is wanted.
+    # on lying. Asked in this order, the probes only ever decide files that carry
+    # no anchor prawduct shipped, which is exactly where their judgement is wanted.
     matched = _match_superseded(text)
 
-    if matched is None and NOTICE_PROBE in text:
-        return {
-            "status": STATUS_OK,
-            "path": CLAUDE_REL,
-            "repairable": False,
-            "detail": (
-                "the anchor tells a session without the plugin that governance is off "
-                f"and names `{NOTICE_PROBE}`"
-            ),
-        }
-
     if matched is None:
+        missing = _missing_substance(text)
+        if not missing:
+            return {
+                "status": STATUS_OK,
+                "path": CLAUDE_REL,
+                "repairable": False,
+                "detail": f"the anchor {_CURRENT_DETAIL}",
+            }
+        names, costs = _lacks(missing)
         return {
             "status": STATUS_STALE_MODIFIED,
             "path": CLAUDE_REL,
             "repairable": False,
             "detail": (
-                "the anchor predates the plugin-absent notice and does not match any "
-                "anchor prawduct shipped, so it has been edited here — a clone of this "
-                "repo onto a machine without the plugin is told nothing, and this one "
-                "is yours to reword rather than prawduct's to replace"
+                f"the anchor does not state {names} and does not match any anchor "
+                f"prawduct shipped, so it has been edited here — {costs}; this one is "
+                "yours to reword rather than prawduct's to replace"
             ),
         }
 
+    # The matched archive entry says what THIS anchor lacks — the rows the current
+    # text has and the shipped one does not — so an anchor that already carries
+    # the notice is not accused of predating it.
+    names, costs = _lacks(_missing_substance(matched[0]))
     return {
         "status": STATUS_STALE,
         "path": CLAUDE_REL,
         "repairable": True,
         "detail": (
-            "the anchor is one prawduct shipped before the plugin-absent notice: it "
-            "tells a session the Stop hook will block it, which is false when the "
-            "plugin is not installed — and a clone is not told how to install it"
+            f"the anchor is one prawduct shipped before {names}: {costs}"
         ),
     }
 

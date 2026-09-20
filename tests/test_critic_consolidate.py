@@ -55,6 +55,7 @@ MARKER_REL = ".prawduct/.critic-active"
 LEDGER_REL = ".prawduct/.governance-ledger.jsonl"
 FINAL_MODE = "final (full review, ready for push)"
 VERIFY_MODE = "verify-resolutions (delta review, prior findings only)"
+CUMULATIVE_MODE = "cumulative (bundle review, ready for merge)"
 
 
 # ---------------------------------------------------------------------------
@@ -476,6 +477,181 @@ class TestValidateManifest:
 # ---------------------------------------------------------------------------
 
 
+class TestObservationsInThePartial:
+    """`verify-resolutions` demotes anything below BLOCKING to an observation.
+    Before they had a structured destination they lived only in the reviewer's
+    prose report, so a builder could FIX one (moving the tree, buying a round)
+    or say nothing (losing the reasoning) — and nothing else."""
+
+    def test_a_partial_with_observations_is_valid(self):
+        p = _partial("reviewer", "abc", observations=[
+            {"name": "A name I'd have picked differently",
+             "goal": "Nothing Is Unintended", "recommendation": "Rename it"}
+        ])
+        ok, reason = cc.validate_partial(p)
+        assert ok, reason
+
+    def test_observations_are_optional(self):
+        ok, reason = cc.validate_partial(_partial("reviewer", "abc"))
+        assert ok, reason
+
+    def test_an_observation_rated_blocking_is_refused(self):
+        """The safety property of putting observations outside `findings`:
+        nothing downstream gates on the array, so an item the reviewer ITSELF
+        rates BLOCKING cannot be allowed to sit in it — it would read as handled
+        and block nothing. The record contradicts itself, and the fail-closed
+        answer is to refuse rather than to pick a half to believe."""
+        p = _partial("reviewer", "abc", observations=[
+            {"name": "Test deleted to make the fix pass",
+             "goal": "Nothing Is Broken", "severity": "blocking",
+             "recommendation": "Restore it"}
+        ])
+        ok, reason = cc.validate_partial(p)
+        assert not ok
+        assert "blocking" in reason and "finding" in reason
+
+    def test_a_lesser_severity_is_tolerated_and_not_carried(self):
+        """Every observation is below-blocking by construction, so a rating adds
+        nothing but an axis for the census to re-sort on — which is the gradient
+        the demotion exists to flatten."""
+        p = _partial("reviewer", "abc", observations=[
+            {"name": "Prose could be tighter", "goal": "Nothing Is Unintended",
+             "severity": "note", "recommendation": "Tighten it"}
+        ])
+        ok, reason = cc.validate_partial(p)
+        assert ok, reason
+        assert "severity" not in cc.merge_observations([p])[0]
+
+    def test_a_missing_required_field_is_refused(self):
+        for field in ("name", "goal", "recommendation"):
+            entry = {"name": "n", "goal": "g", "recommendation": "r"}
+            del entry[field]
+            ok, reason = cc.validate_partial(
+                _partial("reviewer", "abc", observations=[entry])
+            )
+            assert not ok, field
+            assert field in reason
+
+    def test_observations_must_be_a_list(self):
+        ok, reason = cc.validate_partial(
+            _partial("reviewer", "abc", observations={"name": "n"})
+        )
+        assert not ok
+        assert "list" in reason
+
+
+class TestMergeObservations:
+    def test_maps_name_to_title_assigns_oid_in_its_own_namespace(self):
+        """`O-1`, never `R-1`. The disjoint namespace is what lets `disposition`
+        take either kind of id without a second flag, and what keeps a
+        `(review_id, id)` pair unambiguous across both arrays."""
+        merged = cc.merge_observations([_partial("reviewer", "a", observations=[
+            {"name": "Prose could be tighter", "goal": "Nothing Is Unintended",
+             "recommendation": "Tighten it", "files": ["a.md"]}
+        ])])
+        assert merged == [{
+            "goal": "Nothing Is Unintended", "title": "Prose could be tighter",
+            "recommendation": "Tighten it", "files": ["a.md"], "oid": "O-1",
+        }]
+
+    def test_duplicates_collapse_and_ids_stay_sequential(self):
+        entry = {"name": "Same point", "goal": "Nothing Is Unintended",
+                 "recommendation": "Do it"}
+        other = dict(entry, name="Another point")
+        merged = cc.merge_observations([
+            _partial("a", "x", observations=[entry, other]),
+            _partial("b", "x", observations=[entry]),
+        ])
+        assert [o["oid"] for o in merged] == ["O-1", "O-2"]
+
+    def test_blank_file_attribution_normalizes_away(self):
+        merged = cc.merge_observations([_partial("reviewer", "a", observations=[
+            {"name": "n", "goal": "g", "recommendation": "r", "files": ["", None]}
+        ])])
+        assert "files" not in merged[0]
+
+    def test_no_observations_is_an_empty_list(self):
+        assert cc.merge_observations([_partial("reviewer", "a")]) == []
+
+
+class TestObservationsReachTheFactBody:
+    def test_the_fact_carries_observations_beside_findings(self):
+        body = cc.build_fact_body(_manifest_dict(), [_partial(
+            "reviewer", "abc123",
+            findings=[{"name": "Broken", "goal": "Nothing Is Broken",
+                       "severity": "blocking", "recommendation": "Fix"}],
+            observations=[{"name": "Tighter prose", "goal": "Nothing Is Unintended",
+                           "recommendation": "Tighten"}],
+        )])
+        assert [f["fid"] for f in body["findings"]] == ["R-1"]
+        assert [o["oid"] for o in body["observations"]] == ["O-1"]
+
+    def test_observations_never_reach_counts(self):
+        """Carried on `record_lint`'s terms: data ABOUT the review, not a
+        finding IN it. `counts` is what a verdict and every census tally read,
+        so staying out of it is what makes "no gate's verdict changes" true by
+        construction rather than by audit."""
+        body = cc.build_fact_body(_manifest_dict(), [_partial(
+            "reviewer", "abc123",
+            observations=[
+                {"name": "One", "goal": "g", "recommendation": "r"},
+                {"name": "Two", "goal": "g", "recommendation": "r"},
+            ],
+        )])
+        assert body["counts"] == {"blocking": 0, "warning": 0, "note": 0}
+        assert body["findings"] == []
+        assert len(body["observations"]) == 2
+
+
+class TestObservationsReachTheBuilder:
+    """The ids are assigned at CONSOLIDATION — the reviewer wrote prose and
+    never saw an `O-n`. So the derived cache is the builder's only surface for
+    them, and without it the builder is told it may ACCEPT an observation and
+    given no way to name one."""
+
+    def test_the_cache_record_carries_observations_with_their_ids(self):
+        fact = {
+            "ts": "2026-09-16T00:00:00Z",
+            "body": {
+                "findings": [],
+                "counts": {"blocking": 0, "warning": 0, "note": 0},
+                "observations": [
+                    {"oid": "O-1", "goal": "Nothing Is Unintended",
+                     "title": "the helper reads as a verb but returns a value",
+                     "recommendation": "rename it", "files": ["a.py"]}
+                ],
+            },
+        }
+        record = cc.fact_to_cache_record(fact)
+        assert record["observations"] == [{
+            "oid": "O-1", "goal": "Nothing Is Unintended",
+            "summary": "the helper reads as a verb but returns a value",
+            "recommendation": "rename it", "files": ["a.py"],
+        }]
+
+    def test_observations_do_not_move_the_cache_verdict(self):
+        fact = {
+            "ts": "2026-09-16T00:00:00Z",
+            "body": {
+                "findings": [],
+                "counts": {"blocking": 0, "warning": 0, "note": 0},
+                "observations": [
+                    {"oid": "O-1", "goal": "g", "title": "t", "recommendation": "r"}
+                ],
+            },
+        }
+        record = cc.fact_to_cache_record(fact)
+        assert record["summary"].startswith("0 blocking, 0 warning, 0 note")
+        assert "Changes ready to proceed." in record["summary"]
+
+    def test_a_fact_with_no_observations_renders_an_empty_list(self):
+        record = cc.fact_to_cache_record({
+            "ts": "2026-09-16T00:00:00Z",
+            "body": {"findings": [], "counts": {"blocking": 0, "warning": 0, "note": 0}},
+        })
+        assert record["observations"] == []
+
+
 class TestMergeFindings:
     def test_maps_name_to_title_assigns_fid(self):
         # The reviewer's ``name`` becomes the fact ``title`` (rendered as the
@@ -570,6 +746,228 @@ class TestMergeFindings:
         assert "next_action" in record
 
 
+class TestCostLeadAnswersTheMechanicalQuestion:
+    """#831: the fix/accept call was EVALUATIVE ("is this worth fixing?"), which
+    is unanswerable with a complete remedy in hand — it always feels yes. The
+    mechanical question that replaces it is "am I already making a judgeable
+    commit?", and until now the message told the builder to go run
+    `cost-of-commit` and answer it himself. Measured 2026-09-19: that decision
+    was made ~30 times across two branches with neither number in front of it.
+
+    What turns these red: dropping the lead from an arm that carries a fix
+    decision, inverting either verdict, rendering a degraded state as a
+    reassuring default, or leading an arm where no fix decision exists.
+    """
+
+    def test_already_judgeable_says_the_fix_is_free(self):
+        lead = cc.cost_lead({"paths": ["a.py"], "judgeable": ["a.py"], "free": []})
+        assert "AT REVIEW TIME you were already making a judgeable commit" in lead
+        assert "bought NO extra round" in lead
+        # R-7 renegotiated this contract: the clause is FROZEN into
+        # `.critic-findings.json` and replayed by the briefing after the tree
+        # has moved, so it states when it was true and how to re-ask.
+        assert "Re-derive with `prawduct-hook cost-of-commit`" in lead
+        assert "You are ALREADY" not in lead, "present tense returned to a persisted clause"
+        # The recommendation is the half that makes it a decision aid rather
+        # than a reading. Asserted positively, because a NEGATIVE assertion
+        # here would pass for any sentence that merely omits the word.
+        assert "Recommended while that holds: fix what is worth fixing" in lead
+
+    def test_clean_tree_says_the_first_fix_buys_a_round(self):
+        lead = cc.cost_lead({"paths": [], "judgeable": [], "free": []})
+        assert "AT REVIEW TIME you were not making a judgeable commit" in lead
+        assert "your tree was clean" in lead
+        assert "bought a whole review round" in lead
+        assert "Recommended while that holds: accept these" in lead
+        assert "Re-derive with `prawduct-hook cost-of-commit`" in lead
+
+    def test_free_paths_only_is_still_not_a_judgeable_commit(self):
+        """The dirty-but-free tree is the case the binary question hides: there
+        ARE uncommitted paths, so "your tree is clean" would be false, and the
+        verdict is nonetheless the same. Both halves are asserted because they
+        come apart — an implementation keying on `paths` rather than
+        `judgeable` inverts this one and passes the clean-tree test above."""
+        lead = cc.cost_lead({"paths": ["x.md"], "judgeable": [], "free": ["x.md"]})
+        assert "AT REVIEW TIME you were not making a judgeable commit" in lead
+        assert "nothing judgeable was uncommitted" in lead
+        assert "your tree was clean" not in lead
+
+    def test_a_degraded_git_read_renders_its_reason_never_a_default(self):
+        """`architecture.md` § Direction makes this advice, so it fails soft;
+        `core.md` makes "advice fails soft" not "advice fails silent". An
+        unpriceable tree that rendered the free verdict would send the builder
+        into exactly the commit this exists to price."""
+        lead = cc.cost_lead({
+            "paths": [], "judgeable": [], "free": [],
+            "reason": "git status could not be read",
+        })
+        assert "could not be priced" in lead
+        assert "git status could not be read" in lead
+        assert "that is a missing number, not a small one" in lead
+        # The conservative read, not the cheap one.
+        assert "as if a fix buys a round" in lead
+        assert "buys NO extra round" not in lead
+
+    def test_absent_cost_renders_exactly_the_prior_message(self):
+        """A caller that did not compute the verdict gets the message it got
+        before this existed — the parameter is additive, not a new required
+        input."""
+        assert cc.cost_lead(None) == ""
+        assert cc.cost_lead({}) == ""
+        assert cc.next_action_line("rev-1", 0, 1, 1) == cc.next_action_line(
+            "rev-1", 0, 1, 1, cost=None
+        )
+
+    def test_the_lead_leads_the_arms_that_carry_a_fix_decision(self):
+        """Position is the deliverable. #831 asks the block to LEAD with the
+        computed answer — a cost verdict buried after three sentences of
+        disposition guidance is the state this item already describes."""
+        lead = cc.cost_lead({"paths": [], "judgeable": [], "free": []})
+        warn = cc.next_action_line("rev-1", 0, 1, 1, cost=lead)
+        assert warn.startswith(lead), "the warning/note arm must lead with the cost verdict"
+        obs = cc.next_action_line("rev-1", 0, 0, 0, observations=2, cost=lead)
+        assert obs.startswith(lead), "the observations arm must lead with the cost verdict"
+
+    def test_no_lead_where_there_is_no_fix_decision(self):
+        """The blocking arm's next move is to fix regardless of price, and the
+        truly-empty close has nothing to fix. A cost verdict on either is a
+        number with no decision attached — and on the blocking arm it would
+        read as a reason to weigh not fixing a blocker."""
+        lead = cc.cost_lead({"paths": [], "judgeable": [], "free": []})
+        blocking = cc.next_action_line("rev-1", 2, 0, 0, cost=lead)
+        assert lead not in blocking
+        empty = cc.next_action_line("rev-1", 0, 0, 0, cost=lead)
+        assert lead not in empty
+
+    def test_an_anchored_tree_inverts_the_advice(self):
+        """#851, reproduced live while building this scope's predecessor.
+
+        `commit_cost` asks only whether paths are judgeable. It cannot know a
+        review just anchored on this tree — and once one has, the commit this
+        lead would call free is already covered, so the NEXT edit opens a new
+        delta needing its own pass whatever its paths are. The close told me a
+        batch of fixes was free; it bought a full round.
+        """
+        dirty = {"paths": ["a.py"], "judgeable": ["a.py"], "free": []}
+        assert "bought NO extra round" in cc.cost_lead(dirty, False)
+        anchored = cc.cost_lead(dirty, True)
+        assert "COVERS your working tree" in anchored
+        assert "opens a NEW delta" in anchored
+        assert "judgeable or not" in anchored, (
+            "the whole point is that judgeability stops being the question "
+            "once a review has anchored here"
+        )
+        assert "bought NO extra round" not in anchored
+
+    def test_the_anchored_arm_precedes_both_ordinary_arms(self):
+        """It has to win over BOTH, not just the dirty one: a clean tree that a
+        review just covered is the modal shape at a verify close, and the
+        clean-tree arm's advice ("the first judgeable fix buys a round") is
+        true but understates it — the first fix of ANY kind does."""
+        for cost in ({"paths": [], "judgeable": [], "free": []},
+                     {"paths": ["x.md"], "judgeable": [], "free": ["x.md"]},
+                     {"paths": ["a.py"], "judgeable": ["a.py"], "free": []}):
+            assert "COVERS your working tree" in cc.cost_lead(cost, True)
+
+    def test_the_anchored_arm_does_not_tell_a_clean_tree_to_commit(self):
+        """Same conclusion, reachable advice. The operative half — the next
+        edit opens a new delta — is identical either way; what must not survive
+        is "commit this tree verbatim" addressed to a builder with nothing to
+        commit, because a step the reader cannot take teaches them to discount
+        the sentence carrying it."""
+        clean = cc.cost_lead({"paths": [], "judgeable": [], "free": []}, True)
+        dirty = cc.cost_lead({"paths": ["a.py"], "judgeable": ["a.py"], "free": []}, True)
+
+        assert "commit this tree verbatim" in dirty
+        assert "commit this tree verbatim" not in clean, (
+            "a clean tree was told to commit something"
+        )
+        # The positive half, so the negative above cannot be satisfied by the
+        # arm disappearing altogether.
+        assert "nothing left to pay for" in clean
+        for rendered in (clean, dirty):
+            assert "opens a NEW delta" in rendered, (
+                "the operative conclusion must survive in BOTH arms — it is "
+                "the whole point of the message"
+            )
+
+    def test_a_degraded_capture_falls_back_rather_than_asserting_coverage(self):
+        """Fail soft in the safe direction. If the capture failed, the caller
+        passes False and the lead renders its ordinary advice — never a
+        coverage claim it could not verify."""
+        assert "COVERS your working tree" not in cc.cost_lead(
+            {"paths": [], "judgeable": [], "free": []}, False
+        )
+
+    def test_the_coverage_comparison_discriminates(self):
+        """The wiring's own logic, driven directly. Inlined in `consolidate` it
+        had three mutation survivors — always-covered, covered-on-a-degraded-
+        capture, and a regression to an unbound name — none of which the pure
+        renderer's tests or a structural check could see."""
+        assert cc.tree_is_covered_by({"status": "ok", "tree": "t1"}, "t1") is True
+        assert cc.tree_is_covered_by({"status": "ok", "tree": "t2"}, "t1") is False, (
+            "a DIFFERENT tree is not covered — without this, the comparison can "
+            "be deleted and every close claims coverage"
+        )
+        assert cc.tree_is_covered_by({"status": "error"}, "t1") is False, (
+            "a degraded capture must fail SOFT: an unverifiable coverage claim "
+            "is the one answer that sends a builder to commit unreviewed work"
+        )
+        assert cc.tree_is_covered_by({"status": "ok", "tree": "t1"}, None) is False
+        assert cc.tree_is_covered_by(None, "t1") is False
+        # The case that DISCRIMINATES the missing-anchor guard. With a real tree
+        # string on the left, deleting that guard changes no answer ("t1" is not
+        # None either way) — so the fixture above passes under both. Two absent
+        # values compare EQUAL, and the guard is the only thing standing between
+        # that and a false "you are covered".
+        assert cc.tree_is_covered_by({"status": "ok", "tree": None}, None) is False, (
+            "two missing trees must not read as a match — that is a fail-open "
+            "claiming coverage for a tree nothing reviewed"
+        )
+
+    def test_consolidate_reads_no_name_before_it_is_bound(self):
+        """The first cut of the #851 wiring read `fact_body`, which
+        `consolidate` does not bind until ~140 lines LATER — an
+        UnboundLocalError on every consolidation, invisible to every unit test
+        because they all call the pure renderer.
+
+        Asserted over ALL local reads rather than a hand-listed few: the
+        narrow version passed the very regression it was written for, because
+        the offending name was not on its list.
+        """
+        import ast  # noqa: PLC0415
+
+        src = (ROOT / "lib" / "critic_consolidate.py").read_text()
+        fn = next(n for n in ast.walk(ast.parse(src))
+                  if isinstance(n, ast.FunctionDef) and n.name == "consolidate")
+        args = {a.arg for a in fn.args.args} | {a.arg for a in fn.args.kwonlyargs}
+        bound_at: dict[str, int] = {}
+        for node in ast.walk(fn):
+            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+                bound_at[node.id] = min(bound_at.get(node.id, node.lineno), node.lineno)
+        assert "tree_now_covered" in bound_at, "the #851 wiring is gone"
+        late = []
+        for node in ast.walk(fn):
+            if (isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)
+                    and node.id in bound_at and node.id not in args
+                    and node.lineno < bound_at[node.id]):
+                late.append((node.id, node.lineno, bound_at[node.id]))
+        assert not late, (
+            "these locals are read before they are bound — an UnboundLocalError "
+            f"on the path that reaches them: {late}"
+        )
+
+    def test_the_price_sentence_keeps_its_single_home(self):
+        """`telemetry.format_round_price` owns what a round costs. The lead
+        states the VERDICT and never the number, so the close cannot quote two
+        prices — the failure `format_minutes` was consolidated to prevent, one
+        level up."""
+        lead = cc.cost_lead({"paths": [], "judgeable": [], "free": []})
+        assert "min" not in lead and "median" not in lead
+        line = cc.next_action_line("rev-1", 0, 1, 1, "One more round costs about 5 min here.", cost=lead)
+        assert line.count("One more round costs") == 1
+
+
 class TestNextActionLine:
     """``.critic-findings.json`` is the one carrier of the loop-termination
     rule that has a reader in the BUILDER role.
@@ -599,9 +997,18 @@ class TestNextActionLine:
         The command being named must also exist — a message citing a command
         the hook does not dispatch is worse than the list it replaced.
         """
-        line = cc.next_action_line("rev-1", 0, 1, 1)
+        # The command moved carriers on 2026-09-19 (finding R-10): the close
+        # used to STATE the verdict and then send the reader to compute it, so
+        # `_IF_YOU_FIX_SOME` shed its copy and `cost_lead` — which makes the
+        # claim — carries the one re-derivation pointer. The property this test
+        # exists for is unchanged and is asserted at its new home: the free-path
+        # rule is DELEGATED to the classifier, never restated here.
+        line = cc.next_action_line(
+            "rev-1", 0, 1, 1,
+            cost=cc.cost_lead({"paths": [], "judgeable": [], "free": []}),
+        )
         assert "prawduct-hook cost-of-commit" in line
-        assert "needs no pass at all" in line
+        assert "ONLY if that commit touched judgeable files" in line
         # The enumeration is what was deleted; its return would reintroduce the
         # drift this delegation removes.
         for carve_out in ("`.prawduct/` prose", "`.claude/settings.json`", "`templates/`"):
@@ -610,6 +1017,18 @@ class TestNextActionLine:
                 "one home (`coverage_algebra.is_judgeable_path`) and this message "
                 "asks it via `cost-of-commit` rather than copying it"
             )
+        # The pointer has exactly ONE carrier. R-10 removed `_IF_YOU_FIX_SOME`'s
+        # copy because the close stated the verdict and then sent the reader to
+        # compute it — #831's own defect, surviving its own fix. A count, not an
+        # absence assertion: `core.md` says a negative assertion forbids
+        # everything its wording matches, so "the string is gone" would go green
+        # under any rewording AND outlaw any other output containing it.
+        # Reintroducing the second copy turns this red; rewording either copy
+        # does not.
+        assert line.count("prawduct-hook cost-of-commit") == 1, (
+            "the re-derivation pointer has two carriers again — it belongs with "
+            "the clause making the claim that needs re-deriving, and nowhere else"
+        )
         hook = (ROOT / "bin" / "prawduct-hook").read_text()
         assert '"cost-of-commit"' in hook, (
             "next_action_line cites `prawduct-hook cost-of-commit`, which the hook "
@@ -637,7 +1056,7 @@ class TestNextActionLine:
         """
         priced = "One more round costs about 5 min here (median of 9 rounds)."
         line = cc.next_action_line("rev-9", 3, 2, 1, priced)
-        assert 'prawduct-hook disposition rev-9 <fid> --accept "<reason>"' in line
+        assert 'prawduct-hook disposition rev-9 <fid|oid> --accept "<reason>"' in line
         assert "moves no tree" in line
         assert priced in line
 
@@ -664,6 +1083,10 @@ class TestNextActionLine:
             # "." or the coverage caveat's closing paren — never a dangling
             # connector left behind by the omitted clause.
             assert line.endswith((".", ")")), counts
+        for span in (None, " The BRANCH is covered too."):
+            line = cc.next_action_line("rev-9", 0, 0, 0, span=span, observations=2)
+            assert line == line.strip() and "  " not in line, span
+            assert line.endswith((".", ")")), span
 
     def test_both_arms_offer_the_ride_along_route_with_its_condition(self):
         """The fix/accept/file trio was missing the option that costs nothing
@@ -690,6 +1113,73 @@ class TestNextActionLine:
             assert "NOT the deferral" in line, counts
             assert "buys a second round" in line and "buys none" in line, counts
 
+    def test_the_clean_arm_names_the_observations_it_can_answer(self):
+        """`verify-resolutions` demotes everything below BLOCKING, so "0
+        findings, N observations" is that mode's MODAL close — the shape this
+        arm prints most often. Saying "nothing to disposition" there
+        contradicts the reviewer's own `### Observations` report in the same
+        message, and leaves the accept-on-the-record route unused on the path
+        that produces most of the items it was built for."""
+        line = cc.next_action_line("rev-9", 0, 0, 0, observations=3)
+        assert "nothing to disposition" not in line
+        assert "3 item(s) were demoted to observations" in line
+        assert 'prawduct-hook disposition rev-9 <oid> --accept "<reason>"' in line
+
+    def test_the_observations_close_prices_fixing_like_the_warnings_close(self):
+        """The observations-only close is the one clean close that still
+        carries items a builder might fix, and fixing is the route that buys a
+        round. It used to end at the coverage clause, so the single close where
+        fixing was likeliest was the one that never said what fixing costs, how
+        to price a batch first, or that a fix can ride the next chunk's commit.
+        The warnings close carries all three; this one must match it."""
+        priced = "One more round costs about 5 min here (median of 9 rounds)."
+        obs = cc.next_action_line("rev-9", 0, 0, 0, priced, observations=3)
+        warn = cc.next_action_line("rev-9", 0, 1, 0, priced, observations=3)
+        for clause in (cc._IF_YOU_FIX_SOME, cc._RIDE_ALONG_ROUTE, priced):
+            assert clause in obs, clause[:60]
+            assert clause in warn, clause[:60]
+        # The span verdict still leads the close rather than trailing the
+        # advice — a clean delta is never allowed to read as branch clearance.
+        span = " The BRANCH is covered too."
+        line = cc.next_action_line("rev-9", 0, 0, 0, priced, span=span, observations=3)
+        assert line.index(span) < line.index(cc._IF_YOU_FIX_SOME)
+
+    def test_a_close_with_nothing_to_fix_offers_no_fix_route(self):
+        # 0/0/0 with no observations has nothing a builder could fix, so the
+        # cost-of-fixing advice would be noise there.
+        line = cc.next_action_line("rev-9", 0, 0, 0, "One more round costs a lot.")
+        assert cc._IF_YOU_FIX_SOME not in line
+        assert cc._RIDE_ALONG_ROUTE not in line
+
+    def test_the_warnings_arm_names_them_too(self):
+        # Findings and observations arrive together on a verify close; an arm
+        # that itemizes one and not the other teaches that the other is not
+        # answerable.
+        line = cc.next_action_line("rev-9", 0, 2, 1, observations=4)
+        assert "4 demoted observation(s) answer to the same command" in line
+
+    def test_no_observations_reads_exactly_as_it_did(self):
+        # Every non-verify mode passes 0, and demotion is a verify-mode rule —
+        # so the default path must be byte-identical to what shipped.
+        for counts in ((0, 0, 0), (0, 2, 1), (3, 1, 0)):
+            assert cc.next_action_line("rev-9", *counts) == cc.next_action_line(
+                "rev-9", *counts, observations=0
+            ), counts
+
+    def test_the_relayed_line_uses_the_widened_id_domain(self):
+        """The one carrier the `<fid>` → `<fid|oid>` sweep left standing.
+
+        `dispositions._RECORD_USAGE` and `review-cycle.md` were corrected
+        because a refused invocation is when a builder needs to know an
+        observation id is legal. This line is stronger than either: it is the
+        text the reviewer relays verbatim, and on the single-pass path it is the
+        ONLY text that reaches the builder at all."""
+        for counts in ((0, 0, 0), (0, 4, 7), (2, 1, 1)):
+            line = cc.next_action_line("rev-9", *counts)
+            if "disposition rev-9" in line:
+                assert "disposition rev-9 <fid|oid>" in line, counts
+                assert "disposition rev-9 <fid> " not in line, counts
+
     def test_the_clean_pass_is_not_offered_a_route_for_findings_it_lacks(self):
         # 0/0/0 has nothing to carry anywhere; a deferral route on a review with
         # no findings reads as work the builder does not have.
@@ -702,7 +1192,9 @@ class TestNextActionLine:
         assert "gate NOTHING" in line
         # The command arrives with this review's own id already substituted —
         # an operator who has to go find the id is one who will not run it.
-        assert "prawduct-hook disposition rev-abc <fid> --accept" in line
+        # `<fid|oid>`, not `<fid>`: the id domain is findings PLUS observations,
+        # and this is the line a verify-mode builder actually reads.
+        assert "prawduct-hook disposition rev-abc <fid|oid> --accept" in line
         assert "4 warning + 7 note" in line
         # And the stale-gate-output trap is named where the decision is made.
         assert "re-run the gate" in line
@@ -734,7 +1226,6 @@ class TestNextActionLine:
         # this whole change exists to prevent.
         line = cc.next_action_line("rev-1", 0, 3, 0)
         assert "ONLY if that commit touched judgeable files" in line
-        assert "needs no pass at all" in line
 
     def test_missing_fact_id_degrades_to_a_placeholder(self):
         # A record with no id must still produce a runnable-shaped instruction
@@ -742,6 +1233,181 @@ class TestNextActionLine:
         line = cc.next_action_line(None, 0, 1, 0)
         assert "None" not in line
         assert "<review-id>" in line
+
+
+class TestSpanClause:
+    """A clean verify close states the delta verdict AND the span verdict, in
+    one breath.
+
+    The defect these pin is a true sentence read as a claim it does not make.
+    `verify-resolutions` covers its own delta; on a clean close it says THE
+    REVIEW IS OVER, and on one measured consumer branch that was relayed
+    upward as "the branch is clean" after round 3. Round 4's cumulative found a
+    BLOCKING defect present since chunk 1 — invisible to every verify round
+    because it never sat inside one of their diffs. Both facts were true and
+    nothing said the second, because the only carrier for it told the reader to
+    go ASK the gate about a value the framework had already computed.
+    """
+
+    UNCOVERED = {
+        "status": "uncovered",
+        "resolved": {"base_branch": "develop", "merge_base": "abc123"},
+        "verdict": {"status": "uncovered", "reason": "no path"},
+    }
+    COVERED = {
+        "status": "covered",
+        "resolved": {"base_branch": "develop", "merge_base": "abc123"},
+        "verdict": {"status": "covered", "path": [{"kind": "review"}]},
+    }
+    BLOCKED = {
+        "status": "blocked",
+        "resolved": {"base_branch": "develop", "merge_base": "abc123"},
+        "verdict": {
+            "status": "blocked",
+            "unresolved": [{"review_id": "rev-1", "fid": "R-3"}],
+        },
+    }
+
+    def test_an_uncovered_branch_is_stated_not_left_to_be_asked_about(self):
+        clause = cc.span_clause(self.UNCOVERED, 12)
+        assert "NOT covered" in clause
+        assert "12 commit(s) since develop" in clause
+        # The point of the change: the answer replaces the invitation to ask.
+        assert cc._COVERAGE_IS_A_SEPARATE_QUESTION not in clause
+
+    def test_the_two_verdicts_are_joined_rather_than_one_replacing_the_other(self):
+        # Stating only the span would be the same defect pointing the other way:
+        # the delta IS clean, and a builder told only that the branch is not
+        # covered learns nothing about the round it just spent.
+        clause = cc.span_clause(self.UNCOVERED, 12)
+        assert "THIS delta only" in clause
+        assert "Both facts are true at once" in clause
+
+    def test_an_uncovered_branch_is_not_ordered_to_buy_a_round(self):
+        # This whole plan exists because rounds are bought that the evidence
+        # does not require. A clause that ends in "run a cumulative" would spend
+        # one on every clean verify close, which is a worse pump than the one it
+        # closes.
+        clause = cc.span_clause(self.UNCOVERED, 12)
+        assert "check-cumulative-critic" in clause
+        assert "do not assume that route is another full review" in clause
+        assert "/prawduct:critic cumulative" not in clause
+
+    def test_a_covered_branch_says_so_and_manufactures_no_warning(self):
+        clause = cc.span_clause(self.COVERED, 12)
+        assert "BRANCH was covered" in clause
+        assert "NOT covered" not in clause
+        # A caveat on the branch that IS covered trains the reader to discount
+        # the clause on the branch where it is load-bearing.
+        for alarm in ("CAUTION", "WARNING", "may not", "cannot be sure"):
+            assert alarm not in clause, alarm
+        # What survives is the half nothing here computed: a finished review is
+        # not a finished work cycle.
+        assert cc._WORK_CYCLE_STILL_OWES in clause
+
+    def test_an_empty_span_is_not_evidence_of_anything(self):
+        # merge-base == HEAD is the permanent state of a trunk-based governed
+        # product, and composition calls it covered because there is nothing to
+        # compose. "Review evidence spans 0 commit(s)" is a claim about evidence
+        # nobody consulted, made in the headline rather than behind a gate call
+        # the builder chose to make.
+        clause = cc.span_clause(
+            {**self.COVERED, "verdict": {"status": "covered", "path": []}}, 0
+        )
+        assert "nothing on this branch for a review to span" in clause
+        assert "none was consulted" in clause
+        assert "composed review evidence spans" not in clause
+
+    def test_a_covered_branch_names_what_the_span_ends_at(self):
+        # The span ends at the last COMMIT, and a verify pass routinely reviews
+        # a dirty tree — so the fix about to be committed is not in the span
+        # this sentence just called covered. Without the anchor, this arm
+        # re-creates the false clearance the clause exists to stop, one minute
+        # later by the other door.
+        clause = cc.span_clause(self.COVERED, 12)
+        assert "at the HEAD this review saw" in clause
+        assert "had not committed yet is not in that span" in clause
+
+    def test_a_transfer_says_how_the_branch_came_to_be_covered(self):
+        # Covered by a computed grant rather than by a review anyone ran. Same
+        # verdict, and a reader deciding what to report upward needs the
+        # difference.
+        clause = cc.span_clause({**self.COVERED, "status": "transferred"}, 3)
+        assert "BRANCH was covered" in clause
+        assert "base advance" in clause
+
+    def test_a_blocked_span_names_the_count_and_not_the_ids(self):
+        clause = cc.span_clause(self.BLOCKED, 12)
+        assert "not clear" in clause
+        assert "1 unresolved BLOCKING" in clause
+        assert "R-3" not in clause and "rev-1" not in clause
+
+    def test_an_unreadable_span_degrades_to_the_text_that_shipped_before(self):
+        # "Advice fails soft" is not "advice fails silent" — and the pre-existing
+        # sentence IS the honest answer for a span nobody could read: go ask the
+        # gate. Every non-verdict status lands here, including a missing dict.
+        for answer in (None, {}, {"status": "no-base"}, {"status": "store-precheck"}):
+            assert cc.span_clause(answer) == cc._COVERAGE_IS_A_SEPARATE_QUESTION, answer
+
+    def test_an_unreadable_width_drops_the_number_rather_than_inventing_one(self):
+        clause = cc.span_clause(self.UNCOVERED)
+        assert "None" not in clause
+        assert "develop" in clause
+
+    def test_it_names_no_prawduct_internal_identifier(self):
+        # `observability-strategy.md`: text emitted into a governed product
+        # names no prawduct-internal identifier. A branch name and a commit
+        # count are the PRODUCT's own facts; tree hashes, review ids and fids
+        # are ours.
+        for answer in (self.UNCOVERED, self.COVERED, self.BLOCKED):
+            clause = cc.span_clause(answer, 12)
+            assert "abc123" not in clause, answer["status"]
+            assert not re.search(r"\brev-\w+", clause), answer["status"]
+            assert not re.search(r"\b[RO]-\d+\b", clause), answer["status"]
+
+    def test_it_invents_no_severity_prefix(self):
+        # The vocabulary is CRITICAL:/WARNING:/NOTE:/PRAWDUCT:/BLOCKED — and the
+        # clause is a sentence inside the NEXT-ACTION line, not a second signal
+        # competing with it.
+        for answer in (self.UNCOVERED, self.COVERED, self.BLOCKED):
+            clause = cc.span_clause(answer, 12)
+            for prefix in ("CRITICAL:", "WARNING:", "NOTE:", "PRAWDUCT:", "BLOCKED —"):
+                assert prefix not in clause, (answer["status"], prefix)
+
+    def test_both_zero_blocking_arms_carry_it(self):
+        # The clean pass and the warnings-and-notes pass are the two closes that
+        # say THE REVIEW IS OVER, so both are read as clearance and both need
+        # the correction. A constant each arm remembers to repeat is how the
+        # caveat got dropped from one of them once already.
+        clause = cc.span_clause(self.UNCOVERED, 12)
+        for counts in ((0, 0, 0), (0, 4, 7)):
+            line = cc.next_action_line("rev-1", *counts, span=clause)
+            assert clause in line, counts
+            assert cc._COVERAGE_IS_A_SEPARATE_QUESTION not in line, counts
+
+    def test_omitting_it_leaves_every_other_mode_exactly_as_it_was(self):
+        for counts in ((0, 0, 0), (0, 4, 7), (0, 0, 2)):
+            line = cc.next_action_line("rev-1", *counts)
+            assert cc._COVERAGE_IS_A_SEPARATE_QUESTION in line, counts
+
+    def test_the_blocking_arm_is_left_alone(self):
+        # With blocking findings the next move is to fix them; the branch
+        # question is moot and a span clause there is payload nobody acts on.
+        line = cc.next_action_line("rev-1", 2, 1, 0, span=cc.span_clause(self.UNCOVERED, 12))
+        assert "BRANCH is NOT covered" not in line
+
+    def test_the_findings_cache_and_the_relayed_line_say_the_same_thing(self):
+        # Two carriers of one sentence: the builder reads `.critic-findings.json`
+        # on the coordinator path and the relayed NEXT-ACTION line on the
+        # single-pass one. Saying different things about the branch on the two
+        # would leave no way to tell which was computed.
+        clause = cc.span_clause(self.UNCOVERED, 12)
+        fact = {"id": "rev-1", "body": {"counts": {"blocking": 0, "warning": 1, "note": 0}}}
+        record = cc.fact_to_cache_record(fact, None, None, clause)
+        assert record["next_action"] == cc.next_action_line(
+            "rev-1", 0, 1, 0, None, carried=None, span=clause
+        )
+        assert clause in record["next_action"]
 
 
 class TestFindingFixCost:
@@ -1879,12 +2545,29 @@ class TestVerifyRatesBlockingOnlyDirective:
         `LAST_MEASURED_TOKENS` convention exists to prevent. Two numbers, two
         jobs: the pin fails on any drift and carries the new figure; the ceiling
         says how much drift is allowed before a clause has to move out.
+
+        The raise from 707 was DECLARED rather than paid for by a trim, per the
+        rule that a ceiling forces a decision and trimming spends whichever
+        clause is least defended. It bought the second destination: observations
+        now go into the partial's `observations` array as well as the report, so
+        the builder can ACCEPT one on the record instead of fixing it to leave a
+        trace. The text has to name the array, its entry shape, and the refusal
+        of a `blocking` entry — a shape a reviewer must transcribe cannot be
+        left to inference.
+
+        770 -> 843 on 2026-09-17 (review-stages Chunk 02): the directive is
+        re-keyed on the inner BLOCKING set the stage norm states (it used to
+        say "everything the protocol rates BLOCKING stays BLOCKING, no list to
+        check" — a second bar against the norm's exact set, caught by this
+        chunk's own review). PAID FOR by the two "no list" clauses it replaced;
+        the set sentence itself is the norm's, stated once here so the four
+        carriers can be pinned identical (`TestInnerBlockingSetIsOneSentence`).
         """
         tokens = int(len(cc.VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE.split()) * 1.3)
 
-        assert tokens == 707, (
+        assert tokens == 843, (
             f"VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE is ~{tokens} tokens; this pin "
-            f"says 707. Update it to {tokens} and say in the docstring what paid "
+            f"says 843. Update it to {tokens} and say in the docstring what paid "
             f"for the change — the ceiling below is not a budget to spend."
         )
         assert tokens < 900, (
@@ -1945,13 +2628,23 @@ class TestVerifyRatesBlockingOnlyDirective:
             "they vanish — and the whole cost-bound rests on the builder "
             "reading them."
         )
-        # Half-emitted yield: the count must at least reach the builder, or a
-        # rule that fired is indistinguishable from a reviewer that found
-        # nothing.
+        # The count reaches the BUILDER, in the report it is already reading.
+        # It is no longer the only signal that the narrowing fired — the
+        # `observations` array below makes that a query over the store — but
+        # the two serve different readers at different moments, so the report
+        # count is not redundant with the record.
         assert "how many" in d, (
-            "the directive no longer asks for a demotion count. Verify-mode "
-            "WARNING/NOTE totals are zero by construction, so this line is the "
-            "only signal that the narrowing fired at all."
+            "the directive no longer asks for a demotion count in the report. "
+            "The array records it, but the builder decides what to do while "
+            "reading the report, not while reading the store."
+        )
+        # The RECORD destination: without the array an observation has no id,
+        # and the only ways to discharge one are to fix it (buying a round) or
+        # to say nothing (losing the reasoning).
+        assert "`observations` array" in d, (
+            "the directive no longer names the partial's `observations` array. "
+            "Nothing else tells the reviewer to emit them structurally, so no "
+            "observation ever reaches the fact body and none can be accepted."
         )
 
     def test_delivery_is_upstream_of_the_rating(self):
@@ -2750,6 +3443,92 @@ class TestRestoreRefusalDescribesTheDisk:
 
 
 class TestConsolidateIntegration:
+    ANCHORED = "COVERS your working tree"
+
+    def _anchored_scenario(self, tmp_path, *, mode=VERIFY_MODE, dirty=False):
+        """The #851 arm end to end, from REAL artifacts only.
+
+        Every value the arm compares is produced by the system under test: the
+        tree by `evidence.capture_tree`, the anchor by the review fact
+        `consolidate` itself appends. The unit tests beside this one all pair
+        two hand-written dicts, which can only ever confirm what I believed
+        `capture_tree` returns.
+
+        **The `.gitignore` is load-bearing, not fixture decoration.**
+        `consolidate` appends the fact and regenerates the cache BEFORE it
+        captures the tree, so if `.prawduct/` state were visible to git the
+        capture could never equal the dispatch-time anchor and this arm could
+        not fire at all. It is excluded because it is gitignored, which is a
+        property of consumer repos this test now pins — the first cut of this
+        fixture omitted it and the arm silently never rendered.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        (repo / ".gitignore").write_text(".prawduct/.*\n")
+        _commit_file(repo, ".gitignore", ".prawduct/.*\n", "ignore prawduct state")
+        base = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _git(repo, "checkout", "-q", "-b", "feature/x")
+        head = _commit_file(repo, "src/app.py", "x = 2\n", "work")
+        _set_marker(repo)
+        # The anchor, captured as `begin_review` would record it at dispatch.
+        dispatch_tree = evidence.capture_tree(repo)["tree"]
+        _write_manifest(repo, head, head_tree=dispatch_tree,
+                        base_commit=base, mode=mode)
+        if dirty:
+            # An edit AFTER dispatch: the tree the reviewer saw is no longer
+            # the tree on disk, so the anchor must stop matching.
+            (repo / "src" / "app.py").write_text("x = 3\n")
+        # A finding has to exist for the close to carry a cost lead at all.
+        _full_roster_partials(repo, head, findings_by_role={
+            "correctness": [{"name": "Nit", "goal": "Nothing Is Broken",
+                             "severity": "note", "recommendation": "tweak",
+                             "files": ["src/app.py"]}],
+        })
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        return repo, result
+
+    def test_a_real_capture_matches_the_real_fact_it_anchors_on(self, tmp_path):
+        """The contract between three real components, which no hand-built
+        dict can check: `capture_tree`'s output keys, the `head_tree` the
+        appended fact actually carries, and the comparison that reads both."""
+        repo, result = self._anchored_scenario(tmp_path)
+        fact = _store_facts(repo, "review")[0]
+        capture = evidence.capture_tree(repo)
+        assert capture["status"] == "ok"
+        assert capture["tree"] == fact["body"]["head_tree"], (
+            "a real post-consolidate capture no longer equals the anchor the "
+            "review fact carries — #851's arm cannot fire for any consumer. "
+            "Most likely something `consolidate` writes became visible to git."
+        )
+        assert cc.tree_is_covered_by(capture, fact["body"]["head_tree"]) is True
+        assert self.ANCHORED in result.stdout, (
+            "the arm did not reach the builder even though the trees match — "
+            "the wiring between the comparison and the rendered close is gone"
+        )
+
+    def test_an_edit_after_dispatch_is_not_covered(self, tmp_path):
+        """The control. Without it the test above passes for an arm that
+        renders unconditionally, which is the mutation the unit tests found
+        three times in the inlined version."""
+        _, result = self._anchored_scenario(tmp_path, dirty=True)
+        assert self.ANCHORED not in result.stdout, (
+            "a tree edited after dispatch was reported as covered — that "
+            "sends a builder to commit work no review saw"
+        )
+
+    def test_only_a_verify_anchor_claims_coverage(self, tmp_path):
+        """#851's evidence is about a `verify-resolutions` anchor and the arm
+        names that pass as the closer for the next delta. Other modes keep the
+        ordinary arms; this pins that narrowing so it is not widened without
+        establishing which pass a cumulative anchor should name."""
+        _, result = self._anchored_scenario(tmp_path, mode=FINAL_MODE)
+        assert self.ANCHORED not in result.stdout, (
+            "a non-verify anchor rendered the #851 arm, which names "
+            "`verify-resolutions` as the pass closing the next delta — "
+            "unestablished for any other mode"
+        )
+
     def test_complete_partials_at_head_consolidates(self, tmp_path):
         repo = tmp_path / "r"
         _init_repo(repo)
@@ -3250,6 +4029,118 @@ class TestResolutionFacts:
         assert "verify-resolutions" in result.stderr
         assert len(_store_facts(repo, "resolution")) == 0
 
+    def test_observations_at_the_boundary_fail_closed(self, tmp_path):
+        """The mirror of the rule above, and it closes a laundering path rather
+        than a weakening one. Demotion is a STAGE rule (`nonfunctional-
+        requirements.md` § Direction, *Review rigor is stage-keyed*): at the
+        boundary every item the reviewer rates is a finding, and findings are
+        what `counts` counts. An array outside `findings` that the boundary
+        could write would let a cumulative reviewer file nine warnings where
+        nothing counts them and consolidate a 0/0/0 review.
+
+        Renegotiated 2026-09-17 (review-stages Chunk 02): this pin used to hold
+        `final` to the same refusal, because demotion was a verify-mode rule.
+        `final` is an inner-stage review now and carries observations like
+        `chunk` does (the test below); the boundary keeps the refusal."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+
+        _set_marker(repo)
+        _write_manifest(repo, head, id="rev-cumul-0002", mode=CUMULATIVE_MODE,
+                        stage="boundary")
+        _full_roster_partials(repo, head)
+        _write_partial(repo, "correctness", head, observations=[
+            {"name": "Prose could be tighter", "goal": "Nothing Is Unintended",
+             "recommendation": "Tighten it"}
+        ])
+        result = _run_consolidate(repo)
+        assert result.returncode == 1
+        assert "boundary" in result.stderr
+        assert len(_store_facts(repo, "review")) == 0
+
+    def test_observations_from_an_inner_stage_final_persist(self, tmp_path):
+        """The half the old pin forbade: an inner-stage `final` demotes what it
+        would have rated below the inner BLOCKING set, and the fact carries it
+        beside an honest 0/0/0 — the items are recorded, answerable, and
+        counted by nothing."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+
+        _set_marker(repo)
+        _write_manifest(repo, head, id="rev-final-0002", stage="inner")  # final mode
+        _full_roster_partials(repo, head)
+        _write_partial(repo, "correctness", head, observations=[
+            {"name": "Error path untested", "goal": "Nothing Is Missing",
+             "recommendation": "Add the error case"},
+            {"name": "Substring assertion", "goal": "Nothing Is Broken",
+             "recommendation": "Assert the exact output"},
+        ])
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        fact = _store_facts(repo, "review")[0]
+        assert fact["body"]["stage"] == "inner"
+        assert fact["body"]["counts"] == {"blocking": 0, "warning": 0, "note": 0}
+        assert [o["title"] for o in fact["body"]["observations"]] == [
+            "Error path untested", "Substring assertion",
+        ]
+
+    def test_a_manifest_without_a_stage_is_gated_by_its_mode(self, tmp_path):
+        """A manifest written before the field existed (a restored archive, a
+        leftover the backstop consolidates) carries no `stage`; the same
+        function that would have written it answers from the mode, so an old
+        `cumulative` still refuses the array and an old `final` still takes it.
+        Both arms, because a gate that read `None` as "not boundary" would
+        launder at exactly the boundary."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        obs = [{"name": "Tighter prose", "goal": "Nothing Is Unintended",
+                "recommendation": "Tighten"}]
+
+        _set_marker(repo)
+        _write_manifest(repo, head, id="rev-old-cumul", mode=CUMULATIVE_MODE)
+        manifest = json.loads((_partials_dir(repo) / "manifest.json").read_text())
+        assert "stage" not in manifest
+        _full_roster_partials(repo, head)
+        _write_partial(repo, "design", head, observations=obs)
+        assert _run_consolidate(repo).returncode == 1
+        assert _store_facts(repo, "review") == []
+
+        cc.remove_partials(repo / ".prawduct")
+        _set_marker(repo)
+        _write_manifest(repo, head, id="rev-old-final")  # final, no stage key
+        _full_roster_partials(repo, head)
+        _write_partial(repo, "design", head, observations=obs)
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        fact = _store_facts(repo, "review")[0]
+        assert fact["body"]["stage"] is None  # recorded as absent, never invented
+        assert len(fact["body"]["observations"]) == 1
+
+    def test_observations_persist_from_a_verify_dispatch(self, tmp_path):
+        """The path that must work: a verify pass's demoted items reach the
+        review fact with ids a builder can answer against."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _seed_prior_review_with_blocker(repo, head)
+
+        _set_marker(repo)
+        _write_manifest(repo, head, id="rev-verify-0002", mode=VERIFY_MODE,
+                        roster=["reviewer"])
+        _write_partial(repo, "reviewer", head, observations=[
+            {"name": "The helper reads as a verb", "goal": "Nothing Is Unintended",
+             "recommendation": "Rename it"}
+        ])
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, result.stderr
+        fact = [f for f in _store_facts(repo, "review")
+                if f["id"] == "rev-verify-0002"][0]
+        assert [o["oid"] for o in fact["body"]["observations"]] == ["O-1"]
+        assert fact["body"]["counts"] == {"blocking": 0, "warning": 0, "note": 0}
+
     def test_resolution_of_unknown_finding_fails_closed(self, tmp_path):
         """A resolution must reference a finding the store actually holds —
         a hallucinated (review_id, fid) would otherwise persist as a silent
@@ -3271,6 +4162,105 @@ class TestResolutionFacts:
         assert len(_store_facts(repo, "resolution")) == 0
         # Manifest left in place for the corrected retry.
         assert (repo / PARTIALS_REL / "manifest.json").is_file()
+
+
+# ---------------------------------------------------------------------------
+# Integration: the span verdict rides the clean verify close
+# ---------------------------------------------------------------------------
+
+
+def _clean_verify(repo: Path, head: str) -> subprocess.CompletedProcess:
+    """One clean `verify-resolutions` consolidation: no findings, no
+    resolutions, nothing blocking. The close that says THE REVIEW IS OVER."""
+    _set_marker(repo)
+    _write_manifest(repo, head, id="rev-verify-0002", mode=VERIFY_MODE,
+                    roster=["reviewer"])
+    _write_partial(repo, "reviewer", head)
+    result = _run_consolidate(repo)
+    assert result.returncode == 0, f"stderr={result.stderr!r}"
+    return result
+
+
+class TestTheSpanVerdictRidesTheCleanVerifyClose:
+    """End to end: the joined line reaches BOTH carriers, and only on the close
+    it was scoped to.
+
+    The unit tests pin what `span_clause` renders. These pin that consolidation
+    asks the question at all — the wiring is where this defect lived for three
+    weeks as a value the framework computed and nothing said.
+    """
+
+    def test_an_uncovered_branch_is_named_in_the_relayed_line_and_the_cache(
+        self, tmp_path
+    ):
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _git(repo, "checkout", "--quiet", "-b", "feature")
+        head = _commit_file(repo, "src/feature.py", "y = 2\n", "f1")
+
+        result = _clean_verify(repo, head)
+        assert "BRANCH is NOT covered" in result.stdout
+        assert "1 commit(s) since main" in result.stdout
+        # Both carriers, because the builder meets one or the other depending on
+        # which path the review took.
+        cache = json.loads((repo / ".prawduct" / ".critic-findings.json").read_text())
+        assert "BRANCH is NOT covered" in cache["next_action"]
+
+    def test_a_covered_branch_says_so_instead(self, tmp_path):
+        # A REAL span, with a review fact across it. The empty-span shape is a
+        # different sentence and has its own case below — reaching the covered
+        # arm through it would have pinned the wrong claim.
+        from lib import evidence  # noqa: PLC0415 — lazy, matching the module's posture
+
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        base_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        _git(repo, "checkout", "--quiet", "-b", "feature")
+        head = _commit_file(repo, "src/feature.py", "y = 2\n", "f1")
+        head_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        assert evidence.append_fact(
+            repo, "review", "rev-spanning-0001",
+            {"base_tree": base_tree, "head_tree": head_tree,
+             "files_changed": ["src/feature.py"],
+             "files_reviewed": ["src/feature.py"], "findings": []},
+        )["status"] == "appended"
+
+        result = _clean_verify(repo, head)
+        assert "BRANCH was covered" in result.stdout
+        assert "1 commit(s) since main" in result.stdout
+        assert "NOT covered" not in result.stdout
+
+    def test_an_empty_span_gets_the_empty_span_sentence(self, tmp_path):
+        # HEAD on the base branch itself. Composition says covered because
+        # there is nothing to compose, and the headline must not turn that into
+        # a claim about review evidence.
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+
+        result = _clean_verify(repo, head)
+        assert "nothing on this branch for a review to span" in result.stdout
+        assert "BRANCH was covered" not in result.stdout
+
+    def test_every_other_mode_still_ships_the_text_it_shipped_before(self, tmp_path):
+        # Scope: a `final` close is read as clearance too, but this chunk
+        # deliberately changes one surface. A silent widening here would be a
+        # requirement nobody wrote.
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _git(repo, "checkout", "--quiet", "-b", "feature")
+        head = _commit_file(repo, "src/feature.py", "y = 2\n", "f1")
+
+        _set_marker(repo)
+        _write_manifest(repo, head, id="rev-final-0002")
+        _full_roster_partials(repo, head)
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert "separate questions about coverage" in result.stdout
+        assert "BRANCH is" not in result.stdout
 
 
 # ---------------------------------------------------------------------------
@@ -3350,6 +4340,191 @@ class TestCriticBeginCLI:
         assert manifest["tier"] == "escalate"
 
 
+class TestStageReachesEveryReader:
+    """`stage` is derived ONCE at dispatch and READ everywhere else — the
+    manifest, the reviewer's signals line, the fact, the findings cache, the
+    ledger event and `review-stats` (`nonfunctional-requirements.md`
+    § Direction, *Review rigor is stage-keyed*; `architecture.md`: every fact
+    has one home).
+
+    The mode → stage table is the one home (`STAGE_OF_MODE`), and it IS the
+    interval classification: `begin_review` picks the interval by mode, so
+    `cumulative` (merge-base → HEAD) is the only boundary-stage dispatch and
+    the three uncommitted/delta intervals are inner.
+    """
+
+    def test_the_one_home_maps_every_mode_token(self):
+        assert cc.stage_of("chunk") == "inner"
+        assert cc.stage_of("final") == "inner"
+        assert cc.stage_of("verify-resolutions") == "inner"
+        assert cc.stage_of("cumulative") == "boundary"
+        # Every token the dispatcher accepts has a stage — a token added to one
+        # table and not the other would dispatch a review no stage rule covers.
+        assert set(cc.STAGE_OF_MODE) == set(cc.MODE_TOKEN_TO_VERBOSE)
+        with pytest.raises(ValueError):
+            cc.stage_of("thorough")
+
+    def test_stage_of_manifest_reads_before_it_derives(self):
+        recorded = _manifest_dict(mode=FINAL_MODE, stage="boundary")  # lies, deliberately
+        assert cc.stage_of_manifest(recorded) == "boundary", (
+            "a recorded stage is read as written — the reader never overrides "
+            "the dispatch's answer with its own derivation"
+        )
+        absent = _manifest_dict(mode=CUMULATIVE_MODE)
+        assert "stage" not in absent
+        assert cc.stage_of_manifest(absent) == "boundary"
+        assert cc.stage_of_manifest(_manifest_dict(mode=VERIFY_MODE)) == "inner"
+
+    @pytest.mark.parametrize("field,bad,ok", [
+        ("stage", "middle", "inner"),
+        ("stage", 3, "boundary"),
+        ("judgeable_files", -1, 0),
+        ("judgeable_files", True, 4),
+        ("judgeable_files", "3", 3),
+        ("chunk_type", "", "doc-only"),
+        ("signals", 7, "Stage: inner · Judgeable files: 1 · Type: code (default)"),
+    ])
+    def test_the_validator_types_the_new_keys_and_admits_their_absence(self, field, bad, ok):
+        assert cc.validate_manifest(_manifest_dict(**{field: ok}))[0]
+        assert cc.validate_manifest(_manifest_dict(**{field: None}))[0]
+        base = _manifest_dict()
+        assert field not in base and cc.validate_manifest(base)[0], (
+            "a manifest written before the field existed must still validate"
+        )
+        valid, reason = cc.validate_manifest(_manifest_dict(**{field: bad}))
+        assert not valid and field in reason
+
+    def _dirty(self, tmp_path):
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        (repo / ".prawduct").mkdir()
+        (repo / "src/app.py").write_text("x = 2\n")
+        return repo
+
+    def _manifest(self, repo):
+        return json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+
+    @pytest.mark.parametrize("mode", ["chunk", "final"])
+    def test_an_uncommitted_diff_review_is_inner(self, tmp_path, mode):
+        repo = self._dirty(tmp_path)
+        result = _run_begin(repo, "--mode", mode)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = self._manifest(repo)
+        assert manifest["stage"] == "inner"
+        assert manifest["stage"] != "boundary"
+        assert manifest["judgeable_files"] == 1
+        assert manifest["signals"] == cc.signals_line(manifest)
+        assert f"PRAWDUCT: signals — {manifest['signals']}" in result.stdout, (
+            "the dispatch must print the line the coordinator copies"
+        )
+
+    def test_the_committed_bundle_review_is_boundary(self, tmp_path):
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _git(repo, "checkout", "-q", "-b", "feature/demo")
+        _commit_file(repo, "src/feat.py", "z = 1\n", "feature work")
+        (repo / ".prawduct").mkdir()
+        result = _run_begin(repo, "--mode", "cumulative")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = self._manifest(repo)
+        assert manifest["stage"] == "boundary"
+        assert manifest["stage"] != "inner"
+        assert manifest["signals"].startswith("Stage: boundary · ")
+
+    def test_a_verify_pass_is_inner_whichever_head_it_anchors(self, tmp_path):
+        """Both anchors — the working tree, and committed HEAD after a fix
+        landed — are delta reviews against the prior fact's tree, never the
+        merge-base, so both are inner. The committed-head arm is the one a
+        reader might mistake for the boundary."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        head_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        (repo / ".prawduct").mkdir()
+        _seed_prior_review_with_blocker(repo, head, head_tree=head_tree, head_commit=head)
+        _commit_file(repo, "src/app.py", "x = 2  # fixed\n", "fix blocker")
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = self._manifest(repo)
+        assert manifest["head_commit"] is not None  # the committed-head anchor
+        assert manifest["stage"] == "inner"
+        assert manifest["stage"] != "boundary"
+
+    def test_the_signals_line_is_rendered_from_the_manifest(self):
+        manifest = _manifest_dict(stage="inner", judgeable_files=3, chunk_type="doc-only")
+        assert cc.signals_line(manifest) == "Stage: inner · Judgeable files: 3 · Type: doc-only"
+        # Mutate the manifest, watch the line change — the line is a view of
+        # these three fields and of nothing a coordinator could invent.
+        manifest["stage"] = "boundary"
+        assert cc.signals_line(manifest).startswith("Stage: boundary · ")
+        manifest["judgeable_files"] = 12
+        assert "Judgeable files: 12" in cc.signals_line(manifest)
+        manifest["chunk_type"] = None
+        assert cc.signals_line(manifest).endswith(f"Type: {cc.CHUNK_TYPE_DEFAULT_LABEL}")
+
+    def test_the_chunk_type_is_read_from_the_plan_record_lint_graded(self, tmp_path):
+        """The same plan and chunk `record_lint` resolved — never a second
+        resolution. A plan declaring the scope with a `Type: doc-only` chunk
+        renders that type; an undeclared one renders the protocol's default."""
+        repo = self._dirty(tmp_path)
+        (repo / ".prawduct" / "artifacts").mkdir(parents=True)
+        (repo / ".prawduct" / "artifacts" / "build-plan-demo.md").write_text(
+            "---\nartifact: build-plan\nscope: demo\n---\n\n# Plan\n\n## Status\n\n"
+            "- [ ] Chunk 01: The chunk\n\n## Chunk 01: The chunk\n\n"
+            "- **Type:** doc-only\n- **Description:** words.\n- **Deliverables:** `src/app.py`\n"
+        )
+        result = _run_begin(repo, "--mode", "chunk", "--scope", "demo", "--chunk", "01")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = self._manifest(repo)
+        assert manifest["record_lint"]["plan_graded"].endswith("build-plan-demo.md")
+        assert manifest["chunk_type"] == "doc-only"
+        assert manifest["signals"].endswith("Type: doc-only")
+
+    def test_stage_reaches_the_fact_the_cache_and_the_ledger(self, tmp_path):
+        """One dispatch, end to end: the fact body, the derived cache and the
+        `review.critic` ledger event all carry the stage the manifest recorded,
+        and `review-stats --json` groups on it. Each hop is a different writer,
+        so each is asserted; a stage that reached the fact and not the event
+        would leave `by_stage` reading "(unrecorded)" forever."""
+        repo = self._dirty(tmp_path)
+        begin = _run_begin(repo, "--mode", "chunk", "--scope", "demo")
+        assert begin.returncode == 0, f"stderr={begin.stderr!r}"
+        manifest = self._manifest(repo)
+        _write_partial(repo, "reviewer", manifest["commit_reviewed"], observations=[
+            {"name": "Error path untested", "goal": "Nothing Is Missing",
+             "recommendation": "Add the error case"},
+        ])
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+
+        fact = _store_facts(repo, "review")[0]
+        assert fact["body"]["stage"] == "inner"
+        record = json.loads((repo / FINDINGS_REL).read_text())
+        assert record["stage"] == "inner"
+        events = [json.loads(ln) for ln in (repo / LEDGER_REL).read_text().splitlines()
+                  if '"review.critic"' in ln]
+        assert len(events) == 1 and events[0]["review"]["stage"] == "inner"
+
+        stats = subprocess.run(
+            ["python3", str(HOOK), "review-stats", "--json"],
+            cwd=str(repo), capture_output=True, text=True,
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
+        )
+        assert stats.returncode == 0, stats.stderr
+        by_stage = {e["stage"]: e for e in json.loads(stats.stdout)["by_stage"]}
+        assert by_stage["inner"]["reviews"] == 1
+        assert by_stage["inner"]["observations"] == 1
+        assert "boundary" not in by_stage
+
+    def test_the_fact_body_and_cache_carry_a_null_stage_for_an_old_manifest(self):
+        body = cc.build_fact_body(_manifest_dict(), [_partial("reviewer", "abc123")])
+        assert "stage" in body and body["stage"] is None
+        record = cc.fact_to_cache_record({"ts": "2026-09-17T00:00:00Z", "body": body})
+        assert "stage" in record and record["stage"] is None
+
+
 class TestRosterKeyedToRiskSurface:
     """Roster derivation asks a RISK question, not a size question.
 
@@ -3368,7 +4543,7 @@ class TestRosterKeyedToRiskSurface:
         NOT match, so the repo has opted into the risk-keyed rule and the
         risk predicate is genuinely "on but not matched" — the state that
         exercises the judgeable-volume branch. ``declare=False`` leaves the
-        repo undeclared, which is the product case that keeps the prior rule.
+        repo undeclared, the as-scaffolded product case.
         """
         prawduct_dir = tmp_path / ".prawduct"
         prawduct_dir.mkdir(exist_ok=True)
@@ -3429,41 +4604,67 @@ class TestRosterKeyedToRiskSurface:
         roster, why = self._roster(tmp_path, files)
         assert roster == ["reviewer"], why
 
-    def test_undeclared_repo_keeps_the_prior_file_count_rule(self, tmp_path):
-        """The product case, and the reason the risk-keyed rule is gated.
+    def test_undeclared_repo_is_single_pass_below_the_volume_threshold(self, tmp_path):
+        """The product case. An as-scaffolded product declares no
+        `risk_surfaces:` and its boundary-patterns template yields no parseable
+        paths, so nothing in its tree matches a surface — and below 12 judgeable
+        files that is a single reviewer, the same as a declared repo whose diff
+        matches nothing.
 
-        An as-scaffolded product declares no `risk_surfaces:` and its
-        boundary-patterns template yields no parseable paths, so the
-        framework-shaped derived defaults match nothing in its tree. If "no
-        surface matched" fell straight through to judgeable volume, the
-        effective product rule would be `judgeable >= 12` alone — the row the
-        replay rejected at 54% of historical blockers demoted — and it would
-        REPLACE a rule that gave that product a coordinator at 5 files.
-
-        So an undeclared repo keeps the prior escalator unchanged.
+        It used to be three: a file-count fallback (coordinator at 5+ changed
+        files) was retained for undeclared repos on the argument that "no
+        surface matched" and "no signal to give" are indistinguishable at the
+        match site. The stage-keyed rigor norm retired that argument — redundant
+        review is a cost, not a margin — and the fallback was measured before
+        it went (`tests/spikes/fallback_roster_yield.py`): the reviews it
+        escalated found blockers at a lower per-review rate than the
+        single-pass reviews beside them. Five files is the exact count the
+        retired rule keyed on; a coordinator here is the fallback coming back.
         """
-        files = [f"src/mod_{i}.py" for i in range(6)]  # 6 judgeable, < 12
-        roster, why = self._roster(tmp_path, files, declare=False)
+        for n in (2, 5, 6):
+            files = [f"src/mod_{i}.py" for i in range(n)]
+            roster, why = self._roster(tmp_path, files, declare=False)
+            assert roster == ["reviewer"], (n, why)
+            assert "judgeable" in why and "prior rule" not in why, why
+
+    def test_undeclared_repo_still_escalates_on_volume(self, tmp_path):
+        """Retiring the fallback removed one escalator, not both: volume alone
+        still buys the coordinator at the threshold, declaration or not."""
+        n = cc.COORDINATOR_JUDGEABLE_THRESHOLD
+        roster, why = self._roster(
+            tmp_path, [f"src/m{i}.py" for i in range(n)], declare=False
+        )
         assert roster == ["correctness", "design", "sustainability"], why
-        assert "prior rule retained" in why
+        assert "judgeable" in why
 
-    def test_undeclared_repo_below_the_prior_threshold_is_single_pass(self, tmp_path):
-        roster, why = self._roster(tmp_path, ["src/a.py", "src/b.py"], declare=False)
-        assert roster == ["reviewer"], why
-        assert "prior rule retained" in why
+    def test_a_declared_surface_touched_escalates_at_one_file(self, tmp_path):
+        """The other surviving escalator, on a product's OWN declaration: one
+        file under a declared surface outranks every size rule."""
+        prawduct_dir = tmp_path / ".prawduct"
+        prawduct_dir.mkdir(exist_ok=True)
+        (prawduct_dir / "project-state.yaml").write_text(
+            "risk_surfaces:\n  - src/payments/\n"
+        )
+        roster, why = cc._derive_roster(
+            "final", ["src/payments/ledger.py"], prawduct_dir
+        )
+        assert roster == ["correctness", "design", "sustainability"], why
+        assert "risk surface" in why
 
-    def test_declared_empty_is_no_signal_not_an_opt_in(self, tmp_path):
-        """Pins a DELIBERATE asymmetry between two readers of one key.
+    def test_declared_empty_is_an_opt_out_for_matching_only(self, tmp_path):
+        """Pins what `risk_surfaces: []` still means once the roster stops
+        reading the declaration predicate.
 
-        ``resolve_surfaces`` tests ``declared is not None`` (an empty list is an
-        exclusive opt-out, so no surface ever matches). ``has_product_risk_
-        declaration`` tests truthiness, so ``risk_surfaces: []`` reads as *no
-        signal* and the conservative file-count rule is retained.
-
-        The obvious tidy-up — aligning the two for symmetry — would turn the
-        opt-out into "risk-keyed rule with an empty surface list", i.e.
-        single-pass for every final/cumulative under 12 judgeable files, which
-        is the rejected rule reached by accident. This test is what fails first.
+        ``resolve_surfaces`` tests ``declared is not None``: an empty list is an
+        exclusive opt-out, so the derived defaults and `boundary-patterns.md`
+        paths stop matching — a one-file change to a gate-kernel path that
+        escalates in an UNDECLARED repo reviews single-pass here. The volume
+        escalator is not a surface and survives the opt-out. And
+        ``has_product_risk_declaration`` still reads `[]` as *no declaration*
+        (truthiness): the roster no longer consults it, but "has this repo
+        named its surfaces" is a different question from "does this path
+        match one", and the two readers of one key are kept distinct on
+        purpose so an ask about declaring cannot be silenced by an empty list.
         """
         import sys
         sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "plugin"))
@@ -3474,80 +4675,52 @@ class TestRosterKeyedToRiskSurface:
         (prawduct_dir / "project-state.yaml").write_text("risk_surfaces: []\n")
 
         assert risk_mod.has_product_risk_declaration(prawduct_dir) is False
-
-        # …and it stays False even with a FILLED boundary-patterns.md. A present
-        # `risk_surfaces:` key is exclusive in resolve_surfaces, so if this fell
-        # through to boundary paths the repo would report "has a signal" while
-        # its surface set is empty — the predicate could never fire, the
-        # conservative fallback would be skipped, and judgeable-volume alone
-        # would decide. That is the rejected rule reached by accident.
-        (prawduct_dir / "artifacts").mkdir(exist_ok=True)
-        (prawduct_dir / "artifacts" / "boundary-patterns.md").write_text(
-            "The shared contract is `src/api/contract.py`.\n"
-        )
-        assert risk_mod.has_product_risk_declaration(prawduct_dir) is False
-        roster_again, why_again = cc._derive_roster(
-            "final", [f"src/m{i}.py" for i in range(6)], prawduct_dir
-        )
-        assert roster_again == ["correctness", "design", "sustainability"], why_again
-        assert "prior rule retained" in why_again
-        # …while resolve_surfaces still treats it as an exclusive declaration.
         surfaces, source = risk_mod.resolve_surfaces(prawduct_dir)
         assert surfaces == [] and source == risk_mod.SOURCE_DECLARED
 
-        roster, why = cc._derive_roster(
-            "final", [f"src/m{i}.py" for i in range(6)], prawduct_dir
+        # The derived-default path escalates only while the key is absent.
+        kernel = ["plugin/lib/gates.py"]
+        opted_out, why_out = cc._derive_roster("final", kernel, prawduct_dir)
+        assert opted_out == ["reviewer"], why_out
+        (prawduct_dir / "project-state.yaml").unlink()
+        absent, why_absent = cc._derive_roster("final", kernel, prawduct_dir)
+        assert absent == ["correctness", "design", "sustainability"], why_absent
+
+        # Volume is not a surface, so the opt-out cannot switch it off.
+        (prawduct_dir / "project-state.yaml").write_text("risk_surfaces: []\n")
+        n = cc.COORDINATOR_JUDGEABLE_THRESHOLD
+        big, why_big = cc._derive_roster(
+            "final", [f"src/m{i}.py" for i in range(n)], prawduct_dir
         )
-        assert roster == ["correctness", "design", "sustainability"], why
-        assert "prior rule retained" in why
+        assert big == ["correctness", "design", "sustainability"], why_big
 
-    def test_a_documented_contract_surface_is_not_consent_to_less_review(self, tmp_path):
-        """`boundary-patterns.md` escalates but can never relax.
-
-        `discovery.md` asks every contract-bearing product to fill that file. If
-        those paths counted as a risk declaration, merely documenting your API
-        would opt you into the 12-judgeable threshold and skip the conservative
-        fallback — so a 6-file diff touching no contract path would go from
-        coordinator to single-pass, silently, while four instruction surfaces
-        promise an undeclared repo is never reviewed less than before.
-
-        Escalating is a safe inference from a documented contract; relaxing is
-        not. The paths still feed resolve_surfaces, so they still escalate.
-        """
+    def test_a_documented_contract_surface_escalates_at_any_size(self, tmp_path):
+        """`boundary-patterns.md` paths feed ``resolve_surfaces`` while the key
+        is absent, so a one-file change to a documented contract draws the
+        coordinator — and a six-file diff touching none of them reviews
+        single-pass, because documenting a contract is not a file-count rule."""
         prawduct_dir = tmp_path / ".prawduct"
         (prawduct_dir / "artifacts").mkdir(parents=True, exist_ok=True)
         (prawduct_dir / "artifacts" / "boundary-patterns.md").write_text(
             "The shared shape is `src/api/contract.py`.\n"
         )
-        import sys
-        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "plugin"))
-        from lib import risk as risk_mod
-
-        assert risk_mod.has_product_risk_declaration(prawduct_dir) is False
-        roster, why = cc._derive_roster(
-            "final", [f"src/m{i}.py" for i in range(6)], prawduct_dir
-        )
-        assert roster == ["correctness", "design", "sustainability"], why
-        assert "prior rule retained" in why
-
-        # …but the documented contract path still ESCALATES at any size.
         hot, why_hot = cc._derive_roster(
             "final", ["src/api/contract.py"], prawduct_dir
         )
         assert hot == ["correctness", "design", "sustainability"], why_hot
-
-    def test_declaring_surfaces_opts_into_the_risk_keyed_rule(self, tmp_path):
-        """The same 6-file diff reviews single-pass once the repo has said where
-        its risk lives — the saving is bought by the declaration, not assumed."""
-        prawduct_dir = tmp_path / ".prawduct"
-        prawduct_dir.mkdir(exist_ok=True)
-        (prawduct_dir / "project-state.yaml").write_text(
-            "risk_surfaces:\n  - src/payments/\n"
+        cold, why_cold = cc._derive_roster(
+            "final", [f"src/m{i}.py" for i in range(6)], prawduct_dir
         )
+        assert cold == ["reviewer"], why_cold
+
+    def test_declaring_buys_the_named_paths_not_a_different_size_rule(self, tmp_path):
+        """The same six-file diff touching no declared path reviews single-pass
+        whether the repo has declared or not: a declaration is size-independence
+        on the paths it names, and nothing else about the roster changes."""
         files = [f"src/mod_{i}.py" for i in range(6)]
-        roster, why = cc._derive_roster("final", files, prawduct_dir)
-        assert roster == ["reviewer"], why
-        assert "prior rule retained" not in why
+        undeclared, why_u = self._roster(tmp_path, files, declare=False)
+        declared, why_d = self._roster(tmp_path, files, declare=True)
+        assert undeclared == declared == ["reviewer"], (why_u, why_d)
 
     def test_this_repo_declares_its_surfaces(self):
         """The framework repo must opt in, or its own replay describes a rule it
@@ -6268,3 +7441,98 @@ class TestGuardRefusalsReachTheirOwnQuery:
         assert "rounds=6/1" in out, out
         assert "accepted=6" in out, out
         assert "blocking-left=6" in out, out
+
+
+class TestTheCostLeadReachesBothCarriers:
+    """`cost_lead` had seven unit tests and no test that it was WIRED.
+
+    Found by the cumulative review as R-2, BLOCKING. Deleting either the
+    `fact_to_cache_record(..., cost=...)` argument or the `cost=cost_sentence`
+    on the printed `next_action_line` left the whole suite green — and the two
+    are carriers of one sentence, so a single deletion makes them disagree
+    while a double deletion silently falsifies Chunk 01's acceptance criterion.
+    `core.md`: green is evidence only about what could have made it red, and
+    nothing could have.
+
+    The two are asserted separately because they fail separately: the printed
+    line is what the single-pass reviewer relays in-session, and the cache
+    record is what the builder reads on the coordinator path and what the
+    briefing replays later.
+    """
+
+    def test_the_cache_record_carries_the_lead(self):
+        fact = {"id": "rev-x", "ts": "2026-09-19T00:00:00Z",
+                "body": {"counts": {"blocking": 0, "warning": 2, "note": 1},
+                         "findings": [], "roster": [{"model": "m"}]}}
+        lead = cc.cost_lead({"paths": [], "judgeable": [], "free": []})
+        record = cc.fact_to_cache_record(fact, None, None, None, lead)
+        assert record["next_action"].startswith(lead), (
+            "`.critic-findings.json` is the carrier that HAS a reader in the "
+            "builder role — dropping the lead here guts Chunk 01 on the "
+            "coordinator path with nothing red"
+        )
+
+    def test_the_persisted_lead_survives_being_replayed_later(self):
+        """R-16: the field's designated LATER reader is
+        `briefing._summarize_critic_findings`, which renders `NEXT-ACTION:` in
+        every subsequent session until another review runs — the reader its own
+        comment calls definitionally the one who lost the reviewer's report.
+
+        So the persisted string must not assert anything about a tree that has
+        since moved. Asserted as a property of the record, not of `cost_lead`,
+        because the record is what that consumer reads.
+        """
+        fact = {"id": "rev-x", "ts": "2026-09-19T00:00:00Z",
+                "body": {"counts": {"blocking": 0, "warning": 1, "note": 0},
+                         "findings": [], "roster": [{"model": "m"}]}}
+        lead = cc.cost_lead({"paths": ["a.py"], "judgeable": ["a.py"], "free": []})
+        persisted = cc.fact_to_cache_record(fact, None, None, None, lead)["next_action"]
+        assert "AT REVIEW TIME" in persisted
+        assert "Re-derive with `prawduct-hook cost-of-commit`" in persisted
+        for present_tense in ("You are ALREADY", "You are NOT currently",
+                              "is clean", "buys NO extra round"):
+            assert present_tense not in persisted, (
+                f"{present_tense!r} is a present-tense claim about the working "
+                "tree, frozen into a record the briefing replays after the tree "
+                "has moved — the advice then inverts"
+            )
+
+    def test_consolidate_wires_the_lead_into_both_carriers(self):
+        """The acquisition path, which injection makes untested by construction.
+
+        Every other assertion passes a lead IN. Nothing asserted that
+        `consolidate` BUILDS one, so the `coverage.commit_cost` call and either
+        hand-off could be deleted with the suite green. Asserted over the AST of
+        `consolidate` itself rather than by substring, so reformatting cannot
+        fool it and a deletion cannot hide behind a comment.
+        """
+        import ast  # noqa: PLC0415
+
+        src = (ROOT / "lib" / "critic_consolidate.py").read_text()
+        fn = next(n for n in ast.walk(ast.parse(src))
+                  if isinstance(n, ast.FunctionDef) and n.name == "consolidate")
+        calls = [c for c in ast.walk(fn) if isinstance(c, ast.Call)]
+
+        def _name(call):
+            f = call.func
+            return f.attr if isinstance(f, ast.Attribute) else getattr(f, "id", "")
+
+        assert any(_name(c) == "commit_cost" for c in calls), (
+            "consolidate no longer prices the working tree — the lead has no source"
+        )
+        priced = [c for c in calls if _name(c) == "commit_cost"]
+        assert all(len(c.args) == 1 for c in priced), (
+            "commit_cost must be asked about the WORKING TREE (one arg); passing "
+            "paths answers what fixing THOSE would cost, a different question"
+        )
+        for carrier in ("fact_to_cache_record", "next_action_line"):
+            hits = [c for c in calls if _name(c) == carrier]
+            assert hits, f"consolidate no longer calls {carrier}"
+            assert any(
+                any(isinstance(a, ast.Name) and a.id == "cost_sentence" for a in c.args)
+                or any(k.arg == "cost" for k in c.keywords)
+                for c in hits
+            ), (
+                f"{carrier} no longer receives the cost lead — the two carriers of "
+                f"one sentence would disagree, and nothing else would go red"
+            )

@@ -907,6 +907,28 @@ class TestReviewEligibilityIsItsOwnQuestion:
         ):
             assert not ca.is_review_subject(path), path
 
+    def test_the_learnings_corpus_is_a_record_wherever_it_lives(self):
+        """The v2 cutover moved the corpus OUT of `.prawduct/` to
+        `.claude/rules/`, and a prefix tuple listing only `.prawduct/` followed
+        the old address.
+
+        Left alone, that reclassified every rule file from ORACLE to review
+        SUBJECT: the Records Pass stops shielding them and they land in
+        `files_reviewed`. That is a change in what a review RATES, made by
+        MOVING A FILE rather than by deciding anything -- which is why it needs
+        an assertion and not just a tuple entry. Removing the entry passes 6958
+        other tests.
+        """
+        for path in (
+            ".claude/rules/learnings/core.md",
+            ".claude/rules/learnings/tests.md",
+        ):
+            assert not ca.is_review_subject(path), path
+        # ...and the guard is about the corpus, not about `.claude/` at large:
+        # a repo's own hand-written rules are still the repo's, and code under
+        # `.claude/` is still code.
+        assert ca.is_review_subject(".claude/settings.json")
+
     def test_eligibility_is_not_implemented_as_the_negation_of_cost(self):
         """The pin for the defect itself, not merely for today's answers.
 

@@ -58,6 +58,19 @@ if str(_ROOT) not in sys.path:
 
 from test_plugin_runtime import HOOKS_JSON, run_plugin_hook  # noqa: E402
 
+# The extensionless hook, loaded in-process for the one arm a subprocess cannot
+# stage (a raise inside the boundary). Same SourceFileLoader idiom as
+# `test_stop_gate_error_posture.py`; shebang dispatch does not run at import.
+import importlib.machinery  # noqa: E402
+import importlib.util  # noqa: E402
+
+_hook_loader = importlib.machinery.SourceFileLoader(
+    "prawduct_hook_boundary", str(Path(__file__).resolve().parent.parent / "plugin" / "bin" / "prawduct-hook")
+)
+_hook_spec = importlib.util.spec_from_loader("prawduct_hook_boundary", _hook_loader)
+_hook = importlib.util.module_from_spec(_hook_spec)
+_hook_loader.exec_module(_hook)
+
 # The five documented SessionStart sources, pinned locally from
 # https://code.claude.com/docs/en/hooks (verified 2026-07-27).
 #
@@ -140,17 +153,21 @@ class TestBriefOnlyPreservesSessionEvidence:
             "a continuation must not generate a session handoff"
         )
 
-    def test_resume_does_not_archive_the_live_reflection(self, tmp_path):
-        """Archiving to reflections.md mid-session moves the running session's
-        reflection out from under it — the reflection gate then sees nothing."""
+    def test_resume_leaves_the_live_reflection_where_the_gate_reads_it(self, tmp_path):
+        """A continuation must not move the running session's reflection out from
+        under it — the reflection gate would then see nothing.
+
+        The archive half is a re-introduction guard: nothing writes that file
+        any longer, and a continuation is the worst place for a revival, because
+        the session it would empty is still running.
+        """
         prawduct = _seed_session(tmp_path)
         res = run_plugin_hook("clear", tmp_path, "--session-start", "--brief-only")
         assert res.returncode == 0, res.stderr  # see note above: no free pass on exit 2
-        reflections = prawduct / "reflections.md"
-        if reflections.is_file():
-            assert "the chunk went fine" not in reflections.read_text(), (
-                "the live reflection was archived away by a continuation"
-            )
+        assert "the chunk went fine" in (prawduct / ".session-reflected").read_text()
+        assert not (prawduct / "reflections.md").exists(), (
+            "nothing archives reflections any more — a continuation least of all"
+        )
 
     def test_boundary_still_resets_without_the_flag(self, tmp_path):
         """The discriminating half: prove `--brief-only` is what preserves the
@@ -210,40 +227,116 @@ class TestBriefOnlyStillOrients:
 
 
 # =============================================================================
-# R-14 — the boundary's last silent-loss path: consumption keys on preservation
+# The handoff is the ONLY thing that carries a reflection across a boundary
 # =============================================================================
 
 
-class TestReflectionArchivalIsDeliveryKeyed:
-    def test_unarchivable_reflection_is_kept_not_deleted(self, tmp_path):
-        """Archival used to swallow its failure and the deletion loop unlinked the
-        file anyway — destroying a reflection that reached no archive. Same rule as
-        `.handoff-notes.md`: consume only what was preserved."""
-        prawduct = _seed_session(tmp_path)
-        # Make reflections.md un-appendable so archival fails at the write, while
-        # the reflection itself stays perfectly readable.
-        archive = prawduct / "reflections.md"
-        archive.mkdir()  # a directory where a file is expected -> OSError on open()
+class TestTheHandoffIsTheOnlyCarrier:
+    """The reflections archive is gone; the generated handoff replaced it.
 
+    That makes an ORDERING the whole contract: `_boundary_close_session`
+    generates the handoff — which reads `.session-reflected` — and only then
+    unlinks the file. Swap the two statements and the boundary still exits 0,
+    still deletes the file, and hands the next session a handoff with no
+    reflection in it: a silent permanent loss with nothing on stderr. Nothing but
+    a test can see that, because both orders are locally coherent.
+    """
+
+    def test_the_handoff_carries_the_reflection_and_the_file_is_then_gone(self, tmp_path):
+        prawduct = _seed_session(tmp_path)
+        res = run_plugin_hook("clear", tmp_path, "--session-start")
+        assert res.returncode == 0, res.stderr
+
+        handoff = prawduct / ".session-handoff.md"
+        assert handoff.is_file(), "a boundary must generate the handoff"
+        text = handoff.read_text()
+        # The ORDER pin: this text is only reachable while the file still exists,
+        # so a delete moved ahead of the generation turns exactly this red.
+        assert "## Previous Session Reflection" in text
+        assert "the chunk went fine" in text
+
+        assert not (prawduct / ".session-reflected").is_file(), (
+            "the boundary consumes the reflection once the handoff has carried it"
+        )
+
+    def test_an_unreadable_reflection_is_kept_and_named(self, tmp_path):
+        """Deletion keys on DELIVERY, never on "a handoff was attempted".
+
+        The archive used to be the second carrier; with it gone, an unreadable
+        reflection that the boundary deleted anyway would be lost permanently
+        and silently (the file is gitignored). A Critic review found the
+        delete unconditional; this pins the rule the notes already follow.
+        """
+        prawduct = _seed_session(tmp_path)
+        (prawduct / ".session-reflected").write_bytes(b"\xff\xfe not utf-8 \x80")
         res = run_plugin_hook("clear", tmp_path, "--session-start")
         assert res.returncode == 0, res.stderr
         assert (prawduct / ".session-reflected").is_file(), (
-            "an un-archivable reflection must be KEPT, not silently destroyed"
+            "an unreadable reflection must be KEPT — nothing carried it"
         )
-        assert "could not archive .session-reflected" in res.stderr, (
-            "the failure must be announced, not silent"
-        )
+        handoff = (prawduct / ".session-handoff.md").read_text()
+        assert "## Previous Session Reflection" not in handoff
+        # Continuity fact for the incoming agent, on stdout.
+        assert "did NOT reach this handoff" in res.stdout
+        assert "not valid UTF-8" in res.stdout
 
-    def test_archived_reflection_is_still_deleted(self, tmp_path):
-        """The discriminating half — preservation is what licenses the delete, so
-        the normal path must still clear the file."""
+    def test_a_handoff_that_cannot_be_written_keeps_the_reflection(self, tmp_path):
+        """The write path fails soft; the reflection must not pay for it."""
+        prawduct = _seed_session(tmp_path)
+        # A directory where the handoff file goes: the atomic write raises.
+        (prawduct / ".session-handoff.md").mkdir()
+        res = run_plugin_hook("clear", tmp_path, "--session-start")
+        assert res.returncode == 0, res.stderr
+        assert (prawduct / ".session-reflected").is_file(), (
+            "a reflection whose handoff was never written must be KEPT"
+        )
+        assert "did NOT reach this handoff" in res.stdout
+        # And the other session files still go: the keep is targeted, not a stall.
+        # (`.gates-waived`, not `.session-start` — the clear re-stamps the latter
+        # right after the boundary, so its presence says nothing about deletion.)
+        assert not (prawduct / ".gates-waived").is_file()
+
+    def test_a_handoff_generation_that_raises_keeps_the_reflection(self, tmp_path, monkeypatch, capsys):
+        """The arm the original finding named FIRST: `_briefing()` (an
+        incomplete install) or `generate_session_handoff` raising. The boundary
+        catches it and must then keep the reflection — nothing carried it. In-
+        process, because a raise inside the hook cannot be staged from outside;
+        red-verified against `handoff = HandoffResult(False, absent, absent)`
+        initialised before the try, which the exception arm would then consume.
+        """
+        prawduct = _seed_session(tmp_path)
+
+        def _raise():
+            raise ImportError("lib.briefing is missing from this install")
+
+        monkeypatch.setattr(_hook, "_briefing", _raise)
+        _hook._boundary_close_session(tmp_path, prawduct)
+        out = capsys.readouterr()
+        assert (prawduct / ".session-reflected").is_file(), (
+            "a reflection whose handoff generation raised must be KEPT"
+        )
+        assert "could not generate the session handoff" in out.err
+        assert "did NOT reach this handoff" in out.out
+        # The keep is targeted: the rest of the boundary still runs.
+        assert not (prawduct / ".gates-waived").is_file()
+
+    def test_the_boundary_writes_no_reflections_archive(self, tmp_path):
+        """The archive step is deleted, not relocated (discovery §5).
+
+        Paired with the test above so the two cannot both be satisfied by a
+        boundary that does nothing: that one proves the reflection was READ and
+        delivered, this one that it was not also written to a second home.
+        """
         prawduct = _seed_session(tmp_path)
         res = run_plugin_hook("clear", tmp_path, "--session-start")
         assert res.returncode == 0, res.stderr
-        assert not (prawduct / ".session-reflected").is_file(), (
-            "a successfully archived reflection must still be consumed"
+        assert not (prawduct / "reflections.md").exists(), (
+            "no reflections archive may be written at a session boundary"
         )
-        assert "the chunk went fine" in (prawduct / "reflections.md").read_text()
+        assert "could not archive .session-reflected" not in res.stderr, (
+            "the boundary must not narrate an archive step it no longer has: "
+            f"{res.stderr}"
+        )
 
 
 # =============================================================================

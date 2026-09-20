@@ -102,9 +102,6 @@ _CHUNK_DETAIL = _Advice(
     ),
 )
 
-#: The machine tag line an entry carries. Its presence is what makes deleting an
-#: old entry unsafe, so it selects between the two change-log bullets.
-_PRAWDUCT_TAG = re.compile(r"<!--\s*prawduct:")
 
 
 _MEASURED: tuple[_Measured, ...] = (
@@ -137,26 +134,10 @@ _MEASURED: tuple[_Measured, ...] = (
     _Measured(
         type="oversized-change-log",
         rel=".prawduct/change-log.md",
-        advice=(
-            # Guarded, and the guard is the point. "Keep the last ~10, git has the
-            # history" is unsafe wherever entries carry prawduct tags: the
-            # release-pending set is every `scope=`-tagged entry with no
-            # `release=`, so deleting a tagged entry drops it from that derivation
-            # silently. The old note printed the unguarded advice unconditionally.
-            _Advice(
-                present=_PRAWDUCT_TAG,
-                text=(
-                    "older entries can go, but NEVER one carrying a `<!-- prawduct: … -->` "
-                    "tag line — `scope=` and `release=` tags are what derive the "
-                    "release-pending set, and a deleted tagged entry drops out of it silently"
-                ),
-            ),
-            _Advice(
-                present=re.compile(r"^#", re.MULTILINE),
-                absent=_PRAWDUCT_TAG,
-                text="older entries can go once they are in git — nothing here derives from them",
-            ),
-        ),
+        # No static bullets: whether anything can go is computed by the archiver's
+        # own selection (see `_change_log_advice`), so the advice and the command
+        # it recommends cannot disagree about what moves.
+        advice=(),
     ),
 )
 
@@ -166,6 +147,44 @@ _MEASURED: tuple[_Measured, ...] = (
 _REASONING_SECTIONS = _key(
     "technical_decisions", "design_decisions", "open_questions", "product_definition"
 )
+
+
+def _change_log_advice(root: Path, text: str, threshold: int) -> tuple[list[str], bool]:
+    """``(bullets, archivable)`` for an oversized change log.
+
+    Asks the archiver's own selection rather than describing a rule beside it. The
+    advice this replaced forbade deleting tagged entries, which was right and left
+    nothing to do: in a tagged log that is nearly every byte, so the nudge fired in
+    every product with no available action. Moving history verbatim is lossless, so
+    when there is something to move the caller hands the runtime the command; when
+    there is not, the bullet says why the file is big.
+    """
+    from . import change_log_archive  # noqa: PLC0415 — lazy; keeps probe registration light
+
+    prawduct_dir = root / ".prawduct"
+    versions = change_log_archive.product_versions(
+        text, prawduct_dir / change_log_archive.ARCHIVE_DIR_NAME
+    )
+    try:
+        selection = change_log_archive.select(text, threshold=threshold, versions=versions)
+    except change_log_archive.ArchiveRefused:
+        return (
+            ["a tag line in it is malformed (the release gate names which), and no history "
+             "can move out until that entry is fixed"],
+            False,
+        )
+    if not selection.moved:
+        return (
+            ["its bulk is release-pending (or undated) entries, which stay in the live log "
+             "until that work ships — it shrinks at the release"],
+            False,
+        )
+    return (
+        [f"{len(selection.moved)} entries of shipped history can move verbatim into "
+         f"`.prawduct/change-log-archive/`, leaving {selection.kept_bytes // 1000}KB live — "
+         "nothing is deleted, and release-pending entries stay"],
+        True,
+    )
 
 
 def _measured_path(measured: _Measured, root: Path) -> Path | None:
@@ -211,6 +230,9 @@ def probe_oversized_governance_file(state: ProjectState, codebase: Codebase):
                 shown = str(path)
 
         bullets = [advice.text for advice in measured.advice if advice.applies_to(text)]
+        archivable = False
+        if measured.type == "oversized-change-log":
+            bullets, archivable = _change_log_advice(root, text, threshold)
         reasoning = bool(_REASONING_SECTIONS.search(text))
         summary = (
             f"{shown} is {size // 1000}KB, over this repo's {threshold // 1000}KB nudge "
@@ -229,6 +251,25 @@ def probe_oversized_governance_file(state: ProjectState, codebase: Codebase):
                 "`open_questions`) is in it, and that is not the thing to cut — it is the "
                 "methodology working"
             )
+        if archivable:
+            # Its own construction site, with literal copy: moving history is
+            # mechanical and lossless, so the owner has nothing to weigh and the
+            # runtime has a command — unlike every other file measured here.
+            candidates.append(
+                AdvisoryCandidate(
+                    type=measured.type,
+                    evidence=(f"{measured.rel} is over the governance-file size threshold",),
+                    trigger_summary=summary,
+                    owner_action=(
+                        "Nothing to decide unless you object: the move is lossless (entries are "
+                        "kept verbatim in the archive) and it rides in the next commit of the "
+                        "current work."
+                    ),
+                    recommended_action="prawduct-hook archive-change-log --apply",
+                    priority="info",
+                )
+            )
+            continue
         candidates.append(
             AdvisoryCandidate(
                 type=measured.type,
@@ -247,6 +288,7 @@ def probe_oversized_governance_file(state: ProjectState, codebase: Codebase):
                 # Empty, deliberately: choosing what to cut from a governance file
                 # is a judgement about content, and there is no command that makes
                 # it. The old note put its three guesses behind a "Run" prefix.
+                # (An archivable change log is the exception, handled above.)
                 recommended_action="",
                 priority="info",
             )

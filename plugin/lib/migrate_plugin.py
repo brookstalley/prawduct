@@ -7,7 +7,7 @@ The REMOVE set is **derived from the framework registry** (``core.MANAGED_FILES`
 / ``core.MANAGED_DIRS`` — write-strategy ``!=`` place-once), never from "any path
 prawduct ever placed." Everything else — product-owned ``.prawduct/`` state
 (``project-state.yaml``, ``learnings*.md``, ``backlog.md``, ``change-log.md``,
-``artifacts/``, reflections) and every non-framework file (the product's own
+``artifacts/``) and every non-framework file (the product's own
 skills, ``src/``, ``tests/``, MCP server, configs) — is preserved byte-for-byte
 (the place-once contract, design §7). A real consumer (hallucinote) intermixes
 ~20 product skills with the 7 framework skills and ~12 product ``tools/*.py``
@@ -113,9 +113,13 @@ Hardest rules:
 
 - **Tests are contracts** — fix the code, never weaken a test.
 - **No "pre-existing" exception** — fix what you find, or flag why you can't.
+  The fix half is bounded to BLOCKING; below it, the flag is the whole answer.
 - **Never silently drop a requirement** — say so explicitly.
 - **Run `/prawduct:critic` after medium+ work** — never write findings
-  yourself; the independence is the value.
+  yourself; the independence is the value. Rigor is stage-keyed: a mid-build
+  review blocks only on what would ship broken, the review at the merge
+  boundary runs everything and is never skipped, and unsure defaults to the
+  cheaper mid-build review.
 
 **Enforcement is structural — while the plugin is loaded:** its Stop hook runs at
 session end and **blocks** if code changed against an active build plan with no

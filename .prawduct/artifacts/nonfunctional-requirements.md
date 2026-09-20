@@ -43,11 +43,63 @@ last_validated: null
   under `artifacts/` until the release moves it to `artifacts/archive/`, and nothing rewrites a
   referring path when it moves (the sibling #13 cite two lines below already carries the
   post-archive form, and had to be edited by hand to get there).
-  Live exception: **doctor Health Checks #13 and #13a** (the learnings descent-obligation check, shipped 2026-08-02, and the learnings-pairing check, shipped 2026-08-27) are recorded **bounded exceptions** to the emission arm — it names its expected yield and cannot emit it, because doctor has no fact-emitting path at all and building one for a single check is the accumulation this norm exists to stop. Clock: `#563` — the trigger is *when doctor gains that path*, at which point #13 is its worked first case and #13a follows it. `[DECISION: the #13 bounded exception is widened to cover doctor Health Check #13a (learnings pairing), same clock and same reason | doctor still has no fact-emitting path, so #13a can no more emit its yield than #13 can, and building one for a second single check is precisely the accumulation this norm exists to stop; the alternative — amending the emission arm to admit a control that cannot satisfy it — is the laundering tell the norms guide names, since it would edit the rule to bless the code | user can veto/override]` Owner-vetoable, recorded 2026-08-27 on `fix/silent-clear-checks`. **The exception is bounded by naming its expected yield now, so the query has something to answer:** #13a expects to fire on duplicate active headings, which is zero on this repo's 270-entry corpus today — so a firing is evidence, and a year of never firing is evidence for retiring it. **That trigger is prose here and on the item, not a `revisit:` field, because the Issues backend has no write path for one**: the adapter's `update` deliberately strips a caller-pasted `prawduct:` block and re-appends the existing one (`lib/backlog/core.py` `_body_update_preserving_block`), and no op takes a `revisit` flag — the field is read only off the frozen markdown model (`lib/backlog/legacy.py`). So the walker is the janitor's Norm Health sweep reading #563, exactly as it is for every event-bound trigger (`probe_revisit_due` fires on *dated* values and is dark post-cutover regardless). The missing write path is filed as `#564`. Decision block: `artifacts/archive/build-plan-drift-burndown.md` § `governed_by` → nonfunctional-requirements.
+  Live exception: **doctor Health Checks #13 and #13a** (the learnings descent-obligation check, shipped 2026-08-02, and the learnings-pairing check, shipped 2026-08-27) are recorded **bounded exceptions** to the emission arm — it names its expected yield and cannot emit it, because doctor has no fact-emitting path at all and building one for a single check is the accumulation this norm exists to stop. Clock: `#563` — the trigger is *when doctor gains that path*, at which point #13 is its worked first case and #13a follows it. `[DECISION: the #13 bounded exception is widened to cover doctor Health Check #13a (learnings pairing), same clock and same reason | doctor still has no fact-emitting path, so #13a can no more emit its yield than #13 can, and building one for a second single check is precisely the accumulation this norm exists to stop; the alternative — amending the emission arm to admit a control that cannot satisfy it — is the laundering tell the norms guide names, since it would edit the rule to bless the code | user can veto/override]` Owner-vetoable, recorded 2026-08-27 on `fix/silent-clear-checks`. **The exception is bounded by naming its expected yield now, so the query has something to answer:** #13a expects to fire on duplicate active headings, which is zero on this repo's 270-entry corpus today — so a firing is evidence, and a year of never firing is evidence for retiring it. **That trigger is prose here and on the item rather than a `revisit:` field** (when written, the Issues backend had no write path for one; #564 shipped it 2026-09-02, so the constraint is historical — the trigger stays prose because it names a CONDITION, not a date, and `probe_revisit_due` fires only on dated values): the adapter's `update` deliberately strips a caller-pasted `prawduct:` block and re-appends the existing one (`lib/backlog/core.py` `_body_update_preserving_block`), and no op takes a `revisit` flag — the field is read only off the frozen markdown model (`lib/backlog/legacy.py`). So the walker is the janitor's Norm Health sweep reading #563, exactly as it is for every event-bound trigger (`probe_revisit_due` fires on *dated* values and is dark post-cutover regardless). The write path was missing when this was written and is filed as `#564`, **shipped 2026-09-02** (`backlog/core.py` `_UPDATE_BLOCK`; `--revisit` at `backlog/cli.py:124`). Decision block: `artifacts/archive/build-plan-drift-burndown.md` § `governed_by` → nonfunctional-requirements.
+  Recorded keep: **the `pr-scoped` review mode**. This is NOT a Live exception and is
+  deliberately not labelled one — the two above are exceptions to the *emission* arm
+  (controls that cannot emit their yield). This is the *removal* arm running to
+  completion and returning `keep`, which is the norm working rather than a departure
+  from it; labelling it `Live exception:` would make a later erosion sweep count it
+  against the norm it satisfies. Ruled by the owner at the 2026-09-16 Norm Health sweep — the first
+  time this arm has been run against ledger evidence rather than judgment. **The trigger is
+  met on its own terms:** across 30 runs (`pr/fable/pr-scoped` 16, `pr/opus/pr-scoped` 14) it
+  has returned **zero BLOCKING findings, ever**, for ~9,300s of wall-clock. It is not a
+  zero-yield control — it returned 8 WARNING and 16 NOTE, ~25% actionable — but the arm as
+  written keys on blocking yield, and that is absent.
+  **Reason for keeping:** it guards the PR boundary, where a warning is worth more than the
+  same warning mid-chunk, because it is the last read before work leaves the branch; and 30
+  runs is thin evidence for retiring a release-boundary control whose miss would surface in a
+  merged PR rather than a rerunnable round. Retiring it trades a small, measured cost against
+  an unmeasured tail risk, which is the trade this norm's *why* warns is easy to get wrong in
+  the accumulating direction and no safer in the shedding one.
+  **What evidence would settle it** (required by the interim rule above, so the future query
+  has a specification rather than a blank): (a) a blocking finding from `pr-scoped` at any
+  point retires this exception and vindicates the control outright; (b) 100 cumulative runs
+  with still zero blocking AND no post-merge defect traceable to a warning it raised is
+  evidence to retire it — the second clause matters, because a warning acted on is a miss
+  prevented and would otherwise read as further proof of uselessness; (c) if `pr` (unscoped,
+  81 runs, 1 blocking) and `pr-scoped` converge in yield, the two modes are one control and
+  the cheaper should absorb the other.
+  `[DECISION: `pr-scoped` is kept despite meeting the removal-by-default trigger (30 runs,
+  zero BLOCKING) | the arm keys on blocking yield, but this control guards the release
+  boundary, where its 8 warnings and 16 notes are worth more than the same findings
+  mid-chunk because it is the last read before work leaves the branch — and 30 runs is
+  thin evidence for retiring a control whose miss surfaces in a merged PR rather than a
+  rerunnable round; retiring it trades a small measured cost against an unmeasured tail
+  risk | user can veto/override]` Owner ruling, 2026-09-16.
+  **Annotation, 2026-09-18 (owner-directed, `pr-review-payload` Chunk 02): the ruling above graded a
+  control that no longer exists.** `grep -rn "pr-scoped" plugin/` returns nothing — the mode was
+  collapsed into `pr` (`artifacts/archive/build-plan-kernel-evidence-store.md`), and its 30 ledger
+  rows run 2026-06-10 → 2026-07-10 and stop. So the removal arm's first evidence-based run was
+  computed from historical rows for a subject that had been gone two months. **Nothing is amended
+  here and the ruling is not withdrawn** — keeping a retired thing is inert, and editing a norm to
+  match the tree is the laundering tell. What is recorded is what the ruling actually decided: a
+  `keep` about a retired subject, whose clause (c) — has `pr` converged in yield with `pr-scoped`? —
+  is unanswerable and therefore protects nothing about the reviewer that runs today. The arm's next
+  run against the live `pr` mode is a separate exercise with its own evidence, and the
+  `pr-review-payload` measurements above are the first numbers it would have to work from.
+  Clock: the janitor's Norm Health sweep re-reads the three conditions above each run.
   Retroactivity: contain — existing controls are not swept on adoption, because the evidence to judge them does not exist yet (the very defect this norm names). The boundary is explicit and dated: controls added **from 2026-07-29** carry the observable-yield obligation at birth; controls predating it are assessed as the janitor's sweep gains yield data, not before. `compliance_canary` is the worked example and the first case — it emits nothing, so it cannot be judged, and LNG-5W8R fixes that rather than retiring it on argument.
 - **State-file growth past its size threshold is surfaced as an advisory warning that prompts compaction — it is never a hard block or mechanical enforcement.**
   Why: oversized governance state is a real context-weight cost, but blocking a session on file size would be disproportionate for a local tool — this is advice (fail-soft), not authority; an over-threshold file is the nag's designed target, not a violation, so no ratification retroactivity applies.
   Status: steady-state.
+- **Review rigor is stage-keyed. The *inner stage* is any review of an uncommitted diff (`chunk`, `final`, `verify-resolutions`): it blocks only on the inner BLOCKING set below and reports everything else as an observation — pre-priced, carried to the boundary, never a finding that buys a round. The *boundary stage* is any review over merge-base…HEAD (`cumulative`) and the PR review: it runs the full severity table and is never skipped or inferred away. The failure direction is symmetric: an inner-stage review run at boundary rigor is a defect, priced in minutes and the rounds it manufactures; a boundary review run at inner rigor is a defect, priced in what ships. Unsure defaults to the inner-stage review of whatever interval exists.**
+  Blocks: at the inner stage, exactly — a test failure in the evidence; a test deleted or weakened; changed behavior with no test at all; a silently dropped requirement; exploitable security in changed code; a cross-component contract break; a norm departure without a recorded decision; an unlisted dependency. Everything else the severity tables rate today — test *quality* bars (error paths, real dependencies, the E2E floor, property-based, structure), design, prose, records, artifact freshness — is an observation at the inner stage and a finding at the boundary. "No test at all" stays in the set because a unit test is the contract and is cheap; only the quality bars defer.
+  Why: the wall-clock norm above says review latency decides whether governance is a partner or a tax, and the ratchet norm says a control that fires and never blocks is removed by default. Severity keyed on defect class alone cannot honor either: "untested behavior → BLOCKING" fires identically on a config helper mid-chunk and a payment ledger at the PR, so every mid-chunk observation buys a fix→verify round at boundary price. The ledger shows the cost landing where the framework said it was safe: across eight governed products review is 60–70% of the hour a small change costs; this repo's ≤ 5-file scopes buy as many rounds as its large ones; and since the v3.5.0 cut four of five `verify-resolutions` rounds returned nothing. The framework already knows the stage — mode plus interval — and until now said so nowhere a reviewer could read it. Re-derive: `prawduct-hook review-stats`, and each repo's `.prawduct/.governance-ledger.jsonl` filtered on `ts`; the survey is `review-proportionality-assessment-2026-09-17.md`.
+  Status: steady-state.
+  Retires: two sentence families that stated the opposite failure direction — *"Under-declaring Type is safe (worst case: redundant Critic work)"* (`methodology/planning.md`) and the *"fails safe to thoroughness"* family (the canonical fail-safe statement in `skills/critic/review-cycle.md`, its restatement in `skills/critic/SKILL.md`'s fall-through, the `critic_mode.py` rule-4 rationale and the `infer-critic-mode` docstring), together with the *"never reviewed less than before"* promise for a product that declares no `risk_surfaces:` (`review-cycle.md`, `methodology/discovery.md`, the `project-state.yaml` template). Their replacement is the statement's last sentence: unsure defaults to the inner-stage review of whatever interval exists; the boundary is never inferred away. This entry records the retirement so the norm leads the code (Requirements Precede Code); the sweep that performs it lands under the same scope (`review-stages`) before this norm merges, and `tests/test_v5_methodology.py` holds the grep red (`xfail`) until it does.
+  Retroactivity: migrate — completed within the birthing changeset. Every site the norm contradicts is enumerated under Retires and swept by the `review-stages` plan before the branch merges, so the norm lands on `develop` with no residual sites; born `steady-state` on that reading. The tracker is the plan's own `## Status` box for the sweep chunk (unticked until the sites are gone), and the xfail pin is the flip detector — it goes red the day the sweep lands, but it cannot see the sweep being *cut*, so the box is what a reader checks. If the sweep is cut from the scope, this line is wrong and the entry must be re-recorded `in-transition` with a tracking item.
+  Decision: `[DECISION: review rigor is keyed on stage, and the inner stage blocks only on the set above | the owner accepts a bounded miss-rate increase — a coverage or design gap found at the boundary review instead of mid-chunk, the same catch later — in exchange for wall-clock; the three prior efficiency plans held miss-rate constant and the complaint survived them, which is the evidence that the philosophy, not the mechanics, is what generates the hour | user can veto/override]` Owner decision, 2026-09-17, stated directly ("optimizing for saving a lot of wall clock for at most a minor drop in quality").
+  Ratified: 2026-09-17, owner — the entry text and Principle 11's two-stage sentence, confirmed as written.
 
 ## Performance
 
@@ -70,6 +122,52 @@ Targets we want to hold:
   reviews at the PR boundary **run in parallel, never sequentially** — wall clock is the slowest
   run, not the sum. Any sequencing that exists is for narrative framing, not a data dependency, and
   is a target for removal.
+
+  **Measured against this target, `pr-review-payload` scope, 2026-09-18.** Two readings, each with
+  the command that re-derives it rather than a figure to be trusted:
+
+  | reading | on 2026-09-18, before the change | re-derive with |
+  |---|---|---|
+  | PR review duration, this repo | median **420s** over 122 reviews, **0 measured / 122 self-reported** | `python3 tools/pr-review-yield.py` |
+  | PR review duration, a consumer (`discodon`, v3.5) | **14.1 min/review** over 12 reviews, `clk runs` **0** | `python3 tools/measure-consumer-overhead.py ../discodon --prs` |
+  | sequencing | `pr/SKILL.md` ran Step 2 then Step 3 (**#678**) | — |
+
+  **After, measured on this bundle's own PR review, 2026-09-18.** The first PR review this repo has
+  timed rather than asked a model to recall:
+
+  | reading | after | re-derive with |
+  |---|---|---|
+  | PR review duration, this repo | **1 measured / 122 self-reported**; the measured run's interval **385s** | `python3 tools/pr-review-yield.py` |
+  | the same run, self-reported by the reviewer | **330s** | the evidence file's `duration_seconds` |
+  | the same run, as the harness timed the agent | **353s** | the dispatch's own completion record |
+  | PR review duration, a consumer (`discodon`, v3.5) | **14.1 min/review**, `clk runs` still **0** — unchanged, and it cannot move until a plugin release carrying the marker reaches that repo | `python3 tools/measure-consumer-overhead.py ../discodon --prs` |
+
+  **Read the three numbers as three different spans, not as one number measured three times** —
+  pooling them re-creates exactly the hazard `dispatched_at` was added to retire, which is why
+  `telemetry._extract_row` carries provenance with every row and reports the two populations apart.
+
+  - **385s is `dispatched_at` → `ledger-append`**, marked at Step 3 before the spawn and closed at
+    Step 4. It therefore includes the caller's Step 4 verification, and under a blocking cumulative
+    it would include fix time until the re-dispatch re-marks. It is the span an *operator waits*,
+    which is what the ≤ 7-minute target is about — and at 6m25s this run met it.
+  - **353s is the harness's own measure of the agent**, i.e. the reviewer's runtime alone. The ~32s
+    difference from 385s is the caller's Step 4 work, which is the expected gap rather than noise.
+  - **330s is the reviewing model's estimate of its own runtime** — the thing the baseline column is
+    made of, 122 times over. It is **~6% under** the harness's measure of the same run. One data
+    point is not a bias estimate, but it is the first time the two have been comparable at all, and
+    it is the reason the baseline's 420s median is not directly comparable to the 385s above.
+
+  **The ≤ 7-minute target was met on a bundle whose review-round count was the real cost.** This
+  boundary cost 6m25s of wall clock; the branch spent roughly six hours, almost all of it in
+  *repeated* Critic rounds. `run-count` and `unit-cost` are both named as design variables at the
+  top of this section — this bundle moved unit-cost, and the measurement it installs is what will
+  let the next one argue about run-count with numbers instead of impressions.
+
+  The `0 measured` column is the positive control: before this scope no review duration in either
+  repo was a code-written interval, so the 420s and the 14.1 min are both the reviewing model's own
+  recollection and the target had never actually been measured against. The after-table above is
+  that control coming back non-zero — had it still read `0 measured`, the clock would not have
+  fired and the figures beside it would have meant nothing.
 - **Validating a comment-only change: ≤ 30s.** A change confined to comments must be cleared in
   under half a minute or the check is not worth keeping — at that price the question of whether
   it is proportionate stops being interesting. The budget is met by *deterministic* checks over

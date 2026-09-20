@@ -51,9 +51,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from . import buildplan_refs, change_log, plan_archive, plan_index
-
-CHANGE_LOG_REL = "change-log.md"
+from . import buildplan_refs, change_log, change_log_archive, plan_archive, plan_index
 
 
 #: A change-log entry opens ``## YYYY-MM-DD: title``. The date is compared as a
@@ -194,10 +192,10 @@ def survey(prawduct_dir: Path) -> dict:
     reporting a clean sweep.
     """
     artifacts_dir = prawduct_dir / "artifacts"
-    try:
-        text = (prawduct_dir / CHANGE_LOG_REL).read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        text = ""
+    # Live log AND archive: a release's entries are archived once the live log
+    # outgrows its threshold, and a plan retained live past that release (gitflow
+    # retains until the cut) must still read as shipped.
+    text = change_log_archive.load_all_text(prawduct_dir) or ""
     shipped_map = shipped_scopes(text)
     # Whether the product versions AT ALL, which is a different question from
     # whether any scope currently qualifies. Deriving it from `shipped_map` made

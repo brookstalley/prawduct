@@ -6,7 +6,7 @@ A `/prawduct:backlog` item at `stage: design` is a planning task: requirements a
 
 ## Learnings as Design Constraints
 
-Before generating artifacts, run `/prawduct:learnings [your planned work]` to surface relevant project rules and preferences without loading the full files. Active learnings encode architecture decisions, technology constraints, and patterns the project has been burned by — context that prevents repeating known mistakes, not a checklist.
+The harness loads the rules: `core.md` every session, an `<area>.md` when you read a file its `paths:` match. Before generating artifacts, open the `.claude/rules/learnings/` area files covering what this work will touch — architecture decisions, technology constraints, and patterns the project has been burned by.
 
 ## Artifact Generation
 
@@ -70,7 +70,7 @@ How many plans, and how big, is settled before chunking begins.
 
 - **One plan per scope tag.** A plan covers one coherent scope; work under a different tag gets its own plan even when the same session builds both. The `branch:` mechanism above exists precisely so several plans can share one branch — sharing a branch is not a reason to share a plan.
 - **Split when the change types differ.** A plan mixing a schema migration, a UI rewrite and a docs sweep reviews badly as one unit: the Critic selects its protocol per chunk `Type:`, and one blocking finding stalls chunks that have nothing to do with it. Heterogeneous `Type:` values across chunks are the signal.
-- **A plan that will not ship in about three sessions is a program, not a plan.** Express it as backlog items plus a per-wave plan drawn when that wave starts. A long-lived plan goes stale faster than it is built — its Status boxes stop describing anything, and its frictions accumulate in `learnings.md` instead of reaching the next plan.
+- **A plan that will not ship in about three sessions is a program, not a plan.** Express it as backlog items plus a per-wave plan drawn when that wave starts. A long-lived plan goes stale faster than it is built — its Status boxes stop describing anything, and its frictions accumulate in the learnings rules instead of reaching the next plan.
 - **Push back on a request for one monolithic plan.** Name what it costs — review quality across a large diff, staleness, and the coupling that lets one finding block unrelated work — and propose the split with its wave boundaries. The user decides (Principle 23); they decide with the tradeoff stated.
 
 ### Requirements Confidence
@@ -165,8 +165,9 @@ error handling go missing one context at a time.
 `Critic mode:` is the proportionality knob — it controls how heavy each per-chunk review is. Four modes: `chunk`, `final`, `cumulative`, `verify-resolutions`. The field is **optional**: at runtime `/prawduct:critic` (no args) infers the mode from git + build-plan state (see `methodology/building.md` and `skills/critic/review-protocol.md`). Declare it only to override inference.
 
 **Heuristic — what inference will pick, and when to override:**
-- **Single-chunk plan** → inference picks `final`. No declaration needed.
-- **Multi-chunk plan** → `chunk` for non-final chunks, `final` for the last. No declaration needed.
+- **Single-chunk plan** → inference picks `final` — unless the plan is short (next bullet), where the same plan owes only its boundary `cumulative`. No declaration needed.
+- **Multi-chunk plan** → `chunk` for non-final chunks, `final` for the last — again unless the plan is short. No declaration needed.
+- **Short plan** (at most 3 chunks, nothing the branch changes is a risk surface) → no per-chunk review is inferred at all: mid-chunk inference answers `deferred`, the Stop gate warns rather than blocks on a non-final chunk, and the last chunk's `cumulative` is every chunk's review (#292). Declaring `Critic mode:` on **any** chunk opts the whole plan back into per-chunk review — do it when an early chunk is a keystone you want seen before the rest is built on it.
 - **Override forward to `final`** on an early chunk that lands an architectural keystone whose coherence matters before later chunks build on it.
 - **Override forward to `cumulative`** on the last chunk of a plan that ships as a single PR — typically by declaring `Type: cumulative-final` (the chunk's review IS the one cumulative pass: commit the chunk, then run `/prawduct:critic cumulative` once — no separate `final` and no explicit `Critic mode:` needed).
 - **Trivial chunks** (typo-level edits inside a larger plan) → waive Critic via `.gates-waived`; for bounded mechanical code changes, prefer `Type: trivial` (below).
@@ -175,7 +176,7 @@ error handling go missing one context at a time.
 
 **Per-chunk commit is the contract.** `chunk`-mode reviews assume the previous chunk was committed, so the working-tree diff is just the current chunk. Batch-commit-at-end plans break this — if you need that, override every chunk to `final` (heavy but safe; squash-at-end with `chunk`-mode has unbounded diff scope and is wrong).
 
-**Fail-safe default.** If the mode is missing, unrecognized, or inference cannot make a confident call, the review runs `final` (canonical rule: `skills/critic/review-cycle.md`) — but rely on inference rather than omitting the field as a shortcut to `final`.
+**Default when unsure.** A missing or unrecognized mode is inferred, and when no rule fires the review is the inner-stage `chunk` of the uncommitted interval — never `final` by default (canonical rule: `skills/critic/review-cycle.md`). Rely on inference rather than declaring a mode to buy depth the chunk has not earned.
 
 See `methodology/building.md` for runtime behavior and `skills/critic/review-cycle.md` for the per-mode behavior table.
 
@@ -183,7 +184,7 @@ See `methodology/building.md` for runtime behavior and `skills/critic/review-cyc
 
 Chunks also declare `Type:` — a separate axis from `Critic mode:`. Mode controls *how deep* the review is; Type controls *what kind of work* is under review. The Critic reads both and selects protocol per the matrix in `skills/critic/review-cycle.md`.
 
-Allowed values: `code` | `doc-only` | `cleanup` | `designer-handoff` | `cumulative-final` | `trivial`. Default is `code` — the fully-armed protocol — so a missing field is the safe option, not a carveout. Declare a non-default Type only when the chunk actually deviates:
+Allowed values: `code` | `doc-only` | `cleanup` | `designer-handoff` | `cumulative-final` | `trivial`. Default is `code` — the full protocol — so a missing field is the default, not a carveout. Declare a non-default Type only when the chunk actually deviates:
 
 - **`code`** — code or behavior changes. The default; rarely written explicitly.
 - **`doc-only`** — methodology, template, or prose-only edits. Critic skips test-evidence checks but still reviews prose deliverables for coverage.
@@ -196,7 +197,7 @@ Allowed values: `code` | `doc-only` | `cleanup` | `designer-handoff` | `cumulati
 
   **Over-declaration is unsafe and BLOCKING**: a `Type: trivial` chunk violating either bound is treated as `code` AND the stop-hook emits a named blocker (e.g., `skill-file-edited: …`) — fix the violation or change the Type, never both quietly.
 
-**Type vs. mode orthogonality.** A `doc-only` chunk can be `Critic mode: final`; a `code` chunk can be `chunk`. Declare each on its own merits. Under-declaring Type is safe (worst case: redundant Critic work); over-declaring is unsafe, per each Type's own bullet above.
+**Type vs. mode orthogonality.** A `doc-only` chunk can be `Critic mode: final`; a `code` chunk can be `chunk`. Declare each on its own merits: over-declaring is unsafe per each Type's own bullet above, and under-declaring buys review work the stage norm prices as a defect, not a margin.
 
 **Don't open a LINE or a sentence with a field marker unless you mean to declare it.** These fields are read mid-line — chunk headers compose them, and a period separates them as freely as a `·` — so a Description *starting* `**Type:** designer-handoff …` declares that type, the one that bypasses the Critic entirely. Backticks do not escape it: a line-opening ``` `**Type:** code` ``` is a declaration and binds deliberately. To write *about* a field, keep the marker inside the sentence (`unlike a **Type:** trivial chunk`) or drop the asterisks (`Type:`).
 

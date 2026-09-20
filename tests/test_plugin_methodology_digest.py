@@ -31,7 +31,7 @@ DIGEST_SRC = ROOT / "methodology" / "session-digest.md"
 # The methodology guides, read via `/prawduct:methodology <topic>`. `delegation`
 # joined on 2026-08-21; `principles` and `norms` are deliberately absent — they
 # route to `docs/`, not to a guide, and the overview list below names phases.
-PHASES = ("building", "discovery", "planning", "reflection", "delegation")
+PHASES = ("building", "discovery", "planning", "reflection", "session-hygiene", "delegation")
 
 # Claude Code spills additionalContext over this many characters to a file
 # instead of injecting it inline. The digest must stay comfortably under it.
@@ -293,6 +293,27 @@ class TestDigestHook:
         assert "/prawduct:methodology building" in text
         assert "/prawduct:methodology" in text
         assert "Critic" in text and "Stop hook" in text
+
+    def test_the_digest_states_where_project_memory_lives(self):
+        """R10 (learnings v2): a framework-wide DEFAULT lands on the always-injected
+        surface, because a place-once preference does not reach migrated repos.
+        The harness's auto-memory must not hold project state or product rules;
+        the repo's own files are authoritative."""
+        digest = " ".join(DIGEST_SRC.read_text(encoding="utf-8").split())
+        assert "auto-memory" in digest
+        assert "`.claude/rules/learnings/` are authoritative" in digest
+
+    def test_the_digest_states_the_stage_keyed_review_rule(self):
+        """A framework-wide DEFAULT lands on the always-injected surface: review
+        rigor is stage-keyed, and the three clauses that make it a rule rather
+        than a label — what the inner stage blocks on, that the boundary review
+        is never skipped, and which way "unsure" defaults — reach every session.
+        Whitespace-normalized because the digest hard-wraps mid-clause."""
+        digest = " ".join(DIGEST_SRC.read_text(encoding="utf-8").split())
+        assert "stage-keyed" in digest
+        assert "inner-loop reviews block only on ships-broken" in digest
+        assert "never skipped" in digest
+        assert "defaults to the cheaper inner review" in digest
 
     def test_the_digest_surfaces_the_report_bug_channel(self):
         # Discoverability of the upstream-bug-reporting channel (regression guard

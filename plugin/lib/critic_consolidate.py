@@ -95,6 +95,56 @@ MODE_TOKEN_TO_VERBOSE = {
 }
 _VERBOSE_VERIFY_RESOLUTIONS = MODE_TOKEN_TO_VERBOSE["verify-resolutions"]
 
+#: The two review STAGES (`nonfunctional-requirements.md` § Direction, *Review
+#: rigor is stage-keyed*). A stage is a fact about the review INTERVAL, and
+#: ``begin_review`` chooses the interval by mode — ``chunk``/``final`` review
+#: the uncommitted diff, ``verify-resolutions`` the delta since the prior fact,
+#: ``cumulative`` merge-base → HEAD — so the stage is a function of the mode
+#: token. This mapping is that function's one home: the dispatch writes the
+#: result onto the manifest as ``stage``, and every reader downstream (the
+#: reviewer prompt, the fact, the findings cache, the ledger event,
+#: ``review-stats``) READS it rather than re-deriving it.
+STAGE_INNER = "inner"
+STAGE_BOUNDARY = "boundary"
+STAGE_VALUES = frozenset({STAGE_INNER, STAGE_BOUNDARY})
+STAGE_OF_MODE = {
+    "chunk": STAGE_INNER,
+    "final": STAGE_INNER,
+    "verify-resolutions": STAGE_INNER,
+    "cumulative": STAGE_BOUNDARY,
+}
+
+
+def stage_of(mode_token: str) -> str:
+    """The review stage a mode token dispatches at — ``inner`` for a review of
+    an uncommitted or delta interval, ``boundary`` for the committed bundle.
+
+    Raises ``ValueError`` on an unknown token: every caller holds a token that
+    :data:`MODE_TOKEN_TO_VERBOSE` already accepted, so an unknown one here is a
+    vocabulary drift to fail loudly on, never a value to default.
+    """
+    try:
+        return STAGE_OF_MODE[mode_token]
+    except KeyError:
+        raise ValueError(
+            f"unknown mode token {mode_token!r} — expected one of {sorted(STAGE_OF_MODE)}"
+        ) from None
+
+
+def stage_of_manifest(manifest: dict) -> str:
+    """The stage a manifest was dispatched at.
+
+    Reads the recorded ``stage`` first. A manifest written before the field
+    existed — a review restored from the archive, or a leftover consolidated by
+    the session-end backstop — carries none, and for those the same function
+    that would have written it answers from the recorded mode. That is the
+    one derivation applied late, not a second home for it.
+    """
+    stage = manifest.get("stage")
+    if isinstance(stage, str) and stage in STAGE_VALUES:
+        return stage
+    return stage_of(mode_token_of(manifest.get("mode")))
+
 
 def mode_token_of(mode: object) -> str:
     """The mode TOKEN behind a persisted verbose mode string —
@@ -162,29 +212,37 @@ FULL_ROUND_MODES = tuple(t for t in MODE_TOKEN_TO_VERBOSE if t != "verify-resolu
 SINGLE_PASS_ROSTER = ("reviewer",)
 COORDINATOR_ROSTER = ("correctness", "design", "sustainability")
 
-# **Scope of that replay, and the fallback it forces.** Every figure above came
-# from THIS repo's evidence store, where the derived risk surfaces match 77% of
-# reviews. An onboarded product is the opposite case: the derived defaults are
-# framework-shaped, the `project-state.yaml` template ships no `risk_surfaces:`,
-# and the `boundary-patterns.md` template yields no parseable paths — so the
-# risk predicate would never fire and the rule would collapse to "judgeable >=
-# 12" ALONE, which is precisely row 2 of the table (54% of blockers demoted),
-# replacing a rule that gave that product a coordinator at 5 files.
+# **Scope of that replay.** Every figure above came from THIS repo's evidence
+# store, where the declared risk surfaces match 77% of reviews. An onboarded
+# product that declares no `risk_surfaces:` has no risk signal of its own — the
+# derived defaults are framework-shaped, the `project-state.yaml` template
+# ships no list, and the `boundary-patterns.md` template yields no parseable
+# paths — so for it the rule is "judgeable >= 12" alone, row 2 of the table.
+# Until the review-stages plan that gap was closed by retaining the
+# pre-2026-07-30 file-count rule (coordinator at 5+ changed files) as a fallback
+# for undeclared repos, on the argument that "no surface matched" and "no
+# signal to give" are indistinguishable at the match site and the cheaper
+# review was the unsafe direction. The stage-keyed rigor norm
+# (`nonfunctional-requirements.md` § Direction) retired that argument: redundant
+# review is a cost, not a margin, and the boundary review still runs. Measured
+# fleet-wide before retiring, 2026-08-01 → 09-17, six undeclared product repos:
 #
-# So the risk-keyed rule applies only where there IS a risk signal. A repo that
-# has declared none keeps the previous file-count escalator unchanged — no
-# behaviour change where there is no evidence to justify one. This repo opts in
-# by declaring `risk_surfaces:` in its own project-state.yaml, which is also
-# what makes the replay above describe the rule that actually runs here.
+#   fallback-only coordinator reviews     87 reviews, 48 blocking   0.55 / review
+#   single-pass reviews beside them       18 reviews, 14 blocking   0.78 / review
+#
+# The reviews the fallback escalated found blockers at a LOWER per-review rate
+# than the single-pass reviews in the same repos, so the record shows no yield
+# advantage for the third reviewer; how many of the 48 one reviewer would have
+# missed is not measurable from the store, and the owner's recorded decision
+# accepts that bounded miss as the price of removing three reviewers from the
+# commonest product change size. Recomputable:
+# `python3 tests/spikes/fallback_roster_yield.py`. The remedy for a product that
+# has not said where its risk lives is the question (`methodology/discovery.md`
+# § Surface Risk Surfaces), not an escalator that never asks.
 
 #: Judgeable-file count at which volume alone buys the coordinator, with no
 #: risk surface touched. Below it the replay shows an empty blocking record.
 COORDINATOR_JUDGEABLE_THRESHOLD = 12
-
-#: The pre-2026-07-30 rule, retained as the conservative fallback for repos that
-#: have declared no risk surfaces. NOT the primary rule any more — see
-#: ``_derive_roster``.
-COORDINATOR_FILE_THRESHOLD = 5
 
 # Background reviewers run for minutes after the dispatching fork returns, so
 # an early consolidate correctly finds zero partials — a silence the parent
@@ -288,7 +346,9 @@ _BATCH_FIX_DIRECTIVE = (
 )
 
 
-#: Carried by EVERY zero-blocking variant, including the clean pass.
+#: Carried by every zero-blocking variant that does NOT arrive holding the span
+#: answer — every mode but a clean `verify-resolutions` close, and that close
+#: too whenever the span could not be read (:func:`span_clause`).
 #:
 #: "The review is over" and "you may merge" are different claims, and only the
 #: first is this function's to make: a clean `chunk` mid-plan still owes a
@@ -298,11 +358,167 @@ _BATCH_FIX_DIRECTIVE = (
 #: the clean branch let two code-owned surfaces assert opposite things in one
 #: session, with the newer one saying "stop" — so it is a constant rather than
 #: a phrase each branch remembers to repeat.
+#:
+#: It remains the honest text for a span nobody could read: "go ask the gate" is
+#: a degraded answer, not a silent one ("advice fails soft" is not "advice fails
+#: silent"). What it is NOT honest for is the case where the framework has
+#: already computed the answer — see :func:`span_clause`.
 _COVERAGE_IS_A_SEPARATE_QUESTION = (
     " (Whether the PR gate is satisfied, and whether the work cycle still owes a"
     " final/cumulative, are separate questions about coverage — ask them by"
     " running the gate, not by reviewing again.)"
 )
+
+
+#: The half of :data:`_COVERAGE_IS_A_SEPARATE_QUESTION` that survives once the
+#: span answer IS in hand. Coverage becomes a statement; whether the work cycle
+#: has run the review it owes is a different question over the build plan, which
+#: nothing here computes, so it stays a caveat.
+_WORK_CYCLE_STILL_OWES = (
+    " (A review being over is not a work cycle being over — a plan mid-flight"
+    " still owes its final/cumulative at the end of it.)"
+)
+
+
+def fact_body_counts(fact: dict) -> dict:
+    """The ``counts`` block of a review fact, never ``None``."""
+    return (fact.get("body") or {}).get("counts") or {}
+
+
+def _span_commits(project_dir: Path, answer: dict) -> "int | None":
+    """How wide the branch span is, in commits.
+
+    The verdict itself cannot say: coverage composes over TREES, and a count of
+    trees is not a number anyone can picture. ``None`` when it cannot be read,
+    which drops the width from the sentence rather than guessing one — the
+    clause reads correctly without it, and a wrong width is worse than none.
+    """
+    merge_base = (answer.get("resolved") or {}).get("merge_base")
+    if not merge_base:
+        return None
+    rc, out, _ = evidence.run_git(
+        project_dir, "rev-list", "--count", f"{merge_base}..HEAD"
+    )
+    out = (out or "").strip()
+    if rc != 0 or not out.isdigit():
+        return None
+    return int(out)
+
+
+def span_clause(answer: "dict | None", commits: "int | None" = None) -> str:
+    """The branch-span verdict, rendered for the builder who just closed a
+    clean ``verify-resolutions`` round.
+
+    **The defect it answers.** A verify pass covers its own delta and nothing
+    else, and on a clean close it says ``THE REVIEW IS OVER``. Both halves of
+    that are true and the second is routinely read as branch clearance: on one
+    measured consumer branch the author relayed "the branch is clean" after
+    round 3, and round 4's cumulative found a BLOCKING defect that had been
+    present since chunk 1 — structurally invisible to every verify round
+    because it never sat inside one of their diffs. Nothing said the second
+    fact, because the framework's only carrier for it told the reader to go
+    *ask* the gate rather than stating an answer it had already computed.
+
+    ``answer`` is :func:`gates.branch_coverage_verdict`'s dict — rendered here,
+    never recomputed. ``commits`` is how wide the span is, passed in for the
+    same reason ``price_sentence`` is: this stays a pure function of its
+    arguments and the git read happens once, at the call site that already
+    holds the repo.
+
+    A span that could not be read falls back to
+    :data:`_COVERAGE_IS_A_SEPARATE_QUESTION`, which is the pre-existing text and
+    the honest one for "unknown".
+
+    **Why the positive arm is past-tense and the negative arms are not.** Like
+    :func:`cost_lead`, this clause is measured live and then FROZEN into
+    ``.critic-findings.json``, which ``briefing._summarize_critic_findings``
+    replays in later sessions. Those two are the whole class — every argument
+    :func:`next_action_line` receives that is not derived from the review fact —
+    and the class is decided here rather than one member at a time. The
+    asymmetry is deliberate: an *unclear* branch that later became clear costs
+    the reader a gate call they were already told to make, while a *covered*
+    claim that went stale is read as clearance for work no review has seen,
+    which is the misread this clause exists to prevent. So only the arm making
+    the durable positive claim is stamped and given its re-derivation; the
+    others already name ``check-cumulative-critic`` as the answer.
+
+    **It names no prawduct-internal identifier** (``observability-strategy.md``:
+    text emitted into a governed product names none) — no tree hashes, no
+    review ids, no fids. A count and a branch name are the product's own facts.
+    It invents no severity prefix either: it is a declarative sentence inside
+    the ``NEXT-ACTION:`` line, not a second signal competing with it.
+    """
+    status = (answer or {}).get("status")
+    if status not in ("covered", "transferred", "blocked", "uncovered"):
+        return _COVERAGE_IS_A_SEPARATE_QUESTION
+
+    base = ((answer or {}).get("resolved") or {}).get("base_branch") or "the base"
+    width = f"{commits} commit(s) since {base}" if commits is not None else base
+
+    if status in ("covered", "transferred"):
+        # An empty span — HEAD at the base, no commits of the branch's own — is
+        # the permanent state of a trunk-based governed product, and composition
+        # calls it covered because there is nothing to compose. Saying "review
+        # evidence spans 0 commit(s)" there is a claim about evidence that was
+        # never consulted, made in the review headline rather than behind a gate
+        # call the builder chose to make. This chunk's premise is that stating an
+        # answer beats inviting a question; that cuts both ways, and this is the
+        # arm where it cuts wrong.
+        path = ((answer or {}).get("verdict") or {}).get("path")
+        if commits == 0 or (status == "covered" and not path):
+            return (
+                " There is nothing on this branch for a review to span: HEAD"
+                f" sits at {base}, so the branch holds no commits of its own."
+                " That is not a statement about review evidence — none was"
+                " consulted." + _WORK_CYCLE_STILL_OWES
+            )
+        how = (
+            " (granted across a base advance rather than reviewed again)"
+            if status == "transferred"
+            else ""
+        )
+        # Says so and stops — no hedge on the verdict itself. A caveat implying
+        # the branch might not be covered is the same defect pointing the other
+        # way, and it trains the reader to discount the clause on the branch
+        # where it is load-bearing.
+        #
+        # **"at the HEAD this review saw" is precision, not a hedge, and it is
+        # the one thing this arm cannot leave out.** The span ends at the last
+        # COMMIT, and a verify
+        # pass routinely reviews a dirty tree — so the fix the builder is about
+        # to commit is not in the span this sentence just called covered, and
+        # committing it re-opens the gate. Reporting "the branch is covered"
+        # from that state is the very misread this whole clause exists to stop,
+        # arriving one minute later by the other door.
+        return (
+            f" The BRANCH was covered too{how}, at the HEAD this review saw:"
+            f" composed review evidence spanned {width} with no blocking findings"
+            " outstanding — work you had not committed yet is not in that span."
+            " Re-derive with `prawduct-hook check-cumulative-critic` if the"
+            " branch has moved since."
+            + _WORK_CYCLE_STILL_OWES
+        )
+
+    if status == "blocked":
+        unresolved = len(((answer or {}).get("verdict") or {}).get("unresolved", []))
+        return (
+            " This verdict covers THIS delta only, and the BRANCH is not clear:"
+            f" evidence spans {width} but carries {unresolved} unresolved BLOCKING"
+            " finding(s) from earlier round(s). Do not report the branch clean —"
+            " `prawduct-hook check-cumulative-critic` names them and how each one"
+            " clears." + _WORK_CYCLE_STILL_OWES
+        )
+
+    return (
+        " This verdict covers THIS delta only. The BRANCH is NOT covered: no"
+        f" composed review evidence spans {width} end to end, so anything changed"
+        " outside the deltas these rounds looked at has been reviewed by nothing."
+        " Both facts are true at once and only one of them is about the branch —"
+        " say both if you report this upward. `prawduct-hook"
+        " check-cumulative-critic` names the cheapest route to close the gap; do"
+        " not assume that route is another full review."
+        + _WORK_CYCLE_STILL_OWES
+    )
 
 
 #: The route the fix/accept/file trio was missing, carried by BOTH arms.
@@ -335,6 +551,188 @@ _RIDE_ALONG_ROUTE = (
     " chunk will meet it (the build plan or `.prawduct/.handoff-notes.md`), or"
     " it is not a deferral, it is a drop."
 )
+
+
+#: What fixing a non-blocking item costs, and how to find out before paying it.
+#:
+#: Shared by every zero-blocking close that still carries something a builder
+#: might fix — findings or demoted observations. Fixing is the one response to
+#: those items that moves the tree, so a close that offers "accept" without also
+#: saying what the alternative costs is weighing one route and hiding the other.
+#:
+#: **It no longer sends the builder to price the batch.** It used to name
+#: ``cost-of-commit <paths>`` and explain that a `free` batch needs no pass —
+#: which is the question :func:`cost_lead` now ANSWERS in this message's first
+#: sentence. Carrying both made the close state the answer and then ask the
+#: reader to go compute it, which is the state #831 was filed about, surviving
+#: its own fix. The re-derivation pointer still ships, once, inside the clause
+#: that makes the claim needing re-deriving.
+_IF_YOU_FIX_SOME = (
+    " If you do choose to fix some, batch them into"
+    " ONE commit — and re-cover with ONE `/prawduct:critic verify-resolutions`"
+    " ONLY if that commit touched judgeable files. AFTER committing,"
+    " you no longer have to judge that either: dispatch asks the same predicate and"
+    " exits 3 (`no review needed`, under a second, no session state written) rather than"
+    " spending a reviewer on a free interval — so asking costs nothing, and a"
+    " refusal is the answer, not a reason to retry in another mode."
+    " Do NOT start another round to 'close coverage' before committing, and do"
+    " not infer that you need one from gate output printed before your fix —"
+    " commit, then re-run the gate and let it answer."
+)
+
+
+#: Why every clause here is past-tense and carries a re-derivation.
+#:
+#: This sentence is measured from LIVE state at consolidation and then FROZEN:
+#: ``fact_to_cache_record`` writes it into ``.critic-findings.json``, whose
+#: designated later reader is ``briefing._summarize_critic_findings`` — the one
+#: its own comment calls definitionally the reader who lost the reviewer's
+#: report. The modal sequence inverts the advice: a review runs against a dirty
+#: judgeable tree, the record freezes "a fix buys no extra round", the builder
+#: commits, and a later session reads that against a clean tree where each fix
+#: buys the whole round this scope exists to remove.
+#:
+#: ``core.md``: never write a present-tense state claim into a durable
+#: document — write the dated measurement plus the command that re-derives it.
+#: So the tense says when it was true and the pointer says how to re-ask, which
+#: makes ONE wording honest on both the relayed in-session line and the
+#: persisted record. Splitting them into two variants was the alternative and
+#: it fails the same file's one-home rule.
+_REDERIVE_COST = (
+    "Re-derive with `prawduct-hook cost-of-commit` if the tree has moved since."
+)
+
+
+def tree_is_covered_by(capture: "dict | None", anchor_tree: "str | None") -> bool:
+    """Does the review that just landed COVER the working tree as it stands?
+
+    Extracted rather than inlined because a mutation sweep found three
+    survivors in the inline version, all of them in the comparison rather than
+    in the message: the only tests were of the pure renderer and a structural
+    check too narrow to see them. An inlined comparison is testable only
+    through whatever renders it.
+
+    **Fails soft in the safe direction.** A degraded capture returns False, so
+    the close renders its ordinary advice rather than a coverage claim nothing
+    verified — an unverifiable "you are covered" is the one answer that would
+    send a builder to commit work no review saw.
+    """
+    if not capture or capture.get("status") != "ok":
+        return False
+    if not anchor_tree:
+        return False
+    return capture.get("tree") == anchor_tree
+
+
+
+#: The mechanical question, answered — not handed to the builder to go run.
+#:
+#: #831's finding: the fix/accept call is EVALUATIVE today ("is this worth
+#: fixing?"), which is unanswerable with a complete remedy already in hand —
+#: it always feels yes. The mechanical question that replaces it is *"am I
+#: already making a judgeable commit?"*, because that is what decides whether
+#: a fix is free or costs a whole round. Both inputs were already computed
+#: somewhere and neither reached this message: :func:`coverage.commit_cost`
+#: prices the tree, :func:`telemetry.round_price` prices a round, and
+#: ``_IF_YOU_FIX_SOME`` told the builder to go run the first one himself.
+#: Measured 2026-09-19: that decision was made ~30 times across two branches
+#: with neither number in front of it.
+#:
+#: **Why the working tree and not the findings' own files.** Pricing the files
+#: the findings NAME answers a different question — "what would fixing all of
+#: these cost" — which is not the one the builder is asking and not the one
+#: #831 states. The tree is what makes the question answerable without
+#: guessing which findings the builder intends to act on.
+#:
+#: **Why this adds information rather than removing it.** #832 was closed
+#: NOT_PLANNED on the ground that suppressing finding content is satisfiable
+#: by rating WARNING instead, which displaces work up a severity while every
+#: metric reads as success. That closure is the design steer for this whole
+#: scope: the lever has to ADD cost information. Nothing here hides a finding.
+#:
+#: Pure, like :func:`next_action_line` beside it — the caller reads git and the
+#: ledger once per consolidation and passes both results in, so the two
+#: carriers of this sentence cannot quote different numbers and no digit is
+#: restated in this module (``architecture.md``: every fact has one home).
+def cost_lead(cost: "dict | None", tree_now_covered: bool = False) -> str:
+    """The leading sentence of a zero-blocking close: what fixing costs here,
+    and what that implies.
+
+    ``cost`` is :func:`coverage.commit_cost`'s verdict for the WORKING TREE. It
+    may carry a degraded state, and a degraded state renders its REASON — never
+    a reassuring default. What a round COSTS is deliberately not rendered here:
+    :func:`telemetry.format_round_price` owns that sentence and the close
+    already carries it, so stating it twice would put two carriers on one fact. ``architecture.md`` § Direction makes this advice, so it fails
+    soft; ``core.md`` makes "advice fails soft" not "advice fails silent", so
+    an unpriceable tree says it could not be priced and recommends the
+    conservative read, which is the one that does not spend a round by
+    surprise.
+
+    ``tree_now_covered`` says the review just consolidated COVERS the current
+    working tree — which inverts the advice, and is #851. ``commit_cost`` asks
+    only whether paths are judgeable; it cannot know a review just anchored
+    here. Once one has, the commit this lead would call free is already covered,
+    and the next edit opens a NEW delta needing its own pass whatever its paths
+    are. Measured live on 2026-09-19 building this scope's own predecessor: the
+    close said a batch of fixes was free, and it bought a full round.
+
+    Returns ``""`` when ``cost`` is absent, so a caller that did not compute it
+    renders exactly the message it rendered before this existed.
+    """
+    if not cost:
+        return ""
+    if cost.get("reason"):
+        return (
+            "Fixing could not be priced at review time"
+            f" ({cost['reason']}) — that is a missing number, not a small one."
+            " Decide as if a fix buys a round."
+        )
+    judgeable = cost.get("judgeable") or []
+    if tree_now_covered:
+        # Ahead of BOTH ordinary arms: whether the tree is dirty stops being the
+        # question once a review has anchored on it. Saying "you are already
+        # making a judgeable commit" here is true of the tree and false about
+        # the cost, which is the exact inversion #851 records.
+        # The operative half is identical either way: the next edit opens a
+        # new delta. What differs is whether there is anything to commit —
+        # telling a builder with a clean tree to "commit this tree verbatim"
+        # names a step they cannot take, and advice that cannot be followed is
+        # how a reader learns to discount the rest of the sentence.
+        carry = (
+            "so the commit that carries it is already paid for"
+            if cost.get("paths")
+            else "and your tree is clean, so there is nothing left to pay for"
+        )
+        act = (
+            "Recommended: commit this tree verbatim and stop;"
+            if cost.get("paths")
+            else "Recommended: stop here;"
+        )
+        return (
+            f"This review COVERS your working tree as it stands, {carry} — and"
+            " the next edit after it, judgeable or not, opens a NEW delta that"
+            " needs its own `/prawduct:critic verify-resolutions`."
+            f" {act} fix anything further only if it is worth a round of its own."
+        )
+    if judgeable:
+        return (
+            f"AT REVIEW TIME you were already making a judgeable commit"
+            f" ({len(judgeable)} uncommitted judgeable file(s)), so a fix"
+            " batched into it bought NO extra round."
+            f" {_REDERIVE_COST} Recommended while that holds: fix what is worth"
+            " fixing, accept the rest."
+        )
+    tree = (
+        "nothing judgeable was uncommitted"
+        if cost.get("paths")
+        else "your tree was clean"
+    )
+    return (
+        f"AT REVIEW TIME you were not making a judgeable commit ({tree}), so the"
+        " first judgeable fix bought a whole review round."
+        f" {_REDERIVE_COST} Recommended while that holds: accept these unless a"
+        " fix is worth that."
+    )
 
 
 def carried_blocking(facts: list[dict], base_tree: "str | None",
@@ -401,6 +799,9 @@ def next_action_line(
     note: int,
     price_sentence: "str | None" = None,
     carried: "list[dict] | None" = None,
+    span: "str | None" = None,
+    observations: int = 0,
+    cost: "str | None" = None,
 ) -> str:
     """The one sentence the BUILDER needs, computed from the fact's own counts
     and written into ``.critic-findings.json`` by :func:`fact_to_cache_record`.
@@ -442,6 +843,16 @@ def next_action_line(
     only in the arm the builder does not reach when something is blocking."""
     ref = fact_id or "<review-id>"
     price = f" {price_sentence}" if price_sentence else ""
+    # Leads the two zero-blocking arms that still carry a fix decision, and
+    # ONLY those. The blocking arm's next move is to fix regardless of price,
+    # and the truly-empty close has nothing to fix — a cost verdict on either
+    # would be a number with no decision attached to it.
+    lead = f"{cost} " if cost else ""
+    # `span` is :func:`span_clause`'s output, rendered by the caller for the
+    # same reason `price_sentence` is. Absent (every mode but a clean
+    # `verify-resolutions` close) the clause stays what it always was: go ask
+    # the gate.
+    coverage_clause = span if span is not None else _COVERAGE_IS_A_SEPARATE_QUESTION
     if carried:
         named = "; ".join(
             f"{c['review_id']}/{c.get('fid', '?')}"
@@ -490,37 +901,62 @@ def next_action_line(
             " findings in that SAME pass (fix / accept / file) — deferring them to a"
             " later round is what turns one review into several. Accept is the"
             " default for anything nobody will realistically action:"
-            f' `prawduct-hook disposition {ref} <fid> --accept "<reason>"` needs no'
+            f' `prawduct-hook disposition {ref} <fid|oid> --accept "<reason>"` needs no'
             " review and moves no tree."
             + _RIDE_ALONG_ROUTE
             + price
         )
     if not (warning or note):
+        # An inner-stage pass (`verify-resolutions` first; every inner mode
+        # since rigor became stage-keyed) demotes what falls outside the inner
+        # BLOCKING set to an observation, so "0 findings, N observations" is
+        # its MODAL close, not an edge — and this arm is the text it prints. Saying
+        # "nothing to disposition" there contradicts the reviewer's own
+        # `### Observations` report in the same message, and leaves the
+        # accept-on-the-record route unused on the path that produces most of
+        # the items it was built for.
+        if observations:
+            return (
+                lead
+                + f"0 blocking, 0 findings — THE REVIEW IS OVER and nothing in THIS"
+                f" review requires another round. {observations} item(s) were"
+                " demoted to observations, and each can be answered on the record"
+                " instead of fixed:"
+                f' `prawduct-hook disposition {ref} <oid> --accept "<reason>"`'
+                " (the ids are in `.critic-findings.json` under `observations`),"
+                " which needs no review and moves no tree."
+                + coverage_clause
+                # This is the one clean close that still carries actionable
+                # items, so it is the close where a builder is most likely to
+                # fix one — and fixing is the route that buys a round. It
+                # therefore owes the same cost of fixing, the same free route
+                # and the same price the warnings arm prints.
+                + _IF_YOU_FIX_SOME
+                + _RIDE_ALONG_ROUTE
+                + price
+            )
         return (
             "0 blocking, 0 other findings — THE REVIEW IS OVER and there is nothing"
             " to disposition. Nothing in THIS review requires another round."
-            + _COVERAGE_IS_A_SEPARATE_QUESTION
+            + coverage_clause
         )
     return (
-        f"0 blocking — THE REVIEW IS OVER. The {warning} warning + {note} note"
+        lead
+        + f"0 blocking — THE REVIEW IS OVER. The {warning} warning + {note} note"
         " finding(s) gate NOTHING: no gate reads them, so nothing in THIS review"
         " requires another round."
-        + _COVERAGE_IS_A_SEPARATE_QUESTION
+        + coverage_clause
         + " Disposition each finding instead of reflexively fixing it —"
         " accept is the default for anything nobody will realistically action:"
-        f' `prawduct-hook disposition {ref} <fid> --accept "<reason>"`, which needs'
-        " no review and moves no tree. If you do choose to fix some, batch them into"
-        " ONE commit — and re-cover with ONE `/prawduct:critic verify-resolutions`"
-        " ONLY if that commit touched judgeable files. `prawduct-hook cost-of-commit"
-        " <paths>` answers that for the exact batch BEFORE you commit it; a batch it"
-        " prices `free` moves no coverage and needs no pass at all. AFTER committing,"
-        " you no longer have to judge it either: dispatch asks the same predicate and"
-        " exits 3 (`no review needed`, under a second, no session state written) rather than"
-        " spending a reviewer on a free interval — so asking costs nothing, and a"
-        " refusal is the answer, not a reason to retry in another mode."
-        " Do NOT start another round to 'close coverage' before committing, and do"
-        " not infer that you need one from gate output printed before your fix —"
-        " commit, then re-run the gate and let it answer."
+        f' `prawduct-hook disposition {ref} <fid|oid> --accept "<reason>"`, which needs'
+        " no review and moves no tree."
+        + (
+            f" The {observations} demoted observation(s) answer to the same"
+            " command by their `O-n` ids."
+            if observations
+            else ""
+        )
+        + _IF_YOU_FIX_SOME
         + _RIDE_ALONG_ROUTE
         + price
     )
@@ -657,10 +1093,10 @@ def account_for_prior_blockers_directive(carried: list[dict]) -> str:
 #: why this mode and not the others, what it does not cost (only
 #: ``unresolved_blocking`` is read by any gate), what it does cost (an
 #: observation is not a recorded fact), the escalation history, and the
-#: half-emitted yield. Both audiences are maintainers and both copies were
+#: how its yield is observed. Both audiences are maintainers and both copies were
 #: full-length, which is the shape ``architecture.md``'s one-home norm names: on
-#: the next change to the argument — #585 landing makes "yield is half-emitted"
-#: false — the loser is whichever reader met the stale copy.
+#: the next change to the argument, the loser is whichever reader met the stale
+#: copy.
 #:
 #: What stays here is what an editor of THIS STRING needs and that section does
 #: not own:
@@ -687,6 +1123,16 @@ def account_for_prior_blockers_directive(carried: list[dict]) -> str:
 #: slot for anything else, so "in prose" was not enough — the text names an
 #: `### Observations` heading and asks for a count, and both are pinned.
 #:
+#: **There are now TWO destinations and the text must keep naming both.** The
+#: partial's ``observations`` array is where the RECORD goes: it gives each one
+#: an id ``disposition`` can join on, so declining an observation stops costing
+#: the reasoning, and it makes the demotion rate a query over the store rather
+#: than a number the reviewer asserts about its own output. The report heading
+#: is where the BUILDER meets them, in the same reading where it decides what
+#: to do — and the cost-bound this whole rule rests on is that the builder
+#: reads them. The two lose different things when dropped, which is why the
+#: count in the report is not redundant with the array.
+#:
 #: **The descent is load-bearing, for the reason
 #: :data:`RESOLUTION_IS_A_CLAIM_DIRECTIVE`'s docstring gives at length.** A
 #: reviewer agrees that re-reviews should not manufacture work and then records
@@ -697,26 +1143,33 @@ def account_for_prior_blockers_directive(carried: list[dict]) -> str:
 #: never reaches.
 VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE = (
     "PRAWDUCT: this pass answers ONE question — were the prior findings"
-    " resolved? A NEW finding here is BLOCKING, or it is not a finding."
-    " **The test is the SEVERITY you would assign, never membership in any"
-    " list.** Anything you would rate below BLOCKING — including a record-lint"
-    " entry the manifest rated below BLOCKING — goes in your report under an"
+    " resolved? A NEW finding here is one of the inner BLOCKING set, or it is"
+    " not a finding: a test failure in the evidence; a test deleted or weakened; changed behavior with no test at all; a silently dropped requirement; exploitable security in changed code; a cross-component contract break; a norm departure without a recorded decision; an unlisted dependency."
+    " **The test is membership in that set, never the severity a table"
+    " prints** — a `→ BLOCKING` outside it (a learnings budget row, an"
+    " undocumented decision that departs from no norm) is an observation here,"
+    " and so is everything a table rates lower, record-lint entries included."
+    " Observations go in your report under an"
     " `### Observations` heading, in prose, and NOT into `findings`: a name you"
     " would have chosen differently, prose that could be tighter, a test you"
-    " would have structured another way. Everything the protocol rates BLOCKING"
-    " stays BLOCKING, with no exceptions and no list to check. Five classes are"
-    " BLOCKING *in this mode whatever they are rated elsewhere*, because they"
-    " are what a fix delta actually gets wrong and demoting one is the only way"
-    " this rule could lose something real: a test weakened or deleted to make"
-    " the fix pass; a requirement dropped in the rewrite; changed behavior with"
-    " no test; anything security-relevant in the changed code — including the"
-    " auth/authz and known-vulnerable-dependency cases the protocol rates"
-    " WARNING; and fix-by-fudging — the spec edited to match the implementation,"
-    " or a workaround where the finding named the root cause, which is equally"
-    " grounds to leave that finding OUT of `resolutions`. This list only ADDS to"
-    " what the protocol blocks; it never narrows it. Then say how many"
-    " observations you demoted, in one line, so a rule that fired can be told"
-    " apart from a reviewer that found nothing. The demotion is not politeness:"
+    " would have structured another way. Put each one in your partial's"
+    " `observations` array TOO — `{name, goal, recommendation, files?}`, a"
+    " finding minus its severity — which is what lets the builder ACCEPT it on"
+    " the record instead of fixing it just to leave a trace. An entry you rate"
+    " `blocking` is refused there: a BLOCKING item is a finding."
+    " The set is the norm's and it is exact — it neither adds a class the norm"
+    " does not name nor drops one it does. Five shapes a fix delta actually"
+    " gets wrong sit inside it, and two of them are ESCALATIONS against the"
+    " ratings the protocol prints, so they are named: a test weakened or"
+    " deleted to make the fix pass; a requirement dropped in the rewrite;"
+    " changed behavior with no test; exploitable security in the changed code —"
+    " which covers the auth/authz and known-vulnerable-dependency cases the"
+    " protocol rates WARNING; and fix-by-fudging — the spec edited to match the"
+    " implementation (a dropped requirement), or a workaround where the finding"
+    " named the root cause, which is equally grounds to leave that finding OUT"
+    " of `resolutions`. Then say how many"
+    " observations you demoted, in one line, so the builder meets the number"
+    " without opening the record. The demotion is not politeness:"
     " a WARNING recorded here becomes a fix commit, the commit moves the tree,"
     " the moved tree reopens coverage, and the next pass reviews the prose this"
     " fix just wrote — measured at ten rounds on one branch, where rounds five"
@@ -1488,13 +1941,75 @@ def _mark_cache_superseded(prawduct_dir: Path, review_id: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
+#: What the signals line prints when the dispatch read NO chunk type at all —
+#: no graded chunk, an unrecognised declaration, or a plan it could not read.
+#: A graded chunk whose ``Type:`` field is simply absent renders the parser's
+#: own ``code`` default as a plain ``Type: code``; this label marks the case
+#: where nothing was read, so the line never claims a declaration it did not
+#: see ("never honor an unknown Type" is the protocol's rule for both).
+CHUNK_TYPE_DEFAULT_LABEL = "code (default)"
+
+
+def signals_line(manifest: dict) -> str:
+    """The one-line signals summary a coordinator hands each reviewer —
+    ``Stage: <stage> · Judgeable files: <n> · Type: <chunk type>``.
+
+    Rendered FROM the manifest, by code, so no coordinator composes it: the
+    freeform ``Signals: [summary]`` it replaces was the one substitution in the
+    reviewer prompt that a model invented per dispatch, and the stage — the
+    field the severity table now keys on — was not in it. ``begin_review``
+    stores the rendering on the manifest as ``signals`` and the CLI prints it;
+    a reader that wants to check the stored line against the fields re-renders
+    with this function.
+    """
+    stage = manifest.get("stage")
+    judgeable = manifest.get("judgeable_files")
+    chunk_type = manifest.get("chunk_type") or CHUNK_TYPE_DEFAULT_LABEL
+    return (
+        f"Stage: {stage if stage in STAGE_VALUES else 'unknown'} · "
+        f"Judgeable files: {judgeable if isinstance(judgeable, int) else '?'} · "
+        f"Type: {chunk_type}"
+    )
+
+
+def _dispatch_chunk_type(prawduct_dir: Path, lint: dict) -> "str | None":
+    """The reviewed chunk's declared ``Type:``, read from the SAME plan and
+    chunk record-lint graded, or ``None`` when no recognised declaration
+    reached this dispatch.
+
+    ``record_lint`` already resolved which plan the review is about and which
+    chunk it grades (``plan_graded`` / ``chunk_graded``); reading the type from
+    any other plan would be two chunk-level fields resolving from two places,
+    the defect ``buildplan_refs.resolve_reviewed_plan`` exists to close. An
+    unrecognised value is ``None`` too: the protocol never honours an unknown
+    Type, and the Stop hook is the surface that reports the typo.
+    """
+    plan_rel = lint.get("plan_graded") if isinstance(lint, dict) else None
+    chunk_id = lint.get("chunk_graded") if isinstance(lint, dict) else None
+    if not isinstance(plan_rel, str) or not plan_rel or not isinstance(chunk_id, str) or not chunk_id:
+        return None
+    from . import buildplan_refs  # noqa: PLC0415 — lazy; keeps the import graph flat
+
+    try:
+        declared, _error = buildplan_refs._parse_build_plan_chunk_type(
+            prawduct_dir, chunk_id, prawduct_dir.parent / plan_rel
+        )
+    except (OSError, ValueError):  # a plan the lint could read but this read cannot
+        return None
+    return declared
+# ---------------------------------------------------------------------------
+
+
 def _derive_roster(
     mode_token: str, files_changed: list[str], prawduct_dir: Path
 ) -> tuple[list[str], str]:
     """The roster this dispatch requires, plus the rationale (Q7 debugging).
 
-    Risk surface first, judgeable volume second — see the roster config block
-    for the replay that ordered them that way.
+    Risk surface first, judgeable volume second, and nothing else — see the
+    roster config block for the replay that ordered them that way and for the
+    measured yield of the file-count fallback this used to carry for repos
+    with no declaration. A repo that declares nothing runs the same two
+    escalators as one that does; what a declaration buys is the paths it names.
     """
     if mode_token in ("chunk", "verify-resolutions"):
         return list(SINGLE_PASS_ROSTER), f"mode={mode_token} is always single-pass"
@@ -1512,23 +2027,6 @@ def _derive_roster(
         return list(COORDINATOR_ROSTER), (
             f"mode={mode_token}, no risk surface, {nj} judgeable file(s) >= "
             f"{COORDINATOR_JUDGEABLE_THRESHOLD} — coordinator"
-        )
-
-    # "No risk surface matched" means low risk only if this repo HAD a signal to
-    # give. With no declaration it means we learned nothing — and falling
-    # through on judgeable volume alone would silently adopt the rule the replay
-    # rejected. Keep the previous escalator until the repo says where its risk
-    # lives.
-    if not risk.has_product_risk_declaration(prawduct_dir):
-        n = len(files_changed)
-        if n >= COORDINATOR_FILE_THRESHOLD:
-            return list(COORDINATOR_ROSTER), (
-                f"mode={mode_token}, no declared risk surfaces, {n} file(s) >= "
-                f"{COORDINATOR_FILE_THRESHOLD} — coordinator (prior rule retained)"
-            )
-        return list(SINGLE_PASS_ROSTER), (
-            f"mode={mode_token}, no declared risk surfaces, {n} file(s) < "
-            f"{COORDINATOR_FILE_THRESHOLD} — single-pass (prior rule retained)"
         )
 
     return list(SINGLE_PASS_ROSTER), (
@@ -2503,6 +3001,19 @@ def begin_review(
         # without the key is still valid.
         "seed": capture.get("seed"),
     }
+    # The review STAGE, derived once here from the mode (which chose the
+    # interval above) and read everywhere else — the reviewer prompt's signals
+    # line, the review fact, the findings cache, the ledger event and
+    # `review-stats`. Nothing downstream re-derives it: the severity table keys
+    # on this value, and a second derivation is a second table.
+    from . import coverage_algebra  # noqa: PLC0415 — lazy; keeps the import graph flat
+
+    manifest["stage"] = stage_of(mode_token)
+    manifest["judgeable_files"] = len(coverage_algebra.judgeable_files(files_changed))
+    manifest["chunk_type"] = _dispatch_chunk_type(prawduct_dir, lint)
+    # Rendered from the three fields above, so the coordinator copies a line
+    # rather than composing one.
+    manifest["signals"] = signals_line(manifest)
     ok, reason = validate_manifest(manifest)
     if not ok:
         # A manifest this function derived failing its own validator is a bug
@@ -2532,6 +3043,31 @@ def begin_review(
     superseded = _mark_cache_superseded(prawduct_dir, review_id)
     pdir.mkdir(parents=True, exist_ok=True)
     atomic_write_text(manifest_path(prawduct_dir), json.dumps(manifest, indent=2))
+
+    # Start this review's stopwatch — LAST, so the mark attests an interval a
+    # reviewer actually spends. Every refusal above returns before here, and a
+    # mark written for a round that never dispatched would attest time nobody
+    # spent and then be consumed by whichever append came next.
+    #
+    # Fail-soft by construction: a duration is advice, so a marker that cannot
+    # be written must never cost a review that was going to run. The degradation
+    # is NAMED rather than swallowed — an unnamed one manufactures the false
+    # success it exists to prevent — and it rides `notes`, which the CLI already
+    # prints to stderr as `PRAWDUCT NOTE: {note}`. The string therefore carries no
+    # severity token of its own; every sibling `notes.append` here is a bare
+    # sentence for the same reason.
+    from . import review_dispatch  # noqa: PLC0415 — lazy, as this module's other lib imports are
+
+    try:
+        review_dispatch.begin(
+            prawduct_dir, "review.critic", review_dispatch.head_sha(project_dir)
+        )
+    except OSError as exc:
+        notes.append(
+            f"the review dispatch clock could not be started ({exc}) — the "
+            "review runs normally; its duration will be self-reported by the "
+            "reviewer rather than measured."
+        )
 
     return {
         "status": "ok",
@@ -2567,6 +3103,59 @@ def _str_list(val) -> bool:
     return isinstance(val, list) and all(_nonempty_str(v) for v in val)
 
 
+def _validate_observations(observations) -> tuple[bool, str]:
+    """Validate a partial's optional ``observations`` array.
+
+    An observation is what an inner-stage pass demoted (``verify-resolutions``
+    first; every inner-stage mode once rigor became stage-keyed): the reviewer
+    would have rated it below BLOCKING, or outside the inner BLOCKING set, so it
+    is not a finding and no gate ever reads it. It is recorded anyway, for two reasons the prose destination
+    could not serve — the builder can ANSWER one (``prawduct-hook disposition``
+    joins on its id), and the demotion's own yield becomes a query over the
+    store instead of a count the reviewer asserts about itself.
+
+    **Shape mirrors a finding minus its severity**, deliberately: the reviewer
+    writes both arrays in one sitting, and a second vocabulary for the same
+    subject is what it would have to remember rather than transcribe.
+
+    **``severity: blocking`` is REFUSED, and that refusal is the safety
+    property.** The array is outside ``findings``, so nothing downstream gates
+    on it; an item the reviewer itself rates BLOCKING therefore cannot be
+    allowed to sit here, where it would read as handled and gate nothing. It is
+    a contradiction in the record — the directive that produces observations
+    says anything BLOCKING stays a finding — and the fail-closed answer to a
+    record that contradicts itself is to refuse the whole consolidation rather
+    than to pick a half to believe. A lesser ``severity`` is tolerated and NOT
+    carried: every observation is below-blocking by construction, so persisting
+    a rating would only invite the census to re-sort on it, which is the
+    gradient the demotion exists to flatten.
+    """
+    if observations is None:
+        return True, ""
+    if not isinstance(observations, list):
+        return False, "'observations' must be a list"
+    for idx, o in enumerate(observations):
+        if not isinstance(o, dict):
+            return False, f"observation[{idx}] is not an object"
+        for field in ("name", "goal", "recommendation"):
+            if not _nonempty_str(o.get(field)):
+                return False, f"observation[{idx}] missing/empty '{field}'"
+        severity = o.get("severity")
+        if isinstance(severity, str) and severity.strip().lower() == "blocking":
+            return False, (
+                f"observation[{idx}] is rated 'blocking' — a BLOCKING item is a "
+                "finding, never an observation. Nothing gates on an observation, "
+                "so recording it here would read as handled while blocking "
+                "nothing; move it into 'findings'"
+            )
+        # Same tolerance as a finding's ``files``: optional attribution must
+        # never fail-close a whole consolidation, so a malformed element is
+        # normalized away downstream rather than refused here.
+        if "files" in o and not isinstance(o["files"], list):
+            return False, f"observation[{idx}] 'files' must be a list"
+    return True, ""
+
+
 def validate_partial(data) -> tuple[bool, str]:
     """Validate a single reviewer partial.
 
@@ -2579,6 +3168,12 @@ def validate_partial(data) -> tuple[bool, str]:
     verify-resolutions judgment payload (D5): ``disposition`` is ``fixed`` or
     ``waived``, and ``waived`` REQUIRES a non-empty ``rationale`` (R7 — a
     waiver carries its justification).
+
+    ``observations`` is what an inner-stage pass DEMOTED — validated by
+    :func:`_validate_observations`, and refused outright by :func:`consolidate`
+    on a boundary-stage dispatch. Demotion is a stage rule; an array outside
+    ``findings`` that the boundary could write would be a severity-laundering
+    path.
 
     ``dispatch_id`` is the id of the review that dispatched this reviewer, and
     it is deliberately NOT named ``review_id``: ``resolutions[].review_id`` in
@@ -2633,6 +3228,9 @@ def validate_partial(data) -> tuple[bool, str]:
         # META-finding otherwise bricked every review).
         if "files" in f and not isinstance(f["files"], list):
             return False, f"finding[{idx}] 'files' must be a list"
+    ok, why = _validate_observations(data.get("observations"))
+    if not ok:
+        return False, why
     resolutions = data.get("resolutions")
     if resolutions is not None:
         if not isinstance(resolutions, list):
@@ -2675,7 +3273,10 @@ def validate_manifest(data) -> tuple[bool, str]:
     Nullable: ``base_commit``/``head_commit`` (a prior review of a dirty tree
     has no commit), ``tier``/``scope``/``scope_chosen_by``/``chunk``/``model``/
     ``base_reviewed``, ``worktree``/``branch`` (visibility fields; ``branch`` is
-    None on a detached HEAD — PDT-WT9K).
+    None on a detached HEAD — PDT-WT9K). Optional and typed: ``stage``
+    (``inner``/``boundary`` — the severity rule keys on it), ``judgeable_files``,
+    ``chunk_type`` and ``signals`` (the code-rendered reviewer line), absent
+    only on a manifest written before they existed.
 
     The v2 (model-written) manifest shape carries none of the v3 interval
     fields, so it fails here loudly — a stale cached skill hand-authoring a
@@ -2746,10 +3347,23 @@ def validate_manifest(data) -> tuple[bool, str]:
     if data.get("files_oracle") is not None and not _str_list(data.get("files_oracle")):
         return False, "'files_oracle' must be a list of non-empty strings or null"
     for opt in ("base_commit", "head_commit", "tier", "scope", "scope_chosen_by",
-                "chunk", "model", "base_reviewed", "worktree", "branch"):
+                "chunk", "model", "base_reviewed", "worktree", "branch",
+                "chunk_type", "signals"):
         val = data.get(opt)
         if val is not None and not _nonempty_str(val):
             return False, f"'{opt}' must be a non-empty string or null"
+    # Optional for the same reason `files_oracle` is — a manifest restored from
+    # before the field existed still consolidates — and typed because the value
+    # reaches the fact and the severity rule keys on it: a misspelt stage must
+    # fail here, not read as "neither stage" downstream.
+    stage = data.get("stage")
+    if stage is not None and stage not in STAGE_VALUES:
+        return False, f"'stage' must be one of {sorted(STAGE_VALUES)} or null, got {stage!r}"
+    judgeable = data.get("judgeable_files")
+    if judgeable is not None and (
+        not isinstance(judgeable, int) or isinstance(judgeable, bool) or judgeable < 0
+    ):
+        return False, "'judgeable_files' must be a non-negative integer or null"
     return True, ""
 
 
@@ -3289,6 +3903,44 @@ def merge_findings(partials: list[dict]) -> list[dict]:
     return findings
 
 
+def merge_observations(partials: list[dict]) -> list[dict]:
+    """Union every reviewer's observations into the fact-body shape,
+    de-duplicated by ``(goal, name, files)`` with sequential ``oid``s assigned
+    in merge order.
+
+    Deliberately the same rules as :func:`merge_findings`, minus severity:
+    same dedupe key, same ``name`` → ``title`` rename, same deterministic
+    ordering, so one mental model covers both arrays. The id namespace is
+    SEPARATE (``O-1`` against ``R-1``), which is what lets ``disposition`` take
+    either kind of id without a second flag and lets a ``(review_id, id)`` pair
+    stay unambiguous.
+
+    Severity is dropped rather than carried; :func:`_validate_observations`
+    owns that decision and states why.
+    """
+    merged: dict[tuple, dict] = {}
+    for partial in partials:
+        for o in partial.get("observations") or []:
+            files = [
+                x for x in (o.get("files") or []) if isinstance(x, str) and x.strip()
+            ]
+            key = (o["goal"], o["name"], tuple(files))
+            if key in merged:
+                continue
+            entry = {
+                "goal": o["goal"],
+                "title": o["name"],
+                "recommendation": o["recommendation"],
+            }
+            if files:
+                entry["files"] = files
+            merged[key] = entry
+    observations = list(merged.values())
+    for idx, entry in enumerate(observations, start=1):
+        entry["oid"] = f"O-{idx}"
+    return observations
+
+
 # Words that carry no discriminating signal in a finding title. Deliberately
 # short: over-stopping raises the similarity of unrelated titles, which costs
 # precision in the one direction that matters.
@@ -3507,6 +4159,11 @@ def build_fact_body(manifest: dict, partials: list[dict]) -> dict:
         "dispatch_commit": manifest["commit_reviewed"],
         "mode": manifest["mode"],
         "mode_chosen_by": manifest["mode_chosen_by"],
+        # The stage the review was dispatched at (`inner` / `boundary`), carried
+        # so the store can answer "what did each stage find" without a reader
+        # re-deriving it from the mode. Null on a fact consolidated from a
+        # manifest written before the field existed.
+        "stage": manifest.get("stage"),
         "tier": manifest.get("tier"),
         "roster": [
             {"role": p["role"], "model": p.get("model")} for p in partials
@@ -3519,6 +4176,15 @@ def build_fact_body(manifest: dict, partials: list[dict]) -> dict:
         "files_oracle": list(manifest.get("files_oracle") or []),
         "findings": findings,
         "counts": {"blocking": blocking, "warning": warning, "note": note},
+        # What the reviewer DEMOTED — real, worth reading, and deliberately not
+        # work the record demands. Carried on the same terms as ``record_lint``
+        # below: data ABOUT the review, not a finding IN it. It never reaches
+        # ``counts``, so it cannot move a verdict, and no gate reads it —
+        # ``coverage_algebra`` walks ``findings`` alone. What it buys is an id a
+        # builder can ACCEPT against, so declining an observation stops costing
+        # the reasoning, and a demotion rate that is a query over the store
+        # rather than a number the reviewer asserts about its own output.
+        "observations": merge_observations(partials),
         "duration_seconds": max(durations) if durations else None,
         "scope": manifest.get("scope"),
         # How the scope was decided, carried so attribution is auditable rather
@@ -3607,6 +4273,8 @@ def fact_to_cache_record(
     fact: dict,
     price_sentence: "str | None" = None,
     carried: "list[dict] | None" = None,
+    span: "str | None" = None,
+    cost: "str | None" = None,
 ) -> dict:
     """Render the derived ``.critic-findings.json`` record from a review fact
     (D7: the cache is a code-regenerated VIEW of the latest fact — builders
@@ -3617,7 +4285,11 @@ def fact_to_cache_record(
     ``price_sentence`` rides through to :func:`next_action_line`. It is a
     parameter rather than a ledger read here because this function is a pure
     fact→record projection and the cache is written once per consolidation,
-    where the caller already holds the prawduct dir."""
+    where the caller already holds the prawduct dir. ``span`` rides through the
+    same way and for the same reason — and it must ride, because this record and
+    the relayed ``NEXT-ACTION:`` line are two carriers of one sentence, and a
+    builder who met them saying different things about the branch would have no
+    way to tell which was computed."""
     body = fact.get("body") or {}
     findings = []
     for f in body.get("findings", []):
@@ -3634,6 +4306,22 @@ def fact_to_cache_record(
         # `--json` readers tolerate unknown ones (api-contract § Direction).
         entry["fix_cost"] = finding_fix_cost(f.get("files"))
         findings.append(entry)
+    # The builder's only surface for these. Observation ids are assigned HERE,
+    # at consolidation — the reviewer wrote prose and never saw an `O-n` — so a
+    # cache without them leaves the builder told it may ACCEPT an observation
+    # and unable to name one. Additive, and severity-free by construction:
+    # there is nothing to rate.
+    observations = []
+    for o in body.get("observations", []):
+        entry = {
+            "oid": o.get("oid"),
+            "goal": o.get("goal"),
+            "summary": o.get("title"),
+            "recommendation": o.get("recommendation"),
+        }
+        if o.get("files"):
+            entry["files"] = list(o["files"])
+        observations.append(entry)
     counts = body.get("counts") or {}
     blocking = counts.get("blocking", 0)
     warning = counts.get("warning", 0)
@@ -3649,11 +4337,15 @@ def fact_to_cache_record(
         "duration_seconds": body.get("duration_seconds"),
         "mode": body.get("mode"),
         "mode_chosen_by": body.get("mode_chosen_by"),
+        # Rides the cache because the ledger's `review.critic` event copies this
+        # record verbatim — `review-stats --json` groups on it (`by_stage`).
+        "stage": body.get("stage"),
         "model": models[0] if models else None,
         "commit_reviewed": body.get("dispatch_commit"),
         "base_reviewed": body.get("base_reviewed"),
         "files_reviewed": list(body.get("files_reviewed") or []),
         "findings": findings,
+        "observations": observations,
         "summary": (
             f"{blocking} blocking, {warning} warning, {note} note "
             f"across {len(roster)} reviewer(s). {verdict}"
@@ -3664,7 +4356,8 @@ def fact_to_cache_record(
         # the carrier that had a reader and no message.
         "next_action": next_action_line(
             fact.get("id"), blocking, warning, note, price_sentence,
-            carried=carried,
+            carried=carried, span=span, observations=len(observations),
+            cost=cost,
         ),
         # Recomputed from the fact's own findings, so this advisory grouping
         # adds nothing to the persisted schema and keeps no model in the write
@@ -3866,7 +4559,7 @@ def _already_consolidated_note(prawduct_dir: Path) -> str:
     prevent.
 
     **Absence of the note means "clean", so a failure must never render as
-    absence** — that is the swallow-into-``""`` shape ``learnings.md`` warns
+    absence** — that is the swallow-into-``""`` shape ``core.md`` warns
     about by name, and here it would report a truncated cache as a clean review
     to the one caller CLAUDE.md routes through this branch. Read/parse/shape
     failures therefore say so; only a genuinely finding-free cache is silent.
@@ -4018,6 +4711,34 @@ def consolidate(project_dir: Path) -> int:
             missing, len(partials), len(roster), review_id, prawduct_dir))
         return 0
 
+    # Observations may only arrive from an INNER-stage dispatch, and the reason
+    # is the mirror image of the resolutions rule below. Demotion is a stage
+    # rule (`nonfunctional-requirements.md` § Direction, *Review rigor is
+    # stage-keyed*): at the inner stage — `chunk`, `final`, `verify-resolutions`
+    # — a finding is one of the inner BLOCKING set and everything else the
+    # protocol rates is an observation; at the boundary — `cumulative` — the
+    # full table stands and every rated item is a finding, which is what
+    # `counts` counts. An array outside `findings` that the boundary could
+    # write is therefore a severity-laundering path — a `cumulative` reviewer
+    # could put nine warnings in it and consolidate a 0/0/0 review with nothing
+    # anywhere reporting the difference. Refusing is the only answer that
+    # cannot record a falsehood, and it costs a conforming reviewer nothing,
+    # because at the boundary it has no reason to write the array at all.
+    # `stage_of_manifest` reads the recorded stage and derives it only for a
+    # manifest written before the field existed.
+    if stage_of_manifest(manifest) == STAGE_BOUNDARY:
+        for partial in partials:
+            if partial.get("observations"):
+                print(
+                    f"critic-consolidate: partial {partial['role']!r} carries "
+                    f"observations but the dispatch is a {STAGE_BOUNDARY}-stage "
+                    f"review ({manifest['mode']!r}) — only an inner-stage review "
+                    "demotes findings to observations; at the boundary every "
+                    "item you would rate is a finding; fail-closed.",
+                    file=sys.stderr,
+                )
+                return 1
+
     # Resolutions may only arrive from a verify-resolutions dispatch — they
     # WEAKEN gates (they unblock findings), so off-protocol ones fail closed.
     resolutions: list[dict] = []
@@ -4124,6 +4845,32 @@ def consolidate(project_dir: Path) -> int:
 
     price_sentence = telemetry.format_round_price(telemetry.round_price(prawduct_dir))
 
+    # Two git reads per consolidation (`commit_cost`'s and `capture_tree`'s),
+    # beside the one ledger read, and both feed ONE rendered sentence for the
+    # same reason the ledger read is single: the relayed NEXT-ACTION and the
+    # cache record must not be able to answer the same question differently.
+    # `commit_cost` asks the SAME predicate the coverage gate will charge on —
+    # never a cheaper proxy for it — so the sentence cannot promise a price the
+    # gate then disagrees with.
+    from . import coverage  # noqa: PLC0415 — lazy, matching this module's other lib imports
+
+    # #851: `commit_cost` cannot know a review just anchored on this tree, and
+    # after one has, "a fix rides free" is false regardless of paths. The fact
+    # was written moments ago, so its head_tree IS the anchor to compare.
+    #
+    # Gated on `is_verify` deliberately, and this is NARROWER than the tree
+    # test alone would allow. #851's evidence is entirely about a
+    # `verify-resolutions` anchor, and the arm it renders names that pass as
+    # the one closing the next delta. Whether a cumulative anchor should say
+    # the same thing — and name which pass — is not established, so the other
+    # modes keep the ordinary arms they rendered before this existed. Advice
+    # under-claims rather than naming a pass nobody has checked is the closer.
+    tree_now_covered = is_verify and tree_is_covered_by(
+        evidence.capture_tree(project_dir),
+        (fact.get("body") or {}).get("head_tree"),
+    )
+    cost_sentence = cost_lead(coverage.commit_cost(project_dir), tree_now_covered)
+
     carried = (
         carried_blocking(
             store.get("facts") or [], manifest.get("base_tree"), review_id
@@ -4132,7 +4879,24 @@ def consolidate(project_dir: Path) -> int:
         else []
     )
 
-    record = fact_to_cache_record(fact, price_sentence, carried)
+    # The delta verdict and the span verdict, in one breath — on the one close
+    # where the delta verdict is routinely read as branch clearance. A clean
+    # `verify-resolutions` pass says THE REVIEW IS OVER about a diff it chose,
+    # and the branch it was run on may never have been reviewed end to end.
+    #
+    # Scoped to that close on purpose. With blocking findings the next move is
+    # to fix them and the branch question is moot; with a carried blocker the
+    # line already says NOT DONE; and in the other modes today's "go ask the
+    # gate" text is what ships. The cost lands where it is affordable: composing
+    # the span can take seconds on a large store, against a review that just
+    # took minutes, and the memo it warms is the one the builder's next
+    # `check-cumulative-critic` reads.
+    span = None
+    if is_verify and not (fact_body_counts(fact).get("blocking") or carried):
+        answer = gates.branch_coverage_verdict(project_dir)
+        span = span_clause(answer, _span_commits(project_dir, answer))
+
+    record = fact_to_cache_record(fact, price_sentence, carried, span, cost_sentence)
     findings_path = prawduct_dir / ".critic-findings.json"
     atomic_write_text(findings_path, json.dumps(record, indent=2))
 
@@ -4179,6 +4943,61 @@ def consolidate(project_dir: Path) -> int:
                 file=sys.stderr,
             )
             return 1
+
+    # Telemetry, not a gate: which RULES fired (`docs/governance-telemetry.md`).
+    # A finding that quotes a rule's opening words is a rule doing its job, and
+    # counting those is what turns "the corpus helps" from an impression into a
+    # number — the join is `learning.written` minus `learning.fired` on the unit
+    # hash, which is the list of rules nobody has ever cited.
+    #
+    # Every file the resolver returns, not just `core.md`: a reviewer reads the
+    # area files the harness loaded, so a finding may cite a rule from any of
+    # them. BEST-EFFORT — a measurement of a review that already happened must
+    # not change the review's exit code, so the failure is one NOTE.
+    try:
+        from . import learnings_files  # noqa: PLC0415 — lazy, matching this module's other lib imports
+
+        # Citations resolved ONCE for the whole corpus, then matched against
+        # each finding: the alternative re-reads and re-normalizes several
+        # hundred units per finding, which is the same work N times.
+        citations: list[tuple[str, str, str]] = []  # (opening, rel, unit_hash)
+        for rules_path in learnings_files.resolve(project_dir).files:
+            rel = rules_path.relative_to(project_dir).as_posix()
+            for unit in learnings_files.rule_units(
+                rules_path.read_text(encoding="utf-8")
+            ):
+                opening = learnings_files.unit_citation(unit)
+                if opening:
+                    citations.append((opening, rel, learnings_files.unit_hash(unit)))
+        for finding in record.get("findings") or []:
+            # `summary` and `recommendation` are the finding's two prose fields
+            # (`fact_to_cache_record` builds them from the partial's `title` and
+            # `recommendation`); `goal` and `severity` are enums no rule text
+            # can appear in. Normalized through the SAME function that made the
+            # openings, or the substring test is comparing two spellings.
+            text = learnings_files.normalize_unit(
+                f"{finding.get('summary') or ''} {finding.get('recommendation') or ''}"
+            )
+            if not text:
+                continue
+            for opening, rel, unit in citations:
+                if opening in text:
+                    # Keyed by (kind, session, file, unit_hash, review_id), so
+                    # two findings citing one rule in one review are ONE line:
+                    # the question is "did this rule fire in this review", and
+                    # a per-finding count would grade reviewers' wording.
+                    ledger.append_learning_event(
+                        project_dir, "learning.fired",
+                        file=rel, unit_hash=unit, review_id=review_id,
+                    )
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- telemetry must never change a review's exit code
+        print(
+            "critic-consolidate: NOTE: `learning.fired` was not recorded for "
+            f"{review_id} ({type(exc).__name__}: {exc}) — this review's rule "
+            "citations are missing from the governance ledger, so rules it "
+            "exercised will read as never-fired. The review itself is complete.",
+            file=sys.stderr,
+        )
 
     # Persisted + anchored. Clear the critic-active marker and remove the
     # partials so a repeat call (or a straggler SubagentStop) is a clean no-op.
@@ -4236,6 +5055,9 @@ def consolidate(project_dir: Path) -> int:
             counts.get("note", 0),
             price_sentence,
             carried=carried,
+            span=span,
+            observations=len(fact_body.get("observations") or []),
+            cost=cost_sentence,
         )
     )
     return 0

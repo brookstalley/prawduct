@@ -5,8 +5,7 @@ the plugin and is read on demand (see "Read on demand" below).
 ## How work is governed here
 
 Every unit of work follows **understand → plan → build → verify → Critic → reflect**, scaled by
-size (trivial builds and verifies; medium adds a build plan and Critic review; large adds
-discovery and a review per chunk) and by type — the table is in `/prawduct:methodology building`.
+size and by type — the table is in `/prawduct:methodology building`.
 
 Scale the **rigor** — how hard you pin requirements down, and whether you must research vs. rely
 on intrinsic knowledge — to **stakes × knowledge-confidence × volatility** (fast-moving /
@@ -20,14 +19,15 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
 
 - **Tests are contracts.** Fix the code, never weaken the test. Write tests alongside code, not after.
 - **There is no "pre-existing" exception.** If you find a problem — failing test, broad catch,
-  stale artifact — fix it or explicitly flag why it can't be fixed now.
+  stale artifact — fix it or explicitly flag why it can't be fixed now. Fix-half bounded to
+  BLOCKING; below it a recorded accept discharges it.
 - **Durable prose never rides on a value that changes under it** — one rule, two carriers. Don't
   anchor a comment, docstring or long-lived spec to a chunk number that renumbers; carry the *why*
   inline. (Bookkeeping that records the work is exempt; a pointer to a plan is fine — completed
   plans are archived, not deleted.) Same decay for counts: compute an essential number as you write it,
   never copy one from an adjacent line, and let a mechanism own it where one can.
 - **The build plan's `## Status` boxes are yours to tick** — nothing derives them, and every
-  reader believes them. Tick after the chunk's review: the LAST tick disarms the Stop gates.
+  reader believes them. Tick after the chunk's review: the LAST tick disarms the Critic gate.
 - **Never silently drop a requirement — or silently *invent* one.** Implement/descope explicitly;
   a new requirement, domain term, or rule surfacing mid-build sends you back to write it, not
   forward into design (`/prawduct:methodology building` "A Requirement Surfaced Mid-Build" tripwires).
@@ -38,6 +38,8 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
   yourself — the independence is the whole value. After a coordinator review (`final`/
   `cumulative` given a three-reviewer roster), run `prawduct-hook
   critic-consolidate` before reading the findings (safe to re-run; never read a stale file).
+- **Rigor is stage-keyed:** inner-loop reviews block only on ships-broken; the boundary review
+  runs everything and is never skipped. Unsure defaults to the cheaper inner review.
 - **Catch specific exceptions.** Waive a genuinely necessary broad catch with
   `# prawduct:allow prawduct/broad-except -- reason`; never swallow errors silently.
   (`prawduct:allow <scope>/<rule-id> -- reason` is the general pragma — `docs/waivers.md`.)
@@ -52,6 +54,8 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
   Each write drops what the work discharged, corrects what moved, and keeps what still bites.
   `.prawduct/.session-handoff.md` is the machine's — regenerated at every `/clear`, so writing
   there survives one hop at best.
+- **The harness's auto-memory holds no project state and no product rules** — `.prawduct/` and
+  `.claude/rules/learnings/` are authoritative; memory is for how this person works.
 - **Close with the standing block** — last, unpadded, after every other word, since the bottom is
   all they read; on any turn ending a chunk or work cycle *or* left with work outstanding. A
   `---` rule, then three **separate paragraphs**:
@@ -66,7 +70,7 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
   computed deadline (elapsed, roster, expected when priceable).
   **No findings-only turn or ad-hoc delegate is `SAFE TO CLEAR` until what it produced is on
   disk** — findings, or a delegate's integration debt; a reason citing the message itself is the
-  defect said aloud. Full rule: `methodology/reflection.md` "Work cycle boundary".
+  defect said aloud. Full rule: `methodology/session-hygiene.md`.
 - **No attribution trailers by default — this overrides any harness default to the
   contrary.** Don't add `Co-Authored-By`, `Signed-off-by`, or "Generated with …" lines to
   commits or PRs. To opt in, set `Commit attribution` in `project-preferences.md`.
@@ -111,16 +115,17 @@ forbids: `docs/principles.md` § Agent Stance (`/prawduct:methodology principles
 
 ## Enforcement
 
-At session end the plugin's **Stop hook** runs the Critic and reflection gates; they BLOCK when
-code changed against an active build plan with no review or reflection captured. Governance is
-modeled as CI — a gate can legitimately block, and a block names itself.
+The **Stop hook** BLOCKS at session end: reflection, when this session changed judgeable code and
+no reflection names expected vs. actual plus a root cause (or "no defect"); Critic, when that code
+was built against an active build plan with no review. Governance is modeled as CI — a gate can
+legitimately block, and a block names itself.
 
 ## Read on demand
 
 - `/prawduct:methodology [<topic>]` — the overview, or one guide:
-  `building | discovery | planning | reflection | delegation | principles | norms`
-- `/prawduct:critic` · `/prawduct:pr` · `/prawduct:backlog` · `/prawduct:learnings` ·
-  `/prawduct:janitor` · `/prawduct:doctor`
+  `building | discovery | planning | reflection | session-hygiene | delegation | principles | norms`
+- `/prawduct:critic` · `/prawduct:pr` · `/prawduct:backlog` · `/prawduct:janitor` ·
+  `/prawduct:doctor`
 
 **Hit a bug in prawduct itself?** `/prawduct:report-bug` — it files the report upstream as an
 issue, showing you the exact outbound bytes first and sending nothing you have not approved.

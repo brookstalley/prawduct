@@ -323,7 +323,7 @@ def append_guard_refusal(
     question later. Returns :func:`append_fact`'s result. Callers must treat a
     failure as **soft**: a guard's refusal is correct whether or not the record
     lands, so a store error must never convert it into an error exit. It must
-    not be silent either (``learnings.md``: "'advice fails soft' is not 'advice
+    not be silent either (``core.md``: "'advice fails soft' is not 'advice
     fails silent'") — attribute it on stderr and carry on.
 
     **``dedupe_key`` is for a guard that fires on a POLLED path**, where the
@@ -606,6 +606,40 @@ def findings_index(read_result: dict) -> dict[tuple[str, str], dict]:
             fid = finding.get("fid")
             if isinstance(fid, str) and fid.strip():
                 index[(review_id, fid)] = finding
+    return index
+
+
+def observations_index(read_result: dict) -> dict[tuple[str, str], dict]:
+    """``(review_id, oid)`` → the observation entry its review fact recorded.
+
+    The sibling of :func:`findings_index`, kept a SEPARATE walk on purpose.
+    An observation is what an inner-stage pass demoted: real, worth
+    reading, and deliberately not work the record demands. It is recorded so a
+    builder can answer it and so the demotion's yield is queryable — never so a
+    gate can read it. Merging the two indexes would put observations one
+    ``.get`` away from every consumer that joins on a finding, including the
+    resolution existence check, and the only thing keeping an observation out
+    of a verdict would be each caller remembering to filter. Two indexes, and
+    the callers that want both say so.
+
+    Observation ids live in their own namespace (``O-1``), so a
+    ``(review_id, id)`` pair is unambiguous across both.
+    """
+    index: dict[tuple[str, str], dict] = {}
+    for fact in facts_of_kind(read_result, "review"):
+        review_id = fact.get("id")
+        if not isinstance(review_id, str) or not review_id:
+            continue
+        body = fact.get("body") or {}
+        observations = body.get("observations")
+        if not isinstance(observations, list):
+            continue
+        for observation in observations:
+            if not isinstance(observation, dict):
+                continue
+            oid = observation.get("oid")
+            if isinstance(oid, str) and oid.strip():
+                index[(review_id, oid)] = observation
     return index
 
 

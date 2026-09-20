@@ -28,7 +28,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from conftest import V2_MANIFEST
+from conftest import SHAPED_REFLECTION, V2_MANIFEST
 
 ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK = ROOT / "bin" / "prawduct-hook"
@@ -98,9 +98,7 @@ def _active_plan_repo(tmp_path: Path, *, chunk_type: str = "code") -> Path:
         "## Status\n- [ ] Chunk 01: Demo\n\n"
         f"### Chunk 01: Demo\n**Type:** {chunk_type}\n\nBody.\n"
     )
-    (prawduct / ".session-reflected").write_text(
-        "Session reflection: implemented the chunk and verified all tests pass cleanly."
-    )
+    (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
     (prawduct / ".session-git-baseline").write_text("")
     ts = datetime.now(timezone.utc) - timedelta(seconds=60)
     (prawduct / ".session-start").write_text(ts.strftime("%Y-%m-%dT%H:%M:%SZ"))
@@ -282,7 +280,7 @@ class TestNoFalsePositive:
         *build-plan* review — same firing conditions as the Critic gate."""
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir(parents=True)
-        (prawduct / ".session-reflected").write_text("x" * 60)
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
         (prawduct / ".session-git-baseline").write_text("")
         ts = datetime.now(timezone.utc) - timedelta(seconds=60)
         (prawduct / ".session-start").write_text(ts.strftime("%Y-%m-%dT%H:%M:%SZ"))
@@ -588,9 +586,7 @@ class TestASelfHealSurvivesTheSessionBoundary:
         # nothing. A NEW file, because the baseline already carries a modified
         # `src/app.py`: editing it again leaves `git status` byte-identical.
         (repo / "src" / "new.py").write_text("y = 1\n")
-        (prawduct / ".session-reflected").write_text(
-            "Session reflection: continued after the boundary; suite green."
-        )
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
         result = subprocess.run(
             ["python3", str(HOOK), "stop"],
             capture_output=True, text=True, env=env, cwd=str(repo), timeout=20,

@@ -717,12 +717,14 @@ class TestChangeLogTagsAreRefusedHere:
 
     def test_this_repos_own_change_log_passes_the_guard(self):
         """Sixty-plus entries of real history, so the guard cannot fail closed."""
-        from lib import change_log
+        from lib import change_log, change_log_archive
 
-        log = Path(__file__).resolve().parents[1] / ".prawduct" / "change-log.md"
-        if not log.is_file():
+        # Live log plus archive: released history moves to the archive, and the
+        # guard must pass over every real entry, not only the pending ones left live.
+        text = change_log_archive.load_all_text(Path(__file__).resolve().parents[1] / ".prawduct")
+        if text is None:
             pytest.skip("no .prawduct/change-log.md in this checkout")
-        entries = change_log.parse_change_log(log.read_text(encoding="utf-8"))
+        entries = change_log.parse_change_log(text)
         assert [e for e in entries if e.tags.get("release")], "no release tags parsed"
         errors, _warnings = change_log.validate_change_log_tags(entries)
         assert errors == [], errors
@@ -1630,6 +1632,25 @@ class TestTheSuiteMustBeProvenGreen:
         out = capsys.readouterr().out
         assert "suite: green" in out, "the passing run must emit its own yield"
         assert "releasable:" in out
+
+    def test_the_verdict_forwards_the_reason_and_nothing_about_the_clause(self, tmp_path):
+        """`_suite_verdict` drops the reader's clause element; its own shape holds.
+
+        `gates.tests_are_current` names which of its two disjuncts answered, so
+        a surface can avoid implying tree coverage it does not have. This gate
+        makes no such claim — its docstring states session-freshness as the
+        correct bound at this phase — so it drops that element rather than
+        forwarding it, and its one caller keeps destructuring a pair. A
+        three-element return reaching that caller is a ValueError at release
+        time, which is the worst moment to find one.
+        """
+        project = self._project(tmp_path)
+        verdict = release_readiness._suite_verdict(project)
+        assert len(verdict) == 2, "the caller destructures a pair"
+        is_current, reason = verdict
+        assert is_current is True
+        assert reason and "clause" not in reason, \
+            "the reason is the reader's prose, carried through verbatim"
 
     def test_missing_evidence_refuses(self, tmp_path, capsys):
         project = self._project(tmp_path, evidence=None)

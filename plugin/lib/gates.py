@@ -29,7 +29,8 @@ were reassigned here (they are gate logic, lib-clean) from the briefing region.
 
 Depends on its lib siblings ``gitstate`` / ``coverage`` / ``buildplan_refs``
 (build-plan Status parsing, including ``_count_build_plan_chunks``),
-``evidence`` / ``coverage_algebra`` (the v3 data plane), and ``core``
+``evidence`` / ``coverage_algebra`` (the v3 data plane), ``learnings_files``
+(the one resolver for the rules layout the cross-check nudge names), and ``core``
 (``read_bool_yaml_key`` — canonical twin of the hook's parity-pinned inline
 mirror), plus the stdlib.
 """
@@ -39,6 +40,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -48,6 +50,7 @@ from . import (
     coverage_algebra,
     evidence,
     gitstate,
+    learnings_files,
     verdict_cache,
 )
 from .core import read_bool_yaml_key, suite_coupled_prefixes
@@ -158,7 +161,15 @@ def _load_test_evidence(prawduct_dir: Path) -> "tuple[dict | None, str]":
     return record, ""
 
 
-def tests_are_current(project_dir: Path) -> tuple[bool, str]:
+#: What ``test-status`` prints in front of its reason on each exit-0 path.
+#: Module constants because three skill files instruct a reader to look for
+#: these strings; a test pins that prose against these names, so a reword here
+#: cannot leave an instruction pointing at a string the command never prints.
+CURRENT_TREE_LABEL = "current (tree-valid)"
+CURRENT_SESSION_LABEL = "current (session-fresh, not tree-vouched)"
+
+
+def tests_are_current(project_dir: Path) -> tuple[bool, str, str]:
     """Decide whether saved test evidence is fresh enough to trust.
 
     Two ways evidence is current, either sufficient (a disjunction), with
@@ -173,7 +184,9 @@ def tests_are_current(project_dir: Path) -> tuple[bool, str]:
        ever relaxes a timestamp-stale verdict to current, never the reverse:
        structurally incapable of a false stale, the failure class that retired
        the removed content-hash "fingerprint" and ``git_sha`` mechanisms. It
-       classifies *paths* (git tree-diff + ``is_judgeable_path``), never file
+       classifies *paths* (git tree-diff + ``affects_test_outcome``, which is
+       a strict superset of ``is_judgeable_path`` and the predicate
+       :func:`_test_evidence_tree_valid` actually calls), never file
        *contents* — the standing ``coverage_algebra`` rule that kept those
        mechanisms dead. Records without ``evidence_tree`` (pre-clause, or a
        ``--from-counts`` on-ramp) skip clause 2 and behave exactly as before.
@@ -193,42 +206,91 @@ def tests_are_current(project_dir: Path) -> tuple[bool, str]:
     documented commitment for an absent anchor is that freshness gates fail
     closed. The remedy is one command: re-record the run.
 
-    Returns (is_current, reason). reason is a short human-readable string suitable
-    for printing back to the agent.
+    Returns ``(is_current, reason, clause)``. ``reason`` is a short
+    human-readable string suitable for printing back to the agent. ``clause``
+    names which disjunct answered — ``"session"``, ``"tree"``, or ``"none"``
+    when neither did — because the two are **different guarantees** and a
+    caller that prints only "current" tells its reader the stronger one.
+    Clause 1 answers *when* a run happened; clause 2 answers *which tree* it
+    covered. Both are sufficient to skip a re-run under the trust-the-cycle
+    model, and the field exists so a surface can say which it rests on rather
+    than implying tree coverage it does not have.
+
+    **Clause 2 is asked first and unconditionally**, so ``"session"`` means the
+    tree question was ASKED and could not vouch — never that nobody looked.
+    That ordering is what makes the weaker label honest: reporting
+    "session-fresh" of evidence that is ALSO tree-identical under-claims, and a
+    caller reading an under-claim pays the re-run this disjunction exists to
+    avoid.
+
+    A structural field rather than a marker inside ``reason``: ``reason`` is
+    human-readable prose that a later wording pass is free to change, and a
+    consumer branching on it would break silently.
     """
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     evidence, why_not = _load_test_evidence(prawduct_dir)
     if evidence is None:
-        return False, why_not
+        return False, why_not, "none"
 
     # Timestamp check — evidence must have been written during this session.
     evidence_ts = evidence.get("timestamp")
     if not isinstance(evidence_ts, str) or not evidence_ts:
-        return False, "no timestamp in evidence"
+        return False, "no timestamp in evidence", "none"
 
     session_start = _read_session_start(prawduct_dir)
-    if session_start and evidence_ts >= session_start:
-        return True, f"evidence from this session ({evidence_ts})"
+    session_fresh = bool(session_start and evidence_ts >= session_start)
 
-    # Clause 2, asked on BOTH paths. When a marker exists this is the
-    # relax-only disjunct: timestamp-stale evidence can still be vouched for
-    # by an unchanged judgeable tree. When no marker exists it is the ONLY
-    # thing that can vouch — see the no-marker return below.
+    # Clause 2, asked on BOTH paths — including the session-fresh one, which
+    # used to short-circuit before reading ``evidence_tree`` at all. Asking it
+    # there buys the STRONGER answer whenever it is available: evidence that is
+    # both session-fresh and tree-identical is tree-valid, and saying only
+    # "session-fresh" of it under-claims, which costs a caller the suite re-run
+    # this disjunction exists to avoid. The check is a git tree-diff plus a path
+    # classification — ~0.1s on this repo, ~0.4s on a 42k-file worktree —
+    # against minutes for the run a false under-claim invites, so it is paid
+    # unconditionally rather than saved on the common path.
     recorded_tree = evidence.get("evidence_tree")
     if isinstance(recorded_tree, str) and recorded_tree:
         tree_valid, tree_reason = _test_evidence_tree_valid(project_dir, recorded_tree)
-        if tree_valid:
-            if session_start:
-                return True, f"tree-valid despite predating session: {tree_reason}"
-            return True, f"tree-valid, no session marker to date it against: {tree_reason}"
+    else:
+        tree_valid, tree_reason = False, (
+            "the saved run records no evidence_tree, so nothing can say which "
+            "tree it ran against"
+        )
+
+    if tree_valid:
+        if session_fresh:
+            return (
+                True,
+                f"tree-valid, and recorded this session ({evidence_ts}): {tree_reason}",
+                "tree",
+            )
+        if session_start:
+            return True, f"tree-valid despite predating session: {tree_reason}", "tree"
+        return (
+            True,
+            f"tree-valid, no session marker to date it against: {tree_reason}",
+            "tree",
+        )
+
+    if session_fresh:
+        return (
+            True,
+            f"evidence from this session ({evidence_ts}), but {tree_reason}",
+            "session",
+        )
 
     if session_start:
-        return False, f"evidence predates session ({evidence_ts} < {session_start})"
+        return (
+            False,
+            f"evidence predates session ({evidence_ts} < {session_start})",
+            "none",
+        )
 
     return False, (
         f"no session marker to date the evidence against ({evidence_ts}), and "
         "it does not vouch for the current tree — run the suite and record it"
-    )
+    ), "none"
 
 
 def _test_evidence_tree_valid(
@@ -715,6 +777,150 @@ def session_changes_all_non_judgeable(
     return not coverage_algebra.judgeable_files(non_metadata)
 
 
+def _session_untracked_paths(
+    project_dir: Path, status_output: "str | None" = None
+) -> list[str]:
+    """Paths this session left UNTRACKED — the porcelain ``??`` lines that are
+    new since the session baseline.
+
+    ``git diff <base-tree>`` cannot see them: an untracked file is in no tree,
+    so a session whose only work is a brand-new module reads as an empty span
+    without this. The baseline subtraction is not re-derived here — membership
+    is tested against :func:`gitstate._get_session_changed_files`, which owns
+    the "new since session start" rule, so a pre-existing untracked file stays
+    pre-existing dirt under both spans rather than under only one of them.
+
+    Git reports an untracked DIRECTORY as one entry with a trailing slash
+    (``newdir/``) rather than its contents; that entry is carried through
+    unchanged, exactly as the porcelain span carries it today.
+    """
+    current = (
+        status_output
+        if status_output is not None
+        else gitstate.git_status_output(project_dir)
+    )
+    if current is None:
+        return []
+    session_new = set(gitstate._get_session_changed_files(project_dir, current))
+    paths: list[str] = []
+    for line in current.splitlines():
+        if not line.startswith("??"):
+            continue
+        parsed = gitstate.parse_porcelain_line(line)
+        if parsed and parsed[2] in session_new:
+            paths.append(parsed[2])
+    return paths
+
+
+def session_work_span(
+    project_dir: Path, status_output: "str | None" = None
+) -> dict:
+    """What this session CHANGED, committed work included.
+
+    ``{"changed": [non-metadata paths], "judgeable": bool, "source": str}``.
+
+    The span is the ``.session-base-tree`` marker (the ``HEAD^{tree}`` recorded
+    at session start) against the WORKING TREE, so a session that commits its
+    work is still holding that work — which the porcelain span, empty the
+    moment you commit, is not. ``judgeable`` is
+    ``coverage_algebra.judgeable_files`` over the non-metadata paths: the one
+    judgeability predicate, never a second copy of it.
+
+    ``source`` says which span answered, and it is part of the contract rather
+    than debug colour — a caller that blocks on this owes the operator the
+    difference between "nothing changed" and "this reader could not tell".
+    ``"base-tree"`` is the real answer; ``"porcelain"`` is the degraded one,
+    returned whenever the marker is missing, malformed, or git will not diff
+    it. Degrading to porcelain SHRINKS this predicate's jurisdiction to
+    uncommitted work — it never widens it — which is the direction authority
+    must fail in.
+
+    **Cost bound: at most one ``git status`` and one ``git diff``, and no
+    temp-index capture.** This runs on every Stop, which is every turn.
+    ``evidence.capture_tree`` — which writes an index file and walks the whole
+    tree — is deliberately not used: it belongs to the review data plane, whose
+    callers run once per review rather than once per turn. ``status_output`` is
+    the porcelain snapshot ``cmd_stop`` already holds; pass it and the
+    ``git status`` is free too, leaving exactly the one ``git diff``. The
+    snapshot is taken ONCE here and threaded into both readers below, because
+    each of them would otherwise spawn its own.
+
+    Never raises: every failure it can reach is a returned degraded span.
+    """
+    prawduct_dir = gitstate.get_prawduct_dir(project_dir)
+    snapshot = (
+        status_output
+        if status_output is not None
+        else gitstate.git_status_output(project_dir)
+    )
+    porcelain = [
+        f
+        for f in gitstate._get_session_changed_files(project_dir, snapshot)
+        if not gitstate._is_metadata_path(f)
+    ]
+
+    def _span(changed: list[str], source: str) -> dict:
+        return {
+            "changed": changed,
+            "judgeable": bool(coverage_algebra.judgeable_files(changed)),
+            "source": source,
+        }
+
+    base = _read_session_base_tree(prawduct_dir)
+    if not base or not gitstate.is_object_id(base):
+        return _span(porcelain, "porcelain")
+    # `-z` for the same reason `evidence.tree_diff` uses it: `--name-only`
+    # honours `core.quotepath`, so a non-ASCII filename comes back C-quoted and
+    # would be classified on a spelling that is not the path.
+    rc, out, _err = evidence.run_git(project_dir, "diff", "--name-only", "-z", base)
+    if rc != 0:
+        return _span(porcelain, "porcelain")
+    changed = [p for p in out.split("\0") if p]
+    changed += [
+        p for p in _session_untracked_paths(project_dir, snapshot) if p not in changed
+    ]
+    return _span([f for f in changed if not gitstate._is_metadata_path(f)], "base-tree")
+
+
+#: The two lines a reflection must carry, and the words the blocker uses for
+#: each. A reflection is graded on SHAPE because length graded nothing: the
+#: floor it replaces passed any fifty characters, so "did the chunk, tests
+#: green" scored the same as a reflection that found a root cause.
+#:
+#: Substring tests, case-insensitive, anywhere in the text — deliberately the
+#: weakest check that can tell the two shapes apart. Anything stronger is
+#: prose-parsing, which `docs/norms.md` § Deliberate Non-Design forbids, and
+#: which would grade an agent's phrasing rather than whether it did the work.
+_REFLECTION_EXPECTED_VS_ACTUAL = (
+    'what you expected vs. what actually happened (the words "expected" and '
+    '"actual")'
+)
+_REFLECTION_ROOT_CAUSE = (
+    'the root cause when something went wrong, or "no defect" when nothing did'
+)
+_REFLECTION_CAUSE_TOKENS = ("root cause", "root-cause", "no defect")
+
+
+def reflection_shape(text: str) -> "tuple[bool, list[str]]":
+    """``(ok, missing)`` for a session reflection's SHAPE.
+
+    ``ok`` when the text names both what was expected and what was actual, AND
+    either a root cause or its explicit absence. ``missing`` names each absent
+    line in the wording the reflection blocker prints, so the operator reads
+    one phrasing wherever they meet it rather than two that drifted.
+
+    Never raises: a non-string (a caller that read nothing) is treated as empty
+    text, which is the maximally-missing answer and the one that blocks.
+    """
+    lowered = (text or "").lower() if isinstance(text, str) else ""
+    missing: list[str] = []
+    if "expected" not in lowered or "actual" not in lowered:
+        missing.append(_REFLECTION_EXPECTED_VS_ACTUAL)
+    if not any(token in lowered for token in _REFLECTION_CAUSE_TOKENS):
+        missing.append(_REFLECTION_ROOT_CAUSE)
+    return not missing, missing
+
+
 def _cached_diff_fn(project_dir: Path):
     """A ``coverage_algebra.DiffFn`` that memoizes ``evidence.tree_diff`` per
     gate invocation.
@@ -1125,9 +1331,141 @@ def _critic_session_satisfies_gate(project_dir: Path) -> tuple[bool, str]:
             f"All {total} chunks complete; last Critic review was "
             f"'{mode}'. Run /prawduct:critic final for end-of-cycle "
             "synthesis (Coherence, Design, Learnings Cross-Check, Backlog "
-            "Reconciliation) before pushing."
+            "Reconciliation) before pushing. "
+            + learnings_cross_check_note(project_dir)
         )
     return True, ""
+
+
+def learnings_change_set(project_dir: Path) -> "tuple[list[str], str]":
+    """THE change set the learnings read list is computed from: ``(files, reason)``.
+
+    One definition, because two were worse than either. The gate nudge asked
+    ``_get_session_changed_files`` (uncommitted work only) while the reviewer's
+    ``learnings-files --for-diff`` asked the base BRANCH — so a builder who
+    commits the chunk before Stop fires, which is the ordinary cadence, got a
+    nudge naming ``core.md`` alone while the verb named the area files the
+    harness had actually loaded. The one line whose purpose is to make a silent
+    disagreement noticeable was the disagreement.
+
+    The definition is the **session's** base tree → the working tree, union
+    untracked: everything this session touched whether or not it has been
+    committed yet. That is the span both readers mean — the gate is judging this
+    session, and the reviewer is reading the rules this session had loaded.
+
+    ``reason`` is empty on success and names the failure otherwise. It is a
+    return value rather than an exception or a silent ``[]`` because "nothing
+    changed" and "could not tell" are opposite facts and both callers have to
+    say which one they got (`R4`: a degraded advisory path names its
+    consequence).
+    """
+    prawduct_dir = gitstate.get_prawduct_dir(project_dir)
+    base = _read_session_base_tree(prawduct_dir)
+    if not base:
+        # No session marker (a resume in a fresh checkout, a repo that never ran
+        # SessionStart): HEAD's tree is the honest fallback and is what the
+        # session gate itself degrades to.
+        base = "HEAD"
+    try:
+        return coverage._coverage_changed_files(project_dir, base), ""
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
+        # SubprocessError covers TimeoutExpired: coverage's git calls carry a
+        # 30s bound, and a slow diff must read as "could not tell", not a traceback.
+        return [], f"{type(exc).__name__}: {exc}"
+
+
+def learnings_review_change_set(project_dir: Path) -> "tuple[list[str], str]":
+    """The change set a REVIEWER's read list is computed from: ``(files, reason)``.
+
+    **Why this is not :func:`learnings_change_set`, whose docstring argues for
+    one definition.** That argument is intact and still binding: the Stop nudge
+    and the reviewer must never give different answers to *the same* question.
+    They are not asking the same question. The gate judges **this session**; a
+    dispatched reviewer judges **the review interval**, and for a ``cumulative``
+    of already-committed work those two spans are not merely different, the
+    session one is EMPTY — the session began after the commits, so its base tree
+    IS ``HEAD^{tree}`` and a clean working tree diffs to nothing.
+
+    Measured 2026-09-20 on this repo: the cumulative reviewing a five-commit
+    branch was handed ``core.md`` alone, at exit 0, indistinguishable from "no
+    area file applies", while the interval touched the areas owned by
+    ``reviews.md``, ``hook-surface.md``, ``tests.md`` and ``authoring.md``. The
+    Learnings Cross-Check is a ``final``/``cumulative``-only pass with no other
+    owner, so it read one file on exactly the reviews it exists for. The
+    reviewer caught it only by reading the four area files by hand.
+
+    So the interval comes from the **dispatch manifest** — the one artifact that
+    already records what this review spans, written by code at ``critic-begin``.
+    Nothing new is declared or maintained: no flag, no field, no second copy of
+    the span. When no manifest is on disk there is no review to scope to, and
+    this falls back to the session span, which is the right answer for every
+    caller that is not a dispatched reviewer.
+    """
+    prawduct_dir = gitstate.get_prawduct_dir(project_dir)
+    manifest_path = prawduct_dir / ".critic-partials" / "manifest.json"
+    try:
+        manifest = json.loads(manifest_path.read_text())
+    except (OSError, ValueError):
+        # No live dispatch (or an unreadable one): not a reviewer context, so
+        # the session span is the honest answer rather than a failure.
+        return learnings_change_set(project_dir)
+
+    base = (manifest or {}).get("base_tree")
+    head = (manifest or {}).get("head_tree")
+    if not base or not head:
+        return learnings_change_set(project_dir)
+
+    changed = evidence.tree_diff(project_dir, base, head)
+    if changed is None:
+        # `tree_diff` returns None rather than guessing. Fail LOUD for the same
+        # reason the CLI does: a silent narrowing hides area files the review
+        # interval really touches, and looks exactly like an answer.
+        return [], f"could not diff the review interval {base[:12]}..{head[:12]}"
+    return changed, ""
+
+
+def learnings_cross_check_note(project_dir: Path) -> str:
+    """What the Learnings Cross-Check will read, over :func:`learnings_change_set`.
+
+    Named from the resolver, never from a path this module knows: the harness
+    loads ``core.md`` plus every area file whose ``paths:`` globs match a file
+    the session touched, and the cross-check is only honest if it reads that
+    same set. Saying the set out loud in the nudge is what makes a *silent*
+    disagreement — an area file in context that no reviewer opened — into
+    something a reader can notice.
+
+    The empty answer is stated rather than omitted, because "no rules file
+    matches this diff" and "the cross-check ran and found nothing" look
+    identical in a report that says neither — and so is the *undetermined*
+    answer, which is a third thing again.
+    """
+    changed, reason = learnings_change_set(project_dir)
+    try:
+        layout = learnings_files.resolve(project_dir)
+        files = learnings_files.files_for_paths(layout, changed)
+    except (OSError, ValueError) as exc:
+        reason = reason or f"{type(exc).__name__}: {exc}"
+        files = []
+    if reason:
+        return (
+            "The Learnings Cross-Check's read list could not be computed "
+            f"({reason}) — run `prawduct-hook learnings-files --for-diff` before "
+            "the scan rather than assuming core.md is the whole of it."
+        )
+    if not files:
+        return (
+            "The Learnings Cross-Check has nothing to read: no rules file under "
+            f"{learnings_files.RULES_DIR_REL}/ applies to this session's changes."
+        )
+    named = ", ".join(_repo_relative(project_dir, p) for p in files)
+    return f"The Learnings Cross-Check reads: {named}."
+
+
+def _repo_relative(project_dir: Path, path: Path) -> str:
+    try:
+        return path.relative_to(project_dir).as_posix()
+    except ValueError:
+        return path.as_posix()
 
 
 def _has_build_plan_in_state(prawduct_dir: Path) -> bool:
@@ -1286,15 +1624,22 @@ def test_status(project_dir: Path) -> int:
     Used by builders, the Critic, and the PR reviewer to decide whether to
     re-run the test suite.
 
-    stdout: one line — `current: <reason>` or `stale: <reason>`
+    stdout: one line — :data:`CURRENT_TREE_LABEL`,
+    :data:`CURRENT_SESSION_LABEL`, or `stale:`, each followed by its reason.
+    The parenthetical names which of :func:`tests_are_current`'s two disjuncts
+    answered, because they are different guarantees and a bare `current` told
+    every reader it had the stronger one. Both still mean "safe to skip the
+    re-run" — this is disclosure, not a new gate, and the exit codes are
+    unchanged.
 
     Exit codes:
       0  - tests are current; safe to skip re-running
       1  - tests are stale or no evidence
     """
-    is_current, reason = tests_are_current(project_dir)
+    is_current, reason, clause = tests_are_current(project_dir)
     if is_current:
-        print(f"current: {reason}")
+        label = CURRENT_TREE_LABEL if clause == "tree" else CURRENT_SESSION_LABEL
+        print(f"{label}: {reason}")
     else:
         print(f"stale: {reason}")
     return 0 if is_current else 1
@@ -1667,30 +2012,81 @@ def check_cumulative_critic(project_dir: Path) -> int:
             )
 
 
-def _cumulative_critic_verdict(project_dir: Path, read: dict, cache) -> int:
-    """:func:`check_cumulative_critic`'s body; see it for the contract."""
+def branch_coverage_verdict(project_dir: Path, *, record_grants: bool = False) -> dict:
+    """:func:`check_cumulative_critic`'s verdict as DATA — the same span, the
+    same composition, the same base-advance transfer, with no printing and no
+    exit code.
+
+    It exists because a second surface needs the branch-level answer and must
+    not compute its own. ``critic_consolidate`` joins it onto a clean
+    ``verify-resolutions`` close, where *this delta is clean* and *this branch
+    is covered* are different claims and only the first is that review's to
+    make. Two implementations of "is the branch covered" would disagree the
+    first time either moved, and the copy the builder reads while deciding what
+    to report is the advisory one — the worse half to be stale
+    (``architecture.md`` § every fact has one home).
+
+    ``record_grants`` defaults False for the reason it does on
+    :func:`_merge_base_verdict`: recording a transfer's yield belongs to the
+    authority that spent it. An advisory read appending one would file a grant
+    under a gate that never ran, and would move the store fingerprint the
+    verdict memo is keyed on.
+
+    Returns what :func:`_branch_coverage` documents, minus the private
+    rendering context: a caller that wants the answer never sees the memo
+    closures the printer needs.
+    """
+    read = evidence.read_facts(project_dir)
+    cache = verdict_cache.VerdictCache.for_read(project_dir, read)
+    try:
+        answer = _branch_coverage(
+            project_dir, read, cache, record_grants=record_grants
+        )
+    finally:
+        # Best-effort by contract (:meth:`VerdictCache.flush`) and worth doing
+        # even from an advisory read: the builder's next `check-cumulative-critic`
+        # asks this exact question of this exact store, so a memo warmed here is
+        # the difference between that call being instant and paying the cold
+        # composition twice.
+        cache.flush()
+    return {k: v for k, v in answer.items() if not k.startswith("_")}
+
+
+def _branch_coverage(
+    project_dir: Path, read: dict, cache, *, record_grants: bool
+) -> dict:
+    """Compose coverage over ``merge-base(base_branch, HEAD)`` → ``HEAD`` and
+    return the verdict as data. Renders nothing: each caller writes it for its
+    own audience.
+
+    ``status`` is one of:
+
+    - ``store-precheck`` — the store refuses to be graded at all (schema-ahead
+      and friends). ``precheck`` carries the ``(status, reason)`` pair.
+    - ``no-base`` / ``no-head`` — the span itself could not be resolved.
+    - ``covered`` — a path composes with 0 unresolved blocking.
+    - ``blocked`` — a path composes but carries unresolved BLOCKING findings.
+    - ``transferred`` — uncovered by composition, granted by the base-advance
+      transfer; ``transfer`` and ``tests_reason`` say what vouched.
+    - ``uncovered`` — nothing composes and no transfer holds. ``transfer_stale``
+      is the near-miss reason when byte identity held and the suite did not.
+
+    Keys prefixed ``_`` are the rendering context: the verdict closure built
+    over this invocation's diff/key memos. They are returned rather than
+    rebuilt by the caller because rebuilding re-pays the ``git ls-tree`` per
+    tree this call already paid — which is most of a cold verdict's cost.
+    """
     precheck = _store_precheck(read)
     if precheck is not None:
-        status, reason = precheck
-        print(f"{status}: {reason}", file=sys.stderr)
-        return 1
+        return {"status": "store-precheck", "precheck": precheck}
 
     resolved = coverage.resolve_merge_base_tree(project_dir)
     if resolved["status"] != "ok":
-        remedy = {
-            "resolve-base": (
-                " — cannot determine the PR span. Fix base_branch in "
-                "project-state.yaml (or fetch the base) and re-run."
-            ),
-            "merge-base": ". Re-run once the branch shares history with its base.",
-        }.get(resolved.get("step", ""), ".")
-        print(f"no-base: {resolved['reason']}{remedy}", file=sys.stderr)
-        return 1
+        return {"status": "no-base", "resolved": resolved}
     base_tree = resolved["tree"]
     rc, head_tree, err = evidence.run_git(project_dir, "rev-parse", "HEAD^{tree}")
     if rc != 0 or not head_tree:
-        print(f"no-head: cannot resolve HEAD^{{tree}} ({err}).", file=sys.stderr)
-        return 1
+        return {"status": "no-head", "resolved": resolved, "error": err}
 
     # Every cached ANSWER is read after the schema-ahead precheck above, and
     # that ordering is the contract: a fact from a newer plugin must block
@@ -1704,9 +2100,109 @@ def _cumulative_critic_verdict(project_dir: Path, read: dict, cache) -> int:
     def verdict_fn(facts: list[dict], base: str, target: str) -> dict:
         return cache.verdict(facts, base, target, diff_fn, key_fn)
 
+    common = {
+        "resolved": resolved,
+        "base_tree": base_tree,
+        "head_tree": head_tree,
+        "_verdict_fn": verdict_fn,
+    }
     verdict = verdict_fn(read.get("facts", []), base_tree, head_tree)
 
-    if verdict["status"] == "covered":
+    if verdict["status"] in ("covered", "blocked"):
+        return {"status": verdict["status"], "verdict": verdict, **common}
+
+    # A base advance moves the span's START node, so a branch whose own diff did
+    # not move a byte reads as uncovered and buys a full re-review. Attempt the
+    # transfer BEFORE anything is rendered: when it holds this is a pass, and
+    # the remedy block the printer would otherwise write describes a problem the
+    # operator does not have. Condition 3 lives here rather than in the
+    # diagnosis because the test evidence is this module's — and because the
+    # near miss (byte identity holds, the suite has not met the merged tree) has
+    # a remedy worth naming: a suite run, which is minutes against a
+    # cumulative's tens of them.
+    transfer = coverage.diagnose_base_advance_transfer(
+        project_dir,
+        read.get("facts", []),
+        base_tree,
+        head_tree,
+        diff_fn,
+        verdict_fn,
+    )
+    if transfer is not None and transfer.get("status") == "match":
+        tests_ok, tests_reason = suite_vouches_for_tree(project_dir, head_tree)
+        if tests_ok:
+            if record_grants:
+                record_transfer_grant(
+                    project_dir,
+                    read.get("facts", []),
+                    transfer,
+                    base_tree,
+                    head_tree,
+                    "check-cumulative-critic",
+                )
+            return {
+                "status": "transferred",
+                "verdict": verdict,
+                "transfer": transfer,
+                "tests_reason": tests_reason,
+                **common,
+            }
+        return {
+            "status": "uncovered",
+            "verdict": verdict,
+            "transfer": transfer,
+            "transfer_stale": tests_reason,
+            **common,
+        }
+    return {
+        "status": "uncovered",
+        "verdict": verdict,
+        "transfer": transfer,
+        "transfer_stale": None,
+        **common,
+    }
+
+
+def _cumulative_critic_verdict(project_dir: Path, read: dict, cache) -> int:
+    """:func:`check_cumulative_critic`'s body; see it for the contract.
+
+    The composition is :func:`_branch_coverage`'s and this function only
+    renders it — including every diagnosis below, which is advice about a
+    verdict already reached rather than an input to it."""
+    answer = _branch_coverage(project_dir, read, cache, record_grants=True)
+    status = answer["status"]
+
+    if status == "store-precheck":
+        pstatus, reason = answer["precheck"]
+        print(f"{pstatus}: {reason}", file=sys.stderr)
+        return 1
+
+    if status == "no-base":
+        resolved = answer["resolved"]
+        remedy = {
+            "resolve-base": (
+                " — cannot determine the PR span. Fix base_branch in "
+                "project-state.yaml (or fetch the base) and re-run."
+            ),
+            "merge-base": ". Re-run once the branch shares history with its base.",
+        }.get(resolved.get("step", ""), ".")
+        print(f"no-base: {resolved['reason']}{remedy}", file=sys.stderr)
+        return 1
+
+    if status == "no-head":
+        print(
+            f"no-head: cannot resolve HEAD^{{tree}} ({answer['error']}).",
+            file=sys.stderr,
+        )
+        return 1
+
+    resolved = answer["resolved"]
+    base_tree = answer["base_tree"]
+    head_tree = answer["head_tree"]
+    verdict_fn = answer["_verdict_fn"]
+    verdict = answer["verdict"]
+
+    if status == "covered":
         steps = verdict.get("path", [])
         reviews = sum(1 for s in steps if s.get("kind") == "review")
         free = sum(1 for s in steps if s.get("kind") == "free")
@@ -1721,7 +2217,7 @@ def _cumulative_critic_verdict(project_dir: Path, read: dict, cache) -> int:
         )
         return 0
 
-    if verdict["status"] == "blocked":
+    if status == "blocked":
         unresolved = verdict.get("unresolved", [])
         print(
             f"blocking: coverage composes over {base_tree[:12]}..{head_tree[:12]} "
@@ -1740,52 +2236,27 @@ def _cumulative_critic_verdict(project_dir: Path, read: dict, cache) -> int:
             print(line, file=sys.stderr)
         return 1
 
-    # A base advance moves the span's START node, so a branch whose own diff did
-    # not move a byte reads as uncovered and buys a full re-review. Attempt the
-    # transfer BEFORE printing anything: when it holds, this is a pass, and the
-    # remedy block below would be describing a problem the operator does not
-    # have. Condition 3 lives here rather than in the diagnosis because the test
-    # evidence is this module's — and because the near miss (byte identity
-    # holds, the suite has not met the merged tree) has a remedy worth naming: a
-    # suite run, which is minutes against a cumulative's tens of them.
-    transfer = coverage.diagnose_base_advance_transfer(
-        project_dir,
-        read.get("facts", []),
-        base_tree,
-        head_tree,
-        diff_fn,
-        verdict_fn,
-    )
-    transfer_stale: "str | None" = None
-    if transfer is not None and transfer.get("status") == "match":
-        tests_ok, tests_reason = suite_vouches_for_tree(project_dir, head_tree)
-        if tests_ok:
-            record_transfer_grant(
-                project_dir,
-                read.get("facts", []),
-                transfer,
-                base_tree,
-                head_tree,
-                "check-cumulative-critic",
-            )
-            advance = transfer["advance_files"]
-            advanced = (
-                "the advance's own diff was unreadable, so its size is unknown"
-                if advance is None
-                else f"the advance touched {len(advance)} judgeable file(s), none of them yours"
-            )
-            print(
-                f"satisfied (transferred across base advance "
-                f"{transfer['prior_base'][:12]}→{base_tree[:12]}; branch diff "
-                f"byte-identical; suite current): {transfer['prior_reviews']} review "
-                f"fact(s) already span {transfer['prior_base'][:12]}.."
-                f"{transfer['prior_head'][:12]} with 0 unresolved blocking, the "
-                f"{len(transfer['files'])} judgeable file(s) this branch changes are "
-                f"byte-identical in both spans, and {advanced}. "
-                f"Test evidence: {tests_reason}."
-            )
-            return 0
-        transfer_stale = tests_reason
+    transfer = answer.get("transfer")
+    if status == "transferred":
+        advance = transfer["advance_files"]
+        advanced = (
+            "the advance's own diff was unreadable, so its size is unknown"
+            if advance is None
+            else f"the advance touched {len(advance)} judgeable file(s), none of them yours"
+        )
+        print(
+            f"satisfied (transferred across base advance "
+            f"{transfer['prior_base'][:12]}→{base_tree[:12]}; branch diff "
+            f"byte-identical; suite current): {transfer['prior_reviews']} review "
+            f"fact(s) already span {transfer['prior_base'][:12]}.."
+            f"{transfer['prior_head'][:12]} with 0 unresolved blocking, the "
+            f"{len(transfer['files'])} judgeable file(s) this branch changes are "
+            f"byte-identical in both spans, and {advanced}. "
+            f"Test evidence: {answer['tests_reason']}."
+        )
+        return 0
+
+    transfer_stale = answer.get("transfer_stale")
 
     print(
         f"uncovered: no composed review evidence spans "
@@ -1854,7 +2325,7 @@ def _cumulative_critic_verdict(project_dir: Path, read: dict, cache) -> int:
     if churn is not None and churn.get("status") == "unavailable":
         # A degraded advisory that says nothing is indistinguishable from one
         # that found nothing, and the builder then runs the round this control
-        # exists to prevent with no record that it never ran (learnings.md:
+        # exists to prevent with no record that it never ran (core.md:
         # "'Advice fails soft' is not 'advice fails silent'").
         print(
             f"NOTE: the fix-churn diagnosis could not run ({churn['reason']}) — "
@@ -1878,7 +2349,7 @@ def _cumulative_critic_verdict(project_dir: Path, read: dict, cache) -> int:
             f"finding(s) gated nothing. ONE `/prawduct:critic verify-resolutions` "
             f"closes it; fix nothing further first, or you will re-open it. For "
             f"anything still undecided, `prawduct-hook disposition "
-            f"{churn['fact_id']} <fid> --accept \"<reason>\"` records a won't-fix, "
+            f"{churn['fact_id']} <fid|oid> --accept \"<reason>\"` records a won't-fix, "
             f"moves no tree, and needs no review. Before you make the NEXT commit, "
             f"`prawduct-hook cost-of-commit` says whether it re-opens this gate — "
             f"the answer that used to be learnable only after committing.",
