@@ -5,6 +5,57 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-20: v3.6.0 is cut, and develop reopens on 3.6.1-dev
+
+<!-- prawduct: type=chore | scope=release-v3.6.0 -->
+
+**17 scopes, 20 change-log entries, `K = 0`** — the whole-develop promotion path, nothing withheld.
+`main` is at `11dab896`, tag `v3.6.0` published with the CHANGELOG section as its Release notes,
+`check-released v3.6.0` reports 3 of 3 verified. Re-derive the scope set with
+`grep -o "scope=[a-z0-9.-]* | release=v3.6.0"` over `change-log.md` plus
+`change-log-archive/2026-09.md`.
+
+**A minor, and the number was re-derived rather than inherited.** The standing 2026-09-15 ruling was
+3.5.1, taken when the bundle held three scopes; `gates.json` was already stamped `since: 3.5.1` and
+`develop` had been running `3.5.1-dev.N`, so every in-repo signal agreed with a number chosen
+fourteen scopes earlier. Re-derived from the final scope set at Phase 0 and put to the owner with
+both sides. Full reasoning in `.prawduct/artifacts/release-plan-v3.6.0.md` § Version — that file is
+the decision record, not a summary of it.
+
+**No fourth review-cost lever joined this release, and that is a decision rather than an omission.**
+Eight of the seventeen scopes are review-cost work directly (`review-loop-termination`,
+`review-convergence`, `review-cost-decision`, `review-stages`, `review-stats-observations`,
+`review-yield-instrument`, `pr-review-payload`, `critic-dispatch-clock`) and three more are adjacent
+(`test-status-clause`, `test-report-scope`, `pr-step1-recorder`). A backlog audit at the Phase 1
+Checkpoint asked whether any remaining review-tax item should ride the cut; the answer was no, on the
+warrant already recorded in `.prawduct/artifacts/review-cost-investigation-2026-09-19.md` § 8.4:
+*the honest next act is a measurement window, not a fourth mechanism.* The three shipped
+interventions carry 15 post-intervention verify rounds and § 8.1 shows them confounded by the
+`observations` array's 2026-09-16 start, so a fourth lever landing in the same release would make all
+four unattributable. The window needs no build — `review-stats --since/--until` shipped here, and the
+derivation is committed at `.prawduct/research/review-cost-2026-09-20/verify_population.py`. It needs
+rounds, which is what promoting this release buys.
+
+**One live defect the audit verified against HEAD, filed rather than fixed here.** #776 —
+`critic_consolidate._round_budget_verdict` names trunk-based merge-base zeroing as the reason the
+review round budget keys on SCOPE, then intersects with `coverage.count_branch_rounds`, which admits
+a round only on `merge_base..HEAD` lineage. So the review loop's only declared stop is silently inert
+on the repo shape its own docstring cites, and no test covers that shape. It shipped in **v3.5.0**,
+not here, so it is a v3.6.1 candidate and not a reason to have reopened the cut.
+
+**Phase 1 step 6 gets the exception it always needed**, deferred out of the prep commit on purpose
+because `origin/develop` was what Phase 2 promoted. The step says *no unticked boxes on a plan whose
+scope you just tagged*, which has a guaranteed false positive on the plan whose own acceptance is the
+release being cut: `build-plan-learnings-v2-docs.md` Chunk 05 asks for "Runbook Phases 0–3 complete",
+so at Phase 1 it is unticked *because* the step is running. It now names that case, says it ticks
+after Phase 3, and asks the cutter to record which plan it is so the next reader can tell it from a
+real miss.
+
+`develop` reopens on `3.6.1-dev` — guessed low on purpose, so every possible next cut is a forward
+move for anyone running the develop track.
+
+---
+
 ## 2026-09-19: The review loop converges — one finding per class, and the cost lead stops saying free
 
 <!-- prawduct: type=feat | scope=review-convergence | release=v3.6.0 -->

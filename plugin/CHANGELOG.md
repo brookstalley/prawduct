@@ -10,6 +10,17 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
+## v3.6.1-dev
+
+**Rolling notes for the next release — nothing has shipped under this number yet.**
+Entries accumulate here as work lands on `develop`; the cut renames this heading to its
+release number.
+
+**`release-v3.6.0`** — the v3.6.0 cut itself: `main` promoted, the tag and GitHub Release
+published in one call, and `develop` reopened here. Nothing in this scope changes plugin
+behaviour; it is the release's own record, and it carries the runbook fix that stops Phase 1
+step 6 reporting a false unticked-box on the plan whose own acceptance is the release being cut.
+
 ## v3.6.0
 
 **Your learnings corpus moves into the harness, review rigor becomes stage-keyed, and a finding you decide not to fix can now be recorded instead.** Seventeen scopes since v3.5.0, and the three you will feel in an ordinary session each change what a review costs you: your rules leave `.prawduct/learnings.md` for `.claude/rules/learnings/` where the harness loads them, reviews split into an inner stage that blocks only on ships-broken and a boundary stage that runs everything and is never inferred away, and a non-blocking finding gains a recorded accept — so declining a fix leaves a reason on the record instead of costing a round or losing the reasoning.

@@ -458,7 +458,11 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
 6. Confirm each shipping scope's build plan is actually closed out — every
    `## Status` box ticked for the chunks this release carries.
 
-   **Expected:** no unticked boxes on a plan whose scope you just tagged.
+   **Expected:** no unticked boxes on a plan whose scope you just tagged — **except a chunk whose
+   own acceptance is this release**, which cannot be ticked here by construction. A plan carrying a
+   "Phases 0–3 complete" chunk is unticked *because* you are at Phase 1; that is the one `[ ]` this
+   step expects, and it ticks after Phase 3. Record which plan it is, so the next reader can tell it
+   from a real miss.
 
    **If not:** a `[ ]` at release means that chunk was never closed out by the
    session that built it. **Do not tick it here.** The boxes are hand-authored
