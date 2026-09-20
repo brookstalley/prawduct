@@ -43,7 +43,13 @@ partition: >-
   tests. Precedent read: `build-plan-instruction-surface-truth.md` delegated four ways by file tree
   at the owner's request; the owner asked for multi-subagent execution here, so no approval round.
 last_validated: 2026-09-02
+lifecycle: completed
+archived: 2026-09-20
+released_in: v3.6.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Requirements Confidence
 

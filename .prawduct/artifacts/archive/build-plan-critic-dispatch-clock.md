@@ -50,7 +50,13 @@ governed_by:
       - "exit codes are the contract → conforms; `critic-begin` returns exactly what it returns today. A marker that cannot be written is never fatal to the dispatch it precedes"
       - "whole-surface semantic versioning; persisted data independently schema-versioned → conforms; the ledger's `schema_version` stays 1 because `dispatched_at` is an existing optional envelope key"
 last_validated: 2026-09-19
+lifecycle: completed
+archived: 2026-09-20
+released_in: v3.6.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Requirements Confidence
 

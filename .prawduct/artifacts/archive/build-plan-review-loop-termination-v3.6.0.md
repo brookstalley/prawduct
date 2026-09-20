@@ -46,7 +46,13 @@ governed_by:
       - "the governance ledger has a single writer → conforms; no chunk hand-authors the ledger"
       - "text emitted into a governed product names no prawduct-internal identifier → ENGAGED by Chunk 02: the joined line must say what is uncovered in plain language, with no RC/fid/chunk id"
 last_validated: 2026-09-16
+lifecycle: completed
+archived: 2026-09-20
+released_in: v3.6.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Requirements Confidence
 

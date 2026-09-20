@@ -23,7 +23,13 @@ governed_by:
       - "prawduct guides and reviews; it never implements → conforms: this writes no product code in the sibling repos, which are read-only at a pinned SHA; the instrument lives in this framework repo's own tools/ and measures its own artifacts"
 partition: serial — Chunk 02 cannot start until the instrument exists, and Chunk 01's controls are only falsifiable by running it against the real trees
 last_validated: 2026-09-18
+lifecycle: completed
+archived: 2026-09-20
+released_in: v3.6.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 # Build Plan — MCP capture quotation audit
 

@@ -21,7 +21,7 @@ Open questions, with recommendations, are at the [end](#open-questions).
 
 ## Early signal: v3.5.0 and 3.5.1-dev
 
-**v3.5.1 has not shipped.** There is no tag and `main` is exactly `v3.5.0` (`45902920`). Two consumers are running unreleased dev builds from a local checkout, and they are running *different* builds — discodon on `3.5.1-dev.1`, bankmachine on `3.5.1-dev`. Treat this as two samples of a version family, not two samples of a version.
+**v3.5.1 is not the number these dev builds are heading for.** The 2026-09-15 ruling that named it was re-taken on 2026-09-20 and the release is being cut as **v3.6.0** (minor), so the `3.5.1-dev.N` builds below are a prerelease family whose release number changed under them rather than a line with a successor. At the time these figures were taken there was no tag and `main` was exactly `v3.5.0` (`45902920`); for the current state re-derive rather than reading this sentence — `git tag --list 'v*' --sort=-v:refname | head -3`. Two consumers are running unreleased dev builds from a local checkout, and they are running *different* builds — discodon on `3.5.1-dev.1`, bankmachine on `3.5.1-dev`. Treat this as two samples of a version family, not two samples of a version.
 
 `.prawduct/.prawduct-version` records the last plugin version a repo's banner saw. The banner rewrites it only when the version differs, so its mtime dates the transition:
 

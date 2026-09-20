@@ -46,7 +46,13 @@ partition: >-
   learnings-v2 program paid five integration conflicts for. Chunk 03 then asserts a ceiling over
   the very files Chunks 01–02 edit, so it must run last and in the same head.
 last_validated: 2026-09-19
+lifecycle: completed
+archived: 2026-09-20
+released_in: v3.6.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Requirements Confidence
 

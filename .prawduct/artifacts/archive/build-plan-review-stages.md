@@ -55,7 +55,13 @@ governed_by:
       - "text emitted into a governed product names no prawduct-internal identifier → ENGAGED by Chunks 04 and 06: the deferral line and the risk-surface ask are written in the product's terms"
       - "the governance ledger has a single writer → conforms; no chunk hand-authors the ledger, and the `by_stage` block is read from facts the existing writer already appends"
 last_validated: 2026-09-17
+lifecycle: completed
+archived: 2026-09-20
+released_in: v3.6.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 # Build plan — review rigor is stage-keyed
 

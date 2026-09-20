@@ -39,7 +39,13 @@ governed_by:
       - "proportionality ratchets both ways → conforms; no control is added that blocks a session — the refusals are on an explicit --apply"
       - "state-file growth past its threshold is an advisory, never a hard block → conforms; nothing blocks on size. The advisory gains a command that actually clears it"
 last_validated: 2026-09-16
+lifecycle: completed
+archived: 2026-09-20
+released_in: v3.6.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 # Build plan — bounded change log
 

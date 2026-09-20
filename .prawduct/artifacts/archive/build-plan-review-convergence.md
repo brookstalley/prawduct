@@ -46,7 +46,13 @@ partition: >-
   reviewer-payload ceilings, so its declared raise is computed against whatever 03 leaves.
   (Chunk 02 also edited `begin_review` in that module; withdrawn 2026-09-20.)
 last_validated: 2026-09-19
+lifecycle: completed
+archived: 2026-09-20
+released_in: v3.6.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Requirements Confidence
 

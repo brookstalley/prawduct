@@ -35,7 +35,13 @@ governed_by:
       - "exit codes are the contract → ENGAGED: an uninterpretable bound exits 1, matching the command's existing bad-argument meaning; no exit code is repurposed"
       - "whole-surface semver; the internal CLI surface carries no per-subcommand version → conforms"
 last_validated: 2026-09-18
+lifecycle: completed
+archived: 2026-09-20
+released_in: v3.6.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Requirements Confidence
 

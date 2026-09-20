@@ -61,7 +61,13 @@ partition: >-
   Precedent read: Wave 1 on this branch (three delegates, same rule, one merged `final`); the
   owner asked for multi-subagent execution in the discovery, so no approval round.
 last_validated: 2026-09-02
+lifecycle: completed
+archived: 2026-09-20
+released_in: v3.6.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Requirements Confidence
 

@@ -40,7 +40,13 @@ governed_by:
       - "`backlog_service_repo` selects the authoritative backlog store → conforms — the payload's backlog section calls the existing cache read, which already routes"
 partition: serial — 02 consumes 01's payload command and dispatch clock, and its cumulative review is this bundle's only boundary review (see § Partition decision for what that trade accepts)
 last_validated: null
+lifecycle: completed
+archived: 2026-09-20
+released_in: v3.6.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Requirements Confidence
 

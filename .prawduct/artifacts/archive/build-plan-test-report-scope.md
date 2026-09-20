@@ -38,7 +38,13 @@ governed_by:
       - "text emitted into a governed product names no prawduct-internal identifier → conforms: the refusals name commands and file paths a consumer has (`test-evidence record`, `docs/test-report-contract.md`), no review ids and no internal symbols"
 partition: serial — one chunk; the mechanism is derived from the contract stated in the same chunk
 last_validated: 2026-09-18
+lifecycle: completed
+archived: 2026-09-20
+released_in: v3.6.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Requirements Confidence
 

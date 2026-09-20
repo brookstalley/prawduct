@@ -87,12 +87,20 @@ exists — the discovery's own delivery evidence (audit §3.2) is that code dire
 always-loaded prose does not | MED impact — it decides which ceilings are touched | user can
 override per rule]
 
-[RESOLVED 2026-09-15 — the owner ruled **3.5.1**. The 3.5.0 assumption below was overtaken:
-v3.5.0 SHIPPED on 2026-09-12 without this work, while this branch sat merge-ready. `gates.json`'s
-three learnings rows are restamped `since: "3.5.1"` accordingly — a gate stamped with a version
-that shipped without it is a gate the banner never announces. I put on record that a PATCH number
-understates a one-way cutover which deletes `.prawduct/learnings.md` in every governed repo and
-relocates where rules live; the owner ruled 3.5.1 with that stated. Recorded, not re-litigated.]
+[SUPERSEDED 2026-09-20 — the owner ruled **3.6.0** (minor), and `gates.json`'s three learnings
+rows now carry `since: "3.6.0"`. The question was reopened at the cut because the 2026-09-15 ruling
+priced THREE scopes and the release bundle had grown to SEVENTEEN; the reservation recorded below
+— that a patch number understates a one-way cutover — was one of the reasons, alongside
+`change-log-archive`'s explicit downgrade caution, which the earlier ruling never saw. Full
+decision, both sides, in `.prawduct/artifacts/release-plan-v3.6.0.md` § Version.]
+
+[RESOLVED 2026-09-15, SUPERSEDED ABOVE — the owner ruled **3.5.1**. The 3.5.0 assumption below was
+overtaken: v3.5.0 SHIPPED on 2026-09-12 without this work, while this branch sat merge-ready.
+`gates.json`'s three learnings rows were restamped `since: "3.5.1"` accordingly — a gate stamped
+with a version that shipped without it is a gate the banner never announces. I put on record that a
+PATCH number understates a one-way cutover which deletes `.prawduct/learnings.md` in every governed
+repo and relocates where rules live; the owner ruled 3.5.1 with that stated. Recorded, not
+re-litigated.]
 
 **What would raise confidence:** the owner's version call; it is asked at Chunk 05, where it
 is needed, and nothing before it depends on the answer.
@@ -128,8 +136,10 @@ against its surface and the two protocol files against each other. Chunk 04 done
 cumulatives (rev-…a960563b, rev-…db97159b after the sync) and four verify-resolutions rounds, all
 findings fixed or accepted; PR reviewer (opus) clean on the re-run; PR #759 open against develop,
 merge commit, merge awaits the owner (`PR merge: wait_for_user`). Next: Chunk 05 after the merge —
-the owner's version call — MADE 2026-09-15: **3.5.1** (see the resolved assumption above;
-gates.json rows now carry that `since`).
+the owner's version call — MADE 2026-09-15 as 3.5.1, **SUPERSEDED 2026-09-20: 3.6.0** (see the
+assumption block above; gates.json rows now carry that `since`). Phases 0–1 of the cut ran on
+2026-09-20 and stopped at the runbook's Checkpoint by owner decision; Chunk 05 stays unticked until
+Phases 2–3 land.
 
 ## Scaffolding
 
@@ -174,10 +184,11 @@ plugin/docs/discipline.md                 # NEW: the ten-rule delivery table (03
 plugin/docs/norms.md                      # learnings cross-links repointed (02)
 plugin/skills/critic/review-cycle.md      # rule-unit sentence stated from the writer (02); R12 sentences if any (03)
 .prawduct/artifacts/api-contract.md       # R13: the added verbs and the contract narrative (02)
-.prawduct/artifacts/release-plan-v3.5.1.md  # NEW at the cut (05) — 3.5.1, NOT 3.5.0:
-                                            # develop already shipped release-plan-v3.5.0.md
-                                            # on 2026-09-12 and writing that path would
-                                            # overwrite a shipped record.
+.prawduct/artifacts/release-plan-v3.6.0.md  # NEW at the cut (05) — 3.6.0 per the 2026-09-20
+                                            # ruling, NOT 3.5.1 and NOT 3.5.0: develop already
+                                            # shipped release-plan-v3.5.0.md on 2026-09-12 and
+                                            # writing either path would overwrite or invent a
+                                            # record. WRITTEN 2026-09-20.
 tests/test_v5_methodology.py, tests/test_plugin_methodology_digest.py, tests/test_v5_templates.py
 ```
 
@@ -398,11 +409,12 @@ lives at exactly one delivery surface.
   - **Owner decision, framed before Phase 1:** version 3.5.0 (minor — the discovery's D1: a
     consumer's repo is rewritten on its first session, a skill and three verbs retired, a Stop
     gate widened to every session) versus 3.4.1 (the conservative norm). Recorded in the release
-    plan whichever way. SETTLED 2026-09-15: the owner ruled 3.5.1, and `gates.json`'s
-    three learnings rows now carry that `since`.
-  - new `.prawduct/artifacts/release-plan-v3.5.1.md` (the owner's 2026-09-15 ruling): version decision,
-    release classification of every release-pending scope on `develop` (this program's three plus
-    whatever the peer session landed), the consumer-facing headline, what ships, verification.
+    plan whichever way. SETTLED 2026-09-15 as 3.5.1; **RE-TAKEN 2026-09-20 and settled as 3.6.0
+    (minor)** when the bundle reached seventeen scopes — `gates.json`'s three learnings rows carry
+    `since: "3.6.0"`. DONE.
+  - new `.prawduct/artifacts/release-plan-v3.6.0.md` (the owner's 2026-09-20 ruling): version
+    decision with both sides, release classification of all seventeen release-pending scopes on
+    `develop`, the consumer-facing headline, what ships, verification. WRITTEN 2026-09-20.
   - Phase 0: `check-releasability --release vX.Y.Z` green on a current green suite. Phase 1 on
     `develop`: release-pending set derived per candidate, `release=` tags on the shipping scopes,
     the three version files, `plugin/CHANGELOG.md` section renamed, `README.md` § Recent Changes
