@@ -5,6 +5,68 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-19: The review loop converges — one finding per class, and the cost lead stops saying free
+
+<!-- prawduct: type=feat | scope=review-convergence -->
+
+The convergence half of #724. Where `review-cost-decision` made the cost of a round VISIBLE, this
+makes two of them not happen — and withdraws a third that would have made things worse.
+
+**#640 — when a written rule has no enforcer, the finding is the rule, once.** A reviewer files ONE
+finding naming the rule and what would mechanize it, at the severity an instance would have
+carried, opening it with `rule-unenforced:` — in the field each copy's own store persists, which is
+NOT the same field on both: a Critic partial's `name` becomes the fact's `title`, while a PR
+finding persists `summary` and carries no title. Two stores, two field names, one token — so the
+yield stays countable from either side. Substitution, never suppression: the
+report still happens and still carries its weight; it names the cause that can end the class rather
+than one member of it. A class re-filed per instance buys a round every branch, forever. The item
+was CLOSED while its fix sat unmerged for nine days on a branch 281 commits behind — re-applied
+here rather than merged, because the branch predates the learnings-v2 migration and its
+`learnings.md` edits have no destination.
+
+**#851 — the cost lead stops saying "free" when it is not.** Filed the same day from a live
+reproduction in this scope's own predecessor: `commit_cost` asks only whether paths are judgeable
+and cannot know a review just anchored on this tree. Once one has, the commit the lead would call
+free is already covered and the next edit opens a NEW delta, judgeable or not. It told the builder
+a batch was free and it bought a full round.
+
+**A dispatched reviewer's Learnings Cross-Check now scopes to the REVIEW interval, not the
+session.** Found by the cumulative that reviewed this branch. `learnings-files --for-diff` computed
+a reviewer's read list from `learnings_change_set`, which judges *this session* — and for a
+`cumulative` over already-committed work that span is EMPTY, because the session began after the
+commits, so a clean tree diffs to nothing. Measured here: the cumulative reviewing a five-commit
+branch was handed `core.md` alone, at exit 0, indistinguishable from "no area file applies", while
+the interval touched the areas owned by `reviews.md`, `hook-surface.md`, `tests.md` and
+`authoring.md`. The Cross-Check is a `final`/`cumulative`-only pass with no other owner, so it read
+one file on exactly the reviews it exists for. New `gates.learnings_review_change_set` takes the
+interval from the **dispatch manifest** — the artifact that already records what a review spans,
+written by code at `critic-begin` — so nothing new is declared or maintained: no flag, no field, no
+second copy of the span. `learnings_change_set` is unchanged and still owns the Stop nudge; the two
+ask different questions, which is why they are two functions and not one. **Consumer-visible:** a
+`final`/`cumulative` reviewer that previously received `core.md` alone now receives every area file
+the interval touches.
+
+**#167 was built and then WITHDRAWN — no exit 5 ships.** A refusal for a verify pass anchored on a
+clean verify pass was implemented to `documentation/issues/167-design.md` D1–D5, reviewed, and
+reverted in full. Two independent reviewers converged on the defect and the numbers settle it: the
+refusal fires only on a non-empty judgeable delta, and no `guard-refusal` fact composes a coverage
+edge, so every firing left `check-cumulative-critic` reporting `uncovered` — prescribing the very
+pass that had just been refused. Priced over 1,047 recorded reviews, that traded a 300s median
+`verify-resolutions` for a 720s median `cumulative`: the control more than doubled the cost in the
+case it existed to cheapen. The general lesson is recorded in `core.md` under "A refusal hands
+the caller a REPLACEMENT route, and it is checked by its PROPERTIES, never its name" — a refusal is
+priced against the route it FORCES, not the one it declines — and the
+sharper half is about evidence strength: `diagnose_fix_churn` is file-level by its own docstring
+(it rules out work in a file the review never saw, not new work written into one it named), which
+is advisory strength, while a refusal is authority. #167 stays open. Refusing a round needs
+content-level evidence that the delta is churn; until something supplies that, the existing
+advisory NOTE plus a free `disposition --accept` is the right strength for what is known.
+
+**A mutation sweep returned a survivor that was a finding about the code rather than the tests**,
+recorded because the shape recurs: a comparison inlined where only a pure renderer was under test
+(extracted, so the three survivors in it could be killed). The remaining known limit is stated
+rather than implied: the AST wiring check proves a call is PRESENT, not reachable.
+
 ## 2026-09-19: The fix/accept decision is priced, and the two over-fixing rules are bounded
 
 <!-- prawduct: type=feat | scope=review-cost-decision -->

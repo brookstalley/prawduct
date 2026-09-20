@@ -1374,6 +1374,56 @@ def learnings_change_set(project_dir: Path) -> "tuple[list[str], str]":
         return [], f"{type(exc).__name__}: {exc}"
 
 
+def learnings_review_change_set(project_dir: Path) -> "tuple[list[str], str]":
+    """The change set a REVIEWER's read list is computed from: ``(files, reason)``.
+
+    **Why this is not :func:`learnings_change_set`, whose docstring argues for
+    one definition.** That argument is intact and still binding: the Stop nudge
+    and the reviewer must never give different answers to *the same* question.
+    They are not asking the same question. The gate judges **this session**; a
+    dispatched reviewer judges **the review interval**, and for a ``cumulative``
+    of already-committed work those two spans are not merely different, the
+    session one is EMPTY — the session began after the commits, so its base tree
+    IS ``HEAD^{tree}`` and a clean working tree diffs to nothing.
+
+    Measured 2026-09-20 on this repo: the cumulative reviewing a five-commit
+    branch was handed ``core.md`` alone, at exit 0, indistinguishable from "no
+    area file applies", while the interval touched the areas owned by
+    ``reviews.md``, ``hook-surface.md``, ``tests.md`` and ``authoring.md``. The
+    Learnings Cross-Check is a ``final``/``cumulative``-only pass with no other
+    owner, so it read one file on exactly the reviews it exists for. The
+    reviewer caught it only by reading the four area files by hand.
+
+    So the interval comes from the **dispatch manifest** — the one artifact that
+    already records what this review spans, written by code at ``critic-begin``.
+    Nothing new is declared or maintained: no flag, no field, no second copy of
+    the span. When no manifest is on disk there is no review to scope to, and
+    this falls back to the session span, which is the right answer for every
+    caller that is not a dispatched reviewer.
+    """
+    prawduct_dir = gitstate.get_prawduct_dir(project_dir)
+    manifest_path = prawduct_dir / ".critic-partials" / "manifest.json"
+    try:
+        manifest = json.loads(manifest_path.read_text())
+    except (OSError, ValueError):
+        # No live dispatch (or an unreadable one): not a reviewer context, so
+        # the session span is the honest answer rather than a failure.
+        return learnings_change_set(project_dir)
+
+    base = (manifest or {}).get("base_tree")
+    head = (manifest or {}).get("head_tree")
+    if not base or not head:
+        return learnings_change_set(project_dir)
+
+    changed = evidence.tree_diff(project_dir, base, head)
+    if changed is None:
+        # `tree_diff` returns None rather than guessing. Fail LOUD for the same
+        # reason the CLI does: a silent narrowing hides area files the review
+        # interval really touches, and looks exactly like an answer.
+        return [], f"could not diff the review interval {base[:12]}..{head[:12]}"
+    return changed, ""
+
+
 def learnings_cross_check_note(project_dir: Path) -> str:
     """What the Learnings Cross-Check will read, over :func:`learnings_change_set`.
 

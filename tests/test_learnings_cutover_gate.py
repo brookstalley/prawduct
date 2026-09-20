@@ -601,8 +601,125 @@ class TestTheBudgetFloor:
         assert "learnings-over-budget unchecked" not in err
 
 
+class TestAReviewerScopesToTheReviewInterval:
+    """A dispatched reviewer's read list follows the DISPATCH MANIFEST's
+    interval, not the session's.
+
+    The defect this pins, measured 2026-09-20 on this repo: a `cumulative`
+    reviewing a five-commit branch was handed `core.md` alone, at exit 0. The
+    session had started AFTER those commits, so `.session-base-tree` was
+    `HEAD^{tree}` and a clean working tree diffed to nothing — an empty change
+    set is indistinguishable from "no area file applies". The Learnings
+    Cross-Check is `final`/`cumulative`-only, so it read one file on exactly
+    the reviews it exists for, and the reviewer noticed only by opening the
+    four area files by hand.
+
+    This does NOT reopen the one-definition argument in `TestOneDefinitionOfTheDiff`
+    below: the gate and the reviewer still give one answer to one question. They
+    are asking two — the gate about this session, a reviewer about the interval
+    it was dispatched over — and the old code answered the second with the first.
+    """
+
+    def _corpus(self, repo: Path) -> None:
+        d = repo / ".claude" / "rules" / "learnings"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "core.md").write_text("# core\n")
+        (d / "code.md").write_text('---\npaths: ["code.py"]\n---\n# code rules\n')
+        (d / "web.md").write_text('---\npaths: ["web/**"]\n---\n# web rules\n')
+
+    def _committed_branch_then_fresh_session(self, tmp_path):
+        """The exact shape that broke: work COMMITTED, then a session whose base
+        tree is already HEAD's, then a clean tree at dispatch."""
+        repo = _repo(tmp_path)
+        self._corpus(repo)
+        # Load-bearing, not decoration: consumer repos gitignore `.prawduct/`
+        # state, which is why the session's own marker files do not count as
+        # session changes. Without it the span is never empty and this fixture
+        # cannot reproduce the defect at all.
+        (repo / ".gitignore").write_text(".prawduct/.*\n")
+        (repo / "web").mkdir()
+        (repo / "web" / "app.ts").write_text("//\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "corpus")
+        base_tree = subprocess.run(
+            ["git", "rev-parse", "HEAD^{tree}"], cwd=str(repo),
+            capture_output=True, text=True, check=True).stdout.strip()
+
+        (repo / "code.py").write_text("x = 2\n")
+        (repo / "web" / "app.ts").write_text("// edited\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "the work under review")
+        head_tree = subprocess.run(
+            ["git", "rev-parse", "HEAD^{tree}"], cwd=str(repo),
+            capture_output=True, text=True, check=True).stdout.strip()
+
+        # The session starts HERE — after the commits — so its base tree is
+        # HEAD's and the tree is clean. This is the ordinary resume/`/clear`
+        # cadence, not a corner case.
+        _base_tree(repo)
+        return repo, base_tree, head_tree
+
+    def _dispatch(self, repo: Path, base_tree: str, head_tree: str) -> None:
+        d = repo / ".prawduct" / ".critic-partials"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "manifest.json").write_text(json.dumps(
+            {"id": "rev-test-0001", "base_tree": base_tree, "head_tree": head_tree}))
+
+    def test_the_session_span_is_empty_here(self, tmp_path):
+        """The precondition, asserted rather than assumed — without it the test
+        below could pass for a reason that has nothing to do with the fix."""
+        from lib import gates
+
+        repo, _, _ = self._committed_branch_then_fresh_session(tmp_path)
+        changed, reason = gates.learnings_change_set(repo)
+        assert reason == ""
+        assert changed == [], (
+            "the fixture no longer reproduces the defect: the session span has "
+            "to be EMPTY for the old reading to return core.md alone"
+        )
+
+    def test_a_live_dispatch_scopes_to_its_interval(self, tmp_path, capsys):
+        repo, base_tree, head_tree = self._committed_branch_then_fresh_session(tmp_path)
+        self._dispatch(repo, base_tree, head_tree)
+
+        assert _hook.cmd_learnings_files(repo, ["--for-diff"]) == 0
+        printed = [ln for ln in capsys.readouterr().out.splitlines() if ln.strip()]
+        assert printed == [
+            ".claude/rules/learnings/core.md",
+            ".claude/rules/learnings/code.md",
+            ".claude/rules/learnings/web.md",
+        ], (
+            "a dispatched reviewer got the session's (empty) span instead of "
+            "the interval it was dispatched over — the Learnings Cross-Check "
+            "reads core.md alone on every cumulative of committed work"
+        )
+
+    def test_without_a_dispatch_it_is_still_the_session_span(self, tmp_path, capsys):
+        """The control. The manifest branch must not capture callers that are
+        not reviewers — the Stop nudge included."""
+        repo, _, _ = self._committed_branch_then_fresh_session(tmp_path)
+        assert _hook.cmd_learnings_files(repo, ["--for-diff"]) == 0
+        printed = [ln for ln in capsys.readouterr().out.splitlines() if ln.strip()]
+        assert printed == [".claude/rules/learnings/core.md"], (
+            "with no review dispatched there is no interval to scope to, so "
+            "the session span is the honest answer"
+        )
+
+    def test_an_undiffable_interval_fails_loud(self, tmp_path, capsys):
+        """A manifest naming trees git cannot resolve must not degrade to the
+        session span, which would look exactly like a successful narrow."""
+        repo, _, _ = self._committed_branch_then_fresh_session(tmp_path)
+        self._dispatch(repo, "0" * 40, "1" * 40)
+        assert _hook.cmd_learnings_files(repo, ["--for-diff"]) == 1
+
+
 class TestOneDefinitionOfTheDiff:
-    """The gate note and `learnings-files --for-diff` resolve the same change set.
+    """The gate note and `learnings-files --for-diff` resolve the same change set
+    WHENEVER THEY ARE ANSWERING THE SAME QUESTION — which is whenever no review
+    is dispatched. Under a live manifest they deliberately diverge, because the
+    reviewer is then asking about the review interval and the gate about this
+    session; that split is pinned by `TestAReviewerScopesToTheReviewInterval`
+    above, and the fixtures here write no manifest.
 
     They were built against different helpers — session-changed files versus the
     base BRANCH — so a builder who commits the chunk before Stop fires (the

@@ -118,21 +118,52 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # same day from `stage` to route after the cumulative review found `final`
     # is an inner-STAGE mode carrying the full protocol. Baseline, so nothing
     # "paid" for it — it records where each route stood when it first got an
-    # owner. All three are AFTER Chunk 02's declared raise.
+    # owner. All three are AFTER the declared raise in `review-cost-decision`
+    # Chunk 02 (naming the plan because a later plan had a Chunk 02 too, and a
+    # bare chunk number does not survive the plan being archived).
     # +30 to every route on 2026-09-19: finding R-12's correction to the
     # severity bound, which lands in `goals-1-3.md` and `review-protocol.md` —
     # one of which every route loads. Declared, and the first thing this control
     # priced: the per-file tests saw two +30s, and only this sum shows that a
     # dispatched reviewer on a three-reviewer roster pays it three times.
+    # 2026-09-19 (#640 re-apply, review-convergence Chunk 01): the
+    # `rule-unenforced` substitution lands in `critic-reviewer.md` (+289) and
+    # `review-cycle.md` (+83). A DECLARED raise — the rule is a new obligation,
+    # not a restatement, and it exists to REMOVE rounds by substituting one
+    # finding for N.
+    #
+    # This is the first edit the route sums priced that the per-file budgets
+    # could not, and the asymmetry is the whole argument for them:
+    # `critic-reviewer.md` carries NO per-file ceiling, so its +289 was
+    # invisible to every other control — and a coordinator roster pays it once
+    # per reviewer, so the dispatched route moves +372 against single-pass-full's
+    # +83. The cheap route is untouched, which is the split working.
     "single-pass-inner": 6301,
-    "single-pass-full": 20272,
-    "dispatched-reviewer": 19095,
+    "single-pass-full": 20355,
+    # +2 in the same chunk: adapting the ported prose off the retired
+    # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
+    # single-resolver guard requires and which a near-verbatim port carries
+    # in from its source branch by construction.
+    #
+    # +28 on 2026-09-20, a DECLARED raise, all of it in `critic-reviewer.md`
+    # (`review-cycle.md`'s matching edit is token-neutral). The 2026-09-20
+    # cumulative found the `rule-unenforced:` instruction naming a field that
+    # does not exist: it said to open the finding's `summary`, but a Critic
+    # partial has none — `merge_findings` maps the reviewer's `name` to the
+    # fact's `title`, and a partial's top-level summary is never persisted. The
+    # token therefore landed where no query could read it and the control's
+    # yield was structurally ZERO from the day it shipped. The +28 names the
+    # right field and carries the reason inline so the next port cannot
+    # repeat it. Priced against the SUM and not the file: this is the cheapest
+    # possible repair of a control the route is already paying 2791 tokens to
+    # carry, and paying that in full for nothing is the actual waste.
+    "dispatched-reviewer": 19497,
 }
 
 PAYLOAD_CEILINGS = {
     "single-pass-inner": 6302,
-    "single-pass-full": 20273,
-    "dispatched-reviewer": 19096,
+    "single-pass-full": 20356,
+    "dispatched-reviewer": 19498,
 }
 
 

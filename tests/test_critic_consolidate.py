@@ -839,6 +839,124 @@ class TestCostLeadAnswersTheMechanicalQuestion:
         empty = cc.next_action_line("rev-1", 0, 0, 0, cost=lead)
         assert lead not in empty
 
+    def test_an_anchored_tree_inverts_the_advice(self):
+        """#851, reproduced live while building this scope's predecessor.
+
+        `commit_cost` asks only whether paths are judgeable. It cannot know a
+        review just anchored on this tree — and once one has, the commit this
+        lead would call free is already covered, so the NEXT edit opens a new
+        delta needing its own pass whatever its paths are. The close told me a
+        batch of fixes was free; it bought a full round.
+        """
+        dirty = {"paths": ["a.py"], "judgeable": ["a.py"], "free": []}
+        assert "bought NO extra round" in cc.cost_lead(dirty, False)
+        anchored = cc.cost_lead(dirty, True)
+        assert "COVERS your working tree" in anchored
+        assert "opens a NEW delta" in anchored
+        assert "judgeable or not" in anchored, (
+            "the whole point is that judgeability stops being the question "
+            "once a review has anchored here"
+        )
+        assert "bought NO extra round" not in anchored
+
+    def test_the_anchored_arm_precedes_both_ordinary_arms(self):
+        """It has to win over BOTH, not just the dirty one: a clean tree that a
+        review just covered is the modal shape at a verify close, and the
+        clean-tree arm's advice ("the first judgeable fix buys a round") is
+        true but understates it — the first fix of ANY kind does."""
+        for cost in ({"paths": [], "judgeable": [], "free": []},
+                     {"paths": ["x.md"], "judgeable": [], "free": ["x.md"]},
+                     {"paths": ["a.py"], "judgeable": ["a.py"], "free": []}):
+            assert "COVERS your working tree" in cc.cost_lead(cost, True)
+
+    def test_the_anchored_arm_does_not_tell_a_clean_tree_to_commit(self):
+        """Same conclusion, reachable advice. The operative half — the next
+        edit opens a new delta — is identical either way; what must not survive
+        is "commit this tree verbatim" addressed to a builder with nothing to
+        commit, because a step the reader cannot take teaches them to discount
+        the sentence carrying it."""
+        clean = cc.cost_lead({"paths": [], "judgeable": [], "free": []}, True)
+        dirty = cc.cost_lead({"paths": ["a.py"], "judgeable": ["a.py"], "free": []}, True)
+
+        assert "commit this tree verbatim" in dirty
+        assert "commit this tree verbatim" not in clean, (
+            "a clean tree was told to commit something"
+        )
+        # The positive half, so the negative above cannot be satisfied by the
+        # arm disappearing altogether.
+        assert "nothing left to pay for" in clean
+        for rendered in (clean, dirty):
+            assert "opens a NEW delta" in rendered, (
+                "the operative conclusion must survive in BOTH arms — it is "
+                "the whole point of the message"
+            )
+
+    def test_a_degraded_capture_falls_back_rather_than_asserting_coverage(self):
+        """Fail soft in the safe direction. If the capture failed, the caller
+        passes False and the lead renders its ordinary advice — never a
+        coverage claim it could not verify."""
+        assert "COVERS your working tree" not in cc.cost_lead(
+            {"paths": [], "judgeable": [], "free": []}, False
+        )
+
+    def test_the_coverage_comparison_discriminates(self):
+        """The wiring's own logic, driven directly. Inlined in `consolidate` it
+        had three mutation survivors — always-covered, covered-on-a-degraded-
+        capture, and a regression to an unbound name — none of which the pure
+        renderer's tests or a structural check could see."""
+        assert cc.tree_is_covered_by({"status": "ok", "tree": "t1"}, "t1") is True
+        assert cc.tree_is_covered_by({"status": "ok", "tree": "t2"}, "t1") is False, (
+            "a DIFFERENT tree is not covered — without this, the comparison can "
+            "be deleted and every close claims coverage"
+        )
+        assert cc.tree_is_covered_by({"status": "error"}, "t1") is False, (
+            "a degraded capture must fail SOFT: an unverifiable coverage claim "
+            "is the one answer that sends a builder to commit unreviewed work"
+        )
+        assert cc.tree_is_covered_by({"status": "ok", "tree": "t1"}, None) is False
+        assert cc.tree_is_covered_by(None, "t1") is False
+        # The case that DISCRIMINATES the missing-anchor guard. With a real tree
+        # string on the left, deleting that guard changes no answer ("t1" is not
+        # None either way) — so the fixture above passes under both. Two absent
+        # values compare EQUAL, and the guard is the only thing standing between
+        # that and a false "you are covered".
+        assert cc.tree_is_covered_by({"status": "ok", "tree": None}, None) is False, (
+            "two missing trees must not read as a match — that is a fail-open "
+            "claiming coverage for a tree nothing reviewed"
+        )
+
+    def test_consolidate_reads_no_name_before_it_is_bound(self):
+        """The first cut of the #851 wiring read `fact_body`, which
+        `consolidate` does not bind until ~140 lines LATER — an
+        UnboundLocalError on every consolidation, invisible to every unit test
+        because they all call the pure renderer.
+
+        Asserted over ALL local reads rather than a hand-listed few: the
+        narrow version passed the very regression it was written for, because
+        the offending name was not on its list.
+        """
+        import ast  # noqa: PLC0415
+
+        src = (ROOT / "lib" / "critic_consolidate.py").read_text()
+        fn = next(n for n in ast.walk(ast.parse(src))
+                  if isinstance(n, ast.FunctionDef) and n.name == "consolidate")
+        args = {a.arg for a in fn.args.args} | {a.arg for a in fn.args.kwonlyargs}
+        bound_at: dict[str, int] = {}
+        for node in ast.walk(fn):
+            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+                bound_at[node.id] = min(bound_at.get(node.id, node.lineno), node.lineno)
+        assert "tree_now_covered" in bound_at, "the #851 wiring is gone"
+        late = []
+        for node in ast.walk(fn):
+            if (isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)
+                    and node.id in bound_at and node.id not in args
+                    and node.lineno < bound_at[node.id]):
+                late.append((node.id, node.lineno, bound_at[node.id]))
+        assert not late, (
+            "these locals are read before they are bound — an UnboundLocalError "
+            f"on the path that reaches them: {late}"
+        )
+
     def test_the_price_sentence_keeps_its_single_home(self):
         """`telemetry.format_round_price` owns what a round costs. The lead
         states the VERDICT and never the number, so the close cannot quote two
@@ -3325,6 +3443,92 @@ class TestRestoreRefusalDescribesTheDisk:
 
 
 class TestConsolidateIntegration:
+    ANCHORED = "COVERS your working tree"
+
+    def _anchored_scenario(self, tmp_path, *, mode=VERIFY_MODE, dirty=False):
+        """The #851 arm end to end, from REAL artifacts only.
+
+        Every value the arm compares is produced by the system under test: the
+        tree by `evidence.capture_tree`, the anchor by the review fact
+        `consolidate` itself appends. The unit tests beside this one all pair
+        two hand-written dicts, which can only ever confirm what I believed
+        `capture_tree` returns.
+
+        **The `.gitignore` is load-bearing, not fixture decoration.**
+        `consolidate` appends the fact and regenerates the cache BEFORE it
+        captures the tree, so if `.prawduct/` state were visible to git the
+        capture could never equal the dispatch-time anchor and this arm could
+        not fire at all. It is excluded because it is gitignored, which is a
+        property of consumer repos this test now pins — the first cut of this
+        fixture omitted it and the arm silently never rendered.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        (repo / ".gitignore").write_text(".prawduct/.*\n")
+        _commit_file(repo, ".gitignore", ".prawduct/.*\n", "ignore prawduct state")
+        base = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _git(repo, "checkout", "-q", "-b", "feature/x")
+        head = _commit_file(repo, "src/app.py", "x = 2\n", "work")
+        _set_marker(repo)
+        # The anchor, captured as `begin_review` would record it at dispatch.
+        dispatch_tree = evidence.capture_tree(repo)["tree"]
+        _write_manifest(repo, head, head_tree=dispatch_tree,
+                        base_commit=base, mode=mode)
+        if dirty:
+            # An edit AFTER dispatch: the tree the reviewer saw is no longer
+            # the tree on disk, so the anchor must stop matching.
+            (repo / "src" / "app.py").write_text("x = 3\n")
+        # A finding has to exist for the close to carry a cost lead at all.
+        _full_roster_partials(repo, head, findings_by_role={
+            "correctness": [{"name": "Nit", "goal": "Nothing Is Broken",
+                             "severity": "note", "recommendation": "tweak",
+                             "files": ["src/app.py"]}],
+        })
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        return repo, result
+
+    def test_a_real_capture_matches_the_real_fact_it_anchors_on(self, tmp_path):
+        """The contract between three real components, which no hand-built
+        dict can check: `capture_tree`'s output keys, the `head_tree` the
+        appended fact actually carries, and the comparison that reads both."""
+        repo, result = self._anchored_scenario(tmp_path)
+        fact = _store_facts(repo, "review")[0]
+        capture = evidence.capture_tree(repo)
+        assert capture["status"] == "ok"
+        assert capture["tree"] == fact["body"]["head_tree"], (
+            "a real post-consolidate capture no longer equals the anchor the "
+            "review fact carries — #851's arm cannot fire for any consumer. "
+            "Most likely something `consolidate` writes became visible to git."
+        )
+        assert cc.tree_is_covered_by(capture, fact["body"]["head_tree"]) is True
+        assert self.ANCHORED in result.stdout, (
+            "the arm did not reach the builder even though the trees match — "
+            "the wiring between the comparison and the rendered close is gone"
+        )
+
+    def test_an_edit_after_dispatch_is_not_covered(self, tmp_path):
+        """The control. Without it the test above passes for an arm that
+        renders unconditionally, which is the mutation the unit tests found
+        three times in the inlined version."""
+        _, result = self._anchored_scenario(tmp_path, dirty=True)
+        assert self.ANCHORED not in result.stdout, (
+            "a tree edited after dispatch was reported as covered — that "
+            "sends a builder to commit work no review saw"
+        )
+
+    def test_only_a_verify_anchor_claims_coverage(self, tmp_path):
+        """#851's evidence is about a `verify-resolutions` anchor and the arm
+        names that pass as the closer for the next delta. Other modes keep the
+        ordinary arms; this pins that narrowing so it is not widened without
+        establishing which pass a cumulative anchor should name."""
+        _, result = self._anchored_scenario(tmp_path, mode=FINAL_MODE)
+        assert self.ANCHORED not in result.stdout, (
+            "a non-verify anchor rendered the #851 arm, which names "
+            "`verify-resolutions` as the pass closing the next delta — "
+            "unestablished for any other mode"
+        )
+
     def test_complete_partials_at_head_consolidates(self, tmp_path):
         repo = tmp_path / "r"
         _init_repo(repo)

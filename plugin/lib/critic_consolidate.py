@@ -603,6 +603,28 @@ _REDERIVE_COST = (
 )
 
 
+def tree_is_covered_by(capture: "dict | None", anchor_tree: "str | None") -> bool:
+    """Does the review that just landed COVER the working tree as it stands?
+
+    Extracted rather than inlined because a mutation sweep found three
+    survivors in the inline version, all of them in the comparison rather than
+    in the message: the only tests were of the pure renderer and a structural
+    check too narrow to see them. An inlined comparison is testable only
+    through whatever renders it.
+
+    **Fails soft in the safe direction.** A degraded capture returns False, so
+    the close renders its ordinary advice rather than a coverage claim nothing
+    verified — an unverifiable "you are covered" is the one answer that would
+    send a builder to commit work no review saw.
+    """
+    if not capture or capture.get("status") != "ok":
+        return False
+    if not anchor_tree:
+        return False
+    return capture.get("tree") == anchor_tree
+
+
+
 #: The mechanical question, answered — not handed to the builder to go run.
 #:
 #: #831's finding: the fix/accept call is EVALUATIVE today ("is this worth
@@ -632,7 +654,7 @@ _REDERIVE_COST = (
 #: ledger once per consolidation and passes both results in, so the two
 #: carriers of this sentence cannot quote different numbers and no digit is
 #: restated in this module (``architecture.md``: every fact has one home).
-def cost_lead(cost: "dict | None") -> str:
+def cost_lead(cost: "dict | None", tree_now_covered: bool = False) -> str:
     """The leading sentence of a zero-blocking close: what fixing costs here,
     and what that implies.
 
@@ -646,6 +668,14 @@ def cost_lead(cost: "dict | None") -> str:
     conservative read, which is the one that does not spend a round by
     surprise.
 
+    ``tree_now_covered`` says the review just consolidated COVERS the current
+    working tree — which inverts the advice, and is #851. ``commit_cost`` asks
+    only whether paths are judgeable; it cannot know a review just anchored
+    here. Once one has, the commit this lead would call free is already covered,
+    and the next edit opens a NEW delta needing its own pass whatever its paths
+    are. Measured live on 2026-09-19 building this scope's own predecessor: the
+    close said a batch of fixes was free, and it bought a full round.
+
     Returns ``""`` when ``cost`` is absent, so a caller that did not compute it
     renders exactly the message it rendered before this existed.
     """
@@ -658,6 +688,32 @@ def cost_lead(cost: "dict | None") -> str:
             " Decide as if a fix buys a round."
         )
     judgeable = cost.get("judgeable") or []
+    if tree_now_covered:
+        # Ahead of BOTH ordinary arms: whether the tree is dirty stops being the
+        # question once a review has anchored on it. Saying "you are already
+        # making a judgeable commit" here is true of the tree and false about
+        # the cost, which is the exact inversion #851 records.
+        # The operative half is identical either way: the next edit opens a
+        # new delta. What differs is whether there is anything to commit —
+        # telling a builder with a clean tree to "commit this tree verbatim"
+        # names a step they cannot take, and advice that cannot be followed is
+        # how a reader learns to discount the rest of the sentence.
+        carry = (
+            "so the commit that carries it is already paid for"
+            if cost.get("paths")
+            else "and your tree is clean, so there is nothing left to pay for"
+        )
+        act = (
+            "Recommended: commit this tree verbatim and stop;"
+            if cost.get("paths")
+            else "Recommended: stop here;"
+        )
+        return (
+            f"This review COVERS your working tree as it stands, {carry} — and"
+            " the next edit after it, judgeable or not, opens a NEW delta that"
+            " needs its own `/prawduct:critic verify-resolutions`."
+            f" {act} fix anything further only if it is worth a round of its own."
+        )
     if judgeable:
         return (
             f"AT REVIEW TIME you were already making a judgeable commit"
@@ -4789,14 +4845,31 @@ def consolidate(project_dir: Path) -> int:
 
     price_sentence = telemetry.format_round_price(telemetry.round_price(prawduct_dir))
 
-    # One git read per consolidation, beside the one ledger read, for the same
-    # reason: the relayed NEXT-ACTION and the cache record must not be able to
-    # answer the same question differently. `commit_cost` asks the SAME
-    # predicate the coverage gate will charge on — never a cheaper proxy for
-    # it — so the sentence cannot promise a price the gate then disagrees with.
+    # Two git reads per consolidation (`commit_cost`'s and `capture_tree`'s),
+    # beside the one ledger read, and both feed ONE rendered sentence for the
+    # same reason the ledger read is single: the relayed NEXT-ACTION and the
+    # cache record must not be able to answer the same question differently.
+    # `commit_cost` asks the SAME predicate the coverage gate will charge on —
+    # never a cheaper proxy for it — so the sentence cannot promise a price the
+    # gate then disagrees with.
     from . import coverage  # noqa: PLC0415 — lazy, matching this module's other lib imports
 
-    cost_sentence = cost_lead(coverage.commit_cost(project_dir))
+    # #851: `commit_cost` cannot know a review just anchored on this tree, and
+    # after one has, "a fix rides free" is false regardless of paths. The fact
+    # was written moments ago, so its head_tree IS the anchor to compare.
+    #
+    # Gated on `is_verify` deliberately, and this is NARROWER than the tree
+    # test alone would allow. #851's evidence is entirely about a
+    # `verify-resolutions` anchor, and the arm it renders names that pass as
+    # the one closing the next delta. Whether a cumulative anchor should say
+    # the same thing — and name which pass — is not established, so the other
+    # modes keep the ordinary arms they rendered before this existed. Advice
+    # under-claims rather than naming a pass nobody has checked is the closer.
+    tree_now_covered = is_verify and tree_is_covered_by(
+        evidence.capture_tree(project_dir),
+        (fact.get("body") or {}).get("head_tree"),
+    )
+    cost_sentence = cost_lead(coverage.commit_cost(project_dir), tree_now_covered)
 
     carried = (
         carried_blocking(

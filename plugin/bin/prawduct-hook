@@ -6520,12 +6520,16 @@ def cmd_learnings_files(project_dir: Path, argv: list[str]) -> int:
     the one failure this layout could introduce, and it is silent — so the set
     comes from the one resolver rather than from anybody's glob.
 
-    ``--for-diff`` narrows the list to the area files this SESSION's changes
-    pull in — ``gates.learnings_change_set``: the session's base tree → the
-    working tree, union untracked, committed work included. The Stop hook's
-    cross-check note reads the same helper, so the line a builder is shown and
-    the list a reviewer computes cannot name different files. Bare, it prints
-    every rules file — what the budget gate sizes.
+    ``--for-diff`` narrows the list to the area files the change set pulls in,
+    via ``gates.learnings_review_change_set``: the DISPATCH MANIFEST's interval
+    when a review is live, else the session's base tree → the working tree,
+    union untracked, committed work included. The manifest branch is what makes
+    the answer right for a `cumulative` of committed work, where the session
+    span is empty and the old reading returned ``core.md`` alone at exit 0. The
+    Stop hook's cross-check note reads the session span directly
+    (``learnings_change_set``) because it is judging the session, not a review
+    interval — a deliberate difference of QUESTION, not a second answer to one.
+    Bare, it prints every rules file — what the budget gate sizes.
 
     Exit 0 whenever it ran, including when the answer is an empty list: a repo
     with no rules is a fact, not a failure. Exit 1 when it could not run
@@ -6554,7 +6558,7 @@ def cmd_learnings_files(project_dir: Path, argv: list[str]) -> int:
         try:
             from lib import gates as _gates_mod  # noqa: PLC0415 — lazy keeps top-level cheap
 
-            changed, reason = _gates_mod.learnings_change_set(project_dir)
+            changed, reason = _gates_mod.learnings_review_change_set(project_dir)
         except ImportError as exc:
             changed, reason = [], f"ImportError: {exc}"
         if reason:

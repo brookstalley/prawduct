@@ -1,7 +1,21 @@
 # Issue #167 — Critic: Refuse a Full Re-Round When Zero Blocking Findings Remain: Technical Design
 
-`status: draft · stage: design · area: critic · added: 2026-09-15 · source: scheduled backlog
-session · issue: https://github.com/brookstalley/prawduct/issues/167`
+`status: BUILT AND WITHDRAWN · stage: design · area: critic · added: 2026-09-15 · source: scheduled
+backlog session · issue: https://github.com/brookstalley/prawduct/issues/167`
+
+> **Read this before building to D1–D5 below.** This design was implemented in full (exit 5,
+> `self-inflicted-refusal`), reviewed, and **reverted** on 2026-09-20. The mechanism is sound on its
+> own terms and still wrong, so the text below will read as ready and is not. Two independent
+> reviewers converged: the refusal fires only on a non-empty judgeable delta, no `guard-refusal`
+> fact composes a coverage edge, so every firing left `check-cumulative-critic` reporting
+> `uncovered` and prescribing the pass just refused — trading a 300s median `verify-resolutions`
+> for a 720s median `cumulative`, measured over 1,047 reviews. The deeper fault is upstream of
+> D1–D5: the evidence these predicates rest on is FILE-level (`diagnose_fix_churn` rules out work in
+> a file the review never saw, *not* new work written into one it named), which is advisory
+> strength, while a refusal is authority. **Refusing a round needs content-level evidence that the
+> delta is churn**; nothing in this document supplies it, and tuning the predicates will not. Full
+> reasoning is on the issue (2026-09-20 comment) and in the change-log entry for
+> `review-convergence`.
 
 Related: #724 (R3/R6, the sibling precondition-and-budget work already shipped in v3.5.0 as
 `review_round_budget` — a count-based backstop this item's content-based refusal complements, not

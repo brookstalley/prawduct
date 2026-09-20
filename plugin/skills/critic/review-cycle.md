@@ -368,6 +368,8 @@ Scan your findings against the rules the session actually had in context: `.clau
 
 **Rules added or changed this cycle get their own pass** — a duplicate of one already in the corpus, the wrong area file (globs that miss the code it governs, or parked in `core.md` where every session pays), or discipline/framework content belonging upstream in the methodology? Each is a **NOTE** naming the rule and which of the three.
 
+**When a written rule has no enforcer, the finding is the rule — once.** Not this cross-check's alone: it binds every reviewer role, and its canonical statement — the two conditions and the `rule-unenforced:` title prefix that keeps the yield countable — lives in `agents/critic-reviewer.md`. Coordinator roles get it as their brief; **single-pass, open it from here** — no `SKILL.md` protocol file carries it.
+
 ### Backlog Reconciliation
 
 **Get the open set.** `skills/backlog/cache-reads.md` is the contract — which backend, the
