@@ -178,8 +178,9 @@ new composable edge kind to let that weak evidence clear a gate. **Refusing a ro
 content-level evidence that the delta is churn.** Until something supplies that, the gate's
 existing advisory NOTE plus a free `disposition --accept` is the right strength for what is known.
 
-Recorded as a rule in `.claude/rules/learnings/core.md` ("A control that REFUSES expensive work is
-priced against the route its refusal forces").
+Recorded as a rule in `.claude/rules/learnings/core.md`, on the cost axis of "A refusal hands the
+caller a REPLACEMENT route, and it is checked by its PROPERTIES, never its name" — the 2026-09-20
+merge folded the standalone pricing rule into that heading, so it is the one to grep for.
 
 **What is NOT withdrawn:** the observation-recording measurement above, which stands on its own.
 

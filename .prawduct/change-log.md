@@ -35,8 +35,9 @@ refusal fires only on a non-empty judgeable delta, and no `guard-refusal` fact c
 edge, so every firing left `check-cumulative-critic` reporting `uncovered` — prescribing the very
 pass that had just been refused. Priced over 1,047 recorded reviews, that traded a 300s median
 `verify-resolutions` for a 720s median `cumulative`: the control more than doubled the cost in the
-case it existed to cheapen. The general lesson is recorded as a rule — a control that refuses
-expensive work is priced against the route its refusal FORCES, not the one it declines — and the
+case it existed to cheapen. The general lesson is recorded in `core.md` under "A refusal hands
+the caller a REPLACEMENT route, and it is checked by its PROPERTIES, never its name" — a refusal is
+priced against the route it FORCES, not the one it declines — and the
 sharper half is about evidence strength: `diagnose_fix_churn` is file-level by its own docstring
 (it rules out work in a file the review never saw, not new work written into one it named), which
 is advisory strength, while a refusal is authority. #167 stays open. Refusing a round needs
