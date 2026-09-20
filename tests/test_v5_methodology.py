@@ -961,13 +961,7 @@ LAST_MEASURED_TOKENS = {
     # manufactures a finding per review. NOT paid in place: the sentences a trim
     # would have reached are the ones no test asserts, and this file has already
     # funded three raises that way.
-    # +75 on 2026-09-19 (#167, review-convergence Chunk 02): exit 5, the
-    # self-inflicted verify refusal. A new exit code is a contract change and its
-    # row is not optional — a refusal the reader treats as a failure gets re-run
-    # with --force, spending exactly the round it saved. Paid in place FIRST: the
-    # first draft restated exit 3's whole is-a-success framing (+130) and now
-    # points at it, stating only what DIFFERS. The balance is a declared raise.
-    "skills/critic/SKILL.md": 3724,
+    "skills/critic/SKILL.md": 3649,
     "skills/critic/framework-checks.md": 1116,
     # The on-demand class, first recorded 2026-08-19 (#688) — readings, no
     # ceilings; the block above this dict is the decision and its reasoning.
@@ -5232,7 +5226,7 @@ class TestCriticSkillRoutesByMode:
         # `test-status` claim corrected: exit 0 does not establish tree
         # coverage on the session-fresh disjunct — see LAST_MEASURED_TOKENS,
         # where the reason is recorded. One over the reading, nothing banked.
-        assert tokens < 3725, f"SKILL.md is ~{tokens} tokens, should be <3725"
+        assert tokens < 3650, f"SKILL.md is ~{tokens} tokens, should be <3650"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))

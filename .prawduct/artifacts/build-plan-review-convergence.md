@@ -12,24 +12,24 @@ governed_by:
   - artifact: nonfunctional-requirements
     dispositions:
       - "review wall-clock is P0; cost = unit-cost × run-count, both levers → conforms: every chunk here attacks run-count, which is the lever `review-cost-decision` did not touch"
-      - "proportionality ratchets both ways; a new control names its expected yield and emits it observably → engaged by Chunk 02, which adds a REFUSAL. Its expected yield is measured, not asserted: 56 of 114 September verify anchors carry a non-empty named set once observations count, against 20 without. `guard-refusal` facts already exist in this store (12 today), so its firings are queryable and it can be retired on evidence"
+      - "proportionality ratchets both ways; a new control names its expected yield and emits it observably → NO LONGER ENGAGED: the only new control here was Chunk 02, withdrawn 2026-09-20. The ratchet turned out to bite in the other direction — the control was withdrawn BECAUSE its measured yield was negative (it refuses a 300s pass and forces a 720s one), which is the norm working"
       - "state-file growth is an advisory, never a hard block → inapplicable"
-      - "review rigor is stage-keyed → conforms; Chunk 02 refuses a dispatch and changes no severity"
+      - "review rigor is stage-keyed → conforms; nothing remaining changes a severity"
   - artifact: architecture
     dispositions:
-      - "an independent reviewer never mutates the session it reviews → conforms: Chunk 02 refuses BEFORE dispatch, and no reviewer write path changes"
-      - "authority fails closed; advice fails soft → engaged and load-bearing. A refusal IS authority, so Chunk 02 must fail CLOSED: an unreadable anchor dispatches the review rather than refusing it, because a refusal computed from a degraded read would skip a round nobody judged"
+      - "an independent reviewer never mutates the session it reviews → conforms: no reviewer write path changes"
+      - "authority fails closed; advice fails soft → THE NORM THAT KILLED CHUNK 02. A refusal is authority, but its evidence (`diagnose_fix_churn`, file-level by its own docstring: it rules out work in a file the review never saw, NOT new work written into one it named) is advisory strength. Chunk 02 made advice into authority without strengthening the evidence; the remedy was to withdraw it, not to add machinery letting weak evidence clear a gate"
       - "local-first; no third-party runtime dependency → conforms"
       - "the plugin writes nothing into a governed repo except its own state → conforms"
       - "prawduct is Python but never Python-specific → conforms"
       - "prawduct guides and reviews; it never implements → conforms"
-      - "goals and verification bind; prescribed method is advice → engaged: Chunk 02 departs from `167-design.md`'s D3 as written, and the departure is recorded in the chunk rather than by amending that document"
-      - "every fact has one home → conforms: Chunk 02 reuses `begin_review`'s already-resolved anchor rather than re-deriving one via `diagnose_fix_churn`'s lineage search, which is D1's whole argument"
+      - "goals and verification bind; prescribed method is advice → moot; the departing chunk is withdrawn and `167-design.md` is left as it was"
+      - "every fact has one home → VIOLATED BY CHUNK 02, found in review and fixed by withdrawal: `_anchor_named_files` became a SECOND answer to 'which files did that pass name', disagreeing with `diagnose_fix_churn` on whether observations count. Reusing the anchor was D1's argument and was honoured; the `named` predicate was the copy nobody noticed"
   - artifact: data-model
     dispositions:
       - "verdicts computed from facts, no model in a fact's write path → conforms: the refusal is computed from stored findings and observations"
-      - "facts immutable and append-only → conforms: Chunk 02 appends a `guard-refusal` fact, edits none"
-      - "derived views never authoritative → engaged: `_prior_review_fact` reads `.critic-findings.json`'s `fact_id` POINTER and then reads the fact from the store, which is D7-legal (the view carries a pointer; the verdict comes from the fact). Chunk 02 must not start reading findings out of the view"
+      - "facts immutable and append-only → conforms; no fact kind is added or edited now that Chunk 02 is withdrawn"
+      - "derived views never authoritative → moot; the reader that engaged it is withdrawn"
       - "a governance document reaches a terminal state, never deleted → conforms"
       - "backlog title rules on every write path → conforms"
       - "a fact from a newer schema is a loud block → inapplicable"
@@ -37,14 +37,14 @@ governed_by:
       - "`backlog_service_repo` selects the authoritative store → inapplicable"
   - artifact: api-contract
     dispositions:
-      - "exit codes are the contract, documented and consistent → ENGAGED, and the main external surface here: Chunk 02 adds exit 5 (`self-inflicted-refusal`), which `167-design.md` D4 argues for over reusing 3 or 4. The exit-code table and the skill's own row ship in the same chunk"
+      - "exit codes are the contract, documented and consistent → conforms by reverting: exit 5 was added by Chunk 02 and is withdrawn with it, so the documented surface is unchanged from `develop` and 5 stays unallocated for whatever earns it"
       - "additive-first evolution; existing exit-code meanings never repurposed → conforms: 5 is new; 3 and 4 keep their contracts, which is exactly D4's reasoning"
       - "whole-surface semantic versioning → conforms"
 partition: >-
-  Serial, coordinator only. Chunks 01 and 03 both edit `critic_consolidate.py` prose and code, and
-  Chunk 02 edits `begin_review` in the same module; a delegate on any two would collide on that
-  file. Chunk 01 additionally edits three files now under the reviewer-payload ceilings, so its
-  declared raise has to be computed against whatever 02 and 03 leave.
+  Serial, coordinator only. Chunks 01 and 03 both edit `critic_consolidate.py` prose and code, so a
+  delegate on both would collide on that file. Chunk 01 additionally edits three files under the
+  reviewer-payload ceilings, so its declared raise is computed against whatever 03 leaves.
+  (Chunk 02 also edited `begin_review` in that module; withdrawn 2026-09-20.)
 last_validated: 2026-09-19
 ---
 
@@ -60,26 +60,27 @@ Every mechanism named below was read at its call site on 2026-09-19.
 
 **Open assumptions / unknowns:**
 
-- [ASSUMPTION: extending D3's `named` set to include the anchor's OWN observations is a scope
-  correction to `167-design.md`, not a new decision requiring the owner | MED impact | user can
-  veto]. The design's D3 explicitly deferred the empty-`named` case because *"no store field
-  carries [observations] today"*. That premise went false in between: `review-loop-termination`
-  Chunk 01 shipped observation recording, and observations carry `files`. Measured on this repo's
-  store — September verify anchors with a non-empty `named` set: **20/114 findings-only, 56/114
-  with observations**, against 139/186 (Jul) and 129/300 (Aug) before the demotion. So the
-  extension restores the design's intended reach rather than widening it. Recorded as a departure
-  in Chunk 02 rather than by amending `167-design.md`, per the norm that a decision is recorded
-  where it is made.
+- ~~[ASSUMPTION: extending D3's `named` set to include the anchor's OWN observations is a scope
+  correction to `167-design.md`]~~ — **MOOT 2026-09-20**, Chunk 02 withdrawn. The measurement
+  behind it stands and is worth keeping for whoever picks #167 up: September verify anchors with a
+  non-empty `named` set are **20/114 findings-only, 56/114 with observations**, against 139/186
+  (Jul) and 129/300 (Aug) before the inner-stage demotion. What the assumption got wrong was not
+  the reach but the DIRECTION — widening `named` widens how often a refusal fires, and each firing
+  was net-negative. `167-design.md` is left unamended.
 
 **What would raise confidence:** N/A for what is planned.
 
 ## Status
 
 - [x] Chunk 01: Re-apply the `rule-unenforced` substitution (#640, stranded branch)
-- [x] Chunk 02: Refuse a verify pass anchored on a verify pass that found only its own churn (#167)
 - [x] Chunk 03: The cost lead knows an anchor makes the next edit cost a round (#851)
+
+Chunk 02 (#167, exit 5) was built, reviewed and then WITHDRAWN — see "Chunk 02 — WITHDRAWN after
+review" below. It is deliberately absent from this list rather than unticked: nothing here is owed.
+
 Context: Plan written 2026-09-19 on `feature/review-convergence`, cut from `develop` at 4f2911e6
-(the `review-cost-decision` merge). All three chunks committed. Next: the cumulative review, then PR.
+(the `review-cost-decision` merge). Chunks 01 and 03 committed; Chunk 02 reverted 2026-09-20.
+Next: the cumulative's remaining findings, then PR.
 
 ## Deferred, with its reason — #847 / #694 is not a chunk
 
@@ -101,11 +102,14 @@ under build pressure, which is the trap the item itself names.
 
 ## Verification Strategy
 
-Chunk 02 is a refusal, and a refusal is the one thing that cannot be verified by a passing test
-alone: a guard that never fires and a guard that cannot fire are the same green. Each chunk
-therefore carries a **positive control** — a fixture that MUST trip the guard — asserted alongside
-the negative case, and Chunk 02 additionally re-measures its own yield against the real store so
-the number in its docstring is derived rather than copied from this plan.
+Each chunk carries a **positive control** — a fixture that MUST trip the guard — asserted
+alongside the negative case, because a guard that never fires and a guard that cannot fire are the
+same green.
+
+That discipline was necessary and turned out not to be sufficient, which is this plan's main
+lesson. Chunk 02's positive control did fire, on the predicate as specified; what no test asked was
+what the CALLER pays immediately after the refusal. A control can be correct at its own boundary
+and still be net-negative, and only pricing the forced fallback shows it — see "Chunk 02 — WITHDRAWN after review".
 
 ## Build Chunks
 
@@ -131,40 +135,53 @@ the number in its docstring is derived rather than copied from this plan.
 - **Acceptance criteria:** `rule-unenforced` reaches every reviewer surface that can emit it,
   proven by grep over two vocabularies; the payload ceilings are ratcheted in this same commit with
   a declared reason that prices the SUM
+- **DESCOPED, explicitly (2026-09-20, closing a review note):** "every surface" means every surface
+  that can emit it, and the single-pass `chunk` and `verify-resolutions` routes are deliberately
+  NOT among them. `SKILL.md` routes both to `goals-1-3.md` and says "Read **nothing else**", so
+  neither carries the rule and neither should: `goals-1-3.md` is under a standing trim-or-relocate
+  rule, the inner stage demotes the target class into observations, and `verify-resolutions` rates
+  new findings BLOCKING-only. The boundary is stated rather than assumed, which is all the note
+  asked for — a criterion whose "every" has no written edge is one the next reader widens.
 - **Done when:**
   1. Acceptance criteria met and tests pass
   2. Committed and chunk marked `[x]` in Status
 
-### Chunk 02: Refuse a verify pass anchored on a verify pass that found only its own churn
+### Chunk 02 — WITHDRAWN after review (#167, exit 5)
 
-- **Description:** #167, built to `documentation/issues/167-design.md` D1–D5, with one recorded
-  departure. `begin_review`'s `verify-resolutions` branch gains a refusal keyed on its
-  already-resolved anchor: when that anchor is ITSELF a `verify-resolutions` fact, left zero
-  unresolved blocking, and the new delta's judgeable files are a non-empty subset of the files the
-  anchor's own items named — refuse with new exit 5, `self-inflicted-refusal`.
-- **Depends on:** Chunk 01 (both edit `critic_consolidate.py`; serial per `partition:`)
-- **Artifacts consumed:** `documentation/issues/167-design.md` D1–D5 and its Files-touched table
-- **Deliverables:** the refusal in `plugin/lib/critic_consolidate.py`'s `begin_review`, placed
-  after the free-interval check and before the round-budget check (D5); exit 5 added to the
-  exit-code table in `.prawduct/artifacts/api-contract.md` and to the skill's own row in
-  `plugin/skills/critic/SKILL.md`; a `guard-refusal` fact so the control's firings are queryable
-- **[DECISION: D3's `named` set includes the anchor's OWN observations, not only its findings |
-  engages the design's why rather than overriding it: D3 deferred this case because "no store field
-  carries [observations] today", and that premise went false when `review-loop-termination` Chunk
-  01 shipped observation recording. Since the inner stage demotes everything below BLOCKING into
-  observations, findings-only leaves D3 matching 20 of 114 September anchors against 139/186 and
-  129/300 before the demotion — the control would ship at a quarter of its designed reach.
-  Including observations restores it to 56/114 | user can veto and ship findings-only]**
-- **Tests:** the positive control first — an anchor that MUST be refused — then each conjunct
-  mutated independently, because `A and B and C` reverted whole goes red on A's fixture while B and
-  C stay unpinned; a first-verify-after-a-full-round fixture that must NOT be refused (D2's floor);
-  an unreadable-anchor fixture that must DISPATCH, not refuse (fail closed the safe way); and the
-  yield re-measured from the store rather than copied from this plan
-- **Acceptance criteria:** exit 5 is reachable and distinct from 3 and 4; a first verify pass after
-  any full round is never refused regardless of severity mix; a degraded anchor read dispatches
-- **Done when:**
-  1. Acceptance criteria met and tests pass
-  2. Committed and chunk marked `[x]` in Status
+Built as specified, reviewed, and reverted in full on 2026-09-20 (revert of `853be5d3`). Kept here
+rather than deleted because the reason is the useful output of this plan, and because #167 is still
+open: the next attempt should start from this, not from `167-design.md` alone.
+
+**What it did.** `begin_review`'s `verify-resolutions` branch refused with a new exit 5 when the
+anchor was itself a `verify-resolutions` fact, it left zero unresolved blocking, and the delta's
+judgeable files were a non-empty subset of the files that anchor's own items named.
+
+**Why it was withdrawn.** Two independent reviewers of the 2026-09-20 cumulative converged on it
+(R-1 and R-6), and the numbers settle it:
+
+* The refusal cannot discharge the coverage obligation it leaves behind. `is_self_inflicted_verify`
+  fires only on a NON-EMPTY judgeable delta, `coverage_algebra.review_edges` composes only
+  `kind == "review"` facts, and `_free_edge_files` grants a free edge only when nothing judgeable
+  changed. So every firing leaves an uncomposable gap, `check-cumulative-critic` returns
+  `uncovered`, and its own remedy text prescribes the pass that was just refused.
+* Priced with `review-stats` over 1,047 recorded reviews: the refused `verify-resolutions` has a
+  median of **300s**, and the only remaining non-`--force` route, `cumulative`, has a median of
+  **720s**. The guard more than doubles the cost in exactly the case it was built to cheapen.
+
+**The durable finding, and the thing to design against next time.** The evidence available for this
+decision is FILE-level. `diagnose_fix_churn` says so in its own docstring — it rules out work in a
+file the review never saw, *not new work written into one it named* — so it cannot tell churn from
+substantial new work in a file the last review happened to touch. That is advisory strength, and a
+refusal is authority. The mistake was not the predicate's tuning; it was using advisory-strength
+evidence to make an authoritative refusal, and then (in the first proposed repair) reaching for a
+new composable edge kind to let that weak evidence clear a gate. **Refusing a round needs
+content-level evidence that the delta is churn.** Until something supplies that, the gate's
+existing advisory NOTE plus a free `disposition --accept` is the right strength for what is known.
+
+Recorded as a rule in `.claude/rules/learnings/core.md` ("A control that REFUSES expensive work is
+priced against the route its refusal forces").
+
+**What is NOT withdrawn:** the observation-recording measurement above, which stands on its own.
 
 ### Chunk 03: The cost lead knows an anchor makes the next edit cost a round
 
@@ -173,7 +190,7 @@ the number in its docstring is derived rather than copied from this plan.
   `verify-resolutions` pass has anchored the working tree: from then on ANY further edit opens a new
   delta needing its own pass, judgeable or not. The lead told me a batch was free; it bought a full
   round. Verify the #600 lineage the backlog dedup asserted before building on it.
-- **Depends on:** Chunks 01–02
+- **Depends on:** Chunk 01 (Chunk 02 was also a dependency; withdrawn, and nothing in 03 relied on it)
 - **Artifacts consumed:** brookstalley/prawduct#851
 - **Deliverables:** the anchor condition reaching `cost_lead`, computed by the caller as the module
   already does for `price_sentence` and `span`, so `cost_lead` stays a pure function of its

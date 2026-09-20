@@ -23,6 +23,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import re
+
 import pytest
 
 PLUGIN = Path(__file__).resolve().parent.parent / "plugin"
@@ -136,6 +138,22 @@ class TestRuleUnenforcedToken:
     TOKEN = "rule-unenforced:"
     HEADLINE = "no enforcer, the finding is the rule"
 
+    #: The field each copy must tell its reviewer to open, and why they differ.
+    #: NOT cosmetic: the token is only countable if it lands in a field the
+    #: sweep reads. A Critic partial finding has no `summary` — `merge_findings`
+    #: builds `{goal, severity, title, recommendation, files}` from the
+    #: reviewer's `name`, and `build_fact_body` does not persist a partial's
+    #: top-level `summary` — so a Critic copy saying `summary` instructs the
+    #: token into a field no query can reach and the yield is structurally
+    #: zero. A PR finding genuinely persists `summary` and carries no title
+    #: (`test_the_pr_copy_targets_summary_not_a_title`). Shipped saying
+    #: `summary` on BOTH, caught by the 2026-09-20 cumulative: the near-verbatim
+    #: port carried the PR field name onto the Critic surface.
+    FIELD_BY_COPY = {
+        REVIEWER_AGENT: "name",
+        PR_PROTOCOL: "summary",
+    }
+
     @pytest.mark.parametrize(
         "path",
         [REVIEWER_AGENT, PR_PROTOCOL],
@@ -144,11 +162,48 @@ class TestRuleUnenforcedToken:
     def test_both_copies_instruct_the_stable_token(self, path: Path) -> None:
         assert self.TOKEN in path.read_text(), (
             f"{path.name} no longer tells the reviewer to open the finding "
-            f"`summary` with `{self.TOKEN}` — the instruction's own yield stops "
+            f"with `{self.TOKEN}` — the instruction's own yield stops "
             "being countable, which is the observable-yield obligation it "
             "shipped under. It was reviewed as the sharpest finding against it: "
             "declining a lint for want of measured evidence while shipping an "
             "instruction that can never produce any."
+        )
+
+    @pytest.mark.parametrize(
+        "path",
+        [REVIEWER_AGENT, PR_PROTOCOL],
+        ids=["critic_reviewer_agent", "pr_protocol"],
+    )
+    def test_each_copy_attaches_the_token_to_a_field_its_own_store_persists(
+        self, path: Path
+    ) -> None:
+        """Token presence is not enough — it has to be attached to the right
+        field. The presence test above passes for every field name, which is
+        how both copies shipped saying `summary`.
+
+        What turns this red: swapping either copy's field (the Critic copy back
+        to `summary`, or the PR copy to `name`/`title`), or rewording the
+        attachment away from "opening its `X` with" so the instruction no longer
+        says which field at all.
+        """
+        expected = self.FIELD_BY_COPY[path]
+        # Normalize: the attachment wraps across lines in both files, so line
+        # structure would hide it from a raw search.
+        flowed = " ".join(path.read_text().split())
+        m = re.search(r"opening\s+its\s+`(\w+)`\s+with\s+`" + re.escape(self.TOKEN), flowed)
+        assert m, (
+            f"{path.name} no longer says which field to open with "
+            f"`{self.TOKEN}`. A token with no field is uncountable: the "
+            "reviewer picks one, and the sweep reads one, and nothing makes "
+            "them the same field."
+        )
+        assert m.group(1) == expected, (
+            f"{path.name} tells the reviewer to open `{m.group(1)}` with "
+            f"`{self.TOKEN}`, but that store persists `{expected}`. "
+            "A Critic partial has no `summary` (merge_findings maps the "
+            "reviewer's `name` to the fact `title`; build_fact_body drops a "
+            "top-level summary), and a PR finding has no `title`. The token "
+            "lands where no query reads it and the control's yield is zero."
         )
 
     def test_it_binds_every_reviewer_role_not_just_the_cross_check_owner(self) -> None:

@@ -869,6 +869,28 @@ class TestCostLeadAnswersTheMechanicalQuestion:
                      {"paths": ["a.py"], "judgeable": ["a.py"], "free": []}):
             assert "COVERS your working tree" in cc.cost_lead(cost, True)
 
+    def test_the_anchored_arm_does_not_tell_a_clean_tree_to_commit(self):
+        """Same conclusion, reachable advice. The operative half — the next
+        edit opens a new delta — is identical either way; what must not survive
+        is "commit this tree verbatim" addressed to a builder with nothing to
+        commit, because a step the reader cannot take teaches them to discount
+        the sentence carrying it."""
+        clean = cc.cost_lead({"paths": [], "judgeable": [], "free": []}, True)
+        dirty = cc.cost_lead({"paths": ["a.py"], "judgeable": ["a.py"], "free": []}, True)
+
+        assert "commit this tree verbatim" in dirty
+        assert "commit this tree verbatim" not in clean, (
+            "a clean tree was told to commit something"
+        )
+        # The positive half, so the negative above cannot be satisfied by the
+        # arm disappearing altogether.
+        assert "nothing left to pay for" in clean
+        for rendered in (clean, dirty):
+            assert "opens a NEW delta" in rendered, (
+                "the operative conclusion must survive in BOTH arms — it is "
+                "the whole point of the message"
+            )
+
     def test_a_degraded_capture_falls_back_rather_than_asserting_coverage(self):
         """Fail soft in the safe direction. If the capture failed, the caller
         passes False and the lead renders its ordinary advice — never a
@@ -3421,6 +3443,92 @@ class TestRestoreRefusalDescribesTheDisk:
 
 
 class TestConsolidateIntegration:
+    ANCHORED = "COVERS your working tree"
+
+    def _anchored_scenario(self, tmp_path, *, mode=VERIFY_MODE, dirty=False):
+        """The #851 arm end to end, from REAL artifacts only.
+
+        Every value the arm compares is produced by the system under test: the
+        tree by `evidence.capture_tree`, the anchor by the review fact
+        `consolidate` itself appends. The unit tests beside this one all pair
+        two hand-written dicts, which can only ever confirm what I believed
+        `capture_tree` returns.
+
+        **The `.gitignore` is load-bearing, not fixture decoration.**
+        `consolidate` appends the fact and regenerates the cache BEFORE it
+        captures the tree, so if `.prawduct/` state were visible to git the
+        capture could never equal the dispatch-time anchor and this arm could
+        not fire at all. It is excluded because it is gitignored, which is a
+        property of consumer repos this test now pins — the first cut of this
+        fixture omitted it and the arm silently never rendered.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        (repo / ".gitignore").write_text(".prawduct/.*\n")
+        _commit_file(repo, ".gitignore", ".prawduct/.*\n", "ignore prawduct state")
+        base = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _git(repo, "checkout", "-q", "-b", "feature/x")
+        head = _commit_file(repo, "src/app.py", "x = 2\n", "work")
+        _set_marker(repo)
+        # The anchor, captured as `begin_review` would record it at dispatch.
+        dispatch_tree = evidence.capture_tree(repo)["tree"]
+        _write_manifest(repo, head, head_tree=dispatch_tree,
+                        base_commit=base, mode=mode)
+        if dirty:
+            # An edit AFTER dispatch: the tree the reviewer saw is no longer
+            # the tree on disk, so the anchor must stop matching.
+            (repo / "src" / "app.py").write_text("x = 3\n")
+        # A finding has to exist for the close to carry a cost lead at all.
+        _full_roster_partials(repo, head, findings_by_role={
+            "correctness": [{"name": "Nit", "goal": "Nothing Is Broken",
+                             "severity": "note", "recommendation": "tweak",
+                             "files": ["src/app.py"]}],
+        })
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        return repo, result
+
+    def test_a_real_capture_matches_the_real_fact_it_anchors_on(self, tmp_path):
+        """The contract between three real components, which no hand-built
+        dict can check: `capture_tree`'s output keys, the `head_tree` the
+        appended fact actually carries, and the comparison that reads both."""
+        repo, result = self._anchored_scenario(tmp_path)
+        fact = _store_facts(repo, "review")[0]
+        capture = evidence.capture_tree(repo)
+        assert capture["status"] == "ok"
+        assert capture["tree"] == fact["body"]["head_tree"], (
+            "a real post-consolidate capture no longer equals the anchor the "
+            "review fact carries — #851's arm cannot fire for any consumer. "
+            "Most likely something `consolidate` writes became visible to git."
+        )
+        assert cc.tree_is_covered_by(capture, fact["body"]["head_tree"]) is True
+        assert self.ANCHORED in result.stdout, (
+            "the arm did not reach the builder even though the trees match — "
+            "the wiring between the comparison and the rendered close is gone"
+        )
+
+    def test_an_edit_after_dispatch_is_not_covered(self, tmp_path):
+        """The control. Without it the test above passes for an arm that
+        renders unconditionally, which is the mutation the unit tests found
+        three times in the inlined version."""
+        _, result = self._anchored_scenario(tmp_path, dirty=True)
+        assert self.ANCHORED not in result.stdout, (
+            "a tree edited after dispatch was reported as covered — that "
+            "sends a builder to commit work no review saw"
+        )
+
+    def test_only_a_verify_anchor_claims_coverage(self, tmp_path):
+        """#851's evidence is about a `verify-resolutions` anchor and the arm
+        names that pass as the closer for the next delta. Other modes keep the
+        ordinary arms; this pins that narrowing so it is not widened without
+        establishing which pass a cumulative anchor should name."""
+        _, result = self._anchored_scenario(tmp_path, mode=FINAL_MODE)
+        assert self.ANCHORED not in result.stdout, (
+            "a non-verify anchor rendered the #851 arm, which names "
+            "`verify-resolutions` as the pass closing the next delta — "
+            "unestablished for any other mode"
+        )
+
     def test_complete_partials_at_head_consolidates(self, tmp_path):
         repo = tmp_path / "r"
         _init_repo(repo)

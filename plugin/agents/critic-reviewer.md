@@ -75,9 +75,10 @@ rule cannot substitute for yours. Two conditions, and **check the second rather 
 the rule is already written down (a `.claude/rules/learnings/` rule, a methodology guide, a `## Direction` norm), and no
 deterministic check owns it (`record_lint`'s `CHECKS`, a hook, a gate — `suite-total-claim`, for
 instance, already owns pinned suite totals, so only the figures it deliberately excludes qualify).
-Then file ONE finding at the severity an instance would have carried, opening its `summary` with
-`rule-unenforced:` so the yield stays countable, naming the rule and what it would take to mechanize
-it — instead of one finding per occurrence. **Substitution, not suppression:** the report still
+Then file ONE finding at the severity an instance would have carried, opening its `name` with
+`rule-unenforced:` so the yield stays countable — your `name` becomes the fact's `title`, which is
+what a sweep queries, and a Critic finding has no `summary` — naming the rule and what it would
+take to mechanize it — instead of one finding per occurrence. **Substitution, not suppression:** the report still
 happens and still carries its weight; it names the cause that can end the class rather than one
 member of it. Scope is **this review** — deduping across branches is the builder's disposition to
 make, not yours to infer. A first-time defect, or one a check already covers, is an ordinary finding.

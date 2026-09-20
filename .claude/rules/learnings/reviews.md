@@ -90,11 +90,11 @@ of the bullet, so a neighbouring `**BLOCKING**` satisfied the check for a whole 
 reversions survived green; and a release-note sweep where the report named two stale carriers and
 its own suggested grep found three.
 
-**The discipline is mechanical, and it is the report's own query, not its summary.** A summary
-DEDUPES — one row per `(artifact, id)` — so its row count is a lower bound on the sites needing the
-change, and the hidden ones are exactly those nobody re-checks. Re-run the falsifying search, fix
-every hit, then re-run it and require zero. Where the sweep is a rename, the query must be about the
-CONCEPT rather than the token, because the sites that survive are the ones that say the old word
+**The discipline is mechanical, and it is the report's own query, not its summary** —
+[[When a fix is driven by a report's SUMMARY LIST]] owns why (a summary dedupes, so its row count
+is a lower bound). Re-run the falsifying search, fix every hit, then re-run it and require zero.
+The part that is this rule's own: where the sweep is a rename, the query must be about the CONCEPT
+rather than the token, because the sites that survive are the ones that say the old word
 correctly.
 
 **And the accept is a real option with no shame in it.** Both partial repairs here would have been

@@ -139,8 +139,9 @@ The `final`/`cumulative` Critic owns this scan (`skills/critic/review-cycle.md` 
 
 **You are not given the learnings at all, and that is deliberate.** Two reasons, neither of which is "they are in context already": the goal that consumed them returned **1 finding in 122 reviews**, and the scan itself belongs to the Critic by the paragraph above — so this reviewer was reading a corpus it was forbidden to use. A reintroduced pattern you recognise anyway while reading for your own goals is still a WARNING at minimum; recognising one is not the scan you are forbidden.
 
-**One exception to that severity, and it applies to your own goals too: when the rule exists and
-nothing enforces it, the finding is the rule — once.** If what you are about to file is the Nth
+**One exception to filing PER INSTANCE, and it applies to your own goals too: when the rule
+exists and nothing enforces it, the finding is the rule — once.** It changes the COUNT, never the
+severity: the floor above stands, and the single finding still carries it. If what you are about to file is the Nth
 occurrence of something already written down (a `.claude/rules/learnings/` rule, a methodology guide, a `## Direction`
 norm) that no deterministic check owns (`record_lint`'s `CHECKS`, a hook, a gate), file ONE finding
 naming the rule and what would mechanize it, at the severity an instance would have carried, opening

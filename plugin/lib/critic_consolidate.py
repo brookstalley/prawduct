@@ -603,6 +603,28 @@ _REDERIVE_COST = (
 )
 
 
+def tree_is_covered_by(capture: "dict | None", anchor_tree: "str | None") -> bool:
+    """Does the review that just landed COVER the working tree as it stands?
+
+    Extracted rather than inlined because a mutation sweep found three
+    survivors in the inline version, all of them in the comparison rather than
+    in the message: the only tests were of the pure renderer and a structural
+    check too narrow to see them. An inlined comparison is testable only
+    through whatever renders it.
+
+    **Fails soft in the safe direction.** A degraded capture returns False, so
+    the close renders its ordinary advice rather than a coverage claim nothing
+    verified — an unverifiable "you are covered" is the one answer that would
+    send a builder to commit work no review saw.
+    """
+    if not capture or capture.get("status") != "ok":
+        return False
+    if not anchor_tree:
+        return False
+    return capture.get("tree") == anchor_tree
+
+
+
 #: The mechanical question, answered — not handed to the builder to go run.
 #:
 #: #831's finding: the fix/accept call is EVALUATIVE today ("is this worth
@@ -632,26 +654,6 @@ _REDERIVE_COST = (
 #: ledger once per consolidation and passes both results in, so the two
 #: carriers of this sentence cannot quote different numbers and no digit is
 #: restated in this module (``architecture.md``: every fact has one home).
-def tree_is_covered_by(capture: "dict | None", anchor_tree: "str | None") -> bool:
-    """Does the review that just landed COVER the working tree as it stands?
-
-    Extracted rather than inlined for the reason Chunk 02's predicate was: a
-    mutation sweep found three survivors in the inline version, all of them in
-    the comparison rather than in the message, because the only tests were of
-    the pure renderer and a structural check too narrow to see them.
-
-    **Fails soft in the safe direction.** A degraded capture returns False, so
-    the close renders its ordinary advice rather than a coverage claim nothing
-    verified — an unverifiable "you are covered" is the one answer that would
-    send a builder to commit work no review saw.
-    """
-    if not capture or capture.get("status") != "ok":
-        return False
-    if not anchor_tree:
-        return False
-    return capture.get("tree") == anchor_tree
-
-
 def cost_lead(cost: "dict | None", tree_now_covered: bool = False) -> str:
     """The leading sentence of a zero-blocking close: what fixing costs here,
     and what that implies.
@@ -691,13 +693,26 @@ def cost_lead(cost: "dict | None", tree_now_covered: bool = False) -> str:
         # question once a review has anchored on it. Saying "you are already
         # making a judgeable commit" here is true of the tree and false about
         # the cost, which is the exact inversion #851 records.
+        # The operative half is identical either way: the next edit opens a
+        # new delta. What differs is whether there is anything to commit —
+        # telling a builder with a clean tree to "commit this tree verbatim"
+        # names a step they cannot take, and advice that cannot be followed is
+        # how a reader learns to discount the rest of the sentence.
+        carry = (
+            "so the commit that carries it is already paid for"
+            if cost.get("paths")
+            else "and your tree is clean, so there is nothing left to pay for"
+        )
+        act = (
+            "Recommended: commit this tree verbatim and stop;"
+            if cost.get("paths")
+            else "Recommended: stop here;"
+        )
         return (
-            "This review COVERS your working tree as it stands, so the commit"
-            " that carries it is already paid for — and the next edit after it,"
-            " judgeable or not, opens a NEW delta that needs its own"
-            " `/prawduct:critic verify-resolutions`. Recommended: commit this"
-            " tree verbatim and stop; fix anything further only if it is worth"
-            " a round of its own."
+            f"This review COVERS your working tree as it stands, {carry} — and"
+            " the next edit after it, judgeable or not, opens a NEW delta that"
+            " needs its own `/prawduct:critic verify-resolutions`."
+            f" {act} fix anything further only if it is worth a round of its own."
         )
     if judgeable:
         return (
@@ -2305,140 +2320,6 @@ def _refuse_over_budget(
     }
 
 
-def _anchor_named_files(prior_body: dict) -> set[str]:
-    """Every file the anchor's own items named — findings AND observations.
-
-    **The departure from `167-design.md` D3, and its warrant.** That design
-    reads `findings` only, and deferred the empty-``named`` case on the stated
-    ground that the anchor's observations are *"unrecoverable from either
-    store"*. That premise went false after it was written: the
-    ``review-loop-termination`` plan shipped observation recording, and an
-    observation carries a ``files`` list exactly as a finding does.
-
-    It matters because the inner stage demotes everything below BLOCKING into
-    observations, so on a `verify-resolutions` anchor ``findings`` is now empty
-    in the ordinary case rather than the exceptional one. Measured over this
-    clone's store, verify anchors with a non-empty named set: 139/186 (July),
-    129/300 (August), and 20/114 in September findings-only against **56/114**
-    once observations count. Reading findings alone would ship the guard at
-    roughly a quarter of the reach the design intends for it.
-
-    Re-derive rather than trusting those figures: they are a scan of
-    ``review`` facts whose ``body.mode`` starts with ``verify-resolutions``,
-    counting those with any item carrying ``files``.
-    """
-    named: set[str] = set()
-    for item in (prior_body.get("findings") or []) + (prior_body.get("observations") or []):
-        for path in item.get("files") or []:
-            if isinstance(path, str) and path:
-                named.add(path)
-    return named
-
-
-def is_self_inflicted_verify(
-    prior_body: dict, files_changed: "list | None", unresolved: "list | None"
-) -> bool:
-    """The #167 predicate, as ONE function the dispatch calls and tests drive.
-
-    Extracted rather than inlined in :func:`begin_review` for a reason the first
-    cut of its tests demonstrated: a test that re-implements the three conjuncts
-    pins its own copy, so deleting a conjunct from the dispatch leaves it green.
-    Pinning an extracted predicate proves the predicate; the dispatch still has
-    to be shown to CALL it, which ``test_the_dispatch_calls_the_real_predicate``
-    does structurally.
-
-    Three independently falsifiable conjuncts, in cost order:
-
-    1. the anchor is ITSELF a ``verify-resolutions`` fact — D2's floor, so the
-       first verify pass after any full round is never refused, whatever that
-       round's severity mix;
-    2. it left zero unresolved blocking — a round still owing a real fix is out
-       of scope before file identity is even asked;
-    3. the delta's judgeable files are a NON-EMPTY subset of what that pass's
-       own items named. Non-empty on both sides matters: ``set() <= set()`` is
-       vacuously true, so an empty named set would refuse everything.
-    """
-    if prior_body.get("mode") != _VERBOSE_VERIFY_RESOLUTIONS:
-        return False
-    if unresolved:
-        return False
-    named = _anchor_named_files(prior_body)
-    judgeable = list(files_changed or [])
-    # No explicit `named` non-emptiness test, and its absence is deliberate. D3
-    # says an empty named set "is not a match, by construction" — and the
-    # construction is right here: a non-empty `judgeable` can never be a subset
-    # of an empty `named`, and an empty `judgeable` is refused by the first
-    # conjunct. A `bool(named)` guard beside these reads as a third condition
-    # and is unreachable; a mutation sweep deleting it changed no answer, which
-    # is a claim about the code rather than about the tests.
-    return bool(judgeable) and set(judgeable) <= named
-
-
-def _refuse_self_inflicted(
-    project_dir: Path,
-    prior: dict,
-    judgeable: list,
-    named: set,
-    mode_token: str,
-    scope: "str | None",
-    chunk: "str | None",
-    dispatch_commit: "str | None",
-    notes: list,
-) -> dict:
-    """Refuse a verify pass whose whole delta is churn a CLEAN verify pass of
-    its own caused (#167, exit 5).
-
-    Distinct from its two sibling refusals on purpose (D4): exit 3 means the
-    interval holds no judgeable file, and this interval is judgeable and
-    non-empty; exit 4 is a count-based backstop that sweeps outstanding
-    findings, and there is nothing to sweep here because the anchor already
-    left zero unresolved blocking. Three separately queryable reasons, three
-    separately retireable controls.
-
-    Records its firing for the same reason the budget guard does: a control
-    ships under *name the yield you expect and emit it observably*, and only a
-    record of actual firings can retire it later on evidence.
-    """
-    reason = (
-        f"verify-resolutions anchored on {prior.get('id')}, itself a clean "
-        f"verify-resolutions pass (0 unresolved blocking) — the changed file(s) "
-        f"{sorted(judgeable)} are all among the {len(named)} file(s) that pass's "
-        f"own items already named. This looks like the round the fixing itself "
-        f"generated, not new work."
-    )
-    recorded = evidence.append_guard_refusal(
-        project_dir,
-        "critic-dispatch-self-inflicted-verify",
-        {
-            "mode": mode_token,
-            "anchor_fact_id": prior.get("id"),
-            "delta_files": sorted(judgeable),
-            "named_files": sorted(named),
-            "scope": scope,
-            "chunk": chunk,
-            "branch": gitstate.current_branch(project_dir),
-            "dispatch_commit": dispatch_commit,
-        },
-    )
-    if recorded.get("status") != "appended":
-        print(
-            "critic-begin: the self-inflicted refusal is correct but was NOT "
-            f"recorded ({recorded.get('reason', 'unknown')}) — this firing is "
-            "missing from `prawduct-hook evidence list --kind guard-refusal`, "
-            "so read that query as a lower bound.",
-            file=sys.stderr,
-        )
-    return {
-        "status": "self-inflicted-refusal",
-        "reason": reason,
-        "anchor_fact_id": prior.get("id"),
-        "delta_files": sorted(judgeable),
-        "named_files": sorted(named),
-        "notes": notes,
-        "recorded": recorded.get("status") == "appended",
-    }
-
-
 def begin_review(
     project_dir: Path,
     mode_token: str,
@@ -2992,37 +2873,6 @@ def begin_review(
             "notes": notes,
             "recorded": recorded.get("status") == "appended",
         }
-
-    # SELF-INFLICTED VERIFY (#167, exit 5) — the round the fixing generated.
-    #
-    # Keyed on the anchor this dispatch ALREADY resolved by pointer, never on a
-    # fresh `diagnose_fix_churn` lineage search: that helper re-derives "the
-    # nearest review fact on this lineage", which is right for its own caller
-    # (the cumulative gate has no dispatch to anchor to) and a second, coarser
-    # answer here — two anchors that can disagree with nothing to reconcile them.
-    #
-    # FAILS CLOSED the safe way: an unreadable store DISPATCHES. A refusal is
-    # authority, and authority computed from a degraded read would skip a round
-    # nobody judged (`architecture.md` § Direction).
-    if mode_token == "verify-resolutions" and not force:
-        if prior_body.get("mode") == _VERBOSE_VERIFY_RESOLUTIONS:
-            from . import coverage_algebra  # noqa: PLC0415 — lazy, matching this module's other lib imports
-
-            store = evidence.read_facts(project_dir)
-            if store.get("status") != "error":
-                resolved_idx = coverage_algebra.resolution_index(store.get("facts") or [])
-                # Both conjuncts are independently necessary. An anchor still
-                # owing a real fix is out of scope before file identity is even
-                # asked, which is what keeps "the discriminator is what moved
-                # the tree, never a round counter" true.
-                unresolved = coverage_algebra.unresolved_blocking(prior, resolved_idx)
-                judgeable = coverage_algebra.judgeable_files(files_changed)
-                if is_self_inflicted_verify(prior_body, judgeable, unresolved):
-                    return _refuse_self_inflicted(
-                        project_dir, prior, judgeable,
-                        _anchor_named_files(prior_body),
-                        mode_token, scope, chunk, dispatch_commit, notes,
-                    )
 
     # ROUND BUDGET — the terminating rule. Yield does not decay (13.5 → 15.4 →
     # 15.5 → 18.4 findings per full round across this clone's store, 99% of them
@@ -4995,17 +4845,27 @@ def consolidate(project_dir: Path) -> int:
 
     price_sentence = telemetry.format_round_price(telemetry.round_price(prawduct_dir))
 
-    # One git read per consolidation, beside the one ledger read, for the same
-    # reason: the relayed NEXT-ACTION and the cache record must not be able to
-    # answer the same question differently. `commit_cost` asks the SAME
-    # predicate the coverage gate will charge on — never a cheaper proxy for
-    # it — so the sentence cannot promise a price the gate then disagrees with.
+    # Two git reads per consolidation (`commit_cost`'s and `capture_tree`'s),
+    # beside the one ledger read, and both feed ONE rendered sentence for the
+    # same reason the ledger read is single: the relayed NEXT-ACTION and the
+    # cache record must not be able to answer the same question differently.
+    # `commit_cost` asks the SAME predicate the coverage gate will charge on —
+    # never a cheaper proxy for it — so the sentence cannot promise a price the
+    # gate then disagrees with.
     from . import coverage  # noqa: PLC0415 — lazy, matching this module's other lib imports
 
     # #851: `commit_cost` cannot know a review just anchored on this tree, and
     # after one has, "a fix rides free" is false regardless of paths. The fact
     # was written moments ago, so its head_tree IS the anchor to compare.
-    tree_now_covered = tree_is_covered_by(
+    #
+    # Gated on `is_verify` deliberately, and this is NARROWER than the tree
+    # test alone would allow. #851's evidence is entirely about a
+    # `verify-resolutions` anchor, and the arm it renders names that pass as
+    # the one closing the next delta. Whether a cumulative anchor should say
+    # the same thing — and name which pass — is not established, so the other
+    # modes keep the ordinary arms they rendered before this existed. Advice
+    # under-claims rather than naming a pass nobody has checked is the closer.
+    tree_now_covered = is_verify and tree_is_covered_by(
         evidence.capture_tree(project_dir),
         (fact.get("body") or {}).get("head_tree"),
     )
