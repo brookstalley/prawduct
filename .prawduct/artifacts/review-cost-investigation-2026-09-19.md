@@ -188,3 +188,98 @@ PY
   low blocking/rev may be catching things reviewers correctly rate lower, not finding nothing.
 - **Yield per minute is not value per minute.** The three rounds this branch spent on a class
   finding found real defects each time; the argument is that ONE round should have found them.
+
+---
+
+## 8. Addendum, 2026-09-20 — the instrument, corrected
+
+Measured the day after §1–§7, against the **evidence store** (`.git/prawduct/evidence.jsonl`, 966
+review facts, 115.3h) rather than the governance ledger. Re-derive everything below with
+`python3 .prawduct/research/review-cost-2026-09-20/verify_population.py` — the numbers live in that
+script's output, not in this prose, and where the two disagree the script is right.
+
+Nothing in §1–§7 is retracted. Both of its headline claims (§2's *41 of 83 scopes found zero
+blocking*, §3's *18% of verify rounds find a blocking finding*) count **blocking** severity, and
+blocking is never demoted — so both survive the correction below untouched.
+
+### 8.1 Empty-rate trends are not comparable across 2026-09-16, and one was already circulating
+
+A `verify-resolutions` pass demotes everything below BLOCKING into `observations`. That array
+**began being written on 2026-09-16** — 0 facts carry it in July, 0 in August, 46 of 116 in
+September. So a "produced nothing" rate computed from `findings` alone measures *when the field
+started being populated*, not what reviewers found:
+
+| month | verify rounds | no `findings` | carrying `observations` | truly empty |
+|---|---|---|---|---|
+| 2026-07 | 186 | 46 | 0 | 46 |
+| 2026-08 | 300 | 170 | 0 | 170 |
+| 2026-09 | 116 | 96 (83%) | 46 | **58 (50%)** |
+
+A session note dated 2026-09-20 had already promoted the contaminated series — *"the zero-finding
+rate is RISING: 26% (Jul) → 57% (Aug) → 84% (Sep); in September 81 of 97 verify rounds returned
+nothing"* — as the measured case for the next intervention. 38 of those rounds returned content
+that the demotion rule had moved one field over. **Read the table columnwise, never across rows.**
+
+The same confound reverses a second reading. Splitting September at the 09-19 interventions shows
+nothing-at-all falling 56% → 7% — which is not an effect, because 31% of pre-window facts carry the
+`observations` array against 100% of post-window facts. Attributing that drop to #831/#833 would
+have credited a recording change to a mechanism.
+
+`telemetry.py:261-270` is not at fault and needs no change: it reports `observations` separately,
+and distinguishes `None` ("not recorded") from `0` ("recorded, none demoted") on purpose. The tool
+answered correctly; three consecutive consumer-side readings of it did not.
+
+### 8.2 The clean window: 2026-09, the only month where the field is populated
+
+| | rounds | clock | share of the month's 23.8h |
+|---|---|---|---|
+| verify-resolutions, total | 116 | 10.1h | 43% |
+| — nothing at all | 58 | 4.6h | 19% |
+| — observations only (nothing that gates) | 38 | 3.3h | 14% |
+| — some finding | 20 | 2.2h | 9% |
+
+**A third of all September review clock went to verify rounds that produced nothing which gates.**
+That is the cost §2 identified, re-measured on an uncontaminated window, and it is real.
+
+### 8.3 Two levers ruled out on measurement
+
+**Delta size does not separate the wasteful rounds from the productive ones.** The 58 nothing-at-all
+rounds spread evenly across delta sizes (14 at 1–2 files, 14 at 3–4, 18 at 5–9, 11 at 10+). Round
+*cost* does scale with the delta (210s at one file → 520s at 20+), so the temptation is a size-keyed
+refusal or discount — but there is no population for it to aim at. Combined with the already-recorded
+result that marginal blocking yield does not decay by round index, **no observable feature of a
+verify round predicts whether it will find anything.** That is the same wall #167 hit from the
+evidence-strength side, reached independently from the population side.
+
+**The roster question is not identifiable from observational data.** §5.1 deferred it for want of an
+instrument and §7 recorded that roster size is not recorded. That is true of the ledger and **false
+of the evidence store**, which carries `roster` on all 966 facts — so the question is askable. It
+still cannot be answered: roster size is assigned with tier (158 of 178 three-reviewer cumulatives
+are `escalate`), with diff size (median 19 files against 8), and with calendar month, all at once.
+The one tier-and-size-matched cell holds n=5 and sits entirely in 2026-07. Settling this needs a
+**randomised roster on standard-tier cumulative**, not a further scan. Filing that as an experiment
+is a real option; another measurement pass is not.
+
+### 8.4 What this changes about the next act
+
+Every remaining lever in §5.1's sequence has now either shipped (#831, #833, #829, the route-keyed
+payload ceilings), been withdrawn after review (#167, 2026-09-20 — advisory-strength evidence used
+for authority), or been ruled out above. The three that shipped all act on the **fix/accept
+decision** rather than on the round, and they landed on 2026-09-19 and 2026-09-20 — which is 15
+verify rounds of post-intervention data, confounded as §8.1 shows.
+
+So the honest next act is **a measurement window, not a fourth mechanism**: let the shipped
+interventions accumulate a population that the corrected instrument can read, and re-run the script
+above. Designing another lever now would be designing against a number nobody can yet compute.
+
+### 8.5 What this addendum cannot say
+
+- **The pre-2026-09-16 "truly empty" counts are overstated by an unknown amount** — rounds that
+  produced only observations are indistinguishable there from rounds that produced nothing, so the
+  46 and 170 above are upper bounds. The *level* in September is measured; the *trend* into it
+  is not recoverable.
+- **"Produced nothing that gates" is not "was not worth running."** A verify round that confirms a
+  fix is correct has done its job; the argument here is about how many of them the coverage model
+  requires, never about whether any given one was sound.
+- **n=15 post-intervention.** Nothing in §8.4 is an effect estimate; it is a statement that the
+  effect is not yet estimable.
