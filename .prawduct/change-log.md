@@ -5,6 +5,70 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-21: Where the fleet's review rounds actually go — a committed instrument, not a scratchpad query
+
+<!-- prawduct: type=feat | scope=review-loop-economy -->
+
+**The consumer-overhead program's VR-share target had no instrument behind it.** Its 2026-09-16
+triage set a baseline with a query that lived in a scratchpad and is gone, so its figures could not
+be re-derived — the failure `core.md` names as *a spike that discards its code leaves its numbers
+unfalsifiable*. `tools/measure-review-loop-economy.py` is that query, committed and tested, and
+`documentation/consumer-build-metrics.md` gains the reading it produces.
+
+**The tool reads the ceiling and the counted modes FROM the plugin that enforces them**
+(`core.REVIEW_ROUND_BUDGET_DEFAULT`, `critic_consolidate.FULL_ROUND_MODES`), so a change to either
+lands in the reading without anyone remembering to update prose. It does **not** read the plugin's
+counting predicate — `analyse` pools a scope's whole history where `_round_budget_verdict` counts
+only what `count_branch_rounds` admits — and the doc now says so, because that bound changed in
+#776, which this branch picked up from `develop` rather than made. Parameters track; predicates do
+not. Cite the command, never the digits.
+
+**The finding: the v3.5.0 round budget is aimed elsewhere, by design.** `verify-resolutions` is 66%
+of 2,248 Critic reviews and is not a mode the ceiling counts; the ceiling is 6 full rounds per scope
+and the 90th percentile of full rounds per scope is also 6, so only 31 of 248 scopes (12%) ever
+reach it; and 10% of reviews carry no scope, for which `_round_budget_verdict` returns `unavailable`
+and never refuses. Together those bound what the control can ever touch at 118h of 294h — an **upper
+bound, not a saving**, since it counts the rounds spent before the ceiling would have fired. The
+largest addressable block is elsewhere: **322 of 534 cumulative runs (60%) are a repeat cumulative on
+a scope already reviewed cumulatively**, which is WS5/#672's target and which that program ranks
+fifth.
+
+**Three hazards were added because this reading tripped on all three, and every one of them is a
+completeness claim that was not checked.** Hazard 8: pooling the scope-less rows under one key per
+repo invents one enormous scope and overstates the ceiling's reach — the first pass reported 14% and
+64% where the truth is 12% and 60%, pinned by `TestAScopelessRowIsNeverAScope`. Hazard 9: the marker
+paragraph asserted that every consumer marker was a `-dev` snapshot spanning `3.3.4` to
+`3.5.1-dev.2`, which is the printed table with its first and last rows removed; three of the fifteen
+are released versions, the oldest from 2026-07-16. Hazard 10: `find_ledgers` globbed one level deep
+and so could not see a worktree ledger INSIDE a repo, finding 17 of 20 — and the excluded set was
+exactly the delegated work, not a random sample — while the prose above it claimed *every governed
+ledger on this machine*. The corpus size is now printed on the CORPUS line so that claim is
+checkable, and `TestTheCorpusIsBoundedByPropertyNotByDepth` pins the depth against a control proving
+the old predicate misses the fixture. All three times the conclusion survived the correction and the
+warrant did not — the worse direction, because the next reader re-derives conclusions and copies
+warrants.
+
+**Two changes land in the SIBLING tool and outlive this branch.**
+`TestEveryIsoParseSurvivesPython310` policed a hardcoded two-name `TOOLS` tuple — the container, not
+the property — so a tool added later read as covered while nothing scanned it, which is exactly how
+this branch's own `--since` shipped a Python 3.10 crash past the guard written for it. It now
+enumerates `tools/*.py` with a non-vacuity assertion and a positive control, so **every future tool
+in `tools/` is covered on the day it lands**, with nobody remembering to add it. And
+`measure-consumer-overhead.py`'s shared `read_ledger` gained a `scope` field, which is what makes a
+per-scope reading possible at all. Neither is scaffolding for this bundle.
+
+**Durations remain self-reported** (hazard 2): 23 of 2,248 rows carry a measured dispatch interval.
+Lean on the run counts, which are one row per real dispatch. #845 tracks why the measured clock is
+lost on the ordinary path.
+
+**The consumer-overhead program's own workstream table is now superseded, and § Related work says
+so.** Measured against that branch on 2026-09-21: WS0 and WS2 (#744) have shipped, and #292 and
+#767 — placed out of scope and deferred respectively — shipped in v3.6.0. Anyone planning from that
+table re-derives first (`git log --oneline develop..docs/consumer-overhead-program`, and resolve
+each issue it names); this reading bears directly on its WS1/WS5 ranking.
+
+---
+
 ## 2026-09-20: The review round budget fires on a trunk repo — bounded by worktree, not by lineage
 
 <!-- prawduct: type=fix | scope=review-budget-trunk-shape -->
