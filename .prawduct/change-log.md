@@ -7,7 +7,7 @@
 
 ## 2026-09-21: Where the fleet's review rounds actually go — a committed instrument, not a scratchpad query
 
-<!-- prawduct: type=docs | scope=review-loop-economy -->
+<!-- prawduct: type=feat | scope=review-loop-economy -->
 
 **The consumer-overhead program's VR-share target had no instrument behind it.** Its 2026-09-16
 triage set a baseline with a query that lived in a scratchpad and is gone, so its figures could not
@@ -19,8 +19,9 @@ unfalsifiable*. `tools/measure-review-loop-economy.py` is that query, committed 
 (`core.REVIEW_ROUND_BUDGET_DEFAULT`, `critic_consolidate.FULL_ROUND_MODES`), so a change to either
 lands in the reading without anyone remembering to update prose. It does **not** read the plugin's
 counting predicate — `analyse` pools a scope's whole history where `_round_budget_verdict` counts
-only what `count_branch_rounds` admits — and the doc now says so, because that bound changed under
-this very branch in #776. Parameters track; predicates do not. Cite the command, never the digits.
+only what `count_branch_rounds` admits — and the doc now says so, because that bound changed in
+#776, which this branch picked up from `develop` rather than made. Parameters track; predicates do
+not. Cite the command, never the digits.
 
 **The finding: the v3.5.0 round budget is aimed elsewhere, by design.** `verify-resolutions` is 66%
 of 2,248 Critic reviews and is not a mode the ceiling counts; the ceiling is 6 full rounds per scope
@@ -46,6 +47,15 @@ checkable, and `TestTheCorpusIsBoundedByPropertyNotByDepth` pins the depth again
 the old predicate misses the fixture. All three times the conclusion survived the correction and the
 warrant did not — the worse direction, because the next reader re-derives conclusions and copies
 warrants.
+
+**Two changes land in the SIBLING tool and outlive this branch.**
+`TestEveryIsoParseSurvivesPython310` policed a hardcoded two-name `TOOLS` tuple — the container, not
+the property — so a tool added later read as covered while nothing scanned it, which is exactly how
+this branch's own `--since` shipped a Python 3.10 crash past the guard written for it. It now
+enumerates `tools/*.py` with a non-vacuity assertion and a positive control, so **every future tool
+in `tools/` is covered on the day it lands**, with nobody remembering to add it. And
+`measure-consumer-overhead.py`'s shared `read_ledger` gained a `scope` field, which is what makes a
+per-scope reading possible at all. Neither is scaffolding for this bundle.
 
 **Durations remain self-reported** (hazard 2): 23 of 2,248 rows carry a measured dispatch interval.
 Lean on the run counts, which are one row per real dispatch. #845 tracks why the measured clock is

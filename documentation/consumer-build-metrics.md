@@ -290,7 +290,7 @@ Engaged wall clock comes from clustering commits and ledger events into sessions
 
 ## Hazards for whoever updates this
 
-Numbered by how badly each one burns you. Each of these produced a wrong answer before it was caught.
+Every one of these produced a wrong answer before it was caught, so read all of them — the numbers are identifiers, **not a ranking**. They used to be ordered by how badly each one burns, and new hazards are appended rather than inserted, so the claim went stale the first time one was added: hazard 10 moved every published digit in § *Why the verify-resolutions share is not moving*, which is a worse burn than several above it. Renumbering would break every citation, so the ordering claim goes instead of the order.
 
 1. **Interval attribution is biased by commit density, and can invert a trend.** Read naively, discodon's measured split says Critic *fell* from 65% of engaged time to 17%. It rose, 13% → 20%. Commit density tripled over the period, so the instrument's resolution is itself a function of the variable being measured. The VALIDATION table exists for this: its ratio is 2.96–4.61 in the sparse v2.x and v3.0 windows and 0.94–1.16 in the dense v3.2+ ones. Where that ratio is near 1, believe the measured split. Where it is not, use the self-reported durations.
 2. **`duration_seconds` is self-reported by the reviewing model, not a measured clock.** 74 distinct values across discodon's 1,318 review events, mostly round. It is corroborated within 16% wherever commits are dense enough to check it, which is what licenses using it elsewhere.
