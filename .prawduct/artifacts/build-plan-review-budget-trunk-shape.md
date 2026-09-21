@@ -69,9 +69,15 @@ an inert control operative is the fix, not a side effect | user can veto/overrid
 
 ## Status
 
-- [ ] Chunk 01: The round budget fires on the trunk shape, bounded by worktree
-Context: Built 2026-09-20 on `fix/review-budget-trunk-shape` (branched from `develop` @
-`225da107`). Chunk 01 is implemented and its tests are green; the box is ticked after its review.
+- [x] Chunk 01: The round budget fires on the trunk shape, bounded by worktree
+Context: Built and reviewed 2026-09-20 on `fix/review-budget-trunk-shape` (branched from
+`develop` @ `225da107`). Chunk 01 is complete: commits `1210fbe8` (the fix) and `b66346d9` (the
+findings, batched). Reviewed `cumulative` (`rev-20260921T014137Z-ee49b69a`, three-reviewer roster,
+0 blocking / 8 warning / 6 note), then two `verify-resolutions` passes — the first raised 1 blocking
+(`bound` pinned only on the surface that dies at end of process), the second closed it at 0/0/0.
+Every finding dispositioned; #860 filed for the one class deliberately left outside this branch.
+Re-derive rather than trusting this paragraph: `prawduct-hook check-cumulative-critic` reported
+`satisfied` over `e32345c4..b1b060e4` with 0 unresolved blocking at the time of writing.
 
 **Two deliverable questions the plan left open, and how each resolved:**
 
