@@ -702,6 +702,16 @@ def count_branch_rounds(
     The mode strings are handed over verbatim rather than parsed here — the
     token vocabulary belongs to ``critic_consolidate``, and a second parse of it
     living in the counter is how one vocabulary becomes two.
+
+    ``span_commits`` is how many commits the span held, and it separates the two
+    ways ``rounds`` reaches zero: a branch with commits that has bought no
+    review yet, and a span with no commits at all — the permanent state of a
+    trunk-based repo, where every push moves the base ref with HEAD. Those are
+    the same number and opposite situations, and a caller that must bound by
+    something other than lineage can only tell them apart from here, because
+    this is where the span is walked. Reported rather than acted on: what to do
+    with an empty span is the caller's policy, and attribution is this
+    function's whole subject.
     """
     from . import evidence  # noqa: PLC0415 -- lazy: mirrors diagnose_fix_churn's import posture; avoids an import cycle at module load
 
@@ -738,6 +748,7 @@ def count_branch_rounds(
         "seconds": round(sum(durations), 1) if durations else None,
         "timed": len(durations),
         "reviews": reviews,
+        "span_commits": len(on_branch),
     }
 
 

@@ -592,6 +592,12 @@ Fail-direction is deliberate and per-purpose:
   Rounds are counted per build-plan **scope** (intersected with this branch's lineage, since the
   store is clone-wide); a dispatch that resolves no scope is not budgeted, because there is no
   body of work to bound and the census the refusal renders is selected from the same set.
+  **Where the lineage span holds no commits the bound is this `actor.worktree` instead**, which is
+  the permanent state of a trunk-based repo: an intersection with an empty set is empty, so the
+  ceiling used to be unreachable there — declared, on by default and silently inert. The clone-wide
+  reason is unchanged and is why this is a second bound rather than a dropped one; the swap is keyed
+  on the span being empty, not on the count being zero, so a branch with commits and no rounds yet
+  still answers by lineage.
 
 **The `backlog` group carries its own exit-class set — a documented scheme, not an exception to the
 table above.** `lib/backlog/cli.py`'s `_EXIT_CLASS` maps every error `code` the group can return onto

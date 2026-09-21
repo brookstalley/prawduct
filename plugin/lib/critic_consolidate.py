@@ -2157,6 +2157,40 @@ def _dirty_anchor_note(mode_label: str, excluded: "list[str] | None") -> str:
     )
 
 
+def _rounds_recorded_in_this_worktree(
+    facts: "list[dict]", project_dir: Path, scope: str
+) -> "list[dict]":
+    """This scope's review facts recorded from THIS worktree, shaped like
+    ``coverage.count_branch_rounds``'s ``reviews`` so one tail can count either.
+
+    The bound is ``actor.worktree`` and not "no bound at all" because the
+    evidence store sits in the clone's git common dir and every worktree of the
+    clone writes into it. Lineage was the only thing separating them; where the
+    span is empty it separates nothing, so something else has to, and dropping
+    the bound would charge a scope for rounds a sibling worktree bought on the
+    same plan. Overcounting a stopping rule is worse than undercounting it —
+    ``count_branch_rounds`` says why, and it is the reason this is a second
+    bound rather than a removed one.
+
+    ``actor.worktree`` is written by ``evidence.append_fact`` on every fact the
+    plugin has ever appended, so no fact is invisible to this for want of the
+    field. A path that does not match is simply not counted, which sells a round
+    — the direction this control fails in by design.
+    """
+    here = str(project_dir)
+    counted = []
+    for fact in facts:
+        if fact.get("kind") != "review":
+            continue
+        body = fact.get("body") or {}
+        if body.get("scope") != scope:
+            continue
+        if (fact.get("actor") or {}).get("worktree") != here:
+            continue
+        counted.append({"id": fact.get("id"), "mode": body.get("mode")})
+    return counted
+
+
 def _round_budget_verdict(
     project_dir: Path, prawduct_dir: Path, scope: "str | None"
 ) -> dict:
@@ -2180,6 +2214,17 @@ def _round_budget_verdict(
     facts with the rounds ``coverage.count_branch_rounds`` attributes to this
     branch. Scope alone would sweep in a sibling worktree's rounds on the same
     plan, and the store is shared by every worktree of the clone.
+
+    **Where lineage cannot bound it, the WORKTREE does.** An intersection with
+    an empty set is empty, so on the trunk shape above the count was always 0
+    and the ceiling never fired — the control was declared, documented and
+    inert. When the span holds no commits, this counts the scope's facts
+    recorded from this worktree instead (:func:`_rounds_recorded_in_this_worktree`).
+    That is a second bound, not a dropped one: the store is clone-wide, and the
+    thing lineage was separating is worktrees. The swap is keyed on the span
+    rather than on a zero count, so a branch that HAS commits and has simply not
+    bought a round yet still answers by lineage and nothing about the ordinary
+    branch shape moves.
 
     **An unresolved scope is UNAVAILABLE, never a fallback to the branch.**
     Without a scope there is no body of work to bound, and answering a different
@@ -2220,12 +2265,17 @@ def _round_budget_verdict(
     if tally.get("status") != "counted":
         return {"status": "unavailable", "reason": tally.get("reason", "unknown")}
 
-    scope_of = {
-        f.get("id"): (f.get("body") or {}).get("scope")
-        for f in facts
-        if f.get("kind") == "review"
-    }
-    in_scope = [r for r in tally.get("reviews") or [] if scope_of.get(r.get("id")) == scope]
+    if tally.get("span_commits"):
+        scope_of = {
+            f.get("id"): (f.get("body") or {}).get("scope")
+            for f in facts
+            if f.get("kind") == "review"
+        }
+        in_scope = [
+            r for r in tally.get("reviews") or [] if scope_of.get(r.get("id")) == scope
+        ]
+    else:
+        in_scope = _rounds_recorded_in_this_worktree(facts, project_dir, scope)
     spent = sum(1 for r in in_scope if mode_token_of(r.get("mode")) in FULL_ROUND_MODES)
     return {
         "status": "exhausted" if spent >= budget else "within",
@@ -2343,7 +2393,9 @@ def begin_review(
     outstanding takes the same answer, for the same reason.
 
     ``{"status": "budget-exhausted", ...}`` — the CLI exits 4 — when this
-    branch's work has already bought its declared full-round budget. The
+    BODY OF WORK has already bought its declared full-round budget. The unit is
+    the build-plan scope, which a branch is only sometimes: see
+    :func:`_round_budget_verdict` for what bounds the count when lineage cannot. The
     outstanding non-blocking findings are auto-accepted and a census is rendered
     with the refusal; BLOCKING is untouched and still blocks, and
     ``verify-resolutions`` is never refused, so the loop can end but the gate

@@ -70,8 +70,21 @@ an inert control operative is the fix, not a side effect | user can veto/overrid
 ## Status
 
 - [ ] Chunk 01: The round budget fires on the trunk shape, bounded by worktree
-Context: Plan written 2026-09-20 on `fix/review-budget-trunk-shape` (branched from `develop` @
-`225da107`, immediately after the v3.6.0 release). Nothing built yet. Next: Chunk 01.
+Context: Built 2026-09-20 on `fix/review-budget-trunk-shape` (branched from `develop` @
+`225da107`). Chunk 01 is implemented and its tests are green; the box is ticked after its review.
+
+**Two deliverable questions the plan left open, and how each resolved:**
+
+- **`plugin/lib/coverage.py` IS edited.** The plan said to touch it only if `count_branch_rounds`
+  must distinguish an empty span from "unavailable", and warned against adding a signal it already
+  carries. It does distinguish `counted` from `unavailable`; what it did not carry is the span's
+  SIZE, and that is the discriminator the caller needs — a counted result with `rounds == 0` covers
+  both "this branch has commits and no reviews" and "there is no span at all", which are opposite
+  situations. So it reports `span_commits`, which it already computed, and decides nothing.
+- **#859's rider landed in `plugin/bin/prawduct-hook`, not `plugin/lib/plan_archive.py`.** The plan
+  named the lib; the lib returns a result dict and prints nothing. `cmd_plan_backfill` is what
+  renders the operator-facing block, so that is where the staging remedy had to go. The lib is
+  untouched.
 
 ## Build Chunks
 

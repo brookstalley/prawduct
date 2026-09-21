@@ -459,6 +459,12 @@ operator_verification_required: false
 # merge-base span is zeroed by every push, so a branch-counted rule could
 # never fire. A dispatch that resolves no scope is not budgeted at all.
 #
+# The scope's rounds are still bounded — the evidence store is shared by every
+# worktree of the clone, so something has to separate them. On a branch that is
+# its lineage; where the span holds no commits, which is the trunk shape above,
+# it is the worktree the rounds were recorded from. Either way the ceiling fires
+# here, and on a trunk repo that is the only reason it can.
+#
 # At exhaustion the outstanding NON-blocking findings are auto-accepted with the
 # budget as their recorded reason and a census is rendered. BLOCKING is never
 # swept: the budget can end a review loop, never open a gate.

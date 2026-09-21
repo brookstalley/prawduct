@@ -1636,6 +1636,13 @@ class TestRoundTally:
             # than "how many reviews" — the round budget counts only FULL
             # rounds — does not re-walk the lineage to get them.
             "reviews": [{"id": None, "mode": None}, {"id": None, "mode": None}],
+            # One commit on this branch above the merge-base. Reported because
+            # ZERO here and zero `rounds` are the same number and opposite
+            # situations — a branch with commits that has bought no review, and
+            # a span with no commits at all, which is the permanent state of a
+            # trunk repo. A caller that must bound by something other than
+            # lineage can only tell them apart from here.
+            "span_commits": 1,
         }
 
     def test_the_tally_leads_the_block_it_frames(self, tmp_path, capsys):

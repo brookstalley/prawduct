@@ -7046,6 +7046,29 @@ def cmd_plan_backfill(project_dir: Path, argv: list[str]) -> int:
                 print("  Re-run with --apply to move them. One confirmation covers "
                       "all of them; each file is moved, not deleted, and keeps "
                       "everything it says.")
+            # Each move is a write plus an unlink, and this command stages
+            # NEITHER. An unstaged archive is not cosmetic: a suite that
+            # enumerates paths from `git ls-files` and opens them on disk raises
+            # FileNotFoundError on the plan that is in the index and gone from
+            # the filesystem. That has gone red at two release cuts — the moment
+            # a red suite is most alarming and least expected — so the remedy is
+            # named here, in the output of the command that created the state,
+            # rather than left for the next person to diagnose.
+            # `archived`, never `apply and shipped`: it is what actually MOVED,
+            # so a preview (always `[]`) and an apply whose every plan was
+            # refused both stay quiet. Advice printed where it does not apply is
+            # how advice stops being read.
+            if result["archived"]:
+                artifacts = prawduct_dir / "artifacts"
+                try:
+                    where = artifacts.relative_to(project_dir).as_posix()
+                except ValueError:  # a `.prawduct/` outside the repo — say where it IS
+                    where = str(artifacts)
+                print(f"  Stage the moves before your next suite run: "
+                      f"`git add -A {where}`. "
+                      "Nothing here is staged, and a plan that is in the index "
+                      "and gone from disk fails any test that enumerates tracked "
+                      "paths and reads them.")
         for refusal in result["refused"]:
             print(f"  could not archive {refusal['scope']}: {refusal['reason']}",
                   file=sys.stderr)

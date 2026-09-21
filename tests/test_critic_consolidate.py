@@ -40,6 +40,7 @@ sys.path.insert(0, str(ROOT))
 from lib import critic_consolidate as cc  # noqa: E402
 from lib import dispositions as _dispositions_mod  # noqa: E402
 from lib import coverage_algebra as ca_mod  # noqa: E402
+from lib import coverage  # noqa: E402
 # The anchor predicates the dispatch guard is built on. Imported rather than
 # re-implemented so a test asserting "the OLD guard would have passed" is
 # asserting it about the real one.
@@ -7198,6 +7199,217 @@ class TestRoundBudgetCounting:
         verdict = cc._round_budget_verdict(repo, repo / ".prawduct", None)
         assert verdict["status"] == "unavailable"
         assert "scope" in verdict["reason"]
+
+
+def _trunk_repo(tmp_path: Path, *, budget: "str | None" = None) -> "tuple[Path, str]":
+    """A trunk-based repo: one branch, no feature branch, so the base ref and
+    HEAD are the same commit and `merge_base..HEAD` holds nothing.
+
+    This is not a degenerate fixture — it is the permanent shape of a repo that
+    integrates on one branch, which `base_branch:` supports and the briefing
+    treats as ordinary. Every push restores it.
+    """
+    repo = tmp_path / "trunk"
+    _init_repo(repo)
+    head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+    prawduct = repo / ".prawduct"
+    prawduct.mkdir(exist_ok=True)
+    if budget is not None:
+        (prawduct / "project-state.yaml").write_text(f"review_round_budget: {budget}\n")
+    return repo, head
+
+
+def _seed_round(project_dir: Path, fact_id: str, head_commit: str, scope: str,
+                mode: str = CUMULATIVE_VERBOSE) -> None:
+    """One full review round, appended AS `project_dir` — which is what puts
+    that path in `actor.worktree`, the discriminator under test."""
+    evidence.append_fact(
+        project_dir, "review", fact_id,
+        {
+            "base_tree": "a" * 40, "head_tree": "b" * 40, "mode": mode,
+            "head_commit": head_commit, "scope": scope, "findings": [],
+        },
+    )
+
+
+class TestRoundBudgetOnTheTrunkShape:
+    """The ceiling is the review loop's only declared stopping rule, and on a
+    trunk-based repo it could never fire: the count intersected this scope's
+    facts with `merge_base..HEAD`, which every push empties. A control that is
+    declared, documented, on by default and inert is the worst way for one to
+    be absent, and nothing said so — `spent` was 0 on round twenty.
+    """
+
+    def test_the_span_really_is_empty_here(self, tmp_path):
+        """The premise. If this fixture ever grew a span, every test below it
+        that claims to exercise the trunk fallback would be exercising the
+        lineage path instead, and would pass identically either way."""
+        repo, _ = _trunk_repo(tmp_path)
+        resolved = coverage.resolve_merge_base_tree(repo)
+        assert resolved["status"] == "ok"
+        tally = coverage.count_branch_rounds(repo, [], resolved["merge_base"])
+        assert tally["span_commits"] == 0
+
+    def test_the_budget_fires_on_the_trunk_shape(self, tmp_path):
+        repo, head = _trunk_repo(tmp_path, budget="3")
+        for i in range(3):
+            _seed_round(repo, f"rev-trunk-{i}", head, "budgeted")
+        verdict = cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")
+        assert verdict["status"] == "exhausted"
+        assert verdict["spent"] == 3
+        assert verdict["review_ids"] == [f"rev-trunk-{i}" for i in range(3)]
+
+    def test_a_sibling_worktrees_rounds_are_not_charged_to_this_one(self, tmp_path):
+        """The design constraint, pinned by the implementation it FORBIDS.
+
+        Counting by scope alone passes the test above and fails this one, and
+        that is the whole reason this one exists: the store lives in the clone's
+        git common dir, so a second worktree on the same plan writes into it.
+        Lineage was what separated them; with the span empty it separates
+        nothing, so the fallback bounds by `actor.worktree` instead. Overcount
+        and the refusal says something false about work this worktree never
+        bought.
+        """
+        repo, head = _trunk_repo(tmp_path, budget="3")
+        sibling = tmp_path / "sibling"
+        _git(repo, "worktree", "add", "--quiet", "-b", "other", str(sibling))
+        _seed_round(repo, "rev-here-0", head, "budgeted")
+        for i in range(5):
+            _seed_round(sibling, f"rev-there-{i}", head, "budgeted")
+
+        assert evidence.store_path(sibling) == evidence.store_path(repo), (
+            "the fixture must share ONE store, or it cannot see the overcount"
+        )
+        verdict = cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")
+        assert verdict["status"] == "within"
+        assert verdict["spent"] == 1
+        assert verdict["review_ids"] == ["rev-here-0"]
+
+    def test_a_branch_with_commits_still_answers_by_lineage(self, tmp_path):
+        """The fallback must not have REPLACED the primary path.
+
+        Two halves, and the second is the one scope+worktree alone would fail: a
+        non-empty span keeps counting by lineage, and a round recorded from
+        ANOTHER worktree that sits on this branch's lineage still counts, exactly
+        as it did before. The fallback is keyed on the span rather than on a zero
+        count, so this branch's first round is not charged the scope's history.
+        """
+        repo, head = _budget_repo(tmp_path, 0, budget="2")
+        sibling = tmp_path / "sibling"
+        _git(repo, "worktree", "add", "--quiet", "--detach", str(sibling), head)
+        _seed_round(sibling, "rev-elsewhere-on-this-branch", head, "budgeted")
+
+        resolved = coverage.resolve_merge_base_tree(repo)
+        assert coverage.count_branch_rounds(
+            repo, [], resolved["merge_base"]
+        )["span_commits"] > 0, "the premise: this branch HAS a span"
+
+        verdict = cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")
+        assert verdict["spent"] == 1
+        assert verdict["review_ids"] == ["rev-elsewhere-on-this-branch"]
+
+    def test_a_fresh_branch_with_no_commits_falls_back_the_same_way(self, tmp_path):
+        """The plan's recorded ASSUMPTION, pinned so it can be vetoed.
+
+        A branch cut and not yet committed to has `merge_base == HEAD` exactly
+        as a trunk repo does, and nothing in the span can tell them apart. They
+        are therefore treated alike: a branch resuming an existing scope
+        inherits that scope's rounds from this worktree. That is arguable —
+        the budget's declared unit IS the scope, so charging them is defensible
+        — but it is a behaviour change on branch-based repos too, not only trunk
+        ones, and it is the one part of this fix the owner may want otherwise.
+        """
+        # Cut from the BASE and not committed to — which is the only way to get
+        # an empty span on a branch. A branch with a commit on it has a span and
+        # answers by lineage, so building this fixture from one would pass
+        # identically with the fallback deleted.
+        repo, head = _trunk_repo(tmp_path, budget="2")
+        _git(repo, "checkout", "--quiet", "-b", "resumes-the-same-scope")
+        for i in range(2):
+            _seed_round(repo, f"rev-earlier-{i}", head, "budgeted")
+
+        resolved = coverage.resolve_merge_base_tree(repo)
+        assert coverage.count_branch_rounds(
+            repo, [], resolved["merge_base"]
+        )["span_commits"] == 0, "the premise: a branch with no commits has no span"
+
+        verdict = cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")
+        assert verdict["status"] == "exhausted"
+        assert verdict["spent"] == 2
+
+    def test_critic_begin_actually_refuses_on_a_trunk_repo(self, tmp_path):
+        """The gate, not the count.
+
+        Every assertion above grades an input to the verdict. This one asks the
+        question the fix exists for: does `critic-begin` now answer differently
+        on the repo shape where it never could? The control is the same repo one
+        budget higher — without it, a 4 for some unrelated reason would read as
+        the fix working.
+
+        `chunk`, not `cumulative`, and the reason bounds what this fix buys: a
+        `cumulative` interval is a COMMIT RANGE, and on trunk that range is the
+        one every push empties, so `critic-begin` refuses it as an empty diff
+        before the budget is ever consulted. `chunk` reads HEAD-tree → working
+        tree, which is where a trunk builder's review loop actually runs, and it
+        is the only door the ceiling can reach them through.
+        """
+        findings = [
+            {"fid": "R-1", "severity": "warning", "goal": "Nothing Is Broken",
+             "title": "a warning", "files": ["src/app.py"]},
+        ]
+        repo, head = _trunk_repo(tmp_path, budget="2")
+        for i in range(2):
+            evidence.append_fact(
+                repo, "review", f"rev-trunk-{i}",
+                {
+                    "base_tree": "a" * 40, "head_tree": "b" * 40,
+                    "mode": CUMULATIVE_VERBOSE, "head_commit": head,
+                    "scope": "budgeted", "findings": list(findings),
+                },
+            )
+        # Uncommitted, because that is what a trunk builder's tree looks like
+        # when they dispatch: the span is empty and the WORK is not. A clean
+        # trunk tree never reaches the budget at all — `critic-begin` refuses
+        # the empty diff first, which is a different answer to a different
+        # question and would make a 4 here evidence about nothing.
+        (repo / "src" / "app.py").write_text("x = 2\n")
+
+        refused = _run_begin(repo, "--mode", "chunk", "--scope", "budgeted")
+        assert refused.returncode == 4, (refused.stdout, refused.stderr)
+        assert "round budget exhausted" in refused.stdout
+
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            "review_round_budget: 3\n"
+        )
+        allowed = _run_begin(repo, "--mode", "chunk", "--scope", "budgeted")
+        assert allowed.returncode != 4, (
+            "the control: this fixture must be able to NOT refuse, or the 4 "
+            "above is evidence about something else"
+        )
+
+    def test_a_branchs_first_round_is_not_charged_the_scopes_history(self, tmp_path):
+        """The other forbidden implementation: keying the fallback on a zero
+        COUNT rather than on an empty SPAN.
+
+        The two agree everywhere except here — a branch that has commits and has
+        bought no round on them, while this worktree holds an older fact for the
+        same scope that is not on this lineage (a previous branch for the same
+        plan, which is what resuming a scope looks like). Zero-keying falls back
+        and charges that history to a branch on its first round; span-keying
+        answers by lineage and spends nothing. This plan fixes the repo shape
+        where the control cannot work at all and leaves the working one alone,
+        and this assertion is what "alone" means.
+        """
+        repo, head = _budget_repo(tmp_path, 0, budget="1")
+        off_lineage = _git(repo, "rev-parse", "main").stdout.strip()
+        assert off_lineage != head
+        _seed_round(repo, "rev-previous-branch", off_lineage, "budgeted")
+
+        verdict = cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")
+        assert verdict["status"] == "within"
+        assert verdict["spent"] == 0
+        assert verdict["review_ids"] == []
+
 
 
 class TestRoundBudgetConfigFallsSoft:
