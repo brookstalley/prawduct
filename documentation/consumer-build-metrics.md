@@ -9,7 +9,7 @@ Anyone editing this doc should read [Hazards](#hazards-for-whoever-updates-this)
 ## Summary
 
 1. **Review cost per run roughly doubled.** Critic went 4.7 → 8.9 minutes per run across v2.1 → v3.5; PR review went 4.9 → 13.1 minutes. Both rose monotonically, with no reversal in any window. This is the cleanest trend in the data — every other metric here is noisy by comparison.
-2. **Verify-resolutions share is not moving toward its target.** The [consumer-overhead program](#related-work) targets VR ≤ 45% of Critic runs against a 55–66% baseline. bankmachine went 64.2% → 61.3%. discodon went the wrong way, 66.7% → 76.5%, under v3.5.0 — the release that shipped the review stopping rule.
+2. **Verify-resolutions share is not moving toward its target.** The [consumer-overhead program](#related-work) targets VR ≤ 45% of Critic runs against a 55–66% baseline. bankmachine went 64.2% → 61.3%. discodon went the wrong way, 66.7% → 76.5%, under v3.5.0 — the release that shipped the review stopping rule. [Why](#why-the-verify-resolutions-share-is-not-moving): that stopping rule does not count verify-resolutions, and the ceiling it does count sits at the 90th percentile of what a scope spends.
 3. **The PR reviewer has never produced a blocking finding.** 178 PR reviews in discodon's plugin era: 145 warnings, 262 notes, zero blocking. It now costs 13 minutes per review, up from 5. Median PR open time is 11–65 seconds through v3.4, so the review runs before the PR exists and the PR is bookkeeping.
 4. **`prawduct-hook review-stats` pools Critic and PR reviews** into one `reviews` count and one duration total. For discodon's full ledger, 14.7% of that pooled duration is PR review, so a figure labelled "Critic hours" taken from it reads 17.3% high. The program's baseline table is pooled on this basis.
 5. **Blocking findings per 1k code lines rose 11×; the product-bug fix rate did not follow.** Either the Critic got better at catching what used to ship, or it got stricter about things that were never defects. This data does not separate the two.
@@ -54,6 +54,74 @@ The two consumers disagree. bankmachine improved on every axis: findings per run
 With two repos moving opposite ways on three of four metrics, no framework-level effect is visible above per-repo variation yet. bankmachine's drop is large enough to be interesting and small enough to be a change in what it was building.
 
 **Do not cite discodon's 3.5.1-dev row.** It covers 12 hours and 10 reviews, and 26,968 of its 27,742 written lines are governance — code is 2.8% of output against 28–37% everywhere else. That window holds a change-log archive rollover and the learnings backfill, not a normal build. It is in the table for completeness.
+
+---
+
+## Why the verify-resolutions share is not moving
+
+A reading taken **2026-09-21** over every governed ledger on this machine — 2,225 Critic reviews
+since 2026-08-01, against 245 scopes in 13 repos. Re-derive rather than trusting the digits:
+
+```
+tools/measure-review-loop-economy.py
+```
+
+The short answer is that the v3.5.0 review round budget is aimed elsewhere, and this is a property
+of its design rather than a defect in it.
+
+| Mode | Runs | Share of runs | Hours* | Share of hours* | Counts against the budget? |
+|---|---|---|---|---|---|
+| verify-resolutions | 1459 | 66% | 136.0 | 47% | **no** |
+| cumulative | 598 | 27% | 134.5 | 46% | yes |
+| chunk | 127 | 6% | 13.2 | 5% | yes |
+| final | 41 | 2% | 7.6 | 3% | yes |
+
+\* self-reported by the reviewing model — hazard 2. Only 22 of the 2,225 rows carry a measured
+dispatch interval, so lean on the run counts, which are one row per real dispatch.
+
+Three facts set the ceiling's reach, and the tool reads all three from the plugin rather than
+restating them, so this section cannot quietly outlive the code it describes:
+
+1. **`FULL_ROUND_MODES` is every mode except `verify-resolutions`.** The 66% of runs that are
+   verify rounds are neither counted toward the ceiling nor refused by it.
+2. **The ceiling is 6 full rounds per scope, and the 90th percentile of full rounds per scope is
+   6.** Only 31 of 245 scopes (13%) ever reach it. The median scope spends 2 full rounds and 3
+   verify rounds.
+3. **10% of reviews record no scope at all.** `_round_budget_verdict` returns `unavailable` for
+   those, and unavailable never refuses — deliberately, since a stopping rule whose count cannot
+   be derived must fail toward selling the round.
+
+Together those bound what the control can ever touch at **118h of 291h (40%)**, and only past a
+scope's sixth full round. That 40% is an **upper bound, not a saving**: it counts every hour in
+scopes that ever hit the ceiling, including the rounds spent before it would have fired.
+
+### The largest addressable block is repeat cumulatives
+
+**319 of 528 cumulative runs (60%) are the second-or-later cumulative on a scope already reviewed
+cumulatively**, across 109 of 209 scopes. Cumulative is the most expensive mode per run, so this is
+the biggest single block of re-review in the corpus — larger than everything the chunk and final
+modes cost together, and it sits outside what the round budget reaches until the sixth round.
+
+This is the target of the consumer-overhead program's WS5 (#672, coverage composing by tree while
+its gates key on identity), which that program ranks fifth.
+
+### What each consumer is actually running
+
+```
+tools/measure-review-loop-economy.py        # the MARKERS table
+```
+
+Read with hazard 4 in view: the marker holds the version a repo saw **most recently**, and its
+mtime dates that transition. It is not a history, so it cannot tell you what a repo ran before.
+
+As of 2026-09-21, no consumer's current marker is a released version number — every one is a
+`-dev` snapshot, spanning `3.3.4` to `3.5.1-dev.2`, and v3.6.0 (tagged 2026-09-20) appears on
+none of them. This follows from the install shape rather than from anyone's neglect: the
+marketplace is a `directory` source pointing at this repo's checkout with `autoUpdate` on, and a
+consumer snapshots whatever version string that checkout carries at the moment it is next opened.
+Development versions are therefore what the fleet picks up, and a repo not opened for a month
+stays where it was. Any claim of the form "consumers now get X" is a claim about when they were
+last opened.
 
 ---
 
@@ -206,6 +274,7 @@ Numbered by how badly each one burns you. Each of these produced a wrong answer 
 5. **A backfilled event kind is not a cadence.** All 594 discodon `learning.written` events landed inside 12.8 minutes on 2026-09-18. The tool detects and flags this; do not average it into a rate.
 6. **The review-driven fix classifier is a wide heuristic.** Matching the full commit body versus its first 600 characters moves the product-bug rate by up to 60%. The shape holds either way; the level is a band.
 7. **Windows are confounded with what the consumer was building**, and a consumer pinned to `ref: main` with `autoUpdate` picks up a release at its next session, so each boundary is fuzzy by up to one session.
+8. **A review with no `scope` is not a scope.** Pooling the ~10% of scope-less rows under one key per repo invents a single enormous scope, pushes it past the round ceiling, and overstates the ceiling's reach. The first pass of the 2026-09-21 reading did exactly that and reported 14% of scopes at the ceiling and 64% repeat cumulatives; excluding them — which is what `_round_budget_verdict` itself does, returning `unavailable` — gives 13% and 60%. `measure-review-loop-economy.py` counts them separately and `TestAScopelessRowIsNeverAScope` pins it.
 
 ---
 
@@ -214,6 +283,8 @@ Numbered by how badly each one burns you. Each of these produced a wrong answer 
 The `consumer-overhead-2026-09` program and its 2026-09-16 triage set targets for review round economy. As of 2026-09-18 both live on the unmerged branch `docs/consumer-overhead-program` at `.prawduct/artifacts/consumer-overhead-program-2026-09.md`, not on develop. That program is narrower and deeper than this doc: it targets VR share specifically, where this asks what a consumer's whole build economy looks like.
 
 That triage set its baseline with a query that lived in a scratchpad and is gone, which is why its figures cannot be re-derived and this tool exists.
+
+Measured against that branch on **2026-09-21**: its WS0 (cut the release) and WS2 (learnings-v2, #744) have since shipped, and #292 and #767 — which it placed out of scope and deferred respectively — shipped in v3.6.0. Its workstream table therefore describes a state the tree has moved past; re-derive with `git log --oneline develop..docs/consumer-overhead-program` and by resolving each issue it names before planning from it. [Why the verify-resolutions share is not moving](#why-the-verify-resolutions-share-is-not-moving) bears directly on its WS1/WS5 ranking.
 
 ---
 

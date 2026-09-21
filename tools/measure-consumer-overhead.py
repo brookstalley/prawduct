@@ -258,6 +258,12 @@ def read_ledger(path: Path) -> list[dict]:
             "when": dt.datetime.fromisoformat(obj["ts"].replace("Z", "+00:00")).astimezone(UTC),
             "cat": cat,
             "mode": (review.get("mode") or "").split(" ")[0],
+            # The body of work a review was bought for. Carried because the
+            # review round budget bounds a SCOPE rather than a branch, so any
+            # question about what that ceiling can reach is asked per scope —
+            # and because its absence is meaningful: a scope-less row makes the
+            # budget return `unavailable`, which never refuses.
+            "scope": obj.get("scope"),
             "duration": obj.get("duration_seconds"),
             # NAMING, because this script already uses "measured" for something
             # else: `critic_hours_measured` below is INTERVAL-measured time,
