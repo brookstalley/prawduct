@@ -59,8 +59,10 @@ With two repos moving opposite ways on three of four metrics, no framework-level
 
 ## Why the verify-resolutions share is not moving
 
-A reading taken **2026-09-21** over every governed ledger on this machine — 2,225 Critic reviews
-since 2026-08-01, against 245 scopes in 13 repos. Re-derive rather than trusting the digits:
+A reading taken **2026-09-21** over every governed ledger on this machine — **20 ledgers across
+11 products** — 2,248 Critic reviews since 2026-08-01, against 248 scopes. The corpus size is
+printed by the command, so the completeness claim in that first sentence is checkable rather than
+asserted; it was not, and it was wrong (hazard 10). Re-derive rather than trusting the digits:
 
 ```
 tools/measure-review-loop-economy.py
@@ -71,34 +73,44 @@ of its design rather than a defect in it.
 
 | Mode | Runs | Share of runs | Hours* | Share of hours* | Counts against the budget? |
 |---|---|---|---|---|---|
-| verify-resolutions | 1459 | 66% | 136.0 | 47% | **no** |
-| cumulative | 598 | 27% | 134.5 | 46% | yes |
-| chunk | 127 | 6% | 13.2 | 5% | yes |
-| final | 41 | 2% | 7.6 | 3% | yes |
+| verify-resolutions | 1474 | 66% | 137.2 | 47% | **no** |
+| cumulative | 605 | 27% | 136.0 | 46% | yes |
+| chunk | 127 | 6% | 13.2 | 4% | yes |
+| final | 42 | 2% | 7.7 | 3% | yes |
 
-\* self-reported by the reviewing model — hazard 2. Only 22 of the 2,225 rows carry a measured
+\* self-reported by the reviewing model — hazard 2. Only 23 of the 2,248 rows carry a measured
 dispatch interval, so lean on the run counts, which are one row per real dispatch.
 
-Three facts set the ceiling's reach, and the tool reads all three from the plugin rather than
-restating them, so this section cannot quietly outlive the code it describes:
+Three facts set the ceiling's reach. The tool reads the first two **parameters** from the plugin
+rather than restating them (`REVIEW_ROUND_BUDGET_DEFAULT`, `FULL_ROUND_MODES`), so a change to
+either lands here without anyone remembering to update prose. **It does not read the plugin's
+counting PREDICATE, and that is the load-bearing limit of this section**: `analyse` pools a scope's
+whole history, while `_round_budget_verdict` counts only the rounds `count_branch_rounds` admits —
+within the branch's lineage span, or, where that span is empty, within the current worktree. Those
+bounds are narrower than "the whole history", so the reach below is an upper bound for that reason
+as well as the one stated after it. The bound itself changed in v3.6.1-dev (#776), one commit
+behind this reading, which is the concrete form of the risk: parameters track, predicates do not.
 
 1. **`FULL_ROUND_MODES` is every mode except `verify-resolutions`.** The 66% of runs that are
    verify rounds are neither counted toward the ceiling nor refused by it.
 2. **The ceiling is 6 full rounds per scope, and the 90th percentile of full rounds per scope is
-   6.** Only 31 of 245 scopes (13%) ever reach it. The median scope spends 2 full rounds and 3
+   6.** Only 31 of 248 scopes (12%) ever reach it. The median scope spends 2 full rounds and 3
    verify rounds.
 3. **10% of reviews record no scope at all.** `_round_budget_verdict` returns `unavailable` for
    those, and unavailable never refuses — deliberately, since a stopping rule whose count cannot
    be derived must fail toward selling the round.
 
-Together those bound what the control can ever touch at **118h of 291h (40%)**, and only past a
+Together those bound what the control can ever touch at **118h of 294h (40%)**, and only past a
 scope's sixth full round. That 40% is an **upper bound, not a saving**: it counts every hour in
 scopes that ever hit the ceiling, including the rounds spent before it would have fired.
 
 ### The largest addressable block is repeat cumulatives
 
-**319 of 528 cumulative runs (60%) are the second-or-later cumulative on a scope already reviewed
-cumulatively**, across 109 of 209 scopes. Cumulative is the most expensive mode per run, so this is
+**322 of 534 cumulative runs (60%) are the second-or-later cumulative on a scope already reviewed
+cumulatively**, across 110 of 212 scopes. **Both denominators are the SCOPED rows only** — 534 of
+the mode table's 605 cumulative runs, and 212 of the corpus's 248 scopes — because a repeat is a
+question about a scope and the other 71 runs record none (hazard 8). Re-deriving against the 605 in
+the table above gives 53% and answers a different question. Cumulative is the most expensive mode per run, so this is
 the biggest single block of re-review in the corpus — larger than everything the chunk and final
 modes cost together, and it sits outside what the round budget reaches until the sixth round.
 
@@ -114,10 +126,10 @@ tools/measure-review-loop-economy.py        # the MARKERS table
 Read with hazard 4 in view: the marker holds the version a repo saw **most recently**, and its
 mtime dates that transition. It is not a history, so it cannot tell you what a repo ran before.
 
-As of 2026-09-21 the twelve markers sit on nine different plugin versions, and v3.6.0 (tagged
-2026-09-20) is on none of them. Nine are `-dev` snapshots spanning `3.3.5-dev` to `3.6.1-dev`; the
-other three are released versions — `scriob` on `3.0.4`, and two worktrees on `3.3.4`, the oldest
-dating to 2026-07-16. Both halves follow from the install shape rather than from anyone's neglect:
+As of 2026-09-21 the fifteen markers sit on ten different plugin versions, and v3.6.0 (tagged
+2026-09-20) is on none of them. Twelve are `-dev` snapshots spanning `3.3.5-dev` to `3.6.1-dev`;
+the other three are released versions — `scriob` on `3.0.4`, and two worktrees on `3.3.4`, the
+oldest dating to 2026-07-16. Both halves follow from the install shape rather than from anyone's neglect:
 the marketplace is a `directory` source pointing at this repo's checkout with `autoUpdate` on, so a
 consumer snapshots whatever version string that checkout happens to carry at the moment it is next
 opened — a development version most of the time, a release only if it opened on one. A repo not
@@ -275,8 +287,9 @@ Numbered by how badly each one burns you. Each of these produced a wrong answer 
 5. **A backfilled event kind is not a cadence.** All 594 discodon `learning.written` events landed inside 12.8 minutes on 2026-09-18. The tool detects and flags this; do not average it into a rate.
 6. **The review-driven fix classifier is a wide heuristic.** Matching the full commit body versus its first 600 characters moves the product-bug rate by up to 60%. The shape holds either way; the level is a band.
 7. **Windows are confounded with what the consumer was building**, and a consumer pinned to `ref: main` with `autoUpdate` picks up a release at its next session, so each boundary is fuzzy by up to one session.
-8. **A review with no `scope` is not a scope.** Pooling the ~10% of scope-less rows under one key per repo invents a single enormous scope, pushes it past the round ceiling, and overstates the ceiling's reach. The first pass of the 2026-09-21 reading did exactly that and reported 14% of scopes at the ceiling and 64% repeat cumulatives; excluding them — which is what `_round_budget_verdict` itself does, returning `unavailable` — gives 13% and 60%. `measure-review-loop-economy.py` counts them separately and `TestAScopelessRowIsNeverAScope` pins it.
-9. **A sentence written off a printed table describes the rows you looked at.** The 2026-09-21 reading first wrote that every marker was a `-dev` snapshot spanning `3.3.4` to `3.5.1-dev.2` — which is the MARKERS table with its first and last rows cut off. Three of the twelve are released versions (`3.0.4`, and `3.3.4` twice), the oldest from 2026-07-16. The conclusion survived the correction and the warrant did not, which is the worse direction: conclusions get re-derived by the next reader, warrants get copied. Partition with `--json` rather than reading a sorted list, and count the set before writing "every".
+8. **A review with no `scope` is not a scope.** Pooling the ~10% of scope-less rows under one key per repo invents a single enormous scope, pushes it past the round ceiling, and overstates the ceiling's reach. The first pass of the 2026-09-21 reading did exactly that and reported 14% of scopes at the ceiling and 64% repeat cumulatives; excluding them — which is what `_round_budget_verdict` itself does, returning `unavailable` — gives 12% and 60%. `measure-review-loop-economy.py` counts them separately and `TestAScopelessRowIsNeverAScope` pins it.
+9. **A sentence written off a printed table describes the rows you looked at.** The 2026-09-21 reading first wrote that every marker was a `-dev` snapshot spanning `3.3.4` to `3.5.1-dev.2` — which is the MARKERS table with its first and last rows cut off. Three of the fifteen are released versions (`3.0.4`, and `3.3.4` twice), the oldest from 2026-07-16. The conclusion survived the correction and the warrant did not, which is the worse direction: conclusions get re-derived by the next reader, warrants get copied. Partition with `--json` rather than reading a sorted list, and count the set before writing "every".
+10. **A one-level glob reads as complete and is not.** The first cut of `find_ledgers` globbed `*/.prawduct/.governance-ledger.jsonl`, which cannot see a worktree ledger INSIDE a repo (`<repo>/.claude/worktrees/<name>/`) or a clone parked under a hidden directory. It found 17 of this machine's 20 ledgers, and the excluded set was not a random sample — it was exactly the delegated work. The published reading undercounted by 23 reviews and 3 scopes and reported "13 repos" for what is 11 products across 20 ledgers, while the prose above it claimed "every governed ledger on this machine". The corpus size is now printed on the CORPUS line so the completeness claim is checkable, and `TestTheCorpusIsBoundedByPropertyNotByDepth` pins the depth with a control proving the old predicate would have missed the fixture.
 
 ---
 

@@ -56,6 +56,24 @@ class TestTheBudgetParametersComeFromThePlugin:
         assert full_modes == tuple(cc.FULL_ROUND_MODES)
         assert all_modes == tuple(cc.MODE_TOKEN_TO_VERBOSE)
 
+    def test_the_ceiling_FOLLOWS_the_plugin_rather_than_matching_it_today(self, monkeypatch):
+        """The discriminating half: equality with the constant is not reading it.
+
+        `budget == core.REVIEW_ROUND_BUDGET_DEFAULT` is green against a hardcoded
+        `6`, because the constant IS 6 — so it pins the value the tool happens to
+        report and says nothing about where the value came from. Move the plugin's
+        constant and the tool must move with it; a literal stays behind.
+        """
+        sys.path.insert(0, str(REPO_ROOT / "plugin"))
+        from lib import core
+        from lib import critic_consolidate as cc
+
+        monkeypatch.setattr(core, "REVIEW_ROUND_BUDGET_DEFAULT", 99)
+        monkeypatch.setattr(cc, "FULL_ROUND_MODES", ("chunk",))
+        budget, full_modes, _ = tool._load_budget_params()
+        assert budget == 99, "the ceiling is restated in the tool, not read from the plugin"
+        assert full_modes == ("chunk",), "the counted modes are restated, not read"
+
     def test_counts_against_budget_tracks_the_plugin_rather_than_a_literal(self):
         """The reported flag must be membership in whatever the plugin says today.
 
@@ -68,6 +86,22 @@ class TestTheBudgetParametersComeFromThePlugin:
         report = tool.analyse(rows, budget, full_modes)
         for mode in all_modes:
             assert report["by_mode"][mode]["counts_against_budget"] == (mode in full_modes), mode
+
+    def test_the_flag_FOLLOWS_the_argument_rather_than_a_literal(self):
+        """The half the assertion above cannot make: it restates the expression.
+
+        `flag == (mode in full_modes)` is computed from the same set the code
+        computes it from, so it is true of any implementation that uses that set
+        — including one that ignores the argument and closes over a literal.
+        Feed a DELIBERATELY WRONG set and the flag must follow it.
+        """
+        _, _, all_modes = tool._load_budget_params()
+        rows = [_row(mode, scope=f"s{i}") for i, mode in enumerate(all_modes)]
+        inverted = ("verify-resolutions",)
+        report = tool.analyse(rows, 6, inverted)
+        assert report["by_mode"]["verify-resolutions"]["counts_against_budget"] is True
+        for mode in ("chunk", "final", "cumulative"):
+            assert report["by_mode"][mode]["counts_against_budget"] is False, mode
 
 
 class TestAScopelessRowIsNeverAScope:
@@ -154,3 +188,120 @@ class TestTheLedgerCarriesScope:
         assert sibling.read_ledger.__doc__  # the parser is the shared home
         report = tool.analyse([_row("cumulative", scope=None)], 6, ("cumulative",))
         assert report["scopeless_reviews"] == 1
+
+
+class TestTheCorpusIsBoundedByPropertyNotByDepth:
+    """`find_ledgers` must find a ledger wherever it sits, not one level down.
+
+    The corpus is the instrument's most basic claim. A one-level glob reads as
+    complete and silently drops delegated work, which runs in worktrees INSIDE a
+    repo — three of this machine's twenty ledgers on 2026-09-21, and the excluded
+    set is exactly the delegated work rather than a random sample.
+    """
+
+    def _ledger(self, root: Path, *parts: str) -> Path:
+        d = root.joinpath(*parts) / ".prawduct"
+        d.mkdir(parents=True)
+        p = d / ".governance-ledger.jsonl"
+        p.write_text("", encoding="utf-8")
+        return p
+
+    def test_a_nested_worktree_ledger_is_found(self, tmp_path):
+        top = self._ledger(tmp_path, "repo")
+        nested = self._ledger(tmp_path, "repo", ".claude", "worktrees", "agent-1")
+        hidden = self._ledger(tmp_path, ".parked", "worktrees", "other")
+
+        found = tool.find_ledgers(tmp_path)
+
+        assert top in found, "the one-level case must keep working"
+        assert nested in found, "a worktree ledger inside a repo was dropped"
+        assert hidden in found, "a clone parked under a hidden directory was dropped"
+        assert len(found) == 3
+
+    def test_a_one_level_glob_would_have_missed_them(self, tmp_path):
+        """The control: prove the fixture actually distinguishes the two scans.
+
+        Without this, the test above passes for an implementation that is still
+        one-level if the fixture happens to be flat — the tree has to be one the
+        old predicate demonstrably fails on.
+        """
+        self._ledger(tmp_path, "repo")
+        self._ledger(tmp_path, "repo", ".claude", "worktrees", "agent-1")
+
+        one_level = sorted(tmp_path.glob("*/.prawduct/.governance-ledger.jsonl"))
+
+        assert len(one_level) == 1
+        assert len(tool.find_ledgers(tmp_path)) == 2
+
+    def test_a_git_directory_is_pruned(self, tmp_path):
+        """`.git` cannot hold a governed ledger and dominates the walk."""
+        self._ledger(tmp_path, "repo")
+        self._ledger(tmp_path, "repo", ".git", "modules", "x")
+
+        assert len(tool.find_ledgers(tmp_path)) == 1
+
+
+class TestTheHumanRendererRuns:
+    """The default output path — `--json` is the exception, not the norm.
+
+    Ported from the sibling's `TestTheHumanRenderer`, which this file had
+    borrowed the design from and left behind: a `--json`-only suite never
+    executes the formatter, so a crash there ships green.
+    """
+
+    def test_render_prints_every_section_without_raising(self, capsys):
+        budget, full_modes, _ = tool._load_budget_params()
+        rows = [_row("cumulative", scope="a"), _row("verify-resolutions", scope="a"),
+                _row("chunk", scope="b"), _row("final", scope=None)]
+        report = tool.analyse(rows, budget, full_modes)
+        report["modes_known_to_the_plugin"] = ["chunk", "final", "cumulative",
+                                               "verify-resolutions"]
+
+        tool.render(report, [("repo", "3.6.1-dev", "2026-09-20T19:20-06:00")],
+                    {"clone-a": ["repo", "repo-wt"]})
+
+        out = capsys.readouterr().out
+        for section in ("CORPUS", "CLOCK", "BY MODE", "BUDGET REACH",
+                        "REPEAT CUMULATIVES", "MARKERS"):
+            assert section in out, f"{section} missing from the human report"
+
+    def test_render_survives_an_empty_marker_and_clone_set(self, capsys):
+        """The degraded shape: a fresh machine has neither, and a crash here
+        would take the whole report with it rather than one line."""
+        budget, full_modes, _ = tool._load_budget_params()
+        report = tool.analyse([_row("cumulative", scope="a")], budget, full_modes)
+        report["modes_known_to_the_plugin"] = ["cumulative"]
+
+        tool.render(report, [], {})
+
+        assert "CORPUS" in capsys.readouterr().out
+
+
+class TestTheFleetIsCountedInProductsNotLedgers:
+    """`repos` must go through the clone, or open worktrees inflate the fleet.
+
+    Hazard 3: each worktree keeps its own ledger, so counting ledger directories
+    reports a fleet that grows when somebody opens a worktree and shrinks when
+    they close one — a number that moves for reasons nothing to do with the
+    fleet. The published reading said "13 repos" on this basis; the products are
+    11.
+    """
+
+    CLONES = {"/c/one": ["repo-a", "repo-a-wt1", "repo-a-wt2"],
+              "/c/two": ["repo-b"],
+              "/c/three": ["repo-c"]}
+
+    def test_worktrees_of_one_clone_count_once(self):
+        rows = [_row("cumulative", repo=r) for r in ("repo-a", "repo-a-wt1", "repo-a-wt2")]
+        assert tool.count_products(self.CLONES, rows) == 1
+        assert len({r["repo"] for r in rows}) == 3, "the naive count would say 3"
+
+    def test_each_distinct_clone_counts_once(self):
+        rows = [_row("cumulative", repo=r) for r in ("repo-a-wt2", "repo-b", "repo-c")]
+        assert tool.count_products(self.CLONES, rows) == 3
+
+    def test_a_clone_with_no_rows_in_the_window_is_not_counted(self):
+        """A ledger that exists but is silent since `--since` is not a product
+        that contributed to this reading."""
+        rows = [_row("cumulative", repo="repo-b")]
+        assert tool.count_products(self.CLONES, rows) == 1

@@ -56,6 +56,7 @@ import collections
 import datetime as dt
 import importlib.util
 import json
+import os
 import statistics
 import sys
 from pathlib import Path
@@ -91,8 +92,29 @@ def _load_budget_params() -> tuple[int, tuple[str, ...], tuple[str, ...]]:
     )
 
 
+LEDGER_NAME = ".governance-ledger.jsonl"
+
+
 def find_ledgers(root: Path) -> list[Path]:
-    return sorted(root.glob("*/.prawduct/.governance-ledger.jsonl"))
+    """Every governed ledger under `root`, at ANY depth.
+
+    A one-level glob reads as complete and is not: delegated work runs in
+    worktrees that sit INSIDE a repo (`<repo>/.claude/worktrees/<name>/`), and a
+    clone may be parked under a hidden directory. Three of this machine's twenty
+    ledgers were invisible to `*/.prawduct/...` on 2026-09-21, and the excluded
+    set is not random — it is exactly the delegated work. The corpus is the
+    instrument's most basic claim, so it is bounded by the PROPERTY (a
+    `.prawduct/` ledger) rather than by depth.
+
+    `.git` is pruned because a bare/objects walk dominates the runtime and can
+    hold no ledger.
+    """
+    found: list[Path] = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d != ".git"]
+        if Path(dirpath).name == ".prawduct" and LEDGER_NAME in filenames:
+            found.append(Path(dirpath) / LEDGER_NAME)
+    return sorted(found)
 
 
 def clone_of(ledger: Path) -> str:
@@ -110,6 +132,23 @@ def clone_of(ledger: Path) -> str:
     except (OSError, subprocess.SubprocessError):
         pass
     return str(repo.resolve())
+
+
+def count_products(clones: dict[str, list[str]], rows: list[dict]) -> int:
+    """How many PRODUCTS contributed rows — not how many ledger directories did.
+
+    Counting distinct `row["repo"]` counts every worktree as its own repo, which
+    is this module's third docstring hazard in full — NOT the doc's hazard 3,
+    which is a different list and a different subject — and it is the reason the
+    grouping line is printed at all. One
+    clone with four worktrees is one product; a count that does not go through
+    the git common dir overstates the fleet by however many worktrees happen to
+    be open at the time, and that number moves for reasons nothing to do with the
+    fleet. A clone whose ledgers are all silent in the window is not counted.
+    """
+    contributing = {row["repo"] for row in rows}
+    return sum(1 for names in clones.values()
+               if any(name in contributing for name in names))
 
 
 def marker_of(ledger: Path) -> tuple[str | None, str | None]:
@@ -223,6 +262,7 @@ def _spread(values: list[int]) -> dict:
 def render(report: dict, markers: list[tuple[str, str, str]], clones: dict[str, list[str]]) -> None:
     r = report
     print(f"\nCORPUS  {r['reviews']} Critic reviews  ·  {r['scopes']} scopes  "
+          f"·  {r.get('repos', '?')} repos  ·  {r.get('ledgers', '?')} ledgers  "
           f"·  {r['hours_self_reported']:.0f}h self-reported")
     print(f"CLOCK   {r['clock_rows']} of {r['reviews']} rows carry a measured dispatch interval — "
           f"every hour figure below is self-reported unless that number is large")
@@ -253,7 +293,9 @@ def render(report: dict, markers: list[tuple[str, str, str]], clones: dict[str, 
           f"`unavailable`, which never refuses")
     print(f"  upper bound on hours the ceiling can ever touch: "
           f"{r['reach_hours_self_reported']:.0f}h of {r['hours_self_reported']:.0f}h "
-          f"({r['reach_share']*100:.0f}%) — see hazard 4, this is not a saving")
+          f"({r['reach_share']*100:.0f}%) — an UPPER BOUND, not a saving: it counts "
+          f"every hour in scopes that ever hit the ceiling, including the rounds "
+          f"spent before it would have fired")
 
     print(f"\nREPEAT CUMULATIVES")
     print(f"  scopes running >1 cumulative: {r['scopes_with_repeat_cumulative']} of "
@@ -284,13 +326,24 @@ def main() -> int:
     if not ledgers:
         sys.exit(f"no governance ledgers under {args.root}")
 
-    since = dt.datetime.fromisoformat(args.since).replace(tzinfo=dt.timezone.utc)
+    # The sibling owns this parse (`_parse_instant`), and routing through it is
+    # what the one-home rule asks for rather than a second copy here. It buys two
+    # things a local `fromisoformat` does not: `Z` is normalised (3.10 rejects it,
+    # 3.11+ accepts it, so a direct call is a CI-only crash), and a STATED offset
+    # is converted rather than relabelled — `.replace(tzinfo=UTC)` on an aware
+    # value silently moves the boundary, which is most of a short window.
+    since = tool._parse_instant(args.since)  # noqa: SLF001 — the documented one home
     rows = collect(ledgers, since, tool)
     if not rows:
         sys.exit(f"no Critic reviews since {args.since} in {len(ledgers)} ledger(s)")
 
     report = analyse(rows, budget, full_modes)
     report["modes_known_to_the_plugin"] = list(all_modes)
+    # The corpus SIZE is the instrument's most basic claim, so it is reported rather
+    # than left for a reader to assert from outside: "every governed ledger on this
+    # machine" was written in the doc while the scan was one level deep and missing
+    # three. A completeness claim nobody can check is the one that goes stale silently.
+    report["ledgers"] = len(ledgers)
 
     clones: dict[str, list[str]] = collections.defaultdict(list)
     markers = []
@@ -300,6 +353,8 @@ def main() -> int:
         version, when = marker_of(path)
         if version:
             markers.append((repo, version, when))
+
+    report["repos"] = count_products(clones, rows)
 
     if args.json:
         report["markers"] = [{"repo": m[0], "version": m[1], "since": m[2]} for m in markers]
