@@ -28,10 +28,10 @@ never reads as the whole set. `_commit_bodies` returns `None` on failure rather 
 means NOTE and skip, but an input it could not scan means run R-2 by hand — a `backlog sync` cannot
 help there, and skipping would repeat the false clean one layer up.
 
-Guards: eight tests in `TestAnUnscannedInputIsNeverAnAnswer`, red before the fix (the end-to-end one
+Guards: the tests in `TestAnUnscannedInputIsNeverAnAnswer`, red before the fix (the end-to-end one
 failing on #863's exact sentence); four independent mutants — dropping the unscanned list, pairing
 every entry instead of the added ones, removing the `NOT SCANNED:` line, restoring `""` on a failed
-read — each killed by a named test. Develop opens `3.6.1-dev.1`.
+read — each killed by a named test, the last one through `assemble()` rather than only at the helper. Develop opens `3.6.1-dev.1`.
 
 ---
 
