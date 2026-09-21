@@ -170,7 +170,12 @@ Re-derive rather than trusting this paragraph: `prawduct-hook check-cumulative-c
   1. Three tests green, each red-verified by the mutation its bullet names
   2. Committed, then `/prawduct:critic cumulative` run and every blocking finding resolved
   3. Chunk marked `[x]` — after the review, because the last tick disarms the Stop gate
-  4. #776 → `shipped` and #859 → `shipped` through `/prawduct:backlog`
+  4. #776 → `shipped` and #859 → `shipped` through `/prawduct:backlog` — **at the MERGE, not
+     here.** Written as a chunk step and it cannot be one: the backlog skill refuses a close on an
+     unmerged branch, because on the Issues backend the close goes over the API immediately and a
+     reworked or abandoned PR leaves the item wrongly closed (#697). `/prawduct:pr`'s Merge Flow
+     owns this step. Both items are `in-progress` with this branch recorded, which is the correct
+     interim state and is what stops `pick` offering them to another session.
 
 ## Verification Strategy
 
