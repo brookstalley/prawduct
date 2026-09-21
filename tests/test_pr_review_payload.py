@@ -783,6 +783,20 @@ class TestAnUnscannedInputIsNeverAnAnswer:
         assert "ABC-1111: status=open" in section.body
         assert "NOT SCANNED: the change-log entry" in section.body
 
+    def test_a_failed_commit_read_reaches_the_backlog_section(self, monkeypatch, tmp_path):
+        """The wiring, not just the helper: `assemble` must hand an unread
+        commit log to the backlog section as unscanned. The fixture's entry is
+        readable and cites nothing, so the commit messages are the only input
+        that can make this degrade."""
+        repo = _repo(tmp_path)
+        _git(repo, "commit", "-q", "--amend", "-m", "feat(widget): the widget thing")
+        monkeypatch.setattr(pr_payload, "_commit_bodies", lambda *a, **k: None)
+        sections, failure = pr_payload.assemble(repo)
+        assert failure is None
+        backlog = {s.name: s for s in sections}["backlog"]
+        assert not backlog.ok, "an unread commit log was reported as 'nothing cited'"
+        assert "the commit messages" in backlog.degraded
+
     def test_a_failed_commit_read_is_named_not_emptied(self, monkeypatch, tmp_path):
         monkeypatch.setattr(pr_payload, "_git", lambda *a, **k: (128, ""))
         assert pr_payload._commit_bodies(tmp_path, "develop") is None
