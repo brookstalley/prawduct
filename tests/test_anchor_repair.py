@@ -404,6 +404,8 @@ def test_an_unwritable_claude_md_is_reported_not_raised(tmp_path: Path, start):
     one" — so the branch left raising was the advertised one, and a `stale`-only
     fixture could not see it.
     """
+    if os.geteuid() == 0:
+        pytest.skip("root writes into a mode-555 dir, so the fixture cannot refuse")
     anchor = ar.ANCHOR_V2 if start == "stale" else None
     root = _write_claude(tmp_path / f"readonly-{start}", anchor)
     root.chmod(0o555)  # the DIRECTORY: atomic_write_text needs to create a sibling

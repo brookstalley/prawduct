@@ -2157,6 +2157,15 @@ def _dirty_anchor_note(mode_label: str, excluded: "list[str] | None") -> str:
     )
 
 
+#: Which bound produced a round-budget count. The store is clone-wide, so the
+#: count always needs one; lineage is the primary and the worktree is what
+#: answers where an empty span leaves lineage with nothing to say. Named
+#: constants because they are written into a durable guard-refusal fact that a
+#: retirement query reads back.
+BOUND_LINEAGE = "lineage"
+BOUND_WORKTREE = "worktree"
+
+
 def _rounds_recorded_in_this_worktree(
     facts: "list[dict]", project_dir: Path, scope: str
 ) -> "list[dict]":
@@ -2196,8 +2205,8 @@ def _round_budget_verdict(
 ) -> dict:
     """Has this body of work already spent its full-round budget?
 
-    Returns ``{"status": "within", "spent", "budget", "review_ids"}``,
-    ``{"status": "exhausted", "spent", "budget", "review_ids"}``,
+    Returns ``{"status": "within", "spent", "budget", "review_ids", "bound"}``,
+    ``{"status": "exhausted", "spent", "budget", "review_ids", "bound"}``,
     ``{"status": "disabled"}`` when the repo set the budget to ``null``, or
     ``{"status": "unavailable", "reason"}``.
 
@@ -2266,6 +2275,7 @@ def _round_budget_verdict(
         return {"status": "unavailable", "reason": tally.get("reason", "unknown")}
 
     if tally.get("span_commits"):
+        bound = BOUND_LINEAGE
         scope_of = {
             f.get("id"): (f.get("body") or {}).get("scope")
             for f in facts
@@ -2275,12 +2285,19 @@ def _round_budget_verdict(
             r for r in tally.get("reviews") or [] if scope_of.get(r.get("id")) == scope
         ]
     else:
+        bound = BOUND_WORKTREE
         in_scope = _rounds_recorded_in_this_worktree(facts, project_dir, scope)
     spent = sum(1 for r in in_scope if mode_token_of(r.get("mode")) in FULL_ROUND_MODES)
     return {
         "status": "exhausted" if spent >= budget else "within",
         "spent": spent,
         "budget": budget,
+        # WHICH bound produced the count. The two answer different questions and
+        # returned indistinguishable verdicts, so the control's own falsification
+        # query — "did it ever refuse a round that turned out to be needed?" —
+        # could not separate a fallback firing from a lineage one, which is the
+        # question a retirement decision turns on.
+        "bound": bound,
         # Every round in scope, not just the full ones: the findings a verify
         # pass raised are as open as any other, and exhaustion has to answer all
         # of them or the census it renders is not a census.
@@ -2316,9 +2333,17 @@ def _refuse_over_budget(
     """
     from . import dispositions  # noqa: PLC0415 — lazy; keeps the import graph flat
 
+    # Naming the bound is not decoration: "this work" denotes two different sets
+    # depending on it, and a builder who cannot tell which one was counted cannot
+    # tell whether the refusal is about their branch or their worktree.
+    counted = (
+        "on this branch's lineage" if budget.get("bound") == BOUND_LINEAGE
+        else "in this worktree (the branch span holds no commits, so lineage "
+             "could not bound the count)"
+    )
     reason = (
         f"round budget exhausted — this work bought {budget['spent']} full "
-        f"review round(s) against a budget of {budget['budget']}"
+        f"review round(s) {counted} against a budget of {budget['budget']}"
     )
     swept = dispositions.auto_accept(project_dir, budget["review_ids"], reason=reason)
     # Rendered over the SWEPT ids, not over the scope: those are the findings
@@ -2343,6 +2368,7 @@ def _refuse_over_budget(
             "blocking_left": swept.get("skipped_blocking"),
             "scope": scope,
             "chunk": chunk,
+            "bound": budget.get("bound"),
             "branch": gitstate.current_branch(project_dir),
             "dispatch_commit": dispatch_commit,
         },

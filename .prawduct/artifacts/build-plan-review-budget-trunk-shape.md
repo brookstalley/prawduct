@@ -86,6 +86,14 @@ Context: Built 2026-09-20 on `fix/review-budget-trunk-shape` (branched from `dev
   renders the operator-facing block, so that is where the staging remedy had to go. The lib is
   untouched.
 
+  **That relocation is what escalated the review roster**, because `plugin/bin/prawduct-hook`
+  matches this repo's declared `plugin/bin/*hook*` risk surface and `plan_archive.py` matches
+  nothing. The chunk's review-mode bullet predicted the standard roster on the strength of the file
+  the plan named; the dispatch resolved the three-reviewer coordinator instead
+  (`roster_chosen_by`: *risk surface touched*), which is the mechanism working. The prediction
+  failing is the information, and it is why a plan's roster claim is a guess until the rider's
+  home is decided.
+
 ## Build Chunks
 
 ### Chunk 01: The round budget fires on the trunk shape, bounded by worktree
@@ -141,11 +149,17 @@ Context: Built 2026-09-20 on `fix/review-budget-trunk-shape` (branched from `dev
   `test-status` exit 0 on a tree-vouched run; the two prose surfaces describe the shipped mechanism;
   no Direction norm edited.
 - **Type:** cumulative-final
-- **Critic mode:** inferred — do NOT declare one. One chunk, and nothing this branch touches is in
-  `risk_surfaces:` (`plugin/lib/critic_consolidate.py`, `coverage.py` and `plan_archive.py` are none
-  of `gates*`, `*hook*` or `skills/`), so the roster stays the standard one and the plan owes a single
-  boundary `cumulative`. **This session switched branches after SessionStart, so pass the mode
-  explicitly at dispatch rather than trusting `infer-critic-mode`'s stale marker.**
+- **Review mode — deliberately NOT declared.** There is no `Critic mode:` field on this chunk, and
+  that is the whole instruction: one chunk, `Type: cumulative-final`, so the plan owes a single
+  boundary `cumulative` and inference reaches it unaided. The field is omitted rather than filled
+  with a word meaning "infer" — `buildplan_refs.field_value_re("Critic mode")` binds whatever
+  follows the marker, so `inferred` is read as a mode, matched against nothing, and reported to the
+  operator as an ignored value on every inference. Absent is silent by design; a typed value is not.
+  **What the roster did:** it escalated to the three-reviewer coordinator because
+  `plugin/bin/prawduct-hook` matched the declared risk surface `plugin/bin/*hook*` — see the Status
+  section for why the rider landed there rather than in `plan_archive.py`, which is what an earlier
+  draft of this bullet predicted. Pass the mode explicitly at dispatch if the session has switched
+  branches since SessionStart, since `infer-critic-mode` reads that marker.
 - **Done when:**
   1. Three tests green, each red-verified by the mutation its bullet names
   2. Committed, then `/prawduct:critic cumulative` run and every blocking finding resolved

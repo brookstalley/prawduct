@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -7059,13 +7060,27 @@ def cmd_plan_backfill(project_dir: Path, argv: list[str]) -> int:
             # refused both stay quiet. Advice printed where it does not apply is
             # how advice stops being read.
             if result["archived"]:
-                artifacts = prawduct_dir / "artifacts"
-                try:
-                    where = artifacts.relative_to(project_dir).as_posix()
-                except ValueError:  # a `.prawduct/` outside the repo — say where it IS
-                    where = str(artifacts)
+                # The paths that MOVED, not the directory containing them. At a
+                # release cut the operator's in-flight artifacts — a release
+                # plan, the live build plan — sit in that same directory, so
+                # `-A <dir>` stages edits they did not choose and those ride the
+                # next bare `git commit`. `:/` anchors each pathspec at the repo
+                # root, because git resolves a relative pathspec against CWD and
+                # this line is copied verbatim from wherever it was read.
+                # No `relative_to` guard: `prawduct_dir` is `project_dir /
+                # ".prawduct"` and both paths are built under its `artifacts/`,
+                # so the relative form is lexically guaranteed. A guard here
+                # would be a branch no fixture can enter, standing beside the
+                # reachable defect (a cwd-relative pathspec) that `:/` fixes.
+                # `shlex.quote` because this line is pasted into a shell.
+                moved = [
+                    shlex.quote(":/" + Path(path).relative_to(project_dir).as_posix())
+                    for item in result["archived"]
+                    for path in (item.get("source"), item.get("destination"))
+                    if path is not None
+                ]
                 print(f"  Stage the moves before your next suite run: "
-                      f"`git add -A {where}`. "
+                      f"`git add -A -- {' '.join(moved)}`. "
                       "Nothing here is staged, and a plan that is in the index "
                       "and gone from disk fails any test that enumerates tracked "
                       "paths and reads them.")

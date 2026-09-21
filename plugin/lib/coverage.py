@@ -687,9 +687,9 @@ def count_branch_rounds(
     ``/prawduct:pr create`` path against a store holding every review the clone
     has ever recorded.
 
-    Returns ``{"status": "counted", "rounds", "seconds", "timed", "reviews"}``
-    — with ``seconds`` ``None`` when no attributed round recorded a duration —
-    or ``{"status": "unavailable", "reason"}``. Never raises: this is advice, and
+    Returns ``{"status": "counted", "rounds", "seconds", "timed", "reviews",
+    "span_commits"}`` — with ``seconds`` ``None`` when no attributed round
+    recorded a duration — or ``{"status": "unavailable", "reason"}``. Never raises: this is advice, and
     advice fails soft. It is deliberately not silent, because a tally that
     vanishes when it breaks reads as "round one" to the builder it exists to
     warn (``core.md``: "'advice fails soft' is not 'advice fails silent'").
@@ -778,6 +778,21 @@ def format_branch_rounds(tally: "dict | None") -> str:
             f"round count as unknown, not as one."
         )
     n = tally["rounds"]
+    # Bounded by the PROPERTY that makes the count meaningless, not by the repo
+    # shape that usually produces it: a span with no commits cannot attribute a
+    # round to anything, so `rounds == 0` here is the absence of a measurement
+    # and not a measurement of absence. Told otherwise, a trunk-based builder
+    # reads "your first round" on round twenty — every push restores this state,
+    # so the sentence is wrong for them permanently rather than occasionally.
+    # This is the same defect as the round budget's, at the other consumer of
+    # the same signal, which is why it is keyed on `span_commits` in both.
+    if not n and not tally.get("span_commits"):
+        return (
+            "NOTE: this branch's span holds no commits — the base ref IS HEAD, "
+            "which is where every push leaves a trunk-based repo — so lineage "
+            "cannot attribute a round here at all. Read the round count as "
+            "UNAVAILABLE on this shape, never as this being your first."
+        )
     if not n:
         return (
             "NOTE: no review round has been recorded against this branch since the "

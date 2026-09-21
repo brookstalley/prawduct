@@ -1645,6 +1645,48 @@ class TestRoundTally:
             "span_commits": 1,
         }
 
+    def test_an_empty_span_is_not_reported_as_a_first_round(self, tmp_path):
+        """The sibling consumer of the same signal the round budget reads.
+
+        `rounds == 0` has two causes and `format_branch_rounds` used to give
+        both the same sentence — *the next round is this branch's first*. On a
+        trunk repo the span is empty after every push, so lineage can attribute
+        nothing and that sentence is wrong permanently rather than occasionally:
+        it prints on round twenty. Keyed on `span_commits`, exactly as the
+        budget's fallback is, because it is the same defect at the other reader.
+        """
+        trunk = tmp_path / "trunk"
+        trunk.mkdir()
+        _git(trunk, "init", "-q", "-b", "main")
+        _commit(trunk, "code.py", "x = 1\n", "c1")
+        merge_base = _git(trunk, "merge-base", "main", "HEAD")
+        tally = coverage.count_branch_rounds(trunk, [], merge_base)
+        assert tally["span_commits"] == 0 and tally["rounds"] == 0, (
+            "the premise: this is the zero that is NOT a first round"
+        )
+
+        line = coverage.format_branch_rounds(tally)
+        assert "span holds no commits" in line
+        assert "UNAVAILABLE" in line
+        assert "first" not in line.replace("never as this being your first.", "")
+
+    def test_a_branch_with_a_span_and_no_rounds_is_still_a_first_round(self, tmp_path):
+        """The control, and the reason the fix is keyed on the span.
+
+        A branch that HAS commits and has bought no round genuinely is on its
+        first, and that sentence must survive — a fix keyed on `rounds == 0`
+        would have replaced it and told every first-round builder their count
+        was unavailable.
+        """
+        repo = _branch_repo(tmp_path)
+        merge_base = _git(repo, "merge-base", "main", "HEAD")
+        tally = coverage.count_branch_rounds(repo, [], merge_base)
+        assert tally["span_commits"] > 0 and tally["rounds"] == 0
+
+        line = coverage.format_branch_rounds(tally)
+        assert "the next round is this branch's first" in line
+        assert "span holds no commits" not in line
+
     def test_the_tally_leads_the_block_it_frames(self, tmp_path, capsys):
         """Placement is the deliverable, not the sentence. The routes below it
         are answered differently on round five than on round one, so a reader

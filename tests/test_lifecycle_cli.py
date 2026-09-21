@@ -21,9 +21,12 @@ dispatch table and the argument scan are only exercised by actually invoking it.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 _HOOK_PATH = Path(__file__).resolve().parent.parent / "plugin" / "bin" / "prawduct-hook"
 
@@ -245,7 +248,18 @@ class TestPlanBackfillCommand:
         proc = _run(project, "plan-backfill", "--apply", "--date", "2026-08-10")
 
         assert proc.returncode == 0, proc.stderr
-        assert "git add -A .prawduct/artifacts" in proc.stdout
+        # The paths that MOVED, each anchored at the repo root — not the
+        # directory holding them. A release cut leaves in-flight artifacts in
+        # that same directory, so `-A <dir>` would stage edits the operator
+        # never chose, and a relative pathspec resolves against whatever CWD
+        # this line is pasted into.
+        assert (
+            "git add -A -- :/.prawduct/artifacts/build-plan-demo.md "
+            ":/.prawduct/artifacts/archive/build-plan-demo.md" in proc.stdout
+        ), proc.stdout
+        assert "git add -A .prawduct/artifacts" not in proc.stdout, (
+            "the directory form stages what the operator did not approve"
+        )
 
     def test_a_dry_run_does_not_name_it(self, tmp_path: Path) -> None:
         """The control. A preview moves nothing, so there is nothing to stage —
@@ -256,6 +270,7 @@ class TestPlanBackfillCommand:
         assert "would archive" in proc.stdout, "the premise: this run had plans to list"
         assert "git add" not in proc.stdout
 
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root writes into a mode-500 dir")
     def test_an_apply_that_moved_nothing_does_not_name_it_either(self, tmp_path: Path) -> None:
         """The guard's precision, not merely its existence.
 

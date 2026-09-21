@@ -1283,6 +1283,16 @@ def _cmd_list(project_dir: Path, argv: list[str]) -> int:
         spent, ceiling = body.get("spent"), body.get("budget")
         if isinstance(spent, int) and isinstance(ceiling, int):
             guard_note += f" rounds={spent}/{ceiling}"
+        bound = body.get("bound")
+        if isinstance(bound, str) and bound:
+            guard_note += f" bound={bound}"
+        # WHICH set those rounds were counted from. The budget bounds by branch
+        # lineage, or — where the span holds no commits — by the worktree the
+        # rounds were recorded in. Those are different questions, so a firing
+        # row that does not say which one answered cannot settle the retirement
+        # question above: "six rounds" means one thing about a branch and
+        # another about a worktree that has been running for a month.
+
         accepted = body.get("auto_accepted")
         if isinstance(accepted, int):
             guard_note += f" accepted={accepted}"

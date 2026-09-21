@@ -37,6 +37,30 @@ is what "alone" means, and it is the assertion the plausible wrong implementatio
 `coverage.count_branch_rounds` gains one reported field, `span_commits`, because the span is walked
 there and a caller cannot otherwise tell an empty span from a branch with no rounds yet.
 
+**Read the predicate, not the repo shape — two consequences follow from it.** A trunk repo is the
+case that motivated this and is not the definition. A branch cut and not yet committed to has an
+empty span too, so a branch RESUMING a scope inherits that scope's rounds from this worktree; the
+budget's declared unit is the scope, so that is consistent, but it is a behaviour change on
+branch-based repos and not only trunk ones. And nothing resets the worktree-bounded count: a branch
+cut resets the lineage one, trunk has no cut, so reusing a scope name for a second body of work
+inherits the first's rounds and can refuse its very first dispatch — auto-accepting the OLD work's
+outstanding findings with it. Give each body of work its own scope name, or raise the budget. Both
+are stated in `project-state.yaml`'s template comment and in `api-contract.md`, which consumers
+receive; the build plan is deleted at release and is not a home for either.
+
+**The same defect was live at the other reader of the same signal, and is fixed here too.**
+`coverage.format_branch_rounds` — the line leading the `uncovered:` gate block — told a builder
+*the next round is this branch's first* whenever `rounds == 0`, which on a trunk repo is round
+twenty. That is #776's own root cause at a sibling call site, so it is keyed on `span_commits` in
+both places rather than patched where it was noticed. An empty span now reads as the round count
+being UNAVAILABLE, and a branch that genuinely is on its first round still says so.
+
+**The verdict and the guard-refusal fact carry `bound` (`lineage` | `worktree`).** The two bounds
+count different sets and returned indistinguishable verdicts, which would have left the control's
+own retirement question — *did it ever refuse a round that turned out to be needed?* — unanswerable
+from the record it appends for exactly that purpose. The refusal message names the bound too, since
+"this work bought N rounds" denotes the branch on one and the worktree on the other.
+
 **What this does and does not buy a trunk repo.** The ceiling now reaches `chunk` and `final`
 dispatches. It does not reach `cumulative` there and never could: a cumulative interval is a commit
 range, so on trunk `critic-begin` refuses it as an empty diff long before the budget is consulted.
@@ -48,9 +72,12 @@ caller can have bound to its absence.
 original, staging neither. `tests/test_path_reference_resolution.py` enumerates from `git ls-files`
 and reads from disk, so an unstaged archive makes two tests raise `FileNotFoundError` — a red that is
 not a defect, at the moment a red suite is most alarming. It hit the v3.5.0 and v3.6.0 cuts
-identically. The `--apply` output now names the staging remedy; the dry run does not, because it
-moved nothing. It rides this commit rather than one of its own: this commit is judgeable and owes a
-review anyway, so the rider buys no round.
+identically. The `--apply` output now names the staging remedy — the exact paths that
+moved, each anchored at the repo root with `:/`, because a release cut leaves the operator's
+in-flight artifacts in that same directory and a relative pathspec resolves against whatever
+directory the line is pasted into. A run that moved nothing stays quiet, `--apply` or not. It rides
+this commit rather than one of its own: this commit is judgeable and owes a review anyway, so the
+rider buys no round.
 
 ---
 

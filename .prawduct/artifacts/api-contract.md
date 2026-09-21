@@ -592,12 +592,20 @@ Fail-direction is deliberate and per-purpose:
   Rounds are counted per build-plan **scope** (intersected with this branch's lineage, since the
   store is clone-wide); a dispatch that resolves no scope is not budgeted, because there is no
   body of work to bound and the census the refusal renders is selected from the same set.
-  **Where the lineage span holds no commits the bound is this `actor.worktree` instead**, which is
-  the permanent state of a trunk-based repo: an intersection with an empty set is empty, so the
-  ceiling used to be unreachable there — declared, on by default and silently inert. The clone-wide
-  reason is unchanged and is why this is a second bound rather than a dropped one; the swap is keyed
-  on the span being empty, not on the count being zero, so a branch with commits and no rounds yet
-  still answers by lineage.
+  **Where the lineage span holds no commits the bound is this `actor.worktree` instead.** An
+  intersection with an empty set is empty, so wherever that span is empty the ceiling was
+  unreachable — declared, on by default and silently inert. A trunk-based repo is the case that
+  motivated it (every push restores the state), but the predicate is the SPAN, not the repo shape:
+  a branch cut and not yet committed to takes the same route, so a branch resuming a scope inherits
+  that scope's rounds from this worktree. The clone-wide reason is unchanged and is why this is a
+  second bound rather than a dropped one; keying on the span rather than on a zero count is what
+  leaves a branch with commits and no rounds yet answering by lineage. The verdict and the
+  `critic-dispatch-round-budget` guard-refusal fact both carry `bound` (`lineage` | `worktree`),
+  because the two count different sets and the control's retirement question needs to tell them
+  apart. **Nothing resets the worktree-bounded count** — a branch cut resets the lineage one, and
+  trunk has no cut, so a reused scope name inherits the previous body of work's rounds, and can
+  refuse its first dispatch while auto-accepting the older work's outstanding findings. Give each
+  body of work its own scope name, or raise `review_round_budget`.
 
 **The `backlog` group carries its own exit-class set — a documented scheme, not an exception to the
 table above.** `lib/backlog/cli.py`'s `_EXIT_CLASS` maps every error `code` the group can return onto

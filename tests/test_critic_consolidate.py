@@ -7123,6 +7123,10 @@ class TestRoundBudgetCounting:
         assert verdict == {
             "status": "within", "spent": 5, "budget": 6,
             "review_ids": [f"rev-round-{i}" for i in range(5)],
+            # WHICH bound counted. Two bounds returning indistinguishable
+            # verdicts left the control's own retirement query unable to tell a
+            # fallback firing from a lineage one.
+            "bound": cc.BOUND_LINEAGE,
         }
 
     def test_it_fires_at_the_ceiling(self, tmp_path):
@@ -7337,6 +7341,26 @@ class TestRoundBudgetOnTheTrunkShape:
         assert verdict["status"] == "exhausted"
         assert verdict["spent"] == 2
 
+    def test_the_verdict_says_which_bound_produced_the_count(self, tmp_path):
+        """Two bounds answering to one shape is a control nobody can audit.
+
+        The refusal is recorded as a `guard-refusal` fact so that one query can
+        later ask whether the budget ever refused a round that turned out to be
+        needed — the question its own docstring names as the only thing that
+        could retire it. That question is answerable only if the record says
+        which bound counted, because the two count different sets.
+        """
+        trunk, head = _trunk_repo(tmp_path, budget="9")
+        _seed_round(trunk, "rev-t", head, "budgeted")
+        assert cc._round_budget_verdict(
+            trunk, trunk / ".prawduct", "budgeted"
+        )["bound"] == cc.BOUND_WORKTREE
+
+        branch, bhead = _budget_repo(tmp_path / "b", 1, budget="9")
+        assert cc._round_budget_verdict(
+            branch, branch / ".prawduct", "budgeted"
+        )["bound"] == cc.BOUND_LINEAGE
+
     def test_critic_begin_actually_refuses_on_a_trunk_repo(self, tmp_path):
         """The gate, not the count.
 
@@ -7377,6 +7401,16 @@ class TestRoundBudgetOnTheTrunkShape:
         refused = _run_begin(repo, "--mode", "chunk", "--scope", "budgeted")
         assert refused.returncode == 4, (refused.stdout, refused.stderr)
         assert "round budget exhausted" in refused.stdout
+        # The sweep is the only reason to seed those findings, and it is what
+        # makes the refusal an ANSWER rather than an abandonment. It also proves
+        # `review_ids` — the fallback's output, not just its count — reaches the
+        # consumer that acts on it: an id the fallback failed to collect is a
+        # finding nobody dispositioned.
+        assert "2 outstanding non-blocking finding(s) were ACCEPTED" in refused.stdout
+        # And the refusal names WHICH set it counted. "This work" denotes the
+        # branch on one bound and the worktree on the other, and a builder who
+        # cannot tell them apart cannot tell what they are being refused for.
+        assert "in this worktree" in refused.stdout, refused.stdout
 
         (repo / ".prawduct" / "project-state.yaml").write_text(
             "review_round_budget: 3\n"
@@ -7490,6 +7524,13 @@ class TestRoundBudgetRefusal:
 
         assert result.returncode == 4, (result.stdout, result.stderr)
         assert "round budget exhausted" in result.stdout
+        # The LINEAGE arm of the bound selector. `round budget exhausted` is a
+        # substring both arms satisfy, so without this the ternary could be
+        # inverted or its lineage branch deleted with the whole suite green,
+        # telling every branch-based builder their rounds were counted from the
+        # worktree — the exact misattribution the bound exists to prevent. Its
+        # sibling arm is pinned in `TestRoundBudgetOnTheTrunkShape`.
+        assert "on this branch's lineage" in result.stdout, result.stdout
         assert not (repo / PARTIALS_REL / "manifest.json").exists(), (
             "a budget refusal writes no session state, like a no-review-needed"
         )
@@ -7537,6 +7578,12 @@ class TestRoundBudgetRefusal:
         body = refusals[0]["body"]
         assert body["spent"] == 6 and body["budget"] == 1
         assert body["auto_accepted"] == 12 and body["blocking_left"] == 6
+        # WHICH bound counted, read back off the durable fact rather than the
+        # in-memory verdict. The retirement question — did this ever refuse a
+        # round that was needed — cannot be answered from a record that does not
+        # say which set it counted, and a field no test reads back is one a
+        # regression drops silently.
+        assert body["bound"] == cc.BOUND_LINEAGE
 
 
 class TestWideningBoundReachesTheDispatch:
@@ -7653,6 +7700,14 @@ class TestGuardRefusalsReachTheirOwnQuery:
         assert "rounds=6/1" in out, out
         assert "accepted=6" in out, out
         assert "blocking-left=6" in out, out
+        # The bound reaches the QUERY, not just the record. `evidence list`
+        # renders guard-refusal rows from an explicit column list and offers no
+        # raw dump, so a field with no column is readable only by hand-parsing
+        # the JSONL — which makes it a channel produced and never consumed.
+        # "six rounds" means one thing about a branch and another about a
+        # worktree, so the retirement question needs this column to be answered
+        # at all.
+        assert "bound=lineage" in out, out
 
 
 class TestTheCostLeadReachesBothCarriers:
