@@ -918,13 +918,15 @@ class TestDispatchClock:
         repo = tmp_path / "repo"
         _init_repo(repo)
         _commit_file(repo, "app.py", "print(1)\n", "init")
-        _write_pr_evidence(repo, duration_seconds=240)
 
         marked = _run_hook(repo, "pr-review-dispatch", "--begin")
         assert marked.returncode == 0, marked.stderr
         # The WRITING run's own output is what an operator reads; checking only
         # the state afterwards would not verify what it reported.
         assert "dispatch marked:" in marked.stdout
+        # The reviewer writes its evidence AFTER it is spawned; that write ends
+        # the interval.
+        _write_pr_evidence(repo, duration_seconds=240)
 
         r = self._pr_append(repo)
         assert r.returncode == 0, r.stderr
@@ -959,9 +961,9 @@ class TestDispatchClock:
         repo = tmp_path / "repo"
         _init_repo(repo)
         _commit_file(repo, "app.py", "print(1)\n", "init")
-        _write_pr_evidence(repo)
 
         _run_hook(repo, "pr-review-dispatch", "--begin")
+        _write_pr_evidence(repo)
         assert (repo / MARKER_REL).is_file()
         self._pr_append(repo)
         assert not (repo / MARKER_REL).is_file()
@@ -1004,10 +1006,10 @@ class TestDispatchClock:
         repo = tmp_path / "repo"
         _init_repo(repo)
         _commit_file(repo, "app.py", "print(1)\n", "init")
-        _write_pr_evidence(repo, duration_seconds=240)
         _write_findings(repo)
 
         _run_hook(repo, "pr-review-dispatch", "--begin")
+        _write_pr_evidence(repo, duration_seconds=240)
         critic = _run_hook(repo, "ledger-append", "--event", "review.critic")
         assert critic.returncode == 0, critic.stderr
         assert (repo / MARKER_REL).is_file(), "the critic append consumed the PR mark"
@@ -1062,9 +1064,9 @@ class TestDispatchClock:
         repo = tmp_path / "repo"
         _init_repo(repo)
         head = _commit_file(repo, "app.py", "print(1)\n", "init")
-        _write_pr_evidence(repo)
 
         _run_hook(repo, "pr-review-dispatch", "--begin")
+        _write_pr_evidence(repo)
         marker = json.loads((repo / MARKER_REL).read_text())
         assert marker["head"] == head
 
@@ -1107,6 +1109,143 @@ class TestDispatchClock:
             assert r.returncode == 1, argv
             assert "usage:" in r.stderr
             assert not (repo / MARKER_REL).is_file(), argv
+
+
+class TestPrClockSurvivesFixingItsFindings:
+    """#845. The caller fixes a PR review's findings BEFORE `ledger-append`, so
+    HEAD at append time is not the tree the review read. The mark is checked
+    against the review's own `commit_reviewed`, and the interval ends when the
+    reviewer wrote its evidence, not at the append, which comes after the fix
+    work. Before this, every PR review that found something lost its clock."""
+
+    def _pr_append(self, repo: Path):
+        return _run_hook(
+            repo, "ledger-append", "--event", "review.pr", "--findings", PR_EVIDENCE_REL,
+        )
+
+    def test_a_fix_commit_after_the_review_keeps_the_measurement(self, tmp_path):
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        reviewed = _commit_file(repo, "app.py", "print(1)\n", "init")
+
+        _run_hook(repo, "pr-review-dispatch", "--begin")
+        _write_pr_evidence(repo, commit_reviewed=reviewed, duration_seconds=300)
+        _commit_file(repo, "app.py", "print(2)\n", "fix the review's finding")
+
+        r = self._pr_append(repo)
+        assert r.returncode == 0, r.stderr
+        ev = _ledger_events(repo)[0]
+        assert ev["git"]["head"] != reviewed, "the fixture did not move HEAD"
+        assert "dispatched_at" in ev, _duration_reason(r)
+        assert "review_written_at" in ev
+        assert ev["review_written_at"] >= ev["dispatched_at"]
+        assert _duration_reason(r).startswith("measured from a dispatch mark")
+
+    def test_the_interval_ends_at_the_evidence_write_not_the_append(self, tmp_path):
+        """Red if the end falls back to the append's `ts`. The fix work between
+        the review and the append is not review time."""
+        import os
+        import time
+
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        reviewed = _commit_file(repo, "app.py", "print(1)\n", "init")
+        marker = repo / MARKER_REL
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        # A mark ten minutes old and a review written five minutes after it, so
+        # the append lands five minutes after the write.
+        now = time.time()
+        stamp = lambda t: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(t))  # noqa: E731
+        marker.write_text(json.dumps({"dispatched_at": stamp(now - 600), "head": reviewed}))
+        _write_pr_evidence(repo, commit_reviewed=reviewed)
+        os.utime(repo / PR_EVIDENCE_REL, (now - 300, now - 300))
+
+        r = self._pr_append(repo)
+        assert r.returncode == 0, r.stderr
+        ev = _ledger_events(repo)[0]
+        assert ev["review_written_at"] == stamp(now - 300)
+
+        from lib import review_dispatch, telemetry
+
+        assert review_dispatch.event_interval_seconds(ev) == 300.0
+        assert telemetry._measured_duration(ev) == 300.0
+
+    def test_a_mark_from_another_tree_than_the_one_reviewed_is_refused(self, tmp_path):
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _commit_file(repo, "app.py", "print(1)\n", "init")
+        _run_hook(repo, "pr-review-dispatch", "--begin")
+        # The reviewer read a LATER tree than the one the mark was taken at.
+        reviewed = _commit_file(repo, "app.py", "print(2)\n", "landed mid-review")
+        _write_pr_evidence(repo, commit_reviewed=reviewed)
+
+        r = self._pr_append(repo)
+        assert r.returncode == 0, r.stderr
+        ev = _ledger_events(repo)[0]
+        assert "dispatched_at" not in ev
+        assert "review_written_at" not in ev
+        assert "different tree" in _duration_reason(r)
+
+    def test_evidence_older_than_the_mark_is_an_earlier_reviews_file(self, tmp_path):
+        """A dispatch that never wrote its own evidence leaves the previous
+        review's file in place. It must not attest this mark."""
+        import os
+
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        reviewed = _commit_file(repo, "app.py", "print(1)\n", "init")
+        _write_pr_evidence(repo, commit_reviewed=reviewed)
+        old = (repo / PR_EVIDENCE_REL).stat().st_mtime - 3600
+        os.utime(repo / PR_EVIDENCE_REL, (old, old))
+        _run_hook(repo, "pr-review-dispatch", "--begin")
+
+        r = self._pr_append(repo)
+        assert r.returncode == 0, r.stderr
+        ev = _ledger_events(repo)[0]
+        assert "dispatched_at" not in ev
+        assert "review_written_at" not in ev
+        assert "earlier review" in _duration_reason(r)
+
+    def test_an_abbreviated_commit_reviewed_resolves(self, tmp_path):
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        reviewed = _commit_file(repo, "app.py", "print(1)\n", "init")
+        _run_hook(repo, "pr-review-dispatch", "--begin")
+        _write_pr_evidence(repo, commit_reviewed=reviewed[:10])
+        _commit_file(repo, "app.py", "print(2)\n", "fix")
+
+        r = self._pr_append(repo)
+        assert r.returncode == 0, r.stderr
+        assert "dispatched_at" in _ledger_events(repo)[0], _duration_reason(r)
+
+    def test_a_commit_reviewed_naming_no_commit_is_refused_by_name(self, tmp_path):
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _commit_file(repo, "app.py", "print(1)\n", "init")
+        _run_hook(repo, "pr-review-dispatch", "--begin")
+        _write_pr_evidence(repo, commit_reviewed="0" * 40)
+
+        r = self._pr_append(repo)
+        assert r.returncode == 0, r.stderr
+        assert "dispatched_at" not in _ledger_events(repo)[0]
+        assert "names no commit" in _duration_reason(r)
+
+    def test_a_critic_append_carries_no_review_written_at(self, tmp_path):
+        """The Critic's append IS the end of its review, so it keeps `ts`."""
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _commit_file(repo, "app.py", "print(1)\n", "init")
+        _write_findings(repo)
+        marker = repo / CRITIC_MARKER_REL
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        head = _git(repo, "rev-parse", "HEAD").stdout.strip()
+        marker.write_text(json.dumps({"dispatched_at": "2026-09-21T00:00:00Z", "head": head}))
+
+        r = _run_hook(repo, "ledger-append", "--event", "review.critic")
+        assert r.returncode == 0, r.stderr
+        ev = _ledger_events(repo)[0]
+        assert "dispatched_at" in ev
+        assert "review_written_at" not in ev
 
 
 class TestCriticDispatchClock:

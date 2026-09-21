@@ -613,7 +613,7 @@ build_state:
 # the bookkeeping merged WITH the PR" step now says to clear the pointer for
 # this case. The plan is untouched: still live, still findable, archived by
 # scope at the release.
-active_build_plan: null
+active_build_plan: .prawduct/artifacts/build-plan-pr-review-clock.md
 
 # =============================================================================
 # BUILD-PLAN REF ROOT (opt-in)

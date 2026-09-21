@@ -36,7 +36,12 @@ otherwise attach a multi-hour interval to an unrelated review. The marker record
 the ``HEAD`` it was written at; consumption requires that same ``HEAD``, because
 a dispatch made against a different tree is not this review's dispatch. That is
 the same question the evidence store asks — facts record trees — and unlike an
-age threshold it invents no number. The residual it does not cover is a
+age threshold it invents no number. For a ``review.pr`` the tree it is checked
+against is the one the reviewer READ (its evidence's ``commit_reviewed``), not
+``HEAD`` at append time. The caller fixes the review's findings before appending,
+so ``HEAD`` has usually moved by then, and a check against it threw away the
+measurement of every PR review that found something. The tree moving is not the
+same thing as this being a different review. The residual it does not cover is a
 re-dispatch at the *same* tree with no fresh mark, which inflates the interval;
 ``/prawduct:pr`` marks on every dispatch, and :func:`measured_interval_seconds`
 carries a plausibility bound for what gets through anyway. That bound lives HERE,
@@ -169,6 +174,67 @@ def measured_interval_seconds(dispatched_at, wrote_at) -> "float | None":
     return seconds
 
 
+#: The tree argument :func:`consume` receives when the review's own record names
+#: a commit this repo cannot resolve. It is refused by name. Comparing it as text
+#: would only ever produce a "different tree" reason, which would call a real
+#: review an abandoned one.
+UNRESOLVED_TREE = "<unresolved>"
+
+
+def event_interval_seconds(event: dict) -> "float | None":
+    """Seconds a ledger event's dispatch mark attests, or ``None``.
+
+    The event-level door to :func:`measured_interval_seconds`, and the one
+    place that decides where an interval ENDS. A ``review.pr`` event carries
+    ``review_written_at``, the time the reviewer's evidence file was written.
+    That is the end, because the append comes later: the caller fixes findings
+    between the two, and that time is not review time. Every other event ends at
+    its own ``ts``, which is also the fallback for rows written before the key
+    existed. All three readers call this, so none of them picks the end on its
+    own.
+    """
+    end = event.get("review_written_at")
+    if not isinstance(end, str):
+        end = event.get("ts")
+    return measured_interval_seconds(event.get("dispatched_at"), end)
+
+
+def resolve_commit(project_dir: Path, rev) -> str | None:
+    """``rev`` as a full commit sha, or ``None`` when it names no commit here.
+
+    The PR reviewer records the tree it read as ``commit_reviewed``. The
+    protocol asks for a full sha, but an abbreviated one names the same commit,
+    so it is resolved rather than compared as text. A strict text match would
+    report a real review as an abandoned one.
+    """
+    if not isinstance(rev, str) or not rev.strip():
+        return None
+    try:
+        proc = subprocess.run(
+            ["git", "rev-parse", "--verify", "--quiet", f"{rev.strip()}^{{commit}}"],
+            cwd=str(project_dir), capture_output=True, text=True, timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        return None
+    return proc.stdout.strip() or None
+
+
+def file_written_at(path: Path) -> str | None:
+    """``path``'s mtime as a UTC stamp in the marker's own format, or ``None``.
+
+    Second resolution, truncated, like :func:`begin`'s stamp. Both are
+    truncated the same way, so a file written after a mark can never read as
+    earlier than it.
+    """
+    try:
+        mtime = path.stat().st_mtime
+    except OSError:
+        return None
+    return datetime.fromtimestamp(mtime, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def marker_path(prawduct_dir: Path, event_kind: str) -> Path:
     """This kind's marker file.
 
@@ -202,14 +268,17 @@ def begin(prawduct_dir: Path, event_kind: str, head: str | None) -> dict:
 def consume(prawduct_dir: Path, event_kind: str, head: str | None) -> tuple[str | None, str]:
     """Take the dispatch stamp for an append. Returns ``(stamp, reason)``.
 
+    ``head`` is the tree this review was OF: the envelope's ``HEAD`` for a
+    Critic append, and the resolved ``commit_reviewed`` for a PR append.
+
     ``stamp`` is ``None`` whenever the append must be recorded as not measured,
     and ``reason`` always says which case it was — an unnamed degradation on an
     advisory path manufactures the false success it exists to prevent.
 
     The marker is cleared whenever this function looked at it, including when the
-    tree did not match: ``HEAD`` only moves forward, so a mark that does not match
-    today can never legitimately match later, and leaving it would fail the same
-    way on every future append.
+    tree did not match. Each mark belongs to one dispatch and each append consumes
+    the newest one, so a mark that did not match this append has no later review
+    to match. Leaving it would fail the same way on every future append.
     """
     if event_kind not in CONSUMING_EVENT_KINDS:
         return None, f"{event_kind} does not consume a dispatch mark"
@@ -233,6 +302,12 @@ def consume(prawduct_dir: Path, event_kind: str, head: str | None) -> tuple[str 
         return None, "dispatch mark carries no timestamp — recorded as not measured"
 
     marked_head = record.get("head")
+    if head == UNRESOLVED_TREE:
+        return None, (
+            "dispatch mark cannot be checked against a tree (the review's "
+            "commit_reviewed names no commit in this repo), so it is recorded "
+            "as not measured"
+        )
     if marked_head is None or head is None:
         # Both sides null compares EQUAL, which would attach the mark with no
         # staleness protection at all — on the one input where we cannot show it

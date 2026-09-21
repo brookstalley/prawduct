@@ -41,8 +41,9 @@ the ones that have actually burned someone, is `## Hazards` in that document:
   `critic_hours_measured` is INTERVAL-measured — wall time attributed to the event
   that ends each interval, and biased by commit density (hazard 2 above). The
   `<kind>_clock_*` columns are something stronger: a clock read in code before the
-  reviewer was spawned and again when its record was appended (`dispatched_at` on
-  the ledger envelope). Read `<kind>_clock_runs` before `<kind>_clock_hours` — a clock
+  reviewer was spawned and again when the review ended (`dispatched_at` on the
+  ledger envelope; the end is `review_written_at` for a PR review and the append
+  otherwise). Read `<kind>_clock_runs` before `<kind>_clock_hours` — a clock
   figure covering 2 of a window's 40 reviews is not that window's cost, and the
   two populations are never pooled, because a median over a mixture of clock
   readings and model recollections measures neither.
@@ -86,7 +87,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "plugin" / "lib"))
 
-from review_dispatch import measured_interval_seconds  # noqa: E402
+from review_dispatch import event_interval_seconds  # noqa: E402
 
 
 UTC = dt.timezone.utc
@@ -318,7 +319,7 @@ def _dispatch_clock_seconds(obj: dict) -> float | None:
     plausibility bound, the out-of-order refusal and the not-measured semantics
     are one rule with three readers, and a copy here is a copy that drifts.
     """
-    return measured_interval_seconds(obj.get("dispatched_at"), obj.get("ts"))
+    return event_interval_seconds(obj)
 
 
 def _parse_instant(text: str) -> dt.datetime:
