@@ -104,13 +104,22 @@ Together those bound what the control can ever touch at **118h of 294h (40%)**, 
 scope's sixth full round. That 40% is an **upper bound, not a saving**: it counts every hour in
 scopes that ever hit the ceiling, including the rounds spent before it would have fired.
 
+One more bound, in the same direction and worth stating because widening the corpus (hazard 10)
+made it live: the per-scope key is `(ledger, scope)` and does **not** group worktrees the way the
+product count does. A scope worked in both a checkout and its worktree splits into two cells, so
+neither reaches the ceiling when their sum would, and `scopes at the ceiling` is understated. That
+pushes the reach figure down, not up, so it does not threaten the conclusion — but a later reading
+that groups them should expect the 12% to rise.
+
 ### The largest addressable block is repeat cumulatives
 
 **322 of 534 cumulative runs (60%) are the second-or-later cumulative on a scope already reviewed
-cumulatively**, across 110 of 212 scopes. **Both denominators are the SCOPED rows only** — 534 of
-the mode table's 605 cumulative runs, and 212 of the corpus's 248 scopes — because a repeat is a
-question about a scope and the other 71 runs record none (hazard 8). Re-deriving against the 605 in
-the table above gives 53% and answers a different question. Cumulative is the most expensive mode per run, so this is
+cumulatively**, across 110 of 212 scopes. **Neither denominator is the one printed above it, and
+for two different reasons.** 534 is the mode table's 605 cumulative runs minus the 71 that record no
+scope, since a repeat is a question about a scope and those rows have none (hazard 8) — re-deriving
+against 605 gives 53% and answers a different question. 212 is not a scoped subset of anything: all
+248 corpus scopes are scoped by construction, and 212 is how many of them ran a cumulative at all,
+which is the only population in which a *repeat* cumulative is possible. Cumulative is the most expensive mode per run, so this is
 the biggest single block of re-review in the corpus — larger than everything the chunk and final
 modes cost together, and it sits outside what the round budget reaches until the sixth round.
 

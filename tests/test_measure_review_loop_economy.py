@@ -183,11 +183,51 @@ class TestTheLedgerCarriesScope:
         events = sibling.read_ledger(ledger)
         assert [e["scope"] for e in events] == ["my-scope"]
 
-    def test_a_ledger_row_without_a_scope_reads_as_absent_not_empty(self):
+    def test_a_ledger_row_without_a_scope_reads_as_absent_not_empty(self, tmp_path):
+        """Through the PARSER, because that is where the direction is decided.
+
+        This asserted `read_ledger.__doc__` and then analysed a hand-built row,
+        so it never reached `read_ledger`'s `obj.get("scope")` — the one
+        expression the test is named for. A parser returning `""` instead of
+        `None` would key every scope-less row under one empty-string scope,
+        which is hazard 8 arriving through the front door, and this test would
+        have stayed green through it.
+        """
         sibling = tool._load_sibling()
-        assert sibling.read_ledger.__doc__  # the parser is the shared home
-        report = tool.analyse([_row("cumulative", scope=None)], 6, ("cumulative",))
+        ledger = tmp_path / "ledger.jsonl"
+        ledger.write_text(
+            '{"event":"review.critic","ts":"2026-09-01T00:00:00Z","duration_seconds":60,'
+            '"review":{"mode":"cumulative (bundle review)","findings":[]}}\n',
+            encoding="utf-8")
+
+        events = sibling.read_ledger(ledger)
+
+        assert len(events) == 1, "the fixture never reached the parser"
+        assert events[0]["scope"] is None, (
+            "an absent scope must read as None; an empty string is a scope key and "
+            "would pool every scope-less row into one enormous scope")
+        assert events[0]["scope"] != ""
+
+    def test_the_parser_and_the_analysis_agree_on_absence(self, tmp_path):
+        """The two halves joined: what the parser yields is what `analyse` counts.
+
+        Pinning them separately is what let the old version pass — it graded a
+        row the parser never produced.
+        """
+        sibling = tool._load_sibling()
+        ledger = tmp_path / "ledger.jsonl"
+        ledger.write_text(
+            '{"event":"review.critic","ts":"2026-09-01T00:00:00Z","duration_seconds":60,'
+            '"review":{"mode":"cumulative (bundle review)","findings":[]}}\n',
+            encoding="utf-8")
+        rows = [{"repo": "r", "scope": e["scope"], "mode": "cumulative",
+                 "seconds": 60, "clock": None, "when": e["when"]}
+                for e in sibling.read_ledger(ledger)]
+
+        report = tool.analyse(rows, 6, ("cumulative",))
+
         assert report["scopeless_reviews"] == 1
+        assert report["scopes"] == 0
 
 
 class TestTheCorpusIsBoundedByPropertyNotByDepth:
