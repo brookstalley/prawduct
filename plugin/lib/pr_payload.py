@@ -41,6 +41,7 @@ import json
 import re
 import subprocess
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 from typing import NamedTuple
 
@@ -203,7 +204,7 @@ def _section_commits(project_dir: Path, base: str) -> Section:
     return Section("commits", body=out)
 
 
-def _commit_bodies(project_dir: Path, base: str) -> str:
+def _commit_bodies(project_dir: Path, base: str) -> str | None:
     """The commit messages in FULL, for the id scan only — never rendered.
 
     `_section_commits` carries `--oneline`, which is what the narrative goal
@@ -211,17 +212,15 @@ def _commit_bodies(project_dir: Path, base: str) -> str:
     this repo's own integration branch a backlog `#N` appears on 69 body lines
     against 15 subject lines, so scanning subjects alone renders the ordinary
     citation as "no ids cited" — a false clean on the one check
-    `review-protocol.md` gives this reviewer and no other layer. A failed read
-    degrades to the empty string, which is SILENT — the backlog section would
-    then render "no backlog ids cited", the false clean it exists to remove.
-    What makes that safe is a coupling rather than a guard: `_section_commits`
-    issues the same `git log` over the same range, so whatever empties this also
-    degrades a section the reviewer reads. `TestTheSilentDegradationIsCoupledTo
-    ALoudOne` asserts the coupling, because a sentence is not a check and these
-    two calls are near-identical enough to be edited apart by accident.
+    `review-protocol.md` gives this reviewer and no other layer.
+
+    A failed read returns ``None``, never ``""``: an empty string is
+    indistinguishable from a range whose commits cite nothing, and the backlog
+    section would then call the empty set an answer. The caller names ``None``
+    to that section as an input it could not scan.
     """
     code, out = _git(project_dir, "log", "--format=%B", f"{base}..HEAD")
-    return out if code == 0 else ""
+    return out if code == 0 else None
 
 
 def _section_diffstat(project_dir: Path, base: str) -> Section:
@@ -368,7 +367,21 @@ def _section_build_plan(reviewed) -> Section:
     return Section("build_plan", body="\n".join(lines))
 
 
-def _section_change_log(project_dir: Path, prawduct_dir: Path, scope: str | None) -> Section:
+def _added_lines(project_dir: Path, base: str, path: Path) -> set[str] | None:
+    """The lines this branch adds to ``path`` against ``base``, or ``None`` when
+    the diff cannot be read — never an empty set, which is an answer."""
+    code, out = _git(project_dir, "diff", "--unified=0", f"{base}...HEAD", "--", str(path))
+    if code != 0:
+        return None
+    return {
+        ln[1:] for ln in out.splitlines()
+        if ln.startswith("+") and not ln.startswith("+++")
+    }
+
+
+def _section_change_log(
+    project_dir: Path, prawduct_dir: Path, scope: str | None, base: str
+) -> Section:
     lib = _lib()
     path = prawduct_dir / "change-log.md"
     if not path.is_file():
@@ -384,13 +397,37 @@ def _section_change_log(project_dir: Path, prawduct_dir: Path, scope: str | None
             f"change log unparseable ({exc.__class__.__name__}) — the "
             "version/changelog coherence check is not answered"
         ))
+    all_lines = raw.splitlines()
+    paired_by = None
     if scope is None:
-        return Section("change_log", degraded=(
-            "no scope resolved for this branch, so the change-log entry cannot "
-            "be paired to it — check coherence by reading the log's newest "
-            "entries directly"
-        ))
-    matched = [e for e in entries if e.tags.get("scope") == scope]
+        # No build plan claims this branch — the ordinary state of a docs or
+        # fix branch — so there is no scope to pair by. The entry is still
+        # knowable: it is the one this branch ADDS. Without this the section
+        # degraded, the backlog scan received no entry text, and every id the
+        # entry cited was reported as "no backlog ids cited".
+        added = _added_lines(project_dir, base, path)
+        if added is None:
+            return Section("change_log", degraded=(
+                "no scope resolved for this branch, and the change log's diff "
+                f"against {base} could not be read, so the entry cannot be paired "
+                "to it — check coherence by reading the log's newest entries "
+                "directly"
+            ))
+        # Matched by heading TEXT, not line number: the diff numbers HEAD's
+        # file, and this reads the working tree, which may differ.
+        matched = [e for e in entries if all_lines[e.line_number - 1] in added]
+        if not matched:
+            return Section("change_log", body=(
+                "no build plan claims this branch, and it adds no change-log "
+                "entry — this bundle currently ships with nothing describing it, "
+                "which is itself the finding"
+            ))
+        paired_by = (
+            "paired by diff: no build plan claims this branch, so the entry "
+            f"carried is the one it adds against {base}"
+        )
+    else:
+        matched = [e for e in entries if e.tags.get("scope") == scope]
     if not matched:
         # An ANSWER, not a degradation: the log was read and parsed, and the
         # result is that nothing describes this bundle — which is the finding,
@@ -411,8 +448,7 @@ def _section_change_log(project_dir: Path, prawduct_dir: Path, scope: str | None
     # case, and without the body it renders as "no ids cited", which is a false
     # clean on the one check nothing else in the pipeline owns.
     starts = sorted(e.line_number for e in entries)
-    all_lines = raw.splitlines()
-    lines = []
+    lines = [paired_by] if paired_by else []
     for entry in matched:
         after = [s for s in starts if s > entry.line_number]
         end = (after[0] - 1) if after else len(all_lines)
@@ -483,7 +519,10 @@ def cited_backlog_citations(
 
 
 def _section_backlog(
-    project_dir: Path, backlog_scope: str | None, citations: list[Citation]
+    project_dir: Path,
+    backlog_scope: str | None,
+    citations: list[Citation],
+    unscanned: Sequence[str] = (),
 ) -> Section:
     """Resolve every cited id. **This is R-2's only data source anywhere in the
     pipeline**, so its degradation must be loud: `review-protocol.md` assigns
@@ -495,8 +534,19 @@ def _section_backlog(
     here takes the plan one, which is how the plan scope reached
     `cachequery.resolve` and made every id report as needing a repo. The names
     differ now because the types cannot tell them apart.
+
+    **`unscanned` names the id-scan inputs that could not be read.** "No ids
+    cited" is an answer only over inputs that were actually scanned; over an
+    unread one it is the false clean this section exists to remove, so it
+    degrades, and a non-empty set says what it did not see.
     """
     ids = [c.id for c in citations]
+    if not citations and unscanned:
+        return Section("backlog", degraded=(
+            f"no backlog ids found, but {' and '.join(unscanned)} could not be "
+            "scanned, so ids cited there are unknown — R-2 is NOT answered; read "
+            "them by hand for closure claims"
+        ))
     if not citations:
         return Section("backlog", body=(
             "no backlog ids cited in the commits or the change-log entry — "
@@ -586,6 +636,11 @@ def _section_backlog(
             "backlog reconciliation unavailable — every lookup failed "
             f"({'; '.join(failures)}); R-1 and R-2 are NOT answered"
         ))
+    if unscanned:
+        lines.append(
+            f"NOT SCANNED: {' and '.join(unscanned)} — ids cited there are not "
+            "in this list; read them by hand for closure claims"
+        )
     if failures:
         # Partial is reported as partial. Reporting only what resolved would let
         # the reviewer read a short list as the whole set.
@@ -662,7 +717,14 @@ def assemble(project_dir: Path) -> tuple[list[Section], str | None]:
         _section_test_evidence(project_dir),
         _section_build_plan(reviewed),
     ]
-    change_log_section = _section_change_log(project_dir, prawduct_dir, scope)
+    change_log_section = _section_change_log(project_dir, prawduct_dir, scope, base)
+    bodies = _commit_bodies(project_dir, base)
+    unscanned = [
+        name for name, text in (
+            ("the commit messages", bodies),
+            ("the change-log entry", change_log_section.body),
+        ) if text is None
+    ]
     sections.append(change_log_section)
     sections.append(
         _section_backlog(
@@ -675,10 +737,8 @@ def assemble(project_dir: Path) -> tuple[list[Section], str | None]:
             ),
             # `_commit_bodies`, NOT `commits.body` — that section is `--oneline`,
             # and a citation in a commit's body is the ordinary case here.
-            cited_backlog_citations(
-                _commit_bodies(project_dir, base),
-                change_log_section.body or "",
-            ),
+            cited_backlog_citations(bodies or "", change_log_section.body or ""),
+            unscanned,
         )
     )
     sections.append(_section_default_branch(project_dir))

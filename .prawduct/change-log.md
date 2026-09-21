@@ -5,6 +5,36 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-21: The PR payload's backlog scan stops calling an unread input an answer
+
+<!-- prawduct: type=fix | scope=863-payload-backlog-scan -->
+
+**Closes #863.** `pr-review-payload`'s `backlog` section is R-2's only data source, and it scanned
+two inputs that each fell back to `""` when unreadable: the commit messages (`_commit_bodies`, on a
+failed `git log`) and the change-log entry (the `change_log` section's body, which is `None` whenever
+it degrades). The ordinary trigger was the second one — a branch no build plan claims has no scope,
+so the section degraded, the scan saw no entry text, and it printed *"no backlog ids cited … R-2 has
+nothing to check (this is an answer, not a failure)"*. Reproduced on #864's own branch, whose entry
+cited #672 and #845.
+
+**Two changes, one per failure.** With no scope, `_section_change_log` pairs the entry the branch
+ADDS against the base (`git diff --unified=0 base...HEAD`, matched by heading text so an uncommitted
+working-tree edit cannot shift line numbers); a branch adding no entry is an answer, and an unreadable
+diff still degrades. And `_section_backlog` takes the inputs it could not scan: an empty set over one
+degrades with *R-2 is NOT answered*, and a non-empty set carries a `NOT SCANNED:` line, so a short list
+never reads as the whole set. `_commit_bodies` returns `None` on failure rather than `""`.
+
+**`review-protocol.md`'s degraded-backlog rule is split to match**: a store it could not read still
+means NOTE and skip, but an input it could not scan means run R-2 by hand — a `backlog sync` cannot
+help there, and skipping would repeat the false clean one layer up.
+
+Guards: the tests in `TestAnUnscannedInputIsNeverAnAnswer`, red before the fix (the end-to-end one
+failing on #863's exact sentence); four independent mutants — dropping the unscanned list, pairing
+every entry instead of the added ones, removing the `NOT SCANNED:` line, restoring `""` on a failed
+read — each killed by a named test, the last one through `assemble()` rather than only at the helper. Develop opens `3.6.1-dev.1`.
+
+---
+
 ## 2026-09-21: Where the fleet's review rounds actually go — a committed instrument, not a scratchpad query
 
 <!-- prawduct: type=feat | scope=review-loop-economy -->

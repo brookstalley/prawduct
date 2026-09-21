@@ -10,11 +10,18 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
-## v3.6.1-dev
+## v3.6.1-dev.1
 
 **Rolling notes for the next release — nothing has shipped under this number yet.**
 Entries accumulate here as work lands on `develop`; the cut renames this heading to its
 release number.
+
+**`863-payload-backlog-scan`** — the PR reviewer's backlog check no longer reports a false clean
+on a branch no plan claims. The PR review payload finds the backlog ids a branch cites so the reviewer can check each claimed
+closure. On a docs or fix branch with no build plan, it could not pair the change-log entry, scanned
+nothing, and reported *"no backlog ids cited … this is an answer, not a failure"*. It now pairs the
+entry the branch adds, and an input it could not scan degrades the section instead of passing as
+empty — so the reviewer is told to check that input by hand rather than told there is nothing to check.
 
 **`release-v3.6.0`** — the v3.6.0 cut itself: `main` promoted, the tag and GitHub Release
 published in one call, and `develop` reopened here. Nothing in this scope changes plugin
