@@ -59,7 +59,10 @@ being UNAVAILABLE, and a branch that genuinely is on its first round still says 
 count different sets and returned indistinguishable verdicts, which would have left the control's
 own retirement question — *did it ever refuse a round that turned out to be needed?* — unanswerable
 from the record it appends for exactly that purpose. The refusal message names the bound too, since
-"this work bought N rounds" denotes the branch on one and the worktree on the other.
+"this work bought N rounds" denotes the branch on one and the worktree on the other. Reading it back
+is `prawduct-hook evidence list`, which renders the field as a `bound=` column on the guard-refusal
+row — the consumer-visible half, without which the retirement question stays unanswerable in
+practice however faithfully the fact records it.
 
 **What this does and does not buy a trunk repo.** The ceiling now reaches `chunk` and `final`
 dispatches. It does not reach `cumulative` there and never could: a cumulative interval is a commit
