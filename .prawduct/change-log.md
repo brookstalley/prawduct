@@ -5,6 +5,45 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-21: cost-of-commit stops pricing a Critic-covered tree as a round
+
+<!-- prawduct: type=fix | scope=866-cost-of-commit-covered -->
+
+**Closes #866.** `cost-of-commit` classified the pending paths by `is_judgeable_path` alone and never
+asked whether a review already covered the tree. Observed on `fix/845-pr-review-clock`: a chunk Critic
+reviewed the uncommitted tree with 0 blocking, `cost-of-commit` then said `costs-a-round — 8 of 13
+path(s)`, and after the commit `check-cumulative-critic` was satisfied with no new round. The false
+price is read at the fix/accept decision, where it pushes a builder to accept findings a fix would
+have closed for free.
+
+**The no-argument form now asks the gates' own composition.** `gates.commit_coverage` runs
+`coverage_verdict` over `HEAD^{tree}` → working tree. When that composes with no unresolved blocker and
+at least one review on the path, the verdict is `free` and names the covering review(s), and `--json`
+carries them as `covered_by`. Because a plain `git commit` records the index, the relaxation also
+requires the index to be untouched (equal to HEAD, the `git add -A && git commit` flow) or fully staged;
+a partially staged index commits a tree no review saw, and keeps the path price. It uses composition rather than the issue's proposed `head_tree` equality
+(#851's `tree_is_covered_by`), so a docs-only edit after the review still rides free and blockers
+settle exactly as the gate settles them. Blocked, uncovered, and unreadable all leave the path price
+standing.
+
+**Two surfaces deliberately keep the old answer.** The explicit-paths form is never relaxed: a path
+list may be a partial commit whose tree no review saw, and `/prawduct:pr` prices a post-review delta
+with exactly that form. `commit_cost` itself is unchanged, because the Critic close's cost lead reads
+it right after writing a review of this very tree, and #851's arm there prices the *next* edit.
+
+**Residual:** coverage that reaches the working tree without passing through HEAD's tree (a cumulative
+spanning merge-base → working tree) still reads as a round. It errs toward the conservative price.
+One narrow optimistic case remains: from an untouched index, `git commit -a` commits tracked files
+only, so a reviewed untracked file is left out while the verdict said `free`. The message says to
+commit the tree verbatim, which is `git add -A`.
+
+Guards: `TestCoveredTree` in `tests/test_cost_of_commit.py`. Four mutants were each killed by a named
+test: dropping the verdict flip, relaxing the explicit-paths form, removing the index-staging check
+(partial staging, and a staged change reverted in the working tree), and skipping the store precheck
+(a newer plugin's fact must leave the path price, never read as free).
+
+---
+
 ## 2026-09-21: The PR payload's backlog scan stops calling an unread input an answer
 
 <!-- prawduct: type=fix | scope=863-payload-backlog-scan -->

@@ -296,6 +296,150 @@ class TestWorkingTree:
 # ---------------------------------------------------------------------------
 
 
+class TestCoveredTree:
+    """A tree existing review evidence already covers commits for free.
+
+    Observed on a real branch: a chunk Critic reviewed the uncommitted tree,
+    `cost-of-commit` then said "costs-a-round", and after the commit the
+    cumulative gate was satisfied with no new review. Path classification
+    cannot see a review, so it must ask the coverage composition too.
+    """
+
+    @staticmethod
+    def _reviewed_repo(tmp_path: Path, **overrides) -> "tuple[Path, str]":
+        from lib import evidence
+
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        (repo / "src").mkdir()
+        (repo / "src" / "app.py").write_text("x = 1\n")
+        capture = evidence.capture_tree(repo)
+        assert capture["status"] == "ok", capture
+        body = {
+            "base_tree": capture["head_tree"],
+            "head_tree": capture["tree"],
+            "files_changed": ["src/app.py"],
+            "files_reviewed": ["src/app.py"],
+            "findings": [],
+        }
+        body.update(overrides)
+        fact_id = "rev-test-covered"
+        appended = evidence.append_fact(repo, "review", fact_id, body)
+        assert appended["status"] == "appended", appended
+        return repo, fact_id
+
+    def test_a_reviewed_tree_commits_free_and_names_the_review(self, tmp_path: Path) -> None:
+        repo, fact_id = self._reviewed_repo(tmp_path)
+        result = _run(repo)
+        assert result.stdout.splitlines()[0] == "free", result.stdout
+        assert fact_id in result.stdout
+        payload = json.loads(_run(repo, "--json").stdout)
+        assert payload["verdict"] == "free"
+        assert payload["covered_by"] == [fact_id]
+
+    def test_an_edit_after_the_review_costs_a_round_again(self, tmp_path: Path) -> None:
+        repo, _ = self._reviewed_repo(tmp_path)
+        (repo / "src" / "app.py").write_text("x = 2\n")
+        payload = json.loads(_run(repo, "--json").stdout)
+        assert payload["verdict"] == "costs-a-round"
+        assert payload["covered_by"] == []
+
+    def test_a_doc_edit_after_the_review_rides_a_free_edge(self, tmp_path: Path) -> None:
+        repo, fact_id = self._reviewed_repo(tmp_path)
+        (repo / "README.md").write_text("edited after the review\n")
+        payload = json.loads(_run(repo, "--json").stdout)
+        assert payload["verdict"] == "free"
+        assert payload["covered_by"] == [fact_id]
+
+    def test_an_unresolved_blocker_leaves_the_round_owed(self, tmp_path: Path) -> None:
+        repo, _ = self._reviewed_repo(
+            tmp_path,
+            findings=[{"fid": "F1", "severity": "BLOCKING", "title": "broken"}],
+        )
+        payload = json.loads(_run(repo, "--json").stdout)
+        assert payload["verdict"] == "costs-a-round"
+        assert payload["covered_by"] == []
+
+    def test_a_review_that_did_not_read_the_file_covers_nothing(self, tmp_path: Path) -> None:
+        repo, _ = self._reviewed_repo(tmp_path, files_reviewed=[])
+        payload = json.loads(_run(repo, "--json").stdout)
+        assert payload["verdict"] == "costs-a-round"
+
+    def test_explicit_paths_are_never_relaxed_by_coverage(self, tmp_path: Path) -> None:
+        # A path list may be a partial commit, whose tree no review saw — and
+        # `/prawduct:pr` prices a post-review delta with exactly this form.
+        repo, _ = self._reviewed_repo(tmp_path)
+        payload = json.loads(_run(repo, "--json", "src/app.py").stdout)
+        assert payload["verdict"] == "costs-a-round"
+        assert payload["covered_by"] == []
+
+    def test_a_fully_staged_tree_is_still_covered(self, tmp_path: Path) -> None:
+        repo, fact_id = self._reviewed_repo(tmp_path)
+        _git(repo, "add", "-A")
+        payload = json.loads(_run(repo, "--json").stdout)
+        assert payload["verdict"] == "free"
+        assert payload["covered_by"] == [fact_id]
+
+    def test_a_partially_staged_index_is_not_covered(self, tmp_path: Path) -> None:
+        # `git commit` records the index. With only part of the reviewed tree
+        # staged, the commit records a tree no review saw.
+        repo, _ = self._reviewed_repo(tmp_path)
+        (repo / "src" / "b.py").write_text("y = 1\n")
+        from lib import evidence
+
+        capture = evidence.capture_tree(repo)
+        evidence.append_fact(repo, "review", "rev-test-both", {
+            "base_tree": capture["head_tree"],
+            "head_tree": capture["tree"],
+            "files_changed": ["src/app.py", "src/b.py"],
+            "files_reviewed": ["src/app.py", "src/b.py"],
+            "findings": [],
+        })
+        assert json.loads(_run(repo, "--json").stdout)["verdict"] == "free"
+        _git(repo, "add", "src/app.py")
+        payload = json.loads(_run(repo, "--json").stdout)
+        assert payload["verdict"] == "costs-a-round"
+        assert payload["covered_by"] == []
+
+    def test_a_staged_change_reverted_in_the_tree_is_not_covered(self, tmp_path: Path) -> None:
+        # The captured tree IS HEAD's, so the span composes trivially with no
+        # review on it — yet `git commit` would commit the staged, unreviewed
+        # index.
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        (repo / "app.py").write_text("x = 1\n")
+        _git(repo, "add", "app.py")
+        _git(repo, "commit", "-m", "app", "--quiet")
+        (repo / "app.py").write_text("x = 2\n")
+        _git(repo, "add", "app.py")
+        (repo / "app.py").write_text("x = 1\n")
+        payload = json.loads(_run(repo, "--json").stdout)
+        assert payload["judgeable"] == ["app.py"]
+        assert payload["verdict"] == "costs-a-round"
+        assert payload["covered_by"] == []
+
+    def test_an_unreadable_store_leaves_the_path_price(self, tmp_path: Path) -> None:
+        # A fact from a newer plugin makes the store unusable to this reader;
+        # the coverage answer is then missing, and missing never reads as free.
+        repo, _ = self._reviewed_repo(tmp_path)
+        from lib import evidence
+
+        store = evidence.store_path(repo)
+        with store.open("a") as fh:
+            fh.write(json.dumps({"schema": 999, "kind": "review", "id": "rev-future",
+                                 "ts": "2026-09-21T00:00:00Z", "body": {}}) + "\n")
+        payload = json.loads(_run(repo, "--json").stdout)
+        assert payload["verdict"] == "costs-a-round"
+        assert payload["covered_by"] == []
+
+    def test_commit_cost_itself_still_prices_by_path(self, tmp_path: Path) -> None:
+        # The Critic close's cost lead reads `commit_cost` right after writing
+        # a review of this very tree; coverage must not leak into it, or that
+        # lead would call the NEXT edit free.
+        repo, _ = self._reviewed_repo(tmp_path)
+        assert commit_cost(repo)["judgeable"] == ["src/app.py"]
+
+
 class TestRoundPrice:
     def test_a_thin_sample_is_unavailable_not_a_median(self, tmp_path: Path) -> None:
         """Two rounds do not establish a repo's price. Reporting their median

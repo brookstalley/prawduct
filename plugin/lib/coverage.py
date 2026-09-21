@@ -1394,6 +1394,12 @@ def cost_of_commit(project_dir: Path, argv: "list[str]") -> int:
     verdict token leads on stdout (the agent-facing channel) so a caller can
     branch on one word; the reasoning follows for a reader.
 
+    Judgeable paths are priced as a round unless, in the no-argument form,
+    existing review evidence already covers the working tree
+    (:func:`gates.commit_coverage`); the verdict is then ``free`` and names the
+    covering review. Pricing a Critic-covered tree as a round pushed builders
+    to accept findings they could have fixed for nothing.
+
     Read-only and advisory — it gates nothing, and it exits 0 whether the
     answer is "free" or "costs a round", because both are answers. Exit 1 is
     reserved for bad arguments, and the degraded git path reports ``unknown``
@@ -1439,8 +1445,27 @@ def cost_of_commit(project_dir: Path, argv: "list[str]") -> int:
     else:
         verdict = "free"
 
+    # Judgeable paths cost a round unless a review already covers the tree
+    # they would commit — then the gate composes the verbatim commit with no
+    # new pass. Only the no-argument form can ask: an explicit path list may
+    # be a partial commit, whose tree no review saw, and `/prawduct:pr`
+    # prices a delta with exactly that form. Kept out of `commit_cost`, whose
+    # other caller (the Critic close's cost lead) prices the NEXT edit after
+    # a review and must not read the review it just wrote as making that free.
+    covered_by: list[str] = []
+    if verdict == "costs-a-round" and not given_paths:
+        from . import gates  # noqa: PLC0415 — lazy: gates imports this module at load
+
+        coverage_answer = gates.commit_coverage(project_dir)
+        if coverage_answer["status"] == "covered":
+            covered_by = coverage_answer["by"]
+            verdict = "free"
+
     if as_json:
-        print(json.dumps({"verdict": verdict, **cost, "round_price": price}, indent=2))
+        print(json.dumps(
+            {"verdict": verdict, **cost, "covered_by": covered_by, "round_price": price},
+            indent=2,
+        ))
         return 0
 
     print(verdict)
@@ -1468,6 +1493,14 @@ def cost_of_commit(project_dir: Path, argv: "list[str]") -> int:
         return 0
 
     n_judgeable, n_free, n_total = len(cost["judgeable"]), len(cost["free"]), len(cost["paths"])
+    if covered_by:
+        print(
+            f"{n_judgeable} of {n_total} path(s) are judgeable, but review "
+            f"{', '.join(covered_by)} already covers this working tree — committing "
+            f"it verbatim buys no review round. The next edit after that commit, "
+            f"if judgeable, opens a new delta that does."
+        )
+        return 0
     if cost["judgeable"]:
         print(
             f"{n_judgeable} of {n_total} path(s) move review coverage — committing them "

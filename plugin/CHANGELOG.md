@@ -16,6 +16,11 @@ release process keeps the two in sync (one headline per shipped release).
 Entries accumulate here as work lands on `develop`; the cut renames this heading to its
 release number.
 
+**`866-cost-of-commit-covered`** — `prawduct-hook cost-of-commit` no longer says a tree a Critic
+review already covers "costs a round". With no path arguments it now checks review coverage the way
+the gates do, and answers `free`, naming the review, when committing the working tree verbatim would
+leave no gap. Explicit path lists are priced by path, as before.
+
 **`863-payload-backlog-scan`** — the PR reviewer's backlog check no longer reports a false clean
 on a branch no plan claims. The PR review payload finds the backlog ids a branch cites so the reviewer can check each claimed
 closure. On a docs or fix branch with no build plan, it could not pair the change-log entry, scanned
