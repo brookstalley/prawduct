@@ -104,12 +104,15 @@ Together those bound what the control can ever touch at **118h of 294h (40%)**, 
 scope's sixth full round. That 40% is an **upper bound, not a saving**: it counts every hour in
 scopes that ever hit the ceiling, including the rounds spent before it would have fired.
 
-One more bound, in the same direction and worth stating because widening the corpus (hazard 10)
-made it live: the per-scope key is `(ledger, scope)` and does **not** group worktrees the way the
-product count does. A scope worked in both a checkout and its worktree splits into two cells, so
-neither reaches the ceiling when their sum would, and `scopes at the ceiling` is understated. That
-pushes the reach figure down, not up, so it does not threaten the conclusion — but a later reading
-that groups them should expect the 12% to rise.
+One more bound, worth stating because widening the corpus (hazard 10) made it live: the per-scope
+key is `(directory name, scope)` — the ledger's grandparent directory, not its path and not the
+clone — so it does **not** group worktrees the way the product count does. That cuts both ways. A
+scope worked in both a checkout and its worktree **splits** into two cells, so neither reaches the
+ceiling when their sum would, and `scopes at the ceiling` is understated; and two ledgers whose
+directories happen to share a name would **merge**, overstating a scope's rounds. On this machine
+the split is the live one and the merge is hypothetical, so the net is downward and the reach
+figure is not threatened — but a later reading that keys on the clone should expect the 12% to
+rise, and should not assume the key is unique.
 
 ### The largest addressable block is repeat cumulatives
 
