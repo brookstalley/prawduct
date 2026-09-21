@@ -5,6 +5,45 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-21: Where the fleet's review rounds actually go — a committed instrument, not a scratchpad query
+
+<!-- prawduct: type=docs | scope=review-loop-economy -->
+
+**The consumer-overhead program's VR-share target had no instrument behind it.** Its 2026-09-16
+triage set a baseline with a query that lived in a scratchpad and is gone, so its figures could not
+be re-derived — the failure `core.md` names as *a spike that discards its code leaves its numbers
+unfalsifiable*. `tools/measure-review-loop-economy.py` is that query, committed and tested, and
+`documentation/consumer-build-metrics.md` gains the reading it produces.
+
+**The tool reads the ceiling and the counted modes FROM the plugin that enforces them**
+(`core.REVIEW_ROUND_BUDGET_DEFAULT`, `critic_consolidate.FULL_ROUND_MODES`), so the section cannot
+quietly outlive the code it describes. Cite the command, never the digits.
+
+**The finding: the v3.5.0 round budget is aimed elsewhere, by design.** `verify-resolutions` is 66%
+of 2,225 Critic reviews and is not a mode the ceiling counts; the ceiling is 6 full rounds per scope
+and the 90th percentile of full rounds per scope is also 6, so only 31 of 245 scopes (13%) ever
+reach it; and 10% of reviews carry no scope, for which `_round_budget_verdict` returns `unavailable`
+and never refuses. Together those bound what the control can ever touch at 118h of 291h — an **upper
+bound, not a saving**, since it counts the rounds spent before the ceiling would have fired. The
+largest addressable block is elsewhere: **319 of 528 cumulative runs (60%) are a repeat cumulative on
+a scope already reviewed cumulatively**, which is WS5/#672's target and which that program ranks
+fifth.
+
+**Two hazards were added because this reading tripped on both.** Hazard 8: pooling the scope-less
+rows under one key per repo invents one enormous scope and overstates the ceiling's reach — the
+first pass reported 14% and 64% where the truth is 13% and 60%, and `TestAScopelessRowIsNeverAScope`
+pins the exclusion. Hazard 9: the marker paragraph asserted that every consumer marker was a `-dev`
+snapshot spanning `3.3.4` to `3.5.1-dev.2`, which is the printed table with its first and last rows
+removed; three of the twelve are released versions, the oldest from 2026-07-16. Both times the
+conclusion survived the correction and the warrant did not — the worse direction, because the next
+reader re-derives conclusions and copies warrants.
+
+**Durations remain self-reported** (hazard 2): 22 of 2,225 rows carry a measured dispatch interval.
+Lean on the run counts, which are one row per real dispatch. #845 tracks why the measured clock is
+lost on the ordinary path.
+
+---
+
 ## 2026-09-20: The review round budget fires on a trunk repo — bounded by worktree, not by lineage
 
 <!-- prawduct: type=fix | scope=review-budget-trunk-shape -->

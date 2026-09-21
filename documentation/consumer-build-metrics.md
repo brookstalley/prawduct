@@ -114,14 +114,15 @@ tools/measure-review-loop-economy.py        # the MARKERS table
 Read with hazard 4 in view: the marker holds the version a repo saw **most recently**, and its
 mtime dates that transition. It is not a history, so it cannot tell you what a repo ran before.
 
-As of 2026-09-21, no consumer's current marker is a released version number — every one is a
-`-dev` snapshot, spanning `3.3.4` to `3.5.1-dev.2`, and v3.6.0 (tagged 2026-09-20) appears on
-none of them. This follows from the install shape rather than from anyone's neglect: the
-marketplace is a `directory` source pointing at this repo's checkout with `autoUpdate` on, and a
-consumer snapshots whatever version string that checkout carries at the moment it is next opened.
-Development versions are therefore what the fleet picks up, and a repo not opened for a month
-stays where it was. Any claim of the form "consumers now get X" is a claim about when they were
-last opened.
+As of 2026-09-21 the twelve markers sit on nine different plugin versions, and v3.6.0 (tagged
+2026-09-20) is on none of them. Nine are `-dev` snapshots spanning `3.3.5-dev` to `3.6.1-dev`; the
+other three are released versions — `scriob` on `3.0.4`, and two worktrees on `3.3.4`, the oldest
+dating to 2026-07-16. Both halves follow from the install shape rather than from anyone's neglect:
+the marketplace is a `directory` source pointing at this repo's checkout with `autoUpdate` on, so a
+consumer snapshots whatever version string that checkout happens to carry at the moment it is next
+opened — a development version most of the time, a release only if it opened on one. A repo not
+opened for two months stays where it was. Any claim of the form "consumers now get X" is a claim
+about when they were last opened.
 
 ---
 
@@ -275,6 +276,7 @@ Numbered by how badly each one burns you. Each of these produced a wrong answer 
 6. **The review-driven fix classifier is a wide heuristic.** Matching the full commit body versus its first 600 characters moves the product-bug rate by up to 60%. The shape holds either way; the level is a band.
 7. **Windows are confounded with what the consumer was building**, and a consumer pinned to `ref: main` with `autoUpdate` picks up a release at its next session, so each boundary is fuzzy by up to one session.
 8. **A review with no `scope` is not a scope.** Pooling the ~10% of scope-less rows under one key per repo invents a single enormous scope, pushes it past the round ceiling, and overstates the ceiling's reach. The first pass of the 2026-09-21 reading did exactly that and reported 14% of scopes at the ceiling and 64% repeat cumulatives; excluding them — which is what `_round_budget_verdict` itself does, returning `unavailable` — gives 13% and 60%. `measure-review-loop-economy.py` counts them separately and `TestAScopelessRowIsNeverAScope` pins it.
+9. **A sentence written off a printed table describes the rows you looked at.** The 2026-09-21 reading first wrote that every marker was a `-dev` snapshot spanning `3.3.4` to `3.5.1-dev.2` — which is the MARKERS table with its first and last rows cut off. Three of the twelve are released versions (`3.0.4`, and `3.3.4` twice), the oldest from 2026-07-16. The conclusion survived the correction and the warrant did not, which is the worse direction: conclusions get re-derived by the next reader, warrants get copied. Partition with `--json` rather than reading a sorted list, and count the set before writing "every".
 
 ---
 
