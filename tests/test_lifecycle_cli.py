@@ -21,9 +21,12 @@ dispatch table and the argument scan are only exercised by actually invoking it.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 _HOOK_PATH = Path(__file__).resolve().parent.parent / "plugin" / "bin" / "prawduct-hook"
 
@@ -232,6 +235,71 @@ class TestPlanBackfillCommand:
         archived = project / ".prawduct" / "artifacts" / "archive" / "build-plan-demo.md"
         assert archived.is_file()
         assert "archived: 2026-08-10" in archived.read_text()
+
+    def test_apply_names_the_staging_remedy(self, tmp_path: Path) -> None:
+        """The move is a write plus an unlink and this command stages neither.
+
+        A plan in the index and gone from disk fails any test that enumerates
+        tracked paths and opens them, which went red at two release cuts. The
+        operator learns that here, from the run that created the state, or they
+        learn it from a red suite.
+        """
+        project = _repo(tmp_path, plan=PLAN_COMPLETE)
+        proc = _run(project, "plan-backfill", "--apply", "--date", "2026-08-10")
+
+        assert proc.returncode == 0, proc.stderr
+        # The paths that MOVED, each anchored at the repo root — not the
+        # directory holding them. A release cut leaves in-flight artifacts in
+        # that same directory, so `-A <dir>` would stage edits the operator
+        # never chose, and a relative pathspec resolves against whatever CWD
+        # this line is pasted into.
+        assert (
+            "git add -A -- :/.prawduct/artifacts/build-plan-demo.md "
+            ":/.prawduct/artifacts/archive/build-plan-demo.md" in proc.stdout
+        ), proc.stdout
+        assert "git add -A .prawduct/artifacts" not in proc.stdout, (
+            "the directory form stages what the operator did not approve"
+        )
+
+    def test_a_dry_run_does_not_name_it(self, tmp_path: Path) -> None:
+        """The control. A preview moves nothing, so there is nothing to stage —
+        advice given where it does not apply is how advice stops being read."""
+        proc = _run(_repo(tmp_path, plan=PLAN_COMPLETE), "plan-backfill")
+
+        assert proc.returncode == 0, proc.stderr
+        assert "would archive" in proc.stdout, "the premise: this run had plans to list"
+        assert "git add" not in proc.stdout
+
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root writes into a mode-500 dir")
+    def test_an_apply_that_moved_nothing_does_not_name_it_either(self, tmp_path: Path) -> None:
+        """The guard's precision, not merely its existence.
+
+        `--apply` is not the predicate and neither is `shipped` — what MOVED is.
+        This needs a run where those two DISAGREE, which the blocked-plan repo
+        cannot supply (a blocked plan never reaches `shipped`): a plan that
+        qualifies, is attempted, and fails at write time. An unwritable
+        `archive/` produces exactly that, and it is the only fixture here under
+        which a guard keyed on `--apply` and one keyed on what moved give
+        different answers.
+        """
+        project = _repo(tmp_path, plan=PLAN_COMPLETE)
+        archive = project / ".prawduct" / "artifacts" / "archive"
+        archive.mkdir(parents=True, exist_ok=True)
+        archive.chmod(0o500)
+        try:
+            proc = _run(project, "plan-backfill", "--apply", "--date", "2026-08-10")
+        finally:
+            archive.chmod(0o700)  # or tmp_path teardown cannot remove it
+
+        assert "would archive" not in proc.stdout, "the premise: this was an --apply"
+        assert "archived 1 finished plan(s)" in proc.stdout, (
+            "the premise that makes this discriminate: the plan DID qualify, so "
+            "`shipped` is non-empty while nothing moved"
+        )
+        assert (project / ".prawduct" / "artifacts" / "build-plan-demo.md").is_file(), (
+            "nothing moved — the live plan is still live"
+        )
+        assert "git add" not in proc.stdout
 
     def test_date_equals_form_is_accepted(self, tmp_path: Path) -> None:
         project = _repo(tmp_path, plan=PLAN_COMPLETE)

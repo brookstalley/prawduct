@@ -25,8 +25,8 @@ commits only by PR, and a dedicated bookkeeping-only PR is ceremony, not governa
 release tag, archive, and Status tick rides IN this branch, atomic with the merge (an abandoned PR
 then abandons its bookkeeping too — state can't drift)."* A change-log entry written *after*
 `gh pr merge` succeeds is exactly the post-merge commit this rule forbids — there is no PR left to
-carry it, and `develop`/`main` take commits only by PR under this repo's own gitflow (Step 1d,
-Merge Flow step 9).
+carry it, and `develop`/`main` take commits only by PR under this repo's own gitflow (Step 1d, and
+Merge Flow's *"Confirm the bookkeeping merged WITH the PR"* step).
 
 The issue's phrasing ("derive the entry at merge... from the PR body... the merge commit... the
 closed issues") is describing which **data** becomes available late, not literally a post-merge
@@ -392,7 +392,9 @@ def cmd_derive_change_log_entry(project_dir: Path, argv: list[str]) -> int:
 12. `derive-change-log-entry --title T --body-file F` on a fixture repo with a resolvable scope →
     exit 0, `derived: ... scope=<x>`, log file grew by one entry.
 13. Same, but the fixture branch's commits contain `Closes #42` → the written entry's body ends with
-    `**Closes:** #42`.
+    `**Closes:** #42`. That derived line records intent and closes nothing: GitHub fires a closing
+    keyword only for a PR merged into the repository's **default** branch, so on this repo's
+    gitflow base it is inert and the real close stays with the backend-aware call (Decision 5).
 14. `derive-change-log-entry` with no claiming plan → exit 1, `derive-refused:` naming the reason.
 15. Missing `--title` or `--body-file` → exit 2 (usage error), matching this repo's documented
     exit-code scheme.
@@ -426,8 +428,10 @@ def cmd_derive_change_log_entry(project_dir: Path, argv: list[str]) -> int:
 - [ ] The pre-merge presence gate and derivation never disagree on the same PR, per CLG8 — Decision
       2's adoption gate plus Decision 3's reuse of one classifier at two points, pinned by case 9.
 - [ ] Issue links route through the existing backend-aware close call, never `Closes #N`, per CLG5 —
-      Decision 5's `**Closes:**` prose is documentation of intent only; the actual close is the
-      pre-existing Step 1d / Merge Flow step 6 call, unmodified.
+      Decision 5's `**Closes:**` prose is documentation of intent only, because GitHub fires a
+      closing keyword only for a PR merged into the repository's **default** branch and this base
+      is not it; the actual close is the pre-existing Step 1d / Merge Flow *"Close the backlog
+      items this PR resolves"* call, unmodified.
 
 ## Evidence / references
 
