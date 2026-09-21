@@ -173,6 +173,8 @@ def _append_event(
     scope: str | None = None,
     chunk: str | None = None,
     actor_model: str | None = None,
+    review_tree: str | None = None,
+    review_written_at: str | None = None,
 ) -> Path:
     """Build the envelope and append ONE line. The only writer.
 
@@ -192,10 +194,31 @@ def _append_event(
     the marker is checked against is the identical value the envelope records — two
     ``rev-parse`` calls could in principle straddle a commit and disagree, and the
     disagreement would read as an abandoned run.
+
+    ``review_tree`` and ``review_written_at`` come from a PR append. The first is
+    the tree the reviewer read, which the mark is checked against instead of
+    ``HEAD``. The second is when its evidence was written, which is where the
+    interval ends. An evidence file older than the mark belongs to an earlier
+    review, so the mark is refused rather than attached to it.
     """
     base, _reason = _resolve_base(project_dir)
     head = review_dispatch.head_sha(project_dir)
-    dispatched_at, dispatch_reason = review_dispatch.consume(prawduct_dir, event_kind, head)
+    dispatched_at, dispatch_reason = review_dispatch.consume(
+        prawduct_dir, event_kind, review_tree if review_tree is not None else head
+    )
+    if dispatched_at is not None and review_written_at is not None:
+        if review_written_at < dispatched_at:
+            dispatch_reason = (
+                f"review evidence was written at {review_written_at}, before the "
+                f"dispatch mark at {dispatched_at}, so it is an earlier review's "
+                "file; recorded as not measured"
+            )
+            dispatched_at = None
+        else:
+            dispatch_reason = (
+                f"measured from a dispatch mark at {dispatched_at} to the review "
+                f"evidence written at {review_written_at}"
+            )
     event = {
         "schema_version": LEDGER_SCHEMA_VERSION,
         "event": event_kind,
@@ -216,6 +239,8 @@ def _append_event(
     # consumer would then have to special-case to avoid averaging into a real one.
     if dispatched_at is not None:
         event["dispatched_at"] = dispatched_at
+        if review_written_at is not None:
+            event["review_written_at"] = review_written_at
     path = ledger_path(prawduct_dir)
     prawduct_dir.mkdir(parents=True, exist_ok=True)
     line = json.dumps(event) + "\n"
@@ -357,6 +382,20 @@ def ledger_append(project_dir: Path, argv: list[str]) -> int:
     if scope is None:
         scope = _scope_from_plan(prawduct_dir)
 
+    review_tree = None
+    review_written_at = None
+    if event_kind == "review.pr":
+        # The PR mark is checked against the tree the reviewer read, not HEAD.
+        # The caller fixes findings before appending, so HEAD has usually moved.
+        # A missing `commit_reviewed` falls back to HEAD, as before. One that
+        # names no commit here cannot be checked, so the mark is refused.
+        reviewed = record.get("commit_reviewed")
+        if isinstance(reviewed, str) and reviewed.strip():
+            review_tree = review_dispatch.resolve_commit(project_dir, reviewed)
+            if review_tree is None:
+                review_tree = review_dispatch.UNRESOLVED_TREE
+        review_written_at = review_dispatch.file_written_at(findings_path)
+
     path, dispatch_reason = _append_event(
         project_dir,
         prawduct_dir,
@@ -367,6 +406,8 @@ def ledger_append(project_dir: Path, argv: list[str]) -> int:
         scope=scope,
         chunk=chunk,
         actor_model=actor_model,
+        review_tree=review_tree,
+        review_written_at=review_written_at,
     )
     print(
         f"appended: {event_kind} -> {path} "

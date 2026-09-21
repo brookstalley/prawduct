@@ -188,6 +188,15 @@ clock — and a performance target stated against an estimate is a target stated
   at, and consumption requires that same `HEAD` — a dispatch made against a different tree is not
   this review's dispatch. Same question the evidence store asks, and unlike an age threshold it
   invents no number. Consumers carry their own plausibility bound besides.
+  `[DECISION: 2026-09-21, #845, owner-approved build: for a `review.pr` the tree the mark is checked
+  against is the reviewer's own `commit_reviewed`, not `HEAD` at append time, and the interval ends
+  at the evidence file's mtime, written as the optional envelope key `review_written_at` (present
+  only beside a kept `dispatched_at`). An evidence file older than the mark is refused by name |
+  the caller fixes a PR review's findings before `ledger-append`, so HEAD had moved on every review
+  that found something and the clock discarded exactly those rows. That also biased the measured
+  population toward clean reviews. Still a tree question, and it still invents no number. Relaxing
+  the check was rejected, as #845 argues | user can veto/override]` Authority for this sits outside
+  this artifact, in `build-plan-pr-review-clock.md` and #845.
 - **Each consuming event kind owns its OWN marker; no append can reach another kind's.** The
   Critic and the PR reviewer run concurrently by deliberate arrangement
   (`nonfunctional-requirements.md`: the two boundary reviews run in parallel, never sequentially),

@@ -5,6 +5,54 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-21: The PR review clock survives its findings being fixed
+
+<!-- prawduct: type=fix | scope=pr-review-clock -->
+
+**Closes #845.** `/prawduct:pr` marks the PR reviewer's dispatch (Step 3) and appends the
+`review.pr` ledger event later (Step 4). The caller fixes the review's findings in between, so
+`ledger-append` compared the mark against a HEAD that had moved. It refused the mark as *"for a
+different tree"* and fell back to the reviewer's own estimate. So every PR review that found
+something lost its clock, and the measured population leaned toward clean reviews. #845's third
+reproduction put the cost at a real 228s recorded as a self-reported 300s.
+
+**The mark is now checked against the tree the reviewer read, and the interval ends when the
+reviewer wrote its evidence.** For `review.pr`, `ledger-append` resolves the evidence's
+`commit_reviewed` (an abbreviated sha resolves; one naming no commit is refused by name) and checks
+the mark against that instead of HEAD. It also records the evidence file's mtime as the new
+optional envelope key `review_written_at`. The mtime is used because the reviewer writes the
+`timestamp` field itself, which would put a model back into a code-read clock. Evidence older than
+the mark is an earlier review's file and is refused by name. `review.critic` is unchanged: its
+append is the end of its review. The three readers (`review-stats`, `tools/pr-review-yield.py`,
+`tools/measure-consumer-overhead.py`) now go through one helper,
+`review_dispatch.event_interval_seconds`, which ends the interval at `review_written_at` when it is
+present and at `ts` otherwise, so older rows read exactly as before. The tree check was not relaxed:
+a mark from a tree other than the one reviewed is still refused. Recorded as a `[DECISION]` beneath
+`data-model.md`'s staleness clause.
+
+**`tools/measure-review-window.py` reads the window v3.6.1 is waiting on**, written before its
+data. It puts every Critic review fact since `--since` in a cohort by the plugin version that
+wrote it (`actor.plugin` on the fact), split at a released `--cut` (default 3.6.0). The cut is a
+release and not a date because consumers run the develop tip, the plugin cache is keyed by version
+string, and #831/#833 landed inside `3.5.1-dev.2`, so a `-dev` string does not identify the code
+that ran. Empty rates count only facts that record `observations`, clocks are joined from the
+ledger by `fact_id`, and every rate and clock median prints its `n` and is marked THIN below
+`--min-cell`. On
+2026-09-21 the post-3.6.0 cohort held 13 facts from 2 products. Re-run the script rather than cite
+that figure.
+
+Guards: `TestPrClockSurvivesFixingItsFindings`, and a reader-agreement case in
+`test_dispatch_interval_one_home.py`. Six independent mutants were each killed by a named test:
+anchoring back on HEAD, ending at `ts`, dropping the evidence-predates-mark check, dropping the
+unresolvable-sha refusal, text-matching instead of resolving, and not writing the key. For the
+script, `tests/test_measure_review_window.py`: seven mutants killed (pre-release order, numeric
+pre-release parts, unknown versions counted as before, unrecorded facts pooled into empty rates,
+the THIN boundary, and both ends of the clock join). Five existing `test_governance_ledger.py`
+fixtures now write the PR evidence after the dispatch mark, as real use does. The new
+older-than-the-mark refusal made the old order pass only when both landed in the same second.
+
+---
+
 ## 2026-09-21: The PR payload's backlog scan stops calling an unread input an answer
 
 <!-- prawduct: type=fix | scope=863-payload-backlog-scan -->

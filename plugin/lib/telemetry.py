@@ -228,14 +228,14 @@ def _read_events(
 def _measured_duration(event: dict) -> "float | None":
     """The interval this event's dispatch mark attests, or ``None``.
 
-    The predicate itself lives in :func:`lib.review_dispatch.measured_interval_seconds`
+    The predicate itself lives in :func:`lib.review_dispatch.event_interval_seconds`
     — one home, shared with the two `tools/` readers, because all three grade the
     same field for the same comparison and a per-reader copy diverges on the bound
     that makes it safe.
     """
-    from .review_dispatch import measured_interval_seconds  # noqa: PLC0415 — lazy, as the module's other imports are
+    from .review_dispatch import event_interval_seconds  # noqa: PLC0415 — lazy, as the module's other imports are
 
-    return measured_interval_seconds(event.get("dispatched_at"), event.get("ts"))
+    return event_interval_seconds(event)
 
 
 def _extract_row(event: dict) -> dict:
