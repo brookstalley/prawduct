@@ -82,4 +82,4 @@ holds; `/prawduct:critic`.
 ## Status
 
 - [x] Chunk 1: PR clock anchors on the reviewed tree and the evidence write
-- [ ] Chunk 2: measurement-window readout
+- [x] Chunk 2: measurement-window readout

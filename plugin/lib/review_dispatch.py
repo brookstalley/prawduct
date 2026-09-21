@@ -39,9 +39,8 @@ the same question the evidence store asks — facts record trees — and unlike 
 age threshold it invents no number. For a ``review.pr`` the tree it is checked
 against is the one the reviewer READ (its evidence's ``commit_reviewed``), not
 ``HEAD`` at append time. The caller fixes the review's findings before appending,
-so ``HEAD`` has usually moved by then, and a check against it threw away the
-measurement of every PR review that found something. The tree moving is not the
-same thing as this being a different review. The residual it does not cover is a
+so ``HEAD`` has usually moved by then. The tree moving is not the same thing as
+this being a different review. The residual it does not cover is a
 re-dispatch at the *same* tree with no fresh mark, which inflates the interval;
 ``/prawduct:pr`` marks on every dispatch, and :func:`measured_interval_seconds`
 carries a plausibility bound for what gets through anyway. That bound lives HERE,

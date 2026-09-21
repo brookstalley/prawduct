@@ -1333,10 +1333,12 @@ class TestCriticDispatchClock:
         _init_repo(repo)
         _commit_file(repo, "app.py", "print(1)\n", "init")
         _write_findings(repo)
-        _write_pr_evidence(repo)
 
         _run_hook(repo, "pr-review-dispatch", "--begin")
         self._mark_critic(repo)
+        # The PR reviewer writes its evidence after it is spawned; an evidence
+        # file older than the mark is an earlier review's and is refused.
+        _write_pr_evidence(repo)
 
         critic = self._critic_append(repo)
         assert critic.returncode == 0, critic.stderr

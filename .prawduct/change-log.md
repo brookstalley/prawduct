@@ -30,10 +30,26 @@ present and at `ts` otherwise, so older rows read exactly as before. The tree ch
 a mark from a tree other than the one reviewed is still refused. Recorded as a `[DECISION]` beneath
 `data-model.md`'s staleness clause.
 
+**`tools/measure-review-window.py` reads the window v3.6.1 is waiting on**, written before its
+data. It puts every Critic review fact since `--since` in a cohort by the plugin version that
+wrote it (`actor.plugin` on the fact), split at a released `--cut` (default 3.6.0). The cut is a
+release and not a date because consumers run the develop tip, the plugin cache is keyed by version
+string, and #831/#833 landed inside `3.5.1-dev.2`, so a `-dev` string does not identify the code
+that ran. Empty rates count only facts that record `observations`, clocks are joined from the
+ledger by `fact_id`, and every rate and clock median prints its `n` and is marked THIN below
+`--min-cell`. On
+2026-09-21 the post-3.6.0 cohort held 13 facts from 2 products. Re-run the script rather than cite
+that figure.
+
 Guards: `TestPrClockSurvivesFixingItsFindings`, and a reader-agreement case in
 `test_dispatch_interval_one_home.py`. Six independent mutants were each killed by a named test:
 anchoring back on HEAD, ending at `ts`, dropping the evidence-predates-mark check, dropping the
-unresolvable-sha refusal, text-matching instead of resolving, and not writing the key.
+unresolvable-sha refusal, text-matching instead of resolving, and not writing the key. For the
+script, `tests/test_measure_review_window.py`: seven mutants killed (pre-release order, numeric
+pre-release parts, unknown versions counted as before, unrecorded facts pooled into empty rates,
+the THIN boundary, and both ends of the clock join). Five existing `test_governance_ledger.py`
+fixtures now write the PR evidence after the dispatch mark, as real use does. The new
+older-than-the-mark refusal made the old order pass only when both landed in the same second.
 
 ---
 
