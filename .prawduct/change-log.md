@@ -5,6 +5,85 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-20: The review round budget fires on a trunk repo — bounded by worktree, not by lineage
+
+<!-- prawduct: type=fix | scope=review-budget-trunk-shape -->
+
+**#776.** `_round_budget_verdict`'s docstring names trunk-based merge-base zeroing as the reason the
+budget's unit is the SCOPE and not the branch — and then bounded the count by
+`coverage.count_branch_rounds`, which admits a round only when its commit lies strictly after the
+merge-base on HEAD's lineage. On a trunk-based repo, which `base_branch:` supports and the briefing
+treats as ordinary, every push makes `merge_base == HEAD`, so that set is empty, an intersection with
+it is empty, and `spent` was 0 on round twenty. The review loop's only declared stopping rule was
+declared, documented, on by default and inert, on the exact repo shape its own docstring cites. It
+shipped in v3.5.0 and was found by the v3.6.0 release audit.
+
+**The fix bounds by `actor.worktree` when the span holds no commits.** Not by scope alone, which is
+how the fix was first described: the evidence store sits in the clone's git common dir and every
+worktree writes into it, so dropping the bound would charge a scope for rounds a sibling worktree
+bought on the same plan. `count_branch_rounds`'s own docstring is explicit that overcounting "says
+something false in the direction that discredits the whole message", and that is a stopping rule's
+worst failure — it refuses a round the builder needed. Lineage was the only thing separating
+worktrees; where it separates nothing, the worktree does. `actor.worktree` is written by
+`evidence.append_fact` on every fact the plugin has ever appended (966 of 966 review facts in this
+clone's store, earliest 2026-07-13, measured 2026-09-20), so no schema moves and nothing is
+backfilled.
+
+**Keyed on the SPAN being empty, never on the count being zero.** The two agree everywhere except on
+a branch that has commits and has bought no round yet — where zero-keying would charge a first round
+the scope's history from a previous branch. This fix makes the control work where it did not work at
+all and leaves the working path alone; `test_a_branchs_first_round_is_not_charged_the_scopes_history`
+is what "alone" means, and it is the assertion the plausible wrong implementation fails.
+`coverage.count_branch_rounds` gains one reported field, `span_commits`, because the span is walked
+there and a caller cannot otherwise tell an empty span from a branch with no rounds yet.
+
+**Read the predicate, not the repo shape — two consequences follow from it.** A trunk repo is the
+case that motivated this and is not the definition. A branch cut and not yet committed to has an
+empty span too, so a branch RESUMING a scope inherits that scope's rounds from this worktree; the
+budget's declared unit is the scope, so that is consistent, but it is a behaviour change on
+branch-based repos and not only trunk ones. And nothing resets the worktree-bounded count: a branch
+cut resets the lineage one, trunk has no cut, so reusing a scope name for a second body of work
+inherits the first's rounds and can refuse its very first dispatch — auto-accepting the OLD work's
+outstanding findings with it. Give each body of work its own scope name, or raise the budget. Both
+are stated in `project-state.yaml`'s template comment and in `api-contract.md`, which consumers
+receive; the build plan is deleted at release and is not a home for either.
+
+**The same defect was live at the other reader of the same signal, and is fixed here too.**
+`coverage.format_branch_rounds` — the line leading the `uncovered:` gate block — told a builder
+*the next round is this branch's first* whenever `rounds == 0`, which on a trunk repo is round
+twenty. That is #776's own root cause at a sibling call site, so it is keyed on `span_commits` in
+both places rather than patched where it was noticed. An empty span now reads as the round count
+being UNAVAILABLE, and a branch that genuinely is on its first round still says so.
+
+**The verdict and the guard-refusal fact carry `bound` (`lineage` | `worktree`).** The two bounds
+count different sets and returned indistinguishable verdicts, which would have left the control's
+own retirement question — *did it ever refuse a round that turned out to be needed?* — unanswerable
+from the record it appends for exactly that purpose. The refusal message names the bound too, since
+"this work bought N rounds" denotes the branch on one and the worktree on the other. Reading it back
+is `prawduct-hook evidence list`, which renders the field as a `bound=` column on the guard-refusal
+row — the consumer-visible half, without which the retirement question stays unanswerable in
+practice however faithfully the fact records it.
+
+**What this does and does not buy a trunk repo.** The ceiling now reaches `chunk` and `final`
+dispatches. It does not reach `cumulative` there and never could: a cumulative interval is a commit
+range, so on trunk `critic-begin` refuses it as an empty diff long before the budget is consulted.
+That is a different answer to a different question and is left alone. An exit 4 that was unreachable
+on one repo shape becomes reachable there — additive, with `--force` as its escape hatch, and no
+caller can have bound to its absence.
+
+**Rider, #859.** `plan-backfill --apply` archives a plan by writing a stamped copy and unlinking the
+original, staging neither. `tests/test_path_reference_resolution.py` enumerates from `git ls-files`
+and reads from disk, so an unstaged archive makes two tests raise `FileNotFoundError` — a red that is
+not a defect, at the moment a red suite is most alarming. It hit the v3.5.0 and v3.6.0 cuts
+identically. The `--apply` output now names the staging remedy — the exact paths that
+moved, each anchored at the repo root with `:/`, because a release cut leaves the operator's
+in-flight artifacts in that same directory and a relative pathspec resolves against whatever
+directory the line is pasted into. A run that moved nothing stays quiet, `--apply` or not. It rides
+this commit rather than one of its own: this commit is judgeable and owes a review anyway, so the
+rider buys no round.
+
+---
+
 ## 2026-09-20: v3.6.0 is cut, and develop reopens on 3.6.1-dev
 
 <!-- prawduct: type=chore | scope=release-v3.6.0 -->

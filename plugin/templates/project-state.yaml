@@ -459,6 +459,25 @@ operator_verification_required: false
 # merge-base span is zeroed by every push, so a branch-counted rule could
 # never fire. A dispatch that resolves no scope is not budgeted at all.
 #
+# The scope's rounds are still bounded — the evidence store is shared by every
+# worktree of the clone, so something has to separate them. On a branch that is
+# its lineage. Where the `base..HEAD` span holds NO COMMITS, it is the worktree
+# the rounds were recorded from, and on a trunk repo that is the only reason the
+# ceiling can fire at all.
+#
+# Two consequences of that predicate, because it is about the SPAN and not about
+# being a trunk repo:
+#
+#   * A branch cut and not yet committed to has an empty span too, so a branch
+#     RESUMING a scope that already ran rounds in this worktree inherits them.
+#     The budget's declared unit is the scope, so this is consistent — but it is
+#     a behaviour change on branch-based repos, not only trunk ones.
+#   * Nothing resets the worktree count. On a branch, cutting a new one resets
+#     it; on trunk there is no cut, so REUSING a scope name for a second body of
+#     work inherits the first one's rounds and can refuse its very first
+#     dispatch (auto-accepting the OLD work's outstanding findings with it).
+#     Give each body of work its own scope name, or raise the budget.
+#
 # At exhaustion the outstanding NON-blocking findings are auto-accepted with the
 # budget as their recorded reason and a census is rendered. BLOCKING is never
 # swept: the budget can end a review loop, never open a gate.
