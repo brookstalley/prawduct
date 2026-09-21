@@ -684,18 +684,120 @@ class TestTheCommitBodyReachesTheIdScan:
         )
 
 
-class TestTheSilentDegradationIsCoupledToALoudOne:
-    """`_commit_bodies` returns `""` when its `git log` fails, and nothing
-    downstream names that: the backlog section would render *"no backlog ids
-    cited ... this is an answer, not a failure"* — the exact false clean the
-    whole section exists to remove.
+class TestAnUnscannedInputIsNeverAnAnswer:
+    """The backlog id set has two inputs — the commit messages and the branch's
+    change-log entry — and "no ids cited" is an ANSWER only when both were read.
 
-    What makes the silence safe is a COUPLING, not a guard: `_section_commits`
-    issues the same `git log` over the same range, so anything that empties the
-    scan also degrades a section the reviewer reads. That was a sentence in a
-    docstring and nothing else, on two textually-separate calls — near-identical
-    enough that a file-wide mutation restore had already rewritten the wrong one
-    of the pair. A sentence is not a check, so here is the check.
+    It used to be claimed over whatever arrived: each input degraded to `""`
+    when it could not be read, so an empty set from an unread input rendered as
+    *"R-2 has nothing to check (this is an answer, not a failure)"*. The
+    ordinary trigger was not a git failure but a branch no build plan claims —
+    a docs or fix branch — whose change-log section degraded for want of a
+    scope, so every id the entry cited was invisible. Found on a real PR whose
+    entry cited two ids the payload reported as none.
+    """
+
+    def _scopeless_repo_adding_an_entry(self, tmp_path: Path) -> Path:
+        """No plan claims the branch; the branch ADDS a change-log entry citing
+        an id, and the base's entry cites another the branch did not write."""
+        repo = _repo(tmp_path, with_plan=False)
+        _git(repo, "commit", "-q", "--amend", "-m", "docs: the widget note")
+        log = repo / ".prawduct" / "change-log.md"
+        log.write_text(
+            "# Change Log\n\n"
+            "## The widget note\n"
+            "<!-- prawduct: type=docs | scope=widget-note -->\n\n"
+            "Measures the thing #4242 is about.\n\n"
+            + log.read_text().split("\n", 2)[2].replace(
+                "It does the widget thing.", "It does the widget thing, per #9999."
+            )
+        )
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-qm", "docs: change log")
+        return repo
+
+    def test_a_scopeless_branch_carries_the_entry_it_adds(self, tmp_path):
+        section = _sections(self._scopeless_repo_adding_an_entry(tmp_path))["change_log"]
+        assert section["ok"] is True, section["degraded"]
+        assert "Measures the thing #4242" in section["body"]
+        assert "no build plan claims this branch" in section["body"], (
+            "the reviewer is owed HOW the entry was paired, since it was not by scope"
+        )
+
+    def test_a_scopeless_branch_scans_the_entry_it_adds(self, tmp_path):
+        """The reported defect, end to end: the entry's id reaches R-2's set."""
+        backlog = _sections(self._scopeless_repo_adding_an_entry(tmp_path))["backlog"]
+        haystack = (backlog["degraded"] or "") + (backlog["body"] or "")
+        assert "4242" in haystack, (
+            "the id the branch's own change-log entry cites never reached R-2"
+        )
+        assert "no backlog ids cited" not in haystack
+
+    def test_an_entry_the_branch_did_not_add_is_not_carried(self, tmp_path):
+        """The bound that keeps diff-pairing from becoming the whole log: the
+        base's entry is someone else's release note, and its id is not this
+        branch's claim."""
+        sections = _sections(self._scopeless_repo_adding_an_entry(tmp_path))
+        assert "It does the widget thing" not in sections["change_log"]["body"]
+        backlog = sections["backlog"]
+        assert "9999" not in (backlog["degraded"] or "") + (backlog["body"] or "")
+
+    def test_a_scopeless_branch_adding_no_entry_is_an_answer(self, tmp_path):
+        """The diff was read and adds nothing — that is the finding, and it is
+        a read that succeeded, so it must not degrade."""
+        section = _sections(_repo(tmp_path, with_plan=False))["change_log"]
+        assert section["ok"] is True, section["degraded"]
+        assert "adds no change-log entry" in section["body"]
+
+    def test_an_unreadable_entry_makes_an_empty_set_a_degradation(self, tmp_path):
+        repo = _repo(tmp_path)
+        _git(repo, "commit", "-q", "--amend", "-m", "feat(widget): the widget thing")
+        (repo / ".prawduct" / "change-log.md").unlink()
+        backlog = _sections(repo)["backlog"]
+        assert backlog["ok"] is False, (
+            "no ids found in an entry nobody could read is not 'nothing cited'"
+        )
+        assert "change-log entry" in backlog["degraded"]
+        assert "R-2 is NOT answered" in backlog["degraded"]
+
+    def test_an_unreadable_commit_log_makes_an_empty_set_a_degradation(self, tmp_path):
+        section = pr_payload._section_backlog(
+            tmp_path, "owner/repo", [], unscanned=["the commit messages"]
+        )
+        assert not section.ok
+        assert "the commit messages" in section.degraded
+
+    def test_a_partial_scan_says_what_it_did_not_see(self, monkeypatch, tmp_path):
+        """Ids found in one input are still reported — but a short list must not
+        read as the whole set when the other input went unread."""
+        import lib.backlog.cachequery as cq
+
+        monkeypatch.setattr(cq, "resolve", lambda *a, **k: TestDegradations._envelope(
+            {"resolved": True, "status": "open", "dead": False, "title": "a thing"}
+        ))
+        section = pr_payload._section_backlog(
+            tmp_path, "owner/repo", [_claimed("ABC-1111")],
+            unscanned=["the change-log entry"],
+        )
+        assert section.ok
+        assert "ABC-1111: status=open" in section.body
+        assert "NOT SCANNED: the change-log entry" in section.body
+
+    def test_a_failed_commit_read_is_named_not_emptied(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(pr_payload, "_git", lambda *a, **k: (128, ""))
+        assert pr_payload._commit_bodies(tmp_path, "develop") is None
+
+
+class TestTheSilentDegradationIsCoupledToALoudOne:
+    """The scan and the commits section must ask about the SAME range.
+
+    A failed scan read is named to the backlog section as an unscanned input
+    (`TestAnUnscannedInputIsNeverAnAnswer`), so it no longer depends on this
+    coupling to be seen. The coupling still matters on the success path: two
+    reads over different ranges would hand the reviewer a commit list and a
+    citation set describing different intervals, and both would look healthy.
+    The two calls are near-identical enough that a file-wide mutation restore
+    once rewrote the wrong one of the pair, so this is checked, not stated.
     """
 
     def _ranges(self, monkeypatch, tmp_path) -> dict[str, list[tuple[str, ...]]]:
@@ -723,10 +825,8 @@ class TestTheSilentDegradationIsCoupledToALoudOne:
         assert len(seen["section"]) == 1 and len(seen["bodies"]) == 1, seen
         assert seen["section"][0][-1] == seen["bodies"][0][-1], (
             "the scan and the commits section no longer ask about the same "
-            f"range ({seen}). The scan's empty-on-failure degradation is silent "
-            "and is only safe because a failure also degrades the section the "
-            "reviewer reads — diverge the ranges and one can fail alone, "
-            "rendering 'no backlog ids cited' over commits that cite plenty"
+            f"range ({seen}) — the citation set and the commit list the reviewer "
+            "reads would describe different intervals, and both would look healthy"
         )
 
     def test_they_differ_only_in_the_format(self, monkeypatch, tmp_path):
