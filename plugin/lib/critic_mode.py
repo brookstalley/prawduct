@@ -363,7 +363,7 @@ def infer_mode(
         )
     return "chunk", (
         "rule-4 chunk: no active build plan and no other rule fired — unsure "
-        "defaults to the inner-stage review of the uncommitted interval"
+        "defaults to the inner-stage review of whatever interval exists"
     )
 
 

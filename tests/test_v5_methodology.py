@@ -448,7 +448,11 @@ LAST_MEASURED_TOKENS = {
     # rule stated without its bound at one carrier is the drift this scope exists to
     # end. Nothing was cut to fund it: the digest's share was written at that surface's
     # own compressed register instead, which is why its 500-char reserve is untouched.
-    "methodology/building.md": 5038,
+    # RAISED 5038 -> 5055 (review-interval-extension PR review, 2026-09-22): "Resolve findings" told every builder to
+    # fix, run verify-resolutions, then commit — the round #167 removes for a
+    # non-blocking fix mid-plan. Scoped to "while a blocker remains" and pointed at
+    # NEXT-ACTION for the rest. DECLARED: a correction, compressed in place first.
+    "methodology/building.md": 5055,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -974,7 +978,8 @@ LAST_MEASURED_TOKENS = {
     # before any review, across a base sync — was cut to one case in the same branch and
     # restored. DECLARED, not paid: the sentence has no duplicate to fund it, and a builder
     # reading the one-case version demotes the other three to a mode that cannot see them.
-    "skills/critic/SKILL.md": 3656,
+    # RATCHETED 3656 -> 3651 (review-interval-extension PR review, 2026-09-22): "the uncommitted interval" dropped.
+    "skills/critic/SKILL.md": 3651,
     "skills/critic/framework-checks.md": 1116,
     # The on-demand class, first recorded 2026-08-19 (#688) — readings, no
     # ceilings; the block above this dict is the decision and its reasoning.
@@ -1110,7 +1115,8 @@ LAST_MEASURED_TOKENS = {
     # the plan is short" — they promised `final`/`chunk` on plans where
     # inference answers `deferred`, contradicting the bullet below them and
     # the code. Pinned in `test_short_plan_deferral.py`. On-demand class.
-    "methodology/planning.md": 5735,
+    # RATCHETED 5735 -> 5730 (review-interval-extension PR review, 2026-09-22): "of the uncommitted interval" dropped.
+    "methodology/planning.md": 5730,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
@@ -3032,7 +3038,8 @@ class TestBuildingMethodology:
         # MERGE 2026-09-19 (test-report-scope develop sync): one over the
         # MEASURED merged reading (5015). Taking either side would bank the
         # other's delta as silent slack.
-        assert tokens < 5039, f"building.md is ~{tokens} tokens, should be <5039"
+        # RAISED 5039 -> 5056 (review-interval-extension PR review, 2026-09-22) — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 5056, f"building.md is ~{tokens} tokens, should be <5056"
 
 
 # =============================================================================
@@ -5243,7 +5250,8 @@ class TestCriticSkillRoutesByMode:
         # RATCHETED 3650 -> 3644 (review-interval-extension, 2026-09-22) with the reading.
         # RAISED 3644 -> 3657 (review-interval-extension, 2026-09-22): the demotion
         # property's full case list — see LAST_MEASURED_TOKENS. Declared, one over the reading.
-        assert tokens < 3657, f"SKILL.md is ~{tokens} tokens, should be <3657"
+        # RATCHETED 3657 -> 3652 (review-interval-extension PR review, 2026-09-22) with the reading.
+        assert tokens < 3652, f"SKILL.md is ~{tokens} tokens, should be <3652"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))

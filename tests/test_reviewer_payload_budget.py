@@ -146,8 +146,10 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # before any review, across a base sync — was cut to one case in the same branch and
     # restored. DECLARED, not paid: the sentence has no duplicate to fund it, and a builder
     # reading the one-case version demotes the other three to a mode that cannot see them.
-    "single-pass-inner": 6308,
-    "single-pass-full": 20353,
+    # RATCHETED (review-interval-extension PR review, 2026-09-22): "the uncommitted interval" dropped from SKILL.md's
+    # fall-through sentence, now false for an extended chunk interval.
+    "single-pass-inner": 6303,
+    "single-pass-full": 20348,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -169,8 +171,8 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
 }
 
 PAYLOAD_CEILINGS = {
-    "single-pass-inner": 6309,
-    "single-pass-full": 20354,
+    "single-pass-inner": 6304,
+    "single-pass-full": 20349,
     "dispatched-reviewer": 19489,
 }
 
