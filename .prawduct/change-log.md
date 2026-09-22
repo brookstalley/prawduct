@@ -18,7 +18,7 @@ about 90% of the time; the others about 35%.
 **`critic-begin` now names the cause and the edit that fixes it.** When no scope resolves it
 prints a `PRAWDUCT NOTE` for the first cause it finds: a plan claims the branch but declares no
 `scope:`; a plan names the branch on a `branch:` line *below* its frontmatter, where nothing reads
-it (the commonest shape: 26 live plans in one consumer repo); the active plan claims a different
+it (the commonest shape in the repos measured); the active plan claims a different
 branch; or nothing claims the branch at all. It says nothing on the integration branch, where no
 plan should claim it. The cause is recorded as `scope_unresolved_cause` in the dispatch manifest
 and the review fact, so how often each fires can be counted. The field is additive; the evidence
