@@ -16,10 +16,11 @@ that drops findings is a quality trade and has to be argued as one.
     tools/pr-review-yield.py --json
 
 HAZARD, and it governs every duration this prints: `duration_seconds` is
-**self-reported by the reviewing model**, not a measured clock. It is corroborated
-within 16% where commits are dense enough to check it (see
-`documentation/consumer-build-metrics.md` hazard 2), which is what licenses using it
-at all — but a target stated against it is a target stated against an estimate. Where
+**self-reported by the reviewing model**, not a measured clock. Against the dispatch
+clock it runs high, worst on short reviews, and a PR review is short: about 3x on
+this repo's clocked rows (see `documentation/consumer-build-metrics.md` hazard 2).
+A target stated against it is a
+target stated against an estimate. Where
 the envelope carries `dispatched_at`, this tool prefers the measured interval and
 says how many rows it had.
 """

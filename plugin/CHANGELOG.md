@@ -16,6 +16,14 @@ release process keeps the two in sync (one headline per shipped release).
 Entries accumulate here as work lands on `develop`; the cut renames this heading to its
 release number.
 
+**`measured-round-price`** — the "one more round costs about N min" line in a review's NEXT-ACTION
+and in `prawduct-hook cost-of-commit` now comes from the review clock once your repo has at least
+five clocked `verify-resolutions` rounds. Before this it was the median of the durations the
+reviewing models report for themselves, which run high — worst on short reviews, where they can
+read several times the real cost. Until a repo has enough clocked rounds, the old estimate is still
+quoted and
+the line now says it is one.
+
 **`pr-review-clock`** — a PR review whose findings you fix before the ledger append keeps its
 measured duration. The dispatch mark is now checked against the tree the reviewer read, and the
 interval ends when the reviewer writes its evidence. Before this, only PR reviews that found nothing
