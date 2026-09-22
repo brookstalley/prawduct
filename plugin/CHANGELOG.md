@@ -103,6 +103,14 @@ them, instead of reporting a figure that silently left them out — including pl
 roster or chunk headings, not just by a `build-plan` filename. `lifecycle-repair --apply` now also
 removes the retired derived-Status note from such a plan rather than reporting it and leaving it.
 
+**`review-concurrency-and-stale-branches`** — two wall-clock instructions. The building guide now
+says to record the suite while a Critic review runs (unless your suite writes tracked files such as
+snapshots), since both only read the tree and running them one after the other pays twice. And
+`/prawduct:pr` Step 1 now covers landing a branch that is far behind its base: decide what already
+landed by tree content, audit what the sync REMOVED relative to the base (keeping both sides can
+drop the base's revision, and a `merge=union` record silently resurrects archived entries), move
+content the base relocated into its new home, and re-check the branch's own claims about the base.
+
 **`release-v3.6.0`** — the v3.6.0 cut itself: `main` promoted, the tag and GitHub Release
 published in one call, and `develop` reopened here. Nothing in this scope changes plugin
 behaviour; it is the release's own record, and it carries the runbook fix that stops Phase 1

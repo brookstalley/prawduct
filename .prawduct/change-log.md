@@ -5,6 +5,31 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-22: Two wall-clock lessons become guidance other repos receive
+
+<!-- prawduct: type=docs | scope=review-concurrency-and-stale-branches -->
+
+Up-levelled from this session's retrospective, at the owner's request, after checking which of its
+lessons shipped guidance already carried. Most did — the inner-loop verification ceiling, accept as
+the default disposition, the concurrent PR reviewer, delegation's "serial by default" tell — and
+were misses of application, not of guidance. Two were genuinely absent:
+
+- **`building.md`, the Critic paragraph:** record the suite while the review runs. Both only read
+  the tree, so doing them in sequence pays twice; the session this came from waited out ten
+  ~4-minute suite runs, several beside reviews. The condition — unless the suite writes tracked
+  files — is there for consumers: a snapshot-updating suite moves the tree the review snapshotted.
+  Checked for this repo: every path a run writes is gitignored. A **declared +31-token raise** on
+  `building.md`'s ceiling (drafted +33, compressed, then +10 for the condition).
+- **`pr/SKILL.md` Step 1:** landing a far-behind branch. Three salvages this session showed the
+  shape: decide what landed by tree content; audit what the sync REMOVED against the base, since
+  keep-both drops the base's revision and a `merge=union` record resurrects archived entries (#857,
+  twice in three days); re-derive relocated content into its new home; re-check the branch's own
+  claims about the base, which is what produced a blocking finding on PR #879.
+
+`TestWallClockGuidance` pins both. Not up-levelled: a reviewer nudge against recommending a suite
+re-run on session-fresh evidence — the guidance already says it needs no action, and the carrier
+would be the tightest reviewer payload.
+
 ## 2026-08-20: a build plan with no `scope:` stops being invisible to everything that scans artifacts/
 
 <!-- prawduct: type=fix | scope=coverage-honesty -->
