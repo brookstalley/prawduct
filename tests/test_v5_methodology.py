@@ -452,13 +452,7 @@ LAST_MEASURED_TOKENS = {
     # fix, run verify-resolutions, then commit — the round #167 removes for a
     # non-blocking fix mid-plan. Scoped to "while a blocker remains" and pointed at
     # NEXT-ACTION for the rest. DECLARED: a correction, compressed in place first.
-    # RAISED 5055 -> 5086 (review-concurrency-and-stale-branches, 2026-09-22): the
-    # Critic paragraph tells the builder to record the suite WHILE the review runs.
-    # DECLARED, a new instruction with no duplicate to fund it: one 2026-09-22 session
-    # waited out ten ~4-minute suite runs in sequence with reviews it could have
-    # overlapped. Drafted at +33, compressed to +21, then +10 for the condition a
-    # consumer needs: a suite that writes tracked files (snapshots) would void the review.
-    "methodology/building.md": 5086,
+    "methodology/building.md": 5055,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -3064,8 +3058,7 @@ class TestBuildingMethodology:
         # MEASURED merged reading (5015). Taking either side would bank the
         # other's delta as silent slack.
         # RAISED 5039 -> 5056 (review-interval-extension PR review, 2026-09-22) — see LAST_MEASURED_TOKENS. Declared.
-        # RAISED 5056 -> 5087 (2026-09-22): see LAST_MEASURED_TOKENS' building.md entry.
-        assert tokens < 5087, f"building.md is ~{tokens} tokens, should be <5087"
+        assert tokens < 5056, f"building.md is ~{tokens} tokens, should be <5056"
 
 
 # =============================================================================
@@ -6311,23 +6304,15 @@ class TestSubjectAndOracleReachTheReviewer:
         assert "Records Pass** below" in builder_half
 
 
-class TestWallClockGuidance:
-    """Two instructions that save a builder whole rounds of waiting, pinned so a
-    budget trim cannot take them silently: overlap the suite with a review, and
-    audit a far-behind branch's sync for what it dropped or resurrected."""
-
-    def test_building_says_to_overlap_the_suite_with_a_review(self):
-        building = read_file("methodology/building.md")
-        critic_para = building[building.index("**The Critic takes minutes"):]
-        critic_para = critic_para[: critic_para.index("\n\n")]
-        assert "Record the suite meanwhile" in critic_para
-        # The condition is load-bearing for consumers: a suite that writes
-        # tracked files moves the tree the review snapshotted.
-        assert "unless it writes tracked files" in critic_para
+class TestFarBehindBranchGuidance:
+    """PR Step 1's instruction for landing a branch far behind its base, pinned so
+    a budget trim cannot take it silently. The audit is BIDIRECTIONAL on purpose:
+    a `merge=union` record resurrects archived entries as ADDITIONS, which an
+    audit of removals alone cannot see."""
 
     def test_pr_step_1_covers_a_far_behind_branch(self):
         skill = read_file("skills/pr/SKILL.md")
         step1 = skill[skill.index("### Step 1: Branch hygiene"): skill.index("### Step 1b")]
-        for phrase in ("tree content, never by ancestry", "REMOVED relative to the base",
-                       "`merge=union`", "re-derived into its new home"):
+        for phrase in ("tree content, never by ancestry", "REMOVED and what it ADDED",
+                       "`merge=union`", "moved goes to its new home"):
             assert phrase in step1, f"PR Step 1 lost: {phrase!r}"
