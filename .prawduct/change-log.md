@@ -5,6 +5,27 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-22: A Status tick means built and reviewed — never merged or released
+
+<!-- prawduct: type=docs | scope=pin-status-tick-meaning -->
+
+**Owner decision.** A build plan's `## Status` tick had three working meanings: "the chunk's review
+passed" (the digest, the PR skill), "the work shipped" (left over from when the boxes flipped at
+release), and "verified in the field" (`build-plan-branch-claim-multiplicity.md` Chunk 04). Readers
+that assumed different ones disagreed. #167's extension deferral had to guess around the difference.
+
+`planning.md` now carries the one definition: **a tick means the chunk is built, committed and
+reviewed on the branch — never merged or released**. Merged and released belong to the plan (live
+until archived) and to the change-log's `release=` tag. The build-plan template's Status comment
+names the same meaning. The digest's existing line, "tick after the chunk's review", was already
+consistent and is unchanged, because it injects into every session and has no room for a copy.
+
+**`build-plan-branch-claim-multiplicity.md` is ticked and archived.** Its Chunk 04 waited on a
+sibling repo running a session on the develop track. The fleet's evidence stores show seven have,
+from 2026-08-20, so the condition its own paragraph set is met. The scope shipped in v3.5.0, so the
+plan is archived as completed. VRF-017's status in `operator-verification.md` is left for the owner
+to flip.
+
 ## 2026-09-22: A fix made after a clean review rides the next review instead of buying a round
 
 <!-- prawduct: type=feature | scope=review-interval-extension -->

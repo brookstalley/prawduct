@@ -28,7 +28,13 @@ governed_by:
       - "two stores, two lifetimes → inapplicable, because no chunk writes to either store"
       - "`backlog_service_repo` selects the authoritative backlog store → conforms; nothing here reads or writes `.prawduct/backlog.md`"
 last_validated: 2026-08-13
+lifecycle: completed
+archived: 2026-09-22
+released_in: v3.5.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Requirements Confidence
 
@@ -61,7 +67,13 @@ data, not inferred: discodon's `.prawduct/artifacts/` carries five build plans t
 - [x] Chunk 01: Several plans may claim one branch — resolve and attribute, never refuse
 - [x] Chunk 02: A branch-declaring plan retires by archiving alone — no pointer left to ignore
 - [x] Chunk 03: Pin what union-merge does with a twice-landed entry
-- [ ] Chunk 04: Release notes and a develop-track dogfooding path for sibling repos
+- [x] Chunk 04: Release notes and a develop-track dogfooding path for sibling repos
+
+**Ticked 2026-09-22: the condition below is met.** Sibling repos' evidence stores record governed
+sessions on develop-track plugin versions: discodon from 2026-08-20 (`3.4.1-dev`), then
+hallucinote, cordyceps, swordfishing, puzzles, bankmachine and faidh through `3.6.1-dev.1`
+(re-derive: every fact's `actor.plugin` containing `-dev`, per clone). VRF-017's own status is
+the owner's to flip. The paragraph below is kept as the record of why the box waited.
 
 **Chunk 04 stays UNTICKED, and this paragraph carries why** — not VRF-017 alone. The 2026-08-13
 amendment's decision is honoured rather than overridden: the box opens only when a sibling repo has
