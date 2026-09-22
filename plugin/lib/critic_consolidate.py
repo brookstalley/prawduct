@@ -2073,11 +2073,48 @@ def _derive_roster(
     )
 
 
-def _prior_review_fact(project_dir: Path, prawduct_dir: Path) -> tuple[dict | None, str]:
+def _store_unusable(store: dict) -> "str | None":
+    """Why a :func:`evidence.read_facts` result cannot answer a lookup, or
+    ``None`` when it can.
+
+    A DEGRADED store is not an absent fact: ``facts_of_kind`` yields nothing
+    either way, so a lookup that never asks this reports "not found" — sending
+    its reader to re-run a review instead of to the store or the plugin
+    version. ``begin_review`` asks it too, to refuse with a distinct exit: a
+    demoted review cannot help here, and on an unreadable store it would append
+    its fact to a file nothing can parse.
+    """
+    if store.get("status") == "error":
+        return (
+            f"the evidence store could not be read ({store.get('reason', 'unknown')}) "
+            "— this says nothing about whether the prior review fact exists, only "
+            "that nothing could look. No review can repair it: run `prawduct-hook "
+            "evidence status` and report its answer to the user"
+        )
+    if store.get("schema_ahead"):
+        return (
+            f"{len(store['schema_ahead'])} evidence record(s) carry a newer schema "
+            "than this reader, so the prior review may be among the records it "
+            "cannot see. Update the plugin (/reload-plugins or restart Claude "
+            "Code) before treating the anchor as missing"
+        )
+    return None
+
+
+def _prior_review_fact(
+    project_dir: Path, prawduct_dir: Path, store: dict
+) -> tuple[dict | None, str]:
     """The review fact a verify-resolutions pass anchors to, located via the
     derived cache's ``fact_id`` pointer (D7 — this is what the pointer is
     for). Returns ``(fact, "")`` or ``(None, reason)`` — the caller fails
-    loud and the skill demotes to chunk/final.
+    loud, and the skill's exit table routes the refusal: a missing or
+    unreachable anchor demotes, an unusable store (:func:`_store_unusable`)
+    stops.
+
+    ``store`` is the caller's :func:`evidence.read_facts` result, REQUIRED
+    rather than defaulted: the dispatch's prior-dispositions block reads the
+    same store and must see the same moment, and a default here is how the two
+    would quietly come apart into two reads.
 
     **The anchor must be an ancestor of HEAD.** The single-slot cache survives a
     branch switch, and a sibling branch's anchor still *resolves* in the shared
@@ -2103,7 +2140,9 @@ def _prior_review_fact(project_dir: Path, prawduct_dir: Path) -> tuple[dict | No
             "prior findings cache carries no fact_id — it predates the "
             "evidence store (a fresh review re-establishes coverage)"
         )
-    store = evidence.read_facts(project_dir)
+    unusable = _store_unusable(store)
+    if unusable is not None:
+        return None, unusable
     for fact in evidence.facts_of_kind(store, "review"):
         if fact.get("id") != fact_id:
             continue
@@ -2633,6 +2672,19 @@ def begin_review(
     pending_actionable = 0
 
     base_extended_from: "str | None" = None
+    # ONE read of the store for the verify-resolutions anchor lookup and the
+    # prior-dispositions block. The store is shared by every worktree of the
+    # clone, so two reads are two MOMENTS: a sibling's `critic-consolidate`
+    # landing between them would let this dispatch anchor to a fact its
+    # dispositions block was not built from. LAZY, so a dispatch that reaches
+    # neither reader pays no parse.
+    _store_slot: "list[dict]" = []
+
+    def read_store() -> dict:
+        if not _store_slot:
+            _store_slot.append(evidence.read_facts(project_dir))
+        return _store_slot[0]
+
     if mode_token in ("chunk", "final"):
         base_commit = dispatch_commit
         base_tree = capture["head_tree"]
@@ -2677,9 +2729,15 @@ def begin_review(
             excluded_wip = _judgeable_wip(project_dir, capture)
             dirty_note = _dirty_anchor_note("cumulative", excluded_wip)
     else:  # verify-resolutions
-        prior, reason = _prior_review_fact(project_dir, prawduct_dir)
+        prior, reason = _prior_review_fact(project_dir, prawduct_dir, read_store())
         if prior is None:
-            return {"status": "error", "reason": f"no prior review to verify: {reason}"}
+            refusal = {"status": "error", "reason": f"no prior review to verify: {reason}"}
+            if _store_unusable(read_store()) is not None:
+                # The CLI maps this kind to its own exit, because the skill's
+                # exit-1 row demotes and re-dispatches — a round that cannot
+                # repair a store or update a plugin.
+                refusal["kind"] = "store-unusable"
+            return refusal
         prior_body = prior.get("body") or {}
         base_tree = prior_body.get("head_tree")
         if not isinstance(base_tree, str) or not base_tree:
@@ -3104,7 +3162,7 @@ def begin_review(
 
     try:
         priors = dispositions.prior_dispositions(
-            evidence.read_facts(project_dir), files_changed, scope=scope
+            read_store(), files_changed, scope=scope
         )
     except (OSError, ValueError, TypeError) as exc:  # pragma: no cover - defensive
         # A block that cannot be built must not cost a review its dispatch. Loud,

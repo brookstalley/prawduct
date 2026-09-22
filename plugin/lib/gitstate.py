@@ -261,14 +261,28 @@ def is_ephemeral_worktree(project_dir: Path) -> str | None:
     someone was really working — making the Critic gate unsatisfiable with no
     workaround short of evicting the worktree (brookstalley/discodon#2213).
 
-    **That inseparability is ASSUMED, not measured (#648).** It has not been
-    verified against the harness's actual disposal policy — doing so means
-    dispatching a probe agent, which the session that made this change was
-    asked not to do. The falsifier is precise: *if the harness ever merges a
-    code commit off a named branch while discarding that branch*, the two are
-    separable after all and #594's silent-strand defect returns for exactly
-    that case. Anything relying on this predicate to refuse a worktree
-    subagent's ``.prawduct/`` write is relying on that assumption too.
+    **That inseparability rests on the worktree tool contract (#648).** The
+    falsifier is precise: *if the harness ever merges a code commit off a named
+    branch while discarding that branch*, the two are separable after all and
+    #594's silent-strand defect returns for exactly that case. The contract
+    says it does not:
+
+    - The worktree tool surface has **no merge operation**. ``ExitWorktree``
+      offers ``keep`` (worktree and branch both stay) and ``remove`` (both go);
+      landing the work is ordinary git in the parent session, which
+      necessarily goes *through* the branch.
+    - ``remove`` **refuses by default on exactly the separable case** —
+      uncommitted files, or commits not on the original branch — unless
+      ``discard_changes`` is set. Overridden, it destroys the code with the
+      branch, which is the assumption's other half rather than its falsifier.
+    - A subagent's ``isolation: "worktree"`` tree is auto-cleaned *only if
+      unchanged*, so a tree that wrote anything is retained, not reaped.
+
+    **The residual:** this is the tool contract as documented (checked
+    2026-09-22), not a guarantee about future harness behaviour — re-check the
+    falsifier when worktree handling changes. ``discard_changes: true`` does
+    lose a governance write, but loudly, operator-initiated, and taking the
+    code with it, which is not the silent strand #594 named.
 
     An agent-path tree whose branch cannot be read — detached HEAD, git probe
     failure — is disposable. That is the restrictive answer, and it is the

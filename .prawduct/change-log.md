@@ -5,6 +5,63 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-22: Review-gate seams that answered wrongly on a degraded input
+
+<!-- prawduct: type=fix | scope=review-scrub-seams -->
+
+Re-applied from the unmerged `fix/review-scrub-seams` branch (last commit 2026-09-10), which
+conflicted with `develop`; triaged by tree content, every change below was still absent there. Ported fresh rather than merged, under a new scope, because the
+branch's entries reused `tactical-efficiency` and `durable-agent-worktrees`, both already shipped.
+**Its learnings are deliberately not ported:** the branch added a "never raises contract is a claim
+about EVERY input" rule and a correction block to the since-retired `learnings.md` /
+`learnings-history.md` pair, and `core.md` already carries the rule twice over — *make an absolute
+robustness claim literally true and test the claimed-safe path*, and *a `try/except` around a
+producer that RETURNS its degraded states guards nothing*. The old branch is archived after merge.
+
+**Every transfer decision reads one classifier.** `_merge_base_verdict` tested "anything but
+`unavailable`" while `check_cumulative_critic` tested `== "match"`. On `develop` the difference was
+not cosmetic: an unrecognized status reached the Stop gate's grant path and raised
+`KeyError: 'prior_base'`. The first cut named `coverage.TRANSFER_MATCH` and had both gates test it
+positively; the review (R-3) found that still left three sites — the Stop gate, the PR gate's
+verdict and the PR gate's rendered remedy — each reading the status for itself, agreeing but not
+by construction. `coverage.classify_transfer` is now the one reading, mapping any status it does
+not know to `"unknown"`: denied, and rendered with no remedy. The test asserts all three sites
+deny an unknown status (verdict, exit, and no *could not run* NOTE), and each site was mutated to
+a negative test independently — each went red. The contract and its sweep rule are registered in
+`boundary-patterns.md`.
+
+**`verify-resolutions` tells a degraded store from a missing anchor.** `_prior_review_fact`
+iterated a store it never graded, so an unreadable store and one carrying newer-schema records
+both reported *prior review fact … not found* — pointing at a re-review instead of the store or
+the plugin version. It now answers both states (`_store_unusable`), and `critic-begin` exits
+**6** for them rather than 1 (R-1): the skill's exit-1 row on `verify-resolutions` demotes and
+re-dispatches, which cannot repair a store and on an unreadable one would append its fact to a file
+nothing parses. The skill's exit table, the command's docstring and `api-contract.md`'s sentinel
+list carry the new code — the docstring had also been missing exit 4. **5 is withdrawn, not free**:
+#167's reverted `self-inflicted-refusal` held it on `develop` (never in a release), so it is not
+given a new meaning. A missing anchor on a healthy store keeps exit 1, pinned as the control.
+The exit-table row is a **declared +29-token raise** on `SKILL.md` and both single-pass route sums
+(`test_v5_methodology.py`, `test_reviewer_payload_budget.py`), priced against the full round the
+exit-1 fallback would buy each time; drafted at +81, the remedy moved to the refusal's stderr,
+which is read only when it fires.
+The anchor lookup takes the store from `begin_review`, which
+reads it ONCE for the anchor lookup and the prior-dispositions block so the two see the same
+moment of a store every worktree of the clone appends to. The read is lazy, so a dispatch
+reaching neither reader parses nothing. No write lies between the two readers on the path that
+continues; the only writes are refusals that return first.
+
+**`evidence.read_facts` and `_plugin_version` catch `UnicodeDecodeError`.** It is a `ValueError`,
+so `except OSError` let a non-UTF-8 store escape a function whose contract is to return a status
+dict; `_plugin_version` feeds `verdict_cache`'s memo key, where a raise crashes the gate.
+`_plugin_version` also pins `encoding="utf-8"`.
+
+**The #648 inseparability note is restated against the tool contract.**
+`gitstate.is_ephemeral_worktree` and its `prawduct-hook` call site said the branch/code inseparability was
+ASSUMED, not measured. The worktree tool contract — no merge operation; `remove` refusing on
+uncommitted or unmerged work unless `discard_changes`; isolation worktrees auto-cleaned only if
+unchanged — was checked against the live tool schema on 2026-09-22 and is cited, with the
+falsifier and residual kept.
+
 ## 2026-09-22: develop opens 3.6.1-dev.3
 
 <!-- prawduct: type=chore | scope=dev-track-bump-3.6.1-dev.3 -->

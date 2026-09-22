@@ -1726,8 +1726,11 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
     this mode could resolve, so the coverage gate already composes it as a free
     edge (`--force` dispatches anyway; no session state is written and no marker
     is set, so a 3 needs no `critic-end` — it does append one inert
-    `guard-refusal` fact, which no gate reads); exit 1 = any other dispatch failure (reason
-    on stderr). The scheme these cite is prawduct's own API contract — its
+    `guard-refusal` fact, which no gate reads); exit 4 = round budget
+    exhausted (census on stdout); exit 6 = verify-resolutions refused because
+    the evidence store is unreadable or holds newer-schema records — a store or
+    plugin problem that no demoted review can repair; exit 1 = any other
+    dispatch failure (reason on stderr). The scheme these cite is prawduct's own API contract — its
     Error Model section, in the framework repo rather than in yours.
 
     Also resets `.critic-partials/` before writing the fresh manifest —
@@ -1902,7 +1905,9 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
         for note in result.get("notes") or []:
             print(f"PRAWDUCT NOTE: {note}", file=sys.stderr)
         print(f"critic-begin: {result['reason']}", file=sys.stderr)
-        return 2 if result.get("kind") == "scope-widened" else 1
+        # Exit codes are registered in `api-contract.md`'s Error Model, which
+        # also records why 5 is left unclaimed.
+        return {"scope-widened": 2, "store-unusable": 6}.get(result.get("kind"), 1)
 
     if result.get("archived_leftovers"):
         archived_name = Path(result["archived_leftovers"]).name
@@ -7982,10 +7987,11 @@ def _binary_skew(project_dir: Path) -> "tuple[Path, Path] | None":
 # a Critic gate no route could satisfy (#648); `gitstate.is_ephemeral_worktree`
 # owns that distinction, so everything below reads as written once it answers.
 #
-# The inseparability is ASSUMED, not measured — see that function's docstring
-# for the falsifier. If the harness ever merges a code commit off a named
-# branch while discarding the branch, this guard stops covering that case and
-# #594's silent strand returns for it.
+# The inseparability rests on the worktree tool contract — that function's
+# docstring holds the evidence and the residual. The falsifier: if the harness
+# ever merges a code commit off a named branch while discarding the branch, this
+# guard stops covering that case and #594's silent strand returns for it.
+# Re-check when worktree handling changes.
 #
 # DECIDED: this classification is an allowlist of READS — an unlisted command
 # defaults to refused-inside-an-ephemeral-worktree, the restrictive side. That

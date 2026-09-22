@@ -155,10 +155,17 @@ def store_path(project_dir: Path) -> Path | None:
 
 
 def _plugin_version() -> str | None:
-    """The bundled VERSION, nullable — never invented."""
+    """The bundled VERSION, nullable — never invented.
+
+    ``UnicodeDecodeError`` beside ``OSError`` because undecodable IS unreadable,
+    and :mod:`verdict_cache` derives its memo key from this value — a raise here
+    would crash the gate rather than null a field.
+    """
     try:
-        text = (Path(__file__).resolve().parent.parent / "VERSION").read_text()
-    except OSError:
+        text = (Path(__file__).resolve().parent.parent / "VERSION").read_text(
+            encoding="utf-8"
+        )
+    except (OSError, UnicodeDecodeError):
         return None
     return text.strip() or None
 
@@ -452,7 +459,11 @@ def read_facts(project_dir: Path) -> dict:
         }
     try:
         raw_text = path.read_text(encoding="utf-8")
-    except OSError as exc:
+    except (OSError, UnicodeDecodeError) as exc:
+        # `UnicodeDecodeError` is a `ValueError`, not an `OSError`, and this
+        # function's whole contract is that a degraded store comes back as a
+        # status dict — callers such as `dispositions.prior_dispositions` rely
+        # on that and do not wrap the call.
         return {
             "status": "error",
             "reason": f"store unreadable ({exc})",

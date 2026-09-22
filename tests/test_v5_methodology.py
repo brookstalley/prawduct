@@ -979,7 +979,14 @@ LAST_MEASURED_TOKENS = {
     # restored. DECLARED, not paid: the sentence has no duplicate to fund it, and a builder
     # reading the one-case version demotes the other three to a mode that cannot see them.
     # RATCHETED 3656 -> 3651 (review-interval-extension PR review, 2026-09-22): "the uncommitted interval" dropped.
-    "skills/critic/SKILL.md": 3651,
+    # RAISED 3651 -> 3680 (review-scrub-seams, 2026-09-22). DECLARED: the exit
+    # table's new row for `critic-begin` 6 (evidence store unusable). Without it
+    # the caller falls to the exit-1 row, which demotes and re-dispatches — a
+    # full round that cannot repair a store and, on an unreadable one, appends
+    # to a file nothing parses. Paid in place first: the row drafted at +81
+    # carried its own remedy, which now rides the refusal's stderr (read only
+    # when it fires); what remains is the row itself, which has no duplicate.
+    "skills/critic/SKILL.md": 3680,
     "skills/critic/framework-checks.md": 1116,
     # The on-demand class, first recorded 2026-08-19 (#688) — readings, no
     # ceilings; the block above this dict is the decision and its reasoning.
@@ -5271,7 +5278,9 @@ class TestCriticSkillRoutesByMode:
         # RAISED 3644 -> 3657 (review-interval-extension, 2026-09-22): the demotion
         # property's full case list — see LAST_MEASURED_TOKENS. Declared, one over the reading.
         # RATCHETED 3657 -> 3652 (review-interval-extension PR review, 2026-09-22) with the reading.
-        assert tokens < 3652, f"SKILL.md is ~{tokens} tokens, should be <3652"
+        # RAISED 3652 -> 3681 (review-scrub-seams, 2026-09-22): the exit-6 row;
+        # the reason is at the LAST_MEASURED_TOKENS entry.
+        assert tokens < 3681, f"SKILL.md is ~{tokens} tokens, should be <3681"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))

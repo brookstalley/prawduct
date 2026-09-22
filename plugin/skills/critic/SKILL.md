@@ -57,6 +57,7 @@ The data plane is deterministic (kernel v3): `prawduct-hook critic-begin --mode 
    | **3** | **no review needed** | **you are DONE — report and stop** (below) |
    | **4** | **round budget exhausted** | **paste stdout's census into the change-log entry or PR body and stop.** Any BLOCKING it names: fix, then `verify-resolutions` (never refused). `--force` only if the user asks. |
    | **2** | scope widened past the demotion threshold (`verify-resolutions` only) | re-dispatch in **the mode the refusal names**, recording `mode_chosen_by: "fallback-scope-widened"` |
+   | **6** | evidence store unusable (`verify-resolutions` only) | **report stderr — it names the repair — and stop; never demote** |
    | **1** on `verify-resolutions` | no usable prior review (stderr says why) | re-dispatch per the demotion property below, recording `mode_chosen_by: "fallback-no-prior-findings"` |
    | **1** otherwise | dispatch failed | report the stderr reason and stop — **unless it names a mode** (see the property below), in which case re-dispatch there |
 

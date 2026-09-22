@@ -5475,6 +5475,144 @@ class TestVerifyResolutionsDispatch:
         assert "another lineage" in result.stderr, result.stderr
         assert prior_id in result.stderr
 
+    def test_an_unreadable_store_is_not_reported_as_a_missing_anchor(self, tmp_path):
+        """"The store could not be read" and "the fact is not there" are
+        different facts, and only the second means re-run the review.
+
+        An unreadable store yields no facts, so a lookup that never grades the
+        read reports "not found in the evidence store" — a confident claim about
+        a file nothing parsed, pointing its reader at the wrong repair.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        head_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        # Real SHAs, so the dispatch resolves the anchor through git rather than
+        # tripping the fake-tree guard — the fixture has to REACH the store read
+        # for its corruption to be what refuses.
+        _seed_prior_review_with_blocker(
+            repo, head, head_tree=head_tree, head_commit=head
+        )
+        (repo / "src/app.py").write_text("x = 2  # my fix\n")
+
+        # Baseline: the dispatch succeeds while the store is readable, so the
+        # refusal below is the corruption and not some other guard. Abandoned
+        # through the real lifecycle step, or the in-flight guard refuses the
+        # second dispatch before it reaches the store read.
+        assert _run_begin(repo, "--mode", "verify-resolutions").returncode == 0
+        _abandon(repo)
+
+        evidence.store_path(repo).write_bytes(b"\xff\xfe not utf-8\n")
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+
+        # 6, not 1: the skill's exit-1 row demotes and re-dispatches, which
+        # cannot repair a store and would append to one nothing can parse.
+        assert result.returncode == 6, result.stderr
+        assert "could not be read" in result.stderr, result.stderr
+        assert "not found in the evidence store" not in result.stderr
+
+    def test_a_schema_ahead_store_refuses_rather_than_anchoring_on_a_partial_view(
+        self, tmp_path
+    ):
+        """A newer plugin's records are filtered out of `facts` while the store
+        still reads `ok`, so the anchor lookup would succeed on a partial view.
+        Failing closed is right — this pass records the resolution facts that
+        lift BLOCKING findings, and it must not do that over records it cannot
+        see.
+
+        The appended record is a `disposition`, deliberately: the anchor itself
+        stays a normal-schema review fact the lookup WOULD find, so this pins
+        the guard rather than the absence of a resolvable anchor.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        head_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        _seed_prior_review_with_blocker(
+            repo, head, head_tree=head_tree, head_commit=head
+        )
+        (repo / "src/app.py").write_text("x = 2  # my fix\n")
+
+        assert _run_begin(repo, "--mode", "verify-resolutions").returncode == 0
+        _abandon(repo)
+
+        with open(evidence.store_path(repo), "a", encoding="utf-8") as handle:
+            handle.write(
+                json.dumps({
+                    "schema": 99,
+                    "kind": "disposition",
+                    "id": "rev-future",
+                    "ts": "2030-01-01T00:00:00Z",
+                    "body": {},
+                })
+                + "\n"
+            )
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+
+        assert result.returncode == 6, result.stderr
+        assert "newer schema" in result.stderr, result.stderr
+        assert "not found in the evidence store" not in result.stderr
+
+    def test_a_missing_anchor_on_a_healthy_store_stays_exit_one(self, tmp_path):
+        """The control for exit 6: a genuinely absent anchor is the demotable
+        case, so it keeps exit 1 and the skill's re-dispatch route."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        head_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        _seed_prior_review_with_blocker(
+            repo, head, head_tree=head_tree, head_commit=head
+        )
+        (repo / "src/app.py").write_text("x = 2  # my fix\n")
+        cache = repo / ".prawduct" / ".critic-findings.json"
+        data = json.loads(cache.read_text())
+        data["fact_id"] = "rev-does-not-exist"
+        cache.write_text(json.dumps(data))
+
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+
+        assert result.returncode == 1, result.stderr
+        assert "not found in the evidence store" in result.stderr
+
+    def test_the_anchor_lookup_and_the_dispositions_block_share_one_read(
+        self, tmp_path, monkeypatch
+    ):
+        """The store is shared by every worktree of the clone, so two separate
+        reads are two MOMENTS: a sibling's consolidate landing between them lets
+        the pass anchor to a fact the prior-dispositions block was not built
+        from. One read makes the pairing structural."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        head_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        _seed_prior_review_with_blocker(
+            repo, head, head_tree=head_tree, head_commit=head
+        )
+        (repo / "src/app.py").write_text("x = 2  # my fix\n")
+
+        # The objects themselves, not their `id()`s: a first read freed before
+        # the second could hand its address to the second, and equal ids would
+        # then pass on the very bug this pins.
+        seen: "list[dict]" = []
+        real_prior = _dispositions_mod.prior_dispositions
+
+        def spy_prior(store, *args, **kwargs):
+            seen.append(store)
+            return real_prior(store, *args, **kwargs)
+
+        real_lookup = cc._prior_review_fact
+
+        def spy_lookup(project_dir, prawduct_dir, store):
+            seen.append(store)
+            return real_lookup(project_dir, prawduct_dir, store)
+
+        monkeypatch.setattr(_dispositions_mod, "prior_dispositions", spy_prior)
+        monkeypatch.setattr(cc, "_prior_review_fact", spy_lookup)
+        result = cc.begin_review(repo, mode_token="verify-resolutions")
+
+        assert result.get("status") != "error", result
+        assert len(seen) == 2 and seen[0] is seen[1]
+
     def test_a_dirty_tree_fact_falling_back_to_dispatch_commit_is_not_refused(
         self, tmp_path
     ):
