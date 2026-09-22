@@ -5,6 +5,37 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-22: develop opens 3.6.1-dev.3
+
+<!-- prawduct: type=chore | scope=dev-track-bump-3.6.1-dev.3 -->
+
+The dev track's version moves to `3.6.1-dev.3` in the four carriers (`plugin/VERSION`,
+`plugin.json`, `pyproject.toml`, the open `plugin/CHANGELOG.md` heading), so repos on the develop
+track pick up the three scopes that landed since `-dev.2`: `scope-note-plan-less-silence`,
+`review-interval-extension` (#167) and `pin-status-tick-meaning`. The version string is the plugin
+cache key; without the bump those repos keep resolving the `3.6.1-dev.2` cache and dogfood nothing
+while believing otherwise.
+
+**The track stays on `3.6.1-dev.N`, which does not commit the release tier.** Two entries in the
+release-pending set are typed `feature`/`feat`, and on the consumer-visible one
+(`review-interval-extension`) that reads as a minor. The prerelease is deliberately guessed LOW
+(`release-process.md` release checklist step 10, *Guess low*): a prerelease sorts just below its own release, so from
+`3.6.1-dev` every possible cut — patch, minor or major — is a forward move, where a high guess
+makes a patch cut a backward one. The tier is decided at the cut, in the release plan, not here.
+
+**Two consumer notes that were owed are added in the same commit**, which is what the `-dev.2` bump
+did for `unresolved-scope-diagnosis`. `pin-status-tick-meaning` changed `plugin/methodology/`
+and `plugin/templates/` and carried no note at all; `review-budget-trunk-shape` changed
+`plugin/lib/coverage.py`, `critic_consolidate.py`, `evidence.py` and `prawduct-hook` and had
+gone two bumps with none, so a dev-track repo has been running a newly-live round budget with
+nothing telling it the ceiling now reaches dispatches it never reached before.
+`check-releasability` reported both as release-pending scopes absent from the open section.
+
+**The scope is named for the version, not the date.** `dev-track-bump-20260922` is already taken by
+the `-dev.2` bump earlier today, and `scope=` is collapsed to a set by `release_readiness`: a
+second entry under that name would merge two bumps into one scope, so one of them would be
+invisible to the release classification that must account for every scope.
+
 ## 2026-09-22: A Status tick means built and reviewed — never merged or released
 
 <!-- prawduct: type=docs | scope=pin-status-tick-meaning -->
