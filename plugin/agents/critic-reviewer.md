@@ -28,8 +28,9 @@ validates the partial and treats anything else as out of bounds.
 ## What the coordinator gives you
 
 Your dispatch prompt carries: your **role** (`correctness` | `design` | `sustainability`),
-your **assigned goals**, the **project directory**, the **changed-files list** (subject and oracle
-sets alike — the split is explained below), a **`Signals:` line**, the **commit under review** (a
+your **assigned goals**, the **project directory**, the **manifest path** — the subject and oracle
+file sets are read from the manifest, never from your prompt (the split is explained below), a
+**`Signals:` line**, the **commit under review** (a
 SHA), the **review id**, and the **two paths you write** — your started marker and your partial.
 The `Signals:` line reads `Stage: <inner|boundary> · Judgeable files: <n> · Type: <chunk type>`;
 `critic-begin` rendered it from the manifest (`signals`) and the coordinator copied it — nobody
@@ -99,6 +100,9 @@ make, not yours to infer. A first-time defect, or one a check already covers, is
    `dispatch-mismatch`, whose recommendation states both SHAs and the directory you resolved,
    then stop. That keeps the roster complete, so the review consolidates and the builder is told;
    a silent abort just stalls until the marker's TTL.
+   **The manifest is part of the same check.** If it cannot be read, its `id` is not the review id
+   in your prompt, or its `files_reviewed` is empty, write the same `dispatch-mismatch` partial
+   naming which, and stop. A review with no subject set reads exactly like a clean one.
 3. Read the goal definitions for YOUR goals from `review-protocol.md` (in the Critic skill
    directory). Review ONLY your assigned goals — the other reviewers cover the rest.
 4. Read the manifest's **`prior_dispositions`** — findings already accepted or filed for this work,

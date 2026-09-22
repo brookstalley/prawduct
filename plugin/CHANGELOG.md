@@ -16,6 +16,14 @@ release process keeps the two in sync (one headline per shipped release).
 Entries accumulate here as work lands on `develop`; the cut renames this heading to its
 release number.
 
+**`reviewer-prompt-file-list`** — on a three-reviewer Critic review, the reviewers now start
+sooner on large diffs. The Critic used to paste the full subject and oracle file lists into each
+reviewer's prompt, and because it writes the three prompts one after another, the last reviewer's
+start was delayed in proportion to the file count. The prompt now names the dispatch manifest,
+which each reviewer already reads. A reviewer that cannot read the manifest, or finds it belongs
+to another review or has no subject files, stops with a `dispatch-mismatch` finding rather than
+reviewing nothing.
+
 **`measured-round-price`** — the "one more round costs about N min" line in a review's NEXT-ACTION
 and in `prawduct-hook cost-of-commit` now comes from the review clock once your repo has at least
 five clocked `verify-resolutions` rounds. Before this it was the median of the durations the

@@ -155,7 +155,10 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # exit-1 fallback would buy every time the store is unusable — a round that
     # cannot help. Drafted at +81; the remedy moved to the refusal's stderr.
     "single-pass-inner": 6332,
-    "single-pass-full": 20377,
+    # RAISED +43 (reviewer-prompt-file-list, 2026-09-22), DECLARED: all of it the
+    # `review-protocol.md` template change that sends coordinator reviewers to the
+    # manifest for their file sets; see the dispatched-reviewer entry for the price.
+    "single-pass-full": 20420,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -173,13 +176,23 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # repeat it. Priced against the SUM and not the file: this is the cheapest
     # possible repair of a control the route is already paying 2791 tokens to
     # carry, and paying that in full for nothing is the actual waste.
-    "dispatched-reviewer": 19488,
+    #
+    # +119 on 2026-09-22 (reviewer-prompt-file-list), a DECLARED raise: +43 in
+    # `review-protocol.md` (the template now names the manifest instead of pasting
+    # the file lists) and the rest in `critic-reviewer.md`, which says the sets come
+    # from the manifest and adds a guard: an unreadable manifest, one whose `id` is
+    # not this review's, or one with no subject files ends in `dispatch-mismatch`.
+    # The guard is the price of removing the lists — without it a reviewer that
+    # cannot read the manifest reviews nothing and reports clean. Priced against the
+    # SUM: the coordinator no longer writes each list three times in a row, which on
+    # a large review is thousands of output tokens on the dispatch critical path.
+    "dispatched-reviewer": 19607,
 }
 
 PAYLOAD_CEILINGS = {
     "single-pass-inner": 6333,
-    "single-pass-full": 20378,
-    "dispatched-reviewer": 19489,
+    "single-pass-full": 20421,
+    "dispatched-reviewer": 19608,
 }
 
 
