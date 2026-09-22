@@ -31,6 +31,23 @@ gone two bumps with none, so a dev-track repo has been running a newly-live roun
 nothing telling it the ceiling now reaches dispatches it never reached before.
 `check-releasability` reported both as release-pending scopes absent from the open section.
 
+**The bump also pins every declared carrier, which nothing did between releases.**
+`test_version_mirrors_VERSION_file` pinned `plugin.json` against `VERSION` and stopped there, so a
+bump that moved two of the three carriers left `pyproject.toml` behind with a green suite;
+`check_version_files` compares against `git show <tag>:…`, so it runs only once a tag exists and
+cannot stop a `-dev` drift on develop. `test_every_declared_release_carrier_agrees` derives the
+carrier set from `release_version_files:` rather than a hand-kept list, so a carrier added later is
+covered the day it lands. Red-verified twice: with `pyproject.toml` left at `-dev.2` it fails while
+101 other tests pass — which is the measurement of the gap — and dropping `pyproject.toml` from the
+declaration fails the in-declaration assert. Both mutations were restored by inversion. It is the
+Critic's R-1 on this branch, closed here rather than filed. Two observations were accepted on the
+record; the second was accepted as DISPROVEN — `affects_test_outcome` is a three-way disjunct, and
+both paths it named answer True on the first two, so the hazard it described cannot occur.
+
+**The consumer note's `api-contract.md` citation is now relational.** `plugin/CHANGELOG.md` is read
+from consumer repos, where that filename names the consumer's own contract, so the sentence leads
+with the `project-state.yaml` template comment that actually ships to them.
+
 **The scope is named for the version, not the date.** `dev-track-bump-20260922` is already taken by
 the `-dev.2` bump earlier today, and `scope=` is collapsed to a set by `release_readiness`: a
 second entry under that name would merge two bumps into one scope, so one of them would be
