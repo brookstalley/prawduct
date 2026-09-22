@@ -2,10 +2,11 @@
 
 ``duration_seconds`` on a ``review.*`` ledger event is **self-reported by the
 reviewing model**: it is the reviewer's own recollection of how long it took,
-written into the evidence record it produces. That number is corroborated within
-16% where commits are dense enough to check it, which is what licenses using it
-at all — but a performance target stated against an estimate is a target stated
-against an estimate, and the whole point of a payload change is to be graded.
+written into the evidence record it produces. Read against this module's clock on
+the same rows, it sits near five minutes whatever the review actually took: close
+where reviews really take about that long, several times too high where they are
+quicker. So it is a fallback for unmarked rows, never a measurement, and a
+performance target stated against it is a target stated against an estimate.
 
 How weak the estimate is, measured rather than supposed: across the first 1,026
 ledger rounds, ``duration_seconds`` took 63 distinct values, 80% of them

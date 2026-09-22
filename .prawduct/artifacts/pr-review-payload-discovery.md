@@ -33,6 +33,13 @@ time and tokens — is what the measurements below test.
 `tools/measure-consumer-overhead.py ../discodon --prs` puts the same reviewer at 13.1 min/review
 in the v3.5 window against 4.9 in v2.1, across 178 reviews with **zero blocking findings ever**.
 
+> **Correction, 2026-09-22.** Every duration in this section, both 13.1 and the 420s median above,
+> is the reviewing model's own estimate. Where a PR review has since been clocked (dispatch mark to
+> evidence write), it takes about a minute: 77s median over 19 reviews in this repo, against 240s
+> estimated on the same rows. discodon's PR reviews are not clocked yet. Re-derive with
+> `prawduct-hook review-stats --json` (`by_role_model_mode`, `duration_measured`); the reasoning is
+> `documentation/consumer-build-metrics.md` hazard 2.
+
 The reviewer's goals are four, and answering them is not what costs. What costs is establishing
 context. Priced against a representative branch — `feat/pr-review-payload`'s parent, 18 files,
 2,428 diff lines — at ~4 bytes per token:

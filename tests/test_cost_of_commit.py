@@ -101,6 +101,34 @@ def _ledger(repo: Path, rounds: list[float], mode: str = "verify-resolutions") -
     (repo / ".prawduct" / ".governance-ledger.jsonl").write_text("\n".join(lines) + "\n")
 
 
+def _clocked_ledger(
+    repo: Path, rounds: "list[tuple[float, float | None]]", mode: str = "verify-resolutions"
+) -> None:
+    """Write a ledger of `(self_reported, measured)` rounds of `mode`.
+
+    A round with a measured interval carries the dispatch mark and an event
+    `ts` that far after it — the shape `critic-begin` + `ledger-append` write.
+    `None` writes an unmarked round, which has only the model's own estimate.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    start = datetime(2026, 9, 1, tzinfo=timezone.utc)
+    lines = []
+    for i, (self_reported, measured) in enumerate(rounds):
+        event = {
+            "event": "review.critic",
+            "duration_seconds": self_reported,
+            "actor": {"role": "critic", "model": "opus"},
+            "review": {"mode": f"{mode} (some verbose suffix)", "findings": []},
+        }
+        dispatched = start + timedelta(hours=i)
+        if measured is not None:
+            event["dispatched_at"] = dispatched.isoformat().replace("+00:00", "Z")
+            event["ts"] = (dispatched + timedelta(seconds=measured)).isoformat().replace("+00:00", "Z")
+        lines.append(json.dumps(event))
+    (repo / ".prawduct" / ".governance-ledger.jsonl").write_text("\n".join(lines) + "\n")
+
+
 _DURATION_RE = re.compile(r"\b\d+\s*(?:min|minute|sec|second)s?\b")
 
 
@@ -460,6 +488,71 @@ class TestRoundPrice:
         assert price["status"] == "priced"
         assert price["median_seconds"] == 300.0
         assert price["reviews"] == 5
+        assert price["basis"] == "self-reported"
+
+    def test_a_clocked_sample_is_priced_from_the_clock(self, tmp_path: Path) -> None:
+        """The reviewing model's own duration runs well above the clock on the
+        same rounds, so a price taken from it tells a builder a round costs more
+        than it does. Once enough rounds carry a dispatch mark, the clock prices
+        the round."""
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _clocked_ledger(repo, [(300.0, 90.0), (300.0, 100.0), (300.0, 110.0),
+                               (240.0, 120.0), (420.0, 130.0)])
+        price = telemetry.round_price(repo / ".prawduct")
+        assert price["status"] == "priced"
+        assert price["basis"] == "measured"
+        assert price["median_seconds"] == 110.0
+        assert price["reviews"] == 5
+
+    def test_estimates_never_pool_into_a_clocked_price(self, tmp_path: Path) -> None:
+        """A median over estimates and measurements together measures neither.
+        Unmarked rounds outnumbering the clocked ones must not drag the price
+        back toward the estimate."""
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _clocked_ledger(repo, [(300.0, 60.0)] * 5 + [(300.0, None)] * 10)
+        price = telemetry.round_price(repo / ".prawduct")
+        assert price["basis"] == "measured"
+        assert price["median_seconds"] == 60.0
+        assert price["reviews"] == 5
+
+    def test_below_the_floor_the_estimate_prices_and_says_it_is_one(
+        self, tmp_path: Path
+    ) -> None:
+        """Four clocked rounds are too few to quote, but the repo still has a
+        long estimated history. The estimate is the honest fallback, and it is
+        labelled so a reader does not take it for a measurement."""
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _clocked_ledger(repo, [(300.0, 60.0)] * 4 + [(300.0, None)] * 3)
+        price = telemetry.round_price(repo / ".prawduct")
+        assert price["status"] == "priced"
+        assert price["basis"] == "self-reported"
+        assert price["median_seconds"] == 300.0
+        assert price["reviews"] == 7
+        rendered = telemetry.format_round_price(price)
+        assert "as the reviewing models reported them" in rendered
+        assert "measured" not in rendered
+
+    def test_a_clocked_price_names_its_clock(self, tmp_path: Path) -> None:
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _clocked_ledger(repo, [(300.0, 180.0)] * 5)
+        rendered = telemetry.format_round_price(telemetry.round_price(repo / ".prawduct"))
+        assert "about 3 min" in rendered
+        assert "median of 5 measured verify-resolutions rounds" in rendered
+        assert "reported them" not in rendered
+
+    def test_clocked_rounds_of_another_mode_do_not_price_a_fix(
+        self, tmp_path: Path
+    ) -> None:
+        """The mode filter holds for the clocked population too: five measured
+        cumulatives say nothing about the delta pass a fix commit buys."""
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _clocked_ledger(repo, [(600.0, 400.0)] * 5, mode="cumulative")
+        assert telemetry.round_price(repo / ".prawduct")["status"] == "unavailable"
 
     def test_a_sub_minute_price_never_reads_as_about_zero_minutes(
         self, tmp_path: Path
