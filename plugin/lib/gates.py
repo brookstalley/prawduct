@@ -1089,11 +1089,13 @@ def commit_coverage(project_dir: Path) -> dict:
     answer a caller may relax on; every other status leaves the path-based
     price standing, which is the conservative one.
 
-    **Residual, stated rather than implied.** Coverage that reaches the working
-    tree from somewhere other than HEAD's tree — a cumulative review spanning
-    merge-base → working tree, with HEAD's tree not on any path — reads
-    ``uncovered`` here though the gate would compose it after the commit. That
-    errs toward "costs a round", the direction a pricing tool may err in.
+    **Coverage from the merge-base counts too.** A review can reach the working
+    tree without passing through HEAD's tree — a cumulative spanning merge-base
+    → working tree, or a ``chunk``/``final`` review whose interval starts at the
+    covered frontier (:func:`covered_frontier`) behind an unreviewed commit. HEAD
+    is then on no path, yet the PR gate composes merge-base → the committed tree
+    after a verbatim commit. So when HEAD → working tree does not compose, the
+    merge-base span is asked as well, and only ``covered`` there relaxes.
     """
     read = evidence.read_facts(project_dir)
     precheck = _store_precheck(read)
@@ -1121,19 +1123,85 @@ def commit_coverage(project_dir: Path) -> dict:
             "status": "uncovered",
             "reason": "the index is partially staged, so a commit would not record the reviewed tree",
         }
+    diff_fn, key_fn = _cached_diff_fn(project_dir), _tree_key_fn(project_dir)
     verdict = coverage_algebra.coverage_verdict(
-        read.get("facts", []),
-        head_tree,
-        capture["tree"],
-        _cached_diff_fn(project_dir),
-        _tree_key_fn(project_dir),
+        read.get("facts", []), head_tree, capture["tree"], diff_fn, key_fn
     )
+    if verdict["status"] != "covered":
+        resolved = coverage.resolve_merge_base_tree(project_dir)
+        if resolved["status"] == "ok":
+            mb_verdict = coverage_algebra.coverage_verdict(
+                read.get("facts", []), resolved["tree"], capture["tree"], diff_fn, key_fn
+            )
+            if mb_verdict["status"] == "covered":
+                verdict = mb_verdict
     if verdict["status"] != "covered":
         return {"status": verdict["status"], "reason": verdict.get("reason", "")}
     return {
         "status": "covered",
         "by": [step["id"] for step in verdict.get("path", []) if step.get("kind") == "review"],
     }
+
+
+#: How far back from HEAD :func:`covered_frontier` walks before giving up. A
+#: bound, not a tuning knob: past it the frontier reads as absent and the
+#: review keeps today's HEAD-anchored interval, the answer it had before.
+FRONTIER_WALK_LIMIT = 200
+
+
+def covered_frontier(project_dir: Path) -> "dict | None":
+    """The newest commit on this branch whose tree review evidence already covers.
+
+    Walks HEAD's first-parent history back to the merge-base and returns
+    ``{"commit", "tree"}`` for the first commit whose tree composition reaches
+    from the merge-base tree with zero unresolved blockers — the tree a
+    ``chunk``/``final`` review can start from so that one review covers the
+    committed-but-unreviewed commits after it as well as the uncommitted work.
+    When that commit is HEAD, nothing after it needs covering and the caller's
+    interval is unchanged.
+
+    ``None`` whenever extension must not happen, so the caller keeps its
+    HEAD-anchored interval: the nearest composing tree still carries an
+    unresolved blocker (those clear through ``verify-resolutions``, the only
+    mode that records resolution facts); the merge-base, the history or the
+    store cannot be read; or the walk passes :data:`FRONTIER_WALK_LIMIT`.
+
+    The merge-base commit itself is the last candidate and composes trivially,
+    so on a branch with judgeable commits and no review yet the frontier is the
+    merge-base: the next review then spans everything the branch has not had
+    reviewed, which is what the PR gate would otherwise demand of a
+    ``cumulative``.
+    """
+    read = evidence.read_facts(project_dir)
+    if _store_precheck(read) is not None:
+        return None
+    resolved = coverage.resolve_merge_base_tree(project_dir)
+    if resolved["status"] != "ok":
+        return None
+    rc, out, _err = evidence.run_git(
+        project_dir, "rev-list", "--first-parent",
+        f"--max-count={FRONTIER_WALK_LIMIT}", f"{resolved['merge_base']}..HEAD",
+    )
+    if rc != 0:
+        return None
+    commits = [c for c in out.splitlines() if c.strip()]
+    if len(commits) >= FRONTIER_WALK_LIMIT:
+        return None
+    commits.append(resolved["merge_base"])
+    facts = read.get("facts", [])
+    diff_fn, key_fn = _cached_diff_fn(project_dir), _tree_key_fn(project_dir)
+    for commit in commits:
+        rc, tree, _err = evidence.run_git(project_dir, "rev-parse", f"{commit}^{{tree}}")
+        if rc != 0 or not tree:
+            return None
+        verdict = coverage_algebra.coverage_verdict(
+            facts, resolved["tree"], tree, diff_fn, key_fn
+        )
+        if verdict["status"] == "covered":
+            return {"commit": commit, "tree": tree}
+        if verdict["status"] == "blocked":
+            return None
+    return None
 
 
 def session_review_verdict(project_dir: Path, *, record_grants: bool = False) -> dict:
@@ -1163,13 +1231,14 @@ def session_review_verdict(project_dir: Path, *, record_grants: bool = False) ->
       base = ``HEAD^{tree}`` now. Jurisdiction shrinks to uncommitted work
       (the v2 scope) rather than wedging a session that cannot re-run
       ``clear``.
-    - Session base unreachable but merge-base coverage composes → covered.
-      A commit made without review leaves a gap no dispatchable review can
-      span from the session base (chunk/final reviews anchor at HEAD's
-      tree); composed coverage of merge-base → working tree is the PR
-      gate's own bar — strictly stronger evidence about the current state —
-      so requiring an unsatisfiable base instead would only train waivers
-      (chunk-04 refinement, recorded in the design doc).
+    - Session base unreachable but merge-base coverage composes → covered,
+      from either base source. A ``chunk``/``final`` review whose interval
+      starts at the covered frontier behind an unreviewed commit
+      (:func:`covered_frontier`) reaches the working tree without passing
+      through the session base or HEAD's tree, so neither can reach it;
+      composed coverage of merge-base → working tree is the PR gate's own
+      bar — strictly stronger evidence about the current state — so
+      requiring an unreachable base instead would only train waivers.
     - Merge-base coverage does not compose but transfers across a base
       advance → covered, with a ``transferred`` key naming what vouched.
       This gate asks the PR gate's composition question, so a span the PR
@@ -1214,7 +1283,7 @@ def session_review_verdict(project_dir: Path, *, record_grants: bool = False) ->
 
     verdict = coverage_algebra.coverage_verdict(facts, base, target, diff_fn, key_fn)
     transfer_note: "str | None" = None
-    if verdict["status"] != "covered" and base_source == "marker":
+    if verdict["status"] != "covered" and base_source in ("marker", "head-fallback"):
         mb_verdict = _merge_base_verdict(
             project_dir, facts, target, diff_fn, key_fn, record_grants=record_grants
         )

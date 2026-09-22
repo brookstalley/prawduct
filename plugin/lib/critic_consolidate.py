@@ -2592,11 +2592,29 @@ def begin_review(
     # conjunct that keeps the gate from deadlocking.
     pending_actionable = 0
 
+    base_extended_from: "str | None" = None
     if mode_token in ("chunk", "final"):
         base_commit = dispatch_commit
         base_tree = capture["head_tree"]
         head_tree = capture["tree"]
         head_commit = dispatch_commit if capture["clean"] else None
+        # Start at the covered frontier when commits since it are unreviewed —
+        # typically a non-blocking fix committed after the last review. One
+        # review then covers them with the new work, instead of the fix buying
+        # a `verify-resolutions` round of its own; and the edge it records
+        # composes, so no gap is left for a `cumulative` to close later.
+        from . import gates  # noqa: PLC0415 — lazy; gates is heavy and one-way
+
+        frontier = gates.covered_frontier(project_dir)
+        if frontier is not None and frontier["tree"] != capture["head_tree"]:
+            base_commit, base_tree = frontier["commit"], frontier["tree"]
+            base_extended_from = frontier["tree"]
+            notes.append(
+                f"this {mode_token} review starts at {frontier['commit'][:12]}, the last "
+                "reviewed state, not at HEAD: the commits since it have not been "
+                "reviewed, so this one review covers them together with the "
+                "uncommitted work."
+            )
     elif mode_token == "cumulative":
         from . import coverage  # noqa: PLC0415 — lazy; coverage pulls git helpers
 
@@ -3078,6 +3096,9 @@ def begin_review(
         "scope": scope,
         "scope_chosen_by": scope_chosen_by,
         "scope_unresolved_cause": scope_unresolved_cause,
+        # The tree a chunk/final interval was extended back to, or null — the
+        # yield of the extension, countable from the store.
+        "base_extended_from": base_extended_from,
         "chunk": chunk,
         "base_reviewed": base_reviewed,
         # Make the resolved target VISIBLE so a wrong-tree review is obvious
@@ -3441,7 +3462,7 @@ def validate_manifest(data) -> tuple[bool, str]:
     if data.get("files_oracle") is not None and not _str_list(data.get("files_oracle")):
         return False, "'files_oracle' must be a list of non-empty strings or null"
     for opt in ("base_commit", "head_commit", "tier", "scope", "scope_chosen_by",
-                "scope_unresolved_cause", "chunk", "model", "base_reviewed", "worktree", "branch",
+                "scope_unresolved_cause", "base_extended_from", "chunk", "model", "base_reviewed", "worktree", "branch",
                 "chunk_type", "signals"):
         val = data.get(opt)
         if val is not None and not _nonempty_str(val):
@@ -4288,6 +4309,7 @@ def build_fact_body(manifest: dict, partials: list[dict]) -> dict:
         # Why a scope did not resolve, when it did not — the diagnosis note's
         # yield, queryable from the store like `record_lint` below.
         "scope_unresolved_cause": manifest.get("scope_unresolved_cause"),
+        "base_extended_from": manifest.get("base_extended_from"),
         "chunk": manifest.get("chunk"),
         "base_reviewed": manifest.get("base_reviewed"),
         # The record-lint control's YIELD, carried from the dispatch manifest

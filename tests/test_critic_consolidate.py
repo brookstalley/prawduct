@@ -8002,3 +8002,143 @@ class TestTheCostLeadReachesBothCarriers:
                 f"{carrier} no longer receives the cost lead — the two carriers of "
                 f"one sentence would disagree, and nothing else would go red"
             )
+
+
+class TestIntervalExtension:
+    """A chunk/final review starts at the covered frontier (#167).
+
+    A non-blocking fix committed after a review used to leave a gap only a
+    `verify-resolutions` round could close. Now the next chunk review's interval
+    starts at the last reviewed tree, so one review covers the fix and the new
+    work, and the edge it records composes for every gate.
+    """
+
+    WARNING = {"name": "Tighten the loop", "goal": "Nothing Is Unintended",
+               "severity": "warning", "recommendation": "Tighten", "files": ["src/app.py"]}
+    BLOCKING = {"name": "Broken", "goal": "Nothing Is Broken",
+                "severity": "blocking", "recommendation": "Fix", "files": ["src/app.py"]}
+
+    def _branch(self, tmp_path) -> Path:
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _commit_file(repo, ".prawduct/project-state.yaml", "project_name: t\n", "seed")
+        _git(repo, "checkout", "-b", "feat/work", "--quiet")
+        return repo
+
+    def _review(self, repo, findings=None, mode="chunk") -> dict:
+        begin = _run_begin(repo, "--mode", mode)
+        assert begin.returncode == 0, f"stderr={begin.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        assert manifest["roster"] == ["reviewer"]
+        _write_partial(repo, "reviewer", manifest["commit_reviewed"], findings=findings or [])
+        done = _run_consolidate(repo)
+        assert done.returncode == 0, f"stderr={done.stderr!r}"
+        return {"manifest": manifest, "begin": begin}
+
+    def _commit_all(self, repo, msg):
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", msg, "--quiet")
+        return _git(repo, "rev-parse", "HEAD").stdout.strip()
+
+    def _reviewed_fix_then_new_work(self, tmp_path, first_findings):
+        repo = self._branch(tmp_path)
+        (repo / "src/app.py").write_text("x = 2\n")
+        self._review(repo, first_findings)
+        reviewed = self._commit_all(repo, "chunk 1, reviewed")
+        (repo / "src/app.py").write_text("x = 3  # the warning, fixed\n")
+        fix = self._commit_all(repo, "fix the warning, unreviewed")
+        (repo / "src/other.py").write_text("y = 1\n")  # the next chunk's work
+        return repo, reviewed, fix
+
+    def test_the_next_chunk_review_spans_the_unreviewed_fix(self, tmp_path):
+        repo, reviewed, fix = self._reviewed_fix_then_new_work(tmp_path, [self.WARNING])
+        second = self._review(repo)
+        manifest = second["manifest"]
+        reviewed_tree = _git(repo, "rev-parse", f"{reviewed}^{{tree}}").stdout.strip()
+        assert manifest["base_tree"] == reviewed_tree
+        assert manifest["base_commit"] == reviewed
+        assert manifest["base_extended_from"] == reviewed_tree
+        assert manifest["commit_reviewed"] == fix  # partials still bind to the dispatch commit
+        assert sorted(manifest["files_changed"]) == ["src/app.py", "src/other.py"]
+        assert "starts at" in second["begin"].stderr and "last reviewed state" in second["begin"].stderr
+        assert _store_facts(repo, "review")[-1]["body"]["base_extended_from"] == reviewed_tree
+
+        # Every gate sees the span as covered, with no verify-resolutions round.
+        self._commit_all(repo, "chunk 2, reviewed with the fix")
+        assert gates.branch_coverage_verdict(repo)["status"] == "covered"
+        assert gates.session_review_verdict(repo)["status"] == "covered"
+
+    def test_an_unresolved_blocker_keeps_the_head_anchored_interval(self, tmp_path):
+        # Blockers clear through verify-resolutions, which alone records
+        # resolution facts; extending over them would review past a blocker.
+        repo, _reviewed, fix = self._reviewed_fix_then_new_work(tmp_path, [self.BLOCKING])
+        begin = _run_begin(repo, "--mode", "chunk")
+        assert begin.returncode == 0, f"stderr={begin.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        assert manifest["base_tree"] == _git(repo, "rev-parse", f"{fix}^{{tree}}").stdout.strip()
+        assert manifest["base_extended_from"] is None
+        assert "last reviewed state" not in begin.stderr
+
+    def test_no_unreviewed_commit_keeps_the_head_anchored_interval(self, tmp_path):
+        repo = self._branch(tmp_path)
+        (repo / "src/app.py").write_text("x = 2\n")
+        self._review(repo)
+        head = self._commit_all(repo, "chunk 1, reviewed")
+        (repo / "src/other.py").write_text("y = 1\n")
+        manifest = self._review(repo)["manifest"]
+        assert manifest["base_tree"] == _git(repo, "rev-parse", f"{head}^{{tree}}").stdout.strip()
+        assert manifest["base_extended_from"] is None
+
+    def test_final_extends_as_chunk_does(self, tmp_path):
+        repo, reviewed, _fix = self._reviewed_fix_then_new_work(tmp_path, [self.WARNING])
+        manifest = self._review(repo, mode="final")["manifest"]
+        assert manifest["base_commit"] == reviewed
+
+    def test_commit_pricing_sees_the_extended_review(self, tmp_path):
+        """`cost-of-commit` composes from HEAD, which the extended edge skips;
+        the merge-base span is what the PR gate will ask after the commit."""
+        repo, _reviewed, _fix = self._reviewed_fix_then_new_work(tmp_path, [self.WARNING])
+        self._review(repo)
+        assert gates.commit_coverage(repo)["status"] == "covered"
+
+    @pytest.mark.parametrize("marker", ["session-started-after-the-fix", "no-marker"])
+    def test_the_session_gate_sees_the_extended_review(self, tmp_path, marker):
+        """The session gate composes from the session's base tree — here the
+        unreviewed fix, committed in an earlier session — or, with no marker,
+        from HEAD's tree, which is the same tree. The extended edge passes
+        through neither, so only the merge-base span can see it."""
+        repo, _reviewed, fix = self._reviewed_fix_then_new_work(tmp_path, [self.WARNING])
+        self._review(repo)
+        marker_path = repo / ".prawduct" / ".session-base-tree"
+        if marker == "no-marker":
+            marker_path.unlink(missing_ok=True)
+        else:
+            marker_path.write_text(_git(repo, "rev-parse", f"{fix}^{{tree}}").stdout.strip())
+        verdict = gates.session_review_verdict(repo)
+        assert verdict["status"] == "covered", verdict
+
+    def test_unreviewed_judgeable_commits_with_no_review_extend_to_the_merge_base(self, tmp_path):
+        """With no review yet, the frontier is the merge-base: the first review
+        covers what the branch has committed unreviewed, which the PR gate would
+        otherwise demand of a `cumulative`."""
+        repo = self._branch(tmp_path)
+        merge_base = _git(repo, "rev-parse", "HEAD").stdout.strip()
+        (repo / "src/app.py").write_text("x = 2\n")
+        self._commit_all(repo, "committed before any review")
+        (repo / "src/other.py").write_text("y = 1\n")
+        manifest = self._review(repo)["manifest"]
+        assert manifest["base_commit"] == merge_base
+        assert sorted(manifest["files_changed"]) == ["src/app.py", "src/other.py"]
+
+    def test_a_non_judgeable_commit_does_not_extend(self, tmp_path):
+        # A plan committed on the branch is a free edge, so HEAD is already
+        # covered and the interval stays at HEAD — the ordinary first review.
+        repo = self._branch(tmp_path)
+        (repo / ".prawduct" / "artifacts").mkdir(parents=True)
+        (repo / ".prawduct" / "artifacts" / "build-plan-x.md").write_text("# Plan\n")
+        head = self._commit_all(repo, "the plan")
+        (repo / "src/other.py").write_text("y = 1\n")
+        manifest = self._review(repo)["manifest"]
+        assert manifest["base_commit"] == head
+        assert manifest["base_extended_from"] is None
