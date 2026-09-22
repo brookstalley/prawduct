@@ -598,7 +598,12 @@ LAST_MEASURED_TOKENS = {
     # RATCHETED 4355 -> 4349 (review-interval-extension, 2026-09-22): a parenthetical calling `final` "the
     # uncommitted diff" became false when its interval began at the covered
     # frontier; deleted, since the stage rule it decorated does not need it.
-    "skills/critic/review-protocol.md": 4349,
+    # RAISED +43 (reviewer-prompt-file-list, 2026-09-22), DECLARED: the coordinator
+    # prompt template names the manifest instead of pasting `files_reviewed` and
+    # `files_oracle`, plus the one-line reason not to paste them. Priced against the
+    # sum: the coordinator stops writing each file list three times in a row, which
+    # on a large review is thousands of output tokens on the dispatch critical path.
+    "skills/critic/review-protocol.md": 4392,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -4755,7 +4760,8 @@ class TestCriticSkill:
         # RAISED 4051 -> 4313 (2026-09-17, review-stages Chunk 02): the stage
         # rule reaches the final/cumulative reviewer — see LAST_MEASURED_TOKENS.
         # RATCHETED 4356 -> 4350 (review-interval-extension, 2026-09-22) with the reading.
-        assert tokens < 4350, f"review-protocol.md is ~{tokens} tokens, should be <4350"
+        # RAISED 4350 -> 4393 (reviewer-prompt-file-list, 2026-09-22) — see LAST_MEASURED_TOKENS.
+        assert tokens < 4393, f"review-protocol.md is ~{tokens} tokens, should be <4393"
 
 
 # =============================================================================
@@ -6302,6 +6308,80 @@ class TestSubjectAndOracleReachTheReviewer:
         builder_half = cycle.split("## Final-Mode Cross-Checks", 1)[0]
         assert "only subject is a non-judgeable record is a **NOTE**" not in builder_half
         assert "Records Pass** below" in builder_half
+
+
+class TestReviewerFileSetsRideTheManifest:
+    """A coordinator reviewer's subject and oracle sets travel in the manifest,
+    never pasted into its prompt.
+
+    The coordinator writes the three dispatch prompts one after another, so any
+    slot whose size grows with the review's file count delays the last reviewer's
+    start by that much. The reviewer opens the manifest anyway, so pointing it
+    there costs nothing — as long as the manifest is where it actually reads
+    them, and an unreadable one stops the review rather than emptying it.
+    """
+
+    #: Every slot the prompt template may substitute. Each is fixed-size: a
+    #: role, a SHA, an id, a path, the one-line signals rendering.
+    FIXED_SIZE_SLOTS = {
+        "<ROLE>", "<GOALS>", "<SHA>", "<ID>", "<STARTED>", "<PARTIAL>",
+        "<SIGNALS>", "<MANIFEST>", "[dir]", "[critic path]",
+    }
+
+    @staticmethod
+    def _template() -> str:
+        protocol = read_file("skills/critic/review-protocol.md")
+        section = protocol.split("### Coordinator Pattern", 1)[1].split("\n## ", 1)[0]
+        lines = [ln for ln in section.splitlines() if ln.lstrip().startswith('> "Critic reviewer')]
+        assert len(lines) == 1, "the coordinator prompt template is no longer one quoted line"
+        return lines[0]
+
+    def test_the_template_substitutes_only_fixed_size_slots(self):
+        """Red when any list-valued slot comes back — `[`files_reviewed`]` was
+        one, and it is what made the dispatch lag grow with the file count."""
+        # Any angle or square bracket span is a slot, whatever its spelling, so an
+        # underscored or lowercase name (`<FILES_REVIEWED>`) cannot slip past.
+        slots = set(re.findall(r"<[^<>\s]+>|\[[^\]]+\]", self._template()))
+        assert slots, "the slot pattern matched nothing, so this test would pass vacuously"
+        extra = slots - self.FIXED_SIZE_SLOTS
+        assert not extra, (
+            f"the reviewer prompt template substitutes {sorted(extra)}; a slot that is "
+            "not in the fixed-size set can grow with the review and delay dispatch"
+        )
+
+    def test_the_template_sends_the_reviewer_to_the_manifest_for_both_sets(self):
+        template = self._template()
+        assert "<MANIFEST>" in template
+        # The oracle half is what a narrowing silently loses, so both are named.
+        assert "`files_reviewed`" in template and "`files_oracle`" in template
+        protocol = " ".join(read_file("skills/critic/review-protocol.md").split())
+        assert "`<MANIFEST>` as `[dir]` + `.prawduct/.critic-partials/manifest.json`" in protocol
+
+    def test_the_reviewer_is_told_its_sets_come_from_the_manifest(self):
+        agent = read_file("agents/critic-reviewer.md")
+        given = " ".join(
+            agent.split("## What the coordinator gives you", 1)[1].split("\n## ", 1)[0].split()
+        )
+        assert "changed-files list" not in given, (
+            "the reviewer still expects the file lists in its prompt, which no longer carries them"
+        )
+        assert "file sets are read from the manifest, never from your prompt" in given
+
+    def test_an_unusable_manifest_stops_the_review_instead_of_emptying_it(self):
+        """Without this a reviewer that cannot read the manifest has no subject
+        set, and a review of nothing reads exactly like a clean one."""
+        agent = " ".join(read_file("agents/critic-reviewer.md").split())
+        step = agent.split("**The manifest is part of the same check.**", 1)
+        assert len(step) == 2, "the manifest guard is gone from the reviewer's tree check"
+        guard = step[1].split("A review with no subject set", 1)[0]
+        for condition in ("cannot be read", "is not the review id in your prompt", "`files_reviewed` is empty"):
+            assert condition in guard, f"the manifest guard no longer covers: {condition}"
+        assert "`dispatch-mismatch` partial" in guard
+        # In every case this guard covers, the manifest's commit and id are
+        # missing or another review's, and consolidation rejects a partial
+        # carrying either — so the builder would never be told.
+        assert "taking `commit_reviewed` and `dispatch_id` from your prompt" in guard
+        assert "manifest's `commit_reviewed`" not in guard
 
 
 class TestFarBehindBranchGuidance:
