@@ -766,3 +766,78 @@ class TestBranchClaimingPlans:
         )
         assert len(path.read_text()) > plan_index._FRONTMATTER_PROBE_CHARS
         assert plan_index.branch_claiming_plans(artifacts) == [(path, "feat/x")]
+
+
+class TestPlansNamingBranchInBody:
+    """A `branch:` line below the frontmatter claims nothing — this finds it so
+    a scope miss can be explained. The spellings are copied from real plans in a
+    consumer repo, where this shape was the commonest cause of a miss."""
+
+    BRANCH = "feat/x"
+
+    def _plan(self, artifacts: Path, name: str, body: str) -> Path:
+        path = artifacts / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(body)
+        return path
+
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "branch: feat/x",
+            "**Branch:** `feat/x` · **Lane D** of the 2026-08-20 overnight",
+            "**Branch**: `feat/x` (off `develop`)",
+            "**Branch:** `feat/x`",
+            "- **Branch:** `feat/x`",
+        ],
+    )
+    def test_each_real_spelling_is_found(self, tmp_path: Path, line: str):
+        artifacts = tmp_path / "artifacts"
+        plan = self._plan(
+            artifacts,
+            "build-plan-x.md",
+            f"---\nartifact: build-plan\nscope: x\n---\n\n# Plan\n\n{line}\n",
+        )
+        assert plan_index.plans_naming_branch_in_body(artifacts, self.BRANCH) == [plan]
+
+    def test_a_plan_with_no_frontmatter_is_searched_whole(self, tmp_path: Path):
+        artifacts = tmp_path / "artifacts"
+        plan = self._plan(artifacts, "build-plan-x.md", "# Plan\n\n**Branch:** `feat/x`\n")
+        assert plan_index.plans_naming_branch_in_body(artifacts, self.BRANCH) == [plan]
+
+    def test_a_frontmatter_claim_is_not_a_body_mention(self, tmp_path: Path):
+        # The frontmatter line is a real claim; reporting it as misplaced would
+        # tell the operator to move a line that is already where it belongs.
+        artifacts = tmp_path / "artifacts"
+        self._plan(
+            artifacts,
+            "build-plan-x.md",
+            "---\nartifact: build-plan\nscope: x\nbranch: feat/x\n---\n\n# Plan\n",
+        )
+        assert plan_index.plans_naming_branch_in_body(artifacts, self.BRANCH) == []
+
+    def test_another_branch_and_a_prefix_do_not_match(self, tmp_path: Path):
+        artifacts = tmp_path / "artifacts"
+        self._plan(
+            artifacts,
+            "build-plan-x.md",
+            "# Plan\n\nbranch: feat/other\n**Branch:** `feat/x-longer`\n",
+        )
+        assert plan_index.plans_naming_branch_in_body(artifacts, self.BRANCH) == []
+
+    def test_prose_mentioning_the_branch_mid_sentence_is_not_a_line(self, tmp_path: Path):
+        artifacts = tmp_path / "artifacts"
+        self._plan(
+            artifacts, "build-plan-x.md", "# Plan\n\nWork happens on branch: feat/x today.\n"
+        )
+        assert plan_index.plans_naming_branch_in_body(artifacts, self.BRANCH) == []
+
+    def test_archived_and_non_plan_artifacts_are_skipped(self, tmp_path: Path):
+        artifacts = tmp_path / "artifacts"
+        self._plan(
+            artifacts, f"{plan_index.ARCHIVE_DIR_NAME}/build-plan-old.md", "branch: feat/x\n"
+        )
+        self._plan(
+            artifacts, "note.md", "---\nartifact: design\n---\n\nbranch: feat/x\n"
+        )
+        assert plan_index.plans_naming_branch_in_body(artifacts, self.BRANCH) == []

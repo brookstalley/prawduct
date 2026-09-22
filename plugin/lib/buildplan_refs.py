@@ -656,22 +656,29 @@ def infer_scope_from_branch(
     ``known`` is a prebuilt scope→plan map — pass it to share one walk of
     ``artifacts/`` with a caller that also resolves the plan (:func:`resolve_branch_plan`).
 
-    Two narrowings, and the honest statement of what remains:
+    One narrowing, and the honest statement of what remains:
 
     - A branch matching no declared scope infers nothing, leaving every caller
       on the behaviour it had before.
-    - A matched plan whose Status is **entirely checked** is rejected. Those
-      boxes flip at release, so an all-checked plan has shipped, and a branch
-      named after a shipped scope is far more likely to be new work near old
-      code than a resumption of finished work. Without this, every one of the
-      dozens of released plans a long-lived repo accumulates is a live target.
+    - A matched plan must be **live on this branch**: archived plans are never
+      in the map, and a plan whose Status is entirely ticked matches only if
+      this branch changed the plan file since it left the base branch. Boxes
+      are ticked per chunk, after each review, so every box is ticked by the
+      plan's own end-of-plan ``cumulative`` — rejecting on ticks alone turned
+      the scope off for exactly that review. But on gitflow a merged plan stays
+      live until the release, and a follow-up branch reusing its exact name
+      must not be graded against it: *this* answer feeds every
+      :func:`resolve_branch_plan` caller, the gates included, not only review
+      attribution. The plan's own branch edited the plan (it wrote the ticks);
+      a follow-up that merely shares the name did not.
 
     **What is still possible, stated plainly:** a branch whose name matches an
-    *unfinished* plan it is not actually building will be attributed to that
-    plan. Nothing here can tell those apart — a name is the only signal — so the
-    residual case is real and the remedy is explicit ``--scope``. This is
-    narrower than "can only add, never redirect," which is true of the no-match
-    case only.
+    *unfinished* plan it is not actually building, or a finished one it
+    happened to edit, will be attributed to that plan. A name is the only
+    signal. The remedy that reaches every caller is a frontmatter ``branch:``
+    on the plan being built, which is consulted first; ``--scope`` reaches
+    review dispatch only. This is narrower than "can only add, never
+    redirect," which is true of the no-match case only.
     """
     branch = gitstate.current_branch(project_dir)
     if not branch:
@@ -686,7 +693,10 @@ def infer_scope_from_branch(
         candidates.append(branch.rsplit("/", 1)[1])
     for candidate in candidates:
         plan_path = known.get(candidate)
-        if plan_path is not None and _has_unfinished_chunk(plan_path):
+        if plan_path is not None and (
+            _has_unfinished_chunk(plan_path)
+            or _plan_changed_on_branch(project_dir, plan_path)
+        ):
             return candidate
     return None
 
@@ -723,11 +733,13 @@ def _has_unfinished_chunk(plan_path: Path) -> bool:
 
     **Read this before tuning it: it now decides which plan GOVERNS.**
     :func:`core.resolve_branch_claim` uses it to choose among several live plans
-    claiming one branch, so a change here moves what every gate grades — not only
-    what advice infers. Its other consumers are :func:`infer_scope_from_branch`
-    and the session briefing's "claims a branch this repo does not have"
+    claiming one branch, so a change here moves what every gate grades. Its other
+    consumer is the session briefing's "claims a branch this repo does not have"
     advisory, which fires only for a plan with work left, because a finished plan
     whose merged branch is gone is the documented end state, not a finding.
+    Branch-name scope inference asks it alongside
+    :func:`_plan_changed_on_branch`, because every box is ticked by a plan's own
+    final review, which is when that inference is needed most.
 
     **The signal is blunt: the boxes flip per chunk, so a plan reads finished
     from the moment its last chunk is ticked** — typically before its branch
@@ -756,6 +768,143 @@ def _has_unfinished_chunk(plan_path: Path) -> bool:
     if not items:
         return True
     return any(not checked for checked, _text in items)
+
+
+def _declares_scope(plan_path: Path) -> bool:
+    """Whether the plan's frontmatter names a scope, whether or not the scope map kept it.
+
+    The map keeps one plan per scope, so a plan whose scope duplicates another's
+    is absent from it while still declaring one — telling it to "add" a scope
+    would be wrong advice.
+    """
+    try:
+        content = plan_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return False
+    return bool(plan_index.parse_build_plan_frontmatter_scope(content)[1])
+
+
+def _plan_changed_on_branch(project_dir: Path, plan_path: Path) -> bool:
+    """True when this branch created or edited ``plan_path`` since it left the base.
+
+    The liveness signal for a finished plan: the branch that built it wrote its
+    ticks, so the file differs from the merge-base (or is not yet tracked). A
+    later branch that only shares the plan's name leaves it untouched. Observed
+    from git rather than stored on the plan, so there is nothing to forget.
+
+    ``False`` whenever it cannot be shown — no base, no merge-base, a git error —
+    which falls back to rejecting the finished plan, the older behaviour.
+    """
+    base, _ = _resolve_base_branch(project_dir)
+    if not base:
+        return False
+    try:
+        mb = subprocess.run(
+            ["git", "merge-base", base, "HEAD"],
+            cwd=str(project_dir), capture_output=True, text=True, timeout=10,
+        )
+        if mb.returncode != 0 or not mb.stdout.strip():
+            return False
+        tracked = subprocess.run(
+            ["git", "ls-files", "--error-unmatch", "--", str(plan_path)],
+            cwd=str(project_dir), capture_output=True, text=True, timeout=10,
+        )
+        if tracked.returncode != 0:
+            return True  # untracked: written on this branch, not inherited
+        diff = subprocess.run(
+            ["git", "diff", "--quiet", mb.stdout.strip(), "--", str(plan_path)],
+            cwd=str(project_dir), capture_output=True, text=True, timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return diff.returncode == 1
+
+
+def unresolved_scope_cause(
+    project_dir: Path, prawduct_dir: Path
+) -> "tuple[str, str] | None":
+    """Why :func:`infer_scope_from_branch` found no scope here: ``(code, sentence)``.
+
+    Advice for the dispatcher of a review whose scope did not resolve — the
+    review then records no scope, and every control keyed on one (the round
+    budget first) cannot see it. Without this the only trace was a parenthetical
+    on the record-lint line, and the commonest causes are one-line edits to a
+    plan, so naming the plan and the edit is most of the fix.
+
+    ``None`` when there is nothing to fix: a detached HEAD, or the integration
+    branch, where no plan should claim the branch and a note would fire on every
+    review with nothing to act on. The codes, first match wins:
+
+    - ``claim-no-scope`` — a plan claims this branch in frontmatter and declares
+      no ``scope:``, so the claim has no scope to hand back.
+    - ``body-branch`` — a plan names this branch on a ``branch:`` line below its
+      frontmatter, where :func:`plan_index.branch_claiming_plans` never looks.
+    - ``pointer-claims-other`` — the active plan claims a different branch.
+    - ``no-claim`` — none of the above: nothing claims the branch and no plan's
+      scope matches its name.
+
+    Call it only when resolution has already failed; it re-derives nothing the
+    resolver decided and would name a cause for a scope that did resolve.
+    """
+    branch = gitstate.current_branch(project_dir)
+    if not branch:
+        return None
+    base, _ = _resolve_base_branch(project_dir)
+    if base and branch == base.removeprefix("origin/"):
+        return None
+
+    artifacts_dir = prawduct_dir / "artifacts"
+    known = _scope_plan_map(prawduct_dir)
+    scoped = set(known.values())
+
+    def rel(path: Path) -> str:
+        return _repo_rel(prawduct_dir, path)
+
+    for path, claimed in plan_index.branch_claiming_plans(artifacts_dir):
+        if (
+            claimed == branch
+            and path not in scoped
+            and not _declares_scope(path)
+        ):
+            return (
+                "claim-no-scope",
+                f"{rel(path)} claims branch {branch!r} but declares no `scope:` in "
+                "its frontmatter, so the claim has no scope to record — add one",
+            )
+
+    body = plan_index.plans_naming_branch_in_body(artifacts_dir, branch)
+    if body:
+        path = body[0]
+        missing_scope = "" if path in scoped else ", together with a `scope:`"
+        return (
+            "body-branch",
+            f"{rel(path)} names branch {branch!r} below its frontmatter, where "
+            f"nothing reads it — move `branch: {branch}` into the `---` block at "
+            f"the top of the file{missing_scope}",
+        )
+
+    pointer = resolve_build_plan_path(prawduct_dir)
+    if pointer.is_file():
+        try:
+            other = plan_index.parse_build_plan_frontmatter_branch(
+                pointer.read_text(encoding="utf-8")
+            )
+        except (OSError, UnicodeDecodeError):
+            other = None  # advice degrades to the generic cause, never to an error
+        if other and other != branch:
+            return (
+                "pointer-claims-other",
+                f"the active plan {rel(pointer)} claims branch {other!r}, not "
+                f"{branch!r} — correct its `branch:` if this is its work, or pass "
+                "`--scope`",
+            )
+
+    return (
+        "no-claim",
+        f"no live build plan declares `branch: {branch}` in its frontmatter and "
+        "no plan's `scope:` matches the branch name — add that line to the "
+        "frontmatter of the plan this work belongs to, or pass `--scope`",
+    )
 
 
 def resolve_reviewed_plan(
