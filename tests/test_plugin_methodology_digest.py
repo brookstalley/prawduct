@@ -102,8 +102,8 @@ DIGEST_SECTION_PLACEMENT = {
     ),
     "Closing the turn": (
         "inline, and LAST -- the standing block fires at the end of every turn "
-        "that ends work, and its own rule is 'after every other word', so it is "
-        "the digest's final text (pinned by TestTheStandingBlockIsTheDigestsLastWord)"
+        "that ends work, and the rule a session reads most recently should be the "
+        "one it applies last (pinned by TestTheStandingBlockIsTheDigestsLastWord)"
     ),
 }
 
@@ -705,13 +705,14 @@ class TestAgentStance:
 
 
 class TestTheStandingBlockIsTheDigestsLastWord:
-    """A closing instruction has to be the closing text.
+    """The standing-block rule is the digest's closing text.
 
-    The rule says so itself — *last … after every other word, since the bottom
-    is all they read*. `digest.py` injects this file verbatim, so the bottom of
-    the file is the bottom of what the session reads from it: a rule carried
-    partway up, with sections after it, is less recent to the reader than
-    everything it tells them to write after.
+    `digest.py` injects this file verbatim, so the bottom of the file is the
+    bottom of what the session reads from it. The move answers a reported
+    symptom — sessions that had stopped closing with the standing block — for
+    which placement was the surviving hypothesis once delivery and the size
+    limit were excluded (the change-log entry for this scope carries the
+    evidence). These tests pin the placement, not the hypothesis.
     """
 
     RULE = "Close with the standing block"
