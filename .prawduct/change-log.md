@@ -9,7 +9,7 @@
 
 <!-- prawduct: type=feature | scope=review-interval-extension -->
 
-**Toward #167.** Across the fleet, 150 of 242 `verify-resolutions` rounds between 2026-09-13 and
+**Closes #167**, by a different mechanism than its title proposed: rounds are not refused, the next review covers them. Across the fleet, 150 of 242 `verify-resolutions` rounds between 2026-09-13 and
 09-22 ran when nothing blocking was outstanding. 63 of those were followed on the same branch by
 another full review, which re-read the same edits. The previous attempt (#167's withdrawn Chunk 02)
 refused such rounds and left a gap that only a 720-second `cumulative` could close. This change
