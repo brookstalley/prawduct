@@ -2005,8 +2005,8 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
     if _critic_marker().write_marker(prawduct_dir):
         print("PRAWDUCT: critic-active marker set (session-mutating clear is guarded).")
 
-    # LAST, and only on the one mode that can weaken a gate. The reviewer reads
-    # this dispatch output before assessing anything (SKILL.md step 4) and
+    # LAST in the dispatch output, because the reviewer reads it before
+    # assessing anything (SKILL.md step 4) and
     # writes its `resolutions` several steps later — so this is the last thing
     # in the tool result at the only moment the advice can still change the
     # claim. Keyed off the manifest's own mode rather than the raw --mode
@@ -2015,15 +2015,30 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
     #
     # ORDER IS DELIBERATE, and a future edit must not flip it: the reviewer
     # rates the delta BEFORE it judges the prior findings, so the severity
-    # narrowing comes first; then the roll-call of ids that must be accounted
-    # for; and the resolution warning stays LAST, adjacent to the claim it
-    # governs — the only one of the three that can weaken a gate, and therefore
-    # the one the reader must still be holding. Both halves of the order are
-    # pinned: `TestResolutionDirectiveDelivery` for the claim directive's last
-    # place, `TestCarriedBlockersReachTheirReaders` for the roll-call's slot
-    # between the other two.
-    if manifest["mode"] == consolidate.MODE_TOKEN_TO_VERBOSE["verify-resolutions"]:
+    # narrowing comes first; then the rule for how a finding is WRITTEN; then
+    # the roll-call of ids that must be accounted for; and the resolution
+    # warning stays LAST, adjacent to the claim it governs — the only one of
+    # the four that can weaken a gate, and therefore the one the reader must
+    # still be holding. The order is pinned: `TestResolutionDirectiveDelivery`
+    # for the claim directive's last place, `TestCarriedBlockersReachTheirReaders`
+    # for the roll-call ahead of it, and `test_finding_scope_rule` for the scope
+    # rule's slot between the narrowing and the claim.
+    #
+    # FINDING_SCOPE_DIRECTIVE rides this slot for a reason of its own: it is
+    # owed to whichever modes read `goals-1-3.md`, which has no room for it,
+    # and `verify-resolutions` is in both sets — so it prints outside the
+    # verify-only branch while keeping its place in the order.
+    verbose_mode = manifest["mode"]
+    is_verify = verbose_mode == consolidate.MODE_TOKEN_TO_VERBOSE["verify-resolutions"]
+    if is_verify:
         print(consolidate.VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE)
+    reads_goals_1_3 = {
+        consolidate.MODE_TOKEN_TO_VERBOSE[token]
+        for token in consolidate.GOALS_1_3_MODES
+    }
+    if verbose_mode in reads_goals_1_3:
+        print(consolidate.FINDING_SCOPE_DIRECTIVE)
+    if is_verify:
         # The roll-call sets the AGENDA — which finding ids must come back with
         # a verdict — and the claim directive below sets the STANDARD each
         # verdict has to meet. The standard gets the last word, deliberately:
@@ -6873,6 +6888,7 @@ def cmd_lifecycle_repair(project_dir: Path, argv: list[str]) -> int:
                         for edit in plan["edits"]
                     ],
                     "unreadable": plan["unreadable"],
+                    "unscoped": plan["unscoped"],
                     "retired_flag": guard,
                     "plans_to_review": [
                         {"path": str(r["path"]), "chunks": r["chunks"]} for r in stale
@@ -6933,6 +6949,18 @@ def cmd_lifecycle_repair(project_dir: Path, argv: list[str]) -> int:
                 print(f"    {_plan_label(report['path'], Path(project_dir) / '.prawduct')}")
                 for chunk in report["chunks"]:
                     print(f"      - {chunk}")
+        # Diagnostic, and deliberately NOT on the `unreadable` channel: these
+        # files decode fine, the repair checks them like any plan, and folding
+        # them in would make the CLI say "could not read", exit 1, and drive
+        # `/prawduct:doctor` to a degraded verdict that `--apply` can never
+        # clear. Stated so the sweep's silence is not read as coverage.
+        if plan["unscoped"]:
+            print(f"  {len(plan['unscoped'])} plan(s) declare no `scope:`. They "
+                  "were checked like any other plan, but the release lookup "
+                  "keys on that line and this repair cannot add it — give each "
+                  "one a scope: matching its change-log entries:")
+            for path in plan["unscoped"]:
+                print(f"    {_plan_label(Path(path), Path(project_dir) / '.prawduct')}")
         for item in plan["unreadable"]:
             print(f"  could not read {item['path']} ({item['reason']}) — it was "
                   f"left alone and not checked", file=sys.stderr)
@@ -7045,6 +7073,9 @@ def cmd_plan_backfill(project_dir: Path, argv: list[str]) -> int:
                 "kept_live": [
                     {"path": str(i["path"]), "scope": i["scope"]} for i in result["unshipped"]
                 ],
+                "unevaluated": [
+                    {"path": str(i["path"])} for i in result["unevaluated"]
+                ],
                 "archived": result["archived"],
                 "refused": result["refused"],
             },
@@ -7124,6 +7155,21 @@ def cmd_plan_backfill(project_dir: Path, argv: list[str]) -> int:
                       "Nothing here is staged, and a plan that is in the index "
                       "and gone from disk fails any test that enumerates tracked "
                       "paths and reads them.")
+
+        # Printed under BOTH arms of the fork above, because both report a set
+        # that reads as the whole directory: the counts above partition the
+        # plans this sweep could see, and a plan with no scope was never in
+        # them. Said here rather than left to `--json` — a figure the operator
+        # reads as complete is the thing being corrected.
+        if result["unevaluated"]:
+            print(f"  could not evaluate {len(result['unevaluated'])} plan(s), so they "
+                  "are in none of the counts above — each is a build plan that "
+                  "declares no `scope:` in its frontmatter, and the release a "
+                  "plan shipped in is looked up by that scope. Give each one a "
+                  "scope: line matching its change-log entries to bring it into "
+                  "this sweep:")
+            for item in result["unevaluated"]:
+                print(f"    {_plan_label(item['path'], prawduct_dir)}")
         for refusal in result["refused"]:
             print(f"  could not archive {refusal['scope']}: {refusal['reason']}",
                   file=sys.stderr)

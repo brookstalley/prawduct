@@ -91,6 +91,18 @@ stopped closing with the standing block, where delivery and the digest's size li
 out and placement was the surviving explanation. The wording is unchanged apart from two phrases
 that restated their neighbours, and the digest is two tokens smaller.
 
+**`coverage-honesty`** — two gaps where a review or a scan reported more certainty than it had.
+The instance-or-class rule for findings now reaches `chunk` and `verify-resolutions` reviewers,
+handed to them at dispatch because their instruction file has no room for it — a correction:
+v3.4.0 said `verify-resolutions` already had it, and only the *grading* half did; the *labelling*
+half reached `final` and `cumulative` alone. The rule also gains `none`, for a mandated
+cross-check that bounds no defect. And a build plan with no `scope:` in its frontmatter stops
+being invisible: `plan-backfill`, `lifecycle-repair` (and `/prawduct:doctor`'s check that runs it),
+and Critic dispatch each name such plans as unevaluated, and the release-readiness warning counts
+them, instead of reporting a figure that silently left them out — including plans recognized only by a `## Status`
+roster or chunk headings, not just by a `build-plan` filename. `lifecycle-repair --apply` now also
+removes the retired derived-Status note from such a plan rather than reporting it and leaving it.
+
 **`release-v3.6.0`** — the v3.6.0 cut itself: `main` promoted, the tag and GitHub Release
 published in one call, and `develop` reopened here. Nothing in this scope changes plugin
 behaviour; it is the release's own record, and it carries the runbook fix that stops Phase 1

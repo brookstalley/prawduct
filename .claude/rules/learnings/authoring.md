@@ -208,3 +208,5 @@ refusal and prints PASS.
 State what the instrument cannot see, in the artifact rather than in your head: a quotation *stitched*
 from two non-adjacent sentences with no ellipsis marked shows up as a prefix match and has to be read.
 The script narrows the set a human must read; it never empties it.
+
+### When you bundle work because "it touches the same file", ask whether that file is a LOCATION or a BUDGET — a co-editor of a size-capped file is a RIVAL for the same allowance, so co-location predicts contention and a second negotiation, not a saved round. Tell: your bundling rationale is "same file" and the file has a pinning test on its size

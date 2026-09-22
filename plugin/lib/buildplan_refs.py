@@ -245,6 +245,72 @@ def unticked_chunk_items(content: str) -> list[str]:
     return [text for checked, text in _iter_status_section_items(content) if not checked]
 
 
+def has_build_plan_shape(content: str) -> bool:
+    """Whether ``content`` is a build plan on POSITIVE evidence rather than by default.
+
+    ``plan_index.is_build_plan`` answers the same question from frontmatter and
+    fails safe toward *yes*: a document declaring no ``artifact:`` counts,
+    because at least one real plan declares none. That direction is sound where
+    a declared ``scope:`` is already evidence, and useless without it — over
+    this repo's live ``artifacts/`` it admits 22 documents of which 20 are
+    release plans, spikes, audits and ``project-preferences.md``.
+
+    So this asks for evidence instead, in the three forms a build plan in the
+    wild actually carries. Any one is enough, and each is load-bearing on its
+    own — one plan in this repo's own corpus is reachable by that signal and no
+    other, which is why the union is not redundancy:
+
+    * it DECLARES the type — ``v1.5-critic-proportionality-plan.md``;
+    * it carries a ``## Status`` roster item — ``waiver-pragma-plan.md``, whose
+      chunks are list items no heading matcher parses;
+    * it ANNOUNCES a chunk — ``build-plan-coverage-perf.md``, which has chunks
+      and no Status section at all. Matched with :data:`_CHUNK_ANNOUNCE_RE`, not
+      the stricter :data:`_CHUNK_HEADING_RE`: the strict one exists to parse an
+      *id* out of a heading, and a heading it cannot parse is exactly the plan
+      most in need of being named here — ``#### Chunk 01:`` is the classic
+      silent defeat. This asks only "does this document announce chunks", which
+      is the loose matcher's stated job. The two agree on all 138 documents in
+      this repo, so the widening costs nothing today and covers the shape that
+      would otherwise escape.
+
+    Measured 2026-08-20 over the 91 known-real build plans in this repo (90
+    archived plus the live scoped one): the three signals score 90, 90 and 91,
+    their union 91, and against the 22 scope-less live candidates the union
+    names exactly the 2 that are genuinely plans.
+    ``tests/test_unscoped_plan_fact.py`` re-measures both halves against the
+    real corpus rather than restating these numbers, so they cannot quietly rot.
+
+    This lives here and not in ``plan_index`` because two of the three signals
+    are build-plan STRUCTURE, which is this module's subject; ``plan_index``
+    reads frontmatter, imports nothing heavy, and runs at every session boundary.
+    """
+    if plan_index.declared_artifact_type(content) == plan_index.BUILD_PLAN_TYPE:
+        return True
+    if any(True for _item in _iter_status_section_items(content)):
+        return True
+    return any(_CHUNK_ANNOUNCE_RE.match(line) for line in content.splitlines())
+
+
+def plans_missing_scope(artifacts_dir: Path) -> list[Path]:
+    """Live build plans invisible to the scope walk because they declare no ``scope:``.
+
+    The published fact consumers call: ``plan_index.unscoped_candidates`` owns
+    the walk and the frontmatter half, this supplies the
+    :func:`has_build_plan_shape` evidence that walk refuses to guess at.
+
+    **Every reader of ``iter_scoped_plan_candidates`` reports over a set these
+    plans are missing from**, so any of them that states coverage asks this
+    beside it — that is the rule, rather than a list of today's callers that
+    goes stale as the next one is added. Asking turns an implied-complete
+    figure into a stated one, and at the release gate it turns a false sentence
+    into a caveated one: an unscoped plan there produced "work is shipping with
+    no plan describing it" about a plan sitting in the same directory.
+    """
+    return plan_index.unscoped_candidates(
+        artifacts_dir, looks_like_plan=has_build_plan_shape
+    )
+
+
 def status_chunk_ids(content: str) -> list[str]:
     """Every chunk id the ``## Status`` roster names, ticked or not, in order.
 
@@ -2196,9 +2262,23 @@ def deliverable_check_gaps(
     # own docstring calls the main case. `iter_live_plan_files`, not
     # `iter_scoped_plan_candidates`: the latter yields plans that DECLARE a
     # scope, which is exactly what a plan missing one cannot do.
+    #
+    # UNIONED with :func:`plans_missing_scope`, because the two answer "is this a
+    # plan" differently: `iter_live_plan_files` goes by declared type or the
+    # `build-plan` filename, while `has_build_plan_shape` also counts a `## Status`
+    # roster or a chunk announcement. A plan only the second recognizes — a
+    # roster-only `waiver-pragma-plan.md` — is exactly the scope-less plan this
+    # channel is the dispatch-time home for, and every other surface names it.
     gaps: list[str] = []
     artifacts = prawduct_dir / "artifacts"
-    for candidate in plan_index.iter_live_plan_files(artifacts):
+    candidates = {
+        path.resolve(): path
+        for path in (
+            *plan_index.iter_live_plan_files(artifacts),
+            *plans_missing_scope(artifacts),
+        )
+    }
+    for candidate in sorted(candidates.values()):
         gaps.extend(_plan_gaps(candidate, artifacts))
     return gaps
 

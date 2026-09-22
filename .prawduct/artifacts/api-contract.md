@@ -225,7 +225,12 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   the set is proposed and the operator archives each with `archive-plan`. Checkbox state is neither
   a precondition nor corrected on the way in. `--json` adds `blocked[{path,scope,release,reason}]`:
   plans the change log records as shipped that the archival predicate refuses, split out so the
-  preview cannot promise what the write declines. **Exit 1 on `--apply` when anything is `blocked`
+  preview cannot promise what the write declines. It also carries
+  `unevaluated[{path}]` — build plans that declare no frontmatter `scope:` and so were never
+  candidates for any bucket, since the whole shipped test is a lookup on that key. Reported, and
+  named on stdout under both arms of the release-tag fork, because the other three counts read as
+  a description of `artifacts/` and without this one they are not. Diagnostic only: no exit code
+  and no gate reads it. **Exit 1 on `--apply` when anything is `blocked`
   or `refused`** — an apply that could not move work the change log says shipped is not a clean run;
   a preview stays 0, having attempted nothing.
   `archive-change-log [--apply] [--json]` (mutating with `--apply`) keeps `.prawduct/change-log.md`
@@ -242,10 +247,15 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   removes the retired `views_enabled` key and `scope_rollups` block, labels a derived
   `release-notes.md` as history, and deletes `## Status` notes instructing readers not to hand-edit
   checkboxes. `--json` keys: `applied`, `edits[{path,kind,reason,detail}]`, `unreadable[{path,
-  reason}]`, `retired_flag{status,path,line}`, `plans_to_review[{path,chunks}]`, `outcome`.
-  **`unreadable`, `retired_flag` and `plans_to_review` all have a live consumer** —
+  reason}]`, `unscoped[path]`, `retired_flag{status,path,line}`, `plans_to_review[{path,chunks}]`,
+  `outcome`.
+  **`unreadable`, `unscoped`, `retired_flag` and `plans_to_review` all have a live consumer** —
   `skills/doctor/SKILL.md` Health Checks #15 and #16 grade on them — so renaming any of them is a
-  consumer break, not an internal edit. `unreadable` is the plans under `artifacts/` that could not
+  consumer break, not an internal edit. `unscoped` is the one that is graded **healthy**: build
+  plans that decode fine and declare no frontmatter `scope:`, so the plan scan does not yield them
+  and the repair never read them. Reported so a clean `edits` list is not read as "everything was
+  checked", and deliberately outside both exit-code expressions — `--apply` cannot add a `scope:`
+  key, so grading it would pin a repo at degraded with no route out. `unreadable` is the plans under `artifacts/` that could not
   be decoded as text: the walk that builds `edits` deliberately swallows them (one malformed file
   must not blind the scan), so a non-empty `unreadable` means the repair reports on a set it did not
   fully read. It was emitted before it was documented or graded, which is how a repo with an unread
