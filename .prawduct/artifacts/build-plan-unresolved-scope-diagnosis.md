@@ -128,5 +128,5 @@ follow-up branch never touched does not.
 
 ## Status
 
-- [ ] Chunk 1: critic-begin explains an unresolved scope
-- [ ] Chunk 2: a finished, unarchived plan still matches its branch name
+- [x] Chunk 1: critic-begin explains an unresolved scope
+- [x] Chunk 2: a finished, unarchived plan still matches its branch name
