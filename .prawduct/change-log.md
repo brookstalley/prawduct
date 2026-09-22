@@ -5,6 +5,30 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-22: Landing a far-behind branch becomes shipped guidance
+
+<!-- prawduct: type=docs | scope=far-behind-branch-guidance -->
+
+Up-levelled from this session's retrospective at the owner's request, after checking which lessons
+shipped guidance already carried. Most did — the inner-loop verification ceiling, accept as the
+default disposition, the concurrent PR reviewer, delegation's "serial by default" tell — and were
+misses of application, not of guidance. One was genuinely absent and ships here: `pr/SKILL.md`
+Step 1 on landing a branch far behind its base. Three salvages in one session showed the shape —
+decide what landed by tree content; audit what the sync REMOVED **and ADDED** against the base,
+since keep-both drops the base's revision and a `merge=union` record resurrects archived entries
+as additions (#857, twice in three days); move relocated content to its new home and do not
+re-add retired content; re-check the branch's own claims about the base, which is what produced a
+blocking finding on PR #879. `TestFarBehindBranchGuidance` pins it.
+
+**A second instruction was built and withdrawn in the same branch.** "Record the suite while the
+Critic review runs" went into `building.md`, and the cumulative review showed it is not safe as a
+one-liner: it contradicts "Record once, at Verify" in the same file, and the review's own
+`test-status` check depends on the run — overlapping it either buys a stale-evidence warning per
+review or lets older session-fresh evidence hide a failing suite from the review. That is the
+ordering dependency #678 asks to have stated, so the analysis went there and `building.md` and its
+ceiling are unchanged. The waste it targeted was mostly re-runs, which "Record once" already
+forbids.
+
 ## 2026-08-20: a build plan with no `scope:` stops being invisible to everything that scans artifacts/
 
 <!-- prawduct: type=fix | scope=coverage-honesty -->

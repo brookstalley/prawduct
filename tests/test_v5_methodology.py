@@ -6302,3 +6302,17 @@ class TestSubjectAndOracleReachTheReviewer:
         builder_half = cycle.split("## Final-Mode Cross-Checks", 1)[0]
         assert "only subject is a non-judgeable record is a **NOTE**" not in builder_half
         assert "Records Pass** below" in builder_half
+
+
+class TestFarBehindBranchGuidance:
+    """PR Step 1's instruction for landing a branch far behind its base, pinned so
+    a budget trim cannot take it silently. The audit is BIDIRECTIONAL on purpose:
+    a `merge=union` record resurrects archived entries as ADDITIONS, which an
+    audit of removals alone cannot see."""
+
+    def test_pr_step_1_covers_a_far_behind_branch(self):
+        skill = read_file("skills/pr/SKILL.md")
+        step1 = skill[skill.index("### Step 1: Branch hygiene"): skill.index("### Step 1b")]
+        for phrase in ("tree content, never by ancestry", "REMOVED and what it ADDED",
+                       "`merge=union`", "moved goes to its new home"):
+            assert phrase in step1, f"PR Step 1 lost: {phrase!r}"
