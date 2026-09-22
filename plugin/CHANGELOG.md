@@ -67,9 +67,10 @@ also has an empty span, so a branch RESUMING a scope inherits that scope's round
 worktree — the budget's declared unit is the scope, so that is consistent, but it is a behaviour
 change on branch-based repos too. And nothing resets the worktree-bounded count, so reusing a scope
 name for a second body of work inherits the first's rounds and can refuse its very first dispatch.
-Give each body of work its own scope name, or raise the budget; `api-contract.md` and the
-`project-state.yaml` template comment both say so. The verdict and the guard-refusal fact now carry
-`bound` (`lineage` | `worktree`), which `prawduct-hook evidence list` renders as a `bound=` column,
+Give each body of work its own scope name, or raise the budget — the `project-state.yaml`
+template comment that ships with the plugin says so, as does prawduct's own `api-contract.md`.
+The verdict and the guard-refusal fact now carry `bound` (`lineage` | `worktree`), which
+`prawduct-hook evidence list` renders as a `bound=` column,
 because the two bounds count different sets. The `uncovered:` gate block no longer claims *the next
 round is this branch's first* when the span is empty and it cannot know. Rider: `plan-backfill
 --apply` now names the staging remedy for the archive it wrote, with repo-root-anchored paths.
