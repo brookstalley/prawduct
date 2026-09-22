@@ -2107,7 +2107,9 @@ def _prior_review_fact(
     """The review fact a verify-resolutions pass anchors to, located via the
     derived cache's ``fact_id`` pointer (D7 — this is what the pointer is
     for). Returns ``(fact, "")`` or ``(None, reason)`` — the caller fails
-    loud and the skill demotes to chunk/final.
+    loud, and the skill's exit table routes the refusal: a missing or
+    unreachable anchor demotes, an unusable store (:func:`_store_unusable`)
+    stops.
 
     ``store`` is the caller's :func:`evidence.read_facts` result, REQUIRED
     rather than defaulted: the dispatch's prior-dispositions block reads the

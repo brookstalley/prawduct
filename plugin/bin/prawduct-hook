@@ -1905,8 +1905,8 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
         for note in result.get("notes") or []:
             print(f"PRAWDUCT NOTE: {note}", file=sys.stderr)
         print(f"critic-begin: {result['reason']}", file=sys.stderr)
-        # 6, not the free 5: #167's withdrawn `self-inflicted-refusal` held 5
-        # on develop, and a new meaning must not wear an old number.
+        # Exit codes are registered in `api-contract.md`'s Error Model, which
+        # also records why 5 is left unclaimed.
         return {"scope-widened": 2, "store-unusable": 6}.get(result.get("kind"), 1)
 
     if result.get("archived_leftovers"):

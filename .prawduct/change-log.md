@@ -12,6 +12,11 @@
 Re-applied from the unmerged `fix/review-scrub-seams` branch (last commit 2026-09-10), which
 conflicted with `develop`; triaged by tree content, every change below was still absent there. Ported fresh rather than merged, under a new scope, because the
 branch's entries reused `tactical-efficiency` and `durable-agent-worktrees`, both already shipped.
+**Its learnings are deliberately not ported:** the branch added a "never raises contract is a claim
+about EVERY input" rule and a correction block to the since-retired `learnings.md` /
+`learnings-history.md` pair, and `core.md` already carries the rule twice over — *make an absolute
+robustness claim literally true and test the claimed-safe path*, and *a `try/except` around a
+producer that RETURNS its degraded states guards nothing*. The old branch is archived after merge.
 
 **Every transfer decision reads one classifier.** `_merge_base_verdict` tested "anything but
 `unavailable`" while `check_cumulative_critic` tested `== "match"`. On `develop` the difference was
