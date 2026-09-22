@@ -380,6 +380,14 @@ class TestStaleStatusReportsSeeUnscopedPlans:
         assert [Path(r["path"]).name for r in reports] == ["build-plan-mystery.md"]
         assert reports[0]["chunks"] == ["Chunk 01: unfinished"]
 
+        # ...and the repair must be able to ACT on what the report names: a plan
+        # reported as carrying the retired note, with no edit computed for it,
+        # is "nothing here needs repairing" said over a note that stays.
+        edits = lifecycle_repair.plan_repair(repo)["edits"]
+        assert [
+            Path(e["path"]).name for e in edits if e["kind"] == "plan-comment"
+        ] == ["build-plan-mystery.md"]
+
 
 class TestRetiredFlagGuard:
     """GD2 — the flag coming back, typically by copying an older state file."""

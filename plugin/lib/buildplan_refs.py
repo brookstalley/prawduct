@@ -2262,9 +2262,23 @@ def deliverable_check_gaps(
     # own docstring calls the main case. `iter_live_plan_files`, not
     # `iter_scoped_plan_candidates`: the latter yields plans that DECLARE a
     # scope, which is exactly what a plan missing one cannot do.
+    #
+    # UNIONED with :func:`plans_missing_scope`, because the two answer "is this a
+    # plan" differently: `iter_live_plan_files` goes by declared type or the
+    # `build-plan` filename, while `has_build_plan_shape` also counts a `## Status`
+    # roster or a chunk announcement. A plan only the second recognizes — a
+    # roster-only `waiver-pragma-plan.md` — is exactly the scope-less plan this
+    # channel is the dispatch-time home for, and every other surface names it.
     gaps: list[str] = []
     artifacts = prawduct_dir / "artifacts"
-    for candidate in plan_index.iter_live_plan_files(artifacts):
+    candidates = {
+        path.resolve(): path
+        for path in (
+            *plan_index.iter_live_plan_files(artifacts),
+            *plans_missing_scope(artifacts),
+        )
+    }
+    for candidate in sorted(candidates.values()):
         gaps.extend(_plan_gaps(candidate, artifacts))
     return gaps
 

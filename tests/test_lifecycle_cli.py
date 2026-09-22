@@ -252,6 +252,11 @@ class TestUnscopedPlansDoNotChangeTheVerdict:
         assert "build-plan-mystery.md" in proc.stdout
         assert "declare no `scope:`" in proc.stdout
         assert "could not read" not in proc.stdout + proc.stderr
+        # The repair DOES check these plans (the report and the edit loop walk one
+        # set), so the message must not claim otherwise, and must name the one
+        # thing it cannot do for them.
+        assert "checked like any other plan" in proc.stdout
+        assert "did not read" not in proc.stdout
 
     def test_json_keeps_the_two_channels_apart(self, tmp_path: Path) -> None:
         payload = json.loads(_run(self._repo(tmp_path), "lifecycle-repair", "--json").stdout)

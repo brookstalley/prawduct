@@ -291,6 +291,27 @@ class TestTheInvisiblePlansAreNamedOnceAtDispatch:
             f"that also carries its remedy; named in {named_in}"
         )
 
+    def test_a_plan_recognized_only_by_its_shape_is_named_too(self, tmp_path: Path) -> None:
+        """The population this channel speaks for is `plans_missing_scope`'s, not
+        the filename walk's. A roster-only plan with no `build-plan` name and no
+        frontmatter — the shape of this repo's own `waiver-pragma-plan.md` — is
+        named by doctor, plan-backfill and the release gate, and must be named
+        here too, or dispatch is the one surface still blind to it."""
+        roster_only = "# Waiver pragma\n\n## Status\n\n- [ ] Chunk 01: Parse the pragma\n"
+        prawduct = self._repo(tmp_path, {"waiver-pragma-plan.md": roster_only})
+        # Precondition, from a source independent of the channel under test:
+        # the shape rule DOES call it a scope-less plan, and the filename walk
+        # does NOT — so this fixture sits in exactly the gap between the two.
+        artifacts = prawduct / "artifacts"
+        assert [p.name for p in buildplan_refs.plans_missing_scope(artifacts)] == [
+            "waiver-pragma-plan.md"
+        ]
+        assert plan_index.iter_live_plan_files(artifacts) == []
+
+        notes = buildplan_refs.deliverable_check_gaps(prawduct, None)
+
+        assert any("waiver-pragma-plan.md" in note for note in notes), notes
+
     def test_the_note_carries_the_remedy_the_gap_cannot(self, tmp_path: Path) -> None:
         """What the reader is owed is the ACT, not the diagnosis: the reason the
         lookup could never have worked, and the three words that fix it."""

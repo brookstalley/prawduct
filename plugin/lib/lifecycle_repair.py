@@ -487,6 +487,22 @@ def apply_comment_removals(text: str, removals: list[dict]) -> str:
 # --- FL3: live plans a human must look at once ------------------------------
 
 
+def _plan_documents(artifacts_dir: Path) -> "list[Path]":
+    """Scope-declaring plans plus the ones the scope walk cannot key, sorted.
+
+    The ONE set both the stale-Status report and the repair's edit loop walk, so
+    a plan the report names is always one the repair can act on. Whether a plan
+    carries a stale derived-Status instruction has nothing to do with whether it
+    declares a `scope:` — that key ties an entry to a change-log scope, and
+    these checks are about the document. Sorted so order does not depend on
+    which of the two sources found a plan.
+    """
+    return sorted(
+        {path for path, _scope in plan_index.iter_scoped_plan_candidates(artifacts_dir)}
+        | set(buildplan_refs.plans_missing_scope(artifacts_dir))
+    )
+
+
 def stale_status_reports(artifacts_dir: Path) -> list[dict]:
     """Live plans whose Status was a derived view and has unticked chunks.
 
@@ -506,18 +522,7 @@ def stale_status_reports(artifacts_dir: Path) -> list[dict]:
     firing.
     """
     reports: list[dict] = []
-    # Scope-declaring plans plus the ones the scope walk cannot key. Whether a
-    # plan carries a stale derived-Status instruction has nothing to do with
-    # whether it declares a `scope:` — that key ties an entry to a change-log
-    # scope, and this check is about the document. Walking only the keyed ones
-    # left a plan that needs a human's eye invisible to the check that exists
-    # to name it. Sorted so the report order does not depend on which of the two
-    # sources found a plan.
-    candidates = sorted(
-        {path for path, _scope in plan_index.iter_scoped_plan_candidates(artifacts_dir)}
-        | set(buildplan_refs.plans_missing_scope(artifacts_dir))
-    )
-    for plan_path in candidates:
+    for plan_path in _plan_documents(artifacts_dir):
         try:
             content = plan_path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
@@ -626,9 +631,10 @@ def plan_repair(project_dir: str | Path) -> dict:
     # wrong for a repair: such a plan never reaches the loop below, so without
     # this the command reported a clean sweep over a file nothing had read.
     unreadable.extend(plan_index.unreadable_candidates(artifacts_dir))
-    # Same question, second answer the walk cannot give: a plan declaring no
-    # `scope:` is not yielded either, so the loop below never sees it and
-    # "nothing to change" would report it as converged.
+    # Same question, second answer the scope walk cannot give: a plan declaring
+    # no `scope:` is not yielded by it. The loop below still reaches such a plan
+    # through `_plan_documents`, but nothing here can supply the missing key, so
+    # it is reported rather than silently counted as converged.
     #
     # **Its own key, and that is the whole point of this comment.** The first
     # version put these on `unreadable`, which three consumers already read as
@@ -641,7 +647,7 @@ def plan_repair(project_dir: str | Path) -> dict:
     # which is exactly the property this fact's own opt-out rule disqualifies.
     # Diagnostic, therefore: reported, never graded, never fatal.
     unscoped = [str(path) for path in buildplan_refs.plans_missing_scope(artifacts_dir)]
-    for plan_path, _scope in plan_index.iter_scoped_plan_candidates(artifacts_dir):
+    for plan_path in _plan_documents(artifacts_dir):
         try:
             content = _read_preserving_newlines(plan_path)
         except (OSError, UnicodeDecodeError) as exc:

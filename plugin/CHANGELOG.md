@@ -91,6 +91,18 @@ stopped closing with the standing block, where delivery and the digest's size li
 out and placement was the surviving explanation. The wording is unchanged apart from two phrases
 that restated their neighbours, and the digest is two tokens smaller.
 
+**`coverage-honesty`** — two gaps where a review or a scan reported more certainty than it had.
+The instance-or-class rule for findings now reaches `chunk` and `verify-resolutions` reviewers,
+handed to them at dispatch because their instruction file has no room for it — a correction:
+v3.4.0 said `verify-resolutions` already had it, and only the *grading* half did; the *labelling*
+half reached `final` and `cumulative` alone. The rule also gains `none`, for a mandated
+cross-check that bounds no defect. And a build plan with no `scope:` in its frontmatter stops
+being invisible: `plan-backfill`, `lifecycle-repair` (and `/prawduct:doctor`'s check that runs it),
+and Critic dispatch each name such plans as unevaluated, and the release-readiness warning counts
+them, instead of reporting a figure that silently left them out — including plans recognized only by a `## Status`
+roster or chunk headings, not just by a `build-plan` filename. `lifecycle-repair --apply` now also
+removes the retired derived-Status note from such a plan rather than reporting it and leaving it.
+
 **`release-v3.6.0`** — the v3.6.0 cut itself: `main` promoted, the tag and GitHub Release
 published in one call, and `develop` reopened here. Nothing in this scope changes plugin
 behaviour; it is the release's own record, and it carries the runbook fix that stops Phase 1
@@ -440,28 +452,6 @@ dropped part of your suite, and nothing in the counts separates that from a clea
 `test-evidence record --degraded "<what did not report>"` says so, and the gates read it as stale
 rather than as a pass.
 
-### Correction: v3.4.0 claimed the instance-or-class rule reached `verify-resolutions`. It did not.
-
-v3.4.0's note named `chunk` as the one mode still missing the rule and said `final`, `cumulative`
-and `verify-resolutions` all had it. The first clause was wrong, and the note collapsed a real
-distinction to get there.
-
-**Two halves ship separately.** The *grading* half — re-run the finding's own reason as a search
-before writing `fixed` — did reach `verify-resolutions`. The *authoring* half — label the findings
-you raise — was stated only in the protocol file that `final` and `cumulative` load, and the other
-two modes are forbidden to open it. So a `verify-resolutions` reviewer was told to grade a class
-finding rigorously and never told to label the ones it raised.
-
-**Both modes now get the rule at dispatch**, handed to them by code rather than by the payload
-they read — the payload has a hard size pin and three tokens of room, and the grading half took
-this same route for the same reason. `chunk`, which v3.4.0 named as a known gap, is fixed by the
-same change rather than left for a later one.
-
-**A finding that bounds no defect now has an answer.** The mandated cross-checks — priors,
-learnings, backlog reconciliation — must report even when clean, and their reviewers were already
-coining `Scope: none` for it. It is a stated value now, in both carriers, rather than an invented
-one.
-
 **A build plan can declare the branch it governs.** Add `branch: <name>` to a build plan's
 frontmatter and every governance surface resolves that plan while that branch is checked out, ahead
 of `active_build_plan`. Two concurrent branches stop fighting over one line in `project-state.yaml`,
@@ -655,7 +645,7 @@ At `verify-resolutions`, a reviewer grading your fix is now told to re-run the f
 
 Every one of the Critic's seven goals is already prose, and the observed defect was that *this* prose was absent — not that prose does not work. The escalation trigger is written down rather than left to judgement: if a review after this produces a site-naming finding that does not answer instance-or-class, the answer becomes machine-checkable.
 
-**Known gap, stated rather than discovered later:** `chunk`-mode reviews do not carry the rule yet — their instruction payload is at its size ceiling. `final` and `cumulative` have it, and a `chunk`-mode finding meets the rule one round later when its fix is graded.
+**Known gap, stated rather than discovered later:** `chunk`-mode reviews do not carry the rule yet — their instruction payload is at its size ceiling. `final`, `cumulative` and `verify-resolutions` all have it, and a `chunk`-mode finding meets the rule one round later when its fix is graded.
 
 ### Also in this release
 
