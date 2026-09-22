@@ -25,7 +25,8 @@ were measured.
 `critic-begin` now prints a note saying why and which plan edit fixes it — most often a `branch:`
 line written below the plan's frontmatter, where nothing reads it. A review without a scope is
 invisible to the round budget. A finished plan also keeps matching its branch name for its own
-final review, as long as that branch edited the plan.
+final review, as long as that branch edited the plan. A branch that touched no plan gets no note, so
+plan-less chores and fixes are not told to add a `branch:` line.
 
 **`866-cost-of-commit-covered`** — `prawduct-hook cost-of-commit` no longer says a tree a Critic
 review already covers "costs a round". With no path arguments it now checks review coverage the way

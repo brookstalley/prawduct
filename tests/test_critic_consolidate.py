@@ -6186,7 +6186,7 @@ class TestUnresolvedScopeCause:
     invisible to the round budget.
     """
 
-    def _repo(self, tmp_path, plans: dict, branch: str, state: str = "") -> Path:
+    def _repo(self, tmp_path, plans: dict, branch: str, state: str = "", edit: str = "") -> Path:
         repo = tmp_path / "r"
         _init_repo(repo)
         _commit_file(repo, "src/app.py", "x = 1\n", "init")
@@ -6195,10 +6195,17 @@ class TestUnresolvedScopeCause:
         (repo / ".prawduct" / "project-state.yaml").write_text(f"project_name: t\n{state}")
         for name, body in plans.items():
             (artifacts / name).write_text(body)
-        _commit_file(repo, ".prawduct/keep", "", "seed prawduct")
+        # Commit the plans with the seed: they exist before the branch, so only
+        # an edit made ON the branch reads as this branch's work.
+        (repo / ".prawduct" / "keep").write_text("")
+        _git(repo, "add", ".prawduct")
+        _git(repo, "commit", "-m", "seed prawduct", "--quiet")
         if branch != "main":
             _git(repo, "checkout", "-b", branch, "--quiet")
         (repo / "src/app.py").write_text("x = 2\n")
+        if edit:  # this branch works on that plan — the evidence it has one
+            with (artifacts / edit).open("a") as fh:
+                fh.write("\nprogress note\n")
         return repo
 
     def _dispatch(self, repo, *extra):
@@ -6233,7 +6240,9 @@ class TestUnresolvedScopeCause:
         )
         result, manifest = self._dispatch(repo)
         assert manifest["scope_chosen_by"] == "not-resolved"
-        assert manifest["scope_unresolved_cause"] == "no-claim"
+        # b claims the branch and declares a scope; its scope is shadowed, and
+        # the branch edited no plan, so there is no advice worth printing.
+        assert manifest["scope_unresolved_cause"] is None
         assert "declares no `scope:`" not in result.stderr
 
     def test_a_branch_line_below_the_frontmatter_is_named(self, tmp_path):
@@ -6278,16 +6287,45 @@ class TestUnresolvedScopeCause:
         assert manifest["scope_unresolved_cause"] == "pointer-claims-other"
         assert "build-plan-p.md claims branch 'develop', not 'feat/work'" in result.stderr
 
-    def test_nothing_claiming_the_branch_is_named_with_the_line_to_add(self, tmp_path):
+    def test_a_plan_edited_here_that_does_not_claim_the_branch_is_named(self, tmp_path):
         repo = self._repo(
             tmp_path,
             {"build-plan-a.md": "---\nartifact: build-plan\nscope: a\n---\n\n# Plan\n"},
             "feat/work",
+            edit="build-plan-a.md",
         )
         result, manifest = self._dispatch(repo)
         assert manifest["scope_unresolved_cause"] == "no-claim"
-        assert "no live build plan declares `branch: feat/work`" in result.stderr
+        assert (
+            "build-plan-a.md was edited on this branch but no live plan declares "
+            "`branch: feat/work`"
+        ) in result.stderr
         assert "PRAWDUCT NOTE: this review resolved no build-plan scope" in result.stderr
+
+    def test_a_plan_written_on_this_branch_and_never_committed_is_named(self, tmp_path):
+        repo = self._repo(tmp_path, {}, "feat/work")
+        (repo / ".prawduct" / "artifacts" / "build-plan-new.md").write_text(
+            "---\nartifact: build-plan\nscope: new\n---\n\n# Plan\n"
+        )
+        result, manifest = self._dispatch(repo)
+        assert manifest["scope_unresolved_cause"] == "no-claim"
+        assert "build-plan-new.md was edited on this branch" in result.stderr
+
+    def test_a_branch_that_touched_no_plan_says_nothing(self, tmp_path):
+        """Plan-less work — a chore, a small fix — is normal, and the plans that
+        exist belong to other work. A note telling it to add `branch:` to "the
+        plan this work belongs to" would fire on every such review with nothing
+        to act on. The sibling test above, identical but for the edit, is the
+        control."""
+        repo = self._repo(
+            tmp_path,
+            {"build-plan-a.md": "---\nartifact: build-plan\nscope: a\n---\n\n# Plan\n"},
+            "chore/bump",
+        )
+        result, manifest = self._dispatch(repo)
+        assert manifest["scope_chosen_by"] == "not-resolved"
+        assert manifest["scope_unresolved_cause"] is None
+        assert "this review resolved no build-plan scope" not in result.stderr
 
     def test_the_integration_branch_says_nothing(self, tmp_path):
         # No plan should claim the branch everything merges into, so a note
@@ -6326,6 +6364,7 @@ class TestUnresolvedScopeCause:
             tmp_path,
             {"build-plan-a.md": "---\nartifact: build-plan\nscope: a\n---\n\n# Plan\n"},
             "feat/work",
+            edit="build-plan-a.md",
         )
         self._dispatch(repo)
         manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
