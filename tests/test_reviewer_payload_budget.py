@@ -141,8 +141,13 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # RATCHETED with the readings below (review-interval-extension, 2026-09-22):
     # the chunk/final interval rewording (it now starts at the covered
     # frontier) was paid in place and came out smaller, and the ceilings follow.
-    "single-pass-inner": 6295,
-    "single-pass-full": 20340,
+    # RAISED (review-interval-extension, 2026-09-22, cumulative finding): the demotion
+    # property's list of commits `chunk`/`final` cannot reach — behind an open blocker,
+    # before any review, across a base sync — was cut to one case in the same branch and
+    # restored. DECLARED, not paid: the sentence has no duplicate to fund it, and a builder
+    # reading the one-case version demotes the other three to a mode that cannot see them.
+    "single-pass-inner": 6308,
+    "single-pass-full": 20353,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -164,8 +169,8 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
 }
 
 PAYLOAD_CEILINGS = {
-    "single-pass-inner": 6296,
-    "single-pass-full": 20341,
+    "single-pass-inner": 6309,
+    "single-pass-full": 20354,
     "dispatched-reviewer": 19489,
 }
 

@@ -114,6 +114,26 @@ review is owed. `cost-of-commit` prices such a commit as riding the next review.
 **Done when:** each changed message has a test on its rendered text (both directions: mid-plan and
 last chunk); targeted tests green.
 
+**Departures, recorded after the boundary review (2026-09-22):**
+- *"A later review is owed" is two or more unticked chunks, not one* (the design said an unticked
+  chunk). A lone unticked box cannot tell "reviewed, not yet ticked" from "one chunk left", and
+  reading it as owed would defer a fix nothing covers.
+- *Two conditions the design did not have.* The newest review on the branch must be of the current,
+  unticked chunk (by the fact's chunk id), and it must carry no unresolved blocker, checked on the
+  fact. The boundary review found both holes. The first let a whole unreviewed chunk be deferred. The
+  second let a blocker raised on uncommitted work be deferred, because the walk cannot see an
+  uncommitted tree and answered from an older clean commit.
+- *The post-fix inference branch is not deferred.* Under the chunk-id condition it was unreachable,
+  since a `cumulative` rarely records a chunk, so the branch was removed rather than tested.
+- *Nothing defers after a `cumulative`* (found on this branch's own boundary review). A `cumulative`
+  spans every chunk built so far and records at most one chunk id, so afterwards unticked boxes may
+  be chunks awaiting their tick rather than chunks still to build. Its verify pass printed "the next
+  chunk's review covers the fix" with every chunk already built. A `cumulative` on the review chain
+  now marks the boundary for both the deferral and the close.
+- *Nothing reads `base_extended_from` yet* (the design named `review-stats`). It is recorded on
+  every fact, so the yield is countable from the store now; wiring a reader is left for when the
+  measurement window needs one.
+
 ## Chunk 3: The docs say what the code now does
 
 **Delivers:** the prose cascade listed in the design's "Prose that becomes false", reworded in place

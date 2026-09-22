@@ -1150,7 +1150,7 @@ def commit_coverage(project_dir: Path) -> dict:
 FRONTIER_WALK_LIMIT = 200
 
 
-def covered_frontier(project_dir: Path) -> "dict | None":
+def covered_frontier(project_dir: Path, why: "list[str] | None" = None) -> "dict | None":
     """The newest commit on this branch whose tree a REVIEW already covers.
 
     Walks HEAD's first-parent history back toward the merge-base and returns
@@ -1179,27 +1179,45 @@ def covered_frontier(project_dir: Path) -> "dict | None":
       review;
     - the merge-base, the history or the store cannot be read, or the walk
       passes :data:`FRONTIER_WALK_LIMIT`.
+
+    The last group is "could not look", not "nothing to find", and ``None``
+    alone cannot say which. A caller that passes ``why`` gets one sentence per
+    such failure appended to it, so a degraded answer is named where it is
+    shown rather than reading as a clean "no frontier".
     """
+    def _unreadable(reason: str) -> None:
+        if why is not None:
+            why.append(reason)
+
     read = evidence.read_facts(project_dir)
-    if _store_precheck(read) is not None:
+    precheck = _store_precheck(read)
+    if precheck is not None:
+        _unreadable(f"the evidence store could not be read ({precheck[1]})")
         return None
     resolved = coverage.resolve_merge_base_tree(project_dir)
     if resolved["status"] != "ok":
+        _unreadable(f"the merge-base could not be resolved ({resolved['reason']})")
         return None
-    rc, out, _err = evidence.run_git(
+    rc, out, err = evidence.run_git(
         project_dir, "rev-list", "--first-parent",
         f"--max-count={FRONTIER_WALK_LIMIT + 1}", f"{resolved['merge_base']}..HEAD",
     )
     if rc != 0:
+        _unreadable(f"the branch history could not be read ({err or 'git rev-list failed'})")
         return None
     commits = [line.strip() for line in out.splitlines() if line.strip()]
     if len(commits) > FRONTIER_WALK_LIMIT:
+        _unreadable(
+            f"the branch has more than {FRONTIER_WALK_LIMIT} commits since the merge-base, "
+            "past the walk's bound"
+        )
         return None
     facts = read.get("facts", [])
     diff_fn, key_fn = _cached_diff_fn(project_dir), _tree_key_fn(project_dir)
     for commit in commits:
-        rc, tree, _err = evidence.run_git(project_dir, "rev-parse", f"{commit}^{{tree}}")
+        rc, tree, err = evidence.run_git(project_dir, "rev-parse", f"{commit}^{{tree}}")
         if rc != 0 or not tree:
+            _unreadable(f"commit {commit[:12]}'s tree could not be read ({err or 'no tree'})")
             return None
         verdict = coverage_algebra.coverage_verdict(
             facts, resolved["tree"], tree, diff_fn, key_fn

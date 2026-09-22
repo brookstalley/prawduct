@@ -39,7 +39,9 @@ WARNING = {"name": "Tighten the loop", "goal": "Nothing Is Unintended",
            "severity": "warning", "recommendation": "Tighten", "files": ["src/app.py"]}
 BLOCKING = {"name": "Broken", "goal": "Nothing Is Broken",
             "severity": "blocking", "recommendation": "Fix", "files": ["src/app.py"]}
-MID, END = 1, 4  # chunks ticked of five: four left (a later review is owed), one left
+# Chunks already ticked of five. The chunk under review is the next one, still
+# unticked: MID leaves it and four more (a later review is owed); END leaves it alone.
+MID, END = 0, 4
 
 
 def _plan(ticked: int) -> str:
@@ -59,9 +61,13 @@ def _commit_all(repo: Path, msg: str) -> str:
     return _git(repo, "rev-parse", "HEAD").stdout.strip()
 
 
-def _scenario(tmp_path: Path, ticked: int, findings: list, *, commit_fix: bool) -> tuple[Path, str]:
-    """Chunk reviewed with ``findings``, committed verbatim, then the fix — committed
-    or left in the working tree. Returns the repo and the NEXT-ACTION line."""
+def _scenario(
+    tmp_path: Path, ticked: int, findings: list, *, commit_fix: bool, commit_reviewed: bool = True
+) -> tuple[Path, str]:
+    """The current chunk reviewed with ``findings``, committed verbatim (unless
+    ``commit_reviewed`` is False: the fix then goes straight onto the reviewed,
+    uncommitted tree), then the fix — committed or left in the working tree.
+    Returns the repo and the NEXT-ACTION line."""
     repo = tmp_path / "r"
     _init_repo(repo)
     _commit_file(repo, "src/app.py", "x = 1\n", "init")
@@ -69,7 +75,7 @@ def _scenario(tmp_path: Path, ticked: int, findings: list, *, commit_fix: bool) 
     _commit_file(repo, ".prawduct/artifacts/build-plan-work.md", _plan(ticked), "plan")
     _git(repo, "checkout", "-b", "feat/work", "--quiet")
     (repo / "src/app.py").write_text("x = 2\n")
-    begin = _run_begin(repo, "--mode", "chunk", "--chunk", "1")
+    begin = _run_begin(repo, "--mode", "chunk", "--chunk", str(ticked + 1))
     assert begin.returncode == 0, begin.stderr
     manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
     _write_partial(repo, "reviewer", manifest["commit_reviewed"], findings=findings)
@@ -78,7 +84,8 @@ def _scenario(tmp_path: Path, ticked: int, findings: list, *, commit_fix: bool) 
     next_action = next(
         line for line in done.stdout.splitlines() if line.startswith("NEXT-ACTION:")
     )
-    _commit_all(repo, "chunk 1, reviewed")
+    if commit_reviewed:
+        _commit_all(repo, "the chunk, reviewed")
     (repo / "src/app.py").write_text("x = 3  # the finding, fixed\n")
     if commit_fix:
         _commit_all(repo, "fix, unreviewed")
@@ -207,3 +214,121 @@ class TestWidenedFallback:
         head_tree = _git(repo, "rev-parse", f"{head}^{{tree}}").stdout.strip()
         mode, why = cc._widened_fallback_mode(repo, head_tree, True)
         assert mode == "cumulative", why
+
+
+class TestNothingOwedIsSkipped:
+    """The two ways a deferral could skip a review that is owed."""
+
+    def test_a_blocker_on_an_uncommitted_review_is_never_deferred(self, tmp_path):
+        """The ordinary flow: review the uncommitted chunk, fix its blocker in
+        place. The blocked tree was never committed, so the history walk cannot
+        see it and finds the OLDER clean commit behind it — chunk 1's — as the
+        frontier. Only the check on the newest review itself stops the defer."""
+        repo, _ = _scenario(tmp_path, MID, [WARNING], commit_fix=True)
+        plan = repo / ".prawduct" / "artifacts" / "build-plan-work.md"
+        plan.write_text(_plan(1))
+        _commit_all(repo, "tick chunk 1")
+        (repo / "src/other.py").write_text("y = 1  # chunk 2\n")
+        begin = _run_begin(repo, "--mode", "chunk", "--chunk", "2")
+        assert begin.returncode == 0, begin.stderr
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        _write_partial(repo, "reviewer", manifest["commit_reviewed"],
+                       findings=[{**BLOCKING, "files": ["src/other.py"]}])
+        assert _run_consolidate(repo).returncode == 0
+        (repo / "src/other.py").write_text("y = 2  # the blocker, fixed in place\n")
+        mode, why = infer_mode(repo, None)
+        assert mode != MODE_DEFERRED, why
+        _arm_stop(repo / ".prawduct")
+        result = _run_stop(repo)
+        assert result.returncode == 2, result.stderr
+        assert "deferred-boundary-review" not in result.stderr
+
+    def test_a_later_chunk_nobody_reviewed_is_not_deferred(self, tmp_path):
+        """Chunk 1 reviewed, committed and ticked; chunk 2 built and not
+        reviewed. The frontier exists, a later review is owed — and still the
+        pending work is a whole chunk, whose own review this must not skip."""
+        repo, _ = _scenario(tmp_path, MID, [WARNING], commit_fix=True)
+        plan = repo / ".prawduct" / "artifacts" / "build-plan-work.md"
+        plan.write_text(_plan(1))
+        _commit_all(repo, "tick chunk 1")
+        (repo / "src/other.py").write_text("y = 1  # chunk 2, unreviewed\n")
+        _arm_stop(repo / ".prawduct")
+        result = _run_stop(repo)
+        assert result.returncode == 2, result.stderr
+        assert "deferred-boundary-review" not in result.stderr
+
+    def test_a_blocker_a_verify_pass_left_open_is_never_deferred(self, tmp_path):
+        """A verify pass that names no resolution and raises nothing new is clean
+        on its own, while the blocker it was verifying is still open one review
+        back. The chain has to be walked, not just the newest fact read."""
+        repo, _ = _scenario(tmp_path, MID, [WARNING], commit_fix=True)
+        plan = repo / ".prawduct" / "artifacts" / "build-plan-work.md"
+        plan.write_text(_plan(1))
+        _commit_all(repo, "tick chunk 1")
+        (repo / "src/other.py").write_text("y = 1  # chunk 2\n")
+        begin = _run_begin(repo, "--mode", "chunk", "--chunk", "2")
+        assert begin.returncode == 0, begin.stderr
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        _write_partial(repo, "reviewer", manifest["commit_reviewed"],
+                       findings=[{**BLOCKING, "files": ["src/other.py"]}])
+        assert _run_consolidate(repo).returncode == 0
+        (repo / "src/other.py").write_text("y = 2  # an attempted fix\n")
+        verify = _run_begin(repo, "--mode", "verify-resolutions", "--chunk", "2")
+        assert verify.returncode == 0, verify.stderr
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        _write_partial(repo, "reviewer", manifest["commit_reviewed"], findings=[])
+        assert _run_consolidate(repo).returncode == 0
+        (repo / "src/other.py").write_text("y = 3  # keeps editing\n")
+        mode, why = infer_mode(repo, None)
+        assert mode != MODE_DEFERRED, why
+        _arm_stop(repo / ".prawduct")
+        result = _run_stop(repo)
+        assert result.returncode == 2, result.stderr
+        assert "deferred-boundary-review" not in result.stderr
+
+    def test_after_a_cumulative_nothing_defers_and_the_close_promises_nothing(self, tmp_path):
+        """A `cumulative` spans every chunk built so far and records at most one
+        chunk id, so afterwards unticked boxes may be chunks awaiting their tick
+        rather than chunks still to build. Found on this change's own branch:
+        the boundary review's verify pass promised 'the next chunk's review
+        covers the fix' with every chunk already built."""
+        repo, _ = _scenario(tmp_path, MID, [WARNING], commit_fix=False)
+        _commit_all(repo, "fix")
+        begin = _run_begin(repo, "--mode", "cumulative", "--chunk", "1")
+        assert begin.returncode == 0, begin.stderr
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        _write_partial(repo, "reviewer", manifest["commit_reviewed"], findings=[WARNING])
+        done = _run_consolidate(repo)
+        assert done.returncode == 0, done.stderr
+        line = next(l for l in done.stdout.splitlines() if l.startswith("NEXT-ACTION:"))
+        assert "This plan still owes a later review" not in line
+        assert cc._RIDE_ALONG_ROUTE.strip() in line  # the ordinary close, priced
+        (repo / "src/app.py").write_text("x = 4  # a fix after the boundary review\n")
+        mode, why = infer_mode(repo, None)
+        assert mode != MODE_DEFERRED, why
+
+
+class TestReviewChain:
+    def _review(self, rid, base, head, ts, blocking=False, mode="chunk"):
+        findings = [{"fid": "R-1", "severity": "blocking", "title": "x"}] if blocking else []
+        return {"kind": "review", "id": rid, "ts": ts,
+                "body": {"base_tree": base, "head_tree": head, "findings": findings, "mode": mode}}
+
+    def test_every_review_at_a_linked_tree_is_on_the_chain(self):
+        """A second review of an unchanged tree must not hide a blocker the
+        first one raised at that same tree."""
+        blocked = self._review("r1", "t0", "t1", "2026-09-22T10:00:00Z", blocking=True)
+        rereview = self._review("r2", "t0", "t1", "2026-09-22T11:00:00Z")
+        newest = self._review("r3", "t1", "t2", "2026-09-22T12:00:00Z")
+        facts = [blocked, rereview, newest]
+        chain = critic_mode.review_chain(facts, newest)
+        assert {f["id"] for f in chain} == {"r1", "r2", "r3"}
+        assert critic_mode._open_blocker_on_chain(facts, chain)
+
+    def test_a_cumulative_anywhere_on_the_chain_marks_the_boundary(self):
+        cumulative = self._review("r1", "t0", "t1", "2026-09-22T10:00:00Z",
+                                  mode="cumulative (bundle review, ready for merge)")
+        verify = self._review("r2", "t1", "t2", "2026-09-22T11:00:00Z",
+                              mode="verify-resolutions (delta review, prior findings only)")
+        assert critic_mode.boundary_review_on_chain(critic_mode.review_chain([cumulative, verify], verify))
+        assert not critic_mode.boundary_review_on_chain(critic_mode.review_chain([verify], verify))

@@ -307,9 +307,6 @@ def infer_mode(
 
     postfix_reason = _rule_postfix_fix_fires(prawduct_dir, project_dir)
     if postfix_reason:
-        ext = _extension()
-        if ext:
-            return MODE_DEFERRED, f"extension-deferred (post-review fix): {ext}"
         return "verify-resolutions", (
             f"rule-1b verify-resolutions (post-cumulative fix): {postfix_reason}"
         )
@@ -923,31 +920,145 @@ def later_review_owed(progress) -> bool:
     return progress.total - progress.complete >= 2
 
 
+def _newest_branch_review(project_dir: Path) -> "dict | None":
+    """The most recent ``review`` fact recorded on the checked-out branch, or ``None``.
+
+    Read from the clone-wide store and filtered by the ``actor.branch`` each fact
+    carries, so a sibling worktree's reviews of another branch never answer for
+    this one. Its tree need not be committed: a review of uncommitted work is
+    exactly the case where the tree it judged exists nowhere in the history.
+    """
+    from . import evidence  # noqa: PLC0415 — lazy, as this module's other lib imports are
+
+    branch = gitstate.current_branch(project_dir)
+    if not branch:
+        return None
+    read = evidence.read_facts(project_dir)
+    if read.get("status") == "error":
+        return None
+    reviews = [
+        f for f in read.get("facts") or []
+        if f.get("kind") == "review" and (f.get("actor") or {}).get("branch") == branch
+    ]
+    return max(reviews, key=lambda f: f.get("ts") or "", default=None)
+
+
+def review_chain(facts: list[dict], newest: dict) -> list[dict]:
+    """Every review fact on the chain ``newest`` stands on, newest first.
+
+    The chain is structural: each review's ``base_tree`` is the ``head_tree`` of
+    the review before it (the link ``critic_consolidate.carried_blocking`` reads
+    one hop of). EVERY review standing at a linked tree is included, not only
+    the newest there, because a second review of an unchanged tree must not hide
+    the first; the walk steps back through the newest of them. Walked to the
+    end, because a chain can be several passes long.
+    """
+    reviews = [f for f in facts if f.get("kind") == "review"]
+    chain: list[dict] = []
+    seen: set[str] = set()
+    current: "dict | None" = newest
+    while current is not None and current.get("id") not in seen:
+        seen.add(current.get("id"))
+        chain.append(current)
+        base = (current.get("body") or {}).get("base_tree")
+        earlier = [
+            f for f in reviews
+            if f.get("id") not in seen and (f.get("body") or {}).get("head_tree") == base
+            and (f.get("ts") or "") <= (current.get("ts") or "")
+        ]
+        for other in sorted(earlier, key=lambda f: f.get("ts") or "")[:-1]:
+            seen.add(other.get("id"))
+            chain.append(other)
+        current = max(earlier, key=lambda f: f.get("ts") or "", default=None)
+    return chain
+
+
+def _open_blocker_on_chain(facts: list[dict], chain: list[dict]) -> bool:
+    """Whether any review on ``chain`` still holds an unresolved blocker.
+
+    A ``verify-resolutions`` pass records resolutions for the findings it names
+    and does not copy forward the ones it leaves open, so the newest review can
+    be clean while one it stands on is not. An open blocker anywhere on the
+    chain also blocks the gates, whose composed path stands on the same trees.
+    """
+    resolved = coverage_algebra.resolution_index(facts)
+    return any(coverage_algebra.unresolved_blocking(f, resolved) for f in chain)
+
+
+def boundary_review_on_chain(chain: list[dict]) -> bool:
+    """Whether a ``cumulative`` sits on ``chain`` — the builder is at the boundary.
+
+    A ``cumulative`` spans every chunk built so far and records at most one
+    chunk id, so after one the Status ticks cannot say whether a later chunk is
+    still to be built or merely awaits its tick: both read "unticked". The
+    review's mode can: a ``cumulative`` is the end-of-plan or pre-PR review, so
+    no later chunk review is coming to carry anything, and nothing may defer.
+    """
+    return any(
+        str((f.get("body") or {}).get("mode", "")).startswith("cumulative") for f in chain
+    )
+
+
 def extension_deferral(project_dir: Path, prawduct_dir: Path, plan, progress) -> "str | None":
     """Why the next review will cover this state, or ``None`` when it will not.
 
     A review of the uncovered work since the last reviewed tree is not owed NOW
-    when (a) the plan still owes a later review (:func:`later_review_owed`) and
-    (b) a covered frontier exists — a tree some review reached with no
-    unresolved blocker — because that later ``chunk``/``final`` review starts at
-    the frontier (``gates.covered_frontier``) and covers everything after it.
-    Both conditions are about evidence the gates already trust: (a) is the same
-    plan reading short-plan deferral rests on, and (b) is the gates' own
-    composition. ``None`` on any failure, so a predicate that could not run
-    never relaxes anything.
-    """
-    if not later_review_owed(progress):
-        return None
-    from . import gates  # noqa: PLC0415 — lazy; gates is heavy and one-way
+    only when ALL of these hold — each is the answer to a way the deferral can
+    skip a review that is owed:
 
+    1. **This chunk was reviewed.** The newest review on the branch
+       (:func:`_newest_branch_review`) is of the CURRENT, unticked chunk — by
+       the chunk id the fact records, or, when the dispatch passed none, the
+       chunk record-lint graded (itself read from the plan's Status, so any
+       review run while this chunk was current counts). Otherwise the pending
+       work may be a whole chunk nobody has reviewed, and deferring it would
+       skip that chunk's review rather than carry a fix. A fact carrying
+       neither defers nothing.
+    2. **No open blocker on the chain it stands on**
+       (:func:`_open_blocker_on_chain`). Checked on the facts, not on the
+       committed history: a review of uncommitted work leaves its tree nowhere
+       a history walk can find, so a blocker it raised is invisible to
+       :func:`gates.covered_frontier`. And not on the newest fact alone: a
+       verify pass does not copy forward a blocker it left open. Blockers clear
+       only through ``verify-resolutions``. Nor a ``cumulative`` on that chain
+       (:func:`boundary_review_on_chain`): after the boundary review, unticked
+       boxes cannot say whether a later chunk exists.
+    3. **A later review is owed** (:func:`later_review_owed`). With (1), two or
+       more unticked chunks means "this reviewed chunk, and at least one after
+       it", which is what makes the later review real.
+    4. **A covered frontier exists** (``gates.covered_frontier``), so that later
+       ``chunk``/``final`` review has a reviewed state to start from and covers
+       everything after it.
+
+    ``None`` on any failure, so a predicate that could not run never relaxes
+    anything.
+    """
+    if not later_review_owed(progress) or progress.current_id is None:
+        return None
+    newest = _newest_branch_review(project_dir)
+    if newest is None:
+        return None
+    body = newest.get("body") or {}
+    reviewed_chunk = body.get("chunk") or (body.get("record_lint") or {}).get("chunk_graded")
+    if not reviewed_chunk or buildplan_refs._normalize_chunk_id(
+        str(reviewed_chunk)
+    ) != buildplan_refs._normalize_chunk_id(str(progress.current_id)):
+        return None
+    from . import evidence, gates  # noqa: PLC0415 — lazy; gates is heavy and one-way
+
+    facts = evidence.read_facts(project_dir).get("facts") or []
+    chain = review_chain(facts, newest)
+    if _open_blocker_on_chain(facts, chain) or boundary_review_on_chain(chain):
+        return None
     frontier = gates.covered_frontier(project_dir)
     if frontier is None:
         return None
     left = progress.total - progress.complete
     return (
-        f"{left} chunks of {plan.rel or 'the plan'} are still unticked, so a later review is "
-        f"owed, and it starts from the last reviewed state ({frontier['commit'][:12]}) — "
-        "it covers this work too. Commit and carry on"
+        f"chunk {progress.current_id} was reviewed with no open blocker and {left - 1} more "
+        f"chunk(s) of {plan.rel or 'the plan'} follow, so a later review is owed, and it "
+        f"starts from the last reviewed state ({frontier['commit'][:12]}) — it covers this "
+        "work too. Commit and carry on"
     )
 
 

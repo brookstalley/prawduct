@@ -8168,16 +8168,29 @@ class TestIntervalExtension:
         monkeypatch.setattr(gates, "FRONTIER_WALK_LIMIT", 1)
         assert gates.covered_frontier(repo) is None
 
-    def test_an_unreadable_base_or_store_means_no_extension(self, tmp_path, monkeypatch):
+    def test_an_unreadable_base_or_store_means_no_extension_and_says_so(self, tmp_path, monkeypatch):
         repo, reviewed, _fix = self._reviewed_fix_then_new_work(tmp_path, [self.WARNING])
-        assert gates.covered_frontier(repo)["commit"] == reviewed  # the control
+        why: list[str] = []
+        assert gates.covered_frontier(repo, why)["commit"] == reviewed  # the control
+        assert why == []
         with monkeypatch.context() as m:
             m.setattr(coverage, "resolve_merge_base_tree",
                       lambda _p: {"status": "error", "step": "merge-base", "reason": "x"})
-            assert gates.covered_frontier(repo) is None
+            assert gates.covered_frontier(repo, why) is None
+        assert why and "merge-base could not be resolved" in why[-1]
         with monkeypatch.context() as m:
             m.setattr(evidence, "read_facts", lambda _p: {"status": "error", "reason": "x", "facts": []})
-            assert gates.covered_frontier(repo) is None
+            assert gates.covered_frontier(repo, why) is None
+        assert "evidence store could not be read" in why[-1]
+
+    def test_a_frontier_that_could_not_be_looked_for_is_named_at_dispatch(self, tmp_path, monkeypatch):
+        repo, _reviewed, _fix = self._reviewed_fix_then_new_work(tmp_path, [self.WARNING])
+        monkeypatch.setattr(gates, "FRONTIER_WALK_LIMIT", 1)
+        # critic-begin runs in a subprocess, so drive begin_review in-process.
+        result = cc.begin_review(repo, "chunk")
+        assert result["status"] == "ok", result
+        assert any("the review interval was not extended" in n and "walk's bound" in n
+                   for n in result["notes"]), result["notes"]
 
     def test_a_non_judgeable_commit_does_not_extend(self, tmp_path):
         # A plan committed on the branch is a free edge, so HEAD is already

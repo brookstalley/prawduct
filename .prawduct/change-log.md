@@ -27,21 +27,31 @@ evidence schema version is unchanged. Nothing extends past an open blocker (only
 gate's merge-base fallback now also runs when the session-base marker is missing, and
 `cost-of-commit` asks the same merge-base question through `_merge_base_verdict`.
 
-**Nothing tells the builder to buy that round any more.** When the branch's plan still owes a later
-review (two or more unticked chunks; a lone unticked chunk is ambiguous and keeps today's answers)
-and a covered frontier exists:
+**Nothing tells the builder to buy that round any more.** Deferral applies when all four of these
+hold:
+
+1. The newest review on the branch is of the current, still-unticked chunk (by the chunk id the fact
+   records).
+2. That review left no unresolved blocker. It is checked on the fact itself, because a review of
+   uncommitted work leaves its tree nowhere a history walk can see.
+3. The plan has another chunk after this one.
+4. A covered frontier exists.
+
+When they do:
 
 - `infer-critic-mode` answers `deferred` instead of `verify-resolutions` for a non-blocking fix, and
   instead of `cumulative` for a clean tree mid-plan.
 - The Stop gate warns (`deferred-boundary-review`) instead of blocking.
-- The review close's NEXT-ACTION leads with the later review, replacing the cost of a round, the
-  "third route" and the price.
+- The review close's NEXT-ACTION leads with the later review: commit the reviewed tree first, then
+  the fix. It replaces the cost of a round, the "third route" and the price.
 - `cost-of-commit` answers `free` and says which review will cover the commit (`rides_next_review`
   in `--json`).
 - The widened-verify fallback recommends `final` over `cumulative` when a frontier sits behind the
   committed work.
 
-Blockers are never deferred, and the PR gate is unchanged.
+A chunk nobody reviewed, a blocker any review on the chain still holds, and anything after a boundary `cumulative` are never deferred. A frontier that could
+not be looked for (an unreadable store, git failure, the walk bound) is named at dispatch rather
+than read as "none". The PR gate is unchanged.
 
 **Docs.** `review-cycle.md`, the Critic `SKILL.md` and `review-protocol.md` describe the new interval
 in place. The reviewer-payload readings went down, and their ceilings were ratcheted with them.

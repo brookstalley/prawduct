@@ -564,9 +564,10 @@ _RIDE_ALONG_ROUTE = (
 #: an exception trailing advice that still leads with "a fix buys a round".
 _RIDES_NEXT_REVIEW_LEAD = (
     "This plan still owes a later review, and it will start from the tree this"
-    " review just covered — so a fix you commit now is covered by that review,"
-    " not by a round of its own. Fix what is worth fixing, commit, and carry on"
-    " to the next chunk; do NOT run `verify-resolutions` for it. "
+    " review just covered once that tree is a commit — so commit it as it"
+    " stands FIRST, then fix what is worth fixing and commit that separately:"
+    " the next chunk's review covers the fix, not a round of its own. Do NOT"
+    " run `verify-resolutions` for it. "
 )
 
 
@@ -2644,7 +2645,13 @@ def begin_review(
         # composes, so no gap is left for a `cumulative` to close later.
         from . import gates  # noqa: PLC0415 — lazy; gates is heavy and one-way
 
-        frontier = gates.covered_frontier(project_dir)
+        frontier_why: list[str] = []
+        frontier = gates.covered_frontier(project_dir, frontier_why)
+        # A frontier that could not be LOOKED FOR is a different fact from one
+        # that does not exist, and the difference is invisible in the interval.
+        notes.extend(
+            f"the review interval was not extended — {reason}" for reason in frontier_why
+        )
         if frontier is not None and frontier["tree"] != capture["head_tree"]:
             base_commit, base_tree = frontier["commit"], frontier["tree"]
             base_extended_from = frontier["tree"]
@@ -4427,7 +4434,10 @@ def finding_fix_cost(files: "list | None") -> str:
     return FIX_COST_FREE
 
 
-def _plan_owes_a_later_review(project_dir: Path, prawduct_dir: Path) -> bool:
+def _plan_owes_a_later_review(
+    project_dir: Path, prawduct_dir: Path, facts: "list[dict] | None" = None,
+    fact: "dict | None" = None,
+) -> bool:
     """Whether the branch's plan owes a review after the one just consolidated.
 
     The close's half of the interval-extension deferral: the review just
@@ -4436,12 +4446,21 @@ def _plan_owes_a_later_review(project_dir: Path, prawduct_dir: Path) -> bool:
     frontier, and the only open question is whether a later review will start
     from it — ``critic_mode.later_review_owed``. ``False`` on any failure: this
     changes advice, and advice that cannot be derived keeps the older wording.
+
+    Not after the boundary: when ``fact`` stands on a chain holding a
+    ``cumulative`` (``critic_mode.boundary_review_on_chain``), the unticked boxes
+    are chunks awaiting their tick, not chunks still to build, and the close
+    must not promise a review that is not coming.
     """
     try:
         from . import buildplan_refs, critic_mode  # noqa: PLC0415 — lazy, as this module's other lib imports are
 
         plan = buildplan_refs.resolve_branch_plan(project_dir, prawduct_dir)
         if plan.path is None:
+            return False
+        if fact is not None and critic_mode.boundary_review_on_chain(
+            critic_mode.review_chain(facts or [], fact)
+        ):
             return False
         return critic_mode.later_review_owed(
             buildplan_refs.resolve_chunk_progress(project_dir, plan.path)
@@ -5052,7 +5071,9 @@ def consolidate(project_dir: Path) -> int:
         (fact.get("body") or {}).get("head_tree"),
     )
     cost_sentence = cost_lead(coverage.commit_cost(project_dir), tree_now_covered)
-    rides_next_review = _plan_owes_a_later_review(project_dir, prawduct_dir)
+    rides_next_review = _plan_owes_a_later_review(
+        project_dir, prawduct_dir, store.get("facts") or [], fact
+    )
 
     carried = (
         carried_blocking(

@@ -969,7 +969,12 @@ LAST_MEASURED_TOKENS = {
     # RATCHETED 3649 -> 3643 (review-interval-extension, 2026-09-22): the interval and demotion sentences and
     # the `deferred` bullet's second trigger (#167), paid by cutting that
     # bullet's restatement of what its rationale already prints.
-    "skills/critic/SKILL.md": 3643,
+    # RAISED (review-interval-extension, 2026-09-22, cumulative finding): the demotion
+    # property's list of commits `chunk`/`final` cannot reach — behind an open blocker,
+    # before any review, across a base sync — was cut to one case in the same branch and
+    # restored. DECLARED, not paid: the sentence has no duplicate to fund it, and a builder
+    # reading the one-case version demotes the other three to a mode that cannot see them.
+    "skills/critic/SKILL.md": 3656,
     "skills/critic/framework-checks.md": 1116,
     # The on-demand class, first recorded 2026-08-19 (#688) — readings, no
     # ceilings; the block above this dict is the decision and its reasoning.
@@ -5236,7 +5241,9 @@ class TestCriticSkillRoutesByMode:
         # coverage on the session-fresh disjunct — see LAST_MEASURED_TOKENS,
         # where the reason is recorded. One over the reading, nothing banked.
         # RATCHETED 3650 -> 3644 (review-interval-extension, 2026-09-22) with the reading.
-        assert tokens < 3644, f"SKILL.md is ~{tokens} tokens, should be <3644"
+        # RAISED 3644 -> 3657 (review-interval-extension, 2026-09-22): the demotion
+        # property's full case list — see LAST_MEASURED_TOKENS. Declared, one over the reading.
+        assert tokens < 3657, f"SKILL.md is ~{tokens} tokens, should be <3657"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))
