@@ -100,6 +100,11 @@ DIGEST_SECTION_PLACEMENT = {
     "Read on demand": (
         "inline -- this IS the retrieval path every relocation above depends on"
     ),
+    "Closing the turn": (
+        "inline, and LAST -- the standing block fires at the end of every turn "
+        "that ends work, and the rule a session reads most recently should be the "
+        "one it applies last (pinned by TestTheStandingBlockIsTheDigestsLastWord)"
+    ),
 }
 
 
@@ -536,12 +541,15 @@ class TestDigestReachesEveryRepoShape:
         assert framework.strip(), "both shapes agreeing on an empty digest is not the contract"
 
 
-class TestDigestWiring:
-    @pytest.fixture(scope="class")
-    def sessionstart(self):
-        data = json.loads(HOOKS_JSON.read_text(encoding="utf-8"))
-        return data["hooks"]["SessionStart"]
+@pytest.fixture(scope="module")
+def sessionstart():
+    # Module-level rather than a class-scoped instance method, which pytest
+    # deprecates: instance state set in one would not reach the test methods.
+    data = json.loads(HOOKS_JSON.read_text(encoding="utf-8"))
+    return data["hooks"]["SessionStart"]
 
+
+class TestDigestWiring:
     def _digest_entries(self, sessionstart):
         return [
             e for e in sessionstart
@@ -694,6 +702,54 @@ class TestAgentStance:
         digest = DIGEST_SRC.read_text(encoding="utf-8")
         assert "Calibrate Rigor" in digest, "digest must route to the full rigor model"
         assert "volatility" in digest.lower(), "digest must name the volatility driver"
+
+
+class TestTheStandingBlockIsTheDigestsLastWord:
+    """The standing-block rule is the digest's closing text.
+
+    `digest.py` injects this file verbatim, so the bottom of the file is the
+    bottom of what the session reads from it. The move answers a reported
+    symptom — sessions that had stopped closing with the standing block — for
+    which placement was the surviving hypothesis once delivery and the size
+    limit were excluded (the change-log entry for this scope carries the
+    evidence). These tests pin the placement, not the hypothesis.
+    """
+
+    RULE = "Close with the standing block"
+
+    def _digest(self) -> str:
+        return DIGEST_SRC.read_text(encoding="utf-8").strip()
+
+    def test_the_rule_is_still_carried(self):
+        digest = self._digest()
+        assert self.RULE in digest
+        for token in ("STATE", "RUNNING", "YOUR TURN", "COMPLETE", "SAFE TO CLEAR", "DO NOT CLEAR"):
+            assert token in digest, f"the standing block lost its {token} label"
+
+    def test_no_section_follows_it(self):
+        """The property, not a position: a `## ` section appended after this
+        one silently re-buries the rule, which is how it was buried before."""
+        digest = self._digest()
+        headings = [line for line in digest.splitlines() if line.startswith("## ")]
+        assert headings, "the digest lost its section structure"
+        last_heading_at = digest.rindex("\n" + headings[-1])
+        rule_at = digest.index(self.RULE)
+        assert rule_at > last_heading_at, (
+            f"the standing block sits above the digest's final section "
+            f"({headings[-1]!r}), so that section is the last thing the reader "
+            "sees. Append new sections ABOVE it, never below."
+        )
+
+    def test_nothing_but_the_rule_follows_the_rule(self):
+        """The tail after the instruction is the instruction: a trailing
+        pointer or sign-off would put words after the words that say they come
+        last. Anchored on the rule's own closing pointer."""
+        digest = self._digest()
+        tail = digest[digest.index(self.RULE):]
+        assert tail.rstrip().endswith("Full rule: `methodology/session-hygiene.md`."), (
+            "text follows the standing block; the digest's last words are now: "
+            f"{tail.rstrip()[-120:]!r}"
+        )
 
 
 class TestCommitAttributionDefault:

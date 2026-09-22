@@ -84,6 +84,13 @@ longer reports an unreadable or newer-schema evidence store as *prior review fac
 demoting to another round — no review repairs a store or updates a plugin. And a non-UTF-8 evidence store or `VERSION` file now degrades
 to the documented error answer instead of raising.
 
+**`standing-block-closing-section`** — the session digest's rule for closing a turn with the
+standing block is now the digest's last section, `## Closing the turn`, instead of a bullet partway
+up "The hardest rules" with four sections after it — the attempted fix for sessions that had
+stopped closing with the standing block, where delivery and the digest's size limit were ruled
+out and placement was the surviving explanation. The wording is unchanged apart from two phrases
+that restated their neighbours, and the digest is two tokens smaller.
+
 **`release-v3.6.0`** — the v3.6.0 cut itself: `main` promoted, the tag and GitHub Release
 published in one call, and `develop` reopened here. Nothing in this scope changes plugin
 behaviour; it is the release's own record, and it carries the runbook fix that stops Phase 1

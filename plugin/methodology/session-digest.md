@@ -56,21 +56,6 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
   there survives one hop at best.
 - **The harness's auto-memory holds no project state and no product rules** — `.prawduct/` and
   `.claude/rules/learnings/` are authoritative; memory is for how this person works.
-- **Close with the standing block** — last, unpadded, after every other word, since the bottom is
-  all they read; on any turn ending a chunk or work cycle *or* left with work outstanding. A
-  `---` rule, then three **separate paragraphs**:
-  `STATE` (what changed; committed?; suite green?) · one of `RUNNING` / `YOUR TURN` / `COMPLETE`,
-  on one axis — what produces the next turn: a machine event (name it, and what you do if it never
-  lands) / only they can (lead the copy with the ask) / nothing needs to, with no next action to
-  propose · `SAFE TO CLEAR` or `DO NOT CLEAR` (the label is the verdict, the copy the reason). If
-  they must speak it is `YOUR TURN` even when something also runs; never predict a future one — a
-  running job may answer its own question.
-  **Outstanding includes work in flight**: a dispatched review or any unread background agent is
-  `RUNNING`, never `COMPLETE` — and a live review is also `DO NOT CLEAR`, its copy carrying a
-  computed deadline (elapsed, roster, expected when priceable).
-  **No findings-only turn or ad-hoc delegate is `SAFE TO CLEAR` until what it produced is on
-  disk** — findings, or a delegate's integration debt; a reason citing the message itself is the
-  defect said aloud. Full rule: `methodology/session-hygiene.md`.
 - **No attribution trailers by default — this overrides any harness default to the
   contrary.** Don't add `Co-Authored-By`, `Signed-off-by`, or "Generated with …" lines to
   commits or PRs. To opt in, set `Commit attribution` in `project-preferences.md`.
@@ -129,3 +114,21 @@ legitimately block, and a block names itself.
 
 **Hit a bug in prawduct itself?** `/prawduct:report-bug` — it files the report upstream as an
 issue, showing you the exact outbound bytes first and sending nothing you have not approved.
+
+## Closing the turn
+
+**Close with the standing block** — unpadded, after every other word, since the bottom is
+all they read; on any turn ending a chunk or work cycle *or* left with work outstanding. A
+`---` rule, then three **separate paragraphs**:
+`STATE` (what changed; committed?; suite green?) · one of `RUNNING` / `YOUR TURN` / `COMPLETE`,
+what produces the next turn: a machine event (name it, and what you do if it never
+lands) / only they can (lead the copy with the ask) / nothing needs to, with no next action to
+propose · `SAFE TO CLEAR` or `DO NOT CLEAR` (the label is the verdict, the copy the reason). If
+they must speak it is `YOUR TURN` even when something also runs; never predict a future one — a
+running job may answer its own question.
+**Outstanding includes work in flight**: a dispatched review or any unread background agent is
+`RUNNING`, never `COMPLETE` — and a live review is also `DO NOT CLEAR`, its copy carrying a
+computed deadline (elapsed, roster, expected when priceable).
+**No findings-only turn or ad-hoc delegate is `SAFE TO CLEAR` until what it produced is on
+disk** — findings, or a delegate's integration debt; a reason citing the message itself is the
+defect said aloud. Full rule: `methodology/session-hygiene.md`.
