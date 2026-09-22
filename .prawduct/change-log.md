@@ -5,6 +5,19 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-22: develop opens 3.6.1-dev.6
+
+<!-- prawduct: type=chore | scope=dev-track-bump-3.6.1-dev.6 -->
+
+The dev track's version moves to `3.6.1-dev.6` in the four carriers (`plugin/VERSION`,
+`plugin.json`, `pyproject.toml`, the open `plugin/CHANGELOG.md` heading), so repos on the develop
+track pick up `reviewer-prompt-file-list`, which merged after `-dev.5` was opened. The version
+string is the plugin cache key; a repo that already resolved the `3.6.1-dev.5` cache would
+otherwise never see it. #885 waits on a consumer running a build that includes it.
+
+**No consumer notes were owed.** `reviewer-prompt-file-list` already carries its entry in the open
+`plugin/CHANGELOG.md` section.
+
 ## 2026-09-22: Coordinator reviewers read their file sets from the manifest, not the prompt
 
 <!-- prawduct: type=perf | scope=reviewer-prompt-file-list -->
