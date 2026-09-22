@@ -101,8 +101,9 @@ make, not yours to infer. A first-time defect, or one a check already covers, is
    then stop. That keeps the roster complete, so the review consolidates and the builder is told;
    a silent abort just stalls until the marker's TTL.
    **The manifest is part of the same check.** If it cannot be read, its `id` is not the review id
-   in your prompt, or its `files_reviewed` is empty, write the same `dispatch-mismatch` partial
-   naming which, and stop. A review with no subject set reads exactly like a clean one.
+   in your prompt, or its `files_reviewed` is empty, write a `dispatch-mismatch` partial naming
+   which, and stop — taking `commit_reviewed` and `dispatch_id` from your prompt, since the
+   manifest's are missing or another review's. A review with no subject set reads like a clean one.
 3. Read the goal definitions for YOUR goals from `review-protocol.md` (in the Critic skill
    directory). Review ONLY your assigned goals — the other reviewers cover the rest.
 4. Read the manifest's **`prior_dispositions`** — findings already accepted or filed for this work,

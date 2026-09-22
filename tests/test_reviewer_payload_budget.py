@@ -186,13 +186,17 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # cannot read the manifest reviews nothing and reports clean. Priced against the
     # SUM: the coordinator no longer writes each list three times in a row, which on
     # a large review is thousands of output tokens on the dispatch critical path.
-    "dispatched-reviewer": 19607,
+    # +19 more in the same change, DECLARED: the guard's partial must take its
+    # commit and review id from the PROMPT, because in every case it covers the
+    # manifest's are missing or another review's, and consolidation rejects a
+    # partial carrying either — the guard would otherwise never reach the builder.
+    "dispatched-reviewer": 19626,
 }
 
 PAYLOAD_CEILINGS = {
     "single-pass-inner": 6333,
     "single-pass-full": 20421,
-    "dispatched-reviewer": 19608,
+    "dispatched-reviewer": 19627,
 }
 
 

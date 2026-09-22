@@ -23,21 +23,24 @@ its rendezvous paths, so the pointer adds no read.
 already refuses a partial whose `dispatch_id` is not the manifest's `id`. The reviewer's tree check
 now covers the remaining case: a manifest it cannot read, whose `id` is not the review id in its
 prompt, or whose `files_reviewed` is empty ends in the existing `dispatch-mismatch` partial, which
-keeps the roster complete so the builder is told.
+keeps the roster complete so the builder is told. That partial takes its commit and review id from
+the prompt, not the manifest: in each of these cases the manifest's are missing or another review's,
+and consolidation would reject a partial carrying them.
 
 `TestReviewerFileSetsRideTheManifest` pins it. The template may substitute only fixed-size slots,
-which catches any list-valued slot coming back, not just these two. It must name the manifest for
+which catches any list-valued slot coming back, whatever its spelling, not just these two. It must name the manifest for
 both sets, the reviewer contract must read them from there, and the guard must cover all three
 conditions. Each assertion was red-verified by restoring the old wording.
 
-**Token budgets, a declared raise.** `review-protocol.md` +43 and the dispatched-reviewer payload
-+119, recorded with their reasons beside `LAST_MEASURED_TOKENS` and `LAST_MEASURED_PAYLOAD_TOKENS`.
+**Token budgets, a declared raise.** `review-protocol.md` +43, which the single-pass-full reviewer
+payload takes too because it loads the same file, and the dispatched-reviewer payload +138. Each is
+recorded with its reason beside `LAST_MEASURED_TOKENS` or `LAST_MEASURED_PAYLOAD_TOKENS`.
 The guard is the price of taking the lists out of the prompt, and the coordinator stops writing each
 list three times, which on a large review is far more than the raise.
 
 **Not measured yet.** The saving is expected to be the prompt-writing time the lists cost. The
 next coordinator review on a large diff gives the number: its reviewers' start offsets, read
-from the transcripts as the discovery did.
+from the transcripts as the discovery did. Tracked as #885.
 
 ## 2026-09-22: A round is priced from the clock, not from the reviewer's estimate
 

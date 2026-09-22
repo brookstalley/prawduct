@@ -6339,7 +6339,9 @@ class TestReviewerFileSetsRideTheManifest:
     def test_the_template_substitutes_only_fixed_size_slots(self):
         """Red when any list-valued slot comes back — `[`files_reviewed`]` was
         one, and it is what made the dispatch lag grow with the file count."""
-        slots = set(re.findall(r"<[A-Z]+>|\[[^\]]+\]", self._template()))
+        # Any angle or square bracket span is a slot, whatever its spelling, so an
+        # underscored or lowercase name (`<FILES_REVIEWED>`) cannot slip past.
+        slots = set(re.findall(r"<[^<>\s]+>|\[[^\]]+\]", self._template()))
         assert slots, "the slot pattern matched nothing, so this test would pass vacuously"
         extra = slots - self.FIXED_SIZE_SLOTS
         assert not extra, (
@@ -6375,6 +6377,11 @@ class TestReviewerFileSetsRideTheManifest:
         for condition in ("cannot be read", "is not the review id in your prompt", "`files_reviewed` is empty"):
             assert condition in guard, f"the manifest guard no longer covers: {condition}"
         assert "`dispatch-mismatch` partial" in guard
+        # In every case this guard covers, the manifest's commit and id are
+        # missing or another review's, and consolidation rejects a partial
+        # carrying either — so the builder would never be told.
+        assert "taking `commit_reviewed` and `dispatch_id` from your prompt" in guard
+        assert "manifest's `commit_reviewed`" not in guard
 
 
 class TestFarBehindBranchGuidance:
