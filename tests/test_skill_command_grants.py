@@ -297,6 +297,15 @@ _NOT_GRANTED: dict[tuple[str, str], str] = {
     # retention ends. The PR flow archives one plan by name; a fleet sweep is
     # not its to run.
     ("pr", "plan-backfill"): "cross-reference to the release checklist",
+    # The command appears ONLY inside the text Step 3 hands the `pr-reviewer`
+    # agent — it is that agent's first read, and the agent's own frontmatter
+    # grants it (`Bash(prawduct-hook pr-review-payload)`, named exactly because
+    # the sibling `pr-review-dispatch` writes and a Bash grant is a prefix
+    # match). Granting it HERE would widen the caller's no-prompt list with a
+    # command the caller has no reason to run, which is the silent growth the
+    # 2026-09-17 grant entry says must never happen.
+    ("pr", "pr-review-payload"): "instruction addressed to the pr-reviewer agent, "
+    "which carries its own grant; the caller never runs it",
 }
 
 

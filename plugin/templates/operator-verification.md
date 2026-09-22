@@ -29,6 +29,31 @@
      `superseded`, `n/a`, `wontfix` are not statuses: an entry that must NOT be
      drained by running its steps is `accepted`, with that as its rationale.
 
+     AND IT LIVES ON A LINE OF ITS OWN. This is the half that gets missed, and
+     it is missed the same way every time: a compact entry header that runs the
+     status in with its neighbours —
+
+         **Chunk:** <chunk> - **Raised:** <date> - **Status:** pending
+
+     — is not read as a status at all. Two separate products invented that exact
+     shape independently and each filed it as a bug, so treat it as the natural
+     mistake rather than a careless one. The status line is the entry's FIRST
+     non-blank body line and holds nothing but `**Status:** <word>`.
+
+     Correcting the status WORD inside such a line does not help: nothing reads
+     that line's interior, so the entry goes on counting as pending. The line has
+     to be split, with the other metadata moved to lines of its own.
+
+     AND THAT IS SETTLED, NOT AN OPEN BUG. Ruled 2026-09-12, after the shape above
+     was filed as a defect twice: teaching the parser to accept it was considered
+     and DECLINED, because nothing in prawduct emits that shape, and honouring a
+     second shape silently would be the same one-rule-two-carriers failure those
+     reports correctly level at tooling. What was genuinely wrong is that nothing
+     SAID so - the drain reported success on an entry it had not changed, and the
+     gate offered a remedy that could not move it. Both now refuse and name the
+     edit. Re-open this only with evidence that the strict shape costs more than
+     the silence did, not merely that someone has hit it again.
+
      This file is append-only history. Entries stay forever after they're
      verified or accepted; don't delete them.
 

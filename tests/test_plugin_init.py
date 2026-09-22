@@ -13,6 +13,11 @@ silently read version ``"dev"`` — ``TestCoreResolution`` pins the fix).
 The contract: scaffold creates ONLY the design-§3 "what STAYS in the repo" set
 (product-owned ``.prawduct/`` state + the thin CLAUDE.md anchor + the committed
 install reference) and NONE of the file-sync machinery.
+
+The learnings corpus is the one piece of that set living outside ``.prawduct/``:
+it is scaffolded as ``.claude/rules/learnings/core.md`` so the *harness* loads it
+(``lib/learnings_files``), which is why the expected-file list names a path under
+``.claude/``.
 """
 
 from __future__ import annotations
@@ -49,7 +54,7 @@ HOOK = ROOT / "bin" / "prawduct-hook"
 # The design-§3 product-owned set a scaffolded repo must carry.
 EXPECTED_FILES = [
     ".prawduct/project-state.yaml",
-    ".prawduct/learnings.md",
+    ".claude/rules/learnings/core.md",
     ".prawduct/backlog.md",
     ".prawduct/change-log.md",
     ".prawduct/artifacts/project-preferences.md",
@@ -178,10 +183,32 @@ def test_distribution_plugin_recorded(scaffolded: Path):
     ).read_text()
 
 
+def test_learnings_scaffolded_as_a_harness_rules_file(scaffolded: Path):
+    """The corpus a new product receives is a `.claude/rules/` file, not a
+    `.prawduct/` one — so the harness loads it and no prawduct code is on the
+    read path. The starter carries the descent obligation, which is the whole
+    reason the header is scaffolded rather than left empty."""
+    from lib import learnings_files  # noqa: PLC0415
+
+    core = scaffolded / learnings_files.RULES_DIR_REL / learnings_files.CORE_NAME
+    assert core.read_text(encoding="utf-8") == learnings_files.CORE_HEADER
+    assert "Reading a rule is not applying it" in core.read_text(encoding="utf-8")
+    # No pre-cutover corpus: a new product must never be born unmigrated.
+    assert not (scaffolded / learnings_files.LEGACY_REL).exists()
+    assert learnings_files.resolve(scaffolded).state == learnings_files.STATE_NEW
+
+
 def test_static_anchor_present(scaffolded: Path):
     text = (scaffolded / "CLAUDE.md").read_text()
     assert "PRAWDUCT:ANCHOR" in text
     assert "/prawduct:methodology building" in text  # the anchor points at the build cycle
+    # A newly scaffolded repo must carry the plugin-absent notice too, and this is
+    # the only test that can say so: the re-anchor repair converges repos that were
+    # onboarded EARLIER, so new onboards are the one population it never reaches. If
+    # this path stopped rendering STATIC_ANCHOR, every migrated repo would still be
+    # correct and every new one silently would not.
+    assert "governance is OFF" in text
+    assert "claude plugin install" in text
 
 
 def test_install_reference_committed(scaffolded: Path):

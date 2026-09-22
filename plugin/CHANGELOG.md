@@ -10,12 +10,343 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
-## v3.4.1-dev.2
+## v3.6.1-dev.3
 
-**Prerelease under test — this build is the develop branch ahead of the next release.** The version
-says so wherever it appears, so a repo pinned to the develop ref can tell what it is running, and a
-cached review verdict from the released plugin is not replayed against this one. Rolling release
-notes accumulate here, and this section is renamed to the release number at the cut.
+**Rolling notes for the next release — nothing has shipped under this number yet.**
+Entries accumulate here as work lands on `develop`; the cut renames this heading to its
+release number.
+
+**`pr-review-clock`** — a PR review whose findings you fix before the ledger append keeps its
+measured duration. The dispatch mark is now checked against the tree the reviewer read, and the
+interval ends when the reviewer writes its evidence. Before this, only PR reviews that found nothing
+were measured.
+
+**`review-interval-extension`** — fixing a warning after a clean review of the current chunk no
+longer costs a `verify-resolutions` round while your plan has chunks left. Commit the reviewed tree,
+then the fix. The next chunk's review starts from the last reviewed state, so it covers the fix too,
+and `/prawduct:critic`, the Stop hook, the review's NEXT-ACTION and `cost-of-commit` all say so
+rather than asking for the round. Blocking findings still need `verify-resolutions`, and a chunk
+nobody reviewed is never deferred.
+
+**`unresolved-scope-diagnosis`** — when a Critic review resolves no build-plan scope,
+`critic-begin` now prints a note saying why and which plan edit fixes it — most often a `branch:`
+line written below the plan's frontmatter, where nothing reads it. A review without a scope is
+invisible to the round budget. A finished plan also keeps matching its branch name for its own
+final review, as long as that branch edited the plan. A branch that touched no plan gets no note, so
+plan-less chores and fixes are not told to add a `branch:` line.
+
+**`866-cost-of-commit-covered`** — `prawduct-hook cost-of-commit` no longer says a tree a Critic
+review already covers "costs a round". With no path arguments it now checks review coverage the way
+the gates do, and answers `free`, naming the review, when committing the working tree verbatim would
+leave no gap. Explicit path lists are priced by path, as before.
+
+**`863-payload-backlog-scan`** — the PR reviewer's backlog check no longer reports a false clean
+on a branch no plan claims. The PR review payload finds the backlog ids a branch cites so the reviewer can check each claimed
+closure. On a docs or fix branch with no build plan, it could not pair the change-log entry, scanned
+nothing, and reported *"no backlog ids cited … this is an answer, not a failure"*. It now pairs the
+entry the branch adds, and an input it could not scan degrades the section instead of passing as
+empty — so the reviewer is told to check that input by hand rather than told there is nothing to check.
+
+**`pin-status-tick-meaning`** — a build plan's `## Status` tick now has one documented meaning:
+the chunk is **built, committed and reviewed on the branch** — never merged, never released. It had
+three working meanings across the methodology, and readers that assumed different ones disagreed.
+`planning.md` carries the definition and the build-plan template's Status comment names the same
+one. Merged and released stay where they were: the plan is live until archived, and the change-log's
+`release=` tag says what shipped.
+
+**`review-budget-trunk-shape`** — the review round budget now fires on a trunk-based repo, where it
+had never fired at all. It counted rounds strictly after the merge-base on HEAD's lineage; on trunk
+every push makes the merge-base HEAD, so that set is empty and `spent` was 0 on round twenty. The
+count is now bounded by the worktree whenever the commit span is empty, so the ceiling reaches
+`chunk` and `final` dispatches there — an exit 4 that was unreachable on that repo shape becomes
+reachable, with `--force` as the escape hatch. It does not reach `cumulative` on trunk, which
+`critic-begin` refuses earlier as an empty diff.
+
+**Two consequences to know, both wider than trunk repos.** A branch cut and not yet committed to
+also has an empty span, so a branch RESUMING a scope inherits that scope's rounds from this
+worktree — the budget's declared unit is the scope, so that is consistent, but it is a behaviour
+change on branch-based repos too. And nothing resets the worktree-bounded count, so reusing a scope
+name for a second body of work inherits the first's rounds and can refuse its very first dispatch.
+Give each body of work its own scope name, or raise the budget — the `project-state.yaml`
+template comment that ships with the plugin says so, as does prawduct's own `api-contract.md`.
+The verdict and the guard-refusal fact now carry `bound` (`lineage` | `worktree`), which
+`prawduct-hook evidence list` renders as a `bound=` column,
+because the two bounds count different sets. The `uncovered:` gate block no longer claims *the next
+round is this branch's first* when the span is empty and it cannot know. Rider: `plan-backfill
+--apply` now names the staging remedy for the archive it wrote, with repo-root-anchored paths.
+
+**`review-scrub-seams`** — three review-gate seams that answered wrongly on a degraded input.
+The Stop gate's base-advance transfer now grants only on a positive `match`, as the PR gate
+always did; an unrecognized transfer status now denies at both gates instead of reaching the
+Stop gate's grant path and crashing on fields only a `match` carries. `verify-resolutions` no
+longer reports an unreadable or newer-schema evidence store as *prior review fact not found*:
+`critic-begin` now exits **6** with the real reason, and `/prawduct:critic` stops there instead of
+demoting to another round — no review repairs a store or updates a plugin. And a non-UTF-8 evidence store or `VERSION` file now degrades
+to the documented error answer instead of raising.
+
+**`standing-block-closing-section`** — the session digest's rule for closing a turn with the
+standing block is now the digest's last section, `## Closing the turn`, instead of a bullet partway
+up "The hardest rules" with four sections after it — the attempted fix for sessions that had
+stopped closing with the standing block, where delivery and the digest's size limit were ruled
+out and placement was the surviving explanation. The wording is unchanged apart from two phrases
+that restated their neighbours, and the digest is two tokens smaller.
+
+**`release-v3.6.0`** — the v3.6.0 cut itself: `main` promoted, the tag and GitHub Release
+published in one call, and `develop` reopened here. Nothing in this scope changes plugin
+behaviour; it is the release's own record, and it carries the runbook fix that stops Phase 1
+step 6 reporting a false unticked-box on the plan whose own acceptance is the release being cut.
+
+## v3.6.0
+
+**Your learnings corpus moves into the harness, review rigor becomes stage-keyed, and a finding you decide not to fix can now be recorded instead.** Seventeen scopes since v3.5.0, and the three you will feel in an ordinary session each change what a review costs you: your rules leave `.prawduct/learnings.md` for `.claude/rules/learnings/` where the harness loads them, reviews split into an inner stage that blocks only on ships-broken and a boundary stage that runs everything and is never inferred away, and a non-blocking finding gains a recorded accept — so declining a fix leaves a reason on the record instead of costing a round or losing the reasoning.
+
+**Your test runner can make every run recordable — `test-report-scope`.** Two properties, stated in
+`building.md` § Test Discipline and specified in `docs/test-report-contract.md`: put the
+machine-readable report path in your runner's default-arguments file so a report is a side effect
+of every run (nothing typed, nothing to forget), and have its pre/post-run hook write a small JSON
+record beside that report saying whether the invocation was narrowed. The payoff is that a suite
+you ran by hand is ingested with `prawduct-hook test-evidence record --from-junit <report>` instead
+of run a second time; the record is what stops a `-k`-scoped report being ingested as the whole
+suite's evidence. Prawduct installs none of this — the contract names the two surfaces every
+ecosystem has (pytest, .NET, Go, Jest, CTest) and reads what your runner writes.
+
+**Nothing changes for a repo that does not wire it.** `--from-junit` behaves exactly as before when
+no scope record sits beside the report. If one does, a narrowed, truncated, malformed or
+schema-ahead record refuses the ingest (exit 2) and writes nothing, so a green record is never
+overwritten by a partial one. Two conventional paths — `.prawduct/.test-report.xml` and its
+`.scope.json` — join the managed `.gitignore` section, so `/prawduct:doctor` will offer to add them;
+both are cleared at the session boundary with the rest of the session files.
+
+**Review rigor is now stage-keyed, and this one reverses two promises v3.2.2 made you.** Reviews
+run at two stages. The **inner** stage — a chunk review, a `final`, a `verify-resolutions` — blocks
+only on the ships-broken set and reports everything else as an observation. The **boundary** — a
+`cumulative`, and the PR review — runs the full table and is never inferred away. When the mode is
+unclear the default is now the *cheaper* inner review, where it used to be the more thorough one.
+
+Two v3.2.2 statements no longer hold, and they are quoted here rather than quietly dropped:
+*"no repo is reviewed less than before"* and *"beneath them the old 5-file rule stands untouched"*.
+The 5-file coordinator fallback is **retired**: a repo that has declared no `risk_surfaces:` now runs
+the same two escalators as a declared one — a matched surface at any size, or 12+ judgeable files —
+and what declaring buys you is the paths it names, not a lower threshold. Some changes that drew
+three reviewers will now draw one. That is a deliberate trade of a bounded miss-rate increase for
+review wall-clock, made on the record, and the boundary review is what still runs everything.
+
+Measured before it was retired, across six undeclared repos over 2026-08-01 → 09-17: the fallback
+alone sent 87 reviews to three reviewers, and those carried 0.55 blocking findings per review against
+0.78 for the 18 single-pass reviews beside them — no per-review yield advantage for the third
+reviewer. How many of those 48 findings one reviewer would have missed is **not** measurable from the
+record, so the retirement rests on the recorded decision, not on a zero.
+
+**A short plan now owes one boundary review, not one per chunk.** A plan of at most three chunks
+that declares no `Critic mode:` and touches no risk-surface path defers its per-chunk reviews to the
+boundary. Every condition fails closed — an unreadable plan, an unresolvable base, a detached HEAD
+all leave per-chunk review standing — and `check-cumulative-critic` is unchanged.
+
+**A product is asked once where its risk lives.** If your repo has product code and state but no
+`risk_surfaces:` key, one advisory asks where a missed defect would cost you most. Any declared
+value silences it, `[]` included.
+
+**`/prawduct:pr` Step 1 names the command that records a suite run, not just the one that dates
+it.** It used to say "write fresh evidence" and name nothing, so the natural reading was to run your
+suite by hand and record it afterwards — which costs a second full run wherever `test_command:` is
+declared, because hand-typed counts are refused there and a hand-run emits no JUnit report to ingest
+instead. `prawduct-hook test-evidence record` does both in one step: your declared `test_command` if
+you have one, a pytest fallback if you do not. **If your product is not Python, declare
+`test_command:`** (the template ships it commented out) or ingest an existing run with
+`--from-junit` / `--from-counts`.
+
+**Your learnings corpus moves, and this release deletes the old files.** Rules leave
+`.prawduct/learnings.md` and become ordinary `.claude/rules/` files the harness loads by path match:
+`core.md` is in context from launch, and each `<area>.md` declares `paths:` globs so its rules arrive
+when you read a file they match. **Run `prawduct-hook learnings-migrate` — it is one-way, and
+`--apply` DELETES `.prawduct/learnings.md`, `learnings-detail.md` and `learnings-history.md` once it
+has written the replacements. Your archive is git history; there is no copy beside them.** The
+command refuses rather than guesses: it will not delete a legacy file git cannot give back (ignored,
+never committed, or carrying uncommitted changes), will not write into a gitignored destination, and
+proves the move lossless before it unlinks anything. `--propose-map` and a dry run come first, so you
+see the mapping before any of that happens. Until you migrate, the new **`learnings-unmigrated`**
+Stop gate reports the repo is still on the legacy corpus.
+
+**The reflection guide is about the learning loop again, and the standing block has its own
+guide.** `methodology/reflection.md` halves: its Step 4 is now a routing decision with four
+destinations — an episode to `.session-reflected`, a product rule to `.claude/rules/learnings/`
+(with the instance that earned it inline), framework friction upstream through
+`/prawduct:report-bug`, and portable discipline written nowhere because the framework already
+carries it — plus the budget's payment rule in two sentences. The standing block, the clear
+verdict and the forward notes moved whole to `methodology/session-hygiene.md`, reachable as
+`/prawduct:methodology session-hygiene`. The session digest gains one default: the harness's
+auto-memory holds no project state or product rules; the repo's own files are authoritative.
+
+**Ten portable rules the fleet kept re-learning now live where rules fire.** `docs/discipline.md`
+records each one's delivery — seven already had a home, two become Critic Goal 2 bullets (a
+removal is repo-wide; built-but-unconsumed is not delivered), one extends the test-evidence
+directive (a mutation you did not watch go red applied nothing), one lands in the post-fix step (a
+reported cause is a hypothesis until reproduced). A test pins every row against its surface.
+
+**The reflection gate fires on the session that wrote code, plan or no plan, and asks for two
+lines.** It used to fire only with an active build plan and only while the working tree was dirty,
+so a session that committed its work with no plan was never asked to reflect — and a fifty-character
+note satisfied it. It now reads the session's work span (the tree at session start against the
+working tree, committed work included) and grades the reflection's shape: what you expected versus
+what actually happened, and the root cause or "no defect". The blocker names the two lines. A
+session whose only changes arrived by merge or pull pays those two lines once; a doc-only or
+metadata-only session pays nothing; a repo without the session marker behaves exactly as before.
+The session-start advisory reads the same span and shape, so it cannot go quiet about a session the
+gate would block.
+
+**The learnings lifecycle verbs are deprecated and inert.** `audit-learnings`,
+`learnings-obligation` and `check-learnings-pairing` graded a `.prawduct/learnings.md` that the
+harness-loaded layout replaced. Each still runs — exit 0, one `WARNING:` on stderr naming the
+replacement, nothing written — so a doctor skill on an older pin or a copied runbook does not break;
+removal waits for a major. `check-learnings-pairing`'s former exit codes (1 a duplicate active
+heading, 3 an unreadable pair) are RETIRED, so a script still branching on them takes the clean arm
+forever. The `/prawduct:learnings` lookup skill is gone: the harness loads
+`.claude/rules/learnings/core.md` every session and an area file when you read a file its `paths:`
+match, so there is nothing to look up. Doctor's learnings checks, the `sentinel_command` key and the
+record-lint `learnings-entry-shape` check go with them.
+
+**`reflections.md` is no longer written.** The per-clone archive of session reflections had no
+reader; `.session-reflected` is cleared at each `/clear` and the generated handoff is the one carrier
+of the previous session's reflection. Existing `reflections.md` files are untouched.
+
+**The learning loop measures itself.** Two governance-ledger events: `learning.written` when a rule
+appears in a rules file this session (one per rule, keyed by its heading's hash, recorded at Stop,
+and counted whether or not you have committed it yet),
+and `learning.fired` when a Critic finding quotes a rule's opening words (recorded at
+`critic-consolidate`, joined to the review). Both are written by the plugin, never by hand.
+`review-stats` reports them: a `learning` block counting writes, citations and the distinct
+rules behind each, closing with the number the corpus cannot ask itself — how many written
+rules no review has ever cited. Its `--json` `schema_version` moves to 4 (2 for the block, 3 for `units_uncited`, the set of written rules no review cited, 4 for the verify-pass `observations` counts).
+
+**The change log stays bounded.** Once `.prawduct/change-log.md` passes its size threshold, `/prawduct:pr`
+moves shipped history verbatim into `.prawduct/change-log-archive/YYYY-MM.md` (release-pending entries
+stay live), and the size nudge hands the agent that command instead of advice nobody could act on.
+**Downgrade caution:** an older plugin reads only the live log, so after your repo has archived, do not
+roll back past this release — or copy the archived entries back into `change-log.md` first.
+
+**Critic reviews are now timed, not estimated.** Every review round records a `duration_seconds`,
+and until now the Critic's was written by the reviewing model from recollection — across the first
+1,026 recorded rounds it took 63 distinct values, 23% of them exactly `300`. The Critic now carries
+the same code-read stopwatch the PR reviewer has had, on its own marker slot so the two boundary
+reviews can run concurrently without either deleting the other's measurement. Nothing you do
+changes; `prawduct-hook review-stats` reports the measured and self-reported populations separately,
+so a figure derived from your ledger says which it is. A refused dispatch starts no clock, and every
+degraded path falls back to the reviewer's own estimate rather than attesting an interval nobody
+spent.
+
+**A review finding you decide not to fix can now be recorded instead.** `verify-resolutions` demotes
+every non-BLOCKING finding to an *observation*, and observations used to live only in the reviewer's
+prose — so the only two ways to discharge one were to fix it, which moves the tree and buys another
+review round, or to say nothing, which loses the reasoning. There is now a third:
+`prawduct-hook disposition <review-id> O-1 --accept "<reason>"`, with the ids handed to you in
+`.critic-findings.json`. **No gate's verdict changes** — observations sit beside `findings`, never
+inside it, so nothing counts them, nothing composes on them, and an accepted observation leaves a
+blocking finding blocking. The array is refused outside `verify-resolutions`, so a `final` reviewer
+cannot file warnings where nothing counts them.
+
+**A clean verify pass no longer reads as branch clearance.** `0 blocking, 0 other findings — THE
+REVIEW IS OVER` was true about the pass's own delta and silent about the branch, and the difference
+between the two was a parenthetical telling you to go ask a gate. It now says which one it covered.
+The clean close also states what fixing costs, how to price a batch before committing it, and that a
+fix can ride the next chunk's commit instead of buying a round of its own.
+
+**The close prices the fix/accept decision instead of asking you to.** "Is this worth fixing?" is
+unanswerable with a remedy already in hand — it always reads yes. The question is now mechanical:
+*am I already making a judgeable commit?* Both inputs were already computed and neither reached
+you. The zero-blocking closes that carry a fix decision now lead with the verdict and its
+recommendation; the blocking arm deliberately does not, because a cost figure there would read as a
+reason to weigh not fixing a blocker.
+
+**Two rules that caused over-fixing now carry a severity bound, everywhere they are stated.** "There
+is no pre-existing exception" and "deep context on a small problem is a FIX signal" are correct
+about blockers and actively harmful about notes. Both now say the obligation to FIX is bounded to
+BLOCKING, and that below it a recorded accept is the complete discharge — not the lesser half of the
+sentence. The bound reaches all ten carriers, the always-injected digest and the `CLAUDE.md` anchor
+every governed repo carries included, because a rule stated with its bound in one file and without
+it in another is the drift this closes.
+
+**When a written rule has no enforcer, a reviewer files one finding, not one per instance.** The
+finding names the rule and what would mechanize it, at the severity an instance would have carried,
+opening with `rule-unenforced:`. Substitution, never suppression — the report still happens and
+still carries its weight; it names the cause that can end the class rather than one member of it. A
+class re-filed per instance buys a round every branch, forever.
+
+**A `final` or `cumulative` reviewer now receives every learnings area file its review interval
+touches.** It previously computed that list from what the *session* changed, which for a cumulative
+over already-committed work is empty — so a clean tree handed the reviewer `core.md` alone, at exit
+0, indistinguishable from "no area file applies". The interval now comes from the dispatch manifest,
+the artifact that already records what a review spans.
+
+**`test-status` says which of its two disjuncts bought the exit 0.** Either is sufficient — the
+evidence was written during this session, or your judgeable working tree is byte-identical to the
+one the recorded run met — and they are different evidence. The first returns before the tree is
+read at all, so within one session `test-status` exits 0 however far HEAD has advanced. That is
+correct under the trust-the-cycle model and is not what three governing surfaces were telling their
+readers; the `/prawduct:pr` payload now carries the clause, so a reviewer told to check which
+evidence a bundle rests on can actually answer it.
+
+**The PR review is one payload call and a measured interval.** It was ~115k tokens assembled over
+13–18 sequential tool round-trips, against a wall-clock target that had never been measured —
+`duration_seconds` was the reviewing model's estimate of its own runtime, 122 times running. Both
+boundary reviewers now carry a code-read stopwatch on their own marker slot, so the two can run
+concurrently without either deleting the other's measurement.
+
+**`review-stats` can window by date and report whether a finding ships a remedy.** `--since` /
+`--until` are inclusive, and a bound shorter than a full timestamp names a period — `2026-09` is the
+whole of September, not the instant before it. The remedy dimension counts three outcomes, not two:
+present, blank, and *absent*, because the PR reviewer's findings carry no remedy key at all and
+folding that into "wrote no remedy" reports a role at 0% on a claim its schema cannot support. What
+it says about this corpus: every one of 1,141 Critic notes carries a remedy, at a median of 122
+words — the severity label says *not worth your time* and the payload says otherwise. `--json`
+`schema_version` 6 → 7, additive.
+
+## v3.5.0
+
+**Prawduct can now file a bug about itself, the review loop has a stopping rule, and a dozen governance surfaces stop reporting success on a check they never ran.** Thirty-two scopes since v3.4.0, and the three headline changes each move something you will feel in an ordinary session: a new outbound surface, a review that ends, and gates that say "I could not tell" where they used to say "fine".
+
+**`/prawduct:report-bug` files a real issue upstream, and shows you every byte first.** Hit a defect
+in prawduct itself and the skill now recomposes the report in prawduct's terms, previews the exact
+outbound payload with its digest, and files an issue on prawduct's public tracker **only** on your
+approval of those bytes. It replaces a machine-local drop-box that wrote a file one developer could
+see. Five independent checks each refuse and file nothing — filing disabled, target not pinned,
+self-file, approval mismatch, auth — and identity **fails closed**: an origin the adapter cannot
+resolve is a refusal, not a pass. **You control it with one row** in `project-preferences.md`:
+`Upstream filing` is `ask-user` by default, which is also what its absence means; `always-file` is
+standing consent; `never-file` is a hard mechanical guarantee that nothing leaves. The report never
+lands in your own backlog as a fallback, because an upstream bug parked in a product's backlog
+reaches nobody who could fix it. The old drop-box is retired with it — `prawduct-hook bug-inbox` is
+now inert, warning on stderr and exiting 0, with removal deferred to a major.
+
+**The review loop gets a declared stop.** Findings per review round *rise* rather than converge —
+measured at 13.5, 15.4, 15.5, 18.4 across 728 review facts in one store, 99% of them new rather than
+re-raised — so every "one more round" reads locally reasonable and chains of twenty-plus rounds are
+what you get. `review_round_budget` is six full rounds per build-plan **scope**, on by default in
+every governed repo, `null` to disable. Six rather than four because it sits above every chain in
+that store which ever produced a late blocking finding.
+
+**A review now rates only the files a finding can be about — and still reads everything else.**
+Non-judgeable files were 39% of every file-slot handed to a reviewer and 36% of every finding
+returned. `critic-begin` splits the interval: `files_reviewed` is the **subject** set, and what it
+sheds rides as `files_oracle`, delivered to every reviewer to read and rate by none — so your specs,
+plans and preferences are still the authority the code is judged *against*, they just stop
+generating findings that cost a round to clear. Every finding also carries a **`fix_cost`**, because
+the disposition menu is priced backwards from the intuition: accepting is always free, fixing is
+free on a non-judgeable surface and buys a whole review round on a judgeable one. Of 3,826 findings
+measured in that store, 1,372 cited only non-judgeable files and were free to fix all along, and
+nothing at the decision point said so.
+
+**A merge can no longer drop a commit you pushed late.** `/prawduct:pr` now runs a new gate,
+`check-branch-pushed`, after the push in the Create flow and before the merge in the Merge Flow.
+It compares your branch's tip against the ref the merge will actually take, and blocks when they
+differ — naming the shape (commits not pushed, the remote ahead of you, the two diverged, no
+upstream configured) and the remedy that fits it. The failure it closes was silent by
+construction: every other signal is computed from a ref that agrees with itself, so a commit made
+after the last push — often the change-log entry a review just asked for — was absent from the
+merge with CI green, the review gate satisfied and the PR merging cleanly. **What this means for
+you:** a merge may now stop with a named reason where it previously proceeded. Push (or integrate
+and push), re-run, and continue. The gate reads only your clone's refs, so it never makes a
+network call; the PR-head comparison beside it covers the case where the remote moved without
+your knowing.
 
 **A stalled norm no longer expires in silence.** A `Stopgap:` field on an in-transition norm —
 the bounded exception that says "this half-finished state is deliberate until <date>" — was
@@ -159,6 +490,120 @@ stated because it is real: union never conflicts, so a genuine two-sided edit to
 line survives as both versions. A twice-landed entry is *not* duplicated. Entry parsing now counts
 tag lines that end up past an entry's prose — where a union merge puts the second version — and
 warns that nothing reads them, so a merged-away `release=` cannot disappear quietly.
+
+**A clone without the plugin is told so, instead of being told a gate is watching.** A repo governed
+by prawduct, cloned onto a machine where the plugin was never installed, ran completely ungoverned
+and said nothing about it: the committed install reference registers the marketplace and installs
+nothing, so the session loads zero hooks, zero skills, and prints zero bytes. `CLAUDE.md` loads
+either way, and its anchor block was telling that session enforcement was structural and a Stop hook
+would block it — silence would have been better. The anchor now opens with the check and names
+`claude plugin install prawduct@prawduct`, and `/prawduct:onboard` no longer reports success until
+`check-plugin-active` says the plugin will actually load in the repo it just set up, or says it
+could not tell.
+
+**A build plan's `Critic mode:` binds in the forms authors actually write.** The plan-level override
+was read line-anchored and unbackticked, so `**Type:** doc-only · **Critic mode:** final` and a
+backticked value were both invisible to it — and a non-match raised nothing, so a plan-mandated
+`final` ran as an inferred `chunk` with a rationale that never mentioned the plan. That is a
+shallower review that looks like a normal one, and it applied to every build plan in every governed
+product. The read is now unanchored and scans the whole chunk section.
+
+**Two PR-flow gates stop describing work they did not do.** `/prawduct:pr` Step 2 promised
+unconditionally that running the resolution pass on a dirty tree saves a round; the pass may instead
+anchor on committed HEAD, refuse, and name your uncommitted judgeable files — so the step now states
+both outcomes and the order each one wants. And the freshness gate stopped calling instruction prose
+untestable: it answered *"a change here cannot change what the suite says"* for every non-protected
+`.md`, which is false wherever your tests sweep prose — two documents reached `develop` red behind
+it, and the next branch to sync inherited it. Declare your own roots with `suite_coupled_prefixes:`
+in `project-state.yaml`.
+
+**`check-change-log-entry` reads the log instead of the diff.** A repo that gitignores `.prawduct/`
+wholesale never tracks its change log, so the path could not appear in any diff, so the probe
+returned `no-entry` whatever the file contained — and told the author to add an entry they had
+already written. Following that advice could not clear the gate, so no branch in such a repo could
+pass `/prawduct:pr` Create Step 1c at all. Reported from a consuming product.
+
+**Closing a backlog item on the Issues backend is not atomic with your merge, and the skill now says
+so.** `Closes #N` fires only for PRs merged into the repository's *default* branch, so on a gitflow
+repo based on `develop` the keyword links the issue and closes nothing — while reading exactly like
+bookkeeping that worked. The step now names the difference, and the timing rule says how a caller
+outside `/prawduct:pr` establishes that the merge happened: ask the forge (`gh pr view`), not
+`git merge-base` against a ref fetched before the merge landed.
+
+**A PR-review evidence file records which commit the reviewer read.** `commit_reviewed` is captured
+by the reviewer at the moment it resolves its diff — the only actor that knows — rather than
+reconstructed by the caller from a timestamp and a commit count. That reconstruction is right
+exactly until a commit lands *during* the review, which is the one case the substantive-delta test
+exists to catch.
+
+**A dispatch refusal names the tree it graded.** `verify-resolutions` exiting 3 said `no judgeable
+file in <a>..<b>` and nothing else — a statement about the *interval* that every operator read as a
+statement about the *repo*, costing two dispatches for one review. The predicate is unchanged; the
+refusal now reports the `anchor` tree it graded and the judgeable uncommitted files (`excluded_wip`)
+that tree does not contain.
+
+**A wedged dispatch manifest says which kind of wedged it is.** Meeting a manifest written by an
+older prawduct, the refusal said *"no readable dispatch manifest … nothing here is worth keeping"* —
+every clause of which is false for the case that produces it, while the mechanism one function over
+was carefully archiving those same partials and naming `critic-restore` as it went.
+
+**Six ways a check said "fine" without having looked.** The version-delta headline rendered with a
+stray `**` mid-sentence, and had since at least v3.3.2, on the single most-read line prawduct emits.
+A duplicate learnings heading silently lost an entry on retirement — it now refuses and names both
+line numbers rather than de-duplicating, in the one file whose stated invariant is *never delete an
+entry here*. The verdict cache keyed on the plugin version alone, so two different states of a git
+checkout produced the same key by construction; it now folds in the plugin tree SHA plus a
+fingerprint of any uncommitted edits under it. A `verify-resolutions` pass could print THE REVIEW IS
+OVER while a blocker it had discharged "by reference" carried no resolution fact. An
+operator-verification queue holding 32 entries in an unrecognised shape reported `pending: 0` and
+blocked `/pr create` on nothing. And onboarding now proves the plugin will load rather than assuming
+it.
+
+**A nested checkout is not a misplaced test.** `git worktree add ./devchk` inside your clone turned
+the test-location preference red for every session in it, and the only route to green was deleting
+another session's worktree — which is exactly what a session must not do. The predicate is now *does
+this directory carry its own `.git`* (a file for a linked worktree, a directory for a clone or
+submodule), rather than a list of directory names that closes one instance and leaves the class
+open.
+
+**`verify-operator-verification` stops reporting success it did not achieve.** It printed
+`Marked <ID> verified`, appended a `**Verified:**` footer, changed no status, and exited 0 — so the
+gate went on counting the entry pending, `/pr create` stayed blocked, and each re-run appended one
+more footer. Reported by two downstream products a day apart. `mark_accepted` carried the identical
+discarded return value and is fixed with it.
+
+**A `closed-by:` handle must name the work, not its slot in a plan.** `closed-by: Chunk 04` names no
+plan and means nothing a year out; `closed-by: eval-system-rebuild` still says what shipped the
+item. The bare chunk id is non-conforming from this version on, across all four surfaces that
+carried it. **Nothing rewrites your existing handles and no gate rejects them** — they are stale
+references that will not resolve, and the repair is to re-point each at the work the next time its
+item is touched.
+
+**A participle behind a determiner stops reading as a closing keyword.** "adjacent to the closed
+#422" is an adjective describing an issue's state, and the guard read it as an instruction to GitHub
+— reddening the suite on ordinary English and demanding a default-branch qualification a
+requirements document has no reason to carry. Only `closed`, `fixed` and `resolved` can read that
+way, so the exclusion is scoped to those three behind an explicit and open determiner list.
+`Closes` is not a participle, so no determiner in front of it excuses it.
+
+**Eleven instruction surfaces stop misdescribing the runtime** — skill frontmatter, skill prose,
+adapter docs, a process doc, a contract artifact, test comments. Each defect is individually trivial
+and the class is not, because an agent reads every one of these as licence to act, so a wrong
+instruction is obeyed rather than noticed. The largest was a bound with no referent: `adapter-mode`
+told the model *"the adapter exposes exactly the ops in the usage table"* when no reachable usage
+table existed and `--help` exited 2 as an unknown flag. `--help` now prints usage on stdout at exit
+0 for every op.
+
+**Smaller edges, second batch:** a backlog id written the way you read it off a GitHub URL — `322`
+or `#322` — now resolves, where the bare number fell through every spelling and `#322` reported a
+malformed repo the input did not contain; and the intake nudge that counts untriaged upstream
+reports now knows the difference between *none* and *unknown*.
+
+**Known gap, stated: the `develop` track is undogfooded.** The `ref: develop` install recipe that
+ships with the branch-claiming feature has never had a session run on it — the recipe could not be
+exercised until it merged. It is documented and unverified, and this release says so rather than
+implying otherwise; the build plan carrying it keeps its last chunk deliberately unticked until
+somebody runs that session.
 
 ## v3.4.0
 

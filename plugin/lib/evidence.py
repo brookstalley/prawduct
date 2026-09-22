@@ -155,10 +155,17 @@ def store_path(project_dir: Path) -> Path | None:
 
 
 def _plugin_version() -> str | None:
-    """The bundled VERSION, nullable — never invented."""
+    """The bundled VERSION, nullable — never invented.
+
+    ``UnicodeDecodeError`` beside ``OSError`` because undecodable IS unreadable,
+    and :mod:`verdict_cache` derives its memo key from this value — a raise here
+    would crash the gate rather than null a field.
+    """
     try:
-        text = (Path(__file__).resolve().parent.parent / "VERSION").read_text()
-    except OSError:
+        text = (Path(__file__).resolve().parent.parent / "VERSION").read_text(
+            encoding="utf-8"
+        )
+    except (OSError, UnicodeDecodeError):
         return None
     return text.strip() or None
 
@@ -323,7 +330,7 @@ def append_guard_refusal(
     question later. Returns :func:`append_fact`'s result. Callers must treat a
     failure as **soft**: a guard's refusal is correct whether or not the record
     lands, so a store error must never convert it into an error exit. It must
-    not be silent either (``learnings.md``: "'advice fails soft' is not 'advice
+    not be silent either (``core.md``: "'advice fails soft' is not 'advice
     fails silent'") — attribute it on stderr and carry on.
 
     **``dedupe_key`` is for a guard that fires on a POLLED path**, where the
@@ -452,7 +459,11 @@ def read_facts(project_dir: Path) -> dict:
         }
     try:
         raw_text = path.read_text(encoding="utf-8")
-    except OSError as exc:
+    except (OSError, UnicodeDecodeError) as exc:
+        # `UnicodeDecodeError` is a `ValueError`, not an `OSError`, and this
+        # function's whole contract is that a degraded store comes back as a
+        # status dict — callers such as `dispositions.prior_dispositions` rely
+        # on that and do not wrap the call.
         return {
             "status": "error",
             "reason": f"store unreadable ({exc})",
@@ -606,6 +617,40 @@ def findings_index(read_result: dict) -> dict[tuple[str, str], dict]:
             fid = finding.get("fid")
             if isinstance(fid, str) and fid.strip():
                 index[(review_id, fid)] = finding
+    return index
+
+
+def observations_index(read_result: dict) -> dict[tuple[str, str], dict]:
+    """``(review_id, oid)`` → the observation entry its review fact recorded.
+
+    The sibling of :func:`findings_index`, kept a SEPARATE walk on purpose.
+    An observation is what an inner-stage pass demoted: real, worth
+    reading, and deliberately not work the record demands. It is recorded so a
+    builder can answer it and so the demotion's yield is queryable — never so a
+    gate can read it. Merging the two indexes would put observations one
+    ``.get`` away from every consumer that joins on a finding, including the
+    resolution existence check, and the only thing keeping an observation out
+    of a verdict would be each caller remembering to filter. Two indexes, and
+    the callers that want both say so.
+
+    Observation ids live in their own namespace (``O-1``), so a
+    ``(review_id, id)`` pair is unambiguous across both.
+    """
+    index: dict[tuple[str, str], dict] = {}
+    for fact in facts_of_kind(read_result, "review"):
+        review_id = fact.get("id")
+        if not isinstance(review_id, str) or not review_id:
+            continue
+        body = fact.get("body") or {}
+        observations = body.get("observations")
+        if not isinstance(observations, list):
+            continue
+        for observation in observations:
+            if not isinstance(observation, dict):
+                continue
+            oid = observation.get("oid")
+            if isinstance(oid, str) and oid.strip():
+                index[(review_id, oid)] = observation
     return index
 
 
@@ -1249,6 +1294,16 @@ def _cmd_list(project_dir: Path, argv: list[str]) -> int:
         spent, ceiling = body.get("spent"), body.get("budget")
         if isinstance(spent, int) and isinstance(ceiling, int):
             guard_note += f" rounds={spent}/{ceiling}"
+        bound = body.get("bound")
+        if isinstance(bound, str) and bound:
+            guard_note += f" bound={bound}"
+        # WHICH set those rounds were counted from. The budget bounds by branch
+        # lineage, or — where the span holds no commits — by the worktree the
+        # rounds were recorded in. Those are different questions, so a firing
+        # row that does not say which one answered cannot settle the retirement
+        # question above: "six rounds" means one thing about a branch and
+        # another about a worktree that has been running for a month.
+
         accepted = body.get("auto_accepted")
         if isinstance(accepted, int):
             guard_note += f" accepted={accepted}"

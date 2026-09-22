@@ -45,7 +45,8 @@ repos all carry a correct reference produces no advisory here, because the
 stranding is not in anything this probe can see. What a drifted committed
 reference does cost is the *next* clone — it is what a fresh checkout or a new
 machine seeds from, which is `/prawduct:doctor` Health Check #1's own stated
-rationale ("contributors won't get governance on clone"). That is why the
+rationale (the next clone seeds from it and has nothing to resolve the
+install against). That is why the
 advisory still routes to doctor, which is model-side and *can* read the
 machine-level file: the two halves are complementary checks, not two ends of
 one loop.
@@ -63,7 +64,7 @@ import time, so the infrastructure stays feature-agnostic.
 from __future__ import annotations
 
 from .advisory_store import AdvisoryCandidate, Codebase, ProjectState, register_probe
-from .migrate_plugin import INSTALL_REFERENCE, install_reference_drift
+from .migrate_plugin import INSTALL_REFERENCE, PLUGIN_ID, install_reference_drift
 
 FEATURE = "install-reference"
 PROBE_VERSION = 1
@@ -71,7 +72,7 @@ PROBE_VERSION = 1
 #: The one contract field whose drift is not a *version* problem — governance is
 #: off rather than pinned, so it earns a different consequence clause. Derived
 #: from the contract's own key so it tracks a rename.
-_ENABLED_PLUGINS_FIELD = f"enabledPlugins.{next(iter(INSTALL_REFERENCE['enabledPlugins']))}"
+_ENABLED_PLUGINS_FIELD = f"enabledPlugins.{PLUGIN_ID}"
 
 
 def _fmt(value: object) -> str:

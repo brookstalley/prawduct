@@ -3,11 +3,18 @@
 **Self-contained by design**: do not open `review-protocol.md` or `review-cycle.md`. Target wall-clock: 1-2 minutes.
 
 **Never run tests, builds, or executables**: review test quality and coverage by reading
-code. Both modes are **always single-pass** — no subagents, no coordinator. In `verify-resolutions`,
-only **BLOCKING** is a finding — report anything lesser, record-lint entries included, as an
-observation, never in `findings`. **Deliver every observation pre-priced:** ACCEPT is the default
-disposition; fixing one re-opens the gate and costs a round; batch any survivor into an
-already-planned commit.
+code. Both modes are **always single-pass** — no subagents, no coordinator.
+
+**Both modes are the inner stage** (the manifest's `stage` is `inner`; the boundary is `cumulative`
+and the PR review). Here a finding is one of the **inner BLOCKING set** — a test failure in the
+evidence; a test deleted or weakened; changed behavior with no test at all; a silently dropped
+requirement; exploitable security in changed code; a cross-component contract break; a norm
+departure without a recorded decision; an unlisted dependency — and nothing else:
+only **BLOCKING** is a finding, and only from that set. Every other verdict the goals below state
+(`→ WARNING`, `→ NOTE`, a `→ BLOCKING` outside the set) is the boundary rating — report it,
+record-lint entries included, as an observation, never in `findings`. **Deliver every observation
+pre-priced:** ACCEPT is the default disposition; fixing one re-opens the gate and costs a round;
+batch any survivor into an already-planned commit.
 
 ## Before you review
 
@@ -19,7 +26,7 @@ already-planned commit.
    unchanged.** *"The code violates this spec"* has the code as its subject, at full severity.
 2. Read `.prawduct/project-state.yaml`, then the changed files and `git diff` over the interval.
 3. Read the `.prawduct/artifacts/` a change touches — its build plan, and any artifact it cites.
-4. Run `prawduct-hook test-status` and `prawduct-hook verify-coverage` (Goal 1). Nothing else executes.
+4. Run `prawduct-hook test-status` and `prawduct-hook verify-coverage` (Goal 1).
 
 **Chunk `Type:`** (separate axis from mode; missing or unrecognized ⇒ `code` — never honor an
 unknown Type). `code`: all three goals full. `doc-only`: Goal 1 prose only, Goal 2 requirement
@@ -42,9 +49,11 @@ reasons. Do not re-raise one absent material change in its cited files** — one
 = older answers dropped; `unavailable` = the join failed, so you know nothing.
 
 **Record checks are already answered — read the manifest's `record_lint`.** Never
-recount it: that is how a record defect buys a review round. Each entry carries its explanation — raise it. `chunk-ref-missing` → **BLOCKING**. `governed-by-gap` →
-**WARNING** under Goal 2. `suite-total-claim` and `learnings-entry-shape` → **NOTE**.
-**`unchecked` is not a pass, and only one shape blocks.**
+recount it: that is how a record defect buys a review round. Each entry carries its explanation — raise it. `chunk-ref-missing` → **BLOCKING** (a declared deliverable that does not exist is a dropped requirement, so it is in the inner set); `learnings-budget-unreasoned` and `learnings-over-budget` → **BLOCKING** at the boundary, an observation here.
+`governed-by-gap`, `learnings-area-dead` → **WARNING** under Goal 2.
+`suite-total-claim` → **NOTE**.
+**`unchecked` is not a pass: an entry inherits one step below its check's severity** (BLOCKING
+→ **WARNING**, else **NOTE**), except the shapes below:
 `chunk-ref-missing unchecked — …` is
 **BLOCKING**: the check could not run — indistinguishable from passing. `chunk-ref-missing
 no-subject — …` is **NOTE**: the scope is real (the change-log declares it) but plan-less → nothing
@@ -54,13 +63,13 @@ graded chunk … of <plan>: …` is an **assumption, not a failure** — it DID 
 non-null), but half of "whose deliverables" was guessed — the chunk
 inferred from build-plan Status, or the plan from the `active_build_plan` pointer — the line names
 which → **NOTE**. Blocking it is a false blocker no `--chunk` can clear.
-Every other entry is a **NOTE** you must still state. `chunk_graded`/`plan_graded` name the subject.
+State every entry. `chunk_graded`/`plan_graded` name the subject.
 `null` there, or in any `counts` entry, means **no answer** — not a zero.
 
 ## 1. Nothing Is Broken
 
 - `prawduct-hook test-status`: exit 0 = current; stale/missing → **WARNING** — that exit code is the *only* freshness signal; never infer staleness from a commit/SHA field in the evidence (it carries none). Test failures in evidence → **BLOCKING**.
-- No "pre-existing" exception — every finding is yours regardless of when introduced.
+- No "pre-existing" exception — every finding is yours regardless of when introduced. RATE it regardless; the bound is on the BUILDER, whose obligation to FIX is limited to BLOCKING (below that a recorded accept discharges it). Never omit or downgrade a finding on this ground.
 - Tests verify behavior, not implementation.
 - Tests deleted or assertions weakened without documented reason → **BLOCKING**. Legitimate consolidation needs a change-log entry.
 - Changed/added behavior has test coverage → **BLOCKING** if untested.
@@ -85,6 +94,7 @@ Every other entry is a **NOTE** you must still state. `chunk_graded`/`plan_grade
 - **Foreign API**: chunks with `**Foreign API:** <name>` need a `verify-api` step in Done-when → **WARNING** if missing.
 - **Exposed API**: chunks with `**Exposed API:** <name>` need a recorded versioning + deprecation decision (`design_decisions.api_versioning_approach`, or a dated deferral with a revisit trigger) → **WARNING** if missing; and a recorded error-model decision (`api_error_model_approach`) → **WARNING** if missing. Presence is not adherence: where the contract's `Retention:` policy defers removal to a major, a `stable`/`deprecated` member of its Surface Inventory the diff removes or un-declares → **BLOCKING** norm departure.
 - **Operator verification:** `operator_verification_required: true` + chunk `Visual change: yes` ⇒ matching entry in `.prawduct/operator-verification.md` → **NOTE** if missing.
+- **Built-but-unconsumed:** a producer nothing reads in the same change — an event, a field, a flag → **WARNING**.
 
 ## 3. Nothing Is Unintended
 
@@ -123,6 +133,9 @@ dies in your context, and the builder is what terminates the review loop.
   "findings": [
     {"name": "<short title>", "goal": "Nothing Is Unintended", "severity": "warning", "recommendation": "<what to do>", "files": ["file1"]}
   ],
+  "observations": [
+    {"name": "<short title>", "goal": "Nothing Is Missing", "recommendation": "<what to do>"}
+  ],
   "resolutions": [
     {"review_id": "<the PRIOR review's id, not yours>", "fid": "R-1", "disposition": "fixed"}
   ],
@@ -131,12 +144,15 @@ dies in your context, and the builder is what terminates the review loop.
 ```
 
 `files` per finding is attribution — omit when not file-specific. `findings` is `[]` for a clean pass.
+**`observations` — both modes** (the inner stage's carrier): what you demoted — a finding minus
+`severity`, and carry no `severity` key. Recording it lets the builder ACCEPT one instead of fixing
+it to leave a trace; one from the inner BLOCKING set belongs in `findings`.
 **`resolutions` is `verify-resolutions` mode ONLY** — your judgment on each prior BLOCKING/WARNING
 finding, joined by `(review_id, fid)` from the prior findings record; `disposition` is `fixed` or
 `waived` (`waived` requires a `rationale`). Consolidation validates every entry and fails closed on a
 mismatch, so match this schema exactly.
 
-Then report to the user: signals (size, type, files, boundaries crossed), what you reviewed, each
-finding with goal, severity and recommendation, and a summary by severity saying whether the changes
-are ready. No findings, no observations: "No issues found." A clean pass is not an exemption from
+Then report to the user: the manifest's `signals` line verbatim, what you reviewed, each finding
+with goal, severity and recommendation, the observations, and a summary by severity saying whether
+the changes are ready. No findings, no observations: "No issues found." A clean pass is not an exemption from
 the `NEXT-ACTION:` last line — it is where that line matters most.

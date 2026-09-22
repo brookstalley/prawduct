@@ -103,15 +103,16 @@ last_validated: 2026-07-03
 
 <!-- The cross-session handoff, and the ONLY reading of chunk progress. The boxes are
      yours to tick: mark `[x]` by hand when a chunk's "Done when" steps are all
-     satisfied — nothing derives them, so an unticked box is read everywhere as work
+     satisfied — built, reviewed, committed; never merged or released — nothing derives them, so an unticked box is read everywhere as work
      still open. Keep Context current. Context runs from `Context:` to the end of this
      section, so it may be several paragraphs — the handoff carries it whole. Keep it
      LAST: a chunk checkbox after it closes the block, and anything below that is
      dropped from the handoff.
 
      Ticking is load-bearing in both directions. Ticking the LAST box disarms the Stop
-     hook's Critic and reflection gates, which is why "Done when" puts the review before
-     the tick. The opposite error — a chunk built, committed, left unticked — is caught
+     hook's Critic gate, which is why "Done when" puts the review before the tick. (Not
+     the reflection gate — that one asks whether this session changed judgeable code, so
+     no box disarms it.) The opposite error — a chunk built, committed, left unticked — is caught
      by an advisory, and ITS PRECONDITION IS YOUR COMMIT CONVENTION: it fires only on a
      NUMERIC chunk id in one of three anchored positions —
 
@@ -180,7 +181,10 @@ Routes never touch SQLite directly — persistence goes through `store.py`. Temp
      default. Field reference:
        `Critic mode:` / `Type:` — methodology/planning.md "Critic Mode Per Chunk" /
          "Choosing a Chunk Type"; behavior tables in skills/critic/review-cycle.md.
-         Mode missing, unrecognized, or inference unconfident → the review runs `final`.
+         Mode missing or unrecognized → inferred; no rule firing → `chunk`, the inner-stage review.
+         Each chunk's "Done when" runs `/prawduct:critic`; a SHORT plan owes fewer runs
+         than one per chunk, and which and when is stated by review-cycle.md's
+         "When Review Is Required" row — not restated here.
        `Foreign API:` / `Exposed API:` / `Visual change:` — methodology/planning.md.
        `Trivial because:` — required iff `Type: trivial`. -->
 
@@ -191,7 +195,7 @@ Routes never touch SQLite directly — persistence goes through `store.py`. Temp
 - **Artifacts consumed:** `data-model.md` (Item entity), `test-specifications.md` §1
 - **Deliverables:** new `pantry/main.py`, new `pantry/store.py`, new `templates/list.html`, seeded dev database
 - **Tests:** unit — `store.py` CRUD; integration — GET / renders seeded items (httpx)
-- **Acceptance criteria:** `uv run pytest -q` passes; browser shows the seeded list at /
+- **Acceptance criteria:** the declared suite passes; browser shows the seeded list at /
 - **Done when:**
   1. Acceptance criteria met and tests pass
   2. `/prawduct:critic` run and blocking findings resolved
@@ -224,7 +228,9 @@ Routes never touch SQLite directly — persistence goes through `store.py`. Temp
 - **Acceptance criteria:** a known barcode prefills the name; API down → the form still works manually
 - **Type:** cumulative-final
   <!-- Last chunk: its review IS the one `/prawduct:critic cumulative` — commit
-       first, run it once, no separate `final`. -->
+       first, run it once, no separate `final`. On a short plan that one run is every
+       earlier chunk's review too (review-cycle.md's "When Review Is Required" row);
+       not on THIS plan, because Chunk 02 declares a `Critic mode:`. -->
 - **Foreign API:** openfoodfacts-http
 - **Done when:**
   0. verify-api — probe the live API for two barcodes; capture the actual response shape in `.prawduct/artifacts/api-notes-off.md`

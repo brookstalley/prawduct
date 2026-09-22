@@ -357,16 +357,38 @@ DIRECTIVES = {
 #: someone decides what it may cost, rather than going quietly unmetered.
 #:
 #: `final` and `cumulative` read `review-protocol.md` and receive no directive,
-#: so their ceiling is that file's own governed ceiling — the one
-#: `test_v5_methodology.py` asserts. Pinning anything lower here would red-line
-#: on a raise that file already ratified, and anything higher would let a
-#: directive added to those modes ride in free. The two numbers move together:
-#: raising the file's ceiling there means raising this one by the same amount.
+#: so their ceiling is that file's own governed one. It is DERIVED from
+#: `test_v5_methodology.LAST_MEASURED_TOKENS` rather than copied: a copied
+#: number stayed at 4035 while `develop` ratified raises on the file, and this
+#: pin then red-lined on changes that were already declared where they belong.
+#: That file's per-file ceiling is an inline literal which sits at its reading
+#: plus one (the ratchet the injected-shape and route budgets assert for
+#: theirs); this follows the READING, so it stays one over it even if that
+#: literal is later raised with slack — and a directive added to these modes
+#: still cannot ride in free.
+#:
+#: `chunk` and `verify-resolutions` are this module's own quantity — payload
+#: plus the directives dispatch hands them, which no other meter sums. The
+#: route budget in `test_reviewer_payload_budget.py` prices whole payload FILES
+#: per route and counts no directive, so the two overlap on the files and differ
+#: on the directives; both stay until one meter carries both terms.
+#: RE-BASELINED 2026-09-22 (chunk 2500 -> 2801, verify-resolutions 3500 ->
+#: 3924), DECLARED, when this branch merged forward a month after it was built.
+#: Nothing on this branch grew: `goals-1-3.md` and the verify directives took
+#: raises on `develop` meanwhile (#833's severity bound, #640, #850), each
+#: declared against the per-file and per-route budgets that existed then —
+#: this meter had not landed, so none of them could be priced here.
+def _governed_protocol_ceiling() -> int:
+    from test_v5_methodology import LAST_MEASURED_TOKENS  # noqa: PLC0415
+
+    return LAST_MEASURED_TOKENS["skills/critic/review-protocol.md"] + 1
+
+
 CEILINGS = {
-    "chunk": 2500,
-    "verify-resolutions": 3500,
-    "final": 4035,
-    "cumulative": 4035,
+    "chunk": 2801,
+    "verify-resolutions": 3924,
+    "final": _governed_protocol_ceiling(),
+    "cumulative": _governed_protocol_ceiling(),
 }
 
 

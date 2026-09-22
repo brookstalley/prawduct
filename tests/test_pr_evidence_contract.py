@@ -1,8 +1,12 @@
-"""Guards for the two carriers of the PR-review evidence contract, and for the
-class of claim that a GitHub closing keyword closes a backlog item.
+"""Guards for three things the PR flow gets wrong quietly: the two carriers of
+the PR-review evidence contract, the class of claim that a GitHub closing
+keyword closes a backlog item, and whether Step 1 names the command that
+records a suite run as well as the one that dates it.
 
-Both defects these guards close were found the same way: by a PR that merged
-cleanly and left something undone.
+All three defects these guards close were found the same way: by a PR that
+completed cleanly and left something undone — two that merged with work
+outstanding, and one that merged correctly having paid for a second full suite
+run to get there.
 
 **The evidence contract has two carriers.** `skills/pr/review-protocol.md`
 tells the reviewer what to write; `skills/pr/SKILL.md` tells the caller what to
@@ -77,18 +81,59 @@ def instruction_surfaces() -> list[Path]:
     return sorted(out)
 
 # The keyword family GitHub actually honours, spelled as prose writes them.
-CLOSING_KEYWORDS = re.compile(
-    # GitHub honours the keyword only immediately before an issue reference, so
-    # require one -- a bare "closes the loop" is not a closing keyword. This
-    # narrows the match; it does not make it exact. "suggested fix #2" still
-    # matches, because the shape is genuinely ambiguous in prose. That residual is
-    # accepted rather than chased: the surface set excludes append-only records,
-    # and every live hit today carries the qualification. Narrowing further would
-    # start missing the instruction prose this exists to catch, and a guard that
-    # misfires trains its reader to ignore the one real catch.
-    r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(?:\d+|N)\b",
+# GitHub honours the keyword only immediately before an issue reference, so
+# require one -- a bare "closes the loop" is not a closing keyword. This narrows
+# the match; it does not make it exact. "suggested fix #2" still matches, because
+# the shape is genuinely ambiguous in prose. That residual is accepted rather than
+# chased: the surface set excludes append-only records. Narrowing further would
+# start missing the instruction prose this exists to catch, and a guard that
+# misfires trains its reader to ignore the one real catch.
+CLOSING_KEYWORD_CANDIDATE = re.compile(
+    r"\b(close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(?:\d+|N)\b",
     re.IGNORECASE,
 )
+
+# The three past-participle members. Only these can read as an adjective; the
+# imperative and third-person forms (`Closes`, `fix`) cannot, which is why the
+# determiner rule below is scoped to this set and not to the whole family. That
+# scoping -- NOT the presence of backticks -- is what keeps "the `Closes #N`
+# keyword" matching: `Closes` is not in this set, so no determiner can excuse it.
+_PARTICIPLES = frozenset({"closed", "fixed", "resolved"})
+
+# A determiner immediately before a participle makes the adjectival reading the
+# natural one -- "the closed #422" describes an issue's state. Not every member
+# forecloses a verb reading in the abstract ("one closed #5" can parse as subject
+# plus verb); what makes the exclusion safe is narrower and empirical -- prose
+# giving GitHub an instruction reaches for `Closes #N`, never for these shapes.
+# The list is open on purpose: a writer reaching for "every closed #19" means
+# what one reaching for "the closed #19" means. Add to it rather than letting a
+# true adjective redden the suite.
+_DETERMINERS = frozenset(
+    """the a an this that these those its their his her our your my
+    every each any some no one both either neither""".split()
+)
+
+# Whitespace-insensitive by construction, because this repo hard-wraps at ~100
+# columns: "the closed #422" and "the\nclosed #422" are the same sentence, and a
+# rule keyed to a literal space would fire on one and not the other purely by
+# where the line broke. The live sentence that prompted this rule tripped the
+# guard only because both words happened to land on one line.
+_DETERMINER_BEFORE = re.compile(r"(\w+)\s+$")
+
+
+def names_closing_keyword(text: str) -> bool:
+    """True when `text` uses a GitHub closing keyword as an INSTRUCTION.
+
+    An issue described as closed is not an instruction to close one. Every
+    candidate survives unless it is a participle behind a determiner -- the one
+    shape in the family that instruction prose never uses."""
+    for match in CLOSING_KEYWORD_CANDIDATE.finditer(text):
+        if match.group(1).lower() not in _PARTICIPLES:
+            return True
+        preceding = _DETERMINER_BEFORE.search(text[: match.start()])
+        if preceding is None or preceding.group(1).lower() not in _DETERMINERS:
+            return True
+    return False
 
 
 def _fenced_json_blocks(text: str) -> list[dict]:
@@ -171,7 +216,7 @@ class TestClosingKeywordClaims:
         file scope: a qualification three sections away is not read by someone
         following the sentence in front of them."""
         for para in _paragraphs(path.read_text()):
-            if not CLOSING_KEYWORDS.search(para):
+            if not names_closing_keyword(para):
                 continue
             qualified = "default" in para.lower() and "branch" in para.lower()
             assert qualified, (
@@ -180,6 +225,67 @@ class TestClosingKeywordClaims:
                 "gitflow base the keyword is inert and the item silently stays open.\n\n"
                 f"Paragraph:\n{para[:400]}"
             )
+
+    @pytest.mark.parametrize(
+        "prose",
+        [
+            "Closes #123",
+            "Fixes #7",
+            "Resolves #9",
+            "Closes #N",
+            "Closed #55 by hand",
+            "a `Closes #N` line for each item",
+            "the `Closes #N` keyword",
+            "the Closes #N keyword",
+            "was closed #422 by the release",
+        ],
+    )
+    def test_the_keyword_shapes_instruction_prose_uses_still_match(self, prose: str):
+        """The guard's reach, pinned against a narrowing that quietly un-covers
+        the prose it exists for.
+
+        The last two are the boundary cases. `the Closes #N` survives its
+        determiner because `Closes` is not a participle -- backticks are
+        irrelevant, and a rule that leaned on them would let `the Closes #N`
+        through. `was closed` survives because "was" is not a determiner: the
+        exclusion is deliberately narrow, and anything it cannot positively
+        identify as adjectival stays covered."""
+        assert names_closing_keyword(prose), (
+            f"{prose!r} no longer reads as a closing keyword, so a paragraph "
+            "containing it would skip the default-branch check. That check is "
+            "what stops a gitflow PR promising a close the merge never fires."
+        )
+
+    @pytest.mark.parametrize(
+        "prose",
+        [
+            "adjacent to the closed #422",
+            "a fixed #19",
+            "this closed #422",
+            "every resolved #5",
+            "its fixed #7",
+            # Hard-wrapped: the same sentence, broken where ~100 columns fall.
+            "a note adjacent to the\nclosed #422, which shipped",
+        ],
+    )
+    def test_a_participle_behind_a_determiner_is_not_a_keyword(self, prose: str):
+        """An issue described as closed is not an instruction to close one, and
+        the determiner is what settles it. Live prose hit this and reddened the
+        suite; the repair belongs in the classifier, because the alternative is
+        reflowing correct English to satisfy a guard -- which teaches every later
+        author that the guard, not the sentence, decides how they write.
+
+        The wrapped case is not hypothetical padding. This repo hard-wraps at
+        ~100 columns, so whether a determiner and its participle share a line is
+        an accident of column count; the sentence that first reddened the suite
+        tripped it only because they happened to."""
+        assert not names_closing_keyword(prose), (
+            f"{prose!r} matches as a GitHub closing keyword, but the determiner "
+            "makes the adjectival reading the natural one, and no instruction prose "
+            "uses that shape. A false positive here "
+            "trains readers to ignore the one real catch."
+        )
+
 
 class TestIssuesBackendCloseIsDeferred:
     """The remedy this bugfix installs, pinned. Without these, deleting the
@@ -303,4 +409,135 @@ class TestIssuesBackendCloseIsDeferred:
             "The Update Flow no longer cross-checks `commit_reviewed` against the "
             "ledger's independent copy. Without it the field is self-certifying, and "
             "the prohibition on advancing it has nothing behind it."
+        )
+
+
+class TestStepOneNamesTheRecorder:
+    """Step 1 tells the caller to run the suite; it must also name the command
+    that RECORDS one, because the two are the same command and only one of them
+    is discoverable.
+
+    The defect this closes was paid in wall clock, not correctness. Step 1 said
+    "when you do run, write fresh evidence so the next caller can skip it" and
+    named no command, so a caller ran the declared suite by hand and then asked
+    `test-evidence record` to ingest the counts. With a `test_command:` declared
+    that is refused (the runner emits JUnit, so hand-typed counts are the weakest
+    posture available), and the hand-run emitted no report to ingest instead —
+    leaving a second full suite run as the only way forward. Bare
+    `prawduct-hook test-evidence record` runs the declared command, substitutes
+    `{junit_xml}` where the repo declares `test_command:`, and falls back to
+    pytest where it does not — which is the default, since the template ships
+    that key commented out.
+
+    Bounded to the paragraph rather than the file: `SKILL.md` names
+    `test-evidence` in other steps, so a file-wide substring check would pass
+    with the instruction itself silent — the shape this repo's learnings call a
+    guard that cannot go red.
+    """
+
+    def _suite_paragraph(self) -> str:
+        paras = [
+            p for p in _paragraphs(PR_SKILL.read_text())
+            if "test-status" in p and "run the suite" in p
+        ]
+        assert len(paras) == 1, (
+            "Expected exactly one Step 1 paragraph instructing the caller about the "
+            f"suite; found {len(paras)}. If the step was split, re-bound this guard "
+            "rather than widening it to the file."
+        )
+        return paras[0]
+
+    def test_the_instruction_names_the_recorder_command(self):
+        para = self._suite_paragraph()
+        assert "test-evidence record" in para, (
+            "Step 1 tells the caller to run the suite without naming "
+            "`test-evidence record`. A caller who runs the declared suite by hand "
+            "cannot record it — `--from-counts` is refused when `test_command:` is "
+            "declared — so the omission costs a second full suite run."
+        )
+
+    def test_the_recorder_clause_survives_for_a_repo_that_declares_nothing(self):
+        """Naming the recorder is only safe prose while the sentence also covers
+        the repo that declares no `test_command:`.
+
+        `plugin/templates/project-state.yaml` ships that key commented out, so
+        undeclared is the DEFAULT consumer state: there `record` falls back to
+        pytest, which exits 2 for a non-Python product. An earlier draft of this
+        clause asserted the declared command unconditionally and left such a
+        reader with nowhere to go, because the same edit dropped the ingest
+        on-ramps from the skill's view. Without this guard that draft comes back
+        green — the sibling above only asks whether the recorder is *named*.
+        """
+        para = self._suite_paragraph()
+        assert "fallback" in para or "else a pytest" in para, (
+            "Step 1 names the recorder without saying what it runs for a repo "
+            "that declares no `test_command:` — the default consumer state."
+        )
+        for route in ("--from-junit", "--from-counts"):
+            assert route in para, (
+                f"Step 1 no longer names `{route}`. A product whose toolchain the "
+                "fallback cannot run needs an on-ramp named where it is reading."
+            )
+
+    def test_the_paragraph_quotes_the_labels_the_command_actually_prints(self):
+        """The prose tells a PR agent to read a printed label; pin both ends.
+
+        Step 1 hard-codes the two strings `test-status` puts in front of its
+        reason. Nothing otherwise ties them to the code, so a reword on either
+        side leaves the skill instructing an agent to look for a string the
+        command never prints — with the suite green, because the only other
+        assertions on this file are token counts.
+
+        The literals are IMPORTED, never retyped here: a second hand-copy would
+        make this guard agree with a stale prose copy instead of grading it.
+        Goes red if either constant is reworded without the prose following.
+        """
+        import sys  # noqa: PLC0415
+        sys.path.insert(0, str(PR_SKILL.parents[3]))
+        from lib import gates  # noqa: PLC0415 — mirrors the other lib unit tests
+
+        para = self._suite_paragraph()
+        for label in (gates.CURRENT_TREE_LABEL, gates.CURRENT_SESSION_LABEL):
+            assert label in para, (
+                f"Step 1 tells the caller to read the printed label but does not "
+                f"quote {label!r}, which is what `test-status` prints. Update the "
+                "prose to match `lib.gates`, not this test."
+            )
+
+    def test_the_paragraph_does_not_claim_exit_0_proves_tree_coverage(self):
+        """The #767 claim, pinned negative AND positive.
+
+        The negative alone is satisfied by deleting the sentence; the positive
+        alone is satisfied by a paragraph that states the disjunction and then
+        overclaims anyway. Both are needed, and the negative is matched on the
+        exact phrasing that carried the defect rather than on any sentence
+        containing the word "tree".
+        """
+        para = self._suite_paragraph()
+        assert "covers the current tree" not in para, (
+            "Step 1 again claims exit 0 means the evidence covers the current "
+            "tree. The session-fresh disjunct never reads the tree (#767)."
+        )
+        assert "session-fresh" in para and "tree-valid" in para, (
+            "Step 1 must still state BOTH grounds for exit 0 — a paragraph that "
+            "merely drops the false claim leaves the caller unable to read the "
+            "label it is told to read."
+        )
+
+    def test_the_instruction_still_leads_with_the_freshness_check(self):
+        """The recorder sentence must not displace the cheaper answer. Running
+        nothing at all is the best outcome, and `test-status` is what licenses
+        it; a paragraph that only named the recorder would spend a suite run on
+        every PR."""
+        para = self._suite_paragraph()
+        # Precondition, stated rather than assumed: without it `.index` raises
+        # ValueError and this test reports the SIBLING's defect as its own.
+        assert "test-evidence record" in para, (
+            "The recorder is not named at all — see "
+            "test_the_instruction_names_the_recorder_command; this guard asks "
+            "only about ORDER and cannot speak to its absence."
+        )
+        assert para.index("test-status") < para.index("test-evidence record"), (
+            "Step 1 now reaches for the recorder before the freshness check. "
+            "`test-status` exit 0 means no run is needed at all."
         )

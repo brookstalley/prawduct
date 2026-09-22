@@ -199,30 +199,30 @@ class TestExplicitArgsOverride:
 
     def test_unrecognized_args_fall_through_to_inference(self, tmp_path: Path):
         """Unknown mode token triggers inference. No plan + no diff → rule-4
-        final (the fail-safe path, not chunk — chunk-mode requires an
-        active plan to scope against)."""
+        chunk: the inner-stage review is the default when nothing else fires,
+        and with no base to redirect to there is nothing else to answer."""
         _init_repo(tmp_path)
         _write(tmp_path, "README.md", "x\n")
         _commit(tmp_path, "initial")
         mode, rationale = infer_mode(tmp_path, "ultra-thorough")
-        assert mode == "final"
-        assert rationale.startswith("rule-4 final:")
+        assert mode == "chunk"
+        assert rationale.startswith("rule-4 chunk:")
 
     def test_none_args_triggers_inference(self, tmp_path: Path):
         _init_repo(tmp_path)
         _write(tmp_path, "README.md", "x\n")
         _commit(tmp_path, "initial")
         mode, _ = infer_mode(tmp_path, None)
-        # No plan, no diff → rule-4 fail-safe → final
-        assert mode == "final"
+        # No plan, no diff → rule-4 default → chunk
+        assert mode == "chunk"
 
     def test_empty_string_args_triggers_inference(self, tmp_path: Path):
         _init_repo(tmp_path)
         _write(tmp_path, "README.md", "x\n")
         _commit(tmp_path, "initial")
         mode, _ = infer_mode(tmp_path, "")
-        # No plan, no diff → rule-4 fail-safe → final
-        assert mode == "final"
+        # No plan, no diff → rule-4 default → chunk
+        assert mode == "chunk"
 
 
 # ---------------------------------------------------------------------------
@@ -704,8 +704,9 @@ class TestRule2Cumulative:
 
         mode, _ = infer_mode(tmp_path, None)
         assert mode != "cumulative"
-        # No active plan + no uncommitted code → rule-4 fail-safe → final
-        assert mode == "final"
+        # No active plan, clean tree, and the fresh cumulative means there is
+        # no bundle to redirect to → rule-4 default → chunk
+        assert mode == "chunk"
 
     def test_v2_chain_record_at_head_no_longer_suppresses(self, tmp_path: Path):
         """Stays-deleted guard (kernel-v3 ch.06 vestige sweep): a v2-era
@@ -841,10 +842,13 @@ class TestRule3Final:
         assert mode == "final"
         assert "no build plan" in rationale
 
-    def test_no_plan_small_work_falls_through_to_final(self, tmp_path: Path):
-        """No plan + <5 files → rule-4 fail-safe → final. (Not chunk: chunk
-        mode requires an active plan to scope against; without one, the
-        SKILL's historical "missing/unrecognized → final" norm wins.)"""
+    def test_no_plan_small_work_falls_through_to_chunk(self, tmp_path: Path):
+        """No plan + <5 files → rule-4 → chunk, the inner-stage review of the
+        uncommitted interval. It used to be `final`, on the SKILL's historical
+        "missing/unrecognized → final" rule and the belief that more review is
+        the safe failure direction; the stage-keyed rigor norm retired both —
+        a planless two-line fix inferring the seven-goal review is the defect,
+        not the margin."""
         _init_repo(tmp_path)
         _write(tmp_path, "README.md", "x\n")
         _commit(tmp_path, "initial")
@@ -853,8 +857,37 @@ class TestRule3Final:
             _write(tmp_path, f"src/file_{i}.py", f"# file {i}\n")
 
         mode, rationale = infer_mode(tmp_path, None)
-        assert mode == "final"
-        assert rationale.startswith("rule-4 final:")
+        assert mode == "chunk"
+        assert rationale.startswith("rule-4 chunk:")
+        assert "no active build plan" in rationale
+
+    def test_rule_4_never_answers_final(self, tmp_path: Path):
+        """The retired fall-through, pinned as an absence across every shape
+        rule 4 can be reached in without a plan: a dirty tree, a clean tree
+        with no bundle, and a clean tree with one. `final` is a rule-3 or
+        override answer only — an inner-stage review the inferrer runs on a
+        SIGNAL (last chunk, 5+ files), never on the absence of one."""
+        _init_repo(tmp_path)
+        _write(tmp_path, "README.md", "x\n")
+        _commit(tmp_path, "initial")
+        seen = {}
+        # clean tree, no bundle (on the base branch itself)
+        seen["clean-no-bundle"] = infer_mode(tmp_path, None)
+        # dirty tree, below rule 3's size threshold
+        _write(tmp_path, "src/one.py", "# one\n")
+        seen["dirty"] = infer_mode(tmp_path, None)
+        (tmp_path / "src" / "one.py").unlink()
+        # clean tree, one commit ahead of the base
+        _checkout_new_branch(tmp_path, "fix/standalone")
+        _write(tmp_path, "src/fix.py", "# fix\n")
+        _commit(tmp_path, "fix")
+        seen["clean-bundle"] = infer_mode(tmp_path, None)
+        for shape, (mode, rationale) in seen.items():
+            assert rationale.startswith("rule-4 "), (shape, rationale)
+            assert mode != "final", (shape, rationale)
+        assert seen["clean-no-bundle"][0] == "chunk"
+        assert seen["dirty"][0] == "chunk"
+        assert seen["clean-bundle"][0] == "cumulative"
 
     def test_reads_scope_named_plan_via_active_build_plan_pointer(self, tmp_path: Path):
         """v1.6.0 Chunk 06: with `active_build_plan:` set and no build-plan.md,
@@ -974,8 +1007,8 @@ class TestRule4ChunkDefault:
         """The redirect only fires when the redirect TARGET works.
 
         Zero commits beyond the base means cumulative's interval is empty as
-        well, so swapping one refusal for another buys nothing — the fail-safe
-        answer and its honest refusal stand.
+        well, so swapping one refusal for another buys nothing — the
+        inner-stage answer and its honest refusal stand.
 
         A GUARD, not evidence: it passes against the pre-fix code too, by
         design. What it pins is that the redirect beside it stays bounded.
@@ -999,7 +1032,7 @@ class TestRule4ChunkDefault:
 
         The raise class is the half a `returncode` check misses: an absent
         binary (OSError) or the timeout. Returning False there keeps rule 4 on
-        its fail-safe answer instead of redirecting on a tree it could not read
+        its inner-stage answer instead of redirecting on a tree it could not read
         — an unguarded call would propagate out of `infer_mode` instead.
 
         Lives here rather than beside the rule-1 anchor tests because rule 4 is
@@ -1029,8 +1062,12 @@ class TestRule4ChunkDefault:
         on a repo running several plans across worktrees that is a different
         question, and rule 4 used to inherit whichever plan it named. The
         pointer's plan here has one chunk left (which would make rule 3 fire);
-        the branch's plan has three, so an inference reading the pointer answers
-        `final` and one reading the branch answers `chunk`.
+        the branch's plan has four, so an inference reading the pointer answers
+        `final` and one reading the branch answers `chunk`. (Four rather than
+        three: a plan of three or fewer chunks on a feature branch touching no
+        risk surface is the short-plan shape, whose inner-stage answer is
+        `deferred` — `test_short_plan_deferral.py` — and this test is about
+        which plan rule 4 grounds on, not about that shape.)
         """
         _init_repo(tmp_path)
         _write(tmp_path, "README.md", "x\n")
@@ -1047,6 +1084,7 @@ class TestRule4ChunkDefault:
             "---\nartifact: build-plan\nscope: mine\n---\n\n"
             "# Build Plan\n\n## Status\n\n"
             "- [x] Chunk 01: done\n- [ ] Chunk 02: current\n- [ ] Chunk 03: later\n"
+            "- [ ] Chunk 04: last\n"
         )
         (tmp_path / ".prawduct" / "project-state.yaml").write_text(
             "active_build_plan: artifacts/build-plan-other.md\n"
@@ -1058,16 +1096,15 @@ class TestRule4ChunkDefault:
         assert "build-plan-mine.md" in rationale
         assert "declares this branch's scope 'mine'" in rationale
 
-    def test_a_branch_named_after_a_finished_plan_does_not_match(self, tmp_path: Path):
-        """The liveness narrowing: a matched plan must still have work in it.
+    def test_a_finished_live_plan_still_matches_until_it_is_archived(self, tmp_path: Path):
+        """Archiving retires a plan; ticking its last box does not.
 
-        A long-lived repo accumulates dozens of released plans, all of them
-        scope-declaring. Without this, a branch named after any of them
-        attributes its review to a plan that shipped long ago — and record-lint
-        would then raise a BLOCKING `chunk-ref-missing` about deliverables that
-        shipped with it. Deleting `_has_unfinished_chunk` must not leave a green
-        suite, which is why the fully-ticked plan here is otherwise identical to
-        the one the sibling test matches on.
+        Boxes are ticked per chunk after each review, so every box is ticked by
+        the plan's own end-of-plan `cumulative`. Rejecting an all-checked plan
+        (the earlier contract, when boxes flipped only at release) turned the
+        scope off for exactly that review, and it went uncounted by the round
+        budget. The paired half: the same plan moved under `archive/` stops
+        matching, which is what keeps long-shipped plans from being targets.
         """
         _init_repo(tmp_path)
         _write(tmp_path, "README.md", "x\n")
@@ -1076,24 +1113,53 @@ class TestRule4ChunkDefault:
 
         artifacts = tmp_path / ".prawduct" / "artifacts"
         artifacts.mkdir(parents=True, exist_ok=True)
-        (artifacts / "build-plan-shipped.md").write_text(
+        plan = artifacts / "build-plan-shipped.md"
+        plan.write_text(
             "---\nartifact: build-plan\nscope: shipped\n---\n\n"
             "# Plan\n\n## Status\n\n- [x] Chunk 01: done\n- [x] Chunk 02: also done\n"
         )
-        (artifacts / "build-plan-live.md").write_text(
-            "---\nartifact: build-plan\nscope: live\n---\n\n"
-            "# Plan\n\n## Status\n\n- [x] Chunk 01: done\n- [ ] Chunk 02: current\n"
+        prawduct = tmp_path / ".prawduct"
+        assert buildplan_refs.infer_scope_from_branch(tmp_path, prawduct) == "shipped", (
+            "a plan at its final review has every box ticked and is still the work"
         )
 
+        archive = artifacts / "archive"
+        archive.mkdir()
+        plan.rename(archive / plan.name)
+        assert buildplan_refs.infer_scope_from_branch(tmp_path, prawduct) is None, (
+            "an archived plan is history, not a live target"
+        )
+
+    def test_a_merged_finished_plan_does_not_capture_a_follow_up_branch(self, tmp_path: Path):
+        """On gitflow a merged plan stays live until the release. A later branch
+        reusing its exact name must not be graded against it — this answer feeds
+        the gates, not only review attribution — so a finished plan matches only
+        when this branch edited it. Editing it (the plan's own branch writing its
+        ticks) is the control that makes the first assertion about liveness."""
+        _init_repo(tmp_path)
+        _write(tmp_path, "README.md", "x\n")
+        _write(
+            tmp_path,
+            ".prawduct/artifacts/build-plan-shipped.md",
+            "---\nartifact: build-plan\nscope: shipped\n---\n\n"
+            "# Plan\n\n## Status\n\n- [x] Chunk 01: done\n",
+        )
+        _commit(tmp_path, "initial, with the merged finished plan")
+        _checkout_new_branch(tmp_path, "fix/shipped")
+        _write(tmp_path, "src/new.py", "# follow-up work\n")
         prawduct = tmp_path / ".prawduct"
         assert buildplan_refs.infer_scope_from_branch(tmp_path, prawduct) is None, (
-            "a released plan is not what this branch is building"
+            "a finished plan this branch never touched is not what it is building"
         )
 
-        # Control: the identical branch shape DOES match a plan with work left,
-        # so the assertion above is about liveness and not about the fixture.
-        _git(tmp_path, "checkout", "-b", "fix/live", "--quiet")
-        assert buildplan_refs.infer_scope_from_branch(tmp_path, prawduct) == "live"
+        _write(
+            tmp_path,
+            ".prawduct/artifacts/build-plan-shipped.md",
+            "---\nartifact: build-plan\nscope: shipped\n---\n\n"
+            "# Plan\n\n## Status\n\n- [x] Chunk 01: done\n- [x] Chunk 02: done\n",
+        )
+        _commit(tmp_path, "tick chunk 02")
+        assert buildplan_refs.infer_scope_from_branch(tmp_path, prawduct) == "shipped"
 
     def test_a_declared_branch_resolves_a_scope_no_name_rule_could(self, tmp_path: Path):
         """The observed miss this closes, in its real shape.
@@ -1280,8 +1346,11 @@ class TestRule4ChunkDefault:
         _write(tmp_path, "README.md", "x\n")
         _commit(tmp_path, "initial")
         _checkout_new_branch(tmp_path, "feature/no-plan-of-its-own")
+        # Four chunks, not three: three is the short-plan shape and would defer
+        # instead of grounding (`test_short_plan_deferral.py`).
         _write_build_plan(
-            tmp_path / ".prawduct", [("x", "Chunk 1"), (" ", "Chunk 2"), (" ", "Chunk 3")]
+            tmp_path / ".prawduct",
+            [("x", "Chunk 1"), (" ", "Chunk 2"), (" ", "Chunk 3"), (" ", "Chunk 4")],
         )
         _write(tmp_path, "src/work.py", "# in progress\n")
 
@@ -1541,8 +1610,8 @@ class TestRationaleFormat:
             _init_repo(tmp_path)
             _write(tmp_path, "README.md", "x\n")
             _commit(tmp_path, "initial")
-            # Active plan grounds rule-4 chunk. Without it the
-            # fail-safe fires final, not chunk.
+            # Active plan grounds rule-4 chunk (the planless default is chunk
+            # too, but this fixture pins the grounded rationale).
             _write_build_plan(
                 tmp_path / ".prawduct",
                 [("x", "Chunk 1"), (" ", "Chunk 2"), (" ", "Chunk 3")],
@@ -1593,9 +1662,9 @@ class TestInferCriticModeSubcommand:
         assert result.returncode == 0, result.stderr
         assert "|" in result.stdout
         mode, rationale = result.stdout.strip().split("|", 1)
-        # No plan, no diff → rule-4 fail-safe → final
-        assert mode == "final"
-        assert rationale.startswith("rule-4 final:")
+        # No plan, no diff, no bundle → rule-4 default → chunk
+        assert mode == "chunk"
+        assert rationale.startswith("rule-4 chunk:")
 
     def test_subcommand_honors_explicit_args(self, tmp_path: Path):
         _init_repo(tmp_path)
@@ -1725,7 +1794,7 @@ class TestMetadataPathClassification:
         build plan now drive the no-plan medium+ rule (→ ``final``, rationale
         ``"no build plan"``), proving the classifier change reaches the
         gate-relevant code-file count. Before the retirement these were metadata
-        and the same repo fell through to rule-4 (``"rule-4 final:"``)."""
+        and the same repo fell through to rule-4 (``"rule-4 chunk:"``)."""
         _init_repo(tmp_path)
         _write(tmp_path, "README.md", "x\n")
         _commit(tmp_path, "initial")
@@ -1821,9 +1890,14 @@ class TestBranchProgressCRT7B4M:
         assert "plan-override" in rationale
 
     def test_last_chunk_infers_final(self, tmp_path):
-        # 3-chunk plan, chunks 01-02 done, last chunk in progress → rule-3.
-        three = [(" ", f"Chunk 0{i}: step {i}") for i in range(1, 4)]
-        _setup_progressed_branch(tmp_path, three, committed=["01", "02"])
+        # 4-chunk plan, chunks 01-03 done, last chunk in progress → rule-3.
+        # Renegotiated in the open: this was a 3-chunk plan, and a plan of three
+        # or fewer chunks on a feature branch touching no risk surface now
+        # answers `deferred` on its last chunk — the boundary review IS that
+        # chunk's review (#292; `test_short_plan_deferral.py` pins it). Rule 3's
+        # last-chunk arm is unchanged for every plan the deferral does not cover.
+        four = [(" ", f"Chunk 0{i}: step {i}") for i in range(1, 5)]
+        _setup_progressed_branch(tmp_path, four, committed=["01", "02", "03"])
         mode, rationale = infer_mode(tmp_path, None)
         assert mode == "final"
         assert "rule-3" in rationale

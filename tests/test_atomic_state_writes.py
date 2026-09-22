@@ -107,10 +107,11 @@ class TestAtomicWriteText:
     def test_explicit_encoding_and_newline_still_honoured(self, tmp_path):
         """The utf-8 default must not swallow a caller's explicit arguments.
 
-        `learnings_obligation.repair` writes into a product's *authored* file
-        and passes `newline=""` so the bytes around its insertion are not
-        re-line-ended. That opt-out is independent of the encoding default and
-        has to survive it.
+        A repair that edits a product's *authored* file passes `newline=""` so
+        the bytes around its edit are not re-line-ended — `norm_index_scaffold`
+        is the one in the tree, and a CRLF repo otherwise gets every line
+        rewritten by an operation that promised to touch two rows. That opt-out
+        is independent of the encoding default and has to survive it.
         """
         target = tmp_path / "authored.md"
         core.atomic_write_text(target, "a\r\nb\n", encoding="utf-8", newline="")
@@ -278,3 +279,187 @@ class TestClearSurvivesReadOnlyPrawduct:
         assert (pr / ".session-start").is_file()
         assert not (pr / ".session-start.tmp").exists()
         assert not (pr / ".session-git-baseline.tmp").exists()
+
+
+# ---------------------------------------------------------------------------
+# `write_all_or_none` — atomicity ACROSS a pair of files
+# ---------------------------------------------------------------------------
+
+
+class TestWriteAllOrNone:
+    """One file's write is already all-or-nothing; two files' was not.
+
+    The shape this closes is a record and its archive, where entries MOVE from
+    one to the other: a first write landing and a second raising leaves every
+    moved entry in both files, and the natural recovery — run it again —
+    duplicates them into an append-only record. Three modules reach for this
+    shape; `change_log_archive` writes a live log and its month files through it.
+    """
+
+    def _core(self):
+        import sys
+        from pathlib import Path as _Path
+
+        root = _Path(__file__).resolve().parent.parent / "plugin"
+        if str(root) not in sys.path:
+            sys.path.insert(0, str(root))
+        from lib import core
+
+        return core
+
+    def test_both_files_are_written_on_success(self, tmp_path):
+        core = self._core()
+        a, b = tmp_path / "a.md", tmp_path / "b.md"
+        core.write_all_or_none([(a, "A"), (b, "B")])
+        assert a.read_text(encoding="utf-8") == "A"
+        assert b.read_text(encoding="utf-8") == "B"
+
+    def test_a_failure_restores_prior_content(self, tmp_path, monkeypatch):
+        core = self._core()
+        a, b = tmp_path / "a.md", tmp_path / "b.md"
+        a.write_text("original A", encoding="utf-8")
+        b.write_text("original B", encoding="utf-8")
+
+        real = core.atomic_write_text
+        seen = {"n": 0}
+
+        def _explode(path, text, **kwargs):
+            seen["n"] += 1
+            if seen["n"] == 2:
+                raise OSError("disk full")
+            return real(path, text, **kwargs)
+
+        monkeypatch.setattr(core, "atomic_write_text", _explode)
+        with pytest.raises(OSError):
+            core.write_all_or_none([(a, "new A"), (b, "new B")])
+
+        assert a.read_text(encoding="utf-8") == "original A"
+        assert b.read_text(encoding="utf-8") == "original B"
+
+    def test_a_file_that_did_not_exist_is_removed_again(self, tmp_path, monkeypatch):
+        """Restoring "as it was" includes not existing — a leftover half-written
+        archive is exactly the duplicate-on-retry state this prevents."""
+        core = self._core()
+        a, b = tmp_path / "a.md", tmp_path / "b.md"
+
+        real = core.atomic_write_text
+        seen = {"n": 0}
+
+        def _explode(path, text, **kwargs):
+            seen["n"] += 1
+            if seen["n"] == 2:
+                raise OSError("disk full")
+            return real(path, text, **kwargs)
+
+        monkeypatch.setattr(core, "atomic_write_text", _explode)
+        with pytest.raises(OSError):
+            core.write_all_or_none([(a, "new A"), (b, "new B")])
+
+        assert not a.exists()
+        assert not b.exists()
+
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root reads a mode-000 file")
+    def test_an_existing_file_it_cannot_read_refuses_before_any_write(self, tmp_path):
+        """A prior the rollback cannot restore is a prior it would only delete.
+
+        The old shape read each prior just before its own write and turned an
+        `OSError` into "no prior" — so an unreadable file was written over, and
+        when a LATER write failed the rollback deleted it: unreadable became
+        gone. Reading every prior BEFORE the first write turns the same
+        condition into a refusal with nothing touched."""
+        core = self._core()
+        a = tmp_path / "a.md"
+        b = tmp_path / "b.md"
+        a.write_text("old A", encoding="utf-8")
+        a.chmod(0)
+        try:
+            with pytest.raises(PermissionError):
+                core.write_all_or_none([(a, "new A"), (b, "B")])
+            assert not b.exists()
+        finally:
+            a.chmod(stat.S_IRUSR | stat.S_IWUSR)
+        assert a.read_text(encoding="utf-8") == "old A"
+
+    def test_an_interrupt_between_the_two_writes_rolls_the_first_back(
+        self, tmp_path, monkeypatch
+    ):
+        """Ctrl-C is not an `Exception`, and it is exactly the moment the pair is
+        half-applied — a re-run would then duplicate every moved entry into the
+        append-only file. The rollback runs and the interrupt is re-raised."""
+        core = self._core()
+        a = tmp_path / "a.md"
+        b = tmp_path / "b.md"
+        a.write_text("old A", encoding="utf-8")
+        real = core.atomic_write_text
+        calls: list = []
+
+        def _interrupted(path, text, *args, **kwargs):
+            calls.append(path)
+            if len(calls) == 2:
+                raise KeyboardInterrupt
+            return real(path, text, *args, **kwargs)
+
+        monkeypatch.setattr(core, "atomic_write_text", _interrupted)
+        with pytest.raises(KeyboardInterrupt):
+            core.write_all_or_none([(a, "new A"), (b, "B")])
+        assert a.read_text(encoding="utf-8") == "old A"
+        assert not b.exists()
+
+    def test_a_rollback_that_cannot_restore_names_the_file_it_left_behind(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """Best-effort rollback is not silent rollback. ENOSPC after the first
+        write lands, then again on the restore, leaves the pair half-applied —
+        and the documented recovery (run it again) would duplicate every moved
+        entry. The original error is still the one raised; the path the
+        rollback could not restore is named on stderr."""
+        core = self._core()
+        a = tmp_path / "a.md"
+        b = tmp_path / "b.md"
+        a.write_text("old A", encoding="utf-8")
+        real = core.atomic_write_text
+        calls: list = []
+
+        def _full(path, text, *args, **kwargs):
+            calls.append(path)
+            if len(calls) == 1:
+                return real(path, text, *args, **kwargs)
+            raise OSError(28, "No space left on device")
+
+        monkeypatch.setattr(core, "atomic_write_text", _full)
+        with pytest.raises(OSError, match="No space left"):
+            core.write_all_or_none([(a, "new A"), (b, "B")])
+        err = capsys.readouterr().err
+        assert "ROLLBACK FAILED" in err and str(a) in err
+        assert a.read_text(encoding="utf-8") == "new A"  # the state it names
+
+    def test_the_original_error_survives_a_failing_rollback(
+        self, tmp_path, monkeypatch
+    ):
+        """A restore that also fails must not replace the exception worth
+        reporting — there is nothing left to try, and the first failure is the
+        one that explains the state.
+
+        The first write must SUCCEED for this to test anything: with nothing
+        written there is no restore to fail, and an earlier version of this test
+        raised on write one and asserted its way past the branch it named.
+        """
+        core = self._core()
+        a, b = tmp_path / "a.md", tmp_path / "b.md"
+        a.write_text("original A", encoding="utf-8")
+
+        real = core.atomic_write_text
+        seen = {"n": 0}
+
+        def _explode_after_the_first(path, text, **kwargs):
+            seen["n"] += 1
+            if seen["n"] == 1:
+                return real(path, text, **kwargs)
+            # The second write AND every restore attempt.
+            raise OSError("disk full" if seen["n"] == 2 else "rollback failed too")
+
+        monkeypatch.setattr(core, "atomic_write_text", _explode_after_the_first)
+        with pytest.raises(OSError, match="disk full"):
+            core.write_all_or_none([(a, "new A"), (b, "new B")])
+
+        assert seen["n"] >= 3, "the restore was never attempted — branch ungraded"

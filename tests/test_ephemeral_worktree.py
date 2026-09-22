@@ -48,6 +48,14 @@ def _hook_module():
     return module
 
 
+#: The apply-gated family, read from the hook's OWN table rather than listed here.
+#: A transcribed copy is what this file carried before, and it had drifted by
+#: three commands (`lifecycle-repair`, `plan-backfill`, `reanchor`) while its
+#: docstring still said "these four" — a green suite over an unpinned classifier,
+#: whose failure mode is a read-only dry run refused inside a worktree.
+_APPLY_GATED = frozenset(_hook_module()._EPHEMERAL_APPLY_GATED_COMMANDS)
+
+
 # ---------------------------------------------------------------------------
 # Helpers (real git, sterile env)
 # ---------------------------------------------------------------------------
@@ -431,7 +439,7 @@ class TestGuardRefusesWrites:
             ("critic-begin", "--mode", "chunk"),
             ("advisory", "dismiss", "some-id"),
             ("disposition", "rev-x", "F1", "--accept", "why"),
-            ("learnings-obligation", "--apply"),
+            ("norm-index-scaffold", "--apply"),
         ],
     )
     def test_state_writers_refuse(self, tmp_path, argv):
@@ -456,7 +464,7 @@ class TestGuardRefusesWrites:
             ("critic-begin", "--mode", "chunk"),
             ("advisory", "dismiss", "some-id"),
             ("disposition", "rev-x", "F1", "--accept", "why"),
-            ("learnings-obligation", "--apply"),
+            ("norm-index-scaffold", "--apply"),
             ("test-evidence", "record"),
         ],
     )
@@ -584,45 +592,63 @@ class TestGuardAllowsReads:
         wt = _agent_worktree(primary)
         assert "BLOCKED" not in _run(wt, *argv).stderr
 
-    @pytest.mark.parametrize(
-        "command",
-        [
-            "audit-learnings",
-            "coverage-scaffold",
-            "learnings-obligation",
-            "norm-index-scaffold",
-        ],
-    )
-    def test_read_only_flag_form_proceeds(self, tmp_path, command):
-        """These four mutate only under `--apply`; the dry run is a report.
 
-        Parametrized over the whole family because two of them shipped missing
-        from the allowlist: their dry runs were refused with a message asserting
-        a discarded write, about commands that write nothing. That is the false
-        refusal the guard's own comment says it must never produce, and it is
-        the fail-closed default's most exposed edge — so the family is pinned
-        rather than one representative of it.
+    def test_the_apply_gated_family_is_non_empty(self):
+        """Both parametrisations below are over `_APPLY_GATED`, so an empty set
+        turns each into zero silently-passing cases."""
+        assert len(_APPLY_GATED) >= 2, _APPLY_GATED
+
+    @pytest.mark.parametrize("command", sorted(_APPLY_GATED))
+    def test_read_only_flag_form_proceeds(self, tmp_path, command):
+        """These mutate only under `--apply`; the dry run is a report.
+
+        Parametrized over the whole family because two members once shipped
+        missing from the allowlist: their dry runs were refused with a message
+        asserting a discarded write, about commands that write nothing. That is
+        the false refusal the guard's own comment says it must never produce,
+        and it is the fail-closed default's most exposed edge — so the family is
+        pinned rather than one representative of it.
         """
         primary = tmp_path / "primary"
         _init_repo(primary)
         wt = _agent_worktree(primary)
         assert "BLOCKED" not in _run(wt, command).stderr
 
-    @pytest.mark.parametrize(
-        "command",
-        [
-            "audit-learnings",
-            "coverage-scaffold",
-            "learnings-obligation",
-            "norm-index-scaffold",
-        ],
-    )
+    @pytest.mark.parametrize("command", sorted(_APPLY_GATED))
     def test_apply_form_still_refuses(self, tmp_path, command):
         """The other half of the same branch — `--apply` is the writing form."""
         primary = tmp_path / "primary"
         _init_repo(primary)
         wt = _agent_worktree(primary)
         assert "BLOCKED" in _run(wt, command, "--apply").stderr
+
+    @pytest.mark.parametrize(
+        "argv",
+        [
+            ("audit-learnings",),
+            ("audit-learnings", "--apply", "--json"),
+            ("learnings-obligation",),
+            ("learnings-obligation", "--apply"),
+            ("check-learnings-pairing", "--json"),
+        ],
+    )
+    def test_the_inert_learnings_verbs_proceed_even_under_apply(self, tmp_path, argv):
+        """Their contract is exit 0 for ANY input, and this is the environment
+        where that is hardest to keep.
+
+        `--apply` is the case worth pinning: these were apply-gated, so the flag
+        was the guard's own signal to refuse, and it is still the flag a copied
+        doctor flow passes. A stub that exits 1 here breaks that caller in the
+        one tree a dispatched Critic reviewer runs in — a behavioural pin, where
+        `tests/test_retired_hook_subcommands.py` pins the source-level
+        classification that produces it.
+        """
+        primary = tmp_path / "primary"
+        _init_repo(primary)
+        wt = _agent_worktree(primary)
+        result = _run(wt, *argv)
+        assert result.returncode == 0, (result.stdout, result.stderr)
+        assert "BLOCKED" not in result.stderr
 
     def test_allowed_command_carries_the_head_snapshot_notice(self, tmp_path):
         """The silence that produced the source report: an isolated agent reads

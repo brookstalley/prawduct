@@ -9,8 +9,9 @@ source-of-truth elsewhere:
     → ``test_v5_methodology.py`` (``TestBuildingMethodology`` / ``TestCriticSkill`` /
     ``TestMethodologyPBT``) plus the always-injected session digest
     (``test_plugin_methodology_digest.py``);
-  - ``skills/learnings/SKILL.md`` and ``skills/critic/review-protocol.md`` → retargeted
-    in this file.
+  - ``skills/critic/review-protocol.md`` → retargeted in this file. (The learnings
+    lookup skill it sat beside was deleted with the rest of the lookup path: rules
+    are ``.claude/rules/`` files the harness loads, so nothing reads them for you.)
 
 What remains here validates the place-once / planning templates that
 ``init_product`` still renders or that planning authors scaffold from
@@ -20,6 +21,7 @@ project-preferences.md).
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -214,6 +216,80 @@ class TestBuildPlanTemplate:
         the starter template (implementation narration ≠ template guidance)."""
         assert "_detect_active_scope" not in template
 
+    def test_no_acceptance_criterion_names_a_test_runner(self, template: str):
+        """The example must read the same for a Swift, C#, JS or Python product.
+
+        Bounded by the PROPERTY, not by a location: every
+        `**Acceptance criteria:**` line, wherever it sits, because an acceptance
+        criterion is the chunk's own bar and a runner named there is a bar in
+        one ecosystem's vocabulary. The Scaffolding section is deliberately NOT
+        in scope — that is where the example product DECLARES its suite, which
+        is the thing "the declared suite passes" then refers to; a check that
+        banned the name there would be banning the declaration.
+
+        Paired with a positive: the criterion still names a suite bar at all,
+        because deleting the clause passes any negative test.
+        """
+        criteria = [
+            ln for ln in template.splitlines()
+            if ln.strip().startswith("- **Acceptance criteria:**")
+        ]
+        assert criteria, "no acceptance-criteria lines found — the check read nothing"
+        runners = re.compile(
+            r"\b(pytest|uv run|npm (?:test|run)|yarn|jest|vitest|cargo test|go test"
+            r"|swift test|dotnet test|gradle|mvn|rspec|phpunit)\b",
+            re.I,
+        )
+        for line in criteria:
+            hit = runners.search(line)
+            assert not hit, (
+                f"an acceptance criterion names the runner {hit.group(0)!r}: "
+                f"{line.strip()!r} — say \"the declared suite passes\" instead, "
+                "so the example reads the same in every toolchain"
+            )
+        assert any("the declared suite passes" in ln for ln in criteria), (
+            "no acceptance criterion states a suite bar at all — the "
+            "language-neutral rewrite must not become a deletion"
+        )
+
+    def test_the_short_plan_rule_is_pointed_at_from_the_chunk_fields(self, template: str):
+        """The rule has ONE canonical statement; the template points at it.
+
+        Both places a plan author decides review frequency — the chunk-field
+        reference that governs every "Done when", and the `cumulative-final`
+        worked example — name `review-cycle.md`'s row rather than restating the
+        conditions. The conditions are asserted absent on the exact predicates
+        that carry them.
+
+        The example plan itself is NOT short-plan eligible (Chunk 02 declares a
+        `Critic mode:`), and the template says so — a worked example that
+        silently contradicted the rule it points at would teach the wrong
+        reading.
+        """
+        row = '"When Review Is Required"'
+        fields = template.split("## Build Chunks", 1)
+        assert len(fields) == 2, "the Build Chunks section is gone"
+        fields = fields[1].split("### Chunk 01:", 1)[0]
+        assert row in fields, (
+            "the chunk-field reference no longer points at the short-plan rule, "
+            "so a plan author reads \"Done when\" as one review per chunk"
+        )
+        cumulative = template.split("- **Type:** cumulative-final", 1)
+        assert len(cumulative) == 2, "the cumulative-final example is gone"
+        cumulative = cumulative[1].split("- **Foreign API:**", 1)[0]
+        assert row in cumulative, (
+            "the cumulative-final example does not reach the short-plan rule"
+        )
+        assert "Chunk 02 declares a `Critic mode:`" in cumulative, (
+            "the example no longer says why the short-plan rule does not apply "
+            "to it — a reader takes the pointer as describing this plan"
+        )
+        for restated in ("at most 3 chunks", "no risk surface"):
+            assert restated not in template, (
+                f"the template restates the short-plan condition ({restated!r}) "
+                "instead of pointing at it"
+            )
+
     def test_pinned_field_labels_survive(self, template: str):
         """Field labels the Critic substring-matches stay string-identical."""
         for label in [
@@ -254,38 +330,6 @@ class TestCriticSkillPBT:
 
 
 # =============================================================================
-# /learnings skill — Structure (plugin source-of-truth)
-# =============================================================================
-
-
-class TestLearningsSkill:
-    """Verify the plugin /learnings skill has required structure.
-
-    Retargeted from the retired file-sync `templates/skill-learnings.md` to the
-    plugin's `skills/learnings/SKILL.md` (M4 Chunk 4)."""
-
-    @pytest.fixture
-    def skill(self) -> str:
-        return (FRAMEWORK_DIR / "skills" / "learnings" / "SKILL.md").read_text()
-
-    def test_frontmatter_and_references(self, skill: str):
-        """Has required frontmatter and references all knowledge files."""
-        assert "description:" in skill
-        assert "argument-hint:" in skill
-        assert "disable-model-invocation:" in skill
-        assert "learnings.md" in skill
-        assert "learnings-detail.md" in skill
-        assert "project-preferences.md" in skill
-
-    def test_behavior(self, skill: str):
-        """Has subagent instructions, no-args mode, read-only, token budget."""
-        assert "subagent" in skill.lower() or "Agent tool" in skill
-        assert "no topic" in skill.lower() or "no topic was provided" in skill.lower()
-        assert "read-only" in skill.lower()
-        assert "500 tokens" in skill
-
-
-# =============================================================================
 # Place-Once Templates — PBT Content
 # =============================================================================
 
@@ -296,6 +340,33 @@ class TestTestSpecificationsPBT:
     @pytest.fixture
     def template(self) -> str:
         return read_template("test-specifications.md")
+
+    def test_the_testing_floor_is_a_product_floor_not_a_per_chunk_bar(self, template: str):
+        """Why a reviewer was reading "one E2E per core flow" as a chunk bar.
+
+        Asserted INSIDE the testing-floor block, bounded by the next risk-tier
+        heading: the qualification only does its job where the floor is stated,
+        and a whole-file search would pass on the same words parked anywhere.
+        Paired positively — the floor's own bullets must survive, since
+        deleting them would also stop the misreading.
+        """
+        floor = template.split("**Testing floor (all products):**", 1)
+        assert len(floor) == 2, "the testing floor block is gone"
+        floor = floor[1].split("**Low-risk:**", 1)[0]
+        assert "At least one E2E test per core flow" in floor, (
+            "the floor lost the bullet this qualification is about"
+        )
+        assert "PRODUCT floor" in floor, (
+            "the floor no longer says whose floor it is, so a reviewer reads it "
+            "as a per-chunk bar again"
+        )
+        assert "never a per-chunk bar" in floor, (
+            "the qualification dropped the reading it exists to refuse"
+        )
+        assert "the tests that prove its" in floor, (
+            "nothing says what a chunk DOES owe, which leaves the reviewer no "
+            "bar at all instead of the right one"
+        )
 
     def test_pbt_section_exists(self, template: str):
         """Property-Based Tests section present between Edge Cases and State Transitions."""

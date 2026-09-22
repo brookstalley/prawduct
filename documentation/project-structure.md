@@ -23,7 +23,7 @@ prawduct/
 │   ├── lib/                           # the bodies the hook reaches lazily (init_product, migrate_plugin, core,
 │   │                                  #   change_log, plan_index, plan_archive, critic_consolidate, release_readiness, …)
 │   ├── skills/                        # framework skills → /prawduct:* (critic, pr, backlog, doctor, janitor,
-│   │   │                              #   learnings, methodology, migrate, onboard, report-bug, runbook, advisory, …)
+│   │   │                              #   methodology, migrate, onboard, report-bug, runbook, advisory, …)
 │   │   ├── critic/                    # bundled Critic protocol (context:fork — SKILL.md, review-protocol.md,
 │   │   │                              #   review-cycle.md, goals-1-3.md, framework-checks.md)
 │   │   └── pr/                        # bundled PR-reviewer protocol
@@ -33,10 +33,12 @@ prawduct/
 │   │   ├── planning.md                # How to design artifacts and decompose into chunks
 │   │   ├── building.md                # The build cycle, including the Critic review cycle
 │   │   ├── reflection.md              # The learning loop
+│   │   ├── session-hygiene.md         # How a turn ends: the standing block and the forward notes
 │   │   ├── delegation.md              # What a delegate verifies, and what a brief must say
 │   │   └── session-digest.md          # SessionStart additionalContext digest
-│   ├── docs/                          # principles.md (the 26), norms.md, waivers.md,
-│   │                                  #   doctor-vs-janitor.md, governance-telemetry.md, runbook-authoring.md, examples/
+│   ├── docs/                          # principles.md (the 26), norms.md, waivers.md, discipline.md,
+│   │                                  #   doctor-vs-janitor.md, governance-telemetry.md, runbook-authoring.md,
+│   │                                  #   test-report-contract.md, examples/
 │   └── templates/                     # Place-once + planning artifact templates for product repos
 │       ├── project-state.yaml         # Product state template (health_check, build_state)
 │       ├── boundary-patterns.md       # Contract surfaces between components
@@ -60,19 +62,17 @@ prawduct/
 │   ├── test_build_plan_resolution.py     # active-build-plan resolver (lib ↔ hook parity)
 │   ├── test_operator_verification.py     # operator-verification queue + gate
 │   ├── test_advisory_store.py, test_advisory_cmd.py  # post-sync advisories
-│   ├── test_audit_learnings.py           # learnings-lifecycle audit
 │   ├── test_reference_verifier.py        # coverage floor verifier
 │   ├── test_pr_reviewer.py               # PR review gate + protocol
 │   ├── test_v5_methodology.py            # Methodology + Critic skill content
 │   ├── test_v5_templates.py              # Surviving template + plugin-skill content
 │   ├── preferences/                      # Architecture/style preference tests
 │   └── scenarios/                        # Framework-validation scenarios
+├── .claude/rules/learnings/          # learnings rules, loaded by the harness (core.md always; <area>.md by paths:)
 ├── .prawduct/                         # Framework's own prawduct state — it governs itself
 │   ├── project-state.yaml             # Source of truth for framework iteration
-│   ├── learnings.md                   # Accumulated wisdom (surfaced via /prawduct:learnings)
-│   ├── learnings-detail.md            # Full learning context
-│   ├── learnings-history.md           # Retired/superseded entries, read only on a miss
 │   ├── change-log.md                  # what shipped, per scope, with its release= tag
+│   ├── change-log-archive/            # older entries, moved verbatim by month (archive-change-log)
 │   ├── cross-cutting-concerns.md      # Concern-to-pipeline coverage registry
 │   ├── artifacts/                     # this repo's own specs and plans (+ archive/)
 │   ├── runbooks/                      # operational procedures (release cut, pruned promotion)
@@ -94,13 +94,12 @@ A v2 product repo commits only its own state plus a small install reference — 
 ```
 my-product/
 ├── CLAUDE.md                          # product instructions + a thin static governance anchor (PRAWDUCT:ANCHOR)
+├── .claude/rules/learnings/          # learnings rules, loaded by the harness (core.md always; <area>.md by paths:)
 ├── .prawduct/
 │   ├── project-state.yaml             # product state (classification, decisions, health_check; distribution: plugin)
-│   ├── learnings.md                   # active rules, surfaced via /prawduct:learnings
-│   ├── learnings-detail.md            # full learning context
-│   ├── learnings-history.md           # retired/superseded entries, read only on a miss
 │   ├── backlog.md                     # deferred work items (out-of-scope captures)
-│   ├── change-log.md                  # change log
+│   ├── change-log.md                  # change log (recent + release-pending entries)
+│   ├── change-log-archive/            # older entries by month, created once the log outgrows its threshold
 │   ├── artifacts/                     # generated specifications
 │   │   ├── boundary-patterns.md       # contract surfaces between components
 │   │   ├── project-preferences.md     # developer preferences (language, testing, style)
@@ -109,7 +108,7 @@ my-product/
 │   ├── .pr-reviews/                   # PR review evidence (gitignored)
 │   ├── .test-evidence.json            # test evidence for the Critic (gitignored)
 │   ├── .critic-findings.json          # derived view of the latest Critic review fact (gitignored; gates compose over the evidence store under .git/, not this file)
-│   └── .governance-ledger.jsonl       # append-only governance-event history (gitignored; written only by `prawduct-hook ledger-append`)
+│   └── .governance-ledger.jsonl       # append-only governance-event history (gitignored; written only by `lib.ledger` — `ledger-append` for review events, the Stop hook and `critic-consolidate` for `learning.*`)
 ├── .claude/
 │   └── settings.json                  # the committed install reference (marketplace + enabled plugin)
 └── src/                               # product source code (+ the product's own skills, MCP servers, configs)

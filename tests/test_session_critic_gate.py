@@ -36,6 +36,8 @@ from pathlib import Path
 
 import pytest
 
+from conftest import SHAPED_REFLECTION
+
 ROOT = Path(__file__).resolve().parent.parent / "plugin"
 
 sys.path.insert(0, str(ROOT))
@@ -526,6 +528,52 @@ class TestBaseAdvanceTransferAtTheSessionGate:
         repo, _prior_base, _prior_head = _advanced_base_session(tmp_path)
         assert "transfer_note" not in gates.session_review_verdict(repo)
 
+    def test_only_a_match_grants_the_transfer_at_either_gate(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """A transfer status neither gate recognizes must DENY at both.
+
+        The PR gate grants on a positive test for `match`. This gate must too,
+        rather than on "anything but `unavailable`" — the two readings agree for
+        every status the diagnosis returns today, so the property is the gates
+        agreeing by construction when a new status appears. Fabricated
+        deliberately: the case is a status no real tree can produce yet.
+        """
+        repo, _prior_base, _prior_head = _advanced_base_session(tmp_path)
+        _write_test_evidence(repo)
+        # Baseline: this fixture DOES transfer at both gates, so a denial below
+        # is the unknown status doing it and not the fixture failing elsewhere.
+        assert gates.session_review_verdict(repo)["status"] == "covered"
+        assert gates.check_cumulative_critic(repo) == 0
+
+        monkeypatch.setattr(
+            gates.coverage,
+            "diagnose_base_advance_transfer",
+            lambda *a, **k: {"status": "partial", "reason": "from the future"},
+        )
+        verdict = gates.session_review_verdict(repo)
+        assert verdict["status"] == "uncovered"
+        assert "transferred" not in verdict
+        # It denies SILENTLY: `transfer_remedy` reads fields only `match` and
+        # `unavailable` carry, and rendering an unmeasured status as a near miss
+        # would tell the builder a suite run fixes it.
+        assert "transfer" not in verdict.get("reason", "")
+        assert gates.check_cumulative_critic(repo) != 0
+        # ...and the PR gate's rendered remedy stays silent on it too: its
+        # "could not run" NOTE is for `unavailable`, which this is not.
+        assert "transfer check could not run" not in capsys.readouterr().err
+
+    def test_classify_transfer_names_every_shape_and_denies_the_rest(self):
+        """The one reading every gate site branches on. An unrecognized status
+        must come back as its own class — never `match`, which grants, and
+        never `unavailable`, whose remedy reads a `reason` it may not carry."""
+        classify = gates.coverage.classify_transfer
+        assert classify(None) == "absent"
+        assert classify({"status": gates.coverage.TRANSFER_MATCH}) == "match"
+        assert classify({"status": "unavailable", "reason": "r"}) == "unavailable"
+        assert classify({"status": "partial"}) == "unknown"
+        assert classify({}) == "unknown"
+
 
 class TestFailClosed:
     def test_schema_ahead_fact_blocks_with_remedy(self, tmp_path):
@@ -611,9 +659,7 @@ class TestBriefingAdvisoryUsesSharedGate:
             "# Build Plan\n\n## Status\n- [ ] Chunk 01: Demo\n"
         )
         (repo / ".prawduct" / ".session-git-baseline").write_text("")
-        (repo / ".prawduct" / ".session-reflected").write_text(
-            "Session reflection long enough to satisfy the fifty-character floor check."
-        )
+        (repo / ".prawduct" / ".session-reflected").write_text(SHAPED_REFLECTION)
         return repo
 
     def test_uncovered_changes_warn(self, tmp_path):
@@ -744,9 +790,7 @@ class TestBriefingAdvisoryReadsTheBranchsPlan:
             "# Build Plan\n\n## Status\n- [ ] Chunk 01: in progress\n"
         )
         (repo / ".prawduct" / ".session-git-baseline").write_text("")
-        (repo / ".prawduct" / ".session-reflected").write_text(
-            "Session reflection long enough to satisfy the fifty-character floor check."
-        )
+        (repo / ".prawduct" / ".session-reflected").write_text(SHAPED_REFLECTION)
         _git(repo, "checkout", "-q", "-b", "fix/mine")
         return repo
 
@@ -798,9 +842,7 @@ class TestSupersededAdviceReachesTheStopHook:
         (prawduct / "artifacts" / "build-plan.md").write_text(
             "# Build Plan\n\n## Status\n\n- [ ] Chunk 01: work\n"
         )
-        (prawduct / ".session-reflected").write_text(
-            "A sufficiently long session reflection so only the Critic gate blocks.\n"
-        )
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
         (repo / "code.py").write_text("x = 2\n")
         return repo
 

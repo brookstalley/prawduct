@@ -16,7 +16,7 @@ Onboarding under the plugin model is plugin-native — there is no file-sync set
 
 ### A. New or existing repo with no `.prawduct/` yet → **scaffold it**
 
-`prawduct-hook init-product` creates the product-owned state for a plugin repo: `.prawduct/` (project-state.yaml with `distribution: plugin`, learnings.md, backlog.md, change-log.md, artifacts/), the thin static CLAUDE.md anchor, and the committed install reference — and **none** of the file-sync machinery (no `tools/`, no committed skills, no sync-manifest). It works identically for an empty repo and one with years of existing code (for existing code, discovery later reads it to infer conventions).
+`prawduct-hook init-product` creates the product-owned state for a plugin repo: `.prawduct/` (project-state.yaml with `distribution: plugin`, backlog.md, change-log.md, artifacts/), the starter rules corpus at `.claude/rules/learnings/core.md`, the thin static CLAUDE.md anchor, and the committed install reference — and **none** of the file-sync machinery (no `tools/`, no committed skills, no sync-manifest). It works identically for an empty repo and one with years of existing code (for existing code, discovery later reads it to infer conventions).
 
 1. Confirm the target directory with the user (it should be a git repo).
 2. **Dry-run** the scaffold and present the plan: `prawduct-hook init-product <target> --name "<Product Name>" --json` (no `--apply`). Surface that it creates only product-owned state + the install reference.
@@ -49,7 +49,7 @@ When they do want it, onboard **owns provisioning for this entry path** (scrub o
     "enabledPlugins": { "prawduct@prawduct": true }
   }
   ```
-  On first trusted open, Claude Code prompts each developer to install the marketplace + plugin (one-time, skippable).
+  On first trusted open, Claude Code adds the marketplace from this reference without prompting — but it **does not install the plugin**, because it never auto-installs one sourced from a repository. So tell the owner plainly: **every contributor runs `claude plugin install prawduct@prawduct` once**, and until they do, their clone runs with no hooks, no `/prawduct:*` and no gates, and Claude Code says nothing about it. The `CLAUDE.md` anchor is what tells such a session to raise it — do not describe onboarding as making governance automatic for the next person, because it does not.
 - **Integration base branch.** When the target's `origin/HEAD` names a branch outside `main`/`master` — a repo whose remote default is `develop` — the scaffold (and `/prawduct:migrate`) records `base_branch: <b>` in `project-state.yaml`, and reports it as `base_branch` in the JSON result. That scalar is what every diff-base gate anchors to: coverage, the cumulative Critic, and the PR gates. A trunk repo gets no key and needs none; a branch the remote names but has never fetched is deliberately not recorded (an unresolvable `base_branch:` fails those gates closed). **The remote's default is a good guess, not the truth.** If features merge onto a branch the remote does not default to — `origin/HEAD` says `main` while the team integrates on `develop`, the case detection cannot see — say so and have the owner set `base_branch:` by hand. Unset, the gates guess `main`, and a gitflow repo then reviews the whole `develop..main` promotion delta on every feature.
 - Governance activates only in the target's OWN session: **"Open `<target>` in a new Claude Code session — the hooks and the session briefing won't fire until then."**
 - After onboarding, run **`/prawduct:doctor`** in the repo anytime to health-check the install.
@@ -60,9 +60,10 @@ When they do want it, onboard **owns provisioning for this entry path** (scrub o
 
 Writing the install reference is *not* what loads the plugin. The harness also needs a
 `prawduct@prawduct` record whose `projectPath` is the target, and a repo missing one starts every
-session with **no banner, no `/prawduct:*` skills, and no Stop-hook gates** — while its `CLAUDE.md`
-tells the agent that enforcement is structural. The agent reads that stanza, believes it, and
-proceeds ungoverned. This is the one failure the target repo cannot detect about itself: the probes
+session with **no banner, no `/prawduct:*` skills, and no Stop-hook gates** — and unless its
+`CLAUDE.md` anchor carries the plugin-absent notice (`/prawduct:doctor` Check #4 brings an older one
+up to date), nothing tells the agent so and it proceeds ungoverned. This is the one failure the target
+repo cannot detect about itself: the probes
 and `/prawduct:doctor` that would report it are delivered by the plugin that did not load. **This
 session is the only one that can ask**, which is why the check is here and not in `doctor`.
 

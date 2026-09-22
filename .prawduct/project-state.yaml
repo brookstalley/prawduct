@@ -37,7 +37,7 @@ backlog_service_repo: brookstalley/prawduct
 # Last full backlog grooming (stamped by /prawduct:backlog list/pick/groom).
 # Timestamp, not a count — counts are always re-derived (D14). Resolves the
 # backlog-overdue-grooming advisory.
-backlog_last_groomed_at: 2026-09-10
+backlog_last_groomed_at: 2026-09-12
 
 # Distribution model. `plugin` = this repo is governed by the Prawduct plugin
 # (v2.0.0), not file-sync. Set in Chunk 13 when the repo cut over to dogfood its
@@ -103,6 +103,44 @@ suite_coupled_prefixes:
   # prevent. Price it before widening the prefix, not after.
   - .prawduct/artifacts/build-plan
   - .prawduct/artifacts/archive/build-plan
+  # Named files, for the same reason the build-plan prefix is narrow: each of
+  # these is READ BY A TEST that anchors on the real repo, so an edit to it can
+  # flip the suite red while the freshness gate reports day-old evidence as
+  # `current`. Added 2026-09-19 after exactly that: a reworded sentence in
+  # `data-model.md`'s per-kind marker norm dropped the plan citation
+  # `test_the_amendment_points_outside_itself_for_its_authority` requires, the
+  # local suite had already been recorded, `test-status` said `current`, and CI
+  # was the first thing to notice.
+  #
+  # Named rather than `.prawduct/artifacts/`, which is the same cost argument
+  # the build-plan comment above makes and which still holds: the wide prefix
+  # taxes architecture.md, api-contract.md and every requirements edit.
+  #
+  # `.prawduct/change-log.md` is NOT here on purpose. It is read by a real-repo
+  # test too, and its exclusion is a priced decision pinned by
+  # `test_the_held_out_bookkeeping_files_are_recorded_as_a_residual` — flipping
+  # it is a deliberate edit there, not a line added here.
+  - .prawduct/artifacts/data-model.md
+  - .prawduct/operator-verification.md
+  # The learnings corpus: `TestAgainstTheRealCorpus` reads the shipped
+  # `core.md` through the resolver's own constants and asserts distinct rules
+  # get distinct ids, so a rule whose heading collides with an existing one
+  # turns the suite red. The old `.prawduct/learnings.md` spelling sits in the
+  # held-out residual above; this is the live location that replaced it, and
+  # nothing carried the coupling across the move.
+  #
+  # Accepted cost: reflections write to `core.md`, so a session that adds a rule
+  # there marks its evidence stale and the next gate re-runs the suite. That is
+  # the correct answer — a corpus edit really can flip this suite.
+  #
+  # The FILE, not the directory: `TestAgainstTheRealCorpus` reads
+  # `RULES_DIR_REL / CORE_NAME` and no real-repo test reads an area file, so a
+  # directory prefix would buy a suite re-run on every area-file write that no
+  # test outcome depends on. That is exactly what the control assertion below
+  # forbids two entries above ("Name the file, not its parent"), and the guard
+  # cannot see this one because its registry key IS `core.md` — narrowing leaves
+  # all nine cases green. Found by review, not by the guard.
+  - .claude/rules/learnings/core.md
 
 # Files carrying the release version, read by `check-released` FROM THE TAG'S
 # TREE — which files carried a release's version is a fact about that release,
@@ -608,15 +646,13 @@ build_plan_ref_root: plugin
 # and the Critic's ROSTER derivation — a diff touching one of these gets the
 # three-reviewer coordinator at any size.
 #
-# Declaring the list is what opts this repo into the risk-keyed roster rule.
-# Without it, `lib/risk.py`'s framework-shaped *derived defaults* would apply,
-# and `_derive_roster` cannot tell "no surface matched, so this is low risk"
-# from "this repo never declared any" — so an undeclared repo still escalates on
-# the derived defaults and keeps the older file-count rule beneath them, which is
-# never less review than before. The values below are exactly
-# `risk.DERIVED_DEFAULT_SURFACES`, so declaring them changes no verdict on any
-# diff that git can evaluate (see the two exceptions below); it
-# makes the opt-in explicit and keeps the 2026-07-30 roster replay describing
+# Without a declaration, `lib/risk.py`'s framework-shaped *derived defaults*
+# apply and the roster runs the same two escalators (a matched surface; 12+
+# judgeable files) — the file-count fallback an undeclared repo used to keep
+# beneath them was retired by the review-stages plan. The values below are
+# exactly `risk.DERIVED_DEFAULT_SURFACES`, so declaring them changes no verdict
+# on any diff that git can evaluate (see the two exceptions below); it makes
+# the declaration explicit and keeps the 2026-07-30 roster replay describing
 # the rule that actually runs here.
 #
 # Two things declaring DOES change, both deliberate. (1) `classify-diff-risk`
@@ -710,7 +746,35 @@ api_versioning_decided: "plugin-semver + evidence-schema-version; CLI internal, 
 # The ratified norms live in `## Direction` sections across the strategy
 # artifacts, indexed in artifacts/project-preferences.md section Enforcement.
 
-norm_registry_ratified: "2026-07-17 — ratified; 26 Direction norms across the 7 strategy artifacts as of 2026-07-30 (architecture 6, data-model 6, security-model 3, observability-strategy 3, nonfunctional-requirements 3, api-contract 3, operational-spec 2); preferences Enforcement index carries the norm columns (Audit home / Why)"
+norm_registry_ratified: "2026-07-17 — ratified. The norms themselves are the count: `## Direction` sections across the 7 strategy artifacts, indexed in artifacts/project-preferences.md section Enforcement. No tally is carried here — the 2026-09-16 Norm Health sweep found the previous one (26, as of 2026-07-30) had drifted four short of the live registry, which is this repo's own `every fact has one home` norm broken by its own bookkeeping; a hand-copied count nothing recomputes is wrong from the next norm onward."
+
+# NORM HEALTH SWEEP (janitor theme; resolves norm-health-sweep-overdue)
+# =============================================================================
+# `norm_health_last_run` is the flat scalar `probe_norm_health_sweep_overdue`
+# reads (newer of this and `norm_registry_ratified`; SWEEP_WINDOW_DAYS = 60).
+# `norm_health` is the TREND — one entry per sweep, APPENDED, never overwritten,
+# because a single point-in-time distance cannot show the thing the theme exists
+# to catch: many individually-defensible exceptions summing to a dead norm.
+# Keep the last 3 entries; git holds the rest.
+
+norm_health_last_run: 2026-09-16
+
+norm_health:
+  - date: 2026-09-16
+    scope: "first sweep. Norm Health theme only — the other 10 janitor themes were not surveyed."
+    registry: "30 `## Direction` norms across 7 strategy artifacts (architecture 8, data-model 8, security-model 3, observability-strategy 3, nonfunctional-requirements 3, api-contract 3, operational-spec 2)"
+    measurements:
+      "catch-specific-exceptions": "100 CODE `prawduct:allow prawduct/broad-except` waivers — 59 in `plugin/**/*.py` + 41 in `plugin/bin/prawduct-hook`. Concentration: bin/prawduct-hook 41, lib/briefing.py 23, lib/gitstate.py 11, lib/compliance.py 4, lib/gates.py 3, long tail of 1-2. All carry reasons; most read as defensible (`an advisory notice must never block session start`). A further 5 live in PROSE as worked examples (docs/waivers.md, methodology/session-digest.md, methodology/building.md) and are deliberately EXCLUDED — a raw grep counts 105 and a new doc example would then read as erosion next sweep, which is the opposite of what this measures. BASELINE ONLY — no trend yet, no cleanup proposed. The number to watch is the tail, not the total: growth outside the three hot files is the erosion signal."
+      "no-duplicate-facts (every fact has one home)": "5 `prawduct/duplication` waivers, all intentional inline mirrors in bin/prawduct-hook pinned by parity tests. Separately: the norm was found broken by the registry's OWN bookkeeping — `norm_registry_ratified` carried a hand-copied count (26) that had drifted 4 short. Count removed rather than corrected."
+      "python-never-python-specific": "in-transition, bounded to 2026-12-01 (#732). Tracking LNG-5W8R/#164 OPEN stage:ready, updated 2026-09-11. Not stalled."
+      "guides-never-implements": "in-transition, bounded to 2026-12-01 (#732). The two linter-duplicating compliance.py checks are still present (`_check_broad_exceptions` at lib/compliance.py:94, canary #3) — that is the documented stalled half, not new drift."
+      "goals-and-verification-bind": "in-transition, bounded to 2026-12-01 (#732). Tracking GOV-4T9P/#341 OPEN stage:ready, updated 2026-09-01. Two named sites unmigrated (templates/build-plan.md worked examples, methodology/planning.md teaching block)."
+      "one-home-per-fact-sweep": "in-transition, bounded to 2026-12-01 (#732). Tracking GOV-2R8K/#342 OPEN stage:ready, updated 2026-09-01."
+      "proportionality-ratchets-both-ways": "in-transition, bounded to 2026-12-01 (#732). FIRST evidence-based run of the removal-by-default arm: `pr-scoped` has 0 BLOCKING across 30 runs -> owner ruled keep-with-reason, recorded as a Live exception in nonfunctional-requirements.md. `verify-resolutions` is 499/969 reviews (51%) and ~41.4h (38% of all review wall-clock) at 40%/17% actionable — not removal-eligible (96 blocking) but the largest single wall-clock consumer against a declared P0 constraint."
+      "local-first (two egress surfaces)": "no erosion. The surface-vs-site distinction is reconciled in both homes (architecture.md Direction entry and project-state egress_boundary: 2 surfaces, 3 sites). Clarified 2026-09-07."
+      "backlog_service_repo selects the store": "DECAYED AND FIXED this sweep. Status had read `ratified but unenforced on main as of v3.1.1` for ~4 releases after the condition it named for its own return was met; 44 code references verified. Flipped to steady-state."
+    stalled_transitions: "none. All 5 in-transition norms carry a Stopgap bounded exception recorded 2026-09-01, expiring 2026-12-01, owner-ruled #732 — 76 days remaining at sweep time. The expiry IS mechanically enforced: `norm_probes._expired_stopgaps` parses the `expires <date>` bound out of the Stopgap prose, and at today=2026-12-02 it returns 4 keys covering all 5 stopgaps, so the stall advisory fires on its own the day after they lapse. An earlier draft of this entry said the opposite — that the bound was prose-only and unwalkable because the Issues backend has no `revisit:` write path (#564) — and BOTH halves were false: #564 shipped 2026-09-02 (`backlog/core.py` `_UPDATE_BLOCK` carries `revisit`, `--revisit` at `backlog/cli.py:124`), and the stopgap arm never needed that field. The claim was copied from architecture.md and nonfunctional-requirements.md, which carried it stale; corrected in all three homes in this same commit. What this sweep IS the only walker for is the genuinely EVENT-bound triggers (the #13/#13a and branch-pushed-gate emission clocks keyed on #563), which name a condition rather than a date and so have nothing for a probe to parse."
+    event_triggers_walked: "5 stopgap expiries (none fired); the #13/#13a and branch-pushed-gate emission clocks keyed on #563 (doctor fact-emitting path — does not exist yet, so not fired)"
 
 # =============================================================================
 # DEPRECATED TERMS
@@ -725,3 +789,16 @@ deprecated_terms:
   - term: "concern dimensions"
     replacement: "structural characteristics"
     patterns: ["concern dimension"]
+
+# Per-file byte ceilings for the learnings rules (default 16 KB; see
+# plugin/templates/project-state.yaml). Raised with a reason, never silently.
+learnings_budgets:
+  authoring.md:
+    kb: 18
+    reason: "the quotation-drift rule grew 12339 -> ~17.6 KB on 2026-09-18 paying the MCP mining verification debt, which found SIX defects in its own measuring apparatus and not one in the records being audited. Each addition is a distinct earned lesson the rule did not previously carry: that a corrupted-fragment control is required because the known-good control reports a FALSE green under a search that matches everything; that controls on the SEARCH do not cover the EXTRACTOR, where three of the six lived; that a control closing a class must discriminate the CLASS and not the instance, which this rule's own first fix got wrong and shipped; that a refusal is a guard and its roster should be derived from the source by NAMED id; and that a control must assert it REACHED its subject, since a shared exit code lets a control catch an unrelated refusal and print PASS. Paid in place first: two paragraphs independently enumerated the same four extraction defects and were merged, which recovered ~70 bytes -- the only genuine duplication present, so the rest is a raise rather than a trim. Ceiling set at 18 KB, the smallest whole KB above the file, so the over-and-grew gate still sees the next addition; a ceiling with slack in it is not a ceiling. New authoring still pays: the next raise needs its own reason."
+  tests.md:
+    kb: 23
+    reason: "RAISED 22 -> 23 on 2026-09-18 (pr-review-payload). DECLARED, not trimmed to fit. The addition is one rule carrying four instances found in a single chunk, none of them findable by reading — an assertion bound to a container (whole stdout, a whole row) when the property lives in a part. Paid in place FIRST and it did not cover: `Proving a new guard can go red is half the question` was the same rule's general half and is merged into it, which is a dedup rather than a cut (both tells survive, one heading fewer). The remainder is this raise. Trimming the four instances to fit would have spent exactly what makes the rule fire — a reader recognises the shape from the instance, not the abstraction. Prior reason follows. the test-authoring rules that reached develop after this branch migrated its corpus, re-homed here at the cutover merge (2026-09-15) rather than appended to core.md, which had ~450 bytes of headroom under its own ceiling. Over the 16 KB default by arrival, not by authoring: they are one batch of already-earned rules, and splitting them further would scope by size rather than by what they govern. RATCHETED 24 -> 22 on 2026-09-15 after six units moved out to authoring.md: at 24 the file sat ~3.4 KB under its own ceiling, so the over-and-grew gate would have let the next three additions through free. A ceiling with slack in it is not a ceiling"
+  core.md:
+    kb: 105
+    reason: "RAISED 104 -> 105 on 2026-09-21 (review-loop-economy, closing the PR review). DECLARED, not trimmed to fit. The addition is the lesson from a defect that a full independent review CONFIRMED while it was wrong: a fleet instrument's corpus scan globbed one level deep and found 17 of 20 ledgers, so every published digit in its reading was false, and the cumulative Critic verified the table was internally consistent -- runs summed, hours summed, every share rounded -- all of which was true, because sums and shares are computed from whatever arrived. It earns its bytes by carrying the trap rather than the abstraction: reconciling a derived report's internals FEELS like verifying the report and is orthogonal to whether the input set is complete, and the excluded set is rarely random -- here it was precisely the delegated work, which runs in worktrees INSIDE a repo, so the rows most likely to differ were the ones systematically absent. The remedy is the part that runs: make the corpus SIZE an output, which is what makes a completeness claim checkable rather than asserted. Paid in place FIRST and it did not cover: the rule was drafted standalone and restated `Bound a class by the PROPERTY that justifies it` in its own words, so the restatement became a link and the whole unit was merged into `When a check's subject is a SET`, which is the identical hole one altitude down -- one heading fewer, and that rule's opening sentence left byte-identical because three test docstrings cite it verbatim (test_severity_bounded_rules, test_suite_coupling_declaration, test_reviewer_payload_budget). That recovered 532 B against a 1487 B addition, so the balance is this raise. Trimming the worked example to fit was available and refused: a reader recognises this shape from the instance -- an independent review calling a wrong table consistent -- and not from the abstraction, which reads as a truism. Ceiling set at 105 KB, the smallest whole KB above the file, so the over-and-grew gate still sees the next addition; a ceiling with slack in it is not a ceiling. Re-derive the headroom rather than reading it here: `wc -c .claude/rules/learnings/core.md` against 105*1024. Prior reason follows. RAISED 103 -> 104 on 2026-09-20 (review-convergence, closing the cumulative). DECLARED, not trimmed to fit. The addition is the durable output of a review that killed a shipped feature: a control that REFUSES expensive work is priced against the route its refusal FORCES, never the one it declines. It earns its bytes by carrying the two numbers that decide it (a refused verify at 300s median against the cumulative at 720s it leaves as the only route) and the strength half that generalises past the instance -- file-level evidence is advisory strength, a refusal is authority, so the repair is never machinery letting weak evidence clear a gate. Trimming either to fit was available and refused: the numbers ARE the finding, and without the strength half the next author rebuilds the same design with a better-tuned predicate, which is exactly what #167 will invite. Paid in place FIRST and it did not cover: the new rule and `A fallback must be checked against the SIZE of the interval it replaces` share one trigger -- a refusal hands back a REPLACEMENT route and the author checks its name instead of its property -- so they are merged into one rule carrying both axes, span and cost, with all three tells surviving and one heading fewer. That recovered 158 B against a 1448 B addition, so the balance is this raise. Ceiling set at 104 KB, the smallest whole KB above the file, so the over-and-grew gate still sees the next addition; a ceiling with slack in it is not a ceiling. Re-derive the headroom rather than reading it here: `wc -c .claude/rules/learnings/core.md` against 104*1024. Prior reason follows. RAISED 102 -> 103 on 2026-09-19 (review-cost-decision / #833). DECLARED, not trimmed to fit. The addition is a BOUND on an existing rule rather than a new rule: `Deep context on a small problem is a FIX signal` is correct about blockers and actively harmful about notes, and unbounded it is the pull that this same scope spent Chunk 01 pricing. The owner directed the full-reach amendment — all ten carriers, consumer CLAUDE.md text included — over a narrower four-surface option, so core.md is a required carrier and not a discretionary one. Paid in place FIRST and it did not cover: the bound was drafted with its warrant inline (the owner direction, the measured 41-of-83 repeat-verify scopes finding zero blocking) and trimmed to a pointer, because `review-cycle.md` states it fully where the reviewer meets it and a second full copy is the one-home failure this corpus keeps recording. That recovered 174 B against a 177 B addition on a file with ~20 B of headroom, so the balance is this raise. Trimming the rule itself to fit was available and refused: what makes this bound fire is the reader knowing which severity it applies to, which is the whole content. Ceiling set at 103 KB, the smallest whole KB above the file, so the over-and-grew gate still sees the next addition. Re-derive the headroom rather than reading it here: `wc -c .claude/rules/learnings/core.md` against 103*1024. Prior reason follows. RAISED 100 -> 102 on 2026-09-19 (critic-dispatch-clock / #767 diagnosis). DECLARED, not trimmed to fit. The addition is one rule the OWNER's question produced, not my analysis: asked 'this was fine until yesterday, why is it a problem now', my model had no answer, because a fail-open mechanism is fail-open every day. Measuring it found the real shape — `tests/`'s real-repo path anchors went 51 -> 201 since July and the corpora those tests sweep 63 -> 265 files, which multiply into roughly 17x growth in the surface where editing a doc after your suite run breaks the suite. The rule earns its bytes by carrying the consequence rather than the anecdote: a trend selects the FIX CLASS, so any remedy a human maintains by hand loses a race growing ~25 anchors a week, which falsified the declaration-patch I had already proposed and had approved. It also carries the two tells that make it fire (you cannot say what changed on the day it started failing; two of the three failing tests were BORN the day before, and the third was a month old and failed on a new file because it is parametrized over a glob). Paid in place FIRST and it did not cover: the session's other new rule — read the function that RETURNS a verdict before blaming the data it consults — was a second copy of `A correct decision defended by an unread mechanism is still a defect`, same trigger and same remedy, so it is folded into that rule's tell as its short-circuit half, one heading fewer and 351 B recovered. That is a dedup rather than a cut: both tells survive. Ceiling set at 102 KB, the smallest whole KB above the file at the time, so the over-and-grew gate still sees the next addition; a ceiling with slack in it is not a ceiling. The headroom is NOT restated here — an earlier draft of this reason named a byte figure that the same bundle's next commit falsified, which is the standing rule about anchoring durable prose to a value that changes under it, committed inside the very sentence that sets a ceiling. Re-derive it: `wc -c .claude/rules/learnings/core.md` against 102*1024. That commit also paid its own 384 B growth in place rather than raising twice in one bundle: the repair description it added was a second copy of what `reviews.md` says where the behaviour is met, so it became a pointer and the fact kept one home. Prior reason follows. RAISED 99 -> 100 on 2026-09-18 (pr-review-payload). DECLARED, not trimmed to fit. A 2026-06-02 prohibition (tool-restricted reviewer agents must be fork skills) was SUPERSEDED, owner-confirmed, and a supersession costs more bytes than the rule it replaces by construction: it has to carry the new statement, the measurement that killed the old warrant (an agent granted no Bash has no Bash tool at all, Claude Code 2.1.277), and the half that could NOT be measured and why — without that last part the next author restores the prohibition or, worse, believes the unmeasured half was settled. Paid in place first: the bare `\"Structurally enforced\" requires verifying the harness actually enforces it` heading was the general form of the new rule and is folded into its tell, one heading fewer. That covered less than the addition, so the balance is this raise. Prior reason follows. the 287-rule corpus migrated whole on 2026-09-02 at ~100 KB — over the default by construction until #343's content program splits it into area files; this ceiling sits just above the ported corpus so the over-and-grew gate sees the next addition; it covers rules ported from develop at the cutover merge (the one-way relayout left the legacy file on develop for a day). New authoring still pays: the next raise needs its own reason"

@@ -157,6 +157,9 @@ _REFUSAL_NOT_WANTED = {
     "user-prompt-submit": "harness hook; must exit 0 for any argv or it blocks the session",
     "build-index": "inert — `del argv`; an ignored argument cannot act",
     "regen-views": "deprecated and inert; exit 0 for any input is its contract",
+    "audit-learnings": "deprecated and inert; exit 0 for any input is its contract",
+    "learnings-obligation": "deprecated and inert; exit 0 for any input is its contract",
+    "check-learnings-pairing": "deprecated and inert; exit 0 for any input is its contract",
     "infer-critic-mode": "takes free-form $ARGUMENTS by contract; an unrecognised mode "
                          "falling through to inference is the documented behaviour",
     "jurisdiction": "documented fail-open: a bad --file or any other error yields no "
@@ -173,14 +176,14 @@ _REFUSAL_NOT_WANTED = {
 
 # Audited (#667), and the audit changed the METHOD as well as the verdict.
 #
-# These nine error on a BARE invocation — they need a subcommand or a required
+# These error on a BARE invocation — they need a subcommand or a required
 # argument — so the bare-vs-bogus exit-code probe used above cannot tell a real
 # refusal from that pre-existing error. Worse, for three of them
 # (`ledger-append`, `critic-begin`, `critic-restore`) the valid and the
 # bogus invocation share an exit code, so an exit-code comparison would have
 # recorded a refusal as a swallow whichever way it was run. What separates them
 # is the MESSAGE, so :data:`_VALID_INVOCATIONS` gives each a real invocation and
-# :class:`TestTheAuditedNineActuallyRefuse` runs it both ways and reads the
+# :class:`TestTheAuditedCommandsActuallyRefuse` runs it both ways and reads the
 # output. Verdicts below are observed exit codes from that run, not read off a
 # comment.
 _REFUSAL_AUDITED = {
@@ -193,6 +196,9 @@ _REFUSAL_AUDITED = {
     "handoff": "names the token; exits 2 (valid preview exits 0)",
     "disposition": "names the token; exits 2 (valid record exits 1 here)",
     "archive-plan": "names the token; exits 2 (valid --dry-run exits 0)",
+    "pr-review-dispatch": "names the token; exits 1 (valid --begin exits 0)",
+    "pr-review-payload": "names the token; exits 1 — same code as a base-less "
+                         "valid run, message differs",
 }
 
 # Empty, and it must stay that way by argument rather than by neglect: an entry
@@ -224,6 +230,10 @@ _VALID_INVOCATIONS = {
     "handoff": ["handoff", "preview"],
     "disposition": ["disposition", "rev-1", "F-1", "--accept", "why"],
     "archive-plan": ["archive-plan", ".prawduct/artifacts/build-plan.md", "--dry-run"],
+    # Both are offline: one writes a marker into the fixture's own `.prawduct/`,
+    # the other reads git and `.prawduct/` state and opens no socket.
+    "pr-review-dispatch": ["pr-review-dispatch", "--begin"],
+    "pr-review-payload": ["pr-review-payload", "--json"],
 }
 
 _UNKNOWN_TOKEN = "--zzz-unrecognised-token"
@@ -267,14 +277,14 @@ def test_every_argv_taking_command_refuses_what_it_cannot_read():
     )
 
 
-class TestTheAuditedNineActuallyRefuse:
+class TestTheAuditedCommandsActuallyRefuse:
     """#667's audit, executed rather than asserted.
 
-    The nine were exempted with the reason "not audited" because a BARE
+    These were exempted with the reason "not audited" because a BARE
     invocation of each already errors, so the bare-vs-bogus exit-code probe
     could not tell a refusal from that pre-existing error. Constructing a valid
     invocation is what closes it — and doing so exposed that exit codes alone
-    are the wrong instrument here: three of the nine refuse with the SAME exit
+    are the wrong instrument here: several of them refuse with the SAME exit
     code as their valid run and differ only in the message. An exit-code
     comparison would have filed those three as swallows.
 
@@ -298,7 +308,7 @@ class TestTheAuditedNineActuallyRefuse:
         subprocess.run(["git", "init", "-q", "."], cwd=tmp_path, capture_output=True)
         return tmp_path
 
-    def test_the_audit_covers_exactly_the_nine_it_claims_to(self):
+    def test_the_audit_covers_exactly_what_it_claims_to(self):
         # The record and the invocations are two lists of the same set; letting
         # them drift is how a command gets a verdict nobody ran.
         assert set(_REFUSAL_AUDITED) == set(_VALID_INVOCATIONS)
@@ -489,6 +499,8 @@ def test_documented_invocations_are_not_refused(capsys):
         ("check-operator-verification", []),
         ("accept-operator-verification", ["because the screenshot matched"]),
         ("verify-operator-verification", ["VRF-001"]),
+        ("check-branch-pushed", []),
+        ("check-branch-pushed", ["feature/x"]),
         ("check-change-log-entry", []),
         ("check-releasability", ["--release", "v1.2.3"]),
         ("archive-plan", ["p.md", "--state", "completed", "--release", "v1.2.3"]),
@@ -517,6 +529,7 @@ def test_documented_invocations_are_not_refused(capsys):
         ("audit-learnings", ["--apply", "--json"]),
         ("norm-index-scaffold", ["--apply", "--json"]),
         ("learnings-obligation", ["--apply", "--json"]),
+        ("reanchor", ["--apply", "--json"]),
         ("lifecycle-repair", ["--apply", "--json"]),
         ("plan-backfill", ["--apply", "--date", "2026-01-01"]),
         ("repo-disable", ["--local", "--apply"]),
@@ -526,6 +539,9 @@ def test_documented_invocations_are_not_refused(capsys):
         ("check-plugin-active", ["--context", "onboard"]),
         ("check-learnings-pairing", []),
         ("check-learnings-pairing", ["--json"]),
+        ("learnings-migrate", []),
+        ("learnings-migrate", ["--propose-map"]),
+        ("learnings-migrate", ["--apply", "--map", "/tmp/map.txt", "--json"]),
     ]
     for command, argv in documented:
         assert _hook._check_argument_shape(command, argv) == 0, (
@@ -544,17 +560,22 @@ def test_every_dispatched_command_appears_in_the_documented_list():
         "validate-evidence", "test-evidence", "check-cumulative-critic",
         "verify-chunk-refs", "verify-records", "verify-coverage", "ledger-append",
         "handoff", "review-stats", "classify-diff-risk", "cost-of-commit",
+        "pr-review-dispatch", "pr-review-payload",
         "check-operator-verification", "accept-operator-verification",
         "verify-operator-verification", "check-change-log-entry",
+        "check-branch-pushed",
         "check-releasability", "archive-plan", "check-released", "check-pr-doc-only",
         "check-plugin-active",
-        "check-learnings-pairing",
+        "check-learnings-pairing", "learnings-migrate",
         "stamp-merged", "build-index", "user-prompt-submit", "regen-views",
         "infer-critic-mode", "resolve-base", "disposition", "render-dispositions",
         "evidence", "bug-inbox", "version", "print-install-reference", "advisory",
         "backlog", "coverage-status", "coverage-scaffold", "migrate-plugin",
         "init-product", "update-gitignore", "audit-learnings", "norm-index-scaffold",
-        "learnings-obligation", "lifecycle-repair", "plan-backfill", "repo-disable",
+        "learnings-files",
+        "learnings-obligation", "lifecycle-repair", "plan-backfill", "archive-change-log",
+        "repo-disable",
+        "reanchor",
     }
     assert set(_dispatch_branches()) == listed
 
@@ -659,8 +680,33 @@ class TestUpdateGitignoreDryRun:
 def test_an_argv_taking_command_still_refuses_its_own_unknown_flags(tmp_path: Path):
     """The dispatcher speaks only for commands that cannot speak for
     themselves; `_reject_unknown_args` is unchanged and still the guard for the
-    ones that can."""
-    proc = _run(tmp_path, ["audit-learnings", "--a-flag-that-never-existed"])
+    ones that can.
+
+    The subject must be a command with a live body. A deprecated-inert one
+    accepts every token by design (`tests/test_deprecated_inert_commands.py`),
+    so using one here would assert the opposite of what this file pins while
+    reading exactly the same.
+    """
+    proc = _run(tmp_path, ["norm-index-scaffold", "--a-flag-that-never-existed"])
 
     assert proc.returncode == 2
     assert "--a-flag-that-never-existed" in proc.stderr
+
+
+def test_learnings_files_takes_argv_and_refuses_what_it_cannot_read(tmp_path: Path):
+    """The new read-only verb, on both halves of this file's contract.
+
+    It is dispatched WITH `sys.argv[2:]` — so it is the wrapper's job, not the
+    pre-dispatch guard's, to refuse an unrecognised token — and its wrapper does
+    that job. The specific hazard is the one that reached a live `.gitignore`
+    rewrite: `--for-diff` is detected with `"--flag" in argv`, so a typo'd
+    `--fordiff` read as *absent* would silently print the WHOLE rules corpus to
+    a reviewer who asked for the diff's subset, which is a wider read that looks
+    exactly like a correct one.
+    """
+    branches = _dispatch_branches()
+    assert "sys.argv[2:]" in branches["learnings-files"]
+
+    proc = _run(tmp_path, ["learnings-files", "--fordiff"])
+    assert proc.returncode == 2
+    assert "--fordiff" in proc.stderr

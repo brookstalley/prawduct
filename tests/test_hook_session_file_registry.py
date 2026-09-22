@@ -19,7 +19,7 @@ practice — ``.handoff-notes.md`` had to be threaded through all four by hand.
 
 **Site 4 is not a set to match, it is a decision to force.** Most of the session
 set deliberately outlives a boundary (the per-clone advisory nag log, the
-findings archive, the reflections file the boundary *writes into*), so equality
+findings archive, the handoff the boundary *writes into*), so equality
 would be the wrong assertion and a subset check would let a new file default to
 "never deleted" — which is exactly the leak. Instead the two dispositions are
 enumerated with reasons and asserted to PARTITION the session set, so a new
@@ -61,18 +61,22 @@ def _session_set() -> set[str]:
 def _boundary_deleted() -> set[str]:
     """Site 4, parsed from ``_boundary_close_session``'s own source.
 
-    Both forms the loop uses: the ``doomed = [...]`` literal, and the
-    ``doomed.insert(0, "…")`` that adds the reflection once it has been safely
-    archived. Parsed rather than transcribed — a copy here would drift the first
-    time the loop changed, and a registry test that drifts is worse than none.
+    Both forms the loop uses: the hoisted ``_SESSION_RESET_DELETES`` tuple it
+    seeds from, and the ``doomed.insert(0, "…")`` that adds the reflection once
+    it has been safely archived. Read from the source rather than transcribed —
+    a copy here would drift the first time the loop changed, and a registry test
+    that drifts is worse than none. The seeding line is asserted so that moving
+    the list again fails HERE, loudly, instead of silently reading a constant the
+    boundary no longer uses.
     """
+    names = set(_hook._SESSION_RESET_DELETES)
+    assert names, "`_SESSION_RESET_DELETES` is empty — the test would be vacuous"
     source = inspect.getsource(_hook._boundary_close_session)
-    literal = re.search(r"\n    doomed = \[(.*?)\]", source, re.S)
-    assert literal is not None, (
-        "the boundary's `doomed` list moved out of `_boundary_close_session` — "
-        "re-point this parser rather than transcribing the list"
+    assert "doomed = list(_SESSION_RESET_DELETES)" in source, (
+        "the boundary no longer seeds its deletion list from "
+        "`_SESSION_RESET_DELETES` — re-point this reader rather than "
+        "transcribing the list, which would make this test a fifth site"
     )
-    names = set(re.findall(r'"([^"]+)"', literal.group(1)))
     for inserted in re.findall(r'doomed\.insert\(\d+,\s*"([^"]+)"\)', source):
         names.add(inserted)
     assert names, "parsed no names from the deletion loop — the test would be vacuous"
@@ -119,9 +123,6 @@ _BOUNDARY_SURVIVORS = {
     ".prawduct/.work-model-index.json":
         "retired in v3.3.2 along with the tripwire that wrote it; nothing produces it, "
         "and the gitignore entry only keeps pre-3.3.2 leftovers invisible",
-    ".prawduct/reflections.md":
-        "the archive the boundary APPENDS `.session-reflected` into; it is the "
-        "destination, never the thing removed",
     ".prawduct/.handoff-notes.md":
         "deleted at the boundary, but by the handoff generator rather than this loop — "
         "consumption keys on the handoff having been PRESERVED, so an unconditional "
@@ -210,3 +211,76 @@ class TestSiteFourTheBoundaryDisposition:
         # Conditionally inserted once the reflection is safely archived, and the
         # parser has to see that form too.
         assert ".prawduct/.session-reflected" in _boundary_deleted()
+
+
+# ---------------------------------------------------------------------------
+# Site 5: the dispatch-clock mapping that GENERATES session files
+# ---------------------------------------------------------------------------
+
+
+class TestEveryDispatchMarkerJoinsEveryRegistry:
+    """`review_dispatch.MARKER_BASENAMES` advertises itself as the extension
+    point for a new review kind — and a kind added there creates a session file
+    that four hand-maintained registries must each grow a row for.
+
+    Nothing connected the mapping to those registries, so the obligation rested
+    on recall. The failures are silent and they differ:
+
+    * omitted from `core.GITIGNORE_ENTRIES` or this repo's `.gitignore` — a
+      per-clone stopwatch gets committed into the shared store;
+    * omitted from `_SESSION_RESET_DELETES` — the mark survives a session
+      boundary and can attest an interval spanning it, which is the exact
+      failure the consumer's tree check is only the SECOND line of defence
+      against.
+
+    Quantified over the mapping rather than over today's two names, so the
+    guard covers the kind nobody has added yet — which is the only kind it
+    can usefully protect.
+    """
+
+    def _basenames(self) -> set[str]:
+        from lib import review_dispatch
+
+        names = set(review_dispatch.MARKER_BASENAMES.values())
+        assert names, "the marker mapping is empty — this test would be vacuous"
+        assert len(names) == len(review_dispatch.MARKER_BASENAMES), (
+            "two review kinds resolved to the SAME marker file — the shared cell "
+            "the per-kind split exists to make unreachable"
+        )
+        return names
+
+    def test_every_marker_is_in_the_canonical_gitignore_set(self):
+        from lib import core
+
+        for name in self._basenames():
+            assert f".prawduct/{name}" in core.GITIGNORE_ENTRIES, (
+                f"{name} is a per-clone stopwatch missing from "
+                "core.GITIGNORE_ENTRIES — it would be committed into the "
+                "shared store of every governed repo"
+            )
+
+    def test_every_marker_is_in_the_hook_untrack_mirror(self):
+        for name in self._basenames():
+            assert f".prawduct/{name}" in _hook._SESSION_GITIGNORED_PATHS, (
+                f"{name} is missing from the hook's untrack mirror"
+            )
+
+    def test_every_marker_is_in_this_repos_own_gitignore(self):
+        text = (REPO_ROOT / ".gitignore").read_text(encoding="utf-8")
+        entries = {ln.strip() for ln in text.splitlines()}
+        for name in self._basenames():
+            assert f".prawduct/{name}" in entries, (
+                f"{name} is missing from prawduct's OWN .gitignore — nothing "
+                "writes this repo's copy for it"
+            )
+
+    def test_every_marker_is_deleted_at_a_session_boundary(self):
+        """The one whose omission is silent in both directions: the file is
+        gitignored, so nothing shows it surviving, and the interval it later
+        attests is plausible rather than absurd."""
+        deleted = _boundary_deleted()
+        for name in self._basenames():
+            assert f".prawduct/{name}" in deleted, (
+                f"{name} outlives a session boundary — a mark from a previous "
+                "session can then attest an interval spanning it"
+            )

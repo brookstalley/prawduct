@@ -23,6 +23,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import re
+
 import pytest
 
 PLUGIN = Path(__file__).resolve().parent.parent / "plugin"
@@ -30,6 +32,7 @@ PLUGIN = Path(__file__).resolve().parent.parent / "plugin"
 CRITIC_PROTOCOL = PLUGIN / "skills/critic/review-protocol.md"
 CRITIC_GOALS_13 = PLUGIN / "skills/critic/goals-1-3.md"
 PR_PROTOCOL = PLUGIN / "skills/pr/review-protocol.md"
+REVIEWER_AGENT = PLUGIN / "agents/critic-reviewer.md"
 
 
 class TestCrossComponentContractToken:
@@ -120,6 +123,190 @@ class TestScopeTraceToken:
         assert self.TOKEN not in CRITIC_GOALS_13.read_text(), (
             "the scope pressure-test reached goals-1-3.md — it is scoped to "
             "`final`/`cumulative` and PR review, where the full bundle is in view."
+        )
+
+
+class TestRuleUnenforcedToken:
+    """The rule-over-instance instruction: a written rule with no enforcer is
+    reported once, as the rule, instead of once per occurrence.
+
+    Shipped 2026-08-11 after an audit of 141 PR-review records found 19% of the
+    PR reviewer's warnings were a class whose rule already existed in three
+    places — one finding even cites the learning while filing the instance.
+    """
+
+    TOKEN = "rule-unenforced:"
+    HEADLINE = "no enforcer, the finding is the rule"
+
+    #: The field each copy must tell its reviewer to open, and why they differ.
+    #: NOT cosmetic: the token is only countable if it lands in a field the
+    #: sweep reads. A Critic partial finding has no `summary` — `merge_findings`
+    #: builds `{goal, severity, title, recommendation, files}` from the
+    #: reviewer's `name`, and `build_fact_body` does not persist a partial's
+    #: top-level `summary` — so a Critic copy saying `summary` instructs the
+    #: token into a field no query can reach and the yield is structurally
+    #: zero. A PR finding genuinely persists `summary` and carries no title
+    #: (`test_the_pr_copy_targets_summary_not_a_title`). Shipped saying
+    #: `summary` on BOTH, caught by the 2026-09-20 cumulative: the near-verbatim
+    #: port carried the PR field name onto the Critic surface.
+    FIELD_BY_COPY = {
+        REVIEWER_AGENT: "name",
+        PR_PROTOCOL: "summary",
+    }
+
+    @pytest.mark.parametrize(
+        "path",
+        [REVIEWER_AGENT, PR_PROTOCOL],
+        ids=["critic_reviewer_agent", "pr_protocol"],
+    )
+    def test_both_copies_instruct_the_stable_token(self, path: Path) -> None:
+        assert self.TOKEN in path.read_text(), (
+            f"{path.name} no longer tells the reviewer to open the finding "
+            f"with `{self.TOKEN}` — the instruction's own yield stops "
+            "being countable, which is the observable-yield obligation it "
+            "shipped under. It was reviewed as the sharpest finding against it: "
+            "declining a lint for want of measured evidence while shipping an "
+            "instruction that can never produce any."
+        )
+
+    @pytest.mark.parametrize(
+        "path",
+        [REVIEWER_AGENT, PR_PROTOCOL],
+        ids=["critic_reviewer_agent", "pr_protocol"],
+    )
+    def test_each_copy_attaches_the_token_to_a_field_its_own_store_persists(
+        self, path: Path
+    ) -> None:
+        """Token presence is not enough — it has to be attached to the right
+        field. The presence test above passes for every field name, which is
+        how both copies shipped saying `summary`.
+
+        What turns this red: swapping either copy's field (the Critic copy back
+        to `summary`, or the PR copy to `name`/`title`), or rewording the
+        attachment away from "opening its `X` with" so the instruction no longer
+        says which field at all.
+        """
+        expected = self.FIELD_BY_COPY[path]
+        # Normalize: the attachment wraps across lines in both files, so line
+        # structure would hide it from a raw search.
+        flowed = " ".join(path.read_text().split())
+        m = re.search(r"opening\s+its\s+`(\w+)`\s+with\s+`" + re.escape(self.TOKEN), flowed)
+        assert m, (
+            f"{path.name} no longer says which field to open with "
+            f"`{self.TOKEN}`. A token with no field is uncountable: the "
+            "reviewer picks one, and the sweep reads one, and nothing makes "
+            "them the same field."
+        )
+        assert m.group(1) == expected, (
+            f"{path.name} tells the reviewer to open `{m.group(1)}` with "
+            f"`{self.TOKEN}`, but that store persists `{expected}`. "
+            "A Critic partial has no `summary` (merge_findings maps the "
+            "reviewer's `name` to the fact `title`; build_fact_body drops a "
+            "top-level summary), and a PR finding has no `title`. The token "
+            "lands where no query reads it and the control's yield is zero."
+        )
+
+    def test_it_binds_every_reviewer_role_not_just_the_cross_check_owner(self) -> None:
+        # The load-bearing placement. Two reviewers found this independently on
+        # the first cut: the rule lived in review-cycle.md's Learnings
+        # Cross-Check, which agents/critic-reviewer.md routes ONLY to the
+        # sustainability role — while stale counts and citation drift are filed
+        # under correctness (Goals 1-3) and design (Goal 4). Partials are
+        # independent, so the role holding the rule cannot substitute for
+        # another's finding. It has to live where all three roles read it.
+        agent = REVIEWER_AGENT.read_text()
+        assert self.HEADLINE in agent, (
+            "the rule-over-instance instruction left agents/critic-reviewer.md — "
+            "it is the only Critic surface every reviewer role reads, and in any "
+            "other one it cannot reach the roles that file the class it targets."
+        )
+        assert "Every role" in _section(agent, self.HEADLINE, "## What to do") or (
+            "binds all" in _section(agent, self.HEADLINE, "## What to do")
+        ), (
+            "the instruction no longer says it binds every role — without that, a "
+            "reviewer reads it as the Learnings Cross-Check owner's job, which is "
+            "exactly the routing defect it was moved here to fix."
+        )
+
+    @pytest.mark.parametrize(
+        "path",
+        [REVIEWER_AGENT, PR_PROTOCOL],
+        ids=["critic_reviewer_agent", "pr_protocol"],
+    )
+    def test_the_dedupe_scope_is_decidable_and_agrees(self, path: Path) -> None:
+        # First cut said "not again while it is open" — undecidable for a cold
+        # reviewer fork with no state recording that a report is open, so it
+        # resolved either to re-filing (no saving) or to silence indistinguishable
+        # from suppression. Scope is one review; cross-branch dedupe is the
+        # builder's disposition.
+        text = path.read_text()
+        assert "this review" in text, (
+            f"{path.name} no longer scopes the instruction to THIS review — the "
+            "only scope a stateless reviewer can actually decide."
+        )
+        assert "while it is open" not in text, (
+            f"{path.name} re-grew the undecidable cross-branch clause: a reviewer "
+            "fork cannot read whether a prior finding is still open."
+        )
+
+    @pytest.mark.parametrize(
+        "path",
+        [REVIEWER_AGENT, PR_PROTOCOL],
+        ids=["critic_reviewer_agent", "pr_protocol"],
+    )
+    def test_it_is_substitution_not_suppression(self, path: Path) -> None:
+        # R2 of the plan. Without this clause the instruction reads as a licence
+        # to drop findings, which is strictly worse than the per-instance filing
+        # it replaces.
+        text = path.read_text()
+        assert "not suppression" in text, (
+            f"{path.name} lost the substitution-not-suppression clause — the "
+            "instruction then reads as permission to drop the report entirely."
+        )
+
+    def test_the_single_pass_route_survives(self) -> None:
+        # The narrowest carrier, and the one the ceiling punishes. A single-pass
+        # `final`/`cumulative` fork reads review-cycle.md, NOT the agent
+        # definition — SKILL.md routes it to four protocol files and that is not
+        # one of them. So this pointer is the ONLY way the rule reaches that
+        # fork. Its file sits AT its ceiling under a standing "the next addition
+        # trims or relocates" rule (`test_v5_methodology.py` owns both numbers),
+        # which means
+        # deleting this sentence and lowering LAST_MEASURED_TOKENS is a green
+        # suite. That is precisely why presence is asserted here rather than
+        # left to the token record.
+        cycle = (PLUGIN / "skills/critic/review-cycle.md").read_text()
+        assert self.HEADLINE in cycle, (
+            "review-cycle.md lost the rule-over-instance pointer — a single-pass "
+            "final/cumulative reviewer now has no route to the rule at all, "
+            "because SKILL.md never sends it to agents/critic-reviewer.md."
+        )
+        assert "agents/critic-reviewer.md" in cycle and "single-pass" in cycle, (
+            "the pointer no longer names its target or its audience — it has to "
+            "tell the single-pass fork to open the agent definition, which is "
+            "the one file SKILL.md does not route it to."
+        )
+        assert self.TOKEN in cycle, (
+            "the pointer dropped the `rule-unenforced:` token, so a single-pass "
+            "reviewer would file the finding uncountably even when it reads the "
+            "rule correctly."
+        )
+
+    @pytest.mark.parametrize(
+        "path",
+        [REVIEWER_AGENT, PR_PROTOCOL],
+        ids=["critic_reviewer_agent", "pr_protocol"],
+    )
+    def test_the_second_condition_is_checked_not_assumed(self, path: Path) -> None:
+        # The first cut's own worked example asserted stale pinned counts have no
+        # check; `record_lint`'s suite-total-claim is exactly that check. A
+        # reviewer following it would file "unenforced" about an enforced rule.
+        text = path.read_text()
+        assert "suite-total-claim" in text, (
+            f"{path.name} dropped the worked counter-example — the instruction's "
+            "second condition (no check owns it) is the one a reviewer is most "
+            "likely to assume rather than verify, and pinned counts are the case "
+            "where assuming it is wrong."
         )
 
 

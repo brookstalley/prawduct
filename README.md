@@ -59,9 +59,15 @@ framework files in your tree. Then describe what you want:
 > add OAuth login to the existing API
 ```
 
-Anyone who clones the repo gets the same governance (the plugin auto-installs on first trusted
-open). Already onboarded? `/prawduct:doctor` health-checks the repo. Moving a pre-2.0 file-sync
-repo? `/prawduct:onboard` routes it to [`/prawduct:migrate`](documentation/MIGRATION.md).
+**Each contributor installs the plugin once** — step 1 above, in any repo. The committed install
+reference registers the marketplace for them automatically on first trusted open, but Claude Code
+does not auto-install a plugin sourced from a repository, so a clone on a machine that has never
+installed prawduct runs **ungoverned and silent about it**: no hooks, no `/prawduct:*`, no gates,
+and no message saying so. The repo's `CLAUDE.md` anchor tells that session to say so and names the
+install command; `/prawduct:doctor` Health Check #4 keeps the anchor current.
+
+Already onboarded? `/prawduct:doctor` health-checks the repo. Moving a pre-2.0 file-sync repo?
+`/prawduct:onboard` routes it to [`/prawduct:migrate`](documentation/MIGRATION.md).
 
 ### Turn Prawduct off in a specific repo
 
@@ -126,7 +132,7 @@ The framework detects structural characteristics (human interface, API, backgrou
 
 ### Closed learning loop
 
-Learnings are captured during development and surfaced on demand via the `/prawduct:learnings` skill, which reads the knowledge files in a forked context and returns only what's relevant to the task at hand. A three-tier system separates concise standing rules (`learnings.md`) from full root cause / debugging detail (`learnings-detail.md`), with retired and superseded entries moved to `learnings-history.md` — kept, never deleted, and off the lookup read path so the working set stays small (#350). Learnings follow a lifecycle: provisional (single observation) → confirmed (recurring pattern) → incorporated (absorbed into principles or methodology).
+Learnings are captured during development as ordinary `.claude/rules/learnings/` files, so the harness loads them and nothing has to look them up: `core.md` is in context from launch, and each `<area>.md` declares `paths:` globs that bring it in when Claude reads a file they match. Rules are concise standing statements — the narrative behind one lives in the session reflection, not in the rule. Learnings follow a lifecycle: provisional (single observation) → confirmed (recurring pattern) → incorporated (absorbed into principles or methodology).
 
 ## Working with Prawduct
 
@@ -212,11 +218,11 @@ A v2 product repo commits only its own state plus the install reference — no f
 ```
 my-product/
 ├── CLAUDE.md                    # your product instructions + a thin static governance anchor (PRAWDUCT:ANCHOR)
+├── .claude/rules/learnings/
+│   ├── core.md                  # cross-cutting rules — loaded by the harness in every session
+│   └── <area>.md                # area rules with `paths:` — loaded when a matching file is read
 ├── .prawduct/
 │   ├── project-state.yaml       # product definition, work tracking, build plan
-│   ├── learnings.md             # active rules (read by /prawduct:learnings)
-│   ├── learnings-detail.md      # full learning context
-│   ├── learnings-history.md     # retired/superseded entries, read only on a miss
 │   ├── backlog.md               # deferred work items (out-of-scope captures)
 │   ├── change-log.md            # change log
 │   ├── artifacts/               # specifications generated during planning
@@ -282,9 +288,16 @@ See [`docs/principles.md`](plugin/docs/principles.md) for the full principles wi
 
 ## Recent Changes
 
-Full release notes are in [CHANGELOG.md](plugin/CHANGELOG.md). Two major releases define the current architecture, and the **3.1–3.4** line is what has been built on top of them:
+Full release notes are in [CHANGELOG.md](plugin/CHANGELOG.md). Two major releases define the current architecture, and the **3.1–3.6** line is what has been built on top of them:
 
-### 3.1–3.4 — Governance that reports its own state
+### 3.1–3.6 — Governance that reports its own state
+- **Your learnings live where the harness loads them** — rules move from `.prawduct/learnings.md` into `.claude/rules/learnings/`, migrated in place on your repo's first session; the lifecycle verbs and their skill retire, the reflection gate fires on any session that wrote code whether or not a plan governs it, and ten portable rules the fleet kept re-learning ship as `docs/discipline.md`
+- **Review rigor is stage-keyed, and a finding you decline is recorded instead of lost** — the *inner* stage (a chunk review, a `final`, a `verify-resolutions`) blocks only on the ships-broken set and demotes the rest to observations; the *boundary* (a `cumulative`, the PR review) runs everything and is never inferred away. `prawduct-hook disposition <review-id> O-1 --accept "<reason>"` discharges an observation on the record — no gate's verdict moves — and the two rules that drove over-fixing now state that the obligation to *fix* is bounded to BLOCKING
+- **Reviews that say what they covered, and stop** — a written rule with no enforcer draws one finding naming the rule rather than one per instance; a clean `verify-resolutions` now says it covered its own delta and *not* the branch, instead of leaving you to go ask a gate; and the close prices the fix/accept decision from figures that were already computed rather than handing you the question unpriced
+- **Both boundary reviews are measured, not estimated** — `duration_seconds` had been the reviewing model's own recollection, 122 times running; the Critic and the PR reviewer now carry the same code-read stopwatch on separate marker slots, `review-stats` windows by date and reports whether a finding ships a remedy, and the change log bounds itself by archiving shipped history into monthly files
+- **Report a bug in prawduct itself, upstream** — `/prawduct:report-bug` recomposes the report in prawduct's terms, previews the exact outbound bytes, and files an issue on prawduct's public tracker only on your approval of them. Five checks each refuse and file nothing, identity fails closed, and one row in `project-preferences.md` — `Upstream filing: never-file` — is a hard mechanical guarantee that nothing leaves your machine
+- **The review loop has a declared stop** — `review_round_budget`, six full rounds per build-plan scope, on by default. Findings per round were measured *rising* rather than converging, so nothing else was going to end it. A review now rates only the files a finding can be *about* and reads the rest as oracle, and every finding carries a `fix_cost` saying whether acting on it buys another round
+- **Delegation is a guide, a default, and a policy you write** — `/prawduct:methodology delegation`, a project-authored delegation policy in `project-preferences.md` where `off` is a complete answer, and the partition question arriving where you already stop rather than as a new ceremony
 - **Less waiting on the gates, fewer rounds in review** — the *check* for whether a review is needed stops timing out (20 s → 0.35 s), because the coverage verdict is memoized instead of rescanning every tree the evidence store mentions; syncing your base no longer buys a re-review, because coverage **transfers** when the branch's judgeable files are byte-identical across the two spans. The review itself costs what it always did
 - **A finding says whether it found an instance or a class** — and an unbounded class closes only by a *construction*, not by fixing the sites it happened to name; a turn-closing block whose second line answers *whose move is it* (`RUNNING` / `YOUR TURN` / `COMPLETE`) rather than naming a topic; and one session digest for every repo, framework or product
 - **Norms bind, descriptions track** — `## Direction` statements in governing artifacts carry normative authority, with an owner-ratification flow and time-domain health sweeps; enforcement is scoped to adoption, so a repo with no ratified norms gets NOTEs and is never blocked

@@ -25,9 +25,9 @@ reviews that *actually ran* the coordinator and would now run single-pass.
 **Scope caveat, which is the whole reason this file exists.** These figures
 describe THIS repo, where the declared risk surfaces match ~77% of reviews. They
 do not transfer to a product repo, and reading them as if they did is the defect
-the Chunk 04 review caught as blocking. A product that declares no
-``risk_surfaces:`` keeps the older file-count rule precisely because no replay
-like this one has ever been run against its history.
+the Chunk 04 review caught as blocking. The fleet-wide question — what the
+file-count fallback bought the products that declared nothing — is
+``fallback_roster_yield.py`` beside this file.
 """
 
 from __future__ import annotations
@@ -44,6 +44,12 @@ sys.path.insert(0, str(REPO / "plugin"))
 from lib import coverage_algebra as ca  # noqa: E402
 from lib import critic_consolidate as cc  # noqa: E402
 
+
+#: The pre-2026-07-30 rule's threshold. It survived until the review-stages plan
+#: as the fallback for repos with no `risk_surfaces:`; measured and retired in
+#: `fallback_roster_yield.py`, which is why it is history here and not a
+#: constant in `critic_consolidate`.
+RETIRED_FILE_THRESHOLD = 5
 
 #: The gate kernel — the row the plan's table scores as an alternative to the
 #: shipped rule. Named by module rather than by risk surface, because that row
@@ -116,7 +122,7 @@ def main() -> int:
     total_blocking = sum(r["blocking"] for r in rows)
 
     rules = {
-        "total files >= 5 (pre-2026-07-30)": lambda r: r["n"] >= cc.COORDINATOR_FILE_THRESHOLD,
+        "total files >= 5 (pre-2026-07-30)": lambda r: r["n"] >= RETIRED_FILE_THRESHOLD,
         "judgeable >= 12 (rejected)": lambda r: r["nj"] >= cc.COORDINATOR_JUDGEABLE_THRESHOLD,
         "judgeable >= 5 (rejected)": lambda r: r["nj"] >= 5,
         "gate-kernel OR judgeable >= 12": lambda r: _touches_kernel(r["files"])

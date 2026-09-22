@@ -1416,3 +1416,290 @@ class TestAutoAccept:
         rows = dispositions.census(evidence.read_facts(repo), review_id="rev-2")[
             "reviews"][0]["rows"]
         assert rows[0]["state"] == dispositions.STATE_OPEN
+
+
+# ---------------------------------------------------------------------------
+# Observations — the demoted items a builder can now answer on the record
+# ---------------------------------------------------------------------------
+
+
+def _review_fact_with_observations(
+    repo: Path,
+    review_id: str,
+    observations: "list[str]",
+    *,
+    findings: "list[tuple[str, str]] | None" = None,
+) -> None:
+    """A review fact carrying ``observations`` beside its findings.
+
+    Titles in, ``O-n`` ids assigned the way ``merge_observations`` assigns
+    them — the fixture mirrors the writer rather than inventing a shape, so a
+    change to the writer's id scheme fails these tests instead of passing them
+    against a fossil."""
+    body = {
+        "base_tree": "a" * 40,
+        "head_tree": "b" * 40,
+        "mode": "verify-resolutions",
+        "findings": [
+            {
+                "fid": fid,
+                "severity": severity,
+                "goal": "Nothing Is Broken",
+                "title": f"finding {fid}",
+                "recommendation": "do the thing",
+            }
+            for fid, severity in (findings or [])
+        ],
+        "observations": [
+            {
+                "oid": f"O-{idx}",
+                "goal": "Nothing Is Unintended",
+                "title": title,
+                "recommendation": "consider it",
+            }
+            for idx, title in enumerate(observations, start=1)
+        ],
+    }
+    result = evidence.append_fact(repo, "review", review_id, body)
+    assert result["status"] == "appended", result
+
+
+class TestAnObservationCanBeAccepted:
+    """The defect this closes: a demoted observation could be discharged by
+    FIXING it — which moves the tree and buys a review round — or by saying
+    nothing, which loses the reasoning. There was no third answer."""
+
+    def test_an_observation_accepts_with_a_reason(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        _review_fact_with_observations(repo, "rev-1", ["a name I'd have picked differently"])
+
+        result = dispositions.record(
+            repo, "rev-1", "O-1", dispositions.ACCEPT, reason="the name is fine"
+        )
+        assert result["status"] == "recorded", result
+
+        store = evidence.read_facts(repo)
+        fact = evidence.facts_of_kind(store, KIND_DISPOSITION)[0]
+        assert fact["body"]["finding"] == {"review_id": "rev-1", "fid": "O-1"}
+        assert fact["body"]["reason"] == "the name is fine"
+
+    def test_an_unrecorded_observation_id_is_refused(self, tmp_path):
+        """The join stays validated — widening the id DOMAIN is not widening it
+        to anything a caller cares to type."""
+        repo = _make_repo(tmp_path)
+        _review_fact_with_observations(repo, "rev-1", ["only one"])
+        result = dispositions.record(
+            repo, "rev-1", "O-9", dispositions.ACCEPT, reason="no such thing"
+        )
+        assert result["status"] == "error"
+        assert "O-9" in result["reason"]
+
+    def test_the_two_id_namespaces_do_not_shadow_each_other(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        _review_fact_with_observations(
+            repo, "rev-1", ["an observation"], findings=[("R-1", "warning")]
+        )
+        assert (
+            dispositions.record(
+                repo, "rev-1", "R-1", dispositions.ACCEPT, reason="finding"
+            )["status"]
+            == "recorded"
+        )
+        assert (
+            dispositions.record(
+                repo, "rev-1", "O-1", dispositions.ACCEPT, reason="observation"
+            )["status"]
+            == "recorded"
+        )
+        rows = dispositions.census(evidence.read_facts(repo))["reviews"][0]
+        assert rows["rows"][0]["reason"] == "finding"
+        assert rows["observations"][0]["reason"] == "observation"
+
+
+class TestTheCLITakesAnObservationId:
+    """`api-contract.md` states the id argument takes a finding's `fid` **or**
+    an observation's `oid`, with the flags meaning exactly what they mean for a
+    finding. That is a documented contract, so it is exercised through the
+    process boundary rather than through :func:`dispositions.record`."""
+
+    def test_accept_through_the_cli(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        _review_fact_with_observations(repo, "rev-1", ["a name I would not pick"])
+        result = _hook(repo, "disposition", "rev-1", "O-1", "--accept",
+                       "idiomatic here; renaming buys a round for nothing")
+        assert result.returncode == 0, result.stderr
+        assert "O-1" in result.stdout and "ACCEPT" in result.stdout
+        # No BLOCKING nag on stderr: an observation has no severity to be
+        # blocking, and printing the gate warning would tell the builder the
+        # gate is waiting on something it cannot see.
+        assert "BLOCKING" not in result.stderr
+
+    def test_file_through_the_cli(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        _review_fact_with_observations(repo, "rev-1", ["the docstring lags the signature"])
+        result = _hook(repo, "disposition", "rev-1", "O-1", "--file", "DOC-1234")
+        assert result.returncode == 0, result.stderr
+        row = dispositions.census(evidence.read_facts(repo))[
+            "reviews"][0]["observations"][0]
+        assert row["state"] == dispositions.STATE_FILED
+        assert row["backlog_id"] == "DOC-1234"
+
+    def test_a_free_fix_records_against_an_observation(self, tmp_path):
+        """`--fixed` keeps its guard: the paths must buy no round. An
+        observation does not exempt a judgeable path, because the guard is
+        about what the EDIT costs, never about what the finding was."""
+        repo = _make_repo(tmp_path)
+        _review_fact_with_observations(repo, "rev-1", ["prose could be tighter"])
+        ok = _hook(repo, "disposition", "rev-1", "O-1", "--fixed", "README.md")
+        assert ok.returncode == 0, ok.stderr
+        row = dispositions.census(evidence.read_facts(repo))[
+            "reviews"][0]["observations"][0]
+        assert row["state"] == dispositions.STATE_FIXED_FREE
+
+        _review_fact_with_observations(repo, "rev-2", ["same shape, judgeable path"])
+        refused = _hook(repo, "disposition", "rev-2", "O-1", "--fixed", "code.py")
+        assert refused.returncode == 1
+        assert "code.py" in refused.stderr
+
+    def test_an_unknown_id_is_refused_through_the_cli(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        _review_fact_with_observations(repo, "rev-1", ["only one"])
+        result = _hook(repo, "disposition", "rev-1", "O-9", "--accept", "nope")
+        assert result.returncode == 1
+        assert "O-9" in result.stderr
+
+
+class TestAnAcceptedObservationGatesNothing:
+    """The whole safety argument for this chunk, asserted rather than assumed.
+
+    An accepted observation gates exactly what it gated before, which is
+    nothing — and the reason is structural: observations live outside
+    ``findings``, which is the only array the coverage algebra walks."""
+
+    def test_no_gate_reads_an_observation(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        _review_fact_with_observations(
+            repo, "rev-1", ["something worth saying"], findings=[("R-1", "blocking")]
+        )
+        dispositions.record(
+            repo, "rev-1", "O-1", dispositions.ACCEPT, reason="reads fine to me"
+        )
+
+        store = evidence.read_facts(repo)
+        review = evidence.facts_of_kind(store, "review")[0]
+        resolved = coverage_algebra.resolution_index(store["facts"])
+        unresolved = coverage_algebra.unresolved_blocking(review, resolved)
+        # The blocking finding is still blocking, and the observation never
+        # appears in a verdict's input at all.
+        assert [f["fid"] for f in unresolved] == ["R-1"]
+        assert not any(
+            f.get("oid") or f.get("fid", "").startswith("O-") for f in unresolved
+        )
+
+    def test_an_observation_never_enters_the_findings_index(self, tmp_path):
+        """The index the resolution existence check reads. If an observation
+        reached it, a resolution could target one — and a resolution is the one
+        reviewer output that weakens a gate."""
+        repo = _make_repo(tmp_path)
+        _review_fact_with_observations(repo, "rev-1", ["not a finding"])
+        store = evidence.read_facts(repo)
+        assert evidence.findings_index(store) == {}
+        assert list(evidence.observations_index(store)) == [("rev-1", "O-1")]
+
+    def test_an_accepted_observation_is_not_a_resolution(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        _review_fact_with_observations(repo, "rev-1", ["x"])
+        dispositions.record(repo, "rev-1", "O-1", dispositions.ACCEPT, reason="fine")
+        store = evidence.read_facts(repo)
+        assert coverage_algebra.resolution_index(store["facts"]) == set()
+
+
+class TestTheCensusReadsObservations:
+    def test_an_accepted_observation_is_not_undispositioned(self, tmp_path):
+        """The census correctness deliverable: the acceptance must show."""
+        repo = _make_repo(tmp_path)
+        _review_fact_with_observations(repo, "rev-1", ["tighten this prose"])
+        dispositions.record(
+            repo, "rev-1", "O-1", dispositions.ACCEPT, reason="prose is fine"
+        )
+        report = dispositions.census(evidence.read_facts(repo))
+        row = report["reviews"][0]["observations"][0]
+        assert row["state"] == dispositions.STATE_ACCEPTED
+        assert row["state"] != dispositions.STATE_OPEN
+        assert report["summary"]["undispositioned"] == 0
+        assert report["summary"]["observations"] == 1
+        assert report["summary"]["observations_answered"] == 1
+
+    def test_an_unanswered_observation_is_noted_never_a_debt(self, tmp_path):
+        """An observation is explicitly not work the record demands. Counting
+        an unanswered one as `undispositioned` would rebuild the obligation the
+        verify-mode demotion exists to remove."""
+        repo = _make_repo(tmp_path)
+        _review_fact_with_observations(repo, "rev-1", ["one", "two"])
+        report = dispositions.census(evidence.read_facts(repo))
+        assert [r["state"] for r in report["reviews"][0]["observations"]] == [
+            dispositions.STATE_NOTED,
+            dispositions.STATE_NOTED,
+        ]
+        assert report["summary"]["undispositioned"] == 0
+        assert report["summary"]["observations_answered"] == 0
+
+    def test_observations_do_not_inflate_the_findings_tallies(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        _review_fact_with_observations(
+            repo, "rev-1", ["a", "b", "c"], findings=[("R-1", "warning")]
+        )
+        summary = dispositions.census(evidence.read_facts(repo))["summary"]
+        assert summary["findings"] == 1
+        assert summary["by_severity"] == {"warning": 1}
+        assert summary["observations"] == 3
+
+    def test_the_markdown_reports_both_without_summing_them(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        _review_fact_with_observations(
+            repo, "rev-1", ["tighten this prose"], findings=[("R-1", "note")]
+        )
+        dispositions.record(
+            repo, "rev-1", "O-1", dispositions.ACCEPT, reason="prose is fine"
+        )
+        md = dispositions.render_markdown(
+            dispositions.census(evidence.read_facts(repo))
+        )
+        assert "1 finding" in md
+        assert "1 observation demoted" in md
+        assert "prose is fine" in md
+
+    def test_a_review_that_demoted_everything_still_renders_them(self, tmp_path):
+        """The case this block most needs to reach: a verify pass that demoted
+        all it saw records zero findings, so it takes the clean-review branch."""
+        repo = _make_repo(tmp_path)
+        _review_fact_with_observations(repo, "rev-1", ["the only thing I found"])
+        md = dispositions.render_markdown(
+            dispositions.census(evidence.read_facts(repo))
+        )
+        assert "_No findings._" in md
+        assert "the only thing I found" in md
+
+    def test_the_clean_pass_summary_still_reports_the_demotion(self, tmp_path):
+        """The clean-pass branch returns early, and it is the branch a verify
+        pass that demoted everything lands on — so a tally appended after it
+        would be missing in exactly the case it exists for."""
+        repo = _make_repo(tmp_path)
+        _review_fact_with_observations(repo, "rev-1", ["one", "two"])
+        dispositions.record(repo, "rev-1", "O-1", dispositions.ACCEPT, reason="fine")
+        md = dispositions.render_markdown(
+            dispositions.census(evidence.read_facts(repo))
+        )
+        assert "**No findings** — a clean pass." in md
+        assert "2 observations demoted" in md
+        assert "1 answered" in md
+
+    def test_a_review_with_no_observations_renders_no_block(self, tmp_path):
+        """Most reviews demote nothing — only `verify-resolutions` demotes at
+        all — so a heading over an empty table would be on nearly every census."""
+        repo = _make_repo(tmp_path)
+        _review_fact(repo, "rev-1", [("R-1", "note")])
+        md = dispositions.render_markdown(
+            dispositions.census(evidence.read_facts(repo))
+        )
+        assert "Observations" not in md

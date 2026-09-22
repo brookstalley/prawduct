@@ -311,6 +311,24 @@ def plans_missing_scope(artifacts_dir: Path) -> list[Path]:
     )
 
 
+def status_chunk_ids(content: str) -> list[str]:
+    """Every chunk id the ``## Status`` roster names, ticked or not, in order.
+
+    The same export-the-answer discipline as :func:`unticked_chunk_items`, for
+    the caller that needs the WHOLE roster rather than the open half — the
+    short-plan deferral asks every chunk whether it declares a ``Critic mode:``,
+    because a declaration on any chunk is the plan opting out. Items whose text
+    names no chunk (a roster line that is not ``Chunk N: …``) are skipped, the
+    same silence :func:`_chunk_id_from_item_text` gives every other reader.
+    """
+    ids: list[str] = []
+    for _checked, text in _iter_status_section_items(content):
+        chunk_id = _chunk_id_from_item_text(text)
+        if chunk_id is not None:
+            ids.append(chunk_id)
+    return ids
+
+
 def incompleteness_reason(content: str) -> "str | None":
     """Why this plan's own ``## Status`` says it is not finished, or ``None``.
 
@@ -704,22 +722,29 @@ def infer_scope_from_branch(
     ``known`` is a prebuilt scope→plan map — pass it to share one walk of
     ``artifacts/`` with a caller that also resolves the plan (:func:`resolve_branch_plan`).
 
-    Two narrowings, and the honest statement of what remains:
+    One narrowing, and the honest statement of what remains:
 
     - A branch matching no declared scope infers nothing, leaving every caller
       on the behaviour it had before.
-    - A matched plan whose Status is **entirely checked** is rejected. Those
-      boxes flip at release, so an all-checked plan has shipped, and a branch
-      named after a shipped scope is far more likely to be new work near old
-      code than a resumption of finished work. Without this, every one of the
-      dozens of released plans a long-lived repo accumulates is a live target.
+    - A matched plan must be **live on this branch**: archived plans are never
+      in the map, and a plan whose Status is entirely ticked matches only if
+      this branch changed the plan file since it left the base branch. Boxes
+      are ticked per chunk, after each review, so every box is ticked by the
+      plan's own end-of-plan ``cumulative`` — rejecting on ticks alone turned
+      the scope off for exactly that review. But on gitflow a merged plan stays
+      live until the release, and a follow-up branch reusing its exact name
+      must not be graded against it: *this* answer feeds every
+      :func:`resolve_branch_plan` caller, the gates included, not only review
+      attribution. The plan's own branch edited the plan (it wrote the ticks);
+      a follow-up that merely shares the name did not.
 
     **What is still possible, stated plainly:** a branch whose name matches an
-    *unfinished* plan it is not actually building will be attributed to that
-    plan. Nothing here can tell those apart — a name is the only signal — so the
-    residual case is real and the remedy is explicit ``--scope``. This is
-    narrower than "can only add, never redirect," which is true of the no-match
-    case only.
+    *unfinished* plan it is not actually building, or a finished one it
+    happened to edit, will be attributed to that plan. A name is the only
+    signal. The remedy that reaches every caller is a frontmatter ``branch:``
+    on the plan being built, which is consulted first; ``--scope`` reaches
+    review dispatch only. This is narrower than "can only add, never
+    redirect," which is true of the no-match case only.
     """
     branch = gitstate.current_branch(project_dir)
     if not branch:
@@ -734,7 +759,10 @@ def infer_scope_from_branch(
         candidates.append(branch.rsplit("/", 1)[1])
     for candidate in candidates:
         plan_path = known.get(candidate)
-        if plan_path is not None and _has_unfinished_chunk(plan_path):
+        if plan_path is not None and (
+            _has_unfinished_chunk(plan_path)
+            or _plan_changed_on_branch(project_dir, plan_path)
+        ):
             return candidate
     return None
 
@@ -771,11 +799,13 @@ def _has_unfinished_chunk(plan_path: Path) -> bool:
 
     **Read this before tuning it: it now decides which plan GOVERNS.**
     :func:`core.resolve_branch_claim` uses it to choose among several live plans
-    claiming one branch, so a change here moves what every gate grades — not only
-    what advice infers. Its other consumers are :func:`infer_scope_from_branch`
-    and the session briefing's "claims a branch this repo does not have"
+    claiming one branch, so a change here moves what every gate grades. Its other
+    consumer is the session briefing's "claims a branch this repo does not have"
     advisory, which fires only for a plan with work left, because a finished plan
     whose merged branch is gone is the documented end state, not a finding.
+    Branch-name scope inference asks it alongside
+    :func:`_plan_changed_on_branch`, because every box is ticked by a plan's own
+    final review, which is when that inference is needed most.
 
     **The signal is blunt: the boxes flip per chunk, so a plan reads finished
     from the moment its last chunk is ticked** — typically before its branch
@@ -804,6 +834,166 @@ def _has_unfinished_chunk(plan_path: Path) -> bool:
     if not items:
         return True
     return any(not checked for checked, _text in items)
+
+
+def _declares_scope(plan_path: Path) -> bool:
+    """Whether the plan's frontmatter names a scope, whether or not the scope map kept it.
+
+    The map keeps one plan per scope, so a plan whose scope duplicates another's
+    is absent from it while still declaring one — telling it to "add" a scope
+    would be wrong advice.
+    """
+    try:
+        content = plan_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return False
+    return bool(plan_index.parse_build_plan_frontmatter_scope(content)[1])
+
+
+def _changed_on_branch(project_dir: Path, pathspec: Path) -> "set[Path] | None":
+    """Files under ``pathspec`` this branch created or edited since it left the base.
+
+    Tracked changes are measured from the merge-base to the working tree, so
+    committed and uncommitted edits both count; untracked files count too,
+    because a file git has never seen was written here rather than inherited.
+    Resolved absolute paths. ``None`` when it cannot be shown — no base, no
+    merge-base, a git error — so a caller can tell "nothing changed" from
+    "could not look".
+    """
+    base, _ = _resolve_base_branch(project_dir)
+    if not base:
+        return None
+    try:
+        mb = subprocess.run(
+            ["git", "merge-base", base, "HEAD"],
+            cwd=str(project_dir), capture_output=True, text=True, timeout=10,
+        )
+        if mb.returncode != 0 or not mb.stdout.strip():
+            return None
+        diff = subprocess.run(
+            ["git", "diff", "--name-only", "--relative", mb.stdout.strip(), "--", str(pathspec)],
+            cwd=str(project_dir), capture_output=True, text=True, timeout=10,
+        )
+        untracked = subprocess.run(
+            ["git", "ls-files", "--others", "--exclude-standard", "--", str(pathspec)],
+            cwd=str(project_dir), capture_output=True, text=True, timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if diff.returncode != 0 or untracked.returncode != 0:
+        return None
+    names = diff.stdout.splitlines() + untracked.stdout.splitlines()
+    return {(project_dir / n).resolve() for n in names if n.strip()}
+
+
+def _plan_changed_on_branch(project_dir: Path, plan_path: Path) -> bool:
+    """True when this branch created or edited ``plan_path`` since it left the base.
+
+    The liveness signal for a finished plan: the branch that built it wrote its
+    ticks, so the file differs from the merge-base (or is not yet tracked). A
+    later branch that only shares the plan's name leaves it untouched. Observed
+    from git rather than stored on the plan, so there is nothing to forget.
+
+    ``False`` whenever it cannot be shown, which falls back to rejecting the
+    finished plan, the older behaviour.
+    """
+    changed = _changed_on_branch(project_dir, plan_path)
+    return bool(changed) and plan_path.resolve() in changed
+
+
+def unresolved_scope_cause(
+    project_dir: Path, prawduct_dir: Path
+) -> "tuple[str, str] | None":
+    """Why :func:`infer_scope_from_branch` found no scope here: ``(code, sentence)``.
+
+    Advice for the dispatcher of a review whose scope did not resolve — the
+    review then records no scope, and every control keyed on one (the round
+    budget first) cannot see it. Without this the only trace was a parenthetical
+    on the record-lint line, and the commonest causes are one-line edits to a
+    plan, so naming the plan and the edit is most of the fix.
+
+    ``None`` when there is nothing to fix: a detached HEAD, or the integration
+    branch, where no plan should claim the branch and a note would fire on every
+    review with nothing to act on. The codes, first match wins:
+
+    - ``claim-no-scope`` — a plan claims this branch in frontmatter and declares
+      no ``scope:``, so the claim has no scope to hand back.
+    - ``body-branch`` — a plan names this branch on a ``branch:`` line below its
+      frontmatter, where :func:`plan_index.branch_claiming_plans` never looks.
+    - ``pointer-claims-other`` — the active plan claims a different branch.
+    - ``no-claim`` — a live plan this branch created or edited does not claim
+      it. That edit is the evidence the branch has a plan at all; a branch that
+      touched no plan is doing plan-less work (a chore, a small fix), where
+      "add ``branch:`` to your plan" is advice with nothing to act on, so it
+      gets ``None`` rather than a note on every review.
+
+    Call it only when resolution has already failed; it re-derives nothing the
+    resolver decided and would name a cause for a scope that did resolve.
+    """
+    branch = gitstate.current_branch(project_dir)
+    if not branch:
+        return None
+    base, _ = _resolve_base_branch(project_dir)
+    if base and branch == base.removeprefix("origin/"):
+        return None
+
+    artifacts_dir = prawduct_dir / "artifacts"
+    known = _scope_plan_map(prawduct_dir)
+    scoped = set(known.values())
+
+    def rel(path: Path) -> str:
+        return _repo_rel(prawduct_dir, path)
+
+    for path, claimed in plan_index.branch_claiming_plans(artifacts_dir):
+        if (
+            claimed == branch
+            and path not in scoped
+            and not _declares_scope(path)
+        ):
+            return (
+                "claim-no-scope",
+                f"{rel(path)} claims branch {branch!r} but declares no `scope:` in "
+                "its frontmatter, so the claim has no scope to record — add one",
+            )
+
+    body = plan_index.plans_naming_branch_in_body(artifacts_dir, branch)
+    if body:
+        path = body[0]
+        missing_scope = "" if path in scoped else ", together with a `scope:`"
+        return (
+            "body-branch",
+            f"{rel(path)} names branch {branch!r} below its frontmatter, where "
+            f"nothing reads it — move `branch: {branch}` into the `---` block at "
+            f"the top of the file{missing_scope}",
+        )
+
+    pointer = resolve_build_plan_path(prawduct_dir)
+    if pointer.is_file():
+        try:
+            other = plan_index.parse_build_plan_frontmatter_branch(
+                pointer.read_text(encoding="utf-8")
+            )
+        except (OSError, UnicodeDecodeError):
+            other = None  # advice degrades to the generic cause, never to an error
+        if other and other != branch:
+            return (
+                "pointer-claims-other",
+                f"the active plan {rel(pointer)} claims branch {other!r}, not "
+                f"{branch!r} — correct its `branch:` if this is its work, or pass "
+                "`--scope`",
+            )
+
+    changed = _changed_on_branch(project_dir, artifacts_dir) or set()
+    edited = [p for p in plan_index.iter_live_plan_files(artifacts_dir) if p.resolve() in changed]
+    if not edited:
+        return None
+    return (
+        "no-claim",
+        f"{rel(edited[0])} was edited on this branch but no live plan declares "
+        f"`branch: {branch}` in its frontmatter and no plan's `scope:` matches the "
+        "branch name — if that is this work's plan, add the line to its "
+        "frontmatter; otherwise pass `--scope`",
+    )
 
 
 def resolve_reviewed_plan(
@@ -932,6 +1122,40 @@ def resolve_chunk_progress(
     except (OSError, UnicodeDecodeError):
         return ChunkProgress(0, 0, None, "", False)
     return _resolve_chunk_progress_from(content)
+
+
+def committed_chunk_progress(
+    project_dir: Path, plan_path: Path
+) -> "ChunkProgress | None":
+    """:func:`resolve_chunk_progress`'s reading of the plan AS COMMITTED AT HEAD.
+
+    The same reading — the ``## Status`` checkboxes, through the same parser —
+    of the same file at a different tree, not a second derivation of progress
+    (the git-derived reading ``TestOneCurrentChunkImplementation`` pins as
+    retired inferred chunks from commit subjects; this reads no commit but the
+    plan's own text). One consumer needs the two trees told apart: a tick made
+    in the working tree and not yet committed is the builder saying "that chunk
+    is done", and a reader asking *which chunk does the session's uncommitted
+    work belong to* must answer the chunk just ticked, not the one after it —
+    the working-tree reading alone cannot tell "chunk N-1 ticked, uncommitted"
+    from "chunk N in progress".
+
+    ``None`` when the plan is not at HEAD (a new plan, or ``.prawduct/`` not
+    tracked), when git cannot run, or when the path is outside the repo — the
+    caller falls back to the working-tree reading, which is the only one there
+    is in that case.
+    """
+    toplevel = gitstate._git_toplevel(project_dir)
+    if toplevel is None:
+        return None
+    try:
+        rel = Path(plan_path).resolve().relative_to(toplevel.resolve())
+    except ValueError:
+        return None
+    rc, text, _err = gitstate._git_text(project_dir, "show", f"HEAD:{rel.as_posix()}")
+    if rc != 0:
+        return None
+    return _resolve_chunk_progress_from(text)
 
 
 def _resolve_chunk_progress_from(content: str) -> ChunkProgress:
@@ -1543,7 +1767,7 @@ def _looks_like_file_path(token: str, project_dir: "Path | None" = None) -> bool
     conceptual references whose actual location varies, so they're not
     verifiable in a useful way.
 
-    Slash-commands (``/prawduct:pr``, ``/prawduct:learnings``, ``/prawduct:critic``) also contain
+    Slash-commands (``/prawduct:pr``, ``/prawduct:backlog``, ``/prawduct:critic``) also contain
     ``/`` but are not file paths. Exclude tokens that start with ``/``,
     have no further ``/``, and contain no ``.`` — that shape is a single
     slash-command identifier, not a path.
@@ -1734,7 +1958,7 @@ def _strip_code(text: str) -> str:
     """Remove fenced blocks and inline code spans.
 
     A markdown link *inside backticks* is being quoted, not offered — a plan
-    that quotes a broken ``[learnings file](../.prawduct/learnings.md)`` as
+    that quotes a broken ``[the rules](../.claude/rules/learnings/core.md)`` as
     evidence would redden on the document specifying it. Same
     citation-versus-reference rule as for bare paths, applied to the link form.
     """

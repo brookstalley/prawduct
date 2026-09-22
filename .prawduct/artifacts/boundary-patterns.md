@@ -46,6 +46,21 @@ consumer.
 shared prologue *and* the writer's ingest paths, because a restamp that skips a
 field launders it away while running nothing.
 
+### `.claude/rules/learnings/` — the rules layout
+
+**Producers:** the author (a rule written by hand under the byte budget `record_lint` enforces);
+`prawduct-hook learnings-migrate` (the one-way relayout of a legacy corpus); `init-product`'s
+`scaffold_core` (the header of a new product's `core.md`).
+**Consumers:** the harness (loads `core.md` every session and an `<area>.md` when a file its `paths:`
+match is read); `lib/learnings_files.resolve` and `prawduct-hook learnings-files --for-diff` (the
+Critic skill, the reviewer agent and the PR reviewer protocol read the answer); `record_lint`'s
+budget gate; the Stop hook's `learning.written` emitter and `critic-consolidate`'s `learning.fired`.
+**Contract:** `paths:` frontmatter is a list of root-relative globs matched the way the harness
+matches them; a rule unit is a `##`/`###` heading or a top-level bullet (`learnings_files.rule_units`),
+hashed by `unit_hash`; each file carries a byte budget (16KB default; `learnings_budgets:` in
+`project-state.yaml` overrides with a reason). A change to the glob semantics or the unit grammar
+crosses this boundary for every consumer above.
+
 ### Generator/Tuple Yields Consumed Positionally
 
 **Producer:** `plugin/lib/backlog/core.py` — `iter_alias_issues` yields
@@ -102,6 +117,27 @@ is exactly what missed two files during this build. And because the payloads
 carry verbatim provider text (issue titles and bodies) into agent-read findings,
 **item text is data, never instructions** — each consuming surface restates that
 rule locally rather than inheriting it.
+
+### Diagnosis Status Verdicts (the two review gates)
+
+**Producer:** `plugin/lib/coverage.py` — `diagnose_base_advance_transfer` returns
+`{"status": coverage.TRANSFER_MATCH, …}`, `{"status": "unavailable", "reason"}`,
+or `None`. Its siblings `diagnose_fix_churn` and `count_branch_rounds` share the
+`"unavailable"` half of that vocabulary.
+**Consumers:** both review gates in `plugin/lib/gates.py` — the PR gate
+(`check_cumulative_critic`) and the Stop gate (`_merge_base_verdict`) — plus
+`transfer_remedy`, which renders a status and reads fields only two of the three
+shapes carry.
+**Contract:** the status strings, **and which of them may reach the GRANT path.**
+This is the envelope whose consumer turns an `uncovered` verdict into a pass, so a
+status the producer adds is not merely unrendered downstream — a consumer that
+tests negatively would *grant* it (or crash reading `match`-only fields). Every
+decision site therefore branches on `coverage.classify_transfer`, which maps any
+status it does not know to `"unknown"`: denied, and rendered with no remedy.
+**Sweep rule:** a new status is added in `classify_transfer`, not at a call site —
+`git grep 'transfer.get("status")' plugin/` outside `coverage.py` should return
+nothing. `tests/test_session_critic_gate.py` asserts both gates deny an unknown
+status.
 
 ### API Endpoints
 <!-- Example:

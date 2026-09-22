@@ -14,6 +14,8 @@ from pathlib import Path
 
 import pytest
 
+from conftest import SHAPED_REFLECTION
+
 REPO_ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK_PATH = REPO_ROOT / "bin" / "prawduct-hook"
 FRAMEWORK_DIR = REPO_ROOT
@@ -93,6 +95,9 @@ class TestStopPrReviewGate:
         """Stop hook exits clean when there's no PR."""
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
+        # The reflection gate keys on the session's code changes, plan or no
+        # plan; satisfy it so the PR gate is the only thing under test here.
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
 
         result = run_hook("stop", tmp_path, git_output="")
         assert result.returncode == 0
@@ -110,6 +115,9 @@ class TestStopPrReviewGate:
         """
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
+        # The reflection gate keys on the session's code changes, plan or no
+        # plan; satisfy it so the PR gate is the only thing under test here.
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
 
         git_script = "\n".join([
             'if [[ "$1" == "rev-parse" ]]; then echo ".git"; exit 0; fi',
@@ -139,6 +147,9 @@ class TestStopPrReviewGate:
         not just the absence of the blocker."""
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
+        # The reflection gate keys on the session's code changes, plan or no
+        # plan; satisfy it so the PR gate is the only thing under test here.
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
         gh_log = tmp_path.parent / "gh_calls.log"
 
         git_script = "\n".join([
@@ -168,6 +179,9 @@ class TestStopPrReviewGate:
         see test_stop_with_pr_no_evidence_blocks.)"""
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
+        # The reflection gate keys on the session's code changes, plan or no
+        # plan; satisfy it so the PR gate is the only thing under test here.
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
         reviews_dir = prawduct / ".pr-reviews"
         reviews_dir.mkdir()
         evidence = reviews_dir / "feature--test-pr.json"
@@ -203,6 +217,9 @@ class TestStopPrReviewGate:
         """When evidence file has malformed JSON, stop should block."""
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
+        # The reflection gate keys on the session's code changes, plan or no
+        # plan; satisfy it so the PR gate is the only thing under test here.
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
         reviews_dir = prawduct / ".pr-reviews"
         reviews_dir.mkdir()
         evidence = reviews_dir / "feature--test-pr.json"
@@ -225,6 +242,9 @@ class TestStopPrReviewGate:
         """When evidence file is missing 'findings' key, stop should block."""
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
+        # The reflection gate keys on the session's code changes, plan or no
+        # plan; satisfy it so the PR gate is the only thing under test here.
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
         reviews_dir = prawduct / ".pr-reviews"
         reviews_dir.mkdir()
         evidence = reviews_dir / "feature--test-pr.json"
@@ -247,6 +267,9 @@ class TestStopPrReviewGate:
         """When evidence file is missing 'summary' key, stop should block."""
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
+        # The reflection gate keys on the session's code changes, plan or no
+        # plan; satisfy it so the PR gate is the only thing under test here.
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
         reviews_dir = prawduct / ".pr-reviews"
         reviews_dir.mkdir()
         evidence = reviews_dir / "feature--test-pr.json"
@@ -271,6 +294,9 @@ class TestStopPrReviewGate:
         no-session-changes short-circuit — is what's exercised.)"""
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
+        # The reflection gate keys on the session's code changes, plan or no
+        # plan; satisfy it so the PR gate is the only thing under test here.
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
 
         git_script = "\n".join([
             'if [[ "$1" == "rev-parse" ]]; then echo ".git"; exit 0; fi',
@@ -292,6 +318,9 @@ class TestStopPrReviewGate:
         """
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
+        # The reflection gate keys on the session's code changes, plan or no
+        # plan; satisfy it so the PR gate is the only thing under test here.
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
 
         # Session: uncommitted .py change → session_doc_only=False, Gate 3 enters
         # PR diff: only .md committed → pr_doc_only=True, new skip applies
@@ -322,6 +351,9 @@ class TestStopPrReviewGate:
         """
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
+        # The reflection gate keys on the session's code changes, plan or no
+        # plan; satisfy it so the PR gate is the only thing under test here.
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
 
         git_script = "\n".join([
             'if [[ "$1" == "rev-parse" && "$2" == "--verify" && "$3" == "origin/main" ]]; then echo "abc123"; exit 0; fi',
@@ -360,6 +392,9 @@ class TestStopPrReviewGate:
         """
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
+        # The reflection gate keys on the session's code changes, plan or no
+        # plan; satisfy it so the PR gate is the only thing under test here.
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
 
         git_script = "\n".join([
             'if [[ "$1" == "rev-parse" && "$2" == "--verify" && "$3" == "origin/main" ]]; then echo "abc123"; exit 0; fi',
@@ -403,17 +438,39 @@ class TestPrReviewSkillContent:
         Change, Proportionality). With the layering now explicit — per-chunk
         Critic = local correctness, final/cumulative Critic = bundle synthesis,
         PR reviewer = release readiness — the reviewer owns only the
-        release-specific lens: scope, narrative/coherence, merge hygiene, and
-        bundle-level simplification. The dropped goals are asserted absent in
+        release-specific lens. The dropped goals are asserted absent in
         test_review_protocol_dropped_critic_overlap_goals so the trim doesn't
         silently regrow.
+
+        **Contract renegotiated, in the open: goals 2 and 3 were RENAMED, not
+        dropped.** They were written as though the subject were product code,
+        and across 279 recorded findings it is not — 48% change-log coherence,
+        25% build-plan status and dangling pointers, 15% backlog reconciliation,
+        10% tag keys, against 0.7% on the debug-code and stray-file bullets
+        those goals led with. `.prawduct/` is non-judgeable by the coverage
+        algebra, so no Critic layer reads it and this reviewer is its only
+        reader. A goal naming a subject its reviewer does not review is a
+        binding statement that is simply false, which is why this is a recorded
+        decision (`build-plan-pr-review-payload.md`, Chunk 02) rather than doc
+        freshness. Every bullet the old names covered survives — the merge
+        hygiene set is now a bullet under goal 3 with its measured rarity
+        stated, which is why the old names are asserted GONE below rather than
+        merely un-asserted.
         """
         content = (FRAMEWORK_DIR / "skills" / "pr" / "review-protocol.md").read_text()
         for goal in (
-            "Right Scope", "Clear Narrative", "Merge Hygiene",
-            "Bundle-Level Simplification",
+            "Right Scope", "The Record Matches What Ships",
+            "Governance Bookkeeping Is Coherent", "Bundle-Level Simplification",
         ):
             assert goal in content, f"skills/pr/review-protocol.md missing goal: {goal}"
+        # The retired HEADINGS, not the bare terms — "merge hygiene" survives as
+        # a bullet and in the severity legend, and forbidding the phrase outright
+        # would outlaw the content this rename kept.
+        for retired in ("### 2. Clear Narrative", "### 3. Merge Hygiene"):
+            assert retired not in content, (
+                f"{retired!r} is back as a goal heading — the rename is what "
+                "makes the goal statement true of what this reviewer reviews"
+            )
 
     def test_findings_carry_their_cost_before_any_finding_is_written(self):
         """A v3.2.4 consumer was reading the PR reviewer's findings when it
@@ -436,8 +493,13 @@ class TestPrReviewSkillContent:
         content = (FRAMEWORK_DIR / "skills" / "pr" / "review-protocol.md").read_text()
         assert "costs the builder a review round" in content
         cost_at = content.index("costs the builder a review round")
+        # `### Findings` was an anchor inside the markdown `## PR Review` block
+        # the Output Format section used to ask for. That block had no consumer
+        # and was deleted; the surviving "here is where findings go" surface is
+        # `## Record Findings`, so the anchor moved with the shape rather than
+        # being dropped.
         for later in ("## Review Goals", "### 1. Right Scope", "## Severity Levels",
-                      "## Output Format", "### Findings"):
+                      "## Output Format", "## Record Findings"):
             assert cost_at < content.index(later), (
                 f"the round-cost statement sits BELOW {later!r} — the reviewer forms "
                 "findings before reaching it, which is the placement failure that made "
@@ -515,6 +577,47 @@ class TestPrReviewSkillContent:
         for flow in ("Create Flow", "Update Flow", "Merge Flow", "Status Flow"):
             assert flow in content, f"skills/pr/SKILL.md missing flow: {flow}"
 
+    def test_the_mutation_sweep_lands_before_the_one_boundary_review(self):
+        """PLACEMENT, not presence — the sweep is a PRE-review obligation.
+
+        The rule moved here from the `test-evidence record` directive because a
+        mutation costs a run per claim: the inner loop keeps only the cheap half
+        (name what would turn each test red) and the boundary pays for the
+        mutations, once, over the whole bundle. `docs/discipline.md` row 1 names
+        this file as its surface and `tests/test_discipline_table.py` reads the
+        row, so presence is already covered there; what nothing else can see is
+        WHICH step carries it.
+
+        Step 2 is the boundary: it is the step that composes/dispatches the one
+        `cumulative` review, and its Sequencing paragraph already says to land
+        everything BEFORE that run.
+
+        What turns this red (each verified by relocating the real sentence):
+        deleting it; MOVING it into the wait-time paragraph, which is prose read
+        DURING the review and so too late to change the tree it grades; MOVING
+        it into Step 3, whose reviewer owns release readiness and by protocol
+        does not re-derive test quality, so the sweep would be addressed to the
+        wrong reader. What it does NOT catch: a second copy parked elsewhere in
+        the file — this asserts where the rule IS, not that it is stated once.
+        """
+        content = (FRAMEWORK_DIR / "skills" / "pr" / "SKILL.md").read_text()
+        rule = "a mutation you did not watch go red applied nothing"
+        assert rule in content, "the mutation sweep is gone from the PR flow"
+        step2 = content.split("### Step 2: Cumulative-Critic gate", 1)
+        assert len(step2) == 2, "the cumulative-Critic gate step is gone"
+        step2 = step2[1].split("### Step 2b:", 1)[0]
+        assert rule in step2, (
+            "the mutation sweep left Step 2 — wherever it went, it no longer "
+            "reaches the builder before the one boundary review runs"
+        )
+        wait = step2.split("While `/prawduct:critic cumulative` runs", 1)
+        assert len(wait) == 2, "Step 2's wait-time paragraph is gone"
+        assert rule in wait[0], (
+            "the mutation sweep is inside the wait-time paragraph — that prose "
+            "runs WHILE the review does, so the sweep would arrive too late to "
+            "change the tree it grades"
+        )
+
     def test_pr_skill_has_review_gate(self):
         """The /pr skill must enforce review before PR creation."""
         content = (FRAMEWORK_DIR / "skills" / "pr" / "SKILL.md").read_text()
@@ -522,6 +625,74 @@ class TestPrReviewSkillContent:
         assert "MANDATORY" in content
         assert "Do NOT proceed" in content or "DO NOT proceed" in content
         assert "evidence file" in content
+
+    def test_the_dispatch_is_marked_before_the_reviewer_is_spawned(self):
+        """The clock measures the interval between the mark and the append, so
+        the mark's POSITION is the behaviour — marking after the spawn would
+        measure nothing but the caller's own bookkeeping.
+
+        Ordering is asserted, not mere presence: `pr-review-dispatch --begin`
+        appearing anywhere in the file would satisfy a presence check while
+        sitting after the spawn instruction and silently measuring zero.
+        """
+        content = (FRAMEWORK_DIR / "skills" / "pr" / "SKILL.md").read_text()
+        mark = content.index("pr-review-dispatch --begin", content.index("### Step 3"))
+        spawn = content.index("Tell the reviewer agent:")
+        assert mark < spawn, "the dispatch must be marked BEFORE the agent is spawned"
+
+    def test_marking_the_dispatch_is_granted_by_exact_op_name(self):
+        """Red if the grant ever widens to `pr-review*`.
+
+        A Bash grant is a PREFIX match, and `pr-review-dispatch` has a read-only
+        sibling `pr-review-payload`. More to the point, the WRITER is the one
+        being granted here: a prefix grant on this family is how a reviewer
+        agent would inherit a write it was never meant to have.
+        """
+        content = (FRAMEWORK_DIR / "skills" / "pr" / "SKILL.md").read_text()
+        frontmatter = content.split("---")[1]
+        assert "Bash(prawduct-hook pr-review-dispatch --begin)" in frontmatter
+        assert "pr-review*" not in frontmatter
+        assert "Bash(prawduct-hook pr-review-dispatch *)" not in frontmatter
+
+    def test_a_failed_mark_never_blocks_the_review(self):
+        """The clock is advice. A review that cannot be marked still runs and is
+        reported as self-reported — the population every prior review is in."""
+        content = (FRAMEWORK_DIR / "skills" / "pr" / "SKILL.md").read_text()
+        step3 = content[content.index("### Step 3"):content.index("### Step 4")]
+        assert "never a reason to delay the review" in step3
+        assert "self-reported" in step3
+
+    def test_step_4_catches_a_branch_that_moved_under_the_review(self):
+        """Step 2 licenses concurrent dispatch on the claim that a review of a
+        superseded tree "is spent ... and it runs again". Nothing performed that
+        re-run: the ancestor check passes for every commit on the branch (Step 4
+        says so itself), the one "Dispatch again" fires on a MISSING SHA, and the
+        Stop hook's PR gate reads no SHA at all. On the common path — cumulative
+        blocks, fix, commit, Step 4 green — the boundary review never saw the
+        fixes, and the concurrency that bought the wall clock is what created the
+        gap.
+
+        Pinned as the PREDICATE, not a spelling: the check must ask the delta
+        between `commit_reviewed` and HEAD, and must route a judgeable one back
+        to a dispatch.
+        """
+        content = (FRAMEWORK_DIR / "skills" / "pr" / "SKILL.md").read_text()
+        step4 = content[content.index("### Step 4"):content.index("### Step 5")]
+        assert "<commit_reviewed>..HEAD" in step4, (
+            "Step 4 never asks what landed since the review it is verifying"
+        )
+        assert "cost-of-commit" in step4 and "explicit file arguments" in step4, (
+            "the judgeable question has one home; a bare invocation prices the "
+            "working tree and answers about none of the delta"
+        )
+        assert "dispatch it again" in step4.lower()
+        # The claim in Step 2 must point AT this check rather than assert the
+        # re-run happens by itself — a safety argument whose mechanism is
+        # elsewhere is how this shipped.
+        step2 = content[content.index("### Step 2:"):content.index("### Step 2b")]
+        assert "Step 4's delta check" in step2, (
+            "the concurrency rationale must name what performs the re-run"
+        )
 
     def test_merge_flow_buildplan_cleanup_is_conditioned(self):
         """PR-7Q3M: build-plan lifecycle (the Merge Flow's "Confirm the
@@ -650,10 +821,41 @@ class TestPrReviewSkillContent:
             "release-process.md must say the benign exit-1 is not a waiver case"
         )
 
-    def test_review_protocol_references_learnings(self):
-        """PR reviewer must read learnings.md during setup."""
+    def test_review_protocol_does_not_send_the_reviewer_to_the_learnings(self):
+        """Contract INVERTED, in the open (pr-review-payload Chunk 02).
+
+        This used to assert the protocol names `core.md` and the command that
+        enumerates the area files. Both reads are gone, and the reason is not
+        "they arrive by auto-injection" — the `pr-reviewer` agent's
+        `omitClaudeMd: true` removes that path too, so a reason resting on it
+        would be false in the same change. The two that survive: the goal
+        consuming the read returned 1 finding in 122 reviews, and the protocol's
+        own Learnings Cross-Check assigns that scan to the final/cumulative
+        Critic, so this reviewer was forbidden to perform it.
+
+        **The negative is bounded to the two reads, and paired with a positive.**
+        A bare "learnings" ban would forbid the Cross-Check paragraph naming the
+        owner — the sentence that makes the deletion safe — so the paragraph is
+        asserted present, and separately that it states the reviewer is not
+        given the corpus at all.
+        """
         content = (FRAMEWORK_DIR / "skills" / "pr" / "review-protocol.md").read_text()
-        assert "learnings.md" in content
+        # NEGATIVE: the two reads, named exactly. Not the word "learnings".
+        assert ".claude/rules/learnings/core.md" not in content, (
+            "the protocol sends the reviewer to core.md again — a ~25k-token read "
+            "for a scan it is forbidden to perform"
+        )
+        assert "learnings-files" not in content, (
+            "the protocol names the area-file enumerator again"
+        )
+        # POSITIVE: the owner of the scan, and the fact that the omission is
+        # deliberate, both survive.
+        assert "Critic owns this scan" in content
+        assert "not given the learnings at all" in content
+        assert "1 finding in 122 reviews" in content, (
+            "the deletion's measured reason has to travel with it, or the next "
+            "editor reads the absence as an oversight and restores the read"
+        )
 
     def test_review_protocol_has_learnings_crosscheck(self):
         """PR reviewer must have a Learnings Cross-Check section."""
@@ -681,13 +883,44 @@ class TestPrReviewerScoping:
     def skill(self) -> str:
         return (FRAMEWORK_DIR / "skills" / "pr" / "SKILL.md").read_text()
 
-    def test_protocol_consumes_gate_certified_soundness(self):
-        """The reviewer must not re-derive code soundness — the composition
-        gate certifies it structurally before dispatch."""
+    def test_protocol_scopes_off_code_soundness_without_claiming_a_verdict(self):
+        """The reviewer must not re-derive code soundness. What changed is the
+        WARRANT, not the scoping: under concurrent dispatch the cumulative review
+        may still be running when this reviewer finishes, so "the gate certified
+        it before you were dispatched" is false at the moment it is read.
+
+        The scoping never actually rested on that verdict — it rests on the
+        Critic OWNING the layer, which holds while its review is in flight. So
+        the ownership sentence and the gate's name are asserted, and the
+        before-dispatch certification is asserted GONE: leaving it would tell a
+        reviewer that soundness had been cleared when nothing had yet cleared it,
+        which is the one reading that could make it skip a real release blocker.
+        """
         content = self.protocol
         assert "re-derive code soundness" in content
         assert "check-cumulative-critic" in content
-        assert "zero unresolved blocking findings" in content
+        assert "the Critic **owns** that layer" in content
+        assert "does not rest on that gate having reported" in content
+        for stale in ("zero unresolved blocking findings",
+                      "before you are dispatched",
+                      "before you were dispatched"):
+            assert stale not in content, (
+                f"{stale!r} is back — under concurrent dispatch it asserts a "
+                "verdict that may not exist yet"
+            )
+        # The spelling list above is a PREFIX of the real set, and the rewrite
+        # proved it: three more carriers survived it in this same file (the
+        # evidence-schema note, the Relationship table, Extending This Skill),
+        # each saying "gate-certified"/"certified structurally" in words no
+        # entry above matches. Ban the ROOT, which is the property — this
+        # reviewer never certifies and is never told something was certified
+        # for it. The positive assertions above are what must survive, so a
+        # rewrite cannot satisfy this by deleting the scoping instead.
+        assert "certif" not in content.lower(), (
+            "`review-protocol.md` claims something is certified. Under "
+            "concurrent dispatch no verdict exists when this reviewer reads "
+            "its protocol; say the Critic OWNS code soundness instead."
+        )
 
     def test_protocol_audit_machinery_stays_deleted(self):
         """The deleted two-reviewer overlap machinery must not regrow: no
@@ -709,13 +942,118 @@ class TestPrReviewerScoping:
         assert ".critic-findings.json" in content
         assert "prawduct-hook evidence list" in content
 
-    def test_skill_states_gate_certification(self):
-        """Step 3's reviewer handoff states the gate has passed and scopes the
-        reviewer to release readiness (no ledger-fallback record plumbing)."""
+    def test_only_one_of_the_two_steps_dispatches(self):
+        """Concurrency put the dispatch instruction in Step 2 while Step 3 still
+        opened with it unconditionally, so an agent walking the steps in order
+        spawns a SECOND reviewer against the same evidence path (last writer
+        wins), re-marks the clock, and spends exactly the review this bundle
+        exists to save. One owner has to decide which route LEADS.
+        """
         content = self.skill
-        assert "cumulative-Critic gate has passed" in content
+        step3 = content[content.index("### Step 3"):content.index("### Step 4")]
+        assert "only one of them dispatches" in step3, (
+            "Step 3 must open by naming the two routes — a reader arriving from "
+            "Step 2's dispatch has to be told this step is Wait/Read/Present"
+        )
+        lead = step3[:step3.index("Dispatch the **`pr-reviewer` plugin agent**")]
+        assert "already dispatched" in lead and "Wait / Read / Present" in lead, (
+            "the conditional must come BEFORE the dispatch instruction; appended "
+            "after it, the advice still leads with the act it is excepting"
+        )
+        step2 = content[content.index("### Step 2"):content.index("### Step 2b")]
+        assert "do NOT dispatch again at" in step2, (
+            "Step 2 must say its dispatch is the only one; a reader who never "
+            "returns to Step 2 is not the one this protects"
+        )
+
+    def test_the_closing_keyword_rule_uses_a_tool_the_reviewer_holds(self):
+        """The producer-with-no-consumer case, and both halves of it.
+
+        Chunk 01 built `_section_default_branch` FOR the closing-keyword rule —
+        its docstring says so — while that rule still sent the reviewer to `gh
+        repo view`, and the same bundle narrowed the reviewer to a tool set with
+        no `gh` grant at all. A compliant reviewer could not answer the question,
+        and the two possible behaviours give OPPOSITE advice about whether a
+        close was owed or missed.
+        """
+        protocol = self.protocol
+        assert "gh repo view" not in protocol, (
+            "`review-protocol.md` routes the reviewer to `gh`, which its agent "
+            "definition grants no verb of — see `test_no_network_tool`"
+        )
+        assert "`default_branch`" in protocol, (
+            "the payload section built for this rule must be named where the "
+            "rule is stated, or it is a channel nobody consumes"
+        )
+        activation = protocol[:protocol.index("## Review Goals")]
+        assert "default_branch" in activation, (
+            "every other section is enumerated in the activation list; an "
+            "unenumerated one is a section the reviewer does not know it has"
+        )
+
+    def test_the_two_boundary_reviews_are_dispatched_concurrently(self):
+        """The bundle's whole wall-clock win, pinned where it can be deleted.
+
+        Serially the boundary costs ~4-10 min of cumulative Critic plus ~7 min
+        of PR review against a <= 7-minute target; concurrently it costs the
+        longer of the two. Nothing else asserts the ordering — the scoping test
+        above pins what the reviewer is told about its LAYER, which reads as if
+        it covered this and does not — so an editor "simplifying" Step 2 back
+        to run-then-dispatch goes green and the minutes return silently.
+
+        Three properties, and the third is the one a rewrite is most likely to
+        break: the same-message instruction, the route into Step 3's
+        preparation (a dispatch that skips the `pr-review-dispatch --begin`
+        mark records no measured interval and reports as `self-reported`,
+        which is indistinguishable from the legacy case), and the ABSENCE of a
+        data dependency either way. `methodology/building.md` carries the same
+        claim for the reader who never opens the skill, so it is asserted here
+        too rather than left to agree by luck.
+        """
+        content = self.skill
+        step2 = content[content.index("### Step 2"):content.index("### Step 2b")]
+        assert "dispatch the PR reviewer in the SAME message" in step2, (
+            "Step 2 no longer orders the concurrent dispatch — the boundary is "
+            "back to paying both reviews' wall clock end to end"
+        )
+        assert "pr-review-dispatch --begin" in step2, (
+            "Step 2 orders the dispatch without routing the reader through "
+            "Step 3's preparation, so the clock can be skipped with nothing "
+            "noticing: an unmarked review reports as self-reported"
+        )
+        assert "There is no data dependency in either direction" in step2, (
+            "the concurrency's warrant is that neither review consumes the "
+            "other's verdict; without it stated, sequencing looks required"
+        )
+        building = (Path(__file__).resolve().parents[1] / "plugin" / "methodology"
+                    / "building.md").read_text()
+        assert "neither consuming the other's verdict" in building, (
+            "methodology/building.md is the carrier for readers who never open "
+            "skills/pr/SKILL.md — the two must not drift apart on this"
+        )
+
+    def test_skill_scopes_the_reviewer_off_code_soundness(self):
+        """Contract renegotiated: the handoff can no longer claim the gate has
+        PASSED, because Step 2 now dispatches the cumulative review and this
+        reviewer concurrently (`nonfunctional-requirements.md` § Performance).
+
+        What the scoping actually rests on is unchanged and never was the gate's
+        verdict: the Critic OWNS code soundness, which is true while its review
+        is still running. So the handoff states which of the two situations the
+        reviewer is in, and the scoping sentence is asserted independent of it.
+        """
+        content = self.skill
+        assert "Code soundness belongs to the Critic and is not yours to re-derive" in content
+        assert "running beside you, or has already passed" in content, (
+            "the dispatch must say WHICH — they are different facts and the "
+            "reviewer should not have to guess"
+        )
         assert "release readiness" in content
         assert "ledger-fallback" not in content
+        assert "cumulative-Critic gate has passed" not in content, (
+            "under concurrent dispatch that sentence is false at the moment it "
+            "is spoken"
+        )
 
     def test_skill_appends_review_pr_ledger_event(self):
         """Step 4 appends the review.pr event so both review roles are in the
@@ -729,6 +1067,100 @@ class TestPrReviewerScoping:
         assert "Bash(prawduct-hook ledger-append*)" in frontmatter, (
             "skills/pr/SKILL.md allowed-tools is missing ledger-append — "
             "the skill cannot append the review.pr event."
+        )
+
+    def test_create_step_5_pushes_with_upstream_and_verifies_the_pushed_ref(self):
+        """Both halves, because the check depends on the flag.
+
+        The verification is `check-branch-pushed`, which reads the branch's
+        configured upstream — so a rewrite that drops `-u` leaves it answering
+        `no-upstream` on the first push of a Create flow instead of certifying
+        the push it just made. Asserting the check alone passed while that was
+        true.
+        """
+        step5 = self.skill.split("### Step 5: Create PR", 1)[1].split("\n## ", 1)[0]
+        # Scoped and literal: a bare `"-u" in content` passes on --json, on any
+        # hyphen-u anywhere in the file, and on a Step 5 that pushes without it.
+        assert "Push branch with `-u`" in step5, (
+            "Step 5 must push with -u -- `check-branch-pushed` reads the "
+            "branch's upstream, so without it the check answers no-upstream "
+            "instead of certifying the push"
+        )
+        assert "prawduct-hook check-branch-pushed" in step5, (
+            "Step 5 no longer runs the push-completeness gate -- a prose "
+            "comparison an agent can skip is what #248 was filed against"
+        )
+        assert "AFTER the push" in step5, (
+            "the ORDER is the whole check: run before the push it verifies, "
+            "it certifies the previous one"
+        )
+
+    def test_merge_flow_verifies_the_prs_head_before_merging(self):
+        """The merge-side check, pinned separately from the create-side one.
+
+        These are not duplicates and the file says so: the Create-flow check
+        sits INSIDE the step whose skip causes the defect, so only this one is
+        outside the control flow that produces the side effect. A future
+        editor trimming it as redundant is the failure this asserts against.
+        """
+        content = self.skill
+        merge_flow = content.split("## Merge Flow", 1)[1].split("## Status Flow", 1)[0]
+        assert "headRefOid" in merge_flow, (
+            "Merge Flow no longer verifies the PR head against local HEAD — "
+            "an unpushed commit then merges silently."
+        )
+        assert "OUTSIDE the step whose skip causes the defect" in merge_flow, (
+            "the reason this check is not redundant with Create Step 5 is gone, "
+            "which is what makes it look trimmable"
+        )
+
+    def test_merge_flow_runs_the_push_gate_alongside_the_pr_head_check(self):
+        """Two checks with two subjects, pinned together.
+
+        `check-branch-pushed` computes its verdict and fails closed when it
+        runs, but reads only this clone's refs; `headRefOid` sees a remote that
+        moved but asks an agent to compare two strings. Whichever one a future
+        editor calls redundant, half the defect comes back — so the file must
+        carry both, and the reason. Neither is unskippable: both are sentences
+        in one numbered step, and the gate's own omission is the one state it
+        cannot detect.
+        """
+        merge_flow = self.skill.split("## Merge Flow", 1)[1].split("## Status Flow", 1)[0]
+        assert "prawduct-hook check-branch-pushed <headRefName>" in merge_flow, (
+            "Merge Flow must run the push gate ON THE PR'S BRANCH -- the "
+            "argument-less form answers about whatever is checked out, so on a "
+            "merge run from the base branch it reports the base is pushed and "
+            "that reads as the PR being pushed"
+        )
+        assert "Neither check subsumes the other" in merge_flow, (
+            "the reason the two merge-side checks are not duplicates is gone, "
+            "which is what makes one of them look deletable"
+        )
+
+    def test_the_push_gate_is_granted_to_the_skill(self):
+        """An ungranted command is a step that cannot run. The star must be
+        ATTACHED: the gate takes an optional branch argument, and the Merge Flow
+        passes one, which a bare grant would not cover
+        (`tests/test_skill_command_grants.py` defines the form)."""
+        frontmatter = self.skill.split("---", 2)[1]
+        assert "Bash(prawduct-hook check-branch-pushed*)" in frontmatter, (
+            "skills/pr/SKILL.md allowed-tools is missing check-branch-pushed* -- "
+            "both flows call a gate the skill may not invoke, and the Merge Flow "
+            "call passes the PR's branch"
+        )
+
+    def test_a_pushed_ref_mismatch_is_not_answered_with_force_push(self):
+        """One remedy per shape. Force-pushing a remote-ahead branch rewrites
+        the tree Step 4's `commit_reviewed` ancestor check pinned, voiding the
+        review evidence — so the file must not answer every mismatch with
+        "push again"."""
+        step5 = self.skill.split("### Step 5: Create PR", 1)[1].split("\n## ", 1)[0]
+        assert "never force-push" in step5
+        # Scoped: `commit_reviewed` appears independently all through the
+        # Update Flow, so a file-wide check passes with this rationale deleted.
+        assert "commit_reviewed" in step5, (
+            "Step 5 no longer says WHY a force-push is the wrong answer -- "
+            "without the evidence-voiding reason it reads as mere preference"
         )
 
     def test_learnings_and_backlog_not_rescanned(self):

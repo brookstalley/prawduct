@@ -42,6 +42,18 @@ than pointing here for it, so a reader that loads one file still gets the whole 
 
 - **Markdown backend — on the feature branch, in the same PR as the change.** The archive is a file edit, so it rides in that PR and is genuinely **atomic with the merge**: no separate after-merge bookkeeping commit/PR, and an abandoned PR abandons the archive too, so the backlog can't drift.
 - **Issues backend (`backlog_service_repo` is set) — at the merge, not on the branch.** `status --to shipped` closes the issue over the API the moment it runs: an immediate remote side effect with no branch to be abandoned with. Run on an unmerged branch it leaves the item **wrongly closed** if the PR is abandoned or reworked — the same drift in the opposite direction, and the one bookkeeping error nothing later sweeps for (#697 records #687 and #688 as instances). So the call is deferred to the merge itself: `/prawduct:pr`'s Merge Flow **"Close the backlog items this PR resolves"** step, which fires seconds after the merge succeeds. A `Closes #N` in the PR body does **not** stand in for it — GitHub fires closing keywords only for PRs merged into the repository's **default** branch, so on a gitflow base the keyword is inert.
+  **Verify the merge from the forge, not from a local ref.** Inside `/prawduct:pr` that step
+  fires seconds after its own merge and therefore knows; invoked directly — `/prawduct:backlog
+  update <id> status=shipped` — you have to establish it yourself, and the obvious check is
+  wrong. `git merge-base --is-ancestor HEAD origin/<base>` answers from whenever you last
+  fetched, so a PR merged minutes ago reads as unmerged and a correct close is refused, which
+  reads as the framework misfiring when it is the ref that is stale. Ask the forge (`gh pr view
+  <n> --json state,mergedAt`, or `gh pr list --state merged`) — it answers under every merge
+  strategy. The ancestry test, even after a `git fetch`, is valid only where the repo merges
+  with merge commits: under a squash or rebase merge the branch tip is never an ancestor of the
+  merged base, so it refuses a merge that happened. Staleness here only ever produces a **false
+  refusal**, never a false permit — a local ref cannot contain a merge that has not happened —
+  so the remedy is always to re-derive the answer, never to skip the check.
 
 Either way the call is **explicit** — D4 requires it, never inferred from a view — and **no status change ever needs a post-merge commit on the integration branch**: the markdown archive rides the PR, and the Issues close is an API call that touches no branch at all. Backlog `shipped` = *the item's work is merged to the integration base* (the item's single terminal state) — distinct from a **change-log** entry's `status=shipped`, which means *released to consumers* (`main`) and legitimately batches at the `develop→main` release. Don't conflate them: the backlog archive belongs in the feature PR; the change-log `shipped` flip belongs to release-prep (gitflow) — or rides in the closing PR itself when the PR's base IS the release surface (trunk; `/prawduct:pr` create-flow Step 1d).
 

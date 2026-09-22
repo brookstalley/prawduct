@@ -36,7 +36,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from .change_log import CHANGE_LOG_REL_PATH
+from .change_log import CHANGE_LOG_REL_PATH, parse_change_log
 from .core import read_str_yaml_key
 
 _BASE_BRANCH_KEY = "base_branch"
@@ -320,7 +320,7 @@ def diagnose_fix_churn(
       | {"status": "unavailable", "reason": str}
 
     The two negatives are **not** the same answer, and collapsing them is the
-    shape ``learnings.md`` names: *"'Advice fails soft' is not 'advice fails
+    shape the learnings rules name: *"'Advice fails soft' is not 'advice fails
     silent' — a degraded advisory path must still name its consequence, or it
     manufactures the false success it was meant to prevent."* ``None`` means
     the diagnosis ran and this is not churn; ``unavailable`` means it could not
@@ -428,6 +428,11 @@ def diagnose_fix_churn(
         # this.
         return None
 
+    # Findings only — a review fact's `observations` carry `files` too, and
+    # are deliberately not read here. Counting them would widen the set of
+    # edits this calls churn, and that set is already only file-level
+    # evidence (see the bound above); an item the reviewer did not even rate
+    # as a finding is weaker ground still for calling its edits a mere fix.
     named: set[str] = set()
     for finding in body.get("findings") or []:
         for path in finding.get("files") or []:
@@ -445,6 +450,35 @@ def diagnose_fix_churn(
         "warning": counts.get("warning", 0),
         "note": counts.get("note", 0),
     }
+
+
+#: The one status of :func:`diagnose_base_advance_transfer` that GRANTS.
+TRANSFER_MATCH = "match"
+
+
+def classify_transfer(transfer: "dict | None") -> str:
+    """The one reading of a :func:`diagnose_base_advance_transfer` result that
+    every gate site branches on: ``"absent"`` (no transfer was attempted),
+    ``"match"`` (may grant, once a suite run vouches for the tree),
+    ``"unavailable"`` (the check could not run — its remedy is worth naming),
+    or ``"unknown"`` (any other status).
+
+    One function rather than a comparison at each call site because the
+    decision has several readers — the Stop gate, the PR gate's verdict and the
+    PR gate's rendered remedy — and a new status must land on the DENY side at
+    every one of them. ``"unknown"`` is that side: it neither grants nor renders
+    a remedy, because :func:`gates.transfer_remedy` reads fields only a
+    ``match`` or an ``unavailable`` carries, and an unmeasured status is not a
+    near miss a suite run fixes.
+    """
+    if transfer is None:
+        return "absent"
+    status = transfer.get("status")
+    if status == TRANSFER_MATCH:
+        return "match"
+    if status == "unavailable":
+        return "unavailable"
+    return "unknown"
 
 
 def diagnose_base_advance_transfer(
@@ -630,7 +664,7 @@ def diagnose_base_advance_transfer(
             ]
             advance = evidence.tree_diff(project_dir, prior_base, base_tree)
             return {
-                "status": "match",
+                "status": TRANSFER_MATCH,
                 "prior_fact_id": reviews[-1].get("id") if reviews else None,
                 "prior_reviews": len(reviews),
                 "prior_base": prior_base,
@@ -682,12 +716,12 @@ def count_branch_rounds(
     ``/prawduct:pr create`` path against a store holding every review the clone
     has ever recorded.
 
-    Returns ``{"status": "counted", "rounds", "seconds", "timed", "reviews"}``
-    — with ``seconds`` ``None`` when no attributed round recorded a duration —
-    or ``{"status": "unavailable", "reason"}``. Never raises: this is advice, and
+    Returns ``{"status": "counted", "rounds", "seconds", "timed", "reviews",
+    "span_commits"}`` — with ``seconds`` ``None`` when no attributed round
+    recorded a duration — or ``{"status": "unavailable", "reason"}``. Never raises: this is advice, and
     advice fails soft. It is deliberately not silent, because a tally that
     vanishes when it breaks reads as "round one" to the builder it exists to
-    warn (``learnings.md``: "'advice fails soft' is not 'advice fails silent'").
+    warn (``core.md``: "'advice fails soft' is not 'advice fails silent'").
 
     ``reviews`` is ``[{"id", "mode"}]`` for the attributed rounds, in store
     order, and it exists so a caller can ask a NARROWER question than "how many
@@ -697,6 +731,16 @@ def count_branch_rounds(
     The mode strings are handed over verbatim rather than parsed here — the
     token vocabulary belongs to ``critic_consolidate``, and a second parse of it
     living in the counter is how one vocabulary becomes two.
+
+    ``span_commits`` is how many commits the span held, and it separates the two
+    ways ``rounds`` reaches zero: a branch with commits that has bought no
+    review yet, and a span with no commits at all — the permanent state of a
+    trunk-based repo, where every push moves the base ref with HEAD. Those are
+    the same number and opposite situations, and a caller that must bound by
+    something other than lineage can only tell them apart from here, because
+    this is where the span is walked. Reported rather than acted on: what to do
+    with an empty span is the caller's policy, and attribution is this
+    function's whole subject.
     """
     from . import evidence  # noqa: PLC0415 -- lazy: mirrors diagnose_fix_churn's import posture; avoids an import cycle at module load
 
@@ -733,6 +777,7 @@ def count_branch_rounds(
         "seconds": round(sum(durations), 1) if durations else None,
         "timed": len(durations),
         "reviews": reviews,
+        "span_commits": len(on_branch),
     }
 
 
@@ -741,7 +786,7 @@ def format_branch_rounds(tally: "dict | None") -> str:
 
     One function owns the whole sentence and decides which of the three
     readings leads, so no call site can assemble a variant of its own
-    (``learnings.md``: advice with an exception stapled on still leads with the
+    (``core.md``: advice with an exception stapled on still leads with the
     advice). The figure is computed from the branch's own rounds at call time
     and never written down — a duration copied into prose drifts, and
     correcting it costs the review round this message exists to save.
@@ -762,6 +807,21 @@ def format_branch_rounds(tally: "dict | None") -> str:
             f"round count as unknown, not as one."
         )
     n = tally["rounds"]
+    # Bounded by the PROPERTY that makes the count meaningless, not by the repo
+    # shape that usually produces it: a span with no commits cannot attribute a
+    # round to anything, so `rounds == 0` here is the absence of a measurement
+    # and not a measurement of absence. Told otherwise, a trunk-based builder
+    # reads "your first round" on round twenty — every push restores this state,
+    # so the sentence is wrong for them permanently rather than occasionally.
+    # This is the same defect as the round budget's, at the other consumer of
+    # the same signal, which is why it is keyed on `span_commits` in both.
+    if not n and not tally.get("span_commits"):
+        return (
+            "NOTE: this branch's span holds no commits — the base ref IS HEAD, "
+            "which is where every push leaves a trunk-based repo — so lineage "
+            "cannot attribute a round here at all. Read the round count as "
+            "UNAVAILABLE on this shape, never as this being your first."
+        )
     if not n:
         return (
             "NOTE: no review round has been recorded against this branch since the "
@@ -948,6 +1008,70 @@ def _pr_diff_is_doc_only(project_dir: Path) -> tuple[bool, str]:
     )
 
 
+def _entry_check_without_history(project_dir: Path) -> int:
+    """The weaker entry check available when the change-log is untracked.
+
+    The gate's real contract is "this branch ADDED an entry" — that is what the
+    ``+## `` scan enforces, and why ``entry-edited-not-added`` is a separate
+    failure. An untracked file has no merge-base version, so that question is
+    unanswerable here, and no substitute exists: a change-log entry carries
+    ``scope`` and ``release`` (:mod:`lib.change_log`) and nothing that records
+    which branch wrote it.
+
+    So this is a deliberate, *named* weakening rather than parity, and the
+    message says which check the caller actually got. It reads the log from
+    disk — the same way :mod:`lib.release_readiness` already reads it — and
+    passes only when at least one entry parses. Degrading the check must not
+    disarm it: a missing or entry-less log still fails, because those are the
+    states the gate exists to catch and they are visible from disk.
+
+    Parsing goes through :func:`lib.change_log.parse_change_log` rather than a
+    local ``## `` scan. A private classifier here would be the fifth reading of
+    this format, and the last four disagreeing is what made this gate's history.
+    """
+    path = project_dir / CHANGE_LOG_REL_PATH
+    # The same pair `release_readiness` reads the log with: a non-UTF-8 byte is
+    # as unreadable as a missing file, and an exception escaping here would be
+    # the one verdict Step 1c cannot route.
+    try:
+        content = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        print(
+            f"no-entry: {CHANGE_LOG_REL_PATH} is untracked here (gitignored, or "
+            f"never added) and could not be read from disk either: {exc}. "
+            "Add the change-log before opening the PR.",
+            file=sys.stderr,
+        )
+        return 1
+
+    # Only release-pending entries vouch for anything: an entry carrying
+    # `release=` shipped long ago, and a log that holds nothing but shipped
+    # entries would otherwise pass every branch forever. Same semantics as the
+    # STOP row's "scope= and no release=" the strong check enforces.
+    entries = parse_change_log(content)
+    pending = [entry for entry in entries if entry.tags.get("release") is None]
+    if not pending:
+        print(
+            f"no-entry: {CHANGE_LOG_REL_PATH} is untracked here (gitignored, or "
+            "never added), and the copy on disk holds no release-pending entry "
+            f"({len(entries)} entr(ies), all carrying release=). Add a change-log "
+            "entry for this work before opening the PR.",
+            file=sys.stderr,
+        )
+        return 1
+
+    print(
+        f"entry-present-untracked: {CHANGE_LOG_REL_PATH} is untracked here "
+        "(gitignored, or never added), so git cannot say whether THIS branch "
+        f"added an entry — only that the log on disk holds {len(pending)} "
+        "release-pending. That weaker "
+        "check passed. To restore the real one, track the log: `.prawduct/*` "
+        "plus `!.prawduct/change-log.md` (a bare `.prawduct/` cannot be "
+        "negated — git will not re-include a file under an excluded directory)."
+    )
+    return 0
+
+
 def check_change_log_entry(project_dir: Path) -> int:
     """PR-boundary probe: a code-changing branch must add a change-log entry.
 
@@ -972,12 +1096,17 @@ def check_change_log_entry(project_dir: Path) -> int:
       * the diff is empty, or holds no judgeable file, or
       * a judgeable diff includes ``.prawduct/change-log.md`` AND that diff
         ADDS at least one entry header (a ``+## `` line) — merely editing an
-        existing entry's text does not vouch for new work.
+        existing entry's text does not vouch for new work, or
+      * the log is UNTRACKED and the copy on disk holds at least one entry
+        (``entry-present-untracked`` — the weaker check of
+        :func:`_entry_check_without_history`, which says so).
 
     Exit 1 otherwise, with a named reason on stderr (``no-entry``,
     ``entry-edited-not-added``, ``no-base``, ``git-failed``). Un-evaluable
     git state fails closed — the caller falls back to manual judgment rather
     than silently skipping the probe (same posture as ``check_pr_doc_only``).
+    An untracked log is not un-evaluable and must not be read as absent: the
+    diff simply cannot speak to a path git does not track.
     """
     base, base_note = _coverage_resolve_base(project_dir)
     if base is None:
@@ -1028,6 +1157,30 @@ def check_change_log_entry(project_dir: Path) -> int:
         return 0
 
     if CHANGE_LOG_REL_PATH not in files:
+        # A path git does not TRACK can never appear in a diff, so this silence
+        # is not evidence of a missing entry — it is the absence of a question
+        # git can answer. A repo that gitignores `.prawduct/` wholesale keeps a
+        # real change-log on disk that no diff can show, and the `no-entry`
+        # remedy below then tells the author to add an entry they already wrote:
+        # advice that cannot clear the gate however often it is followed. That is
+        # the same failure the block above describes — a wrong `no-entry` is
+        # worse than a spurious block because its remedy text is executable.
+        # `git_path_is_tracked` is three-valued precisely so a caller cannot
+        # collapse "untracked" into "absent"; collapsing them was the defect.
+        from . import gitstate  # noqa: PLC0415 — lazy keeps this module's import DAG light
+
+        tracked = gitstate.git_path_is_tracked(project_dir, CHANGE_LOG_REL_PATH)
+        if tracked is False:
+            return _entry_check_without_history(project_dir)
+        if tracked is None:
+            print(
+                "git-failed: could not ask git whether "
+                f"{CHANGE_LOG_REL_PATH} is tracked, so its absence from the "
+                "diff proves nothing either way. Check the change-log by hand.",
+                file=sys.stderr,
+            )
+            return 1
+
         sample = ", ".join(judgeable[:3])
         more = f" (+{len(judgeable) - 3} more)" if len(judgeable) > 3 else ""
         print(
@@ -1262,6 +1415,25 @@ def commit_cost(project_dir: Path, paths: "list[str] | None" = None) -> dict:
     }
 
 
+def _extension_reason(project_dir: Path) -> "str | None":
+    """``critic_mode.extension_deferral`` for the branch's plan, or ``None``.
+
+    ``None`` on any failure: this only ever lowers a price, and a price that
+    could not be lowered stays the conservative one.
+    """
+    from . import buildplan_refs, critic_mode, gitstate  # noqa: PLC0415 — lazy keeps this module's import DAG light
+
+    try:
+        prawduct_dir = gitstate.get_prawduct_dir(project_dir)
+        plan = buildplan_refs.resolve_branch_plan(project_dir, prawduct_dir)
+        if plan.path is None:
+            return None
+        progress = buildplan_refs.resolve_chunk_progress(project_dir, plan.path)
+        return critic_mode.extension_deferral(project_dir, prawduct_dir, plan, progress)
+    except (OSError, ValueError):
+        return None
+
+
 def cost_of_commit(project_dir: Path, argv: "list[str]") -> int:
     """Body of ``prawduct-hook cost-of-commit [--json] [<paths>...]``.
 
@@ -1269,6 +1441,12 @@ def cost_of_commit(project_dir: Path, argv: "list[str]") -> int:
     answer after making it: does committing this buy a review round? The
     verdict token leads on stdout (the agent-facing channel) so a caller can
     branch on one word; the reasoning follows for a reader.
+
+    Judgeable paths are priced as a round unless, in the no-argument form,
+    existing review evidence already covers the working tree
+    (:func:`gates.commit_coverage`); the verdict is then ``free`` and names the
+    covering review. Pricing a Critic-covered tree as a round pushed builders
+    to accept findings they could have fixed for nothing.
 
     Read-only and advisory — it gates nothing, and it exits 0 whether the
     answer is "free" or "costs a round", because both are answers. Exit 1 is
@@ -1315,8 +1493,36 @@ def cost_of_commit(project_dir: Path, argv: "list[str]") -> int:
     else:
         verdict = "free"
 
+    # Judgeable paths cost a round unless a review already covers the tree
+    # they would commit — then the gate composes the verbatim commit with no
+    # new pass. Only the no-argument form can ask: an explicit path list may
+    # be a partial commit, whose tree no review saw, and `/prawduct:pr`
+    # prices a delta with exactly that form. Kept out of `commit_cost`, whose
+    # other caller (the Critic close's cost lead) prices the NEXT edit after
+    # a review and must not read the review it just wrote as making that free.
+    covered_by: list[str] = []
+    if verdict == "costs-a-round" and not given_paths:
+        from . import gates  # noqa: PLC0415 — lazy: gates imports this module at load
+
+        coverage_answer = gates.commit_coverage(project_dir)
+        if coverage_answer["status"] == "covered":
+            covered_by = coverage_answer["by"]
+            verdict = "free"
+    # Not covered yet, but a review the plan still owes will start from the
+    # last reviewed state and span this commit (#167), so committing buys no
+    # round of its own. Same no-argument restriction as above.
+    rides_next_review: "str | None" = None
+    if verdict == "costs-a-round" and not given_paths:
+        rides_next_review = _extension_reason(project_dir)
+        if rides_next_review:
+            verdict = "free"
+
     if as_json:
-        print(json.dumps({"verdict": verdict, **cost, "round_price": price}, indent=2))
+        print(json.dumps(
+            {"verdict": verdict, **cost, "covered_by": covered_by,
+             "rides_next_review": rides_next_review, "round_price": price},
+            indent=2,
+        ))
         return 0
 
     print(verdict)
@@ -1344,6 +1550,20 @@ def cost_of_commit(project_dir: Path, argv: "list[str]") -> int:
         return 0
 
     n_judgeable, n_free, n_total = len(cost["judgeable"]), len(cost["free"]), len(cost["paths"])
+    if covered_by:
+        print(
+            f"{n_judgeable} of {n_total} path(s) are judgeable, but review "
+            f"{', '.join(covered_by)} already covers this working tree — committing "
+            f"it verbatim buys no review round. The next edit after that commit, "
+            f"if judgeable, opens a new delta that does."
+        )
+        return 0
+    if rides_next_review:
+        print(
+            f"{n_judgeable} of {n_total} path(s) are judgeable and not yet reviewed, but "
+            f"no round is owed for them now: {rides_next_review}."
+        )
+        return 0
     if cost["judgeable"]:
         print(
             f"{n_judgeable} of {n_total} path(s) move review coverage — committing them "

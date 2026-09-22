@@ -111,7 +111,7 @@ Two nuances the matrix pinned down:
 - **`incoming-bugs/` note → current holds only for `.md`.** The standing `is_judgeable_path` treats a non-`.md` file anywhere outside metadata prefixes as judgeable, so an `incoming-bugs/*.txt` would read *stale*. The realistic bug-report shape is `.md` (→ current); not changed here (§10 non-goal: don't touch the predicate).
 - **The verbatim-commit case passes via the judgeable filter, not raw tree-SHA equality.** `record` writes `.prawduct/.test-evidence.json`, so the post-record raw tree SHA already differs from `evidence_tree`; the diff is non-empty but entirely metadata, so the judgeable filter empties it. The "tree preserved" story is really "judgeable-scoped tree preserved" — the stronger, load-bearing invariant.
 
-**Surfaces actually touched:** `lib/gates.py` (`tests_are_current` disjunction + `_test_evidence_tree_valid` helper + `evidence_tree` optional-schema field), `bin/prawduct-hook` (`cmd_test_evidence` capture, skipped for `--from-counts`), `tests/test_plugin_runtime.py` (the matrix). As predicted in §8, the review protocols and `methodology/building.md` needed **no prose change** — they key off the `test-status` exit code, which is unchanged in meaning.
+**Surfaces actually touched:** `lib/gates.py` (`tests_are_current` disjunction + `_test_evidence_tree_valid` helper + `evidence_tree` optional-schema field), `bin/prawduct-hook` (`cmd_test_evidence` capture, skipped for `--from-counts`), `tests/test_plugin_runtime.py` (the matrix). As predicted in §8, the review protocols and `methodology/building.md` needed **no prose change** — they key off the `test-status` exit code, which is unchanged in meaning. **Superseded 2026-09-19 by #767:** that prediction held only while the exit code was the whole signal. Making the tree clause unconditional gave exit 0 two meanings (`tree-valid` vs `session-fresh, not tree-vouched`), so the protocols and `building.md` did need prose after all — not because the code changed meaning, but because one code stopped being one answer.
 
 ## 10. Non-goals
 
@@ -124,4 +124,15 @@ Two nuances the matrix pinned down:
 
 - `[ASSUMPTION: the additive "OR tree-valid" framing was never specifically evaluated in the prior rejections | MED impact | the history shows the *replace-timestamp* direction was rejected for false-stale modes; user with full context can confirm/veto]`
 - Cost: `test-status` runs `capture_tree` (a `git add -A` + `write-tree`) — but ONLY in the stale-but-has-`evidence_tree` branch (a new session on an unchanged tree); once fresh evidence exists it short-circuits on the timestamp and never captures. **Measured (2026-07-14) on the largest available target, the `wt-discodon-backlog` worktree — 2,174 tracked / 41,888 working-tree files / 538 MB:** `capture_tree` 0.74s cold, **~0.36s warm** (vs `git status` 0.043s); `tree_diff` (only on the change path) 0.027s; **non-mutation verified** — the worktree's real index is byte-identical before/after (temp-index R1 holds on a real large repo). Paid ~once per session, in the exact branch that *replaces* a multi-minute suite re-run, and it's the same operation the review gates already run at that repo's Stop/PR gates — no new cost category, just one more call site. Open item closed: accept.
+- **Superseded 2026-09-18 (#767, scope `test-status-clause`): the short-circuit described above is
+  gone.** The cost note in the bullet above turns on `test-status` capturing a tree ONLY in the
+  stale-but-has-`evidence_tree` branch, because a session-fresh verdict returned before
+  `evidence_tree` was read. `tests_are_current` now asks the tree clause first and
+  unconditionally, so the capture is paid on every call, not once per session. The reason is that
+  the disjunct which answered became *visible* — `test-status` reports it — and a session-fresh
+  answer given about evidence that is also tree-identical under-claims, sending a reader to re-run
+  the suite. The measurement in that bullet still stands (~0.36s warm on the 42k-file worktree;
+  ~0.12s on this repo); what changed is how often it is paid. Everything else in this spike —
+  relax-only, paths-classify-not-contents, the §9 matrix — is unaffected.
+
 - Should the clause require the recorded tree to be an **ancestor-reachable** tree (composition), or is **exact judgeable-scope identity** sufficient? Exact identity is simpler and sufficient for the three frictions; composition is a later refinement if cross-tree validity is ever wanted.

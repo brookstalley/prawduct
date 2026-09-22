@@ -38,17 +38,31 @@ return the first that fires:
      ``cumulative``-mode findings file exists for current HEAD. Signal:
      builder has shipped chunks and is at the ``/pr create`` precondition
      point.
+  2b. ``deferred`` (#292, the short-plan deferral) — the branch's plan has
+     ≤ :data:`SHORT_PLAN_MAX_CHUNKS` chunks, no chunk declares a
+     ``Critic mode:``, the branch is not the base itself, nothing it has
+     changed is a risk surface, and code is in flight. No review is
+     dispatched: the boundary review at the last chunk is every chunk's
+     review, and the rationale says whether to commit and carry on or (on
+     the last chunk) commit and run the ``cumulative`` that is that chunk's
+     review. Sits below rules 1–2 so a fix-in-progress or a committed bundle
+     still gets the review it is owed; pre-empts only the inner-stage
+     answers of rules 3–4. Predicate: :func:`short_plan_deferral`.
   3. ``final`` — active build plan with exactly one unchecked chunk left
      AND uncommitted work is present (the builder is on the last chunk),
      OR no build plan + uncommitted diff has ≥5 files (medium+
      non-chunked work).
-  4. ``chunk`` when a build plan grounds the choice **and the working tree
-     holds something to review** (default for mid-plan reviews);
-     ``cumulative`` when the tree is clean, since ``chunk``/``final`` scope to
-     the uncommitted diff and dispatching one would refuse on an empty
-     interval; ``final`` otherwise (no plan + no other rule fired — fail-safe
-     to thoroughness, matching the SKILL's historical
-     "missing/unrecognized → final" norm).
+  4. ``cumulative`` when the tree is clean and a committed bundle is
+     dispatchable, since a ``chunk``/``final`` interval ends at the working
+     tree and, with nothing unreviewed behind HEAD, would be empty and refused; otherwise ``chunk`` —
+     grounded on the plan when one exists, and the bare default when none
+     does. ``final`` is never a default: the stage-keyed rigor norm
+     (`nonfunctional-requirements.md` § Direction) says unsure defaults to the
+     inner-stage review of whatever interval exists, and the boundary is
+     never inferred away. The size escalator in rule 3 (no plan, 5+ files →
+     ``final``) is untouched: ``final`` there is still an inner-stage review,
+     rated on the inner BLOCKING set, and it fires on a signal rather than on
+     the absence of one.
 
 The plan rule 4 grounds on is **this branch's**, not necessarily the
 ``active_build_plan`` pointer's: a branch whose name matches a scope some plan
@@ -85,7 +99,7 @@ import sys
 from pathlib import Path
 from typing import NamedTuple
 
-from . import buildplan_refs, coverage_algebra, gitstate
+from . import buildplan_refs, coverage_algebra, gitstate, risk
 from .core import resolve_build_plan_path
 from .coverage import _resolve_base_branch
 
@@ -170,8 +184,13 @@ def _unrecognized_mode_note(token: str, line_num: int | None = None) -> str:
     return note
 
 
-#: The two modes whose interval is HEAD-tree → working-tree, and therefore the
-#: only two an explicit token can name into a provably empty review. `cumulative`
+#: The two modes whose interval ENDS at the working tree — it starts at HEAD's
+#: tree, or at the covered frontier behind it when commits since that are
+#: unreviewed (`gates.covered_frontier`) — and therefore the only two an explicit
+#: token can name into an empty review. The clean-tree redirect below treats
+#: them as empty whenever the tree is clean; with a frontier behind HEAD that is
+#: not strictly so, and the redirect then sends the review to `cumulative`, a
+#: wider span than needed. Accepted: it errs toward more review, never less. `cumulative`
 #: reviews the committed bundle and `verify-resolutions` the delta since a prior
 #: review fact; neither goes empty because the working tree is clean.
 _WORKING_TREE_MODES = frozenset({"chunk", "final"})
@@ -248,10 +267,11 @@ def infer_mode(
 
     # An unreadable plan escalates rather than falling through. Rule 4 would
     # answer `chunk` — the narrowest mode there is — on the strength of a plan
-    # nobody could parse, which is the canonical rule inverted: "missing,
-    # unrecognized, or inference cannot make a confident call → final". The
-    # reason travels with it, so the rationale names the plan instead of
-    # reporting a confident `chunk`.
+    # nobody could parse, and "unsure defaults cheap" is about the ABSENCE of a
+    # signal; a plan that exists and cannot be read is a signal, like rule 3's
+    # last-chunk and size signals, that the builder's declared state and the
+    # tree disagree. The reason travels with it, so the rationale names the
+    # plan instead of reporting a confident `chunk`.
     if plan_read.unreadable:
         return "final", f"rule-0 final (plan unreadable): {plan_read.unreadable}"
 
@@ -266,7 +286,18 @@ def infer_mode(
             file=sys.stderr,
         )
 
+    # A later review on this plan will start from the last reviewed state and
+    # cover whatever is uncovered since, so the rules below that would buy a
+    # round for it now — a verify pass over a non-blocking fix, a cumulative
+    # over a clean tree mid-plan — answer `deferred` instead. Asked lazily,
+    # only when one of those rules fires, because it walks history.
+    def _extension():
+        return extension_deferral(project_dir, prawduct_dir, plan, progress)
+
     if _rule_verify_resolutions_fires(prawduct_dir, project_dir):
+        ext = _extension()
+        if ext:
+            return MODE_DEFERRED, f"extension-deferred (fix in progress): {ext}"
         return "verify-resolutions", (
             "rule-1 verify-resolutions: prior findings have actionable "
             "(BLOCKING/WARNING) entries with a resolvable commit_reviewed "
@@ -282,25 +313,45 @@ def infer_mode(
 
     cumulative_reason = _rule_cumulative_fires(prawduct_dir, project_dir)
     if cumulative_reason:
+        ext = _extension()
+        if ext:
+            return MODE_DEFERRED, f"extension-deferred (mid-plan, clean tree): {ext}"
         return "cumulative", f"rule-2 cumulative: {cumulative_reason}"
+
+    # Short-plan deferral (#292), between rules 2 and 3. Rules 1, 1b and 2 are
+    # untouched above it on purpose: a builder mid-fix on findings a prior
+    # review DID record still gets `verify-resolutions`, and a clean tree with
+    # a bundle still gets `cumulative` — the boundary review is what the
+    # deferral defers TO, so nothing here may pre-empt it. What it pre-empts is
+    # rules 3 and 4, the two that would infer an inner-stage review of the
+    # uncommitted diff: on a short plan touching no risk surface that review
+    # is the round the owner traded away, and inferring it would spend it.
+    # Only a tree with code in flight is deferred — a record-only diff has no
+    # chunk work to defer, and falls through to rule 4's honest answer.
+    deferral = short_plan_deferral(project_dir, prawduct_dir, plan, progress)
+    if deferral.defers and _get_uncommitted_code_files(project_dir):
+        return MODE_DEFERRED, _deferral_rationale(deferral, plan)
 
     final_reason = _rule_final_fires(project_dir, total, complete)
     if final_reason:
         return "final", f"rule-3 final: {final_reason}"
 
-    # Rule 4: chunk only when a build plan grounds the choice AND there is
-    # something a working-tree-scoped mode could review; otherwise fall through
-    # to ``final`` (the historical fail-safe norm documented in the SKILL
-    # files). Without a plan there's no "chunk" for chunk-mode to scope to —
-    # defaulting to ``final`` matches the rule "missing/unrecognized → final"
-    # the SKILL has always promised.
-    #
-    # `chunk` and `final` both review the uncommitted diff (HEAD tree → captured
-    # working tree), so on a clean tree their interval is EMPTY and
-    # `critic-begin` refuses — correctly, but only after the round-trip. A mode
-    # that cannot review anything is not the answer to "what should I run",
-    # whichever rule matched. `cumulative` is the mode whose interval is
-    # committed, and it is what the refusal message named as the remedy.
+    # Rule 4: the default when nothing else fired is the INNER-STAGE review of
+    # whatever interval exists (the stage-keyed rigor norm). `chunk` and
+    # `final` both end at the captured working tree (from HEAD's tree, or from
+    # the covered frontier behind it), so on a clean tree with nothing
+    # unreviewed behind HEAD their interval is EMPTY and `critic-begin`
+    # refuses — correctly, but only after the round-trip. A mode that cannot
+    # review anything is not the answer to "what should I run", whichever rule
+    # matched. `cumulative` is the mode whose interval is committed, and it is
+    # what the refusal message named as the remedy — so a clean tree with a
+    # dispatchable bundle answers `cumulative`, and everything else answers
+    # `chunk`. A plan grounds the choice when one exists; without one, `chunk`
+    # is still the answer, because a planless diff is an uncommitted interval
+    # and the cheap review of it is the default. `final` is never the
+    # fall-through: it used to be, on the belief that more review is the safe
+    # failure direction, and the norm retired that belief — an inner-stage
+    # review run at boundary rigor is a defect priced in minutes and rounds.
     if _working_tree_is_empty(project_dir):
         redirect = _clean_tree_redirect(prawduct_dir, project_dir)
         if redirect:
@@ -310,9 +361,9 @@ def infer_mode(
             f"rule-4 chunk: {_plan_relation_note(plan)}, prior chunks "
             "committed, no fix-in-progress signal, no cumulative precondition"
         )
-    return "final", (
-        "rule-4 final: no active build plan and no other rule fired — "
-        "fail-safe to thoroughness"
+    return "chunk", (
+        "rule-4 chunk: no active build plan and no other rule fired — unsure "
+        "defaults to the inner-stage review of whatever interval exists"
     )
 
 
@@ -325,8 +376,9 @@ def _explicit_mode(
     second-guess it: `cumulative` and `verify-resolutions` come back exactly as
     typed, and so do `chunk` and `final` in every case but one.
 
-    That case is the defect (#684). `chunk` and `final` share the interval
-    HEAD-tree → working-tree, so on a clean tree it is EMPTY and `critic-begin`
+    That case is the defect (#684). `chunk` and `final` share an interval
+    ending at the working tree, so on a clean tree with nothing unreviewed
+    behind HEAD it is EMPTY and `critic-begin`
     refuses — after the operator has spent the dispatch. Rule 4 already declines
     to *infer* a mode that cannot review anything (:func:`_clean_tree_redirect`),
     but the explicit-args return sat above the whole ladder, so naming the mode
@@ -357,7 +409,8 @@ def _explicit_mode(
 def _clean_tree_redirect(prawduct_dir: Path, project_dir: Path) -> str:
     """Rationale for answering ``cumulative`` on a clean tree, or ``""``.
 
-    ``chunk`` and ``final`` both review HEAD-tree → working-tree, so with an
+    ``chunk`` and ``final`` both end at the working tree, so on a clean tree
+    their interval is empty unless a covered frontier sits behind HEAD, and an
     empty interval ``critic-begin`` refuses. Recommending one anyway costs a
     round-trip and names no remedy the caller didn't already have.
 
@@ -387,8 +440,8 @@ def _clean_tree_redirect(prawduct_dir: Path, project_dir: Path) -> str:
     fresh cumulative record already covering HEAD means the bundle review was
     just run, so re-recommending it is the noise rule 2 declines to make. When
     none of that holds there is genuinely nothing dispatchable, and the caller
-    keeps the fail-safe answer with its honest refusal rather than a redirect to
-    a second refusal.
+    keeps the inner-stage answer (``chunk``) with its honest refusal rather
+    than a redirect to a second refusal.
     """
     base_branch, _ = _resolve_base_branch(project_dir)
     if not base_branch:
@@ -691,6 +744,389 @@ def _rule_final_fires(project_dir: Path, total: int, complete: int) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Short-plan deferral (#292) — a short plan owes one boundary review
+# ---------------------------------------------------------------------------
+
+#: The answer :func:`infer_mode` gives when no review is owed NOW: the plan is
+#: short, nothing it changed is a risk surface, and the boundary review at the
+#: last chunk covers every chunk. Output-only — never accepted as an argument
+#: or a plan field (it is not in :data:`_VALID_ARG_MODES`), because "run the
+#: deferred review" is not a mode anyone runs; the skill reads it and dispatches
+#: nothing. It is a fifth token rather than a non-zero exit because the skill
+#: reads a non-zero exit as inference FAILING and falls back to ``chunk`` —
+#: the exact review this answer exists to withhold.
+MODE_DEFERRED = "deferred"
+
+#: Upper bound on the chunk count of a plan that defers its per-chunk reviews.
+#: #292's proposed bound, carried by the review-stages plan as an owner-vetoable
+#: assumption; the evidence is chunk-mode yield (about one actionable finding
+#: per seven chunk reviews) against the assessment's small-scope medians (five
+#: rounds and twenty minutes for a scope of five files or fewer).
+SHORT_PLAN_MAX_CHUNKS = 3
+
+
+class ShortPlanDeferral(NamedTuple):
+    """Whether the branch's plan defers per-chunk review to the boundary.
+
+    ``reason`` is prose in the product's terms, fit for a rationale string or
+    a gate message, and is filled in BOTH directions: why the plan defers, or
+    which condition failed. ``last_chunk`` is whether the chunk the branch's
+    uncommitted work belongs to is the plan's last — the boundary review is
+    that chunk's review, so its readers (the Stop gate, the rationale) say
+    something different there. It is read against the ticks COMMITTED at HEAD
+    (:func:`buildplan_refs.committed_chunk_progress`), falling back to the
+    working tree only when the plan is not at HEAD: a tick made and not yet
+    committed belongs to the chunk just finished, and counting it would call
+    chunk N-1's Stop the last chunk's and block for a boundary review one
+    chunk early — which chunk N would then owe again, two `cumulative` runs
+    where the plan promised one.
+    """
+
+    defers: bool
+    reason: str
+    last_chunk: bool
+    total: int
+
+
+def short_plan_deferral(
+    project_dir: Path,
+    prawduct_dir: Path,
+    plan,
+    progress,
+) -> ShortPlanDeferral:
+    """Does this branch's plan owe one boundary review instead of one per chunk?
+
+    A plan defers when ALL of these hold, checked cheapest-first and each
+    named in ``reason`` when it fails:
+
+    - it has between 1 and :data:`SHORT_PLAN_MAX_CHUNKS` chunks with at least
+      one unticked;
+    - no chunk declares a ``Critic mode:`` — a declaration on ANY chunk is the
+      plan opting out, and the existing override then governs that chunk as it
+      always has;
+    - the branch is not the base branch itself — on the base there is no
+      merge-base…HEAD interval, so the "boundary review" the deferral names
+      could never run and every chunk would be deferred to nothing;
+    - no path the branch has changed (committed since the merge-base, or in
+      the working tree) is a risk surface, by the SAME predicate the roster
+      and ``classify-diff-risk`` use (:func:`lib.risk.paths_touch_risk_surface`
+      — declared ``risk_surfaces:`` when present, else the derived defaults
+      plus the product's contract paths). A second definition of "risk
+      surface" for this one consumer would be a second home for the fact.
+
+    The risk test is evaluated against the TREE, not against anything the plan
+    declares about its chunks: a chunk cannot be known to touch a surface until
+    it is built, so eligibility is re-asked at every inference and every Stop,
+    and flips off the moment a later chunk lands on a surface — that chunk then
+    owes its review like any other.
+
+    Fails closed at every degradation: a plan that cannot be read, a base that
+    does not resolve, a detached HEAD, a git listing that fails, and an
+    unparseable ``risk_surfaces:`` all answer "does not defer", so per-chunk
+    review stands wherever the predicate could not be evaluated. ``plan`` is a
+    ``buildplan_refs.ReviewedPlan`` and ``progress`` a ``ChunkProgress`` — the
+    caller resolves both once, through the single owners, and passes them in.
+    """
+    total, complete = progress.total, progress.complete
+    if total == 0:
+        return ShortPlanDeferral(False, "no build plan", False, 0)
+    if complete >= total:
+        return ShortPlanDeferral(
+            False,
+            f"every chunk of the {total}-chunk plan is ticked — nothing left to defer",
+            False,
+            total,
+        )
+    committed = buildplan_refs.committed_chunk_progress(project_dir, plan.path)
+    built_before = committed.complete if committed is not None else complete
+    last_chunk = total - built_before == 1
+    if total > SHORT_PLAN_MAX_CHUNKS:
+        return ShortPlanDeferral(
+            False,
+            f"the plan has {total} chunks (a short plan has at most "
+            f"{SHORT_PLAN_MAX_CHUNKS})",
+            last_chunk,
+            total,
+        )
+    declared = _declared_chunk_modes(prawduct_dir, plan.path)
+    if declared is None:
+        return ShortPlanDeferral(
+            False, "the build plan could not be read", last_chunk, total
+        )
+    if declared:
+        chunk_id, mode = declared[0]
+        return ShortPlanDeferral(
+            False,
+            f"Chunk {chunk_id} declares Critic mode: {mode} — the plan opted out "
+            "of the deferral",
+            last_chunk,
+            total,
+        )
+    branch = gitstate.current_branch(project_dir)
+    if not branch:
+        return ShortPlanDeferral(
+            False, "HEAD is detached, so there is no branch to defer along", last_chunk, total
+        )
+    base_branch, base_reason = _resolve_base_branch(project_dir)
+    if not base_branch:
+        return ShortPlanDeferral(
+            False,
+            f"no base branch resolves ({base_reason}), so there is no boundary "
+            "review to defer to",
+            last_chunk,
+            total,
+        )
+    if base_branch == branch or base_branch.endswith("/" + branch):
+        return ShortPlanDeferral(
+            False,
+            f"the work is on the base branch {branch} itself, where the boundary "
+            "review has no interval to cover",
+            last_chunk,
+            total,
+        )
+    paths = risk._review_scope_paths(project_dir, base_branch)
+    if paths is None:
+        return ShortPlanDeferral(
+            False,
+            "git could not list the paths this branch changed, so whether a "
+            "risk surface was touched is unknown",
+            last_chunk,
+            total,
+        )
+    touched, why = risk.paths_touch_risk_surface(prawduct_dir, paths)
+    if touched:
+        return ShortPlanDeferral(
+            False, f"a changed path is a risk surface — {why}", last_chunk, total
+        )
+    return ShortPlanDeferral(
+        True,
+        f"the plan has {total} chunk(s) and nothing {branch} has changed since "
+        f"{base_branch} is a risk surface ({why})",
+        last_chunk,
+        total,
+    )
+
+
+def later_review_owed(progress) -> bool:
+    """Whether the branch's plan still owes a review AFTER the one just done.
+
+    Two or more unticked chunks, not one. A lone unticked chunk is ambiguous:
+    it may be the chunk whose review just passed and has not been ticked yet
+    (nothing later is owed) or the one chunk left after a ticked one (a review
+    is owed). Reading it as "owed" would defer a fix that no later review will
+    ever cover, so the ambiguous case keeps the round — the cost of the
+    conservative reading is at most one round, never an unreviewed fix.
+    """
+    return progress.total - progress.complete >= 2
+
+
+def _newest_branch_review(project_dir: Path) -> "dict | None":
+    """The most recent ``review`` fact recorded on the checked-out branch, or ``None``.
+
+    Read from the clone-wide store and filtered by the ``actor.branch`` each fact
+    carries, so a sibling worktree's reviews of another branch never answer for
+    this one. Its tree need not be committed: a review of uncommitted work is
+    exactly the case where the tree it judged exists nowhere in the history.
+    """
+    from . import evidence  # noqa: PLC0415 — lazy, as this module's other lib imports are
+
+    branch = gitstate.current_branch(project_dir)
+    if not branch:
+        return None
+    read = evidence.read_facts(project_dir)
+    if read.get("status") == "error":
+        return None
+    reviews = [
+        f for f in read.get("facts") or []
+        if f.get("kind") == "review" and (f.get("actor") or {}).get("branch") == branch
+    ]
+    # The store is append-only, so its order IS the recording order; `ts` has
+    # one-second resolution and two reviews can share it. Position breaks the
+    # tie — a timestamp alone picks arbitrarily between same-second reviews.
+    return reviews[-1] if reviews else None
+
+
+def review_chain(facts: list[dict], newest: dict) -> list[dict]:
+    """Every review fact on the chain ``newest`` stands on, newest first.
+
+    The chain is structural: each review's ``base_tree`` is the ``head_tree`` of
+    the review before it (the link ``critic_consolidate.carried_blocking`` reads
+    one hop of). EVERY review standing at a linked tree is included, not only
+    the newest there, because a second review of an unchanged tree must not hide
+    the first; the walk steps back through the newest of them. Walked to the
+    end, because a chain can be several passes long.
+    """
+    reviews = [f for f in facts if f.get("kind") == "review"]
+    # Append order is recording order (the store is append-only); `ts` has
+    # one-second resolution, so it cannot order two reviews in the same second.
+    position = {f.get("id"): i for i, f in enumerate(reviews)}
+    chain: list[dict] = []
+    seen: set[str] = set()
+    current: "dict | None" = newest
+    while current is not None and current.get("id") not in seen:
+        seen.add(current.get("id"))
+        chain.append(current)
+        base = (current.get("body") or {}).get("base_tree")
+        here = position.get(current.get("id"), len(reviews))
+        earlier = [
+            f for f in reviews
+            if f.get("id") not in seen and (f.get("body") or {}).get("head_tree") == base
+            and position[f.get("id")] < here
+        ]
+        for other in earlier[:-1]:
+            seen.add(other.get("id"))
+            chain.append(other)
+        current = earlier[-1] if earlier else None
+    return chain
+
+
+def _open_blocker_on_chain(facts: list[dict], chain: list[dict]) -> bool:
+    """Whether any review on ``chain`` still holds an unresolved blocker.
+
+    A ``verify-resolutions`` pass records resolutions for the findings it names
+    and does not copy forward the ones it leaves open, so the newest review can
+    be clean while one it stands on is not. An open blocker anywhere on the
+    chain also blocks the gates, whose composed path stands on the same trees.
+    """
+    resolved = coverage_algebra.resolution_index(facts)
+    return any(coverage_algebra.unresolved_blocking(f, resolved) for f in chain)
+
+
+def boundary_review_on_chain(chain: list[dict]) -> bool:
+    """Whether a ``cumulative`` sits on ``chain`` — the builder is at the boundary.
+
+    A ``cumulative`` spans every chunk built so far and records at most one
+    chunk id, so after one the Status ticks cannot say whether a later chunk is
+    still to be built or merely awaits its tick: both read "unticked". The
+    review's mode can: a ``cumulative`` is the end-of-plan or pre-PR review, so
+    no later chunk review is coming to carry anything, and nothing may defer.
+    """
+    return any(
+        str((f.get("body") or {}).get("mode", "")).startswith("cumulative") for f in chain
+    )
+
+
+def extension_deferral(project_dir: Path, prawduct_dir: Path, plan, progress) -> "str | None":
+    """Why the next review will cover this state, or ``None`` when it will not.
+
+    A review of the uncovered work since the last reviewed tree is not owed NOW
+    only when ALL of these hold — each is the answer to a way the deferral can
+    skip a review that is owed:
+
+    1. **This chunk was reviewed.** The newest review on the branch
+       (:func:`_newest_branch_review`) is of the CURRENT, unticked chunk — by
+       the chunk id the fact records, or, when the dispatch passed none, the
+       chunk record-lint graded (itself read from the plan's Status, so any
+       review run while this chunk was current counts). Otherwise the pending
+       work may be a whole chunk nobody has reviewed, and deferring it would
+       skip that chunk's review rather than carry a fix. A fact carrying
+       neither defers nothing.
+    2. **No open blocker on the chain it stands on**
+       (:func:`_open_blocker_on_chain`). Checked on the facts, not on the
+       committed history: a review of uncommitted work leaves its tree nowhere
+       a history walk can find, so a blocker it raised is invisible to
+       :func:`gates.covered_frontier`. And not on the newest fact alone: a
+       verify pass does not copy forward a blocker it left open. Blockers clear
+       only through ``verify-resolutions``. Nor a ``cumulative`` on that chain
+       (:func:`boundary_review_on_chain`): after the boundary review, unticked
+       boxes cannot say whether a later chunk exists.
+    3. **A later review is owed** (:func:`later_review_owed`). With (1), two or
+       more unticked chunks means "this reviewed chunk, and at least one after
+       it", which is what makes the later review real.
+    4. **A covered frontier exists** (``gates.covered_frontier``), so that later
+       ``chunk``/``final`` review has a reviewed state to start from and covers
+       everything after it.
+
+    ``None`` on any failure, so a predicate that could not run never relaxes
+    anything.
+    """
+    if not later_review_owed(progress) or progress.current_id is None:
+        return None
+    newest = _newest_branch_review(project_dir)
+    if newest is None:
+        return None
+    body = newest.get("body") or {}
+    reviewed_chunk = body.get("chunk") or (body.get("record_lint") or {}).get("chunk_graded")
+    if not reviewed_chunk or buildplan_refs._normalize_chunk_id(
+        str(reviewed_chunk)
+    ) != buildplan_refs._normalize_chunk_id(str(progress.current_id)):
+        return None
+    from . import evidence, gates  # noqa: PLC0415 — lazy; gates is heavy and one-way
+
+    facts = evidence.read_facts(project_dir).get("facts") or []
+    chain = review_chain(facts, newest)
+    if _open_blocker_on_chain(facts, chain) or boundary_review_on_chain(chain):
+        return None
+    frontier = gates.covered_frontier(project_dir)
+    if frontier is None:
+        return None
+    left = progress.total - progress.complete
+    return (
+        f"chunk {progress.current_id} was reviewed with no open blocker and {left - 1} more "
+        f"chunk(s) of {plan.rel or 'the plan'} follow, so a later review is owed, and it "
+        f"starts from the last reviewed state ({frontier['commit'][:12]}) — it covers this "
+        "work too. Commit and carry on"
+    )
+
+
+def _declared_chunk_modes(
+    prawduct_dir: Path, plan_path: Path | None
+) -> "list[tuple[str, str]] | None":
+    """Every ``(chunk_id, mode)`` a plan's chunks declare, in Status order;
+    ``None`` when the plan (or one of its chunk sections) cannot be read.
+
+    Reads each chunk through :func:`_critic_mode_for_chunk`, the one reader of
+    the field, so a declaration counts here exactly when it would count as an
+    override there — an unrecognized value is ignored in both places.
+    """
+    if plan_path is None or not plan_path.is_file():
+        return None
+    try:
+        content = plan_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+    found: list[tuple[str, str]] = []
+    # The roster comes back finished from its one owner; walking Status here
+    # would be re-deriving the chunk list privately (BLD-7K3Q).
+    for chunk_id in buildplan_refs.status_chunk_ids(content):
+        read = _critic_mode_for_chunk(prawduct_dir, chunk_id, plan_path)
+        if read.unreadable:
+            return None
+        if read.mode is not None:
+            found.append((chunk_id, read.mode))
+    return found
+
+
+def _deferral_rationale(deferral: ShortPlanDeferral, plan) -> str:
+    """The ``mode_chosen_by``-shaped sentence for a :data:`MODE_DEFERRED` answer.
+
+    Two shapes, derived from ``last_chunk`` rather than written for the one in
+    mind: on a non-final chunk the reader is told to commit and carry on; on
+    the last chunk the reader is told that the boundary review IS this chunk's
+    review — the ``Type: cumulative-final`` sequencing without the declaration.
+    Both name the way back to a per-chunk review, because a deferral the reader
+    cannot decline is a gate, and this is advice.
+    """
+    if deferral.last_chunk:
+        what_next = (
+            "this is the last chunk and the boundary review is its review: "
+            "commit it, then `/prawduct:critic` infers `cumulative`, which is "
+            "this chunk's review and the PR gate's evidence — no separate `final`"
+        )
+    else:
+        what_next = (
+            "commit this chunk and carry on; the boundary review (`cumulative`, "
+            "inferred once the last chunk is committed) covers every chunk"
+        )
+    return (
+        f"short-plan deferral: no per-chunk review is owed — {deferral.reason}; "
+        f"{what_next}. An explicit mode (`/prawduct:critic chunk`) or a "
+        "`Critic mode:` field on any chunk restores per-chunk review. "
+        f"Grounded on {_plan_relation_note(plan)}"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Internal helpers — git + build-plan parsing
 # ---------------------------------------------------------------------------
 
@@ -705,9 +1141,9 @@ def _working_tree_is_empty(project_dir: Path) -> bool:
     flight", which the size-based rules want and this does not.
 
     Fails toward NOT empty: any git failure returns False, so an unreadable
-    state keeps the caller on the fail-safe answer rather than redirecting on a
-    tree it could not read. The guard covers the *raise* class too — an absent
-    binary or the timeout — because a docstring promising a return value while
+    state keeps the caller on the inner-stage answer rather than redirecting
+    to the boundary on a tree it could not read. The guard covers the *raise*
+    class too — an absent binary or the timeout — because a docstring promising a return value while
     the call propagates is a promise the code does not keep.
     """
     try:

@@ -32,6 +32,8 @@ from pathlib import Path
 
 import pytest
 
+from conftest import SHAPED_REFLECTION
+
 ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK = ROOT / "bin" / "prawduct-hook"
 HOOKS_JSON = ROOT / "hooks" / "hooks.json"
@@ -199,7 +201,7 @@ def run_plugin_hook(
     }
     return subprocess.run(
         ["python3", str(HOOK), command, *args],
-        capture_output=True, text=True, env=env, timeout=20, input=stdin,
+        capture_output=True, text=True, env=env, timeout=90, input=stdin,
     )
 
 
@@ -235,10 +237,12 @@ class TestPluginClearBriefing:
 
     def test_clear_briefing_namespaces_status_hints(self, tmp_path):
         # ADV-3K7Q (whole-briefing coherence): the plugin clear briefing's status
-        # lines — backlog triage and learnings lookup — must name the
-        # plugin-namespaced skills, not the bare file-sync forms that do not
-        # resolve in a plugin repo's command namespace. (The file-sync engine that
-        # kept the bare forms was retired in M4.)
+        # lines must name plugin-namespaced skills, not the bare file-sync forms
+        # that do not resolve in a plugin repo's command namespace. (The file-sync
+        # engine that kept the bare forms was retired in M4.) The learnings line
+        # no longer advertises a lookup skill at all: a legacy `.prawduct/
+        # learnings.md` is reported UNMIGRATED with the migrate directive
+        # (learnings-v2 R4), and the bare `/learnings` form must still not leak.
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
         # A structured backlog (two items) so the count line fires and we isolate
@@ -250,9 +254,11 @@ class TestPluginClearBriefing:
         (prawduct / "learnings.md").write_text("# Learnings\n\n- a standing rule\n")
         result = run_plugin_hook("clear", tmp_path)
         assert result.returncode == 0, result.stderr
-        # Both status hints name the plugin-namespaced skills...
+        # The backlog hint names the plugin-namespaced skill, and the legacy
+        # learnings file yields the migrate directive rather than a lookup hint...
         assert "/prawduct:backlog to triage" in result.stdout
-        assert "/prawduct:learnings <topic>" in result.stdout
+        assert "Learnings: UNMIGRATED" in result.stdout
+        assert "prawduct-hook learnings-migrate" in result.stdout
         # ...and the bare file-sync forms do not leak into a plugin briefing.
         assert "(/backlog to triage)" not in result.stdout
         assert "/learnings <topic>" not in result.stdout
@@ -289,9 +295,7 @@ class TestPluginStopGate:
         artifacts = prawduct / "artifacts"
         artifacts.mkdir(parents=True)
         (artifacts / "build-plan.md").write_text("# Build Plan\n\n## Status\n- [ ] Chunk 1\n")
-        (prawduct / ".session-reflected").write_text(
-            "Session reflection: implemented the chunk and verified all tests pass cleanly."
-        )
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
         (prawduct / ".session-git-baseline").write_text("")
         _make_session_start(prawduct)
         return prawduct
@@ -326,12 +330,38 @@ class TestPluginStopGate:
         assert "no composed review coverage" in result.stderr
 
     def test_stop_passes_with_no_build_plan(self, tmp_path):
+        """No active plan means no CRITIC gate — that is what this pins.
+
+        It used to mean no gate at all, and the reflection is now written into
+        the fixture rather than omitted, because the reflection gate stopped
+        keying on a build plan (#685) and fires on the code diff below whether
+        or not one exists. Isolating this test's subject is what the write buys;
+        the partner beneath it pins the behaviour that changed.
+        """
+        prawduct = tmp_path / ".prawduct"
+        prawduct.mkdir()
+        (prawduct / ".session-git-baseline").write_text("")
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
+        _make_session_start(prawduct)
+        result = run_plugin_hook("stop", tmp_path, git_status=" M src/app.py")
+        assert result.returncode == 0, (result.stdout, result.stderr)
+
+    def test_stop_blocks_on_reflection_with_no_build_plan(self, tmp_path):
+        """The contrast partner, and the behaviour change stated as a test.
+
+        Same repo, same diff, reflection omitted: this used to exit 0 with an
+        advisory note on stderr. It now blocks, and on REFLECTION rather than
+        CRITIC — the plan-less session is the one whose lesson was never getting
+        written down, which is the whole of #685.
+        """
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
         (prawduct / ".session-git-baseline").write_text("")
         _make_session_start(prawduct)
         result = run_plugin_hook("stop", tmp_path, git_status=" M src/app.py")
-        assert result.returncode == 0, (result.stdout, result.stderr)
+        assert result.returncode == 2, (result.stdout, result.stderr)
+        assert "REFLECTION:" in result.stderr
+        assert "CRITIC" not in result.stderr
 
     def test_stop_blocks_when_findings_mtime_exactly_ties_session_start(self, tmp_path):
         """STH-6B4R tie rule: findings_mtime == session_start is NOT fresh.
@@ -375,9 +405,7 @@ class TestPluginStopGateBackgroundDefer:
         artifacts = prawduct / "artifacts"
         artifacts.mkdir(parents=True)
         (artifacts / "build-plan.md").write_text("# Build Plan\n\n## Status\n- [ ] Chunk 1\n")
-        (prawduct / ".session-reflected").write_text(
-            "Session reflection: implemented the chunk and verified all tests pass cleanly."
-        )
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
         (prawduct / ".session-git-baseline").write_text("")
         _make_session_start(prawduct)
         return prawduct
@@ -471,9 +499,7 @@ class TestPluginStopGateRegressions:
         artifacts = prawduct / "artifacts"
         artifacts.mkdir(parents=True)
         (artifacts / "build-plan.md").write_text("# Build Plan\n\n## Status\n- [ ] Chunk 1\n")
-        (prawduct / ".session-reflected").write_text(
-            "Session reflection: implemented the chunk and verified all tests pass cleanly."
-        )
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
         (prawduct / ".session-git-baseline").write_text("")
         _make_session_start(prawduct)
         return prawduct
@@ -514,9 +540,7 @@ class TestPluginStopGateRegressions:
             "**Type:** trivial\n"
             "**Trivial because:** a one-word typo fix in a skill doc.\n"
         )
-        (prawduct / ".session-reflected").write_text(
-            "Session reflection: edited the skill doc and confirmed the change reads cleanly."
-        )
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
         (prawduct / ".session-git-baseline").write_text("")
         _make_session_start(prawduct)
         result = run_plugin_hook(
@@ -528,11 +552,15 @@ class TestPluginStopGateRegressions:
 
     def test_unknown_gate_waiver_key_warns_without_blocking(self, tmp_path):
         # (c) An unknown key in .gates-waived emits a stderr diagnostic but never
-        # blocks — unknown keys simply have no effect. Use a no-build-plan repo so
-        # nothing else would block: exit 0, with the diagnostic present.
+        # blocks — unknown keys simply have no effect. Nothing else may block, so
+        # the repo has no build plan (no Critic gate) AND a shaped reflection:
+        # since #685 the reflection gate fires on the code diff below with or
+        # without a plan, so omitting it would make this test pass on the wrong
+        # gate's exit code. Expected: exit 0, with the diagnostic present.
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
         (prawduct / ".session-git-baseline").write_text("")
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
         _make_session_start(prawduct)
         (prawduct / ".gates-waived").write_text(json.dumps({"bogus": "not a real gate"}))
         result = run_plugin_hook("stop", tmp_path, git_status=" M src/app.py")
@@ -553,9 +581,7 @@ class TestStopGateAttribution:
         (prawduct / "artifacts" / "build-plan.md").write_text(
             "# Build Plan\n\n## Status\n- [ ] Chunk 1\n"
         )
-        (prawduct / ".session-reflected").write_text(
-            "Session reflection: implemented the chunk and verified all tests pass cleanly."
-        )
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
         (prawduct / ".session-git-baseline").write_text("")
         _make_session_start(prawduct)
         result = run_plugin_hook("stop", tmp_path, git_status=" M src/app.py")
@@ -689,7 +715,11 @@ class TestPluginDocsNamespacing:
         cycle = (ROOT / "skills/critic/review-cycle.md").read_text(encoding="utf-8")
         assert "/prawduct:critic" in cycle and "/prawduct:pr create" in cycle
         planning = (ROOT / "methodology/planning.md").read_text(encoding="utf-8")
-        assert "/prawduct:learnings" in planning
+        # Named the deleted learnings lookup skill. What this pins is the
+        # NAMESPACED form, not any one skill, so it retargets to another skill
+        # planning.md names rather than being dropped — dropping it would leave
+        # planning.md the one guide here with no namespaced form asserted.
+        assert "/prawduct:backlog" in planning
         building = (ROOT / "methodology/building.md").read_text(encoding="utf-8")
         assert "/prawduct:critic" in building and "/prawduct:pr" in building
 
@@ -779,7 +809,7 @@ class TestPluginSubcommandsResolveViaLib:
         self._repo(tmp_path)
         result = subprocess.run(
             ["python3", str(HOOK), "advisory", "list"],
-            capture_output=True, text=True, timeout=20,
+            capture_output=True, text=True, timeout=90,
             env={"HOME": str(tmp_path / "_home"), "CLAUDE_PROJECT_DIR": str(tmp_path),
                  "CLAUDE_PLUGIN_ROOT": str(ROOT), "PATH": "/usr/bin:/bin",
                  "PYTHONDONTWRITEBYTECODE": "1"},
@@ -939,7 +969,7 @@ def _run_in(repo: Path, *args: str) -> subprocess.CompletedProcess:
     home.mkdir(exist_ok=True)
     return subprocess.run(
         ["python3", str(HOOK), *args],
-        capture_output=True, text=True, timeout=20,
+        capture_output=True, text=True, timeout=90,
         env={"HOME": str(home), "CLAUDE_PROJECT_DIR": str(repo),
              "CLAUDE_PLUGIN_ROOT": str(ROOT), "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
              "PYTHONDONTWRITEBYTECODE": "1"},
@@ -1380,111 +1410,45 @@ class TestVerifyOperatorVerificationSubcommand:
         assert "verify-operator-verification" in result.stderr
 
 
-class TestAuditLearningsSubcommand:
-    """`prawduct-hook audit-learnings [--apply] [--json]` (Chunk 13) is the
-    plugin-native replacement for the legacy `prawduct-setup.py audit-learnings`
-    path, gone in a migrated consumer. It operates purely on the consumer's own
-    `.prawduct/learnings.md`; `/prawduct:doctor`'s Audit-Learnings flow invokes
-    it with --json. (Entries here carry NO `sentinel=` so no pytest subprocess
-    runs — the runner only shells out for retirement-candidate sentinels.)
-    """
-
-    def _seed(self, tmp_path: Path, learnings: str | None) -> Path:
-        repo = tmp_path / "consumer"
-        prawduct = repo / ".prawduct"
-        prawduct.mkdir(parents=True)
-        if learnings is not None:
-            (prawduct / "learnings.md").write_text(learnings)
-        return repo
-
-    def test_promotion_candidate_surfaced_json(self, tmp_path):
-        repo = self._seed(
-            tmp_path,
-            "# Learnings\n\n## A confirmed rule\n"
-            "<!-- prawduct-learning: confirmations=2; created=2026-01-01 -->\n\nBody.\n",
-        )
-        result = _run_in(repo, "audit-learnings", "--json")
-        assert result.returncode == 0, result.stderr
-        data = json.loads(result.stdout)
-        assert data["applied"] is False
-        assert [p["title"] for p in data["promotions"]] == ["A confirmed rule"]
-
-    def test_stale_flag_surfaced_json(self, tmp_path):
-        repo = self._seed(
-            tmp_path,
-            "# Learnings\n\n## An old unconfirmed rule\n"
-            "<!-- prawduct-learning: confirmations=1; created=2020-01-01 -->\n\nBody.\n",
-        )
-        result = _run_in(repo, "audit-learnings", "--json")
-        assert result.returncode == 0, result.stderr
-        data = json.loads(result.stdout)
-        assert [s["title"] for s in data["stale_flags"]] == ["An old unconfirmed rule"]
-
-    def test_missing_learnings_is_clean_empty_not_error(self, tmp_path):
-        # A .prawduct/ with no learnings.md is a clean empty result, not an error.
-        repo = self._seed(tmp_path, None)
-        result = _run_in(repo, "audit-learnings", "--json")
-        assert result.returncode == 0, result.stderr
-        data = json.loads(result.stdout)
-        assert data["promotions"] == [] and data["retirements"] == []
-        assert "error" not in data
-
-    def test_non_prawduct_dir_errors(self, tmp_path):
-        repo = tmp_path / "bare"
-        repo.mkdir()
-        result = _run_in(repo, "audit-learnings", "--json")
-        assert result.returncode == 1
-        data = json.loads(result.stdout)
-        assert "error" in data
-
-    def test_human_summary_without_json(self, tmp_path):
-        repo = self._seed(
-            tmp_path,
-            "# Learnings\n\n## A confirmed rule\n"
-            "<!-- prawduct-learning: confirmations=2; created=2026-01-01 -->\n\nBody.\n",
-        )
-        result = _run_in(repo, "audit-learnings")
-        assert result.returncode == 0, result.stderr
-        assert "promotion candidate" in result.stdout
-        assert "A confirmed rule" in result.stdout
-
-    def test_subcommand_listed_in_usage(self, tmp_path):
-        repo = tmp_path / "r"
-        repo.mkdir()
-        result = _run_in(repo, "bogus-subcommand")
-        assert result.returncode == 1
-        assert "audit-learnings" in result.stderr
-
-
 class TestFlagOnlyArgRejection:
     """STH-5R2Q: flag-only subcommands (no positionals; options detected via
-    `"--flag" in argv`) historically swallowed any unrecognized token. That
-    masked a real bug — a test passed `tmp_path` positionally to
-    `audit-learnings`, which silently ignored it and audited the inherited
-    CLAUDE_PROJECT_DIR repo instead. Each flag-only command now rejects unknown
-    args with exit 2 (the hook's usage-error convention), matching the
-    fail-closed arg handling in lib.ledger / lib.telemetry / lib.risk.
+    `"--flag" in argv`) historically swallowed any unrecognized token, so a
+    directory passed positionally — meaning "operate on this one" — was ignored
+    and the command operated on the inherited CLAUDE_PROJECT_DIR repo instead.
+    Each flag-only command now rejects unknown args with exit 2 (the hook's
+    usage-error convention), matching the fail-closed arg handling in
+    lib.ledger / lib.telemetry / lib.risk.
+
+    The subject must be a command with a live body: a deprecated-inert one
+    accepts every token by design, so it would pass the shape of these tests
+    while asserting their opposite (`tests/test_deprecated_inert_commands.py`
+    holds that contract).
     """
 
-    def test_audit_learnings_rejects_unknown_positional(self, tmp_path):
+    def test_flag_only_command_rejects_unknown_positional(self, tmp_path):
         repo = tmp_path / "r"
         (repo / ".prawduct").mkdir(parents=True)
-        result = _run_in(repo, "audit-learnings", str(repo), "--json")
+        result = _run_in(repo, "norm-index-scaffold", str(repo), "--json")
         assert result.returncode == 2
         assert "unknown argument" in result.stderr
 
-    def test_audit_learnings_rejects_unknown_flag(self, tmp_path):
+    def test_flag_only_command_rejects_unknown_flag(self, tmp_path):
         repo = tmp_path / "r"
         (repo / ".prawduct").mkdir(parents=True)
-        result = _run_in(repo, "audit-learnings", "--bogus")
+        result = _run_in(repo, "norm-index-scaffold", "--bogus")
         assert result.returncode == 2
         assert "unknown argument" in result.stderr
 
-    def test_audit_learnings_recognized_flags_still_pass(self, tmp_path):
+    def test_flag_only_command_recognized_flags_still_pass(self, tmp_path):
         repo = tmp_path / "r"
-        (repo / ".prawduct").mkdir(parents=True)
-        (repo / ".prawduct" / "learnings.md").write_text("# Learnings\n")
-        result = _run_in(repo, "audit-learnings", "--apply", "--json")
+        (repo / ".prawduct" / "artifacts").mkdir(parents=True)
+        # `norm-index-scaffold` reads the preferences file — an absent one is a
+        # finding and exits 1, so a bare `.prawduct/` would fail this for a
+        # reason that has nothing to do with the flags being recognised.
+        (repo / ".prawduct" / "artifacts" / "project-preferences.md").write_text(
+            "# Preferences\n"
+        )
+        result = _run_in(repo, "norm-index-scaffold", "--apply", "--json")
         assert result.returncode == 0, result.stderr
 
     def test_repo_disable_rejects_unknown_arg(self, tmp_path):
@@ -2045,9 +2009,9 @@ class TestFromCountsIngest:
 
     def test_rejects_combination_with_test_command(self, tmp_path):
         # A declared test_command emits JUnit, so hand-typed counts (no artifact)
-        # stay rejected — but the error redirects to --from-junit, which ingests
-        # that report without a re-run (fixes the discoverability half: the agent
-        # need not guess the escape hatch).
+        # stay rejected. This test owns the refusal and the --from-junit route;
+        # whether the message also serves a caller who has NOT run yet is the
+        # sibling's subject.
         repo = self._repo(tmp_path)
         (repo / ".prawduct" / "project-state.yaml").write_text(
             "test_command: python3 -m pytest --junit-xml={junit_xml} -q\n"
@@ -2057,6 +2021,34 @@ class TestFromCountsIngest:
         assert res.returncode == 2
         assert "test_command" in res.stderr
         assert "from-junit" in res.stderr.lower()
+
+    def test_refusal_names_the_path_for_a_caller_who_has_not_run_yet(self, tmp_path):
+        """The refusal serves two callers and must name both ways out.
+
+        `--from-junit` answers someone already holding a report. It is useless
+        to someone who has not run the suite — and naming only it sent such a
+        caller off to run the declared suite BY HAND, which emits no report to
+        ingest (the `{junit_xml}` path is the hook's to substitute), leaving a
+        second full suite run as the only way to record. A bare `record` runs
+        the declared command and records in one step; the message says so.
+        """
+        repo = self._repo(tmp_path)
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            "test_command: python3 -m pytest --junit-xml={junit_xml} -q\n"
+        )
+        res = _run_in(repo, "test-evidence", "record", "--from-counts",
+                      "passed=1", "failed=0")
+        assert res.returncode == 2
+        err = res.stderr.lower()
+        # The command is the load-bearing token: without it the message can be
+        # read sympathetically and still leave the caller with nowhere to go.
+        assert "test-evidence record" in err, res.stderr
+        # These two are literal fragments, not a property — they pin THIS
+        # phrasing of "you have not run yet / this does it in one step", and a
+        # reworded message must update them rather than silently pass.
+        assert "have not run" in err and "one step" in err, res.stderr
+        # ...without displacing the answer for the caller who HAS a report.
+        assert "from-junit" in err, res.stderr
 
     def test_head_tilde1_base_emits_advisory(self, tmp_path):
         # A repo NOT on main with no origin → the recorder's overlay base falls
@@ -2659,6 +2651,159 @@ class TestTreeValidatedFreshness:
             "backdated --from-counts is stale (timestamp-only; no tree clause)"
 
 
+class TestTestStatusNamesWhichClauseAnswered:
+    """`test-status` says which disjunct bought the exit 0, and they differ.
+
+    Session-freshness asks WHEN the recorded run happened and never consults
+    the tree, so it is satisfied by evidence from a tree the run could not have
+    met. Tree-validity asks WHICH TREE the run covered. Both are sufficient to
+    skip the re-run, so the exit code is the same for each — which is exactly
+    why a bare `current:` was a problem: three governing skill files told their
+    readers exit 0 meant the evidence covered the current tree, and on the
+    session-fresh path it never did.
+
+    These pin the disclosure, not a new gate. Every case asserts the exit code
+    is UNCHANGED alongside the label, because a regression that started
+    refusing session-fresh evidence would satisfy a label-only assertion while
+    reversing the trade this command exists to make.
+    """
+
+    def _seed(self, tmp_path, name: str, *, backdate: bool) -> Path:
+        """Recorded green evidence, with the timestamp on either side of the marker.
+
+        `backdate=False` leaves the record session-fresh, so clause 1 answers.
+        `backdate=True` predates it, so only clause 2 can.
+        """
+        repo = tmp_path / name
+        repo.mkdir()
+        (repo / ".prawduct").mkdir()
+        (repo / "src").mkdir()
+        (repo / "src" / "app.py").write_text("def add(a, b):\n    return a + b\n")
+        (repo / "test_app.py").write_text("def test_ok():\n    assert True\n")
+        _git(repo, "init", "-b", "main")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "c1")
+        _make_session_start(repo / ".prawduct", offset_seconds=-60)
+        assert _run_in(repo, "test-evidence", "record").returncode == 0, "seed record"
+        if backdate:
+            ev_path = repo / ".prawduct" / ".test-evidence.json"
+            ev = json.loads(ev_path.read_text())
+            ev["timestamp"] = "2000-01-01T00:00:00Z"
+            ev_path.write_text(json.dumps(ev))
+        return repo
+
+    def test_session_fresh_evidence_on_a_moved_tree_says_it_is_not_tree_vouched(self, tmp_path):
+        """The reported defect's own repro: record, advance the tree, ask.
+
+        The judgeable edit means the recorded run demonstrably did not cover
+        this tree. Exit 0 is correct and deliberate (trust-the-cycle), and the
+        line must not let a reader conclude the tree was checked and agreed.
+        """
+        from lib import gates  # noqa: PLC0415 — in-process import, mirrors other lib unit tests
+
+        repo = self._seed(tmp_path, "sessionfresh", backdate=False)
+        (repo / "src" / "app.py").write_text("def add(a, b):\n    return a + b + 1\n")
+        result = _run_in(repo, "test-status")
+        assert result.returncode == 0, \
+            "session-fresh evidence still skips the re-run — the trade is unchanged"
+        assert gates.CURRENT_SESSION_LABEL in result.stdout, \
+            "a session-fresh answer must not read as tree coverage"
+
+    def test_tree_valid_evidence_is_labelled_as_such(self, tmp_path):
+        from lib import gates  # noqa: PLC0415 — in-process import, mirrors other lib unit tests
+
+        repo = self._seed(tmp_path, "treevalid", backdate=True)
+        result = _run_in(repo, "test-status")
+        assert result.returncode == 0, "an unchanged judgeable tree is current"
+        assert gates.CURRENT_TREE_LABEL in result.stdout
+        assert gates.CURRENT_SESSION_LABEL not in result.stdout, \
+            "the stronger guarantee must not carry the weaker one's caveat"
+
+    def test_evidence_that_is_both_fresh_and_tree_identical_takes_the_tree_label(self, tmp_path):
+        """The under-claim guard, and the reason the tree clause is asked FIRST.
+
+        Session-freshness alone would answer this case, and answering it that
+        way is what the earlier shape did: it returned before `evidence_tree`
+        was read, so a record that DID meet this exact tree still printed the
+        weaker label. A caller reading that under-claim re-runs the suite the
+        disjunction exists to avoid — which is the expensive direction, so the
+        cheap tree check is paid unconditionally to buy the stronger answer.
+
+        Goes red if the tree clause is moved back behind the session return.
+        """
+        from lib import gates  # noqa: PLC0415 — in-process import, mirrors other lib unit tests
+
+        repo = self._seed(tmp_path, "bothclauses", backdate=False)
+        result = _run_in(repo, "test-status")
+        assert result.returncode == 0
+        assert gates.CURRENT_TREE_LABEL in result.stdout, \
+            "fresh AND tree-identical is tree-valid; saying only session-fresh under-claims"
+
+    def test_a_session_fresh_record_with_no_tree_still_reads_current(self, tmp_path):
+        """--from-counts records no tree, so the clause cannot be asked at all.
+
+        The tree check now runs on the session path, which must not turn an
+        un-askable question into a refusal: this record is session-fresh and
+        has no `evidence_tree`, and it stays current on clause 1 alone. Goes
+        red if the unconditional tree check is made a REQUIREMENT rather than
+        an opportunity.
+        """
+        from lib import gates  # noqa: PLC0415 — in-process import, mirrors other lib unit tests
+
+        repo = tmp_path / "notree"
+        repo.mkdir()
+        (repo / ".prawduct").mkdir()
+        (repo / "test_ok.py").write_text("def test_ok():\n    assert True\n")
+        _git(repo, "init", "-b", "main")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "c1")
+        _make_session_start(repo / ".prawduct", offset_seconds=-60)
+        assert _run_in(repo, "test-evidence", "record", "--from-counts",
+                       "passed=1", "failed=0").returncode == 0
+        result = _run_in(repo, "test-status")
+        assert result.returncode == 0, "session-freshness alone still vouches"
+        assert gates.CURRENT_SESSION_LABEL in result.stdout
+
+    def test_the_stale_line_is_untouched(self, tmp_path):
+        """The label rides only the exit-0 paths.
+
+        A `stale:` line that grew a parenthetical would break every reader
+        matching the prefix, and there is no clause to name — nothing answered.
+        """
+        repo = self._seed(tmp_path, "stale", backdate=True)
+        (repo / "src" / "app.py").write_text("def add(a, b):\n    return a + b + 1\n")
+        result = _run_in(repo, "test-status")
+        assert result.returncode == 1
+        assert result.stdout.startswith("stale: "), \
+            "the stale verdict keeps its bare prefix"
+        assert "evidence predates session" in result.stdout, \
+            "and its reason text is unchanged"
+
+    def test_tests_are_current_returns_the_clause_for_each_disjunct(self, tmp_path):
+        """The field itself, one case per value.
+
+        Asserted structurally rather than by matching `reason`, which is prose
+        a wording pass may rewrite. `none` is pinned on the same footing as the
+        two positive answers: a caller that labels on `clause == "tree"` is
+        deciding what a False verdict prints too.
+        """
+        from lib import gates  # noqa: PLC0415 — in-process import, mirrors other lib unit tests
+
+        # "session" needs BOTH a fresh timestamp and a tree the run did not
+        # meet — on an unchanged tree the stronger clause answers first, which
+        # is the under-claim guard two tests above.
+        fresh = self._seed(tmp_path, "clause_session", backdate=False)
+        (fresh / "src" / "app.py").write_text("def add(a, b):\n    return a + b + 1\n")
+        assert gates.tests_are_current(fresh)[2] == "session"
+
+        tree = self._seed(tmp_path, "clause_tree", backdate=True)
+        assert gates.tests_are_current(tree)[2] == "tree"
+
+        (tree / "src" / "app.py").write_text("def add(a, b):\n    return a + b + 1\n")
+        is_current, _reason, clause = gates.tests_are_current(tree)
+        assert (is_current, clause) == (False, "none")
+
+
 class TestUnanchoredFreshnessFailsClosed:
     """STH-6D4Q — with no `.session-start`, the tree clause is the ONLY clause.
 
@@ -3136,7 +3281,7 @@ class TestJurisdictionSubcommand:
         result = subprocess.run(
             ["python3", str(HOOK), "jurisdiction"],
             input="adopt the telemetry substrate for tracing",
-            capture_output=True, text=True, timeout=20,
+            capture_output=True, text=True, timeout=90,
             env={"HOME": str(home), "CLAUDE_PROJECT_DIR": str(repo),
                  "CLAUDE_PLUGIN_ROOT": str(ROOT),
                  "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
@@ -3484,15 +3629,49 @@ class TestGreenIsEvidenceTrigger:
 
         Pins the three failure modes it exists to prevent — an unreachable
         fixture, a non-discriminating assertion, and a machine-dependent branch
-        — plus the one-directional-mutation caveat that is the reason a builder
-        who already ran a mutation pass still needs to read it.
+        — which together ARE the cheap half this directive keeps: for each test,
+        name what would turn it red.
         """
         hook = _load_hook_module()
         text = hook._GREEN_IS_EVIDENCE_DIRECTIVE
+        assert "name the change that would flip it" in text
         assert "REACHES the subject" in text
         assert "cannot tell the two orderings apart" in text
         assert "happens to exist on this machine" in text
-        assert "blind to what your change broke beside it" in text
+
+    def test_the_mutation_half_stays_at_the_boundary_not_at_record_time(self):
+        """The inner/boundary split, asserted on BOTH sides of the move.
+
+        A mutation costs a run per claim, which is the wall clock the
+        stage-keyed rigor norm buys back at the inner stage — so the
+        mutation-watch rule is owed once, over the bundle, at PR pre-review.
+
+        The NEGATIVE half matches the exact strings that CARRY the two moved
+        behaviours (the watch-it-go-red rule and the one-directional caveat),
+        not a loose phrase about mutation: `record`'s remaining text may say
+        whatever else it likes about tests. It is paired with the positive half
+        above and with the presence assertion at the surface the rule moved to
+        — `docs/discipline.md` row 1 names that surface, and
+        `tests/test_discipline_table.py` reads the row.
+        """
+        hook = _load_hook_module()
+        text = hook._GREEN_IS_EVIDENCE_DIRECTIVE
+        assert "a mutation you did not watch go red applied nothing" not in text, (
+            "the mutation-watch rule is back at record time; it is a per-claim "
+            "run and belongs at the boundary, where it is paid once"
+        )
+        assert "blind to what your change broke beside it" not in text, (
+            "the one-directional-revert caveat is back at record time — it is "
+            "the mutation rule's other half and moves with it"
+        )
+        skill = (
+            Path(__file__).resolve().parent.parent
+            / "plugin" / "skills" / "pr" / "SKILL.md"
+        ).read_text()
+        assert "a mutation you did not watch go red applied nothing" in skill, (
+            "the mutation-watch rule left record time and did not arrive at the "
+            "boundary — deleted, not moved"
+        )
 
 
 # =============================================================================
