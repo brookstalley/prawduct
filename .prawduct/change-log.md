@@ -41,6 +41,18 @@ list three times, which on a large review is far more than the raise.
 **Not measured yet.** The saving is expected to be the prompt-writing time the lists cost. The
 next coordinator review on a large diff gives the number: its reviewers' start offsets, read
 from the transcripts as the discovery did. Tracked as #885.
+## 2026-09-22: develop opens 3.6.1-dev.5
+
+<!-- prawduct: type=chore | scope=dev-track-bump-3.6.1-dev.5 -->
+
+The dev track's version moves to `3.6.1-dev.5` in the four carriers (`plugin/VERSION`,
+`plugin.json`, `pyproject.toml`, the open `plugin/CHANGELOG.md` heading), so repos on the develop
+track pick up `measured-round-price`, which merged after `-dev.4` was opened. The version string is
+the plugin cache key; a repo that already resolved the `3.6.1-dev.4` cache would otherwise never see
+it.
+
+**No consumer notes were owed.** `measured-round-price` already carries its entry in the open
+`plugin/CHANGELOG.md` section.
 
 ## 2026-09-22: A round is priced from the clock, not from the reviewer's estimate
 
