@@ -146,5 +146,5 @@ the plan's review).
 ## Status
 
 - [x] Chunk 1: A chunk/final review starts at the covered frontier, and the gates can see it
-- [ ] Chunk 2: Nothing tells the builder to buy the round
-- [ ] Chunk 3: The docs say what the code now does
+- [x] Chunk 2: Nothing tells the builder to buy the round
+- [x] Chunk 3: The docs say what the code now does
