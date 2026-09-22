@@ -107,9 +107,10 @@ not by taste.
 `plan_backfill.survey`, the `plan-backfill` report, `lifecycle-repair` (its own `unscoped` key plus
 a stale-Status walk that covers unscoped plans), and the release gate, which **caveats** rather than
 suppresses. That last one was stating something FALSE, not merely incomplete, and no chunk owned it.
-The fifth — a footnote on the dispatch gap sentence — was **retired at the base sync (2026-09-10)**
-in favour of `buildplan_refs.deliverable_check_gaps`, which `develop` added for the same reader and
-which names each scope-less plan with its remedy; see Chunk 02's dated paragraph.
+The fifth, Critic dispatch, ships through `buildplan_refs.deliverable_check_gaps`, which `develop`
+added for the same reader; this branch's own footnote was retired as a duplicate at the 2026-09-10
+sync, and at the 2026-09-22 merge forward that function's fallback was widened to the union with
+`plans_missing_scope`, since the two had disagreed on a roster-only plan.
 
 Three review rounds, and rounds two and three were bought by builder omissions rather than review
 churn: a class finding closed by adding call sites, one of which routed a diagnostic fact onto
@@ -222,8 +223,8 @@ what the headline assumption is waiting on, and it belongs in the chunk-close re
   payload unit-cost)
 - **Deliverables:** the Scope authoring rule reaching `chunk` and `verify-resolutions` by the route
   step 0 chooses; the `none` value defined in `plugin/skills/critic/review-protocol.md` alongside
-  `instance | class`; the false clause in `plugin/CHANGELOG.md` corrected to state what v3.4.0
-  actually shipped and what this release fixes
+  `instance | class`; a consumer note stating what v3.4.0 actually shipped and what this release
+  fixes — carried as the pending `coverage-honesty` entry, never as an edit to a shipped section
 - **Tests:** a test pinning that **every mode that can raise a finding reaches the Scope rule**,
   asserted per mode against the file that mode actually reads — so the next payload split cannot
   silently drop it again. This is the construction; a test naming today's two files is the
@@ -231,8 +232,9 @@ what the headline assumption is waiting on, and it belongs in the chunk-close re
   the ceiling pin in `tests/test_critic_consolidate.py` in the same commit, carrying the new figure
   and saying in the docstring what paid for it.
 - **Acceptance criteria:** `python3 -m pytest` passes; the new per-mode test fails when the rule is
-  removed from any one mode's payload; `plugin/CHANGELOG.md` no longer claims coverage that does
-  not exist
+  removed from any one mode's payload; `plugin/CHANGELOG.md`'s pending notes correct v3.4.0's
+  over-claim (the shipped v3.4.0 section is left as released, and the correction is where a reader
+  of the next release meets it)
   <!-- Type is the default `code`: step 0 chose the code-emitted route, so the `doc-only` this
        chunk was planned as would now be an over-declaration, which is the unsafe direction. -->
 - **Done when:**
@@ -253,8 +255,8 @@ what the headline assumption is waiting on, and it belongs in the chunk-close re
   (`_unscoped_plan_suffix`) is therefore deleted and the resolution gap keeps only its own subject
   — this scope named no plan. `tests/test_unscoped_plan_fact.py` pins the split itself: the
   scope-less plan is named in exactly one of the two channels, and it is the one carrying the
-  remedy. `plans_missing_scope` is untouched; its other four consumers are this chunk's shipped
-  deliverable.
+  remedy. `plans_missing_scope` is untouched; its consumers — now five, with dispatch reaching it through
+  `deliverable_check_gaps`' union — are this chunk's shipped deliverable.
 
 - **Description:** `plan_index.iter_scoped_plan_candidates` yields only scope-declaring build plans
   — `if scope:` and nothing else. A plan that is perfectly readable but declares no frontmatter
@@ -476,7 +478,7 @@ what the headline assumption is waiting on, and it belongs in the chunk-close re
 ## Early Feedback Milestone
 
 **Milestone chunk:** 01
-**What the user can do:** read the corrected `plugin/CHANGELOG.md` claim, and see on the next
+**What the user can do:** read the pending `coverage-honesty` note in `plugin/CHANGELOG.md`, and see on the next
 `verify-resolutions` review in this repo whether a site-naming finding now carries its Scope line.
 That is what the plan's headline assumption is waiting on, and it is available as soon as Chunk 01
 lands rather than at the end of the branch.

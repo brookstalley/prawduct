@@ -61,16 +61,18 @@ is exactly what nothing there can know. That last one was not incomplete but FAL
 is shipping with no plan describing it" about a plan in the same directory, which is the v3.3.4
 recurrence this plan cites as its motivation.
 
-A fifth surface was built and is not shipping. This branch also hung a footnote on the dispatch
-gap sentence naming the plans invisible to the lookup; while it sat unmerged, `develop` added
-`buildplan_refs.deliverable_check_gaps`, which on any dispatch where no plan resolved names each
-scope-less plan *with its remedy*. The two fire on exactly the same branch, so both would put one
-fact in front of one reviewer twice in one dispatch. The footnote is dropped, the resolution gap
-keeps only its own subject — this scope named no plan — and the test that pinned the footnote's
-wording now pins the split instead: the scope-less plan is named in exactly one of the two
-channels, and it is the one carrying the remedy.
+**A fifth surface, Critic dispatch, ships through `develop`'s channel.** This branch first hung a
+footnote on the dispatch gap sentence; `develop` meanwhile added
+`buildplan_refs.deliverable_check_gaps`, which names each unresolved plan *with its remedy*, so the
+footnote was dropped as a duplicate. That rested on the two covering the same plans, and they did
+not: `deliverable_check_gaps` walked `iter_live_plan_files` (declared type or `build-plan` filename)
+and missed a plan recognized only by its `## Status` roster. Found by the merge-forward's cumulative
+review; its fallback now walks the UNION with `plans_missing_scope`, and
+`test_a_plan_recognized_only_by_its_shape_is_named_too` pins it. The same review found
+`lifecycle-repair` reporting scope-less plans it never edited, so `--apply` now removes the retired
+derived-Status note from them too — report and edit loop walk one set, `_plan_documents`.
 
-All four are diagnostic — no exit code moves and no gate reads any of it. That is a requirement
+All five are diagnostic — no exit code moves and no gate reads any of it. That is a requirement
 rather than a preference, and the first attempt broke it: routing the fact onto
 `lifecycle-repair`'s `unreadable` list made it fatal and made `/prawduct:doctor` report degraded
 forever, since `--apply` cannot add a `scope:` key. A diagnostic that pins a verdict is the
@@ -85,7 +87,7 @@ mode or a fourth directive is metered rather than skipped.
 shipped on `develop` from PR #734 as `release_readiness._digest_advisories` and closed #702, so it
 is superseded rather than built here. Chunk 03 — the base-advance transfer's silent denial — is
 unchanged on `develop` and moved to #672, which now carries the chunk text as its spec. The plan
-closes on Chunks 01–02 with both boxes unticked and the reason under each heading.
+closes on Chunks 01–02; Chunks 03 and 04 stay unticked, with the reason under each heading.
 
 The meter's own ceiling for `final` / `cumulative` moved 3900 → 4035, and the number is not this
 branch's to spend: `review-protocol.md` grew on `develop` under its own ratified ceiling, which is
