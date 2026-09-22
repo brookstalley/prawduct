@@ -940,7 +940,10 @@ def _newest_branch_review(project_dir: Path) -> "dict | None":
         f for f in read.get("facts") or []
         if f.get("kind") == "review" and (f.get("actor") or {}).get("branch") == branch
     ]
-    return max(reviews, key=lambda f: f.get("ts") or "", default=None)
+    # The store is append-only, so its order IS the recording order; `ts` has
+    # one-second resolution and two reviews can share it. Position breaks the
+    # tie — a timestamp alone picks arbitrarily between same-second reviews.
+    return reviews[-1] if reviews else None
 
 
 def review_chain(facts: list[dict], newest: dict) -> list[dict]:
@@ -954,6 +957,9 @@ def review_chain(facts: list[dict], newest: dict) -> list[dict]:
     end, because a chain can be several passes long.
     """
     reviews = [f for f in facts if f.get("kind") == "review"]
+    # Append order is recording order (the store is append-only); `ts` has
+    # one-second resolution, so it cannot order two reviews in the same second.
+    position = {f.get("id"): i for i, f in enumerate(reviews)}
     chain: list[dict] = []
     seen: set[str] = set()
     current: "dict | None" = newest
@@ -961,15 +967,16 @@ def review_chain(facts: list[dict], newest: dict) -> list[dict]:
         seen.add(current.get("id"))
         chain.append(current)
         base = (current.get("body") or {}).get("base_tree")
+        here = position.get(current.get("id"), len(reviews))
         earlier = [
             f for f in reviews
             if f.get("id") not in seen and (f.get("body") or {}).get("head_tree") == base
-            and (f.get("ts") or "") <= (current.get("ts") or "")
+            and position[f.get("id")] < here
         ]
-        for other in sorted(earlier, key=lambda f: f.get("ts") or "")[:-1]:
+        for other in earlier[:-1]:
             seen.add(other.get("id"))
             chain.append(other)
-        current = max(earlier, key=lambda f: f.get("ts") or "", default=None)
+        current = earlier[-1] if earlier else None
     return chain
 
 

@@ -332,3 +332,28 @@ class TestReviewChain:
                               mode="verify-resolutions (delta review, prior findings only)")
         assert critic_mode.boundary_review_on_chain(critic_mode.review_chain([cumulative, verify], verify))
         assert not critic_mode.boundary_review_on_chain(critic_mode.review_chain([verify], verify))
+
+    def test_same_second_reviews_are_ordered_by_the_store_not_the_clock(self, monkeypatch):
+        """`ts` has one-second resolution; CI records a chunk review and the
+        cumulative after it in the same second. The store is append-only, so
+        its order is the recording order, and it alone can break the tie."""
+        ts = "2026-09-22T10:00:00Z"
+        chunk = self._review("r1", "t0", "t1", ts)
+        cumulative = self._review("r2", "t0", "t1", ts, mode="cumulative (bundle review, ready for merge)")
+        verify = self._review("r3", "t1", "t2", ts,
+                              mode="verify-resolutions (delta review, prior findings only)")
+        for f in (chunk, cumulative, verify):
+            f["actor"] = {"branch": "feat/work"}
+        monkeypatch.setattr(critic_mode.gitstate, "current_branch", lambda _p: "feat/work")
+        from lib import evidence
+        monkeypatch.setattr(evidence, "read_facts",
+                            lambda _p: {"status": "ok", "facts": [chunk, cumulative, verify]})
+        newest = critic_mode._newest_branch_review(Path("."))
+        assert newest["id"] == "r3"
+        chain = critic_mode.review_chain([chunk, cumulative, verify], newest)
+        assert {f["id"] for f in chain} == {"r1", "r2", "r3"}
+        assert critic_mode.boundary_review_on_chain(chain)
+        # And the newest pick with a same-second tie at the END of the store.
+        monkeypatch.setattr(evidence, "read_facts",
+                            lambda _p: {"status": "ok", "facts": [chunk, cumulative]})
+        assert critic_mode._newest_branch_review(Path("."))["id"] == "r2"
