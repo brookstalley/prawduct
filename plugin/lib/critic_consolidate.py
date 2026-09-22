@@ -553,6 +553,22 @@ _RIDE_ALONG_ROUTE = (
 )
 
 
+#: The lead of a zero-blocking close when the plan still owes a later review.
+#:
+#: It REPLACES the cost lead, the "if you fix some" sentence, the third route
+#: and the round price rather than following them, because under it all four
+#: are false: the next ``chunk``/``final`` review starts at the tree this review
+#: just covered (``gates.covered_frontier``), so a fix committed now is covered
+#: by a review the plan is paying for anyway. Appended after them, it would be
+#: an exception trailing advice that still leads with "a fix buys a round".
+_RIDES_NEXT_REVIEW_LEAD = (
+    "This plan still owes a later review, and it will start from the tree this"
+    " review just covered — so a fix you commit now is covered by that review,"
+    " not by a round of its own. Fix what is worth fixing, commit, and carry on"
+    " to the next chunk; do NOT run `verify-resolutions` for it. "
+)
+
+
 #: What fixing a non-blocking item costs, and how to find out before paying it.
 #:
 #: Shared by every zero-blocking close that still carries something a builder
@@ -802,6 +818,7 @@ def next_action_line(
     span: "str | None" = None,
     observations: int = 0,
     cost: "str | None" = None,
+    rides_next_review: bool = False,
 ) -> str:
     """The one sentence the BUILDER needs, computed from the fact's own counts
     and written into ``.critic-findings.json`` by :func:`fact_to_cache_record`.
@@ -848,6 +865,14 @@ def next_action_line(
     # and the truly-empty close has nothing to fix — a cost verdict on either
     # would be a number with no decision attached to it.
     lead = f"{cost} " if cost else ""
+    # When a later review on the plan will cover a fix, the cost lead, the
+    # fix-some sentence, the third route and the price all describe a round
+    # that will not be bought — so one lead replaces all four (see
+    # `_RIDES_NEXT_REVIEW_LEAD`). The blocking arm below never reads either:
+    # blockers clear only through `verify-resolutions`, whatever is owed later.
+    fix_tail = _IF_YOU_FIX_SOME + _RIDE_ALONG_ROUTE + price
+    if rides_next_review:
+        lead, fix_tail = _RIDES_NEXT_REVIEW_LEAD, ""
     # `span` is :func:`span_clause`'s output, rendered by the caller for the
     # same reason `price_sentence` is. Absent (every mode but a clean
     # `verify-resolutions` close) the clause stays what it always was: go ask
@@ -931,9 +956,7 @@ def next_action_line(
                 # fix one — and fixing is the route that buys a round. It
                 # therefore owes the same cost of fixing, the same free route
                 # and the same price the warnings arm prints.
-                + _IF_YOU_FIX_SOME
-                + _RIDE_ALONG_ROUTE
-                + price
+                + fix_tail
             )
         return (
             "0 blocking, 0 other findings — THE REVIEW IS OVER and there is nothing"
@@ -956,9 +979,7 @@ def next_action_line(
             if observations
             else ""
         )
-        + _IF_YOU_FIX_SOME
-        + _RIDE_ALONG_ROUTE
-        + price
+        + fix_tail
     )
 
 
@@ -1303,6 +1324,20 @@ def _widened_fallback_mode(
             "every change since the prior review is uncommitted, which is "
             "exactly `final`'s HEAD-tree → working-tree interval"
         )
+    # `final` is no longer blind to committed work when a covered frontier
+    # exists behind it: its interval then starts there (#167), so it spans
+    # the committed commits since the last reviewed state as well as the
+    # uncommitted ones — a narrower span than `cumulative`'s whole branch.
+    from . import gates  # noqa: PLC0415 — lazy; gates is heavy and one-way
+
+    frontier = gates.covered_frontier(project_dir)
+    if frontier is not None and frontier["tree"] != committed_head_tree:
+        return "final", (
+            "the delta includes committed work, and `final`'s interval starts at "
+            f"the last reviewed state ({frontier['commit'][:12]}), so it covers "
+            "those commits and the uncommitted work — a narrower span than "
+            "`cumulative`'s merge-base…HEAD"
+        )
     from . import coverage  # noqa: PLC0415 — lazy; coverage pulls git helpers
 
     resolved = coverage.resolve_merge_base_tree(project_dir)
@@ -1329,9 +1364,10 @@ def _widened_fallback_mode(
             "only the uncommitted part"
         )
     return "cumulative", (
-        "the delta includes committed work, which `final`'s HEAD-tree → "
-        "working-tree interval cannot see; `cumulative` spans merge-base…HEAD — "
-        "the work this branch owes, and the PR gate's own span"
+        "the delta includes committed work that `final` cannot reach — no "
+        "reviewed state without an open blocker sits behind it for its interval "
+        "to start from; `cumulative` spans merge-base…HEAD — the work this "
+        "branch owes, and the PR gate's own span"
     )
 
 
@@ -4388,12 +4424,36 @@ def finding_fix_cost(files: "list | None") -> str:
     return FIX_COST_FREE
 
 
+def _plan_owes_a_later_review(project_dir: Path, prawduct_dir: Path) -> bool:
+    """Whether the branch's plan owes a review after the one just consolidated.
+
+    The close's half of the interval-extension deferral: the review just
+    written covers its tree with no blocker (the caller only asks on a
+    zero-blocking close), so once that tree is committed it IS the covered
+    frontier, and the only open question is whether a later review will start
+    from it — ``critic_mode.later_review_owed``. ``False`` on any failure: this
+    changes advice, and advice that cannot be derived keeps the older wording.
+    """
+    try:
+        from . import buildplan_refs, critic_mode  # noqa: PLC0415 — lazy, as this module's other lib imports are
+
+        plan = buildplan_refs.resolve_branch_plan(project_dir, prawduct_dir)
+        if plan.path is None:
+            return False
+        return critic_mode.later_review_owed(
+            buildplan_refs.resolve_chunk_progress(project_dir, plan.path)
+        )
+    except (OSError, ValueError):
+        return False
+
+
 def fact_to_cache_record(
     fact: dict,
     price_sentence: "str | None" = None,
     carried: "list[dict] | None" = None,
     span: "str | None" = None,
     cost: "str | None" = None,
+    rides_next_review: bool = False,
 ) -> dict:
     """Render the derived ``.critic-findings.json`` record from a review fact
     (D7: the cache is a code-regenerated VIEW of the latest fact — builders
@@ -4476,7 +4536,7 @@ def fact_to_cache_record(
         "next_action": next_action_line(
             fact.get("id"), blocking, warning, note, price_sentence,
             carried=carried, span=span, observations=len(observations),
-            cost=cost,
+            cost=cost, rides_next_review=rides_next_review,
         ),
         # Recomputed from the fact's own findings, so this advisory grouping
         # adds nothing to the persisted schema and keeps no model in the write
@@ -4989,6 +5049,7 @@ def consolidate(project_dir: Path) -> int:
         (fact.get("body") or {}).get("head_tree"),
     )
     cost_sentence = cost_lead(coverage.commit_cost(project_dir), tree_now_covered)
+    rides_next_review = _plan_owes_a_later_review(project_dir, prawduct_dir)
 
     carried = (
         carried_blocking(
@@ -5015,7 +5076,9 @@ def consolidate(project_dir: Path) -> int:
         answer = gates.branch_coverage_verdict(project_dir)
         span = span_clause(answer, _span_commits(project_dir, answer))
 
-    record = fact_to_cache_record(fact, price_sentence, carried, span, cost_sentence)
+    record = fact_to_cache_record(
+        fact, price_sentence, carried, span, cost_sentence, rides_next_review
+    )
     findings_path = prawduct_dir / ".critic-findings.json"
     atomic_write_text(findings_path, json.dumps(record, indent=2))
 
@@ -5177,6 +5240,7 @@ def consolidate(project_dir: Path) -> int:
             span=span,
             observations=len(fact_body.get("observations") or []),
             cost=cost_sentence,
+            rides_next_review=rides_next_review,
         )
     )
     return 0

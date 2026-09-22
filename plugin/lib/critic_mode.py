@@ -281,7 +281,18 @@ def infer_mode(
             file=sys.stderr,
         )
 
+    # A later review on this plan will start from the last reviewed state and
+    # cover whatever is uncovered since, so the rules below that would buy a
+    # round for it now — a verify pass over a non-blocking fix, a cumulative
+    # over a clean tree mid-plan — answer `deferred` instead. Asked lazily,
+    # only when one of those rules fires, because it walks history.
+    def _extension():
+        return extension_deferral(project_dir, prawduct_dir, plan, progress)
+
     if _rule_verify_resolutions_fires(prawduct_dir, project_dir):
+        ext = _extension()
+        if ext:
+            return MODE_DEFERRED, f"extension-deferred (fix in progress): {ext}"
         return "verify-resolutions", (
             "rule-1 verify-resolutions: prior findings have actionable "
             "(BLOCKING/WARNING) entries with a resolvable commit_reviewed "
@@ -291,12 +302,18 @@ def infer_mode(
 
     postfix_reason = _rule_postfix_fix_fires(prawduct_dir, project_dir)
     if postfix_reason:
+        ext = _extension()
+        if ext:
+            return MODE_DEFERRED, f"extension-deferred (post-review fix): {ext}"
         return "verify-resolutions", (
             f"rule-1b verify-resolutions (post-cumulative fix): {postfix_reason}"
         )
 
     cumulative_reason = _rule_cumulative_fires(prawduct_dir, project_dir)
     if cumulative_reason:
+        ext = _extension()
+        if ext:
+            return MODE_DEFERRED, f"extension-deferred (mid-plan, clean tree): {ext}"
         return "cumulative", f"rule-2 cumulative: {cumulative_reason}"
 
     # Short-plan deferral (#292), between rules 2 and 3. Rules 1, 1b and 2 are
@@ -882,6 +899,47 @@ def short_plan_deferral(
         f"{base_branch} is a risk surface ({why})",
         last_chunk,
         total,
+    )
+
+
+def later_review_owed(progress) -> bool:
+    """Whether the branch's plan still owes a review AFTER the one just done.
+
+    Two or more unticked chunks, not one. A lone unticked chunk is ambiguous:
+    it may be the chunk whose review just passed and has not been ticked yet
+    (nothing later is owed) or the one chunk left after a ticked one (a review
+    is owed). Reading it as "owed" would defer a fix that no later review will
+    ever cover, so the ambiguous case keeps the round — the cost of the
+    conservative reading is at most one round, never an unreviewed fix.
+    """
+    return progress.total - progress.complete >= 2
+
+
+def extension_deferral(project_dir: Path, prawduct_dir: Path, plan, progress) -> "str | None":
+    """Why the next review will cover this state, or ``None`` when it will not.
+
+    A review of the uncovered work since the last reviewed tree is not owed NOW
+    when (a) the plan still owes a later review (:func:`later_review_owed`) and
+    (b) a covered frontier exists — a tree some review reached with no
+    unresolved blocker — because that later ``chunk``/``final`` review starts at
+    the frontier (``gates.covered_frontier``) and covers everything after it.
+    Both conditions are about evidence the gates already trust: (a) is the same
+    plan reading short-plan deferral rests on, and (b) is the gates' own
+    composition. ``None`` on any failure, so a predicate that could not run
+    never relaxes anything.
+    """
+    if not later_review_owed(progress):
+        return None
+    from . import gates  # noqa: PLC0415 — lazy; gates is heavy and one-way
+
+    frontier = gates.covered_frontier(project_dir)
+    if frontier is None:
+        return None
+    left = progress.total - progress.complete
+    return (
+        f"{left} chunks of {plan.rel or 'the plan'} are still unticked, so a later review is "
+        f"owed, and it starts from the last reviewed state ({frontier['commit'][:12]}) — "
+        "it covers this work too. Commit and carry on"
     )
 
 

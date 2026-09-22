@@ -150,6 +150,26 @@ def _short_plan_deferral(project_dir: Path, prawduct_dir: Path, plan):
         return None
 
 
+def _extension_deferral(project_dir: Path, prawduct_dir: Path, plan):
+    """The Stop gate's read of the interval-extension deferral (#167), or ``None``.
+
+    ``critic_mode.extension_deferral``'s reason when this session's uncovered
+    work will be covered by a review the plan still owes — which starts at the
+    last reviewed state and so spans it — else ``None``. Fails closed exactly
+    as :func:`_short_plan_deferral` does, for the same reason: it relaxes a gate.
+    """
+    try:
+        progress = _buildplan_refs().resolve_chunk_progress(project_dir, plan.path)
+        return _critic_mode().extension_deferral(project_dir, prawduct_dir, plan, progress)
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- a gate relaxation that cannot be evaluated must not relax the gate
+        print(
+            "\nNOTE: the review-extension deferral could not be evaluated "
+            f"({type(exc).__name__}: {exc}) — the Critic gate is applied in full below.",
+            file=sys.stderr,
+        )
+        return None
+
+
 #: Stable token on every deferred-review WARNING the Stop gate emits — one
 #: grep-able word for the transcript, so a reader (or the test that pins the
 #: message) finds the deferral without matching its prose. Nothing in the
@@ -3272,7 +3292,20 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 if verdict_status == "uncovered"
                 else None
             )
-            if deferral is not None and deferral.defers and not deferral.last_chunk:
+            extension = (
+                _extension_deferral(project_dir, prawduct_dir, gate_plan_obj)
+                if verdict_status == "uncovered"
+                and not (deferral is not None and deferral.defers)
+                else None
+            )
+            if extension is not None:
+                stop_advisories.append(_attributed("critic",
+                    f"WARNING ({DEFERRED_REVIEW_TOKEN}): no review covers this session's\n"
+                    f"  changes{span} yet, and none is owed now — {extension}.\n"
+                    "  The next `/prawduct:critic` of this plan's work reviews from that\n"
+                    "  state, so this work is covered then without a round of its own.\n"
+                ))
+            elif deferral is not None and deferral.defers and not deferral.last_chunk:
                 stop_advisories.append(_attributed("critic",
                     f"WARNING ({DEFERRED_REVIEW_TOKEN}): no review covers this session's\n"
                     f"  changes{span}, and none is owed yet — {deferral.reason}.\n"
@@ -5734,11 +5767,13 @@ def cmd_infer_critic_mode(project_dir: Path, args: str | None) -> int:
     Output format: a single stdout line ``<mode>|<rationale>`` where
     ``<mode>`` is one of the short tokens (``chunk`` / ``final`` /
     ``cumulative`` / ``verify-resolutions``) — or ``deferred``, the
-    output-only answer that NO review is owed now because the branch's plan
-    is short and touches no risk surface (#292; ``critic_mode.MODE_DEFERRED``):
-    the skill dispatches nothing on it and reports the rationale, which says
-    whether to commit and carry on or, on the last chunk, commit and run the
-    ``cumulative`` that is that chunk's review. ``<rationale>`` is the
+    output-only answer that NO review is owed now (``critic_mode.MODE_DEFERRED``),
+    for one of two reasons the rationale names: the branch's plan is short and
+    touches no risk surface (#292), or a later review the plan still owes will
+    start from the last reviewed state and cover this work (#167,
+    ``extension-deferred``). The skill dispatches nothing on it and reports the
+    rationale, which says what to do: commit and carry on, or, on a short plan's
+    last chunk, commit and run the ``cumulative`` that is that chunk's review. ``<rationale>`` is the
     human-readable explanation suitable for both stdout reporting and
     the ``mode_chosen_by`` field in ``.critic-findings.json``.
 
