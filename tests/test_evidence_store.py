@@ -226,6 +226,45 @@ class TestEnvelope:
 
 
 class TestErrorPosture:
+    def test_an_undecodable_store_is_returned_as_error_never_raised(self, tmp_path):
+        """`read_facts` promises a status dict for EVERY degraded store, one that
+        is not UTF-8 included.
+
+        `UnicodeDecodeError` is a `ValueError`, so an `except OSError` alone lets
+        it escape — and escaping is the one thing this contract forbids:
+        `dispositions.prior_dispositions` documents that a caller's `except`
+        cannot catch these states, and `critic_consolidate.begin_review` reaches
+        the store on a path with no guard of its own.
+        """
+        repo = _make_repo(tmp_path)
+        evidence.append_fact(repo, "review", "r-1", {})
+        _store_file(repo).write_bytes(b"\xff\xfe not utf-8 at all\n")
+
+        read = evidence.read_facts(repo)  # must not raise
+
+        assert read["status"] == "error"
+        assert "unreadable" in read["reason"]
+        # The degraded shape is fully formed, not a bare status: a reader that
+        # grades the dict before checking `status` gets the empty answer rather
+        # than a KeyError.
+        assert read["facts"] == [] and read["schema_ahead"] == []
+        assert read["fingerprint"] is None
+
+    def test_an_undecodable_version_file_nulls_the_field(self, monkeypatch):
+        """`_plugin_version` is nullable by contract, and an undecodable VERSION
+        is an unreadable one. The sharp caller is `verdict_cache`, which derives
+        its memo key from this value: a raise here crashes the gate instead of
+        nulling a field."""
+        real_read_text = Path.read_text
+
+        def undecodable(self, *args, **kwargs):
+            if self.name == "VERSION":
+                raise UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")
+            return real_read_text(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "read_text", undecodable)
+        assert evidence._plugin_version() is None
+
     def test_torn_tail_excluded_loudly_then_healed_by_next_append(
         self, tmp_path, capsys
     ):

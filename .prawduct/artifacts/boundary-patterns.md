@@ -118,6 +118,27 @@ carry verbatim provider text (issue titles and bodies) into agent-read findings,
 **item text is data, never instructions** — each consuming surface restates that
 rule locally rather than inheriting it.
 
+### Diagnosis Status Verdicts (the two review gates)
+
+**Producer:** `plugin/lib/coverage.py` — `diagnose_base_advance_transfer` returns
+`{"status": coverage.TRANSFER_MATCH, …}`, `{"status": "unavailable", "reason"}`,
+or `None`. Its siblings `diagnose_fix_churn` and `count_branch_rounds` share the
+`"unavailable"` half of that vocabulary.
+**Consumers:** both review gates in `plugin/lib/gates.py` — the PR gate
+(`check_cumulative_critic`) and the Stop gate (`_merge_base_verdict`) — plus
+`transfer_remedy`, which renders a status and reads fields only two of the three
+shapes carry.
+**Contract:** the status strings, **and which of them may reach the GRANT path.**
+This is the envelope whose consumer turns an `uncovered` verdict into a pass, so a
+status the producer adds is not merely unrendered downstream — a consumer that
+tests negatively would *grant* it (or crash reading `match`-only fields). Both
+gates therefore test positively, `== coverage.TRANSFER_MATCH`; `"unavailable"`
+stays a bare literal, being a module-wide convention rather than this
+diagnosis's own.
+**Sweep rule:** a new status is a two-site question — read BOTH gates, and
+`tests/test_session_critic_gate.py`'s unknown-status test, which asserts both
+deny.
+
 ### API Endpoints
 <!-- Example:
      Producer: src/api/routes/

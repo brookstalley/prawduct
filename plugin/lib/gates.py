@@ -1403,8 +1403,17 @@ def _merge_base_verdict(
     )
     if transfer is None:
         return verdict
-    if transfer.get("status") == "unavailable":
-        verdict["transfer_note"] = transfer_remedy(transfer, None)
+    # Grant only on a POSITIVE test for the granting status, exactly as the PR
+    # gate (:func:`check_cumulative_critic`) does — never on "anything but
+    # unavailable". A status this gate does not know must reach the deny path,
+    # which is the direction a fail-closed control has to fall; reaching the
+    # grant path instead would read fields only a `match` carries.
+    if transfer.get("status") != coverage.TRANSFER_MATCH:
+        # Only `unavailable` has a remedy worth naming (the check could not
+        # run). An unrecognized status denies silently rather than being
+        # rendered as a near miss it was never measured to be.
+        if transfer.get("status") == "unavailable":
+            verdict["transfer_note"] = transfer_remedy(transfer, None)
         return verdict
     tests_ok, tests_reason = suite_vouches_for_tree(project_dir)
     if not tests_ok:
@@ -2288,7 +2297,7 @@ def _branch_coverage(
         diff_fn,
         verdict_fn,
     )
-    if transfer is not None and transfer.get("status") == "match":
+    if transfer is not None and transfer.get("status") == coverage.TRANSFER_MATCH:
         tests_ok, tests_reason = suite_vouches_for_tree(project_dir, head_tree)
         if tests_ok:
             if record_grants:

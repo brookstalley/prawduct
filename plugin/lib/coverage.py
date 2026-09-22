@@ -452,6 +452,18 @@ def diagnose_fix_churn(
     }
 
 
+#: The one status of :func:`diagnose_base_advance_transfer` that GRANTS. Named
+#: in the module that produces it because both review gates consume it: each
+#: must ask "is this the granting status" without restating how it is spelled,
+#: so the two gates agree by construction rather than by coincidence.
+#:
+#: Deliberately NOT paired with a constant for ``"unavailable"``: that string is
+#: a module-wide convention (:func:`diagnose_fix_churn` and
+#: :func:`count_branch_rounds` return it too, meaning the same thing), so a
+#: ``TRANSFER_``-prefixed name for it would invent a distinction the code lacks.
+TRANSFER_MATCH = "match"
+
+
 def diagnose_base_advance_transfer(
     project_dir: Path,
     facts: "list[dict]",
@@ -635,7 +647,7 @@ def diagnose_base_advance_transfer(
             ]
             advance = evidence.tree_diff(project_dir, prior_base, base_tree)
             return {
-                "status": "match",
+                "status": TRANSFER_MATCH,
                 "prior_fact_id": reviews[-1].get("id") if reviews else None,
                 "prior_reviews": len(reviews),
                 "prior_base": prior_base,

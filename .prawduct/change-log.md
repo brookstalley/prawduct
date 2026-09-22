@@ -5,6 +5,43 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-22: Review-gate seams that answered wrongly on a degraded input
+
+<!-- prawduct: type=fix | scope=review-scrub-seams -->
+
+Re-applied from the unmerged `fix/review-scrub-seams` branch (last commit 2026-09-10), which
+conflicted with `develop`; triaged by tree content, every change below was still absent there. Ported fresh rather than merged, under a new scope, because the
+branch's entries reused `tactical-efficiency` and `durable-agent-worktrees`, both already shipped.
+
+**The Stop gate grants a base-advance transfer only on a positive `match`.** `_merge_base_verdict`
+tested "anything but `unavailable`" while `check_cumulative_critic` tested `== "match"`. On
+`develop` the difference was not cosmetic: an unrecognized status reached the Stop gate's grant
+path and raised `KeyError: 'prior_base'`. `coverage.TRANSFER_MATCH` now names the granting status
+in the module that produces it and both gates ask for it;
+`test_only_a_match_grants_the_transfer_at_either_gate` asserts both deny an unknown status, and
+was red (the `KeyError`) before the fix. The contract is registered in `boundary-patterns.md`.
+
+**`verify-resolutions` tells a degraded store from a missing anchor.** `_prior_review_fact`
+iterated a store it never graded, so an unreadable store and one carrying newer-schema records
+both reported *prior review fact … not found* — pointing at a re-review instead of the store or
+the plugin version. It now answers both states, and takes the store from `begin_review`, which
+reads it ONCE for the anchor lookup and the prior-dispositions block so the two see the same
+moment of a store every worktree of the clone appends to. The read is lazy, so a dispatch
+reaching neither reader parses nothing. No write lies between the two readers on the path that
+continues; the only writes are refusals that return first.
+
+**`evidence.read_facts` and `_plugin_version` catch `UnicodeDecodeError`.** It is a `ValueError`,
+so `except OSError` let a non-UTF-8 store escape a function whose contract is to return a status
+dict; `_plugin_version` feeds `verdict_cache`'s memo key, where a raise crashes the gate.
+`_plugin_version` also pins `encoding="utf-8"`.
+
+**The #648 inseparability note is restated against the tool contract.**
+`gitstate.is_ephemeral_worktree` and its `prawduct-hook` call site said the branch/code inseparability was
+ASSUMED, not measured. The worktree tool contract — no merge operation; `remove` refusing on
+uncommitted or unmerged work unless `discard_changes`; isolation worktrees auto-cleaned only if
+unchanged — was checked against the live tool schema on 2026-09-22 and is cited, with the
+falsifier and residual kept.
+
 ## 2026-09-22: develop opens 3.6.1-dev.3
 
 <!-- prawduct: type=chore | scope=dev-track-bump-3.6.1-dev.3 -->
