@@ -5,6 +5,32 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-22: The standing block is the digest's last word
+
+<!-- prawduct: type=fix | scope=standing-block-closing-section -->
+
+Salvaged from the unmerged `fix/standing-block-digest-tail` branch (2026-08-20), whose digest edit
+conflicted with `develop`'s since-rewritten bullet: the MOVE and its tests were re-applied onto the
+current text rather than merging the branch's stale copy.
+
+**The standing block moves to a closing `## Closing the turn` section.** Its rule reads *after every
+other word, since the bottom is all they read*, and `hooks/digest.py` injects
+`plugin/methodology/session-digest.md` verbatim — yet the rule sat mid-way through "The hardest
+rules", with the rest of that section and four whole sections after it. The digest was committing
+the failure its own rule names. `TestTheStandingBlockIsTheDigestsLastWord` pins the property rather
+than a line: the rule is carried, no `## ` section follows it, and no text follows its closing
+pointer. Both structural assertions were mutated (a section appended after it, a trailing
+sentence) and went red; a whitespace no-op survived. The section has its `DIGEST_SECTION_PLACEMENT`
+entry, which the placement test requires of every section.
+
+**Paid in place, and ratcheted.** The heading's tokens came out of two restatements inside the rule
+itself — "last," beside "after every other word", and "on one axis" beside "what produces the next
+turn" — so both injected shapes read 2 tokens LOWER (3280 -> 3278 framework, 2221 -> 2219 product),
+and both ceilings are lowered with them in the same commit.
+
+**Rider:** `TestDigestWiring`'s class-scoped fixture was an instance method, which pytest deprecates
+(`PytestRemovedIn10Warning`, the one warning in the suite); it is now a module-level fixture.
+
 ## 2026-09-22: Review-gate seams that answered wrongly on a degraded input
 
 <!-- prawduct: type=fix | scope=review-scrub-seams -->

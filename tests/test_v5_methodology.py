@@ -1656,8 +1656,14 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # TWICE — the digest (+14, shared by both shapes) and `STATIC_ANCHOR` (+20), which
     # gained the same bound — while the framework shape's other member, `CLAUDE.md`,
     # is unchanged at 1,380. Dilution plays no part: these are absolute deltas.
-    "framework": 3280,
-    "product": 2221,
+    # -2 on both shapes, 2026-09-22 (standing-block-closing-section): the standing
+    # block became the digest's closing `## Closing the turn` section instead of a
+    # bullet partway up "The hardest rules" — the rule says *after every other
+    # word*, and the digest had four sections after it. The heading is paid in
+    # place from the rule's own restatements: "last," restates "after every other
+    # word", and "on one axis" restates "what produces the next turn".
+    "framework": 3278,
+    "product": 2219,
 }
 
 #: Ceilings. HARD, like the per-file prose ceilings in this module and
@@ -1797,8 +1803,10 @@ INJECTED_FOOTPRINT_CEILINGS = {
     # deliberately NOT spent: the digest's sentence is written at that surface's
     # compressed register, inside the 9,500-character working budget, so the next
     # framework-wide default still has the room this reserve is held for.
-    "framework": 3281,
-    "product": 2222,
+    # RATCHETED 3281 -> 3279, 2222 -> 2220 (2026-09-22) with the readings: the
+    # standing-block move landed both below where it started.
+    "framework": 3279,
+    "product": 2220,
 }
 
 
