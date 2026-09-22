@@ -138,8 +138,18 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # invisible to every other control — and a coordinator roster pays it once
     # per reviewer, so the dispatched route moves +372 against single-pass-full's
     # +83. The cheap route is untouched, which is the split working.
-    "single-pass-inner": 6301,
-    "single-pass-full": 20355,
+    # RATCHETED with the readings below (review-interval-extension, 2026-09-22):
+    # the chunk/final interval rewording (it now starts at the covered
+    # frontier) was paid in place and came out smaller, and the ceilings follow.
+    # RAISED (review-interval-extension, 2026-09-22, cumulative finding): the demotion
+    # property's list of commits `chunk`/`final` cannot reach — behind an open blocker,
+    # before any review, across a base sync — was cut to one case in the same branch and
+    # restored. DECLARED, not paid: the sentence has no duplicate to fund it, and a builder
+    # reading the one-case version demotes the other three to a mode that cannot see them.
+    # RATCHETED (review-interval-extension PR review, 2026-09-22): "the uncommitted interval" dropped from SKILL.md's
+    # fall-through sentence, now false for an extended chunk interval.
+    "single-pass-inner": 6303,
+    "single-pass-full": 20348,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -157,13 +167,13 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # repeat it. Priced against the SUM and not the file: this is the cheapest
     # possible repair of a control the route is already paying 2791 tokens to
     # carry, and paying that in full for nothing is the actual waste.
-    "dispatched-reviewer": 19497,
+    "dispatched-reviewer": 19488,
 }
 
 PAYLOAD_CEILINGS = {
-    "single-pass-inner": 6302,
-    "single-pass-full": 20356,
-    "dispatched-reviewer": 19498,
+    "single-pass-inner": 6304,
+    "single-pass-full": 20349,
+    "dispatched-reviewer": 19489,
 }
 
 

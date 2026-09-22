@@ -1386,6 +1386,25 @@ def commit_cost(project_dir: Path, paths: "list[str] | None" = None) -> dict:
     }
 
 
+def _extension_reason(project_dir: Path) -> "str | None":
+    """``critic_mode.extension_deferral`` for the branch's plan, or ``None``.
+
+    ``None`` on any failure: this only ever lowers a price, and a price that
+    could not be lowered stays the conservative one.
+    """
+    from . import buildplan_refs, critic_mode, gitstate  # noqa: PLC0415 — lazy keeps this module's import DAG light
+
+    try:
+        prawduct_dir = gitstate.get_prawduct_dir(project_dir)
+        plan = buildplan_refs.resolve_branch_plan(project_dir, prawduct_dir)
+        if plan.path is None:
+            return None
+        progress = buildplan_refs.resolve_chunk_progress(project_dir, plan.path)
+        return critic_mode.extension_deferral(project_dir, prawduct_dir, plan, progress)
+    except (OSError, ValueError):
+        return None
+
+
 def cost_of_commit(project_dir: Path, argv: "list[str]") -> int:
     """Body of ``prawduct-hook cost-of-commit [--json] [<paths>...]``.
 
@@ -1460,10 +1479,19 @@ def cost_of_commit(project_dir: Path, argv: "list[str]") -> int:
         if coverage_answer["status"] == "covered":
             covered_by = coverage_answer["by"]
             verdict = "free"
+    # Not covered yet, but a review the plan still owes will start from the
+    # last reviewed state and span this commit (#167), so committing buys no
+    # round of its own. Same no-argument restriction as above.
+    rides_next_review: "str | None" = None
+    if verdict == "costs-a-round" and not given_paths:
+        rides_next_review = _extension_reason(project_dir)
+        if rides_next_review:
+            verdict = "free"
 
     if as_json:
         print(json.dumps(
-            {"verdict": verdict, **cost, "covered_by": covered_by, "round_price": price},
+            {"verdict": verdict, **cost, "covered_by": covered_by,
+             "rides_next_review": rides_next_review, "round_price": price},
             indent=2,
         ))
         return 0
@@ -1499,6 +1527,12 @@ def cost_of_commit(project_dir: Path, argv: "list[str]") -> int:
             f"{', '.join(covered_by)} already covers this working tree — committing "
             f"it verbatim buys no review round. The next edit after that commit, "
             f"if judgeable, opens a new delta that does."
+        )
+        return 0
+    if rides_next_review:
+        print(
+            f"{n_judgeable} of {n_total} path(s) are judgeable and not yet reviewed, but "
+            f"no round is owed for them now: {rides_next_review}."
         )
         return 0
     if cost["judgeable"]:

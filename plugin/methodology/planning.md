@@ -176,7 +176,7 @@ error handling go missing one context at a time.
 
 **Per-chunk commit is the contract.** `chunk`-mode reviews assume the previous chunk was committed, so the working-tree diff is just the current chunk. Batch-commit-at-end plans break this — if you need that, override every chunk to `final` (heavy but safe; squash-at-end with `chunk`-mode has unbounded diff scope and is wrong).
 
-**Default when unsure.** A missing or unrecognized mode is inferred, and when no rule fires the review is the inner-stage `chunk` of the uncommitted interval — never `final` by default (canonical rule: `skills/critic/review-cycle.md`). Rely on inference rather than declaring a mode to buy depth the chunk has not earned.
+**Default when unsure.** A missing or unrecognized mode is inferred, and when no rule fires the review is the inner-stage `chunk` — never `final` by default (canonical rule: `skills/critic/review-cycle.md`). Rely on inference rather than declaring a mode to buy depth the chunk has not earned.
 
 See `methodology/building.md` for runtime behavior and `skills/critic/review-cycle.md` for the per-mode behavior table.
 

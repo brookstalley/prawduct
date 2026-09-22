@@ -21,6 +21,13 @@ measured duration. The dispatch mark is now checked against the tree the reviewe
 interval ends when the reviewer writes its evidence. Before this, only PR reviews that found nothing
 were measured.
 
+**`review-interval-extension`** — fixing a warning after a clean review of the current chunk no
+longer costs a `verify-resolutions` round while your plan has chunks left. Commit the reviewed tree,
+then the fix. The next chunk's review starts from the last reviewed state, so it covers the fix too,
+and `/prawduct:critic`, the Stop hook, the review's NEXT-ACTION and `cost-of-commit` all say so
+rather than asking for the round. Blocking findings still need `verify-resolutions`, and a chunk
+nobody reviewed is never deferred.
+
 **`unresolved-scope-diagnosis`** — when a Critic review resolves no build-plan scope,
 `critic-begin` now prints a note saying why and which plan edit fixes it — most often a `branch:`
 line written below the plan's frontmatter, where nothing reads it. A review without a scope is

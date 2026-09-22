@@ -98,7 +98,8 @@ _VERBOSE_VERIFY_RESOLUTIONS = MODE_TOKEN_TO_VERBOSE["verify-resolutions"]
 #: The two review STAGES (`nonfunctional-requirements.md` § Direction, *Review
 #: rigor is stage-keyed*). A stage is a fact about the review INTERVAL, and
 #: ``begin_review`` chooses the interval by mode — ``chunk``/``final`` review
-#: the uncommitted diff, ``verify-resolutions`` the delta since the prior fact,
+#: to the working tree from HEAD (or from the covered frontier behind it),
+#: ``verify-resolutions`` the delta since the prior fact,
 #: ``cumulative`` merge-base → HEAD — so the stage is a function of the mode
 #: token. This mapping is that function's one home: the dispatch writes the
 #: result onto the manifest as ``stage``, and every reader downstream (the
@@ -553,6 +554,23 @@ _RIDE_ALONG_ROUTE = (
 )
 
 
+#: The lead of a zero-blocking close when the plan still owes a later review.
+#:
+#: It REPLACES the cost lead, the "if you fix some" sentence, the third route
+#: and the round price rather than following them, because under it all four
+#: are false: the next ``chunk``/``final`` review starts at the tree this review
+#: just covered (``gates.covered_frontier``), so a fix committed now is covered
+#: by a review the plan is paying for anyway. Appended after them, it would be
+#: an exception trailing advice that still leads with "a fix buys a round".
+_RIDES_NEXT_REVIEW_LEAD = (
+    "This plan still owes a later review, and it will start from the tree this"
+    " review just covered once that tree is a commit — so commit it as it"
+    " stands FIRST, then fix what is worth fixing and commit that separately:"
+    " the next chunk's review covers the fix, not a round of its own. Do NOT"
+    " run `verify-resolutions` for it. "
+)
+
+
 #: What fixing a non-blocking item costs, and how to find out before paying it.
 #:
 #: Shared by every zero-blocking close that still carries something a builder
@@ -802,6 +820,7 @@ def next_action_line(
     span: "str | None" = None,
     observations: int = 0,
     cost: "str | None" = None,
+    rides_next_review: bool = False,
 ) -> str:
     """The one sentence the BUILDER needs, computed from the fact's own counts
     and written into ``.critic-findings.json`` by :func:`fact_to_cache_record`.
@@ -848,6 +867,14 @@ def next_action_line(
     # and the truly-empty close has nothing to fix — a cost verdict on either
     # would be a number with no decision attached to it.
     lead = f"{cost} " if cost else ""
+    # When a later review on the plan will cover a fix, the cost lead, the
+    # fix-some sentence, the third route and the price all describe a round
+    # that will not be bought — so one lead replaces all four (see
+    # `_RIDES_NEXT_REVIEW_LEAD`). The blocking arm below never reads either:
+    # blockers clear only through `verify-resolutions`, whatever is owed later.
+    fix_tail = _IF_YOU_FIX_SOME + _RIDE_ALONG_ROUTE + price
+    if rides_next_review:
+        lead, fix_tail = _RIDES_NEXT_REVIEW_LEAD, ""
     # `span` is :func:`span_clause`'s output, rendered by the caller for the
     # same reason `price_sentence` is. Absent (every mode but a clean
     # `verify-resolutions` close) the clause stays what it always was: go ask
@@ -931,9 +958,7 @@ def next_action_line(
                 # fix one — and fixing is the route that buys a round. It
                 # therefore owes the same cost of fixing, the same free route
                 # and the same price the warnings arm prints.
-                + _IF_YOU_FIX_SOME
-                + _RIDE_ALONG_ROUTE
-                + price
+                + fix_tail
             )
         return (
             "0 blocking, 0 other findings — THE REVIEW IS OVER and there is nothing"
@@ -956,9 +981,7 @@ def next_action_line(
             if observations
             else ""
         )
-        + _IF_YOU_FIX_SOME
-        + _RIDE_ALONG_ROUTE
-        + price
+        + fix_tail
     )
 
 
@@ -1273,7 +1296,7 @@ def _widened_fallback_mode(
     """Which full-review mode actually COVERS the delta that just widened.
 
     "Run a full review" meant `final`, unconditionally — and `final`'s interval
-    is HEAD-tree → working-tree, the *uncommitted* diff. So a delta that widened
+    was then HEAD-tree → working-tree, the *uncommitted* diff. So a delta that widened
     because commits landed since the prior review demoted to the one mode that
     cannot see them: the refused interval was too wide, and its replacement was
     strictly NARROWER. Observed 2026-08-15 on a 95-file widening (a base-branch
@@ -1303,6 +1326,20 @@ def _widened_fallback_mode(
             "every change since the prior review is uncommitted, which is "
             "exactly `final`'s HEAD-tree → working-tree interval"
         )
+    # `final` is no longer blind to committed work when a covered frontier
+    # exists behind it: its interval then starts there (#167), so it spans
+    # the committed commits since the last reviewed state as well as the
+    # uncommitted ones — a narrower span than `cumulative`'s whole branch.
+    from . import gates  # noqa: PLC0415 — lazy; gates is heavy and one-way
+
+    frontier = gates.covered_frontier(project_dir)
+    if frontier is not None and frontier["tree"] != committed_head_tree:
+        return "final", (
+            "the delta includes committed work, and `final`'s interval starts at "
+            f"the last reviewed state ({frontier['commit'][:12]}), so it covers "
+            "those commits and the uncommitted work — a narrower span than "
+            "`cumulative`'s merge-base…HEAD"
+        )
     from . import coverage  # noqa: PLC0415 — lazy; coverage pulls git helpers
 
     resolved = coverage.resolve_merge_base_tree(project_dir)
@@ -1329,9 +1366,10 @@ def _widened_fallback_mode(
             "only the uncommitted part"
         )
     return "cumulative", (
-        "the delta includes committed work, which `final`'s HEAD-tree → "
-        "working-tree interval cannot see; `cumulative` spans merge-base…HEAD — "
-        "the work this branch owes, and the PR gate's own span"
+        "the delta includes committed work that `final` cannot reach — no "
+        "reviewed state without an open blocker sits behind it for its interval "
+        "to start from; `cumulative` spans merge-base…HEAD — the work this "
+        "branch owes, and the PR gate's own span"
     )
 
 
@@ -2438,8 +2476,10 @@ def begin_review(
 
     Per-mode interval (design D8, chunk-03 refinements):
 
-    - ``chunk``/``final`` — base = ``HEAD`` (the uncommitted diff), head =
-      the captured working tree (D3 temp-index capture; non-mutating).
+    - ``chunk``/``final`` — base = ``HEAD``, or the covered frontier behind it
+      when commits since that are unreviewed (``gates.covered_frontier``; the
+      fact records ``base_extended_from``); head = the captured working tree
+      (D3 temp-index capture; non-mutating).
     - ``cumulative`` — base = merge-base(resolve-base, HEAD), head = ``HEAD``
       (the committed bundle; a dirty working tree is noted, not reviewed).
     - ``verify-resolutions`` — base = the prior review FACT's ``head_tree``;
@@ -2592,11 +2632,35 @@ def begin_review(
     # conjunct that keeps the gate from deadlocking.
     pending_actionable = 0
 
+    base_extended_from: "str | None" = None
     if mode_token in ("chunk", "final"):
         base_commit = dispatch_commit
         base_tree = capture["head_tree"]
         head_tree = capture["tree"]
         head_commit = dispatch_commit if capture["clean"] else None
+        # Start at the covered frontier when commits since it are unreviewed —
+        # typically a non-blocking fix committed after the last review. One
+        # review then covers them with the new work, instead of the fix buying
+        # a `verify-resolutions` round of its own; and the edge it records
+        # composes, so no gap is left for a `cumulative` to close later.
+        from . import gates  # noqa: PLC0415 — lazy; gates is heavy and one-way
+
+        frontier_why: list[str] = []
+        frontier = gates.covered_frontier(project_dir, frontier_why)
+        # A frontier that could not be LOOKED FOR is a different fact from one
+        # that does not exist, and the difference is invisible in the interval.
+        notes.extend(
+            f"the review interval was not extended — {reason}" for reason in frontier_why
+        )
+        if frontier is not None and frontier["tree"] != capture["head_tree"]:
+            base_commit, base_tree = frontier["commit"], frontier["tree"]
+            base_extended_from = frontier["tree"]
+            notes.append(
+                f"this {mode_token} review starts at {frontier['commit'][:12]}, the last "
+                "reviewed state, not at HEAD: the commits since it have not been "
+                "reviewed, so this one review covers them together with the "
+                "uncommitted work."
+            )
     elif mode_token == "cumulative":
         from . import coverage  # noqa: PLC0415 — lazy; coverage pulls git helpers
 
@@ -3078,6 +3142,9 @@ def begin_review(
         "scope": scope,
         "scope_chosen_by": scope_chosen_by,
         "scope_unresolved_cause": scope_unresolved_cause,
+        # The tree a chunk/final interval was extended back to, or null — the
+        # yield of the extension, countable from the store.
+        "base_extended_from": base_extended_from,
         "chunk": chunk,
         "base_reviewed": base_reviewed,
         # Make the resolved target VISIBLE so a wrong-tree review is obvious
@@ -3441,7 +3508,7 @@ def validate_manifest(data) -> tuple[bool, str]:
     if data.get("files_oracle") is not None and not _str_list(data.get("files_oracle")):
         return False, "'files_oracle' must be a list of non-empty strings or null"
     for opt in ("base_commit", "head_commit", "tier", "scope", "scope_chosen_by",
-                "scope_unresolved_cause", "chunk", "model", "base_reviewed", "worktree", "branch",
+                "scope_unresolved_cause", "base_extended_from", "chunk", "model", "base_reviewed", "worktree", "branch",
                 "chunk_type", "signals"):
         val = data.get(opt)
         if val is not None and not _nonempty_str(val):
@@ -4288,6 +4355,7 @@ def build_fact_body(manifest: dict, partials: list[dict]) -> dict:
         # Why a scope did not resolve, when it did not — the diagnosis note's
         # yield, queryable from the store like `record_lint` below.
         "scope_unresolved_cause": manifest.get("scope_unresolved_cause"),
+        "base_extended_from": manifest.get("base_extended_from"),
         "chunk": manifest.get("chunk"),
         "base_reviewed": manifest.get("base_reviewed"),
         # The record-lint control's YIELD, carried from the dispatch manifest
@@ -4366,12 +4434,48 @@ def finding_fix_cost(files: "list | None") -> str:
     return FIX_COST_FREE
 
 
+def _plan_owes_a_later_review(
+    project_dir: Path, prawduct_dir: Path, facts: "list[dict] | None" = None,
+    fact: "dict | None" = None,
+) -> bool:
+    """Whether the branch's plan owes a review after the one just consolidated.
+
+    The close's half of the interval-extension deferral: the review just
+    written covers its tree with no blocker (the caller only asks on a
+    zero-blocking close), so once that tree is committed it IS the covered
+    frontier, and the only open question is whether a later review will start
+    from it — ``critic_mode.later_review_owed``. ``False`` on any failure: this
+    changes advice, and advice that cannot be derived keeps the older wording.
+
+    Not after the boundary: when ``fact`` stands on a chain holding a
+    ``cumulative`` (``critic_mode.boundary_review_on_chain``), the unticked boxes
+    are chunks awaiting their tick, not chunks still to build, and the close
+    must not promise a review that is not coming.
+    """
+    try:
+        from . import buildplan_refs, critic_mode  # noqa: PLC0415 — lazy, as this module's other lib imports are
+
+        plan = buildplan_refs.resolve_branch_plan(project_dir, prawduct_dir)
+        if plan.path is None:
+            return False
+        if fact is not None and critic_mode.boundary_review_on_chain(
+            critic_mode.review_chain(facts or [], fact)
+        ):
+            return False
+        return critic_mode.later_review_owed(
+            buildplan_refs.resolve_chunk_progress(project_dir, plan.path)
+        )
+    except (OSError, ValueError):
+        return False
+
+
 def fact_to_cache_record(
     fact: dict,
     price_sentence: "str | None" = None,
     carried: "list[dict] | None" = None,
     span: "str | None" = None,
     cost: "str | None" = None,
+    rides_next_review: bool = False,
 ) -> dict:
     """Render the derived ``.critic-findings.json`` record from a review fact
     (D7: the cache is a code-regenerated VIEW of the latest fact — builders
@@ -4454,7 +4558,7 @@ def fact_to_cache_record(
         "next_action": next_action_line(
             fact.get("id"), blocking, warning, note, price_sentence,
             carried=carried, span=span, observations=len(observations),
-            cost=cost,
+            cost=cost, rides_next_review=rides_next_review,
         ),
         # Recomputed from the fact's own findings, so this advisory grouping
         # adds nothing to the persisted schema and keeps no model in the write
@@ -4967,6 +5071,9 @@ def consolidate(project_dir: Path) -> int:
         (fact.get("body") or {}).get("head_tree"),
     )
     cost_sentence = cost_lead(coverage.commit_cost(project_dir), tree_now_covered)
+    rides_next_review = _plan_owes_a_later_review(
+        project_dir, prawduct_dir, store.get("facts") or [], fact
+    )
 
     carried = (
         carried_blocking(
@@ -4993,7 +5100,9 @@ def consolidate(project_dir: Path) -> int:
         answer = gates.branch_coverage_verdict(project_dir)
         span = span_clause(answer, _span_commits(project_dir, answer))
 
-    record = fact_to_cache_record(fact, price_sentence, carried, span, cost_sentence)
+    record = fact_to_cache_record(
+        fact, price_sentence, carried, span, cost_sentence, rides_next_review
+    )
     findings_path = prawduct_dir / ".critic-findings.json"
     atomic_write_text(findings_path, json.dumps(record, indent=2))
 
@@ -5155,6 +5264,7 @@ def consolidate(project_dir: Path) -> int:
             span=span,
             observations=len(fact_body.get("observations") or []),
             cost=cost_sentence,
+            rides_next_review=rides_next_review,
         )
     )
     return 0
