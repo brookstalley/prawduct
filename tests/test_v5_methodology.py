@@ -1116,7 +1116,11 @@ LAST_MEASURED_TOKENS = {
     # inference answers `deferred`, contradicting the bullet below them and
     # the code. Pinned in `test_short_plan_deferral.py`. On-demand class.
     # RATCHETED 5735 -> 5730 (review-interval-extension PR review, 2026-09-22): "of the uncommitted interval" dropped.
-    "methodology/planning.md": 5730,
+    # +40 (pin-status-tick-meaning, 2026-09-22, owner decision): the one home for what
+    # a `## Status` tick means — built, committed, reviewed; never merged or released.
+    # Readers (the Critic gate, the briefing, the extension deferral) each assumed a
+    # different meaning until then. Declared, not paid: nothing here restated it.
+    "methodology/planning.md": 5770,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
@@ -4306,6 +4310,22 @@ class TestOtherMethodology:
         # requirement is unchanged — planning starts from this project's rules —
         # and only where they live moved.
         assert ".claude/rules/learnings/" in content
+
+    def test_a_status_tick_has_one_pinned_meaning(self):
+        """Owner decision 2026-09-22: a tick means built, committed and reviewed on
+        the branch — never merged or released. Readers had assumed three different
+        meanings; `planning.md` is the one home, and the template's Status comment
+        must say the same. Bound to the defining sentence, not the whole file, so a
+        stray phrase elsewhere cannot satisfy it."""
+        planning = read_file("methodology/planning.md")
+        definition = next(
+            (para for para in planning.split("\n\n") if "`## Status` tick means" in para), ""
+        )
+        assert "built, committed and reviewed on the branch" in definition, definition
+        assert "never merged or released" in definition, definition
+        template = read_file("templates/build-plan.md")
+        status_comment = template[template.index("## Status"):].split("-->", 1)[0]
+        assert "never merged or released" in status_comment, status_comment
 
     def test_discovery_operationalizes_coverage_expectation(self):
         # Recording structural characteristics is tied to the strategy-class

@@ -103,7 +103,7 @@ last_validated: 2026-07-03
 
 <!-- The cross-session handoff, and the ONLY reading of chunk progress. The boxes are
      yours to tick: mark `[x]` by hand when a chunk's "Done when" steps are all
-     satisfied — nothing derives them, so an unticked box is read everywhere as work
+     satisfied — built, reviewed, committed; never merged or released — nothing derives them, so an unticked box is read everywhere as work
      still open. Keep Context current. Context runs from `Context:` to the end of this
      section, so it may be several paragraphs — the handoff carries it whole. Keep it
      LAST: a chunk checkbox after it closes the block, and anything below that is
