@@ -16,7 +16,7 @@ governed_by:
       - "Python-written, never Python-specific → conforms: trees and paths only"
       - "prawduct guides and reviews; it never implements → conforms: the change is to when review is owed, not to product code"
       - "goals and verification bind; prescribed method is advice → conforms: the design's method is a best guess and the chunks record any departure"
-      - "every fact has one home → conforms: the covered frontier is computed by one function in `coverage` and read by `critic-begin`, the Stop gate and `cost-of-commit`; none re-derives it"
+      - "every fact has one home → conforms: the covered frontier is one function, `gates.covered_frontier(project_dir)`, read by `critic-begin` (and, from Chunk 2, the Stop gate's deferral). The Stop gate and `cost-of-commit` ask a different question, merge-base → working-tree composition, and both now ask it through one function, `gates._merge_base_verdict`"
   - artifact: nonfunctional-requirements
     dispositions:
       - "review wall-clock is P0 → the purpose: removes verify rounds bought for non-blocking fixes while a later review is owed (63 of 150 measured)"
@@ -61,22 +61,34 @@ composition), and the fix for it ships in Chunk 1.
 **Out of scope:** `cumulative` incrementality (the diagnosis doc's RC4); churn grants; any change to
 `verify-resolutions`; BLOCKING handling; the PR gate.
 
-`[ASSUMPTION: the covered frontier is searched along first-parent history from HEAD back to the
-merge-base | MED impact | a merge commit mid-branch (base syncs) is on first-parent, so a sync does
-not hide the frontier; owner can correct]`
+`[ASSUMPTION, corrected by Chunk 1's review: the covered frontier is searched along first-parent
+history from HEAD back to the merge-base. A base sync does NOT preserve the frontier: the merge-base
+becomes the new base tip, and a pre-sync review composes from it only across a non-judgeable
+advance. After a judgeable sync nothing is a frontier and the interval stays at HEAD until a review
+spans the sync. That is today's behaviour, not a regression; the base-advance transfer that would
+carry it across belongs to `gates._merge_base_verdict` | MED impact | owner can correct]`
 
 ## Chunk 1: A chunk/final review starts at the covered frontier, and the gates can see it
 
 **Delivers:**
-- `coverage.covered_frontier(project_dir, facts)`: the newest tree on HEAD's first-parent history
-  (HEAD back to the merge-base) that composition reaches from the merge-base tree with zero
-  unresolved blockers, or `None`.
+- `gates.covered_frontier(project_dir)`: the newest commit on HEAD's first-parent history (HEAD back
+  toward the merge-base) whose tree composition reaches from the merge-base tree with zero
+  unresolved blockers **through at least one review**, or `None`.
+  **Departure from this plan's first draft, recorded:** the draft named `coverage` and a `facts`
+  argument. The function lives in `gates` because it needs `_store_precheck`, `_cached_diff_fn` and
+  `_tree_key_fn`, and it reads the store itself, like every other gates verdict. A frontier reached
+  by free edges alone (nothing on the branch reviewed yet) is not a frontier, which keeps the draft's
+  "no prior review: today's interval" criterion. An intermediate build extended to the merge-base in
+  that case; the Chunk 1 review found it made the first inner-stage review a whole-branch review,
+  and it was removed.
 - `critic-begin`, `chunk`/`final`: when the frontier exists and is not HEAD's tree, the base is the
   frontier tree, and the manifest and review fact carry `base_extended_from` (the frontier tree;
   null otherwise). `commit_reviewed` stays the dispatch commit; `base_commit` is the frontier's
   commit.
 - The Stop gate's session coverage and `gates.commit_coverage` also accept coverage composing from
-  the merge-base tree to their target tree (additive, relax-only).
+  the merge-base tree to their target tree (additive, relax-only). The Stop gate already did this
+  from a session-base marker; it now does it from the HEAD fallback too, and `commit_coverage` calls
+  the same `_merge_base_verdict`.
 
 **Done when:**
 - End to end on a real repo fixture: review → commit a non-blocking fix → dirty next-chunk work →

@@ -1,6 +1,8 @@
 # #167 — let the next review cover a non-blocking fix, instead of buying a round for it
 
-**Status:** design, awaiting owner approval (2026-09-22). **Parent:** #167 (`stage: design`);
+**Status:** approved by the owner 2026-09-22, including both open questions below; built under
+`.prawduct/artifacts/build-plan-review-interval-extension.md`, which records where the build
+departed from this text. **Parent:** #167 (`stage: design`);
 its withdrawn build is recorded in `.prawduct/artifacts/archive/build-plan-review-convergence.md`
 § "Chunk 02 — WITHDRAWN after review". Data: the 2026-09-22 comment on #724.
 
@@ -101,9 +103,9 @@ such a commit as riding the next review, not as costing a round.
 A boundary investigation (2026-09-22) read every consumer that could assume a `chunk`/`final`
 review starts at HEAD. No validator requires `base_commit == commit_reviewed`, so the manifest and
 fact accept an older base as they stand. Keep `commit_reviewed` at the dispatch commit:
-`consolidate` matches each partial against it. Set `base_commit` from the prior fact's
-`head_commit`, never its `dispatch_commit`, because for a dirty-tree review that commit's tree is
-not its `base_tree`.
+`consolidate` matches each partial against it. `base_commit` is the frontier commit found by walking
+HEAD's first-parent history (`gates.covered_frontier`). Its tree is by construction the
+`base_tree`, which a prior fact's `dispatch_commit` would not be for a dirty-tree review.
 
 **One consumer breaks, and fixing it is part of Chunk 1.** The Stop gate composes coverage from
 the *session's* base tree to the working tree. When the fix was committed in an earlier session,
@@ -142,12 +144,13 @@ covers), `SKILL.md` (the "uncommitted diff" descriptions and the demotion-proper
 `critic_mode.py` (module docstring, rule-4 comment, `_clean_tree_redirect`). Several of these files
 sit under reviewer-payload token ceilings, so reword in place rather than add.
 
-**Open questions for the owner:**
+**Questions the owner settled (2026-09-22), with the answers taken:**
 
 1. Should the extension be limited to deltas whose judgeable files a prior review named (fix churn)?
-   Recommendation: no. The extension reviews the content, so it needs no churn evidence, and
-   limiting it would leave committed but unreviewed chunk work paying for its own cumulative.
-2. Should `final` extend as well as `chunk`? Recommendation: yes. The last chunk's `final` is the
+   **No.** The extension reviews the content, so it needs no churn evidence. Bounded in the build:
+   it extends only from a tree some review reached, never from the merge-base on a branch with no
+   review yet, because that would make the first inner-stage review a whole-branch review.
+2. Should `final` extend as well as `chunk`? **Yes.** The last chunk's `final` is the
    natural carrier for a fix made after the previous chunk's review.
 
 ## Norms this engages

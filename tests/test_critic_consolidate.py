@@ -8118,18 +8118,66 @@ class TestIntervalExtension:
         verdict = gates.session_review_verdict(repo)
         assert verdict["status"] == "covered", verdict
 
-    def test_unreviewed_judgeable_commits_with_no_review_extend_to_the_merge_base(self, tmp_path):
-        """With no review yet, the frontier is the merge-base: the first review
-        covers what the branch has committed unreviewed, which the PR gate would
-        otherwise demand of a `cumulative`."""
+    def test_no_review_yet_keeps_the_head_anchored_interval(self, tmp_path):
+        """With nothing reviewed on the branch, only free edges reach any tree,
+        and extending there would make the first inner-stage review a review of
+        everything the branch committed — the boundary `cumulative`'s span."""
         repo = self._branch(tmp_path)
-        merge_base = _git(repo, "rev-parse", "HEAD").stdout.strip()
         (repo / "src/app.py").write_text("x = 2\n")
-        self._commit_all(repo, "committed before any review")
+        head = self._commit_all(repo, "committed before any review")
         (repo / "src/other.py").write_text("y = 1\n")
         manifest = self._review(repo)["manifest"]
-        assert manifest["base_commit"] == merge_base
-        assert sorted(manifest["files_changed"]) == ["src/app.py", "src/other.py"]
+        assert manifest["base_commit"] == head
+        assert manifest["base_extended_from"] is None
+
+    def test_a_tree_reached_only_by_free_edges_is_not_a_frontier(self, tmp_path):
+        """A committed plan composes from the merge-base by a free edge, with no
+        review on the path. Treating it as reviewed would extend the first review
+        over the unreviewed code committed after it."""
+        repo = self._branch(tmp_path)
+        (repo / ".prawduct" / "artifacts").mkdir(parents=True)
+        (repo / ".prawduct" / "artifacts" / "build-plan-x.md").write_text("# Plan\n")
+        self._commit_all(repo, "the plan")
+        (repo / "src/app.py").write_text("x = 2\n")
+        head = self._commit_all(repo, "code committed before any review")
+        (repo / "src/other.py").write_text("y = 1\n")
+        manifest = self._review(repo)["manifest"]
+        assert manifest["base_commit"] == head
+        assert manifest["base_extended_from"] is None
+
+    def test_a_base_sync_does_not_extend_to_the_whole_branch(self, tmp_path):
+        """After merging a judgeable base advance, the merge-base is the new base
+        tip and no pre-sync review composes from it, so nothing is a frontier and
+        the interval stays at HEAD — never a whole-branch review."""
+        repo, _reviewed, _fix = self._reviewed_fix_then_new_work(tmp_path, [self.WARNING])
+        # The next chunk's work is an untracked file, which checkout and merge carry.
+        _git(repo, "checkout", "main", "--quiet")
+        _commit_file(repo, "src/base.py", "b = 1\n", "base advances")
+        _git(repo, "checkout", "feat/work", "--quiet")
+        _git(repo, "merge", "--no-ff", "--quiet", "-m", "sync base", "main")
+        sync = _git(repo, "rev-parse", "HEAD").stdout.strip()
+        manifest = self._review(repo)["manifest"]
+        assert manifest["base_commit"] == sync
+        assert manifest["base_extended_from"] is None
+
+    def test_the_walk_limit_is_exact(self, tmp_path, monkeypatch):
+        repo, reviewed, _fix = self._reviewed_fix_then_new_work(tmp_path, [self.WARNING])
+        # HEAD..merge-base holds exactly two commits: the reviewed one and the fix.
+        monkeypatch.setattr(gates, "FRONTIER_WALK_LIMIT", 2)
+        assert gates.covered_frontier(repo)["commit"] == reviewed
+        monkeypatch.setattr(gates, "FRONTIER_WALK_LIMIT", 1)
+        assert gates.covered_frontier(repo) is None
+
+    def test_an_unreadable_base_or_store_means_no_extension(self, tmp_path, monkeypatch):
+        repo, reviewed, _fix = self._reviewed_fix_then_new_work(tmp_path, [self.WARNING])
+        assert gates.covered_frontier(repo)["commit"] == reviewed  # the control
+        with monkeypatch.context() as m:
+            m.setattr(coverage, "resolve_merge_base_tree",
+                      lambda _p: {"status": "error", "step": "merge-base", "reason": "x"})
+            assert gates.covered_frontier(repo) is None
+        with monkeypatch.context() as m:
+            m.setattr(evidence, "read_facts", lambda _p: {"status": "error", "reason": "x", "facts": []})
+            assert gates.covered_frontier(repo) is None
 
     def test_a_non_judgeable_commit_does_not_extend(self, tmp_path):
         # A plan committed on the branch is a free edge, so HEAD is already
@@ -8142,3 +8190,27 @@ class TestIntervalExtension:
         manifest = self._review(repo)["manifest"]
         assert manifest["base_commit"] == head
         assert manifest["base_extended_from"] is None
+
+    def test_the_no_marker_gate_reports_a_merge_base_blocker(self, tmp_path):
+        """With no marker the gate starts from HEAD's tree. When that span is
+        uncovered but the merge-base span composes through a review that still
+        carries a blocker, the gate reports the blocker (the finding to fix),
+        not a bare `uncovered` (a review to run)."""
+        repo = self._branch(tmp_path)
+        mb_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        (repo / "src/app.py").write_text("x = 2\n")
+        self._commit_all(repo, "an unreviewed commit")
+        (repo / "src/app.py").write_text("x = 3\n")
+        capture = evidence.capture_tree(repo)
+        assert evidence.append_fact(repo, "review", "rev-test-mb-blocked", {
+            "base_tree": mb_tree, "head_tree": capture["tree"],
+            "files_changed": ["src/app.py"], "files_reviewed": ["src/app.py"],
+            "findings": [{"fid": "R-1", "severity": "blocking", "title": "boom",
+                          "files": ["src/app.py"]}],
+            "counts": {"blocking": 1, "warning": 0, "note": 0},
+            "mode": "chunk (lighter pass, not ready for push)",
+        })["status"] == "appended"
+        (repo / ".prawduct" / ".session-base-tree").unlink(missing_ok=True)
+        verdict = gates.session_review_verdict(repo)
+        assert verdict["status"] == "blocked", verdict
+        assert verdict["base_source"] == "merge-base-fallback"

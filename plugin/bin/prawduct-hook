@@ -1643,16 +1643,16 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
         # a resume-time clock onto a session that began earlier narrows the very
         # jurisdiction this split exists to protect. But an ALREADY-absent anchor
         # then degrades in silence: gates.session_review_verdict falls back to
-        # base_source='head-fallback', which shrinks the session Critic gate to
-        # uncommitted work AND skips the merge-base rescue (that rescue is gated on
-        # base_source == 'marker'). The boundary path announces the same narrowing
+        # base_source='head-fallback', whose primary span is uncommitted work only
+        # (the merge-base rescue still runs), so work this session committed is
+        # judged only as part of the whole branch. The boundary path announces the same narrowing
         # when it fails to resolve HEAD^{tree}; the continuation path attempts no
         # write, so without this there is no notice at all. Reaching
         # it is ordinary now — a mid-cycle worktree entry followed by resume/fork.
         print(
             "NOTE: no .prawduct/.session-base-tree and this is a continuation "
             "(resume/compact/fork), which never writes one — the session Critic gate "
-            "will judge uncommitted work only and skip the merge-base rescue, and the "
+            "will start from HEAD rather than from where this session began, and the "
             "reflection gate will not see work this session committed. "
             "Start the session with /clear in this worktree to anchor it.",
             file=sys.stderr,

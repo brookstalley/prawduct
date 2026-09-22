@@ -1005,7 +1005,10 @@ class TestBoundaryDependentInterpretation:
 
         res = run_plugin_hook("clear", tmp_path, "--session-start", "--brief-only")
         assert res.returncode == 0, res.stderr
-        assert ".session-base-tree" in res.stderr and "uncommitted work only" in res.stderr, (
+        # The consequence named is where the gate starts, not "uncommitted work
+        # only": since #167 the merge-base rescue also runs without a marker, so
+        # committed work is still judged as part of the branch.
+        assert ".session-base-tree" in res.stderr and "will start from HEAD" in res.stderr, (
             "a missing anchor on a continuation must name its consequence"
         )
 
