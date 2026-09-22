@@ -5,6 +5,20 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-22: The unresolved-scope note stays quiet on plan-less work
+
+<!-- prawduct: type=fix | scope=scope-note-plan-less-silence -->
+
+The `no-claim` diagnosis added by `unresolved-scope-diagnosis` fired on every branch that no plan
+claims, including chores and small fixes that have no plan and need none. It told them to add
+`branch:` to "the plan this work belongs to", which is advice with nothing to act on. It first
+showed up on the `3.6.1-dev.2` bump PR. `no-claim` now fires only when a live build plan was created
+or edited on this branch without claiming it, and the note names that plan. A branch that touched no
+plan gets no note. The other three causes are unchanged, and none of them depends on the branch
+touching a plan. The git read behind this ("which files did this branch change since it left the
+base") is now one helper, `_changed_on_branch`, shared with the finished-plan liveness check. The
+check therefore answers the same question it did before, from one place.
+
 ## 2026-09-22: develop opens 3.6.1-dev.2
 
 <!-- prawduct: type=chore | scope=dev-track-bump-20260922 -->

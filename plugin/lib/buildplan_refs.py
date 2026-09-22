@@ -784,6 +784,42 @@ def _declares_scope(plan_path: Path) -> bool:
     return bool(plan_index.parse_build_plan_frontmatter_scope(content)[1])
 
 
+def _changed_on_branch(project_dir: Path, pathspec: Path) -> "set[Path] | None":
+    """Files under ``pathspec`` this branch created or edited since it left the base.
+
+    Tracked changes are measured from the merge-base to the working tree, so
+    committed and uncommitted edits both count; untracked files count too,
+    because a file git has never seen was written here rather than inherited.
+    Resolved absolute paths. ``None`` when it cannot be shown — no base, no
+    merge-base, a git error — so a caller can tell "nothing changed" from
+    "could not look".
+    """
+    base, _ = _resolve_base_branch(project_dir)
+    if not base:
+        return None
+    try:
+        mb = subprocess.run(
+            ["git", "merge-base", base, "HEAD"],
+            cwd=str(project_dir), capture_output=True, text=True, timeout=10,
+        )
+        if mb.returncode != 0 or not mb.stdout.strip():
+            return None
+        diff = subprocess.run(
+            ["git", "diff", "--name-only", "--relative", mb.stdout.strip(), "--", str(pathspec)],
+            cwd=str(project_dir), capture_output=True, text=True, timeout=10,
+        )
+        untracked = subprocess.run(
+            ["git", "ls-files", "--others", "--exclude-standard", "--", str(pathspec)],
+            cwd=str(project_dir), capture_output=True, text=True, timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if diff.returncode != 0 or untracked.returncode != 0:
+        return None
+    names = diff.stdout.splitlines() + untracked.stdout.splitlines()
+    return {(project_dir / n).resolve() for n in names if n.strip()}
+
+
 def _plan_changed_on_branch(project_dir: Path, plan_path: Path) -> bool:
     """True when this branch created or edited ``plan_path`` since it left the base.
 
@@ -792,32 +828,11 @@ def _plan_changed_on_branch(project_dir: Path, plan_path: Path) -> bool:
     later branch that only shares the plan's name leaves it untouched. Observed
     from git rather than stored on the plan, so there is nothing to forget.
 
-    ``False`` whenever it cannot be shown — no base, no merge-base, a git error —
-    which falls back to rejecting the finished plan, the older behaviour.
+    ``False`` whenever it cannot be shown, which falls back to rejecting the
+    finished plan, the older behaviour.
     """
-    base, _ = _resolve_base_branch(project_dir)
-    if not base:
-        return False
-    try:
-        mb = subprocess.run(
-            ["git", "merge-base", base, "HEAD"],
-            cwd=str(project_dir), capture_output=True, text=True, timeout=10,
-        )
-        if mb.returncode != 0 or not mb.stdout.strip():
-            return False
-        tracked = subprocess.run(
-            ["git", "ls-files", "--error-unmatch", "--", str(plan_path)],
-            cwd=str(project_dir), capture_output=True, text=True, timeout=10,
-        )
-        if tracked.returncode != 0:
-            return True  # untracked: written on this branch, not inherited
-        diff = subprocess.run(
-            ["git", "diff", "--quiet", mb.stdout.strip(), "--", str(plan_path)],
-            cwd=str(project_dir), capture_output=True, text=True, timeout=10,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return False
-    return diff.returncode == 1
+    changed = _changed_on_branch(project_dir, plan_path)
+    return bool(changed) and plan_path.resolve() in changed
 
 
 def unresolved_scope_cause(
@@ -840,8 +855,11 @@ def unresolved_scope_cause(
     - ``body-branch`` — a plan names this branch on a ``branch:`` line below its
       frontmatter, where :func:`plan_index.branch_claiming_plans` never looks.
     - ``pointer-claims-other`` — the active plan claims a different branch.
-    - ``no-claim`` — none of the above: nothing claims the branch and no plan's
-      scope matches its name.
+    - ``no-claim`` — a live plan this branch created or edited does not claim
+      it. That edit is the evidence the branch has a plan at all; a branch that
+      touched no plan is doing plan-less work (a chore, a small fix), where
+      "add ``branch:`` to your plan" is advice with nothing to act on, so it
+      gets ``None`` rather than a note on every review.
 
     Call it only when resolution has already failed; it re-derives nothing the
     resolver decided and would name a cause for a scope that did resolve.
@@ -899,11 +917,16 @@ def unresolved_scope_cause(
                 "`--scope`",
             )
 
+    changed = _changed_on_branch(project_dir, artifacts_dir) or set()
+    edited = [p for p in plan_index.iter_live_plan_files(artifacts_dir) if p.resolve() in changed]
+    if not edited:
+        return None
     return (
         "no-claim",
-        f"no live build plan declares `branch: {branch}` in its frontmatter and "
-        "no plan's `scope:` matches the branch name — add that line to the "
-        "frontmatter of the plan this work belongs to, or pass `--scope`",
+        f"{rel(edited[0])} was edited on this branch but no live plan declares "
+        f"`branch: {branch}` in its frontmatter and no plan's `scope:` matches the "
+        "branch name — if that is this work's plan, add the line to its "
+        "frontmatter; otherwise pass `--scope`",
     )
 
 
