@@ -130,6 +130,8 @@ last chunk); targeted tests green.
   be chunks awaiting their tick rather than chunks still to build. Its verify pass printed "the next
   chunk's review covers the fix" with every chunk already built. A `cumulative` on the review chain
   now marks the boundary for both the deferral and the close.
+- *#167's stage moves by closing it at merge.* The backlog is on the Issues backend, so the move is
+  a status change made when the PR merges, not a file edit this branch can carry.
 - *Nothing reads `base_extended_from` yet* (the design named `review-stats`). It is recorded on
   every fact, so the yield is countable from the store now; wiring a reader is left for when the
   measurement window needs one.

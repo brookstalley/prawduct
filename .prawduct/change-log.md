@@ -54,7 +54,8 @@ not be looked for (an unreadable store, git failure, the walk bound) is named at
 than read as "none". The PR gate is unchanged.
 
 **Docs.** `review-cycle.md`, the Critic `SKILL.md` and `review-protocol.md` describe the new interval
-in place. The reviewer-payload readings went down, and their ceilings were ratcheted with them.
+in place. `building.md`'s "Resolve findings" now scopes fix → verify → commit to while a blocker
+remains, and points at NEXT-ACTION for a non-blocking fix mid-plan. The reviewer-payload readings went down, and their ceilings were ratcheted with them.
 
 ## 2026-09-22: The unresolved-scope note stays quiet on plan-less work
 
