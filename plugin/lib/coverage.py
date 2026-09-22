@@ -452,16 +452,33 @@ def diagnose_fix_churn(
     }
 
 
-#: The one status of :func:`diagnose_base_advance_transfer` that GRANTS. Named
-#: in the module that produces it because both review gates consume it: each
-#: must ask "is this the granting status" without restating how it is spelled,
-#: so the two gates agree by construction rather than by coincidence.
-#:
-#: Deliberately NOT paired with a constant for ``"unavailable"``: that string is
-#: a module-wide convention (:func:`diagnose_fix_churn` and
-#: :func:`count_branch_rounds` return it too, meaning the same thing), so a
-#: ``TRANSFER_``-prefixed name for it would invent a distinction the code lacks.
+#: The one status of :func:`diagnose_base_advance_transfer` that GRANTS.
 TRANSFER_MATCH = "match"
+
+
+def classify_transfer(transfer: "dict | None") -> str:
+    """The one reading of a :func:`diagnose_base_advance_transfer` result that
+    every gate site branches on: ``"absent"`` (no transfer was attempted),
+    ``"match"`` (may grant, once a suite run vouches for the tree),
+    ``"unavailable"`` (the check could not run — its remedy is worth naming),
+    or ``"unknown"`` (any other status).
+
+    One function rather than a comparison at each call site because the
+    decision has several readers — the Stop gate, the PR gate's verdict and the
+    PR gate's rendered remedy — and a new status must land on the DENY side at
+    every one of them. ``"unknown"`` is that side: it neither grants nor renders
+    a remedy, because :func:`gates.transfer_remedy` reads fields only a
+    ``match`` or an ``unavailable`` carries, and an unmeasured status is not a
+    near miss a suite run fixes.
+    """
+    if transfer is None:
+        return "absent"
+    status = transfer.get("status")
+    if status == TRANSFER_MATCH:
+        return "match"
+    if status == "unavailable":
+        return "unavailable"
+    return "unknown"
 
 
 def diagnose_base_advance_transfer(

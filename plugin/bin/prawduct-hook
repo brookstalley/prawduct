@@ -1726,8 +1726,11 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
     this mode could resolve, so the coverage gate already composes it as a free
     edge (`--force` dispatches anyway; no session state is written and no marker
     is set, so a 3 needs no `critic-end` — it does append one inert
-    `guard-refusal` fact, which no gate reads); exit 1 = any other dispatch failure (reason
-    on stderr). The scheme these cite is prawduct's own API contract — its
+    `guard-refusal` fact, which no gate reads); exit 4 = round budget
+    exhausted (census on stdout); exit 6 = verify-resolutions refused because
+    the evidence store is unreadable or holds newer-schema records — a store or
+    plugin problem that no demoted review can repair; exit 1 = any other
+    dispatch failure (reason on stderr). The scheme these cite is prawduct's own API contract — its
     Error Model section, in the framework repo rather than in yours.
 
     Also resets `.critic-partials/` before writing the fresh manifest —
@@ -1902,7 +1905,9 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
         for note in result.get("notes") or []:
             print(f"PRAWDUCT NOTE: {note}", file=sys.stderr)
         print(f"critic-begin: {result['reason']}", file=sys.stderr)
-        return 2 if result.get("kind") == "scope-widened" else 1
+        # 6, not the free 5: #167's withdrawn `self-inflicted-refusal` held 5
+        # on develop, and a new meaning must not wear an old number.
+        return {"scope-widened": 2, "store-unusable": 6}.get(result.get("kind"), 1)
 
     if result.get("archived_leftovers"):
         archived_name = Path(result["archived_leftovers"]).name

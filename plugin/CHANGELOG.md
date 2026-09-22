@@ -79,9 +79,9 @@ round is this branch's first* when the span is empty and it cannot know. Rider: 
 The Stop gate's base-advance transfer now grants only on a positive `match`, as the PR gate
 always did; an unrecognized transfer status now denies at both gates instead of reaching the
 Stop gate's grant path and crashing on fields only a `match` carries. `verify-resolutions` no
-longer reports an unreadable or newer-schema evidence store as *prior review fact not found* —
-it says the store could not be read, or that the plugin needs updating, which are different
-repairs from re-running a review. And a non-UTF-8 evidence store or `VERSION` file now degrades
+longer reports an unreadable or newer-schema evidence store as *prior review fact not found*:
+`critic-begin` now exits **6** with the real reason, and `/prawduct:critic` stops there instead of
+demoting to another round — no review repairs a store or updates a plugin. And a non-UTF-8 evidence store or `VERSION` file now degrades
 to the documented error answer instead of raising.
 
 **`release-v3.6.0`** — the v3.6.0 cut itself: `main` promoted, the tag and GitHub Release

@@ -13,18 +13,33 @@ Re-applied from the unmerged `fix/review-scrub-seams` branch (last commit 2026-0
 conflicted with `develop`; triaged by tree content, every change below was still absent there. Ported fresh rather than merged, under a new scope, because the
 branch's entries reused `tactical-efficiency` and `durable-agent-worktrees`, both already shipped.
 
-**The Stop gate grants a base-advance transfer only on a positive `match`.** `_merge_base_verdict`
-tested "anything but `unavailable`" while `check_cumulative_critic` tested `== "match"`. On
-`develop` the difference was not cosmetic: an unrecognized status reached the Stop gate's grant
-path and raised `KeyError: 'prior_base'`. `coverage.TRANSFER_MATCH` now names the granting status
-in the module that produces it and both gates ask for it;
-`test_only_a_match_grants_the_transfer_at_either_gate` asserts both deny an unknown status, and
-was red (the `KeyError`) before the fix. The contract is registered in `boundary-patterns.md`.
+**Every transfer decision reads one classifier.** `_merge_base_verdict` tested "anything but
+`unavailable`" while `check_cumulative_critic` tested `== "match"`. On `develop` the difference was
+not cosmetic: an unrecognized status reached the Stop gate's grant path and raised
+`KeyError: 'prior_base'`. The first cut named `coverage.TRANSFER_MATCH` and had both gates test it
+positively; the review (R-3) found that still left three sites — the Stop gate, the PR gate's
+verdict and the PR gate's rendered remedy — each reading the status for itself, agreeing but not
+by construction. `coverage.classify_transfer` is now the one reading, mapping any status it does
+not know to `"unknown"`: denied, and rendered with no remedy. The test asserts all three sites
+deny an unknown status (verdict, exit, and no *could not run* NOTE), and each site was mutated to
+a negative test independently — each went red. The contract and its sweep rule are registered in
+`boundary-patterns.md`.
 
 **`verify-resolutions` tells a degraded store from a missing anchor.** `_prior_review_fact`
 iterated a store it never graded, so an unreadable store and one carrying newer-schema records
 both reported *prior review fact … not found* — pointing at a re-review instead of the store or
-the plugin version. It now answers both states, and takes the store from `begin_review`, which
+the plugin version. It now answers both states (`_store_unusable`), and `critic-begin` exits
+**6** for them rather than 1 (R-1): the skill's exit-1 row on `verify-resolutions` demotes and
+re-dispatches, which cannot repair a store and on an unreadable one would append its fact to a file
+nothing parses. The skill's exit table, the command's docstring and `api-contract.md`'s sentinel
+list carry the new code — the docstring had also been missing exit 4. **5 is withdrawn, not free**:
+#167's reverted `self-inflicted-refusal` held it on `develop` (never in a release), so it is not
+given a new meaning. A missing anchor on a healthy store keeps exit 1, pinned as the control.
+The exit-table row is a **declared +29-token raise** on `SKILL.md` and both single-pass route sums
+(`test_v5_methodology.py`, `test_reviewer_payload_budget.py`), priced against the full round the
+exit-1 fallback would buy each time; drafted at +81, the remedy moved to the refusal's stderr,
+which is read only when it fires.
+The anchor lookup takes the store from `begin_review`, which
 reads it ONCE for the anchor lookup and the prior-dispositions block so the two see the same
 moment of a store every worktree of the clone appends to. The read is lazy, so a dispatch
 reaching neither reader parses nothing. No write lies between the two readers on the path that

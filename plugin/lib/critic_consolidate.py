@@ -2073,6 +2073,34 @@ def _derive_roster(
     )
 
 
+def _store_unusable(store: dict) -> "str | None":
+    """Why a :func:`evidence.read_facts` result cannot answer a lookup, or
+    ``None`` when it can.
+
+    A DEGRADED store is not an absent fact: ``facts_of_kind`` yields nothing
+    either way, so a lookup that never asks this reports "not found" — sending
+    its reader to re-run a review instead of to the store or the plugin
+    version. ``begin_review`` asks it too, to refuse with a distinct exit: a
+    demoted review cannot help here, and on an unreadable store it would append
+    its fact to a file nothing can parse.
+    """
+    if store.get("status") == "error":
+        return (
+            f"the evidence store could not be read ({store.get('reason', 'unknown')}) "
+            "— this says nothing about whether the prior review fact exists, only "
+            "that nothing could look. No review can repair it: run `prawduct-hook "
+            "evidence status` and report its answer to the user"
+        )
+    if store.get("schema_ahead"):
+        return (
+            f"{len(store['schema_ahead'])} evidence record(s) carry a newer schema "
+            "than this reader, so the prior review may be among the records it "
+            "cannot see. Update the plugin (/reload-plugins or restart Claude "
+            "Code) before treating the anchor as missing"
+        )
+    return None
+
+
 def _prior_review_fact(
     project_dir: Path, prawduct_dir: Path, store: dict
 ) -> tuple[dict | None, str]:
@@ -2110,23 +2138,9 @@ def _prior_review_fact(
             "prior findings cache carries no fact_id — it predates the "
             "evidence store (a fresh review re-establishes coverage)"
         )
-    # A DEGRADED store is not an absent fact. `facts_of_kind` yields nothing
-    # either way, so without these two answers an unreadable or partly-visible
-    # store would be reported as "not found" — sending the reader to re-run a
-    # review rather than to fix the store or update the plugin.
-    if store.get("status") == "error":
-        return None, (
-            f"the evidence store could not be read ({store.get('reason', 'unknown')}) "
-            "— this says nothing about whether the prior review fact exists, only "
-            "that nothing could look"
-        )
-    if store.get("schema_ahead"):
-        return None, (
-            f"{len(store['schema_ahead'])} evidence record(s) carry a newer schema "
-            "than this reader, so the prior review may be among the records it "
-            "cannot see. Update the plugin (/reload-plugins or restart Claude "
-            "Code) before treating the anchor as missing"
-        )
+    unusable = _store_unusable(store)
+    if unusable is not None:
+        return None, unusable
     for fact in evidence.facts_of_kind(store, "review"):
         if fact.get("id") != fact_id:
             continue
@@ -2715,7 +2729,13 @@ def begin_review(
     else:  # verify-resolutions
         prior, reason = _prior_review_fact(project_dir, prawduct_dir, read_store())
         if prior is None:
-            return {"status": "error", "reason": f"no prior review to verify: {reason}"}
+            refusal = {"status": "error", "reason": f"no prior review to verify: {reason}"}
+            if _store_unusable(read_store()) is not None:
+                # The CLI maps this kind to its own exit, because the skill's
+                # exit-1 row demotes and re-dispatches — a round that cannot
+                # repair a store or update a plugin.
+                refusal["kind"] = "store-unusable"
+            return refusal
         prior_body = prior.get("body") or {}
         base_tree = prior_body.get("head_tree")
         if not isinstance(base_tree, str) or not base_tree:

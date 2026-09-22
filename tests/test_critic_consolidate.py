@@ -5505,7 +5505,9 @@ class TestVerifyResolutionsDispatch:
         evidence.store_path(repo).write_bytes(b"\xff\xfe not utf-8\n")
         result = _run_begin(repo, "--mode", "verify-resolutions")
 
-        assert result.returncode == 1
+        # 6, not 1: the skill's exit-1 row demotes and re-dispatches, which
+        # cannot repair a store and would append to one nothing can parse.
+        assert result.returncode == 6, result.stderr
         assert "could not be read" in result.stderr, result.stderr
         assert "not found in the evidence store" not in result.stderr
 
@@ -5547,9 +5549,30 @@ class TestVerifyResolutionsDispatch:
             )
         result = _run_begin(repo, "--mode", "verify-resolutions")
 
-        assert result.returncode == 1
+        assert result.returncode == 6, result.stderr
         assert "newer schema" in result.stderr, result.stderr
         assert "not found in the evidence store" not in result.stderr
+
+    def test_a_missing_anchor_on_a_healthy_store_stays_exit_one(self, tmp_path):
+        """The control for exit 6: a genuinely absent anchor is the demotable
+        case, so it keeps exit 1 and the skill's re-dispatch route."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        head_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        _seed_prior_review_with_blocker(
+            repo, head, head_tree=head_tree, head_commit=head
+        )
+        (repo / "src/app.py").write_text("x = 2  # my fix\n")
+        cache = repo / ".prawduct" / ".critic-findings.json"
+        data = json.loads(cache.read_text())
+        data["fact_id"] = "rev-does-not-exist"
+        cache.write_text(json.dumps(data))
+
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+
+        assert result.returncode == 1, result.stderr
+        assert "not found in the evidence store" in result.stderr
 
     def test_the_anchor_lookup_and_the_dispositions_block_share_one_read(
         self, tmp_path, monkeypatch
@@ -5567,17 +5590,20 @@ class TestVerifyResolutionsDispatch:
         )
         (repo / "src/app.py").write_text("x = 2  # my fix\n")
 
-        seen: "list[int]" = []
+        # The objects themselves, not their `id()`s: a first read freed before
+        # the second could hand its address to the second, and equal ids would
+        # then pass on the very bug this pins.
+        seen: "list[dict]" = []
         real_prior = _dispositions_mod.prior_dispositions
 
         def spy_prior(store, *args, **kwargs):
-            seen.append(id(store))
+            seen.append(store)
             return real_prior(store, *args, **kwargs)
 
         real_lookup = cc._prior_review_fact
 
         def spy_lookup(project_dir, prawduct_dir, store):
-            seen.append(id(store))
+            seen.append(store)
             return real_lookup(project_dir, prawduct_dir, store)
 
         monkeypatch.setattr(_dispositions_mod, "prior_dispositions", spy_prior)
@@ -5585,7 +5611,7 @@ class TestVerifyResolutionsDispatch:
         result = cc.begin_review(repo, mode_token="verify-resolutions")
 
         assert result.get("status") != "error", result
-        assert len(seen) == 2 and seen[0] == seen[1], seen
+        assert len(seen) == 2 and seen[0] is seen[1]
 
     def test_a_dirty_tree_fact_falling_back_to_dispatch_commit_is_not_refused(
         self, tmp_path

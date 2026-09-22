@@ -556,6 +556,12 @@ Fail-direction is deliberate and per-purpose:
 - **Special sentinels** (documented, not general): `critic-begin` **2** = scope-widened;
   `critic-begin` **3** = no review needed (added 2026-08-06);
   `critic-begin` **4** = round budget exhausted (added 2026-09-09);
+  `critic-begin` **6** = evidence store unusable for `verify-resolutions` (added 2026-09-22) —
+  unreadable, or schema-ahead records present. Distinct from **1** because the skill's exit-1
+  row on `verify-resolutions` demotes and re-dispatches, and no review repairs a store or updates
+  a plugin; a demoted one would append its fact to a store nothing can parse. **5 is withdrawn,
+  not free:** #167's `self-inflicted-refusal` held it on `develop` until its 2026-09-20 revert,
+  and never shipped in a release, so it is left unclaimed rather than given a new meaning;
   `evidence status` **2** = schema-ahead records present (gates can't be trusted until update).
   (`regen-views` **2** and **3** are RETIRED, not repurposed: the command is inert and exits 0
   unconditionally, so those two meanings were removed rather than given new ones. Retiring a

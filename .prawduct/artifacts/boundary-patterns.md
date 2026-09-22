@@ -131,13 +131,13 @@ shapes carry.
 **Contract:** the status strings, **and which of them may reach the GRANT path.**
 This is the envelope whose consumer turns an `uncovered` verdict into a pass, so a
 status the producer adds is not merely unrendered downstream — a consumer that
-tests negatively would *grant* it (or crash reading `match`-only fields). Both
-gates therefore test positively, `== coverage.TRANSFER_MATCH`; `"unavailable"`
-stays a bare literal, being a module-wide convention rather than this
-diagnosis's own.
-**Sweep rule:** a new status is a two-site question — read BOTH gates, and
-`tests/test_session_critic_gate.py`'s unknown-status test, which asserts both
-deny.
+tests negatively would *grant* it (or crash reading `match`-only fields). Every
+decision site therefore branches on `coverage.classify_transfer`, which maps any
+status it does not know to `"unknown"`: denied, and rendered with no remedy.
+**Sweep rule:** a new status is added in `classify_transfer`, not at a call site —
+`git grep 'transfer.get("status")' plugin/` outside `coverage.py` should return
+nothing. `tests/test_session_critic_gate.py` asserts both gates deny an unknown
+status.
 
 ### API Endpoints
 <!-- Example:

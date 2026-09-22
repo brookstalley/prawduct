@@ -1401,18 +1401,12 @@ def _merge_base_verdict(
     transfer = coverage.diagnose_base_advance_transfer(
         project_dir, facts, mb_tree, target, diff_fn, verdict_fn
     )
-    if transfer is None:
-        return verdict
-    # Grant only on a POSITIVE test for the granting status, exactly as the PR
-    # gate (:func:`check_cumulative_critic`) does — never on "anything but
-    # unavailable". A status this gate does not know must reach the deny path,
-    # which is the direction a fail-closed control has to fall; reaching the
-    # grant path instead would read fields only a `match` carries.
-    if transfer.get("status") != coverage.TRANSFER_MATCH:
-        # Only `unavailable` has a remedy worth naming (the check could not
-        # run). An unrecognized status denies silently rather than being
-        # rendered as a near miss it was never measured to be.
-        if transfer.get("status") == "unavailable":
+    # Every transfer decision reads `coverage.classify_transfer`, so this gate
+    # and the PR gate cannot read one status two ways; anything but `match`
+    # reaches the deny path, the side a fail-closed control has to fall on.
+    kind = coverage.classify_transfer(transfer)
+    if kind != "match":
+        if kind == "unavailable":
             verdict["transfer_note"] = transfer_remedy(transfer, None)
         return verdict
     tests_ok, tests_reason = suite_vouches_for_tree(project_dir)
@@ -2297,7 +2291,7 @@ def _branch_coverage(
         diff_fn,
         verdict_fn,
     )
-    if transfer is not None and transfer.get("status") == coverage.TRANSFER_MATCH:
+    if coverage.classify_transfer(transfer) == "match":
         tests_ok, tests_reason = suite_vouches_for_tree(project_dir, head_tree)
         if tests_ok:
             if record_grants:
@@ -2454,7 +2448,7 @@ def _cumulative_critic_verdict(project_dir: Path, read: dict, cache) -> int:
     # review round.
     if transfer_stale is not None:
         print(f"NOTE: {transfer_remedy(transfer, transfer_stale)}", file=sys.stderr)
-    elif transfer is not None and transfer.get("status") == "unavailable":
+    elif coverage.classify_transfer(transfer) == "unavailable":
         print(f"NOTE: {transfer_remedy(transfer, None)}", file=sys.stderr)
     # COV-7K4N: a stale remote base (origin/<b> behind an ancestor-of-HEAD local
     # <b>) drags already-reviewed work into the required span and reads as

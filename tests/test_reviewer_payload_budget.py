@@ -148,8 +148,14 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # reading the one-case version demotes the other three to a mode that cannot see them.
     # RATCHETED (review-interval-extension PR review, 2026-09-22): "the uncommitted interval" dropped from SKILL.md's
     # fall-through sentence, now false for an extended chunk interval.
-    "single-pass-inner": 6303,
-    "single-pass-full": 20348,
+    # RAISED +29 on both single-pass routes (review-scrub-seams, 2026-09-22),
+    # DECLARED: `SKILL.md`'s exit-table row for `critic-begin` 6, which every
+    # single-pass review loads and the dispatched route does not. Priced against
+    # the SUM: 29 tokens per review against the full round (median ~300s) the
+    # exit-1 fallback would buy every time the store is unusable — a round that
+    # cannot help. Drafted at +81; the remedy moved to the refusal's stderr.
+    "single-pass-inner": 6332,
+    "single-pass-full": 20377,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -171,8 +177,8 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
 }
 
 PAYLOAD_CEILINGS = {
-    "single-pass-inner": 6304,
-    "single-pass-full": 20349,
+    "single-pass-inner": 6333,
+    "single-pass-full": 20378,
     "dispatched-reviewer": 19489,
 }
 

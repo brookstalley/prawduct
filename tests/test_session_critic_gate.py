@@ -529,7 +529,7 @@ class TestBaseAdvanceTransferAtTheSessionGate:
         assert "transfer_note" not in gates.session_review_verdict(repo)
 
     def test_only_a_match_grants_the_transfer_at_either_gate(
-        self, tmp_path, monkeypatch
+        self, tmp_path, monkeypatch, capsys
     ):
         """A transfer status neither gate recognizes must DENY at both.
 
@@ -559,6 +559,20 @@ class TestBaseAdvanceTransferAtTheSessionGate:
         # would tell the builder a suite run fixes it.
         assert "transfer" not in verdict.get("reason", "")
         assert gates.check_cumulative_critic(repo) != 0
+        # ...and the PR gate's rendered remedy stays silent on it too: its
+        # "could not run" NOTE is for `unavailable`, which this is not.
+        assert "transfer check could not run" not in capsys.readouterr().err
+
+    def test_classify_transfer_names_every_shape_and_denies_the_rest(self):
+        """The one reading every gate site branches on. An unrecognized status
+        must come back as its own class — never `match`, which grants, and
+        never `unavailable`, whose remedy reads a `reason` it may not carry."""
+        classify = gates.coverage.classify_transfer
+        assert classify(None) == "absent"
+        assert classify({"status": gates.coverage.TRANSFER_MATCH}) == "match"
+        assert classify({"status": "unavailable", "reason": "r"}) == "unavailable"
+        assert classify({"status": "partial"}) == "unknown"
+        assert classify({}) == "unknown"
 
 
 class TestFailClosed:
