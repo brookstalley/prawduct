@@ -297,8 +297,10 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
 - **Coverage & jurisdiction** — `coverage-status`, `coverage-scaffold` (mutating with `--apply`),
   `jurisdiction`, `cost-of-commit [--json] [<paths>...]` (does committing these paths — the
   working tree by default — buy a review round? Asks the gates' own `is_judgeable_path`, so it
-  cannot disagree with the gate that charges afterwards; verdict token leads on stdout, degrades
-  to `unknown` rather than a reassuring `free`).
+  cannot disagree with the gate that charges afterwards; with no path arguments, judgeable paths
+  price `free` when the gates' coverage composition already covers the working tree
+  (`gates.commit_coverage`); verdict token leads on stdout, degrades to `unknown` rather than a
+  reassuring `free`).
 - **Repo lifecycle** — `migrate-plugin`, `init-product`, `update-gitignore [--dry-run]`,
   `audit-learnings`, `learnings-obligation`, `norm-index-scaffold`, `reanchor`,
   `lifecycle-repair`, `plan-backfill`, `archive-change-log`, `repo-disable` (dry-run-by-default where they mutate, with
@@ -429,7 +431,8 @@ files to touch previews first. That framing is descriptive — the binding rule 
     have noticed.
   - `cost-of-commit --json` → **no skill consumer today** (`verdict` — one of `free` /
     `costs-a-round` / `unknown` — plus `source` (`working-tree` / `arguments`), `paths[]`,
-    `judgeable[]`, `free[]`, and `round_price` (the `telemetry.round_price` dict: `status` of
+    `judgeable[]`, `free[]`, `covered_by[]` (review ids whose coverage made a judgeable working
+    tree `free`; empty otherwise), and `round_price` (the `telemetry.round_price` dict: `status` of
     `priced` / `unavailable`, with `mode`/`median_seconds`/`reviews` or `reason`); `reason` appears
     at top level only on the degraded path). Named as unconsumed on purpose, per the rule this list
     already applies to `learnings-obligation` and `check-released`. The **human** form is what an

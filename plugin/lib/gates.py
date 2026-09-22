@@ -1071,6 +1071,71 @@ def record_transfer_grant(
     return recorded
 
 
+def commit_coverage(project_dir: Path) -> dict:
+    """Does existing review evidence already cover committing the working tree
+    verbatim? The coverage half of ``cost-of-commit``: path classification
+    alone prices a tree a Critic just reviewed as a fresh round, because it
+    cannot see the review.
+
+    Asks the gates' own composition — ``coverage_verdict`` over ``HEAD^{tree}
+    → working tree`` — rather than comparing the tree to one fact's
+    ``head_tree``. Composition also credits a docs-only edit made after the
+    review (a free edge), and settles blockers the same way the gate that
+    charges for the commit will. A verbatim commit makes HEAD's tree the
+    captured tree, so a covered span here is a span the gate composes after it.
+
+    Returns ``{"status": "covered", "by": [review ids]}``, or ``{"status":
+    "blocked" | "uncovered" | "error", "reason"}``. Only ``covered`` is an
+    answer a caller may relax on; every other status leaves the path-based
+    price standing, which is the conservative one.
+
+    **Residual, stated rather than implied.** Coverage that reaches the working
+    tree from somewhere other than HEAD's tree — a cumulative review spanning
+    merge-base → working tree, with HEAD's tree not on any path — reads
+    ``uncovered`` here though the gate would compose it after the commit. That
+    errs toward "costs a round", the direction a pricing tool may err in.
+    """
+    read = evidence.read_facts(project_dir)
+    precheck = _store_precheck(read)
+    if precheck is not None:
+        return {"status": "error", "reason": precheck[1]}
+    capture = evidence.capture_tree(project_dir)
+    if capture.get("status") != "ok":
+        return {
+            "status": "error",
+            "reason": f"cannot capture the working tree: {capture.get('reason', 'unknown')}",
+        }
+    head_tree = capture.get("head_tree")
+    if not head_tree:
+        return {"status": "error", "reason": "no HEAD tree to compose from"}
+    # A plain `git commit` records the INDEX, not the working tree the review
+    # composed to. Nothing staged (the `git add -A && git commit` flow) or
+    # everything staged both commit the captured tree; a partial staging
+    # commits a tree no review saw, and pricing that as covered is the
+    # optimistic error this helper may never make.
+    rc, index_tree, err = evidence.run_git(project_dir, "write-tree")
+    if rc != 0 or not index_tree:
+        return {"status": "error", "reason": f"cannot read the index tree: {err or 'no detail'}"}
+    if index_tree not in (head_tree, capture["tree"]):
+        return {
+            "status": "uncovered",
+            "reason": "the index is partially staged, so a commit would not record the reviewed tree",
+        }
+    verdict = coverage_algebra.coverage_verdict(
+        read.get("facts", []),
+        head_tree,
+        capture["tree"],
+        _cached_diff_fn(project_dir),
+        _tree_key_fn(project_dir),
+    )
+    if verdict["status"] != "covered":
+        return {"status": verdict["status"], "reason": verdict.get("reason", "")}
+    return {
+        "status": "covered",
+        "by": [step["id"] for step in verdict.get("path", []) if step.get("kind") == "review"],
+    }
+
+
 def session_review_verdict(project_dir: Path, *, record_grants: bool = False) -> dict:
     """The Stop-hook Critic gate's question, answered by composition (Q2):
     does composed review coverage span this session's base tree → the current
