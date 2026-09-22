@@ -2519,9 +2519,24 @@ def begin_review(
 
     scope = (scope or "").strip() or None
     scope_chosen_by = "explicit-args" if scope else None
+    scope_unresolved_cause: "str | None" = None
     if scope is None:
         scope = buildplan_refs.resolve_branch_plan(project_dir, prawduct_dir).scope
         scope_chosen_by = "branch-name" if scope else "not-resolved"
+
+    # Say WHY a scope did not resolve, and what edit fixes it. Advice: it rides
+    # `notes` and changes nothing about the dispatch. The code goes in the
+    # manifest so how often each cause fires can be counted afterwards.
+    notes_scope: list[str] = []
+    if scope_chosen_by == "not-resolved":
+        cause = buildplan_refs.unresolved_scope_cause(project_dir, prawduct_dir)
+        if cause is not None:
+            scope_unresolved_cause, sentence = cause
+            notes_scope.append(
+                "this review resolved no build-plan scope, so it records none and "
+                "controls keyed on scope (the round budget among them) cannot see "
+                f"it: {sentence}"
+            )
 
     capture = evidence.capture_tree(project_dir)
     if capture.get("status") != "ok":
@@ -2537,7 +2552,7 @@ def begin_review(
             "(commit an initial state first)",
         }
 
-    notes: list[str] = []
+    notes: list[str] = list(notes_scope)
     # Judgeable work the chosen interval EXCLUDES, and the tree it chose, both
     # carried structurally so a REFUSAL can name them. A committed-tree anchor
     # over a dirty working tree grades a tree the builder's files are not in;
@@ -3062,6 +3077,7 @@ def begin_review(
         "tier": tier,
         "scope": scope,
         "scope_chosen_by": scope_chosen_by,
+        "scope_unresolved_cause": scope_unresolved_cause,
         "chunk": chunk,
         "base_reviewed": base_reviewed,
         # Make the resolved target VISIBLE so a wrong-tree review is obvious
@@ -3425,7 +3441,7 @@ def validate_manifest(data) -> tuple[bool, str]:
     if data.get("files_oracle") is not None and not _str_list(data.get("files_oracle")):
         return False, "'files_oracle' must be a list of non-empty strings or null"
     for opt in ("base_commit", "head_commit", "tier", "scope", "scope_chosen_by",
-                "chunk", "model", "base_reviewed", "worktree", "branch",
+                "scope_unresolved_cause", "chunk", "model", "base_reviewed", "worktree", "branch",
                 "chunk_type", "signals"):
         val = data.get(opt)
         if val is not None and not _nonempty_str(val):
@@ -4269,6 +4285,9 @@ def build_fact_body(manifest: dict, partials: list[dict]) -> dict:
         # than merely asserted — a fact naming a plan should say whether the
         # dispatch named it or the branch did.
         "scope_chosen_by": manifest.get("scope_chosen_by"),
+        # Why a scope did not resolve, when it did not — the diagnosis note's
+        # yield, queryable from the store like `record_lint` below.
+        "scope_unresolved_cause": manifest.get("scope_unresolved_cause"),
         "chunk": manifest.get("chunk"),
         "base_reviewed": manifest.get("base_reviewed"),
         # The record-lint control's YIELD, carried from the dispatch manifest

@@ -14,6 +14,7 @@ level rather than filtered per file, and why nothing here imports a heavy module
 from __future__ import annotations
 
 import os
+import re
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -244,6 +245,40 @@ def branch_claiming_plans(artifacts_dir: Path) -> list[tuple[Path, str]]:
         if branch:
             claims.append((plan_path, branch))
     return claims
+
+
+# A `branch:` line as plans write it in prose rather than in frontmatter:
+# `branch: X`, `**Branch:** \`X\``, `**Branch**: \`X\``, optionally as a list
+# item. The value is the first token after the colon, backticks and bold stripped.
+_BODY_BRANCH_LINE = re.compile(
+    r"^[ \t]*(?:[-*][ \t]+)?\*{0,2}branch\*{0,2}[ \t]*:[ \t]*\*{0,2}[ \t]*`?([^\s`*]+)",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def plans_naming_branch_in_body(artifacts_dir: Path, branch: str) -> list[Path]:
+    """Live build plans that name ``branch`` on a ``branch:`` line OUTSIDE frontmatter.
+
+    Such a line claims nothing — :func:`branch_claiming_plans` reads frontmatter
+    only — yet it is the commonest way a plan fails to claim the branch it was
+    written for, because it reads to its author exactly like a declaration. This
+    finds it so the miss can be explained; it confers no claim, and nothing that
+    decides which plan governs may call it.
+
+    Enumerated with :func:`iter_live_plan_files`, not the scope map, because a
+    plan with no frontmatter at all is one of the shapes being looked for.
+    """
+    found: list[Path] = []
+    for plan_path in iter_live_plan_files(artifacts_dir):
+        try:
+            content = plan_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue  # one unreadable plan must not hide the rest
+        span = frontmatter_span(content)
+        body = content if span is None else "\n".join(content.splitlines()[span[1] + 1 :])
+        if any(m.group(1) == branch for m in _BODY_BRANCH_LINE.finditer(body)):
+            found.append(plan_path)
+    return found
 
 
 def _declares_non_build_plan_artifact(content: str) -> bool:

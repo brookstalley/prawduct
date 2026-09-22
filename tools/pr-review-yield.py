@@ -35,7 +35,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "plugin" / "lib"))
 
-from review_dispatch import measured_interval_seconds  # noqa: E402
+from review_dispatch import event_interval_seconds  # noqa: E402
 from timewindow import in_window  # noqa: E402
 
 
@@ -76,7 +76,7 @@ def duration(row: dict) -> tuple[int | None, bool]:
     """Return (seconds, measured).
 
     A measured interval wins over the self-reported estimate, but only when the
-    mark attests one: `measured_interval_seconds` is the framework's own
+    mark attests one: `event_interval_seconds` is the framework's own
     predicate — the plausibility bound, the out-of-order refusal and the
     not-measured semantics — shared with `review-stats` and
     `measure-consumer-overhead.py` so the three readers of this field cannot
@@ -85,7 +85,7 @@ def duration(row: dict) -> tuple[int | None, bool]:
     the self-reported population rather than dropped.
     """
     review = row.get("review") or {}
-    secs = measured_interval_seconds(row.get("dispatched_at"), row.get("ts"))
+    secs = event_interval_seconds(row)
     if secs is not None:
         return int(secs), True
     reported = row.get("duration_seconds") or review.get("duration_seconds")

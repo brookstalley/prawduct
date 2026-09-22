@@ -171,7 +171,9 @@ Create the `.prawduct/.pr-reviews/` directory if it doesn't exist.
 **Then mark the dispatch, immediately before spawning: `prawduct-hook pr-review-dispatch --begin`.**
 This starts a clock that code reads, so the review's duration becomes a measured interval rather
 than the reviewing model's recollection of one. Mark it *here* — after the path is computed, before
-the agent is spawned — because everything between the mark and the append is what gets counted.
+the agent is spawned — because the interval runs from the mark to the moment the reviewer writes its
+evidence file. Fixing its findings before Step 4's append does not cost the measurement: the append
+checks the mark against the tree the reviewer read (`commit_reviewed`), not the one you have now.
 You choose when to mark; you never supply the value, and Step 4's `ledger-append` picks the mark up
 on its own, so there is no argument to pass and none to forget.
 

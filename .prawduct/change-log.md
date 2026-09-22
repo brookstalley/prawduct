@@ -41,6 +41,81 @@ Guards: `TestCoveredTree` in `tests/test_cost_of_commit.py`. Four mutants were e
 test: dropping the verdict flip, relaxing the explicit-paths form, removing the index-staging check
 (partial staging, and a staged change reverted in the working tree), and skipping the store precheck
 (a newer plugin's fact must leave the path price, never read as free).
+## 2026-09-22: A review whose scope did not resolve now says why
+
+<!-- prawduct: type=fix | scope=unresolved-scope-diagnosis -->
+
+**A third of Critic reviews across seven repos recorded no scope, and nothing said so.** From
+2026-09-13 to 2026-09-22, 131 of 382 review facts recorded `scope_chosen_by: not-resolved`. Each
+one is invisible to the round budget and to scope-matched dispositions. The only trace was a
+parenthetical on the record-lint line. Repos whose plans put `branch:` in frontmatter resolved
+about 90% of the time; the others about 35%.
+
+**`critic-begin` now names the cause and the edit that fixes it.** When no scope resolves it
+prints a `PRAWDUCT NOTE` for the first cause it finds: a plan claims the branch but declares no
+`scope:`; a plan names the branch on a `branch:` line *below* its frontmatter, where nothing reads
+it (the commonest shape in the repos measured); the active plan claims a different
+branch; or nothing claims the branch at all. It says nothing on the integration branch, where no
+plan should claim it. The cause is recorded as `scope_unresolved_cause` in the dispatch manifest
+and the review fact, so how often each fires can be counted. The field is additive; the evidence
+schema version is unchanged.
+
+**A finished plan still matches its branch name when this branch edited it.** Branch-name
+inference used to reject a plan with every Status box ticked, on the grounds that boxes flipped at
+release. They no longer do: they are ticked after each chunk's review, so every box is ticked by the
+plan's own final cumulative, and that review lost its scope. A fully ticked plan now matches when
+this branch created or changed the plan file since it left the base branch. The plan's own branch
+wrote its ticks; a later branch that only reuses the name did not. That keeps a merged plan, live on
+gitflow until the release, from capturing a follow-up branch. This matters beyond review
+attribution, because the Stop hook, the briefing, mode inference and the PR payload resolve their
+plan the same way. The remedy that reaches all of them is a frontmatter `branch:` on the plan being
+built; `--scope` reaches review dispatch only.
+
+## 2026-09-21: The PR review clock survives its findings being fixed
+
+<!-- prawduct: type=fix | scope=pr-review-clock -->
+
+**Closes #845.** `/prawduct:pr` marks the PR reviewer's dispatch (Step 3) and appends the
+`review.pr` ledger event later (Step 4). The caller fixes the review's findings in between, so
+`ledger-append` compared the mark against a HEAD that had moved. It refused the mark as *"for a
+different tree"* and fell back to the reviewer's own estimate. So every PR review that found
+something lost its clock, and the measured population leaned toward clean reviews. #845's third
+reproduction put the cost at a real 228s recorded as a self-reported 300s.
+
+**The mark is now checked against the tree the reviewer read, and the interval ends when the
+reviewer wrote its evidence.** For `review.pr`, `ledger-append` resolves the evidence's
+`commit_reviewed` (an abbreviated sha resolves; one naming no commit is refused by name) and checks
+the mark against that instead of HEAD. It also records the evidence file's mtime as the new
+optional envelope key `review_written_at`. The mtime is used because the reviewer writes the
+`timestamp` field itself, which would put a model back into a code-read clock. Evidence older than
+the mark is an earlier review's file and is refused by name. `review.critic` is unchanged: its
+append is the end of its review. The three readers (`review-stats`, `tools/pr-review-yield.py`,
+`tools/measure-consumer-overhead.py`) now go through one helper,
+`review_dispatch.event_interval_seconds`, which ends the interval at `review_written_at` when it is
+present and at `ts` otherwise, so older rows read exactly as before. The tree check was not relaxed:
+a mark from a tree other than the one reviewed is still refused. Recorded as a `[DECISION]` beneath
+`data-model.md`'s staleness clause.
+
+**`tools/measure-review-window.py` reads the window v3.6.1 is waiting on**, written before its
+data. It puts every Critic review fact since `--since` in a cohort by the plugin version that
+wrote it (`actor.plugin` on the fact), split at a released `--cut` (default 3.6.0). The cut is a
+release and not a date because consumers run the develop tip, the plugin cache is keyed by version
+string, and #831/#833 landed inside `3.5.1-dev.2`, so a `-dev` string does not identify the code
+that ran. Empty rates count only facts that record `observations`, clocks are joined from the
+ledger by `fact_id`, and every rate and clock median prints its `n` and is marked THIN below
+`--min-cell`. On
+2026-09-21 the post-3.6.0 cohort held 13 facts from 2 products. Re-run the script rather than cite
+that figure.
+
+Guards: `TestPrClockSurvivesFixingItsFindings`, and a reader-agreement case in
+`test_dispatch_interval_one_home.py`. Six independent mutants were each killed by a named test:
+anchoring back on HEAD, ending at `ts`, dropping the evidence-predates-mark check, dropping the
+unresolvable-sha refusal, text-matching instead of resolving, and not writing the key. For the
+script, `tests/test_measure_review_window.py`: seven mutants killed (pre-release order, numeric
+pre-release parts, unknown versions counted as before, unrecorded facts pooled into empty rates,
+the THIN boundary, and both ends of the clock join). Five existing `test_governance_ledger.py`
+fixtures now write the PR evidence after the dispatch mark, as real use does. The new
+older-than-the-mark refusal made the old order pass only when both landed in the same second.
 
 ---
 

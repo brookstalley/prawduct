@@ -16,6 +16,11 @@ release process keeps the two in sync (one headline per shipped release).
 Entries accumulate here as work lands on `develop`; the cut renames this heading to its
 release number.
 
+**`pr-review-clock`** — a PR review whose findings you fix before the ledger append keeps its
+measured duration. The dispatch mark is now checked against the tree the reviewer read, and the
+interval ends when the reviewer writes its evidence. Before this, only PR reviews that found nothing
+were measured.
+
 **`866-cost-of-commit-covered`** — `prawduct-hook cost-of-commit` no longer says a tree a Critic
 review already covers "costs a round". With no path arguments it now checks review coverage the way
 the gates do, and answers `free`, naming the review, when committing the working tree verbatim would
