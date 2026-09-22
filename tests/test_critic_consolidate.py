@@ -6177,6 +6177,148 @@ class TestScopeAttribution:
         assert manifest["record_lint"]["plan_graded"].endswith("build-plan-other.md")
 
 
+class TestUnresolvedScopeCause:
+    """When a dispatch resolves no scope, `critic-begin` says why and what edit
+    fixes it, and records the cause in the manifest.
+
+    Before this the only trace was a parenthetical on the record-lint line, and
+    a third of reviews across the fleet resolved no scope unnoticed — each one
+    invisible to the round budget.
+    """
+
+    def _repo(self, tmp_path, plans: dict, branch: str, state: str = "") -> Path:
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        artifacts = repo / ".prawduct" / "artifacts"
+        artifacts.mkdir(parents=True)
+        (repo / ".prawduct" / "project-state.yaml").write_text(f"project_name: t\n{state}")
+        for name, body in plans.items():
+            (artifacts / name).write_text(body)
+        _commit_file(repo, ".prawduct/keep", "", "seed prawduct")
+        if branch != "main":
+            _git(repo, "checkout", "-b", branch, "--quiet")
+        (repo / "src/app.py").write_text("x = 2\n")
+        return repo
+
+    def _dispatch(self, repo, *extra):
+        result = _run_begin(repo, "--mode", "chunk", *extra)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        return result, manifest
+
+    def test_a_claim_with_no_scope_is_named(self, tmp_path):
+        repo = self._repo(
+            tmp_path,
+            {"build-plan-a.md": "---\nartifact: build-plan\nbranch: feat/work\n---\n\n# Plan\n"},
+            "feat/work",
+        )
+        result, manifest = self._dispatch(repo)
+        assert manifest["scope_chosen_by"] == "not-resolved"
+        assert manifest["scope_unresolved_cause"] == "claim-no-scope"
+        assert "build-plan-a.md claims branch 'feat/work' but declares no `scope:`" in result.stderr
+
+    def test_a_branch_line_below_the_frontmatter_is_named(self, tmp_path):
+        repo = self._repo(
+            tmp_path,
+            {
+                "build-plan-a.md": (
+                    "---\nartifact: build-plan\nscope: a\n---\n\n# Plan\n\n"
+                    "**Branch:** `feat/work` (off `develop`)\n"
+                )
+            },
+            "feat/work",
+        )
+        result, manifest = self._dispatch(repo)
+        assert manifest["scope_unresolved_cause"] == "body-branch"
+        assert "build-plan-a.md names branch 'feat/work' below its frontmatter" in result.stderr
+        assert "move `branch: feat/work` into the `---` block" in result.stderr
+        # It has a scope, so the fix is the one line — no second edit is asked for.
+        assert "together with a `scope:`" not in result.stderr
+
+    def test_a_body_branch_plan_without_a_scope_is_told_to_add_both(self, tmp_path):
+        repo = self._repo(
+            tmp_path, {"build-plan-a.md": "# Plan\n\nbranch: feat/work\n"}, "feat/work"
+        )
+        result, manifest = self._dispatch(repo)
+        assert manifest["scope_unresolved_cause"] == "body-branch"
+        assert "together with a `scope:`" in result.stderr
+
+    def test_an_active_plan_claiming_another_branch_is_named(self, tmp_path):
+        repo = self._repo(
+            tmp_path,
+            {
+                "build-plan-p.md": (
+                    "---\nartifact: build-plan\nscope: p\nbranch: develop\n---\n\n"
+                    "# Plan\n\n## Status\n\n- [ ] Chunk 01: p\n"
+                )
+            },
+            "feat/work",
+            state="active_build_plan: artifacts/build-plan-p.md\n",
+        )
+        result, manifest = self._dispatch(repo)
+        assert manifest["scope_unresolved_cause"] == "pointer-claims-other"
+        assert "build-plan-p.md claims branch 'develop', not 'feat/work'" in result.stderr
+
+    def test_nothing_claiming_the_branch_is_named_with_the_line_to_add(self, tmp_path):
+        repo = self._repo(
+            tmp_path,
+            {"build-plan-a.md": "---\nartifact: build-plan\nscope: a\n---\n\n# Plan\n"},
+            "feat/work",
+        )
+        result, manifest = self._dispatch(repo)
+        assert manifest["scope_unresolved_cause"] == "no-claim"
+        assert "no live build plan declares `branch: feat/work`" in result.stderr
+        assert "PRAWDUCT NOTE: this review resolved no build-plan scope" in result.stderr
+
+    def test_the_integration_branch_says_nothing(self, tmp_path):
+        # No plan should claim the branch everything merges into, so a note
+        # there would fire on every review with nothing to act on.
+        repo = self._repo(
+            tmp_path,
+            {"build-plan-a.md": "---\nartifact: build-plan\nscope: a\n---\n\n# Plan\n"},
+            "main",
+        )
+        result, manifest = self._dispatch(repo)
+        assert manifest["scope_chosen_by"] == "not-resolved"
+        assert manifest["scope_unresolved_cause"] is None
+        assert "this review resolved no build-plan scope" not in result.stderr
+
+    def test_a_resolved_or_explicit_scope_says_nothing(self, tmp_path):
+        plans = {
+            "build-plan-a.md": (
+                "---\nartifact: build-plan\nscope: a\nbranch: feat/work\n---\n\n# Plan\n"
+            )
+        }
+        repo = self._repo(tmp_path, plans, "feat/work")
+        result, manifest = self._dispatch(repo)
+        assert manifest["scope"] == "a"
+        assert manifest["scope_unresolved_cause"] is None
+        assert "this review resolved no build-plan scope" not in result.stderr
+
+        repo = self._repo(tmp_path / "explicit", {}, "feat/other")
+        result, manifest = self._dispatch(repo, "--scope", "anything")
+        assert manifest["scope_chosen_by"] == "explicit-args"
+        assert manifest["scope_unresolved_cause"] is None
+        assert "this review resolved no build-plan scope" not in result.stderr
+
+    def test_the_cause_reaches_the_review_fact(self, tmp_path):
+        """The note's yield must be queryable from the store, not only printed."""
+        repo = self._repo(
+            tmp_path,
+            {"build-plan-a.md": "---\nartifact: build-plan\nscope: a\n---\n\n# Plan\n"},
+            "feat/work",
+        )
+        self._dispatch(repo)
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        assert manifest["roster"] == ["reviewer"]
+        _write_partial(repo, "reviewer", manifest["commit_reviewed"])
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        fact = _store_facts(repo, "review")[-1]
+        assert fact["body"]["scope_unresolved_cause"] == "no-claim"
+
+
 # ---------------------------------------------------------------------------
 # The D8 acceptance invariant: nothing in the write path parses model-authored
 # JSON except the partials — a full cycle driven ONLY by code + partials.

@@ -758,6 +758,89 @@ def _has_unfinished_chunk(plan_path: Path) -> bool:
     return any(not checked for checked, _text in items)
 
 
+def unresolved_scope_cause(
+    project_dir: Path, prawduct_dir: Path
+) -> "tuple[str, str] | None":
+    """Why :func:`infer_scope_from_branch` found no scope here: ``(code, sentence)``.
+
+    Advice for the dispatcher of a review whose scope did not resolve — the
+    review then records no scope, and every control keyed on one (the round
+    budget first) cannot see it. Without this the only trace was a parenthetical
+    on the record-lint line, and the commonest causes are one-line edits to a
+    plan, so naming the plan and the edit is most of the fix.
+
+    ``None`` when there is nothing to fix: a detached HEAD, or the integration
+    branch, where no plan should claim the branch and a note would fire on every
+    review with nothing to act on. The codes, first match wins:
+
+    - ``claim-no-scope`` — a plan claims this branch in frontmatter and declares
+      no ``scope:``, so the claim has no scope to hand back.
+    - ``body-branch`` — a plan names this branch on a ``branch:`` line below its
+      frontmatter, where :func:`plan_index.branch_claiming_plans` never looks.
+    - ``pointer-claims-other`` — the active plan claims a different branch.
+    - ``no-claim`` — none of the above: nothing claims the branch and no plan's
+      scope matches its name.
+
+    Call it only when resolution has already failed; it re-derives nothing the
+    resolver decided and would name a cause for a scope that did resolve.
+    """
+    branch = gitstate.current_branch(project_dir)
+    if not branch:
+        return None
+    base, _ = _resolve_base_branch(project_dir)
+    if base and branch == base.removeprefix("origin/"):
+        return None
+
+    artifacts_dir = prawduct_dir / "artifacts"
+    known = _scope_plan_map(prawduct_dir)
+    scoped = set(known.values())
+
+    def rel(path: Path) -> str:
+        return _repo_rel(prawduct_dir, path)
+
+    for path, claimed in plan_index.branch_claiming_plans(artifacts_dir):
+        if claimed == branch and path not in scoped:
+            return (
+                "claim-no-scope",
+                f"{rel(path)} claims branch {branch!r} but declares no `scope:` in "
+                "its frontmatter, so the claim has no scope to record — add one",
+            )
+
+    body = plan_index.plans_naming_branch_in_body(artifacts_dir, branch)
+    if body:
+        path = body[0]
+        missing_scope = "" if path in scoped else ", together with a `scope:`"
+        return (
+            "body-branch",
+            f"{rel(path)} names branch {branch!r} below its frontmatter, where "
+            f"nothing reads it — move `branch: {branch}` into the `---` block at "
+            f"the top of the file{missing_scope}",
+        )
+
+    pointer = resolve_build_plan_path(prawduct_dir)
+    if pointer.is_file():
+        try:
+            other = plan_index.parse_build_plan_frontmatter_branch(
+                pointer.read_text(encoding="utf-8")
+            )
+        except (OSError, UnicodeDecodeError):
+            other = None  # advice degrades to the generic cause, never to an error
+        if other and other != branch:
+            return (
+                "pointer-claims-other",
+                f"the active plan {rel(pointer)} claims branch {other!r}, not "
+                f"{branch!r} — correct its `branch:` if this is its work, or pass "
+                "`--scope`",
+            )
+
+    return (
+        "no-claim",
+        f"no live build plan declares `branch: {branch}` in its frontmatter and "
+        "no plan's `scope:` matches the branch name — add that line to the "
+        "frontmatter of the plan this work belongs to, or pass `--scope`",
+    )
+
+
 def resolve_reviewed_plan(
     project_dir: Path,
     prawduct_dir: Path,
