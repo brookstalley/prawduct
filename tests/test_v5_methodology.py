@@ -591,7 +591,10 @@ LAST_MEASURED_TOKENS = {
     # regardless; the bound is on the builder) with an explicit never-omit clause.
     # A declared raise: correcting a rule that could suppress findings is not
     # fundable by trimming, and the wrong reading cost more than 30 tokens would.
-    "skills/critic/review-protocol.md": 4355,
+    # RATCHETED 4355 -> 4349 (review-interval-extension, 2026-09-22): a parenthetical calling `final` "the
+    # uncommitted diff" became false when its interval began at the covered
+    # frontier; deleted, since the stage rule it decorated does not need it.
+    "skills/critic/review-protocol.md": 4349,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -841,7 +844,9 @@ LAST_MEASURED_TOKENS = {
     # `agents/critic-reviewer.md` so this surface carries a pointer rather than a
     # second copy. A declared raise; the rule removes review rounds by substituting
     # ONE finding for N occurrences, which is worth more than 83 tokens of payload.
-    "skills/critic/review-cycle.md": 11235,
+    # RATCHETED 11235 -> 11232 (review-interval-extension, 2026-09-22): the chunk/final interval row and the
+    # Small row restated for the covered frontier, in place and shorter.
+    "skills/critic/review-cycle.md": 11232,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -961,7 +966,10 @@ LAST_MEASURED_TOKENS = {
     # manufactures a finding per review. NOT paid in place: the sentences a trim
     # would have reached are the ones no test asserts, and this file has already
     # funded three raises that way.
-    "skills/critic/SKILL.md": 3649,
+    # RATCHETED 3649 -> 3643 (review-interval-extension, 2026-09-22): the interval and demotion sentences and
+    # the `deferred` bullet's second trigger (#167), paid by cutting that
+    # bullet's restatement of what its rationale already prints.
+    "skills/critic/SKILL.md": 3643,
     "skills/critic/framework-checks.md": 1116,
     # The on-demand class, first recorded 2026-08-19 (#688) — readings, no
     # ceilings; the block above this dict is the decision and its reasoning.
@@ -4699,7 +4707,8 @@ class TestCriticSkill:
         # reading — both lineages above are history and stand as written.
         # RAISED 4051 -> 4313 (2026-09-17, review-stages Chunk 02): the stage
         # rule reaches the final/cumulative reviewer — see LAST_MEASURED_TOKENS.
-        assert tokens < 4356, f"review-protocol.md is ~{tokens} tokens, should be <4356"
+        # RATCHETED 4356 -> 4350 (review-interval-extension, 2026-09-22) with the reading.
+        assert tokens < 4350, f"review-protocol.md is ~{tokens} tokens, should be <4350"
 
 
 # =============================================================================
@@ -5226,7 +5235,8 @@ class TestCriticSkillRoutesByMode:
         # `test-status` claim corrected: exit 0 does not establish tree
         # coverage on the session-fresh disjunct — see LAST_MEASURED_TOKENS,
         # where the reason is recorded. One over the reading, nothing banked.
-        assert tokens < 3650, f"SKILL.md is ~{tokens} tokens, should be <3650"
+        # RATCHETED 3650 -> 3644 (review-interval-extension, 2026-09-22) with the reading.
+        assert tokens < 3644, f"SKILL.md is ~{tokens} tokens, should be <3644"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))
@@ -5543,7 +5553,8 @@ class TestReviewCycle:
         # RAISED 11091 -> 11106 (2026-09-17, review-stages integration, R-5): the
         # Small row now states what inference answers (`chunk`; `final` by
         # declaration). Declared, not paid — reading + 1.
-        assert tokens < 11236, f"review-cycle.md is ~{tokens} tokens, should be <11236"
+        # RATCHETED 11236 -> 11233 (review-interval-extension, 2026-09-22) with the reading.
+        assert tokens < 11233, f"review-cycle.md is ~{tokens} tokens, should be <11233"
 
     def test_framework_checks_token_budget(self):
         # Ceiling 1150. This file is `final`/`cumulative` payload: SKILL.md's

@@ -53,8 +53,8 @@ return the first that fires:
      OR no build plan + uncommitted diff has ≥5 files (medium+
      non-chunked work).
   4. ``cumulative`` when the tree is clean and a committed bundle is
-     dispatchable, since ``chunk``/``final`` scope to the uncommitted diff and
-     dispatching one would refuse on an empty interval; otherwise ``chunk`` —
+     dispatchable, since a ``chunk``/``final`` interval ends at the working
+     tree and, with nothing unreviewed behind HEAD, would be empty and refused; otherwise ``chunk`` —
      grounded on the plan when one exists, and the bare default when none
      does. ``final`` is never a default: the stage-keyed rigor norm
      (`nonfunctional-requirements.md` § Direction) says unsure defaults to the
@@ -184,8 +184,13 @@ def _unrecognized_mode_note(token: str, line_num: int | None = None) -> str:
     return note
 
 
-#: The two modes whose interval is HEAD-tree → working-tree, and therefore the
-#: only two an explicit token can name into a provably empty review. `cumulative`
+#: The two modes whose interval ENDS at the working tree — it starts at HEAD's
+#: tree, or at the covered frontier behind it when commits since that are
+#: unreviewed (`gates.covered_frontier`) — and therefore the only two an explicit
+#: token can name into an empty review. The clean-tree redirect below treats
+#: them as empty whenever the tree is clean; with a frontier behind HEAD that is
+#: not strictly so, and the redirect then sends the review to `cumulative`, a
+#: wider span than needed. Accepted: it errs toward more review, never less. `cumulative`
 #: reviews the committed bundle and `verify-resolutions` the delta since a prior
 #: review fact; neither goes empty because the working tree is clean.
 _WORKING_TREE_MODES = frozenset({"chunk", "final"})
@@ -336,8 +341,9 @@ def infer_mode(
 
     # Rule 4: the default when nothing else fired is the INNER-STAGE review of
     # whatever interval exists (the stage-keyed rigor norm). `chunk` and
-    # `final` both review the uncommitted diff (HEAD tree → captured working
-    # tree), so on a clean tree their interval is EMPTY and `critic-begin`
+    # `final` both end at the captured working tree (from HEAD's tree, or from
+    # the covered frontier behind it), so on a clean tree with nothing
+    # unreviewed behind HEAD their interval is EMPTY and `critic-begin`
     # refuses — correctly, but only after the round-trip. A mode that cannot
     # review anything is not the answer to "what should I run", whichever rule
     # matched. `cumulative` is the mode whose interval is committed, and it is
@@ -373,8 +379,9 @@ def _explicit_mode(
     second-guess it: `cumulative` and `verify-resolutions` come back exactly as
     typed, and so do `chunk` and `final` in every case but one.
 
-    That case is the defect (#684). `chunk` and `final` share the interval
-    HEAD-tree → working-tree, so on a clean tree it is EMPTY and `critic-begin`
+    That case is the defect (#684). `chunk` and `final` share an interval
+    ending at the working tree, so on a clean tree with nothing unreviewed
+    behind HEAD it is EMPTY and `critic-begin`
     refuses — after the operator has spent the dispatch. Rule 4 already declines
     to *infer* a mode that cannot review anything (:func:`_clean_tree_redirect`),
     but the explicit-args return sat above the whole ladder, so naming the mode
@@ -405,7 +412,8 @@ def _explicit_mode(
 def _clean_tree_redirect(prawduct_dir: Path, project_dir: Path) -> str:
     """Rationale for answering ``cumulative`` on a clean tree, or ``""``.
 
-    ``chunk`` and ``final`` both review HEAD-tree → working-tree, so with an
+    ``chunk`` and ``final`` both end at the working tree, so on a clean tree
+    their interval is empty unless a covered frontier sits behind HEAD, and an
     empty interval ``critic-begin`` refuses. Recommending one anyway costs a
     round-trip and names no remedy the caller didn't already have.
 

@@ -98,7 +98,8 @@ _VERBOSE_VERIFY_RESOLUTIONS = MODE_TOKEN_TO_VERBOSE["verify-resolutions"]
 #: The two review STAGES (`nonfunctional-requirements.md` § Direction, *Review
 #: rigor is stage-keyed*). A stage is a fact about the review INTERVAL, and
 #: ``begin_review`` chooses the interval by mode — ``chunk``/``final`` review
-#: the uncommitted diff, ``verify-resolutions`` the delta since the prior fact,
+#: to the working tree from HEAD (or from the covered frontier behind it),
+#: ``verify-resolutions`` the delta since the prior fact,
 #: ``cumulative`` merge-base → HEAD — so the stage is a function of the mode
 #: token. This mapping is that function's one home: the dispatch writes the
 #: result onto the manifest as ``stage``, and every reader downstream (the
@@ -1294,7 +1295,7 @@ def _widened_fallback_mode(
     """Which full-review mode actually COVERS the delta that just widened.
 
     "Run a full review" meant `final`, unconditionally — and `final`'s interval
-    is HEAD-tree → working-tree, the *uncommitted* diff. So a delta that widened
+    was then HEAD-tree → working-tree, the *uncommitted* diff. So a delta that widened
     because commits landed since the prior review demoted to the one mode that
     cannot see them: the refused interval was too wide, and its replacement was
     strictly NARROWER. Observed 2026-08-15 on a 95-file widening (a base-branch
@@ -2474,8 +2475,10 @@ def begin_review(
 
     Per-mode interval (design D8, chunk-03 refinements):
 
-    - ``chunk``/``final`` — base = ``HEAD`` (the uncommitted diff), head =
-      the captured working tree (D3 temp-index capture; non-mutating).
+    - ``chunk``/``final`` — base = ``HEAD``, or the covered frontier behind it
+      when commits since that are unreviewed (``gates.covered_frontier``; the
+      fact records ``base_extended_from``); head = the captured working tree
+      (D3 temp-index capture; non-mutating).
     - ``cumulative`` — base = merge-base(resolve-base, HEAD), head = ``HEAD``
       (the committed bundle; a dirty working tree is noted, not reviewed).
     - ``verify-resolutions`` — base = the prior review FACT's ``head_tree``;

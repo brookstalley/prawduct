@@ -5,6 +5,47 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-22: A fix made after a clean review rides the next review instead of buying a round
+
+<!-- prawduct: type=feature | scope=review-interval-extension -->
+
+**Toward #167.** Across the fleet, 150 of 242 `verify-resolutions` rounds between 2026-09-13 and
+09-22 ran when nothing blocking was outstanding. 63 of those were followed on the same branch by
+another full review, which re-read the same edits. The previous attempt (#167's withdrawn Chunk 02)
+refused such rounds and left a gap that only a 720-second `cumulative` could close. This change
+refuses nothing.
+
+**A `chunk`/`final` review now starts at the covered frontier.** `gates.covered_frontier` walks
+HEAD's first-parent history for the newest commit whose tree review evidence reaches, with no
+unresolved blocker and at least one review on the path. When commits after it are unreviewed —
+typically a non-blocking fix committed after the last review — `critic-begin` starts the interval
+there. One review covers the fix and the next chunk's work, and the edge it records composes for
+every gate, so no gap is left. The manifest and the review fact record `base_extended_from`; the
+evidence schema version is unchanged. Nothing extends past an open blocker (only
+`verify-resolutions` clears those), on a branch with no review yet, or across a judgeable base sync
+(no pre-sync review composes from the new merge-base, so the interval stays at HEAD). The Stop
+gate's merge-base fallback now also runs when the session-base marker is missing, and
+`cost-of-commit` asks the same merge-base question through `_merge_base_verdict`.
+
+**Nothing tells the builder to buy that round any more.** When the branch's plan still owes a later
+review (two or more unticked chunks; a lone unticked chunk is ambiguous and keeps today's answers)
+and a covered frontier exists:
+
+- `infer-critic-mode` answers `deferred` instead of `verify-resolutions` for a non-blocking fix, and
+  instead of `cumulative` for a clean tree mid-plan.
+- The Stop gate warns (`deferred-boundary-review`) instead of blocking.
+- The review close's NEXT-ACTION leads with the later review, replacing the cost of a round, the
+  "third route" and the price.
+- `cost-of-commit` answers `free` and says which review will cover the commit (`rides_next_review`
+  in `--json`).
+- The widened-verify fallback recommends `final` over `cumulative` when a frontier sits behind the
+  committed work.
+
+Blockers are never deferred, and the PR gate is unchanged.
+
+**Docs.** `review-cycle.md`, the Critic `SKILL.md` and `review-protocol.md` describe the new interval
+in place. The reviewer-payload readings went down, and their ceilings were ratcheted with them.
+
 ## 2026-09-22: The unresolved-scope note stays quiet on plan-less work
 
 <!-- prawduct: type=fix | scope=scope-note-plan-less-silence -->
