@@ -5,6 +5,26 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-22: develop opens 3.6.1-dev.4
+
+<!-- prawduct: type=chore | scope=dev-track-bump-3.6.1-dev.4 -->
+
+The dev track's version moves to `3.6.1-dev.4` in the four carriers (`plugin/VERSION`,
+`plugin.json`, `pyproject.toml`, the open `plugin/CHANGELOG.md` heading), so repos on the develop
+track pick up the four scopes merged since `-dev.3`: `review-scrub-seams`,
+`standing-block-closing-section`, `coverage-honesty` and `far-behind-branch-guidance`. The version
+string is the plugin cache key; without the bump those repos keep resolving the `3.6.1-dev.3` cache.
+
+The purpose is a holistic test: every efficiency and wall-clock change pending since `v3.6.0` runs
+together on real consumer work before the tier and the cut are decided. The owner chose this over
+cutting a release on 2026-09-22.
+
+**No consumer notes were owed this time.** Each of the four new scopes already carries its entry in
+the open `plugin/CHANGELOG.md` section. Besides this bump, the release-pending scopes that section
+does not name are the same four as at `-dev.3`: two earlier bump chores, a fix folded into a
+neighbouring note (`scope-note-plan-less-silence`), and a repo-internal instrument
+(`review-loop-economy`, which changed only `tools/`, `tests/` and `documentation/`).
+
 ## 2026-09-22: Landing a far-behind branch becomes shipped guidance
 
 <!-- prawduct: type=docs | scope=far-behind-branch-guidance -->
