@@ -86,8 +86,9 @@ to the documented error answer instead of raising.
 
 **`standing-block-closing-section`** — the session digest's rule for closing a turn with the
 standing block is now the digest's last section, `## Closing the turn`, instead of a bullet partway
-up "The hardest rules" with four sections after it. The rule says it comes *after every other
-word*; the injected text now does what it says. The wording is unchanged apart from two phrases
+up "The hardest rules" with four sections after it — the attempted fix for sessions that had
+stopped closing with the standing block, where delivery and the digest's size limit were ruled
+out and placement was the surviving explanation. The wording is unchanged apart from two phrases
 that restated their neighbours, and the digest is two tokens smaller.
 
 **`release-v3.6.0`** — the v3.6.0 cut itself: `main` promoted, the tag and GitHub Release

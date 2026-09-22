@@ -13,11 +13,24 @@ Salvaged from the unmerged `fix/standing-block-digest-tail` branch (2026-08-20),
 conflicted with `develop`'s since-rewritten bullet: the MOVE and its tests were re-applied onto the
 current text rather than merging the branch's stale copy.
 
-**The standing block moves to a closing `## Closing the turn` section.** Its rule reads *after every
-other word, since the bottom is all they read*, and `hooks/digest.py` injects
-`plugin/methodology/session-digest.md` verbatim — yet the rule sat mid-way through "The hardest
-rules", with the rest of that section and four whole sections after it. The digest was committing
-the failure its own rule names. `TestTheStandingBlockIsTheDigestsLastWord` pins the property rather
+**Why: a reported symptom, and placement is the surviving hypothesis, not a demonstrated cause.**
+The branch was cut after a consumer on v3.4.1-dev reported sessions had stopped closing with the
+standing block, and this repo's had too. It excluded two causes with evidence (as measured then):
+delivery (`hooks/digest.py` gates only on `.prawduct/` existing, and the installed digest was
+byte-identical, rule included) and the ~10,000-character `additionalContext` spill (9,811
+characters). What remained was placement — the rule sat mid-way through "The hardest rules" with
+four whole sections after it, since v3.4.0's `governance-surface-dedup` made the digest its only
+always-loaded carrier. A third candidate was NOT excluded: the digest is injected once at
+SessionStart, so deep into a session distance-in-conversation may dominate position-in-payload.
+The move is free either way; **if the omission recurs, read it as evidence for that third cause,
+not as this fix failing mysteriously** — and the structural escalation is the Stop hook checking
+the closing message itself, which it already has the session to do. (The rule's own "the bottom is
+all they read" is about the USER reading the turn, not the model reading the digest, so it is not
+itself the argument.)
+
+**The standing block moves to a closing `## Closing the turn` section.** `hooks/digest.py` injects
+`plugin/methodology/session-digest.md` verbatim, so the file's bottom is the payload's bottom.
+`TestTheStandingBlockIsTheDigestsLastWord` pins the property rather
 than a line: the rule is carried, no `## ` section follows it, and no text follows its closing
 pointer. Both structural assertions were mutated (a section appended after it, a trailing
 sentence) and went red; a whitespace no-op survived. The section has its `DIGEST_SECTION_PLACEMENT`
