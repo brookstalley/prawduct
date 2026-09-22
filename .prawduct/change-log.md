@@ -5,6 +5,19 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-22: develop opens 3.6.1-dev.5
+
+<!-- prawduct: type=chore | scope=dev-track-bump-3.6.1-dev.5 -->
+
+The dev track's version moves to `3.6.1-dev.5` in the four carriers (`plugin/VERSION`,
+`plugin.json`, `pyproject.toml`, the open `plugin/CHANGELOG.md` heading), so repos on the develop
+track pick up `measured-round-price`, which merged after `-dev.4` was opened. The version string is
+the plugin cache key; a repo that already resolved the `3.6.1-dev.4` cache would otherwise never see
+it.
+
+**No consumer notes were owed.** `measured-round-price` already carries its entry in the open
+`plugin/CHANGELOG.md` section.
+
 ## 2026-09-22: A round is priced from the clock, not from the reviewer's estimate
 
 <!-- prawduct: type=fix | scope=measured-round-price -->
