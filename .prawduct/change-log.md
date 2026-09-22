@@ -24,13 +24,16 @@ plan should claim it. The cause is recorded as `scope_unresolved_cause` in the d
 and the review fact, so how often each fires can be counted. The field is additive; the evidence
 schema version is unchanged.
 
-**A plan whose boxes are all ticked still matches its branch name until it is archived.**
-Branch-name inference used to reject a plan with every Status box ticked, on the grounds that
-boxes flipped at release. They no longer do: they are ticked after each chunk's review, so every
-box is ticked by the plan's own final cumulative, and that review lost its scope. Archiving is
-what retires a plan, and the scope map already skips `archive/`. The remaining risk is a new
-branch named exactly like a finished, not-yet-archived plan's scope; `--scope` or archiving the
-plan resolves it.
+**A finished plan still matches its branch name when this branch edited it.** Branch-name
+inference used to reject a plan with every Status box ticked, on the grounds that boxes flipped at
+release. They no longer do: they are ticked after each chunk's review, so every box is ticked by the
+plan's own final cumulative, and that review lost its scope. A fully ticked plan now matches when
+this branch created or changed the plan file since it left the base branch. The plan's own branch
+wrote its ticks; a later branch that only reuses the name did not. That keeps a merged plan, live on
+gitflow until the release, from capturing a follow-up branch. This matters beyond review
+attribution, because the Stop hook, the briefing, mode inference and the PR payload resolve their
+plan the same way. The remedy that reaches all of them is a frontmatter `branch:` on the plan being
+built; `--scope` reaches review dispatch only.
 
 ## 2026-09-21: The PR review clock survives its findings being fixed
 

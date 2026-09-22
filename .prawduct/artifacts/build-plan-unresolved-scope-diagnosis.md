@@ -10,13 +10,22 @@ governed_by:
     dispositions:
       - "authority fails closed; advice fails soft → conforms: the diagnosis is advice. It rides `critic-begin`'s `notes` (stderr `PRAWDUCT NOTE:`), changes no exit code and refuses no dispatch; a diagnosis that cannot be derived is silence, never an error"
       - "every fact has one home → conforms: the cause is computed by one function in `buildplan_refs` beside the resolver it explains, from the same readers the resolver uses (`plan_index.branch_claiming_plans`, the scope map, `core.resolve_build_plan_path`)"
+      - "an independent reviewer never mutates the session it reviews → inapplicable, because no chunk touches a reviewer write path"
+      - "local-first: no network, no daemon, no third-party dependency → conforms: file reads and local git probes only"
+      - "the plugin writes nothing into a governed repo except its own state → conforms: the only write is a key in the dispatch manifest and the review fact, both existing plugin state"
+      - "Python-written, never Python-specific → conforms: frontmatter, markdown lines and git only"
+      - "prawduct guides and reviews; it never implements → conforms: the note tells the operator which plan line to edit and edits nothing"
       - "goals and verification bind; prescribed method is advice → engaged: the owner-facing proposal listed five causes including 'a name match rejected because every box is ticked'; Chunk 2 removes that rejection, so the diagnosis does not carry a case for it"
   - artifact: nonfunctional-requirements
     dispositions:
       - "a control names its yield and emits it observably → conforms: the diagnosis is recorded in the dispatch manifest as `scope_unresolved_cause`, so how often each cause fires can be counted from the archived manifests later"
-      - "review wall-clock is P0 → conforms: no gate, no new round; one extra artifacts walk only on the unresolved path"
+      - "review wall-clock is P0 → conforms: no gate, no new round, no reviewer-payload growth (the skill-doc additions were dropped to hold the ceiling); one extra artifacts walk only on the unresolved path"
+      - "state-file growth is advisory, never a block → inapplicable, because no state file grows beyond one optional key per fact"
+      - "review rigor is stage-keyed → inapplicable, because no chunk changes severity or stage"
   - artifact: api-contract
     dispositions:
+      - "whole-surface semantic versioning; persisted data independently schema-versioned → conforms: `scope_unresolved_cause` is an optional fact key older readers ignore, so `evidence.SCHEMA_VERSION` stays 1"
+      - "exit codes are the contract; stable severity prefixes → conforms: no exit code changes, and the note uses the existing `PRAWDUCT NOTE:` prefix"
       - "additive-first evolution → conforms: one new manifest key and one new stderr note; no flag, exit code or existing key changes meaning"
 partition: serial — two small chunks over the same two modules, one agent
 last_validated: 2026-09-22
@@ -69,12 +78,16 @@ derived. Neither says why, or what to change.
 review there with no yield (nonfunctional-requirements: a control that never yields is removed by
 default) | vetoable]`
 
-`[DECISION: Chunk 2 drops the ticked-box rejection outright rather than replacing it with another
-liveness test | archiving already ends a plan's claim everywhere else (branch claims, the scope
-map); a second, weaker retirement signal is what produced the miss. The residual — a new branch
-named exactly like a finished, not-yet-archived plan's scope is attributed to it — is the same
-residual the docstring already states for unfinished plans, and `--scope` remains the remedy.
-Measured 2026-09-22: 8 such plans across the seven repos | vetoable]`
+`[DECISION: Chunk 2 keeps the ticked-box test but adds a second way to pass it — a finished plan
+matches by name when this branch changed the plan file since it left the base branch | the plan's
+own branch writes its ticks, so its final review passes; a later branch that merely reuses the
+exact name leaves the file untouched and still falls through. Dropping the test outright (the
+first draft) was wrong because `infer_scope_from_branch` feeds every `resolve_branch_plan` caller:
+the Stop hook's gate plan, the briefing's Critic advisory, `gates.py`'s end-of-cycle check, Critic
+mode inference rule 4, the PR review payload and `verify-records`, not only review attribution.
+On gitflow a merged plan stays live until the release, so those callers would have graded a
+follow-up branch against a finished plan. The remedy that reaches every caller is a frontmatter
+`branch:` on the plan being built; `--scope` reaches review dispatch only | vetoable]`
 
 **Out of scope:** no gate; no change to `core.resolve_branch_claim` (its tie-break among several
 claimants still uses unticked chunks); no auto-repair of plans; the template's `branch:` guidance.
@@ -104,11 +117,12 @@ manifest (`null` otherwise). The body-line scan lives in `plan_index` beside
 
 ## Chunk 2: a finished, unarchived plan still matches its branch name
 
-**Delivers:** `infer_scope_from_branch` drops the `_has_unfinished_chunk` condition on the
-name-match route; its docstring states archiving as the retirement signal and the residual.
-`_has_unfinished_chunk`'s own docstring stops listing `infer_scope_from_branch` as a consumer.
-`test_a_branch_named_after_a_finished_plan_does_not_match` is renegotiated in the open: a finished
-live plan matches; the same plan under `archive/` does not.
+**Delivers:** on the name-match route, `infer_scope_from_branch` accepts a finished plan when
+`_plan_changed_on_branch` shows this branch created or edited it. The docstring states that liveness
+signal, which callers it reaches, and the remedy that works for all of them.
+`test_a_branch_named_after_a_finished_plan_does_not_match` is renegotiated in the open. A finished
+plan edited on this branch matches. The same plan archived does not. A merged, finished plan that a
+follow-up branch never touched does not.
 
 **Done when:** targeted tests green; one `/prawduct:critic` covering both chunks.
 

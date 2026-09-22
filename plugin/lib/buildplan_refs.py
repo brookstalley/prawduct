@@ -660,21 +660,25 @@ def infer_scope_from_branch(
 
     - A branch matching no declared scope infers nothing, leaving every caller
       on the behaviour it had before.
-    - **Archiving is what retires a plan**, and the scope map never descends
-      ``archive/``, so a shipped plan stops matching once it is archived. How
-      many of its Status boxes are ticked is deliberately NOT consulted: the
-      boxes are ticked per chunk, after each review, so every box is ticked by
-      the plan's own end-of-plan ``cumulative`` — rejecting an all-checked plan
-      turned off the scope for exactly the review the round budget most needs
-      to count.
+    - A matched plan must be **live on this branch**: archived plans are never
+      in the map, and a plan whose Status is entirely ticked matches only if
+      this branch changed the plan file since it left the base branch. Boxes
+      are ticked per chunk, after each review, so every box is ticked by the
+      plan's own end-of-plan ``cumulative`` — rejecting on ticks alone turned
+      the scope off for exactly that review. But on gitflow a merged plan stays
+      live until the release, and a follow-up branch reusing its exact name
+      must not be graded against it: *this* answer feeds every
+      :func:`resolve_branch_plan` caller, the gates included, not only review
+      attribution. The plan's own branch edited the plan (it wrote the ticks);
+      a follow-up that merely shares the name did not.
 
-    **What is still possible, stated plainly:** a branch whose name matches a
-    live plan it is not actually building — unfinished, or finished and not
-    yet archived — will be attributed to that plan. Nothing here can tell those
-    apart — a name is the only signal — so the residual case is real and the
-    remedy is explicit ``--scope``, or archiving the finished plan. This is
-    narrower than "can only add, never redirect," which is true of the no-match
-    case only.
+    **What is still possible, stated plainly:** a branch whose name matches an
+    *unfinished* plan it is not actually building, or a finished one it
+    happened to edit, will be attributed to that plan. A name is the only
+    signal. The remedy that reaches every caller is a frontmatter ``branch:``
+    on the plan being built, which is consulted first; ``--scope`` reaches
+    review dispatch only. This is narrower than "can only add, never
+    redirect," which is true of the no-match case only.
     """
     branch = gitstate.current_branch(project_dir)
     if not branch:
@@ -688,7 +692,11 @@ def infer_scope_from_branch(
     if "/" in branch:
         candidates.append(branch.rsplit("/", 1)[1])
     for candidate in candidates:
-        if candidate in known:
+        plan_path = known.get(candidate)
+        if plan_path is not None and (
+            _has_unfinished_chunk(plan_path)
+            or _plan_changed_on_branch(project_dir, plan_path)
+        ):
             return candidate
     return None
 
@@ -729,8 +737,9 @@ def _has_unfinished_chunk(plan_path: Path) -> bool:
     consumer is the session briefing's "claims a branch this repo does not have"
     advisory, which fires only for a plan with work left, because a finished plan
     whose merged branch is gone is the documented end state, not a finding.
-    Branch-name scope inference no longer asks it: every box is ticked by a
-    plan's own final review, which is when that inference is needed most.
+    Branch-name scope inference asks it alongside
+    :func:`_plan_changed_on_branch`, because every box is ticked by a plan's own
+    final review, which is when that inference is needed most.
 
     **The signal is blunt: the boxes flip per chunk, so a plan reads finished
     from the moment its last chunk is ticked** — typically before its branch
@@ -759,6 +768,56 @@ def _has_unfinished_chunk(plan_path: Path) -> bool:
     if not items:
         return True
     return any(not checked for checked, _text in items)
+
+
+def _declares_scope(plan_path: Path) -> bool:
+    """Whether the plan's frontmatter names a scope, whether or not the scope map kept it.
+
+    The map keeps one plan per scope, so a plan whose scope duplicates another's
+    is absent from it while still declaring one — telling it to "add" a scope
+    would be wrong advice.
+    """
+    try:
+        content = plan_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return False
+    return bool(plan_index.parse_build_plan_frontmatter_scope(content)[1])
+
+
+def _plan_changed_on_branch(project_dir: Path, plan_path: Path) -> bool:
+    """True when this branch created or edited ``plan_path`` since it left the base.
+
+    The liveness signal for a finished plan: the branch that built it wrote its
+    ticks, so the file differs from the merge-base (or is not yet tracked). A
+    later branch that only shares the plan's name leaves it untouched. Observed
+    from git rather than stored on the plan, so there is nothing to forget.
+
+    ``False`` whenever it cannot be shown — no base, no merge-base, a git error —
+    which falls back to rejecting the finished plan, the older behaviour.
+    """
+    base, _ = _resolve_base_branch(project_dir)
+    if not base:
+        return False
+    try:
+        mb = subprocess.run(
+            ["git", "merge-base", base, "HEAD"],
+            cwd=str(project_dir), capture_output=True, text=True, timeout=10,
+        )
+        if mb.returncode != 0 or not mb.stdout.strip():
+            return False
+        tracked = subprocess.run(
+            ["git", "ls-files", "--error-unmatch", "--", str(plan_path)],
+            cwd=str(project_dir), capture_output=True, text=True, timeout=10,
+        )
+        if tracked.returncode != 0:
+            return True  # untracked: written on this branch, not inherited
+        diff = subprocess.run(
+            ["git", "diff", "--quiet", mb.stdout.strip(), "--", str(plan_path)],
+            cwd=str(project_dir), capture_output=True, text=True, timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return diff.returncode == 1
 
 
 def unresolved_scope_cause(
@@ -802,7 +861,11 @@ def unresolved_scope_cause(
         return _repo_rel(prawduct_dir, path)
 
     for path, claimed in plan_index.branch_claiming_plans(artifacts_dir):
-        if claimed == branch and path not in scoped:
+        if (
+            claimed == branch
+            and path not in scoped
+            and not _declares_scope(path)
+        ):
             return (
                 "claim-no-scope",
                 f"{rel(path)} claims branch {branch!r} but declares no `scope:` in "

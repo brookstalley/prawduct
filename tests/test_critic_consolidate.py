@@ -6218,6 +6218,24 @@ class TestUnresolvedScopeCause:
         assert manifest["scope_unresolved_cause"] == "claim-no-scope"
         assert "build-plan-a.md claims branch 'feat/work' but declares no `scope:`" in result.stderr
 
+    def test_a_claimant_whose_scope_is_a_duplicate_is_not_told_to_add_one(self, tmp_path):
+        # The scope map keeps one plan per scope; the shadowed claimant still
+        # declares one, so "add one" would be wrong advice.
+        repo = self._repo(
+            tmp_path,
+            {
+                "build-plan-a.md": "---\nartifact: build-plan\nscope: dup\n---\n\n# Plan\n",
+                "build-plan-b.md": (
+                    "---\nartifact: build-plan\nscope: dup\nbranch: feat/work\n---\n\n# Plan\n"
+                ),
+            },
+            "feat/work",
+        )
+        result, manifest = self._dispatch(repo)
+        assert manifest["scope_chosen_by"] == "not-resolved"
+        assert manifest["scope_unresolved_cause"] == "no-claim"
+        assert "declares no `scope:`" not in result.stderr
+
     def test_a_branch_line_below_the_frontmatter_is_named(self, tmp_path):
         repo = self._repo(
             tmp_path,

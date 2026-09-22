@@ -1130,6 +1130,37 @@ class TestRule4ChunkDefault:
             "an archived plan is history, not a live target"
         )
 
+    def test_a_merged_finished_plan_does_not_capture_a_follow_up_branch(self, tmp_path: Path):
+        """On gitflow a merged plan stays live until the release. A later branch
+        reusing its exact name must not be graded against it — this answer feeds
+        the gates, not only review attribution — so a finished plan matches only
+        when this branch edited it. Editing it (the plan's own branch writing its
+        ticks) is the control that makes the first assertion about liveness."""
+        _init_repo(tmp_path)
+        _write(tmp_path, "README.md", "x\n")
+        _write(
+            tmp_path,
+            ".prawduct/artifacts/build-plan-shipped.md",
+            "---\nartifact: build-plan\nscope: shipped\n---\n\n"
+            "# Plan\n\n## Status\n\n- [x] Chunk 01: done\n",
+        )
+        _commit(tmp_path, "initial, with the merged finished plan")
+        _checkout_new_branch(tmp_path, "fix/shipped")
+        _write(tmp_path, "src/new.py", "# follow-up work\n")
+        prawduct = tmp_path / ".prawduct"
+        assert buildplan_refs.infer_scope_from_branch(tmp_path, prawduct) is None, (
+            "a finished plan this branch never touched is not what it is building"
+        )
+
+        _write(
+            tmp_path,
+            ".prawduct/artifacts/build-plan-shipped.md",
+            "---\nartifact: build-plan\nscope: shipped\n---\n\n"
+            "# Plan\n\n## Status\n\n- [x] Chunk 01: done\n- [x] Chunk 02: done\n",
+        )
+        _commit(tmp_path, "tick chunk 02")
+        assert buildplan_refs.infer_scope_from_branch(tmp_path, prawduct) == "shipped"
+
     def test_a_declared_branch_resolves_a_scope_no_name_rule_could(self, tmp_path: Path):
         """The observed miss this closes, in its real shape.
 
