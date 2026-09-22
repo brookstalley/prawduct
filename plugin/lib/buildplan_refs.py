@@ -656,20 +656,23 @@ def infer_scope_from_branch(
     ``known`` is a prebuilt scope→plan map — pass it to share one walk of
     ``artifacts/`` with a caller that also resolves the plan (:func:`resolve_branch_plan`).
 
-    Two narrowings, and the honest statement of what remains:
+    One narrowing, and the honest statement of what remains:
 
     - A branch matching no declared scope infers nothing, leaving every caller
       on the behaviour it had before.
-    - A matched plan whose Status is **entirely checked** is rejected. Those
-      boxes flip at release, so an all-checked plan has shipped, and a branch
-      named after a shipped scope is far more likely to be new work near old
-      code than a resumption of finished work. Without this, every one of the
-      dozens of released plans a long-lived repo accumulates is a live target.
+    - **Archiving is what retires a plan**, and the scope map never descends
+      ``archive/``, so a shipped plan stops matching once it is archived. How
+      many of its Status boxes are ticked is deliberately NOT consulted: the
+      boxes are ticked per chunk, after each review, so every box is ticked by
+      the plan's own end-of-plan ``cumulative`` — rejecting an all-checked plan
+      turned off the scope for exactly the review the round budget most needs
+      to count.
 
-    **What is still possible, stated plainly:** a branch whose name matches an
-    *unfinished* plan it is not actually building will be attributed to that
-    plan. Nothing here can tell those apart — a name is the only signal — so the
-    residual case is real and the remedy is explicit ``--scope``. This is
+    **What is still possible, stated plainly:** a branch whose name matches a
+    live plan it is not actually building — unfinished, or finished and not
+    yet archived — will be attributed to that plan. Nothing here can tell those
+    apart — a name is the only signal — so the residual case is real and the
+    remedy is explicit ``--scope``, or archiving the finished plan. This is
     narrower than "can only add, never redirect," which is true of the no-match
     case only.
     """
@@ -685,8 +688,7 @@ def infer_scope_from_branch(
     if "/" in branch:
         candidates.append(branch.rsplit("/", 1)[1])
     for candidate in candidates:
-        plan_path = known.get(candidate)
-        if plan_path is not None and _has_unfinished_chunk(plan_path):
+        if candidate in known:
             return candidate
     return None
 
@@ -723,11 +725,12 @@ def _has_unfinished_chunk(plan_path: Path) -> bool:
 
     **Read this before tuning it: it now decides which plan GOVERNS.**
     :func:`core.resolve_branch_claim` uses it to choose among several live plans
-    claiming one branch, so a change here moves what every gate grades — not only
-    what advice infers. Its other consumers are :func:`infer_scope_from_branch`
-    and the session briefing's "claims a branch this repo does not have"
+    claiming one branch, so a change here moves what every gate grades. Its other
+    consumer is the session briefing's "claims a branch this repo does not have"
     advisory, which fires only for a plan with work left, because a finished plan
     whose merged branch is gone is the documented end state, not a finding.
+    Branch-name scope inference no longer asks it: every box is ticked by a
+    plan's own final review, which is when that inference is needed most.
 
     **The signal is blunt: the boxes flip per chunk, so a plan reads finished
     from the moment its last chunk is ticked** — typically before its branch

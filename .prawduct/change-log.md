@@ -5,6 +5,33 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-22: A review whose scope did not resolve now says why
+
+<!-- prawduct: type=fix | scope=unresolved-scope-diagnosis -->
+
+**A third of Critic reviews across seven repos recorded no scope, and nothing said so.** From
+2026-09-13 to 2026-09-22, 131 of 382 review facts recorded `scope_chosen_by: not-resolved`. Each
+one is invisible to the round budget and to scope-matched dispositions. The only trace was a
+parenthetical on the record-lint line. Repos whose plans put `branch:` in frontmatter resolved
+about 90% of the time; the others about 35%.
+
+**`critic-begin` now names the cause and the edit that fixes it.** When no scope resolves it
+prints a `PRAWDUCT NOTE` for the first cause it finds: a plan claims the branch but declares no
+`scope:`; a plan names the branch on a `branch:` line *below* its frontmatter, where nothing reads
+it (the commonest shape: 26 live plans in one consumer repo); the active plan claims a different
+branch; or nothing claims the branch at all. It says nothing on the integration branch, where no
+plan should claim it. The cause is recorded as `scope_unresolved_cause` in the dispatch manifest
+and the review fact, so how often each fires can be counted. The field is additive; the evidence
+schema version is unchanged.
+
+**A plan whose boxes are all ticked still matches its branch name until it is archived.**
+Branch-name inference used to reject a plan with every Status box ticked, on the grounds that
+boxes flipped at release. They no longer do: they are ticked after each chunk's review, so every
+box is ticked by the plan's own final cumulative, and that review lost its scope. Archiving is
+what retires a plan, and the scope map already skips `archive/`. The remaining risk is a new
+branch named exactly like a finished, not-yet-archived plan's scope; `--scope` or archiving the
+plan resolves it.
+
 ## 2026-09-21: The PR review clock survives its findings being fixed
 
 <!-- prawduct: type=fix | scope=pr-review-clock -->

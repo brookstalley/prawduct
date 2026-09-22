@@ -1096,16 +1096,15 @@ class TestRule4ChunkDefault:
         assert "build-plan-mine.md" in rationale
         assert "declares this branch's scope 'mine'" in rationale
 
-    def test_a_branch_named_after_a_finished_plan_does_not_match(self, tmp_path: Path):
-        """The liveness narrowing: a matched plan must still have work in it.
+    def test_a_finished_live_plan_still_matches_until_it_is_archived(self, tmp_path: Path):
+        """Archiving retires a plan; ticking its last box does not.
 
-        A long-lived repo accumulates dozens of released plans, all of them
-        scope-declaring. Without this, a branch named after any of them
-        attributes its review to a plan that shipped long ago — and record-lint
-        would then raise a BLOCKING `chunk-ref-missing` about deliverables that
-        shipped with it. Deleting `_has_unfinished_chunk` must not leave a green
-        suite, which is why the fully-ticked plan here is otherwise identical to
-        the one the sibling test matches on.
+        Boxes are ticked per chunk after each review, so every box is ticked by
+        the plan's own end-of-plan `cumulative`. Rejecting an all-checked plan
+        (the earlier contract, when boxes flipped only at release) turned the
+        scope off for exactly that review, and it went uncounted by the round
+        budget. The paired half: the same plan moved under `archive/` stops
+        matching, which is what keeps long-shipped plans from being targets.
         """
         _init_repo(tmp_path)
         _write(tmp_path, "README.md", "x\n")
@@ -1114,24 +1113,22 @@ class TestRule4ChunkDefault:
 
         artifacts = tmp_path / ".prawduct" / "artifacts"
         artifacts.mkdir(parents=True, exist_ok=True)
-        (artifacts / "build-plan-shipped.md").write_text(
+        plan = artifacts / "build-plan-shipped.md"
+        plan.write_text(
             "---\nartifact: build-plan\nscope: shipped\n---\n\n"
             "# Plan\n\n## Status\n\n- [x] Chunk 01: done\n- [x] Chunk 02: also done\n"
         )
-        (artifacts / "build-plan-live.md").write_text(
-            "---\nartifact: build-plan\nscope: live\n---\n\n"
-            "# Plan\n\n## Status\n\n- [x] Chunk 01: done\n- [ ] Chunk 02: current\n"
-        )
-
         prawduct = tmp_path / ".prawduct"
-        assert buildplan_refs.infer_scope_from_branch(tmp_path, prawduct) is None, (
-            "a released plan is not what this branch is building"
+        assert buildplan_refs.infer_scope_from_branch(tmp_path, prawduct) == "shipped", (
+            "a plan at its final review has every box ticked and is still the work"
         )
 
-        # Control: the identical branch shape DOES match a plan with work left,
-        # so the assertion above is about liveness and not about the fixture.
-        _git(tmp_path, "checkout", "-b", "fix/live", "--quiet")
-        assert buildplan_refs.infer_scope_from_branch(tmp_path, prawduct) == "live"
+        archive = artifacts / "archive"
+        archive.mkdir()
+        plan.rename(archive / plan.name)
+        assert buildplan_refs.infer_scope_from_branch(tmp_path, prawduct) is None, (
+            "an archived plan is history, not a live target"
+        )
 
     def test_a_declared_branch_resolves_a_scope_no_name_rule_could(self, tmp_path: Path):
         """The observed miss this closes, in its real shape.
