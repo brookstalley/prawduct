@@ -10,7 +10,7 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
-## v3.6.1-dev.1
+## v3.6.1-dev.2
 
 **Rolling notes for the next release — nothing has shipped under this number yet.**
 Entries accumulate here as work lands on `develop`; the cut renames this heading to its
@@ -20,6 +20,12 @@ release number.
 measured duration. The dispatch mark is now checked against the tree the reviewer read, and the
 interval ends when the reviewer writes its evidence. Before this, only PR reviews that found nothing
 were measured.
+
+**`unresolved-scope-diagnosis`** — when a Critic review resolves no build-plan scope,
+`critic-begin` now prints a note saying why and which plan edit fixes it — most often a `branch:`
+line written below the plan's frontmatter, where nothing reads it. A review without a scope is
+invisible to the round budget. A finished plan also keeps matching its branch name for its own
+final review, as long as that branch edited the plan.
 
 **`866-cost-of-commit-covered`** — `prawduct-hook cost-of-commit` no longer says a tree a Critic
 review already covers "costs a round". With no path arguments it now checks review coverage the way

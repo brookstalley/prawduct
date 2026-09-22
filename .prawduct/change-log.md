@@ -5,6 +5,17 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-22: develop opens 3.6.1-dev.2
+
+<!-- prawduct: type=chore | scope=dev-track-bump-20260922 -->
+
+The dev track's version moves to `3.6.1-dev.2` in the four carriers (`plugin/VERSION`,
+`plugin.json`, `pyproject.toml`, the open `plugin/CHANGELOG.md` heading), so repos on the develop
+track pick up #868 (unresolved-scope diagnosis) and #869 (`cost-of-commit` stops pricing a covered
+tree as a round). The version string is the plugin cache key; without the bump, those repos keep
+running the `3.6.1-dev.1` cache. Also adds the consumer note for `unresolved-scope-diagnosis`,
+which #868 did not carry.
+
 ## 2026-09-21: cost-of-commit stops pricing a Critic-covered tree as a round
 
 <!-- prawduct: type=fix | scope=866-cost-of-commit-covered -->
