@@ -10,7 +10,7 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
-## v3.6.1-dev.2
+## v3.6.1-dev.3
 
 **Rolling notes for the next release — nothing has shipped under this number yet.**
 Entries accumulate here as work lands on `develop`; the cut renames this heading to its
@@ -46,6 +46,34 @@ closure. On a docs or fix branch with no build plan, it could not pair the chang
 nothing, and reported *"no backlog ids cited … this is an answer, not a failure"*. It now pairs the
 entry the branch adds, and an input it could not scan degrades the section instead of passing as
 empty — so the reviewer is told to check that input by hand rather than told there is nothing to check.
+
+**`pin-status-tick-meaning`** — a build plan's `## Status` tick now has one documented meaning:
+the chunk is **built, committed and reviewed on the branch** — never merged, never released. It had
+three working meanings across the methodology, and readers that assumed different ones disagreed.
+`planning.md` carries the definition and the build-plan template's Status comment names the same
+one. Merged and released stay where they were: the plan is live until archived, and the change-log's
+`release=` tag says what shipped.
+
+**`review-budget-trunk-shape`** — the review round budget now fires on a trunk-based repo, where it
+had never fired at all. It counted rounds strictly after the merge-base on HEAD's lineage; on trunk
+every push makes the merge-base HEAD, so that set is empty and `spent` was 0 on round twenty. The
+count is now bounded by the worktree whenever the commit span is empty, so the ceiling reaches
+`chunk` and `final` dispatches there — an exit 4 that was unreachable on that repo shape becomes
+reachable, with `--force` as the escape hatch. It does not reach `cumulative` on trunk, which
+`critic-begin` refuses earlier as an empty diff.
+
+**Two consequences to know, both wider than trunk repos.** A branch cut and not yet committed to
+also has an empty span, so a branch RESUMING a scope inherits that scope's rounds from this
+worktree — the budget's declared unit is the scope, so that is consistent, but it is a behaviour
+change on branch-based repos too. And nothing resets the worktree-bounded count, so reusing a scope
+name for a second body of work inherits the first's rounds and can refuse its very first dispatch.
+Give each body of work its own scope name, or raise the budget — the `project-state.yaml`
+template comment that ships with the plugin says so, as does prawduct's own `api-contract.md`.
+The verdict and the guard-refusal fact now carry `bound` (`lineage` | `worktree`), which
+`prawduct-hook evidence list` renders as a `bound=` column,
+because the two bounds count different sets. The `uncovered:` gate block no longer claims *the next
+round is this branch's first* when the span is empty and it cannot know. Rider: `plan-backfill
+--apply` now names the staging remedy for the archive it wrote, with repo-root-anchored paths.
 
 **`release-v3.6.0`** — the v3.6.0 cut itself: `main` promoted, the tag and GitHub Release
 published in one call, and `develop` reopened here. Nothing in this scope changes plugin

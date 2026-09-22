@@ -58,6 +58,61 @@ class TestPluginManifest:
             "would ship the wrong version or silently skip an update."
         )
 
+    def test_every_declared_release_carrier_agrees(self, manifest):
+        """Every carrier in ``release_version_files:`` holds the same version.
+
+        The sibling above pins plugin.json against VERSION and stops there, so
+        a bump that moved two of the three carriers left ``pyproject.toml``
+        behind with a green suite. ``check_version_files`` is no help between
+        releases: it compares against ``git show <tag>:…``, so it only ever
+        runs after a tag exists.
+
+        Derived from the declaration rather than a hand-kept list, so a carrier
+        added to ``release_version_files:`` is covered the day it lands.
+
+        What turns this red: any declared carrier disagreeing with VERSION, and
+        a declaration that stops naming pyproject.toml or parses to nothing.
+        What it cannot check: a carrier whose format this interpreter cannot
+        read (toml below Python 3.11) — those are named in `unreadable` below
+        and the assertion requires at least one real comparison regardless.
+        """
+        from lib import release_verification as rv
+
+        repo_root = ROOT.parent
+        state = (repo_root / ".prawduct" / "project-state.yaml").read_text(encoding="utf-8")
+        specs = rv._read_declaration(state)
+        assert specs, (
+            "release_version_files: must declare the version carriers — an empty "
+            f"or unparseable declaration checks nothing (status: {rv.declaration_status(state)!r})"
+        )
+        declared = {spec.path for spec in specs}
+        assert "pyproject.toml" in declared, (
+            "pyproject.toml must stay a declared carrier — it is the one this "
+            f"test exists for; declaration names {sorted(declared)}"
+        )
+
+        expected = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
+        compared: list[str] = []
+        unreadable: list[str] = []
+        for spec in specs:
+            path = repo_root / spec.path
+            assert path.exists(), f"declared carrier {spec.path} does not exist"
+            read = rv._read_version(spec, path.read_text(encoding="utf-8"))
+            if read.blocked:
+                unreadable.append(f"{spec.path} ({read.problem})")
+                continue
+            assert read.value == expected, (
+                f"{spec.path} declares {read.value!r} but plugin/VERSION is "
+                f"{expected!r} — a bump must move every declared carrier together, "
+                "or develop ships disagreeing versions until the cut"
+            )
+            compared.append(spec.path)
+
+        assert len(compared) >= 2, (
+            "this test compared fewer than two carriers, so it proved almost "
+            f"nothing: compared={compared}, unreadable={unreadable}"
+        )
+
     def test_version_is_semver(self, manifest):
         # Bare major.minor.patch, or the one permitted prerelease form: a
         # `-dev` / `-dev.N` suffix, which develop carries between releases so
