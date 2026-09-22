@@ -443,7 +443,7 @@ files to touch previews first. That framing is descriptive — the binding rule 
     `costs-a-round` / `unknown` — plus `source` (`working-tree` / `arguments`), `paths[]`,
     `judgeable[]`, `free[]`, `covered_by[]` (review ids whose coverage made a judgeable working
     tree `free`; empty otherwise), and `round_price` (the `telemetry.round_price` dict: `status` of
-    `priced` / `unavailable`, with `mode`/`median_seconds`/`reviews` or `reason`); `reason` appears
+    `priced` / `unavailable`, with `mode`/`median_seconds`/`reviews`/`basis` — `measured` or `self-reported` — or `reason`); `reason` appears
     at top level only on the degraded path). Named as unconsumed on purpose, per the rule this list
     already applies to `learnings-obligation` and `check-released`. The **human** form is what an
     agent reads — the verdict token leads stdout so a caller can branch on one word — and the exit

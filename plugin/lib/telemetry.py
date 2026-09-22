@@ -487,12 +487,13 @@ def round_price(prawduct_dir: Path, *, mode: str = PRICED_MODE) -> dict:
     median and nothing else. The alternative, ``duration_seconds``, reaches the
     ledger from the reviewer's own partial, which the reviewer contract asks
     for as a best-estimate wall clock. It is a model's recollection, not a
-    measurement. On the same rounds it sits near five minutes whatever the
-    interval was: close where rounds really take about that long, several
-    times too high where they are quicker. A price taken from it can tell a
-    builder a round costs several times what it does, which is exactly the
-    misinformed spend decision this helper exists to prevent. Re-derive the comparison with ``prawduct-hook review-stats``, which
-    reports ``duration_measured`` and ``duration_self_reported`` separately.
+    measurement, and on the same rounds it runs high, worst on short ones
+    (the measurements are in ``documentation/consumer-build-metrics.md``
+    hazard 2). A price taken from it can tell a builder a round costs several
+    times what it does, which is exactly the misinformed spend decision this
+    helper exists to prevent. Re-derive the comparison with
+    ``prawduct-hook review-stats``, which reports ``duration_measured`` and
+    ``duration_self_reported`` separately.
 
     The two never pool, for the reason ``review_stats`` gives: a median over
     the mixture measures neither. So a repo with too few marked rounds is
@@ -583,8 +584,8 @@ def format_round_price(price: dict) -> str:
         )
     # The basis is named in the sentence because the two readings are not the
     # same kind of number: a measured median is a price, and an estimated one
-    # is a model's recollection that can be several times the clock. A price persisted before the
-    # key existed is read as an estimate, which is what it was.
+    # is a model's recollection that can be several times the clock. A dict
+    # without the key is read as an estimate, the safe reading.
     if price.get("basis") == "measured":
         source = f"median of {price['reviews']} measured {price['mode']} rounds"
     else:

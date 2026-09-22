@@ -27,8 +27,7 @@ Hazards, in the order they will burn you. The first is inherited and decisive:
 
 * **`duration_seconds` is self-reported by the reviewing model, not a measured
   clock** — hazard 2 of `consumer-build-metrics.md`. Against the dispatch clock
-  it sits near five minutes whatever the real duration, so it is close only
-  where reviews take about that long. Every hour figure here is therefore
+  it runs high, worst on short reviews. Every hour figure here is therefore
   labelled `self-reported`, and the run counts, which are one row per real
   dispatch, are the series to lean on. The CLOCK line reports how many rows carry
   a true dispatch interval; where that is a handful, no hour figure here is

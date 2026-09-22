@@ -11,10 +11,9 @@
 
 `telemetry.round_price` quoted what one more review round costs as the median of `duration_seconds`,
 which is the reviewing model's own estimate. Read against the dispatch clock on the same rounds,
-that estimate sits near five minutes whatever the review took. It is close where rounds really take
-about that long, and several times too high where they are quicker: this repo's `verify-resolutions`
-clocks at a median of about 3 minutes against about 5 estimated, and its PR review at about 1 minute
-against 4. Re-derive both with `prawduct-hook review-stats --json` (`by_role_model_mode`, the
+that estimate runs high, and worst on short reviews: this repo's `verify-resolutions` clocks at a
+median of about 3 minutes against about 5 estimated, and its PR review at about 1 minute against 4.
+Re-derive both with `prawduct-hook review-stats --json` (`by_role_model_mode`, the
 `duration_measured` and `duration_self_reported` populations). The price is the number a builder
 weighs a fix against, so an inflated one misprices the decision it exists to inform.
 
@@ -28,15 +27,26 @@ rows.
 
 **Records corrected in the same change.** `documentation/consumer-build-metrics.md` summary items 1
 and 3, hazard 2 and open questions 2–4 all rested on self-reported durations. Hazard 2 said the
-estimate was "corroborated within 16%", which held in discodon because its reviews do take about
-five minutes. It did not hold elsewhere, so that licence is withdrawn. The same sentence is corrected
+estimate was "corroborated within 16%". That held for discodon's verify rounds, which really take
+about as long as the estimate says, and not elsewhere, so the licence is withdrawn. Hazard 2 is now
+the one home for the measured comparison, and the code and tools point to it rather than restating
+it. The same sentence is corrected
 in `lib/review_dispatch.py`, `tools/pr-review-yield.py` and `tools/measure-review-loop-economy.py`.
+`.prawduct/artifacts/pr-review-payload-discovery.md` gets a dated correction block beside its 13.1
+figure, and `api-contract.md`'s `cost-of-commit --json` row lists the new `basis` key.
 discodon's 13-minute PR figure is left marked unverified, not wrong: its PR reviews carry no clock
 yet.
 
+**Also shipped: the cumulative-latency discovery**
+(`.prawduct/artifacts/cumulative-latency-discovery.md`). It asks why discodon's cumulative Critic
+takes 7–17 minutes by the clock. Its answer is the volume of reviewer output, driven mainly by
+re-reviewing a whole campaign branch against a fixed base. Serial reviewer dispatch and auto-loaded
+context come second, and tools take under 4% of the time. It records findings only; no fix is
+chosen from it yet.
+
 **Not changed.** The per-branch tally in `coverage.format_branch_rounds` ("costing N so far") still
 sums self-reported durations. It reads evidence-store facts, and those carry no dispatch clock, so
-fixing it needs the clock recorded on the fact.
+fixing it needs the clock recorded on the fact. Filed as #882.
 
 ## 2026-09-22: develop opens 3.6.1-dev.4
 
