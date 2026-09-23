@@ -5,6 +5,26 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-22: the PR reviewer's context claim now names path-scoped rules
+
+<!-- prawduct: type=fix | scope=pr-reviewer-path-scoped-rules -->
+
+`pr/SKILL.md` Step 3 and the `pr-reviewer` agent both said `omitClaudeMd: true` keeps
+`.claude/rules/` out of the reviewer's context. It keeps out the always-loaded files, but not a
+path-scoped one (#888). Measured this session: a `pr-reviewer` that Read `plugin/skills/pr/SKILL.md`
+received `.claude/rules/learnings/authoring.md` as a system message and quoted its headings
+verbatim, and a control that Read `documentation/purpose.md` received nothing. Claude Code's
+subagent documentation describes no per-agent setting that stops this. Both surfaces now state the
+limit, and the agent is told to treat an arriving area file as learnings it was not given, not as
+a checklist. `tests/test_pr_reviewer_agent.py` pins both.
+
+The `critic-reviewer`, which declares no `omitClaudeMd`, received `core.md`, both `CLAUDE.md` files
+and `MEMORY.md` at dispatch, then `authoring.md` the same way. It uses learnings on purpose, so
+that is recorded, not changed.
+
+Ride-along owed from an earlier review: Step 1 now says a `merge=union` record "can resurrect
+entries the base archived" rather than "resurrects every entry".
+
 ## 2026-09-22: develop opens 3.6.1-dev.6
 
 <!-- prawduct: type=chore | scope=dev-track-bump-3.6.1-dev.6 -->

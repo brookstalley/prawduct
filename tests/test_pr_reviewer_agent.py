@@ -3,9 +3,11 @@
 The PR review used to be a generic subagent spawned with a prompt. Two things a
 prompt cannot hold moved into an agent definition: a tool allow-list scoped to
 what a release-readiness review needs, and `omitClaudeMd: true`, which keeps the
-repo's `CLAUDE.md` hierarchy, its `.claude/rules/` project rules and its
-`MEMORY.md` out of the reviewer's context — a corpus `review-protocol.md`
-forbids this reviewer to scan the diff against.
+repo's `CLAUDE.md` hierarchy, its always-loaded `.claude/rules/` project rules and
+its `MEMORY.md` out of the reviewer's starting context — a corpus
+`review-protocol.md` forbids this reviewer to scan the diff against. A
+path-scoped rules file still arrives on a matching Read; that gap is pinned in
+:class:`TestClaudeMdIsOmitted` rather than left for the prose to overstate.
 
 **Ported from `tests/test_critic_reviewer_agent.py`, deliberately.** That file
 enumerates the branches this design creates, and citing a precedent without
@@ -144,6 +146,22 @@ class TestClaudeMdIsOmitted:
             "is only meaningful while it does"
         )
         assert re.search(r"^omitClaudeMd:", _frontmatter(AGENT_DEF), re.MULTILINE)
+
+    def test_both_surfaces_name_what_the_omission_does_not_cover(self):
+        """Measured 2026-09-22 (#888): two reviewer runs received the
+        `authoring.md` learnings area file after a Read its `paths:` matched,
+        and a control that Read an unmatched path received nothing. Claude Code
+        documents no per-agent setting that stops it. Both surfaces had claimed
+        the whole of `.claude/rules/` was kept out; an agent told that reads an
+        arriving area file as an instruction it was meant to have. So each
+        surface must name the path-scoped case, and the agent must be told what
+        to do with the file.
+        """
+        body = AGENT_DEF.read_text().split("---\n", 2)[2]
+        assert "path-scoped" in body
+        assert "not a checklist to scan the diff against" in " ".join(body.split())
+        step3 = " ".join(_step3_of(SKILL.read_text()).split())
+        assert "does not stop a **path-scoped** rules file" in step3
 
     def test_the_agent_is_told_not_to_read_around_the_omission(self):
         body = AGENT_DEF.read_text()
