@@ -309,9 +309,9 @@ After the user approves the scope, write a build plan to `.prawduct/artifacts/bu
 
 Review the build cycle in this project's CLAUDE.md before writing any code. Follow the standard build cycle for each chunk:
 
-- Run the full test suite before starting
+- Establish the baseline the build cycle describes (`test-status` first)
 - Build: understand the chunk spec → implement → verify
-- Run the full test suite after each chunk
+- Verify each chunk with the narrowest tests that prove it; the declared suite runs at the boundary, before the work lands
 - Invoke the Critic as a separate agent after each chunk (mandatory for medium+ changes)
 - Update artifacts as you go — if your cleanup changes something an artifact describes, update the artifact
 - If `project-preferences.md` specifies PR preferences, follow them; otherwise, wait for the user to request a PR via `/prawduct:pr`

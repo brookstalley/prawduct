@@ -12,6 +12,8 @@ governed_by:
     dispositions:
       - "review rigor is stage-keyed → conforms, and this plan is its consequence for verification: the inner stage stops treating a suite that has not run yet as a finding, and the boundary stage keeps it at full weight"
       - "review wall-clock is P0 → conforms: removes a suite run per chunk and the round a stale-suite finding rides in"
+      - "proportionality ratchets both ways → inapplicable, because no control is added or removed; a severity is moved by stage"
+      - "state-file growth is advisory, never a block → inapplicable, because no state file changes"
   - artifact: delegation-and-verification-cost-discovery
     dispositions:
       - "ruling 6, prawduct states the goal not the mechanism → conforms: the goal is 'the declared suite passes on the tree that ships'; when a project runs it more often is its own free-text row"
@@ -50,10 +52,22 @@ carriers in `plugin/skills/doctor/SKILL.md` (the row-drafting guidance, twice in
 first sweep's truncated output hid; `tests/test_suite_at_boundary.py` now pins every carrier and the
 retired wording's absence.
 
-`[DECISION: declared token raises — building.md 5055→5072, goals-1-3.md 2652→2665,
-review-protocol.md 4392→4399, and the reviewer-payload sums they feed (single-pass-inner +13,
-single-pass-full +7, dispatched +7; chunk and verify-resolutions per-mode loads +13), priced against
-the per-chunk suite run the inner reviewer no longer recommends | each sentence is the one place its reader meets the rule, compressed in
+**Cumulative review fixes (rev-20260923T141653Z-eef4d53b, 0B/4W):** the boundary is defined as
+where work LANDS on the integration branch, so direct-commit repos and work ending on a single
+`final` still owe the suite, and `final` reports a stale record as an observation; `building.md`
+dropped "once" (the session-start baseline also runs it) and its Verify bullet says what a chunk
+runs; three more carriers fixed — the build-plan template's Chunk 01 gate, the janitor skill's Step
+6, and `briefing.py`'s fallback Critical Rules, which reach delegates; the per-file absence pins
+became one scan over every shipped `.md`/`.py` under `plugin/`, with reach checks on the carriers
+the first sweep missed. `tests/test_v5_templates.py`'s runner-neutral criterion test renegotiated:
+a chunk's bar is its own tests.
+
+`[DECISION: declared token raises — building.md 5055→5093, goals-1-3.md 2652→2665,
+review-protocol.md 4392→4412, critic/SKILL.md 3680→3684, and the reviewer-payload sums they feed
+(single-pass-inner +17, single-pass-full +24, dispatched +20; chunk and verify-resolutions per-mode
+loads +13), priced against the per-chunk suite run the inner reviewer no longer recommends; the
+second half of each raise is the landing-based boundary definition the cumulative review asked for
+| each sentence is the one place its reader meets the rule, compressed in
 place first, and there was no duplication to pay from; a default every consumer inherits is owed at
 each surface | user can veto/override]`
 
@@ -68,4 +82,4 @@ place or declare a raise with its reason); targeted tests green; one `/prawduct:
 
 ## Status
 
-- [ ] Chunk 1: move the suite to the boundary
+- [x] Chunk 1: move the suite to the boundary

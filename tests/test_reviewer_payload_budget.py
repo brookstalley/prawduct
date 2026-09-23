@@ -159,7 +159,10 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # this route loads. Priced against the SUM: 13 tokens per review against a full declared-suite
     # run per chunk that the inner reviewer no longer asks for (minutes each, on this repo ~5), and
     # the round a stale-evidence finding used to ride in. Compressed in place before declaring.
-    "single-pass-inner": 6345,
+    # +4 more, same PR after its cumulative review, DECLARED: the stale verdict at `final` becomes an
+    # observation that the suite is owed before the work lands, so direct-commit and final-only
+    # paths are not left with nothing flagging a missing suite run.
+    "single-pass-inner": 6349,
     # RAISED +43 (reviewer-prompt-file-list, 2026-09-22), DECLARED: all of it the
     # `review-protocol.md` template change that sends coordinator reviewers to the
     # manifest for their file sets; see the dispatched-reviewer entry for the price.
@@ -168,7 +171,10 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # this route loads. Priced against the SUM: 7 tokens per review against a full declared-suite
     # run per chunk that the inner reviewer no longer asks for (minutes each, on this repo ~5), and
     # the round a stale-evidence finding used to ride in. Compressed in place before declaring.
-    "single-pass-full": 20427,
+    # +17 more, same PR after its cumulative review, DECLARED: the stale verdict at `final` becomes an
+    # observation that the suite is owed before the work lands, so direct-commit and final-only
+    # paths are not left with nothing flagging a missing suite run.
+    "single-pass-full": 20444,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -205,13 +211,16 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # this route loads. Priced against the SUM: 7 tokens per review against a full declared-suite
     # run per chunk that the inner reviewer no longer asks for (minutes each, on this repo ~5), and
     # the round a stale-evidence finding used to ride in. Compressed in place before declaring.
-    "dispatched-reviewer": 19633,
+    # +13 more, same PR after its cumulative review, DECLARED: the stale verdict at `final` becomes an
+    # observation that the suite is owed before the work lands, so direct-commit and final-only
+    # paths are not left with nothing flagging a missing suite run.
+    "dispatched-reviewer": 19646,
 }
 
 PAYLOAD_CEILINGS = {
-    "single-pass-inner": 6346,
-    "single-pass-full": 20428,
-    "dispatched-reviewer": 19634,
+    "single-pass-inner": 6350,
+    "single-pass-full": 20445,
+    "dispatched-reviewer": 19647,
 }
 
 

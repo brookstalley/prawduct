@@ -453,7 +453,8 @@ LAST_MEASURED_TOKENS = {
     # non-blocking fix mid-plan. Scoped to "while a blocker remains" and pointed at
     # NEXT-ACTION for the rest. DECLARED: a correction, compressed in place first.
     # RAISED 5055 -> 5072, #820 (owner decision 2026-09-23): the declared suite moves from every chunk's Verify to the boundary — a default every consumer inherits, so the sentence carrying it is owed at each surface its reader meets. Compressed in place first; no duplication to pay from. DECLARED.
-    "methodology/building.md": 5072,
+    # RAISED 5072 -> 5093, same PR, after its cumulative review (W1/W3): the boundary is defined as where work LANDS, so direct-commit repos and work ending on a single `final` still owe the suite, and `final` reports a stale record as an observation. Compressed in place first. DECLARED.
+    "methodology/building.md": 5093,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -605,7 +606,8 @@ LAST_MEASURED_TOKENS = {
     # sum: the coordinator stops writing each file list three times in a row, which
     # on a large review is thousands of output tokens on the dispatch critical path.
     # RAISED 4392 -> 4399, #820 (owner decision 2026-09-23): the declared suite moves from every chunk's Verify to the boundary — a default every consumer inherits, so the sentence carrying it is owed at each surface its reader meets. Compressed in place first; no duplication to pay from. DECLARED. (stale suite: WARNING at `cumulative`, none at `final`.)
-    "skills/critic/review-protocol.md": 4399,
+    # RAISED 4399 -> 4412, same PR, after its cumulative review (W1/W3): the boundary is defined as where work LANDS, so direct-commit repos and work ending on a single `final` still owe the suite, and `final` reports a stale record as an observation. Compressed in place first. DECLARED.
+    "skills/critic/review-protocol.md": 4412,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -994,7 +996,8 @@ LAST_MEASURED_TOKENS = {
     # to a file nothing parses. Paid in place first: the row drafted at +81
     # carried its own remedy, which now rides the refusal's stderr (read only
     # when it fires); what remains is the row itself, which has no duplicate.
-    "skills/critic/SKILL.md": 3680,
+    # RAISED 3680 -> 3684 (#820), same PR, after its cumulative review (W1/W3): the boundary is defined as where work LANDS, so direct-commit repos and work ending on a single `final` still owe the suite, and `final` reports a stale record as an observation. Compressed in place first. DECLARED.
+    "skills/critic/SKILL.md": 3684,
     "skills/critic/framework-checks.md": 1116,
     # The on-demand class, first recorded 2026-08-19 (#688) — readings, no
     # ceilings; the block above this dict is the decision and its reasoning.
@@ -2672,7 +2675,7 @@ class TestBuildingMethodology:
         # declared suite moved from every chunk's Verify to the boundary. The
         # clause's job is unchanged — say when the suite IS owed — so the
         # assertion follows the new statement and pins the old one gone.
-        assert "The declared suite runs once, at the boundary" in cycle, (
+        assert "The declared suite runs at the boundary, before the work lands" in cycle, (
             "nothing in the build cycle says when the declared suite IS owed — "
             "without it the ceiling reads as a rigor discount"
         )
@@ -3074,7 +3077,7 @@ class TestBuildingMethodology:
         # other's delta as silent slack.
         # RAISED 5039 -> 5056 (review-interval-extension PR review, 2026-09-22) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 5056 -> 5073 (#820, suite at the boundary, 2026-09-23) — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 5073, f"building.md is ~{tokens} tokens, should be <5073"
+        assert tokens < 5094, f"building.md is ~{tokens} tokens, should be <5094"
 
 
 # =============================================================================
@@ -4773,7 +4776,7 @@ class TestCriticSkill:
         # RATCHETED 4356 -> 4350 (review-interval-extension, 2026-09-22) with the reading.
         # RAISED 4350 -> 4393 (reviewer-prompt-file-list, 2026-09-22) — see LAST_MEASURED_TOKENS.
         # RAISED 4393 -> 4400 (#820, 2026-09-23) — see LAST_MEASURED_TOKENS.
-        assert tokens < 4400, f"review-protocol.md is ~{tokens} tokens, should be <4400"
+        assert tokens < 4413, f"review-protocol.md is ~{tokens} tokens, should be <4413"
 
 
 # =============================================================================
@@ -5307,7 +5310,8 @@ class TestCriticSkillRoutesByMode:
         # RATCHETED 3657 -> 3652 (review-interval-extension PR review, 2026-09-22) with the reading.
         # RAISED 3652 -> 3681 (review-scrub-seams, 2026-09-22): the exit-6 row;
         # the reason is at the LAST_MEASURED_TOKENS entry.
-        assert tokens < 3681, f"SKILL.md is ~{tokens} tokens, should be <3681"
+        # RAISED 3681 -> 3685 (#820, 2026-09-23) — see LAST_MEASURED_TOKENS.
+        assert tokens < 3685, f"SKILL.md is ~{tokens} tokens, should be <3685"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))

@@ -13,11 +13,11 @@
 changed again within the hour, and the inner-stage Critic reported the not-yet-run suite as stale
 evidence and recommended a run (#820). **This changes a default every governed repo inherits.** A
 chunk's Verify now runs the project's `Inner-loop verification` row (else the tests for the files
-touched), and the declared suite runs once, at the boundary: before the `cumulative` review and the
-PR. A project that wants the suite at every chunk says so in that same free-text row. No new setting
+touched), and the declared suite runs at the boundary: before the work lands on the integration
+branch (the `cumulative` review and the PR, where there are ones). A project that wants the suite at every chunk says so in that same free-text row. No new setting
 and no framework vocabulary were added: the owner ruled on #820 to derive the default from the stage,
-which the stage-keyed review-rigor norm and the #747 ruling ("the testing burden sits at entry to
-develop") already imply. The inner-stage reviewer (`chunk`, `verify-resolutions`, `final`) now reads a
+which the stage-keyed review-rigor norm and the #747 ruling (the testing burden "sits intentionally
+at entry to develop") already imply. The inner-stage reviewer (`chunk`, `verify-resolutions`, `final`) now reads a
 stale or missing record as the normal in-flight state and raises no finding; `cumulative` keeps it a
 WARNING, and failing evidence stays BLOCKING at every stage. The template row and the doctor's
 row-drafting guidance say the same.

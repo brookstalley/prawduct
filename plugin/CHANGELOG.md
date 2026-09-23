@@ -16,6 +16,23 @@ release process keeps the two in sync (one headline per shipped release).
 Entries accumulate here as work lands on `develop`; the cut renames this heading to its
 release number.
 
+**`suite-at-boundary`** — **the declared test suite now runs at the boundary, not at every
+chunk.** This changes a default your repo inherits. A chunk's Verify step runs your
+`Inner-loop verification` row (or, if it is unset, the tests for the files the chunk touched), and
+the declared suite runs at the boundary: before the work lands on your integration branch, which is
+the `cumulative` review and the PR where you have them. Chunk-stage Critic reviews no longer report
+a not-yet-run suite as stale evidence or recommend running it; a `final` review notes that the suite
+is still owed, `cumulative` still reports it as a warning, and failing tests still block at every
+stage. To keep a full run at every chunk, say so in your `project-preferences.md`
+`Inner-loop verification` row. If that row still holds the shipped placeholder text, which says the
+suite runs at Verify, that is the old default's wording, not a request for per-chunk runs;
+`/prawduct:doctor` drafts the row against the new default.
+
+**`failing-test-ids`** — `test-status` names the failing tests. `test-evidence record` used to keep
+only the failure count, so finding out which tests failed meant running the suite again. It now
+keeps the failing test ids from the junit report it parses (up to 100). `test-status`, the
+`recorded:` line and the PR review payload name the first ten and count the rest.
+
 **`learnings-migrate-local`** — `prawduct-hook learnings-migrate --local` migrates a repo that
 keeps its learnings out of git on purpose. Previously the migration refused there, because its undo
 is a commit, and the Stop hook's `learnings-unmigrated` gate then blocked every session that changed

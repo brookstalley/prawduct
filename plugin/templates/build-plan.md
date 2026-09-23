@@ -195,7 +195,7 @@ Routes never touch SQLite directly — persistence goes through `store.py`. Temp
 - **Artifacts consumed:** `data-model.md` (Item entity), `test-specifications.md` §1
 - **Deliverables:** new `pantry/main.py`, new `pantry/store.py`, new `templates/list.html`, seeded dev database
 - **Tests:** unit — `store.py` CRUD; integration — GET / renders seeded items (httpx)
-- **Acceptance criteria:** the declared suite passes; browser shows the seeded list at /
+- **Acceptance criteria:** the chunk's own tests pass; browser shows the seeded list at /
 - **Done when:**
   1. Acceptance criteria met and tests pass
   2. `/prawduct:critic` run and blocking findings resolved
