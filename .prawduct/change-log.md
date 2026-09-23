@@ -22,8 +22,17 @@ Under `--local`, the refusals that exist because git is the undo give way to the
 cannot give back, uncommitted changes, git unable to say whether there are any, and the ignored
 destination. The refusals that guard against loss still stand: the byte accounting, a map key naming
 no section, and a two-corpus `both`. Outside a git repo `--local` refuses and says to run without it,
-since there is no git undo to replace there. The refusals it answers now name it, so an operator
-stuck on one is pointed to the route that reaches the migrated state.
+since there is no git undo to replace there. The two refusals whose own remedy (commit it, unignore
+it) would publish the notes now name `--local`, so an operator stuck on one is pointed to the route
+that reaches the migrated state. Undoing a `--local` migration is two steps, and the success message
+says both: delete the rules files it wrote, then copy the backup back. Copying back alone leaves both
+layouts on disk, which the Stop gate blocks.
+
+The session briefing's gitignored-rules suffix no longer says "unignore .claude/rules/". After a
+`--local` migration the tree is ignored on purpose, and an agent told every session to unignore it
+is one `git add -A` from publishing the notes. It now states the consequence: the tree exists only
+in this checkout and a clone will not have it. `test_gitignored_rules_tree_is_named` pins the new
+wording, and a new test pins the absence of the instruction on a `--local`-migrated repo.
 
 Checked before building: Claude Code loads `.claude/rules/` from disk whether or not git ignores it
 (a headless session in a repo ignoring `.claude/*` quoted a canary rule verbatim), so a local

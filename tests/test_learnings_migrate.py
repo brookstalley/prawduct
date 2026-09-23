@@ -1509,11 +1509,37 @@ class TestLocalCommand:
         # The git-commit undo sentence is false here and must not be printed.
         assert "the commit is this migration's undo" not in proc.stdout
 
+    def test_the_undo_names_both_steps(self, tmp_path: Path):
+        """The backup holds only what was deleted. Copying it back without
+        first removing the written rules files leaves a `both`, which the Stop
+        gate blocks and the briefing answers with "re-run the migration" — so an
+        undo stated as one step routes the operator into redoing the migration."""
+        root = local_repo(tmp_path)
+        out = " ".join(run_hook(root, "--apply", "--local").stdout.split())
+        assert "delete the rules files written above, THEN copy the backup" in out
+
+    def test_a_failed_backup_says_nothing_was_written(
+        self, tmp_path: Path
+    ):
+        """The generic interrupt text promises a half-written tree to finish;
+        a backup failure happens before the first write, so there is none."""
+        root = local_repo(tmp_path)
+        blocker = root / ".git" / "prawduct"
+        blocker.parent.mkdir(parents=True, exist_ok=True)
+        blocker.write_text("a file where the backup directory must go\n")
+        proc = run_hook(root, "--apply", "--local")
+        assert proc.returncode == 1
+        assert "Nothing was written or deleted" in proc.stderr
+        assert "half-written tree" not in proc.stderr
+        assert (root / lf.LEGACY_REL).is_file()
+        assert not (root / lf.RULES_DIR_REL).exists()
+
     def test_the_dry_run_names_the_backup_and_creates_nothing(self, tmp_path: Path):
         root = local_repo(tmp_path)
         proc = run_hook(root, "--local")
         assert proc.returncode == 0, proc.stderr
         assert "learnings-backup" in proc.stdout
+        assert "`--apply --local --map <file>`" in proc.stdout
         assert backups_under(root) == []
         assert (root / lf.LEGACY_REL).is_file()
 

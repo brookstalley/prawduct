@@ -44,7 +44,9 @@ a public product whose learnings hold private operational notes, where "commit
 it first" and "unignore it" are both ways of publishing them. There the undo
 cannot be a commit, so ``--local`` makes it a **byte-verified backup** under
 ``<git-common-dir>/prawduct/learnings-backup/<UTC stamp>/``, written before
-anything else is. The git dir is the one place in the tree no ``git add`` can
+anything else is. Undoing takes two steps, because the backup holds only what
+was deleted: remove the rules files the migration wrote, then copy the backup
+back. Copying it back alone leaves both layouts on disk. The git dir is the one place in the tree no ``git add`` can
 reach, and the *common* dir outlives a ``git worktree remove``. Under
 ``--local`` every refusal whose reason is "git is the undo" gives way to the
 backup — a corpus git cannot give back, uncommitted changes, git being unable
@@ -687,10 +689,11 @@ def unrecoverable_legacy_files(project_dir: str | Path) -> list[tuple[str, str]]
     return out
 
 
-#: Appended to each refusal ``--local`` answers, so the refusal a stuck
-#: operator reads names the route that reaches the migrated state. Without it
-#: the only remedies on offer — commit it, unignore it — both publish a corpus
-#: the repo ignored to keep private.
+#: Appended to the two refusals whose own remedy — commit it, unignore it —
+#: publishes a corpus the repo ignored to keep private, so the operator stuck on
+#: one is shown the route that reaches the migrated state. The other two undo
+#: refusals (uncommitted changes, git unable to answer) name remedies that work
+#: in any repo, so they are left alone.
 LOCAL_ROUTE = (
     " If these learnings stay out of git on purpose, re-run with --local: it "
     "keeps a private backup as the undo instead."
@@ -993,19 +996,30 @@ def plan(
         else:
             stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
             backup_dir = base / stamp
-        return Plan(
-            state=layout.state,
-            outputs=outputs,
-            deletions=deletions,
-            refusals=refusals,
-            sections=sections,
-            unmapped=unmapped,
-            merges=merges,
-            dropped=dropped,
-            resumed=resumed,
-            backup_dir=backup_dir,
-        )
+    else:
+        refusals.extend(_undo_refusals(root))
 
+    return Plan(
+        state=layout.state,
+        outputs=outputs,
+        deletions=deletions,
+        refusals=refusals,
+        sections=sections,
+        unmapped=unmapped,
+        merges=merges,
+        dropped=dropped,
+        resumed=resumed,
+        backup_dir=backup_dir,
+    )
+
+
+def _undo_refusals(root: Path) -> list[str]:
+    """The refusals that exist because a git commit is this migration's undo.
+
+    One function so ``--local``, which replaces that undo with a backup, skips
+    exactly these and nothing else.
+    """
+    refusals: list[str] = []
     for rel, why in unrecoverable_legacy_files(root):
         refusals.append(
             f"{rel} is {why}, so git cannot give it back once --apply deletes "
@@ -1035,18 +1049,7 @@ def plan(
             "would delete tracked files and write files git never sees. "
             "Unignore .claude/rules/ first." + LOCAL_ROUTE
         )
-
-    return Plan(
-        state=layout.state,
-        outputs=outputs,
-        deletions=deletions,
-        refusals=refusals,
-        sections=sections,
-        unmapped=unmapped,
-        merges=merges,
-        dropped=dropped,
-        resumed=resumed,
-    )
+    return refusals
 
 
 def apply(project_dir: str | Path, migration: Plan) -> list[str]:

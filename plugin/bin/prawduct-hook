@@ -7545,12 +7545,22 @@ def cmd_learnings_migrate(project_dir: Path, argv: list[str]) -> int:
             print(f"learnings-migrate: INTERRUPTED — {exc}", file=sys.stderr)
             for rel in exc.written:
                 print(f"  wrote {rel}", file=sys.stderr)
-            print(
-                "  Nothing was deleted that had not been written first. Re-run "
-                "the same command: it recognises this half-written tree and "
-                "finishes it.",
-                file=sys.stderr,
-            )
+            if exc.written:
+                print(
+                    "  Nothing was deleted that had not been written first. Re-run "
+                    "the same command: it recognises this half-written tree and "
+                    "finishes it.",
+                    file=sys.stderr,
+                )
+            else:
+                # The --local backup runs before the first write, so a failure
+                # there leaves the tree untouched: there is no half-written tree
+                # to finish, only a cause to fix.
+                print(
+                    "  Nothing was written or deleted. Fix the cause above and "
+                    "re-run the same command.",
+                    file=sys.stderr,
+                )
             return 1
         except (OSError, learnings_migrate.MigrateRefused) as exc:
             print(f"learnings-migrate: failed — {exc}", file=sys.stderr)
@@ -7567,9 +7577,10 @@ def cmd_learnings_migrate(project_dir: Path, argv: list[str]) -> int:
             if backup is not None:
                 print(
                     f"migrated {migration.rules} rules into {len(migration.outputs)} "
-                    f"file(s). Backed up every deleted file to {backup} — that copy "
-                    "is this migration's undo: copy its files back to restore. "
-                    "Commit whatever of this change git tracks."
+                    f"file(s). Backed up every deleted file to {backup}. To undo: "
+                    "delete the rules files written above, THEN copy the backup's "
+                    "files back into the repo — copying back alone leaves both "
+                    "layouts on disk. Commit whatever of this change git tracks."
                 )
             else:
                 print(

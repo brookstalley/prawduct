@@ -20,8 +20,10 @@ release number.
 keeps its learnings out of git on purpose. Previously the migration refused there, because its undo
 is a commit, and the Stop hook's `learnings-unmigrated` gate then blocked every session that changed
 code. With `--local`, the migration first copies every file it will delete into a backup inside the
-git directory, where nothing can commit it, and verifies each copy. That backup is the undo. The
-checks that guard against losing rules still apply.
+git directory, where nothing can commit it, and verifies each copy. To undo, delete the rules files
+it wrote, then copy the backup back. The checks that guard against losing rules still apply. The
+session briefing's note about a gitignored `.claude/rules/` now states that the rules exist only in
+this checkout, rather than telling the agent to unignore them.
 
 **`reviewer-prompt-file-list`** — on a three-reviewer Critic review, the reviewers now start
 sooner on large diffs. The Critic used to paste the full subject and oracle file lists into each
