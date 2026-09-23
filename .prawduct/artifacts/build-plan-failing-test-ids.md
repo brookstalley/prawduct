@@ -88,4 +88,4 @@ payload all print that reason, so one edit reaches all three | vetoable]`
 
 ## Status
 
-- [ ] Chunk 1: record and print the failing test ids
+- [x] Chunk 1: record and print the failing test ids
