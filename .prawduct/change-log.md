@@ -5,6 +5,21 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-23: test evidence names the failing tests, not just the count
+
+<!-- prawduct: type=fix | scope=failing-test-ids -->
+
+`test-evidence record` wrote `failed: 2` and nothing else, and deleted the junit report it had
+parsed, so `test-status` exited 1 with no names and finding the two failures cost a second
+full-suite run (#792). The recorder now keeps the failing ids from that report as `failed_tests`,
+written `classname::name` from junit's own attributes rather than any one runner's id, in report
+order, up to 100. The `recorded:` line and the failing-record reason name the first ten, then count
+the names the record holds but did not print apart from the failures it holds no name for. That reason is what `test-status`, the PR-gate transfer and the PR review payload
+print, so all three name the failures. A restamp carries the names forward with the counts they
+explain. The key is absent when no ids were visible (a pass, `--from-counts`, a summary-only suite),
+and `failed` stays the count of record. It is kept out of the evidence schema on purpose: it is only
+ever printed, so a malformed value is ignored rather than allowed to turn a passing record stale.
+
 ## 2026-09-22: the PR reviewer's context claim now names path-scoped rules
 
 <!-- prawduct: type=fix | scope=pr-reviewer-path-scoped-rules -->

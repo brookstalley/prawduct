@@ -3775,6 +3775,24 @@ def _scope_refusal_remedy(cause: str | None) -> str:
     )
 
 
+#: How many failing ids a record keeps. The names exist so a reader can go
+#: straight to the broken tests instead of re-running the suite; past this many
+#: the run is broadly broken and the first hundred say as much as the rest.
+_FAILED_TESTS_CAP = 100
+
+
+def _junit_case_id(case) -> str:
+    """A ``<testcase>``'s id as ``classname::name``, or ``name`` alone when the
+    reporter wrote no classname.
+
+    Built from junit's own attributes rather than a runner's id (a pytest node
+    id) so the record reads the same for every ecosystem; the fallbacks exist
+    because not every reporter fills both."""
+    name = case.get("name") or "(unnamed)"
+    classname = case.get("classname")
+    return f"{classname}::{name}" if classname else name
+
+
 def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     """Run the suite and WRITE ``.prawduct/.test-evidence.json`` (TST-6V2N).
 
@@ -4148,6 +4166,7 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
                 return 2
 
     roots: list = []  # parsed JUnit roots (run or --from-junit); empty for counts/restamp
+    failed_ids: list[str] = []  # failing leaf ids, report order; empty when none were visible
     run_returncodes: list[int] = []  # one per executed command; empty when nothing ran
 
     if no_rerun:
@@ -4233,6 +4252,12 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         prior_degraded = prior.get("degraded")
         if not degraded_reason and isinstance(prior_degraded, str) and prior_degraded.strip():
             degraded_reason = prior_degraded.strip()
+        # The same holds for the failing names: the counts are reused, so the
+        # names that explain them are too, or a restamp prints `failed: 3` with
+        # the answer to "which three?" silently gone.
+        prior_ids = prior.get("failed_tests")
+        if isinstance(prior_ids, list):
+            failed_ids = [i for i in prior_ids if isinstance(i, str)]
     elif from_counts is not None:
         # Agnostic on-ramp (no XML, no subprocess): record the counts as given.
         # The F4a overlay below still recomputes the changed-file half against
@@ -4440,23 +4465,23 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
                 leaves = list(s.iter("testcase"))
                 if leaves:
                     total += len(leaves)
-                    # Precedence, most severe first: a case carrying both <error>
-                    # and <failure> counts once, as an error. `skipped` loses to
-                    # both — a case that errored is not a skip, whatever else it
-                    # carries.
-                    errors += sum(1 for c in leaves if c.find("error") is not None)
-                    failures += sum(
-                        1
-                        for c in leaves
-                        if c.find("error") is None and c.find("failure") is not None
-                    )
-                    skipped += sum(
-                        1
-                        for c in leaves
-                        if c.find("error") is None
-                        and c.find("failure") is None
-                        and c.find("skipped") is not None
-                    )
+                    # Each leaf is classified ONCE, and the failing ids are
+                    # collected from that same verdict, so the names and the
+                    # counts cannot come to disagree. Precedence, most severe
+                    # first: a case carrying both <error> and <failure> counts
+                    # once, as an error. `skipped` loses to both — a case that
+                    # errored is not a skip, whatever else it carries.
+                    for c in leaves:
+                        if c.find("error") is not None:
+                            errors += 1
+                        elif c.find("failure") is not None:
+                            failures += 1
+                        elif c.find("skipped") is not None:
+                            skipped += 1
+                            continue
+                        else:
+                            continue
+                        failed_ids.append(_junit_case_id(c))
                 else:
                     # Summary-only suite: its attributes are the only evidence it
                     # carries, so recording a confident 0 would discard a whole
@@ -4556,6 +4581,13 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         # Omit (never null) when uncaptured, so a record without the field falls
         # through to timestamp-only freshness — the clause is additive.
         record["evidence_tree"] = evidence_tree
+    if failed_ids:
+        # Omitted (never `[]`) when no failing id was visible: absence means
+        # "no per-test ids" — a pass, `--from-counts`, a summary-only suite —
+        # and `failed` stays the count of record. Capped so a mass failure
+        # cannot grow the file every gate reads; `failed` still says how many
+        # the cap left out.
+        record["failed_tests"] = failed_ids[:_FAILED_TESTS_CAP]
     if degraded_reason:
         # Presence is the flag; an ordinary run omits the key entirely rather
         # than writing a false, so every record written before the field existed
@@ -4632,9 +4664,15 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         if degraded_reason
         else ""
     )
+    failing = (
+        "\n  failing: " + _gates().name_failing_tests(record.get("failed_tests"), failed)
+        if failed_ids
+        else ""
+    )
     print(
         f"{verb}: {passed} passed, {failed} failed, {skipped} skipped "
-        f"in {record['duration_seconds']}s ({record['timestamp']}){provenance}{degradation}"
+        f"in {record['duration_seconds']}s ({record['timestamp']}){provenance}"
+        f"{failing}{degradation}"
         + (
             _GREEN_IS_EVIDENCE_DIRECTIVE
             if _evidence_changed_judged_code(evidence_path)
