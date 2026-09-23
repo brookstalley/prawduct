@@ -74,10 +74,10 @@ when you start. That is deliberate and it is not a gap you should work around by
 yourself.
 
 One kind of rules file still reaches you: a **path-scoped** one, whose `paths:` frontmatter
-matches a file you Read, arrives as a system message after that Read. Opening almost any
-governance file pulls in a learnings area file this way (measured 2026-09-22, #888), and no
-agent setting prevents it. Treat it as you would the learnings you were not given: it is not a
-checklist to scan the diff against.
+matches a file you Read, arrives as a system message after that Read (measured 2026-09-22,
+#888). In a repo whose learnings area files cover its governance paths, reading one of those
+pulls an area file in, and Claude Code documents no agent setting that prevents it. Treat it as
+you would the learnings you were not given: it is not a checklist to scan the diff against.
 
 The learnings are the sharp case. `review-protocol.md`'s Learnings Cross-Check assigns the
 diff-versus-rules scan to the `final`/`cumulative` Critic and forbids it to you — the same diff

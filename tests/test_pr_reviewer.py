@@ -827,8 +827,9 @@ class TestPrReviewSkillContent:
         This used to assert the protocol names `core.md` and the command that
         enumerates the area files. Both reads are gone, and the reason is not
         "they arrive by auto-injection" — the `pr-reviewer` agent's
-        `omitClaudeMd: true` removes that path too, so a reason resting on it
-        would be false in the same change. The two that survive: the goal
+        `omitClaudeMd: true` removes that path at dispatch (a path-scoped area
+        file can still arrive on a matching Read, #888), so a reason resting on
+        it would be false in the same change. The two that survive: the goal
         consuming the read returned 1 finding in 122 reviews, and the protocol's
         own Learnings Cross-Check assigns that scan to the final/cumulative
         Critic, so this reviewer was forbidden to perform it.
@@ -851,7 +852,7 @@ class TestPrReviewSkillContent:
         # POSITIVE: the owner of the scan, and the fact that the omission is
         # deliberate, both survive.
         assert "Critic owns this scan" in content
-        assert "not given the learnings at all" in content
+        assert "not given the learnings at dispatch" in content
         assert "1 finding in 122 reviews" in content, (
             "the deletion's measured reason has to travel with it, or the next "
             "editor reads the absence as an oversight and restores the read"

@@ -147,21 +147,36 @@ class TestClaudeMdIsOmitted:
         )
         assert re.search(r"^omitClaudeMd:", _frontmatter(AGENT_DEF), re.MULTILINE)
 
-    def test_both_surfaces_name_what_the_omission_does_not_cover(self):
+    def test_every_surface_names_what_the_omission_does_not_cover(self):
         """Measured 2026-09-22 (#888): two reviewer runs received the
         `authoring.md` learnings area file after a Read its `paths:` matched,
         and a control that Read an unmatched path received nothing. Claude Code
-        documents no per-agent setting that stops it. Both surfaces had claimed
-        the whole of `.claude/rules/` was kept out; an agent told that reads an
-        arriving area file as an instruction it was meant to have. So each
-        surface must name the path-scoped case, and the agent must be told what
-        to do with the file.
+        documents no per-agent setting that stops it. Three surfaces had
+        claimed the reviewer gets no learnings at all; a reviewer told that
+        reads an arriving area file as an instruction it was meant to have.
+
+        Each assertion is bound to the sentence carrying the correction, not
+        to the file: `pr-reviewer.md` said "path-scoped" (of `Write`) before
+        this change, so a whole-file search could not fail.
         """
+        def flat(text: str) -> str:
+            return " ".join(text.split())
+
         body = AGENT_DEF.read_text().split("---\n", 2)[2]
-        assert "path-scoped" in body
-        assert "not a checklist to scan the diff against" in " ".join(body.split())
-        step3 = " ".join(_step3_of(SKILL.read_text()).split())
+        rest = body[body.index("## What your context does not contain"):]
+        end = rest.find("\n## ", 1)
+        section = flat(rest if end < 0 else rest[:end])
+        assert "its always-loaded `.claude/rules/` project rules" in section
+        assert "One kind of rules file still reaches you: a **path-scoped** one" in section
+        assert "it is not a checklist to scan the diff against" in section
+
+        step3 = flat(_step3_of(SKILL.read_text()))
+        assert "its always-loaded `.claude/rules/` files" in step3
         assert "does not stop a **path-scoped** rules file" in step3
+
+        protocol = flat(PROTOCOL.read_text())
+        assert "not given the learnings at dispatch" in protocol
+        assert "a path-scoped learnings file can still arrive" in protocol
 
     def test_the_agent_is_told_not_to_read_around_the_omission(self):
         body = AGENT_DEF.read_text()

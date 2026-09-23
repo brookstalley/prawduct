@@ -9,14 +9,15 @@
 
 <!-- prawduct: type=fix | scope=pr-reviewer-path-scoped-rules -->
 
-`pr/SKILL.md` Step 3 and the `pr-reviewer` agent both said `omitClaudeMd: true` keeps
-`.claude/rules/` out of the reviewer's context. It keeps out the always-loaded files, but not a
+`pr/SKILL.md` Step 3, the `pr-reviewer` agent and `review-protocol.md`'s Learnings Cross-Check
+all said the reviewer is given no learnings (`omitClaudeMd: true` keeps `.claude/rules/` out). It keeps out the always-loaded files, but not a
 path-scoped one (#888). Measured this session: a `pr-reviewer` that Read `plugin/skills/pr/SKILL.md`
 received `.claude/rules/learnings/authoring.md` as a system message and quoted its headings
 verbatim, and a control that Read `documentation/purpose.md` received nothing. Claude Code's
-subagent documentation describes no per-agent setting that stops this. Both surfaces now state the
-limit, and the agent is told to treat an arriving area file as learnings it was not given, not as
-a checklist. `tests/test_pr_reviewer_agent.py` pins both.
+subagent documentation describes no per-agent setting that stops this. All three surfaces now
+state the limit, and the agent is told to treat an arriving area file as learnings it was not
+given, not as a checklist. `tests/test_pr_reviewer_agent.py` pins each correction by its own
+sentence; a first cut searched the agent's whole body for "path-scoped", which it already held.
 
 The `critic-reviewer`, which declares no `omitClaudeMd`, received `core.md`, both `CLAUDE.md` files
 and `MEMORY.md` at dispatch, then `authoring.md` the same way. It uses learnings on purpose, so
