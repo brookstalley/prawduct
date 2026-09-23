@@ -12,9 +12,11 @@ hitting the 2-minute Bash ceiling, and the agent resorted to `timeout 200`.
 **This is a memo, not a second home for any fact** (``data-model.md``: *derived
 views are disposable and never authoritative — no gate reads a view to reach a
 verdict*). The distinction is the key: it covers EVERY input the verdict is a
-function of — the two endpoint trees and a content hash of the whole evidence
-store — so a hit replays a computation whose inputs are provably unchanged
-rather than substituting for one. A miss, an unreadable cache, a corrupt entry,
+function of — the two endpoint trees and a content hash of the evidence store
+(``coverage_fingerprint``: every line but the observational kinds the verdict
+never reads, :data:`evidence.OBSERVATIONAL_KINDS`) — so a hit replays a
+computation whose inputs are provably unchanged rather than substituting for
+one. A miss, an unreadable cache, a corrupt entry,
 or an unreadable store all recompute. There is no path on which the cache
 decides something the store would not.
 
@@ -26,9 +28,10 @@ object or a git failure makes ``key_fn`` return ``None``, which denies a free
 edge; it can never manufacture one. So git-side degradation moves the verdict
 only toward denial, and a verdict recorded under it can only be replayed as a
 denial. The residual, stated: an ``uncovered`` computed while an object was
-transiently unreadable is replayed until the store's next append changes the
-fingerprint. That is a false negative — the safe direction, and the one this
-subsystem's authority contract requires.
+transiently unreadable is replayed until the store's next append of any kind
+outside :data:`evidence.OBSERVATIONAL_KINDS` (so not a test-run or a guard
+firing) changes the fingerprint. That is a false negative — the safe direction,
+and the one this subsystem's authority contract requires.
 
 The cache lives beside the evidence store, in the per-clone gitignored area
 (``two stores, two lifetimes``) — never in committed state.
@@ -230,7 +233,7 @@ class VerdictCache:
         Taking both from one read makes the pairing structural — there is no
         window to lose.
         """
-        return cls(cache_path(project_dir), read.get("fingerprint"))
+        return cls(cache_path(project_dir), read.get("coverage_fingerprint"))
 
     @property
     def enabled(self) -> bool:

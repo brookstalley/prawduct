@@ -17,9 +17,9 @@ consumer migration, C9 tier 1).
      "body": {...}}
 
 ``schema`` rides on every record so readers can reject-or-skip explicitly
-(C7); ``kind`` namespaces the store (``review``/``resolution``/``disposition``
-now; ``test-run``/``pr-review``/``promotion`` reserved for later constituent
-plans); ``id`` is fixed at dispatch time so consolidation is idempotent
+(C7); ``kind`` namespaces the store (:data:`KNOWN_KINDS` is the set written
+today; ``pr-review``/``promotion`` are reserved for later constituent plans);
+``id`` is fixed at dispatch time so consolidation is idempotent
 (CRT-4B7X) and readers dedupe. ``actor`` answers the debugging question
 ("who wrote this, when, from where, under which plugin") — Q7. Its ``branch``
 is OPTIONAL and omitted (never null) when HEAD is detached or unreadable; it
@@ -81,7 +81,23 @@ SUPPORTED_SCHEMAS = frozenset({1})
 # facts alone, so a refusal contributes neither an edge nor a node. It lives
 # here rather than in the per-worktree governance ledger because these guards
 # fire in worktrees that are then deleted — see :func:`append_guard_refusal`.
-KNOWN_KINDS = frozenset({"review", "resolution", "disposition", "guard-refusal"})
+#
+# ``test-run`` records one recorded suite run: the tree it ran against and its
+# counts (:func:`append_test_run`). It is how a freshness check finds a green
+# run for a tree after the per-worktree ``.test-evidence.json`` has moved on to
+# another branch. Like ``guard-refusal`` it is observational to the COVERAGE
+# data plane — ``coverage_algebra`` never reads it. Its readers are the
+# test-evidence freshness fallback (``gates._store_run_vouching``), the one that
+# decides anything, and ``evidence list``, which only displays it.
+KNOWN_KINDS = frozenset(
+    {"review", "resolution", "disposition", "guard-refusal", "test-run"}
+)
+
+#: Kinds the coverage verdict never reads, so their lines are left out of
+#: ``coverage_fingerprint`` (:func:`read_facts`). Membership is a claim about
+#: ``coverage_algebra.coverage_verdict``'s inputs — review edges and the
+#: resolution index — and a kind joins only if that function cannot see it.
+OBSERVATIONAL_KINDS = frozenset({"guard-refusal", "test-run"})
 
 STORE_SUBDIR = "prawduct"
 STORE_BASENAME = "evidence.jsonl"
@@ -337,13 +353,12 @@ def append_guard_refusal(
     default one-record-per-firing shape is wrong twice over. ``critic-begin``
     runs once per dispatch, so a fresh id per firing counts dispatches; a gate
     is re-asked several times a session about an unchanged repo, so the same id
-    per *observation* is what counts events. It also has to be that way for a
-    reason outside this module: ``verdict_cache`` keys the composed coverage
-    verdict on a content hash of this whole store, so a record appended on every
-    poll would invalidate every memoized verdict on every poll and put the gate
-    back on its cold path. With a key, the id is a digest of ``(guard,
-    dedupe_key)`` — no timestamp, no uuid — and the second observation of the
-    same event appends nothing at all, leaving the store byte-identical.
+    per *observation* is what counts events. With a key, the id is a digest of
+    ``(guard, dedupe_key)`` — no timestamp, no uuid — and the second
+    observation of the same event appends nothing at all, so the store does not
+    grow a line per poll. (``verdict_cache``'s key leaves ``guard-refusal``
+    lines out — ``read_facts``'s ``coverage_fingerprint`` — so a firing never
+    evicts a cached verdict either way.)
 
     A deduped call returns ``{"status": "duplicate", "id": ...}``, which is a
     SUCCESS: the event is already on the record. Callers checking for a degraded
@@ -401,6 +416,31 @@ def append_guard_refusal(
     )
 
 
+def append_test_run(project_dir: Path, body: dict) -> dict:
+    """Record one suite run as a ``test-run`` fact. Returns
+    :func:`append_fact`'s result.
+
+    ``body`` carries ``tree`` (the working tree the run met, as
+    :func:`capture_tree` returned it), ``passed``/``failed``/``skipped``,
+    ``duration_seconds``, ``source`` (``run`` | ``from-junit``), ``head``
+    (the commit checked out, when there is one) and ``degraded`` when the run
+    reported itself so. A restamp records no fact: it measures nothing, and the
+    run whose counts it reuses already has its own. A later run on the same
+    tree is a NEW fact, and the newest one for a tree decides it, so a red
+    re-run supersedes an earlier green without editing the store.
+
+    Callers treat a failure as soft: the per-worktree record is already
+    written, so a lost fact costs a later re-run and never a wrong verdict.
+    """
+    if not isinstance(body, dict) or not isinstance(body.get("tree"), str):
+        return {"status": "error", "reason": "a test-run fact needs a tree"}
+    fact_id = "test-run-{}-{}".format(
+        datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"),
+        uuid.uuid4().hex[:8],
+    )
+    return append_fact(project_dir, "test-run", fact_id, body)
+
+
 def read_facts(project_dir: Path) -> dict:
     """Read the store. Returns::
 
@@ -408,14 +448,15 @@ def read_facts(project_dir: Path) -> dict:
          "facts": [envelope, ...],          # schema-supported, deduped, in order
          "schema_ahead": [{"line", "schema", "kind", "id"}, ...],
          "excluded": int, "duplicates": int,
-         "fingerprint": str | None}
+         "coverage_fingerprint": str | None}
 
-    ``fingerprint`` is a SHA-256 over exactly the text these facts were parsed
-    from, and ``None`` whenever there was none to parse (no repo, no store,
-    unreadable). Deterministic over what was parsed rather than over the bytes
-    on disk: ``read_text`` applies universal-newline translation, so on a CRLF
-    store the digest is of the normalized text — which is the right subject,
-    since it is the parse the caller is keying a function of.
+    ``coverage_fingerprint`` is a SHA-256 over the text these facts were parsed
+    from, minus the lines the coverage verdict cannot read (below), and
+    ``None`` whenever there was none to parse (no repo, no store, unreadable).
+    Deterministic over what was parsed rather than over the bytes on disk:
+    ``read_text`` applies universal-newline translation, so on a CRLF store the
+    digest is of the normalized text — which is the right subject, since it is
+    the parse the caller is keying a function of.
 
     It exists so a caller memoizing a function OF these facts can key on it
     without hashing the parsed structure — and, more to the point, without
@@ -425,11 +466,19 @@ def read_facts(project_dir: Path) -> dict:
     describe. Handing it back from the one read makes that impossible rather
     than unlikely.
 
-    It covers the WHOLE file, not the returned ``facts``. That is deliberate and
-    is not the same set: ``schema_ahead`` lines are filtered out of what this
-    returns, so a fingerprint over the filtered view would be blind to a newer
-    plugin's appends — the exact writes a reader most needs to notice it has not
-    seen.
+    It covers the file, not the returned ``facts``, and the two differ on
+    purpose: ``schema_ahead`` lines are filtered out of what this returns, so a
+    digest over the filtered view would be blind to a newer plugin's appends —
+    the exact writes a reader most needs to notice it has not seen.
+
+    The one carve-out is a well-formed schema-1 fact of an
+    :data:`OBSERVATIONAL_KINDS` kind. ``verdict_cache`` keys on this digest, and
+    the coverage verdict never reads those kinds, so leaving them out keeps the
+    memo's contract exact — its key still covers every input the verdict is a
+    function of — while a recorded suite run or a guard firing no longer makes
+    every cached verdict unreachable. What the carve-out may NOT take is
+    anything the verdict could depend on: an unparseable line, an unknown kind
+    or a schema-ahead line stays in.
 
     ``schema_ahead`` records were written by a NEWER plugin than this reader —
     they are never silently dropped into ``excluded``: gate callers must treat
@@ -446,7 +495,7 @@ def read_facts(project_dir: Path) -> dict:
             "schema_ahead": [],
             "excluded": 0,
             "duplicates": 0,
-            "fingerprint": None,
+            "coverage_fingerprint": None,
         }
     if not path.is_file():
         return {
@@ -455,7 +504,7 @@ def read_facts(project_dir: Path) -> dict:
             "schema_ahead": [],
             "excluded": 0,
             "duplicates": 0,
-            "fingerprint": None,
+            "coverage_fingerprint": None,
         }
     try:
         raw_text = path.read_text(encoding="utf-8")
@@ -471,10 +520,10 @@ def read_facts(project_dir: Path) -> dict:
             "schema_ahead": [],
             "excluded": 0,
             "duplicates": 0,
-            "fingerprint": None,
+            "coverage_fingerprint": None,
         }
 
-    fingerprint = hashlib.sha256(raw_text.encode('utf-8')).hexdigest()
+    coverage_hash = hashlib.sha256()
     raw_lines = raw_text.splitlines()
     facts: list[dict] = []
     schema_ahead: list[dict] = []
@@ -495,6 +544,7 @@ def read_facts(project_dir: Path) -> dict:
         try:
             record = json.loads(raw)
         except json.JSONDecodeError:
+            coverage_hash.update(raw.encode("utf-8") + b"\n")
             excluded += 1
             tail = (
                 " (torn tail from a crashed writer — heals on next append)"
@@ -507,6 +557,8 @@ def read_facts(project_dir: Path) -> dict:
                 file=sys.stderr,
             )
             continue
+        if not _is_observational(record):
+            coverage_hash.update(raw.encode("utf-8") + b"\n")
         if not isinstance(record, dict):
             excluded += 1
             print(
@@ -579,8 +631,28 @@ def read_facts(project_dir: Path) -> dict:
         "schema_ahead": schema_ahead,
         "excluded": excluded,
         "duplicates": duplicates,
-        "fingerprint": fingerprint,
+        "coverage_fingerprint": coverage_hash.hexdigest(),
     }
+
+
+def _is_observational(record: object) -> bool:
+    """Whether a parsed store line is a well-formed schema-1 fact of a kind
+    the coverage verdict never reads — the only lines ``coverage_fingerprint``
+    may leave out.
+
+    Everything else stays in: a non-object, an unknown kind, and a schema-ahead
+    line of ANY kind, because a newer plugin may give a kind a meaning this
+    reader cannot see, and the digest must never be blind to a write the
+    verdict might depend on. (An unparseable line never reaches here; the
+    caller hashes it before asking.)
+    """
+    return (
+        isinstance(record, dict)
+        and record.get("schema") == SCHEMA_VERSION
+        and record.get("kind") in OBSERVATIONAL_KINDS
+        and isinstance(record.get("id"), str)
+        and isinstance(record.get("body"), dict)
+    )
 
 
 def facts_of_kind(read_result: dict, kind: str) -> list[dict]:
@@ -1072,7 +1144,7 @@ def distinct_trees(facts: list[dict]) -> set[str]:
     The kind filter is the whole contract, not a detail: only review facts
     become edges (``coverage_algebra`` line-one filter), so only their trees
     are nodes. Reading every kind's body for a ``base_tree`` key would let a
-    purely observational fact — a ``guard-refusal``, a future ``test-run`` —
+    purely observational fact — a ``guard-refusal``, a ``test-run`` —
     inflate ``evidence status``'s tree count with trees no review covers,
     which reads as coverage that does not exist.
     """
@@ -1310,6 +1382,24 @@ def _cmd_list(project_dir: Path, argv: list[str]) -> int:
         blocking_left = body.get("blocking_left")
         if isinstance(blocking_left, int) and blocking_left:
             guard_note += f" blocking-left={blocking_left}"
+        # A suite run: which tree, what it measured, and whether it measured
+        # anything at all (a restamp reuses an older run's counts).
+        if fact.get("kind") == "test-run" and isinstance(body, dict):
+            run_tree = body.get("tree")
+            if isinstance(run_tree, str) and run_tree:
+                tree_note = f" tree={run_tree[:12]}"
+            counts = [body.get(k) for k in ("passed", "failed", "skipped")]
+            if all(isinstance(c, int) for c in counts):
+                guard_note += " passed={} failed={} skipped={}".format(*counts)
+            source = body.get("source")
+            if isinstance(source, str) and source:
+                guard_note += f" source={source}"
+            duration = body.get("duration_seconds")
+            if isinstance(duration, (int, float)) and not isinstance(duration, bool):
+                guard_note += f" dur={duration:g}s"
+            degraded = body.get("degraded")
+            if isinstance(degraded, str) and degraded:
+                guard_note += " DEGRADED"
         # Marked inline rather than filtered: the fact is real and stays listed;
         # what it does not do is cover a branch.
         origin = " [ephemeral — covers no branch]" if is_ephemeral_fact(fact) else ""
