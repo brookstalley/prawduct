@@ -19,8 +19,12 @@ and no framework vocabulary were added: the owner ruled on #820 to derive the de
 which the stage-keyed review-rigor norm and the #747 ruling (the testing burden "sits intentionally
 at entry to develop") already imply. The inner-stage reviewer (`chunk`, `verify-resolutions`, `final`) now reads a
 stale or missing record as the normal in-flight state and raises no finding; `cumulative` keeps it a
-WARNING, and failing evidence stays BLOCKING at every stage. The template row and the doctor's
-row-drafting guidance say the same.
+WARNING, and failing evidence stays BLOCKING at every stage. The template row, the doctor's
+row-drafting guidance, the janitor's Execute step, the build-plan template's example Chunk 01
+criterion (now "the chunk's own tests pass") and `briefing.py`'s fallback Critical Rules, which reach
+delegates, say the same; `tests/test_suite_at_boundary.py` scans every shipped `.md`/`.py` under
+`plugin/` and the release notes' unreleased section for the retired instructions. Also on this branch:
+the consumer `plugin/CHANGELOG.md` gains the `failing-test-ids` paragraph that #894 merged without.
 
 ## 2026-09-23: test evidence names the failing tests, not just the count
 
