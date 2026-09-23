@@ -12,9 +12,11 @@ hitting the 2-minute Bash ceiling, and the agent resorted to `timeout 200`.
 **This is a memo, not a second home for any fact** (``data-model.md``: *derived
 views are disposable and never authoritative — no gate reads a view to reach a
 verdict*). The distinction is the key: it covers EVERY input the verdict is a
-function of — the two endpoint trees and a content hash of the whole evidence
-store — so a hit replays a computation whose inputs are provably unchanged
-rather than substituting for one. A miss, an unreadable cache, a corrupt entry,
+function of — the two endpoint trees and a content hash of the evidence store
+(``coverage_fingerprint``: every line but the observational kinds the verdict
+never reads, :data:`evidence.OBSERVATIONAL_KINDS`) — so a hit replays a
+computation whose inputs are provably unchanged rather than substituting for
+one. A miss, an unreadable cache, a corrupt entry,
 or an unreadable store all recompute. There is no path on which the cache
 decides something the store would not.
 
@@ -230,7 +232,7 @@ class VerdictCache:
         Taking both from one read makes the pairing structural — there is no
         window to lose.
         """
-        return cls(cache_path(project_dir), read.get("fingerprint"))
+        return cls(cache_path(project_dir), read.get("coverage_fingerprint"))
 
     @property
     def enabled(self) -> bool:

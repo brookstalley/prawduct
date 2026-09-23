@@ -81,7 +81,22 @@ SUPPORTED_SCHEMAS = frozenset({1})
 # facts alone, so a refusal contributes neither an edge nor a node. It lives
 # here rather than in the per-worktree governance ledger because these guards
 # fire in worktrees that are then deleted — see :func:`append_guard_refusal`.
-KNOWN_KINDS = frozenset({"review", "resolution", "disposition", "guard-refusal"})
+#
+# ``test-run`` records one recorded suite run: the tree it ran against and its
+# counts (:func:`append_test_run`). It is how a freshness check finds a green
+# run for a tree after the per-worktree ``.test-evidence.json`` has moved on to
+# another branch. Like ``guard-refusal`` it is observational to the COVERAGE
+# data plane — ``coverage_algebra`` never reads it — and the test-evidence
+# freshness check is its only reader.
+KNOWN_KINDS = frozenset(
+    {"review", "resolution", "disposition", "guard-refusal", "test-run"}
+)
+
+#: Kinds the coverage verdict never reads, so their lines are left out of
+#: ``coverage_fingerprint`` (:func:`read_facts`). Membership is a claim about
+#: ``coverage_algebra.coverage_verdict``'s inputs — review edges and the
+#: resolution index — and a kind joins only if that function cannot see it.
+OBSERVATIONAL_KINDS = frozenset({"guard-refusal", "test-run"})
 
 STORE_SUBDIR = "prawduct"
 STORE_BASENAME = "evidence.jsonl"
@@ -401,6 +416,29 @@ def append_guard_refusal(
     )
 
 
+def append_test_run(project_dir: Path, body: dict) -> dict:
+    """Record one suite run as a ``test-run`` fact. Returns
+    :func:`append_fact`'s result.
+
+    ``body`` carries ``tree`` (the working tree the run met, as
+    :func:`capture_tree` returned it), ``passed``/``failed``/``skipped``,
+    ``duration_seconds``, ``source`` (``run`` | ``from-junit`` | ``restamp``)
+    and ``degraded`` when the run reported itself so. A later run on the same
+    tree is a NEW fact, and the newest one for a tree decides it, so a red
+    re-run supersedes an earlier green without editing the store.
+
+    Callers treat a failure as soft: the per-worktree record is already
+    written, so a lost fact costs a later re-run and never a wrong verdict.
+    """
+    if not isinstance(body, dict) or not isinstance(body.get("tree"), str):
+        return {"status": "error", "reason": "a test-run fact needs a tree"}
+    fact_id = "test-run-{}-{}".format(
+        datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"),
+        uuid.uuid4().hex[:8],
+    )
+    return append_fact(project_dir, "test-run", fact_id, body)
+
+
 def read_facts(project_dir: Path) -> dict:
     """Read the store. Returns::
 
@@ -408,7 +446,7 @@ def read_facts(project_dir: Path) -> dict:
          "facts": [envelope, ...],          # schema-supported, deduped, in order
          "schema_ahead": [{"line", "schema", "kind", "id"}, ...],
          "excluded": int, "duplicates": int,
-         "fingerprint": str | None}
+         "fingerprint": str | None, "coverage_fingerprint": str | None}
 
     ``fingerprint`` is a SHA-256 over exactly the text these facts were parsed
     from, and ``None`` whenever there was none to parse (no repo, no store,
@@ -431,6 +469,15 @@ def read_facts(project_dir: Path) -> dict:
     plugin's appends — the exact writes a reader most needs to notice it has not
     seen.
 
+    ``coverage_fingerprint`` is the same digest over every line EXCEPT a
+    well-formed schema-1 fact of an :data:`OBSERVATIONAL_KINDS` kind, and it is
+    the key ``verdict_cache`` uses. The coverage verdict never reads those
+    kinds, so leaving them out keeps the memo's contract exact — its key still
+    covers every input the verdict is a function of — while a recorded suite
+    run or a guard firing no longer makes every cached verdict unreachable.
+    What the carve-out may NOT take is anything the verdict could depend on: an
+    unparseable line, an unknown kind or a schema-ahead line stays in.
+
     ``schema_ahead`` records were written by a NEWER plugin than this reader —
     they are never silently dropped into ``excluded``: gate callers must treat
     their presence as a loud block with the C7 remedy (this reader cannot know
@@ -447,6 +494,7 @@ def read_facts(project_dir: Path) -> dict:
             "excluded": 0,
             "duplicates": 0,
             "fingerprint": None,
+            "coverage_fingerprint": None,
         }
     if not path.is_file():
         return {
@@ -456,6 +504,7 @@ def read_facts(project_dir: Path) -> dict:
             "excluded": 0,
             "duplicates": 0,
             "fingerprint": None,
+            "coverage_fingerprint": None,
         }
     try:
         raw_text = path.read_text(encoding="utf-8")
@@ -472,9 +521,11 @@ def read_facts(project_dir: Path) -> dict:
             "excluded": 0,
             "duplicates": 0,
             "fingerprint": None,
+            "coverage_fingerprint": None,
         }
 
     fingerprint = hashlib.sha256(raw_text.encode('utf-8')).hexdigest()
+    coverage_hash = hashlib.sha256()
     raw_lines = raw_text.splitlines()
     facts: list[dict] = []
     schema_ahead: list[dict] = []
@@ -492,6 +543,8 @@ def read_facts(project_dir: Path) -> dict:
         raw = raw.strip()
         if not raw:
             continue
+        if not _is_observational_line(raw):
+            coverage_hash.update(raw.encode("utf-8") + b"\n")
         try:
             record = json.loads(raw)
         except json.JSONDecodeError:
@@ -580,7 +633,31 @@ def read_facts(project_dir: Path) -> dict:
         "excluded": excluded,
         "duplicates": duplicates,
         "fingerprint": fingerprint,
+        "coverage_fingerprint": coverage_hash.hexdigest(),
     }
+
+
+def _is_observational_line(raw: str) -> bool:
+    """Whether a store line is a well-formed schema-1 fact of a kind the
+    coverage verdict never reads — the only lines ``coverage_fingerprint`` may
+    leave out.
+
+    Everything else stays in: an unparseable line, an unknown kind, and a
+    schema-ahead line of ANY kind, because a newer plugin may give a kind a
+    meaning this reader cannot see, and the fingerprint must never be blind to
+    a write the verdict might depend on.
+    """
+    try:
+        record = json.loads(raw)
+    except json.JSONDecodeError:
+        return False
+    return (
+        isinstance(record, dict)
+        and record.get("schema") == SCHEMA_VERSION
+        and record.get("kind") in OBSERVATIONAL_KINDS
+        and isinstance(record.get("id"), str)
+        and isinstance(record.get("body"), dict)
+    )
 
 
 def facts_of_kind(read_result: dict, kind: str) -> list[dict]:
@@ -1310,6 +1387,21 @@ def _cmd_list(project_dir: Path, argv: list[str]) -> int:
         blocking_left = body.get("blocking_left")
         if isinstance(blocking_left, int) and blocking_left:
             guard_note += f" blocking-left={blocking_left}"
+        # A suite run: which tree, what it measured, and whether it measured
+        # anything at all (a restamp reuses an older run's counts).
+        if fact.get("kind") == "test-run" and isinstance(body, dict):
+            run_tree = body.get("tree")
+            if isinstance(run_tree, str) and run_tree:
+                tree_note = f" tree={run_tree[:12]}"
+            counts = [body.get(k) for k in ("passed", "failed", "skipped")]
+            if all(isinstance(c, int) for c in counts):
+                guard_note += " passed={} failed={} skipped={}".format(*counts)
+            source = body.get("source")
+            if isinstance(source, str) and source:
+                guard_note += f" source={source}"
+            degraded = body.get("degraded")
+            if isinstance(degraded, str) and degraded:
+                guard_note += " DEGRADED"
         # Marked inline rather than filtered: the fact is real and stays listed;
         # what it does not do is cover a branch.
         origin = " [ephemeral — covers no branch]" if is_ephemeral_fact(fact) else ""

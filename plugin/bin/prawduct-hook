@@ -4645,6 +4645,32 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             file=sys.stderr,
         )
 
+    # Index the run by tree on the store every worktree of the clone shares, so
+    # a later freshness check can find it after this worktree's record has moved
+    # on to another branch. Soft by contract: the record above is the run's
+    # answer, and a lost index entry costs a later re-run, never a wrong verdict
+    # — so a failure is attributed and changes nothing else.
+    if evidence_tree:
+        from lib import evidence as _evidence_mod  # noqa: PLC0415 — lazy keeps top-level cheap
+        run_fact = {
+            "tree": evidence_tree,
+            "passed": passed,
+            "failed": failed,
+            "skipped": skipped,
+            "duration_seconds": record["duration_seconds"],
+            "source": "restamp" if no_rerun else "from-junit" if from_junits else "run",
+        }
+        if degraded_reason:
+            run_fact["degraded"] = degraded_reason
+        appended = _evidence_mod.append_test_run(project_dir, run_fact)
+        if appended.get("status") != "appended":
+            print(
+                f"note: test-run fact not recorded ({appended.get('reason', 'unknown')}); "
+                "the evidence record above is complete, but other branches and "
+                "worktrees cannot reuse this run.",
+                file=sys.stderr,
+            )
+
     # A restamp announces itself. The old line said `recorded: N passed` for
     # both paths, so a reused count was typographically identical to a fresh
     # measurement — which is the surface that let a stale figure pass as one.
