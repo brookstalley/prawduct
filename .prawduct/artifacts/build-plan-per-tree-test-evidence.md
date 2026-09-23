@@ -163,4 +163,4 @@ tests green; one `/prawduct:critic`.
 ## Status
 
 - [x] Chunk 1: record every run as a `test-run` fact
-- [ ] Chunk 2: freshness consults the store
+- [x] Chunk 2: freshness consults the store
