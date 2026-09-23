@@ -99,6 +99,14 @@ class TestTheRecordKeepsTheNames:
         assert ev["failed"] == 2
         assert "failed_tests" not in ev
 
+    def test_a_case_with_no_name_still_gets_an_id(self, tmp_path):
+        _, ev = _record(_repo(tmp_path), """
+<testsuites><testsuite name="s" time="1.0">
+  <testcase classname="c"><failure/></testcase>
+</testsuite></testsuites>
+""")
+        assert ev["failed_tests"] == ["c::(unnamed)"]
+
     def test_the_list_is_capped_and_the_count_stays_true(self, tmp_path):
         cases = "".join(
             f'<testcase classname="m" name="t{i:03d}"><failure/></testcase>'
@@ -138,12 +146,12 @@ class TestTheNamesArePrinted:
         assert "3 test(s) failing in saved evidence" in res.stdout
         for name in _EXPECTED:
             assert name in res.stdout
-        assert "more" not in res.stdout
+        assert "(+" not in res.stdout
 
     def test_test_status_says_how_many_it_did_not_print(self, tmp_path):
-        """Ten names on the line, and the remainder counted from ``failed`` —
-        not from the stored list — so a capped record still reports the true
-        total it left out."""
+        """Ten names on the line; the rest split into names the record holds
+        and failures it holds no name for, counted from ``failed`` so a capped
+        record still reports the true total it left out."""
         repo = _repo(tmp_path)
         cases = "".join(
             f'<testcase classname="m" name="t{i:03d}"><failure/></testcase>'
@@ -153,7 +161,7 @@ class TestTheNamesArePrinted:
         res = _run_in(repo, "test-status")
         assert "m::t009" in res.stdout
         assert "m::t010" not in res.stdout
-        assert "+120 more; the record names the first 100" in res.stdout
+        assert "(+90 more in .prawduct/.test-evidence.json; +30 unnamed)" in res.stdout
 
     def test_failures_the_report_did_not_name_are_still_counted(self, tmp_path):
         """One report can mix a populated suite with a summary-only one, so
@@ -170,4 +178,46 @@ class TestTheNamesArePrinted:
 """)
         res = _run_in(repo, "test-status")
         assert "3 test(s) failing in saved evidence: c::named" in res.stdout
-        assert "+2 more; the report did not name them" in res.stdout
+        assert "c::named (+2 unnamed)" in res.stdout
+
+    def test_a_fully_named_remainder_claims_no_unnamed_failures(self, tmp_path):
+        repo = _repo(tmp_path)
+        cases = "".join(
+            f'<testcase classname="m" name="t{i:02d}"><failure/></testcase>'
+            for i in range(12)
+        )
+        _record(repo, f'<testsuites><testsuite name="s" time="1">{cases}</testsuite></testsuites>')
+        res = _run_in(repo, "test-status")
+        assert "m::t09 (+2 more in .prawduct/.test-evidence.json)" in res.stdout
+        assert "unnamed" not in res.stdout
+
+
+class TestTheKeyCannotMoveAVerdict:
+    """``failed_tests`` is only ever printed, so it is deliberately left out of
+    the evidence schema: validating its type would let a writer that put
+    something else under the name turn a passing record stale."""
+
+    def _edit(self, repo: Path, value) -> None:
+        path = repo / ".prawduct" / ".test-evidence.json"
+        ev = json.loads(path.read_text())
+        ev["failed_tests"] = value
+        path.write_text(json.dumps(ev))
+
+    def test_a_malformed_value_on_a_passing_record_stays_current(self, tmp_path):
+        repo = _repo(tmp_path)
+        res, _ = _record(repo, """
+<testsuites><testsuite name="s" time="1.0"><testcase classname="c" name="ok"/></testsuite></testsuites>
+""")
+        assert res.returncode == 0, res.stderr
+        self._edit(repo, 3)
+        status = _run_in(repo, "test-status")
+        assert status.returncode == 0, status.stdout
+        assert status.stdout.startswith("current")
+
+    def test_non_string_ids_print_no_names(self, tmp_path):
+        repo = _repo(tmp_path)
+        _record(repo, _MIXED)
+        self._edit(repo, [1, 2])
+        status = _run_in(repo, "test-status")
+        assert status.returncode == 1
+        assert status.stdout.strip() == "stale: 3 test(s) failing in saved evidence"

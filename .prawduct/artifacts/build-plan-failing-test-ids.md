@@ -16,8 +16,15 @@ governed_by:
       - "governance verdicts come from the append-only fact ledger, never mutable model-written state → inapplicable, because `.test-evidence.json` is not on the fact ledger and the new key feeds no verdict (a record with `failed > 0` is refused before the names are read)"
       - "facts are immutable and append-only → inapplicable, because no fact is written"
       - "two stores, two lifetimes → conforms: the names live in the per-worktree gitignored record beside the counts they explain"
+      - "derived views are disposable and never authoritative → inapplicable, because no view is added or read"
+      - "a governance document reaches a terminal state, never deleted → conforms: this plan is archived at the release, not deleted"
+      - "every issue written to the backlog conforms to the §1 title rules → inapplicable, because no issue is written (#792's close at merge changes status only)"
+      - "a fact written by a newer schema is a loud block → inapplicable, because no fact is written"
+      - "backlog_service_repo selects the authoritative backlog → conforms: #792 closes through /prawduct:backlog on the Issues backend"
   - artifact: nonfunctional-requirements
     dispositions:
+      - "review wall-clock is P0 → conforms: the change removes a whole-suite re-run whose only purpose was learning which tests failed"
+      - "proportionality ratchets both ways → inapplicable, because no control is added or removed"
       - "review rigor is stage-keyed → inapplicable, because no chunk changes a severity or a stage"
       - "state-file growth is advisory, never a block → conforms: the list is capped, so a mass failure cannot grow the record without bound"
 partition: serial — one chunk over two modules
@@ -42,8 +49,9 @@ a temp file on purpose); failure messages or tracebacks; per-tree history (#653,
 
 `[DECISION: store names only, capped at 100, as `classname::name` (or `name` when a case has no
 classname) | the record feeds gates and must stay small, and 100 names is far past the point where
-a run is "broadly broken" rather than "these few broke"; `classname::name` is the only id every
-junit reporter emits, and building a pytest node id would make the framework Python-specific
+a run is "broadly broken" rather than "these few broke"; `classname::name` is built from junit's
+own attributes (with fallbacks for reporters that omit one), and building a pytest node id would
+make the framework Python-specific
 | vetoable]`
 
 `[DECISION: absence of `failed_tests` means "no per-test ids were available" (a pass,
@@ -66,7 +74,8 @@ payload all print that reason, so one edit reaches all three | vetoable]`
   rule).
 - The `recorded:` line names up to 10 failing ids and says how many more the record holds.
 - `_load_test_evidence`'s failing-record reason names up to 10 ids and how many more exist.
-- `failed_tests` added to `_EVIDENCE_OPTIONAL_FIELDS` as a list.
+- `failed_tests` deliberately kept OUT of the evidence schema: it is only printed, and validating its
+  type would let a malformed value turn a passing record stale (review R-1 of the chunk's cumulative).
 - `boundary-patterns.md`'s `.test-evidence.json` entry names the key and its absence meaning.
 
 **Done when:**

@@ -39,9 +39,11 @@ writer emitting `false` rather than omitting it changes what every reader sees.
 A new field therefore has to name its absent-case semantics, not just its type.
 `failed_tests` (added 2026-09-23, #792) holds the failing ids as `classname::name`, in report order
 and capped; its absence means no per-test ids were available (a pass, `--from-counts`, a
-summary-only suite), never that nothing failed — `failed` stays the count of record. It is read
-only to name the failures in `_load_test_evidence`'s refusal reason, which `test-status`, the
-PR-gate transfer and the PR review payload all print.
+summary-only suite), never that nothing failed — `failed` stays the count of record. Two readers:
+`_load_test_evidence`'s refusal reason, which `test-status`, the PR-gate transfer and the PR review
+payload all print, and `--no-rerun`, which carries the names forward with the counts.
+It is deliberately not in the evidence schema: a key that is only printed must not be able to
+make a record invalid, so a malformed value is ignored by its reader rather than refused.
 **Deliberate non-consumer:** `verify_coverage` does *not* refuse a degraded
 record — at `coverage_level: referenced` its answer is tree-derived, so which
 tests executed cannot change it. Its docstring names the `executed`-level

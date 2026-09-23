@@ -3783,7 +3783,11 @@ _FAILED_TESTS_CAP = 100
 
 def _junit_case_id(case) -> str:
     """A ``<testcase>``'s id as ``classname::name``, or ``name`` alone when the
-    reporter wrote no classname."""
+    reporter wrote no classname.
+
+    Built from junit's own attributes rather than a runner's id (a pytest node
+    id) so the record reads the same for every ecosystem; the fallbacks exist
+    because not every reporter fills both."""
     name = case.get("name") or "(unnamed)"
     classname = case.get("classname")
     return f"{classname}::{name}" if classname else name
@@ -4461,33 +4465,23 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
                 leaves = list(s.iter("testcase"))
                 if leaves:
                     total += len(leaves)
-                    # The ids of the failing leaves, in report order, so the
-                    # record can say WHICH tests broke and not only how many.
-                    # `classname::name` is the one id every junit reporter
-                    # emits; a runner-specific id (a pytest node id) would make
-                    # the record readable for one ecosystem only.
-                    failed_ids += [
-                        _junit_case_id(c)
-                        for c in leaves
-                        if c.find("error") is not None or c.find("failure") is not None
-                    ]
-                    # Precedence, most severe first: a case carrying both <error>
-                    # and <failure> counts once, as an error. `skipped` loses to
-                    # both — a case that errored is not a skip, whatever else it
-                    # carries.
-                    errors += sum(1 for c in leaves if c.find("error") is not None)
-                    failures += sum(
-                        1
-                        for c in leaves
-                        if c.find("error") is None and c.find("failure") is not None
-                    )
-                    skipped += sum(
-                        1
-                        for c in leaves
-                        if c.find("error") is None
-                        and c.find("failure") is None
-                        and c.find("skipped") is not None
-                    )
+                    # Each leaf is classified ONCE, and the failing ids are
+                    # collected from that same verdict, so the names and the
+                    # counts cannot come to disagree. Precedence, most severe
+                    # first: a case carrying both <error> and <failure> counts
+                    # once, as an error. `skipped` loses to both — a case that
+                    # errored is not a skip, whatever else it carries.
+                    for c in leaves:
+                        if c.find("error") is not None:
+                            errors += 1
+                        elif c.find("failure") is not None:
+                            failures += 1
+                        elif c.find("skipped") is not None:
+                            skipped += 1
+                            continue
+                        else:
+                            continue
+                        failed_ids.append(_junit_case_id(c))
                 else:
                     # Summary-only suite: its attributes are the only evidence it
                     # carries, so recording a confident 0 would discard a whole

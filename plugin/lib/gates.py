@@ -112,14 +112,6 @@ _EVIDENCE_OPTIONAL_FIELDS: dict[str, tuple[type, ...]] = {
     # for it to reintroduce. The only way to a wrong stale here is to assert a
     # degradation that did not happen.
     "degraded": (str,),
-    # ``failed_tests``: the ids (``classname::name``) of the failing tests, in
-    # report order and capped, so a reader can go straight to them rather than
-    # re-running the suite to learn which broke. Present only when the recorder
-    # saw at least one failing id; ABSENCE means "no per-test ids were
-    # available" (a pass, ``--from-counts``, a summary-only suite), never
-    # "nothing failed" — ``failed`` stays the count of record. Read only for
-    # printing: a record with ``failed > 0`` is refused before it is consulted.
-    "failed_tests": (list,),
 }
 
 #: How many failing ids a printed reason names before counting the rest.
@@ -129,10 +121,21 @@ _FAILING_NAMES_SHOWN = 10
 def name_failing_tests(ids: object, failed: int) -> str:
     """The first few failing test ids, and how many more there are.
 
-    ``""`` when the record carries no usable ids. The remainder is counted from
-    ``failed``, not from the stored list, because the list is capped: a record
-    that kept 100 of 130 names still left 120 unprinted, and saying 90 would
-    understate how broken the run was.
+    Reads the record's ``failed_tests``: the failing ids (``classname::name``)
+    in report order, capped by the recorder. Present only when the recorder saw
+    at least one failing id; absence means no per-test ids were available,
+    never that nothing failed — ``failed`` stays the count of record.
+
+    **Deliberately NOT in the schema.** The key is only ever printed, and a
+    record carrying ``failed > 0`` is refused before this runs, so the key can
+    never move a verdict. Validating its type would give it one: a writer that
+    put something else under the name would turn a passing record stale. So a
+    malformed value is ignored here — ``""`` for anything that is not a list of
+    strings — rather than refused there.
+
+    The unprinted remainder is counted from ``failed``, not from the list,
+    because the list is capped: a record that kept 100 of 130 names left 90
+    names unprinted and 30 unnamed, and both halves are reported.
     """
     if not isinstance(ids, list):
         return ""
@@ -140,15 +143,16 @@ def name_failing_tests(ids: object, failed: int) -> str:
     if not names:
         return ""
     shown = names[:_FAILING_NAMES_SHOWN]
-    rest = max(failed, len(names)) - len(shown)
-    if rest <= 0:
-        return ", ".join(shown)
-    where = (
-        f"the record names the first {len(names)}"
-        if len(names) > len(shown)
-        else "the report did not name them"
-    )
-    return ", ".join(shown) + f" (+{rest} more; {where})"
+    # Two different remainders, counted apart: names the record holds but this
+    # line did not print, and failures the record holds no name for (a
+    # summary-only suite, or the recorder's cap).
+    in_record = len(names) - len(shown)
+    unnamed = failed - len(names)
+    rest = [
+        *([f"{in_record} more in .prawduct/.test-evidence.json"] if in_record > 0 else []),
+        *([f"{unnamed} unnamed"] if unnamed > 0 else []),
+    ]
+    return ", ".join(shown) + (f" (+{'; +'.join(rest)})" if rest else "")
 
 
 def _load_test_evidence(prawduct_dir: Path) -> "tuple[dict | None, str]":
