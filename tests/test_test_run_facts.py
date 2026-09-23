@@ -83,12 +83,24 @@ class TestEachRecordAppendsOneFact:
         assert res.returncode == 0, res.stderr
         assert [f["body"]["source"] for f in _test_runs(repo)] == ["run"]
 
-    def test_a_restamp_is_its_own_fact_and_says_it_measured_nothing(self, tmp_path):
+    def test_a_restamp_appends_no_fact(self, tmp_path):
+        """A restamp measured nothing, and the tree it stamps is a fresh capture
+        rather than the one its reused counts met — a fact from it could put a
+        green run on a tree no suite ever ran against."""
         repo = _repo(tmp_path)
         _record_junit(repo, _GREEN)
         res = _run_in(repo, "test-evidence", "record", "--no-rerun")
         assert res.returncode == 0, res.stderr
-        assert [f["body"]["source"] for f in _test_runs(repo)] == ["from-junit", "restamp"]
+        assert [f["body"]["source"] for f in _test_runs(repo)] == ["from-junit"]
+
+    def test_restamped_hand_typed_counts_never_reach_the_store(self, tmp_path):
+        repo = _repo(tmp_path)
+        _run_in(repo, "test-evidence", "record", "--from-counts",
+                "passed=3", "failed=0", "skipped=0")
+        res = _run_in(repo, "test-evidence", "record", "--no-rerun")
+        assert res.returncode == 0, res.stderr
+        assert _record_file(repo).get("evidence_tree")  # the restamp did capture one
+        assert _test_runs(repo) == []
 
     def test_from_counts_captures_no_tree_so_appends_no_fact(self, tmp_path):
         repo = _repo(tmp_path)
@@ -133,6 +145,21 @@ class TestTheListerShowsARun:
         assert f"tree={tree[:12]}" in row
         assert "passed=0 failed=1 skipped=0" in row
         assert "source=from-junit" in row
+        assert "DEGRADED" not in row
+
+    def test_a_degraded_row_says_so(self, tmp_path):
+        repo = _repo(tmp_path)
+        _record_junit(repo, _GREEN, "--degraded", "a shard never reported")
+        res = _run_in(repo, "evidence", "list", "--kind", "test-run")
+        assert res.stdout.strip().endswith("DEGRADED")
+
+
+class TestTheAppendHelper:
+    def test_a_run_without_a_tree_is_refused(self, tmp_path):
+        repo = _repo(tmp_path)
+        out = evidence.append_test_run(repo, {"passed": 1, "failed": 0})
+        assert out["status"] == "error"
+        assert _test_runs(repo) == []
 
 
 def _append_line(repo: Path, record: dict | str) -> None:
@@ -150,9 +177,8 @@ class TestTheCoverageFingerprint:
     """The verdict cache's key: every store line EXCEPT a well-formed schema-1
     line of a kind the coverage verdict never reads."""
 
-    def _prints(self, repo: Path) -> tuple[str, str]:
-        read = evidence.read_facts(repo)
-        return read["fingerprint"], read["coverage_fingerprint"]
+    def _print(self, repo: Path) -> str:
+        return evidence.read_facts(repo)["coverage_fingerprint"]
 
     def _seeded(self, tmp_path: Path) -> Path:
         repo = _repo(tmp_path)
@@ -162,12 +188,10 @@ class TestTheCoverageFingerprint:
 
     def test_observational_appends_leave_it_unchanged(self, tmp_path):
         repo = self._seeded(tmp_path)
-        whole, coverage = self._prints(repo)
+        before = self._print(repo)
         _append_line(repo, _envelope("test-run", "tr-1"))
         _append_line(repo, _envelope("guard-refusal", "g-1"))
-        whole_after, coverage_after = self._prints(repo)
-        assert whole_after != whole  # the whole-file print still sees them
-        assert coverage_after == coverage
+        assert self._print(repo) == before
 
     def test_every_other_line_changes_it(self, tmp_path):
         cases = [
@@ -181,15 +205,19 @@ class TestTheCoverageFingerprint:
         for i, line in enumerate(cases):
             (tmp_path / str(i)).mkdir()
             repo = self._seeded(tmp_path / str(i))
-            _, before = self._prints(repo)
+            before = self._print(repo)
             _append_line(repo, line)
-            _, after = self._prints(repo)
-            assert after != before, line
+            assert self._print(repo) != before, line
 
-    def test_it_is_absent_exactly_when_the_whole_file_print_is(self, tmp_path):
+    def test_it_is_absent_when_there_is_no_store(self, tmp_path):
         repo = _repo(tmp_path)
-        read = evidence.read_facts(repo)
-        assert read["fingerprint"] is None and read["coverage_fingerprint"] is None
+        assert evidence.read_facts(repo)["coverage_fingerprint"] is None
+
+    def test_the_whole_file_digest_is_gone(self, tmp_path):
+        """It lost its only reader when the cache moved to the coverage digest,
+        and a surviving copy would invite the next memo to key on it."""
+        repo = self._seeded(tmp_path)
+        assert "fingerprint" not in evidence.read_facts(repo)
 
     def test_the_verdict_cache_survives_a_recorded_run(self, tmp_path):
         """The end-to-end property: a verdict memoized before a suite run is
@@ -209,3 +237,32 @@ class TestTheCoverageFingerprint:
         assert ask().hits == 1
         _append_line(repo, _envelope("review", "rev-2"))
         assert ask().misses == 1
+
+
+class TestTheCarveOutNeverTouchesAVerdictInput:
+    """``OBSERVATIONAL_KINDS`` is a claim about what the coverage verdict does
+    NOT read. The set it reads is derived here from ``coverage_algebra``'s own
+    ``kind`` comparisons, so a new filter there cannot slip past the carve-out."""
+
+    def _kinds_the_verdict_reads(self) -> set[str]:
+        import re
+
+        src = (Path(__file__).resolve().parent.parent
+               / "plugin" / "lib" / "coverage_algebra.py").read_text()
+        # ``fact.get("kind")`` — the module's name for a store fact. Its path
+        # steps (``step.get("kind") == "free"``) carry a kind too, but they are
+        # built here rather than read from the store.
+        return set(re.findall(r'fact\.get\("kind"\)\s*[!=]=\s*"([^"]+)"', src))
+
+    def test_the_derived_set_is_the_declared_one(self):
+        from lib import coverage_algebra
+
+        found = self._kinds_the_verdict_reads()
+        assert found, "the scan matched nothing, so it measured nothing"
+        assert found == set(coverage_algebra.VERDICT_INPUT_KINDS)
+
+    def test_no_observational_kind_is_a_verdict_input(self):
+        from lib import coverage_algebra
+
+        assert evidence.OBSERVATIONAL_KINDS.isdisjoint(coverage_algebra.VERDICT_INPUT_KINDS)
+        assert evidence.OBSERVATIONAL_KINDS <= evidence.KNOWN_KINDS

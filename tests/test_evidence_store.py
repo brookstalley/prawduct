@@ -248,7 +248,7 @@ class TestErrorPosture:
         # grades the dict before checking `status` gets the empty answer rather
         # than a KeyError.
         assert read["facts"] == [] and read["schema_ahead"] == []
-        assert read["fingerprint"] is None
+        assert read["coverage_fingerprint"] is None
 
     def test_an_undecodable_version_file_nulls_the_field(self, monkeypatch):
         """`_plugin_version` is nullable by contract, and an undecodable VERSION

@@ -53,6 +53,21 @@ consumer.
 shared prologue *and* the writer's ingest paths, because a restamp that skips a
 field launders it away while running nothing. `degraded` and `failed_tests` both ride a restamp.
 
+### `test-run` facts on the evidence store — runs indexed by tree
+
+**Producer:** `test-evidence record` (a real run and `--from-junit`; never a restamp or
+`--from-counts`), through `evidence.append_test_run`.
+**Consumers:** `gates._store_run_vouching`, the fallback both evidence readers ask when the
+worktree's own record does not vouch; `evidence list`. Nothing on the coverage data plane:
+`coverage_algebra.VERDICT_INPUT_KINDS` is the set it reads, and `evidence.OBSERVATIONAL_KINDS`
+(which `test-run` joins) is kept out of the verdict cache's key.
+**Contract:** body `tree`, `passed`/`failed`/`skipped`, `duration_seconds`, `source`, and `head`
+and `degraded` when present. The newest run that met a tree decides it; the worktree's own record
+competes as a run.
+**Sweep rule:** a kind joining `OBSERVATIONAL_KINDS` is a claim that `coverage_algebra` never
+reads it — `tests/test_test_run_facts.py` derives the read set from the module's own `fact.get("kind")`
+comparisons, so check that test before adding one.
+
 ### `.claude/rules/learnings/` — the rules layout
 
 **Producers:** the author (a rule written by hand under the byte budget `record_lint` enforces);

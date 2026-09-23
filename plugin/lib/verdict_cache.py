@@ -28,9 +28,10 @@ object or a git failure makes ``key_fn`` return ``None``, which denies a free
 edge; it can never manufacture one. So git-side degradation moves the verdict
 only toward denial, and a verdict recorded under it can only be replayed as a
 denial. The residual, stated: an ``uncovered`` computed while an object was
-transiently unreadable is replayed until the store's next append changes the
-fingerprint. That is a false negative — the safe direction, and the one this
-subsystem's authority contract requires.
+transiently unreadable is replayed until the store's next append of any kind
+outside :data:`evidence.OBSERVATIONAL_KINDS` (so not a test-run or a guard
+firing) changes the fingerprint. That is a false negative — the safe direction,
+and the one this subsystem's authority contract requires.
 
 The cache lives beside the evidence store, in the per-clone gitignored area
 (``two stores, two lifetimes``) — never in committed state.

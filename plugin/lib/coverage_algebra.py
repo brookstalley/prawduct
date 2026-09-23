@@ -69,6 +69,12 @@ KeyFn = Callable[[str], "str | None"]
 
 _RESOLVING_DISPOSITIONS = frozenset({"fixed", "waived"})
 
+#: The fact kinds this module reads — every other kind is invisible to the
+#: coverage verdict. ``evidence.OBSERVATIONAL_KINDS`` (the kinds left out of the
+#: verdict memo's key) must never overlap it, and a test derives this set from
+#: the module's own ``kind`` comparisons so a new filter cannot slip past it.
+VERDICT_INPUT_KINDS = frozenset({"review", "resolution"})
+
 
 def is_judgeable_path(path: str) -> bool:
     """True if a change to ``path`` needs review coverage.

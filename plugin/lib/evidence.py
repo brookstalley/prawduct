@@ -352,13 +352,12 @@ def append_guard_refusal(
     default one-record-per-firing shape is wrong twice over. ``critic-begin``
     runs once per dispatch, so a fresh id per firing counts dispatches; a gate
     is re-asked several times a session about an unchanged repo, so the same id
-    per *observation* is what counts events. It also has to be that way for a
-    reason outside this module: ``verdict_cache`` keys the composed coverage
-    verdict on a content hash of this whole store, so a record appended on every
-    poll would invalidate every memoized verdict on every poll and put the gate
-    back on its cold path. With a key, the id is a digest of ``(guard,
-    dedupe_key)`` — no timestamp, no uuid — and the second observation of the
-    same event appends nothing at all, leaving the store byte-identical.
+    per *observation* is what counts events. With a key, the id is a digest of
+    ``(guard, dedupe_key)`` — no timestamp, no uuid — and the second
+    observation of the same event appends nothing at all, so the store does not
+    grow a line per poll. (It no longer matters to ``verdict_cache``: its key
+    leaves ``guard-refusal`` lines out, see ``read_facts``'s
+    ``coverage_fingerprint``.)
 
     A deduped call returns ``{"status": "duplicate", "id": ...}``, which is a
     SUCCESS: the event is already on the record. Callers checking for a degraded
@@ -422,8 +421,10 @@ def append_test_run(project_dir: Path, body: dict) -> dict:
 
     ``body`` carries ``tree`` (the working tree the run met, as
     :func:`capture_tree` returned it), ``passed``/``failed``/``skipped``,
-    ``duration_seconds``, ``source`` (``run`` | ``from-junit`` | ``restamp``)
-    and ``degraded`` when the run reported itself so. A later run on the same
+    ``duration_seconds``, ``source`` (``run`` | ``from-junit``), ``head``
+    (the commit checked out, when there is one) and ``degraded`` when the run
+    reported itself so. A restamp records no fact: it measures nothing, and the
+    run whose counts it reuses already has its own. A later run on the same
     tree is a NEW fact, and the newest one for a tree decides it, so a red
     re-run supersedes an earlier green without editing the store.
 
@@ -446,14 +447,15 @@ def read_facts(project_dir: Path) -> dict:
          "facts": [envelope, ...],          # schema-supported, deduped, in order
          "schema_ahead": [{"line", "schema", "kind", "id"}, ...],
          "excluded": int, "duplicates": int,
-         "fingerprint": str | None, "coverage_fingerprint": str | None}
+         "coverage_fingerprint": str | None}
 
-    ``fingerprint`` is a SHA-256 over exactly the text these facts were parsed
-    from, and ``None`` whenever there was none to parse (no repo, no store,
-    unreadable). Deterministic over what was parsed rather than over the bytes
-    on disk: ``read_text`` applies universal-newline translation, so on a CRLF
-    store the digest is of the normalized text — which is the right subject,
-    since it is the parse the caller is keying a function of.
+    ``coverage_fingerprint`` is a SHA-256 over the text these facts were parsed
+    from, minus the lines the coverage verdict cannot read (below), and
+    ``None`` whenever there was none to parse (no repo, no store, unreadable).
+    Deterministic over what was parsed rather than over the bytes on disk:
+    ``read_text`` applies universal-newline translation, so on a CRLF store the
+    digest is of the normalized text — which is the right subject, since it is
+    the parse the caller is keying a function of.
 
     It exists so a caller memoizing a function OF these facts can key on it
     without hashing the parsed structure — and, more to the point, without
@@ -463,20 +465,19 @@ def read_facts(project_dir: Path) -> dict:
     describe. Handing it back from the one read makes that impossible rather
     than unlikely.
 
-    It covers the WHOLE file, not the returned ``facts``. That is deliberate and
-    is not the same set: ``schema_ahead`` lines are filtered out of what this
-    returns, so a fingerprint over the filtered view would be blind to a newer
-    plugin's appends — the exact writes a reader most needs to notice it has not
-    seen.
+    It covers the file, not the returned ``facts``, and the two differ on
+    purpose: ``schema_ahead`` lines are filtered out of what this returns, so a
+    digest over the filtered view would be blind to a newer plugin's appends —
+    the exact writes a reader most needs to notice it has not seen.
 
-    ``coverage_fingerprint`` is the same digest over every line EXCEPT a
-    well-formed schema-1 fact of an :data:`OBSERVATIONAL_KINDS` kind, and it is
-    the key ``verdict_cache`` uses. The coverage verdict never reads those
-    kinds, so leaving them out keeps the memo's contract exact — its key still
-    covers every input the verdict is a function of — while a recorded suite
-    run or a guard firing no longer makes every cached verdict unreachable.
-    What the carve-out may NOT take is anything the verdict could depend on: an
-    unparseable line, an unknown kind or a schema-ahead line stays in.
+    The one carve-out is a well-formed schema-1 fact of an
+    :data:`OBSERVATIONAL_KINDS` kind. ``verdict_cache`` keys on this digest, and
+    the coverage verdict never reads those kinds, so leaving them out keeps the
+    memo's contract exact — its key still covers every input the verdict is a
+    function of — while a recorded suite run or a guard firing no longer makes
+    every cached verdict unreachable. What the carve-out may NOT take is
+    anything the verdict could depend on: an unparseable line, an unknown kind
+    or a schema-ahead line stays in.
 
     ``schema_ahead`` records were written by a NEWER plugin than this reader —
     they are never silently dropped into ``excluded``: gate callers must treat
@@ -493,7 +494,6 @@ def read_facts(project_dir: Path) -> dict:
             "schema_ahead": [],
             "excluded": 0,
             "duplicates": 0,
-            "fingerprint": None,
             "coverage_fingerprint": None,
         }
     if not path.is_file():
@@ -503,7 +503,6 @@ def read_facts(project_dir: Path) -> dict:
             "schema_ahead": [],
             "excluded": 0,
             "duplicates": 0,
-            "fingerprint": None,
             "coverage_fingerprint": None,
         }
     try:
@@ -520,11 +519,9 @@ def read_facts(project_dir: Path) -> dict:
             "schema_ahead": [],
             "excluded": 0,
             "duplicates": 0,
-            "fingerprint": None,
             "coverage_fingerprint": None,
         }
 
-    fingerprint = hashlib.sha256(raw_text.encode('utf-8')).hexdigest()
     coverage_hash = hashlib.sha256()
     raw_lines = raw_text.splitlines()
     facts: list[dict] = []
@@ -543,11 +540,10 @@ def read_facts(project_dir: Path) -> dict:
         raw = raw.strip()
         if not raw:
             continue
-        if not _is_observational_line(raw):
-            coverage_hash.update(raw.encode("utf-8") + b"\n")
         try:
             record = json.loads(raw)
         except json.JSONDecodeError:
+            coverage_hash.update(raw.encode("utf-8") + b"\n")
             excluded += 1
             tail = (
                 " (torn tail from a crashed writer — heals on next append)"
@@ -560,6 +556,8 @@ def read_facts(project_dir: Path) -> dict:
                 file=sys.stderr,
             )
             continue
+        if not _is_observational(record):
+            coverage_hash.update(raw.encode("utf-8") + b"\n")
         if not isinstance(record, dict):
             excluded += 1
             print(
@@ -632,25 +630,21 @@ def read_facts(project_dir: Path) -> dict:
         "schema_ahead": schema_ahead,
         "excluded": excluded,
         "duplicates": duplicates,
-        "fingerprint": fingerprint,
         "coverage_fingerprint": coverage_hash.hexdigest(),
     }
 
 
-def _is_observational_line(raw: str) -> bool:
-    """Whether a store line is a well-formed schema-1 fact of a kind the
-    coverage verdict never reads — the only lines ``coverage_fingerprint`` may
-    leave out.
+def _is_observational(record: object) -> bool:
+    """Whether a parsed store line is a well-formed schema-1 fact of a kind
+    the coverage verdict never reads — the only lines ``coverage_fingerprint``
+    may leave out.
 
-    Everything else stays in: an unparseable line, an unknown kind, and a
-    schema-ahead line of ANY kind, because a newer plugin may give a kind a
-    meaning this reader cannot see, and the fingerprint must never be blind to
-    a write the verdict might depend on.
+    Everything else stays in: a non-object, an unknown kind, and a schema-ahead
+    line of ANY kind, because a newer plugin may give a kind a meaning this
+    reader cannot see, and the digest must never be blind to a write the
+    verdict might depend on. (An unparseable line never reaches here; the
+    caller hashes it before asking.)
     """
-    try:
-        record = json.loads(raw)
-    except json.JSONDecodeError:
-        return False
     return (
         isinstance(record, dict)
         and record.get("schema") == SCHEMA_VERSION

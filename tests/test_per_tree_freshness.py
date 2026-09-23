@@ -1,0 +1,224 @@
+"""A green run is remembered per tree, across branches and worktrees (#653).
+
+``.test-evidence.json`` holds one record per worktree, so switching branch
+replaced it and switching back re-ran a suite whose tree already had a green
+run. Freshness now also asks the shared store's ``test-run`` facts, choosing
+at most three candidates — the newest fact for the exact tree, for the current
+HEAD commit, and for the current branch — and judging each with the same
+judgeable tree-diff the per-worktree clause already trusts.
+
+The NEWEST run for a tree decides it, and the worktree's own record counts as a
+run: a red re-run supersedes an earlier green, however the two were recorded.
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "plugin"))
+
+from test_plugin_runtime import _git, _run_in  # noqa: E402
+
+from lib import evidence  # noqa: E402
+
+_GREEN = '<testsuites><testsuite name="s" time="1"><testcase classname="c" name="ok"/></testsuite></testsuites>'
+_RED = '<testsuites><testsuite name="s" time="1"><testcase classname="c" name="bad"><failure/></testcase></testsuite></testsuites>'
+
+
+def _repo(tmp_path: Path) -> Path:
+    repo = tmp_path / "pt"
+    repo.mkdir()
+    (repo / ".prawduct").mkdir()
+    (repo / "test_sample.py").write_text("def test_ok():\n    assert True\n")
+    _git(repo, "init", "-b", "main")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-m", "c1")
+    return repo
+
+
+def _branch(repo: Path, name: str, body: str) -> None:
+    _git(repo, "switch", "-q", "-c", name, "main")
+    (repo / "mod.py").write_text(body)
+    _git(repo, "add", "mod.py")
+    _git(repo, "commit", "-q", "-m", name)
+
+
+def _record(repo: Path, xml: str = _GREEN, *extra: str):
+    # The report lives OUTSIDE the repo so it is never part of a captured tree.
+    junit = repo.parent / "report.xml"
+    junit.write_text('<?xml version="1.0" encoding="utf-8"?>\n' + xml)
+    res = _run_in(repo, "test-evidence", "record", "--from-junit", str(junit), *extra)
+    assert res.returncode in (0, 1), res.stderr
+    return res
+
+
+def _status(repo: Path):
+    return _run_in(repo, "test-status")
+
+
+class TestSwitchingBackRerunsNothing:
+    def test_each_branch_is_current_after_the_other_was_recorded(self, tmp_path):
+        """The acceptance scenario: A green, B green, back to A — current,
+        tree-valid, and nothing run."""
+        repo = _repo(tmp_path)
+        _branch(repo, "feat-a", "A = 1\n")
+        _record(repo)
+        _branch(repo, "feat-b", "B = 2\n")
+        _record(repo)
+        _git(repo, "switch", "-q", "feat-a")
+        res = _status(repo)
+        assert res.returncode == 0, res.stdout
+        assert res.stdout.startswith("current (tree-valid)")
+        assert "recorded on feat-a" in res.stdout
+        _git(repo, "switch", "-q", "feat-b")
+        assert _status(repo).returncode == 0
+
+    def test_a_tree_nothing_ran_against_is_still_stale(self, tmp_path):
+        repo = _repo(tmp_path)
+        _branch(repo, "feat-a", "A = 1\n")
+        _record(repo)
+        _branch(repo, "feat-c", "C = 3\n")
+        res = _status(repo)
+        assert res.returncode == 1, res.stdout
+
+    def test_a_branch_edited_since_its_run_is_stale(self, tmp_path):
+        """The branch candidate is judged by the tree diff, never trusted by
+        name: a run on feat-a does not vouch for feat-a's next commit."""
+        repo = _repo(tmp_path)
+        _branch(repo, "feat-a", "A = 1\n")
+        _record(repo)
+        _branch(repo, "feat-b", "B = 2\n")
+        _record(repo)
+        _git(repo, "switch", "-q", "feat-a")
+        (repo / "mod.py").write_text("A = 99\n")
+        _git(repo, "commit", "-qam", "edit")
+        assert _status(repo).returncode == 1
+
+
+class TestEachCandidateFindsWhatOnlyItCan:
+    """Three candidates, and each one reaches a run the other two cannot, so
+    each is pinned by a case where it alone is the route."""
+
+    def test_the_branch_finds_a_run_after_a_docs_only_commit(self, tmp_path):
+        # A later commit moves HEAD and the exact tree, but touches only docs,
+        # so the branch's run still met this tree by the judgeable diff.
+        repo = _repo(tmp_path)
+        _branch(repo, "feat-a", "A = 1\n")
+        _record(repo)
+        (repo / "NOTES.md").write_text("docs only\n")
+        _git(repo, "add", "NOTES.md")
+        _git(repo, "commit", "-qm", "docs")
+        _branch(repo, "feat-b", "B = 2\n")
+        _record(repo)
+        _git(repo, "switch", "-q", "feat-a")
+        res = _status(repo)
+        assert res.returncode == 0, res.stdout
+        assert "recorded on feat-a" in res.stdout
+
+    def test_the_exact_tree_finds_a_run_from_a_different_commit(self, tmp_path):
+        # Same content committed twice: a different commit, no shared branch,
+        # and a detached worktree — only the tree itself matches.
+        repo = _repo(tmp_path)
+        _branch(repo, "feat-a", "A = 1\n")
+        _record(repo)  # first record: no prior evidence file in the tree
+        _branch(repo, "feat-a2", "A = 1\n")
+        wt = tmp_path / "wt2"
+        _git(repo, "worktree", "add", "-q", "--detach", str(wt), "feat-a2")
+        (wt / ".prawduct").mkdir(exist_ok=True)
+        res = _status(wt)
+        assert res.returncode == 0, res.stdout
+
+
+class TestASecondWorktreeReusesTheRun:
+    def test_a_detached_worktree_at_the_same_commit_is_current(self, tmp_path):
+        repo = _repo(tmp_path)
+        _branch(repo, "feat-a", "A = 1\n")
+        _record(repo)
+        wt = tmp_path / "wt2"
+        _git(repo, "worktree", "add", "-q", "--detach", str(wt), "feat-a")
+        (wt / ".prawduct").mkdir(exist_ok=True)
+        # An untracked note makes the tree differ byte-wise, and a detached
+        # worktree has no branch: the commit is the only candidate that finds
+        # the run, and the judgeable diff then clears the note.
+        (wt / "scratch-notes.md").write_text("mine\n")
+        res = _status(wt)
+        assert res.returncode == 0, res.stdout
+        assert res.stdout.startswith("current (tree-valid)")
+
+
+class TestTheNewestRunDecides:
+    def test_a_red_rerun_on_the_same_tree_supersedes_the_green(self, tmp_path):
+        repo = _repo(tmp_path)
+        _branch(repo, "feat-a", "A = 1\n")
+        _record(repo)
+        _record(repo, _RED)
+        _branch(repo, "feat-b", "B = 2\n")
+        _record(repo)
+        _git(repo, "switch", "-q", "feat-a")
+        assert _status(repo).returncode == 1
+
+    def test_the_worktree_record_counts_even_when_its_fact_was_lost(self, tmp_path):
+        """A red run whose fact append failed is still the newest run for its
+        tree: the per-worktree record says so, and an older green fact on the
+        same tree must not vouch past it."""
+        repo = _repo(tmp_path)
+        _branch(repo, "feat-a", "A = 1\n")
+        _record(repo)
+        store = repo / ".git" / "prawduct" / "evidence.jsonl"
+        saved = store.read_bytes()
+        _record(repo, _RED)
+        store.write_bytes(saved)  # the red run's fact never landed
+        res = _status(repo)
+        assert res.returncode == 1, res.stdout
+
+    def test_a_degraded_fact_never_vouches(self, tmp_path):
+        repo = _repo(tmp_path)
+        _branch(repo, "feat-a", "A = 1\n")
+        _record(repo, _GREEN, "--degraded", "a shard never reported")
+        _branch(repo, "feat-b", "B = 2\n")
+        _record(repo)
+        _git(repo, "switch", "-q", "feat-a")
+        assert _status(repo).returncode == 1
+
+
+class TestTheStoreNeverLoosensAVerdict:
+    def test_an_unreadable_store_falls_back_to_the_worktree_record(self, tmp_path):
+        repo = _repo(tmp_path)
+        _branch(repo, "feat-a", "A = 1\n")
+        _record(repo)
+        _branch(repo, "feat-b", "B = 2\n")
+        _record(repo)
+        store = repo / ".git" / "prawduct" / "evidence.jsonl"
+        store.write_bytes(b"\xff\xfe not utf-8\n")
+        assert _status(repo).returncode == 0  # feat-b's own record still vouches
+        _git(repo, "switch", "-q", "feat-a")
+        assert _status(repo).returncode == 1  # and nothing else does
+
+
+class TestTheFactNamesItsCommit:
+    def test_a_fact_records_the_head_commit(self, tmp_path):
+        repo = _repo(tmp_path)
+        _branch(repo, "feat-a", "A = 1\n")
+        _record(repo)
+        (run,) = evidence.facts_of_kind(evidence.read_facts(repo), "test-run")
+        head = _git(repo, "rev-parse", "HEAD").stdout.strip()
+        assert run["body"]["head"] == head
+
+
+class TestThePrGateAsksTheStoreToo:
+    def test_suite_vouches_for_a_tree_a_sibling_branch_ran(self, tmp_path):
+        from lib import gates
+
+        repo = _repo(tmp_path)
+        _branch(repo, "feat-a", "A = 1\n")
+        _record(repo)
+        _branch(repo, "feat-b", "B = 2\n")
+        _record(repo)
+        _git(repo, "switch", "-q", "feat-a")
+        target = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        vouches, reason = gates.suite_vouches_for_tree(repo, target)
+        assert vouches, reason
+        assert "recorded on feat-a" in reason

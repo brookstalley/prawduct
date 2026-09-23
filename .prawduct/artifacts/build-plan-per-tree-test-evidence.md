@@ -20,6 +20,11 @@ governed_by:
       - "every fact has one home → engaged, see the DECISION below on the file and the fact recording one run"
       - "authority fails closed; advice fails soft → conforms: a store that cannot be read or appended leaves clause 2 answering from `.test-evidence.json` alone, which is today's behaviour, never a looser one; a failed append is attributed on stderr and does not change `record`'s exit"
       - "local-first: no network, no daemon, no third-party dependency → conforms"
+      - "an independent reviewer never mutates the session it reviews → inapplicable, because no reviewer write path changes"
+      - "the plugin writes nothing into a governed repo except its own state and the shared evidence store → conforms: the new writes are store facts"
+      - "Python-written, never Python-specific → conforms: facts are keyed by git trees and junit counts, both runner-neutral"
+      - "prawduct guides and reviews; it never implements → inapplicable, because nothing is written into product code"
+      - "goals and verification bind; prescribed method is advice → engaged: Chunk 2 replaced this plan's drafted candidate rule (exact tree + branch) with exact tree + HEAD commit + branch, judged newest-first, after its tests showed a worktree tree rarely matches a run byte-for-byte; recorded in the DECISION below"
   - artifact: api-contract
     dispositions:
       - "persisted data independently schema-versioned → conforms: new kind under schema 1"
@@ -30,6 +35,7 @@ governed_by:
       - "review wall-clock is P0 → conforms: the lookup adds one store read (0.1s on this clone's 12MB store) and at most two tree diffs to `test-status`"
       - "state-file growth is advisory, never a block → conforms: one small line per recorded run"
       - "review rigor is stage-keyed → inapplicable, because no severity or stage changes"
+      - "proportionality ratchets both ways → inapplicable, because no control is added or removed"
 partition: serial — both chunks edit `cmd_test_evidence` and `gates.tests_are_current`
 last_validated: 2026-09-23
 ---
@@ -38,7 +44,7 @@ last_validated: 2026-09-23
 
 ## Requirements Confidence
 
-**Level:** High on the problem, Medium on the lookup's candidate set (see assumptions).
+**Level:** High.
 
 **Problem:** `.test-evidence.json` holds one record per worktree. Switching branch replaces it, so
 switching back to a branch whose tree already has a green run re-runs the suite. In discodon one
@@ -58,7 +64,7 @@ store, the kind `evidence.py` already reserves.
 
 | # | Consumer | Question | Needs |
 |---|---|---|---|
-| Q1 | `tests_are_current` clause 2 (`test-status`, Critic, PR payload) | Does any recorded green, whole-suite run vouch for this working tree? | tree, failed, degraded, ts |
+| Q1 | `tests_are_current` clause 2 (`test-status`, Critic, PR payload) | Does any recorded green, whole-suite run vouch for this working tree? | tree, head, actor.branch, failed, degraded, ts |
 | Q2 | `suite_vouches_for_tree(target)` (PR gate, Stop gate transfer) | Same, for a named tree | same |
 | Q3 | a reader saying WHICH run vouched | Where and when did it run, and was it measured or reused? | ts, actor.branch/worktree, source |
 | Q4 | consumer-overhead measurement (`tools/measure-consumer-overhead.py`) | How many suite runs, how long, per branch? | duration_seconds, actor.branch, ts |
@@ -67,8 +73,13 @@ store, the kind `evidence.py` already reserves.
 Failing names (#792) stay on `.test-evidence.json`: no query above needs them cross-worktree.
 
 **Fact body:** `tree`, `passed`, `failed`, `skipped`, `duration_seconds`, `source`
-(`run` | `from-junit` | `restamp`), `degraded` when present. No fact when no tree was captured
-(`--from-counts`, a capture failure).
+(`run` | `from-junit`), `head` and `degraded` when present. No fact when no tree was captured
+(`--from-counts`, a capture failure), and none from a restamp.
+
+`[DECISION: a restamp records no fact | it measured nothing, and the tree it stamps is a fresh
+capture rather than the one its reused counts met, so a restamped `--from-counts` record would have
+put a green run on a tree no suite ran against (Chunk 1 review, W1). The run whose counts it reuses
+already has its fact | user can veto/override]`
 
 `[DECISION: the file and the fact both record one run, written by one command from one set of
 variables | the norm's why is that N copies drift because N places must be edited; here one writer
@@ -77,14 +88,21 @@ worktree's latest run" (session clause, coverage half, failing names); the fact 
 have green runs". Making the fact the only home would move ten readers and give every existing
 worktree one false stale on upgrade | user can veto/override]`
 
-`[DECISION: the newest fact for a tree decides it | a flaky red re-run on a tree must supersede the
-earlier green, as the single record does today; "any green fact" would let one lucky run vouch
-forever | user can veto/override]`
+`[DECISION: the newest run that MET the target tree decides it, green vouching and red denying,
+and the worktree's own record competes as a run | a flaky red re-run must supersede the earlier
+green, as the single record does today. "Newest fact for the exact tree" cannot see that: two runs
+on the same code rarely share a byte-identical tree, because the record itself is in it — Chunk 2's
+lost-fact test caught exactly this | user can veto/override]`
 
-`[ASSUMPTION: candidates are (a) facts whose tree equals the target exactly and (b) the newest fact
-recorded on the current branch, each judged by the existing judgeable tree-diff | MED impact — a
-branch switch returns to a tree that differs from its run only in docs/metadata, so exact match
-alone rarely hits, while diffing every fact is O(store); two diffs bound the cost | user can correct]`
+`[DECISION: candidates are the newest fact for (a) the exact target tree, (b) the current HEAD
+commit, and (c) the current branch — at most three, each judged by the existing judgeable tree-diff
+| a working tree almost never matches a run byte-for-byte (untracked files, `.prawduct/` state), so
+exact match alone rarely hits; a second worktree is often detached, so a branch match alone misses
+it; the HEAD commit is what both cases share. Diffing every fact is O(store). No new staleness rule:
+the diff that decides is the one the per-worktree clause already trusts | user can veto/override]`
+
+**Fact body amended at Chunk 2:** adds `head` (the HEAD commit at record time; omitted on an unborn
+branch) — the candidate key (b) needs it. Additive, and the kind is unreleased.
 
 **Boundary investigation (2026-09-23, every `read_facts` consumer, `tools/` included):** every gate,
 verdict, count and census filters by kind before reading a body, so no verdict changes. Three
@@ -108,6 +126,10 @@ a sibling `test-runs.jsonl` (departs from the owner's one-store decision) | user
 captured a tree (run, `--from-junit`, `--no-rerun`), soft-failing with stderr attribution;
 `evidence list` renders a `test-run` row's tree, counts, source and degraded marker; the
 verdict-cache fingerprint excludes observational kinds (DECISION above).
+**Chunk 1 review fixes, carried into Chunk 2's commit:** a restamp records no fact; `read_facts`
+parses each line once and the whole-file `fingerprint` (which lost its only reader) is removed;
+`coverage_algebra.VERDICT_INPUT_KINDS` names what the verdict reads and a test pins it disjoint from
+`OBSERVATIONAL_KINDS`; the prose that still said any append cold-starts the cache is corrected.
 
 **Done when:** tests for each source, for no fact on `--from-counts`, for a degraded and a failing
 run producing facts, for an append failure leaving `record`'s exit unchanged; a `test-run` or
@@ -127,5 +149,5 @@ tests green; one `/prawduct:critic`.
 
 ## Status
 
-- [ ] Chunk 1: record every run as a `test-run` fact
+- [x] Chunk 1: record every run as a `test-run` fact
 - [ ] Chunk 2: freshness consults the store
