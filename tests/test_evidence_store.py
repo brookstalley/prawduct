@@ -1016,10 +1016,9 @@ class TestDedupedGuardRefusal:
 
     ``critic-begin`` fires once per dispatch, so its default id (timestamp +
     uuid) counts firings correctly. A gate is re-asked several times a session
-    about an unchanged repo, and the composed-verdict memo keys on a content
-    hash of this whole store — so a record per poll would both miscount the
-    event and evict every memoized verdict on every poll. ``dedupe_key`` is the
-    answer: a deterministic id, and a second observation that writes nothing.
+    about an unchanged repo, so a record per poll would miscount the event and
+    grow the store a line per poll. ``dedupe_key`` is the answer: a
+    deterministic id, and a second observation that writes nothing.
     """
 
     def test_the_id_is_a_function_of_guard_and_key_only(self, tmp_path):

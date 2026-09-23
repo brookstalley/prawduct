@@ -222,3 +222,75 @@ class TestThePrGateAsksTheStoreToo:
         vouches, reason = gates.suite_vouches_for_tree(repo, target)
         assert vouches, reason
         assert "recorded on feat-a" in reason
+
+
+class TestARefusedRecordIsAFloor:
+    """This worktree's own record is its latest word. When it refuses to vouch,
+    a run recorded BEFORE it must not overrule it — only a strictly newer run
+    may — and a record that cannot be validated lets nothing through."""
+
+    def test_a_failing_record_with_no_tree_still_blocks_an_older_green(self, tmp_path):
+        # `--from-counts` names no tree, so it could never compete by tree; an
+        # older green at the same commit would otherwise vouch past it.
+        repo = _repo(tmp_path)
+        _branch(repo, "feat-a", "A = 1\n")
+        _record(repo)
+        _run_in(repo, "test-evidence", "record", "--from-counts",
+                "passed=1", "failed=2", "skipped=0")
+        res = _status(repo)
+        assert res.returncode == 1, res.stdout
+        assert "2 test(s) failing" in res.stdout
+
+    def test_a_schema_invalid_record_lets_nothing_through(self, tmp_path):
+        repo = _repo(tmp_path)
+        _branch(repo, "feat-a", "A = 1\n")
+        _record(repo)
+        path = repo / ".prawduct" / ".test-evidence.json"
+        ev = json.loads(path.read_text())
+        ev["degraded"] = True  # the schema wants a reason string
+        path.write_text(json.dumps(ev))
+        res = _status(repo)
+        assert res.returncode == 1, res.stdout
+
+    def test_a_strictly_newer_green_from_a_sibling_still_vouches(self, tmp_path):
+        import time
+
+        repo = _repo(tmp_path)
+        _branch(repo, "feat-a", "A = 1\n")
+        _record(repo, _RED)
+        time.sleep(1.1)  # store and record timestamps are to the second
+        wt = tmp_path / "wt2"
+        _git(repo, "worktree", "add", "-q", "--detach", str(wt), "feat-a")
+        (wt / ".prawduct").mkdir(exist_ok=True)
+        _record(wt)
+        res = _status(repo)
+        assert res.returncode == 0, res.stdout
+        assert "evidence store" in res.stdout
+
+
+class TestARedRunElsewhereDoesNotBlockAGreenHere:
+    def test_switching_away_from_a_red_branch_to_a_green_one_is_current(self, tmp_path):
+        """The everyday case this fallback exists for: A was green, work on B
+        is mid-fix and red, and switching back to A re-runs nothing. B's red
+        record is about B's tree, so it sets no floor over A."""
+        repo = _repo(tmp_path)
+        _branch(repo, "feat-a", "A = 1\n")
+        _record(repo)
+        _branch(repo, "feat-b", "B = 2\n")
+        _record(repo, _RED)
+        _git(repo, "switch", "-q", "feat-a")
+        res = _status(repo)
+        assert res.returncode == 0, res.stdout
+        assert "recorded on feat-a" in res.stdout
+
+
+class TestAnUndecodableRecordIsStale:
+    def test_non_utf8_evidence_reads_stale_without_a_traceback(self, tmp_path):
+        repo = _repo(tmp_path)
+        _branch(repo, "feat-a", "A = 1\n")
+        _record(repo)
+        (repo / ".prawduct" / ".test-evidence.json").write_bytes(b"\xff\xfe not utf-8 {")
+        res = _status(repo)
+        assert res.returncode == 1, res.stdout
+        assert res.stdout.startswith("stale: unreadable evidence"), res.stdout
+        assert "Traceback" not in res.stderr

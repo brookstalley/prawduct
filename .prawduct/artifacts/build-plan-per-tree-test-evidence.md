@@ -11,10 +11,13 @@ governed_by:
   - artifact: data-model
     dispositions:
       - "governance verdicts come from the append-only fact ledger, never mutable model-written state; no model sits in a fact's write path → conforms: `test-run` facts are appended by `test-evidence record` (deterministic code) from the same variables it writes to `.test-evidence.json`; the model supplies at most a junit report, exactly as it does today"
-      - "facts are immutable and append-only → conforms: a later run on the same tree is a new fact, and the NEWEST fact for a tree decides it, so a red re-run supersedes an earlier green without editing it"
+      - "facts are immutable and append-only → conforms: a later run is a new fact, and the newest run that met a tree decides it, so a red re-run supersedes an earlier green without editing it"
       - "derived views are disposable and never authoritative → conforms: nothing becomes a view; `.test-evidence.json` stays a primary per-worktree record"
       - "a fact written by a newer schema is a loud block → conforms: the new kind rides schema 1, which already keeps unknown kinds and lets gates filter by kind; `SCHEMA_VERSION` does not move"
       - "two stores, two lifetimes → conforms: the store is per-clone and gitignored by construction (inside `.git`), the right lifetime for a cache of runs"
+      - "a governance document reaches a terminal state, never deleted → conforms: this plan is archived at the release"
+      - "every issue written to the backlog conforms to §1 title rules → inapplicable, because no issue is written (#653's close at merge changes status only)"
+      - "backlog_service_repo selects the authoritative backlog → conforms: #653 closes through /prawduct:backlog on the Issues backend"
   - artifact: architecture
     dispositions:
       - "every fact has one home → engaged, see the DECISION below on the file and the fact recording one run"
@@ -126,6 +129,16 @@ a sibling `test-runs.jsonl` (departs from the owner's one-store decision) | user
 captured a tree (run, `--from-junit`, `--no-rerun`), soft-failing with stderr attribution;
 `evidence list` renders a `test-run` row's tree, counts, source and degraded marker; the
 verdict-cache fingerprint excludes observational kinds (DECISION above).
+**Boundary review fixes (rev-20260923T125408Z-73e526fe, one BLOCKING):** the store could vouch past
+this worktree's own refused record (a failing `--from-counts` record names no tree; a schema-invalid
+record was read raw). `_load_test_evidence` is now `_parse_test_evidence` + `run_refusal`, the one
+rule every candidate run is judged by, and a refused record is a FLOOR for the tree it ran on (any
+tree, when it names none) — only a strictly newer fact may vouch there; an unparseable one lets
+nothing through. The verify pass (rev-20260923T130840Z-817dd9d2) found the first cut floored on ANY
+refused record, which let a red run on branch B block A's green after switching back — the case
+this plan exists for — so the floor was narrowed and that case pinned. `coverage_verdict` drops non-input kinds at its
+entry, so the memo-key carve-out no longer rests on each helper's filter.
+
 **Chunk 1 review fixes, carried into Chunk 2's commit:** a restamp records no fact; `read_facts`
 parses each line once and the whole-file `fingerprint` (which lost its only reader) is removed;
 `coverage_algebra.VERDICT_INPUT_KINDS` names what the verdict reads and a test pins it disjoint from

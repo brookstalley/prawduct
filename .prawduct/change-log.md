@@ -14,10 +14,15 @@ a branch whose tree already had a green run then re-ran the suite: in one consum
 four ~7-minute re-runs (#653). Now every `test-evidence record` of a real run or an ingested report
 also appends a `test-run` fact to the shared evidence store. The fact records the tree, the counts,
 the commit and the branch. When a worktree's own record does not vouch for the current tree, or
-it has none, `test-status` and the PR-gate transfer ask the store, using at most three candidates:
+it has none, `test-status` and the base-advance transfer at both the PR and Stop gates ask the
+store, using at most three candidates:
 the newest run for the exact tree, for the commit checked out, and for the branch. Each is judged
 by the same judgeable tree diff as before. The newest run that met the tree decides it, so a red
-re-run supersedes an earlier green one. A restamp records no fact, because it measured nothing.
+re-run supersedes an earlier green one. A worktree's own red or degraded record is a floor for the
+tree it ran on (or for any tree, when it names none): only a strictly newer run may vouch past it
+there. A red run on another branch sets no floor, so switching away from half-fixed work to a branch
+with a green run re-runs nothing. A record that cannot be validated lets nothing through. A restamp records no fact, because it measured nothing.
+`evidence list --kind test-run` shows each run's tree, counts, source and a `DEGRADED` marker.
 
 The coverage gates' verdict cache used to key on a hash of the whole store, so every such append
 would have made the next gate recompute from cold. It now keys on `coverage_fingerprint`, which

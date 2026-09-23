@@ -836,10 +836,10 @@ class TestTransferYieldSignal:
         assert "base_tree" not in body and "head_tree" not in body
 
     def test_a_repeated_poll_leaves_the_store_byte_identical(self, tmp_path, capsys):
-        # The interaction that would have undone the verdict memo: the memo keys
-        # on a content hash of the whole store, and the gate is polled several
-        # times a session. A record per POLL evicts every cached verdict on every
-        # poll and puts the gate back on its ~17 s cold path.
+        # The gate is polled several times a session, so a record per POLL would
+        # count polls rather than grants and grow the store a line per poll. (A
+        # grant is a guard-refusal fact, which the verdict memo's key leaves out,
+        # so it no longer evicts cached verdicts either way.)
         repo, _prior_base, _prior_head = _advanced_base_repo(tmp_path)
         _write_test_evidence(repo)
         assert _run_gate(repo, capsys)[0] == 0

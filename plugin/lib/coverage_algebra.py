@@ -69,10 +69,10 @@ KeyFn = Callable[[str], "str | None"]
 
 _RESOLVING_DISPOSITIONS = frozenset({"fixed", "waived"})
 
-#: The fact kinds this module reads — every other kind is invisible to the
-#: coverage verdict. ``evidence.OBSERVATIONAL_KINDS`` (the kinds left out of the
-#: verdict memo's key) must never overlap it, and a test derives this set from
-#: the module's own ``kind`` comparisons so a new filter cannot slip past it.
+#: The fact kinds the coverage verdict reads. :func:`coverage_verdict` drops
+#: every other kind at its entry, which is what makes it safe for
+#: ``evidence.OBSERVATIONAL_KINDS`` (the kinds left out of the verdict memo's
+#: key) to exist at all; the two sets must never overlap.
 VERDICT_INPUT_KINDS = frozenset({"review", "resolution"})
 
 
@@ -628,6 +628,12 @@ def coverage_verdict(
         return {"status": "uncovered", "reason": "no base tree to compose from"}
     if not isinstance(target_tree, str) or not target_tree:
         return {"status": "uncovered", "reason": "no target tree to compose to"}
+    # Only the kinds this module reads get past here. Every helper below also
+    # filters by kind, but a filter written some other way later would not be
+    # visible to `evidence.OBSERVATIONAL_KINDS` — the kinds the verdict memo's
+    # key leaves out — so the guarantee that those kinds cannot move a verdict
+    # is made once, at the door, rather than by each helper remembering to.
+    facts = [f for f in facts if f.get("kind") in VERDICT_INPUT_KINDS]
     resolved = resolution_index(facts)
 
     def _settle(path: list[dict]) -> dict:

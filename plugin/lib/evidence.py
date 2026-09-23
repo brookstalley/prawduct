@@ -86,8 +86,9 @@ SUPPORTED_SCHEMAS = frozenset({1})
 # counts (:func:`append_test_run`). It is how a freshness check finds a green
 # run for a tree after the per-worktree ``.test-evidence.json`` has moved on to
 # another branch. Like ``guard-refusal`` it is observational to the COVERAGE
-# data plane — ``coverage_algebra`` never reads it — and the test-evidence
-# freshness check is its only reader.
+# data plane — ``coverage_algebra`` never reads it. Its readers are the
+# test-evidence freshness fallback (``gates._store_run_vouching``), the one that
+# decides anything, and ``evidence list``, which only displays it.
 KNOWN_KINDS = frozenset(
     {"review", "resolution", "disposition", "guard-refusal", "test-run"}
 )
@@ -355,9 +356,9 @@ def append_guard_refusal(
     per *observation* is what counts events. With a key, the id is a digest of
     ``(guard, dedupe_key)`` — no timestamp, no uuid — and the second
     observation of the same event appends nothing at all, so the store does not
-    grow a line per poll. (It no longer matters to ``verdict_cache``: its key
-    leaves ``guard-refusal`` lines out, see ``read_facts``'s
-    ``coverage_fingerprint``.)
+    grow a line per poll. (``verdict_cache``'s key leaves ``guard-refusal``
+    lines out — ``read_facts``'s ``coverage_fingerprint`` — so a firing never
+    evicts a cached verdict either way.)
 
     A deduped call returns ``{"status": "duplicate", "id": ...}``, which is a
     SUCCESS: the event is already on the record. Callers checking for a degraded
@@ -1143,7 +1144,7 @@ def distinct_trees(facts: list[dict]) -> set[str]:
     The kind filter is the whole contract, not a detail: only review facts
     become edges (``coverage_algebra`` line-one filter), so only their trees
     are nodes. Reading every kind's body for a ``base_tree`` key would let a
-    purely observational fact — a ``guard-refusal``, a future ``test-run`` —
+    purely observational fact — a ``guard-refusal``, a ``test-run`` —
     inflate ``evidence status``'s tree count with trees no review covers,
     which reads as coverage that does not exist.
     """

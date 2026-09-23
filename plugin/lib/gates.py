@@ -176,32 +176,61 @@ def _load_test_evidence(prawduct_dir: Path) -> "tuple[dict | None, str]":
     ``.get()`` and the record parses as "no failures, no timestamp", which the
     caller then rejects for the wrong reason.
     """
+    record, why_not = _parse_test_evidence(prawduct_dir)
+    if record is None:
+        return None, why_not
+    refusal = run_refusal(record)
+    if refusal:
+        return None, refusal
+    return record, ""
+
+
+def _parse_test_evidence(prawduct_dir: Path) -> "tuple[dict | None, str]":
+    """The first half of :func:`_load_test_evidence`: on disk, parseable, an
+    object, a valid schema — WHAT the saved run says, before anything decides
+    whether it may vouch. Split out so a reader that needs a refused record's
+    timestamp (the store fallback, :func:`_store_run_vouching`) gets it through
+    the same validation rather than a second, laxer parse."""
     evidence_path = prawduct_dir / ".test-evidence.json"
     if not evidence_path.is_file():
         return None, "no .test-evidence.json on disk"
     try:
         record = json.loads(evidence_path.read_text())
-    except (json.JSONDecodeError, OSError) as exc:
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError) as exc:
         return None, f"unreadable evidence ({exc})"
     if not isinstance(record, dict):
         return None, "evidence is not a JSON object"
     schema_ok, schema_err = _validate_evidence_schema(record)
     if not schema_ok:
         return None, schema_err
-    failed = record.get("failed")
-    if isinstance(failed, int) and failed > 0:
-        names = name_failing_tests(record.get("failed_tests"), failed)
-        return None, f"{failed} test(s) failing in saved evidence" + (
+    return record, ""
+
+
+def run_refusal(run: dict) -> str:
+    """Why a recorded run may not vouch for anything, or ``""`` if it may.
+
+    The second half of :func:`_load_test_evidence`, and the ONE statement of the
+    rule for every run a freshness check can consult — the worktree's record
+    and a ``test-run`` fact alike — so the store cannot come to trust a run the
+    record's own reader would refuse. A count that is not an integer refuses:
+    a fact body is not schema-checked the way the record is.
+    """
+    failed = run.get("failed")
+    if not isinstance(failed, int) or isinstance(failed, bool):
+        return "the saved run carries no valid failure count"
+    if failed > 0:
+        names = name_failing_tests(run.get("failed_tests"), failed)
+        return f"{failed} test(s) failing in saved evidence" + (
             f": {names}" if names else ""
         )
-    degraded = record.get("degraded")
+    degraded = run.get("degraded")
     if isinstance(degraded, str) and degraded.strip():
-        return None, (
+        return (
             f"the saved run reports itself degraded ({degraded.strip()}) — its "
             "counts do not cover what they appear to. Run the suite again, "
             "uncontended, and record that run"
         )
-    return record, ""
+    return ""
 
 
 #: What ``test-status`` prints in front of its reason on each exit-0 path.
@@ -451,9 +480,14 @@ def _store_run_vouching(
     :func:`_test_evidence_tree_valid`, the same judgeable diff the worktree's
     own record is judged by, so no new staleness rule enters here.
 
-    **The newest run that met the tree decides it**, and this worktree's own
-    record counts as a run: a red re-run supersedes an earlier green however
-    either was recorded, including a red run whose fact append failed.
+    **The newest run that met the tree decides it**, judged by :func:`run_refusal`
+    — the same rule the worktree's own record is judged by. And that record sets
+    a floor when it refuses to vouch for THIS tree (a red or degraded run that
+    met it, or one naming no tree): only a fact strictly newer than it may
+    vouch, so a run recorded before this worktree's latest word here never
+    overrules it — including a red run whose fact append failed. A red run on
+    another tree sets none. A record that cannot be validated lets nothing
+    through.
 
     Fails toward *not vouching*: an unreadable store, a failed capture or a
     failed diff all answer ``(False, "")``, which leaves the caller's verdict
@@ -493,28 +527,38 @@ def _store_run_vouching(
     head = head_out.strip() if rc == 0 else ""
     branch = gitstate.current_branch(project_dir) or ""
 
+    # This worktree's own record sets a FLOOR when it refuses to vouch AND is
+    # about this tree: a red or degraded run that met the target — or one that
+    # names no tree at all (a failing `--from-counts` record), so nothing can
+    # say it is about some other tree — is this worktree's latest word here, and
+    # a run recorded before it must not overrule it. So only a fact STRICTLY
+    # newer may vouch. A red run on a DIFFERENT tree sets no floor: switching
+    # away from half-fixed work to a branch that had a green run is the case
+    # this fallback exists for. A record that cannot even be parsed or dated
+    # lets nothing from the store through. A green record did not reach this
+    # fallback by vouching, so it sets no floor either.
+    floor = ""
+    if (gitstate.get_prawduct_dir(project_dir) / ".test-evidence.json").exists():
+        local, _ = _parse_test_evidence(gitstate.get_prawduct_dir(project_dir))
+        if local is None:
+            return False, ""
+        if run_refusal(local):
+            local_tree = local.get("evidence_tree")
+            about_this_tree = (
+                not isinstance(local_tree, str)
+                or not local_tree
+                or _test_evidence_tree_valid(project_dir, local_tree, target_tree)[0]
+            )
+            if about_this_tree:
+                floor = local["timestamp"]
+
     # The candidates, newest first, and the first whose tree the judgeable diff
     # says met the target DECIDES — green vouches, red or degraded denies. That
     # is what makes a red re-run supersede an earlier green: two runs on the
     # same code rarely share a byte-identical tree (the record itself is in
     # it), so "newest for this exact tree" cannot see the supersession, while
     # "newest that met this tree" can.
-    #
-    # The worktree's own record competes as a run, read raw: the loader refuses
-    # a failing record, and a failing record is exactly the one that must be
-    # able to supersede an older green fact — including one whose own fact
-    # append failed.
     candidates: list[dict] = []
-    local = _read_raw_evidence(gitstate.get_prawduct_dir(project_dir))
-    if (
-        local is not None
-        and isinstance(local.get("evidence_tree"), str)
-        and isinstance(local.get("timestamp"), str)
-    ):
-        candidates.append(
-            {"ts": local["timestamp"], "tree": local["evidence_tree"], "run": local,
-             "where": "in this worktree"}
-        )
     for fact in (
         newest_for_tree.get(target_tree),
         newest_for_head.get(head) if head else None,
@@ -522,14 +566,16 @@ def _store_run_vouching(
     ):
         if fact is None:
             continue
+        ts = fact.get("ts") if isinstance(fact.get("ts"), str) else ""
+        if floor and not ts > floor:
+            continue
         actor = fact.get("actor") if isinstance(fact.get("actor"), dict) else {}
         where = (
             f"on {actor['branch']}" if isinstance(actor.get("branch"), str)
             else f"in {actor.get('worktree', 'another worktree')}"
         )
         candidates.append(
-            {"ts": fact.get("ts") if isinstance(fact.get("ts"), str) else "",
-             "tree": fact["body"]["tree"], "run": fact["body"], "where": where}
+            {"ts": ts, "tree": fact["body"]["tree"], "run": fact["body"], "where": where}
         )
     candidates.sort(key=lambda c: c["ts"], reverse=True)
 
@@ -542,36 +588,13 @@ def _store_run_vouching(
         met, why = _test_evidence_tree_valid(project_dir, tree, target_tree)
         if not met:
             continue
-        if not _is_green_run(candidate["run"]):
+        if run_refusal(candidate["run"]):
             return False, ""
         return True, (
             f"a run recorded {candidate['where']} at {candidate['ts'] or '(unknown)'} "
             f"(evidence store): {why}"
         )
     return False, ""
-
-
-def _is_green_run(run: dict) -> bool:
-    """A run with a zero integer ``failed`` count and no ``degraded`` reason —
-    the same two conditions :func:`_load_test_evidence` refuses on."""
-    failed = run.get("failed")
-    degraded = run.get("degraded")
-    return (
-        isinstance(failed, int)
-        and not isinstance(failed, bool)
-        and failed == 0
-        and not (isinstance(degraded, str) and degraded.strip())
-    )
-
-
-def _read_raw_evidence(prawduct_dir: Path) -> "dict | None":
-    """``.test-evidence.json`` as written, or ``None`` — no schema check and no
-    refusal, for a caller that must see a failing record as a failing run."""
-    try:
-        record = json.loads((prawduct_dir / ".test-evidence.json").read_text())
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        return None
-    return record if isinstance(record, dict) else None
 
 
 def suite_vouches_for_tree(

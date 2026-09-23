@@ -55,7 +55,7 @@ out where reality still lags.
 
 - **Governance verdicts on the Critic data plane are computed from the append-only fact ledger, never from mutable model-written state — no model sits in a fact's write path.** Facts are written by deterministic code; a reviewer's judgment enters only as validated content inside a partial that code checks against a code-written manifest before it becomes a fact.
   Why: the governed party must never be able to certify itself — deriving every verdict from code-written facts is what keeps model judgment out of the authority path and lets any worktree reconstruct the same verdict from the same log.
-  Status: steady-state — scoped to the Critic data plane (kernel v3). Test runs are indexed on the store as `test-run` facts (#653, owner decision 2026-09-23) — the test-evidence freshness check is their only reader, and the per-worktree `.test-evidence.json` remains the run's primary record; PR-review evidence still lives in its own file. Extending the store to subsume the rest (reserved kinds `pr-review`/`promotion`) is design direction, not yet a ratified norm.
+  Status: steady-state — scoped to the Critic data plane (kernel v3). Test runs are indexed on the store as `test-run` facts (#653, owner decision 2026-09-23) — the test-evidence freshness fallback is the one reader that decides anything by them (`evidence list` only displays them), and the per-worktree `.test-evidence.json` remains the run's primary record; PR-review evidence still lives in its own file. Extending the store to subsume the rest (reserved kinds `pr-review`/`promotion`) is design direction, not yet a ratified norm.
 - **Facts are immutable and append-only; a state change is expressed as a new fact, never an edit or delete in place.**
   Why: append-only history is what lets any checkout replay the same verdict from the same log — an in-place edit or delete would make the ledger unreproducible and a verdict unauditable.
   Status: steady-state.
@@ -163,8 +163,9 @@ An absent file is the empty store.
   returned it), `passed`/`failed`/`skipped`, `duration_seconds`, `source` (`run` | `from-junit`),
   `head` (the commit checked out, omitted on an unborn branch) and `degraded` when the run reported
   itself so. Written by `test-evidence record` through `evidence.append_test_run` — never by a
-  restamp, which measured nothing, nor by `--from-counts`, which has no tree. Its one reader is the
-  test-evidence freshness fallback (`gates._store_run_vouching`), which lets a run recorded from
+  restamp, which measured nothing, nor by `--from-counts`, which has no tree. The one reader that
+  decides anything by it is the test-evidence freshness fallback (`gates._store_run_vouching`; `evidence
+  list` only displays it), which lets a run recorded from
   another branch or worktree vouch for a tree judgeably identical to the one it met; the newest run
   that met a tree decides it. **Observational to the coverage data plane**: composition never reads
   it, and it is one of `evidence.OBSERVATIONAL_KINDS`, which the verdict cache's key leaves out.

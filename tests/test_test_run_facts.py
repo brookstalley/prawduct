@@ -266,3 +266,29 @@ class TestTheCarveOutNeverTouchesAVerdictInput:
 
         assert evidence.OBSERVATIONAL_KINDS.isdisjoint(coverage_algebra.VERDICT_INPUT_KINDS)
         assert evidence.OBSERVATIONAL_KINDS <= evidence.KNOWN_KINDS
+
+    def test_the_verdict_never_sees_an_observational_fact(self, monkeypatch):
+        """The guarantee is made at ``coverage_verdict``'s door, so it holds
+        however a later helper spells its own kind filter: none of them is
+        ever handed an observational fact."""
+        from lib import coverage_algebra
+
+        seen: list[list[dict]] = []
+        real = coverage_algebra.resolution_index
+
+        def spy(facts):
+            seen.append(list(facts))
+            return real(facts)
+
+        monkeypatch.setattr(coverage_algebra, "resolution_index", spy)
+        shaped_like_an_edge = {"base_tree": "a" * 40, "head_tree": "b" * 40}
+        facts = [
+            {"kind": k, "id": k, "body": dict(shaped_like_an_edge)}
+            for k in ("review", "resolution", "test-run", "guard-refusal")
+        ]
+        coverage_algebra.coverage_verdict(
+            facts, "a" * 40, "b" * 40, lambda a, b: None, lambda t: None
+        )
+        assert seen, "the spy was never called, so it measured nothing"
+        kinds = {f["kind"] for f in seen[0]}
+        assert kinds == {"review", "resolution"}
