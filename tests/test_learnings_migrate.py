@@ -1313,3 +1313,221 @@ class TestBareBracketPointer:
     def test_a_real_link_elsewhere_survives(self):
         src = "## When X do Y — see [the norm](docs/norms.md#x) — [learnings-detail.md]\n"
         assert lm.strip_links(src) == "## When X do Y — see [the norm](docs/norms.md#x)\n"
+
+
+# --- --local: a repo that keeps its learnings out of git on purpose ---------
+
+
+def local_repo(tmp_path: Path, shape: str = "mixed") -> Path:
+    """The #889 reporter's repo: a public product whose learnings hold private
+    operational notes, so the corpus AND the destination are both ignored.
+
+    Everything else is committed, so ``git status`` is clean and every refusal
+    that fires is about the learnings rather than about a dirty fixture.
+    """
+    root = repo(tmp_path, shape, commit=False)
+    (root / ".gitignore").write_text(
+        "\n".join((*lm.LEGACY_FILES, ".claude/*")) + "\n", encoding="utf-8"
+    )
+    _git(root, "add", "-A")
+    _git(root, "commit", "-qm", "everything but the learnings")
+    return root
+
+
+def backups_under(root: Path) -> list[Path]:
+    """Every backup directory, found by walking the git dir rather than by
+    asking the module where it put them — a test that reads the location from
+    the code under test cannot see that code putting it somewhere else."""
+    base = root / ".git" / "prawduct" / "learnings-backup"
+    return sorted(p for p in base.iterdir() if p.is_dir()) if base.is_dir() else []
+
+
+class TestLocalMigration:
+    """`--local` trades the git commit for a private backup as the undo.
+
+    Every refusal whose reason is "git is the undo" gives way to the backup and
+    to nothing else: the refusals that protect against LOSS — the byte
+    accounting, a mistyped map key, a two-corpus ``both`` — are not about the
+    undo, and a flag that silenced them would be an escape hatch over an
+    irreversible delete.
+    """
+
+    def test_without_local_the_reporters_repo_refuses_and_names_local(
+        self, tmp_path: Path
+    ):
+        """The refusal is the only door a stuck operator sees, so it must name
+        the route that reaches the migrated state (#889: the old text named only
+        "commit it" and "unignore it", both of which publish private notes)."""
+        root = local_repo(tmp_path)
+        refusals = lm.plan(root).refusals
+        ignored = [r for r in refusals if "ignored by git" in r]
+        destination = [r for r in refusals if "destination is gitignored" in r]
+        assert ignored and destination
+        for reason in (*ignored, *destination):
+            assert "--local" in reason, reason
+
+    def test_with_local_the_same_repo_plans_clean(self, tmp_path: Path):
+        root = local_repo(tmp_path)
+        migration = lm.plan(root, local=True)
+        assert migration.refusals == []
+        assert migration.backup_dir is not None
+        assert migration.outputs
+
+    def test_apply_backs_up_every_deleted_file_byte_for_byte(self, tmp_path: Path):
+        root = local_repo(tmp_path)
+        before = {rel: (root / rel).read_bytes() for rel in lm.LEGACY_FILES}
+
+        migration = lm.plan(root, full_map(root), local=True)
+        lm.apply(root, migration)
+
+        for rel in lm.LEGACY_FILES:
+            assert not (root / rel).exists(), rel
+        [backup] = backups_under(root)
+        assert backup == migration.backup_dir
+        for rel, data in before.items():
+            assert (backup / rel).read_bytes() == data, rel
+
+    def test_the_migrated_rules_are_loadable_and_lossless(self, tmp_path: Path):
+        """The point of migrating rather than waiving: the harness loads the
+        rules tree whether or not git ignores it, so the corpus must arrive
+        whole."""
+        root = local_repo(tmp_path)
+        rules = [r for s in sections_of(root) for r in s.rules]
+        lm.apply(root, lm.plan(root, full_map(root), local=True))
+        written = "\n".join(
+            p.read_text(encoding="utf-8")
+            for p in (root / lf.RULES_DIR_REL).rglob("*.md")
+        )
+        assert rules
+        assert all(rule in written for rule in rules)
+        assert lf.resolve(root).state == lf.STATE_NEW
+
+    def test_the_backup_is_invisible_to_git(self, tmp_path: Path):
+        """A backup git could see would be one `git add -A` from publishing the
+        notes the repo ignored them to protect."""
+        root = local_repo(tmp_path)
+        lm.apply(root, lm.plan(root, local=True))
+        assert backups_under(root)
+        status = _git(root, "status", "--porcelain", "--ignored").stdout
+        assert "learnings-backup" not in status
+
+    def test_a_dirty_tracked_corpus_backs_up_its_current_bytes(
+        self, tmp_path: Path
+    ):
+        """"Commit first" exists because git is the undo. Under `--local` the
+        backup is, and it holds the bytes on disk — the edit git never saw."""
+        root = repo(tmp_path, "mixed")
+        edited = legacy_text(root) + "\n## Late\n- **An edit nobody committed.**\n"
+        (root / lf.LEGACY_REL).write_text(edited, encoding="utf-8")
+        assert any("uncommitted" in r for r in lm.plan(root).refusals)
+
+        lm.apply(root, lm.plan(root, local=True))
+        [backup] = backups_under(root)
+        assert (backup / lf.LEGACY_REL).read_text(encoding="utf-8") == edited
+
+    def test_local_does_not_silence_the_loss_refusals(self, tmp_path: Path):
+        """A mistyped slug and a two-corpus `both` are not undo questions."""
+        root = local_repo(tmp_path)
+        typo = lm.plan(root, {"no-such-topic": ["x/**"]}, local=True).refusals
+        assert any("matching no section" in r for r in typo)
+
+        both = local_repo(tmp_path / "both")
+        lf.scaffold_core(both)
+        assert any("by hand" in r for r in lm.plan(both, local=True).refusals)
+
+    def test_local_outside_a_repo_refuses_rather_than_backing_up_nowhere(
+        self, tmp_path: Path
+    ):
+        root = tmp_path / "nogit"
+        shutil.copytree(FIXTURES / "topic", root)
+        refusals = lm.plan(root, local=True).refusals
+        assert any("not a git repository" in r for r in refusals)
+        assert any("without --local" in r for r in refusals)
+
+    def test_a_failed_backup_writes_and_deletes_nothing(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """The backup is the undo, so it must exist before the first write —
+        an apply that wrote rules and THEN failed to back up would leave a
+        `both` whose only copy of the corpus is the one about to be deleted."""
+        root = local_repo(tmp_path)
+        before = legacy_text(root)
+        migration = lm.plan(root, local=True)
+
+        def no_copy(src, dst, *a, **k):
+            raise OSError("disk full")
+
+        monkeypatch.setattr(lm.shutil, "copyfile", no_copy)
+        with pytest.raises(lm.MigrateInterrupted) as exc:
+            lm.apply(root, migration)
+        assert exc.value.written == []
+        assert legacy_text(root) == before
+        assert not (root / lf.RULES_DIR_REL).exists()
+
+    def test_a_backup_that_reads_back_different_is_a_failure(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """A copy that returned without error is not yet a copy: read it back."""
+        root = local_repo(tmp_path)
+        migration = lm.plan(root, local=True)
+
+        def truncating_copy(src, dst, *a, **k):
+            Path(dst).write_bytes(Path(src).read_bytes()[:10])
+
+        monkeypatch.setattr(lm.shutil, "copyfile", truncating_copy)
+        with pytest.raises(lm.MigrateInterrupted):
+            lm.apply(root, migration)
+        assert (root / lf.LEGACY_REL).is_file()
+        assert not (root / lf.RULES_DIR_REL).exists()
+
+    def test_a_linked_worktree_backs_up_into_the_shared_git_dir(
+        self, tmp_path: Path
+    ):
+        """`--git-dir` in a worktree is a per-worktree directory that
+        `git worktree remove` deletes; the common dir outlives it."""
+        main = local_repo(tmp_path)
+        wt = tmp_path / "wt"
+        _git(main, "worktree", "add", "-q", str(wt))
+        for rel in lm.LEGACY_FILES:  # ignored, so the checkout did not bring them
+            (wt / rel).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(main / rel, wt / rel)
+
+        lm.apply(wt, lm.plan(wt, local=True))
+        assert backups_under(main)
+        assert (backups_under(main)[0] / lf.LEGACY_REL).is_file()
+
+
+class TestLocalCommand:
+    def test_apply_local_migrates_and_names_the_backup(self, tmp_path: Path):
+        root = local_repo(tmp_path)
+        proc = run_hook(root, "--apply", "--local")
+        assert proc.returncode == 0, proc.stderr
+        [backup] = backups_under(root)
+        assert str(backup) in proc.stdout
+        assert "undo" in proc.stdout
+        assert not (root / lf.LEGACY_REL).exists()
+        # The git-commit undo sentence is false here and must not be printed.
+        assert "the commit is this migration's undo" not in proc.stdout
+
+    def test_the_dry_run_names_the_backup_and_creates_nothing(self, tmp_path: Path):
+        root = local_repo(tmp_path)
+        proc = run_hook(root, "--local")
+        assert proc.returncode == 0, proc.stderr
+        assert "learnings-backup" in proc.stdout
+        assert backups_under(root) == []
+        assert (root / lf.LEGACY_REL).is_file()
+
+    def test_json_reports_the_backup_dir(self, tmp_path: Path):
+        root = local_repo(tmp_path)
+        proc = run_hook(root, "--apply", "--local", "--json")
+        assert proc.returncode == 0, proc.stderr
+        payload = json.loads(proc.stdout)
+        assert payload["applied"] is True
+        assert payload["backup_dir"] == str(backups_under(root)[0])
+
+    def test_without_local_the_command_refuses_and_names_it(self, tmp_path: Path):
+        root = local_repo(tmp_path)
+        proc = run_hook(root, "--apply")
+        assert proc.returncode == 1
+        assert "--local" in proc.stderr
+        assert (root / lf.LEGACY_REL).is_file()

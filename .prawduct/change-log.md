@@ -5,6 +5,30 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-22: `learnings-migrate --local` for repos that keep learnings out of git
+
+<!-- prawduct: type=fix | scope=learnings-migrate-local -->
+
+A repo that keeps its learnings out of git on purpose could not clear `learnings-unmigrated` (#889,
+filed by a downstream product). The migration's undo is the commit that follows it, so it refuses
+a corpus git cannot give back and a gitignored `.claude/rules/`. For a public repo whose learnings
+hold private operational notes, both remedies it offered (commit it, unignore it) publish the notes.
+Its only way through was a `learnings` gate waiver re-declared every session.
+
+`--local` swaps the undo. Before it writes anything, it copies every file it will delete to
+`<git-common-dir>/prawduct/learnings-backup/<UTC stamp>/` and reads each copy back. The git dir is
+the one place in the tree no `git add` reaches, and the common dir survives `git worktree remove`.
+Under `--local`, the refusals that exist because git is the undo give way to the backup: a corpus git
+cannot give back, uncommitted changes, git unable to say whether there are any, and the ignored
+destination. The refusals that guard against loss still stand: the byte accounting, a map key naming
+no section, and a two-corpus `both`. Outside a git repo `--local` refuses and says to run without it,
+since there is no git undo to replace there. The refusals it answers now name it, so an operator
+stuck on one is pointed to the route that reaches the migrated state.
+
+Checked before building: Claude Code loads `.claude/rules/` from disk whether or not git ignores it
+(a headless session in a repo ignoring `.claude/*` quoted a canary rule verbatim), so a local
+migration's rules are loaded, which a waiver would never achieve.
+
 ## 2026-09-22: develop opens 3.6.1-dev.6
 
 <!-- prawduct: type=chore | scope=dev-track-bump-3.6.1-dev.6 -->

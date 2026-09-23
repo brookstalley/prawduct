@@ -16,6 +16,13 @@ release process keeps the two in sync (one headline per shipped release).
 Entries accumulate here as work lands on `develop`; the cut renames this heading to its
 release number.
 
+**`learnings-migrate-local`** — `prawduct-hook learnings-migrate --local` migrates a repo that
+keeps its learnings out of git on purpose. Previously the migration refused there, because its undo
+is a commit, and the Stop hook's `learnings-unmigrated` gate then blocked every session that changed
+code. With `--local`, the migration first copies every file it will delete into a backup inside the
+git directory, where nothing can commit it, and verifies each copy. That backup is the undo. The
+checks that guard against losing rules still apply.
+
 **`reviewer-prompt-file-list`** — on a three-reviewer Critic review, the reviewers now start
 sooner on large diffs. The Critic used to paste the full subject and oracle file lists into each
 reviewer's prompt, and because it writes the three prompts one after another, the last reviewer's
