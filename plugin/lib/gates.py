@@ -112,7 +112,43 @@ _EVIDENCE_OPTIONAL_FIELDS: dict[str, tuple[type, ...]] = {
     # for it to reintroduce. The only way to a wrong stale here is to assert a
     # degradation that did not happen.
     "degraded": (str,),
+    # ``failed_tests``: the ids (``classname::name``) of the failing tests, in
+    # report order and capped, so a reader can go straight to them rather than
+    # re-running the suite to learn which broke. Present only when the recorder
+    # saw at least one failing id; ABSENCE means "no per-test ids were
+    # available" (a pass, ``--from-counts``, a summary-only suite), never
+    # "nothing failed" — ``failed`` stays the count of record. Read only for
+    # printing: a record with ``failed > 0`` is refused before it is consulted.
+    "failed_tests": (list,),
 }
+
+#: How many failing ids a printed reason names before counting the rest.
+_FAILING_NAMES_SHOWN = 10
+
+
+def name_failing_tests(ids: object, failed: int) -> str:
+    """The first few failing test ids, and how many more there are.
+
+    ``""`` when the record carries no usable ids. The remainder is counted from
+    ``failed``, not from the stored list, because the list is capped: a record
+    that kept 100 of 130 names still left 120 unprinted, and saying 90 would
+    understate how broken the run was.
+    """
+    if not isinstance(ids, list):
+        return ""
+    names = [i for i in ids if isinstance(i, str)]
+    if not names:
+        return ""
+    shown = names[:_FAILING_NAMES_SHOWN]
+    rest = max(failed, len(names)) - len(shown)
+    if rest <= 0:
+        return ", ".join(shown)
+    where = (
+        f"the record names the first {len(names)}"
+        if len(names) > len(shown)
+        else "the report did not name them"
+    )
+    return ", ".join(shown) + f" (+{rest} more; {where})"
 
 
 def _load_test_evidence(prawduct_dir: Path) -> "tuple[dict | None, str]":
@@ -150,7 +186,10 @@ def _load_test_evidence(prawduct_dir: Path) -> "tuple[dict | None, str]":
         return None, schema_err
     failed = record.get("failed")
     if isinstance(failed, int) and failed > 0:
-        return None, f"{failed} test(s) failing in saved evidence"
+        names = name_failing_tests(record.get("failed_tests"), failed)
+        return None, f"{failed} test(s) failing in saved evidence" + (
+            f": {names}" if names else ""
+        )
     degraded = record.get("degraded")
     if isinstance(degraded, str) and degraded.strip():
         return None, (

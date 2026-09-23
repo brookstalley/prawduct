@@ -37,6 +37,11 @@ rather than the file.
 2026-08-21) is the worked case: the key's *absence* means an ordinary run, so a
 writer emitting `false` rather than omitting it changes what every reader sees.
 A new field therefore has to name its absent-case semantics, not just its type.
+`failed_tests` (added 2026-09-23, #792) holds the failing ids as `classname::name`, in report order
+and capped; its absence means no per-test ids were available (a pass, `--from-counts`, a
+summary-only suite), never that nothing failed — `failed` stays the count of record. It is read
+only to name the failures in `_load_test_evidence`'s refusal reason, which `test-status`, the
+PR-gate transfer and the PR review payload all print.
 **Deliberate non-consumer:** `verify_coverage` does *not* refuse a degraded
 record — at `coverage_level: referenced` its answer is tree-derived, so which
 tests executed cannot change it. Its docstring names the `executed`-level
@@ -44,7 +49,7 @@ condition that would retire the exemption; if that lands, this entry gains a
 consumer.
 **Sweep rule:** a change to the record's shape is checked against `gates.py`'s
 shared prologue *and* the writer's ingest paths, because a restamp that skips a
-field launders it away while running nothing.
+field launders it away while running nothing. `degraded` and `failed_tests` both ride a restamp.
 
 ### `.claude/rules/learnings/` — the rules layout
 
