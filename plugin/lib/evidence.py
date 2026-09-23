@@ -17,9 +17,9 @@ consumer migration, C9 tier 1).
      "body": {...}}
 
 ``schema`` rides on every record so readers can reject-or-skip explicitly
-(C7); ``kind`` namespaces the store (``review``/``resolution``/``disposition``
-now; ``test-run``/``pr-review``/``promotion`` reserved for later constituent
-plans); ``id`` is fixed at dispatch time so consolidation is idempotent
+(C7); ``kind`` namespaces the store (:data:`KNOWN_KINDS` is the set written
+today; ``pr-review``/``promotion`` are reserved for later constituent plans);
+``id`` is fixed at dispatch time so consolidation is idempotent
 (CRT-4B7X) and readers dedupe. ``actor`` answers the debugging question
 ("who wrote this, when, from where, under which plugin") — Q7. Its ``branch``
 is OPTIONAL and omitted (never null) when HEAD is detached or unreadable; it

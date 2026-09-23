@@ -23,9 +23,10 @@ out where reality still lags.
 
 1. **One source of truth: the evidence store.** Every gate verdict (Critic coverage, resolution
    status) is derived from facts in `evidence.jsonl`. Nothing else is trusted for a verdict.
-   *Realized* for the Critic data plane (kernel v3); test-run and PR-review evidence are **intended**
-   to migrate onto the same store (reserved fact kinds `test-run`, `pr-review`, `promotion`) and
-   today still live in their own files.
+   *Realized* for the Critic data plane (kernel v3). Test runs are indexed on the store as `test-run`
+   facts while `.test-evidence.json` stays each run's primary record; PR-review evidence is
+   **intended** to migrate onto the same store (reserved fact kinds `pr-review`, `promotion`) and
+   today still lives in its own file.
 
 2. **Facts are immutable and append-only.** A fact is never edited or deleted in place. State
    changes are expressed as *new* facts (a resolution fact supersedes a finding; it does not mutate
@@ -105,7 +106,7 @@ An absent file is the empty store.
 | Field | Type | Purpose |
 |-------|------|---------|
 | `schema` | int | Envelope schema version (guards forward-compat; a record from a newer plugin is surfaced, never silently dropped) |
-| `kind` | string | Fact namespace — `review`, `resolution`, `disposition`, `guard-refusal` today; `test-run`, `pr-review`, `promotion` reserved (intended) |
+| `kind` | string | Fact namespace — `review`, `resolution`, `disposition`, `guard-refusal`, `test-run` today; `pr-review`, `promotion` reserved (intended) |
 | `id` | string | Idempotency key, fixed at dispatch — re-running consolidation never double-appends |
 | `ts` | string | ISO-8601 UTC |
 | `actor` | object | `{session, worktree, plugin}` plus optional `branch` — provenance: which session, which worktree, which plugin version wrote it. `branch` is omitted (never null) on a detached/unreadable HEAD; it exists because the worktree path alone cannot say whether a tree was disposable (#648), and a reader cannot probe a tree that is usually already deleted |
@@ -158,6 +159,17 @@ An absent file is the empty store.
   **Droppability:** a refusal sits on no coverage path and targets no other fact, so it is droppable
   at any time — dropping one loses a data point about the guard's yield, never a governance answer.
   Written by `evidence.append_guard_refusal`, the one sink for the whole class (#596).
+- **Test-run fact `body`** — one recorded suite run (#653): the `tree` it met (as `capture_tree`
+  returned it), `passed`/`failed`/`skipped`, `duration_seconds`, `source` (`run` | `from-junit`),
+  `head` (the commit checked out, omitted on an unborn branch) and `degraded` when the run reported
+  itself so. Written by `test-evidence record` through `evidence.append_test_run` — never by a
+  restamp, which measured nothing, nor by `--from-counts`, which has no tree. Its one reader is the
+  test-evidence freshness fallback (`gates._store_run_vouching`), which lets a run recorded from
+  another branch or worktree vouch for a tree judgeably identical to the one it met; the newest run
+  that met a tree decides it. **Observational to the coverage data plane**: composition never reads
+  it, and it is one of `evidence.OBSERVATIONAL_KINDS`, which the verdict cache's key leaves out.
+  **Droppability:** droppable at any time — the per-worktree `.test-evidence.json` stays the run's
+  primary record, so losing a fact costs a later suite re-run, never a governance answer.
 
 **Tree-keying (the load-bearing idea).** Facts reference git *tree SHAs*, captured via a temporary
 index that never touches the session's working tree or real index. Because a verbatim commit
