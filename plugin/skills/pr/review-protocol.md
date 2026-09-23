@@ -137,7 +137,7 @@ Nothing else in the pipeline reads this surface. A gap you leave here is a gap n
 
 The `final`/`cumulative` Critic owns this scan (`skills/critic/review-cycle.md` "Final-Mode Cross-Checks") — do **not** re-scan the diff against those rules; the same diff shouldn't be scanned twice.
 
-**You are not given the learnings at all, and that is deliberate.** Two reasons, neither of which is "they are in context already": the goal that consumed them returned **1 finding in 122 reviews**, and the scan itself belongs to the Critic by the paragraph above — so this reviewer was reading a corpus it was forbidden to use. A reintroduced pattern you recognise anyway while reading for your own goals is still a WARNING at minimum; recognising one is not the scan you are forbidden.
+**You are not given the learnings at dispatch, and that is deliberate** — though a path-scoped learnings file can still arrive when you Read a file its `paths:` match (`agents/pr-reviewer.md` says what to do with it). Two reasons, neither of which is "they are in context already": the goal that consumed them returned **1 finding in 122 reviews**, and the scan itself belongs to the Critic by the paragraph above — so this reviewer was reading a corpus it was forbidden to use. A reintroduced pattern you recognise anyway while reading for your own goals is still a WARNING at minimum; recognising one is not the scan you are forbidden.
 
 **One exception to filing PER INSTANCE, and it applies to your own goals too: when the rule
 exists and nothing enforces it, the finding is the rule — once.** It changes the COUNT, never the

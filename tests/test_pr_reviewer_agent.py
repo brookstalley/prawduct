@@ -3,9 +3,11 @@
 The PR review used to be a generic subagent spawned with a prompt. Two things a
 prompt cannot hold moved into an agent definition: a tool allow-list scoped to
 what a release-readiness review needs, and `omitClaudeMd: true`, which keeps the
-repo's `CLAUDE.md` hierarchy, its `.claude/rules/` project rules and its
-`MEMORY.md` out of the reviewer's context — a corpus `review-protocol.md`
-forbids this reviewer to scan the diff against.
+repo's `CLAUDE.md` hierarchy, its always-loaded `.claude/rules/` project rules and
+its `MEMORY.md` out of the reviewer's starting context — a corpus
+`review-protocol.md` forbids this reviewer to scan the diff against. A
+path-scoped rules file still arrives on a matching Read; that gap is pinned in
+:class:`TestClaudeMdIsOmitted` rather than left for the prose to overstate.
 
 **Ported from `tests/test_critic_reviewer_agent.py`, deliberately.** That file
 enumerates the branches this design creates, and citing a precedent without
@@ -144,6 +146,37 @@ class TestClaudeMdIsOmitted:
             "is only meaningful while it does"
         )
         assert re.search(r"^omitClaudeMd:", _frontmatter(AGENT_DEF), re.MULTILINE)
+
+    def test_every_surface_names_what_the_omission_does_not_cover(self):
+        """Measured 2026-09-22 (#888): two reviewer runs received the
+        `authoring.md` learnings area file after a Read its `paths:` matched,
+        and a control that Read an unmatched path received nothing. Claude Code
+        documents no per-agent setting that stops it. Three surfaces had
+        claimed the reviewer gets no learnings at all; a reviewer told that
+        reads an arriving area file as an instruction it was meant to have.
+
+        Each assertion is bound to the sentence carrying the correction, not
+        to the file: `pr-reviewer.md` said "path-scoped" (of `Write`) before
+        this change, so a whole-file search could not fail.
+        """
+        def flat(text: str) -> str:
+            return " ".join(text.split())
+
+        body = AGENT_DEF.read_text().split("---\n", 2)[2]
+        rest = body[body.index("## What your context does not contain"):]
+        end = rest.find("\n## ", 1)
+        section = flat(rest if end < 0 else rest[:end])
+        assert "its always-loaded `.claude/rules/` project rules" in section
+        assert "One kind of rules file still reaches you: a **path-scoped** one" in section
+        assert "it is not a checklist to scan the diff against" in section
+
+        step3 = flat(_step3_of(SKILL.read_text()))
+        assert "its always-loaded `.claude/rules/` files" in step3
+        assert "does not stop a **path-scoped** rules file" in step3
+
+        protocol = flat(PROTOCOL.read_text())
+        assert "not given the learnings at dispatch" in protocol
+        assert "a path-scoped learnings file can still arrive" in protocol
 
     def test_the_agent_is_told_not_to_read_around_the_omission(self):
         body = AGENT_DEF.read_text()
