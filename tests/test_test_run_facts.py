@@ -145,6 +145,7 @@ class TestTheListerShowsARun:
         assert f"tree={tree[:12]}" in row
         assert "passed=0 failed=1 skipped=0" in row
         assert "source=from-junit" in row
+        assert "dur=1s" in row
         assert "DEGRADED" not in row
 
     def test_a_degraded_row_says_so(self, tmp_path):

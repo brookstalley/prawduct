@@ -981,8 +981,7 @@ class TestBranchCoverageVerdictIsTheSameAnswer:
     def test_the_advisory_read_records_no_grant(self, tmp_path, capsys):
         # Authority records its own yield; advice observes and writes nothing.
         # An append from here would file a transfer grant under a gate that
-        # never ran — and would move the store fingerprint the verdict memo is
-        # keyed on, evicting it on a read taken to be cheap.
+        # never ran.
         repo, _prior_base, _prior_head = _advanced_base_repo(tmp_path)
         _write_test_evidence(repo)
         store = evidence.store_path(repo)

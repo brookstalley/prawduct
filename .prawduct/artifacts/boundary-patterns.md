@@ -62,8 +62,8 @@ worktree's own record does not vouch; `evidence list`. Nothing on the coverage d
 `coverage_algebra.VERDICT_INPUT_KINDS` is the set it reads, and `evidence.OBSERVATIONAL_KINDS`
 (which `test-run` joins) is kept out of the verdict cache's key.
 **Contract:** body `tree`, `passed`/`failed`/`skipped`, `duration_seconds`, `source`, and `head`
-and `degraded` when present. The newest run that met a tree decides it; the worktree's own record
-competes as a run.
+and `degraded` when present. The store is a fallback, asked after the worktree's own record declines;
+among its candidates (that record included) the newest run that met the tree decides it.
 **Sweep rule:** a kind joining `OBSERVATIONAL_KINDS` is a claim that `coverage_algebra` never
 reads it — `tests/test_test_run_facts.py` derives the read set from the module's own `fact.get("kind")`
 comparisons, so check that test before adding one.

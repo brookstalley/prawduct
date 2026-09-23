@@ -166,8 +166,9 @@ An absent file is the empty store.
   restamp, which measured nothing, nor by `--from-counts`, which has no tree. The one reader that
   decides anything by it is the test-evidence freshness fallback (`gates._store_run_vouching`; `evidence
   list` only displays it), which lets a run recorded from
-  another branch or worktree vouch for a tree judgeably identical to the one it met; the newest run
-  that met a tree decides it. **Observational to the coverage data plane**: composition never reads
+  another branch or worktree vouch for a tree judgeably identical to the one it met, once this
+  worktree's own record has declined; among the candidates, the newest run that met the tree
+  decides it. **Observational to the coverage data plane**: composition never reads
   it, and it is one of `evidence.OBSERVATIONAL_KINDS`, which the verdict cache's key leaves out.
   **Droppability:** droppable at any time — the per-worktree `.test-evidence.json` stays the run's
   primary record, so losing a fact costs a later suite re-run, never a governance answer.

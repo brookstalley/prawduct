@@ -18,11 +18,13 @@ it has none, `test-status` and the base-advance transfer at both the PR and Stop
 store, using at most three candidates:
 the newest run for the exact tree, for the commit checked out, and for the branch. Each is judged
 by the same judgeable tree diff as before. The newest run that met the tree decides it, so a red
-re-run supersedes an earlier green one. A worktree's own red or degraded record is a floor for the
-tree it ran on (or for any tree, when it names none): only a strictly newer run may vouch past it
-there. A red run on another branch sets no floor, so switching away from half-fixed work to a branch
-with a green run re-runs nothing. A record that cannot be validated lets nothing through. A restamp records no fact, because it measured nothing.
-`evidence list --kind test-run` shows each run's tree, counts, source and a `DEGRADED` marker.
+re-run supersedes an earlier green one. A worktree's own red or degraded record for this tree (or
+one naming no tree) competes too, so only a strictly newer run can vouch past it. A red run on
+another branch is about a different tree, so switching away from half-fixed work to a branch with
+a green run re-runs nothing. A record that cannot be validated, or a store holding a fact from a
+newer plugin, lets nothing through. The store is only a fallback: a worktree's own green record
+for its tree still answers first. A restamp records no fact, because it measured nothing.
+`evidence list --kind test-run` shows each run's tree, counts, source, duration and a `DEGRADED` marker.
 
 The coverage gates' verdict cache used to key on a hash of the whole store, so every such append
 would have made the next gate recompute from cold. It now keys on `coverage_fingerprint`, which

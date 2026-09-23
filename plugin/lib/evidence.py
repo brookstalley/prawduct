@@ -1394,6 +1394,9 @@ def _cmd_list(project_dir: Path, argv: list[str]) -> int:
             source = body.get("source")
             if isinstance(source, str) and source:
                 guard_note += f" source={source}"
+            duration = body.get("duration_seconds")
+            if isinstance(duration, (int, float)) and not isinstance(duration, bool):
+                guard_note += f" dur={duration:g}s"
             degraded = body.get("degraded")
             if isinstance(degraded, str) and degraded:
                 guard_note += " DEGRADED"

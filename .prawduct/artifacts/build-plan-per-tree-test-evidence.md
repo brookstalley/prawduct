@@ -95,7 +95,12 @@ worktree one false stale on upgrade | user can veto/override]`
 and the worktree's own record competes as a run | a flaky red re-run must supersede the earlier
 green, as the single record does today. "Newest fact for the exact tree" cannot see that: two runs
 on the same code rarely share a byte-identical tree, because the record itself is in it — Chunk 2's
-lost-fact test caught exactly this | user can veto/override]`
+lost-fact test caught exactly this. ONE direction is deliberate: the store is the fallback, asked only
+after this worktree's own record declines, so its own green record for this tree is never overruled
+by a red run elsewhere (that says flaky or environment-specific, not wrong), while its own red record
+is overruled only by a strictly newer green. A run that cannot be placed (no tree, or a failed diff)
+denies when red and proves nothing when green (boundary review rev-20260923T133115Z-fca746f6, which
+also moved the store read behind the gates' schema-ahead precheck) | user can veto/override]`
 
 `[DECISION: candidates are the newest fact for (a) the exact target tree, (b) the current HEAD
 commit, and (c) the current branch — at most three, each judged by the existing judgeable tree-diff
@@ -126,7 +131,8 @@ a sibling `test-runs.jsonl` (departs from the owner's one-store decision) | user
 ## Chunk 1: record every run as a `test-run` fact
 
 **Delivers:** `test-run` in `KNOWN_KINDS`; `test-evidence record` appends one fact per record that
-captured a tree (run, `--from-junit`, `--no-rerun`), soft-failing with stderr attribution;
+captured a tree (a run or `--from-junit`; never a restamp — see the DECISION above), soft-failing
+with stderr attribution;
 `evidence list` renders a `test-run` row's tree, counts, source and degraded marker; the
 verdict-cache fingerprint excludes observational kinds (DECISION above).
 **Boundary review fixes (rev-20260923T125408Z-73e526fe, one BLOCKING):** the store could vouch past

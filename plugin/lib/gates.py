@@ -314,7 +314,7 @@ def tests_are_current(project_dir: Path) -> tuple[bool, str, str]:
         stored, stored_reason = _store_run_vouching(project_dir)
         if stored:
             return True, stored_reason, "tree"
-        return False, why_not, "none"
+        return False, why_not + (f"; {stored_reason}" if stored_reason else ""), "none"
 
     # Timestamp check — evidence must have been written during this session.
     evidence_ts = evidence.get("timestamp")
@@ -370,16 +370,17 @@ def tests_are_current(project_dir: Path) -> tuple[bool, str, str]:
             "session",
         )
 
+    store_note = f"; {stored_reason}" if stored_reason else ""
     if session_start:
         return (
             False,
-            f"evidence predates session ({evidence_ts} < {session_start})",
+            f"evidence predates session ({evidence_ts} < {session_start}){store_note}",
             "none",
         )
 
     return False, (
         f"no session marker to date the evidence against ({evidence_ts}), and "
-        "it does not vouch for the current tree — run the suite and record it"
+        f"it does not vouch for the current tree — run the suite and record it{store_note}"
     ), "none"
 
 
@@ -445,11 +446,28 @@ def _test_evidence_tree_valid(
             "only non-judgeable paths differ between the saved run and "
             f"{target_tree[:12]}"
         )
+    met, reason = _tree_met(project_dir, recorded_tree, target_tree, same, differ, clean)
+    return bool(met), reason
+
+
+def _tree_met(
+    project_dir: Path,
+    recorded_tree: str,
+    target_tree: str,
+    same: str = "the run met this exact tree",
+    differ: str = "differ between the run and the target",
+    clean: str = "only non-judgeable paths differ between the run and the target",
+) -> "tuple[bool | None, str]":
+    """Did a run on ``recorded_tree`` meet ``target_tree``? ``True`` / ``False``,
+    or ``None`` when the comparison itself could not run (a missing object, a
+    git failure) — the third answer :func:`_test_evidence_tree_valid` folds into
+    ``False`` for its callers, and :func:`_store_run_vouching` must keep apart:
+    "cannot tell" has to deny a red run's claim to this tree, never waive it."""
     if target_tree == recorded_tree:
         return True, same
     changed = evidence.tree_diff(project_dir, recorded_tree, target_tree)
     if changed is None:
-        return False, "tree diff unavailable (missing object or git failure)"
+        return None, "tree diff unavailable (missing object or git failure)"
     # The repo's own declaration is passed HERE and NOT at the doc-only PR
     # gate: this is the freshness question. See `affects_test_outcome`.
     coupled = coverage_algebra.suite_coupled_files(
@@ -464,38 +482,54 @@ def _test_evidence_tree_valid(
 def _store_run_vouching(
     project_dir: Path, target_tree: "str | None" = None
 ) -> "tuple[bool, str]":
-    """Does a ``test-run`` fact on the shared store vouch for this tree?
+    """Does a run recorded elsewhere in the clone vouch for this tree?
 
     ``.test-evidence.json`` holds one run per worktree, so a branch switch
-    replaces it; the store keeps every recorded run, keyed by tree, for every
-    worktree of the clone. This asks it — as the fallback, after the worktree's
-    own record has declined — whether any green run met ``target_tree`` (the
-    working tree when ``None``).
+    replaces it; the shared store keeps every recorded run as a ``test-run``
+    fact, for every worktree of the clone. This is the fallback both evidence
+    readers ask AFTER this worktree's own record has declined to vouch for
+    ``target_tree`` (the working tree when ``None``). A green record that met
+    the tree answers first and is never overruled from here: it is this
+    worktree's own evidence for its own environment, and a red run on the same
+    judgeable tree elsewhere says "flaky, or environment-specific", not "wrong".
 
-    **At most three candidates**, because diffing every fact is O(store): the
-    newest fact for the exact target tree, for the commit checked out, and for
-    the current branch. A working tree rarely matches a run byte-for-byte
-    (untracked files, ``.prawduct/`` state), a second worktree is often
-    detached, and the commit is what both share. Each candidate is judged by
-    :func:`_test_evidence_tree_valid`, the same judgeable diff the worktree's
-    own record is judged by, so no new staleness rule enters here.
+    **One decision, one loop.** The candidates are this worktree's own record
+    plus at most three facts — the newest for the exact target tree, for the
+    commit checked out, and for the current branch (a working tree rarely
+    matches a run byte-for-byte, a second worktree is often detached, and the
+    commit is what both share; diffing every fact would be O(store)). Newest
+    first, each is asked whether it met the target by :func:`_tree_met`, the
+    judgeable diff the worktree's own record is judged by, and the first that
+    did DECIDES: green vouches, anything :func:`run_refusal` refuses denies.
+    Two runs on the same code rarely share a byte-identical tree (the record
+    itself is in it), so "newest that met" is what lets a red re-run supersede
+    an earlier green.
 
-    **The newest run that met the tree decides it**, judged by :func:`run_refusal`
-    — the same rule the worktree's own record is judged by. And that record sets
-    a floor when it refuses to vouch for THIS tree (a red or degraded run that
-    met it, or one naming no tree): only a fact strictly newer than it may
-    vouch, so a run recorded before this worktree's latest word here never
-    overrules it — including a red run whose fact append failed. A red run on
-    another tree sets none. A record that cannot be validated lets nothing
-    through.
+    **"Cannot tell" is never a waiver.** A run that names no tree (a
+    ``--from-counts`` record), or whose comparison could not be made, is
+    treated as having met the target when it is refused — it may be this
+    tree's newest word, so it denies — and as not having met it when it is
+    green, because nothing can show it covered this tree.
 
-    Fails toward *not vouching*: an unreadable store, a failed capture or a
-    failed diff all answer ``(False, "")``, which leaves the caller's verdict
-    exactly what it would have been without the store.
+    Fails toward *not vouching*: a store the gate precheck refuses (unreadable,
+    or holding a fact written by a newer schema, which this reader cannot
+    interpret and so must not pass over), a failed capture, or a record that
+    cannot be validated all answer ``False``. The reason is returned when there
+    is one worth printing, for the caller to add to its own.
     """
     read = evidence.read_facts(project_dir)
-    if read.get("status") != "ok":
+    if read.get("status") == "empty":
         return False, ""
+    precheck = _store_precheck(read)
+    if precheck is not None:
+        return False, f"evidence store not consulted: {precheck[1]}"
+    record_path = gitstate.get_prawduct_dir(project_dir) / ".test-evidence.json"
+    local = None
+    if record_path.exists():
+        local, _ = _parse_test_evidence(gitstate.get_prawduct_dir(project_dir))
+        if local is None:
+            return False, ""
+
     newest_for_tree: dict[str, dict] = {}
     newest_for_head: dict[str, dict] = {}
     newest_for_branch: dict[str, dict] = {}
@@ -527,38 +561,15 @@ def _store_run_vouching(
     head = head_out.strip() if rc == 0 else ""
     branch = gitstate.current_branch(project_dir) or ""
 
-    # This worktree's own record sets a FLOOR when it refuses to vouch AND is
-    # about this tree: a red or degraded run that met the target — or one that
-    # names no tree at all (a failing `--from-counts` record), so nothing can
-    # say it is about some other tree — is this worktree's latest word here, and
-    # a run recorded before it must not overrule it. So only a fact STRICTLY
-    # newer may vouch. A red run on a DIFFERENT tree sets no floor: switching
-    # away from half-fixed work to a branch that had a green run is the case
-    # this fallback exists for. A record that cannot even be parsed or dated
-    # lets nothing from the store through. A green record did not reach this
-    # fallback by vouching, so it sets no floor either.
-    floor = ""
-    if (gitstate.get_prawduct_dir(project_dir) / ".test-evidence.json").exists():
-        local, _ = _parse_test_evidence(gitstate.get_prawduct_dir(project_dir))
-        if local is None:
-            return False, ""
-        if run_refusal(local):
-            local_tree = local.get("evidence_tree")
-            about_this_tree = (
-                not isinstance(local_tree, str)
-                or not local_tree
-                or _test_evidence_tree_valid(project_dir, local_tree, target_tree)[0]
-            )
-            if about_this_tree:
-                floor = local["timestamp"]
-
-    # The candidates, newest first, and the first whose tree the judgeable diff
-    # says met the target DECIDES — green vouches, red or degraded denies. That
-    # is what makes a red re-run supersede an earlier green: two runs on the
-    # same code rarely share a byte-identical tree (the record itself is in
-    # it), so "newest for this exact tree" cannot see the supersession, while
-    # "newest that met this tree" can.
     candidates: list[dict] = []
+    if local is not None and isinstance(local.get("timestamp"), str):
+        local_tree = local.get("evidence_tree")
+        candidates.append({
+            "ts": local["timestamp"],
+            "tree": local_tree if isinstance(local_tree, str) and local_tree else None,
+            "run": local,
+            "where": "in this worktree",
+        })
     for fact in (
         newest_for_tree.get(target_tree),
         newest_for_head.get(head) if head else None,
@@ -566,29 +577,32 @@ def _store_run_vouching(
     ):
         if fact is None:
             continue
-        ts = fact.get("ts") if isinstance(fact.get("ts"), str) else ""
-        if floor and not ts > floor:
-            continue
         actor = fact.get("actor") if isinstance(fact.get("actor"), dict) else {}
-        where = (
-            f"on {actor['branch']}" if isinstance(actor.get("branch"), str)
-            else f"in {actor.get('worktree', 'another worktree')}"
-        )
-        candidates.append(
-            {"ts": ts, "tree": fact["body"]["tree"], "run": fact["body"], "where": where}
-        )
+        candidates.append({
+            "ts": fact.get("ts") if isinstance(fact.get("ts"), str) else "",
+            "tree": fact["body"]["tree"],
+            "run": fact["body"],
+            "where": (
+                f"on {actor['branch']}" if isinstance(actor.get("branch"), str)
+                else f"in {actor.get('worktree', 'another worktree')}"
+            ),
+        })
     candidates.sort(key=lambda c: c["ts"], reverse=True)
 
-    seen: set[str] = set()
+    seen: set = set()
     for candidate in candidates:
         tree = candidate["tree"]
-        if tree in seen:
+        key = tree if tree is not None else ("no-tree", candidate["ts"])
+        if key in seen:
             continue
-        seen.add(tree)
-        met, why = _test_evidence_tree_valid(project_dir, tree, target_tree)
+        seen.add(key)
+        refused = bool(run_refusal(candidate["run"]))
+        met, why = (None, "") if tree is None else _tree_met(project_dir, tree, target_tree)
+        if met is None:
+            met = refused  # cannot tell: a refused run denies, a green one proves nothing
         if not met:
             continue
-        if run_refusal(candidate["run"]):
+        if refused:
             return False, ""
         return True, (
             f"a run recorded {candidate['where']} at {candidate['ts'] or '(unknown)'} "
@@ -661,7 +675,7 @@ def suite_vouches_for_tree(
     stored, stored_reason = _store_run_vouching(project_dir, target_tree)
     if stored:
         return True, stored_reason
-    return False, why_not
+    return False, why_not + (f"; {stored_reason}" if stored_reason else "")
 
 
 def _read_session_start(prawduct_dir: Path) -> str:

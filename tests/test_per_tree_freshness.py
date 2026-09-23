@@ -7,8 +7,10 @@ at most three candidates — the newest fact for the exact tree, for the current
 HEAD commit, and for the current branch — and judging each with the same
 judgeable tree-diff the per-worktree clause already trusts.
 
-The NEWEST run for a tree decides it, and the worktree's own record counts as a
-run: a red re-run supersedes an earlier green, however the two were recorded.
+Among the candidates — this worktree's own record included — the newest run
+that met the tree decides it, so a red re-run supersedes an earlier green. One
+direction is deliberate: the store is only asked after this worktree's own
+record declines, so its own green record for this tree is never overruled.
 """
 
 from __future__ import annotations
@@ -294,3 +296,117 @@ class TestAnUndecodableRecordIsStale:
         assert res.returncode == 1, res.stdout
         assert res.stdout.startswith("stale: unreadable evidence"), res.stdout
         assert "Traceback" not in res.stderr
+
+
+def _feat_a_green_then_b(tmp_path):
+    """feat-a green, feat-b recorded, still on feat-b — switching to feat-a
+    now would be current by the store (the baseline each test below perturbs)."""
+    repo = _repo(tmp_path)
+    _branch(repo, "feat-a", "A = 1\n")
+    _record(repo)
+    head_a = _git(repo, "rev-parse", "HEAD").stdout.strip()
+    _branch(repo, "feat-b", "B = 2\n")
+    _record(repo)
+    return repo, head_a
+
+
+class TestANewerSchemaStopsTheStore:
+    """A fact written by a newer plugin may be the freshest run, and this
+    reader cannot interpret it — so the store vouches for nothing, loudly."""
+
+    def _ahead(self, repo: Path) -> None:
+        store = repo / ".git" / "prawduct" / "evidence.jsonl"
+        with store.open("a") as fh:
+            fh.write(json.dumps({"schema": 2, "kind": "test-run", "id": "tr-ahead",
+                                 "ts": "2099-01-01T00:00:00Z", "actor": {}, "body": {}}) + "\n")
+
+    def test_test_status_is_stale_and_says_why(self, tmp_path):
+        repo, _ = _feat_a_green_then_b(tmp_path)
+        _git(repo, "switch", "-q", "feat-a")
+        assert _status(repo).returncode == 0  # the baseline vouches
+        self._ahead(repo)
+        res = _status(repo)
+        assert res.returncode == 1, res.stdout
+        assert "evidence store not consulted" in res.stdout
+        assert "newer than this plugin" in res.stdout
+
+    def test_the_pr_gate_is_denied_too(self, tmp_path):
+        from lib import gates
+
+        repo, _ = _feat_a_green_then_b(tmp_path)
+        _git(repo, "switch", "-q", "feat-a")
+        target = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        assert gates.suite_vouches_for_tree(repo, target)[0]
+        self._ahead(repo)
+        vouches, reason = gates.suite_vouches_for_tree(repo, target)
+        assert not vouches
+        assert "evidence store not consulted" in reason
+
+
+class TestCannotTellIsNeverAWaiver:
+    def test_a_red_run_whose_tree_cannot_be_compared_denies(self, tmp_path):
+        """A newer red run at feat-a's commit, whose tree object is missing so
+        no diff can place it: it may be this tree's newest word, so it denies —
+        even though feat-a's older green would otherwise vouch by branch."""
+        repo, head_a = _feat_a_green_then_b(tmp_path)
+        evidence.append_test_run(repo, {
+            "tree": "f" * 40, "head": head_a, "passed": 0, "failed": 1,
+            "skipped": 0, "duration_seconds": 1.0, "source": "run",
+        })
+        _git(repo, "switch", "-q", "feat-a")
+        res = _status(repo)
+        assert res.returncode == 1, res.stdout
+
+
+class TestAMalformedCountNeverVouches:
+    def _fact(self, repo: Path, head: str, failed) -> None:
+        tree = evidence.capture_tree(repo)["tree"]
+        evidence.append_test_run(repo, {
+            "tree": tree, "head": head, "passed": 1, "failed": failed,
+            "skipped": 0, "duration_seconds": 1.0, "source": "run",
+        })
+
+    def test_a_string_count_is_refused_end_to_end(self, tmp_path):
+        repo, head_a = _feat_a_green_then_b(tmp_path)
+        _git(repo, "switch", "-q", "feat-a")
+        self._fact(repo, head_a, "0")
+        res = _status(repo)
+        assert res.returncode == 1
+        assert res.stdout.startswith("stale:"), res.stdout  # refused, not crashed
+        assert "Traceback" not in res.stderr
+
+    def test_an_integer_zero_is_the_control(self, tmp_path):
+        repo, head_a = _feat_a_green_then_b(tmp_path)
+        _git(repo, "switch", "-q", "feat-a")
+        self._fact(repo, head_a, 0)
+        assert _status(repo).returncode == 0
+
+
+class TestRunRefusal:
+    def test_each_malformed_count_refuses(self):
+        from lib import gates
+
+        for failed in (None, "0", True, 0.0):
+            run = {} if failed is None else {"failed": failed}
+            assert gates.run_refusal(run) == "the saved run carries no valid failure count", failed
+
+    def test_a_clean_run_is_not_refused(self):
+        from lib import gates
+
+        assert gates.run_refusal({"failed": 0}) == ""
+        assert "degraded" in gates.run_refusal({"failed": 0, "degraded": "x"})
+        assert "1 test(s) failing" in gates.run_refusal({"failed": 1})
+
+
+class TestHandTypedCountsNeverVouch:
+    def test_a_green_record_naming_no_tree_proves_nothing(self, tmp_path):
+        """``--from-counts`` names no tree, so nothing can show the counts
+        covered this one: through the store it can deny, never vouch."""
+        repo = _repo(tmp_path)
+        _branch(repo, "feat-b", "B = 2\n")
+        _record(repo)  # one fact in the store, for another tree
+        _branch(repo, "feat-a", "A = 1\n")
+        _run_in(repo, "test-evidence", "record", "--from-counts",
+                "passed=5", "failed=0", "skipped=0")
+        res = _status(repo)
+        assert res.returncode == 1, res.stdout
