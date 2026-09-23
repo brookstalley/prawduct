@@ -1112,8 +1112,14 @@ def assemble_session_briefing(
 #: until someone clones the repo and finds a learnings corpus of nothing. A
 #: product that gitignores `.claude/` (common) hits this on its first session
 #: after migrating, and the resolver reports `new` for it either way.
+#:
+#: It states the consequence and gives no instruction. Some repos ignore the
+#: tree ON PURPOSE — `learnings-migrate --local` exists for public repos whose
+#: learnings hold private notes — and an "unignore it" read every session by an
+#: agent is one `git add -A` from publishing them. Whether to commit is the
+#: owner's call; the briefing's job is to make the cost visible.
 GITIGNORED_RULES_SUFFIX = (
-    " — GITIGNORED: the rules tree is not committed; unignore .claude/rules/"
+    " — GITIGNORED: the rules tree exists only in this checkout; a clone will not have it"
 )
 
 #: The commit message the migration directive prescribes, so the fleet's

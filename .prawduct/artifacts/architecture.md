@@ -248,6 +248,7 @@ the plugin no longer places them.
 | Tier | Where | Holds | Sharing |
 |------|-------|-------|---------|
 | Ledger (source of truth) | `<git-common-dir>/prawduct/` (inside `.git`) | evidence facts | shared by all worktrees of a clone; never committed |
+| Local-only undo | `<git-common-dir>/prawduct/learnings-backup/<UTC stamp>/` (inside `.git`) | the byte-verified copy of a legacy learnings corpus that `learnings-migrate --local` deleted — for a repo that keeps its learnings out of git, the **only** copy, since no commit holds it. Never read by prawduct; an operator restores from it by hand | shared by all worktrees of a clone (the common dir survives `git worktree remove`); never committed |
 | Derived cache (never truth) | `<git-common-dir>/prawduct/` (inside `.git`) | the optional backlog read-through store and the briefing-counts snapshot — **the same directory as the ledger above, and a different tier**: the provider is the home of every fact here, nothing originates, and a drop-and-rebuild is the mechanical proof of it. Discarded on any schema mismatch rather than migrated | shared by all worktrees of a clone; never committed |
 | Session/gate state | `.prawduct/.*` (gitignored) | markers, partials, caches, session baselines, advisories | per-worktree |
 | Committed product state | `.prawduct/` (tracked) | project-state, learnings, artifacts, change log, build plan — **and `backlog.md` only while a product is pre-cutover** | shared via git, owned by the product |

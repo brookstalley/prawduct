@@ -246,7 +246,9 @@ the backlog skill, never hand-edited across sections.
 
 #### Learnings — `.claude/rules/learnings/` (`core.md` + `<area>.md`)
 
-Committed, harness-loaded. `core.md` holds cross-cutting "When X, do Y because Z" rules, one per
+Committed, harness-loaded — except in a repo that keeps its learnings out of git on purpose
+(migrated with `learnings-migrate --local`), where the tree is gitignored and lives only in the
+checkout; the harness loads it from disk either way. `core.md` holds cross-cutting "When X, do Y because Z" rules, one per
 heading; each `<area>.md` carries `paths:` frontmatter and loads when a matching file is read.
 Narrative lives in `.session-reflected`, not beside the rule. (Pre-v2: `.prawduct/learnings.md` +
 `learnings-detail.md`, relaid by `learnings-migrate`; a legacy repo reads UNMIGRATED until then.) Intent: the rule

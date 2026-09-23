@@ -7388,8 +7388,13 @@ def cmd_learnings_migrate(project_dir: Path, argv: list[str]) -> int:
     learnings file or a gitignored destination is a condition the agent must fix
     before any of this is worth planning, and a dry run that printed a plan it
     could never execute would teach the reader to skip the reason.
+
+    ``--local`` is for a repo that keeps its learnings out of git on purpose:
+    the undo becomes a byte-verified backup in the git directory rather than a
+    commit, so the refusals that exist only because git is the undo give way
+    (``learnings_migrate`` module docstring). It composes with every mode.
     """
-    flags = {"--apply", "--propose-map", "--json"}
+    flags = {"--apply", "--propose-map", "--json", "--local"}
     rest: list[str] = []
     map_path: str | None = None
     i = 0
@@ -7411,6 +7416,7 @@ def cmd_learnings_migrate(project_dir: Path, argv: list[str]) -> int:
     do_apply = "--apply" in rest
     propose = "--propose-map" in rest
     as_json = "--json" in rest
+    local = "--local" in rest
     if propose and do_apply:
         print(
             "learnings-migrate: --propose-map prints the map and exits; it "
@@ -7445,7 +7451,8 @@ def cmd_learnings_migrate(project_dir: Path, argv: list[str]) -> int:
             print(f"learnings-migrate: bad map file {map_path}: {exc}", file=sys.stderr)
             return 2
 
-    migration = learnings_migrate.plan(project_dir, mapping)
+    migration = learnings_migrate.plan(project_dir, mapping, local=local)
+    backup = str(migration.backup_dir) if migration.backup_dir is not None else None
 
     if migration.nothing_to_do:
         if as_json:
@@ -7497,6 +7504,7 @@ def cmd_learnings_migrate(project_dir: Path, argv: list[str]) -> int:
         "dropped": list(migration.dropped),
         "total_bytes": migration.size,
         "total_rules": migration.rules,
+        "backup_dir": backup,
     }
 
     # The unscoped topics and the merges print on BOTH paths. An apply that
@@ -7537,12 +7545,22 @@ def cmd_learnings_migrate(project_dir: Path, argv: list[str]) -> int:
             print(f"learnings-migrate: INTERRUPTED — {exc}", file=sys.stderr)
             for rel in exc.written:
                 print(f"  wrote {rel}", file=sys.stderr)
-            print(
-                "  Nothing was deleted that had not been written first. Re-run "
-                "the same command: it recognises this half-written tree and "
-                "finishes it.",
-                file=sys.stderr,
-            )
+            if exc.written:
+                print(
+                    "  Nothing was deleted that had not been written first. Re-run "
+                    "the same command: it recognises this half-written tree and "
+                    "finishes it.",
+                    file=sys.stderr,
+                )
+            else:
+                # The --local backup runs before the first write, so a failure
+                # there leaves the tree untouched: there is no half-written tree
+                # to finish, only a cause to fix.
+                print(
+                    "  Nothing was written or deleted. Fix the cause above and "
+                    "re-run the same command.",
+                    file=sys.stderr,
+                )
             return 1
         except (OSError, learnings_migrate.MigrateRefused) as exc:
             print(f"learnings-migrate: failed — {exc}", file=sys.stderr)
@@ -7556,10 +7574,19 @@ def cmd_learnings_migrate(project_dir: Path, argv: list[str]) -> int:
             for rel in migration.deletions:
                 print(f"deleted {rel}")
             _report_folds()
-            print(
-                f"migrated {migration.rules} rules into {len(migration.outputs)} "
-                f"file(s). Commit them — the commit is this migration's undo."
-            )
+            if backup is not None:
+                print(
+                    f"migrated {migration.rules} rules into {len(migration.outputs)} "
+                    f"file(s). Backed up every deleted file to {backup}. To undo: "
+                    "delete the rules files written above, THEN copy the backup's "
+                    "files back into the repo — copying back alone leaves both "
+                    "layouts on disk. Commit whatever of this change git tracks."
+                )
+            else:
+                print(
+                    f"migrated {migration.rules} rules into {len(migration.outputs)} "
+                    f"file(s). Commit them — the commit is this migration's undo."
+                )
         return 0
 
     if not as_json:
@@ -7571,12 +7598,15 @@ def cmd_learnings_migrate(project_dir: Path, argv: list[str]) -> int:
         print("would delete:")
         for rel in migration.deletions:
             print(f"  {rel}")
+        if backup is not None:
+            print(f"would back up every deleted file first, to: {backup}")
         _report_folds()
         print(
             f"{migration.rules} rules, {migration.size} bytes across "
             f"{len(migration.outputs)} file(s)."
         )
-        print("Run `--propose-map > <file>` to draft the scoping map, edit it, then `--apply --map <file>`.")
+        _apply = "--apply --local" if local else "--apply"
+        print(f"Run `--propose-map > <file>` to draft the scoping map, edit it, then `{_apply} --map <file>`.")
     else:
         print(json.dumps(_json_payload, indent=2))
     return 0
@@ -7739,7 +7769,7 @@ _USAGE = (
     "migrate-plugin [--apply] [--json]|init-product <target> --name <name> [--backlog-repo owner/repo] [--apply] [--json]|"
     "update-gitignore [--dry-run]|"
     "audit-learnings [deprecated, inert]|learnings-obligation [deprecated, inert]|"
-    "learnings-migrate [--apply] [--map <file>] [--propose-map] [--json]|"
+    "learnings-migrate [--apply] [--map <file>] [--propose-map] [--json] [--local]|"
     "learnings-files [--for-diff] [--json]|"
     "norm-index-scaffold [--apply] [--json]|reanchor [--apply] [--json]|"
     "lifecycle-repair [--apply] [--json]|"
