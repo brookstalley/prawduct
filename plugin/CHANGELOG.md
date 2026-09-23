@@ -33,6 +33,16 @@ only the failure count, so finding out which tests failed meant running the suit
 keeps the failing test ids from the junit report it parses (up to 100). `test-status`, the
 `recorded:` line and the PR review payload name the first ten and count the rest.
 
+**`per-tree-test-evidence`** — switching branches no longer throws away a green test run. Every
+recorded run of the suite is now also kept in the clone's shared evidence store, keyed by the tree it
+ran against. When this worktree's own record does not cover the current tree (you switched branch,
+or opened a second worktree), `test-status` and the PR and Stop gates look there for a run that met
+it: the newest run for this exact tree, this commit or this branch, judged by the same tree
+comparison as before. Switching back to a branch whose tree already passed re-runs nothing. A newer
+failing run still wins, a restamp or hand-typed counts never vouch, and a store written by a newer
+plugin is refused. `evidence list --kind test-run` shows the runs. The coverage gates' cached
+verdicts also survive recording a run, so the gate after a suite run no longer starts cold.
+
 **`learnings-migrate-local`** — `prawduct-hook learnings-migrate --local` migrates a repo that
 keeps its learnings out of git on purpose. Previously the migration refused there, because its undo
 is a commit, and the Stop hook's `learnings-unmigrated` gate then blocked every session that changed

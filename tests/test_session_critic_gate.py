@@ -398,9 +398,8 @@ class TestBaseAdvanceTransferAtTheSessionGate:
         END) and by the session-START briefing (advice), which wraps the call in
         a broad `except`. Recording from the advice path would be a store write
         on a session-start read whose fail-soft attribution is swallowed, filed
-        under a gate that did not run — and it would change the store
-        fingerprint at session start, evicting the verdict memo. Authority
-        records its own yield; advice observes and writes nothing."""
+        under a gate that did not run. Authority records its own yield; advice
+        observes and writes nothing."""
         repo, _prior_base, _prior_head = _advanced_base_session(tmp_path)
         _write_test_evidence(repo)
         before = evidence.store_path(repo).read_bytes()

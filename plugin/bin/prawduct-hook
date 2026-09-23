@@ -4645,6 +4645,44 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             file=sys.stderr,
         )
 
+    # Index the run by tree on the store every worktree of the clone shares, so
+    # a later freshness check can find it after this worktree's record has moved
+    # on to another branch. Soft by contract: the record above is the run's
+    # answer, and a lost index entry costs a later re-run, never a wrong verdict
+    # — so a failure is attributed and changes nothing else.
+    #
+    # A restamp records no fact. It measured nothing, and the tree it stamps is
+    # a fresh capture rather than the one its reused counts ran against — so a
+    # fact from it could put a green run on a tree no suite ever met (a
+    # `--from-counts` record restamped would do exactly that). The run whose
+    # counts it reuses already has its fact, or never had a tree to give one.
+    if evidence_tree and not no_rerun:
+        from lib import evidence as _evidence_mod  # noqa: PLC0415 — lazy keeps top-level cheap
+        run_fact = {
+            "tree": evidence_tree,
+            "passed": passed,
+            "failed": failed,
+            "skipped": skipped,
+            "duration_seconds": record["duration_seconds"],
+            "source": "from-junit" if from_junits else "run",
+        }
+        # The commit checked out, so a detached second worktree at the same
+        # commit — which shares no branch name — can find this run. Omitted on
+        # an unborn branch, where there is no commit to name.
+        rc, head_sha, _ = _evidence_mod.run_git(project_dir, "rev-parse", "--verify", "-q", "HEAD")
+        if rc == 0 and head_sha.strip():
+            run_fact["head"] = head_sha.strip()
+        if degraded_reason:
+            run_fact["degraded"] = degraded_reason
+        appended = _evidence_mod.append_test_run(project_dir, run_fact)
+        if appended.get("status") != "appended":
+            print(
+                f"note: test-run fact not recorded ({appended.get('reason', 'unknown')}); "
+                "the evidence record above is complete, but other branches and "
+                "worktrees cannot reuse this run.",
+                file=sys.stderr,
+            )
+
     # A restamp announces itself. The old line said `recorded: N passed` for
     # both paths, so a reused count was typographically identical to a fresh
     # measurement — which is the surface that let a stale figure pass as one.
