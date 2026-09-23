@@ -5,6 +5,39 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-22: `learnings-migrate --local` for repos that keep learnings out of git
+
+<!-- prawduct: type=fix | scope=learnings-migrate-local -->
+
+A repo that keeps its learnings out of git on purpose could not clear `learnings-unmigrated` (#889,
+filed by a downstream product). The migration's undo is the commit that follows it, so it refuses
+a corpus git cannot give back and a gitignored `.claude/rules/`. For a public repo whose learnings
+hold private operational notes, both remedies it offered (commit it, unignore it) publish the notes.
+Its only way through was a `learnings` gate waiver re-declared every session.
+
+`--local` swaps the undo. Before it writes anything, it copies every file it will delete to
+`<git-common-dir>/prawduct/learnings-backup/<UTC stamp>/` and reads each copy back. The git dir is
+the one place in the tree no `git add` reaches, and the common dir survives `git worktree remove`.
+Under `--local`, the refusals that exist because git is the undo give way to the backup: a corpus git
+cannot give back, uncommitted changes, git unable to say whether there are any, and the ignored
+destination. The refusals that guard against loss still stand: the byte accounting, a map key naming
+no section, and a two-corpus `both`. Outside a git repo `--local` refuses and says to run without it,
+since there is no git undo to replace there. The two refusals whose own remedy (commit it, unignore
+it) would publish the notes now name `--local`, so an operator stuck on one is pointed to the route
+that reaches the migrated state. Undoing a `--local` migration is two steps, and the success message
+says both: delete the rules files it wrote, then copy the backup back. Copying back alone leaves both
+layouts on disk, which the Stop gate blocks.
+
+The session briefing's gitignored-rules suffix no longer says "unignore .claude/rules/". After a
+`--local` migration the tree is ignored on purpose, and an agent told every session to unignore it
+is one `git add -A` from publishing the notes. It now states the consequence: the tree exists only
+in this checkout and a clone will not have it. `test_gitignored_rules_tree_is_named` pins the new
+wording, and a new test pins the absence of the instruction on a `--local`-migrated repo.
+
+Checked before building: Claude Code loads `.claude/rules/` from disk whether or not git ignores it
+(a headless session in a repo ignoring `.claude/*` quoted a canary rule verbatim), so a local
+migration's rules are loaded, which a waiver would never achieve.
+
 ## 2026-09-22: develop opens 3.6.1-dev.6
 
 <!-- prawduct: type=chore | scope=dev-track-bump-3.6.1-dev.6 -->

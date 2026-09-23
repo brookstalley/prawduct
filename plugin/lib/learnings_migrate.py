@@ -39,6 +39,21 @@ protects that commit, and each exits 1 with a named reason (2 is usage):
 * the repo is in the ``both`` state and its rules files are **not** this plan's
   output — two corpora is a fold only a reader can do.
 
+**``--local``** is for a repo that keeps its learnings out of git on purpose —
+a public product whose learnings hold private operational notes, where "commit
+it first" and "unignore it" are both ways of publishing them. There the undo
+cannot be a commit, so ``--local`` makes it a **byte-verified backup** under
+``<git-common-dir>/prawduct/learnings-backup/<UTC stamp>/``, written before
+anything else is. Undoing takes two steps, because the backup holds only what
+was deleted: remove the rules files the migration wrote, then copy the backup
+back. Copying it back alone leaves both layouts on disk. The git dir is the one place in the tree no ``git add`` can
+reach, and the *common* dir outlives a ``git worktree remove``. Under
+``--local`` every refusal whose reason is "git is the undo" gives way to the
+backup — a corpus git cannot give back, uncommitted changes, git being unable
+to say whether there are any, and the gitignored destination — and nothing
+else does: the accounting, the map key and the ``both`` refusals
+protect against loss, not about the undo, so they stand.
+
 A migrated repo reports "nothing to do" and exits 0, so a second run is safe.
 A ``both`` whose rules files ARE byte-identical to this plan is not a second
 corpus but an interrupted run of this one, and finishes instead of refusing.
@@ -65,8 +80,10 @@ glance what has not been filed yet.
 from __future__ import annotations
 
 import re
+import shutil
 import subprocess
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 
 from . import learnings_files
@@ -564,6 +581,9 @@ class Plan:
     merges: list[str] = field(default_factory=list)
     dropped: list[str] = field(default_factory=list)
     resumed: bool = False
+    #: Set only under ``--local``: where :func:`apply` copies every deletion
+    #: before it writes anything. ``None`` means the undo is a git commit.
+    backup_dir: Path | None = None
 
     @property
     def rules(self) -> int:
@@ -667,6 +687,35 @@ def unrecoverable_legacy_files(project_dir: str | Path) -> list[tuple[str, str]]
         )
         out.append((rel, why))
     return out
+
+
+#: Appended to the two refusals whose own remedy — commit it, unignore it —
+#: publishes a corpus the repo ignored to keep private, so the operator stuck on
+#: one is shown the route that reaches the migrated state. The other two undo
+#: refusals (uncommitted changes, git unable to answer) name remedies that work
+#: in any repo, so they are left alone.
+LOCAL_ROUTE = (
+    " If these learnings stay out of git on purpose, re-run with --local: it "
+    "keeps a private backup as the undo instead."
+)
+
+
+def backup_root(project_dir: str | Path) -> Path | None:
+    """``<git-common-dir>/prawduct/learnings-backup``, or ``None`` if git
+    cannot say where that is.
+
+    The COMMON dir, not ``--git-dir``: in a linked worktree the latter is a
+    per-worktree directory that ``git worktree remove`` deletes, taking the
+    only copy of the corpus with it.
+    """
+    root = Path(project_dir)
+    proc = _git(root, "rev-parse", "--git-common-dir")
+    if proc is None or proc.returncode != 0 or not proc.stdout.strip():
+        return None
+    common = Path(proc.stdout.strip())
+    if not common.is_absolute():
+        common = root / common
+    return common.resolve() / "prawduct" / "learnings-backup"
 
 
 # ---------------------------------------------------------------------------
@@ -866,12 +915,19 @@ def _accounting_refusals(
 
 
 def plan(
-    project_dir: str | Path, mapping: dict[str, list[str]] | None = None
+    project_dir: str | Path,
+    mapping: dict[str, list[str]] | None = None,
+    *,
+    local: bool = False,
 ) -> Plan:
     """What the migration would write and delete, or why it will not.
 
     Reads the legacy corpus itself rather than taking parsed sections, so the
     dry run and ``--apply`` cannot diverge on which bytes they were looking at.
+
+    ``local`` swaps the undo from a git commit to a backup (see the module
+    docstring), so the refusals that exist only because git is the undo are
+    not asked; the backup's own precondition — a git dir to put it in — is.
     """
     root = Path(project_dir)
     layout = learnings_files.resolve(root)
@@ -927,11 +983,48 @@ def plan(
             "--propose-map again for the current slugs."
         )
 
+    backup_dir: Path | None = None
+    if local:
+        base = backup_root(root) if _is_git_repo(root) else None
+        if base is None:
+            refusals.append(
+                "--local keeps its backup in the git directory, and this is not a "
+                "git repository (or git could not say where its directory is). "
+                "Outside a repo there is no git undo to replace: run without "
+                "--local."
+            )
+        else:
+            stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+            backup_dir = base / stamp
+    else:
+        refusals.extend(_undo_refusals(root))
+
+    return Plan(
+        state=layout.state,
+        outputs=outputs,
+        deletions=deletions,
+        refusals=refusals,
+        sections=sections,
+        unmapped=unmapped,
+        merges=merges,
+        dropped=dropped,
+        resumed=resumed,
+        backup_dir=backup_dir,
+    )
+
+
+def _undo_refusals(root: Path) -> list[str]:
+    """The refusals that exist because a git commit is this migration's undo.
+
+    One function so ``--local``, which replaces that undo with a backup, skips
+    exactly these and nothing else.
+    """
+    refusals: list[str] = []
     for rel, why in unrecoverable_legacy_files(root):
         refusals.append(
             f"{rel} is {why}, so git cannot give it back once --apply deletes "
             "it. Commit it first (unignore it if an ignore rule covers it) — "
-            "the commit is this migration's undo."
+            "the commit is this migration's undo." + LOCAL_ROUTE
         )
     if _is_git_repo(root):
         dirty = dirty_legacy_files(root)
@@ -954,20 +1047,9 @@ def plan(
             f"the destination is gitignored: a new file under "
             f"{learnings_files.RULES_DIR_REL}/ matches an ignore rule, so --apply "
             "would delete tracked files and write files git never sees. "
-            "Unignore .claude/rules/ first."
+            "Unignore .claude/rules/ first." + LOCAL_ROUTE
         )
-
-    return Plan(
-        state=layout.state,
-        outputs=outputs,
-        deletions=deletions,
-        refusals=refusals,
-        sections=sections,
-        unmapped=unmapped,
-        merges=merges,
-        dropped=dropped,
-        resumed=resumed,
-    )
+    return refusals
 
 
 def apply(project_dir: str | Path, migration: Plan) -> list[str]:
@@ -989,6 +1071,8 @@ def apply(project_dir: str | Path, migration: Plan) -> list[str]:
     if migration.refusals:
         raise MigrateRefused("; ".join(migration.refusals))
     root = Path(project_dir)
+    if migration.backup_dir is not None:
+        _back_up(root, migration.deletions, migration.backup_dir)
     changed: list[str] = []
     for output in migration.outputs:
         path = root / output.rel
@@ -1005,3 +1089,33 @@ def apply(project_dir: str | Path, migration: Plan) -> list[str]:
             raise MigrateInterrupted(f"deleting {rel}: {exc}", changed) from exc
         changed.append(rel)
     return changed
+
+
+def _back_up(root: Path, deletions: list[str], backup_dir: Path) -> None:
+    """Copy every file ``apply`` will delete into ``backup_dir``, and read each
+    copy back before returning.
+
+    Runs before the first rules file is written, so a failure here leaves the
+    tree exactly as it was — raised as :class:`MigrateInterrupted` with nothing
+    written, which the command already reports as "re-run". A copy that returned
+    without error is not yet a copy: the read-back is what makes it the undo.
+    ``exist_ok`` because a re-run inside the same second lands on the same stamp,
+    and copying the same bytes over themselves loses nothing.
+    """
+    for rel in deletions:
+        src = root / rel
+        dst = backup_dir / rel
+        try:
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(src, dst)
+            same = dst.read_bytes() == src.read_bytes()
+        except OSError as exc:
+            raise MigrateInterrupted(
+                f"backing up {rel} to {backup_dir}: {exc} — nothing was written "
+                "or deleted", []
+            ) from exc
+        if not same:
+            raise MigrateInterrupted(
+                f"the backup of {rel} at {dst} does not match the original — "
+                "nothing was written or deleted", []
+            )

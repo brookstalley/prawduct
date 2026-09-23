@@ -181,8 +181,11 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   resolver's answer — the rules files under `.claude/rules/learnings/`, and with `--for-diff` the
   core file plus every area file whose `paths:` intersect the diff; two `allowed-tools` grants bind
   it and the PR reviewer protocol instructs it, so it sits in the stable tier) and `learnings-migrate [--apply] [--map <file>] [--propose-map]
-  [--json]` (mutating with `--apply`: the one-way relayout of a legacy `.prawduct/learnings.md` into
-  the rules files, byte-accounted against the tree it writes; refuses on a dirty tree; exit 0 written,
+  [--json] [--local]` (mutating with `--apply`: the one-way relayout of a legacy `.prawduct/learnings.md` into
+  the rules files, byte-accounted against the tree it writes; refuses on a dirty tree, an uncommitted or
+  ignored corpus, or an ignored destination, because a commit is its undo — except under `--local`,
+  for a repo that keeps its learnings out of git, whose undo is a byte-verified backup under
+  `<git-common-dir>/prawduct/learnings-backup/`, reported as `backup_dir` in `--json`; exit 0 written,
   1 refused or could not run, 2 usage — the sibling repairs' scheme). **The contract change, in one
   place:** two verbs added; three retired to deprecated-inert (below) rather than removed, because the
   deprecation norm above governs every verb a human or a skill can call and the release is a minor;
