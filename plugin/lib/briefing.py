@@ -1377,7 +1377,7 @@ def _extract_critical_rules(project_dir: Path) -> list[str]:
         "- Never weaken a test to make it pass. Fix the code, not the test.",
         "- Never silently drop a requirement. If you can't implement it, say so.",
         "- Never catch broad exceptions without logging and re-raising.",
-        "- Run the full test suite before finishing work.",
+        "- While building, run the narrowest tests that prove the change; run the declared suite before the work lands.",
         "- When changes cross boundaries (API, database, IPC), verify consumers.",
     ]
     claude_md = project_dir / "CLAUDE.md"

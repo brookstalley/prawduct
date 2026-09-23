@@ -5,6 +5,26 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-23: the declared suite runs at the boundary, not at every chunk
+
+<!-- prawduct: type=feature | scope=suite-at-boundary -->
+
+`building.md` said the declared suite runs at Verify, so every chunk paid a full run on a tree that
+changed again within the hour, and the inner-stage Critic reported the not-yet-run suite as stale
+evidence and recommended a run (#820). **This changes a default every governed repo inherits.** A
+chunk's Verify now runs the project's `Inner-loop verification` row (else the tests for the files
+touched), and the declared suite runs at the boundary: before the work lands on the integration
+branch (the `cumulative` review and the PR, where there are ones). A project that wants the suite at every chunk says so in that same free-text row. No new setting
+and no framework vocabulary were added: the owner ruled on #820 to derive the default from the stage,
+which the stage-keyed review-rigor norm and the #747 ruling (the testing burden "sits intentionally
+at entry to develop") already imply. The inner-stage reviewer (`chunk`, `verify-resolutions`, `final`) now reads a
+stale or missing record as the normal in-flight state and raises no finding; `cumulative` keeps it a
+WARNING, and failing evidence stays BLOCKING at every stage. The template row, the doctor's
+row-drafting guidance, the janitor's Execute step, the build-plan template's example Chunk 01
+criterion (now "the chunk's own tests pass") and `briefing.py`'s fallback Critical Rules, which reach
+delegates, say the same; `tests/test_suite_at_boundary.py` scans every shipped `.md`/`.py` under
+`plugin/` and the release notes' unreleased section for the retired instructions. Also on this branch:
+the consumer `plugin/CHANGELOG.md` gains the `failing-test-ids` paragraph that #894 merged without.
 ## 2026-09-23: a green run is remembered per tree, across branches and worktrees
 
 <!-- prawduct: type=feature | scope=per-tree-test-evidence -->
