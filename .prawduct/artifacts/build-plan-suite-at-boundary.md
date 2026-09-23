@@ -50,8 +50,10 @@ carriers in `plugin/skills/doctor/SKILL.md` (the row-drafting guidance, twice in
 first sweep's truncated output hid; `tests/test_suite_at_boundary.py` now pins every carrier and the
 retired wording's absence.
 
-`[DECISION: declared token raises — building.md 5055→5072, goals-1-3.md 2652→2666,
-review-protocol.md 4392→4399 | each sentence is the one place its reader meets the rule, compressed in
+`[DECISION: declared token raises — building.md 5055→5072, goals-1-3.md 2652→2665,
+review-protocol.md 4392→4399, and the reviewer-payload sums they feed (single-pass-inner +13,
+single-pass-full +7, dispatched +7; chunk and verify-resolutions per-mode loads +13), priced against
+the per-chunk suite run the inner reviewer no longer recommends | each sentence is the one place its reader meets the rule, compressed in
 place first, and there was no duplication to pay from; a default every consumer inherits is owed at
 each surface | user can veto/override]`
 

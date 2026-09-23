@@ -696,8 +696,8 @@ LAST_MEASURED_TOKENS = {
     # regardless; the bound is on the builder) with an explicit never-omit clause.
     # A declared raise: correcting a rule that could suppress findings is not
     # fundable by trimming, and the wrong reading cost more than 30 tokens would.
-    # RAISED 2652 -> 2666, #820 (owner decision 2026-09-23): the declared suite moves from every chunk's Verify to the boundary — a default every consumer inherits, so the sentence carrying it is owed at each surface its reader meets. Compressed in place first; no duplication to pay from. DECLARED. (stale suite: no finding at the inner stage.)
-    "skills/critic/goals-1-3.md": 2666,
+    # RAISED 2652 -> 2665, #820 (owner decision 2026-09-23): the declared suite moves from every chunk's Verify to the boundary — a default every consumer inherits, so the sentence carrying it is owed at each surface its reader meets. Compressed in place first; no duplication to pay from. DECLARED. (stale suite: no finding at the inner stage.)
+    "skills/critic/goals-1-3.md": 2665,
     # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
     # a computed pass the gate can now print, which a reader who only knows
     # "uncovered means run a cumulative" will otherwise re-review straight
@@ -5053,8 +5053,8 @@ class TestCriticGoals13:
         # RAISED 2435 -> 2610 (2026-09-17, review-stages Chunk 02): the inner
         # BLOCKING set, stated in full because this file may point nowhere —
         # see LAST_MEASURED_TOKENS.
-        # RAISED 2653 -> 2667 (#820, 2026-09-23) — see LAST_MEASURED_TOKENS.
-        assert tokens < 2667, f"goals-1-3.md is ~{tokens} tokens, should be <2667"
+        # RAISED 2653 -> 2666 (#820, 2026-09-23) — see LAST_MEASURED_TOKENS.
+        assert tokens < 2666, f"goals-1-3.md is ~{tokens} tokens, should be <2666"
 
     def test_is_self_contained(self):
         """No follow-the-pointer reads at review time — the acceptance criterion

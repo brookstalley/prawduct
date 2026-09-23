@@ -384,9 +384,15 @@ def _governed_protocol_ceiling() -> int:
     return LAST_MEASURED_TOKENS["skills/critic/review-protocol.md"] + 1
 
 
+#: RAISED 2026-09-23 (chunk 2801 -> 2814, verify-resolutions 3924 -> 3937),
+#: DECLARED (#820, suite-at-boundary): `goals-1-3.md` now tells the inner-stage
+#: reviewer a stale or missing suite record is no finding, because the declared
+#: suite runs at the boundary. +13 per inner review, priced against the full
+#: suite run per chunk that the reviewer used to recommend — the payload was
+#: compressed in place first, and no clause elsewhere was cut to fund it.
 CEILINGS = {
-    "chunk": 2801,
-    "verify-resolutions": 3924,
+    "chunk": 2814,
+    "verify-resolutions": 3937,
     "final": _governed_protocol_ceiling(),
     "cumulative": _governed_protocol_ceiling(),
 }

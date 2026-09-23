@@ -58,7 +58,7 @@ class TestTheReviewerDoesNotAskForAPerChunkRun:
     def test_the_inner_stage_reads_stale_as_in_flight(self):
         text = _read("skills/critic/goals-1-3.md")
         assert (
-            "stale/missing → no finding here (**WARNING** only at the boundary, "
+            "stale/missing → no finding (**WARNING** only at the boundary, "
             "where the suite runs)" in text
         )
         assert "stale/missing → **WARNING** — that exit code" not in text

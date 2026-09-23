@@ -154,11 +154,21 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # the SUM: 29 tokens per review against the full round (median ~300s) the
     # exit-1 fallback would buy every time the store is unusable — a round that
     # cannot help. Drafted at +81; the remedy moved to the refusal's stderr.
-    "single-pass-inner": 6332,
+    # RAISED on 2026-09-23 (#820, suite-at-boundary), DECLARED: the stale-suite verdict is now stated
+    # per stage (no finding at the inner stage, WARNING only at `cumulative`) in the protocol file
+    # this route loads. Priced against the SUM: 13 tokens per review against a full declared-suite
+    # run per chunk that the inner reviewer no longer asks for (minutes each, on this repo ~5), and
+    # the round a stale-evidence finding used to ride in. Compressed in place before declaring.
+    "single-pass-inner": 6345,
     # RAISED +43 (reviewer-prompt-file-list, 2026-09-22), DECLARED: all of it the
     # `review-protocol.md` template change that sends coordinator reviewers to the
     # manifest for their file sets; see the dispatched-reviewer entry for the price.
-    "single-pass-full": 20420,
+    # RAISED on 2026-09-23 (#820, suite-at-boundary), DECLARED: the stale-suite verdict is now stated
+    # per stage (no finding at the inner stage, WARNING only at `cumulative`) in the protocol file
+    # this route loads. Priced against the SUM: 7 tokens per review against a full declared-suite
+    # run per chunk that the inner reviewer no longer asks for (minutes each, on this repo ~5), and
+    # the round a stale-evidence finding used to ride in. Compressed in place before declaring.
+    "single-pass-full": 20427,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -190,13 +200,18 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # commit and review id from the PROMPT, because in every case it covers the
     # manifest's are missing or another review's, and consolidation rejects a
     # partial carrying either — the guard would otherwise never reach the builder.
-    "dispatched-reviewer": 19626,
+    # RAISED on 2026-09-23 (#820, suite-at-boundary), DECLARED: the stale-suite verdict is now stated
+    # per stage (no finding at the inner stage, WARNING only at `cumulative`) in the protocol file
+    # this route loads. Priced against the SUM: 7 tokens per review against a full declared-suite
+    # run per chunk that the inner reviewer no longer asks for (minutes each, on this repo ~5), and
+    # the round a stale-evidence finding used to ride in. Compressed in place before declaring.
+    "dispatched-reviewer": 19633,
 }
 
 PAYLOAD_CEILINGS = {
-    "single-pass-inner": 6333,
-    "single-pass-full": 20421,
-    "dispatched-reviewer": 19627,
+    "single-pass-inner": 6346,
+    "single-pass-full": 20428,
+    "dispatched-reviewer": 19634,
 }
 
 
