@@ -5,6 +5,23 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-23: the declared suite runs at the boundary, not at every chunk
+
+<!-- prawduct: type=feature | scope=suite-at-boundary -->
+
+`building.md` said the declared suite runs at Verify, so every chunk paid a full run on a tree that
+changed again within the hour, and the inner-stage Critic reported the not-yet-run suite as stale
+evidence and recommended a run (#820). **This changes a default every governed repo inherits.** A
+chunk's Verify now runs the project's `Inner-loop verification` row (else the tests for the files
+touched), and the declared suite runs once, at the boundary: before the `cumulative` review and the
+PR. A project that wants the suite at every chunk says so in that same free-text row. No new setting
+and no framework vocabulary were added: the owner ruled on #820 to derive the default from the stage,
+which the stage-keyed review-rigor norm and the #747 ruling ("the testing burden sits at entry to
+develop") already imply. The inner-stage reviewer (`chunk`, `verify-resolutions`, `final`) now reads a
+stale or missing record as the normal in-flight state and raises no finding; `cumulative` keeps it a
+WARNING, and failing evidence stays BLOCKING at every stage. The template row and the doctor's
+row-drafting guidance say the same.
+
 ## 2026-09-23: test evidence names the failing tests, not just the count
 
 <!-- prawduct: type=fix | scope=failing-test-ids -->

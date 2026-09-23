@@ -81,7 +81,7 @@ Test at the right level — **unit** (functions, logic), **integration** (compon
 
 **Implement.** Write the code that makes the tests pass, following `project-preferences.md` conventions. Prefer simplicity — the minimum abstraction the current chunk needs. Add observability alongside features, not after.
 
-**A verification ceiling — yours and a delegate's.** While building, run the narrowest thing that proves the change: the project's `Inner-loop verification` row where it has one, else the tests for the files you touched. The declared suite runs at Verify and at the boundary. A cost bound, not a rigor discount, and what it prevents fails *silently*: a partial or contended run reports a green that skipped a part nobody can name.
+**A verification ceiling — yours and a delegate's.** While building, run the narrowest thing that proves the change: the project's `Inner-loop verification` row where it has one, else the tests for the files you touched. The declared suite runs once, at the boundary (before `cumulative` and the PR), unless that row asks for it per chunk. A cost bound, not a rigor discount, and what it prevents fails *silently*: a partial or contended run reports a green that skipped a part nobody can name.
 
 **Update artifacts as you go.** When implementation changes something an artifact describes — API surface, data model, architecture — update that artifact as part of implementation, not at the end. Artifact drift is the #1 recurring quality issue at scale.
 
@@ -93,7 +93,7 @@ Test at the right level — **unit** (functions, logic), **integration** (compon
 
 **Verify.** Two layers:
 
-- *Code:* Record **once**, at Verify — **not** after committing (a commit doesn't stale session-scoped evidence). Check `test-status` first (exit 0 = already passed; don't re-run). Record via `prawduct-hook test-evidence record`, or ingest an existing run — `--from-junit`, `--from-counts` (any toolchain), `--no-rerun` (restamp) — no re-run even when `test_command:` is declared. Non-default suites: `test_command:`/`test_commands:`/`tests_dirs:`.
+- *Code:* Record **once**, at the boundary run — **not** after committing (a commit doesn't stale session-scoped evidence). Check `test-status` first (exit 0 = already passed; don't re-run). Record via `prawduct-hook test-evidence record`, or ingest an existing run — `--from-junit`, `--from-counts` (any toolchain), `--no-rerun` (restamp) — no re-run even when `test_command:` is declared. Non-default suites: `test_command:`/`test_commands:`/`tests_dirs:`.
 - *Product:* Launch it, call it, inspect output. If infrastructure dependencies are declared, verify against real instances — mocks are not verification.
 
 Scale to chunk significance. When you can't verify, say so (Principle 5).

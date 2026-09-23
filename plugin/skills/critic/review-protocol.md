@@ -48,7 +48,7 @@ applicability is recorded, never assumed. Stale registry → NOTE: `/prawduct:do
 downgrade.
 
 ### 1. Nothing Is Broken
-- **Do not run tests.** Run `prawduct-hook test-status`: exit 0 = current; stale/missing → **WARNING** — that exit code is the *only* freshness signal; never infer staleness from a commit/SHA field in the evidence (it carries none). Test failures in evidence → **BLOCKING**. Review test *quality and coverage* through code analysis only.
+- **Do not run tests.** Run `prawduct-hook test-status`: exit 0 = current; stale/missing → **WARNING** at `cumulative`, none at `final` — that exit code is the *only* freshness signal; never infer staleness from a commit/SHA field in the evidence (it carries none). Test failures in evidence → **BLOCKING**. Review test *quality and coverage* through code analysis only.
 - No "pre-existing" exception — every finding is yours regardless of when introduced. RATE it regardless; the bound is on the BUILDER, whose obligation to FIX is limited to BLOCKING (below that a recorded accept discharges it). Never omit or downgrade a finding on this ground.
 - Tests verify behavior, not implementation.
 - Tests deleted or assertions weakened without documented reason → **BLOCKING**. Legitimate consolidation needs a change-log entry.

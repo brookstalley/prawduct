@@ -452,7 +452,8 @@ LAST_MEASURED_TOKENS = {
     # fix, run verify-resolutions, then commit — the round #167 removes for a
     # non-blocking fix mid-plan. Scoped to "while a blocker remains" and pointed at
     # NEXT-ACTION for the rest. DECLARED: a correction, compressed in place first.
-    "methodology/building.md": 5055,
+    # RAISED 5055 -> 5072, #820 (owner decision 2026-09-23): the declared suite moves from every chunk's Verify to the boundary — a default every consumer inherits, so the sentence carrying it is owed at each surface its reader meets. Compressed in place first; no duplication to pay from. DECLARED.
+    "methodology/building.md": 5072,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -603,7 +604,8 @@ LAST_MEASURED_TOKENS = {
     # `files_oracle`, plus the one-line reason not to paste them. Priced against the
     # sum: the coordinator stops writing each file list three times in a row, which
     # on a large review is thousands of output tokens on the dispatch critical path.
-    "skills/critic/review-protocol.md": 4392,
+    # RAISED 4392 -> 4399, #820 (owner decision 2026-09-23): the declared suite moves from every chunk's Verify to the boundary — a default every consumer inherits, so the sentence carrying it is owed at each surface its reader meets. Compressed in place first; no duplication to pay from. DECLARED. (stale suite: WARNING at `cumulative`, none at `final`.)
+    "skills/critic/review-protocol.md": 4399,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -694,7 +696,8 @@ LAST_MEASURED_TOKENS = {
     # regardless; the bound is on the builder) with an explicit never-omit clause.
     # A declared raise: correcting a rule that could suppress findings is not
     # fundable by trimming, and the wrong reading cost more than 30 tokens would.
-    "skills/critic/goals-1-3.md": 2652,
+    # RAISED 2652 -> 2666, #820 (owner decision 2026-09-23): the declared suite moves from every chunk's Verify to the boundary — a default every consumer inherits, so the sentence carrying it is owed at each surface its reader meets. Compressed in place first; no duplication to pay from. DECLARED. (stale suite: no finding at the inner stage.)
+    "skills/critic/goals-1-3.md": 2666,
     # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
     # a computed pass the gate can now print, which a reader who only knows
     # "uncovered means run a cumulative" will otherwise re-review straight
@@ -2665,9 +2668,16 @@ class TestBuildingMethodology:
         assert "narrowest thing that proves the change" in cycle, (
             "the build cycle no longer states the ceiling itself"
         )
-        assert "at Verify and at the boundary" in cycle, (
+        # Renegotiated 2026-09-23 (#820, owner decision on the issue): the
+        # declared suite moved from every chunk's Verify to the boundary. The
+        # clause's job is unchanged — say when the suite IS owed — so the
+        # assertion follows the new statement and pins the old one gone.
+        assert "The declared suite runs once, at the boundary" in cycle, (
             "nothing in the build cycle says when the declared suite IS owed — "
             "without it the ceiling reads as a rigor discount"
+        )
+        assert "at Verify and at the boundary" not in cycle, (
+            "the per-chunk suite run #820 retired is still stated in the build cycle"
         )
         assert "A cost bound, not a rigor discount" in cycle, (
             "the ceiling lost the clause that stops it being softened later"
@@ -3063,7 +3073,8 @@ class TestBuildingMethodology:
         # MEASURED merged reading (5015). Taking either side would bank the
         # other's delta as silent slack.
         # RAISED 5039 -> 5056 (review-interval-extension PR review, 2026-09-22) — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 5056, f"building.md is ~{tokens} tokens, should be <5056"
+        # RAISED 5056 -> 5073 (#820, suite at the boundary, 2026-09-23) — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 5073, f"building.md is ~{tokens} tokens, should be <5073"
 
 
 # =============================================================================
@@ -4761,7 +4772,8 @@ class TestCriticSkill:
         # rule reaches the final/cumulative reviewer — see LAST_MEASURED_TOKENS.
         # RATCHETED 4356 -> 4350 (review-interval-extension, 2026-09-22) with the reading.
         # RAISED 4350 -> 4393 (reviewer-prompt-file-list, 2026-09-22) — see LAST_MEASURED_TOKENS.
-        assert tokens < 4393, f"review-protocol.md is ~{tokens} tokens, should be <4393"
+        # RAISED 4393 -> 4400 (#820, 2026-09-23) — see LAST_MEASURED_TOKENS.
+        assert tokens < 4400, f"review-protocol.md is ~{tokens} tokens, should be <4400"
 
 
 # =============================================================================
@@ -5041,7 +5053,8 @@ class TestCriticGoals13:
         # RAISED 2435 -> 2610 (2026-09-17, review-stages Chunk 02): the inner
         # BLOCKING set, stated in full because this file may point nowhere —
         # see LAST_MEASURED_TOKENS.
-        assert tokens < 2653, f"goals-1-3.md is ~{tokens} tokens, should be <2653"
+        # RAISED 2653 -> 2667 (#820, 2026-09-23) — see LAST_MEASURED_TOKENS.
+        assert tokens < 2667, f"goals-1-3.md is ~{tokens} tokens, should be <2667"
 
     def test_is_self_contained(self):
         """No follow-the-pointer reads at review time — the acceptance criterion
