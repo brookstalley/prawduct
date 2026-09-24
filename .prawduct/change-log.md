@@ -42,6 +42,21 @@ janitor skill, the `core.md` scaffold, the budget template and `principles.md` a
 one-line form. "Never trim a rule to fit" is gone. `nonfunctional-requirements.md` records the owner
 exception to the state-file advisory norm, beneath the norm.
 
+**Rulings move to the norm they rule on.** `plugin/docs/norms.md` said rulings live in the learnings
+rules, linked from the norm. A ruling is a record a reader consults, not a rule every session
+carries, and it cannot be one line. It now lives in the norm's `Rulings:` field, named `[[like-this]]`
+and stated in full. Names are unchanged, so existing citations still resolve to their norm.
+
+**This repo's own corpus is compacted** (owner-approved drop list, 2026-09-24):
+- 338 units became 314 one-line rules, 17 merges, 5 rulings moved to their norms in `api-contract.md`
+  and `architecture.md`, and 2 approved drops (a section heading, and a rule another rule
+  supersedes).
+- `core.md` went from 104KB to 9.4KB. Its self-raised 105KB budget entry is gone.
+- The rules now live in eight area files, three of them new (`release.md`, `backlog.md`, `pr.md`)
+  plus `gates.md` split from `hook-surface.md`.
+- The tests that read this corpus now floor the whole corpus against an independent line count,
+  instead of pinning a `core.md` size that compaction was always going to change.
+
 ## 2026-09-23: the declared suite runs at the boundary, not at every chunk
 
 <!-- prawduct: type=feature | scope=suite-at-boundary -->

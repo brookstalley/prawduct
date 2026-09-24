@@ -159,6 +159,21 @@ would be the two-homes defect. Its observations (the blocker's false "header sta
 claim, a hardcoded 250 in the scaffold, the carrier test being literal-only, stale docstrings) ride
 Chunk 04's commit.
 
+**Chunk 04 built.** Owner decisions, 2026-09-24:
+- the drops U001 (a section heading) and U321 (superseded by U147) are approved;
+- U145 is kept, reworded;
+- discodon's compaction aims for 12KB, with drops proposed in its own session.
+
+Departures:
+- **Moving the rulings reached `plugin/docs/norms.md`.** The norm spec itself said rulings live in
+  the learnings rules; it now says the norm's `Rulings:` field. This is consumer-facing and is in
+  the consumer CHANGELOG.
+- **The four worksheet batches were drafted by delegates** in the session scratchpad, with no repo
+  writes. The integrator merged them, set the five ruling rows to `moved-to`, and split 13 rules out
+  of an over-budget `hook-surface.md` into a new `gates.md`.
+- **The real-corpus tests floor the whole corpus against an independent line count** instead of
+  `core.md > 100`, which pinned a phase this chunk was always going to end.
+
 **Baseline (2026-09-24):** the declared suite had 1 failure on `origin/develop` that is not this
 branch's: `tests/test_pr_evidence_contract.py::TestClosingKeywordClaims` over
 `documentation/issues/672-design.md` (added by develop's `a0e90e80`). Flagged to the owner, not fixed here.

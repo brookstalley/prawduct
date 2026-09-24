@@ -29,6 +29,10 @@ they grow. From this release:
   each rule, you approve any drops, and `--apply` writes it as one commit you can revert.
 - A rewritten rule keeps its citation history.
 - The agent-written `learnings-budget` waiver no longer suppresses the gate.
+- **Rulings now live with the norm they rule on.** `docs/norms.md` used to home a ruling in your
+  learnings rules, linked from the norm. It now lives in the norm's own `Rulings:` field, named and
+  stated in full. When compaction reaches a ruling in your `core.md`, it moves it there
+  (`moved-to`, verified at the destination) rather than squeezing it into one line.
 
 **`suite-at-boundary`** — **the declared test suite now runs at the boundary, not at every
 chunk.** This changes a default your repo inherits. A chunk's Verify step runs your

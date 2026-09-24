@@ -2532,7 +2532,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # this file knows. The fallback is deliberately path-free: a hardcoded second
     # opinion about the layout is the defect the resolver exists to remove.
     _rule_destination = (
-        f"{_learnings_core} (or the area file under {_learnings_rules_dir}/ whose `paths:` cover it)"
+        f"the area file under {_learnings_rules_dir}/ whose `paths:` cover it (or {_learnings_core} if every session needs it)"
         if _learnings_core
         else "this repo's learnings rules files"
     )
@@ -2605,9 +2605,9 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 "  as you go; the file accumulates across the session. Then /clear is instant.\n"
                 "\n"
                 "  If this session produced a durable lesson (a rule future sessions should follow),\n"
-                f"  also add it to {_rule_destination} as ONE line — the rules file's\n"
-                "  header states the limit. Learnings are one-line standing rules; the session\n"
-                "  reflection is the story behind them.\n"
+                f"  also add it to {_rule_destination} as ONE line — the rules gate\n"
+                "  names any line over the limit. Learnings are one-line standing rules; the\n"
+                "  session reflection is the story behind them.\n"
                 "\n"
                 "  Escape hatch: if this gate cannot be satisfied this session (rare for reflection —\n"
                 "  it is meant to be cheap), declare a waiver so this gate stops re-firing:\n"

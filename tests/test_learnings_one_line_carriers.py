@@ -30,7 +30,7 @@ CARRIERS = {
     # No number here on purpose: this message is the REFLECTION gate's, and a
     # character count in it reads as a length the reflection must meet
     # (`test_reflection_gate.py::test_it_never_mentions_a_character_count`).
-    "bin/prawduct-hook": "as ONE line — the rules file",
+    "bin/prawduct-hook": "as ONE line — the rules gate",
     "skills/janitor/SKILL.md": "as one-line rules",
     "docs/principles.md": "as one-line rules",
     "templates/project-state.yaml": "Every rule is ONE line of at most 250 characters",
@@ -54,8 +54,9 @@ def test_each_carrier_states_the_one_line_form(rel, phrase):
 
 
 def test_the_scaffold_states_it_too():
-    """A new repo's core.md is the first thing its sessions read."""
-    assert "one line of at most 250 characters" in lf.CORE_HEADER
+    """A new repo's core.md is the first thing its sessions read. The number
+    comes from the constant, so the two cannot drift."""
+    assert f"one line of at most {lf.RULE_LINE_MAX} characters" in lf.CORE_HEADER
 
 
 def _shipped_prose() -> "list[Path]":
@@ -82,3 +83,30 @@ def test_no_shipped_prose_still_carries_the_retired_instruction(phrase):
         if phrase.lower() in " ".join(p.read_text(encoding="utf-8", errors="replace").split()).lower()
     ]
     assert not hits, f"{phrase!r} still instructs in: {hits}"
+
+
+#: The retired instruction's MEANING, not its spelling: telling an author to
+#: keep a rule long rather than shorten it. The literal list above catches the
+#: sentences that shipped; this catches a rewording of them.
+_KEEP_IT_LONG = __import__("re").compile(
+    r"\b(never|don'?t|do not)\s+(trim|shorten|cut|condense)\w*\s+(a|the|any)\s+(rule|learning)s?\b",
+    __import__("re").IGNORECASE,
+)
+
+
+def test_no_shipped_prose_tells_an_author_not_to_shorten_a_rule():
+    hits = [
+        p.relative_to(ROOT).as_posix() for p in _shipped_prose()
+        if _KEEP_IT_LONG.search(" ".join(p.read_text(encoding="utf-8", errors="replace").split()))
+    ]
+    assert not hits, hits
+
+
+@pytest.mark.parametrize("sentence", [
+    "never trim a rule to fit",
+    "Don't shorten the rule; its instance is what fires.",
+    "do not condense any learning to meet the budget",
+])
+def test_the_meaning_check_catches_rewordings(sentence):
+    """Its positive control: rewordings of the retired advice must match."""
+    assert _KEEP_IT_LONG.search(sentence)

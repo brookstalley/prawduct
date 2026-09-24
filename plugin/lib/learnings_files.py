@@ -97,8 +97,8 @@ CORE_HEADER = (
     "decision in front of you, name the rule and say what it changes about that "
     "decision — or say that it does not apply, which is also an answer.\n"
     "\n"
-    "Each rule is one line of at most 250 characters. This file is capped, so a new "
-    "rule is paid for by merging or retiring one.\n"
+    f"Each rule is one line of at most {RULE_LINE_MAX} characters. This file is capped, "
+    "so a new rule is paid for by merging or retiring one.\n"
 )
 
 
@@ -628,8 +628,8 @@ def rule_units(text: str) -> list[str]:
     * **The ``#`` title.** A file's ``#`` heading names the file, not a rule.
       Exclusion is by LEVEL, not by position: a rules file with no title is
       still all rules, so "the first heading" would silently eat one.
-    * **The scaffold's obligation header** (:data:`CORE_HEADER`'s second
-      paragraph) — a bold paragraph, so it is excluded by the grammar rather
+    * **The scaffold's header** (:data:`CORE_HEADER`'s obligation and format
+      paragraphs) — plain paragraphs, so they are excluded by the grammar rather
       than by a name check; a header that grew a heading would need this
       docstring re-read, not a regex tightened.
     * **Fenced code.** A ``#`` comment or a ``- `` list item inside a fence is

@@ -106,7 +106,9 @@ in `docs/governance-telemetry.md`.
   This ratifies the reading v3.3.3 restored both commands under — that release was the repair, and
   this is the ratification it explicitly said it lacked. The tier permission stands unchanged; the
   atomic-update warrant stays withdrawn, replaced rather than restored.
-  Case law: [[deprecation-requires-an-inert-retention-window]]. The rule this makes fully written is
+  Ruling [[deprecation-requires-an-inert-retention-window]] (homed here since 2026-09-24): when you
+  retire a harness-invoked subcommand, unregister it now and keep it INERT until no supported install
+  still registers it, because plugin pins are per-project and lazy. The rule this makes fully written is
   what unblocks #644's conformance leg from `stage: requirements`.
 
   **Ruled 2026-08-26 (v3.4.1-dev) — a default that violates a higher norm is withdrawn outright, not
@@ -136,7 +138,9 @@ in `docs/governance-telemetry.md`.
   Category-level: **an inert-retention window is a courtesy the deprecating norm extends, not one it
   can extend on another norm's behalf** — when two norms collide the question is not which is senior,
   but which one's stated *warrant* has stopped holding.
-  Case law: [[inert-retention-cannot-be-extended-across-norms]]. Qualifies, and does not retire,
+  Ruling [[inert-retention-cannot-be-extended-across-norms]] (homed here since 2026-09-24): when the
+  behaviour an inert-retention window would preserve IS a violation of another ratified norm,
+  withdraw it outright, and the withdrawal must fail CLOSED. Qualifies, and does not retire,
   [[deprecation-requires-an-inert-retention-window]] — that ruling still governs every retirement
   whose retained behaviour is inert rather than itself non-conforming.
 
