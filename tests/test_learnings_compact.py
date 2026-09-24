@@ -5,7 +5,8 @@ Two questions organise the suite, as for its precedent `learnings-migrate`:
 **Can a rule be lost?** Only by an owner-approved drop. Every row needs a
 decision, `moved-to` must find its text at the destination, an unapproved drop
 is refused, and the written files must pass the Stop gate's own format check.
-:class:`TestRefusals` covers each route to a loss.
+`REFUSALS` holds one case per refusal site in the module, and a test counts
+the sites from the source so a new one cannot ship without a case.
 
 **Does the history survive?** A rewritten rule gets a new unit hash, which
 would orphan its citations and count it as newly written. `learning.compacted`
@@ -430,7 +431,7 @@ REFUSALS = [
     # (name, mutate(repo, ws) -> ws, needs git failure, substring)
     ("old schema", lambda repo, ws: {**ws, "schema": 0}, "schema"),
     ("corpus edited after plan", lambda repo, ws: ((repo / CORE).write_text("- edited\n"), ws)[1], "changed since --plan"),
-    ("file created after plan", lambda repo, ws: ((repo / lf.RULES_DIR_REL / "new.md").write_text("# n\n"), ws)[1], "not in the worksheet"),
+    ("file created after plan", lambda repo, ws: ((repo / lf.RULES_DIR_REL / "new.md").write_text("# n\n"), ws)[1], "remove it, restore the rest"),
     ("new area named with a slash", lambda repo, ws: {**ws, "new_areas": {"../escape.md": ["src/**"]}}, "must be a plain"),
     ("new area that exists", lambda repo, ws: {**ws, "new_areas": {"app.md": ["src/**"]}}, "already exists"),
     ("new area with no globs", lambda repo, ws: {**ws, "new_areas": {"web.md": []}}, "needs at least one"),
@@ -531,3 +532,26 @@ class TestAnInterruptedApply:
         err = capsys.readouterr().err
         assert rc == 1 and "INTERRUPTED" in err and "Do NOT --plan --force" in err
         assert path.is_file()
+
+
+def test_local_refuses_when_git_cannot_place_the_backup(tmp_path, monkeypatch):
+    """The one refusal written as a `raise` rather than an append, so the
+    site-count test cannot see it. Red if --local proceeds with no backup."""
+    from lib import learnings_migrate
+    repo, ws = _base(tmp_path)
+    before = (repo / CORE).read_text()
+    monkeypatch.setattr(learnings_migrate, "backup_root", lambda _p: None)
+    with pytest.raises(lc.CompactRefused, match="where the backup goes"):
+        lc.apply(repo, ws, local=True)
+    assert (repo / CORE).read_text() == before
+
+
+def test_merge_into_a_rewrite_with_an_unknown_file_refuses(tmp_path):
+    """The table's merge case names a missing row; this one names a real
+    rewrite whose destination is unknown. Red if the file check is dropped
+    (the event would record a path no file will have)."""
+    repo, ws = _base(tmp_path)
+    ws["rows"][0]["disposition"] = {"action": "rewrite", "text": "- kept", "file": "nowhere.md"}
+    ws["rows"][1]["disposition"] = {"action": "merge-into", "row": ws["rows"][0]["id"]}
+    refusals = lc.validate(repo, ws).refusals
+    assert any(r.startswith(ws["rows"][1]["id"]) and "merge-into" in r for r in refusals)

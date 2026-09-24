@@ -5,6 +5,43 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-24: learnings are one line each, and core.md stays small
+
+<!-- prawduct: type=feature | scope=learnings-one-line -->
+
+The always-loaded learnings corpus had regrown for the fourth time: 107KB here, 139KB in discodon,
+57KB in hallucinote and bankmachine. That is roughly 15–35k tokens in every session. Each earlier
+pass had paired a one-off sweep with a control that could be walked around: an advisory nudge, a
+per-rule length check that v2 deleted, an agent-raisable budget (six raises here in five days), an
+agent-written waiver, and a migration credit that measured discodon's `core.md` against the 176KB
+legacy file, so its growth never registered. This removes each bypass, owner-directed 2026-09-24.
+
+**The format is enforced** (`record_lint`, the Stop gate, the Critic's severity table):
+- Every rule is one line of at most 250 characters, with no body, in every rules file.
+- `core.md` is capped at 12KB, and only an `owner_approved:` date on `learnings_budgets.core.md`
+  raises it.
+- A raise never counts in the interval that writes it.
+- A compacted corpus blocks on any violation. One not yet compacted is frozen: no file over budget
+  may grow, and every added line must already be a one-line rule.
+- The migration session is judged on the corpus total, replacing the per-file legacy credit.
+- The Stop hook measures against HEAD when there is no base marker, instead of skipping.
+- The `learnings-budget` waiver key is retired.
+- The session briefing names an over-limit corpus with an agent directive.
+
+**`prawduct-hook learnings-compact`** converts a corpus:
+- `--plan` writes a worksheet (text, body, size, citations, candidate area files and related rows
+  per rule).
+- The agent records a decision per rule, and a drop needs the owner's approval date.
+- `--apply` writes one-line rules as one revertible commit.
+- A `learning.compacted` ledger event per rewritten rule keeps its citation history, and the Stop
+  hook does not count a rewrite as a written rule.
+- `/prawduct:doctor` runs the flow.
+
+**The write-side guidance changed with it:** reflection Step 4, the Stop reflection blocker, the
+janitor skill, the `core.md` scaffold, the budget template and `principles.md` all state the
+one-line form. "Never trim a rule to fit" is gone. `nonfunctional-requirements.md` records the owner
+exception to the state-file advisory norm, beneath the norm.
+
 ## 2026-09-23: the declared suite runs at the boundary, not at every chunk
 
 <!-- prawduct: type=feature | scope=suite-at-boundary -->

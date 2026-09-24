@@ -1212,7 +1212,10 @@ LAST_MEASURED_TOKENS = {
     # it was corrected in the same commit rather than left for Chunk 03, and the
     # five-part "good rules have" template that contradicts a one-line rule went
     # with it. A READING, no ceiling.
-    "methodology/reflection.md": 2861,
+    # -9 on 2026-09-24 (learnings-one-line Chunk 03): Step 4's product-rule
+    # sentence rewritten to the one-line form, shorter than the heading form it
+    # replaced. A READING, no ceiling.
+    "methodology/reflection.md": 2852,
     # First reading, 2026-09-03, taken at birth: the standing block and the
     # forward notes, moved verbatim out of `reflection.md` (D2) so the learning
     # loop's guide is about the learning loop. On-demand class: a reading, no
@@ -4395,7 +4398,12 @@ class TestOtherMethodology:
         assert "`.claude/rules/learnings/`" in content              # the product rule
         assert "`/prawduct:report-bug`" in content                  # framework friction
         assert "is **not written as a product rule**" in content    # portable discipline
-        assert "the instance that earned it, inline" in content
+        # Renegotiated 2026-09-24 (learnings-one-line Chunk 03): the product
+        # rule was "a heading that carries the rule, its brief why, and the
+        # instance that earned it, inline", the form the corpus regrew in. It is
+        # one `- ` line now, with the instance as a clause on that line.
+        assert "one `- ` line" in content
+        assert "the instance that earned it" in content
         # Renegotiated 2026-09-24 (learnings-one-line): the payment rule used to
         # end "never trim a rule to fit" and let an agent raise any budget. The
         # corpus regrew four times under it; a rule is now one line, and

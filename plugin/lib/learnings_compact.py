@@ -261,7 +261,12 @@ def validate(project_dir: Path, ws: dict) -> Result:
     layout = learnings_files.resolve(project_dir)
     listed = {p.relative_to(project_dir).as_posix() for p in layout.files}
     for rel in sorted(listed - set(ws.get("files") or {})):
-        res.refusals.append(f"{rel} is not in the worksheet (created after --plan); regenerate it")
+        res.refusals.append(
+            f"{rel} is not in the worksheet. If an earlier --apply was INTERRUPTED it "
+            "created this file: remove it, restore the rest of the rules directory, and "
+            "re-run --apply. Otherwise it was created after --plan; regenerate with "
+            "--plan --force"
+        )
     if res.refusals:
         return res
 

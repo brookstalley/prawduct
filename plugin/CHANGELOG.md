@@ -16,6 +16,20 @@ release process keeps the two in sync (one headline per shipped release).
 Entries accumulate here as work lands on `develop`; the cut renames this heading to its
 release number.
 
+**`learnings-one-line`** — **every learnings rule is one line, and `core.md` has a cap only you
+can raise.** Your `.claude/rules/learnings/` files load into sessions (`core.md` into every one), and
+they grow. From this release:
+- Each rule is one line of at most 250 characters with no body, and `core.md` is capped at 12KB.
+- An agent can no longer raise that cap: `learnings_budgets.core.md` counts only with an
+  `owner_approved: YYYY-MM-DD` date. Area files keep raise-with-reason.
+- **If your corpus is over those limits, nothing breaks.** The session briefing says `OVER LIMIT`,
+  and the corpus is frozen until you compact it: no file over its budget may grow, and every rule
+  a session adds must already be one line.
+- `prawduct-hook learnings-compact --plan` starts the conversion. The agent records a decision for
+  each rule, you approve any drops, and `--apply` writes it as one commit you can revert.
+- A rewritten rule keeps its citation history.
+- The agent-written `learnings-budget` waiver no longer suppresses the gate.
+
 **`suite-at-boundary`** — **the declared test suite now runs at the boundary, not at every
 chunk.** This changes a default your repo inherits. A chunk's Verify step runs your
 `Inner-loop verification` row (or, if it is unset, the tests for the files the chunk touched), and

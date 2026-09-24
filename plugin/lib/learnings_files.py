@@ -96,6 +96,9 @@ CORE_HEADER = (
     "**Reading a rule is not applying it.** For any rule below that bears on the "
     "decision in front of you, name the rule and say what it changes about that "
     "decision — or say that it does not apply, which is also an answer.\n"
+    "\n"
+    "Each rule is one line of at most 250 characters. This file is capped, so a new "
+    "rule is paid for by merging or retiring one.\n"
 )
 
 
