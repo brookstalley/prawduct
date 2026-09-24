@@ -149,3 +149,16 @@ def test_no_reader_defines_its_own_bound():
             f"{rel} redefines the bound instead of importing it"
         )
         assert "6 * 60 * 60" not in source, f"{rel} inlines the bound"
+
+
+def test_every_reader_ends_a_pr_interval_at_the_evidence_write():
+    """Red if any reader ends the interval at `ts`. On a PR event, `ts` is
+    the append, which comes after the caller fixed the review's findings."""
+    event = _event(GOOD_MARK)
+    event["ts"] = "2026-09-18T12:30:00Z"            # the append, 35m after the mark
+    event["review_written_at"] = WROTE              # the review ended at 5m
+
+    secs, measured = yield_tool.duration(event)
+    assert (secs, measured) == (300, True)
+    assert overhead._dispatch_clock_seconds(event) == 300.0
+    assert telemetry._measured_duration(event) == 300.0

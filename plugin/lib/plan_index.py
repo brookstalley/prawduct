@@ -14,11 +14,15 @@ level rather than filtered per file, and why nothing here imports a heavy module
 from __future__ import annotations
 
 import os
-from collections.abc import Iterator
+import re
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 
 ARCHIVE_DIR_NAME = "archive"
+
+#: The value of ``artifact:`` a document uses to declare itself a build plan.
+BUILD_PLAN_TYPE = "build-plan"
 
 #: Frontmatter key by which a build plan declares the branch it governs.
 #: Chosen against real data rather than for being the obvious short word: on
@@ -246,6 +250,62 @@ def branch_claiming_plans(artifacts_dir: Path) -> list[tuple[Path, str]]:
     return claims
 
 
+def declared_artifact_type(content: str) -> str | None:
+    """The ``artifact:`` type this document declares, or ``None`` when it declares none.
+
+    The one home for that read, for the reason :func:`_frontmatter_scalar` gives
+    for being the one value-level reader: this key was previously walked by a
+    hand-rolled loop beside that helper, so a later fix to quoting or comment
+    handling could land on ``scope:`` and not on ``artifact:``, and one plan's
+    frontmatter would come to mean different things to two readers of the same
+    block.
+
+    The YAML null literal reads as *no declaration*, which is what
+    :func:`_frontmatter_scalar` already means by ``(True, None)``. That is the
+    fail-safe direction :func:`_declares_non_build_plan_artifact` documents —
+    absence keeps a document in the plan population rather than dropping it.
+    """
+    fm = frontmatter_lines(content)
+    if fm is None:
+        return None
+    _present, value = _frontmatter_scalar(fm, "artifact")
+    return value
+
+
+# A `branch:` line as plans write it in prose rather than in frontmatter:
+# `branch: X`, `**Branch:** \`X\``, `**Branch**: \`X\``, optionally as a list
+# item. The value is the first token after the colon, backticks and bold stripped.
+_BODY_BRANCH_LINE = re.compile(
+    r"^[ \t]*(?:[-*][ \t]+)?\*{0,2}branch\*{0,2}[ \t]*:[ \t]*\*{0,2}[ \t]*`?([^\s`*]+)",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def plans_naming_branch_in_body(artifacts_dir: Path, branch: str) -> list[Path]:
+    """Live build plans that name ``branch`` on a ``branch:`` line OUTSIDE frontmatter.
+
+    Such a line claims nothing — :func:`branch_claiming_plans` reads frontmatter
+    only — yet it is the commonest way a plan fails to claim the branch it was
+    written for, because it reads to its author exactly like a declaration. This
+    finds it so the miss can be explained; it confers no claim, and nothing that
+    decides which plan governs may call it.
+
+    Enumerated with :func:`iter_live_plan_files`, not the scope map, because a
+    plan with no frontmatter at all is one of the shapes being looked for.
+    """
+    found: list[Path] = []
+    for plan_path in iter_live_plan_files(artifacts_dir):
+        try:
+            content = plan_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue  # one unreadable plan must not hide the rest
+        span = frontmatter_span(content)
+        body = content if span is None else "\n".join(content.splitlines()[span[1] + 1 :])
+        if any(m.group(1) == branch for m in _BODY_BRANCH_LINE.finditer(body)):
+            found.append(plan_path)
+    return found
+
+
 def _declares_non_build_plan_artifact(content: str) -> bool:
     """True when frontmatter declares an ``artifact:`` type that is NOT a build plan.
 
@@ -269,19 +329,17 @@ def _declares_non_build_plan_artifact(content: str) -> bool:
     readiness.md` declares no ``artifact:`` key at all, so requiring
     ``artifact: build-plan`` would silently drop a real plan. Excluding only an
     explicit *other* type fails safe in the direction that keeps plans.
+
+    **That direction is only safe where a declared ``scope:`` is already
+    evidence of plan-ness**, which is every caller of the scope walk. Asked
+    about a document with no scope it is close to useless — 22 of this repo's
+    live artifacts pass it and 20 are release plans, spikes and audits. A caller
+    working over the UNSCOPED population needs positive evidence instead; see
+    :func:`unscoped_candidates`, which requires it as an argument rather than
+    letting this predicate stand in for it.
     """
-    fm = frontmatter_lines(content)
-    if fm is None:
-        return False
-    for line in fm:
-        if line[:1] in (" ", "\t"):
-            continue  # nested key, not a top-level declaration
-        stripped = line.split("#", 1)[0].rstrip()
-        if not stripped.startswith("artifact:"):
-            continue
-        value = stripped.split(":", 1)[1].strip().strip('"').strip("'")
-        return bool(value) and value != "build-plan"
-    return False
+    value = declared_artifact_type(content)
+    return bool(value) and value != BUILD_PLAN_TYPE
 
 
 def is_build_plan(content: str) -> bool:
@@ -496,6 +554,63 @@ def unreadable_candidates(artifacts_dir: Path) -> list[dict]:
             path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError) as exc:
             found.append({"path": str(path), "reason": str(exc)})
+    return found
+
+
+def unscoped_candidates(
+    artifacts_dir: Path, *, looks_like_plan: "Callable[[str], bool]"
+) -> list[Path]:
+    """Live build plans that declare no ``scope:`` — the set the scope walk omits.
+
+    :func:`iter_scoped_plan_candidates` yields on ``if scope:`` and nothing
+    else, which is right for a *map*: a map keyed on scope has no key for a plan
+    that declares none. It is wrong for anything reporting COVERAGE, because
+    every consumer of that walk then describes a set that reads as the whole
+    artifacts directory. The remedy is :func:`unreadable_candidates`' exactly —
+    the swallow stays where the map needs it and the fact is published here,
+    outside the walk, because a check inside the fallible flow cannot catch that
+    flow's own skip.
+
+    **``looks_like_plan`` is required, and has no default, because the obvious
+    default is wrong and would be wrong in silence.**
+    :func:`_declares_non_build_plan_artifact` treats a document declaring no
+    ``artifact:`` as a plan — a direction chosen where a declared ``scope:`` is
+    already evidence, and one this population by definition lacks. Measured over
+    this repo's live ``artifacts/`` it alone admits 22 documents of which 20 are
+    release plans, spikes, audits and ``project-preferences.md``. A control that
+    names 20 non-plans on its first run is one nobody reads twice, so the
+    positive evidence has to come from a caller that owns build-plan structure —
+    which this module deliberately does not. See
+    ``buildplan_refs.plans_missing_scope``, the answer consumers actually call.
+
+    A ``scope:`` key present but set to the YAML null literal is EXCLUDED: that
+    is the documented explicit opt-out (:func:`parse_build_plan_frontmatter_scope`),
+    and an author's declared choice reported back as a coverage gap is a finding
+    that can never be settled. Only an absent key is a blind spot.
+
+    A file that cannot be decoded is likewise excluded — it is
+    :func:`unreadable_candidates`' subject, and counting it in both facts would
+    double it in the operator's figure.
+
+    Cold path only, like its sibling: it re-reads rather than riding the walk the
+    session gates pay for. The archive is pruned for the same reason the map
+    prunes it — an archived plan is a record, and nothing is going to re-scope it.
+    """
+    found: list[Path] = []
+    if not artifacts_dir.is_dir():
+        return found
+    for path in _markdown_files(artifacts_dir, prune_archive=True):
+        try:
+            content = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue  # `unreadable_candidates` publishes this one
+        if _declares_non_build_plan_artifact(content):
+            continue
+        present, scope = parse_build_plan_frontmatter_scope(content)
+        if scope or present:
+            continue  # declared, or deliberately opted out of, scope filtering
+        if looks_like_plan(content):
+            found.append(path)
     return found
 
 

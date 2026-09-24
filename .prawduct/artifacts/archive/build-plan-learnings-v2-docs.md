@@ -56,7 +56,13 @@ partition: >-
   release, both the coordinator's by definition. Precedent: the discovery §8.2 drew Wave 3 serial
   for exactly this reason; Wave 2's parallel run cost five integration seams in prose nobody owned.
 last_validated: 2026-09-03
+lifecycle: completed
+archived: 2026-09-20
+released_in: v3.6.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Requirements Confidence
 
@@ -111,7 +117,9 @@ is needed, and nothing before it depends on the answer.
 - [x] Chunk 02: Digest line, contract records, and the residue the two earlier waves left in prose
 - [x] Chunk 03: The discipline seed — ten cross-repo rules delivered where rules fire, recorded in one table
 - [x] Chunk 04: The program's PR to `develop` — its cumulative review is the gate
-- [ ] Chunk 05: Release — plan, version, cut, verify, reopen `develop`
+- [x] Chunk 05: Release — plan, version, cut, verify, reopen `develop`
+
+**DISCHARGED at the v3.6.0 cut by FILING as #857, not by building it.** The NOTE below asked Chunk 05 to wire `audit_against_incoming`; Chunk 05 shipped the release and did not. Filed rather than carried again because it clears the filing bars — a named trigger (the next union merge over an append-at-top `.prawduct/` record), a chunk's worth of work, and nothing in release bookkeeping it could ride. #857 also carries the widening PR #759's own reviewer asked for: every `merge=union` record, not only the corpus. Original note follows.
 
 **Carried into Chunk 05 (PR review #759, NOTE):** `audit_against_incoming`
 (`tests/test_learnings_files.py`) has no caller outside its own three fixture tests. It is the

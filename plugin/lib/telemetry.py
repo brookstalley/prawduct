@@ -228,14 +228,14 @@ def _read_events(
 def _measured_duration(event: dict) -> "float | None":
     """The interval this event's dispatch mark attests, or ``None``.
 
-    The predicate itself lives in :func:`lib.review_dispatch.measured_interval_seconds`
+    The predicate itself lives in :func:`lib.review_dispatch.event_interval_seconds`
     — one home, shared with the two `tools/` readers, because all three grade the
     same field for the same comparison and a per-reader copy diverges on the bound
     that makes it safe.
     """
-    from .review_dispatch import measured_interval_seconds  # noqa: PLC0415 — lazy, as the module's other imports are
+    from .review_dispatch import event_interval_seconds  # noqa: PLC0415 — lazy, as the module's other imports are
 
-    return measured_interval_seconds(event.get("dispatched_at"), event.get("ts"))
+    return event_interval_seconds(event)
 
 
 def _extract_row(event: dict) -> dict:
@@ -473,31 +473,32 @@ def round_price(prawduct_dir: Path, *, mode: str = PRICED_MODE) -> dict:
 
     Returns either
 
-    - ``{"status": "priced", "mode", "median_seconds", "reviews"}`` — the
-      median duration of the rounds this repo has actually recorded, with the
-      sample size it rests on, so a caller can show its work; or
+    - ``{"status": "priced", "mode", "median_seconds", "reviews", "basis"}`` —
+      the median duration of the rounds this repo has actually recorded, with
+      the sample size it rests on and where the durations came from
+      (``"measured"`` or ``"self-reported"``), so a caller can show its work; or
     - ``{"status": "unavailable", "reason"}`` — no ledger, no rounds of this
       mode, none carrying a duration, or too few to be worth quoting.
 
-    **Provenance, recorded so the figure is not defended as more than it is.**
-    ``duration_seconds`` reaches the ledger from the reviewer's own partial —
-    ``build_fact_body`` takes ``max()`` over the partials, and the reviewer
-    contract asks for a best-estimate wall-clock. So a median over THAT field is
-    a median of self-reported estimates, not of measured time, and estimates
-    cluster on round numbers: across the first 1,026 rounds it took 63 distinct
-    values, 80% of them multiples of 30 seconds. (Those two figures come from a
-    scan of the ledger over ``duration_seconds``, not from this report — it
-    publishes only ``{reviews, total_seconds, median_seconds}`` per population,
-    so it cannot re-derive them.)
+    **The clock prices first; the estimate is the fallback.** A round carries a
+    code-read interval where its dispatch was marked (``review_dispatch``:
+    ``critic-begin`` marks a Critic round). Where at least
+    :data:`MIN_PRICED_SAMPLE` rounds of this mode carry one, the price is their
+    median and nothing else. The alternative, ``duration_seconds``, reaches the
+    ledger from the reviewer's own partial, which the reviewer contract asks
+    for as a best-estimate wall clock. It is a model's recollection, not a
+    measurement, and on the same rounds it runs high, worst on short ones
+    (the measurements are in ``documentation/consumer-build-metrics.md``
+    hazard 2). A price taken from it can tell a builder a round costs several
+    times what it does, which is exactly the misinformed spend decision this
+    helper exists to prevent. Re-derive the comparison with
+    ``prawduct-hook review-stats``, which reports ``duration_measured`` and
+    ``duration_self_reported`` separately.
 
-    Both review kinds now also carry a code-read clock where their dispatch was
-    marked (``review_dispatch``; ``critic-begin`` marks a Critic round,
-    ``pr-review-dispatch --begin`` a PR one), so a row can be measured rather
-    than estimated. The two never pool: :func:`review_stats` reports
-    ``duration_measured`` and ``duration_self_reported`` separately, because a
-    median over the mixture measures neither. An estimate remains the honest
-    fallback on every unmarked or degraded row, and the historical rows are all
-    estimates — the clock could not be read backwards.
+    The two never pool, for the reason ``review_stats`` gives: a median over
+    the mixture measures neither. So a repo with too few marked rounds is
+    priced from every round's estimate, as it always was, and says so. The
+    historical rows are all estimates — the clock could not be read backwards.
 
     Unavailable is a first-class answer, not a failure: this is advice, and
     advice fails soft (``architecture.md`` § Direction). It is deliberately
@@ -520,11 +521,17 @@ def round_price(prawduct_dir: Path, *, mode: str = PRICED_MODE) -> dict:
             "status": "unavailable",
             "reason": f"this repo's governance ledger could not be read ({unreadable})",
         }
-    durations = [
-        row["duration"]
-        for row in (_extract_row(e) for e in events)
-        if row["mode"] == mode and row["duration"] is not None
-    ]
+    rows = [row for row in (_extract_row(e) for e in events) if row["mode"] == mode]
+    measured = [row["duration_measured"] for row in rows if row["duration_measured"] is not None]
+    if len(measured) >= MIN_PRICED_SAMPLE:
+        return {
+            "status": "priced",
+            "mode": mode,
+            "median_seconds": round(median(measured), 1),
+            "reviews": len(measured),
+            "basis": "measured",
+        }
+    durations = [row["duration"] for row in rows if row["duration"] is not None]
     if not durations:
         return {
             "status": "unavailable",
@@ -543,6 +550,7 @@ def round_price(prawduct_dir: Path, *, mode: str = PRICED_MODE) -> dict:
         "mode": mode,
         "median_seconds": round(median(durations), 1),
         "reviews": len(durations),
+        "basis": "self-reported",
     }
 
 
@@ -574,10 +582,20 @@ def format_round_price(price: dict) -> str:
             f"What one more round costs here is unavailable ({price.get('reason', 'unknown')}) "
             f"— that is a missing number, not a small one."
         )
+    # The basis is named in the sentence because the two readings are not the
+    # same kind of number: a measured median is a price, and an estimated one
+    # is a model's recollection that can be several times the clock. A dict
+    # without the key is read as an estimate, the safe reading.
+    if price.get("basis") == "measured":
+        source = f"median of {price['reviews']} measured {price['mode']} rounds"
+    else:
+        source = (
+            f"median of {price['reviews']} recorded {price['mode']} rounds, as the "
+            f"reviewing models reported them"
+        )
     return (
-        f"One more round costs {format_minutes(price['median_seconds'])} here (median "
-        f"of {price['reviews']} recorded {price['mode']} rounds; re-derive with "
-        f"`prawduct-hook review-stats`)."
+        f"One more round costs {format_minutes(price['median_seconds'])} here "
+        f"({source}; re-derive with `prawduct-hook review-stats`)."
     )
 
 

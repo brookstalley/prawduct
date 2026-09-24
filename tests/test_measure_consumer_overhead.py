@@ -358,7 +358,32 @@ class TestEveryIsoParseSurvivesPython310:
     routing through the one home or by replacing the suffix at the call site.
     """
 
-    TOOLS = ("tools/measure-consumer-overhead.py", "tools/pr-review-yield.py")
+    @property
+    def TOOLS(self):
+        """Every tool, enumerated — never a hand-kept list of filenames.
+
+        This was a hardcoded two-name tuple, which bounds the rule by its
+        CONTAINER rather than by the property that justifies it: a tool added
+        later is outside the guard while reading as covered, and the guard goes
+        green having examined nothing about it. That is exactly what happened —
+        `measure-review-loop-economy.py` shipped with an unnormalised
+        `fromisoformat(args.since)` and this guard, the one written for that
+        defect, could not see it. Enumerating means the next tool is covered on
+        the day it lands, with nobody remembering to add it.
+        """
+        tools = sorted(p for p in (REPO_ROOT / "tools").glob("*.py"))
+        assert tools, "no tools found to scan — the guard would pass vacuously"
+        return tuple(str(p.relative_to(REPO_ROOT)) for p in tools)
+
+    def test_the_scan_covers_every_tool(self):
+        """The corpus is the guard's most basic claim, so assert it was reached.
+
+        A set-shaped rule that asserts emptiness is satisfied by looking at
+        nothing; this pins that the enumeration finds the real directory and
+        includes the tool whose absence caused the miss.
+        """
+        assert "tools/measure-review-loop-economy.py" in self.TOOLS
+        assert "tools/measure-consumer-overhead.py" in self.TOOLS
 
     def test_no_unnormalised_fromisoformat_call(self):
         offenders = []

@@ -181,8 +181,11 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   resolver's answer — the rules files under `.claude/rules/learnings/`, and with `--for-diff` the
   core file plus every area file whose `paths:` intersect the diff; two `allowed-tools` grants bind
   it and the PR reviewer protocol instructs it, so it sits in the stable tier) and `learnings-migrate [--apply] [--map <file>] [--propose-map]
-  [--json]` (mutating with `--apply`: the one-way relayout of a legacy `.prawduct/learnings.md` into
-  the rules files, byte-accounted against the tree it writes; refuses on a dirty tree; exit 0 written,
+  [--json] [--local]` (mutating with `--apply`: the one-way relayout of a legacy `.prawduct/learnings.md` into
+  the rules files, byte-accounted against the tree it writes; refuses on a dirty tree, an uncommitted or
+  ignored corpus, or an ignored destination, because a commit is its undo — except under `--local`,
+  for a repo that keeps its learnings out of git, whose undo is a byte-verified backup under
+  `<git-common-dir>/prawduct/learnings-backup/`, reported as `backup_dir` in `--json`; exit 0 written,
   1 refused or could not run, 2 usage — the sibling repairs' scheme). **The contract change, in one
   place:** two verbs added; three retired to deprecated-inert (below) rather than removed, because the
   deprecation norm above governs every verb a human or a skill can call and the release is a minor;
@@ -225,7 +228,12 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   the set is proposed and the operator archives each with `archive-plan`. Checkbox state is neither
   a precondition nor corrected on the way in. `--json` adds `blocked[{path,scope,release,reason}]`:
   plans the change log records as shipped that the archival predicate refuses, split out so the
-  preview cannot promise what the write declines. **Exit 1 on `--apply` when anything is `blocked`
+  preview cannot promise what the write declines. It also carries
+  `unevaluated[{path}]` — build plans that declare no frontmatter `scope:` and so were never
+  candidates for any bucket, since the whole shipped test is a lookup on that key. Reported, and
+  named on stdout under both arms of the release-tag fork, because the other three counts read as
+  a description of `artifacts/` and without this one they are not. Diagnostic only: no exit code
+  and no gate reads it. **Exit 1 on `--apply` when anything is `blocked`
   or `refused`** — an apply that could not move work the change log says shipped is not a clean run;
   a preview stays 0, having attempted nothing.
   `archive-change-log [--apply] [--json]` (mutating with `--apply`) keeps `.prawduct/change-log.md`
@@ -242,10 +250,15 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   removes the retired `views_enabled` key and `scope_rollups` block, labels a derived
   `release-notes.md` as history, and deletes `## Status` notes instructing readers not to hand-edit
   checkboxes. `--json` keys: `applied`, `edits[{path,kind,reason,detail}]`, `unreadable[{path,
-  reason}]`, `retired_flag{status,path,line}`, `plans_to_review[{path,chunks}]`, `outcome`.
-  **`unreadable`, `retired_flag` and `plans_to_review` all have a live consumer** —
+  reason}]`, `unscoped[path]`, `retired_flag{status,path,line}`, `plans_to_review[{path,chunks}]`,
+  `outcome`.
+  **`unreadable`, `unscoped`, `retired_flag` and `plans_to_review` all have a live consumer** —
   `skills/doctor/SKILL.md` Health Checks #15 and #16 grade on them — so renaming any of them is a
-  consumer break, not an internal edit. `unreadable` is the plans under `artifacts/` that could not
+  consumer break, not an internal edit. `unscoped` is the one that is graded **healthy**: build
+  plans that decode fine and declare no frontmatter `scope:`, so the plan scan does not yield them
+  and the repair never read them. Reported so a clean `edits` list is not read as "everything was
+  checked", and deliberately outside both exit-code expressions — `--apply` cannot add a `scope:`
+  key, so grading it would pin a repo at degraded with no route out. `unreadable` is the plans under `artifacts/` that could not
   be decoded as text: the walk that builds `edits` deliberately swallows them (one malformed file
   must not blind the scan), so a non-empty `unreadable` means the repair reports on a set it did not
   fully read. It was emitted before it was documented or graded, which is how a repo with an unread
@@ -297,8 +310,10 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
 - **Coverage & jurisdiction** — `coverage-status`, `coverage-scaffold` (mutating with `--apply`),
   `jurisdiction`, `cost-of-commit [--json] [<paths>...]` (does committing these paths — the
   working tree by default — buy a review round? Asks the gates' own `is_judgeable_path`, so it
-  cannot disagree with the gate that charges afterwards; verdict token leads on stdout, degrades
-  to `unknown` rather than a reassuring `free`).
+  cannot disagree with the gate that charges afterwards; with no path arguments, judgeable paths
+  price `free` when the gates' coverage composition already covers the working tree
+  (`gates.commit_coverage`); verdict token leads on stdout, degrades to `unknown` rather than a
+  reassuring `free`).
 - **Repo lifecycle** — `migrate-plugin`, `init-product`, `update-gitignore [--dry-run]`,
   `audit-learnings`, `learnings-obligation`, `norm-index-scaffold`, `reanchor`,
   `lifecycle-repair`, `plan-backfill`, `archive-change-log`, `repo-disable` (dry-run-by-default where they mutate, with
@@ -429,8 +444,9 @@ files to touch previews first. That framing is descriptive — the binding rule 
     have noticed.
   - `cost-of-commit --json` → **no skill consumer today** (`verdict` — one of `free` /
     `costs-a-round` / `unknown` — plus `source` (`working-tree` / `arguments`), `paths[]`,
-    `judgeable[]`, `free[]`, and `round_price` (the `telemetry.round_price` dict: `status` of
-    `priced` / `unavailable`, with `mode`/`median_seconds`/`reviews` or `reason`); `reason` appears
+    `judgeable[]`, `free[]`, `covered_by[]` (review ids whose coverage made a judgeable working
+    tree `free`; empty otherwise), and `round_price` (the `telemetry.round_price` dict: `status` of
+    `priced` / `unavailable`, with `mode`/`median_seconds`/`reviews`/`basis` — `measured` or `self-reported` — or `reason`); `reason` appears
     at top level only on the degraded path). Named as unconsumed on purpose, per the rule this list
     already applies to `learnings-obligation` and `check-released`. The **human** form is what an
     agent reads — the verdict token leads stdout so a caller can branch on one word — and the exit
@@ -553,6 +569,12 @@ Fail-direction is deliberate and per-purpose:
 - **Special sentinels** (documented, not general): `critic-begin` **2** = scope-widened;
   `critic-begin` **3** = no review needed (added 2026-08-06);
   `critic-begin` **4** = round budget exhausted (added 2026-09-09);
+  `critic-begin` **6** = evidence store unusable for `verify-resolutions` (added 2026-09-22) —
+  unreadable, or schema-ahead records present. Distinct from **1** because the skill's exit-1
+  row on `verify-resolutions` demotes and re-dispatches, and no review repairs a store or updates
+  a plugin; a demoted one would append its fact to a store nothing can parse. **5 is withdrawn,
+  not free:** #167's `self-inflicted-refusal` held it on `develop` until its 2026-09-20 revert,
+  and never shipped in a release, so it is left unclaimed rather than given a new meaning;
   `evidence status` **2** = schema-ahead records present (gates can't be trusted until update).
   (`regen-views` **2** and **3** are RETIRED, not repurposed: the command is inert and exits 0
   unconditionally, so those two meanings were removed rather than given new ones. Retiring a
@@ -592,6 +614,20 @@ Fail-direction is deliberate and per-purpose:
   Rounds are counted per build-plan **scope** (intersected with this branch's lineage, since the
   store is clone-wide); a dispatch that resolves no scope is not budgeted, because there is no
   body of work to bound and the census the refusal renders is selected from the same set.
+  **Where the lineage span holds no commits the bound is this `actor.worktree` instead.** An
+  intersection with an empty set is empty, so wherever that span is empty the ceiling was
+  unreachable — declared, on by default and silently inert. A trunk-based repo is the case that
+  motivated it (every push restores the state), but the predicate is the SPAN, not the repo shape:
+  a branch cut and not yet committed to takes the same route, so a branch resuming a scope inherits
+  that scope's rounds from this worktree. The clone-wide reason is unchanged and is why this is a
+  second bound rather than a dropped one; keying on the span rather than on a zero count is what
+  leaves a branch with commits and no rounds yet answering by lineage. The verdict and the
+  `critic-dispatch-round-budget` guard-refusal fact both carry `bound` (`lineage` | `worktree`),
+  because the two count different sets and the control's retirement question needs to tell them
+  apart. **Nothing resets the worktree-bounded count** — a branch cut resets the lineage one, and
+  trunk has no cut, so a reused scope name inherits the previous body of work's rounds, and can
+  refuse its first dispatch while auto-accepting the older work's outstanding findings. Give each
+  body of work its own scope name, or raise `review_round_budget`.
 
 **The `backlog` group carries its own exit-class set — a documented scheme, not an exception to the
 table above.** `lib/backlog/cli.py`'s `_EXIT_CLASS` maps every error `code` the group can return onto

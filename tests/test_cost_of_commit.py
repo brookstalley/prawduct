@@ -101,6 +101,34 @@ def _ledger(repo: Path, rounds: list[float], mode: str = "verify-resolutions") -
     (repo / ".prawduct" / ".governance-ledger.jsonl").write_text("\n".join(lines) + "\n")
 
 
+def _clocked_ledger(
+    repo: Path, rounds: "list[tuple[float, float | None]]", mode: str = "verify-resolutions"
+) -> None:
+    """Write a ledger of `(self_reported, measured)` rounds of `mode`.
+
+    A round with a measured interval carries the dispatch mark and an event
+    `ts` that far after it — the shape `critic-begin` + `ledger-append` write.
+    `None` writes an unmarked round, which has only the model's own estimate.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    start = datetime(2026, 9, 1, tzinfo=timezone.utc)
+    lines = []
+    for i, (self_reported, measured) in enumerate(rounds):
+        event = {
+            "event": "review.critic",
+            "duration_seconds": self_reported,
+            "actor": {"role": "critic", "model": "opus"},
+            "review": {"mode": f"{mode} (some verbose suffix)", "findings": []},
+        }
+        dispatched = start + timedelta(hours=i)
+        if measured is not None:
+            event["dispatched_at"] = dispatched.isoformat().replace("+00:00", "Z")
+            event["ts"] = (dispatched + timedelta(seconds=measured)).isoformat().replace("+00:00", "Z")
+        lines.append(json.dumps(event))
+    (repo / ".prawduct" / ".governance-ledger.jsonl").write_text("\n".join(lines) + "\n")
+
+
 _DURATION_RE = re.compile(r"\b\d+\s*(?:min|minute|sec|second)s?\b")
 
 
@@ -296,6 +324,150 @@ class TestWorkingTree:
 # ---------------------------------------------------------------------------
 
 
+class TestCoveredTree:
+    """A tree existing review evidence already covers commits for free.
+
+    Observed on a real branch: a chunk Critic reviewed the uncommitted tree,
+    `cost-of-commit` then said "costs-a-round", and after the commit the
+    cumulative gate was satisfied with no new review. Path classification
+    cannot see a review, so it must ask the coverage composition too.
+    """
+
+    @staticmethod
+    def _reviewed_repo(tmp_path: Path, **overrides) -> "tuple[Path, str]":
+        from lib import evidence
+
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        (repo / "src").mkdir()
+        (repo / "src" / "app.py").write_text("x = 1\n")
+        capture = evidence.capture_tree(repo)
+        assert capture["status"] == "ok", capture
+        body = {
+            "base_tree": capture["head_tree"],
+            "head_tree": capture["tree"],
+            "files_changed": ["src/app.py"],
+            "files_reviewed": ["src/app.py"],
+            "findings": [],
+        }
+        body.update(overrides)
+        fact_id = "rev-test-covered"
+        appended = evidence.append_fact(repo, "review", fact_id, body)
+        assert appended["status"] == "appended", appended
+        return repo, fact_id
+
+    def test_a_reviewed_tree_commits_free_and_names_the_review(self, tmp_path: Path) -> None:
+        repo, fact_id = self._reviewed_repo(tmp_path)
+        result = _run(repo)
+        assert result.stdout.splitlines()[0] == "free", result.stdout
+        assert fact_id in result.stdout
+        payload = json.loads(_run(repo, "--json").stdout)
+        assert payload["verdict"] == "free"
+        assert payload["covered_by"] == [fact_id]
+
+    def test_an_edit_after_the_review_costs_a_round_again(self, tmp_path: Path) -> None:
+        repo, _ = self._reviewed_repo(tmp_path)
+        (repo / "src" / "app.py").write_text("x = 2\n")
+        payload = json.loads(_run(repo, "--json").stdout)
+        assert payload["verdict"] == "costs-a-round"
+        assert payload["covered_by"] == []
+
+    def test_a_doc_edit_after_the_review_rides_a_free_edge(self, tmp_path: Path) -> None:
+        repo, fact_id = self._reviewed_repo(tmp_path)
+        (repo / "README.md").write_text("edited after the review\n")
+        payload = json.loads(_run(repo, "--json").stdout)
+        assert payload["verdict"] == "free"
+        assert payload["covered_by"] == [fact_id]
+
+    def test_an_unresolved_blocker_leaves_the_round_owed(self, tmp_path: Path) -> None:
+        repo, _ = self._reviewed_repo(
+            tmp_path,
+            findings=[{"fid": "F1", "severity": "BLOCKING", "title": "broken"}],
+        )
+        payload = json.loads(_run(repo, "--json").stdout)
+        assert payload["verdict"] == "costs-a-round"
+        assert payload["covered_by"] == []
+
+    def test_a_review_that_did_not_read_the_file_covers_nothing(self, tmp_path: Path) -> None:
+        repo, _ = self._reviewed_repo(tmp_path, files_reviewed=[])
+        payload = json.loads(_run(repo, "--json").stdout)
+        assert payload["verdict"] == "costs-a-round"
+
+    def test_explicit_paths_are_never_relaxed_by_coverage(self, tmp_path: Path) -> None:
+        # A path list may be a partial commit, whose tree no review saw — and
+        # `/prawduct:pr` prices a post-review delta with exactly this form.
+        repo, _ = self._reviewed_repo(tmp_path)
+        payload = json.loads(_run(repo, "--json", "src/app.py").stdout)
+        assert payload["verdict"] == "costs-a-round"
+        assert payload["covered_by"] == []
+
+    def test_a_fully_staged_tree_is_still_covered(self, tmp_path: Path) -> None:
+        repo, fact_id = self._reviewed_repo(tmp_path)
+        _git(repo, "add", "-A")
+        payload = json.loads(_run(repo, "--json").stdout)
+        assert payload["verdict"] == "free"
+        assert payload["covered_by"] == [fact_id]
+
+    def test_a_partially_staged_index_is_not_covered(self, tmp_path: Path) -> None:
+        # `git commit` records the index. With only part of the reviewed tree
+        # staged, the commit records a tree no review saw.
+        repo, _ = self._reviewed_repo(tmp_path)
+        (repo / "src" / "b.py").write_text("y = 1\n")
+        from lib import evidence
+
+        capture = evidence.capture_tree(repo)
+        evidence.append_fact(repo, "review", "rev-test-both", {
+            "base_tree": capture["head_tree"],
+            "head_tree": capture["tree"],
+            "files_changed": ["src/app.py", "src/b.py"],
+            "files_reviewed": ["src/app.py", "src/b.py"],
+            "findings": [],
+        })
+        assert json.loads(_run(repo, "--json").stdout)["verdict"] == "free"
+        _git(repo, "add", "src/app.py")
+        payload = json.loads(_run(repo, "--json").stdout)
+        assert payload["verdict"] == "costs-a-round"
+        assert payload["covered_by"] == []
+
+    def test_a_staged_change_reverted_in_the_tree_is_not_covered(self, tmp_path: Path) -> None:
+        # The captured tree IS HEAD's, so the span composes trivially with no
+        # review on it — yet `git commit` would commit the staged, unreviewed
+        # index.
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        (repo / "app.py").write_text("x = 1\n")
+        _git(repo, "add", "app.py")
+        _git(repo, "commit", "-m", "app", "--quiet")
+        (repo / "app.py").write_text("x = 2\n")
+        _git(repo, "add", "app.py")
+        (repo / "app.py").write_text("x = 1\n")
+        payload = json.loads(_run(repo, "--json").stdout)
+        assert payload["judgeable"] == ["app.py"]
+        assert payload["verdict"] == "costs-a-round"
+        assert payload["covered_by"] == []
+
+    def test_an_unreadable_store_leaves_the_path_price(self, tmp_path: Path) -> None:
+        # A fact from a newer plugin makes the store unusable to this reader;
+        # the coverage answer is then missing, and missing never reads as free.
+        repo, _ = self._reviewed_repo(tmp_path)
+        from lib import evidence
+
+        store = evidence.store_path(repo)
+        with store.open("a") as fh:
+            fh.write(json.dumps({"schema": 999, "kind": "review", "id": "rev-future",
+                                 "ts": "2026-09-21T00:00:00Z", "body": {}}) + "\n")
+        payload = json.loads(_run(repo, "--json").stdout)
+        assert payload["verdict"] == "costs-a-round"
+        assert payload["covered_by"] == []
+
+    def test_commit_cost_itself_still_prices_by_path(self, tmp_path: Path) -> None:
+        # The Critic close's cost lead reads `commit_cost` right after writing
+        # a review of this very tree; coverage must not leak into it, or that
+        # lead would call the NEXT edit free.
+        repo, _ = self._reviewed_repo(tmp_path)
+        assert commit_cost(repo)["judgeable"] == ["src/app.py"]
+
+
 class TestRoundPrice:
     def test_a_thin_sample_is_unavailable_not_a_median(self, tmp_path: Path) -> None:
         """Two rounds do not establish a repo's price. Reporting their median
@@ -316,6 +488,71 @@ class TestRoundPrice:
         assert price["status"] == "priced"
         assert price["median_seconds"] == 300.0
         assert price["reviews"] == 5
+        assert price["basis"] == "self-reported"
+
+    def test_a_clocked_sample_is_priced_from_the_clock(self, tmp_path: Path) -> None:
+        """The reviewing model's own duration runs well above the clock on the
+        same rounds, so a price taken from it tells a builder a round costs more
+        than it does. Once enough rounds carry a dispatch mark, the clock prices
+        the round."""
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _clocked_ledger(repo, [(300.0, 90.0), (300.0, 100.0), (300.0, 110.0),
+                               (240.0, 120.0), (420.0, 130.0)])
+        price = telemetry.round_price(repo / ".prawduct")
+        assert price["status"] == "priced"
+        assert price["basis"] == "measured"
+        assert price["median_seconds"] == 110.0
+        assert price["reviews"] == 5
+
+    def test_estimates_never_pool_into_a_clocked_price(self, tmp_path: Path) -> None:
+        """A median over estimates and measurements together measures neither.
+        Unmarked rounds outnumbering the clocked ones must not drag the price
+        back toward the estimate."""
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _clocked_ledger(repo, [(300.0, 60.0)] * 5 + [(300.0, None)] * 10)
+        price = telemetry.round_price(repo / ".prawduct")
+        assert price["basis"] == "measured"
+        assert price["median_seconds"] == 60.0
+        assert price["reviews"] == 5
+
+    def test_below_the_floor_the_estimate_prices_and_says_it_is_one(
+        self, tmp_path: Path
+    ) -> None:
+        """Four clocked rounds are too few to quote, but the repo still has a
+        long estimated history. The estimate is the honest fallback, and it is
+        labelled so a reader does not take it for a measurement."""
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _clocked_ledger(repo, [(300.0, 60.0)] * 4 + [(300.0, None)] * 3)
+        price = telemetry.round_price(repo / ".prawduct")
+        assert price["status"] == "priced"
+        assert price["basis"] == "self-reported"
+        assert price["median_seconds"] == 300.0
+        assert price["reviews"] == 7
+        rendered = telemetry.format_round_price(price)
+        assert "as the reviewing models reported them" in rendered
+        assert "measured" not in rendered
+
+    def test_a_clocked_price_names_its_clock(self, tmp_path: Path) -> None:
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _clocked_ledger(repo, [(300.0, 180.0)] * 5)
+        rendered = telemetry.format_round_price(telemetry.round_price(repo / ".prawduct"))
+        assert "about 3 min" in rendered
+        assert "median of 5 measured verify-resolutions rounds" in rendered
+        assert "reported them" not in rendered
+
+    def test_clocked_rounds_of_another_mode_do_not_price_a_fix(
+        self, tmp_path: Path
+    ) -> None:
+        """The mode filter holds for the clocked population too: five measured
+        cumulatives say nothing about the delta pass a fix commit buys."""
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _clocked_ledger(repo, [(600.0, 400.0)] * 5, mode="cumulative")
+        assert telemetry.round_price(repo / ".prawduct")["status"] == "unavailable"
 
     def test_a_sub_minute_price_never_reads_as_about_zero_minutes(
         self, tmp_path: Path

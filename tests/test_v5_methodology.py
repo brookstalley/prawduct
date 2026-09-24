@@ -448,7 +448,13 @@ LAST_MEASURED_TOKENS = {
     # rule stated without its bound at one carrier is the drift this scope exists to
     # end. Nothing was cut to fund it: the digest's share was written at that surface's
     # own compressed register instead, which is why its 500-char reserve is untouched.
-    "methodology/building.md": 5038,
+    # RAISED 5038 -> 5055 (review-interval-extension PR review, 2026-09-22): "Resolve findings" told every builder to
+    # fix, run verify-resolutions, then commit — the round #167 removes for a
+    # non-blocking fix mid-plan. Scoped to "while a blocker remains" and pointed at
+    # NEXT-ACTION for the rest. DECLARED: a correction, compressed in place first.
+    # RAISED 5055 -> 5072, #820 (owner decision 2026-09-23): the declared suite moves from every chunk's Verify to the boundary — a default every consumer inherits, so the sentence carrying it is owed at each surface its reader meets. Compressed in place first; no duplication to pay from. DECLARED.
+    # RAISED 5072 -> 5093, same PR, after its cumulative review (W1/W3): the boundary is defined as where work LANDS, so direct-commit repos and work ending on a single `final` still owe the suite, and `final` reports a stale record as an observation. Compressed in place first. DECLARED.
+    "methodology/building.md": 5093,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -591,7 +597,17 @@ LAST_MEASURED_TOKENS = {
     # regardless; the bound is on the builder) with an explicit never-omit clause.
     # A declared raise: correcting a rule that could suppress findings is not
     # fundable by trimming, and the wrong reading cost more than 30 tokens would.
-    "skills/critic/review-protocol.md": 4355,
+    # RATCHETED 4355 -> 4349 (review-interval-extension, 2026-09-22): a parenthetical calling `final` "the
+    # uncommitted diff" became false when its interval began at the covered
+    # frontier; deleted, since the stage rule it decorated does not need it.
+    # RAISED +43 (reviewer-prompt-file-list, 2026-09-22), DECLARED: the coordinator
+    # prompt template names the manifest instead of pasting `files_reviewed` and
+    # `files_oracle`, plus the one-line reason not to paste them. Priced against the
+    # sum: the coordinator stops writing each file list three times in a row, which
+    # on a large review is thousands of output tokens on the dispatch critical path.
+    # RAISED 4392 -> 4399, #820 (owner decision 2026-09-23): the declared suite moves from every chunk's Verify to the boundary — a default every consumer inherits, so the sentence carrying it is owed at each surface its reader meets. Compressed in place first; no duplication to pay from. DECLARED. (stale suite: WARNING at `cumulative`, none at `final`.)
+    # RAISED 4399 -> 4412, same PR, after its cumulative review (W1/W3): the boundary is defined as where work LANDS, so direct-commit repos and work ending on a single `final` still owe the suite, and `final` reports a stale record as an observation. Compressed in place first. DECLARED.
+    "skills/critic/review-protocol.md": 4412,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -682,7 +698,8 @@ LAST_MEASURED_TOKENS = {
     # regardless; the bound is on the builder) with an explicit never-omit clause.
     # A declared raise: correcting a rule that could suppress findings is not
     # fundable by trimming, and the wrong reading cost more than 30 tokens would.
-    "skills/critic/goals-1-3.md": 2652,
+    # RAISED 2652 -> 2665, #820 (owner decision 2026-09-23): the declared suite moves from every chunk's Verify to the boundary — a default every consumer inherits, so the sentence carrying it is owed at each surface its reader meets. Compressed in place first; no duplication to pay from. DECLARED. (stale suite: no finding at the inner stage.)
+    "skills/critic/goals-1-3.md": 2665,
     # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
     # a computed pass the gate can now print, which a reader who only knows
     # "uncovered means run a cumulative" will otherwise re-review straight
@@ -841,7 +858,9 @@ LAST_MEASURED_TOKENS = {
     # `agents/critic-reviewer.md` so this surface carries a pointer rather than a
     # second copy. A declared raise; the rule removes review rounds by substituting
     # ONE finding for N occurrences, which is worth more than 83 tokens of payload.
-    "skills/critic/review-cycle.md": 11235,
+    # RATCHETED 11235 -> 11232 (review-interval-extension, 2026-09-22): the chunk/final interval row and the
+    # Small row restated for the covered frontier, in place and shorter.
+    "skills/critic/review-cycle.md": 11232,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -961,7 +980,24 @@ LAST_MEASURED_TOKENS = {
     # manufactures a finding per review. NOT paid in place: the sentences a trim
     # would have reached are the ones no test asserts, and this file has already
     # funded three raises that way.
-    "skills/critic/SKILL.md": 3649,
+    # RATCHETED 3649 -> 3643 (review-interval-extension, 2026-09-22): the interval and demotion sentences and
+    # the `deferred` bullet's second trigger (#167), paid by cutting that
+    # bullet's restatement of what its rationale already prints.
+    # RAISED (review-interval-extension, 2026-09-22, cumulative finding): the demotion
+    # property's list of commits `chunk`/`final` cannot reach — behind an open blocker,
+    # before any review, across a base sync — was cut to one case in the same branch and
+    # restored. DECLARED, not paid: the sentence has no duplicate to fund it, and a builder
+    # reading the one-case version demotes the other three to a mode that cannot see them.
+    # RATCHETED 3656 -> 3651 (review-interval-extension PR review, 2026-09-22): "the uncommitted interval" dropped.
+    # RAISED 3651 -> 3680 (review-scrub-seams, 2026-09-22). DECLARED: the exit
+    # table's new row for `critic-begin` 6 (evidence store unusable). Without it
+    # the caller falls to the exit-1 row, which demotes and re-dispatches — a
+    # full round that cannot repair a store and, on an unreadable one, appends
+    # to a file nothing parses. Paid in place first: the row drafted at +81
+    # carried its own remedy, which now rides the refusal's stderr (read only
+    # when it fires); what remains is the row itself, which has no duplicate.
+    # RAISED 3680 -> 3684 (#820), same PR, after its cumulative review (W1/W3): the boundary is defined as where work LANDS, so direct-commit repos and work ending on a single `final` still owe the suite, and `final` reports a stale record as an observation. Compressed in place first. DECLARED.
+    "skills/critic/SKILL.md": 3684,
     "skills/critic/framework-checks.md": 1116,
     # The on-demand class, first recorded 2026-08-19 (#688) — readings, no
     # ceilings; the block above this dict is the decision and its reasoning.
@@ -1097,7 +1133,12 @@ LAST_MEASURED_TOKENS = {
     # the plan is short" — they promised `final`/`chunk` on plans where
     # inference answers `deferred`, contradicting the bullet below them and
     # the code. Pinned in `test_short_plan_deferral.py`. On-demand class.
-    "methodology/planning.md": 5735,
+    # RATCHETED 5735 -> 5730 (review-interval-extension PR review, 2026-09-22): "of the uncommitted interval" dropped.
+    # +40 (pin-status-tick-meaning, 2026-09-22, owner decision): the one home for what
+    # a `## Status` tick means — built, committed, reviewed; never merged or released.
+    # Readers (the Critic gate, the briefing, the extension deferral) each assumed a
+    # different meaning until then. Declared, not paid: nothing here restated it.
+    "methodology/planning.md": 5770,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
@@ -1626,8 +1667,14 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # TWICE — the digest (+14, shared by both shapes) and `STATIC_ANCHOR` (+20), which
     # gained the same bound — while the framework shape's other member, `CLAUDE.md`,
     # is unchanged at 1,380. Dilution plays no part: these are absolute deltas.
-    "framework": 3280,
-    "product": 2221,
+    # -2 on both shapes, 2026-09-22 (standing-block-closing-section): the standing
+    # block became the digest's closing `## Closing the turn` section instead of a
+    # bullet partway up "The hardest rules" — the rule says *after every other
+    # word*, and the digest had four sections after it. The heading is paid in
+    # place from the rule's own restatements: "last," restates "after every other
+    # word", and "on one axis" restates "what produces the next turn".
+    "framework": 3278,
+    "product": 2219,
 }
 
 #: Ceilings. HARD, like the per-file prose ceilings in this module and
@@ -1767,8 +1814,10 @@ INJECTED_FOOTPRINT_CEILINGS = {
     # deliberately NOT spent: the digest's sentence is written at that surface's
     # compressed register, inside the 9,500-character working budget, so the next
     # framework-wide default still has the room this reserve is held for.
-    "framework": 3281,
-    "product": 2222,
+    # RATCHETED 3281 -> 3279, 2222 -> 2220 (2026-09-22) with the readings: the
+    # standing-block move landed both below where it started.
+    "framework": 3279,
+    "product": 2220,
 }
 
 
@@ -2622,9 +2671,16 @@ class TestBuildingMethodology:
         assert "narrowest thing that proves the change" in cycle, (
             "the build cycle no longer states the ceiling itself"
         )
-        assert "at Verify and at the boundary" in cycle, (
+        # Renegotiated 2026-09-23 (#820, owner decision on the issue): the
+        # declared suite moved from every chunk's Verify to the boundary. The
+        # clause's job is unchanged — say when the suite IS owed — so the
+        # assertion follows the new statement and pins the old one gone.
+        assert "The declared suite runs at the boundary, before the work lands" in cycle, (
             "nothing in the build cycle says when the declared suite IS owed — "
             "without it the ceiling reads as a rigor discount"
+        )
+        assert "at Verify and at the boundary" not in cycle, (
+            "the per-chunk suite run #820 retired is still stated in the build cycle"
         )
         assert "A cost bound, not a rigor discount" in cycle, (
             "the ceiling lost the clause that stops it being softened later"
@@ -3019,7 +3075,9 @@ class TestBuildingMethodology:
         # MERGE 2026-09-19 (test-report-scope develop sync): one over the
         # MEASURED merged reading (5015). Taking either side would bank the
         # other's delta as silent slack.
-        assert tokens < 5039, f"building.md is ~{tokens} tokens, should be <5039"
+        # RAISED 5039 -> 5056 (review-interval-extension PR review, 2026-09-22) — see LAST_MEASURED_TOKENS. Declared.
+        # RAISED 5056 -> 5073 (#820, suite at the boundary, 2026-09-23) — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 5094, f"building.md is ~{tokens} tokens, should be <5094"
 
 
 # =============================================================================
@@ -4287,6 +4345,22 @@ class TestOtherMethodology:
         # and only where they live moved.
         assert ".claude/rules/learnings/" in content
 
+    def test_a_status_tick_has_one_pinned_meaning(self):
+        """Owner decision 2026-09-22: a tick means built, committed and reviewed on
+        the branch — never merged or released. Readers had assumed three different
+        meanings; `planning.md` is the one home, and the template's Status comment
+        must say the same. Bound to the defining sentence, not the whole file, so a
+        stray phrase elsewhere cannot satisfy it."""
+        planning = read_file("methodology/planning.md")
+        definition = next(
+            (para for para in planning.split("\n\n") if "`## Status` tick means" in para), ""
+        )
+        assert "built, committed and reviewed on the branch" in definition, definition
+        assert "never merged or released" in definition, definition
+        template = read_file("templates/build-plan.md")
+        status_comment = template[template.index("## Status"):].split("-->", 1)[0]
+        assert "never merged or released" in status_comment, status_comment
+
     def test_discovery_operationalizes_coverage_expectation(self):
         # Recording structural characteristics is tied to the strategy-class
         # coverage chain — the methodology must not drift from the mechanism.
@@ -4699,7 +4773,10 @@ class TestCriticSkill:
         # reading — both lineages above are history and stand as written.
         # RAISED 4051 -> 4313 (2026-09-17, review-stages Chunk 02): the stage
         # rule reaches the final/cumulative reviewer — see LAST_MEASURED_TOKENS.
-        assert tokens < 4356, f"review-protocol.md is ~{tokens} tokens, should be <4356"
+        # RATCHETED 4356 -> 4350 (review-interval-extension, 2026-09-22) with the reading.
+        # RAISED 4350 -> 4393 (reviewer-prompt-file-list, 2026-09-22) — see LAST_MEASURED_TOKENS.
+        # RAISED 4393 -> 4400 (#820, 2026-09-23) — see LAST_MEASURED_TOKENS.
+        assert tokens < 4413, f"review-protocol.md is ~{tokens} tokens, should be <4413"
 
 
 # =============================================================================
@@ -4979,7 +5056,8 @@ class TestCriticGoals13:
         # RAISED 2435 -> 2610 (2026-09-17, review-stages Chunk 02): the inner
         # BLOCKING set, stated in full because this file may point nowhere —
         # see LAST_MEASURED_TOKENS.
-        assert tokens < 2653, f"goals-1-3.md is ~{tokens} tokens, should be <2653"
+        # RAISED 2653 -> 2666 (#820, 2026-09-23) — see LAST_MEASURED_TOKENS.
+        assert tokens < 2666, f"goals-1-3.md is ~{tokens} tokens, should be <2666"
 
     def test_is_self_contained(self):
         """No follow-the-pointer reads at review time — the acceptance criterion
@@ -5226,7 +5304,14 @@ class TestCriticSkillRoutesByMode:
         # `test-status` claim corrected: exit 0 does not establish tree
         # coverage on the session-fresh disjunct — see LAST_MEASURED_TOKENS,
         # where the reason is recorded. One over the reading, nothing banked.
-        assert tokens < 3650, f"SKILL.md is ~{tokens} tokens, should be <3650"
+        # RATCHETED 3650 -> 3644 (review-interval-extension, 2026-09-22) with the reading.
+        # RAISED 3644 -> 3657 (review-interval-extension, 2026-09-22): the demotion
+        # property's full case list — see LAST_MEASURED_TOKENS. Declared, one over the reading.
+        # RATCHETED 3657 -> 3652 (review-interval-extension PR review, 2026-09-22) with the reading.
+        # RAISED 3652 -> 3681 (review-scrub-seams, 2026-09-22): the exit-6 row;
+        # the reason is at the LAST_MEASURED_TOKENS entry.
+        # RAISED 3681 -> 3685 (#820, 2026-09-23) — see LAST_MEASURED_TOKENS.
+        assert tokens < 3685, f"SKILL.md is ~{tokens} tokens, should be <3685"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))
@@ -5543,7 +5628,8 @@ class TestReviewCycle:
         # RAISED 11091 -> 11106 (2026-09-17, review-stages integration, R-5): the
         # Small row now states what inference answers (`chunk`; `final` by
         # declaration). Declared, not paid — reading + 1.
-        assert tokens < 11236, f"review-cycle.md is ~{tokens} tokens, should be <11236"
+        # RATCHETED 11236 -> 11233 (review-interval-extension, 2026-09-22) with the reading.
+        assert tokens < 11233, f"review-cycle.md is ~{tokens} tokens, should be <11233"
 
     def test_framework_checks_token_budget(self):
         # Ceiling 1150. This file is `final`/`cumulative` payload: SKILL.md's
@@ -6239,3 +6325,91 @@ class TestSubjectAndOracleReachTheReviewer:
         builder_half = cycle.split("## Final-Mode Cross-Checks", 1)[0]
         assert "only subject is a non-judgeable record is a **NOTE**" not in builder_half
         assert "Records Pass** below" in builder_half
+
+
+class TestReviewerFileSetsRideTheManifest:
+    """A coordinator reviewer's subject and oracle sets travel in the manifest,
+    never pasted into its prompt.
+
+    The coordinator writes the three dispatch prompts one after another, so any
+    slot whose size grows with the review's file count delays the last reviewer's
+    start by that much. The reviewer opens the manifest anyway, so pointing it
+    there costs nothing — as long as the manifest is where it actually reads
+    them, and an unreadable one stops the review rather than emptying it.
+    """
+
+    #: Every slot the prompt template may substitute. Each is fixed-size: a
+    #: role, a SHA, an id, a path, the one-line signals rendering.
+    FIXED_SIZE_SLOTS = {
+        "<ROLE>", "<GOALS>", "<SHA>", "<ID>", "<STARTED>", "<PARTIAL>",
+        "<SIGNALS>", "<MANIFEST>", "[dir]", "[critic path]",
+    }
+
+    @staticmethod
+    def _template() -> str:
+        protocol = read_file("skills/critic/review-protocol.md")
+        section = protocol.split("### Coordinator Pattern", 1)[1].split("\n## ", 1)[0]
+        lines = [ln for ln in section.splitlines() if ln.lstrip().startswith('> "Critic reviewer')]
+        assert len(lines) == 1, "the coordinator prompt template is no longer one quoted line"
+        return lines[0]
+
+    def test_the_template_substitutes_only_fixed_size_slots(self):
+        """Red when any list-valued slot comes back — `[`files_reviewed`]` was
+        one, and it is what made the dispatch lag grow with the file count."""
+        # Any angle or square bracket span is a slot, whatever its spelling, so an
+        # underscored or lowercase name (`<FILES_REVIEWED>`) cannot slip past.
+        slots = set(re.findall(r"<[^<>\s]+>|\[[^\]]+\]", self._template()))
+        assert slots, "the slot pattern matched nothing, so this test would pass vacuously"
+        extra = slots - self.FIXED_SIZE_SLOTS
+        assert not extra, (
+            f"the reviewer prompt template substitutes {sorted(extra)}; a slot that is "
+            "not in the fixed-size set can grow with the review and delay dispatch"
+        )
+
+    def test_the_template_sends_the_reviewer_to_the_manifest_for_both_sets(self):
+        template = self._template()
+        assert "<MANIFEST>" in template
+        # The oracle half is what a narrowing silently loses, so both are named.
+        assert "`files_reviewed`" in template and "`files_oracle`" in template
+        protocol = " ".join(read_file("skills/critic/review-protocol.md").split())
+        assert "`<MANIFEST>` as `[dir]` + `.prawduct/.critic-partials/manifest.json`" in protocol
+
+    def test_the_reviewer_is_told_its_sets_come_from_the_manifest(self):
+        agent = read_file("agents/critic-reviewer.md")
+        given = " ".join(
+            agent.split("## What the coordinator gives you", 1)[1].split("\n## ", 1)[0].split()
+        )
+        assert "changed-files list" not in given, (
+            "the reviewer still expects the file lists in its prompt, which no longer carries them"
+        )
+        assert "file sets are read from the manifest, never from your prompt" in given
+
+    def test_an_unusable_manifest_stops_the_review_instead_of_emptying_it(self):
+        """Without this a reviewer that cannot read the manifest has no subject
+        set, and a review of nothing reads exactly like a clean one."""
+        agent = " ".join(read_file("agents/critic-reviewer.md").split())
+        step = agent.split("**The manifest is part of the same check.**", 1)
+        assert len(step) == 2, "the manifest guard is gone from the reviewer's tree check"
+        guard = step[1].split("A review with no subject set", 1)[0]
+        for condition in ("cannot be read", "is not the review id in your prompt", "`files_reviewed` is empty"):
+            assert condition in guard, f"the manifest guard no longer covers: {condition}"
+        assert "`dispatch-mismatch` partial" in guard
+        # In every case this guard covers, the manifest's commit and id are
+        # missing or another review's, and consolidation rejects a partial
+        # carrying either — so the builder would never be told.
+        assert "taking `commit_reviewed` and `dispatch_id` from your prompt" in guard
+        assert "manifest's `commit_reviewed`" not in guard
+
+
+class TestFarBehindBranchGuidance:
+    """PR Step 1's instruction for landing a branch far behind its base, pinned so
+    a budget trim cannot take it silently. The audit is BIDIRECTIONAL on purpose:
+    a `merge=union` record resurrects archived entries as ADDITIONS, which an
+    audit of removals alone cannot see."""
+
+    def test_pr_step_1_covers_a_far_behind_branch(self):
+        skill = read_file("skills/pr/SKILL.md")
+        step1 = skill[skill.index("### Step 1: Branch hygiene"): skill.index("### Step 1b")]
+        for phrase in ("tree content, never by ancestry", "REMOVED and what it ADDED",
+                       "`merge=union`", "moved goes to its new home"):
+            assert phrase in step1, f"PR Step 1 lost: {phrase!r}"

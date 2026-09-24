@@ -223,12 +223,14 @@ class TestBuildPlanTemplate:
         `**Acceptance criteria:**` line, wherever it sits, because an acceptance
         criterion is the chunk's own bar and a runner named there is a bar in
         one ecosystem's vocabulary. The Scaffolding section is deliberately NOT
-        in scope — that is where the example product DECLARES its suite, which
-        is the thing "the declared suite passes" then refers to; a check that
-        banned the name there would be banning the declaration.
+        in scope — that is where the example product DECLARES its suite; a
+        check that banned the name there would be banning the declaration.
 
-        Paired with a positive: the criterion still names a suite bar at all,
-        because deleting the clause passes any negative test.
+        Paired with a positive: the criterion still names a test bar at all,
+        because deleting the clause passes any negative test. Renegotiated
+        2026-09-23 (#820): the bar a CHUNK meets is its own tests, not the
+        declared suite, which now runs at the boundary — so the positive names
+        the chunk's own tests.
         """
         criteria = [
             ln for ln in template.splitlines()
@@ -244,12 +246,16 @@ class TestBuildPlanTemplate:
             hit = runners.search(line)
             assert not hit, (
                 f"an acceptance criterion names the runner {hit.group(0)!r}: "
-                f"{line.strip()!r} — say \"the declared suite passes\" instead, "
+                f"{line.strip()!r} — say \"the chunk's own tests pass\" instead, "
                 "so the example reads the same in every toolchain"
             )
-        assert any("the declared suite passes" in ln for ln in criteria), (
-            "no acceptance criterion states a suite bar at all — the "
+        assert any("the chunk's own tests pass" in ln for ln in criteria), (
+            "no acceptance criterion states a test bar at all — the "
             "language-neutral rewrite must not become a deletion"
+        )
+        assert not any("the declared suite passes" in ln for ln in criteria), (
+            "a chunk's acceptance criterion gates on the declared suite, which "
+            "runs at the boundary (#820), not at each chunk"
         )
 
     def test_the_short_plan_rule_is_pointed_at_from_the_chunk_fields(self, template: str):

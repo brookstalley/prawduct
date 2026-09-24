@@ -452,6 +452,35 @@ def diagnose_fix_churn(
     }
 
 
+#: The one status of :func:`diagnose_base_advance_transfer` that GRANTS.
+TRANSFER_MATCH = "match"
+
+
+def classify_transfer(transfer: "dict | None") -> str:
+    """The one reading of a :func:`diagnose_base_advance_transfer` result that
+    every gate site branches on: ``"absent"`` (no transfer was attempted),
+    ``"match"`` (may grant, once a suite run vouches for the tree),
+    ``"unavailable"`` (the check could not run — its remedy is worth naming),
+    or ``"unknown"`` (any other status).
+
+    One function rather than a comparison at each call site because the
+    decision has several readers — the Stop gate, the PR gate's verdict and the
+    PR gate's rendered remedy — and a new status must land on the DENY side at
+    every one of them. ``"unknown"`` is that side: it neither grants nor renders
+    a remedy, because :func:`gates.transfer_remedy` reads fields only a
+    ``match`` or an ``unavailable`` carries, and an unmeasured status is not a
+    near miss a suite run fixes.
+    """
+    if transfer is None:
+        return "absent"
+    status = transfer.get("status")
+    if status == TRANSFER_MATCH:
+        return "match"
+    if status == "unavailable":
+        return "unavailable"
+    return "unknown"
+
+
 def diagnose_base_advance_transfer(
     project_dir: Path,
     facts: "list[dict]",
@@ -635,7 +664,7 @@ def diagnose_base_advance_transfer(
             ]
             advance = evidence.tree_diff(project_dir, prior_base, base_tree)
             return {
-                "status": "match",
+                "status": TRANSFER_MATCH,
                 "prior_fact_id": reviews[-1].get("id") if reviews else None,
                 "prior_reviews": len(reviews),
                 "prior_base": prior_base,
@@ -687,9 +716,9 @@ def count_branch_rounds(
     ``/prawduct:pr create`` path against a store holding every review the clone
     has ever recorded.
 
-    Returns ``{"status": "counted", "rounds", "seconds", "timed", "reviews"}``
-    — with ``seconds`` ``None`` when no attributed round recorded a duration —
-    or ``{"status": "unavailable", "reason"}``. Never raises: this is advice, and
+    Returns ``{"status": "counted", "rounds", "seconds", "timed", "reviews",
+    "span_commits"}`` — with ``seconds`` ``None`` when no attributed round
+    recorded a duration — or ``{"status": "unavailable", "reason"}``. Never raises: this is advice, and
     advice fails soft. It is deliberately not silent, because a tally that
     vanishes when it breaks reads as "round one" to the builder it exists to
     warn (``core.md``: "'advice fails soft' is not 'advice fails silent'").
@@ -702,6 +731,16 @@ def count_branch_rounds(
     The mode strings are handed over verbatim rather than parsed here — the
     token vocabulary belongs to ``critic_consolidate``, and a second parse of it
     living in the counter is how one vocabulary becomes two.
+
+    ``span_commits`` is how many commits the span held, and it separates the two
+    ways ``rounds`` reaches zero: a branch with commits that has bought no
+    review yet, and a span with no commits at all — the permanent state of a
+    trunk-based repo, where every push moves the base ref with HEAD. Those are
+    the same number and opposite situations, and a caller that must bound by
+    something other than lineage can only tell them apart from here, because
+    this is where the span is walked. Reported rather than acted on: what to do
+    with an empty span is the caller's policy, and attribution is this
+    function's whole subject.
     """
     from . import evidence  # noqa: PLC0415 -- lazy: mirrors diagnose_fix_churn's import posture; avoids an import cycle at module load
 
@@ -738,6 +777,7 @@ def count_branch_rounds(
         "seconds": round(sum(durations), 1) if durations else None,
         "timed": len(durations),
         "reviews": reviews,
+        "span_commits": len(on_branch),
     }
 
 
@@ -767,6 +807,21 @@ def format_branch_rounds(tally: "dict | None") -> str:
             f"round count as unknown, not as one."
         )
     n = tally["rounds"]
+    # Bounded by the PROPERTY that makes the count meaningless, not by the repo
+    # shape that usually produces it: a span with no commits cannot attribute a
+    # round to anything, so `rounds == 0` here is the absence of a measurement
+    # and not a measurement of absence. Told otherwise, a trunk-based builder
+    # reads "your first round" on round twenty — every push restores this state,
+    # so the sentence is wrong for them permanently rather than occasionally.
+    # This is the same defect as the round budget's, at the other consumer of
+    # the same signal, which is why it is keyed on `span_commits` in both.
+    if not n and not tally.get("span_commits"):
+        return (
+            "NOTE: this branch's span holds no commits — the base ref IS HEAD, "
+            "which is where every push leaves a trunk-based repo — so lineage "
+            "cannot attribute a round here at all. Read the round count as "
+            "UNAVAILABLE on this shape, never as this being your first."
+        )
     if not n:
         return (
             "NOTE: no review round has been recorded against this branch since the "
@@ -1360,6 +1415,25 @@ def commit_cost(project_dir: Path, paths: "list[str] | None" = None) -> dict:
     }
 
 
+def _extension_reason(project_dir: Path) -> "str | None":
+    """``critic_mode.extension_deferral`` for the branch's plan, or ``None``.
+
+    ``None`` on any failure: this only ever lowers a price, and a price that
+    could not be lowered stays the conservative one.
+    """
+    from . import buildplan_refs, critic_mode, gitstate  # noqa: PLC0415 — lazy keeps this module's import DAG light
+
+    try:
+        prawduct_dir = gitstate.get_prawduct_dir(project_dir)
+        plan = buildplan_refs.resolve_branch_plan(project_dir, prawduct_dir)
+        if plan.path is None:
+            return None
+        progress = buildplan_refs.resolve_chunk_progress(project_dir, plan.path)
+        return critic_mode.extension_deferral(project_dir, prawduct_dir, plan, progress)
+    except (OSError, ValueError):
+        return None
+
+
 def cost_of_commit(project_dir: Path, argv: "list[str]") -> int:
     """Body of ``prawduct-hook cost-of-commit [--json] [<paths>...]``.
 
@@ -1367,6 +1441,12 @@ def cost_of_commit(project_dir: Path, argv: "list[str]") -> int:
     answer after making it: does committing this buy a review round? The
     verdict token leads on stdout (the agent-facing channel) so a caller can
     branch on one word; the reasoning follows for a reader.
+
+    Judgeable paths are priced as a round unless, in the no-argument form,
+    existing review evidence already covers the working tree
+    (:func:`gates.commit_coverage`); the verdict is then ``free`` and names the
+    covering review. Pricing a Critic-covered tree as a round pushed builders
+    to accept findings they could have fixed for nothing.
 
     Read-only and advisory — it gates nothing, and it exits 0 whether the
     answer is "free" or "costs a round", because both are answers. Exit 1 is
@@ -1413,8 +1493,36 @@ def cost_of_commit(project_dir: Path, argv: "list[str]") -> int:
     else:
         verdict = "free"
 
+    # Judgeable paths cost a round unless a review already covers the tree
+    # they would commit — then the gate composes the verbatim commit with no
+    # new pass. Only the no-argument form can ask: an explicit path list may
+    # be a partial commit, whose tree no review saw, and `/prawduct:pr`
+    # prices a delta with exactly that form. Kept out of `commit_cost`, whose
+    # other caller (the Critic close's cost lead) prices the NEXT edit after
+    # a review and must not read the review it just wrote as making that free.
+    covered_by: list[str] = []
+    if verdict == "costs-a-round" and not given_paths:
+        from . import gates  # noqa: PLC0415 — lazy: gates imports this module at load
+
+        coverage_answer = gates.commit_coverage(project_dir)
+        if coverage_answer["status"] == "covered":
+            covered_by = coverage_answer["by"]
+            verdict = "free"
+    # Not covered yet, but a review the plan still owes will start from the
+    # last reviewed state and span this commit (#167), so committing buys no
+    # round of its own. Same no-argument restriction as above.
+    rides_next_review: "str | None" = None
+    if verdict == "costs-a-round" and not given_paths:
+        rides_next_review = _extension_reason(project_dir)
+        if rides_next_review:
+            verdict = "free"
+
     if as_json:
-        print(json.dumps({"verdict": verdict, **cost, "round_price": price}, indent=2))
+        print(json.dumps(
+            {"verdict": verdict, **cost, "covered_by": covered_by,
+             "rides_next_review": rides_next_review, "round_price": price},
+            indent=2,
+        ))
         return 0
 
     print(verdict)
@@ -1442,6 +1550,20 @@ def cost_of_commit(project_dir: Path, argv: "list[str]") -> int:
         return 0
 
     n_judgeable, n_free, n_total = len(cost["judgeable"]), len(cost["free"]), len(cost["paths"])
+    if covered_by:
+        print(
+            f"{n_judgeable} of {n_total} path(s) are judgeable, but review "
+            f"{', '.join(covered_by)} already covers this working tree — committing "
+            f"it verbatim buys no review round. The next edit after that commit, "
+            f"if judgeable, opens a new delta that does."
+        )
+        return 0
+    if rides_next_review:
+        print(
+            f"{n_judgeable} of {n_total} path(s) are judgeable and not yet reviewed, but "
+            f"no round is owed for them now: {rides_next_review}."
+        )
+        return 0
     if cost["judgeable"]:
         print(
             f"{n_judgeable} of {n_total} path(s) move review coverage — committing them "

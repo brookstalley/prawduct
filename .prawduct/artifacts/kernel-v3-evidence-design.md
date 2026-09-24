@@ -13,7 +13,8 @@ depends_on: [kernel-redesign-discovery.md, kernel-inventory-2026-07-12.md]
 Design note for the first constituent plan of GOV-4C7X
 (`kernel-redesign-discovery.md`). Scope: the **review-evidence family only**
 (Critic facts, their gates, their data plane). Test evidence, PR-reviewer
-facts, and the C8 promotion gate adopt this store in later plans.
+facts, and the C8 promotion gate adopt this store in later plans. (Test
+evidence did, as `test-run` facts, #653 — `data-model.md` carries its spec.)
 
 ## 1. Consumers' future queries (the schema's requirements)
 
@@ -86,13 +87,15 @@ semantics]
   schema-AHEAD records separately so gates **block with the exact remedy** —
   never silently drop them (in-session auto-update skew detection, C9 tier 3).
 - **`kind` namespaces the store** (Q9): `review`, `resolution`, `disposition` now;
-  `test-run`, `pr-review`, `promotion` reserved for later plans. An unknown
+  `test-run`, `pr-review`, `promotion` reserved for later plans (`test-run`
+  has since shipped, #653; `evidence.KNOWN_KINDS` is the live set). An unknown
   kind under a supported schema (a newer minor added it) stays in the read
   result — consumers filter by the kinds they know (`facts_of_kind`), so a
   future kind can coexist but never satisfy a gate it wasn't written for.
 - **Growth posture** (recorded decision, Critic ch.01): the store is
   unbounded-but-tiny — one line per review/resolution, a few per working day
-  per repo, and readers re-parse the file per call, which is fine at that
+  per repo (since #653, also one per recorded suite run), and readers re-parse
+  the file per call, which is fine at that
   scale. No pruning tooling until a real store needs it (the ledger's
   stance) — and any future compaction must respect composition: never drop a
   fact on a path the PR gate can still need (in practice facts older than the
@@ -330,7 +333,7 @@ hand-patching workaround prose.
 
 ## 4. Out of scope (later constituent plans)
 
-Test evidence on the store · PR-reviewer facts + `.pr-reviews/` retirement ·
+Test evidence on the store (since shipped as `test-run` facts, #653) · PR-reviewer facts + `.pr-reviews/` retirement ·
 C8 promotion-policy gate + MIG-6B0R · C6 feedback pull · C9 tiers beyond
 what D1/D2 give for free · gate-posture recalibration (C4) beyond the gates
 this plan already touches · tripwire deletion (§4.3 — own cleanup plan).

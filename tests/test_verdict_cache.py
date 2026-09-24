@@ -343,7 +343,7 @@ class TestBounds:
         _fact(repo, _tree(repo, "main"), _tree(repo), ["feature.py"])
         path = verdict_cache.cache_path(repo)
         path.parent.mkdir(parents=True, exist_ok=True)
-        fingerprint = evidence.read_facts(repo)["fingerprint"]
+        fingerprint = evidence.read_facts(repo)["coverage_fingerprint"]
         cache = verdict_cache.VerdictCache(path, fingerprint)
         # More distinct spans than the bound, each a trivial equal-tree verdict.
         for i in range(verdict_cache.MAX_ENTRIES + 20):

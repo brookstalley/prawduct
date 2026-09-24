@@ -398,9 +398,8 @@ class TestBaseAdvanceTransferAtTheSessionGate:
         END) and by the session-START briefing (advice), which wraps the call in
         a broad `except`. Recording from the advice path would be a store write
         on a session-start read whose fail-soft attribution is swallowed, filed
-        under a gate that did not run — and it would change the store
-        fingerprint at session start, evicting the verdict memo. Authority
-        records its own yield; advice observes and writes nothing."""
+        under a gate that did not run. Authority records its own yield; advice
+        observes and writes nothing."""
         repo, _prior_base, _prior_head = _advanced_base_session(tmp_path)
         _write_test_evidence(repo)
         before = evidence.store_path(repo).read_bytes()
@@ -527,6 +526,52 @@ class TestBaseAdvanceTransferAtTheSessionGate:
         # part of the verdict shape two consumers render.
         repo, _prior_base, _prior_head = _advanced_base_session(tmp_path)
         assert "transfer_note" not in gates.session_review_verdict(repo)
+
+    def test_only_a_match_grants_the_transfer_at_either_gate(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """A transfer status neither gate recognizes must DENY at both.
+
+        The PR gate grants on a positive test for `match`. This gate must too,
+        rather than on "anything but `unavailable`" — the two readings agree for
+        every status the diagnosis returns today, so the property is the gates
+        agreeing by construction when a new status appears. Fabricated
+        deliberately: the case is a status no real tree can produce yet.
+        """
+        repo, _prior_base, _prior_head = _advanced_base_session(tmp_path)
+        _write_test_evidence(repo)
+        # Baseline: this fixture DOES transfer at both gates, so a denial below
+        # is the unknown status doing it and not the fixture failing elsewhere.
+        assert gates.session_review_verdict(repo)["status"] == "covered"
+        assert gates.check_cumulative_critic(repo) == 0
+
+        monkeypatch.setattr(
+            gates.coverage,
+            "diagnose_base_advance_transfer",
+            lambda *a, **k: {"status": "partial", "reason": "from the future"},
+        )
+        verdict = gates.session_review_verdict(repo)
+        assert verdict["status"] == "uncovered"
+        assert "transferred" not in verdict
+        # It denies SILENTLY: `transfer_remedy` reads fields only `match` and
+        # `unavailable` carry, and rendering an unmeasured status as a near miss
+        # would tell the builder a suite run fixes it.
+        assert "transfer" not in verdict.get("reason", "")
+        assert gates.check_cumulative_critic(repo) != 0
+        # ...and the PR gate's rendered remedy stays silent on it too: its
+        # "could not run" NOTE is for `unavailable`, which this is not.
+        assert "transfer check could not run" not in capsys.readouterr().err
+
+    def test_classify_transfer_names_every_shape_and_denies_the_rest(self):
+        """The one reading every gate site branches on. An unrecognized status
+        must come back as its own class — never `match`, which grants, and
+        never `unavailable`, whose remedy reads a `reason` it may not carry."""
+        classify = gates.coverage.classify_transfer
+        assert classify(None) == "absent"
+        assert classify({"status": gates.coverage.TRANSFER_MATCH}) == "match"
+        assert classify({"status": "unavailable", "reason": "r"}) == "unavailable"
+        assert classify({"status": "partial"}) == "unknown"
+        assert classify({}) == "unknown"
 
 
 class TestFailClosed:

@@ -114,6 +114,46 @@ _EVIDENCE_OPTIONAL_FIELDS: dict[str, tuple[type, ...]] = {
     "degraded": (str,),
 }
 
+#: How many failing ids a printed reason names before counting the rest.
+_FAILING_NAMES_SHOWN = 10
+
+
+def name_failing_tests(ids: object, failed: int) -> str:
+    """The first few failing test ids, and how many more there are.
+
+    Reads the record's ``failed_tests``: the failing ids (``classname::name``)
+    in report order, capped by the recorder. Present only when the recorder saw
+    at least one failing id; absence means no per-test ids were available,
+    never that nothing failed — ``failed`` stays the count of record.
+
+    **Deliberately NOT in the schema.** The key is only ever printed, and a
+    record carrying ``failed > 0`` is refused before this runs, so the key can
+    never move a verdict. Validating its type would give it one: a writer that
+    put something else under the name would turn a passing record stale. So a
+    malformed value is ignored here — ``""`` for anything that is not a list of
+    strings — rather than refused there.
+
+    The unprinted remainder is counted from ``failed``, not from the list,
+    because the list is capped: a record that kept 100 of 130 names left 90
+    names unprinted and 30 unnamed, and both halves are reported.
+    """
+    if not isinstance(ids, list):
+        return ""
+    names = [i for i in ids if isinstance(i, str)]
+    if not names:
+        return ""
+    shown = names[:_FAILING_NAMES_SHOWN]
+    # Two different remainders, counted apart: names the record holds but this
+    # line did not print, and failures the record holds no name for (a
+    # summary-only suite, or the recorder's cap).
+    in_record = len(names) - len(shown)
+    unnamed = failed - len(names)
+    rest = [
+        *([f"{in_record} more in .prawduct/.test-evidence.json"] if in_record > 0 else []),
+        *([f"{unnamed} unnamed"] if unnamed > 0 else []),
+    ]
+    return ", ".join(shown) + (f" (+{'; +'.join(rest)})" if rest else "")
+
 
 def _load_test_evidence(prawduct_dir: Path) -> "tuple[dict | None, str]":
     """The saved test-evidence record, or ``(None, reason)`` saying why not.
@@ -136,29 +176,61 @@ def _load_test_evidence(prawduct_dir: Path) -> "tuple[dict | None, str]":
     ``.get()`` and the record parses as "no failures, no timestamp", which the
     caller then rejects for the wrong reason.
     """
+    record, why_not = _parse_test_evidence(prawduct_dir)
+    if record is None:
+        return None, why_not
+    refusal = run_refusal(record)
+    if refusal:
+        return None, refusal
+    return record, ""
+
+
+def _parse_test_evidence(prawduct_dir: Path) -> "tuple[dict | None, str]":
+    """The first half of :func:`_load_test_evidence`: on disk, parseable, an
+    object, a valid schema — WHAT the saved run says, before anything decides
+    whether it may vouch. Split out so a reader that needs a refused record's
+    timestamp (the store fallback, :func:`_store_run_vouching`) gets it through
+    the same validation rather than a second, laxer parse."""
     evidence_path = prawduct_dir / ".test-evidence.json"
     if not evidence_path.is_file():
         return None, "no .test-evidence.json on disk"
     try:
         record = json.loads(evidence_path.read_text())
-    except (json.JSONDecodeError, OSError) as exc:
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError) as exc:
         return None, f"unreadable evidence ({exc})"
     if not isinstance(record, dict):
         return None, "evidence is not a JSON object"
     schema_ok, schema_err = _validate_evidence_schema(record)
     if not schema_ok:
         return None, schema_err
-    failed = record.get("failed")
-    if isinstance(failed, int) and failed > 0:
-        return None, f"{failed} test(s) failing in saved evidence"
-    degraded = record.get("degraded")
+    return record, ""
+
+
+def run_refusal(run: dict) -> str:
+    """Why a recorded run may not vouch for anything, or ``""`` if it may.
+
+    The second half of :func:`_load_test_evidence`, and the ONE statement of the
+    rule for every run a freshness check can consult — the worktree's record
+    and a ``test-run`` fact alike — so the store cannot come to trust a run the
+    record's own reader would refuse. A count that is not an integer refuses:
+    a fact body is not schema-checked the way the record is.
+    """
+    failed = run.get("failed")
+    if not isinstance(failed, int) or isinstance(failed, bool):
+        return "the saved run carries no valid failure count"
+    if failed > 0:
+        names = name_failing_tests(run.get("failed_tests"), failed)
+        return f"{failed} test(s) failing in saved evidence" + (
+            f": {names}" if names else ""
+        )
+    degraded = run.get("degraded")
     if isinstance(degraded, str) and degraded.strip():
-        return None, (
+        return (
             f"the saved run reports itself degraded ({degraded.strip()}) — its "
             "counts do not cover what they appear to. Run the suite again, "
             "uncontended, and record that run"
         )
-    return record, ""
+    return ""
 
 
 #: What ``test-status`` prints in front of its reason on each exit-0 path.
@@ -190,6 +262,12 @@ def tests_are_current(project_dir: Path) -> tuple[bool, str, str]:
        *contents* — the standing ``coverage_algebra`` rule that kept those
        mechanisms dead. Records without ``evidence_tree`` (pre-clause, or a
        ``--from-counts`` on-ramp) skip clause 2 and behave exactly as before.
+       When this worktree's own record does not vouch — or there is none —
+       clause 2 also asks the shared store's ``test-run`` facts
+       (:func:`_store_run_vouching`), so a run recorded from another branch or
+       worktree of the clone that met this tree still counts. Same diff, same
+       relax-only direction: the store can turn stale into current, never the
+       reverse.
 
     **With no session-start marker, clause 2 is the only clause** (STH-6D4Q).
     An unanchored working copy has no session clock to compare against, so
@@ -230,7 +308,13 @@ def tests_are_current(project_dir: Path) -> tuple[bool, str, str]:
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     evidence, why_not = _load_test_evidence(prawduct_dir)
     if evidence is None:
-        return False, why_not, "none"
+        # No usable run of this worktree's own — a fresh worktree has none at
+        # all — but a run recorded from another branch or worktree of the
+        # clone may still have met this tree.
+        stored, stored_reason = _store_run_vouching(project_dir)
+        if stored:
+            return True, stored_reason, "tree"
+        return False, why_not + (f"; {stored_reason}" if stored_reason else ""), "none"
 
     # Timestamp check — evidence must have been written during this session.
     evidence_ts = evidence.get("timestamp")
@@ -273,6 +357,12 @@ def tests_are_current(project_dir: Path) -> tuple[bool, str, str]:
             "tree",
         )
 
+    # The stronger answer first: a run recorded elsewhere in the clone that met
+    # this tree is tree-valid, which a session-fresh label would under-claim.
+    stored, stored_reason = _store_run_vouching(project_dir)
+    if stored:
+        return True, stored_reason, "tree"
+
     if session_fresh:
         return (
             True,
@@ -280,16 +370,17 @@ def tests_are_current(project_dir: Path) -> tuple[bool, str, str]:
             "session",
         )
 
+    store_note = f"; {stored_reason}" if stored_reason else ""
     if session_start:
         return (
             False,
-            f"evidence predates session ({evidence_ts} < {session_start})",
+            f"evidence predates session ({evidence_ts} < {session_start}){store_note}",
             "none",
         )
 
     return False, (
         f"no session marker to date the evidence against ({evidence_ts}), and "
-        "it does not vouch for the current tree — run the suite and record it"
+        f"it does not vouch for the current tree — run the suite and record it{store_note}"
     ), "none"
 
 
@@ -355,11 +446,28 @@ def _test_evidence_tree_valid(
             "only non-judgeable paths differ between the saved run and "
             f"{target_tree[:12]}"
         )
+    met, reason = _tree_met(project_dir, recorded_tree, target_tree, same, differ, clean)
+    return bool(met), reason
+
+
+def _tree_met(
+    project_dir: Path,
+    recorded_tree: str,
+    target_tree: str,
+    same: str = "the run met this exact tree",
+    differ: str = "differ between the run and the target",
+    clean: str = "only non-judgeable paths differ between the run and the target",
+) -> "tuple[bool | None, str]":
+    """Did a run on ``recorded_tree`` meet ``target_tree``? ``True`` / ``False``,
+    or ``None`` when the comparison itself could not run (a missing object, a
+    git failure) — the third answer :func:`_test_evidence_tree_valid` folds into
+    ``False`` for its callers, and :func:`_store_run_vouching` must keep apart:
+    "cannot tell" has to deny a red run's claim to this tree, never waive it."""
     if target_tree == recorded_tree:
         return True, same
     changed = evidence.tree_diff(project_dir, recorded_tree, target_tree)
     if changed is None:
-        return False, "tree diff unavailable (missing object or git failure)"
+        return None, "tree diff unavailable (missing object or git failure)"
     # The repo's own declaration is passed HERE and NOT at the doc-only PR
     # gate: this is the freshness question. See `affects_test_outcome`.
     coupled = coverage_algebra.suite_coupled_files(
@@ -369,6 +477,138 @@ def _test_evidence_tree_valid(
         preview = ", ".join(coupled[:3]) + ("…" if len(coupled) > 3 else "")
         return False, f"{len(coupled)} suite-coupled path(s) {differ} ({preview})"
     return True, f"{clean} ({len(changed)} metadata/doc file(s))"
+
+
+def _store_run_vouching(
+    project_dir: Path, target_tree: "str | None" = None
+) -> "tuple[bool, str]":
+    """Does a run recorded elsewhere in the clone vouch for this tree?
+
+    ``.test-evidence.json`` holds one run per worktree, so a branch switch
+    replaces it; the shared store keeps every recorded run as a ``test-run``
+    fact, for every worktree of the clone. This is the fallback both evidence
+    readers ask AFTER this worktree's own record has declined to vouch for
+    ``target_tree`` (the working tree when ``None``). A green record that met
+    the tree answers first and is never overruled from here: it is this
+    worktree's own evidence for its own environment, and a red run on the same
+    judgeable tree elsewhere says "flaky, or environment-specific", not "wrong".
+
+    **One decision, one loop.** The candidates are this worktree's own record
+    plus at most three facts — the newest for the exact target tree, for the
+    commit checked out, and for the current branch (a working tree rarely
+    matches a run byte-for-byte, a second worktree is often detached, and the
+    commit is what both share; diffing every fact would be O(store)). Newest
+    first, each is asked whether it met the target by :func:`_tree_met`, the
+    judgeable diff the worktree's own record is judged by, and the first that
+    did DECIDES: green vouches, anything :func:`run_refusal` refuses denies.
+    Two runs on the same code rarely share a byte-identical tree (the record
+    itself is in it), so "newest that met" is what lets a red re-run supersede
+    an earlier green.
+
+    **"Cannot tell" is never a waiver.** A run that names no tree (a
+    ``--from-counts`` record), or whose comparison could not be made, is
+    treated as having met the target when it is refused — it may be this
+    tree's newest word, so it denies — and as not having met it when it is
+    green, because nothing can show it covered this tree.
+
+    Fails toward *not vouching*: a store the gate precheck refuses (unreadable,
+    or holding a fact written by a newer schema, which this reader cannot
+    interpret and so must not pass over), a failed capture, or a record that
+    cannot be validated all answer ``False``. The reason is returned when there
+    is one worth printing, for the caller to add to its own.
+    """
+    read = evidence.read_facts(project_dir)
+    if read.get("status") == "empty":
+        return False, ""
+    precheck = _store_precheck(read)
+    if precheck is not None:
+        return False, f"evidence store not consulted: {precheck[1]}"
+    record_path = gitstate.get_prawduct_dir(project_dir) / ".test-evidence.json"
+    local = None
+    if record_path.exists():
+        local, _ = _parse_test_evidence(gitstate.get_prawduct_dir(project_dir))
+        if local is None:
+            return False, ""
+
+    newest_for_tree: dict[str, dict] = {}
+    newest_for_head: dict[str, dict] = {}
+    newest_for_branch: dict[str, dict] = {}
+    for fact in evidence.facts_of_kind(read, "test-run"):
+        body = fact.get("body")
+        if not isinstance(body, dict):
+            continue
+        tree = body.get("tree")
+        if not isinstance(tree, str) or not tree:
+            continue
+        # Store order is append order, so the last write per key is the newest.
+        newest_for_tree[tree] = fact
+        head = body.get("head")
+        if isinstance(head, str) and head:
+            newest_for_head[head] = fact
+        actor = fact.get("actor")
+        branch = actor.get("branch") if isinstance(actor, dict) else None
+        if isinstance(branch, str) and branch:
+            newest_for_branch[branch] = fact
+    if not newest_for_tree:
+        return False, ""
+
+    if target_tree is None:
+        capture = evidence.capture_tree(project_dir)
+        if capture.get("status") != "ok":
+            return False, ""
+        target_tree = capture["tree"]
+    rc, head_out, _ = evidence.run_git(project_dir, "rev-parse", "--verify", "-q", "HEAD")
+    head = head_out.strip() if rc == 0 else ""
+    branch = gitstate.current_branch(project_dir) or ""
+
+    candidates: list[dict] = []
+    if local is not None and isinstance(local.get("timestamp"), str):
+        local_tree = local.get("evidence_tree")
+        candidates.append({
+            "ts": local["timestamp"],
+            "tree": local_tree if isinstance(local_tree, str) and local_tree else None,
+            "run": local,
+            "where": "in this worktree",
+        })
+    for fact in (
+        newest_for_tree.get(target_tree),
+        newest_for_head.get(head) if head else None,
+        newest_for_branch.get(branch) if branch else None,
+    ):
+        if fact is None:
+            continue
+        actor = fact.get("actor") if isinstance(fact.get("actor"), dict) else {}
+        candidates.append({
+            "ts": fact.get("ts") if isinstance(fact.get("ts"), str) else "",
+            "tree": fact["body"]["tree"],
+            "run": fact["body"],
+            "where": (
+                f"on {actor['branch']}" if isinstance(actor.get("branch"), str)
+                else f"in {actor.get('worktree', 'another worktree')}"
+            ),
+        })
+    candidates.sort(key=lambda c: c["ts"], reverse=True)
+
+    seen: set = set()
+    for candidate in candidates:
+        tree = candidate["tree"]
+        key = tree if tree is not None else ("no-tree", candidate["ts"])
+        if key in seen:
+            continue
+        seen.add(key)
+        refused = bool(run_refusal(candidate["run"]))
+        met, why = (None, "") if tree is None else _tree_met(project_dir, tree, target_tree)
+        if met is None:
+            met = refused  # cannot tell: a refused run denies, a green one proves nothing
+        if not met:
+            continue
+        if refused:
+            return False, ""
+        return True, (
+            f"a run recorded {candidate['where']} at {candidate['ts'] or '(unknown)'} "
+            f"(evidence store): {why}"
+        )
+    return False, ""
 
 
 def suite_vouches_for_tree(
@@ -396,7 +636,10 @@ def suite_vouches_for_tree(
     ``evidence_tree`` must be judgeable-identical to the tree in question — see
     ``target_tree`` below for which tree that is. Evidence with no ``evidence_tree`` —
     pre-clause records, and the ``--from-counts`` on-ramp — cannot answer the
-    question at all, so it denies rather than falling back to timing.
+    question at all, so it denies rather than falling back to timing. When the
+    worktree's own record declines, a ``test-run`` fact on the shared store may
+    still answer (:func:`_store_run_vouching`) — the same tree question, asked
+    of a run recorded from another branch or worktree, never a timing one.
 
     **``target_tree`` is the tree the CALLING GATE vouches for, and the two
     gates do not agree on it.** The PR gate composes to ``HEAD^{tree}``; the
@@ -411,18 +654,28 @@ def suite_vouches_for_tree(
     """
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     record, why_not = _load_test_evidence(prawduct_dir)
-    if record is None:
-        return False, why_not
-    recorded_tree = record.get("evidence_tree")
-    if not isinstance(recorded_tree, str) or not recorded_tree:
-        return False, (
-            "the saved run records no evidence_tree, so nothing can say which "
-            "tree it ran against — re-run the suite (or restamp with "
-            "`test-evidence record --no-rerun`) so the transfer has a tree to check"
-        )
-    # `None` means the working tree, which is the Stop gate's own target and
-    # which the comparison captures for itself.
-    return _test_evidence_tree_valid(project_dir, recorded_tree, target_tree)
+    if record is not None:
+        recorded_tree = record.get("evidence_tree")
+        if not isinstance(recorded_tree, str) or not recorded_tree:
+            why_not = (
+                "the saved run records no evidence_tree, so nothing can say which "
+                "tree it ran against — re-run the suite (or restamp with "
+                "`test-evidence record --no-rerun`) so the transfer has a tree to check"
+            )
+        else:
+            # `None` means the working tree, which is the Stop gate's own target
+            # and which the comparison captures for itself.
+            vouches, why_not = _test_evidence_tree_valid(
+                project_dir, recorded_tree, target_tree
+            )
+            if vouches:
+                return True, why_not
+    # This worktree's own run does not vouch; a run recorded from another
+    # branch or worktree of the clone may.
+    stored, stored_reason = _store_run_vouching(project_dir, target_tree)
+    if stored:
+        return True, stored_reason
+    return False, why_not + (f"; {stored_reason}" if stored_reason else "")
 
 
 def _read_session_start(prawduct_dir: Path) -> str:
@@ -1010,17 +1263,12 @@ def record_transfer_grant(
     falsify is not a yield claim.
 
     **The id is a function of the span, and of nothing else.** The gate is
-    polled — several times a session on an unchanged repo — and
-    ``verdict_cache`` keys the composed verdict on a content hash of the whole
-    evidence store, so a record per *poll* would invalidate every memoized
-    verdict on every poll and hand back the cold path the memo was built to
-    remove. Keying on ``(base_tree, target_tree, prior_base, prior_head)`` makes
-    the second and later observations of one grant append nothing at all.
-
-    **The residual, stated:** the first grant DOES append, so the poll after it
-    recomputes cold — once per distinct transferred span, against a review round
-    saved. What the key removes is the unbounded version, where every poll pays
-    that again forever.
+    polled — several times a session on an unchanged repo — so a record per
+    *poll* would count polls, not grants. Keying on ``(base_tree, target_tree,
+    prior_base, prior_head)`` makes the second and later observations of one
+    grant append nothing at all. (A grant is a ``guard-refusal`` fact, which
+    ``verdict_cache``'s key leaves out, so even the first append does not cold-
+    start the memo.)
 
     ``gate`` therefore rides in the BODY and not in the key, which is a
     deliberate undercount rather than an oversight. The two gates ask about
@@ -1071,6 +1319,165 @@ def record_transfer_grant(
     return recorded
 
 
+def commit_coverage(project_dir: Path) -> dict:
+    """Does existing review evidence already cover committing the working tree
+    verbatim? The coverage half of ``cost-of-commit``: path classification
+    alone prices a tree a Critic just reviewed as a fresh round, because it
+    cannot see the review.
+
+    Asks the gates' own composition — ``coverage_verdict`` over ``HEAD^{tree}
+    → working tree`` — rather than comparing the tree to one fact's
+    ``head_tree``. Composition also credits a docs-only edit made after the
+    review (a free edge), and settles blockers the same way the gate that
+    charges for the commit will. A verbatim commit makes HEAD's tree the
+    captured tree, so a covered span here is a span the gate composes after it.
+
+    Returns ``{"status": "covered", "by": [review ids]}``, or ``{"status":
+    "blocked" | "uncovered" | "error", "reason"}``. Only ``covered`` is an
+    answer a caller may relax on; every other status leaves the path-based
+    price standing, which is the conservative one.
+
+    **Coverage from the merge-base counts too.** A review can reach the working
+    tree without passing through HEAD's tree — a cumulative spanning merge-base
+    → working tree, or a ``chunk``/``final`` review whose interval starts at the
+    covered frontier (:func:`covered_frontier`) behind an unreviewed commit. HEAD
+    is then on no path, yet the PR gate composes merge-base → the committed tree
+    after a verbatim commit. So when HEAD → working tree does not compose, the
+    merge-base span is asked as well, and only ``covered`` there relaxes.
+    """
+    read = evidence.read_facts(project_dir)
+    precheck = _store_precheck(read)
+    if precheck is not None:
+        return {"status": "error", "reason": precheck[1]}
+    capture = evidence.capture_tree(project_dir)
+    if capture.get("status") != "ok":
+        return {
+            "status": "error",
+            "reason": f"cannot capture the working tree: {capture.get('reason', 'unknown')}",
+        }
+    head_tree = capture.get("head_tree")
+    if not head_tree:
+        return {"status": "error", "reason": "no HEAD tree to compose from"}
+    # A plain `git commit` records the INDEX, not the working tree the review
+    # composed to. Nothing staged (the `git add -A && git commit` flow) or
+    # everything staged both commit the captured tree; a partial staging
+    # commits a tree no review saw, and pricing that as covered is the
+    # optimistic error this helper may never make.
+    rc, index_tree, err = evidence.run_git(project_dir, "write-tree")
+    if rc != 0 or not index_tree:
+        return {"status": "error", "reason": f"cannot read the index tree: {err or 'no detail'}"}
+    if index_tree not in (head_tree, capture["tree"]):
+        return {
+            "status": "uncovered",
+            "reason": "the index is partially staged, so a commit would not record the reviewed tree",
+        }
+    diff_fn, key_fn = _cached_diff_fn(project_dir), _tree_key_fn(project_dir)
+    verdict = coverage_algebra.coverage_verdict(
+        read.get("facts", []), head_tree, capture["tree"], diff_fn, key_fn
+    )
+    if verdict["status"] != "covered":
+        # The Stop gate's own merge-base question, transfer included, so the
+        # price and the gate cannot disagree about one state. No grants are
+        # recorded: pricing is a read.
+        mb_verdict = _merge_base_verdict(
+            project_dir, read.get("facts", []), capture["tree"], diff_fn, key_fn
+        )
+        if mb_verdict is not None and mb_verdict["status"] == "covered":
+            verdict = mb_verdict
+    if verdict["status"] != "covered":
+        return {"status": verdict["status"], "reason": verdict.get("reason", "")}
+    return {
+        "status": "covered",
+        "by": [step["id"] for step in verdict.get("path", []) if step.get("kind") == "review"],
+    }
+
+
+#: How far back from HEAD :func:`covered_frontier` walks before giving up. A
+#: bound, not a tuning knob: past it the frontier reads as absent and the
+#: review keeps today's HEAD-anchored interval, the answer it had before.
+FRONTIER_WALK_LIMIT = 200
+
+
+def covered_frontier(project_dir: Path, why: "list[str] | None" = None) -> "dict | None":
+    """The newest commit on this branch whose tree a REVIEW already covers.
+
+    Walks HEAD's first-parent history back toward the merge-base and returns
+    ``{"commit", "tree"}`` for the first commit whose tree composition reaches
+    from the merge-base tree with zero unresolved blockers along a path that
+    includes at least one review — the tree a ``chunk``/``final`` review can
+    start from so that one review covers the committed-but-unreviewed commits
+    after it as well as the uncommitted work. When that commit is HEAD, nothing
+    after it needs covering and the caller's interval is unchanged.
+
+    ``None`` whenever extension must not happen, so the caller keeps its
+    HEAD-anchored interval:
+
+    - the nearest composing tree carries an unresolved blocker — those clear
+      through ``verify-resolutions``, the only mode that records resolutions;
+    - the nearest composing tree is covered by free edges alone, i.e. nothing
+      on the branch has been reviewed yet. Extending there would turn the first
+      inner-stage review into a review of everything the branch committed, the
+      span the boundary ``cumulative`` exists for;
+    - no tree on the walk composes at all. After a base sync this is the
+      ordinary answer: the merge-base is the new base tip, and a pre-sync review
+      composes from it only across a free (non-judgeable) advance, never across
+      a judgeable one — that needs the base-advance transfer, which
+      :func:`_merge_base_verdict` owns. So a sync leaves today's interval in
+      place until a review spans it, rather than extending to a whole-branch
+      review;
+    - the merge-base, the history or the store cannot be read, or the walk
+      passes :data:`FRONTIER_WALK_LIMIT`.
+
+    The last group is "could not look", not "nothing to find", and ``None``
+    alone cannot say which. A caller that passes ``why`` gets one sentence per
+    such failure appended to it, so a degraded answer is named where it is
+    shown rather than reading as a clean "no frontier".
+    """
+    def _unreadable(reason: str) -> None:
+        if why is not None:
+            why.append(reason)
+
+    read = evidence.read_facts(project_dir)
+    precheck = _store_precheck(read)
+    if precheck is not None:
+        _unreadable(f"the evidence store could not be read ({precheck[1]})")
+        return None
+    resolved = coverage.resolve_merge_base_tree(project_dir)
+    if resolved["status"] != "ok":
+        _unreadable(f"the merge-base could not be resolved ({resolved['reason']})")
+        return None
+    rc, out, err = evidence.run_git(
+        project_dir, "rev-list", "--first-parent",
+        f"--max-count={FRONTIER_WALK_LIMIT + 1}", f"{resolved['merge_base']}..HEAD",
+    )
+    if rc != 0:
+        _unreadable(f"the branch history could not be read ({err or 'git rev-list failed'})")
+        return None
+    commits = [line.strip() for line in out.splitlines() if line.strip()]
+    if len(commits) > FRONTIER_WALK_LIMIT:
+        _unreadable(
+            f"the branch has more than {FRONTIER_WALK_LIMIT} commits since the merge-base, "
+            "past the walk's bound"
+        )
+        return None
+    facts = read.get("facts", [])
+    diff_fn, key_fn = _cached_diff_fn(project_dir), _tree_key_fn(project_dir)
+    for commit in commits:
+        rc, tree, err = evidence.run_git(project_dir, "rev-parse", f"{commit}^{{tree}}")
+        if rc != 0 or not tree:
+            _unreadable(f"commit {commit[:12]}'s tree could not be read ({err or 'no tree'})")
+            return None
+        verdict = coverage_algebra.coverage_verdict(
+            facts, resolved["tree"], tree, diff_fn, key_fn
+        )
+        if verdict["status"] == "covered":
+            reviewed = any(step.get("kind") == "review" for step in verdict.get("path", []))
+            return {"commit": commit, "tree": tree} if reviewed else None
+        if verdict["status"] == "blocked":
+            return None
+    return None
+
+
 def session_review_verdict(project_dir: Path, *, record_grants: bool = False) -> dict:
     """The Stop-hook Critic gate's question, answered by composition (Q2):
     does composed review coverage span this session's base tree → the current
@@ -1095,16 +1502,17 @@ def session_review_verdict(project_dir: Path, *, record_grants: bool = False) ->
     Degradations and fallbacks (each deliberate):
 
     - Marker missing (pre-upgrade session, mid-session worktree entry) →
-      base = ``HEAD^{tree}`` now. Jurisdiction shrinks to uncommitted work
+      base = ``HEAD^{tree}`` now, so the primary span is the uncommitted work
       (the v2 scope) rather than wedging a session that cannot re-run
-      ``clear``.
-    - Session base unreachable but merge-base coverage composes → covered.
-      A commit made without review leaves a gap no dispatchable review can
-      span from the session base (chunk/final reviews anchor at HEAD's
-      tree); composed coverage of merge-base → working tree is the PR
-      gate's own bar — strictly stronger evidence about the current state —
-      so requiring an unsatisfiable base instead would only train waivers
-      (chunk-04 refinement, recorded in the design doc).
+      ``clear``. The merge-base span below is still asked, as for a marker.
+    - Session base unreachable but merge-base coverage composes → covered,
+      from either base source. A ``chunk``/``final`` review whose interval
+      starts at the covered frontier behind an unreviewed commit
+      (:func:`covered_frontier`) reaches the working tree without passing
+      through the session base or HEAD's tree, so neither can reach it;
+      composed coverage of merge-base → working tree is the PR gate's own
+      bar — strictly stronger evidence about the current state — so
+      requiring an unreachable base instead would only train waivers.
     - Merge-base coverage does not compose but transfers across a base
       advance → covered, with a ``transferred`` key naming what vouched.
       This gate asks the PR gate's composition question, so a span the PR
@@ -1149,7 +1557,7 @@ def session_review_verdict(project_dir: Path, *, record_grants: bool = False) ->
 
     verdict = coverage_algebra.coverage_verdict(facts, base, target, diff_fn, key_fn)
     transfer_note: "str | None" = None
-    if verdict["status"] != "covered" and base_source == "marker":
+    if verdict["status"] != "covered" and base_source in ("marker", "head-fallback"):
         mb_verdict = _merge_base_verdict(
             project_dir, facts, target, diff_fn, key_fn, record_grants=record_grants
         )
@@ -1241,10 +1649,13 @@ def _merge_base_verdict(
     transfer = coverage.diagnose_base_advance_transfer(
         project_dir, facts, mb_tree, target, diff_fn, verdict_fn
     )
-    if transfer is None:
-        return verdict
-    if transfer.get("status") == "unavailable":
-        verdict["transfer_note"] = transfer_remedy(transfer, None)
+    # Every transfer decision reads `coverage.classify_transfer`, so this gate
+    # and the PR gate cannot read one status two ways; anything but `match`
+    # reaches the deny path, the side a fail-closed control has to fall on.
+    kind = coverage.classify_transfer(transfer)
+    if kind != "match":
+        if kind == "unavailable":
+            verdict["transfer_note"] = transfer_remedy(transfer, None)
         return verdict
     tests_ok, tests_reason = suite_vouches_for_tree(project_dir)
     if not tests_ok:
@@ -1255,9 +1666,8 @@ def _merge_base_verdict(
     # briefing (advice), and the briefing wraps the call in a broad `except` —
     # so an append from that path would be a store write on a session-START read
     # path whose fail-soft attribution is swallowed, filed under a gate that did
-    # not run. It would also change the store fingerprint at session start,
-    # evicting the very memo the previous chunk built. Authority records its own
-    # yield; advice observes and writes nothing.
+    # not run. Authority records its own yield; advice observes and writes
+    # nothing.
     if record_grants:
         record_transfer_grant(
             project_dir, facts, transfer, mb_tree, target, "session-review-verdict"
@@ -2029,8 +2439,7 @@ def branch_coverage_verdict(project_dir: Path, *, record_grants: bool = False) -
     ``record_grants`` defaults False for the reason it does on
     :func:`_merge_base_verdict`: recording a transfer's yield belongs to the
     authority that spent it. An advisory read appending one would file a grant
-    under a gate that never ran, and would move the store fingerprint the
-    verdict memo is keyed on.
+    under a gate that never ran.
 
     Returns what :func:`_branch_coverage` documents, minus the private
     rendering context: a caller that wants the answer never sees the memo
@@ -2128,7 +2537,7 @@ def _branch_coverage(
         diff_fn,
         verdict_fn,
     )
-    if transfer is not None and transfer.get("status") == "match":
+    if coverage.classify_transfer(transfer) == "match":
         tests_ok, tests_reason = suite_vouches_for_tree(project_dir, head_tree)
         if tests_ok:
             if record_grants:
@@ -2285,7 +2694,7 @@ def _cumulative_critic_verdict(project_dir: Path, read: dict, cache) -> int:
     # review round.
     if transfer_stale is not None:
         print(f"NOTE: {transfer_remedy(transfer, transfer_stale)}", file=sys.stderr)
-    elif transfer is not None and transfer.get("status") == "unavailable":
+    elif coverage.classify_transfer(transfer) == "unavailable":
         print(f"NOTE: {transfer_remedy(transfer, None)}", file=sys.stderr)
     # COV-7K4N: a stale remote base (origin/<b> behind an ancestor-of-HEAD local
     # <b>) drags already-reviewed work into the required span and reads as

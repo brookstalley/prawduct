@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -144,6 +145,26 @@ def _short_plan_deferral(project_dir: Path, prawduct_dir: Path, plan):
             "\nNOTE: the short-plan deferral could not be evaluated "
             f"({type(exc).__name__}: {exc}) — the Critic gate is applied in full "
             "below, whether or not this plan would have deferred its review.",
+            file=sys.stderr,
+        )
+        return None
+
+
+def _extension_deferral(project_dir: Path, prawduct_dir: Path, plan):
+    """The Stop gate's read of the interval-extension deferral (#167), or ``None``.
+
+    ``critic_mode.extension_deferral``'s reason when this session's uncovered
+    work will be covered by a review the plan still owes — which starts at the
+    last reviewed state and so spans it — else ``None``. Fails closed exactly
+    as :func:`_short_plan_deferral` does, for the same reason: it relaxes a gate.
+    """
+    try:
+        progress = _buildplan_refs().resolve_chunk_progress(project_dir, plan.path)
+        return _critic_mode().extension_deferral(project_dir, prawduct_dir, plan, progress)
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- a gate relaxation that cannot be evaluated must not relax the gate
+        print(
+            "\nNOTE: the review-extension deferral could not be evaluated "
+            f"({type(exc).__name__}: {exc}) — the Critic gate is applied in full below.",
             file=sys.stderr,
         )
         return None
@@ -1642,16 +1663,16 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
         # a resume-time clock onto a session that began earlier narrows the very
         # jurisdiction this split exists to protect. But an ALREADY-absent anchor
         # then degrades in silence: gates.session_review_verdict falls back to
-        # base_source='head-fallback', which shrinks the session Critic gate to
-        # uncommitted work AND skips the merge-base rescue (that rescue is gated on
-        # base_source == 'marker'). The boundary path announces the same narrowing
+        # base_source='head-fallback', whose primary span is uncommitted work only
+        # (the merge-base rescue still runs), so work this session committed is
+        # judged only as part of the whole branch. The boundary path announces the same narrowing
         # when it fails to resolve HEAD^{tree}; the continuation path attempts no
         # write, so without this there is no notice at all. Reaching
         # it is ordinary now — a mid-cycle worktree entry followed by resume/fork.
         print(
             "NOTE: no .prawduct/.session-base-tree and this is a continuation "
             "(resume/compact/fork), which never writes one — the session Critic gate "
-            "will judge uncommitted work only and skip the merge-base rescue, and the "
+            "will start from HEAD rather than from where this session began, and the "
             "reflection gate will not see work this session committed. "
             "Start the session with /clear in this worktree to anchor it.",
             file=sys.stderr,
@@ -1705,8 +1726,11 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
     this mode could resolve, so the coverage gate already composes it as a free
     edge (`--force` dispatches anyway; no session state is written and no marker
     is set, so a 3 needs no `critic-end` — it does append one inert
-    `guard-refusal` fact, which no gate reads); exit 1 = any other dispatch failure (reason
-    on stderr). The scheme these cite is prawduct's own API contract — its
+    `guard-refusal` fact, which no gate reads); exit 4 = round budget
+    exhausted (census on stdout); exit 6 = verify-resolutions refused because
+    the evidence store is unreadable or holds newer-schema records — a store or
+    plugin problem that no demoted review can repair; exit 1 = any other
+    dispatch failure (reason on stderr). The scheme these cite is prawduct's own API contract — its
     Error Model section, in the framework repo rather than in yours.
 
     Also resets `.critic-partials/` before writing the fresh manifest —
@@ -1881,7 +1905,9 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
         for note in result.get("notes") or []:
             print(f"PRAWDUCT NOTE: {note}", file=sys.stderr)
         print(f"critic-begin: {result['reason']}", file=sys.stderr)
-        return 2 if result.get("kind") == "scope-widened" else 1
+        # Exit codes are registered in `api-contract.md`'s Error Model, which
+        # also records why 5 is left unclaimed.
+        return {"scope-widened": 2, "store-unusable": 6}.get(result.get("kind"), 1)
 
     if result.get("archived_leftovers"):
         archived_name = Path(result["archived_leftovers"]).name
@@ -1979,8 +2005,8 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
     if _critic_marker().write_marker(prawduct_dir):
         print("PRAWDUCT: critic-active marker set (session-mutating clear is guarded).")
 
-    # LAST, and only on the one mode that can weaken a gate. The reviewer reads
-    # this dispatch output before assessing anything (SKILL.md step 4) and
+    # LAST in the dispatch output, because the reviewer reads it before
+    # assessing anything (SKILL.md step 4) and
     # writes its `resolutions` several steps later — so this is the last thing
     # in the tool result at the only moment the advice can still change the
     # claim. Keyed off the manifest's own mode rather than the raw --mode
@@ -1989,15 +2015,30 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
     #
     # ORDER IS DELIBERATE, and a future edit must not flip it: the reviewer
     # rates the delta BEFORE it judges the prior findings, so the severity
-    # narrowing comes first; then the roll-call of ids that must be accounted
-    # for; and the resolution warning stays LAST, adjacent to the claim it
-    # governs — the only one of the three that can weaken a gate, and therefore
-    # the one the reader must still be holding. Both halves of the order are
-    # pinned: `TestResolutionDirectiveDelivery` for the claim directive's last
-    # place, `TestCarriedBlockersReachTheirReaders` for the roll-call's slot
-    # between the other two.
-    if manifest["mode"] == consolidate.MODE_TOKEN_TO_VERBOSE["verify-resolutions"]:
+    # narrowing comes first; then the rule for how a finding is WRITTEN; then
+    # the roll-call of ids that must be accounted for; and the resolution
+    # warning stays LAST, adjacent to the claim it governs — the only one of
+    # the four that can weaken a gate, and therefore the one the reader must
+    # still be holding. The order is pinned: `TestResolutionDirectiveDelivery`
+    # for the claim directive's last place, `TestCarriedBlockersReachTheirReaders`
+    # for the roll-call ahead of it, and `test_finding_scope_rule` for the scope
+    # rule's slot between the narrowing and the claim.
+    #
+    # FINDING_SCOPE_DIRECTIVE rides this slot for a reason of its own: it is
+    # owed to whichever modes read `goals-1-3.md`, which has no room for it,
+    # and `verify-resolutions` is in both sets — so it prints outside the
+    # verify-only branch while keeping its place in the order.
+    verbose_mode = manifest["mode"]
+    is_verify = verbose_mode == consolidate.MODE_TOKEN_TO_VERBOSE["verify-resolutions"]
+    if is_verify:
         print(consolidate.VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE)
+    reads_goals_1_3 = {
+        consolidate.MODE_TOKEN_TO_VERBOSE[token]
+        for token in consolidate.GOALS_1_3_MODES
+    }
+    if verbose_mode in reads_goals_1_3:
+        print(consolidate.FINDING_SCOPE_DIRECTIVE)
+    if is_verify:
         # The roll-call sets the AGENDA — which finding ids must come back with
         # a verdict — and the claim directive below sets the STANDARD each
         # verdict has to meet. The standard gets the last word, deliberately:
@@ -3271,7 +3312,20 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 if verdict_status == "uncovered"
                 else None
             )
-            if deferral is not None and deferral.defers and not deferral.last_chunk:
+            extension = (
+                _extension_deferral(project_dir, prawduct_dir, gate_plan_obj)
+                if verdict_status == "uncovered"
+                and not (deferral is not None and deferral.defers)
+                else None
+            )
+            if extension is not None:
+                stop_advisories.append(_attributed("critic",
+                    f"WARNING ({DEFERRED_REVIEW_TOKEN}): no review covers this session's\n"
+                    f"  changes{span} yet, and none is owed now — {extension}.\n"
+                    "  The next `/prawduct:critic` of this plan's work reviews from that\n"
+                    "  state, so this work is covered then without a round of its own.\n"
+                ))
+            elif deferral is not None and deferral.defers and not deferral.last_chunk:
                 stop_advisories.append(_attributed("critic",
                     f"WARNING ({DEFERRED_REVIEW_TOKEN}): no review covers this session's\n"
                     f"  changes{span}, and none is owed yet — {deferral.reason}.\n"
@@ -3721,6 +3775,24 @@ def _scope_refusal_remedy(cause: str | None) -> str:
     )
 
 
+#: How many failing ids a record keeps. The names exist so a reader can go
+#: straight to the broken tests instead of re-running the suite; past this many
+#: the run is broadly broken and the first hundred say as much as the rest.
+_FAILED_TESTS_CAP = 100
+
+
+def _junit_case_id(case) -> str:
+    """A ``<testcase>``'s id as ``classname::name``, or ``name`` alone when the
+    reporter wrote no classname.
+
+    Built from junit's own attributes rather than a runner's id (a pytest node
+    id) so the record reads the same for every ecosystem; the fallbacks exist
+    because not every reporter fills both."""
+    name = case.get("name") or "(unnamed)"
+    classname = case.get("classname")
+    return f"{classname}::{name}" if classname else name
+
+
 def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     """Run the suite and WRITE ``.prawduct/.test-evidence.json`` (TST-6V2N).
 
@@ -4094,6 +4166,7 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
                 return 2
 
     roots: list = []  # parsed JUnit roots (run or --from-junit); empty for counts/restamp
+    failed_ids: list[str] = []  # failing leaf ids, report order; empty when none were visible
     run_returncodes: list[int] = []  # one per executed command; empty when nothing ran
 
     if no_rerun:
@@ -4179,6 +4252,12 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         prior_degraded = prior.get("degraded")
         if not degraded_reason and isinstance(prior_degraded, str) and prior_degraded.strip():
             degraded_reason = prior_degraded.strip()
+        # The same holds for the failing names: the counts are reused, so the
+        # names that explain them are too, or a restamp prints `failed: 3` with
+        # the answer to "which three?" silently gone.
+        prior_ids = prior.get("failed_tests")
+        if isinstance(prior_ids, list):
+            failed_ids = [i for i in prior_ids if isinstance(i, str)]
     elif from_counts is not None:
         # Agnostic on-ramp (no XML, no subprocess): record the counts as given.
         # The F4a overlay below still recomputes the changed-file half against
@@ -4386,23 +4465,23 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
                 leaves = list(s.iter("testcase"))
                 if leaves:
                     total += len(leaves)
-                    # Precedence, most severe first: a case carrying both <error>
-                    # and <failure> counts once, as an error. `skipped` loses to
-                    # both — a case that errored is not a skip, whatever else it
-                    # carries.
-                    errors += sum(1 for c in leaves if c.find("error") is not None)
-                    failures += sum(
-                        1
-                        for c in leaves
-                        if c.find("error") is None and c.find("failure") is not None
-                    )
-                    skipped += sum(
-                        1
-                        for c in leaves
-                        if c.find("error") is None
-                        and c.find("failure") is None
-                        and c.find("skipped") is not None
-                    )
+                    # Each leaf is classified ONCE, and the failing ids are
+                    # collected from that same verdict, so the names and the
+                    # counts cannot come to disagree. Precedence, most severe
+                    # first: a case carrying both <error> and <failure> counts
+                    # once, as an error. `skipped` loses to both — a case that
+                    # errored is not a skip, whatever else it carries.
+                    for c in leaves:
+                        if c.find("error") is not None:
+                            errors += 1
+                        elif c.find("failure") is not None:
+                            failures += 1
+                        elif c.find("skipped") is not None:
+                            skipped += 1
+                            continue
+                        else:
+                            continue
+                        failed_ids.append(_junit_case_id(c))
                 else:
                     # Summary-only suite: its attributes are the only evidence it
                     # carries, so recording a confident 0 would discard a whole
@@ -4502,6 +4581,13 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         # Omit (never null) when uncaptured, so a record without the field falls
         # through to timestamp-only freshness — the clause is additive.
         record["evidence_tree"] = evidence_tree
+    if failed_ids:
+        # Omitted (never `[]`) when no failing id was visible: absence means
+        # "no per-test ids" — a pass, `--from-counts`, a summary-only suite —
+        # and `failed` stays the count of record. Capped so a mass failure
+        # cannot grow the file every gate reads; `failed` still says how many
+        # the cap left out.
+        record["failed_tests"] = failed_ids[:_FAILED_TESTS_CAP]
     if degraded_reason:
         # Presence is the flag; an ordinary run omits the key entirely rather
         # than writing a false, so every record written before the field existed
@@ -4559,6 +4645,44 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             file=sys.stderr,
         )
 
+    # Index the run by tree on the store every worktree of the clone shares, so
+    # a later freshness check can find it after this worktree's record has moved
+    # on to another branch. Soft by contract: the record above is the run's
+    # answer, and a lost index entry costs a later re-run, never a wrong verdict
+    # — so a failure is attributed and changes nothing else.
+    #
+    # A restamp records no fact. It measured nothing, and the tree it stamps is
+    # a fresh capture rather than the one its reused counts ran against — so a
+    # fact from it could put a green run on a tree no suite ever met (a
+    # `--from-counts` record restamped would do exactly that). The run whose
+    # counts it reuses already has its fact, or never had a tree to give one.
+    if evidence_tree and not no_rerun:
+        from lib import evidence as _evidence_mod  # noqa: PLC0415 — lazy keeps top-level cheap
+        run_fact = {
+            "tree": evidence_tree,
+            "passed": passed,
+            "failed": failed,
+            "skipped": skipped,
+            "duration_seconds": record["duration_seconds"],
+            "source": "from-junit" if from_junits else "run",
+        }
+        # The commit checked out, so a detached second worktree at the same
+        # commit — which shares no branch name — can find this run. Omitted on
+        # an unborn branch, where there is no commit to name.
+        rc, head_sha, _ = _evidence_mod.run_git(project_dir, "rev-parse", "--verify", "-q", "HEAD")
+        if rc == 0 and head_sha.strip():
+            run_fact["head"] = head_sha.strip()
+        if degraded_reason:
+            run_fact["degraded"] = degraded_reason
+        appended = _evidence_mod.append_test_run(project_dir, run_fact)
+        if appended.get("status") != "appended":
+            print(
+                f"note: test-run fact not recorded ({appended.get('reason', 'unknown')}); "
+                "the evidence record above is complete, but other branches and "
+                "worktrees cannot reuse this run.",
+                file=sys.stderr,
+            )
+
     # A restamp announces itself. The old line said `recorded: N passed` for
     # both paths, so a reused count was typographically identical to a fresh
     # measurement — which is the surface that let a stale figure pass as one.
@@ -4578,9 +4702,15 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         if degraded_reason
         else ""
     )
+    failing = (
+        "\n  failing: " + _gates().name_failing_tests(record.get("failed_tests"), failed)
+        if failed_ids
+        else ""
+    )
     print(
         f"{verb}: {passed} passed, {failed} failed, {skipped} skipped "
-        f"in {record['duration_seconds']}s ({record['timestamp']}){provenance}{degradation}"
+        f"in {record['duration_seconds']}s ({record['timestamp']}){provenance}"
+        f"{failing}{degradation}"
         + (
             _GREEN_IS_EVIDENCE_DIRECTIVE
             if _evidence_changed_judged_code(evidence_path)
@@ -5733,11 +5863,13 @@ def cmd_infer_critic_mode(project_dir: Path, args: str | None) -> int:
     Output format: a single stdout line ``<mode>|<rationale>`` where
     ``<mode>`` is one of the short tokens (``chunk`` / ``final`` /
     ``cumulative`` / ``verify-resolutions``) — or ``deferred``, the
-    output-only answer that NO review is owed now because the branch's plan
-    is short and touches no risk surface (#292; ``critic_mode.MODE_DEFERRED``):
-    the skill dispatches nothing on it and reports the rationale, which says
-    whether to commit and carry on or, on the last chunk, commit and run the
-    ``cumulative`` that is that chunk's review. ``<rationale>`` is the
+    output-only answer that NO review is owed now (``critic_mode.MODE_DEFERRED``),
+    for one of two reasons the rationale names: the branch's plan is short and
+    touches no risk surface (#292), or a later review the plan still owes will
+    start from the last reviewed state and cover this work (#167,
+    ``extension-deferred``). The skill dispatches nothing on it and reports the
+    rationale, which says what to do: commit and carry on, or, on a short plan's
+    last chunk, commit and run the ``cumulative`` that is that chunk's review. ``<rationale>`` is the
     human-readable explanation suitable for both stdout reporting and
     the ``mode_chosen_by`` field in ``.critic-findings.json``.
 
@@ -6832,6 +6964,7 @@ def cmd_lifecycle_repair(project_dir: Path, argv: list[str]) -> int:
                         for edit in plan["edits"]
                     ],
                     "unreadable": plan["unreadable"],
+                    "unscoped": plan["unscoped"],
                     "retired_flag": guard,
                     "plans_to_review": [
                         {"path": str(r["path"]), "chunks": r["chunks"]} for r in stale
@@ -6892,6 +7025,18 @@ def cmd_lifecycle_repair(project_dir: Path, argv: list[str]) -> int:
                 print(f"    {_plan_label(report['path'], Path(project_dir) / '.prawduct')}")
                 for chunk in report["chunks"]:
                     print(f"      - {chunk}")
+        # Diagnostic, and deliberately NOT on the `unreadable` channel: these
+        # files decode fine, the repair checks them like any plan, and folding
+        # them in would make the CLI say "could not read", exit 1, and drive
+        # `/prawduct:doctor` to a degraded verdict that `--apply` can never
+        # clear. Stated so the sweep's silence is not read as coverage.
+        if plan["unscoped"]:
+            print(f"  {len(plan['unscoped'])} plan(s) declare no `scope:`. They "
+                  "were checked like any other plan, but the release lookup "
+                  "keys on that line and this repair cannot add it — give each "
+                  "one a scope: matching its change-log entries:")
+            for path in plan["unscoped"]:
+                print(f"    {_plan_label(Path(path), Path(project_dir) / '.prawduct')}")
         for item in plan["unreadable"]:
             print(f"  could not read {item['path']} ({item['reason']}) — it was "
                   f"left alone and not checked", file=sys.stderr)
@@ -7004,6 +7149,9 @@ def cmd_plan_backfill(project_dir: Path, argv: list[str]) -> int:
                 "kept_live": [
                     {"path": str(i["path"]), "scope": i["scope"]} for i in result["unshipped"]
                 ],
+                "unevaluated": [
+                    {"path": str(i["path"])} for i in result["unevaluated"]
+                ],
                 "archived": result["archived"],
                 "refused": result["refused"],
             },
@@ -7046,6 +7194,58 @@ def cmd_plan_backfill(project_dir: Path, argv: list[str]) -> int:
                 print("  Re-run with --apply to move them. One confirmation covers "
                       "all of them; each file is moved, not deleted, and keeps "
                       "everything it says.")
+            # Each move is a write plus an unlink, and this command stages
+            # NEITHER. An unstaged archive is not cosmetic: a suite that
+            # enumerates paths from `git ls-files` and opens them on disk raises
+            # FileNotFoundError on the plan that is in the index and gone from
+            # the filesystem. That has gone red at two release cuts — the moment
+            # a red suite is most alarming and least expected — so the remedy is
+            # named here, in the output of the command that created the state,
+            # rather than left for the next person to diagnose.
+            # `archived`, never `apply and shipped`: it is what actually MOVED,
+            # so a preview (always `[]`) and an apply whose every plan was
+            # refused both stay quiet. Advice printed where it does not apply is
+            # how advice stops being read.
+            if result["archived"]:
+                # The paths that MOVED, not the directory containing them. At a
+                # release cut the operator's in-flight artifacts — a release
+                # plan, the live build plan — sit in that same directory, so
+                # `-A <dir>` stages edits they did not choose and those ride the
+                # next bare `git commit`. `:/` anchors each pathspec at the repo
+                # root, because git resolves a relative pathspec against CWD and
+                # this line is copied verbatim from wherever it was read.
+                # No `relative_to` guard: `prawduct_dir` is `project_dir /
+                # ".prawduct"` and both paths are built under its `artifacts/`,
+                # so the relative form is lexically guaranteed. A guard here
+                # would be a branch no fixture can enter, standing beside the
+                # reachable defect (a cwd-relative pathspec) that `:/` fixes.
+                # `shlex.quote` because this line is pasted into a shell.
+                moved = [
+                    shlex.quote(":/" + Path(path).relative_to(project_dir).as_posix())
+                    for item in result["archived"]
+                    for path in (item.get("source"), item.get("destination"))
+                    if path is not None
+                ]
+                print(f"  Stage the moves before your next suite run: "
+                      f"`git add -A -- {' '.join(moved)}`. "
+                      "Nothing here is staged, and a plan that is in the index "
+                      "and gone from disk fails any test that enumerates tracked "
+                      "paths and reads them.")
+
+        # Printed under BOTH arms of the fork above, because both report a set
+        # that reads as the whole directory: the counts above partition the
+        # plans this sweep could see, and a plan with no scope was never in
+        # them. Said here rather than left to `--json` — a figure the operator
+        # reads as complete is the thing being corrected.
+        if result["unevaluated"]:
+            print(f"  could not evaluate {len(result['unevaluated'])} plan(s), so they "
+                  "are in none of the counts above — each is a build plan that "
+                  "declares no `scope:` in its frontmatter, and the release a "
+                  "plan shipped in is looked up by that scope. Give each one a "
+                  "scope: line matching its change-log entries to bring it into "
+                  "this sweep:")
+            for item in result["unevaluated"]:
+                print(f"    {_plan_label(item['path'], prawduct_dir)}")
         for refusal in result["refused"]:
             print(f"  could not archive {refusal['scope']}: {refusal['reason']}",
                   file=sys.stderr)
@@ -7264,8 +7464,13 @@ def cmd_learnings_migrate(project_dir: Path, argv: list[str]) -> int:
     learnings file or a gitignored destination is a condition the agent must fix
     before any of this is worth planning, and a dry run that printed a plan it
     could never execute would teach the reader to skip the reason.
+
+    ``--local`` is for a repo that keeps its learnings out of git on purpose:
+    the undo becomes a byte-verified backup in the git directory rather than a
+    commit, so the refusals that exist only because git is the undo give way
+    (``learnings_migrate`` module docstring). It composes with every mode.
     """
-    flags = {"--apply", "--propose-map", "--json"}
+    flags = {"--apply", "--propose-map", "--json", "--local"}
     rest: list[str] = []
     map_path: str | None = None
     i = 0
@@ -7287,6 +7492,7 @@ def cmd_learnings_migrate(project_dir: Path, argv: list[str]) -> int:
     do_apply = "--apply" in rest
     propose = "--propose-map" in rest
     as_json = "--json" in rest
+    local = "--local" in rest
     if propose and do_apply:
         print(
             "learnings-migrate: --propose-map prints the map and exits; it "
@@ -7321,7 +7527,8 @@ def cmd_learnings_migrate(project_dir: Path, argv: list[str]) -> int:
             print(f"learnings-migrate: bad map file {map_path}: {exc}", file=sys.stderr)
             return 2
 
-    migration = learnings_migrate.plan(project_dir, mapping)
+    migration = learnings_migrate.plan(project_dir, mapping, local=local)
+    backup = str(migration.backup_dir) if migration.backup_dir is not None else None
 
     if migration.nothing_to_do:
         if as_json:
@@ -7373,6 +7580,7 @@ def cmd_learnings_migrate(project_dir: Path, argv: list[str]) -> int:
         "dropped": list(migration.dropped),
         "total_bytes": migration.size,
         "total_rules": migration.rules,
+        "backup_dir": backup,
     }
 
     # The unscoped topics and the merges print on BOTH paths. An apply that
@@ -7413,12 +7621,22 @@ def cmd_learnings_migrate(project_dir: Path, argv: list[str]) -> int:
             print(f"learnings-migrate: INTERRUPTED — {exc}", file=sys.stderr)
             for rel in exc.written:
                 print(f"  wrote {rel}", file=sys.stderr)
-            print(
-                "  Nothing was deleted that had not been written first. Re-run "
-                "the same command: it recognises this half-written tree and "
-                "finishes it.",
-                file=sys.stderr,
-            )
+            if exc.written:
+                print(
+                    "  Nothing was deleted that had not been written first. Re-run "
+                    "the same command: it recognises this half-written tree and "
+                    "finishes it.",
+                    file=sys.stderr,
+                )
+            else:
+                # The --local backup runs before the first write, so a failure
+                # there leaves the tree untouched: there is no half-written tree
+                # to finish, only a cause to fix.
+                print(
+                    "  Nothing was written or deleted. Fix the cause above and "
+                    "re-run the same command.",
+                    file=sys.stderr,
+                )
             return 1
         except (OSError, learnings_migrate.MigrateRefused) as exc:
             print(f"learnings-migrate: failed — {exc}", file=sys.stderr)
@@ -7432,10 +7650,19 @@ def cmd_learnings_migrate(project_dir: Path, argv: list[str]) -> int:
             for rel in migration.deletions:
                 print(f"deleted {rel}")
             _report_folds()
-            print(
-                f"migrated {migration.rules} rules into {len(migration.outputs)} "
-                f"file(s). Commit them — the commit is this migration's undo."
-            )
+            if backup is not None:
+                print(
+                    f"migrated {migration.rules} rules into {len(migration.outputs)} "
+                    f"file(s). Backed up every deleted file to {backup}. To undo: "
+                    "delete the rules files written above, THEN copy the backup's "
+                    "files back into the repo — copying back alone leaves both "
+                    "layouts on disk. Commit whatever of this change git tracks."
+                )
+            else:
+                print(
+                    f"migrated {migration.rules} rules into {len(migration.outputs)} "
+                    f"file(s). Commit them — the commit is this migration's undo."
+                )
         return 0
 
     if not as_json:
@@ -7447,12 +7674,15 @@ def cmd_learnings_migrate(project_dir: Path, argv: list[str]) -> int:
         print("would delete:")
         for rel in migration.deletions:
             print(f"  {rel}")
+        if backup is not None:
+            print(f"would back up every deleted file first, to: {backup}")
         _report_folds()
         print(
             f"{migration.rules} rules, {migration.size} bytes across "
             f"{len(migration.outputs)} file(s)."
         )
-        print("Run `--propose-map > <file>` to draft the scoping map, edit it, then `--apply --map <file>`.")
+        _apply = "--apply --local" if local else "--apply"
+        print(f"Run `--propose-map > <file>` to draft the scoping map, edit it, then `{_apply} --map <file>`.")
     else:
         print(json.dumps(_json_payload, indent=2))
     return 0
@@ -7615,7 +7845,7 @@ _USAGE = (
     "migrate-plugin [--apply] [--json]|init-product <target> --name <name> [--backlog-repo owner/repo] [--apply] [--json]|"
     "update-gitignore [--dry-run]|"
     "audit-learnings [deprecated, inert]|learnings-obligation [deprecated, inert]|"
-    "learnings-migrate [--apply] [--map <file>] [--propose-map] [--json]|"
+    "learnings-migrate [--apply] [--map <file>] [--propose-map] [--json] [--local]|"
     "learnings-files [--for-diff] [--json]|"
     "norm-index-scaffold [--apply] [--json]|reanchor [--apply] [--json]|"
     "lifecycle-repair [--apply] [--json]|"
@@ -7909,10 +8139,11 @@ def _binary_skew(project_dir: Path) -> "tuple[Path, Path] | None":
 # a Critic gate no route could satisfy (#648); `gitstate.is_ephemeral_worktree`
 # owns that distinction, so everything below reads as written once it answers.
 #
-# The inseparability is ASSUMED, not measured — see that function's docstring
-# for the falsifier. If the harness ever merges a code commit off a named
-# branch while discarding the branch, this guard stops covering that case and
-# #594's silent strand returns for it.
+# The inseparability rests on the worktree tool contract — that function's
+# docstring holds the evidence and the residual. The falsifier: if the harness
+# ever merges a code commit off a named branch while discarding the branch, this
+# guard stops covering that case and #594's silent strand returns for it.
+# Re-check when worktree handling changes.
 #
 # DECIDED: this classification is an allowlist of READS — an unlisted command
 # defaults to refused-inside-an-ephemeral-worktree, the restrictive side. That

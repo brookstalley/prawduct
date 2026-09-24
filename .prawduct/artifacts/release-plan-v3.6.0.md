@@ -1,10 +1,11 @@
 # Release Plan — v3.6.0, Whole-Develop Promotion
 
-**Status:** PREP ONLY as of 2026-09-20. By owner decision this cut runs the runbook's Phases 0–1
-and stops at the **Checkpoint** after step 13 — `origin/develop` carries the whole release, and
-nothing has reached `main` or any consumer. Phases 2–3 (promote, publish, verify, reopen `develop`)
-are not authorized yet. Re-derive the current state with `git log --oneline origin/main -1` and
-`prawduct-hook check-releasability --release v3.6.0`; do not read this paragraph as a measurement.
+**Status:** COMPLETE as measured 2026-09-20. Phases 0–1 ran, stopped at the **Checkpoint** by owner
+decision, then Phases 2–3 ran on owner authorization the same day: `main` promoted at `11dab896`,
+tag and Release `v3.6.0` published in one call, `check-released v3.6.0` 3 of 3 verified, the
+hand-dispatched `verify-release` run green, and `develop` reopened on `3.6.1-dev`. Re-derive rather
+than reading this paragraph as a measurement: `git log --oneline origin/main -1`,
+`prawduct-hook check-released v3.6.0`, `prawduct-hook check-releasability --release v3.6.0`.
 
 **Version:** v3.6.0 — **minor**, and the call is a recorded decision that *overturns a standing
 ruling*, so both sides are written down.

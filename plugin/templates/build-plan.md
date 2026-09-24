@@ -103,7 +103,7 @@ last_validated: 2026-07-03
 
 <!-- The cross-session handoff, and the ONLY reading of chunk progress. The boxes are
      yours to tick: mark `[x]` by hand when a chunk's "Done when" steps are all
-     satisfied — nothing derives them, so an unticked box is read everywhere as work
+     satisfied — built, reviewed, committed; never merged or released — nothing derives them, so an unticked box is read everywhere as work
      still open. Keep Context current. Context runs from `Context:` to the end of this
      section, so it may be several paragraphs — the handoff carries it whole. Keep it
      LAST: a chunk checkbox after it closes the block, and anything below that is
@@ -195,7 +195,7 @@ Routes never touch SQLite directly — persistence goes through `store.py`. Temp
 - **Artifacts consumed:** `data-model.md` (Item entity), `test-specifications.md` §1
 - **Deliverables:** new `pantry/main.py`, new `pantry/store.py`, new `templates/list.html`, seeded dev database
 - **Tests:** unit — `store.py` CRUD; integration — GET / renders seeded items (httpx)
-- **Acceptance criteria:** the declared suite passes; browser shows the seeded list at /
+- **Acceptance criteria:** the chunk's own tests pass; browser shows the seeded list at /
 - **Done when:**
   1. Acceptance criteria met and tests pass
   2. `/prawduct:critic` run and blocking findings resolved

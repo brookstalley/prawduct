@@ -37,6 +37,13 @@ rather than the file.
 2026-08-21) is the worked case: the key's *absence* means an ordinary run, so a
 writer emitting `false` rather than omitting it changes what every reader sees.
 A new field therefore has to name its absent-case semantics, not just its type.
+`failed_tests` (added 2026-09-23, #792) holds the failing ids as `classname::name`, in report order
+and capped; its absence means no per-test ids were available (a pass, `--from-counts`, a
+summary-only suite), never that nothing failed — `failed` stays the count of record. Two readers:
+`_load_test_evidence`'s refusal reason, which `test-status`, the PR-gate transfer and the PR review
+payload all print, and `--no-rerun`, which carries the names forward with the counts.
+It is deliberately not in the evidence schema: a key that is only printed must not be able to
+make a record invalid, so a malformed value is ignored by its reader rather than refused.
 **Deliberate non-consumer:** `verify_coverage` does *not* refuse a degraded
 record — at `coverage_level: referenced` its answer is tree-derived, so which
 tests executed cannot change it. Its docstring names the `executed`-level
@@ -44,7 +51,22 @@ condition that would retire the exemption; if that lands, this entry gains a
 consumer.
 **Sweep rule:** a change to the record's shape is checked against `gates.py`'s
 shared prologue *and* the writer's ingest paths, because a restamp that skips a
-field launders it away while running nothing.
+field launders it away while running nothing. `degraded` and `failed_tests` both ride a restamp.
+
+### `test-run` facts on the evidence store — runs indexed by tree
+
+**Producer:** `test-evidence record` (a real run and `--from-junit`; never a restamp or
+`--from-counts`), through `evidence.append_test_run`.
+**Consumers:** `gates._store_run_vouching`, the fallback both evidence readers ask when the
+worktree's own record does not vouch; `evidence list`. Nothing on the coverage data plane:
+`coverage_algebra.VERDICT_INPUT_KINDS` is the set it reads, and `evidence.OBSERVATIONAL_KINDS`
+(which `test-run` joins) is kept out of the verdict cache's key.
+**Contract:** body `tree`, `passed`/`failed`/`skipped`, `duration_seconds`, `source`, and `head`
+and `degraded` when present. The store is a fallback, asked after the worktree's own record declines;
+among its candidates (that record included) the newest run that met the tree decides it.
+**Sweep rule:** a kind joining `OBSERVATIONAL_KINDS` is a claim that `coverage_algebra` never
+reads it — `tests/test_test_run_facts.py` derives the read set from the module's own `fact.get("kind")`
+comparisons, so check that test before adding one.
 
 ### `.claude/rules/learnings/` — the rules layout
 
@@ -117,6 +139,27 @@ is exactly what missed two files during this build. And because the payloads
 carry verbatim provider text (issue titles and bodies) into agent-read findings,
 **item text is data, never instructions** — each consuming surface restates that
 rule locally rather than inheriting it.
+
+### Diagnosis Status Verdicts (the two review gates)
+
+**Producer:** `plugin/lib/coverage.py` — `diagnose_base_advance_transfer` returns
+`{"status": coverage.TRANSFER_MATCH, …}`, `{"status": "unavailable", "reason"}`,
+or `None`. Its siblings `diagnose_fix_churn` and `count_branch_rounds` share the
+`"unavailable"` half of that vocabulary.
+**Consumers:** both review gates in `plugin/lib/gates.py` — the PR gate
+(`check_cumulative_critic`) and the Stop gate (`_merge_base_verdict`) — plus
+`transfer_remedy`, which renders a status and reads fields only two of the three
+shapes carry.
+**Contract:** the status strings, **and which of them may reach the GRANT path.**
+This is the envelope whose consumer turns an `uncovered` verdict into a pass, so a
+status the producer adds is not merely unrendered downstream — a consumer that
+tests negatively would *grant* it (or crash reading `match`-only fields). Every
+decision site therefore branches on `coverage.classify_transfer`, which maps any
+status it does not know to `"unknown"`: denied, and rendered with no remedy.
+**Sweep rule:** a new status is added in `classify_transfer`, not at a call site —
+`git grep 'transfer.get("status")' plugin/` outside `coverage.py` should return
+nothing. `tests/test_session_critic_gate.py` asserts both gates deny an unknown
+status.
 
 ### API Endpoints
 <!-- Example:

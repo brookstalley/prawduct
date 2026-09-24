@@ -138,8 +138,43 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # invisible to every other control — and a coordinator roster pays it once
     # per reviewer, so the dispatched route moves +372 against single-pass-full's
     # +83. The cheap route is untouched, which is the split working.
-    "single-pass-inner": 6301,
-    "single-pass-full": 20355,
+    # RATCHETED with the readings below (review-interval-extension, 2026-09-22):
+    # the chunk/final interval rewording (it now starts at the covered
+    # frontier) was paid in place and came out smaller, and the ceilings follow.
+    # RAISED (review-interval-extension, 2026-09-22, cumulative finding): the demotion
+    # property's list of commits `chunk`/`final` cannot reach — behind an open blocker,
+    # before any review, across a base sync — was cut to one case in the same branch and
+    # restored. DECLARED, not paid: the sentence has no duplicate to fund it, and a builder
+    # reading the one-case version demotes the other three to a mode that cannot see them.
+    # RATCHETED (review-interval-extension PR review, 2026-09-22): "the uncommitted interval" dropped from SKILL.md's
+    # fall-through sentence, now false for an extended chunk interval.
+    # RAISED +29 on both single-pass routes (review-scrub-seams, 2026-09-22),
+    # DECLARED: `SKILL.md`'s exit-table row for `critic-begin` 6, which every
+    # single-pass review loads and the dispatched route does not. Priced against
+    # the SUM: 29 tokens per review against the full round (median ~300s) the
+    # exit-1 fallback would buy every time the store is unusable — a round that
+    # cannot help. Drafted at +81; the remedy moved to the refusal's stderr.
+    # RAISED on 2026-09-23 (#820, suite-at-boundary), DECLARED: the stale-suite verdict is now stated
+    # per stage (no finding at the inner stage, WARNING only at `cumulative`) in the protocol file
+    # this route loads. Priced against the SUM: 13 tokens per review against a full declared-suite
+    # run per chunk that the inner reviewer no longer asks for (minutes each, on this repo ~5), and
+    # the round a stale-evidence finding used to ride in. Compressed in place before declaring.
+    # +4 more, same PR after its cumulative review, DECLARED: the stale verdict at `final` becomes an
+    # observation that the suite is owed before the work lands, so direct-commit and final-only
+    # paths are not left with nothing flagging a missing suite run.
+    "single-pass-inner": 6349,
+    # RAISED +43 (reviewer-prompt-file-list, 2026-09-22), DECLARED: all of it the
+    # `review-protocol.md` template change that sends coordinator reviewers to the
+    # manifest for their file sets; see the dispatched-reviewer entry for the price.
+    # RAISED on 2026-09-23 (#820, suite-at-boundary), DECLARED: the stale-suite verdict is now stated
+    # per stage (no finding at the inner stage, WARNING only at `cumulative`) in the protocol file
+    # this route loads. Priced against the SUM: 7 tokens per review against a full declared-suite
+    # run per chunk that the inner reviewer no longer asks for (minutes each, on this repo ~5), and
+    # the round a stale-evidence finding used to ride in. Compressed in place before declaring.
+    # +17 more, same PR after its cumulative review, DECLARED: the stale verdict at `final` becomes an
+    # observation that the suite is owed before the work lands, so direct-commit and final-only
+    # paths are not left with nothing flagging a missing suite run.
+    "single-pass-full": 20444,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -157,13 +192,35 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # repeat it. Priced against the SUM and not the file: this is the cheapest
     # possible repair of a control the route is already paying 2791 tokens to
     # carry, and paying that in full for nothing is the actual waste.
-    "dispatched-reviewer": 19497,
+    #
+    # +119 on 2026-09-22 (reviewer-prompt-file-list), a DECLARED raise: +43 in
+    # `review-protocol.md` (the template now names the manifest instead of pasting
+    # the file lists) and the rest in `critic-reviewer.md`, which says the sets come
+    # from the manifest and adds a guard: an unreadable manifest, one whose `id` is
+    # not this review's, or one with no subject files ends in `dispatch-mismatch`.
+    # The guard is the price of removing the lists — without it a reviewer that
+    # cannot read the manifest reviews nothing and reports clean. Priced against the
+    # SUM: the coordinator no longer writes each list three times in a row, which on
+    # a large review is thousands of output tokens on the dispatch critical path.
+    # +19 more in the same change, DECLARED: the guard's partial must take its
+    # commit and review id from the PROMPT, because in every case it covers the
+    # manifest's are missing or another review's, and consolidation rejects a
+    # partial carrying either — the guard would otherwise never reach the builder.
+    # RAISED on 2026-09-23 (#820, suite-at-boundary), DECLARED: the stale-suite verdict is now stated
+    # per stage (no finding at the inner stage, WARNING only at `cumulative`) in the protocol file
+    # this route loads. Priced against the SUM: 7 tokens per review against a full declared-suite
+    # run per chunk that the inner reviewer no longer asks for (minutes each, on this repo ~5), and
+    # the round a stale-evidence finding used to ride in. Compressed in place before declaring.
+    # +13 more, same PR after its cumulative review, DECLARED: the stale verdict at `final` becomes an
+    # observation that the suite is owed before the work lands, so direct-commit and final-only
+    # paths are not left with nothing flagging a missing suite run.
+    "dispatched-reviewer": 19646,
 }
 
 PAYLOAD_CEILINGS = {
-    "single-pass-inner": 6302,
-    "single-pass-full": 20356,
-    "dispatched-reviewer": 19498,
+    "single-pass-inner": 6350,
+    "single-pass-full": 20445,
+    "dispatched-reviewer": 19647,
 }
 
 

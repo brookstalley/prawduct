@@ -102,7 +102,9 @@ or their own heading (sections); `[detail](…)`/`→ detail.` links are strippe
 metadata comments and the descent-obligation block are dropped; `learnings-detail.md` and
 `learnings-history.md` are deleted. The topic→glob map is proposed by the command from the
 repo's top-level directories and the section titles, written to a sidecar the agent edits and
-passes back with `--map`. Refuses when any learnings file has uncommitted changes. Idempotent:
+passes back with `--map`. Refuses when any learnings file has uncommitted changes. (Extended
+2026-09-22, #889: `--local` serves a repo that keeps its learnings out of git on purpose, taking a
+private backup as the undo in place of the commit, so the git-state refusals give way to it.) Idempotent:
 a second run on a migrated repo reports nothing to do. *Proof:* fixture repos in the three fleet
 formats (topic-bulleted, paragraph-heading, mixed); a byte-accounting test that every non-link,
 non-metadata byte of the source appears in the output.

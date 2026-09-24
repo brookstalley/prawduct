@@ -10,6 +10,163 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
+## v3.6.1
+
+**Your full test suite now runs when work lands, not after every chunk; a passing run still counts after you switch branches; and fixing a warning after a clean review now waits for your next review instead of needing a round of its own.** Twenty-six scopes since v3.6.0, counting release housekeeping. Three changes you will notice in an ordinary session. First, a chunk's Verify step now runs only your inner-loop checks, and your repo's declared suite runs at the boundary, before work lands on your integration branch. Second, each suite run is recorded against the exact code it tested, so switching back to a branch that already passed runs nothing again. Third, when you fix a warning after a clean review and your plan still has chunks left, the fix is covered by the next chunk's review instead of a `verify-resolutions` round. And `cost-of-commit` answers `free` when a review already covers what you are about to commit. Blocking findings still need `verify-resolutions`.
+
+**`suite-at-boundary`** — **the declared test suite now runs at the boundary, not at every
+chunk.** This changes a default your repo inherits. A chunk's Verify step runs your
+`Inner-loop verification` row (or, if it is unset, the tests for the files the chunk touched), and
+the declared suite runs at the boundary: before the work lands on your integration branch, which is
+the `cumulative` review and the PR where you have them. Chunk-stage Critic reviews no longer report
+a not-yet-run suite as stale evidence or recommend running it; a `final` review notes that the suite
+is still owed, `cumulative` still reports it as a warning, and failing tests still block at every
+stage. To keep a full run at every chunk, say so in your `project-preferences.md`
+`Inner-loop verification` row. If that row still holds the shipped placeholder text, which says the
+suite runs at Verify, that is the old default's wording, not a request for per-chunk runs;
+`/prawduct:doctor` drafts the row against the new default.
+
+**`failing-test-ids`** — `test-status` names the failing tests. `test-evidence record` used to keep
+only the failure count, so finding out which tests failed meant running the suite again. It now
+keeps the failing test ids from the junit report it parses (up to 100). `test-status`, the
+`recorded:` line and the PR review payload name the first ten and count the rest.
+
+**`per-tree-test-evidence`** — switching branches no longer throws away a green test run. Every
+recorded run of the suite is now also kept in the clone's shared evidence store, keyed by the tree it
+ran against. When this worktree's own record does not cover the current tree (you switched branch,
+or opened a second worktree), `test-status` and the PR and Stop gates look there for a run that met
+it: the newest run for this exact tree, this commit or this branch, judged by the same tree
+comparison as before. Switching back to a branch whose tree already passed re-runs nothing. A newer
+failing run still wins, a restamp or hand-typed counts never vouch, and a store written by a newer
+plugin is refused. `evidence list --kind test-run` shows the runs. The coverage gates' cached
+verdicts also survive recording a run, so the gate after a suite run no longer starts cold.
+
+**`learnings-migrate-local`** — `prawduct-hook learnings-migrate --local` migrates a repo that
+keeps its learnings out of git on purpose. Previously the migration refused there, because its undo
+is a commit, and the Stop hook's `learnings-unmigrated` gate then blocked every session that changed
+code. With `--local`, the migration first copies every file it will delete into a backup inside the
+git directory, where nothing can commit it, and verifies each copy. To undo, delete the rules files
+it wrote, then copy the backup back. The checks that guard against losing rules still apply. The
+session briefing's note about a gitignored `.claude/rules/` now states that the rules exist only in
+this checkout, rather than telling the agent to unignore them.
+
+**`reviewer-prompt-file-list`** — on a three-reviewer Critic review, the reviewers now start
+sooner on large diffs. The Critic used to paste the full subject and oracle file lists into each
+reviewer's prompt, and because it writes the three prompts one after another, the last reviewer's
+start was delayed in proportion to the file count. The prompt now names the dispatch manifest,
+which each reviewer already reads. A reviewer that cannot read the manifest, or finds it belongs
+to another review or has no subject files, stops with a `dispatch-mismatch` finding rather than
+reviewing nothing.
+
+**`measured-round-price`** — the "one more round costs about N min" line in a review's NEXT-ACTION
+and in `prawduct-hook cost-of-commit` now comes from the review clock once your repo has at least
+five clocked `verify-resolutions` rounds. Before this it was the median of the durations the
+reviewing models report for themselves, which run high — worst on short reviews, where they can
+read several times the real cost. Until a repo has enough clocked rounds, the old estimate is still
+quoted and
+the line now says it is one.
+
+**`pr-review-clock`** — a PR review whose findings you fix before the ledger append keeps its
+measured duration. The dispatch mark is now checked against the tree the reviewer read, and the
+interval ends when the reviewer writes its evidence. Before this, only PR reviews that found nothing
+were measured.
+
+**`review-interval-extension`** — fixing a warning after a clean review of the current chunk no
+longer costs a `verify-resolutions` round while your plan has chunks left. Commit the reviewed tree,
+then the fix. The next chunk's review starts from the last reviewed state, so it covers the fix too,
+and `/prawduct:critic`, the Stop hook, the review's NEXT-ACTION and `cost-of-commit` all say so
+rather than asking for the round. Blocking findings still need `verify-resolutions`, and a chunk
+nobody reviewed is never deferred.
+
+**`unresolved-scope-diagnosis`** — when a Critic review resolves no build-plan scope,
+`critic-begin` now prints a note saying why and which plan edit fixes it — most often a `branch:`
+line written below the plan's frontmatter, where nothing reads it. A review without a scope is
+invisible to the round budget. A finished plan also keeps matching its branch name for its own
+final review, as long as that branch edited the plan. A branch that touched no plan gets no note, so
+plan-less chores and fixes are not told to add a `branch:` line.
+
+**`866-cost-of-commit-covered`** — `prawduct-hook cost-of-commit` no longer says a tree a Critic
+review already covers "costs a round". With no path arguments it now checks review coverage the way
+the gates do, and answers `free`, naming the review, when committing the working tree verbatim would
+leave no gap. Explicit path lists are priced by path, as before.
+
+**`863-payload-backlog-scan`** — the PR reviewer's backlog check no longer reports a false clean
+on a branch no plan claims. The PR review payload finds the backlog ids a branch cites so the reviewer can check each claimed
+closure. On a docs or fix branch with no build plan, it could not pair the change-log entry, scanned
+nothing, and reported *"no backlog ids cited … this is an answer, not a failure"*. It now pairs the
+entry the branch adds, and an input it could not scan degrades the section instead of passing as
+empty — so the reviewer is told to check that input by hand rather than told there is nothing to check.
+
+**`pin-status-tick-meaning`** — a build plan's `## Status` tick now has one documented meaning:
+the chunk is **built, committed and reviewed on the branch** — never merged, never released. It had
+three working meanings across the methodology, and readers that assumed different ones disagreed.
+`planning.md` carries the definition and the build-plan template's Status comment names the same
+one. Merged and released stay where they were: the plan is live until archived, and the change-log's
+`release=` tag says what shipped.
+
+**`review-budget-trunk-shape`** — the review round budget now fires on a trunk-based repo, where it
+had never fired at all. It counted rounds strictly after the merge-base on HEAD's lineage; on trunk
+every push makes the merge-base HEAD, so that set is empty and `spent` was 0 on round twenty. The
+count is now bounded by the worktree whenever the commit span is empty, so the ceiling reaches
+`chunk` and `final` dispatches there — an exit 4 that was unreachable on that repo shape becomes
+reachable, with `--force` as the escape hatch. It does not reach `cumulative` on trunk, which
+`critic-begin` refuses earlier as an empty diff.
+
+**Two consequences to know, both wider than trunk repos.** A branch cut and not yet committed to
+also has an empty span, so a branch RESUMING a scope inherits that scope's rounds from this
+worktree — the budget's declared unit is the scope, so that is consistent, but it is a behaviour
+change on branch-based repos too. And nothing resets the worktree-bounded count, so reusing a scope
+name for a second body of work inherits the first's rounds and can refuse its very first dispatch.
+Give each body of work its own scope name, or raise the budget — the `project-state.yaml`
+template comment that ships with the plugin says so, as does prawduct's own `api-contract.md`.
+The verdict and the guard-refusal fact now carry `bound` (`lineage` | `worktree`), which
+`prawduct-hook evidence list` renders as a `bound=` column,
+because the two bounds count different sets. The `uncovered:` gate block no longer claims *the next
+round is this branch's first* when the span is empty and it cannot know. Rider: `plan-backfill
+--apply` now names the staging remedy for the archive it wrote, with repo-root-anchored paths.
+
+**`review-scrub-seams`** — three review-gate seams that answered wrongly on a degraded input.
+The Stop gate's base-advance transfer now grants only on a positive `match`, as the PR gate
+always did; an unrecognized transfer status now denies at both gates instead of reaching the
+Stop gate's grant path and crashing on fields only a `match` carries. `verify-resolutions` no
+longer reports an unreadable or newer-schema evidence store as *prior review fact not found*:
+`critic-begin` now exits **6** with the real reason, and `/prawduct:critic` stops there instead of
+demoting to another round — no review repairs a store or updates a plugin. And a non-UTF-8 evidence store or `VERSION` file now degrades
+to the documented error answer instead of raising.
+
+**`standing-block-closing-section`** — the session digest's rule for closing a turn with the
+standing block is now the digest's last section, `## Closing the turn`, instead of a bullet partway
+up "The hardest rules" with four sections after it — the attempted fix for sessions that had
+stopped closing with the standing block, where delivery and the digest's size limit were ruled
+out and placement was the surviving explanation. The wording is unchanged apart from two phrases
+that restated their neighbours, and the digest is two tokens smaller.
+
+**`coverage-honesty`** — two gaps where a review or a scan reported more certainty than it had.
+The instance-or-class rule for findings now reaches `chunk` and `verify-resolutions` reviewers,
+handed to them at dispatch because their instruction file has no room for it — a correction:
+v3.4.0 said `verify-resolutions` already had it, and only the *grading* half did; the *labelling*
+half reached `final` and `cumulative` alone. The rule also gains `none`, for a mandated
+cross-check that bounds no defect. And a build plan with no `scope:` in its frontmatter stops
+being invisible: `plan-backfill`, `lifecycle-repair` (and `/prawduct:doctor`'s check that runs it),
+and Critic dispatch each name such plans as unevaluated, and the release-readiness warning counts
+them, instead of reporting a figure that silently left them out — including plans recognized only by a `## Status`
+roster or chunk headings, not just by a `build-plan` filename. `lifecycle-repair --apply` now also
+removes the retired derived-Status note from such a plan rather than reporting it and leaving it.
+
+**`far-behind-branch-guidance`** — `/prawduct:pr` Step 1 now covers landing a branch that is far
+behind its base: decide what already landed by tree content rather than ancestry, then audit what
+the sync REMOVED *and* ADDED relative to the base — keeping both sides of a hunk can drop the base's
+revision, and a `merge=union` record silently resurrects entries the base archived, which show up
+as additions. Content the base moved goes to its new home; content it retired is not re-added; and
+the branch's own claims about the base are re-checked, since they were true only at its last sync.
+
+**`pr-reviewer-path-scoped-rules`** — our documentation said the PR reviewer sees none of your learnings. That was wrong. `omitClaudeMd` keeps your always-loaded rules out of the reviewer's context. But a learnings area file with `paths:` frontmatter still reaches the reviewer when it reads a file that matches, and Claude Code has no per-agent setting to stop that. `/prawduct:pr`, the reviewer agent and its protocol now say so, and they tell the reviewer that such a file is not review criteria.
+
+**`release-v3.6.0`** — the v3.6.0 cut itself: `main` promoted, the tag and GitHub Release
+published in one call, and `develop` reopened here. Nothing in this scope changes plugin
+behaviour; it is the release's own record, and it carries the runbook fix that stops Phase 1
+step 6 reporting a false unticked-box on the plan whose own acceptance is the release being cut.
+
 ## v3.6.0
 
 **Your learnings corpus moves into the harness, review rigor becomes stage-keyed, and a finding you decide not to fix can now be recorded instead.** Seventeen scopes since v3.5.0, and the three you will feel in an ordinary session each change what a review costs you: your rules leave `.prawduct/learnings.md` for `.claude/rules/learnings/` where the harness loads them, reviews split into an inner stage that blocks only on ships-broken and a boundary stage that runs everything and is never inferred away, and a non-blocking finding gains a recorded accept — so declining a fix leaves a reason on the record instead of costing a round or losing the reasoning.

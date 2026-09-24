@@ -40,6 +40,7 @@ sys.path.insert(0, str(ROOT))
 from lib import critic_consolidate as cc  # noqa: E402
 from lib import dispositions as _dispositions_mod  # noqa: E402
 from lib import coverage_algebra as ca_mod  # noqa: E402
+from lib import coverage  # noqa: E402
 # The anchor predicates the dispatch guard is built on. Imported rather than
 # re-implemented so a test asserting "the OLD guard would have passed" is
 # asserting it about the real one.
@@ -5474,6 +5475,144 @@ class TestVerifyResolutionsDispatch:
         assert "another lineage" in result.stderr, result.stderr
         assert prior_id in result.stderr
 
+    def test_an_unreadable_store_is_not_reported_as_a_missing_anchor(self, tmp_path):
+        """"The store could not be read" and "the fact is not there" are
+        different facts, and only the second means re-run the review.
+
+        An unreadable store yields no facts, so a lookup that never grades the
+        read reports "not found in the evidence store" — a confident claim about
+        a file nothing parsed, pointing its reader at the wrong repair.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        head_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        # Real SHAs, so the dispatch resolves the anchor through git rather than
+        # tripping the fake-tree guard — the fixture has to REACH the store read
+        # for its corruption to be what refuses.
+        _seed_prior_review_with_blocker(
+            repo, head, head_tree=head_tree, head_commit=head
+        )
+        (repo / "src/app.py").write_text("x = 2  # my fix\n")
+
+        # Baseline: the dispatch succeeds while the store is readable, so the
+        # refusal below is the corruption and not some other guard. Abandoned
+        # through the real lifecycle step, or the in-flight guard refuses the
+        # second dispatch before it reaches the store read.
+        assert _run_begin(repo, "--mode", "verify-resolutions").returncode == 0
+        _abandon(repo)
+
+        evidence.store_path(repo).write_bytes(b"\xff\xfe not utf-8\n")
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+
+        # 6, not 1: the skill's exit-1 row demotes and re-dispatches, which
+        # cannot repair a store and would append to one nothing can parse.
+        assert result.returncode == 6, result.stderr
+        assert "could not be read" in result.stderr, result.stderr
+        assert "not found in the evidence store" not in result.stderr
+
+    def test_a_schema_ahead_store_refuses_rather_than_anchoring_on_a_partial_view(
+        self, tmp_path
+    ):
+        """A newer plugin's records are filtered out of `facts` while the store
+        still reads `ok`, so the anchor lookup would succeed on a partial view.
+        Failing closed is right — this pass records the resolution facts that
+        lift BLOCKING findings, and it must not do that over records it cannot
+        see.
+
+        The appended record is a `disposition`, deliberately: the anchor itself
+        stays a normal-schema review fact the lookup WOULD find, so this pins
+        the guard rather than the absence of a resolvable anchor.
+        """
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        head_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        _seed_prior_review_with_blocker(
+            repo, head, head_tree=head_tree, head_commit=head
+        )
+        (repo / "src/app.py").write_text("x = 2  # my fix\n")
+
+        assert _run_begin(repo, "--mode", "verify-resolutions").returncode == 0
+        _abandon(repo)
+
+        with open(evidence.store_path(repo), "a", encoding="utf-8") as handle:
+            handle.write(
+                json.dumps({
+                    "schema": 99,
+                    "kind": "disposition",
+                    "id": "rev-future",
+                    "ts": "2030-01-01T00:00:00Z",
+                    "body": {},
+                })
+                + "\n"
+            )
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+
+        assert result.returncode == 6, result.stderr
+        assert "newer schema" in result.stderr, result.stderr
+        assert "not found in the evidence store" not in result.stderr
+
+    def test_a_missing_anchor_on_a_healthy_store_stays_exit_one(self, tmp_path):
+        """The control for exit 6: a genuinely absent anchor is the demotable
+        case, so it keeps exit 1 and the skill's re-dispatch route."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        head_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        _seed_prior_review_with_blocker(
+            repo, head, head_tree=head_tree, head_commit=head
+        )
+        (repo / "src/app.py").write_text("x = 2  # my fix\n")
+        cache = repo / ".prawduct" / ".critic-findings.json"
+        data = json.loads(cache.read_text())
+        data["fact_id"] = "rev-does-not-exist"
+        cache.write_text(json.dumps(data))
+
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+
+        assert result.returncode == 1, result.stderr
+        assert "not found in the evidence store" in result.stderr
+
+    def test_the_anchor_lookup_and_the_dispositions_block_share_one_read(
+        self, tmp_path, monkeypatch
+    ):
+        """The store is shared by every worktree of the clone, so two separate
+        reads are two MOMENTS: a sibling's consolidate landing between them lets
+        the pass anchor to a fact the prior-dispositions block was not built
+        from. One read makes the pairing structural."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        head_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        _seed_prior_review_with_blocker(
+            repo, head, head_tree=head_tree, head_commit=head
+        )
+        (repo / "src/app.py").write_text("x = 2  # my fix\n")
+
+        # The objects themselves, not their `id()`s: a first read freed before
+        # the second could hand its address to the second, and equal ids would
+        # then pass on the very bug this pins.
+        seen: "list[dict]" = []
+        real_prior = _dispositions_mod.prior_dispositions
+
+        def spy_prior(store, *args, **kwargs):
+            seen.append(store)
+            return real_prior(store, *args, **kwargs)
+
+        real_lookup = cc._prior_review_fact
+
+        def spy_lookup(project_dir, prawduct_dir, store):
+            seen.append(store)
+            return real_lookup(project_dir, prawduct_dir, store)
+
+        monkeypatch.setattr(_dispositions_mod, "prior_dispositions", spy_prior)
+        monkeypatch.setattr(cc, "_prior_review_fact", spy_lookup)
+        result = cc.begin_review(repo, mode_token="verify-resolutions")
+
+        assert result.get("status") != "error", result
+        assert len(seen) == 2 and seen[0] is seen[1]
+
     def test_a_dirty_tree_fact_falling_back_to_dispatch_commit_is_not_refused(
         self, tmp_path
     ):
@@ -6174,6 +6313,205 @@ class TestScopeAttribution:
         assert manifest["scope"] is None
         assert manifest["scope_chosen_by"] == "not-resolved"
         assert manifest["record_lint"]["plan_graded"].endswith("build-plan-other.md")
+
+
+class TestUnresolvedScopeCause:
+    """When a dispatch resolves no scope, `critic-begin` says why and what edit
+    fixes it, and records the cause in the manifest.
+
+    Before this the only trace was a parenthetical on the record-lint line, and
+    a third of reviews across the fleet resolved no scope unnoticed — each one
+    invisible to the round budget.
+    """
+
+    def _repo(self, tmp_path, plans: dict, branch: str, state: str = "", edit: str = "") -> Path:
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        artifacts = repo / ".prawduct" / "artifacts"
+        artifacts.mkdir(parents=True)
+        (repo / ".prawduct" / "project-state.yaml").write_text(f"project_name: t\n{state}")
+        for name, body in plans.items():
+            (artifacts / name).write_text(body)
+        # Commit the plans with the seed: they exist before the branch, so only
+        # an edit made ON the branch reads as this branch's work.
+        (repo / ".prawduct" / "keep").write_text("")
+        _git(repo, "add", ".prawduct")
+        _git(repo, "commit", "-m", "seed prawduct", "--quiet")
+        if branch != "main":
+            _git(repo, "checkout", "-b", branch, "--quiet")
+        (repo / "src/app.py").write_text("x = 2\n")
+        if edit:  # this branch works on that plan — the evidence it has one
+            with (artifacts / edit).open("a") as fh:
+                fh.write("\nprogress note\n")
+        return repo
+
+    def _dispatch(self, repo, *extra):
+        result = _run_begin(repo, "--mode", "chunk", *extra)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        return result, manifest
+
+    def test_a_claim_with_no_scope_is_named(self, tmp_path):
+        repo = self._repo(
+            tmp_path,
+            {"build-plan-a.md": "---\nartifact: build-plan\nbranch: feat/work\n---\n\n# Plan\n"},
+            "feat/work",
+        )
+        result, manifest = self._dispatch(repo)
+        assert manifest["scope_chosen_by"] == "not-resolved"
+        assert manifest["scope_unresolved_cause"] == "claim-no-scope"
+        assert "build-plan-a.md claims branch 'feat/work' but declares no `scope:`" in result.stderr
+
+    def test_a_claimant_whose_scope_is_a_duplicate_is_not_told_to_add_one(self, tmp_path):
+        # The scope map keeps one plan per scope; the shadowed claimant still
+        # declares one, so "add one" would be wrong advice.
+        repo = self._repo(
+            tmp_path,
+            {
+                "build-plan-a.md": "---\nartifact: build-plan\nscope: dup\n---\n\n# Plan\n",
+                "build-plan-b.md": (
+                    "---\nartifact: build-plan\nscope: dup\nbranch: feat/work\n---\n\n# Plan\n"
+                ),
+            },
+            "feat/work",
+        )
+        result, manifest = self._dispatch(repo)
+        assert manifest["scope_chosen_by"] == "not-resolved"
+        # b claims the branch and declares a scope; its scope is shadowed, and
+        # the branch edited no plan, so there is no advice worth printing.
+        assert manifest["scope_unresolved_cause"] is None
+        assert "declares no `scope:`" not in result.stderr
+
+    def test_a_branch_line_below_the_frontmatter_is_named(self, tmp_path):
+        repo = self._repo(
+            tmp_path,
+            {
+                "build-plan-a.md": (
+                    "---\nartifact: build-plan\nscope: a\n---\n\n# Plan\n\n"
+                    "**Branch:** `feat/work` (off `develop`)\n"
+                )
+            },
+            "feat/work",
+        )
+        result, manifest = self._dispatch(repo)
+        assert manifest["scope_unresolved_cause"] == "body-branch"
+        assert "build-plan-a.md names branch 'feat/work' below its frontmatter" in result.stderr
+        assert "move `branch: feat/work` into the `---` block" in result.stderr
+        # It has a scope, so the fix is the one line — no second edit is asked for.
+        assert "together with a `scope:`" not in result.stderr
+
+    def test_a_body_branch_plan_without_a_scope_is_told_to_add_both(self, tmp_path):
+        repo = self._repo(
+            tmp_path, {"build-plan-a.md": "# Plan\n\nbranch: feat/work\n"}, "feat/work"
+        )
+        result, manifest = self._dispatch(repo)
+        assert manifest["scope_unresolved_cause"] == "body-branch"
+        assert "together with a `scope:`" in result.stderr
+
+    def test_an_active_plan_claiming_another_branch_is_named(self, tmp_path):
+        repo = self._repo(
+            tmp_path,
+            {
+                "build-plan-p.md": (
+                    "---\nartifact: build-plan\nscope: p\nbranch: develop\n---\n\n"
+                    "# Plan\n\n## Status\n\n- [ ] Chunk 01: p\n"
+                )
+            },
+            "feat/work",
+            state="active_build_plan: artifacts/build-plan-p.md\n",
+        )
+        result, manifest = self._dispatch(repo)
+        assert manifest["scope_unresolved_cause"] == "pointer-claims-other"
+        assert "build-plan-p.md claims branch 'develop', not 'feat/work'" in result.stderr
+
+    def test_a_plan_edited_here_that_does_not_claim_the_branch_is_named(self, tmp_path):
+        repo = self._repo(
+            tmp_path,
+            {"build-plan-a.md": "---\nartifact: build-plan\nscope: a\n---\n\n# Plan\n"},
+            "feat/work",
+            edit="build-plan-a.md",
+        )
+        result, manifest = self._dispatch(repo)
+        assert manifest["scope_unresolved_cause"] == "no-claim"
+        assert (
+            "build-plan-a.md was edited on this branch but no live plan declares "
+            "`branch: feat/work`"
+        ) in result.stderr
+        assert "PRAWDUCT NOTE: this review resolved no build-plan scope" in result.stderr
+
+    def test_a_plan_written_on_this_branch_and_never_committed_is_named(self, tmp_path):
+        repo = self._repo(tmp_path, {}, "feat/work")
+        (repo / ".prawduct" / "artifacts" / "build-plan-new.md").write_text(
+            "---\nartifact: build-plan\nscope: new\n---\n\n# Plan\n"
+        )
+        result, manifest = self._dispatch(repo)
+        assert manifest["scope_unresolved_cause"] == "no-claim"
+        assert "build-plan-new.md was edited on this branch" in result.stderr
+
+    def test_a_branch_that_touched_no_plan_says_nothing(self, tmp_path):
+        """Plan-less work — a chore, a small fix — is normal, and the plans that
+        exist belong to other work. A note telling it to add `branch:` to "the
+        plan this work belongs to" would fire on every such review with nothing
+        to act on. The sibling test above, identical but for the edit, is the
+        control."""
+        repo = self._repo(
+            tmp_path,
+            {"build-plan-a.md": "---\nartifact: build-plan\nscope: a\n---\n\n# Plan\n"},
+            "chore/bump",
+        )
+        result, manifest = self._dispatch(repo)
+        assert manifest["scope_chosen_by"] == "not-resolved"
+        assert manifest["scope_unresolved_cause"] is None
+        assert "this review resolved no build-plan scope" not in result.stderr
+
+    def test_the_integration_branch_says_nothing(self, tmp_path):
+        # No plan should claim the branch everything merges into, so a note
+        # there would fire on every review with nothing to act on.
+        repo = self._repo(
+            tmp_path,
+            {"build-plan-a.md": "---\nartifact: build-plan\nscope: a\n---\n\n# Plan\n"},
+            "main",
+        )
+        result, manifest = self._dispatch(repo)
+        assert manifest["scope_chosen_by"] == "not-resolved"
+        assert manifest["scope_unresolved_cause"] is None
+        assert "this review resolved no build-plan scope" not in result.stderr
+
+    def test_a_resolved_or_explicit_scope_says_nothing(self, tmp_path):
+        plans = {
+            "build-plan-a.md": (
+                "---\nartifact: build-plan\nscope: a\nbranch: feat/work\n---\n\n# Plan\n"
+            )
+        }
+        repo = self._repo(tmp_path, plans, "feat/work")
+        result, manifest = self._dispatch(repo)
+        assert manifest["scope"] == "a"
+        assert manifest["scope_unresolved_cause"] is None
+        assert "this review resolved no build-plan scope" not in result.stderr
+
+        repo = self._repo(tmp_path / "explicit", {}, "feat/other")
+        result, manifest = self._dispatch(repo, "--scope", "anything")
+        assert manifest["scope_chosen_by"] == "explicit-args"
+        assert manifest["scope_unresolved_cause"] is None
+        assert "this review resolved no build-plan scope" not in result.stderr
+
+    def test_the_cause_reaches_the_review_fact(self, tmp_path):
+        """The note's yield must be queryable from the store, not only printed."""
+        repo = self._repo(
+            tmp_path,
+            {"build-plan-a.md": "---\nartifact: build-plan\nscope: a\n---\n\n# Plan\n"},
+            "feat/work",
+            edit="build-plan-a.md",
+        )
+        self._dispatch(repo)
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        assert manifest["roster"] == ["reviewer"]
+        _write_partial(repo, "reviewer", manifest["commit_reviewed"])
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        fact = _store_facts(repo, "review")[-1]
+        assert fact["body"]["scope_unresolved_cause"] == "no-claim"
 
 
 # ---------------------------------------------------------------------------
@@ -7122,6 +7460,10 @@ class TestRoundBudgetCounting:
         assert verdict == {
             "status": "within", "spent": 5, "budget": 6,
             "review_ids": [f"rev-round-{i}" for i in range(5)],
+            # WHICH bound counted. Two bounds returning indistinguishable
+            # verdicts left the control's own retirement query unable to tell a
+            # fallback firing from a lineage one.
+            "bound": cc.BOUND_LINEAGE,
         }
 
     def test_it_fires_at_the_ceiling(self, tmp_path):
@@ -7198,6 +7540,247 @@ class TestRoundBudgetCounting:
         verdict = cc._round_budget_verdict(repo, repo / ".prawduct", None)
         assert verdict["status"] == "unavailable"
         assert "scope" in verdict["reason"]
+
+
+def _trunk_repo(tmp_path: Path, *, budget: "str | None" = None) -> "tuple[Path, str]":
+    """A trunk-based repo: one branch, no feature branch, so the base ref and
+    HEAD are the same commit and `merge_base..HEAD` holds nothing.
+
+    This is not a degenerate fixture — it is the permanent shape of a repo that
+    integrates on one branch, which `base_branch:` supports and the briefing
+    treats as ordinary. Every push restores it.
+    """
+    repo = tmp_path / "trunk"
+    _init_repo(repo)
+    head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+    prawduct = repo / ".prawduct"
+    prawduct.mkdir(exist_ok=True)
+    if budget is not None:
+        (prawduct / "project-state.yaml").write_text(f"review_round_budget: {budget}\n")
+    return repo, head
+
+
+def _seed_round(project_dir: Path, fact_id: str, head_commit: str, scope: str,
+                mode: str = CUMULATIVE_VERBOSE) -> None:
+    """One full review round, appended AS `project_dir` — which is what puts
+    that path in `actor.worktree`, the discriminator under test."""
+    evidence.append_fact(
+        project_dir, "review", fact_id,
+        {
+            "base_tree": "a" * 40, "head_tree": "b" * 40, "mode": mode,
+            "head_commit": head_commit, "scope": scope, "findings": [],
+        },
+    )
+
+
+class TestRoundBudgetOnTheTrunkShape:
+    """The ceiling is the review loop's only declared stopping rule, and on a
+    trunk-based repo it could never fire: the count intersected this scope's
+    facts with `merge_base..HEAD`, which every push empties. A control that is
+    declared, documented, on by default and inert is the worst way for one to
+    be absent, and nothing said so — `spent` was 0 on round twenty.
+    """
+
+    def test_the_span_really_is_empty_here(self, tmp_path):
+        """The premise. If this fixture ever grew a span, every test below it
+        that claims to exercise the trunk fallback would be exercising the
+        lineage path instead, and would pass identically either way."""
+        repo, _ = _trunk_repo(tmp_path)
+        resolved = coverage.resolve_merge_base_tree(repo)
+        assert resolved["status"] == "ok"
+        tally = coverage.count_branch_rounds(repo, [], resolved["merge_base"])
+        assert tally["span_commits"] == 0
+
+    def test_the_budget_fires_on_the_trunk_shape(self, tmp_path):
+        repo, head = _trunk_repo(tmp_path, budget="3")
+        for i in range(3):
+            _seed_round(repo, f"rev-trunk-{i}", head, "budgeted")
+        verdict = cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")
+        assert verdict["status"] == "exhausted"
+        assert verdict["spent"] == 3
+        assert verdict["review_ids"] == [f"rev-trunk-{i}" for i in range(3)]
+
+    def test_a_sibling_worktrees_rounds_are_not_charged_to_this_one(self, tmp_path):
+        """The design constraint, pinned by the implementation it FORBIDS.
+
+        Counting by scope alone passes the test above and fails this one, and
+        that is the whole reason this one exists: the store lives in the clone's
+        git common dir, so a second worktree on the same plan writes into it.
+        Lineage was what separated them; with the span empty it separates
+        nothing, so the fallback bounds by `actor.worktree` instead. Overcount
+        and the refusal says something false about work this worktree never
+        bought.
+        """
+        repo, head = _trunk_repo(tmp_path, budget="3")
+        sibling = tmp_path / "sibling"
+        _git(repo, "worktree", "add", "--quiet", "-b", "other", str(sibling))
+        _seed_round(repo, "rev-here-0", head, "budgeted")
+        for i in range(5):
+            _seed_round(sibling, f"rev-there-{i}", head, "budgeted")
+
+        assert evidence.store_path(sibling) == evidence.store_path(repo), (
+            "the fixture must share ONE store, or it cannot see the overcount"
+        )
+        verdict = cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")
+        assert verdict["status"] == "within"
+        assert verdict["spent"] == 1
+        assert verdict["review_ids"] == ["rev-here-0"]
+
+    def test_a_branch_with_commits_still_answers_by_lineage(self, tmp_path):
+        """The fallback must not have REPLACED the primary path.
+
+        Two halves, and the second is the one scope+worktree alone would fail: a
+        non-empty span keeps counting by lineage, and a round recorded from
+        ANOTHER worktree that sits on this branch's lineage still counts, exactly
+        as it did before. The fallback is keyed on the span rather than on a zero
+        count, so this branch's first round is not charged the scope's history.
+        """
+        repo, head = _budget_repo(tmp_path, 0, budget="2")
+        sibling = tmp_path / "sibling"
+        _git(repo, "worktree", "add", "--quiet", "--detach", str(sibling), head)
+        _seed_round(sibling, "rev-elsewhere-on-this-branch", head, "budgeted")
+
+        resolved = coverage.resolve_merge_base_tree(repo)
+        assert coverage.count_branch_rounds(
+            repo, [], resolved["merge_base"]
+        )["span_commits"] > 0, "the premise: this branch HAS a span"
+
+        verdict = cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")
+        assert verdict["spent"] == 1
+        assert verdict["review_ids"] == ["rev-elsewhere-on-this-branch"]
+
+    def test_a_fresh_branch_with_no_commits_falls_back_the_same_way(self, tmp_path):
+        """The plan's recorded ASSUMPTION, pinned so it can be vetoed.
+
+        A branch cut and not yet committed to has `merge_base == HEAD` exactly
+        as a trunk repo does, and nothing in the span can tell them apart. They
+        are therefore treated alike: a branch resuming an existing scope
+        inherits that scope's rounds from this worktree. That is arguable —
+        the budget's declared unit IS the scope, so charging them is defensible
+        — but it is a behaviour change on branch-based repos too, not only trunk
+        ones, and it is the one part of this fix the owner may want otherwise.
+        """
+        # Cut from the BASE and not committed to — which is the only way to get
+        # an empty span on a branch. A branch with a commit on it has a span and
+        # answers by lineage, so building this fixture from one would pass
+        # identically with the fallback deleted.
+        repo, head = _trunk_repo(tmp_path, budget="2")
+        _git(repo, "checkout", "--quiet", "-b", "resumes-the-same-scope")
+        for i in range(2):
+            _seed_round(repo, f"rev-earlier-{i}", head, "budgeted")
+
+        resolved = coverage.resolve_merge_base_tree(repo)
+        assert coverage.count_branch_rounds(
+            repo, [], resolved["merge_base"]
+        )["span_commits"] == 0, "the premise: a branch with no commits has no span"
+
+        verdict = cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")
+        assert verdict["status"] == "exhausted"
+        assert verdict["spent"] == 2
+
+    def test_the_verdict_says_which_bound_produced_the_count(self, tmp_path):
+        """Two bounds answering to one shape is a control nobody can audit.
+
+        The refusal is recorded as a `guard-refusal` fact so that one query can
+        later ask whether the budget ever refused a round that turned out to be
+        needed — the question its own docstring names as the only thing that
+        could retire it. That question is answerable only if the record says
+        which bound counted, because the two count different sets.
+        """
+        trunk, head = _trunk_repo(tmp_path, budget="9")
+        _seed_round(trunk, "rev-t", head, "budgeted")
+        assert cc._round_budget_verdict(
+            trunk, trunk / ".prawduct", "budgeted"
+        )["bound"] == cc.BOUND_WORKTREE
+
+        branch, bhead = _budget_repo(tmp_path / "b", 1, budget="9")
+        assert cc._round_budget_verdict(
+            branch, branch / ".prawduct", "budgeted"
+        )["bound"] == cc.BOUND_LINEAGE
+
+    def test_critic_begin_actually_refuses_on_a_trunk_repo(self, tmp_path):
+        """The gate, not the count.
+
+        Every assertion above grades an input to the verdict. This one asks the
+        question the fix exists for: does `critic-begin` now answer differently
+        on the repo shape where it never could? The control is the same repo one
+        budget higher — without it, a 4 for some unrelated reason would read as
+        the fix working.
+
+        `chunk`, not `cumulative`, and the reason bounds what this fix buys: a
+        `cumulative` interval is a COMMIT RANGE, and on trunk that range is the
+        one every push empties, so `critic-begin` refuses it as an empty diff
+        before the budget is ever consulted. `chunk` reads HEAD-tree → working
+        tree, which is where a trunk builder's review loop actually runs, and it
+        is the only door the ceiling can reach them through.
+        """
+        findings = [
+            {"fid": "R-1", "severity": "warning", "goal": "Nothing Is Broken",
+             "title": "a warning", "files": ["src/app.py"]},
+        ]
+        repo, head = _trunk_repo(tmp_path, budget="2")
+        for i in range(2):
+            evidence.append_fact(
+                repo, "review", f"rev-trunk-{i}",
+                {
+                    "base_tree": "a" * 40, "head_tree": "b" * 40,
+                    "mode": CUMULATIVE_VERBOSE, "head_commit": head,
+                    "scope": "budgeted", "findings": list(findings),
+                },
+            )
+        # Uncommitted, because that is what a trunk builder's tree looks like
+        # when they dispatch: the span is empty and the WORK is not. A clean
+        # trunk tree never reaches the budget at all — `critic-begin` refuses
+        # the empty diff first, which is a different answer to a different
+        # question and would make a 4 here evidence about nothing.
+        (repo / "src" / "app.py").write_text("x = 2\n")
+
+        refused = _run_begin(repo, "--mode", "chunk", "--scope", "budgeted")
+        assert refused.returncode == 4, (refused.stdout, refused.stderr)
+        assert "round budget exhausted" in refused.stdout
+        # The sweep is the only reason to seed those findings, and it is what
+        # makes the refusal an ANSWER rather than an abandonment. It also proves
+        # `review_ids` — the fallback's output, not just its count — reaches the
+        # consumer that acts on it: an id the fallback failed to collect is a
+        # finding nobody dispositioned.
+        assert "2 outstanding non-blocking finding(s) were ACCEPTED" in refused.stdout
+        # And the refusal names WHICH set it counted. "This work" denotes the
+        # branch on one bound and the worktree on the other, and a builder who
+        # cannot tell them apart cannot tell what they are being refused for.
+        assert "in this worktree" in refused.stdout, refused.stdout
+
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            "review_round_budget: 3\n"
+        )
+        allowed = _run_begin(repo, "--mode", "chunk", "--scope", "budgeted")
+        assert allowed.returncode != 4, (
+            "the control: this fixture must be able to NOT refuse, or the 4 "
+            "above is evidence about something else"
+        )
+
+    def test_a_branchs_first_round_is_not_charged_the_scopes_history(self, tmp_path):
+        """The other forbidden implementation: keying the fallback on a zero
+        COUNT rather than on an empty SPAN.
+
+        The two agree everywhere except here — a branch that has commits and has
+        bought no round on them, while this worktree holds an older fact for the
+        same scope that is not on this lineage (a previous branch for the same
+        plan, which is what resuming a scope looks like). Zero-keying falls back
+        and charges that history to a branch on its first round; span-keying
+        answers by lineage and spends nothing. This plan fixes the repo shape
+        where the control cannot work at all and leaves the working one alone,
+        and this assertion is what "alone" means.
+        """
+        repo, head = _budget_repo(tmp_path, 0, budget="1")
+        off_lineage = _git(repo, "rev-parse", "main").stdout.strip()
+        assert off_lineage != head
+        _seed_round(repo, "rev-previous-branch", off_lineage, "budgeted")
+
+        verdict = cc._round_budget_verdict(repo, repo / ".prawduct", "budgeted")
+        assert verdict["status"] == "within"
+        assert verdict["spent"] == 0
+        assert verdict["review_ids"] == []
+
 
 
 class TestRoundBudgetConfigFallsSoft:
@@ -7278,6 +7861,13 @@ class TestRoundBudgetRefusal:
 
         assert result.returncode == 4, (result.stdout, result.stderr)
         assert "round budget exhausted" in result.stdout
+        # The LINEAGE arm of the bound selector. `round budget exhausted` is a
+        # substring both arms satisfy, so without this the ternary could be
+        # inverted or its lineage branch deleted with the whole suite green,
+        # telling every branch-based builder their rounds were counted from the
+        # worktree — the exact misattribution the bound exists to prevent. Its
+        # sibling arm is pinned in `TestRoundBudgetOnTheTrunkShape`.
+        assert "on this branch's lineage" in result.stdout, result.stdout
         assert not (repo / PARTIALS_REL / "manifest.json").exists(), (
             "a budget refusal writes no session state, like a no-review-needed"
         )
@@ -7325,6 +7915,12 @@ class TestRoundBudgetRefusal:
         body = refusals[0]["body"]
         assert body["spent"] == 6 and body["budget"] == 1
         assert body["auto_accepted"] == 12 and body["blocking_left"] == 6
+        # WHICH bound counted, read back off the durable fact rather than the
+        # in-memory verdict. The retirement question — did this ever refuse a
+        # round that was needed — cannot be answered from a record that does not
+        # say which set it counted, and a field no test reads back is one a
+        # regression drops silently.
+        assert body["bound"] == cc.BOUND_LINEAGE
 
 
 class TestWideningBoundReachesTheDispatch:
@@ -7441,6 +8037,14 @@ class TestGuardRefusalsReachTheirOwnQuery:
         assert "rounds=6/1" in out, out
         assert "accepted=6" in out, out
         assert "blocking-left=6" in out, out
+        # The bound reaches the QUERY, not just the record. `evidence list`
+        # renders guard-refusal rows from an explicit column list and offers no
+        # raw dump, so a field with no column is readable only by hand-parsing
+        # the JSONL — which makes it a channel produced and never consumed.
+        # "six rounds" means one thing about a branch and another about a
+        # worktree, so the retirement question needs this column to be answered
+        # at all.
+        assert "bound=lineage" in out, out
 
 
 class TestTheCostLeadReachesBothCarriers:
@@ -7536,3 +8140,228 @@ class TestTheCostLeadReachesBothCarriers:
                 f"{carrier} no longer receives the cost lead — the two carriers of "
                 f"one sentence would disagree, and nothing else would go red"
             )
+
+
+class TestIntervalExtension:
+    """A chunk/final review starts at the covered frontier (#167).
+
+    A non-blocking fix committed after a review used to leave a gap only a
+    `verify-resolutions` round could close. Now the next chunk review's interval
+    starts at the last reviewed tree, so one review covers the fix and the new
+    work, and the edge it records composes for every gate.
+    """
+
+    WARNING = {"name": "Tighten the loop", "goal": "Nothing Is Unintended",
+               "severity": "warning", "recommendation": "Tighten", "files": ["src/app.py"]}
+    BLOCKING = {"name": "Broken", "goal": "Nothing Is Broken",
+                "severity": "blocking", "recommendation": "Fix", "files": ["src/app.py"]}
+
+    def _branch(self, tmp_path) -> Path:
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _commit_file(repo, ".prawduct/project-state.yaml", "project_name: t\n", "seed")
+        _git(repo, "checkout", "-b", "feat/work", "--quiet")
+        return repo
+
+    def _review(self, repo, findings=None, mode="chunk") -> dict:
+        begin = _run_begin(repo, "--mode", mode)
+        assert begin.returncode == 0, f"stderr={begin.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        assert manifest["roster"] == ["reviewer"]
+        _write_partial(repo, "reviewer", manifest["commit_reviewed"], findings=findings or [])
+        done = _run_consolidate(repo)
+        assert done.returncode == 0, f"stderr={done.stderr!r}"
+        return {"manifest": manifest, "begin": begin}
+
+    def _commit_all(self, repo, msg):
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", msg, "--quiet")
+        return _git(repo, "rev-parse", "HEAD").stdout.strip()
+
+    def _reviewed_fix_then_new_work(self, tmp_path, first_findings):
+        repo = self._branch(tmp_path)
+        (repo / "src/app.py").write_text("x = 2\n")
+        self._review(repo, first_findings)
+        reviewed = self._commit_all(repo, "chunk 1, reviewed")
+        (repo / "src/app.py").write_text("x = 3  # the warning, fixed\n")
+        fix = self._commit_all(repo, "fix the warning, unreviewed")
+        (repo / "src/other.py").write_text("y = 1\n")  # the next chunk's work
+        return repo, reviewed, fix
+
+    def test_the_next_chunk_review_spans_the_unreviewed_fix(self, tmp_path):
+        repo, reviewed, fix = self._reviewed_fix_then_new_work(tmp_path, [self.WARNING])
+        second = self._review(repo)
+        manifest = second["manifest"]
+        reviewed_tree = _git(repo, "rev-parse", f"{reviewed}^{{tree}}").stdout.strip()
+        assert manifest["base_tree"] == reviewed_tree
+        assert manifest["base_commit"] == reviewed
+        assert manifest["base_extended_from"] == reviewed_tree
+        assert manifest["commit_reviewed"] == fix  # partials still bind to the dispatch commit
+        assert sorted(manifest["files_changed"]) == ["src/app.py", "src/other.py"]
+        assert "starts at" in second["begin"].stderr and "last reviewed state" in second["begin"].stderr
+        assert _store_facts(repo, "review")[-1]["body"]["base_extended_from"] == reviewed_tree
+
+        # Every gate sees the span as covered, with no verify-resolutions round.
+        self._commit_all(repo, "chunk 2, reviewed with the fix")
+        assert gates.branch_coverage_verdict(repo)["status"] == "covered"
+        assert gates.session_review_verdict(repo)["status"] == "covered"
+
+    def test_an_unresolved_blocker_keeps_the_head_anchored_interval(self, tmp_path):
+        # Blockers clear through verify-resolutions, which alone records
+        # resolution facts; extending over them would review past a blocker.
+        repo, _reviewed, fix = self._reviewed_fix_then_new_work(tmp_path, [self.BLOCKING])
+        begin = _run_begin(repo, "--mode", "chunk")
+        assert begin.returncode == 0, f"stderr={begin.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        assert manifest["base_tree"] == _git(repo, "rev-parse", f"{fix}^{{tree}}").stdout.strip()
+        assert manifest["base_extended_from"] is None
+        assert "last reviewed state" not in begin.stderr
+
+    def test_no_unreviewed_commit_keeps_the_head_anchored_interval(self, tmp_path):
+        repo = self._branch(tmp_path)
+        (repo / "src/app.py").write_text("x = 2\n")
+        self._review(repo)
+        head = self._commit_all(repo, "chunk 1, reviewed")
+        (repo / "src/other.py").write_text("y = 1\n")
+        manifest = self._review(repo)["manifest"]
+        assert manifest["base_tree"] == _git(repo, "rev-parse", f"{head}^{{tree}}").stdout.strip()
+        assert manifest["base_extended_from"] is None
+
+    def test_final_extends_as_chunk_does(self, tmp_path):
+        repo, reviewed, _fix = self._reviewed_fix_then_new_work(tmp_path, [self.WARNING])
+        manifest = self._review(repo, mode="final")["manifest"]
+        assert manifest["base_commit"] == reviewed
+
+    def test_commit_pricing_sees_the_extended_review(self, tmp_path):
+        """`cost-of-commit` composes from HEAD, which the extended edge skips;
+        the merge-base span is what the PR gate will ask after the commit."""
+        repo, _reviewed, _fix = self._reviewed_fix_then_new_work(tmp_path, [self.WARNING])
+        self._review(repo)
+        assert gates.commit_coverage(repo)["status"] == "covered"
+
+    @pytest.mark.parametrize("marker", ["session-started-after-the-fix", "no-marker"])
+    def test_the_session_gate_sees_the_extended_review(self, tmp_path, marker):
+        """The session gate composes from the session's base tree — here the
+        unreviewed fix, committed in an earlier session — or, with no marker,
+        from HEAD's tree, which is the same tree. The extended edge passes
+        through neither, so only the merge-base span can see it."""
+        repo, _reviewed, fix = self._reviewed_fix_then_new_work(tmp_path, [self.WARNING])
+        self._review(repo)
+        marker_path = repo / ".prawduct" / ".session-base-tree"
+        if marker == "no-marker":
+            marker_path.unlink(missing_ok=True)
+        else:
+            marker_path.write_text(_git(repo, "rev-parse", f"{fix}^{{tree}}").stdout.strip())
+        verdict = gates.session_review_verdict(repo)
+        assert verdict["status"] == "covered", verdict
+
+    def test_no_review_yet_keeps_the_head_anchored_interval(self, tmp_path):
+        """With nothing reviewed on the branch, only free edges reach any tree,
+        and extending there would make the first inner-stage review a review of
+        everything the branch committed — the boundary `cumulative`'s span."""
+        repo = self._branch(tmp_path)
+        (repo / "src/app.py").write_text("x = 2\n")
+        head = self._commit_all(repo, "committed before any review")
+        (repo / "src/other.py").write_text("y = 1\n")
+        manifest = self._review(repo)["manifest"]
+        assert manifest["base_commit"] == head
+        assert manifest["base_extended_from"] is None
+
+    def test_a_tree_reached_only_by_free_edges_is_not_a_frontier(self, tmp_path):
+        """A committed plan composes from the merge-base by a free edge, with no
+        review on the path. Treating it as reviewed would extend the first review
+        over the unreviewed code committed after it."""
+        repo = self._branch(tmp_path)
+        (repo / ".prawduct" / "artifacts").mkdir(parents=True)
+        (repo / ".prawduct" / "artifacts" / "build-plan-x.md").write_text("# Plan\n")
+        self._commit_all(repo, "the plan")
+        (repo / "src/app.py").write_text("x = 2\n")
+        head = self._commit_all(repo, "code committed before any review")
+        (repo / "src/other.py").write_text("y = 1\n")
+        manifest = self._review(repo)["manifest"]
+        assert manifest["base_commit"] == head
+        assert manifest["base_extended_from"] is None
+
+    def test_a_base_sync_does_not_extend_to_the_whole_branch(self, tmp_path):
+        """After merging a judgeable base advance, the merge-base is the new base
+        tip and no pre-sync review composes from it, so nothing is a frontier and
+        the interval stays at HEAD — never a whole-branch review."""
+        repo, _reviewed, _fix = self._reviewed_fix_then_new_work(tmp_path, [self.WARNING])
+        # The next chunk's work is an untracked file, which checkout and merge carry.
+        _git(repo, "checkout", "main", "--quiet")
+        _commit_file(repo, "src/base.py", "b = 1\n", "base advances")
+        _git(repo, "checkout", "feat/work", "--quiet")
+        _git(repo, "merge", "--no-ff", "--quiet", "-m", "sync base", "main")
+        sync = _git(repo, "rev-parse", "HEAD").stdout.strip()
+        manifest = self._review(repo)["manifest"]
+        assert manifest["base_commit"] == sync
+        assert manifest["base_extended_from"] is None
+
+    def test_the_walk_limit_is_exact(self, tmp_path, monkeypatch):
+        repo, reviewed, _fix = self._reviewed_fix_then_new_work(tmp_path, [self.WARNING])
+        # HEAD..merge-base holds exactly two commits: the reviewed one and the fix.
+        monkeypatch.setattr(gates, "FRONTIER_WALK_LIMIT", 2)
+        assert gates.covered_frontier(repo)["commit"] == reviewed
+        monkeypatch.setattr(gates, "FRONTIER_WALK_LIMIT", 1)
+        assert gates.covered_frontier(repo) is None
+
+    def test_an_unreadable_base_or_store_means_no_extension_and_says_so(self, tmp_path, monkeypatch):
+        repo, reviewed, _fix = self._reviewed_fix_then_new_work(tmp_path, [self.WARNING])
+        why: list[str] = []
+        assert gates.covered_frontier(repo, why)["commit"] == reviewed  # the control
+        assert why == []
+        with monkeypatch.context() as m:
+            m.setattr(coverage, "resolve_merge_base_tree",
+                      lambda _p: {"status": "error", "step": "merge-base", "reason": "x"})
+            assert gates.covered_frontier(repo, why) is None
+        assert why and "merge-base could not be resolved" in why[-1]
+        with monkeypatch.context() as m:
+            m.setattr(evidence, "read_facts", lambda _p: {"status": "error", "reason": "x", "facts": []})
+            assert gates.covered_frontier(repo, why) is None
+        assert "evidence store could not be read" in why[-1]
+
+    def test_a_frontier_that_could_not_be_looked_for_is_named_at_dispatch(self, tmp_path, monkeypatch):
+        repo, _reviewed, _fix = self._reviewed_fix_then_new_work(tmp_path, [self.WARNING])
+        monkeypatch.setattr(gates, "FRONTIER_WALK_LIMIT", 1)
+        # critic-begin runs in a subprocess, so drive begin_review in-process.
+        result = cc.begin_review(repo, "chunk")
+        assert result["status"] == "ok", result
+        assert any("the review interval was not extended" in n and "walk's bound" in n
+                   for n in result["notes"]), result["notes"]
+
+    def test_a_non_judgeable_commit_does_not_extend(self, tmp_path):
+        # A plan committed on the branch is a free edge, so HEAD is already
+        # covered and the interval stays at HEAD — the ordinary first review.
+        repo = self._branch(tmp_path)
+        (repo / ".prawduct" / "artifacts").mkdir(parents=True)
+        (repo / ".prawduct" / "artifacts" / "build-plan-x.md").write_text("# Plan\n")
+        head = self._commit_all(repo, "the plan")
+        (repo / "src/other.py").write_text("y = 1\n")
+        manifest = self._review(repo)["manifest"]
+        assert manifest["base_commit"] == head
+        assert manifest["base_extended_from"] is None
+
+    def test_the_no_marker_gate_reports_a_merge_base_blocker(self, tmp_path):
+        """With no marker the gate starts from HEAD's tree. When that span is
+        uncovered but the merge-base span composes through a review that still
+        carries a blocker, the gate reports the blocker (the finding to fix),
+        not a bare `uncovered` (a review to run)."""
+        repo = self._branch(tmp_path)
+        mb_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        (repo / "src/app.py").write_text("x = 2\n")
+        self._commit_all(repo, "an unreviewed commit")
+        (repo / "src/app.py").write_text("x = 3\n")
+        capture = evidence.capture_tree(repo)
+        assert evidence.append_fact(repo, "review", "rev-test-mb-blocked", {
+            "base_tree": mb_tree, "head_tree": capture["tree"],
+            "files_changed": ["src/app.py"], "files_reviewed": ["src/app.py"],
+            "findings": [{"fid": "R-1", "severity": "blocking", "title": "boom",
+                          "files": ["src/app.py"]}],
+            "counts": {"blocking": 1, "warning": 0, "note": 0},
+            "mode": "chunk (lighter pass, not ready for push)",
+        })["status"] == "appended"
+        (repo / ".prawduct" / ".session-base-tree").unlink(missing_ok=True)
+        verdict = gates.session_review_verdict(repo)
+        assert verdict["status"] == "blocked", verdict
+        assert verdict["base_source"] == "merge-base-fallback"

@@ -191,6 +191,109 @@ class TestBuildScopeToPlanMap:
         assert mapping["nested"] == nested / "build-plan.md"
 
 
+class TestDeclaredArtifactType:
+    """The forward read of `artifact:`, folded onto the one value-level reader.
+
+    This key used to be walked by a hand-rolled loop beside `_frontmatter_scalar`
+    — two readers over one block, the shape that module's own docstrings argue
+    against, and the way a later fix to quoting or comments lands on `scope:`
+    and not on `artifact:`.
+    """
+
+    def _fm(self, body: str) -> str:
+        return f"---\n{body}\n---\n\n# Title\n"
+
+    def test_reports_the_declared_type(self):
+        assert plan_index.declared_artifact_type(self._fm("artifact: design")) == "design"
+
+    def test_an_absent_key_is_no_declaration(self):
+        assert plan_index.declared_artifact_type(self._fm("scope: s")) is None
+
+    def test_no_frontmatter_is_no_declaration(self):
+        assert plan_index.declared_artifact_type("# Just a title\n") is None
+
+    def test_the_yaml_null_literal_is_no_declaration(self):
+        """Folding onto `_frontmatter_scalar` moved this case, and it moved it
+        toward the direction the module documents. `artifact: null` used to read
+        as the literal string "null" — a type that is not `build-plan`, so the
+        document was EXCLUDED from the plan population. Absence keeps a document
+        in, and a null declaration is an absence of one."""
+        for spelling in ("artifact: null", "artifact: ~", "artifact:"):
+            assert plan_index.declared_artifact_type(self._fm(spelling)) is None
+            assert not plan_index._declares_non_build_plan_artifact(self._fm(spelling))
+
+
+class TestUnscopedCandidates:
+    """The walk half of the published fact — the predicate is the caller's.
+
+    The set this yields is exactly the set `iter_scoped_plan_candidates` omits,
+    so the two must be read together; the shape predicate that makes it useful
+    lives with `buildplan_refs`, and `tests/test_unscoped_plan_fact.py` is where
+    the whole construction and its real-corpus controls sit.
+    """
+
+    def test_the_shape_predicate_has_no_default(self):
+        """A default would be the map's own predicate, which admits 20 non-plans
+        for every 2 plans in this repo's live tree — a forgetful caller would
+        get that list in silence rather than a TypeError."""
+        with pytest.raises(TypeError):
+            plan_index.unscoped_candidates(Path("."))
+
+    def test_a_null_artifact_type_reaches_the_walk_as_a_plan(self, tmp_path: Path):
+        """The behaviour change the `_frontmatter_scalar` fold introduced, pinned
+        at the WALK rather than only at the predicate.
+
+        The replaced hand-rolled loop read `artifact: null` as the literal string
+        "null" — a type that is not `build-plan`, so the document was EXCLUDED.
+        The shared scalar reader treats the YAML null literal as no declaration,
+        which is the fail-safe direction this module documents (absence keeps a
+        document in the plan population). Pinned here because the predicate-level
+        test cannot show that the WALK's yield moved with it, and the change-log
+        claimed the walk was unchanged.
+        """
+        artifacts = tmp_path / "artifacts"
+        artifacts.mkdir()
+        (artifacts / "nulltype.md").write_text(
+            "---\nartifact: null\n---\n\n## Status\n\n- [ ] Chunk 01: a\n",
+            encoding="utf-8",
+        )
+        assert [
+            p.name
+            for p in plan_index.unscoped_candidates(
+                artifacts, looks_like_plan=lambda _c: True
+            )
+        ] == ["nulltype.md"]
+
+    def test_a_predicate_that_refuses_everything_yields_nothing(self, tmp_path: Path):
+        artifacts = tmp_path / "artifacts"
+        artifacts.mkdir()
+        (artifacts / "plan.md").write_text("---\nartifact: build-plan\n---\n", encoding="utf-8")
+        assert plan_index.unscoped_candidates(
+            artifacts, looks_like_plan=lambda _content: False
+        ) == []
+
+    def test_the_predicate_is_asked_only_about_scopeless_plan_documents(self, tmp_path: Path):
+        """The cheap filters run first, so the caller's predicate never has to
+        re-derive what this module already answered."""
+        artifacts = tmp_path / "artifacts"
+        artifacts.mkdir()
+        (artifacts / "scoped.md").write_text(
+            "---\nartifact: build-plan\nscope: alpha\n---\n", encoding="utf-8"
+        )
+        (artifacts / "other.md").write_text("---\nartifact: design\n---\n", encoding="utf-8")
+        (artifacts / "candidate.md").write_text("# A plan\n", encoding="utf-8")
+
+        asked: list[str] = []
+
+        def record(content: str) -> bool:
+            asked.append(content)
+            return True
+
+        found = plan_index.unscoped_candidates(artifacts, looks_like_plan=record)
+        assert [p.name for p in found] == ["candidate.md"]
+        assert asked == ["# A plan\n"]
+
+
 class TestDeclaresNonBuildPlanArtifact:
     """Direct cases for the plan/not-a-plan predicate.
 
@@ -766,3 +869,78 @@ class TestBranchClaimingPlans:
         )
         assert len(path.read_text()) > plan_index._FRONTMATTER_PROBE_CHARS
         assert plan_index.branch_claiming_plans(artifacts) == [(path, "feat/x")]
+
+
+class TestPlansNamingBranchInBody:
+    """A `branch:` line below the frontmatter claims nothing — this finds it so
+    a scope miss can be explained. The spellings are copied from real plans in a
+    consumer repo, where this shape was the commonest cause of a miss."""
+
+    BRANCH = "feat/x"
+
+    def _plan(self, artifacts: Path, name: str, body: str) -> Path:
+        path = artifacts / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(body)
+        return path
+
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "branch: feat/x",
+            "**Branch:** `feat/x` · **Lane D** of the 2026-08-20 overnight",
+            "**Branch**: `feat/x` (off `develop`)",
+            "**Branch:** `feat/x`",
+            "- **Branch:** `feat/x`",
+        ],
+    )
+    def test_each_real_spelling_is_found(self, tmp_path: Path, line: str):
+        artifacts = tmp_path / "artifacts"
+        plan = self._plan(
+            artifacts,
+            "build-plan-x.md",
+            f"---\nartifact: build-plan\nscope: x\n---\n\n# Plan\n\n{line}\n",
+        )
+        assert plan_index.plans_naming_branch_in_body(artifacts, self.BRANCH) == [plan]
+
+    def test_a_plan_with_no_frontmatter_is_searched_whole(self, tmp_path: Path):
+        artifacts = tmp_path / "artifacts"
+        plan = self._plan(artifacts, "build-plan-x.md", "# Plan\n\n**Branch:** `feat/x`\n")
+        assert plan_index.plans_naming_branch_in_body(artifacts, self.BRANCH) == [plan]
+
+    def test_a_frontmatter_claim_is_not_a_body_mention(self, tmp_path: Path):
+        # The frontmatter line is a real claim; reporting it as misplaced would
+        # tell the operator to move a line that is already where it belongs.
+        artifacts = tmp_path / "artifacts"
+        self._plan(
+            artifacts,
+            "build-plan-x.md",
+            "---\nartifact: build-plan\nscope: x\nbranch: feat/x\n---\n\n# Plan\n",
+        )
+        assert plan_index.plans_naming_branch_in_body(artifacts, self.BRANCH) == []
+
+    def test_another_branch_and_a_prefix_do_not_match(self, tmp_path: Path):
+        artifacts = tmp_path / "artifacts"
+        self._plan(
+            artifacts,
+            "build-plan-x.md",
+            "# Plan\n\nbranch: feat/other\n**Branch:** `feat/x-longer`\n",
+        )
+        assert plan_index.plans_naming_branch_in_body(artifacts, self.BRANCH) == []
+
+    def test_prose_mentioning_the_branch_mid_sentence_is_not_a_line(self, tmp_path: Path):
+        artifacts = tmp_path / "artifacts"
+        self._plan(
+            artifacts, "build-plan-x.md", "# Plan\n\nWork happens on branch: feat/x today.\n"
+        )
+        assert plan_index.plans_naming_branch_in_body(artifacts, self.BRANCH) == []
+
+    def test_archived_and_non_plan_artifacts_are_skipped(self, tmp_path: Path):
+        artifacts = tmp_path / "artifacts"
+        self._plan(
+            artifacts, f"{plan_index.ARCHIVE_DIR_NAME}/build-plan-old.md", "branch: feat/x\n"
+        )
+        self._plan(
+            artifacts, "note.md", "---\nartifact: design\n---\n\nbranch: feat/x\n"
+        )
+        assert plan_index.plans_naming_branch_in_body(artifacts, self.BRANCH) == []

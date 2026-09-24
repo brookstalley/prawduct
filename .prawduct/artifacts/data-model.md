@@ -23,9 +23,10 @@ out where reality still lags.
 
 1. **One source of truth: the evidence store.** Every gate verdict (Critic coverage, resolution
    status) is derived from facts in `evidence.jsonl`. Nothing else is trusted for a verdict.
-   *Realized* for the Critic data plane (kernel v3); test-run and PR-review evidence are **intended**
-   to migrate onto the same store (reserved fact kinds `test-run`, `pr-review`, `promotion`) and
-   today still live in their own files.
+   *Realized* for the Critic data plane (kernel v3). Test runs are indexed on the store as `test-run`
+   facts while `.test-evidence.json` stays each run's primary record; PR-review evidence is
+   **intended** to migrate onto the same store (reserved fact kinds `pr-review`, `promotion`) and
+   today still lives in its own file.
 
 2. **Facts are immutable and append-only.** A fact is never edited or deleted in place. State
    changes are expressed as *new* facts (a resolution fact supersedes a finding; it does not mutate
@@ -54,7 +55,7 @@ out where reality still lags.
 
 - **Governance verdicts on the Critic data plane are computed from the append-only fact ledger, never from mutable model-written state — no model sits in a fact's write path.** Facts are written by deterministic code; a reviewer's judgment enters only as validated content inside a partial that code checks against a code-written manifest before it becomes a fact.
   Why: the governed party must never be able to certify itself — deriving every verdict from code-written facts is what keeps model judgment out of the authority path and lets any worktree reconstruct the same verdict from the same log.
-  Status: steady-state — scoped to the Critic data plane (kernel v3). Test-run and PR-review evidence still live in their own files; extending the store to subsume them (reserved kinds `test-run`/`pr-review`/`promotion`) is design direction, not yet a ratified norm.
+  Status: steady-state — scoped to the Critic data plane (kernel v3). Test runs are indexed on the store as `test-run` facts (#653, owner decision 2026-09-23) — the test-evidence freshness fallback is the one reader that decides anything by them (`evidence list` only displays them), and the per-worktree `.test-evidence.json` remains the run's primary record; PR-review evidence still lives in its own file. Extending the store to subsume the rest (reserved kinds `pr-review`/`promotion`) is design direction, not yet a ratified norm.
 - **Facts are immutable and append-only; a state change is expressed as a new fact, never an edit or delete in place.**
   Why: append-only history is what lets any checkout replay the same verdict from the same log — an in-place edit or delete would make the ledger unreproducible and a verdict unauditable.
   Status: steady-state.
@@ -65,7 +66,7 @@ out where reality still lags.
 - **A governance document reaches a terminal state; it is never deleted. Archival records what became of it and moves it out of the live directory — and a live document always outranks an archived namesake.** Three rules, one norm, because they are only correct together: (1) a build plan ends in one of exactly two terminal states — *completed* (shipped) or *superseded* (stopped, descoped, absorbed elsewhere) — stamped into its own frontmatter AND moved under `archive/`; (2) every reader that scans `artifacts/` treats `archive/` as history, never as a live assertion, and prunes it at directory level rather than walking and filtering; (3) a reader resolving a document by *name or scope* searches live first, then archive, and a live file wins.
   Why: the framework had assigned these documents the wrong lifetime, and both halves of the mistake cost real work. Deleting a completed plan stranded the requirements, hazards and findings that lived only in it — every reference into it dangled *by design*, and an authoring discipline (the ephemeral-ref firewall) existed solely to cope. Keeping every plan forever in the live directory is the mirror failure: `artifacts/` stops answering "what is in flight" and becomes a pile that has to be read to be sorted, and the scan that walks it runs at every session start and every session end. Two terminal states rather than one is load-bearing: a plan whose work was descoped can never satisfy "all boxes ticked", so a lifecycle with only *completed* leaves exactly those plans sitting live and reading as active — which is the confusion the norm exists to remove, and it is the common case, not a corner.
   Scope: documents under `.prawduct/artifacts/`. It does NOT reach the append-only evidence store, which is governed by the immutability norm above — archival moves a *document*, it never rewrites a fact.
-  Status: steady-state as of v3.2.8. Mechanism: `plan_archive.archive_plan` (stamp-then-move, refusing rather than half-completing), `plan_index.iter_scoped_plan_candidates` (directory-level prune, live-walked-first when the archive is included), `release_readiness._find_release_plan` (live, then archive).
+  Status: steady-state as of v3.2.8. Mechanism: `plan_archive.archive_plan` (stamp-then-move, refusing rather than half-completing), `plan_index.iter_scoped_plan_candidates` (directory-level prune, live-walked-first when the archive is included), `plan_index.unscoped_candidates` (the same prune on the cold path that publishes the plans that walk omits), `release_readiness._find_release_plan` (live, then archive).
   Retroactivity: **migrate**, not contain — and this is the departure from the backlog-title norm above, so the reason is recorded rather than assumed. Accumulated live plans reading as active IS the confusion, so a rule that only bound new plans would leave every existing repo in the state the norm exists to fix. `plan-backfill` performs the sweep mechanically off the change log's `release=` tags; **checkbox state is explicitly not a precondition and is not corrected on the way in**, which is what keeps the migration free of the judgment that would otherwise put a model in the write path of state the Stop hook's gates read.
   Ruled 2026-08-08 (owner, requirements v0.4): backfilling existing shipped plans is required for this repo and for consumers, not deferred to "from now on".
   Ruled 2026-08-11 (owner, in-session, v3.3.1 / #634), amending the Retroactivity clause above: **checkbox state IS a precondition of the mechanical sweep. It remains no precondition at all of an explicit `archive-plan <path>`.** The sentence it amends said "explicitly not a precondition" without qualification, and read against the sweep that is now false; the half about not correcting boxes on the way in is untouched and still holds on both routes. Engaging the stated why, which is what makes this an amendment rather than a reversal: the concern was **keeping a model out of the write path** of state the Stop hook's gates read, and that is preserved exactly — the new precondition is a deterministic count of unticked `## Status` items (`buildplan_refs.incompleteness_reason`), with no model anywhere in it. What the sweep now does with a plan it cannot evidence as finished is *decline and name the chunk*, which moves the judgment to a human and OUT of the write path rather than into it. The norm's own two-terminal-state reasoning supplies the escape hatch and is why this does not resurrect the failure that reasoning names: a plan that can never satisfy "all boxes ticked" was never meant to be archived *completed*, it was meant to be archived **superseded**, which only a human can name a reason for — so a plan the sweep declines is one command from its correct terminal state, not stranded live forever. Occasioned by a consumer repo (hallucinote) archiving a plan as `completed`/`released_in: v1.8.0` with two chunks unbuilt and still live: selection by change-log `release=` answers "did the scope ship", never "did the plan finish", and those come apart whenever a scope ships partially. That product had declined the identical proposal at two consecutive cuts and recorded the decline both times before the third went through — the cost of a judgement the tooling re-asks every release.
@@ -105,7 +106,7 @@ An absent file is the empty store.
 | Field | Type | Purpose |
 |-------|------|---------|
 | `schema` | int | Envelope schema version (guards forward-compat; a record from a newer plugin is surfaced, never silently dropped) |
-| `kind` | string | Fact namespace — `review`, `resolution`, `disposition`, `guard-refusal` today; `test-run`, `pr-review`, `promotion` reserved (intended) |
+| `kind` | string | Fact namespace — `review`, `resolution`, `disposition`, `guard-refusal`, `test-run` today; `pr-review`, `promotion` reserved (intended) |
 | `id` | string | Idempotency key, fixed at dispatch — re-running consolidation never double-appends |
 | `ts` | string | ISO-8601 UTC |
 | `actor` | object | `{session, worktree, plugin}` plus optional `branch` — provenance: which session, which worktree, which plugin version wrote it. `branch` is omitted (never null) on a detached/unreadable HEAD; it exists because the worktree path alone cannot say whether a tree was disposable (#648), and a reader cannot probe a tree that is usually already deleted |
@@ -158,6 +159,19 @@ An absent file is the empty store.
   **Droppability:** a refusal sits on no coverage path and targets no other fact, so it is droppable
   at any time — dropping one loses a data point about the guard's yield, never a governance answer.
   Written by `evidence.append_guard_refusal`, the one sink for the whole class (#596).
+- **Test-run fact `body`** — one recorded suite run (#653): the `tree` it met (as `capture_tree`
+  returned it), `passed`/`failed`/`skipped`, `duration_seconds`, `source` (`run` | `from-junit`),
+  `head` (the commit checked out, omitted on an unborn branch) and `degraded` when the run reported
+  itself so. Written by `test-evidence record` through `evidence.append_test_run` — never by a
+  restamp, which measured nothing, nor by `--from-counts`, which has no tree. The one reader that
+  decides anything by it is the test-evidence freshness fallback (`gates._store_run_vouching`; `evidence
+  list` only displays it), which lets a run recorded from
+  another branch or worktree vouch for a tree judgeably identical to the one it met, once this
+  worktree's own record has declined; among the candidates, the newest run that met the tree
+  decides it. **Observational to the coverage data plane**: composition never reads
+  it, and it is one of `evidence.OBSERVATIONAL_KINDS`, which the verdict cache's key leaves out.
+  **Droppability:** droppable at any time — the per-worktree `.test-evidence.json` stays the run's
+  primary record, so losing a fact costs a later suite re-run, never a governance answer.
 
 **Tree-keying (the load-bearing idea).** Facts reference git *tree SHAs*, captured via a temporary
 index that never touches the session's working tree or real index. Because a verbatim commit
@@ -188,6 +202,15 @@ clock — and a performance target stated against an estimate is a target stated
   at, and consumption requires that same `HEAD` — a dispatch made against a different tree is not
   this review's dispatch. Same question the evidence store asks, and unlike an age threshold it
   invents no number. Consumers carry their own plausibility bound besides.
+  `[DECISION: 2026-09-21, #845, owner-approved build: for a `review.pr` the tree the mark is checked
+  against is the reviewer's own `commit_reviewed`, not `HEAD` at append time, and the interval ends
+  at the evidence file's mtime, written as the optional envelope key `review_written_at` (present
+  only beside a kept `dispatched_at`). An evidence file older than the mark is refused by name |
+  the caller fixes a PR review's findings before `ledger-append`, so HEAD had moved on every review
+  that found something and the clock discarded exactly those rows. That also biased the measured
+  population toward clean reviews. Still a tree question, and it still invents no number. Relaxing
+  the check was rejected, as #845 argues | user can veto/override]` Authority for this sits outside
+  this artifact, in `build-plan-pr-review-clock.md` and #845.
 - **Each consuming event kind owns its OWN marker; no append can reach another kind's.** The
   Critic and the PR reviewer run concurrently by deliberate arrangement
   (`nonfunctional-requirements.md`: the two boundary reviews run in parallel, never sequentially),
@@ -237,7 +260,9 @@ the backlog skill, never hand-edited across sections.
 
 #### Learnings — `.claude/rules/learnings/` (`core.md` + `<area>.md`)
 
-Committed, harness-loaded. `core.md` holds cross-cutting "When X, do Y because Z" rules, one per
+Committed, harness-loaded — except in a repo that keeps its learnings out of git on purpose
+(migrated with `learnings-migrate --local`), where the tree is gitignored and lives only in the
+checkout; the harness loads it from disk either way. `core.md` holds cross-cutting "When X, do Y because Z" rules, one per
 heading; each `<area>.md` carries `paths:` frontmatter and loads when a matching file is read.
 Narrative lives in `.session-reflected`, not beside the rule. (Pre-v2: `.prawduct/learnings.md` +
 `learnings-detail.md`, relaid by `learnings-migrate`; a legacy repo reads UNMIGRATED until then.) Intent: the rule

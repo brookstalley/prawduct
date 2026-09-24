@@ -836,10 +836,10 @@ class TestTransferYieldSignal:
         assert "base_tree" not in body and "head_tree" not in body
 
     def test_a_repeated_poll_leaves_the_store_byte_identical(self, tmp_path, capsys):
-        # The interaction that would have undone the verdict memo: the memo keys
-        # on a content hash of the whole store, and the gate is polled several
-        # times a session. A record per POLL evicts every cached verdict on every
-        # poll and puts the gate back on its ~17 s cold path.
+        # The gate is polled several times a session, so a record per POLL would
+        # count polls rather than grants and grow the store a line per poll. (A
+        # grant is a guard-refusal fact, which the verdict memo's key leaves out,
+        # so it no longer evicts cached verdicts either way.)
         repo, _prior_base, _prior_head = _advanced_base_repo(tmp_path)
         _write_test_evidence(repo)
         assert _run_gate(repo, capsys)[0] == 0
@@ -981,8 +981,7 @@ class TestBranchCoverageVerdictIsTheSameAnswer:
     def test_the_advisory_read_records_no_grant(self, tmp_path, capsys):
         # Authority records its own yield; advice observes and writes nothing.
         # An append from here would file a transfer grant under a gate that
-        # never ran — and would move the store fingerprint the verdict memo is
-        # keyed on, evicting it on a read taken to be cheap.
+        # never ran.
         repo, _prior_base, _prior_head = _advanced_base_repo(tmp_path)
         _write_test_evidence(repo)
         store = evidence.store_path(repo)
@@ -1636,7 +1635,56 @@ class TestRoundTally:
             # than "how many reviews" — the round budget counts only FULL
             # rounds — does not re-walk the lineage to get them.
             "reviews": [{"id": None, "mode": None}, {"id": None, "mode": None}],
+            # One commit on this branch above the merge-base. Reported because
+            # ZERO here and zero `rounds` are the same number and opposite
+            # situations — a branch with commits that has bought no review, and
+            # a span with no commits at all, which is the permanent state of a
+            # trunk repo. A caller that must bound by something other than
+            # lineage can only tell them apart from here.
+            "span_commits": 1,
         }
+
+    def test_an_empty_span_is_not_reported_as_a_first_round(self, tmp_path):
+        """The sibling consumer of the same signal the round budget reads.
+
+        `rounds == 0` has two causes and `format_branch_rounds` used to give
+        both the same sentence — *the next round is this branch's first*. On a
+        trunk repo the span is empty after every push, so lineage can attribute
+        nothing and that sentence is wrong permanently rather than occasionally:
+        it prints on round twenty. Keyed on `span_commits`, exactly as the
+        budget's fallback is, because it is the same defect at the other reader.
+        """
+        trunk = tmp_path / "trunk"
+        trunk.mkdir()
+        _git(trunk, "init", "-q", "-b", "main")
+        _commit(trunk, "code.py", "x = 1\n", "c1")
+        merge_base = _git(trunk, "merge-base", "main", "HEAD")
+        tally = coverage.count_branch_rounds(trunk, [], merge_base)
+        assert tally["span_commits"] == 0 and tally["rounds"] == 0, (
+            "the premise: this is the zero that is NOT a first round"
+        )
+
+        line = coverage.format_branch_rounds(tally)
+        assert "span holds no commits" in line
+        assert "UNAVAILABLE" in line
+        assert "first" not in line.replace("never as this being your first.", "")
+
+    def test_a_branch_with_a_span_and_no_rounds_is_still_a_first_round(self, tmp_path):
+        """The control, and the reason the fix is keyed on the span.
+
+        A branch that HAS commits and has bought no round genuinely is on its
+        first, and that sentence must survive — a fix keyed on `rounds == 0`
+        would have replaced it and told every first-round builder their count
+        was unavailable.
+        """
+        repo = _branch_repo(tmp_path)
+        merge_base = _git(repo, "merge-base", "main", "HEAD")
+        tally = coverage.count_branch_rounds(repo, [], merge_base)
+        assert tally["span_commits"] > 0 and tally["rounds"] == 0
+
+        line = coverage.format_branch_rounds(tally)
+        assert "the next round is this branch's first" in line
+        assert "span holds no commits" not in line
 
     def test_the_tally_leads_the_block_it_frames(self, tmp_path, capsys):
         """Placement is the deliverable, not the sentence. The routes below it

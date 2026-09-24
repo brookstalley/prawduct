@@ -21,9 +21,12 @@ dispatch table and the argument scan are only exercised by actually invoking it.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 _HOOK_PATH = Path(__file__).resolve().parent.parent / "plugin" / "bin" / "prawduct-hook"
 
@@ -214,6 +217,62 @@ class TestUnreadableFilesChangeTheVerdict:
         assert payload["unreadable"][0]["path"].endswith("build-plan-bad.md")
 
 
+class TestUnscopedPlansDoNotChangeTheVerdict:
+    """The assertion that would have caught the regression.
+
+    `unreadable` means "could not run" and is exit 1, and `/prawduct:doctor`
+    grades a non-empty list **degraded**. Delivering the unscoped-plan fact on
+    that channel made a repo holding one permanently degraded by a repair that
+    cannot fix it — `--apply` does not add `scope:` keys. The fact is
+    diagnostic; it gets its own key, its own sentence, and no verdict.
+    """
+
+    UNSCOPED = "---\nartifact: build-plan\n---\n\n## Status\n\n- [ ] Chunk 01: a\n"
+
+    def _repo(self, tmp_path: Path) -> Path:
+        project = _repo(tmp_path, plan=PLAN_COMPLETE)
+        (project / ".prawduct" / "artifacts" / "build-plan-mystery.md").write_text(
+            self.UNSCOPED, encoding="utf-8"
+        )
+        return project
+
+    def test_a_dry_run_still_exits_zero(self, tmp_path: Path) -> None:
+        proc = _run(self._repo(tmp_path), "lifecycle-repair")
+        assert proc.returncode == 0, proc.stderr
+
+    def test_an_apply_still_exits_zero(self, tmp_path: Path) -> None:
+        """The other exit-code expression — the first fix missed one of the two."""
+        proc = _run(self._repo(tmp_path), "lifecycle-repair", "--apply")
+        assert proc.returncode == 0, proc.stderr
+
+    def test_it_is_named_without_claiming_the_file_was_unreadable(
+        self, tmp_path: Path
+    ) -> None:
+        proc = _run(self._repo(tmp_path), "lifecycle-repair")
+        assert "build-plan-mystery.md" in proc.stdout
+        assert "declare no `scope:`" in proc.stdout
+        assert "could not read" not in proc.stdout + proc.stderr
+        # The repair DOES check these plans (the report and the edit loop walk one
+        # set), so the message must not claim otherwise, and must name the one
+        # thing it cannot do for them.
+        assert "checked like any other plan" in proc.stdout
+        assert "did not read" not in proc.stdout
+
+    def test_json_keeps_the_two_channels_apart(self, tmp_path: Path) -> None:
+        payload = json.loads(_run(self._repo(tmp_path), "lifecycle-repair", "--json").stdout)
+        assert [Path(p).name for p in payload["unscoped"]] == ["build-plan-mystery.md"]
+        assert payload["unreadable"] == []
+
+    def test_a_repo_without_one_says_nothing(self, tmp_path: Path) -> None:
+        """Without this the assertions above pass on a line that always prints."""
+        # One repo, two invocations — `_repo` mkdirs and cannot be called twice
+        # against the same tmp_path.
+        project = _repo(tmp_path, plan=PLAN_COMPLETE)
+        assert "declare no `scope:`" not in _run(project, "lifecycle-repair").stdout
+        payload = json.loads(_run(project, "lifecycle-repair", "--json").stdout)
+        assert payload["unscoped"] == []
+
+
 class TestPlanBackfillCommand:
     def test_dry_run_moves_nothing(self, tmp_path: Path) -> None:
         project = _repo(tmp_path, plan=PLAN_COMPLETE)
@@ -232,6 +291,71 @@ class TestPlanBackfillCommand:
         archived = project / ".prawduct" / "artifacts" / "archive" / "build-plan-demo.md"
         assert archived.is_file()
         assert "archived: 2026-08-10" in archived.read_text()
+
+    def test_apply_names_the_staging_remedy(self, tmp_path: Path) -> None:
+        """The move is a write plus an unlink and this command stages neither.
+
+        A plan in the index and gone from disk fails any test that enumerates
+        tracked paths and opens them, which went red at two release cuts. The
+        operator learns that here, from the run that created the state, or they
+        learn it from a red suite.
+        """
+        project = _repo(tmp_path, plan=PLAN_COMPLETE)
+        proc = _run(project, "plan-backfill", "--apply", "--date", "2026-08-10")
+
+        assert proc.returncode == 0, proc.stderr
+        # The paths that MOVED, each anchored at the repo root — not the
+        # directory holding them. A release cut leaves in-flight artifacts in
+        # that same directory, so `-A <dir>` would stage edits the operator
+        # never chose, and a relative pathspec resolves against whatever CWD
+        # this line is pasted into.
+        assert (
+            "git add -A -- :/.prawduct/artifacts/build-plan-demo.md "
+            ":/.prawduct/artifacts/archive/build-plan-demo.md" in proc.stdout
+        ), proc.stdout
+        assert "git add -A .prawduct/artifacts" not in proc.stdout, (
+            "the directory form stages what the operator did not approve"
+        )
+
+    def test_a_dry_run_does_not_name_it(self, tmp_path: Path) -> None:
+        """The control. A preview moves nothing, so there is nothing to stage —
+        advice given where it does not apply is how advice stops being read."""
+        proc = _run(_repo(tmp_path, plan=PLAN_COMPLETE), "plan-backfill")
+
+        assert proc.returncode == 0, proc.stderr
+        assert "would archive" in proc.stdout, "the premise: this run had plans to list"
+        assert "git add" not in proc.stdout
+
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root writes into a mode-500 dir")
+    def test_an_apply_that_moved_nothing_does_not_name_it_either(self, tmp_path: Path) -> None:
+        """The guard's precision, not merely its existence.
+
+        `--apply` is not the predicate and neither is `shipped` — what MOVED is.
+        This needs a run where those two DISAGREE, which the blocked-plan repo
+        cannot supply (a blocked plan never reaches `shipped`): a plan that
+        qualifies, is attempted, and fails at write time. An unwritable
+        `archive/` produces exactly that, and it is the only fixture here under
+        which a guard keyed on `--apply` and one keyed on what moved give
+        different answers.
+        """
+        project = _repo(tmp_path, plan=PLAN_COMPLETE)
+        archive = project / ".prawduct" / "artifacts" / "archive"
+        archive.mkdir(parents=True, exist_ok=True)
+        archive.chmod(0o500)
+        try:
+            proc = _run(project, "plan-backfill", "--apply", "--date", "2026-08-10")
+        finally:
+            archive.chmod(0o700)  # or tmp_path teardown cannot remove it
+
+        assert "would archive" not in proc.stdout, "the premise: this was an --apply"
+        assert "archived 1 finished plan(s)" in proc.stdout, (
+            "the premise that makes this discriminate: the plan DID qualify, so "
+            "`shipped` is non-empty while nothing moved"
+        )
+        assert (project / ".prawduct" / "artifacts" / "build-plan-demo.md").is_file(), (
+            "nothing moved — the live plan is still live"
+        )
+        assert "git add" not in proc.stdout
 
     def test_date_equals_form_is_accepted(self, tmp_path: Path) -> None:
         project = _repo(tmp_path, plan=PLAN_COMPLETE)
@@ -314,6 +438,63 @@ class TestPlanBackfillCommand:
 
         human = _run(project, "plan-backfill")
         assert "NOT moving 1 plan(s)" in human.stdout
+
+    def _repo_with_an_unscoped_plan(self, tmp_path: Path, **kwargs) -> Path:
+        """A real build plan by every signal except the one the sweep keys on."""
+        project = _repo(tmp_path, plan=PLAN_COMPLETE, **kwargs)
+        (project / ".prawduct" / "artifacts" / "build-plan-mystery.md").write_text(
+            "---\nartifact: build-plan\n---\n\n## Status\n\n- [ ] Chunk 01: work\n",
+            encoding="utf-8",
+        )
+        return project
+
+    def test_the_preview_states_what_it_could_not_evaluate(self, tmp_path: Path) -> None:
+        """The operator reads the counts as a description of artifacts/. A plan
+        with no `scope:` was never a candidate for any of them, so a preview
+        that does not say so overstates its own coverage."""
+        proc = _run(self._repo_with_an_unscoped_plan(tmp_path), "plan-backfill")
+
+        assert proc.returncode == 0, proc.stderr
+        assert "could not evaluate 1 plan(s)" in proc.stdout
+        assert "build-plan-mystery.md" in proc.stdout
+        assert "declares no `scope:`" in proc.stdout
+
+    def test_it_is_stated_on_the_no_release_tags_arm_too(self, tmp_path: Path) -> None:
+        """Both arms of the fork print a set that reads as the whole directory,
+        and the human path is the one `--json`-only tests never exercise."""
+        project = self._repo_with_an_unscoped_plan(
+            tmp_path, change_log="# Change Log\n\n## 2026-01-01: a thing\n"
+        )
+        proc = _run(project, "plan-backfill")
+
+        assert "no mechanical way" in proc.stdout
+        assert "could not evaluate 1 plan(s)" in proc.stdout
+
+    def test_a_fully_scoped_repo_says_nothing_about_it(self, tmp_path: Path) -> None:
+        """Without this the assertions above pass on a line that always prints,
+        and a caveat that never goes quiet is one the operator stops reading."""
+        proc = _run(_repo(tmp_path, plan=PLAN_COMPLETE), "plan-backfill")
+        assert "could not evaluate" not in proc.stdout
+
+    def test_json_carries_the_unevaluated_list(self, tmp_path: Path) -> None:
+        proc = _run(self._repo_with_an_unscoped_plan(tmp_path), "plan-backfill", "--json")
+        payload = json.loads(proc.stdout)
+
+        assert [item["path"] for item in payload["unevaluated"]] == [
+            str(
+                tmp_path
+                / ".prawduct"
+                / "artifacts"
+                / "build-plan-mystery.md"
+            )
+        ]
+        # And it is in none of the buckets that partition what the walk yielded.
+        placed = [
+            item["path"]
+            for key in ("shipped", "blocked", "kept_live")
+            for item in payload[key]
+        ]
+        assert not any(path.endswith("build-plan-mystery.md") for path in placed)
 
     def test_a_preview_with_blocked_plans_still_exits_zero(self, tmp_path: Path) -> None:
         """Nothing was skipped because nothing was attempted — and a dry run

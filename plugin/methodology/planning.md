@@ -62,6 +62,8 @@ The build plan decomposes artifacts into buildable chunks — coherent units of 
 
 **Several plans may declare one branch, and that is ordinary** — a `release/2-0` carrying a telemetry plan and a documentation plan, or a fix branch that grew three. Governance resolves one of them and says which, in the session briefing. **This is the one place the precedence is written; every other surface points here.** In order: the sole claimant if there is one (ahead of everything, so a lone plan keeps governing after its last box is ticked — which happens during its own closing PR); else the one claimant still holding open chunks; else the plan `active_build_plan` names, *if* it is one of the candidates still in contention — its remaining job is breaking a tie within a branch, and it does not resurrect a finished plan over open ones; else path order, which is arbitrary and says so. Nothing is silent, because governing by the wrong plan looks exactly like governing correctly unless the surface names its choice. When several plans on a branch are all live work, point the scalar at whichever one you are building now.
 
+**A `## Status` tick means that chunk is built, committed and reviewed on the branch — never merged or released**, which the plan's archive state and the change-log's `release=` tag carry.
+
 **Plan lifecycle: a plan ends by being archived, never deleted.** When its work is done — or has stopped, been descoped, or been absorbed elsewhere — `prawduct-hook archive-plan <path> --state completed|superseded` stamps it with what became of it and moves it into `archive/`, where it stays findable by name. Both terminal states archive; a half-finished dead plan left live is the one that reads as active forever. Archiving also ends a `branch:` claim, so for a branch-declaring plan the move is the whole retirement — nothing has to be un-pointed for the claim to stop resolving. **On gitflow**, when authoring a new plan while the prior plan's work is merged-but-unreleased, leave the prior plan live until the release ships. A branch-declaring plan gets its pointer **cleared** at that merge; a scalar-only plan keeps `active_build_plan` aimed at it and is repointed after the release. `/prawduct:pr`’s Merge Flow *"Confirm the bookkeeping merged WITH the PR"* step owns that split and says why each way. Build plans are tracked artifacts — commit them, archived ones included.
 
 ### Plan Shape
@@ -176,7 +178,7 @@ error handling go missing one context at a time.
 
 **Per-chunk commit is the contract.** `chunk`-mode reviews assume the previous chunk was committed, so the working-tree diff is just the current chunk. Batch-commit-at-end plans break this — if you need that, override every chunk to `final` (heavy but safe; squash-at-end with `chunk`-mode has unbounded diff scope and is wrong).
 
-**Default when unsure.** A missing or unrecognized mode is inferred, and when no rule fires the review is the inner-stage `chunk` of the uncommitted interval — never `final` by default (canonical rule: `skills/critic/review-cycle.md`). Rely on inference rather than declaring a mode to buy depth the chunk has not earned.
+**Default when unsure.** A missing or unrecognized mode is inferred, and when no rule fires the review is the inner-stage `chunk` — never `final` by default (canonical rule: `skills/critic/review-cycle.md`). Rely on inference rather than declaring a mode to buy depth the chunk has not earned.
 
 See `methodology/building.md` for runtime behavior and `skills/critic/review-cycle.md` for the per-mode behavior table.
 

@@ -53,8 +53,8 @@ return the first that fires:
      OR no build plan + uncommitted diff has ≥5 files (medium+
      non-chunked work).
   4. ``cumulative`` when the tree is clean and a committed bundle is
-     dispatchable, since ``chunk``/``final`` scope to the uncommitted diff and
-     dispatching one would refuse on an empty interval; otherwise ``chunk`` —
+     dispatchable, since a ``chunk``/``final`` interval ends at the working
+     tree and, with nothing unreviewed behind HEAD, would be empty and refused; otherwise ``chunk`` —
      grounded on the plan when one exists, and the bare default when none
      does. ``final`` is never a default: the stage-keyed rigor norm
      (`nonfunctional-requirements.md` § Direction) says unsure defaults to the
@@ -184,8 +184,13 @@ def _unrecognized_mode_note(token: str, line_num: int | None = None) -> str:
     return note
 
 
-#: The two modes whose interval is HEAD-tree → working-tree, and therefore the
-#: only two an explicit token can name into a provably empty review. `cumulative`
+#: The two modes whose interval ENDS at the working tree — it starts at HEAD's
+#: tree, or at the covered frontier behind it when commits since that are
+#: unreviewed (`gates.covered_frontier`) — and therefore the only two an explicit
+#: token can name into an empty review. The clean-tree redirect below treats
+#: them as empty whenever the tree is clean; with a frontier behind HEAD that is
+#: not strictly so, and the redirect then sends the review to `cumulative`, a
+#: wider span than needed. Accepted: it errs toward more review, never less. `cumulative`
 #: reviews the committed bundle and `verify-resolutions` the delta since a prior
 #: review fact; neither goes empty because the working tree is clean.
 _WORKING_TREE_MODES = frozenset({"chunk", "final"})
@@ -281,7 +286,18 @@ def infer_mode(
             file=sys.stderr,
         )
 
+    # A later review on this plan will start from the last reviewed state and
+    # cover whatever is uncovered since, so the rules below that would buy a
+    # round for it now — a verify pass over a non-blocking fix, a cumulative
+    # over a clean tree mid-plan — answer `deferred` instead. Asked lazily,
+    # only when one of those rules fires, because it walks history.
+    def _extension():
+        return extension_deferral(project_dir, prawduct_dir, plan, progress)
+
     if _rule_verify_resolutions_fires(prawduct_dir, project_dir):
+        ext = _extension()
+        if ext:
+            return MODE_DEFERRED, f"extension-deferred (fix in progress): {ext}"
         return "verify-resolutions", (
             "rule-1 verify-resolutions: prior findings have actionable "
             "(BLOCKING/WARNING) entries with a resolvable commit_reviewed "
@@ -297,6 +313,9 @@ def infer_mode(
 
     cumulative_reason = _rule_cumulative_fires(prawduct_dir, project_dir)
     if cumulative_reason:
+        ext = _extension()
+        if ext:
+            return MODE_DEFERRED, f"extension-deferred (mid-plan, clean tree): {ext}"
         return "cumulative", f"rule-2 cumulative: {cumulative_reason}"
 
     # Short-plan deferral (#292), between rules 2 and 3. Rules 1, 1b and 2 are
@@ -319,8 +338,9 @@ def infer_mode(
 
     # Rule 4: the default when nothing else fired is the INNER-STAGE review of
     # whatever interval exists (the stage-keyed rigor norm). `chunk` and
-    # `final` both review the uncommitted diff (HEAD tree → captured working
-    # tree), so on a clean tree their interval is EMPTY and `critic-begin`
+    # `final` both end at the captured working tree (from HEAD's tree, or from
+    # the covered frontier behind it), so on a clean tree with nothing
+    # unreviewed behind HEAD their interval is EMPTY and `critic-begin`
     # refuses — correctly, but only after the round-trip. A mode that cannot
     # review anything is not the answer to "what should I run", whichever rule
     # matched. `cumulative` is the mode whose interval is committed, and it is
@@ -343,7 +363,7 @@ def infer_mode(
         )
     return "chunk", (
         "rule-4 chunk: no active build plan and no other rule fired — unsure "
-        "defaults to the inner-stage review of the uncommitted interval"
+        "defaults to the inner-stage review of whatever interval exists"
     )
 
 
@@ -356,8 +376,9 @@ def _explicit_mode(
     second-guess it: `cumulative` and `verify-resolutions` come back exactly as
     typed, and so do `chunk` and `final` in every case but one.
 
-    That case is the defect (#684). `chunk` and `final` share the interval
-    HEAD-tree → working-tree, so on a clean tree it is EMPTY and `critic-begin`
+    That case is the defect (#684). `chunk` and `final` share an interval
+    ending at the working tree, so on a clean tree with nothing unreviewed
+    behind HEAD it is EMPTY and `critic-begin`
     refuses — after the operator has spent the dispatch. Rule 4 already declines
     to *infer* a mode that cannot review anything (:func:`_clean_tree_redirect`),
     but the explicit-args return sat above the whole ladder, so naming the mode
@@ -388,7 +409,8 @@ def _explicit_mode(
 def _clean_tree_redirect(prawduct_dir: Path, project_dir: Path) -> str:
     """Rationale for answering ``cumulative`` on a clean tree, or ``""``.
 
-    ``chunk`` and ``final`` both review HEAD-tree → working-tree, so with an
+    ``chunk`` and ``final`` both end at the working tree, so on a clean tree
+    their interval is empty unless a covered frontier sits behind HEAD, and an
     empty interval ``critic-begin`` refuses. Recommending one anyway costs a
     round-trip and names no remedy the caller didn't already have.
 
@@ -882,6 +904,168 @@ def short_plan_deferral(
         f"{base_branch} is a risk surface ({why})",
         last_chunk,
         total,
+    )
+
+
+def later_review_owed(progress) -> bool:
+    """Whether the branch's plan still owes a review AFTER the one just done.
+
+    Two or more unticked chunks, not one. A lone unticked chunk is ambiguous:
+    it may be the chunk whose review just passed and has not been ticked yet
+    (nothing later is owed) or the one chunk left after a ticked one (a review
+    is owed). Reading it as "owed" would defer a fix that no later review will
+    ever cover, so the ambiguous case keeps the round — the cost of the
+    conservative reading is at most one round, never an unreviewed fix.
+    """
+    return progress.total - progress.complete >= 2
+
+
+def _newest_branch_review(project_dir: Path) -> "dict | None":
+    """The most recent ``review`` fact recorded on the checked-out branch, or ``None``.
+
+    Read from the clone-wide store and filtered by the ``actor.branch`` each fact
+    carries, so a sibling worktree's reviews of another branch never answer for
+    this one. Its tree need not be committed: a review of uncommitted work is
+    exactly the case where the tree it judged exists nowhere in the history.
+    """
+    from . import evidence  # noqa: PLC0415 — lazy, as this module's other lib imports are
+
+    branch = gitstate.current_branch(project_dir)
+    if not branch:
+        return None
+    read = evidence.read_facts(project_dir)
+    if read.get("status") == "error":
+        return None
+    reviews = [
+        f for f in read.get("facts") or []
+        if f.get("kind") == "review" and (f.get("actor") or {}).get("branch") == branch
+    ]
+    # The store is append-only, so its order IS the recording order; `ts` has
+    # one-second resolution and two reviews can share it. Position breaks the
+    # tie — a timestamp alone picks arbitrarily between same-second reviews.
+    return reviews[-1] if reviews else None
+
+
+def review_chain(facts: list[dict], newest: dict) -> list[dict]:
+    """Every review fact on the chain ``newest`` stands on, newest first.
+
+    The chain is structural: each review's ``base_tree`` is the ``head_tree`` of
+    the review before it (the link ``critic_consolidate.carried_blocking`` reads
+    one hop of). EVERY review standing at a linked tree is included, not only
+    the newest there, because a second review of an unchanged tree must not hide
+    the first; the walk steps back through the newest of them. Walked to the
+    end, because a chain can be several passes long.
+    """
+    reviews = [f for f in facts if f.get("kind") == "review"]
+    # Append order is recording order (the store is append-only); `ts` has
+    # one-second resolution, so it cannot order two reviews in the same second.
+    position = {f.get("id"): i for i, f in enumerate(reviews)}
+    chain: list[dict] = []
+    seen: set[str] = set()
+    current: "dict | None" = newest
+    while current is not None and current.get("id") not in seen:
+        seen.add(current.get("id"))
+        chain.append(current)
+        base = (current.get("body") or {}).get("base_tree")
+        here = position.get(current.get("id"), len(reviews))
+        earlier = [
+            f for f in reviews
+            if f.get("id") not in seen and (f.get("body") or {}).get("head_tree") == base
+            and position[f.get("id")] < here
+        ]
+        for other in earlier[:-1]:
+            seen.add(other.get("id"))
+            chain.append(other)
+        current = earlier[-1] if earlier else None
+    return chain
+
+
+def _open_blocker_on_chain(facts: list[dict], chain: list[dict]) -> bool:
+    """Whether any review on ``chain`` still holds an unresolved blocker.
+
+    A ``verify-resolutions`` pass records resolutions for the findings it names
+    and does not copy forward the ones it leaves open, so the newest review can
+    be clean while one it stands on is not. An open blocker anywhere on the
+    chain also blocks the gates, whose composed path stands on the same trees.
+    """
+    resolved = coverage_algebra.resolution_index(facts)
+    return any(coverage_algebra.unresolved_blocking(f, resolved) for f in chain)
+
+
+def boundary_review_on_chain(chain: list[dict]) -> bool:
+    """Whether a ``cumulative`` sits on ``chain`` — the builder is at the boundary.
+
+    A ``cumulative`` spans every chunk built so far and records at most one
+    chunk id, so after one the Status ticks cannot say whether a later chunk is
+    still to be built or merely awaits its tick: both read "unticked". The
+    review's mode can: a ``cumulative`` is the end-of-plan or pre-PR review, so
+    no later chunk review is coming to carry anything, and nothing may defer.
+    """
+    return any(
+        str((f.get("body") or {}).get("mode", "")).startswith("cumulative") for f in chain
+    )
+
+
+def extension_deferral(project_dir: Path, prawduct_dir: Path, plan, progress) -> "str | None":
+    """Why the next review will cover this state, or ``None`` when it will not.
+
+    A review of the uncovered work since the last reviewed tree is not owed NOW
+    only when ALL of these hold — each is the answer to a way the deferral can
+    skip a review that is owed:
+
+    1. **This chunk was reviewed.** The newest review on the branch
+       (:func:`_newest_branch_review`) is of the CURRENT, unticked chunk — by
+       the chunk id the fact records, or, when the dispatch passed none, the
+       chunk record-lint graded (itself read from the plan's Status, so any
+       review run while this chunk was current counts). Otherwise the pending
+       work may be a whole chunk nobody has reviewed, and deferring it would
+       skip that chunk's review rather than carry a fix. A fact carrying
+       neither defers nothing.
+    2. **No open blocker on the chain it stands on**
+       (:func:`_open_blocker_on_chain`). Checked on the facts, not on the
+       committed history: a review of uncommitted work leaves its tree nowhere
+       a history walk can find, so a blocker it raised is invisible to
+       :func:`gates.covered_frontier`. And not on the newest fact alone: a
+       verify pass does not copy forward a blocker it left open. Blockers clear
+       only through ``verify-resolutions``. Nor a ``cumulative`` on that chain
+       (:func:`boundary_review_on_chain`): after the boundary review, unticked
+       boxes cannot say whether a later chunk exists.
+    3. **A later review is owed** (:func:`later_review_owed`). With (1), two or
+       more unticked chunks means "this reviewed chunk, and at least one after
+       it", which is what makes the later review real.
+    4. **A covered frontier exists** (``gates.covered_frontier``), so that later
+       ``chunk``/``final`` review has a reviewed state to start from and covers
+       everything after it.
+
+    ``None`` on any failure, so a predicate that could not run never relaxes
+    anything.
+    """
+    if not later_review_owed(progress) or progress.current_id is None:
+        return None
+    newest = _newest_branch_review(project_dir)
+    if newest is None:
+        return None
+    body = newest.get("body") or {}
+    reviewed_chunk = body.get("chunk") or (body.get("record_lint") or {}).get("chunk_graded")
+    if not reviewed_chunk or buildplan_refs._normalize_chunk_id(
+        str(reviewed_chunk)
+    ) != buildplan_refs._normalize_chunk_id(str(progress.current_id)):
+        return None
+    from . import evidence, gates  # noqa: PLC0415 — lazy; gates is heavy and one-way
+
+    facts = evidence.read_facts(project_dir).get("facts") or []
+    chain = review_chain(facts, newest)
+    if _open_blocker_on_chain(facts, chain) or boundary_review_on_chain(chain):
+        return None
+    frontier = gates.covered_frontier(project_dir)
+    if frontier is None:
+        return None
+    left = progress.total - progress.complete
+    return (
+        f"chunk {progress.current_id} was reviewed with no open blocker and {left - 1} more "
+        f"chunk(s) of {plan.rel or 'the plan'} follow, so a later review is owed, and it "
+        f"starts from the last reviewed state ({frontier['commit'][:12]}) — it covers this "
+        "work too. Commit and carry on"
     )
 
 

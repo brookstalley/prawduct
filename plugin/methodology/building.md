@@ -81,7 +81,7 @@ Test at the right level — **unit** (functions, logic), **integration** (compon
 
 **Implement.** Write the code that makes the tests pass, following `project-preferences.md` conventions. Prefer simplicity — the minimum abstraction the current chunk needs. Add observability alongside features, not after.
 
-**A verification ceiling — yours and a delegate's.** While building, run the narrowest thing that proves the change: the project's `Inner-loop verification` row where it has one, else the tests for the files you touched. The declared suite runs at Verify and at the boundary. A cost bound, not a rigor discount, and what it prevents fails *silently*: a partial or contended run reports a green that skipped a part nobody can name.
+**A verification ceiling — yours and a delegate's.** While building, run the narrowest thing that proves the change: the project's `Inner-loop verification` row where it has one, else the tests for the files you touched. The declared suite runs at the boundary, before the work lands (the `cumulative` review and PR, where there are ones), unless that row asks for it per chunk. A cost bound, not a rigor discount, and what it prevents fails *silently*: a partial or contended run reports a green that skipped a part nobody can name.
 
 **Update artifacts as you go.** When implementation changes something an artifact describes — API surface, data model, architecture — update that artifact as part of implementation, not at the end. Artifact drift is the #1 recurring quality issue at scale.
 
@@ -93,7 +93,7 @@ Test at the right level — **unit** (functions, logic), **integration** (compon
 
 **Verify.** Two layers:
 
-- *Code:* Record **once**, at Verify — **not** after committing (a commit doesn't stale session-scoped evidence). Check `test-status` first (exit 0 = already passed; don't re-run). Record via `prawduct-hook test-evidence record`, or ingest an existing run — `--from-junit`, `--from-counts` (any toolchain), `--no-rerun` (restamp) — no re-run even when `test_command:` is declared. Non-default suites: `test_command:`/`test_commands:`/`tests_dirs:`.
+- *Code:* A chunk runs the ceiling above; record the declared suite **once**, at the boundary run — **not** after committing (a commit doesn't stale session-scoped evidence). Check `test-status` first (exit 0 = already passed; don't re-run). Record via `prawduct-hook test-evidence record`, or ingest an existing run — `--from-junit`, `--from-counts` (any toolchain), `--no-rerun` (restamp) — no re-run even when `test_command:` is declared. Non-default suites: `test_command:`/`test_commands:`/`tests_dirs:`.
 - *Product:* Launch it, call it, inspect output. If infrastructure dependencies are declared, verify against real instances — mocks are not verification.
 
 Scale to chunk significance. When you can't verify, say so (Principle 5).
@@ -104,7 +104,7 @@ Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 **Critic review.** Run `/prawduct:critic` (no args) — the SKILL infers mode from git + build-plan state via `prawduct-hook infer-critic-mode` and records `mode_chosen_by`. Pass an explicit mode (e.g. `/prawduct:critic cumulative`) only to override; report override cases so inference can improve. A short plan owes fewer runs than one per chunk — `review-cycle.md`'s "When Review Is Required" row states which and when.
 
-**Resolve findings.** Consolidate before reading `.critic-findings.json` where the digest says to; single-pass reviews consolidate themselves. **Disposition them ALL in ONE pass — fix everything in the working tree, then ONE `/prawduct:critic verify-resolutions`, then ONE commit** (in that order — committing first re-anchors the pass; `review-cycle.md`) — fix-commit-verify per finding multiplies rounds. **Once zero blocking remain the review is over — then fix, accept, or file** (`skills/critic/review-cycle.md`). Accept (won't-fix, reasoned) is the default. **Record it as a fact (`prawduct-hook disposition`), then `render-dispositions` into the entry — never hand-count.** Re-run the gate, don't infer a round from stale output. Document disagreements with rationale.
+**Resolve findings.** Consolidate before reading `.critic-findings.json` where the digest says to; single-pass reviews consolidate themselves. **Disposition them ALL in ONE pass while a blocker remains — fix everything in the working tree, then ONE `/prawduct:critic verify-resolutions`, then ONE commit** (in that order — committing first re-anchors the pass; `review-cycle.md`) — fix-commit-verify per finding multiplies rounds. **Once zero blocking remain the review is over — then fix, accept, or file**; mid-plan, NEXT-ACTION says when a fix rides the next review. Accept (won't-fix, reasoned) is the default. **Record it as a fact (`prawduct-hook disposition`), then `render-dispositions` into the entry — never hand-count.** Re-run the gate, don't infer a round from stale output. Document disagreements with rationale.
 
 **Reflect — now, not at session end.** Append to `.prawduct/.session-reflected`: what you expected vs. what actually happened, and the root cause or "no defect" — the two lines the gate grades — then what the chunk delivered, what the Critic caught, what surprised you. A paragraph is enough. Add a rule under `.claude/rules/learnings/` only if this cycle produced one.
 

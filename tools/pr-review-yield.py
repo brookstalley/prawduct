@@ -16,10 +16,11 @@ that drops findings is a quality trade and has to be argued as one.
     tools/pr-review-yield.py --json
 
 HAZARD, and it governs every duration this prints: `duration_seconds` is
-**self-reported by the reviewing model**, not a measured clock. It is corroborated
-within 16% where commits are dense enough to check it (see
-`documentation/consumer-build-metrics.md` hazard 2), which is what licenses using it
-at all — but a target stated against it is a target stated against an estimate. Where
+**self-reported by the reviewing model**, not a measured clock. Against the dispatch
+clock it runs high, worst on short reviews, and a PR review is short: about 3x on
+this repo's clocked rows (see `documentation/consumer-build-metrics.md` hazard 2).
+A target stated against it is a
+target stated against an estimate. Where
 the envelope carries `dispatched_at`, this tool prefers the measured interval and
 says how many rows it had.
 """
@@ -35,7 +36,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "plugin" / "lib"))
 
-from review_dispatch import measured_interval_seconds  # noqa: E402
+from review_dispatch import event_interval_seconds  # noqa: E402
 from timewindow import in_window  # noqa: E402
 
 
@@ -76,7 +77,7 @@ def duration(row: dict) -> tuple[int | None, bool]:
     """Return (seconds, measured).
 
     A measured interval wins over the self-reported estimate, but only when the
-    mark attests one: `measured_interval_seconds` is the framework's own
+    mark attests one: `event_interval_seconds` is the framework's own
     predicate — the plausibility bound, the out-of-order refusal and the
     not-measured semantics — shared with `review-stats` and
     `measure-consumer-overhead.py` so the three readers of this field cannot
@@ -85,7 +86,7 @@ def duration(row: dict) -> tuple[int | None, bool]:
     the self-reported population rather than dropped.
     """
     review = row.get("review") or {}
-    secs = measured_interval_seconds(row.get("dispatched_at"), row.get("ts"))
+    secs = event_interval_seconds(row)
     if secs is not None:
         return int(secs), True
     reported = row.get("duration_seconds") or review.get("duration_seconds")

@@ -1212,8 +1212,36 @@ class TestLearningsLayoutLine:
         out = briefing.assemble_session_briefing(tmp_path, [])
         line = self._learnings_lines(out)[0]
         assert line.endswith(
-            " — GITIGNORED: the rules tree is not committed; unignore .claude/rules/"
+            " — GITIGNORED: the rules tree exists only in this checkout; "
+            "a clone will not have it"
         )
+
+    def test_a_deliberately_local_rules_tree_is_not_told_to_unignore(self, tmp_path):
+        """#889: `learnings-migrate --local` leaves the tree ignored ON PURPOSE,
+        in a public repo whose learnings hold private notes. The suffix used to
+        end "unignore .claude/rules/" — read every session by an agent, that is
+        one `git add -A` from publishing them. The consequence is still named;
+        the instruction is gone. Built by the real migration, not by hand, so
+        the fixture is the state the reporter's repo is actually in."""
+        import shutil
+        from lib import learnings_migrate as lm
+
+        _init_git_repo(tmp_path)
+        self._state(tmp_path)
+        fixture = (
+            Path(__file__).resolve().parent / "fixtures" / "learnings_migrate" / "topic"
+        )
+        shutil.copytree(fixture / ".prawduct", tmp_path / ".prawduct", dirs_exist_ok=True)
+        (tmp_path / ".gitignore").write_text(
+            "\n".join((*lm.LEGACY_FILES, ".claude/*")) + "\n"
+        )
+        migration = lm.plan(tmp_path, local=True)
+        assert migration.refusals == []
+        lm.apply(tmp_path, migration)
+
+        line = self._learnings_lines(briefing.assemble_session_briefing(tmp_path, []))[0]
+        assert "exists only in this checkout" in line
+        assert "unignore" not in line.lower()
 
     def test_tracked_rules_tree_carries_no_gitignored_suffix(self, tmp_path):
         _init_git_repo(tmp_path)
