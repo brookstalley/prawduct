@@ -92,7 +92,7 @@ mass drops.
 
 - [x] Chunk 01: The format and the caps are enforced
 - [x] Chunk 02: `learnings-compact` — worksheet, validator, one commit
-- [ ] Chunk 03: Every write surface teaches the one-line format
+- [x] Chunk 03: Every write surface teaches the one-line format
 - [ ] Chunk 04: Compact this repo's corpus and move its rulings
 Context: Plan written 2026-09-24 from the 3.6.x overhead audit (see the owner conversation; the
 fleet figures are re-derivable from each repo's `.prawduct/.governance-ledger.jsonl` and
@@ -151,6 +151,13 @@ fleet figures are re-derivable from each repo's `.prawduct/.governance-ledger.js
 
   **Owner question:** does 12KB stand for discodon, or does its owner raise it (`owner_approved:`)
   for a transition?
+
+**Chunk 03 built and reviewed (commit 4aa118bf).** Departure: `review-cycle.md`'s rule-pass bullet
+is unchanged. The format check it was to become is already mechanized by Chunk 01's
+`learnings-rule-too-long` / `learnings-rule-body` severity row, and a second copy in reviewer prose
+would be the two-homes defect. Its observations (the blocker's false "header states the limit"
+claim, a hardcoded 250 in the scaffold, the carrier test being literal-only, stale docstrings) ride
+Chunk 04's commit.
 
 **Baseline (2026-09-24):** the declared suite had 1 failure on `origin/develop` that is not this
 branch's: `tests/test_pr_evidence_contract.py::TestClosingKeywordClaims` over
