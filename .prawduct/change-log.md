@@ -17,7 +17,8 @@ its Release notes. `check-released v3.6.1` reports 3 of 3 verified, and the hand
 
 **A patch, as the owner named it.** `.prawduct/artifacts/release-plan-v3.6.1.md` records why the
 bundle's weight did not argue for a minor. `learnings-one-line` stays off this release. It
-registers its gates `since: 3.7.0`, so its merge moves `develop` to that number.
+registers its gates `since: 3.7.0`, but its branch does not touch the version files. Merging it
+leaves `develop` on `3.6.2-dev` until someone bumps it on purpose, in that PR or at the 3.7.0 cut.
 
 **The cut first needed a green `develop`, and it did not have one.** `a0e90e80`, the #672 design
 doc, was committed straight to `develop` with no PR and no suite run. It tripped
