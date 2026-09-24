@@ -49,8 +49,8 @@ reasons. Do not re-raise one absent material change in its cited files** — one
 = older answers dropped; `unavailable` = the join failed, so you know nothing.
 
 **Record checks are already answered — read the manifest's `record_lint`.** Never
-recount it: that is how a record defect buys a review round. Each entry carries its explanation — raise it. `chunk-ref-missing` → **BLOCKING** (a declared deliverable that does not exist is a dropped requirement, so it is in the inner set); `learnings-budget-unreasoned` and `learnings-over-budget` → **BLOCKING** at the boundary, an observation here.
-`governed-by-gap`, `learnings-area-dead` → **WARNING** under Goal 2.
+recount it: that is how a record defect buys a review round. Each entry carries its explanation — raise it. `chunk-ref-missing` → **BLOCKING** (a declared deliverable that does not exist is a dropped requirement, so it is in the inner set); `learnings-budget-unreasoned`, `learnings-rule-too-long`, `learnings-rule-body` and `learnings-over-budget` → **BLOCKING** at the boundary, an observation here.
+`governed-by-gap`, `learnings-area-dead`, `learnings-core-raise-unapproved` → **WARNING** under Goal 2.
 `suite-total-claim` → **NOTE**.
 **`unchecked` is not a pass: an entry inherits one step below its check's severity** (BLOCKING
 → **WARNING**, else **NOTE**), except the shapes below:

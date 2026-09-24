@@ -748,3 +748,38 @@ class TestThisReposOwnCorpus:
         silently-passing comparisons."""
         units = self._units()
         assert len(units) > 50, f"only {len(units)} units found; the sweep read nothing real"
+
+
+class TestShapeViolations:
+    """The format is a property of the text alone. Each test names its red."""
+
+    def test_the_header_before_the_first_rule_is_not_a_body(self):
+        # Red if the scaffold's obligation paragraph is flagged.
+        assert lf.shape_violations(lf.CORE_HEADER + "- a rule\n") == []
+
+    def test_frontmatter_is_not_a_body(self):
+        text = "---\npaths:\n  - \"src/**\"\n---\n# Area\n\n- a rule\n"
+        assert lf.shape_violations(text) == []
+
+    def test_prose_indented_bullets_and_fences_under_a_rule_are_bodies(self):
+        text = "- a rule\nprose\n  - nested\n```\ncode\n```\n"
+        kinds = [(v.line, v.kind) for v in lf.shape_violations(text)]
+        assert kinds == [(2, "body"), (3, "body"), (4, "body"), (5, "body"), (6, "body")]
+
+    def test_the_limit_is_on_the_raw_line(self):
+        at = "- " + "x" * (lf.RULE_LINE_MAX - 2)
+        over = at + "x"
+        assert lf.shape_violations(at + "\n") == []
+        assert [v.kind for v in lf.shape_violations(over + "\n")] == ["too-long"]
+
+    def test_headings_are_rules_too(self):
+        # A `###` rule (this repo's legacy form) is measured like a bullet.
+        text = "### " + "y" * lf.RULE_LINE_MAX + "\n"
+        assert [v.kind for v in lf.shape_violations(text)] == ["too-long"]
+
+    def test_rule_units_did_not_move(self):
+        """The walk is shared with rule_units now; the units it yields are the
+        telemetry join key, so they must not change. Red if the refactor
+        altered unit extraction."""
+        text = "# T\n\n## Banner\n- one\n  - nested\n```\n- fenced\n```\n### two\n"
+        assert lf.rule_units(text) == ["Banner", "one", "two"]

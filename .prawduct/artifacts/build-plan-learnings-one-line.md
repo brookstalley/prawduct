@@ -96,9 +96,40 @@ mass drops.
 - [ ] Chunk 04: Compact this repo's corpus and move its rulings
 Context: Plan written 2026-09-24 from the 3.6.x overhead audit (see the owner conversation; the
 fleet figures are re-derivable from each repo's `.prawduct/.governance-ledger.jsonl` and
-`.git/prawduct/evidence.jsonl`). Nothing built yet. Next: Chunk 01. A sibling plan for the
-post-cumulative verify-round change is pending owner confirmation of its size; it shares no files
-with this one.
+`.git/prawduct/evidence.jsonl`). A sibling plan for the post-cumulative verify-round change lives on
+`feature/post-cumulative-pr-coverage` in its own worktree and shares no files with this one.
+
+**Chunk 01 built, with these departures from its text (recorded, not silent):**
+- **Success 4 is met by measuring against HEAD when the marker is missing**, not by base-free checks.
+  A base-free format check would grade a not-yet-compacted corpus whole and block every such
+  session. HEAD still charges uncommitted growth, and the NOTE says committed growth is not charged.
+- **The legacy credit is replaced by a migration-session rule.** When the base holds the legacy file
+  and no `core.md`, `core.md` is judged against the corpus total and its lines are not graded
+  (they moved). Every later session is per-file. discodon's growth happened INSIDE its migration
+  session, so the total rule would still have passed it. Its later growth came through sessions with
+  no marker, and the HEAD fallback closes that path.
+- **`reflection.md`'s budget paragraph and the template's budget block were corrected in this
+  chunk.** The gate falsified them (a 16KB core, agent raises, "never trim"), and a later chunk
+  defers deletions, not corrections. Chunk 03 still owns Step 4's rule-shape sentence and the
+  other carriers.
+- **A frozen corpus grades added lines by content, not position**, so reordering or moving a line
+  between files is never "added".
+- **`learnings-core-raise-unapproved` is a NOTE at Stop, not a blocker.** The check already ignores
+  the raise, so the cap holds without charging the session for the declaration.
+- **The freeze is per file, not on the corpus total** (Success 3 said both). A total freeze would
+  stop an uncompacted repo adding any scoped rule to an area file under its budget, which the owner
+  kept as raise-with-reason. The briefing and the template state the per-file rule.
+- **The briefing's directive names `learnings-compact` from Chunk 01 on.** The command lands in
+  Chunk 02 of the same release, and nothing ships between them.
+- **The migration session grades no file's lines**, area files included (review
+  rev-20260924T132555Z-d981bb78, blocker R-3): `learnings-migrate` writes area files from the legacy
+  corpus, so their lines are moved too.
+- **puzzles, the repo with a 4KB core, is non-compliant too** (584 body lines in its area files).
+  The owner's "no bodies anywhere" ruling reaches area files.
+
+**Baseline (2026-09-24):** the declared suite had 1 failure on `origin/develop` that is not this
+branch's: `tests/test_pr_evidence_contract.py::TestClosingKeywordClaims` over
+`documentation/issues/672-design.md` (added by develop's `a0e90e80`). Flagged to the owner, not fixed here.
 
 ## Build Chunks
 

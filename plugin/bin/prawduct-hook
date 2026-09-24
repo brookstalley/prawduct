@@ -2478,7 +2478,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # are noise — they make every session look like it bypassed governance.
     waivers = _gates()._read_gates_waived(prawduct_dir)
     waiver_notes: list[str] = []
-    KNOWN_WAIVER_KEYS = {"reflection", "critic", "pr", "learnings", "learnings-budget"}
+    KNOWN_WAIVER_KEYS = {"reflection", "critic", "pr", "learnings"}
     unknown_waiver_keys = sorted(k for k in waivers if k not in KNOWN_WAIVER_KEYS)
     if unknown_waiver_keys:
         # Stderr-only warning so the agent learns about typos. Doesn't affect gate
@@ -2758,28 +2758,43 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
         try:
             from lib import record_lint as _record_lint  # noqa: PLC0415 — lazy keeps top-level cheap
 
-            # Called even with no base-tree marker, because only ONE of the two
-            # arms needs one: `learnings-budget-unreasoned` is decided from
-            # project-state.yaml alone and is emitted before the check ever
-            # looks at a file. Skipping the call on a missing marker silenced a
-            # finding whose answer did not depend on it.
+            # Called even with no base-tree marker: `learnings-budget-unreasoned`
+            # is decided from project-state.yaml alone, and the rest measure
+            # against HEAD in that case (below) rather than not at all.
             _budget_base = _gates()._read_session_base_tree(prawduct_dir)
+            # No marker: measure against HEAD rather than not at all. The format
+            # needs no base, and "no marker" is how a continuation in a fresh
+            # checkout or a worktree arrives — discodon's core.md grew through
+            # three such sessions with only a stderr NOTE nobody reads. Work this
+            # session already COMMITTED is invisible from HEAD, and the NOTE
+            # says so rather than implying a full check.
+            _budget_cmp = _budget_base
+            if not _budget_cmp:
+                _head_rc = subprocess.run(
+                    ["git", "rev-parse", "HEAD^{tree}"],
+                    cwd=str(project_dir), capture_output=True, text=True, timeout=10,
+                )
+                _budget_cmp = _head_rc.stdout.strip() if _head_rc.returncode == 0 else ""
             _budget_findings, _budget_unchecked, _ = (
                 _record_lint._check_learnings_budget(
-                    project_dir, prawduct_dir, _budget_base
+                    project_dir, prawduct_dir, _budget_cmp
                 )
             )
-            if not _budget_base:
-                # `record_lint` reports this as "could not resolve the base tree
-                # <empty>"; the cause is one level up and is the actionable form.
+            if not _budget_base and _budget_cmp:
+                _budget_unchecked = _budget_unchecked + [
+                    "learnings-over-budget measured against HEAD — no .session-base-tree "
+                    "marker, so rules this session already committed were not charged, "
+                    "and no `learning.written` telemetry was recorded"
+                ]
+            elif not _budget_base:
+                # Neither a marker nor a readable HEAD: say that, rather than the
+                # generic "could not resolve the base tree <empty>".
                 _budget_unchecked = [
                     _e for _e in _budget_unchecked
                     if "could not resolve the base tree" not in _e
                 ] + [
-                    "learnings-over-budget unchecked — no .session-base-tree marker, so "
-                    "there is no base size to compare this session's growth against, "
-                    "and no `learning.written` telemetry was recorded either (both "
-                    "questions are the same comparison against the same missing base)"
+                    "learnings-over-budget unchecked — no .session-base-tree marker and "
+                    "HEAD did not resolve, so there is nothing to compare against"
                 ]
         except Exception as exc:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
             _budget_findings, _budget_unchecked = [], [
@@ -2790,57 +2805,63 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
         # not be measured must not read as a ceiling that held.
         for _entry in _budget_unchecked:
             print(f"\nNOTE: {_entry}", file=sys.stderr)
+        # Advisory findings print as a NOTE and never block: an unapproved core
+        # raise is already IGNORED by the check (the cap holds), so blocking on
+        # the declaration would charge the session for text that changes nothing.
+        _budget_advisory = {"learnings-core-raise-unapproved"}
+        for _f in _budget_findings:
+            if _f["check"] in _budget_advisory:
+                print(f"\nNOTE: {_f['path']}: {_f['detail']}", file=sys.stderr)
+        _budget_findings = [
+            _f for _f in _budget_findings if _f["check"] not in _budget_advisory
+        ]
         if _budget_findings:
-            if "learnings-budget" in waivers:
-                waiver_notes.append(
-                    f"learnings-budget: waived ({waivers['learnings-budget']})"
+            # No waiver. A waiver the agent writes for itself is how a cap stops
+            # being a cap, and this one is the corpus every session pays for.
+            #
+            # DERIVED from the checks present, never written for the one in
+            # mind: the kinds share nothing but a file, and each gets the
+            # sentence that is true of it.
+            _budget_headlines = {
+                "learnings-over-budget": (
+                    "LEARNINGS BUDGET (over and grown): a rules file is over its ceiling\n"
+                    "  and grew this session, so the next addition pays before it lands:\n"
+                ),
+                "learnings-budget-unreasoned": (
+                    "LEARNINGS BUDGET (ceiling with no reason): a `learnings_budgets:` entry\n"
+                    "  raises a budget without saying what earned the extra room. Nothing here\n"
+                    "  is about a file's size — the fix is one `reason:` line:\n"
+                ),
+                "learnings-rule-too-long": (
+                    "LEARNINGS FORMAT (rule too long): a rule is one line — its reason and\n"
+                    "  instance fit as a clause, or it is two rules:\n"
+                ),
+                "learnings-rule-body": (
+                    "LEARNINGS FORMAT (body under a rule): rules carry no body — the story\n"
+                    "  belongs in the session reflection:\n"
+                ),
+            }
+            _by_check: dict[str, list[dict]] = {}
+            for _f in _budget_findings:
+                _by_check.setdefault(_f["check"], []).append(_f)
+            for _check in sorted(_by_check):
+                _detail = "".join(
+                    f"    - {_f['path']}: {_f['detail']}\n" for _f in _by_check[_check]
                 )
-            else:
-                # DERIVED from the checks present, never written for the one in
-                # mind. `_check_learnings_budget` returns two kinds in one list
-                # and they have nothing in common: `learnings-budget-unreasoned`
-                # is about a `learnings_budgets:` entry in project-state.yaml, it
-                # fires before the check ever looks at a rules file (so it
-                # reaches a `none`-state repo with no corpus at all), and its
-                # remedy is one `reason:` line. Under the over-budget headline an
-                # operator was sent hunting for growth that never happened, and
-                # the blocker id named a control that did not fire.
-                _budget_headlines = {
-                    "learnings-over-budget": (
-                        "LEARNINGS BUDGET (over and grown): a rules file is over its ceiling\n"
-                        "  and grew this session, so the next addition pays before it lands:\n"
-                    ),
-                    "learnings-budget-unreasoned": (
-                        "LEARNINGS BUDGET (ceiling with no reason): a `learnings_budgets:` entry\n"
-                        "  raises a budget without saying what earned the extra room. Nothing here\n"
-                        "  is about a file's size — the fix is one `reason:` line:\n"
-                    ),
-                }
-                _by_check: dict[str, list[dict]] = {}
-                for _f in _budget_findings:
-                    _by_check.setdefault(_f["check"], []).append(_f)
-                for _check in sorted(_by_check):
-                    _detail = "".join(
-                        f"    - {_f['path']}: {_f['detail']}\n" for _f in _by_check[_check]
-                    )
-                    # A check this gate has no sentence for still gets a true
-                    # one: naming it beats heading it with another check's.
-                    _head = _budget_headlines.get(
-                        _check,
-                        f"LEARNINGS BUDGET ({_check}): the budget check reported this and\n"
-                        "  this gate carries its wording unchanged:\n",
-                    )
-                    blockers.append(_attributed(_check,
-                        _head
-                        + _detail
-                        + "\n"
-                        "  Escape hatch: if this cannot be resolved this session, declare a\n"
-                        "  waiver so this gate stops re-firing every turn:\n"
-                        "    echo '{\"learnings-budget\": \"reason — be specific\"}' > .prawduct/.gates-waived\n"
-                        "  Empty reasons are rejected; the file clears at the next session boundary\n"
-                        "  (a fresh start or /clear), so it outlives a resume/compact/fork. See\n"
-                        "  `/prawduct:methodology building` (Gate waivers) for when this is appropriate.\n"
-                    ))
+                # A check this gate has no sentence for still gets a true
+                # one: naming it beats heading it with another check's.
+                _head = _budget_headlines.get(
+                    _check,
+                    f"LEARNINGS ({_check}): the check reported this and\n"
+                    "  this gate carries its wording unchanged:\n",
+                )
+                blockers.append(_attributed(_check,
+                    _head
+                    + _detail
+                    + "\n"
+                    "  There is no waiver for this gate: pay in this session, or ask the\n"
+                    "  owner. core.md's cap moves only with an `owner_approved:` date.\n"
+                ))
 
         # Telemetry, not a gate: one `learning.written` per rule unit that is
         # new since this session's base revision (`docs/governance-telemetry.md`).

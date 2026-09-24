@@ -1138,6 +1138,34 @@ class TestLearningsLayoutLine:
         out = briefing.assemble_session_briefing(tmp_path, [])
         assert self._learnings_lines(out) == []
 
+    def test_an_over_limit_corpus_is_named_with_a_directive(self, tmp_path):
+        """Not an advisory: the corpus regrew four times behind advisories that
+        were read once and dismissed. Red if the limit lines stop rendering, or
+        render for a compliant corpus (the next test)."""
+        self._state(tmp_path)
+        rules = self._rules(tmp_path)
+        (rules / "core.md").write_text(
+            "# core\n\n- a rule\nA body line under it.\n- " + "long " * 60 + "\n"
+        )
+        lines = self._learnings_lines(briefing.assemble_session_briefing(tmp_path, []))
+        over = [ln for ln in lines if "OVER LIMIT" in ln]
+        assert len(over) == 1
+        assert "1 rule line(s) over 250 characters" in over[0]
+        assert "1 body line(s)" in over[0]
+        assert "frozen until compacted" in over[0]
+        assert any(ln.startswith("agent →") and "learnings-compact" in ln for ln in lines)
+
+    def test_an_unapproved_core_raise_is_named_as_ignored(self, tmp_path):
+        pr = self._state(tmp_path)
+        (pr / "project-state.yaml").write_text(
+            'product_identity:\n  name: P\nlearnings_budgets:\n'
+            '  core.md: {kb: 64, reason: "room"}\n'
+        )
+        (self._rules(tmp_path) / "core.md").write_text("# core\n\n" + "- a rule\n" * 3000)
+        lines = self._learnings_lines(briefing.assemble_session_briefing(tmp_path, []))
+        over = [ln for ln in lines if "OVER LIMIT" in ln][0]
+        assert "(cap 12KB)" in over and "is ignored" in over
+
     def test_new_state_names_the_files_and_the_obligation(self, tmp_path):
         self._state(tmp_path)
         rules = self._rules(tmp_path)

@@ -74,6 +74,9 @@ CHECKS = (
     "suite-total-claim",
     "learnings-over-budget",
     "learnings-budget-unreasoned",
+    "learnings-core-raise-unapproved",
+    "learnings-rule-too-long",
+    "learnings-rule-body",
     "learnings-area-dead",
 )
 
@@ -837,7 +840,7 @@ def _check_chunk_refs(
 
 
 # ---------------------------------------------------------------------------
-# The learnings budget — over AND grown blocks the next addition
+# The learnings budget and format — one-line rules, a core.md cap only the owner raises
 # ---------------------------------------------------------------------------
 
 
@@ -857,6 +860,11 @@ _LEARNINGS_BUDGETS_KEY = "learnings_budgets"
 #: declaration this reader cannot parse compromises both of them at once — the
 #: ceiling it states and the reason it gives for it.
 _BUDGET_CHECKS = ("learnings-over-budget", "learnings-budget-unreasoned")
+
+#: The format checks. They read the same files the size check reads, so any
+#: path on which the size check produced no answer produced none for them
+#: either, and they count ``None`` there too.
+_FORMAT_CHECKS = ("learnings-rule-too-long", "learnings-rule-body")
 
 #: The repo-relative record the override lives in — named in every finding, so a
 #: reader is told where to go rather than which knob abstractly exists.
@@ -935,13 +943,20 @@ def _parse_budget_fields(pairs: "list[str]", entry: dict) -> bool:
             continue
         key, sep, value = pair.partition(":")
         key = key.strip().strip("\"'")
-        if not sep or key not in ("kb", "reason"):
+        if not sep or key not in ("kb", "reason", "owner_approved"):
             return False
         if key == "kb":
             try:
                 entry["kb"] = int(_unquote(value))
             except ValueError:
                 return False
+        elif key == "owner_approved":
+            # A date, or it is not an approval: a boolean or a name would let
+            # "approved" be written without saying when anyone approved it.
+            approved = _unquote(value)
+            if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", approved):
+                return False
+            entry["owner_approved"] = approved
         else:
             entry["reason"] = _unquote(value)
     return True
@@ -959,7 +974,7 @@ def parse_learnings_budgets(text: str) -> "tuple[dict[str, dict], list[str]]":
             reason: "…"
 
     An entry this reader cannot parse lands in ``malformed`` and NOT in the
-    budgets: a half-read declaration silently applies the 16KB default while the
+    budgets: a half-read declaration silently applies the default ceiling while the
     operator believes their override is in force, and the difference surfaces as
     a blocking finding they cannot explain. The caller reports it ``unchecked``,
     which is this module's standing answer for "did not run" (never a pass).
@@ -1002,39 +1017,78 @@ def parse_learnings_budgets(text: str) -> "tuple[dict[str, dict], list[str]]":
     return budgets, malformed
 
 
-def _base_size(project_dir: Path, base_tree: str, rel: str) -> "int | None":
-    """Bytes this path held in ``base_tree``; 0 when it was not there.
+def _git_text(project_dir: Path, tree: str, rel: str) -> "str | None":
+    """``rel``'s text in ``tree``, or ``None`` when it is absent or unreadable.
 
-    Absent-at-base counts as **grown** — a file that did not exist before is all
-    addition, and exempting the first commit of an area file would let a repo
-    ship a 40KB one and then be told it may never touch it again.
-
-    One exception, by construction: ``core.md`` absent at base while the legacy
-    ``.prawduct/learnings.md`` was present there is the migration commit — the
-    corpus MOVED, it did not grow — so the base is the legacy file's size. Every
-    fleet repo passes through exactly this tree once, and reading it as
-    "grown from 0B" would block the migration the framework itself directed.
-
-    ``None`` means git answered in a shape this cannot read, which the caller
-    reports ``unchecked``. The base tree itself is validated by the caller, so a
-    nonzero exit here is genuinely "no such object in that tree".
+    The caller has already validated ``tree``, so a nonzero exit is "no such
+    path in that tree". Absence and unreadability both read as "nothing there",
+    which is the conservative answer for every caller here: a base that held
+    nothing makes the file all addition.
     """
-    rc, out, _err = evidence.run_git(
-        project_dir, "cat-file", "-s", f"{base_tree}:{rel}"
-    )
-    if rc != 0:
-        core_rel = f"{learnings_files.RULES_DIR_REL}/{learnings_files.CORE_NAME}"
-        if rel != core_rel:
-            return 0
-        rc, out, _err = evidence.run_git(
-            project_dir, "cat-file", "-s", f"{base_tree}:{learnings_files.LEGACY_REL}"
-        )
-        if rc != 0:
-            return 0
+    rc, out, _err = evidence.run_git(project_dir, "show", f"{tree}:{rel}")
+    return out if rc == 0 else None
+
+
+def _git_size(project_dir: Path, tree: str, rel: str) -> int:
+    """``rel``'s size in bytes in ``tree``; 0 when absent.
+
+    Sized by ``cat-file -s`` and never from :func:`_git_text`, whose output
+    ``run_git`` strips, so a length taken from it is short by the trailing
+    newline.
+    """
+    rc, out, _err = evidence.run_git(project_dir, "cat-file", "-s", f"{tree}:{rel}")
     try:
-        return int(out.strip())
+        return int(out.strip()) if rc == 0 else 0
     except ValueError:
-        return None
+        return 0
+
+
+def _effective_kb(name: str, budgets: dict) -> int:
+    """The ceiling that governs one rules file, in KB.
+
+    ``core.md``: :data:`learnings_files.CORE_CAP_KB` unless its override carries
+    ``owner_approved``. Only the owner can raise it, because what "raise with a
+    reason" measured to be was an agent raising it six times in five days. An area
+    file: its declared ``kb`` when positive, else the default.
+    """
+    entry = budgets.get(name) or {}
+    declared = entry.get("kb")
+    if name == learnings_files.CORE_NAME:
+        if isinstance(declared, int) and declared > 0 and entry.get("owner_approved"):
+            return declared
+        return learnings_files.CORE_CAP_KB
+    if isinstance(declared, int) and declared > 0:
+        return declared
+    return _LEARNINGS_BUDGET_DEFAULT_KB
+
+
+def _shape_findings(rel: str, violations: "list") -> "list[dict]":
+    """One finding per file per kind: a 139KB corpus has hundreds of body lines,
+    and a finding per line would bury the one sentence that says what to do."""
+    out: list[dict] = []
+    for kind, check, what in (
+        ("too-long", "learnings-rule-too-long",
+         f"rule line(s) over {learnings_files.RULE_LINE_MAX} characters"),
+        ("body", "learnings-rule-body", "body line(s) under a rule"),
+    ):
+        hits = [v for v in violations if v.kind == kind]
+        if not hits:
+            continue
+        shown = ", ".join(str(v.line) for v in hits[:5])
+        more = f" and {len(hits) - 5} more" if len(hits) > 5 else ""
+        out.append(
+            _finding(
+                check,
+                rel,
+                hits[0].line,
+                f"{len(hits)} {what} (line {shown}{more}) — a rule is ONE line of at "
+                f"most {learnings_files.RULE_LINE_MAX} characters, its reason and the "
+                "instance that earned it included as a clause. What does not fit is "
+                "two rules, or narrative, and narrative belongs in "
+                "`.prawduct/.session-reflected`",
+            )
+        )
+    return out
 
 
 def _check_learnings_budget(
@@ -1043,21 +1097,29 @@ def _check_learnings_budget(
     base_tree: str,
     layout: "learnings_files.Layout | None" = None,
 ) -> "tuple[list[dict], list[str], set[str]]":
-    """The curation gate: a rules file over budget **and grown this interval**.
+    """The curation gate: size and shape of the learnings rules files.
 
     Returns ``(findings, unchecked, no_answer)``.
 
-    **Over-and-grew, never over alone.** A repo arriving with a 40KB corpus is
-    not asked to stop the world and compact it — that is a one-time sweep, and
-    the two this project ran both regrew. What it is asked is to pay for the
-    *next* addition, which is the moment the trade is live and the duplicate is
-    in front of the author. So an over-budget file that shrank, or held still,
-    passes: the direction of travel is the finding, not the size.
+    **Two regimes, chosen by the corpus at the base tree:**
 
-    **Legacy layouts are silent.** ``resolve`` reports no files for a repo that
-    has not migrated, so nothing here fires — the unmigrated state is the
-    migration directive's business (R4), and two controls naming the same state
-    teach a reader to skip both.
+    * **Compliant at base** (every file within its budget, every rule one line,
+      no bodies): any violation now is a finding. A compliant corpus that is
+      over now got there this interval, so "over" is enough.
+    * **Non-compliant at base** (not yet compacted): **frozen**. A file over its
+      budget may not grow, and a line this interval ADDED may not break the
+      format. The corpus is not asked to stop the world; what it is asked is
+      not to get worse, with no credit and no waiver.
+
+    **The migration session** is the one whose base holds the legacy
+    ``.prawduct/learnings.md`` and no ``core.md``. The corpus moved, it did not
+    grow, so ``core.md`` is judged against the corpus TOTAL at base. That applies
+    only to that session: a per-file credit measured against the legacy file let
+    discodon's core.md grow 47KB before it registered.
+
+    **Raises:** ``core.md``'s cap moves only with ``owner_approved``, and a raise
+    that is not in the base tree's project-state does not count for this
+    interval, so growth and the raise that would excuse it cannot land together.
     """
     findings: list[dict] = []
     unchecked: list[str] = []
@@ -1075,8 +1137,7 @@ def _check_learnings_budget(
             f"{_BUDGET_CHECKS[0]}, {_BUDGET_CHECKS[1]} unchecked — "
             f"`{_LEARNINGS_BUDGETS_KEY}.{name}` in {_STATE_REL} is in a shape "
             "this reader does not parse, so the declared budget was NOT applied "
-            f"and the {_LEARNINGS_BUDGET_DEFAULT_KB}KB default governs this file "
-            "instead. Fix the entry or delete it"
+            f"and the default governs this file instead. Fix the entry or delete it"
         )
     if malformed:
         no_answer.update(_BUDGET_CHECKS)
@@ -1094,6 +1155,20 @@ def _check_learnings_budget(
                     "what this file earns the extra room for",
                 )
             )
+    core_entry = budgets.get(learnings_files.CORE_NAME) or {}
+    if core_entry.get("kb") and not core_entry.get("owner_approved"):
+        findings.append(
+            _finding(
+                "learnings-core-raise-unapproved",
+                _STATE_REL,
+                None,
+                f"`{_LEARNINGS_BUDGETS_KEY}.{learnings_files.CORE_NAME}` declares "
+                f"{core_entry['kb']}KB with no `owner_approved:` date, so it is "
+                f"IGNORED and core.md's cap is {learnings_files.CORE_CAP_KB}KB. Only "
+                "the owner raises core.md's cap; an agent pays by merging, retiring "
+                "or moving rules to an area file",
+            )
+        )
 
     if layout is None:
         layout = learnings_files.resolve(project_dir)
@@ -1111,49 +1186,174 @@ def _check_learnings_budget(
         unchecked.append(
             f"{_BUDGET_CHECKS[0]} unchecked — git could not resolve the base "
             f"tree {base_tree[:12]} ({err.strip() or 'no such tree'}); a growth "
-            "comparison needs both sides"
+            "comparison needs both sides, and the format checks grade against it"
         )
         no_answer.add(_BUDGET_CHECKS[0])
+        no_answer.update(_FORMAT_CHECKS)
         return findings, unchecked, no_answer
 
+    # The ceilings in force THIS interval are the base tree's: a raise written
+    # in the same interval as the growth it would excuse does not count yet.
+    try:
+        state_rel = (prawduct_dir / "project-state.yaml").relative_to(project_dir).as_posix()
+    except ValueError:
+        state_rel = _STATE_REL
+    base_state = _git_text(project_dir, base_tree, state_rel)
+    base_budgets = parse_learnings_budgets(base_state)[0] if base_state else {}
+
+    core_rel = f"{learnings_files.RULES_DIR_REL}/{learnings_files.CORE_NAME}"
+    rows = []
     for path in layout.files:
         try:
             rel = path.relative_to(project_dir).as_posix()
+            now_text = path.read_text(encoding="utf-8")
             now = path.stat().st_size
-        except (ValueError, OSError) as exc:
+        except (ValueError, OSError, UnicodeDecodeError) as exc:
             unchecked.append(
                 f"{_BUDGET_CHECKS[0]} unchecked on {path.name} — "
                 f"{type(exc).__name__}: {exc}"
             )
             no_answer.add(_BUDGET_CHECKS[0])
+            no_answer.update(_FORMAT_CHECKS)
             continue
-        base = _base_size(project_dir, base_tree, rel)
-        if base is None:
-            unchecked.append(
-                f"{_BUDGET_CHECKS[0]} unchecked on {rel} — git reported an "
-                "unreadable size for the base revision of this file"
-            )
-            no_answer.add(_BUDGET_CHECKS[0])
-            continue
-        declared = budgets.get(path.name, {}).get("kb")
-        kb = declared if isinstance(declared, int) and declared > 0 else (
-            _LEARNINGS_BUDGET_DEFAULT_KB
+        base_text = _git_text(project_dir, base_tree, rel)
+        kb_now = _effective_kb(path.name, budgets)
+        kb_base = _effective_kb(path.name, base_budgets)
+        rows.append({
+            "rel": rel,
+            "name": path.name,
+            "now": now,
+            "now_text": now_text,
+            "base": _git_size(project_dir, base_tree, rel) if base_text is not None else 0,
+            "base_text": base_text,
+            "budget": min(kb_now, kb_base) * 1024,
+            "raise_pending": kb_now > kb_base,
+        })
+
+    legacy_base = _git_text(project_dir, base_tree, learnings_files.LEGACY_REL)
+    migration = legacy_base is not None and not any(
+        r["rel"] == core_rel and r["base_text"] is not None for r in rows
+    )
+    # The migration session's real base is the legacy file, which is not in the
+    # new format, so it is never "compliant at base": every file it writes holds
+    # MOVED lines, and none of them is graded as written.
+    compliant_at_base = not migration and all(
+        r["base_text"] is None
+        or (
+            r["base"] <= _effective_kb(r["name"], base_budgets) * 1024
+            and not learnings_files.shape_violations(r["base_text"])
         )
-        budget = kb * 1024
-        if now > budget and now > base:
+        for r in rows
+    )
+
+    for r in rows:
+        grew = r["now"] > r["base"]
+        over = r["now"] > r["budget"]
+        base_label = r["base"]
+        if migration and r["rel"] == core_rel:
+            # The migration commit: judged on the corpus total, and its lines
+            # were moved, not written, so the added-line format check does not
+            # read them. Area files are sized as usual below, with no line grading.
+            legacy_now = learnings_files.LEGACY_REL
+            legacy_now_size = (project_dir / legacy_now).stat().st_size if (
+                project_dir / legacy_now
+            ).is_file() else 0
+            total_base = _git_size(project_dir, base_tree, learnings_files.LEGACY_REL) + sum(
+                x["base"] for x in rows
+            )
+            total_now = legacy_now_size + sum(x["now"] for x in rows)
+            grew = total_now > total_base
+            base_label = total_base
+            violations = []
+        elif migration:
+            violations = []
+        elif compliant_at_base:
+            grew = grew or over
+            violations = learnings_files.shape_violations(r["now_text"])
+        else:
+            before = {}
+            for line in (r["base_text"] or "").splitlines():
+                before[line] = before.get(line, 0) + 1
+            violations = []
+            for v in learnings_files.shape_violations(r["now_text"]):
+                if before.get(v.text, 0) > 0:
+                    before[v.text] -= 1
+                    continue
+                violations.append(v)
+        findings.extend(_shape_findings(r["rel"], violations))
+        if over and grew:
+            if r["name"] == learnings_files.CORE_NAME:
+                remedy = (
+                    "pay in this commit by merging or retiring a rule, or by moving "
+                    "a path-scoped rule to an area file. core.md's cap is raised only "
+                    "by the owner (`owner_approved:` on "
+                    f"`{_LEARNINGS_BUDGETS_KEY}.core.md`)"
+                )
+            else:
+                remedy = (
+                    "pay in this commit by merging or retiring a rule, or raise "
+                    f"`{_LEARNINGS_BUDGETS_KEY}.{r['name']}` in project-state.yaml "
+                    "with a reason"
+                )
+            pending = (
+                " A raise written this interval does not count until the next one."
+                if r["raise_pending"] else ""
+            )
             findings.append(
                 _finding(
                     "learnings-over-budget",
-                    rel,
+                    r["rel"],
                     None,
-                    f"{now}B, over its {budget}B budget and grown from {base}B "
-                    "at the base tree — pay from genuine duplication (merge or "
-                    f"delete in this commit), or raise `{_LEARNINGS_BUDGETS_KEY}"
-                    f".{path.name}` in project-state.yaml with a reason — never "
-                    "trim a rule to fit",
+                    f"{r['now']}B, over its {r['budget']}B budget and grown from "
+                    f"{base_label}B at the base tree — {remedy}.{pending}",
                 )
             )
     return findings, unchecked, no_answer
+
+
+def corpus_status(project_dir: Path, prawduct_dir: Path, layout=None) -> "dict | None":
+    """Whether the rules corpus meets the format and its budgets, as it stands.
+
+    ``None`` when there is no rules tree. Otherwise ``{compliant, core_bytes,
+    core_cap_bytes, too_long, body, over, unapproved_raise}``: the numbers the
+    session briefing prints. A file that cannot be read makes the corpus
+    non-compliant, because "could not look" is never "fine".
+    """
+    if layout is None:
+        layout = learnings_files.resolve(project_dir)
+    if not layout.files:
+        return None
+    budgets = parse_learnings_budgets(
+        _read_text(prawduct_dir / "project-state.yaml") or ""
+    )[0]
+    status = {
+        "compliant": True,
+        "core_bytes": None,
+        "core_cap_bytes": _effective_kb(learnings_files.CORE_NAME, budgets) * 1024,
+        "too_long": 0,
+        "body": 0,
+        "over": [],
+        "unapproved_raise": bool(
+            (budgets.get(learnings_files.CORE_NAME) or {}).get("kb")
+            and not (budgets.get(learnings_files.CORE_NAME) or {}).get("owner_approved")
+        ),
+    }
+    for path in layout.files:
+        try:
+            text = path.read_text(encoding="utf-8")
+            size = path.stat().st_size
+        except (OSError, UnicodeDecodeError):
+            status["compliant"] = False
+            continue
+        if path.name == learnings_files.CORE_NAME:
+            status["core_bytes"] = size
+        if size > _effective_kb(path.name, budgets) * 1024:
+            status["over"].append(path.name)
+        for v in learnings_files.shape_violations(text):
+            status["too_long" if v.kind == "too-long" else "body"] += 1
+    if status["over"] or status["too_long"] or status["body"]:
+        status["compliant"] = False
+    return status
 
 
 def _check_learnings_areas(

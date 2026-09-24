@@ -69,6 +69,22 @@ STATE_LEGACY = "legacy"
 STATE_BOTH = "both"
 STATE_NONE = "none"
 
+#: The longest a rule may be, in characters, counted on the rule's own line
+#: (the ``- `` or ``#`` marker included). A rule is ONE line. The reason and
+#: the instance that earned it fit as a clause, or the rule is two rules, or
+#: what is left over is narrative, and narrative goes in the session
+#: reflection. Four compactions of this corpus regrew because the narrative
+#: moved into whichever channel was not being measured (bodies, then headings),
+#: so this measures both at once: the line and the absence of a body.
+RULE_LINE_MAX = 250
+
+#: ``core.md``'s ceiling, in KB. It is loaded in every session, so this is the
+#: one number that prices every session the repo will ever have. Unlike an area
+#: file's budget, an agent cannot raise it: a ``learnings_budgets.core.md``
+#: override counts only with an ``owner_approved:`` date, because six
+#: agent-authored raises in five days is what "raise with a reason" measured to be.
+CORE_CAP_KB = 12
+
 #: What a scaffolded ``core.md`` opens with. The obligation is here rather than
 #: in a pointer because this file is the one thing every session reads: a rule
 #: that arrives, is agreed with, and changes nothing is the failure mode a
@@ -627,10 +643,36 @@ def rule_units(text: str) -> list[str]:
     Frontmatter is skipped, so an area file's ``paths:`` block cannot contribute
     a unit; the ``---`` fence lines cannot either.
     """
-    _globs, body = parse_frontmatter(text)
-    units: list[str] = []
+    return [unit for _line, unit, _raw in _unit_lines(text)]
+
+
+def _unit_lines(text: str) -> "list[tuple[int, str, str]]":
+    """``(line_number, unit, raw_line)`` for every rule unit, 1-based lines.
+
+    The one walk behind :func:`rule_units` and :func:`shape_violations`, so the
+    two can never disagree about which lines are rules.
+    """
+    return [(n, unit, raw) for n, unit, raw, _kind in _classified_lines(text) if unit]
+
+
+def _classified_lines(text: str) -> "list[tuple[int, str, str, str]]":
+    """Every line after the frontmatter, as ``(line, unit, raw, kind)``.
+
+    ``kind`` is ``unit`` (``unit`` holds its text), ``blank``, ``title`` (a
+    ``#`` heading), or ``other``: fenced code, fence markers, indented bullets
+    and prose paragraphs. ``other`` is exactly what a body is made of.
+    """
+    lines = text.splitlines()
+    start = 0
+    if lines and lines[0].strip() == "---":
+        close = next((i for i in range(1, len(lines)) if lines[i].strip() == "---"), None)
+        if close is not None:
+            start = close + 1
+    out: list[tuple[int, str, str, str]] = []
     fence: str | None = None
-    for line in body.splitlines():
+    for index in range(start, len(lines)):
+        line = lines[index]
+        number = index + 1
         stripped = line.strip()
         # Fences: ``` or ~~~, closed by the same marker (a longer run closes a
         # shorter opener, per CommonMark; the extra length is ignored here
@@ -638,12 +680,67 @@ def rule_units(text: str) -> list[str]:
         if fence is not None:
             if stripped.startswith(fence):
                 fence = None
+            out.append((number, "", line, "other"))
             continue
         if stripped.startswith("```") or stripped.startswith("~~~"):
             fence = stripped[:3]
+            out.append((number, "", line, "other"))
             continue
         if line.startswith("## ") or line.startswith("### "):
-            units.append(line.lstrip("#").strip())
+            unit = line.lstrip("#").strip()
+            out.append((number, unit, line, "unit" if unit else "other"))
         elif line.startswith("- "):
-            units.append(line[2:].strip())
-    return [u for u in units if u]
+            unit = line[2:].strip()
+            out.append((number, unit, line, "unit" if unit else "other"))
+        elif not stripped:
+            out.append((number, "", line, "blank"))
+        elif line.startswith("# "):
+            out.append((number, "", line, "title"))
+        else:
+            out.append((number, "", line, "other"))
+    return out
+
+
+@dataclass(frozen=True)
+class ShapeViolation:
+    """One line of a rules file that is not a one-line rule.
+
+    ``kind`` is ``too-long`` (a rule over :data:`RULE_LINE_MAX`) or ``body`` (a
+    line that is not a rule, below the first rule). ``text`` is the line itself,
+    so a caller can match a violation against the base revision's lines.
+    """
+
+    line: int
+    kind: str
+    text: str
+
+
+def shape_violations(text: str) -> "list[ShapeViolation]":
+    """Every line in a rules file that breaks the one-line-rule format.
+
+    **A body** is any non-blank line after the file's first rule that is not
+    itself a rule or a ``#`` title: a prose paragraph, an indented bullet, fenced
+    code. What sits BEFORE the first rule is the file's header (the scaffold's
+    obligation paragraph, an area file's one-line scope note). It is not
+    flagged, and it still counts toward the file's byte budget, so it cannot
+    grow for free.
+
+    **A too-long rule** is a rule line over :data:`RULE_LINE_MAX` characters. A
+    ``##`` section banner is measured the same way as a rule, because this
+    grammar cannot tell a banner from a rule without parsing prose for intent,
+    and a 250-character banner is no hardship.
+
+    Needs no base revision: the format is a property of the text alone, which
+    is what lets the Stop gate apply it in a session that has no base marker.
+    """
+    out: list[ShapeViolation] = []
+    seen_unit = False
+    for number, _unit, raw, kind in _classified_lines(text):
+        if kind == "unit":
+            seen_unit = True
+            if len(raw.rstrip()) > RULE_LINE_MAX:
+                out.append(ShapeViolation(number, "too-long", raw))
+        elif kind == "other" and seen_unit:
+            out.append(ShapeViolation(number, "body", raw))
+    return out
+

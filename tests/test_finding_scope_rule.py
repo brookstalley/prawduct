@@ -390,9 +390,16 @@ def _governed_protocol_ceiling() -> int:
 #: suite runs at the boundary. +13 per inner review, priced against the full
 #: suite run per chunk that the reviewer used to recommend — the payload was
 #: compressed in place first, and no clause elsewhere was cut to fund it.
+#: RAISED 2026-09-24 (chunk 2814 -> 2817, verify-resolutions 3937 -> 3940),
+#: DECLARED (learnings-one-line): `goals-1-3.md` names the two new learnings
+#: format checks and the unapproved-raise warning, because every check a
+#: record-lint result can carry needs a severity on the surface the inner
+#: reviewer reads (`TestEveryCheckCarriesASeverity`). +3 per inner review,
+#: priced against the SUM: without the severity, the reviewer rates a BLOCKING
+#: format finding for itself, and a wrong rating costs a round.
 CEILINGS = {
-    "chunk": 2814,
-    "verify-resolutions": 3937,
+    "chunk": 2817,
+    "verify-resolutions": 3940,
     "final": _governed_protocol_ceiling(),
     "cumulative": _governed_protocol_ceiling(),
 }

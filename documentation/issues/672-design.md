@@ -63,7 +63,7 @@ Re-verified against the current tree (`develop`, 2026-09-24):
   (`:166`), `prior_dispositions` (`:187`), and `census` (`:639`) all walk **every** disposition fact
   in the store, not a single derived view. This reads as #334 already shipped in substance (its
   three merged predecessors — CRT-2X7R, CRT-7P5J, CRT-3F7T — line up with exactly the write/read/
-  render split its own body describes). **This design does not close #334** — that is a separate
+  render split its own body describes). **This design leaves #334 open** — that is a separate
   issue with its own acceptance criteria and its own re-triage — but it means Half 1's fix below
   should not assume #334's problem still exists at the disposition layer; the remaining gap is
   specifically the coverage/gate layer's `(review_id, fid)` keying, which #334 never touched.
