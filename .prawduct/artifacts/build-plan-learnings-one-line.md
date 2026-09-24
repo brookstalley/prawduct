@@ -91,7 +91,7 @@ mass drops.
 ## Status
 
 - [x] Chunk 01: The format and the caps are enforced
-- [ ] Chunk 02: `learnings-compact` — worksheet, validator, one commit
+- [x] Chunk 02: `learnings-compact` — worksheet, validator, one commit
 - [ ] Chunk 03: Every write surface teaches the one-line format
 - [ ] Chunk 04: Compact this repo's corpus and move its rulings
 Context: Plan written 2026-09-24 from the 3.6.x overhead audit (see the owner conversation; the
@@ -127,7 +127,7 @@ fleet figures are re-derivable from each repo's `.prawduct/.governance-ledger.js
 - **puzzles, the repo with a 4KB core, is non-compliant too** (584 body lines in its area files).
   The owner's "no bodies anywhere" ruling reaches area files.
 
-**Chunk 02 built, with these departures:**
+**Chunk 02 built and reviewed (commit f1cb80c1), with these departures:**
 - **An unapproved drop is refused, not applied as pending.** The agent keeps that rule as a one-line
   rewrite and proposes the drop.
 - **`--apply` writes an over-cap `core.md` for any reason, not only pending drops,** and reports it
@@ -270,6 +270,14 @@ branch's: `tests/test_pr_evidence_contract.py::TestClosingKeywordClaims` over
 - **Type:** doc-only
 - **Deliverables:** the files named above, `tests/test_v5_methodology.py` (re-measured token
   readings, with ceilings ratcheted in the same commit), and a new carrier test.
+- **Carried from Chunk 02's verify pass (rev-20260924T141043Z-7ef33ffc) — code fixes riding this
+  chunk's commit:**
+  - O-1: the `--local` backup-location refusal is a `raise`, so neither the count test nor any
+    test sees it. Pin it.
+  - O-2: the "not in the worksheet" refusal must name restore-and-reapply first, as the
+    stale-corpus one does. An interrupted apply that created an area file reaches it.
+  - O-4: a merge-into case whose target rewrite names an unknown file.
+  - O-5: the test module docstring's claim that `TestRefusals` covers every route.
 - **Tests:** a carrier pin with an absence assertion per retired phrase, red-verified against a
   rewording rather than the literal; re-measured budgets.
 - **Acceptance criteria:** Success 6. No carrier still instructs the multi-part heading form.
