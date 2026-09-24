@@ -164,19 +164,32 @@ def _read_events(
     skipped = {"corrupt_lines": 0, "unknown_kinds": 0, "invalid_payloads": 0}
     learning = {"written": 0, "fired": 0}
     units: dict[str, set] = {"written": set(), "fired": set()}
+    # `learning.compacted`: old unit -> the unit a compaction rewrote it into.
+    # Every set is read THROUGH this map at the end, so a rule keeps the
+    # citations and the authorship it had before it was shortened.
+    became: dict[str, str] = {}
     events: list[dict] = []
 
+    def _now(unit: str) -> str:
+        seen: set[str] = set()
+        while unit in became and unit not in seen:
+            seen.add(unit)
+            unit = became[unit]
+        return unit
+
     def _finish() -> dict:
+        written = {_now(u) for u in units["written"]}
+        fired = {_now(u) for u in units["fired"]}
         return {
             "written": learning["written"],
             "fired": learning["fired"],
-            "units_written": len(units["written"]),
-            "units_fired": len(units["fired"]),
+            "units_written": len(written),
+            "units_fired": len(fired),
             # A SET difference, never a difference of sizes: the two sets are
             # not nested — a rule authored before the emitter shipped can fire
             # without ever being written — and on a migrated fleet repo they
             # are disjoint, where a size subtraction reads 0 forever.
-            "units_uncited": len(units["written"] - units["fired"]),
+            "units_uncited": len(written - fired),
         }
 
     try:
@@ -204,6 +217,15 @@ def _read_events(
         if not in_window(event.get("ts"), since, until):
             continue
         kind = event["event"]
+        if kind == "learning.compacted":
+            payload = event.get("learning")
+            old = payload.get("from_hash") if isinstance(payload, dict) else None
+            new = payload.get("unit_hash") if isinstance(payload, dict) else None
+            if isinstance(old, str) and isinstance(new, str) and old and new:
+                became[old] = new
+            else:
+                skipped["invalid_payloads"] += 1
+            continue
         if kind in _LEARNING_KINDS:
             payload = event.get("learning")
             unit = payload.get("unit_hash") if isinstance(payload, dict) else None

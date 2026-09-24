@@ -566,7 +566,7 @@ def test_every_dispatched_command_appears_in_the_documented_list():
         "check-branch-pushed",
         "check-releasability", "archive-plan", "check-released", "check-pr-doc-only",
         "check-plugin-active",
-        "check-learnings-pairing", "learnings-migrate",
+        "check-learnings-pairing", "learnings-migrate", "learnings-compact",
         "stamp-merged", "build-index", "user-prompt-submit", "regen-views",
         "infer-critic-mode", "resolve-base", "disposition", "render-dispositions",
         "evidence", "bug-inbox", "version", "print-install-reference", "advisory",

@@ -397,7 +397,9 @@ class TestTheDedupeIsAmortized:
         assert ledger.append_learning_event(repo, "learning.written", file="core.md", unit_hash="h1")
         seen = ledger.learning_events_seen(repo / ".prawduct")
         session = evidence._session_epoch(repo)
-        assert ("learning.written", session, "core.md", "h1", None) in seen
+        # The key gained `from_hash` (None here) when learning.compacted joined:
+        # two rules merged into one are two events only through it.
+        assert ("learning.written", session, "core.md", "h1", None, None) in seen
 
         def _no_read(*_a, **_k):
             raise AssertionError("the amortized path must not re-read the ledger")
@@ -405,7 +407,7 @@ class TestTheDedupeIsAmortized:
         monkeypatch.setattr(ledger, "iter_events_newest_first", _no_read)
         assert ledger.append_learning_event(repo, "learning.written", file="core.md", unit_hash="h1", seen=seen) is False
         assert ledger.append_learning_event(repo, "learning.written", file="core.md", unit_hash="h2", seen=seen) is True
-        assert ("learning.written", session, "core.md", "h2", None) in seen
+        assert ("learning.written", session, "core.md", "h2", None, None) in seen
         assert len(_events(repo, "learning.written")) == 2
 
 
@@ -658,3 +660,23 @@ class TestTheCitationInstructionReachesReviewers:
         where it is read, or "never fired" gets believed as a census."""
         doc = self._prose("docs/governance-telemetry.md")
         assert "reads here as never fired" in doc
+
+
+class TestACompactedRuleIsNotWritten:
+    """`learnings-compact` rewrites rules; the Stop emitter must not count the
+    rewrites as new rules, or one compaction reads as the whole corpus written
+    this session. Red if cmd_stop stops consulting `learning.compacted`."""
+
+    def test_only_the_genuinely_new_rule_is_written(self, tmp_path, capsys):
+        repo = _repo(tmp_path)
+        _write_rules(repo, "the rewritten wording of an old rule", "a brand new rule")
+        ledger.append_learning_event(
+            repo, "learning.compacted", file=RULES_REL,
+            unit_hash=lf.unit_hash("the rewritten wording of an old rule"),
+            from_hash="0" * 16,
+        )
+        _touch_code(repo)
+        _stop(repo, capsys)
+        written = {e["learning"]["unit_hash"] for e in _events(repo, "learning.written")}
+        assert lf.unit_hash("a brand new rule") in written
+        assert lf.unit_hash("the rewritten wording of an old rule") not in written

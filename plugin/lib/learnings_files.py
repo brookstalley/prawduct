@@ -744,3 +744,50 @@ def shape_violations(text: str) -> "list[ShapeViolation]":
             out.append(ShapeViolation(number, "body", raw))
     return out
 
+
+
+@dataclass(frozen=True)
+class RuleBlock:
+    """One rule unit with the body lines under it, as ``learnings-compact``
+    reads a rules file. ``raw`` is the unit's own line; ``body`` the lines
+    after it, up to the next unit, blank lines at either edge dropped."""
+
+    line: int
+    unit: str
+    raw: str
+    body: str
+
+
+def rule_blocks(text: str) -> "tuple[str, str, list[RuleBlock]]":
+    """``(frontmatter, preamble, blocks)`` for one rules file.
+
+    ``frontmatter`` is the verbatim ``---`` block (with its fences, ``""`` when
+    absent), so a rewrite reproduces an area file's scoping byte for byte.
+    ``preamble`` is everything between it and the first rule. Built on the
+    same walk as :func:`rule_units`, so compaction and telemetry can never
+    disagree about which lines are rules.
+    """
+    lines = text.splitlines()
+    frontmatter = ""
+    if lines and lines[0].strip() == "---":
+        close = next((i for i in range(1, len(lines)) if lines[i].strip() == "---"), None)
+        if close is not None:
+            frontmatter = "\n".join(lines[: close + 1]) + "\n"
+    classified = _classified_lines(text)
+    preamble: list[str] = []
+    blocks: list[list] = []
+    for number, unit, raw, kind in classified:
+        if kind == "unit":
+            blocks.append([number, unit, raw, []])
+        elif blocks:
+            blocks[-1][3].append(raw)
+        else:
+            preamble.append(raw)
+    out = []
+    for number, unit, raw, body in blocks:
+        while body and not body[-1].strip():
+            body.pop()
+        while body and not body[0].strip():
+            body.pop(0)
+        out.append(RuleBlock(number, unit, raw, "\n".join(body)))
+    return frontmatter, "\n".join(preamble).strip("\n"), out

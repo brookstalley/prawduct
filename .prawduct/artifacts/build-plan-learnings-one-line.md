@@ -127,6 +127,31 @@ fleet figures are re-derivable from each repo's `.prawduct/.governance-ledger.js
 - **puzzles, the repo with a 4KB core, is non-compliant too** (584 body lines in its area files).
   The owner's "no bodies anywhere" ruling reaches area files.
 
+**Chunk 02 built, with these departures:**
+- **An unapproved drop is refused, not applied as pending.** The agent keeps that rule as a one-line
+  rewrite and proposes the drop.
+- **`--apply` writes an over-cap `core.md` for any reason, not only pending drops,** and reports it
+  as a NOTE (exit 0). The Stop gate's freeze is what holds it: an over-cap file may not grow.
+  Refusing the whole compaction would leave the corpus in its worse, non-one-line shape.
+- **An interrupted `--apply` is a named state** (review rev-20260924T135450Z-58842bdd, R-2). It keeps
+  the worksheet, names what reached disk, and says to restore the rules directory and re-apply, never
+  `--plan --force`. The stale-corpus refusal names that route first.
+- **`learnings-migrate` is unchanged.** Emitting one-line rules needs judgment the migration cannot
+  make without the model. Its output is now followed by the OVER LIMIT directive and this command.
+- **"Duplicate clusters" became `related` rows** (up to 3 at ≥ 0.2 word overlap). Rules paraphrase
+  each other rather than repeat, so a 0.5 threshold found no pair on this repo's 338 rules. A test
+  pins a positive control.
+- **The confidence dry run** (2026-09-24; re-derive with `prawduct-hook learnings-compact --plan` in
+  each repo, then delete the worksheet):
+  - hallucinote has 108 rules with a median length of 84 characters, about 9KB, so it fits 12KB with
+    no drops;
+  - discodon has 455 rules (357 in core) with a median length of 311 characters. Only 24 name a path
+    an area file could claim, and 13 have ever been cited. Reaching 12KB there means moving or
+    dropping most of its core.
+
+  **Owner question:** does 12KB stand for discodon, or does its owner raise it (`owner_approved:`)
+  for a transition?
+
 **Baseline (2026-09-24):** the declared suite had 1 failure on `origin/develop` that is not this
 branch's: `tests/test_pr_evidence_contract.py::TestClosingKeywordClaims` over
 `documentation/issues/672-design.md` (added by develop's `a0e90e80`). Flagged to the owner, not fixed here.

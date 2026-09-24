@@ -86,6 +86,10 @@ _EVENT_ROLES = {
     # cited one). Both are MACHINE-emitted — see `_MACHINE_ONLY_PREFIX`.
     "learning.written": "builder",
     "learning.fired": "critic",
+    # A rule REWRITTEN by `learnings-compact`: `from_hash` is the unit it was,
+    # `unit_hash` the unit it became. Not a new rule, so it is neither counted
+    # as written nor allowed to orphan the rule's citation history.
+    "learning.compacted": "builder",
 }
 
 #: Kinds the CLI refuses. A hand-appended learning event would be a measurement
@@ -441,6 +445,9 @@ def _learning_key(kind: str, learning: dict) -> tuple:
         learning.get("file"),
         learning.get("unit_hash"),
         learning.get("review_id"),
+        # Two rules merged into one share every field above; the unit each
+        # came FROM is what keeps them two events. None for the other kinds.
+        learning.get("from_hash"),
     )
 
 
@@ -475,7 +482,7 @@ def learning_event_exists(
     which reads the ledger ONCE and answers every probe from memory. This
     per-call form is for the single-event callers.
     """
-    want = (kind, session, file, unit_hash, review_id)
+    want = (kind, session, file, unit_hash, review_id, None)
     for _lineno, event in iter_events_newest_first(prawduct_dir):
         if event.get("event") != kind:
             continue
@@ -485,6 +492,24 @@ def learning_event_exists(
         if _learning_key(kind, learning) == want:
             return True
     return False
+
+
+def compacted_unit_hashes(prawduct_dir: Path) -> "set[str]":
+    """Every unit a ``learnings-compact`` apply WROTE, from one ledger read.
+
+    The Stop hook's ``learning.written`` emitter skips these: a rewritten rule
+    is the old rule in fewer words, and counting it as written would report a
+    compaction as hundreds of new rules and make "rules never cited" read as
+    the whole corpus.
+    """
+    out: set[str] = set()
+    for _lineno, event in iter_events_newest_first(prawduct_dir):
+        if event.get("event") != "learning.compacted":
+            continue
+        learning = event.get("learning")
+        if isinstance(learning, dict) and isinstance(learning.get("unit_hash"), str):
+            out.add(learning["unit_hash"])
+    return out
 
 
 def learning_events_seen(prawduct_dir: Path) -> "set[tuple]":
@@ -509,6 +534,7 @@ def append_learning_event(
     unit_hash: str,
     review_id: "str | None" = None,
     seen: "set[tuple] | None" = None,
+    from_hash: "str | None" = None,
 ) -> bool:
     """Append one ``learning.*`` event. ``True`` when a line was written,
     ``False`` when this exact event was already recorded.
@@ -547,15 +573,17 @@ def append_learning_event(
 
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     session = evidence._session_epoch(project_dir)
-    key = (kind, session, file, unit_hash, review_id)
+    key = (kind, session, file, unit_hash, review_id, from_hash)
     if seen is not None:
         if key in seen:
             return False
         seen.add(key)
-    elif learning_event_exists(
+    elif from_hash is None and learning_event_exists(
         prawduct_dir, kind, file=file, unit_hash=unit_hash,
         session=session, review_id=review_id,
     ):
+        return False
+    elif from_hash is not None and key in learning_events_seen(prawduct_dir):
         return False
     # `learning.*` is not a consuming kind, so the reason is always the "does not
     # consume" one — read and dropped rather than ignored by accident.
@@ -569,6 +597,7 @@ def append_learning_event(
             "unit_hash": unit_hash,
             "session": session,
             "review_id": review_id,
+            **({"from_hash": from_hash} if from_hash else {}),
         },
         # A measurement of an act, not of a duration, and no model produced it:
         # both stay null rather than being given a plausible value.

@@ -2899,6 +2899,9 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 # since the base" for the rest of the session, so per-unit
                 # probing was a whole-file read per rule per turn.
                 _lt_seen = _lt_ledger.learning_events_seen(prawduct_dir)
+                # A rule `learnings-compact` rewrote is the old rule in fewer
+                # words, recorded as `learning.compacted`, never as written.
+                _lt_compacted = _lt_ledger.compacted_unit_hashes(prawduct_dir)
                 for _lt_path in _lt_lf.resolve(project_dir).files:
                     _lt_rel = _lt_path.relative_to(project_dir).as_posix()
                     _lt_rc, _lt_base_text, _ = _lt_evidence.run_git(
@@ -2915,7 +2918,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                         _lt_path.read_text(encoding="utf-8")
                     ):
                         _lt_hash = _lt_lf.unit_hash(_lt_unit)
-                        if _lt_hash in _lt_base:
+                        if _lt_hash in _lt_base or _lt_hash in _lt_compacted:
                             continue
                         # Telemetry is PULLED, not pushed: nothing is printed on
                         # success, and the return value (appended vs. already
@@ -7455,6 +7458,147 @@ def cmd_check_learnings_pairing(project_dir: Path, argv: list[str] | None = None
     return 0
 
 
+def cmd_learnings_compact(project_dir: Path, argv: list[str]) -> int:
+    """Compact a learnings corpus into one-line rules under its caps.
+
+    ``--plan`` writes the worksheet (``--force`` replaces one that already
+    carries decisions). With no mode flag it validates the worksheet as it
+    stands and prints what ``--apply`` would do, which is the dry run.
+    ``--apply`` validates, writes, and records the compaction events.
+    ``--local`` replaces the commit as the undo with a verified backup.
+    Exit 0 on success, 1 when refused or unreadable, 2 on a usage error.
+    """
+    flags = {"--plan", "--apply", "--force", "--local", "--json"}
+    rejected = _reject_unknown_args("learnings-compact", argv, flags)
+    if rejected is not None:
+        return rejected
+    do_plan, do_apply = "--plan" in argv, "--apply" in argv
+    if do_plan and do_apply:
+        print(
+            "learnings-compact: --plan writes the worksheet and --apply reads it; "
+            "run them separately. Nothing ran.",
+            file=sys.stderr,
+        )
+        return 2
+    as_json, local, force = "--json" in argv, "--local" in argv, "--force" in argv
+
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import learnings_compact, learnings_files  # noqa: PLC0415 — lazy import
+    except ImportError:
+        print(
+            "error: learnings-compact could not import the plugin lib/ from "
+            "${CLAUDE_PLUGIN_ROOT}; nothing was changed.",
+            file=sys.stderr,
+        )
+        return 1
+
+    layout = learnings_files.resolve(project_dir)
+    if layout.state not in (learnings_files.STATE_NEW, learnings_files.STATE_BOTH):
+        print(
+            "learnings-compact: no rules tree to compact "
+            f"(layout: {layout.state}); a legacy corpus runs learnings-migrate first.",
+            file=sys.stderr,
+        )
+        return 1
+    path = learnings_compact.worksheet_path(project_dir)
+    if path is None:
+        print("learnings-compact: git could not say where the worksheet lives.", file=sys.stderr)
+        return 1
+
+    if do_plan:
+        if path.is_file() and not force:
+            try:
+                existing = learnings_compact.load(path)
+            except (OSError, ValueError):
+                existing = {}
+            if any((r.get("disposition") for r in existing.get("rows") or [])):
+                print(
+                    f"learnings-compact: {path} already carries decisions; --plan "
+                    "--force replaces it and loses them. Nothing was written.",
+                    file=sys.stderr,
+                )
+                return 1
+        ws = learnings_compact.build_worksheet(project_dir)
+        learnings_compact.save(path, ws)
+        if as_json:
+            print(json.dumps({"worksheet": str(path), "rows": len(ws["rows"])}))
+        else:
+            print(f"learnings-compact: wrote {path} — {len(ws['rows'])} rule(s) to decide.")
+            print(
+                "  Fill one `disposition` per row (the module docstring lists the five "
+                "actions), declare any new area file in `new_areas`, show the owner the "
+                "drop list, then run `prawduct-hook learnings-compact` to check it and "
+                "`--apply` to write."
+            )
+        return 0
+
+    try:
+        ws = learnings_compact.load(path)
+    except FileNotFoundError:
+        print("learnings-compact: no worksheet yet; run --plan first.", file=sys.stderr)
+        return 1
+    except (OSError, ValueError) as exc:
+        print(f"learnings-compact: cannot read {path}: {exc}", file=sys.stderr)
+        return 1
+
+    if do_apply:
+        try:
+            result = learnings_compact.apply(project_dir, ws, local=local)
+        except learnings_compact.CompactRefused as exc:
+            print(f"learnings-compact: REFUSED — {exc}", file=sys.stderr)
+            return 1
+        except learnings_compact.CompactInterrupted as exc:
+            reached = ", ".join(exc.written) or "nothing"
+            print(
+                f"learnings-compact: INTERRUPTED — {exc}. Reached disk: {reached}.\n"
+                f"  Restore the rules directory (`git checkout -- {learnings_files.RULES_DIR_REL}` "
+                "and remove any file it created, or copy back the --local backup), then re-run "
+                "--apply: the worksheet and its decisions are kept. Do NOT --plan --force.",
+                file=sys.stderr,
+            )
+            return 1
+        path.unlink(missing_ok=True)
+    else:
+        result = learnings_compact.validate(project_dir, ws)
+        result.refusals.extend(learnings_compact.undo_refusals(project_dir, local))
+
+    report = {
+        "applied": do_apply,
+        "refusals": result.refusals,
+        "writes": {rel: len(c.encode("utf-8")) for rel, c in result.outputs.items()},
+        "deletions": result.deletions,
+        "counts": result.counts,
+        "over_cap": result.over_cap,
+    }
+    if as_json:
+        print(json.dumps(report))
+    else:
+        verb = "applied" if do_apply else "would apply"
+        if result.refusals:
+            print("learnings-compact: REFUSED —")
+            for reason in result.refusals:
+                print(f"  - {reason}")
+        else:
+            print(f"learnings-compact: {verb} — " + ", ".join(
+                f"{n} {a}" for a, n in sorted(result.counts.items())
+            ))
+            for rel, size in sorted(report["writes"].items()):
+                print(f"  write {rel} ({size}B)")
+            for rel in result.deletions:
+                print(f"  delete {rel} (no rules left)")
+            for line in result.over_cap:
+                print(
+                    f"  NOTE: {line} — the corpus stays frozen until the owner approves "
+                    "drops or raises the cap"
+                )
+            if do_apply:
+                print("  Commit this as one change; `git revert` is the undo.")
+    return 1 if result.refusals else 0
+
+
 def cmd_learnings_migrate(project_dir: Path, argv: list[str]) -> int:
     """Relayout ``.prawduct/learnings.md`` into ``.claude/rules/learnings/``.
 
@@ -7867,6 +8011,7 @@ _USAGE = (
     "update-gitignore [--dry-run]|"
     "audit-learnings [deprecated, inert]|learnings-obligation [deprecated, inert]|"
     "learnings-migrate [--apply] [--map <file>] [--propose-map] [--json] [--local]|"
+    "learnings-compact [--plan [--force]|--apply] [--local] [--json]|"
     "learnings-files [--for-diff] [--json]|"
     "norm-index-scaffold [--apply] [--json]|reanchor [--apply] [--json]|"
     "lifecycle-repair [--apply] [--json]|"
@@ -8768,6 +8913,8 @@ def _dispatch() -> int:
         return cmd_check_learnings_pairing(project_dir, sys.argv[2:])
     elif command == "learnings-migrate":
         return cmd_learnings_migrate(project_dir, sys.argv[2:])
+    elif command == "learnings-compact":
+        return cmd_learnings_compact(project_dir, sys.argv[2:])
     elif command == "check-operator-verification":
         return cmd_check_operator_verification(project_dir)
     elif command == "accept-operator-verification":

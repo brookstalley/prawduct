@@ -690,6 +690,22 @@ class TestEveryLearningsCheckAtStop:
         assert "NOTE:" in err and "IGNORED" in err
         assert "gate: learnings-core-raise-unapproved" not in err
 
+    def test_no_marker_and_no_commits_says_there_is_nothing_to_compare(self, tmp_path, capsys):
+        """Carried from Chunk 01's verify pass: with no marker AND no HEAD, the
+        NOTE must not claim a measurement against HEAD. Red if the note is
+        written for the HEAD case regardless."""
+        repo = tmp_path / "fresh"
+        (repo / ".prawduct").mkdir(parents=True)
+        _git(repo, "init", "-q", "-b", "main")
+        (repo / ".prawduct" / ".session-reflected").write_text(SHAPED_REFLECTION)
+        d = repo / ".claude" / "rules" / "learnings"
+        d.mkdir(parents=True)
+        (d / "core.md").write_text("# core\n\n- a rule\n")
+        (repo / "code.py").write_text("x = 1\n")
+        _rc, err = _stop(repo, capsys)
+        assert "HEAD did not resolve" in err
+        assert "measured against HEAD" not in err
+
     def test_every_check_the_budget_function_emits_has_a_stop_outcome(self):
         """Derived from `record_lint.CHECKS`, not a list written from memory:
         every learnings check `_check_learnings_budget` emits is either given a

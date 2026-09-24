@@ -192,6 +192,17 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `ledger-append` gained two event kinds it refuses at the CLI; `review-stats --json` moved to
   `schema_version` 5 (a `learning` block added, then its `units_uncited` key, then the verify-pass `observations` counts, then a `by_stage` grouping; no key repurposed). Nothing a consumer allowlisted
   changed meaning.
+  **learnings-one-line (2026-09-24)** adds `learnings-compact [--plan [--force]|--apply] [--local]
+  [--json]` (mutating with `--apply`): `--plan` writes a worksheet under
+  `<git-common-dir>/prawduct/learnings-compact/`, the agent records one decision per rule, the bare
+  form validates it as a dry run, and `--apply` writes one-line rules under the caps and records a
+  `learning.compacted` event per rewritten rule. It refuses an undecided row, an unapproved drop, a
+  `moved-to` whose text is not at its destination, a corpus edited since `--plan`, an area file over
+  its budget, and uncommitted rules files (the commit is the undo; `--local` keeps a verified backup
+  instead). Exit 0 written or would write, 1 refused or could not run, 2 usage, as its siblings.
+  `learnings_budgets.core.md` now needs an `owner_approved: YYYY-MM-DD` date to count, and
+  `ledger-append` refuses the new `learning.compacted` kind like the other two. Additive: no flag,
+  exit code or key changed meaning.
 - **Learnings lifecycle (retired with learnings v2)** — `audit-learnings`, `learnings-obligation`,
   `check-learnings-pairing` (deprecated, inert): the corpus they graded — `.prawduct/learnings.md`
   and its detail/history pair — no longer exists; rules are harness-loaded from
@@ -748,7 +759,8 @@ Evolution rules we want to hold, so new versions stay rare:
   `null` when it produced no answer.
 - **Internal / lifecycle surface** (called by the harness or by consolidation, not a public
   contract): `clear`, `stop`, `subagent-stop`, `critic-begin`, `critic-consolidate`,
-  `learnings-migrate` (run once per repo from the session-start directive).
+  `learnings-migrate` (run once per repo from the session-start directive), `learnings-compact`
+  (run from the session-start directive when a corpus is over its limits).
   **`backlog <op>` sits in this tier on different grounds:** its callers are the
   `/prawduct:backlog` skill and adopter agents rather than the harness, and § Direction's 2026-08-02
   ruling puts every subcommand outside the two published surfaces here. Unpromised, not unused —
