@@ -90,7 +90,7 @@ mass drops.
 
 ## Status
 
-- [ ] Chunk 01: The format and the caps are enforced
+- [x] Chunk 01: The format and the caps are enforced
 - [ ] Chunk 02: `learnings-compact` — worksheet, validator, one commit
 - [ ] Chunk 03: Every write surface teaches the one-line format
 - [ ] Chunk 04: Compact this repo's corpus and move its rulings
@@ -99,7 +99,7 @@ fleet figures are re-derivable from each repo's `.prawduct/.governance-ledger.js
 `.git/prawduct/evidence.jsonl`). A sibling plan for the post-cumulative verify-round change lives on
 `feature/post-cumulative-pr-coverage` in its own worktree and shares no files with this one.
 
-**Chunk 01 built, with these departures from its text (recorded, not silent):**
+**Chunk 01 built and reviewed (commit 18b35c4c), with these departures from its text (recorded, not silent):**
 - **Success 4 is met by measuring against HEAD when the marker is missing**, not by base-free checks.
   A base-free format check would grade a not-yet-compacted corpus whole and block every such
   session. HEAD still charges uncommitted growth, and the NOTE says committed growth is not charged.
@@ -201,6 +201,8 @@ branch's: `tests/test_pr_evidence_contract.py::TestClosingKeywordClaims` over
   the map), `plugin/skills/doctor/SKILL.md`, `.prawduct/artifacts/api-contract.md` (the verb and
   exit codes).
 - **Tests:**
+  - Carried from Chunk 01's verify pass (rev-20260924T134116Z-8bc3ba33, O-1): a Stop test for a
+    repo with no base marker AND no commits, whose NOTE says HEAD did not resolve.
   - Worksheet round-trip.
   - Each refusal named.
   - A drop without approval refused.
