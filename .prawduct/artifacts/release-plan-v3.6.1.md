@@ -1,9 +1,12 @@
 # Release Plan — v3.6.1, Whole-Develop Promotion
 
-**Status:** IN PROGRESS, 2026-09-24. Phase 0 and Phase 1 run on `develop` at `80575c12`, which is
-the merge of #899. That merge is what made `develop` green: before it, one suite failure was
-committed straight to `develop` (`a0e90e80`, the #672 design doc). Re-derive this state rather
-than reading it here: `git log --oneline origin/main -1`, `prawduct-hook check-released v3.6.1`.
+**Status:** COMPLETE as measured 2026-09-24. `develop` went green at `80575c12`, the merge of #899.
+Before that, one suite failure had been committed straight to `develop` (`a0e90e80`, the #672
+design doc). Phases 0–3 then ran. `main` was promoted at `e2a07086`, and the tag and Release
+`v3.6.1` were published in one call. `check-released v3.6.1` verified 3 of 3, the hand-dispatched
+`verify-release` run is green, and `develop` reopened on `3.6.2-dev`. Re-derive rather than
+reading this paragraph as a measurement: `git log --oneline origin/main -1`,
+`prawduct-hook check-released v3.6.1`.
 
 **Version:** v3.6.1, a **patch**, and the owner named the number ("release 3.6.1", 2026-09-24).
 It matches both the ratified conservative-versioning norm (`operational-spec.md` `## Direction`)

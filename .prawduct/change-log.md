@@ -5,6 +5,32 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-24: v3.6.1 is cut, and develop reopens on 3.6.2-dev
+
+<!-- prawduct: type=chore | scope=release-v3.6.1 -->
+
+**26 scopes and 27 change-log entries. `K = 0`, so this took the whole-develop promotion path with
+nothing withheld.** `main` is at `e2a07086`. Tag `v3.6.1` was published with the CHANGELOG section as
+its Release notes. `check-released v3.6.1` reports 3 of 3 verified, and the hand-dispatched
+`verify-release` run is green. To re-derive the scope set, grep for `release=v3.6.1` in
+`change-log.md` and `change-log-archive/`.
+
+**A patch, as the owner named it.** `.prawduct/artifacts/release-plan-v3.6.1.md` records why the
+bundle's weight did not argue for a minor. `learnings-one-line` stays off this release. It
+registers its gates `since: 3.7.0`, so its merge moves `develop` to that number.
+
+**The cut first needed a green `develop`, and it did not have one.** `a0e90e80`, the #672 design
+doc, was committed straight to `develop` with no PR and no suite run. It tripped
+`test_closing_keyword_is_never_named_without_its_condition`, and #899 fixed it before Phase 0.
+
+**Phase 1 notes.** Seven plans were archived by `plan-backfill`.
+`build-plan-coverage-honesty.md` was archived by an explicit `archive-plan`, because it closes on
+Chunks 01–02 on purpose. `archive-change-log` moved 16 entries. One consumer note was added to the
+digest, for `pr-reviewer-path-scoped-rules`. The first draft of the headline overclaimed
+`review-interval-extension` (it covers warnings while plan chunks remain, not every fix), and it
+was narrowed before the cut. `waiver-pragma-plan.md` still declares no `scope:`, so the sweep cannot
+evaluate it. That is pre-existing, and it is unrelated to this release.
+
 ## 2026-09-23: the declared suite runs at the boundary, not at every chunk
 
 <!-- prawduct: type=feature | scope=suite-at-boundary | release=v3.6.1 -->
