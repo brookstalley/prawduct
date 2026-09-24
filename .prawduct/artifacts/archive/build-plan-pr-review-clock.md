@@ -24,7 +24,13 @@ governed_by:
       - "additive-first evolution → conforms: no flag, exit code or `--json` key changes meaning. The `duration:` line gains new reasons and a longer measured sentence, which begins with the same words as before"
 partition: serial — two chunks, independent files, run by one agent
 last_validated: 2026-09-21
+lifecycle: completed
+archived: 2026-09-24
+released_in: v3.6.1
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 # Build plan — the PR review clock survives its findings being fixed, plus the window's readout
 

@@ -14,7 +14,13 @@ governed_by:
       - "additive-first evolution; existing exit-code meanings never repurposed; deprecation signalled → conforms, with a recorded consequence: see [DECISION] below. No flag, `--json` key or exit code is repurposed; an exit code that was UNREACHABLE on one repo shape becomes reachable there"
 partition: serial — one chunk
 last_validated: 2026-09-20
+lifecycle: completed
+archived: 2026-09-24
+released_in: v3.6.1
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Requirements Confidence
 

@@ -43,7 +43,14 @@ governed_by:
       - "text emitted into a governed product names no prawduct-internal identifier → conforms — `instance` / `class` / `none` and the transfer denial reasons are plain language; the backlog ids in this plan stay on the non-emitted side, which is where a build plan is"
       - "the governance ledger has a single writer → conforms — no chunk writes the ledger"
 last_validated: 2026-08-20
+lifecycle: completed
+archived: 2026-09-24
+released_in: v3.6.1
+unbuilt_at_archive: "2 of 4 Status items still unticked (Chunk 03: The base-advance transfer's silent outcome gets a voice and a falsifiable record — SPLIT OUT to `#672`, not built here, Chunk 04: A release-pending scope missing from the consumer digest is warned, advisory-only — SUPERSEDED by PR #734) — the scope shipped, but this plan did not finish with it"
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Requirements Confidence
 

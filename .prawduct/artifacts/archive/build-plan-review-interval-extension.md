@@ -40,7 +40,13 @@ governed_by:
       - "additive-first evolution → conforms: no flag, exit code or `--json` key is repurposed; the manifest and fact gain `base_extended_from`"
 partition: serial — every chunk edits `critic_consolidate.py` or the gates that read its facts
 last_validated: 2026-09-22
+lifecycle: completed
+archived: 2026-09-24
+released_in: v3.6.1
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 # Build plan — let the next review cover a non-blocking fix (#167)
 

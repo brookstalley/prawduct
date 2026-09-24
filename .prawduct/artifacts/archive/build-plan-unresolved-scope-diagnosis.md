@@ -29,7 +29,13 @@ governed_by:
       - "additive-first evolution → conforms: one new manifest key and one new stderr note; no flag, exit code or existing key changes meaning"
 partition: serial — two small chunks over the same two modules, one agent
 last_validated: 2026-09-22
+lifecycle: completed
+archived: 2026-09-24
+released_in: v3.6.1
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 # Build plan — say why a review's scope did not resolve, and stop rejecting finished plans by name
 
