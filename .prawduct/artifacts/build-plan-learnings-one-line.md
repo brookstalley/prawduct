@@ -93,7 +93,7 @@ mass drops.
 - [x] Chunk 01: The format and the caps are enforced
 - [x] Chunk 02: `learnings-compact` — worksheet, validator, one commit
 - [x] Chunk 03: Every write surface teaches the one-line format
-- [ ] Chunk 04: Compact this repo's corpus and move its rulings
+- [x] Chunk 04: Compact this repo's corpus and move its rulings
 Context: Plan written 2026-09-24 from the 3.6.x overhead audit (see the owner conversation; the
 fleet figures are re-derivable from each repo's `.prawduct/.governance-ledger.jsonl` and
 `.git/prawduct/evidence.jsonl`). A sibling plan for the post-cumulative verify-round change lives on
@@ -159,7 +159,7 @@ would be the two-homes defect. Its observations (the blocker's false "header sta
 claim, a hardcoded 250 in the scaffold, the carrier test being literal-only, stale docstrings) ride
 Chunk 04's commit.
 
-**Chunk 04 built.** Owner decisions, 2026-09-24:
+**Chunk 04 built and reviewed** (commit 441c639a; cumulative rev-20260924T144503Z-9db9cb86, its fixes in 969beace, verified clean). Owner decisions, 2026-09-24:
 - the drops U001 (a section heading) and U321 (superseded by U147) are approved;
 - U145 is kept, reworded;
 - discodon's compaction aims for 12KB, with drops proposed in its own session.
