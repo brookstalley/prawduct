@@ -2902,18 +2902,25 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 # A rule `learnings-compact` rewrote is the old rule in fewer
                 # words, recorded as `learning.compacted`, never as written.
                 _lt_compacted = _lt_ledger.compacted_unit_hashes(prawduct_dir)
-                for _lt_path in _lt_lf.resolve(project_dir).files:
+                _lt_files = _lt_lf.resolve(project_dir).files
+                # The base is the WHOLE corpus at the base revision, not the
+                # same file's: a rule moved verbatim between rules files (a
+                # compaction's split, or by hand) is an old rule in a new
+                # place, never a written one.
+                _lt_base: set = set()
+                for _lt_path in _lt_files:
                     _lt_rel = _lt_path.relative_to(project_dir).as_posix()
                     _lt_rc, _lt_base_text, _ = _lt_evidence.run_git(
                         project_dir, "show", f"{_budget_base}:{_lt_rel}"
                     )
                     # Nonzero here is "not in that tree" — the base tree itself
-                    # already resolved — so every unit of a brand-new rules file
-                    # is new, which is what it is.
-                    _lt_base = (
-                        {_lt_lf.unit_hash(_u) for _u in _lt_lf.rule_units(_lt_base_text)}
-                        if _lt_rc == 0 else set()
-                    )
+                    # already resolved — so a brand-new rules file adds nothing.
+                    if _lt_rc == 0:
+                        _lt_base |= {
+                            _lt_lf.unit_hash(_u) for _u in _lt_lf.rule_units(_lt_base_text)
+                        }
+                for _lt_path in _lt_files:
+                    _lt_rel = _lt_path.relative_to(project_dir).as_posix()
                     for _lt_unit in _lt_lf.rule_units(
                         _lt_path.read_text(encoding="utf-8")
                     ):
@@ -7521,8 +7528,16 @@ def cmd_learnings_compact(project_dir: Path, argv: list[str]) -> int:
                     file=sys.stderr,
                 )
                 return 1
-        ws = learnings_compact.build_worksheet(project_dir)
-        learnings_compact.save(path, ws)
+        try:
+            ws = learnings_compact.build_worksheet(project_dir)
+        except learnings_compact.CompactRefused as exc:
+            print(f"learnings-compact: REFUSED — {exc}", file=sys.stderr)
+            return 1
+        try:
+            learnings_compact.save(path, ws)
+        except OSError as exc:
+            print(f"learnings-compact: could not write {path}: {exc}. Nothing else changed.", file=sys.stderr)
+            return 1
         if as_json:
             print(json.dumps({"worksheet": str(path), "rows": len(ws["rows"])}))
         else:
@@ -7572,6 +7587,7 @@ def cmd_learnings_compact(project_dir: Path, argv: list[str]) -> int:
         "deletions": result.deletions,
         "counts": result.counts,
         "over_cap": result.over_cap,
+        "event_failures": result.event_failures,
     }
     if as_json:
         print(json.dumps(report))
@@ -7593,6 +7609,13 @@ def cmd_learnings_compact(project_dir: Path, argv: list[str]) -> int:
                 print(
                     f"  NOTE: {line} — the corpus stays frozen until the owner approves "
                     "drops or raises the cap"
+                )
+            if result.event_failures:
+                print(
+                    f"NOTE: {result.event_failures} learning.compacted event(s) could not be "
+                    "written to the governance ledger; the rules are on disk, and those rules "
+                    "lose their citation history",
+                    file=sys.stderr,
                 )
             if do_apply:
                 print("  Commit this as one change; `git revert` is the undo.")
@@ -8714,8 +8737,22 @@ def main() -> int:
     attributes — so the classifier, and the ``cmd_stop`` probe that converted it
     into the harness block code, went with it rather than staying as handling
     for a condition no code can produce.
+
+    **The error-model norm is enforced here, once, for every command**
+    (`api-contract.md` § Direction: errors are attributed, never raised as
+    stack traces across the boundary). An exception no command handled becomes
+    one `error: <command>: <Type>: <message>` line on stderr and exit 1, where
+    it used to become a traceback that names no command and reads as the
+    plugin crashing. Commands still own their specific handling; this is the
+    floor under all of them. `SystemExit` and `KeyboardInterrupt` are not
+    `Exception`s and pass through untouched.
     """
-    return _dispatch()
+    try:
+        return _dispatch()
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- the boundary's floor: every unhandled error is attributed, never a traceback (error-model norm)
+        command = sys.argv[1] if len(sys.argv) > 1 else "(no command)"
+        print(f"error: {command}: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 1
 
 
 # --- Pre-dispatch argument shape --------------------------------------------

@@ -555,3 +555,103 @@ def test_merge_into_a_rewrite_with_an_unknown_file_refuses(tmp_path):
     ws["rows"][1]["disposition"] = {"action": "merge-into", "row": ws["rows"][0]["id"]}
     refusals = lc.validate(repo, ws).refusals
     assert any(r.startswith(ws["rows"][1]["id"]) and "merge-into" in r for r in refusals)
+
+
+class TestTheSameCeilingsAsTheStopGate:
+    """`validate` and the Stop gate ask one owner (`record_lint.budget_in_force`)
+    for the ceiling in force, so a compaction cannot be approved by one and
+    blocked by the other. Red if validate reads only the current budgets."""
+
+    def _big_area(self, repo):
+        ws = lc.build_worksheet(repo)
+        ws["new_areas"] = {"big.md": ["src/**"]}
+        for r in ws["rows"]:
+            r["disposition"] = {"action": "rewrite", "text": "- " + "y" * 240, "file": "big.md"}
+        ws["rows"].extend(dict(ws["rows"][0], id=f"X{i:03d}") for i in range(70))
+        return ws
+
+    def test_a_raise_not_yet_in_the_base_does_not_count(self, tmp_path):
+        repo = _repo(tmp_path, _legacy_core())
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            'learnings_budgets:\n  big.md: {kb: 64, reason: "room"}\n'
+        )
+        assert any("big.md would be" in r for r in lc.validate(repo, self._big_area(repo)).refusals)
+
+    def test_a_raise_already_in_the_base_counts(self, tmp_path):
+        repo = _repo(tmp_path, _legacy_core())
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            'learnings_budgets:\n  big.md: {kb: 64, reason: "room"}\n'
+        )
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-qm", "raise, committed before the session")
+        assert not any("big.md would be" in r for r in lc.validate(repo, self._big_area(repo)).refusals)
+
+
+
+class TestEveryFailureIsNamed:
+    """No path through `learnings-compact` ends in a traceback. The precedent
+    (`learnings-migrate`) names its backup failure; this ported that case."""
+
+    def test_a_failed_local_backup_writes_nothing(self, tmp_path, monkeypatch):
+        from lib import learnings_migrate
+        repo = _repo(tmp_path, _legacy_core())
+        before = (repo / CORE).read_text()
+        ws = _all_rewritten(lc.build_worksheet(repo))
+
+        def broken(*_a, **_k):
+            raise learnings_migrate.MigrateInterrupted("disk full — nothing was written or deleted", [])
+
+        monkeypatch.setattr(learnings_migrate, "_back_up", broken)
+        with pytest.raises(lc.CompactRefused, match="backup failed"):
+            lc.apply(repo, ws, local=True)
+        assert (repo / CORE).read_text() == before
+
+    def test_a_failed_event_write_is_counted_not_raised(self, tmp_path, monkeypatch):
+        repo = _repo(tmp_path, _legacy_core())
+        ws = _all_rewritten(lc.build_worksheet(repo))
+
+        def broken(*_a, **_k):
+            raise OSError("ledger read-only")
+
+        monkeypatch.setattr(ledger, "append_learning_event", broken)
+        res = lc.apply(repo, ws)
+        assert res.event_failures == len([r for r in ws["rows"]])
+        assert lf.shape_violations((repo / CORE).read_text()) == []
+
+    def test_an_unreadable_rules_file_refuses_the_plan(self, tmp_path):
+        repo = _repo(tmp_path, _legacy_core())
+        (repo / CORE).write_bytes(b"\xff\xfe not utf-8")
+        with pytest.raises(lc.CompactRefused, match="could not be read"):
+            lc.build_worksheet(repo)
+
+    def test_the_command_names_the_unreadable_file(self, tmp_path):
+        repo = _repo(tmp_path, _legacy_core())
+        (repo / CORE).write_bytes(b"\xff\xfe not utf-8")
+        out = _hook(repo, "--plan")
+        assert out.returncode == 1 and "could not be read" in out.stderr and "Traceback" not in out.stderr
+
+
+
+def test_the_newest_compaction_mapping_wins(tmp_path):
+    """A unit compacted twice maps to its LATEST rewrite, in the one map both
+    the worksheet and review-stats read. Red if the map keeps the oldest."""
+    repo = _repo(tmp_path, _legacy_core())
+    for new in ("first-rewrite", "second-rewrite"):
+        ledger.append_learning_event(
+            repo, "learning.compacted", file=CORE, unit_hash=new, from_hash="old-unit",
+        )
+    assert ledger.compaction_map(repo / ".prawduct")["old-unit"] == "second-rewrite"
+
+
+def test_an_unhandled_error_is_attributed_not_a_traceback(tmp_path):
+    """The error-model norm's floor, in `main()`: a worksheet that is valid JSON
+    but not an object reaches code no command-level handler covers. Red if
+    `main()` lets the exception out as a traceback."""
+    repo = _repo(tmp_path, _legacy_core())
+    path = lc.worksheet_path(repo)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("[1, 2, 3]\n")
+    out = _hook(repo)
+    assert out.returncode == 1
+    assert "Traceback" not in out.stderr
+    assert out.stderr.startswith("error: learnings-compact: ")

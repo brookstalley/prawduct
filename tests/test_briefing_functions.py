@@ -1166,6 +1166,29 @@ class TestLearningsLayoutLine:
         over = [ln for ln in lines if "OVER LIMIT" in ln][0]
         assert "(cap 12KB)" in over and "is ignored" in over
 
+    def test_an_approved_core_raise_is_shown_even_when_compliant(self, tmp_path):
+        """`owner_approved:` is text an agent can write, so being seen every
+        session is its only check. Red if the line needs a violation to render."""
+        pr = self._state(tmp_path)
+        (pr / "project-state.yaml").write_text(
+            'product_identity:\n  name: P\nlearnings_budgets:\n'
+            '  core.md: {kb: 24, reason: "owner", owner_approved: 2026-09-24}\n'
+        )
+        (self._rules(tmp_path) / "core.md").write_text("# core\n\n- a rule\n")
+        lines = self._learnings_lines(briefing.assemble_session_briefing(tmp_path, []))
+        assert any("cap is 24KB" in ln and "2026-09-24" in ln for ln in lines)
+        assert not any("OVER LIMIT" in ln for ln in lines)
+
+    def test_an_unreadable_rules_file_is_named_not_left_blank(self, tmp_path):
+        """The old line read 'OVER LIMIT —  — frozen' with an empty fact list."""
+        self._state(tmp_path)
+        rules = self._rules(tmp_path)
+        (rules / "core.md").write_text("# core\n\n- a rule\n")
+        (rules / "bad.md").write_bytes(b"\xff\xfe")
+        lines = self._learnings_lines(briefing.assemble_session_briefing(tmp_path, []))
+        assert any("could not read bad.md" in ln for ln in lines)
+        assert not any("OVER LIMIT —  —" in ln for ln in lines)
+
     def test_new_state_names_the_files_and_the_obligation(self, tmp_path):
         self._state(tmp_path)
         rules = self._rules(tmp_path)

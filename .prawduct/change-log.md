@@ -14,7 +14,7 @@ The always-loaded learnings corpus had regrown for the fourth time: 107KB here, 
 pass had paired a one-off sweep with a control that could be walked around: an advisory nudge, a
 per-rule length check that v2 deleted, an agent-raisable budget (six raises here in five days), an
 agent-written waiver, and a migration credit that measured discodon's `core.md` against the 176KB
-legacy file, so its growth never registered. This removes each bypass, owner-directed 2026-09-24.
+legacy file, so its growth never registered. This removes each bypass, owner-directed 2026-09-24. **It ships as a minor (3.7.0):** it adds two blocking gates (`learnings-rule-too-long`, `learnings-rule-body`, registered `since: 3.7.0` in `gates.json`, so the version banner announces them), and it changes the `learnings_budgets.core.md` contract.
 
 **The format is enforced** (`record_lint`, the Stop gate, the Critic's severity table):
 - Every rule is one line of at most 250 characters, with no body, in every rules file.

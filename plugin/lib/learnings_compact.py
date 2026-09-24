@@ -110,30 +110,20 @@ def _digest(text: str) -> str:
 
 
 def _cited(prawduct_dir: Path) -> "dict[str, int]":
-    """Citations per unit hash, read through earlier compactions."""
+    """Citations per unit hash, read through earlier compactions by the one
+    map ``ledger.compaction_map`` owns."""
     from . import ledger  # noqa: PLC0415 — lazy; the plan is the only reader
 
-    became: dict[str, str] = {}
-    fired: dict[str, int] = {}
+    became = ledger.compaction_map(prawduct_dir)
+    out: dict[str, int] = {}
     for _lineno, event in ledger.iter_events_newest_first(prawduct_dir):
         learning = event.get("learning")
-        if not isinstance(learning, dict):
+        if event.get("event") != "learning.fired" or not isinstance(learning, dict):
             continue
-        if event.get("event") == "learning.compacted":
-            old, new = learning.get("from_hash"), learning.get("unit_hash")
-            if isinstance(old, str) and isinstance(new, str):
-                became[old] = new
-        elif event.get("event") == "learning.fired":
-            unit = learning.get("unit_hash")
-            if isinstance(unit, str):
-                fired[unit] = fired.get(unit, 0) + 1
-    out: dict[str, int] = {}
-    for unit, count in fired.items():
-        seen: set[str] = set()
-        while unit in became and unit not in seen:
-            seen.add(unit)
-            unit = became[unit]
-        out[unit] = out.get(unit, 0) + count
+        unit = learning.get("unit_hash")
+        if isinstance(unit, str):
+            unit = ledger.canonical_unit(became, unit)
+            out[unit] = out.get(unit, 0) + 1
     return out
 
 
@@ -154,7 +144,13 @@ def build_worksheet(project_dir: Path) -> dict:
     rows: list[dict] = []
     for path in layout.files:
         rel = path.relative_to(project_dir).as_posix()
-        text = path.read_text(encoding="utf-8")
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            raise CompactRefused(
+                f"{rel} could not be read ({type(exc).__name__}: {exc}); a worksheet "
+                "that skipped it would compact a corpus with rules missing"
+            ) from exc
         frontmatter, preamble, blocks = learnings_files.rule_blocks(text)
         files[rel] = {
             "name": path.name,
@@ -225,10 +221,28 @@ class Result:
     counts: dict[str, int] = field(default_factory=dict)
     over_cap: list[str] = field(default_factory=list)
     undispositioned: list[str] = field(default_factory=list)
+    #: `learning.compacted` events that could not be written. The rules are on
+    #: disk either way; a missed event only costs those rules their citation
+    #: history, so it is reported, never raised.
+    event_failures: int = 0
 
 
 def _file_rel(name: str) -> str:
     return f"{learnings_files.RULES_DIR_REL}/{name}"
+
+
+def _session_base(project_dir: Path, prawduct_dir: Path) -> "str | None":
+    """The tree the Stop gate will measure this session against: the session
+    base marker, else HEAD's tree (the gate's own fallback)."""
+    from . import gates  # noqa: PLC0415 — lazy; gates is heavy and only apply-time needs it
+
+    value = gates._read_session_base_tree(prawduct_dir)
+    if value:
+        return value
+    proc = learnings_migrate._git(project_dir, "rev-parse", "HEAD^{tree}")
+    if proc is None or proc.returncode != 0:
+        return None
+    return proc.stdout.strip() or None
 
 
 def validate(project_dir: Path, ws: dict) -> Result:
@@ -384,10 +398,15 @@ def validate(project_dir: Path, ws: dict) -> Result:
     if res.refusals:
         return res
 
-    # Build the files.
+    # Build the files, against the SAME ceilings the Stop gate will apply to
+    # this session (`record_lint.budget_in_force`): the session's base marker,
+    # else HEAD, so a raise not yet in the base is not counted here either.
+    prawduct_dir = project_dir / ".prawduct"
     budgets = record_lint.parse_learnings_budgets(
-        record_lint._read_text(project_dir / ".prawduct" / "project-state.yaml") or ""
+        record_lint._read_text(prawduct_dir / "project-state.yaml") or ""
     )[0]
+    base = _session_base(project_dir, prawduct_dir)
+    base_budgets = record_lint.budgets_at(project_dir, prawduct_dir, base) if base else budgets
     for name in sorted(targets):
         lines = [line for _rid, line in placed[name]]
         if name in existing:
@@ -412,15 +431,15 @@ def validate(project_dir: Path, ws: dict) -> Result:
             )
             continue
         size = len(content.encode("utf-8"))
-        kb = record_lint._effective_kb(name, budgets)
-        if size > kb * 1024:
+        limit = record_lint.budget_in_force(name, budgets, base_budgets)
+        if size > limit:
             if name == learnings_files.CORE_NAME:
-                res.over_cap.append(f"{name} {size}B over its {kb * 1024}B cap")
+                res.over_cap.append(f"{name} {size}B over its {limit}B cap")
             else:
                 res.refusals.append(
-                    f"{name} would be {size}B, over its {kb * 1024}B budget: move rules to "
-                    "another area file, or raise `learnings_budgets` with a reason in a "
-                    "commit BEFORE this one (a raise never counts in the session that writes it)"
+                    f"{name} would be {size}B, over its {limit}B budget: move rules to "
+                    "another area file. A raise of `learnings_budgets` counts only once it "
+                    "was committed before this session began, so this session cannot use one"
                 )
                 continue
         res.outputs[_file_rel(name)] = content
@@ -477,9 +496,12 @@ def apply(project_dir: Path, ws: dict, *, local: bool = False) -> Result:
             raise CompactRefused("--local: git could not say where the backup goes")
         stamp = datetime.now(timezone.utc).strftime("compact-%Y%m%dT%H%M%SZ")
         rels = sorted(set(ws["files"]) | set(res.outputs))
-        learnings_migrate._back_up(
-            project_dir, [r for r in rels if (project_dir / r).is_file()], root / stamp
-        )
+        try:
+            learnings_migrate._back_up(
+                project_dir, [r for r in rels if (project_dir / r).is_file()], root / stamp
+            )
+        except learnings_migrate.MigrateInterrupted as exc:
+            raise CompactRefused(f"--local: the backup failed ({exc}); nothing was written") from exc
     written: list[str] = []
     try:
         for rel, content in res.outputs.items():
@@ -492,14 +514,23 @@ def apply(project_dir: Path, ws: dict, *, local: bool = False) -> Result:
             written.append(rel)
     except OSError as exc:
         raise CompactInterrupted(f"{type(exc).__name__}: {exc}", written) from exc
-    seen = ledger.learning_events_seen(project_dir / ".prawduct") if (project_dir / ".prawduct").is_dir() else None
+    try:
+        seen = ledger.learning_events_seen(project_dir / ".prawduct") if (project_dir / ".prawduct").is_dir() else None
+    except OSError:
+        seen = None
     for rel, old, new in res.events:
-        if not new or old == new or seen is None:
+        if not new or old == new:
             continue
-        ledger.append_learning_event(
-            project_dir, "learning.compacted", file=rel, unit_hash=new,
-            from_hash=old, seen=seen,
-        )
+        if seen is None:
+            res.event_failures += 1
+            continue
+        try:
+            ledger.append_learning_event(
+                project_dir, "learning.compacted", file=rel, unit_hash=new,
+                from_hash=old, seen=seen,
+            )
+        except (OSError, ValueError):
+            res.event_failures += 1
     return res
 
 

@@ -626,9 +626,9 @@ class TestEveryLearningsCheckAtStop:
 
     The record-lint tests call the check directly, so they cannot see what the
     Stop hook does with a finding: whether it blocks, under which headline,
-    or, for the one advisory kind, whether it stays a NOTE. This repo's own
-    project-state carries an unapproved core raise, so a regression in that
-    filter would block every session here. Each test names its red.
+    or, for the one advisory kind, whether it stays a NOTE. A regression in
+    that filter would block every session in any repo carrying an unapproved
+    core raise. Each test names its red.
     """
 
     _LONG = "- " + "a long rule " * 30

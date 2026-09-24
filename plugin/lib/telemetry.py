@@ -171,11 +171,12 @@ def _read_events(
     events: list[dict] = []
 
     def _now(unit: str) -> str:
-        seen: set[str] = set()
-        while unit in became and unit not in seen:
-            seen.add(unit)
-            unit = became[unit]
-        return unit
+        # The walk has one home (`ledger.canonical_unit`); this reader builds
+        # `became` in file order, so the NEWEST mapping wins here as it does in
+        # `ledger.compaction_map`.
+        from . import ledger  # noqa: PLC0415 — lazy; telemetry stays import-light
+
+        return ledger.canonical_unit(became, unit)
 
     def _finish() -> dict:
         written = {_now(u) for u in units["written"]}

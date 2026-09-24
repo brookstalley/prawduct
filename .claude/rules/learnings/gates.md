@@ -8,6 +8,8 @@ paths:
   - "plugin/lib/ledger.py"
   - "plugin/lib/telemetry.py"
   - "plugin/lib/review_dispatch.py"
+  - "plugin/bin/prawduct-hook"
+  - "plugin/hooks/**"
 ---
 # Learnings — gates
 
@@ -17,7 +19,6 @@ paths:
 - Auto-enable belongs with visibility, not enforcement — a feature may flip on silently only if at worst it shows new output; anything that can BLOCK the next PR (Critic checks, gates, non-zero hooks) must be enabled explicitly
 - Dogfooding the plugin on its own repo masks output-relative bugs: tree-relative reads resolve here because this checkout has the files. Prove self-containment by static audit for tree-relative reads plus a run in a real consumer
 - For a coverage/forcing-function opt-out, make the resolution a first-class recorded artifact (even a one-line 'not relevant — <reason>' stub), not a suppression flag — a flag is inert, invisible and rubber-stampable
-- The `prawduct-hook` on `$PATH` is the installed plugin cache, not the worktree you're editing — its exit code is not evidence about your change; run `python3 plugin/bin/prawduct-hook` from the repo
 - Before predicting a per-minute rate ceiling will bind, check serial round-trip latency: requests/min ≤ 60/round-trip-seconds, so it never binds on total volume — only on concurrent/batched requests issued faster than one round-trip drains.
 - Before choosing block-vs-warn for a gate, establish WHO is at the write — a refusal to a human is a stop, but to an AGENT it is an auto-fix: a silent mutation nobody reviewed. Tell: weighing 'strict vs lenient' without having named the caller.
 - Swapping a mechanism's input for a COPY of a file: ask what the original's METADATA was load-bearing for — `copyfile` dropped the git index mtime, silencing git's racily-clean rule, so the tree capture vouched for content never on disk.

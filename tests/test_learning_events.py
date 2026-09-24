@@ -680,3 +680,30 @@ class TestACompactedRuleIsNotWritten:
         written = {e["learning"]["unit_hash"] for e in _events(repo, "learning.written")}
         assert lf.unit_hash("a brand new rule") in written
         assert lf.unit_hash("the rewritten wording of an old rule") not in written
+
+
+class TestAMovedRuleIsNotWritten:
+    """A rule moved verbatim from core.md to an area file is an old rule in a
+    new place. The emitter used to compare each file against that file's own
+    base, so a compaction that split a file recorded every moved rule as
+    written (seen in this repo's ledger on 2026-09-24). Red if the base is
+    per-file again."""
+
+    def test_a_verbatim_move_between_files_writes_nothing(self, tmp_path, capsys):
+        repo = _repo(tmp_path, rules=("the rule that will move to an area file", "a rule that stays"))
+        (repo / RULES_REL).write_text(_corpus("a rule that stays"), encoding="utf-8")
+        area = repo / lf.RULES_DIR_REL / "area.md"
+        area.write_text('---\npaths:\n  - "code.py"\n---\n# area\n\n### the rule that will move to an area file\n')
+        _touch_code(repo)
+        _stop(repo, capsys)
+        assert _events(repo, "learning.written") == []
+
+    def test_a_new_rule_in_an_area_file_is_still_written(self, tmp_path, capsys):
+        # The control: the union must not swallow genuinely new rules.
+        repo = _repo(tmp_path, rules=("a rule that stays",))
+        area = repo / lf.RULES_DIR_REL / "area.md"
+        area.write_text('---\npaths:\n  - "code.py"\n---\n# area\n\n### a genuinely new rule for the area\n')
+        _touch_code(repo)
+        _stop(repo, capsys)
+        written = {e["learning"]["unit_hash"] for e in _events(repo, "learning.written")}
+        assert lf.unit_hash("a genuinely new rule for the area") in written

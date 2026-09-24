@@ -59,6 +59,7 @@ SECTION_NAMES = (
     "change_log",
     "backlog",
     "default_branch",
+    "learnings_cap",
 )
 
 
@@ -677,6 +678,43 @@ def _section_default_branch(project_dir: Path) -> Section:
 # --------------------------------------------------------------------------
 
 
+def _section_learnings_cap(project_dir: Path, prawduct_dir: Path, base: str) -> Section:
+    """Whether this branch changes ``core.md``'s cap, and on whose word.
+
+    ``owner_approved:`` is text an agent can write, so its visibility at the
+    PR boundary is the only check on a raise the owner never gave. A reviewer
+    who is told nothing here would have to open ``project-state.yaml`` itself.
+    """
+    from . import learnings_files, record_lint  # noqa: PLC0415 — lazy; only this section needs them
+
+    # The MERGE-BASE, not the base branch's tip: a cap changed on the base after
+    # this branch forked is not this branch's change, and would read as one.
+    code, fork = _git(project_dir, "merge-base", base, "HEAD")
+    if code != 0 or not fork:
+        return Section("learnings_cap", degraded=(
+            f"core.md's cap could not be compared — no merge-base with {base}; read "
+            "`learnings_budgets.core.md` in project-state.yaml at both ends yourself"
+        ))
+    try:
+        before = record_lint.budgets_at(project_dir, prawduct_dir, fork).get(learnings_files.CORE_NAME) or {}
+        after = record_lint.budgets_at(project_dir, prawduct_dir, "HEAD").get(learnings_files.CORE_NAME) or {}
+    except (OSError, ValueError) as exc:
+        return Section("learnings_cap", degraded=(
+            f"core.md's cap could not be compared ({type(exc).__name__}) — read "
+            "`learnings_budgets.core.md` in project-state.yaml at both ends yourself"
+        ))
+    def _cap(entry: dict) -> tuple:
+        return (entry.get("kb"), entry.get("owner_approved"))
+
+    if _cap(before) == _cap(after):
+        return Section("learnings_cap", body="this branch does not change core.md's cap")
+    return Section("learnings_cap", body=(
+        f"core.md's cap CHANGES on this branch: {before or 'the default'} -> {after or 'the default'}. "
+        "`owner_approved:` is text an agent can write: this raise needs the owner's "
+        "approval quoted in the PR description, or it is a WARNING."
+    ))
+
+
 def assemble(project_dir: Path) -> tuple[list[Section], str | None]:
     """Build every section. Returns ``(sections, hard_failure_reason)``.
 
@@ -742,6 +780,7 @@ def assemble(project_dir: Path) -> tuple[list[Section], str | None]:
         )
     )
     sections.append(_section_default_branch(project_dir))
+    sections.append(_section_learnings_cap(project_dir, prawduct_dir, base))
 
     # The roster is the promise, so reconcile against it rather than trusting the
     # list just built. A builder that raised, or a section quietly dropped in a

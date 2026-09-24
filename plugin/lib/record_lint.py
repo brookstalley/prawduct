@@ -1062,6 +1062,28 @@ def _effective_kb(name: str, budgets: dict) -> int:
     return _LEARNINGS_BUDGET_DEFAULT_KB
 
 
+def budgets_at(project_dir: Path, prawduct_dir: Path, tree: "str | None") -> dict:
+    """``learnings_budgets`` as ``tree``'s project-state declares it (``{}``
+    when the tree or the file cannot be read)."""
+    if not tree:
+        return {}
+    try:
+        state_rel = (prawduct_dir / "project-state.yaml").relative_to(project_dir).as_posix()
+    except ValueError:
+        state_rel = _STATE_REL
+    text = _git_text(project_dir, tree, state_rel)
+    return parse_learnings_budgets(text)[0] if text else {}
+
+
+def budget_in_force(name: str, budgets_now: dict, budgets_base: dict) -> int:
+    """The byte ceiling that governs ``name`` THIS interval: the lower of the
+    ceiling declared now and the one declared at the base, so a raise counts
+    only once it is in the base. The one home for that rule; the Stop gate and
+    ``learnings-compact`` both ask it, so a compaction can never be approved
+    by one and blocked by the other."""
+    return min(_effective_kb(name, budgets_now), _effective_kb(name, budgets_base)) * 1024
+
+
 def _shape_findings(rel: str, violations: "list") -> "list[dict]":
     """One finding per file per kind: a 139KB corpus has hundreds of body lines,
     and a finding per line would bury the one sentence that says what to do."""
@@ -1192,14 +1214,9 @@ def _check_learnings_budget(
         no_answer.update(_FORMAT_CHECKS)
         return findings, unchecked, no_answer
 
-    # The ceilings in force THIS interval are the base tree's: a raise written
-    # in the same interval as the growth it would excuse does not count yet.
-    try:
-        state_rel = (prawduct_dir / "project-state.yaml").relative_to(project_dir).as_posix()
-    except ValueError:
-        state_rel = _STATE_REL
-    base_state = _git_text(project_dir, base_tree, state_rel)
-    base_budgets = parse_learnings_budgets(base_state)[0] if base_state else {}
+    # The ceilings in force THIS interval: a raise written in the same interval
+    # as the growth it would excuse does not count yet (`budget_in_force`).
+    base_budgets = budgets_at(project_dir, prawduct_dir, base_tree)
 
     core_rel = f"{learnings_files.RULES_DIR_REL}/{learnings_files.CORE_NAME}"
     rows = []
@@ -1226,7 +1243,7 @@ def _check_learnings_budget(
             "now_text": now_text,
             "base": _git_size(project_dir, base_tree, rel) if base_text is not None else 0,
             "base_text": base_text,
-            "budget": min(kb_now, kb_base) * 1024,
+            "budget": budget_in_force(path.name, budgets, base_budgets),
             "raise_pending": kb_now > kb_base,
         })
 
@@ -1291,9 +1308,10 @@ def _check_learnings_budget(
                 )
             else:
                 remedy = (
-                    "pay in this commit by merging or retiring a rule, or raise "
-                    f"`{_LEARNINGS_BUDGETS_KEY}.{r['name']}` in project-state.yaml "
-                    "with a reason"
+                    "pay in this commit by merging or retiring a rule, or by moving one "
+                    f"to another area file. A raise of `{_LEARNINGS_BUDGETS_KEY}."
+                    f"{r['name']}` (with a reason) counts only from the NEXT session, "
+                    "so it cannot pay for this one"
                 )
             pending = (
                 " A raise written this interval does not count until the next one."
@@ -1337,6 +1355,18 @@ def corpus_status(project_dir: Path, prawduct_dir: Path, layout=None) -> "dict |
             (budgets.get(learnings_files.CORE_NAME) or {}).get("kb")
             and not (budgets.get(learnings_files.CORE_NAME) or {}).get("owner_approved")
         ),
+        # An APPROVED raise is shown too: `owner_approved:` is text an agent
+        # can write, so being seen every session is the only check on it.
+        "approved_raise": (
+            {
+                "kb": (budgets.get(learnings_files.CORE_NAME) or {}).get("kb"),
+                "owner_approved": (budgets.get(learnings_files.CORE_NAME) or {}).get("owner_approved"),
+            }
+            if (budgets.get(learnings_files.CORE_NAME) or {}).get("owner_approved")
+            and (budgets.get(learnings_files.CORE_NAME) or {}).get("kb")
+            else None
+        ),
+        "unreadable": [],
     }
     for path in layout.files:
         try:
@@ -1344,6 +1374,7 @@ def corpus_status(project_dir: Path, prawduct_dir: Path, layout=None) -> "dict |
             size = path.stat().st_size
         except (OSError, UnicodeDecodeError):
             status["compliant"] = False
+            status["unreadable"].append(path.name)
             continue
         if path.name == learnings_files.CORE_NAME:
             status["core_bytes"] = size

@@ -1226,8 +1226,25 @@ def _learnings_limit_lines(project_dir: Path, layout) -> list[str]:
         status = record_lint.corpus_status(project_dir, prawduct_dir, layout)
     except Exception as exc:  # prawduct:allow prawduct/broad-except -- advice must not break the session briefing
         return [f"Learnings: limit check could not run ({type(exc).__name__}) — `prawduct-hook verify-records` shows it"]
-    if status is None or status["compliant"]:
+    if status is None:
         return []
+    out: list[str] = []
+    if status.get("approved_raise"):
+        raise_ = status["approved_raise"]
+        out.append(
+            f"Learnings: core.md's cap is {raise_['kb']}KB, raised with owner_approved: "
+            f"{raise_['owner_approved']} — an agent can write that date too; if the owner "
+            "did not give it, say so"
+        )
+    if status.get("unreadable"):
+        out.append(
+            "Learnings: could not read " + ", ".join(status["unreadable"])
+            + " — its size and format are unchecked; fix the file (encoding or permissions) first"
+        )
+    if status["compliant"] or not (
+        status["over"] or status["too_long"] or status["body"] or status["unapproved_raise"]
+    ):
+        return out
     facts: list[str] = []
     if status["core_bytes"] is not None and status["core_bytes"] > status["core_cap_bytes"]:
         facts.append(
@@ -1245,7 +1262,7 @@ def _learnings_limit_lines(project_dir: Path, layout) -> list[str]:
         facts.append(f"{status['body']} body line(s)")
     if status["unapproved_raise"]:
         facts.append("its core.md raise has no `owner_approved:` and is ignored")
-    return [
+    return out + [
         "Learnings: OVER LIMIT — " + "; ".join(facts)
         + " — frozen until compacted: no file over budget may grow, and every added line is a one-line rule",
         "agent → run `prawduct-hook learnings-compact --plan` and follow it (drops need the owner's approval); "
