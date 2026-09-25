@@ -4541,10 +4541,19 @@ def _severity_counts(findings: list[dict]) -> tuple[int, int, int]:
     return blocking, warning, note
 
 
-def build_fact_body(manifest: dict, partials: list[dict]) -> dict:
+def build_fact_body(
+    manifest: dict, partials: list[dict], *, dispatched_at: "str | None" = None
+) -> dict:
     """Assemble the review fact body (design D4) from the manifest interval
     and the merged partials. The derived cache is rendered FROM this body
-    (:func:`fact_to_cache_record`), so it carries everything the cache needs."""
+    (:func:`fact_to_cache_record`), so it carries everything the cache needs.
+
+    ``dispatched_at`` is this review's dispatch-clock stamp, when the mark
+    ``critic-begin`` wrote is still this review's (``review_dispatch.peek``).
+    It is written as a body key ONLY when present: an absent key is "not
+    measured", and a null would be a value naming the absence, which every
+    reader would then have to special-case to keep it out of a real interval.
+    """
     findings = merge_findings(partials)
     blocking, warning, note = _severity_counts(findings)
     # Parallel reviewers → wall-clock is the slowest, not the sum. None when no
@@ -4555,7 +4564,7 @@ def build_fact_body(manifest: dict, partials: list[dict]) -> dict:
         if isinstance(p.get("duration_seconds"), (int, float))
         and not isinstance(p.get("duration_seconds"), bool)
     ]
-    return {
+    body = {
         "base_commit": manifest.get("base_commit"),
         "base_tree": manifest["base_tree"],
         "head_tree": manifest["head_tree"],
@@ -4610,6 +4619,16 @@ def build_fact_body(manifest: dict, partials: list[dict]) -> dict:
         # move a verdict, and no gate reads it.
         "record_lint": manifest.get("record_lint"),
     }
+    # The dispatch clock, on the one record every worktree of the clone can
+    # read. `duration_seconds` above is the reviewers' own estimate; this is
+    # the stamp code read before they were spawned, and the interval ends at
+    # the fact's envelope `ts` (`review_dispatch.fact_interval_seconds`, the
+    # one reader). The ledger carries the same stamp, but a ledger is per
+    # worktree, so a tally over the shared store could not see a delegated or
+    # parallel worktree's clock without it.
+    if dispatched_at is not None:
+        body["dispatched_at"] = dispatched_at
+    return body
 
 
 #: The three readings :func:`finding_fix_cost` can return. Phrases rather than
@@ -5230,7 +5249,19 @@ def consolidate(project_dir: Path) -> int:
         f.get("id") == review_id for f in evidence.facts_of_kind(store, "review")
     )
     if not already:
-        body = build_fact_body(manifest, partials)
+        # The dispatch mark is READ here and CONSUMED by the ledger append
+        # below: the fact is minted first, so the mark `critic-begin` wrote is
+        # still on disk. `peek` makes the same tree judgement `consume` will —
+        # one judgement, so the fact and the ledger event cannot disagree about
+        # whether the mark is this review's — and clears nothing, because the
+        # ledger still needs it. A clock is advice: an unreadable mark or a
+        # failed git read records the fact as not measured, never fails it.
+        from . import review_dispatch  # noqa: PLC0415 — lazy, as this module's other lib imports are
+
+        dispatched_at, _clock_reason = review_dispatch.peek(
+            prawduct_dir, "review.critic", review_dispatch.head_sha(project_dir)
+        )
+        body = build_fact_body(manifest, partials, dispatched_at=dispatched_at)
         result = evidence.append_fact(project_dir, "review", review_id, body)
         if result["status"] != "appended":
             print(

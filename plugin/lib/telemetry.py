@@ -384,11 +384,14 @@ def _group_stats(rows: list[dict]) -> dict:
         }
     recording = [r["observations"] for r in rows if r["observations"] is not None]
     # The two populations, never pooled. `duration_total_seconds` and
-    # `duration_median_seconds` below are the POOLED figures every existing
-    # consumer already reads; they are kept because dropping a published key is a
-    # breaking change, but a caller grading a protocol change reads the split —
-    # a median over a mixture of clock readings and model recollections is not a
-    # measurement of anything.
+    # `duration_median_seconds` below are older keys: the reviewers' own
+    # ESTIMATES over every review that carried one, clocked rows included. They
+    # are kept because dropping or repurposing a published key is a breaking
+    # change, and they are not the headline — the human line leads with
+    # `duration_measured` and names the unclocked estimate as one, and a caller
+    # grading a protocol change reads the split, because a median over a
+    # mixture of clock readings and model recollections is not a measurement of
+    # anything.
     measured = [r["duration_measured"] for r in rows if r["duration_measured"] is not None]
     self_reported = [
         r["duration"] for r in rows
@@ -661,28 +664,42 @@ def aggregate_review_stats(
     }
 
 
+def _fmt_population(label: str, population: dict) -> str:
+    """One duration population for the human line: its count, then its total
+    and median when it has any — an empty one prints its zero and no median,
+    never a ``0s`` median that reads as reviews that took no time."""
+    if population["median_seconds"] is None:
+        return f"{label} {population['reviews']}"
+    return (
+        f"{label} {population['reviews']} (total {population['total_seconds']}s, "
+        f"median {population['median_seconds']}s)"
+    )
+
+
 def _fmt_stats(stats: dict) -> str:
     """One stat block as a human line fragment (shared by every grouping)."""
     f = stats["findings"]
     meas, self_rep = stats["duration_measured"], stats["duration_self_reported"]
-    med = stats["duration_median_seconds"]
     pct = round(stats["actionable_rate"] * 100)
     recording = stats["reviews_recording_observations"]
     observations = (
         f"observations {stats['observations']} in {recording} recording review(s)"
         if recording else "observations not recorded"
     )
-    # Provenance is stated wherever a duration is, so a reader cannot take a
-    # median for a measurement without being told how much of it was measured.
-    provenance = (
-        f"measured {meas['reviews']}"
-        + (f" (median {meas['median_seconds']}s)" if meas["median_seconds"] is not None else "")
-        + f", self-reported {self_rep['reviews']}"
-        + (f" (median {self_rep['median_seconds']}s)" if self_rep["median_seconds"] is not None else "")
-    )
+    # The headline LEADS with the clock and names the estimate as one. The
+    # pooled `duration_total_seconds` / `duration_median_seconds` keys are the
+    # reviewers' own estimates over every review that carried one — clocked rows
+    # included — and a headline built from them read 420s on a ledger whose
+    # clocked median was 209s. They stay in `--json` (dropping a published key
+    # is a breaking change) and leave the human line, where a reader takes the
+    # first number for the measurement.
+    #
+    # The estimate shown is the population with NO clock, so the two figures
+    # cover disjoint reviews and never describe the same round twice.
     return (
-        f"{stats['reviews']} review(s) | duration total {stats['duration_total_seconds']}s, "
-        f"median {med if med is not None else '-'}s [{provenance}] | "
+        f"{stats['reviews']} review(s) | "
+        f"{_fmt_population('duration clocked', meas)}; "
+        f"{_fmt_population('unclocked, self-reported estimate', self_rep)} | "
         f"B/W/N/other {f['blocking']}/{f['warning']}/{f['note']}/{f['other']} | "
         f"actionable {pct}% | {stats['findings_per_review']} findings/review | "
         f"{observations}"
