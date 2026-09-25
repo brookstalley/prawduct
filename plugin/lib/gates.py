@@ -30,7 +30,8 @@ were reassigned here (they are gate logic, lib-clean) from the briefing region.
 Depends on its lib siblings ``gitstate`` / ``coverage`` / ``buildplan_refs``
 (build-plan Status parsing, including ``_count_build_plan_chunks``),
 ``evidence`` / ``coverage_algebra`` (the v3 data plane), ``learnings_files``
-(the one resolver for the rules layout the cross-check nudge names), and ``core``
+(the one resolver for the rules layout the cross-check nudge names),
+``standing_block`` (the turn-closing verdict the Stop deferral reads), and ``core``
 (``read_bool_yaml_key`` — canonical twin of the hook's parity-pinned inline
 mirror), plus the stdlib.
 """
@@ -51,6 +52,7 @@ from . import (
     evidence,
     gitstate,
     learnings_files,
+    standing_block,
     verdict_cache,
 )
 from .core import read_bool_yaml_key, suite_coupled_prefixes
@@ -854,6 +856,54 @@ def background_tasks_in_flight(stop_input) -> tuple[bool, list[str]]:
     if not labels:
         return False, []
     return True, labels
+
+
+#: The gates a turn's ``DO NOT CLEAR`` verdict defers — the SESSION-END gates,
+#: keyed by their ``hooks/gates.json`` ids. Everything else a Stop can raise
+#: (learnings, PR review, trivial bounds) is not about whether the session is
+#: ending, so it keeps blocking on such a turn.
+VERDICT_DEFERRED_GATES = frozenset({"reflection", "critic"})
+
+
+def turn_declares_in_flight(stop_input) -> tuple[bool, str | None]:
+    """Decide whether the turn that just ended told the user NOT to end the
+    session, from the Stop-hook ``last_assistant_message`` field.
+
+    The Stop hook fires at every turn end, while the reflection and Critic
+    gates are about session end. A turn whose standing block closes on
+    ``DO NOT CLEAR`` is the agent's own statement that the session is not
+    ending — a review still running, an ask the user must answer first — so
+    both gates DEFER to the next Stop. Both, by owner ruling: the label is a
+    required, user-facing claim, so misusing it to dodge a gate is visible to
+    the person it misleads. The deferral is stateless: the next
+    turn that closes on anything else is a session end, and the gates fire.
+
+    Reads the payload field only. Claude Code 2.1.282 carries
+    ``last_assistant_message`` beside ``transcript_path``; the transcript is
+    deliberately NOT parsed as a fallback, because an older client that lacks
+    the field then behaves exactly as before this signal existed.
+
+    Degradation ladder — the permissive direction is taken ONLY on a clearly
+    present verdict; every uncertain case keeps blocking (authority fails
+    closed):
+
+      - non-dict input, field absent, non-string or blank → ``(False, None)``;
+      - the message's closing block states no single verdict where the block
+        puts it (``standing_block.clear_verdict`` returns ``None``: a label
+        quoted mid-prose, both labels, trailing text after the verdict) →
+        ``(False, None)``;
+      - the verdict is ``SAFE TO CLEAR`` → ``(False, None)``;
+      - the verdict is ``DO NOT CLEAR`` → ``(True, "DO NOT CLEAR")``.
+    """
+    if not isinstance(stop_input, dict):
+        return False, None
+    message = stop_input.get("last_assistant_message")
+    if not isinstance(message, str) or not message.strip():
+        return False, None
+    verdict = standing_block.clear_verdict(message)
+    if verdict == standing_block.DO_NOT_CLEAR:
+        return True, verdict
+    return False, None
 
 
 _CRITIC_MODE_CHUNK = "chunk (lighter pass, not ready for push)"
