@@ -7,7 +7,7 @@ builder who commits a chunk before reviewing it leaves a clean tree, and rule 2
 answer `cumulative` there — boundary rigor on inner-stage work, at 12, 17, 27
 and 31 commits ahead on one branch. Mid-plan (the branch's own plan still owes
 a later review) the answer is now `chunk` over the unreviewed interval: from the
-covered frontier, or from the merge-base when nothing on the branch is reviewed.
+covered frontier, or from the merge-base when no blocker-free reviewed state is behind HEAD.
 At the PR point (plan complete, or its last chunk committed) it is `cumulative`
 as before, and a branch whose plan cannot be shown keeps rule 2.
 
@@ -284,3 +284,65 @@ class TestTheIntervalOwner:
         result = cc.begin_review(repo, "chunk")
         assert result["status"] == "error", result
         assert "empty diff" in result["reason"]
+
+
+class TestTheMergeBaseStartSaysWhy:
+    """``covered_frontier`` returns ``None`` for three different states, and the
+    merge-base start used to describe all of them as "nothing on this branch is
+    reviewed yet". Two of them are not that: an open blocker on the nearest
+    reviewed state, and a reviewed state that no longer composes (a base sync).
+    Saying "nothing reviewed" there hides a blocker from the builder, and a
+    ``chunk`` review records no resolutions, so the blocker outlives it."""
+
+    def _blocked_then_committed(self, tmp_path) -> Path:
+        repo = _repo(tmp_path)
+        (repo / "src/app.py").write_text("x = 2  # chunk 1\n")
+        begin = _run_begin(repo, "--mode", "chunk", "--chunk", "1")
+        assert begin.returncode == 0, begin.stderr
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        _write_partial(repo, "reviewer", manifest["commit_reviewed"], findings=[
+            {"name": "Broken", "goal": "Nothing Is Broken", "severity": "blocking",
+             "recommendation": "Fix", "files": ["src/app.py"]},
+        ])
+        assert _run_consolidate(repo).returncode == 0
+        _commit_all(repo, "chunk 1, reviewed with an open blocker")
+        _commit_first(repo, 2, "chunk2")
+        return repo
+
+    def test_the_frontier_names_which_none_it_returned(self, tmp_path):
+        repo = self._blocked_then_committed(tmp_path)
+        absent: list[str] = []
+        assert gates.covered_frontier(repo, absent=absent) is None
+        assert absent == [gates.FRONTIER_ABSENT_BLOCKED]
+
+        fresh = _repo(tmp_path / "fresh")
+        _commit_first(fresh, 2)
+        absent = []
+        assert gates.covered_frontier(fresh, absent=absent) is None
+        assert absent == [gates.FRONTIER_ABSENT_NONE_COMPOSES]
+
+    def test_an_open_blocker_is_named_by_the_router_not_called_unreviewed(self, tmp_path):
+        repo = self._blocked_then_committed(tmp_path)
+        mode, why = infer_mode(repo, None)
+        assert mode == "chunk", why
+        assert "unresolved blocking finding" in why, why
+        assert "verify-resolutions" in why, why
+        assert "nothing on this branch is reviewed" not in why, why
+
+    def test_an_open_blocker_is_named_by_critic_begin(self, tmp_path):
+        repo = self._blocked_then_committed(tmp_path)
+        begin = _run_begin(repo, "--mode", "chunk")
+        assert begin.returncode == 0, begin.stderr
+        out = begin.stdout + begin.stderr
+        assert "unresolved blocking finding" in out, out
+        assert "nothing on this branch has been reviewed yet" not in out, out
+
+    def test_a_never_reviewed_branch_says_so_and_names_the_sync_case(self, tmp_path):
+        """No reviewed state composes: the rationale cannot tell "never reviewed"
+        from "reviewed before a base sync", so it names both, never just one."""
+        repo = _repo(tmp_path)
+        _commit_first(repo, 2)
+        mode, why = infer_mode(repo, None)
+        assert mode == "chunk", why
+        assert "no reviewed state on this branch composes" in why, why
+        assert "base sync" in why, why

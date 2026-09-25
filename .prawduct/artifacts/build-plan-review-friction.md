@@ -12,17 +12,34 @@ governed_by:
       - "review rigor is stage-keyed; the inner stage is any review of an uncommitted diff → ruling needed before Chunk 01, recorded beneath the clause: the stage is keyed on WHERE IN THE CYCLE the review sits, not on whether the builder committed first. A mid-plan review of the unreviewed interval (covered frontier → working tree, committed or not) is inner stage; the boundary is merge-base…HEAD at the PR point. The norm's own why (an inner-stage review run at boundary rigor is a defect priced in minutes and rounds) is what 33 mid-plan cumulatives since 09-20 violate"
       - "review wall-clock is P0 → conforms: Chunks 01 and 02 exist to cut rounds and blocked turns"
       - "unsure defaults to the inner-stage review of whatever interval exists → conforms: Chunk 01 makes the router follow it on a clean tree too"
+      - "proportionality ratchets both ways → conforms: no control is added. The verdict deferral narrows an existing gate to the turns where it yields, and the mid-plan chunk removes mid-plan boundary reviews"
+      - "state-file growth is an advisory warning, never a hard block → inapplicable, because no state-file size behaviour changes"
   - artifact: architecture
     dispositions:
       - "authority fails closed, advice fails soft → conforms: Chunk 02 defers only on a clearly present DO NOT CLEAR label. A missing, unreadable or ambiguous last message blocks as today"
       - "every fact has one home → conforms: the standing-block labels had no code home, only prose (session-digest.md, session-hygiene.md). Chunk 02 creates `plugin/lib/standing_block.py` as the one home and pins both prose carriers to it with a test"
+      - "an independent reviewer never mutates the session it reviews → inapplicable, because no reviewer path changes; the Stop hook reads the builder's own last message"
+      - "local-first, no network → conforms: the verdict comes from the Stop payload, and durations from the ledger and the evidence store"
+      - "the plugin writes nothing into a governed repo except its own state, the shared evidence store and reconciled files → conforms: Chunk 03's clock rides the review fact in the evidence store the norm names"
+      - "written in Python, never specific to Python → conforms: verdict labels, review intervals and review clocks are language-free"
+      - "prawduct guides and reviews, it never implements → conforms: every change is to prawduct's own routing, gates and telemetry"
+      - "goals and verification bind, prescribed method is advice → conforms: the Success list binds; chunk Deliverables are best guesses and the delegates' departures are recorded"
   - artifact: api-contract
     dispositions:
       - "exit codes are the contract → conforms: a deferred Stop exits 0 through the existing STH-3W7F path; no new exit code"
+      - "whole-surface semantic versioning → conforms: the behaviour changes ship under the next patch version at release, and persisted additions are optional fields"
       - "additive-first evolution; persisted data independently schema-versioned → conforms if 03 bumps review-stats --json schema_version when its headline duration changes meaning, and fact-body fields are optional"
   - artifact: data-model
     dispositions:
       - "persisted formats are lock-in decisions → ruling needed (Chunk 03 only): #882 option 1 adds a dispatch interval to the review fact body. Additive and optional; older facts stay estimate-only"
+      - "governance verdicts come from the append-only fact ledger → conforms: the mid-plan router reads facts through covered_frontier; the verdict deferral reads no stored state at all"
+      - "facts are immutable and append-only → conforms: Chunk 03 adds fields when a fact is minted; no fact is edited"
+      - "derived views are never authoritative → conforms: no gate reads .critic-findings.json; review-stats is a report, not a gate"
+      - "a governance document reaches a terminal state and is never deleted → conforms: this plan is archived when its work ships"
+      - "backlog issues conform to the title rules → inapplicable, because nothing here writes the backlog"
+      - "a newer-schema fact is a loud block → conforms: unchanged; optional fields are read only where present"
+      - "two stores, two lifetimes → conforms: the review clock rides the shared fact (an answer), and the dispatch mark stays a per-worktree gitignored file"
+      - "backlog_service_repo selects the authoritative store → inapplicable, because no backlog read or write changes"
 partition: >-
   00 serial and first, done by the coordinator (it changes the owner's machine config, and every later
   chunk would leak to siblings without it). 01 and 02 are delegated to two opus subagents in isolated
@@ -117,8 +134,8 @@ hallucinote, swordfishing, bankmachine, faidh and prawduct):
 ## Status
 
 - [x] Chunk 00: Siblings run a pinned plugin, not this checkout
-- [ ] Chunk 01: The router picks the mode from what is unreviewed, not from whether the builder committed
-- [ ] Chunk 02: A DO NOT CLEAR turn defers the session-end gates
+- [x] Chunk 01: The router picks the mode from what is unreviewed, not from whether the builder committed
+- [x] Chunk 02: A DO NOT CLEAR turn defers the session-end gates
 - [ ] Chunk 03: Durations are clocked where a clock exists
 Context: Plan written 2026-09-25 from the sibling survey. **00 done 2026-09-25:** `~/source/prawduct-live`
 is detached at origin/develop a2288858, the marketplace file points at it (backup beside it as
@@ -138,7 +155,26 @@ owner can veto]`
 `[DECISION: Chunks 00–02 get ONE review after 01 merges, not one per chunk | on this branch's pre-01 router,
 only `cumulative` can see committed merge work with no reviewed state behind it, so a review now plus a
 review after 01 would be two boundary-rigor rounds over overlapping spans. One review of 00–02 is one round,
-and it leaves the reviewed state that 03's `chunk` review starts from | coordinator, owner can veto]` The numbers and method are in
+and it leaves the reviewed state that 03's `chunk` review starts from | coordinator, owner can veto]`
+**01 merged 2026-09-25 (2fa1b228, integration a8f0d61d).** The positive control rebuilt real puzzles
+states in a scratch clone. Four of eight reproduced the historical `cumulative`, and the new router
+answers `chunk` for three and `deferred` for one: a 61-file cumulative that had found 0 blocking
+findings. The combined suite: 1 failure inherited from develop, recorded `--degraded`, and fixed on
+its own branch `fix/suite-at-boundary-note-window` (8cbf38af). The 00–02 review is the router's own
+answer on this branch: `rule-2 mid-plan chunk` from the merge-base.
+`[DECISION: 03 builds in parallel with the 00–02 review, in its own worktree off 59af2969 | the
+partition kept 03 serial only because 01 and 02 were editing its files; both have merged, and a
+review reads its own tree snapshot, so a separate worktree cannot void it | coordinator, owner can veto]`
+**00–02 review (rev-20260925T215533Z-3948de9f, `chunk` from the merge-base): 1 blocking, 4 observations.**
+R-1 is the inherited failure in the test evidence. Asking to WAIVE it: it is red on a clean
+develop checkout (prawduct-live a2288858), the record is `--degraded` saying so, and the fix is on
+`fix/suite-at-boundary-note-window` (8cbf38af), kept off this branch per `building.md:68`. O-1 is
+fixed (every governing norm now has a disposition; record-lint is clean). O-2 is fixed as a class:
+`gates.covered_frontier` names which clean `None` it returned (`FRONTIER_ABSENT_*`), and
+`critic_consolidate.merge_base_start_reason` is the one renderer for the router's rationale and
+`critic-begin`'s note. An open blocker is named with its remedy, never called "nothing reviewed". The
+stale base-sync sentence is gone. There are four new tests, red before the change, and a mutation of
+the blocked code turns three of them red. O-3 and O-4 are recorded ACCEPT, O-3 raised with the owner. The numbers and method are in
 `.prawduct/.handoff-notes.md`, and the scripts are re-derivable from each repo's ledger and the
 transcripts' `stop_hook_summary` records.
 

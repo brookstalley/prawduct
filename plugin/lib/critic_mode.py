@@ -41,7 +41,7 @@ return the first that fires:
      review): there a clean tree means the builder committed the chunk
      before reviewing it, which is inner-stage work, so the answer is
      ``chunk`` over the unreviewed interval — from the covered frontier, or
-     the merge-base when nothing on the branch is reviewed — or ``deferred``
+     the merge-base when no blocker-free reviewed state is behind HEAD — or ``deferred``
      when nothing is unreviewed or a short plan defers
      (:func:`_mid_plan_answer`). The stage is keyed on cycle position, not
      commit order (``nonfunctional-requirements.md`` § Direction, the ruling
@@ -421,8 +421,8 @@ def _explicit_mode(
     **Nor mid-plan, where the interval is not empty.** A clean tree mid-plan
     still holds unreviewed commits when the builder committed the chunk before
     reviewing it, and the ``chunk``/``final`` interval reaches them — from the
-    covered frontier, or from the merge-base when nothing on the branch is
-    reviewed yet (:func:`_mid_plan_start` asks the interval's owner). Sending
+    covered frontier, or from the merge-base when no blocker-free reviewed
+    state is behind HEAD (:func:`_mid_plan_start` asks the interval's owner). Sending
     that review to ``cumulative`` would price an inner-stage review at
     boundary rigor, so the token stands and the rationale says why.
     """
@@ -603,8 +603,9 @@ def _interval_note(start: dict) -> str:
 
     if start["origin"] == critic_consolidate.BASE_AT_MERGE_BASE:
         return (
-            f"nothing on this branch is reviewed yet, so the interval runs from the "
-            f"merge-base ({start['commit'][:12]}) to the working tree"
+            f"{critic_consolidate.merge_base_start_reason(start.get('absent'))}, so "
+            f"the interval runs from the merge-base ({start['commit'][:12]}) to the "
+            "working tree"
         )
     return (
         f"the interval runs from the last reviewed state ({start['commit'][:12]}) "
@@ -631,7 +632,8 @@ def _mid_plan_answer(
     - ``deferred`` when nothing committed is unreviewed (the covered frontier
       is HEAD): the last review already covers HEAD, so no review is owed now;
     - ``chunk`` over the unreviewed interval otherwise, from the covered
-      frontier or, when nothing on the branch is reviewed yet, the merge-base.
+      frontier or, when no blocker-free reviewed state is behind HEAD, the
+      merge-base (the rationale names which of the three reasons applies).
     """
     start = _mid_plan_start(project_dir, plan, progress)
     if start is None:

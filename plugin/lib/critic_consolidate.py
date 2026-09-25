@@ -2565,8 +2565,12 @@ def working_tree_interval_base(
 ) -> dict:
     """Where a ``chunk``/``final`` review's interval starts — the one owner.
 
-    Returns ``{"origin", "commit", "tree"}``; ``origin`` is one of the
-    ``BASE_AT_*`` constants above. :func:`begin_review` derives its interval
+    Returns ``{"origin", "commit", "tree", "absent"}``; ``origin`` is one of the
+    ``BASE_AT_*`` constants above, and ``absent`` is the ``gates.FRONTIER_ABSENT_*``
+    code saying why no reviewed state was extended from (``None`` when one was,
+    or when the frontier could not be looked for). :func:`merge_base_start_reason`
+    renders it, so the router's rationale and ``critic-begin``'s note say the
+    same thing. :func:`begin_review` derives its interval
     from this, and mode inference asks it (rather than re-deriving it) so the
     mode it names and the interval that mode then captures cannot disagree.
 
@@ -2592,13 +2596,17 @@ def working_tree_interval_base(
     from . import gates  # noqa: PLC0415 — lazy; gates is heavy and one-way
 
     frontier_why: list[str] = []
-    frontier = gates.covered_frontier(project_dir, frontier_why)
+    absent: list[str] = []
+    frontier = gates.covered_frontier(project_dir, frontier_why, absent)
     if why is not None:
         why.extend(frontier_why)
+    absent_code = absent[0] if absent else None
     if frontier is not None:
         if frontier["tree"] == head_tree:
-            return {"origin": BASE_AT_HEAD_COVERED, "commit": head_commit, "tree": head_tree}
-        return {"origin": BASE_AT_FRONTIER, "commit": frontier["commit"], "tree": frontier["tree"]}
+            return {"origin": BASE_AT_HEAD_COVERED, "commit": head_commit, "tree": head_tree,
+                    "absent": None}
+        return {"origin": BASE_AT_FRONTIER, "commit": frontier["commit"],
+                "tree": frontier["tree"], "absent": None}
     if clean and not frontier_why:
         from . import coverage  # noqa: PLC0415 — lazy; coverage pulls git helpers
 
@@ -2608,8 +2616,35 @@ def working_tree_interval_base(
                 "origin": BASE_AT_MERGE_BASE,
                 "commit": resolved["merge_base"],
                 "tree": resolved["tree"],
+                "absent": absent_code,
             }
-    return {"origin": BASE_AT_HEAD, "commit": head_commit, "tree": head_tree}
+    return {"origin": BASE_AT_HEAD, "commit": head_commit, "tree": head_tree,
+            "absent": absent_code}
+
+
+def merge_base_start_reason(absent: "str | None") -> str:
+    """Why a clean-tree interval starts at the merge-base, as one clause.
+
+    One renderer for both surfaces that say it (mode inference's rationale and
+    ``critic-begin``'s note), because the two describing the same start
+    differently is how an open blocker came to be reported as "nothing
+    reviewed". An open blocker is named with its only remedy: a ``chunk``
+    review records no resolutions, so it will not clear one.
+    """
+    from . import gates  # noqa: PLC0415 — lazy; gates is heavy and one-way
+
+    if absent == gates.FRONTIER_ABSENT_BLOCKED:
+        return (
+            "the nearest reviewed state carries an unresolved blocking finding, "
+            "which this review will not clear (only `verify-resolutions` records "
+            "resolutions)"
+        )
+    if absent == gates.FRONTIER_ABSENT_NONE_COMPOSES:
+        return (
+            "no reviewed state on this branch composes from the merge-base "
+            "(nothing is reviewed yet, or the reviews predate a base sync)"
+        )
+    return "nothing on this branch is reviewed yet"
 
 
 def begin_review(
@@ -2860,8 +2895,8 @@ def begin_review(
             notes.append(
                 f"this {mode_token} review starts at the merge-base "
                 f"{start['commit'][:12]}, not at HEAD: the working tree is clean and "
-                "nothing on this branch has been reviewed yet, so the committed work "
-                "is the unreviewed interval."
+                f"{merge_base_start_reason(start.get('absent'))}, so the committed "
+                "work is the unreviewed interval."
             )
     elif mode_token == "cumulative":
         from . import coverage  # noqa: PLC0415 — lazy; coverage pulls git helpers

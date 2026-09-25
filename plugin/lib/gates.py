@@ -1447,8 +1447,22 @@ def commit_coverage(project_dir: Path) -> dict:
 #: review then starts is :func:`critic_consolidate.working_tree_interval_base`'s call.
 FRONTIER_WALK_LIMIT = 200
 
+#: Which clean ``None`` :func:`covered_frontier` returned, for a caller that
+#: passes ``absent``. They differ in what the builder must hear: "unreviewed"
+#: is the ordinary first chunk, "blocked" means a review found a blocker nobody
+#: has resolved (only ``verify-resolutions`` records resolutions), and "none
+#: composes" cannot tell a never-reviewed branch from one whose reviews
+#: predate a base sync.
+FRONTIER_ABSENT_UNREVIEWED = "unreviewed"
+FRONTIER_ABSENT_BLOCKED = "blocked"
+FRONTIER_ABSENT_NONE_COMPOSES = "none-composes"
 
-def covered_frontier(project_dir: Path, why: "list[str] | None" = None) -> "dict | None":
+
+def covered_frontier(
+    project_dir: Path,
+    why: "list[str] | None" = None,
+    absent: "list[str] | None" = None,
+) -> "dict | None":
     """The newest commit on this branch whose tree a REVIEW already covers.
 
     Walks HEAD's first-parent history back toward the merge-base and returns
@@ -1462,7 +1476,9 @@ def covered_frontier(project_dir: Path, why: "list[str] | None" = None) -> "dict
     ``None`` whenever extension from a reviewed tree must not happen. Where the
     review starts instead is the caller's call
     (:func:`critic_consolidate.working_tree_interval_base`): HEAD, or, on a clean
-    tree with nothing on the branch reviewed, the merge-base:
+    tree with no blocker-free reviewed state behind it, the merge-base. The
+    first three cases below are "nothing to find", and a caller passing
+    ``absent`` gets one ``FRONTIER_ABSENT_*`` code naming which:
 
     - the nearest composing tree carries an unresolved blocker — those clear
       through ``verify-resolutions``, the only mode that records resolutions;
@@ -1477,9 +1493,8 @@ def covered_frontier(project_dir: Path, why: "list[str] | None" = None) -> "dict
       ordinary answer: the merge-base is the new base tip, and a pre-sync review
       composes from it only across a free (non-judgeable) advance, never across
       a judgeable one — that needs the base-advance transfer, which
-      :func:`_merge_base_verdict` owns. So a sync leaves today's interval in
-      place until a review spans it, rather than extending to a whole-branch
-      review;
+      :func:`_merge_base_verdict` owns. A never-reviewed branch returns here
+      too, and the two are indistinguishable from the walk;
     - the merge-base, the history or the store cannot be read, or the walk
       passes :data:`FRONTIER_WALK_LIMIT`.
 
@@ -1491,6 +1506,10 @@ def covered_frontier(project_dir: Path, why: "list[str] | None" = None) -> "dict
     def _unreadable(reason: str) -> None:
         if why is not None:
             why.append(reason)
+
+    def _absent(code: str) -> None:
+        if absent is not None:
+            absent.append(code)
 
     read = evidence.read_facts(project_dir)
     precheck = _store_precheck(read)
@@ -1527,9 +1546,14 @@ def covered_frontier(project_dir: Path, why: "list[str] | None" = None) -> "dict
         )
         if verdict["status"] == "covered":
             reviewed = any(step.get("kind") == "review" for step in verdict.get("path", []))
-            return {"commit": commit, "tree": tree} if reviewed else None
-        if verdict["status"] == "blocked":
+            if reviewed:
+                return {"commit": commit, "tree": tree}
+            _absent(FRONTIER_ABSENT_UNREVIEWED)
             return None
+        if verdict["status"] == "blocked":
+            _absent(FRONTIER_ABSENT_BLOCKED)
+            return None
+    _absent(FRONTIER_ABSENT_NONE_COMPOSES)
     return None
 
 
