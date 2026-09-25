@@ -15,7 +15,7 @@ governed_by:
   - artifact: architecture
     dispositions:
       - "authority fails closed, advice fails soft → conforms: Chunk 02 defers only on a clearly present DO NOT CLEAR label. A missing, unreadable or ambiguous last message blocks as today"
-      - "every fact has one home → conforms: the label vocabulary is read from the one module that already owns the standing block's labels (Chunk 02 finds it by grep, not by memory)"
+      - "every fact has one home → conforms: the standing-block labels had no code home, only prose (session-digest.md, session-hygiene.md). Chunk 02 creates `plugin/lib/standing_block.py` as the one home and pins both prose carriers to it with a test"
   - artifact: api-contract
     dispositions:
       - "exit codes are the contract → conforms: a deferred Stop exits 0 through the existing STH-3W7F path; no new exit code"
@@ -125,7 +125,20 @@ is detached at origin/develop a2288858, the marketplace file points at it (backu
 `known_marketplaces.json.bak-2026-09-25-review-friction`), and a fresh headless session's banner read
 `plugin · detached@a228885`. It is ticked on its Done-when. Its doc paragraph gets its review in the final
 cumulative (doc-only; a per-chunk round for one paragraph is the rigor-for-rounds trade the NFR prices).
-The build runs in `.claude/worktrees/review-friction` on `fix/review-friction`. The numbers and method are in
+The build runs in `.claude/worktrees/review-friction` on `fix/review-friction`.
+**02 merged 2026-09-25 (843e1e8b).** verify-api found the Stop payload carries `last_assistant_message`
+(Claude Code 2.1.282), so the detector reads that field and never the transcript. A client without it
+blocks as before. The coordinator's positive control replayed every critic/reflection block since 09-14
+through `clear_verdict`: 14 of 14 DO NOT CLEAR turns defer, all 13 SAFE TO CLEAR turns and the 1 unlabelled
+turn still block. The puzzles 20:29 block was correct: the review had finished and recorded a real
+blocker, and the agent's "still running" was stale. `[DECISION: the verdict-deferral note goes to stderr at exit 0, like the
+STH-3W7F note, so neither reader sees it | surfacing it would add a message to nearly every mid-work turn,
+the friction this chunk removes; the gate fires at the next turn not closing on DO NOT CLEAR | coordinator,
+owner can veto]`
+`[DECISION: Chunks 00–02 get ONE review after 01 merges, not one per chunk | on this branch's pre-01 router,
+only `cumulative` can see committed merge work with no reviewed state behind it, so a review now plus a
+review after 01 would be two boundary-rigor rounds over overlapping spans. One review of 00–02 is one round,
+and it leaves the reviewed state that 03's `chunk` review starts from | coordinator, owner can veto]` The numbers and method are in
 `.prawduct/.handoff-notes.md`, and the scripts are re-derivable from each repo's ledger and the
 transcripts' `stop_hook_summary` records.
 

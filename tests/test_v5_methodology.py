@@ -1210,7 +1210,12 @@ LAST_MEASURED_TOKENS = {
     # forward notes, moved verbatim out of `reflection.md` (D2) so the learning
     # loop's guide is about the learning loop. On-demand class: a reading, no
     # ceiling.
-    "methodology/session-hygiene.md": 2811,
+    # +112 on 2026-09-25 (review-friction, the Stop verdict deferral): one
+    # paragraph under the Clear line saying what a DO NOT CLEAR turn defers,
+    # that only the closing line counts, and what misusing the label costs —
+    # the gate now reads the verdict, so its readers are owed the rule. A
+    # READING, no ceiling.
+    "methodology/session-hygiene.md": 2923,
     # First reading, 2026-08-21, taken at birth: a new on-demand guide, so it
     # joins the class above — a READING, no ceiling. `test_every_methodology_guide_is_accounted_for`
     # requires the entry; the decision block above this
