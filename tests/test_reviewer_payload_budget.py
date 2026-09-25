@@ -162,7 +162,13 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # +4 more, same PR after its cumulative review, DECLARED: the stale verdict at `final` becomes an
     # observation that the suite is owed before the work lands, so direct-commit and final-only
     # paths are not left with nothing flagging a missing suite run.
-    "single-pass-inner": 6349,
+    # RAISED on 2026-09-25 (review-friction), DECLARED: +35 tokens, all from SKILL.md,
+    # saying a `chunk` interval starts at the merge-base on a clean tree with nothing reviewed, and
+    # that mid-plan inference answers `chunk`, not `cumulative`. A reviewer reading its manifest needs
+    # that to know why its span reaches back to the merge-base. Priced against the SUM: +35 tokens per
+    # review against a boundary `cumulative` per committed chunk (5-6 min median, ~11 findings, each
+    # feeding verify rounds). 33 of those ran mid-plan since 09-20. Compressed in place before declaring.
+    "single-pass-inner": 6384,
     # RAISED +43 (reviewer-prompt-file-list, 2026-09-22), DECLARED: all of it the
     # `review-protocol.md` template change that sends coordinator reviewers to the
     # manifest for their file sets; see the dispatched-reviewer entry for the price.
@@ -174,7 +180,13 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # +17 more, same PR after its cumulative review, DECLARED: the stale verdict at `final` becomes an
     # observation that the suite is owed before the work lands, so direct-commit and final-only
     # paths are not left with nothing flagging a missing suite run.
-    "single-pass-full": 20444,
+    # RAISED on 2026-09-25 (review-friction), DECLARED: +120 tokens, all from SKILL.md (+35) and review-cycle.md (+85),
+    # saying a `chunk` interval starts at the merge-base on a clean tree with nothing reviewed, and
+    # that mid-plan inference answers `chunk`, not `cumulative`. A reviewer reading its manifest needs
+    # that to know why its span reaches back to the merge-base. Priced against the SUM: +120 tokens per
+    # review against a boundary `cumulative` per committed chunk (5-6 min median, ~11 findings, each
+    # feeding verify rounds). 33 of those ran mid-plan since 09-20. Compressed in place before declaring.
+    "single-pass-full": 20564,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -214,13 +226,19 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # +13 more, same PR after its cumulative review, DECLARED: the stale verdict at `final` becomes an
     # observation that the suite is owed before the work lands, so direct-commit and final-only
     # paths are not left with nothing flagging a missing suite run.
-    "dispatched-reviewer": 19646,
+    # RAISED on 2026-09-25 (review-friction), DECLARED: +85 tokens, all from review-cycle.md,
+    # saying a `chunk` interval starts at the merge-base on a clean tree with nothing reviewed, and
+    # that mid-plan inference answers `chunk`, not `cumulative`. A reviewer reading its manifest needs
+    # that to know why its span reaches back to the merge-base. Priced against the SUM: +85 tokens per
+    # review against a boundary `cumulative` per committed chunk (5-6 min median, ~11 findings, each
+    # feeding verify rounds). 33 of those ran mid-plan since 09-20. Compressed in place before declaring.
+    "dispatched-reviewer": 19731,
 }
 
 PAYLOAD_CEILINGS = {
-    "single-pass-inner": 6350,
-    "single-pass-full": 20445,
-    "dispatched-reviewer": 19647,
+    "single-pass-inner": 6385,
+    "single-pass-full": 20565,
+    "dispatched-reviewer": 19732,
 }
 
 

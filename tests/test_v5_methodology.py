@@ -454,7 +454,8 @@ LAST_MEASURED_TOKENS = {
     # NEXT-ACTION for the rest. DECLARED: a correction, compressed in place first.
     # RAISED 5055 -> 5072, #820 (owner decision 2026-09-23): the declared suite moves from every chunk's Verify to the boundary — a default every consumer inherits, so the sentence carrying it is owed at each surface its reader meets. Compressed in place first; no duplication to pay from. DECLARED.
     # RAISED 5072 -> 5093, same PR, after its cumulative review (W1/W3): the boundary is defined as where work LANDS, so direct-commit repos and work ending on a single `final` still owe the suite, and `final` reports a stale record as an observation. Compressed in place first. DECLARED.
-    "methodology/building.md": 5093,
+    # RAISED 5093 -> 5116 (review-friction, 2026-09-25): the chunk-close order (review, fix, then commit), the mid-plan routing rule, and the merge-base start of a clean-tree `chunk` interval, which removes mid-plan boundary reviews (33 `cumulative` rounds since 09-20 across seven repos, ~11 findings each). The new text was compressed in place before declaring. DECLARED. +18 of it states that a DO NOT CLEAR turn defers reflection and Critic, the case in which an untrackable wait no longer blocks.
+    "methodology/building.md": 5116,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -860,7 +861,8 @@ LAST_MEASURED_TOKENS = {
     # ONE finding for N occurrences, which is worth more than 83 tokens of payload.
     # RATCHETED 11235 -> 11232 (review-interval-extension, 2026-09-22): the chunk/final interval row and the
     # Small row restated for the covered frontier, in place and shorter.
-    "skills/critic/review-cycle.md": 11232,
+    # RAISED 11232 -> 11317 (review-friction, 2026-09-25): the chunk-close order (review, fix, then commit), the mid-plan routing rule, and the merge-base start of a clean-tree `chunk` interval, which removes mid-plan boundary reviews (33 `cumulative` rounds since 09-20 across seven repos, ~11 findings each). The new text was compressed in place before declaring. DECLARED.
+    "skills/critic/review-cycle.md": 11317,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -997,7 +999,8 @@ LAST_MEASURED_TOKENS = {
     # carried its own remedy, which now rides the refusal's stderr (read only
     # when it fires); what remains is the row itself, which has no duplicate.
     # RAISED 3680 -> 3684 (#820), same PR, after its cumulative review (W1/W3): the boundary is defined as where work LANDS, so direct-commit repos and work ending on a single `final` still owe the suite, and `final` reports a stale record as an observation. Compressed in place first. DECLARED.
-    "skills/critic/SKILL.md": 3684,
+    # RAISED 3684 -> 3719 (review-friction, 2026-09-25): the chunk-close order (review, fix, then commit), the mid-plan routing rule, and the merge-base start of a clean-tree `chunk` interval, which removes mid-plan boundary reviews (33 `cumulative` rounds since 09-20 across seven repos, ~11 findings each). The new text was compressed in place before declaring. DECLARED.
+    "skills/critic/SKILL.md": 3719,
     "skills/critic/framework-checks.md": 1116,
     # The on-demand class, first recorded 2026-08-19 (#688) — readings, no
     # ceilings; the block above this dict is the decision and its reasoning.
@@ -1138,7 +1141,10 @@ LAST_MEASURED_TOKENS = {
     # a `## Status` tick means — built, committed, reviewed; never merged or released.
     # Readers (the Critic gate, the briefing, the extension deferral) each assumed a
     # different meaning until then. Declared, not paid: nothing here restated it.
-    "methodology/planning.md": 5770,
+    # +34 on 2026-09-25 (review-friction): "Per-chunk commit is the contract" now spells out
+    # review, fix, then commit, and the multi-chunk heuristic says a chunk committed first still
+    # infers `chunk`. A READING, no ceiling.
+    "methodology/planning.md": 5804,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
@@ -3082,7 +3088,8 @@ class TestBuildingMethodology:
         # other's delta as silent slack.
         # RAISED 5039 -> 5056 (review-interval-extension PR review, 2026-09-22) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 5056 -> 5073 (#820, suite at the boundary, 2026-09-23) — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 5094, f"building.md is ~{tokens} tokens, should be <5094"
+        # RAISED 5094 -> 5117 (review-friction, 2026-09-25) — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 5117, f"building.md is ~{tokens} tokens, should be <5117"
 
 
 # =============================================================================
@@ -5316,7 +5323,8 @@ class TestCriticSkillRoutesByMode:
         # RAISED 3652 -> 3681 (review-scrub-seams, 2026-09-22): the exit-6 row;
         # the reason is at the LAST_MEASURED_TOKENS entry.
         # RAISED 3681 -> 3685 (#820, 2026-09-23) — see LAST_MEASURED_TOKENS.
-        assert tokens < 3685, f"SKILL.md is ~{tokens} tokens, should be <3685"
+        # RAISED 3685 -> 3720 (review-friction, 2026-09-25) — see LAST_MEASURED_TOKENS.
+        assert tokens < 3720, f"SKILL.md is ~{tokens} tokens, should be <3720"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))
@@ -5634,7 +5642,8 @@ class TestReviewCycle:
         # Small row now states what inference answers (`chunk`; `final` by
         # declaration). Declared, not paid — reading + 1.
         # RATCHETED 11236 -> 11233 (review-interval-extension, 2026-09-22) with the reading.
-        assert tokens < 11233, f"review-cycle.md is ~{tokens} tokens, should be <11233"
+        # RAISED 11233 -> 11318 (review-friction, 2026-09-25) — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 11318, f"review-cycle.md is ~{tokens} tokens, should be <11318"
 
     def test_framework_checks_token_budget(self):
         # Ceiling 1150. This file is `final`/`cumulative` payload: SKILL.md's

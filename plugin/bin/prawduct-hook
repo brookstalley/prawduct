@@ -5920,10 +5920,10 @@ def cmd_infer_critic_mode(project_dir: Path, args: str | None) -> int:
     ``<mode>`` is one of the short tokens (``chunk`` / ``final`` /
     ``cumulative`` / ``verify-resolutions``) — or ``deferred``, the
     output-only answer that NO review is owed now (``critic_mode.MODE_DEFERRED``),
-    for one of two reasons the rationale names: the branch's plan is short and
-    touches no risk surface (#292), or a later review the plan still owes will
+    for one of three reasons the rationale names: the branch's plan is short and
+    touches no risk surface (#292); a later review the plan still owes will
     start from the last reviewed state and cover this work (#167,
-    ``extension-deferred``). The skill dispatches nothing on it and reports the
+    ``extension-deferred``); or, mid-plan, nothing is unreviewed. The skill dispatches nothing on it and reports the
     rationale, which says what to do: commit and carry on, or, on a short plan's
     last chunk, commit and run the ``cumulative`` that is that chunk's review. ``<rationale>`` is the
     human-readable explanation suitable for both stdout reporting and
