@@ -39,6 +39,21 @@ SAFE TO CLEAR turns plus the one unlabelled turn still block. Contract change: `
 checkout, so sibling sessions ran unmerged, uncommitted work. It now points at a detached
 `origin/develop` worktree. `documentation/release-process.md` describes that variant and its refresh step.
 
+**Durations are clocked where a clock exists (#882, owner ruling: option 1).** The review fact body gains an
+optional `dispatched_at` (UTC ISO-8601), written only when the critic dispatch mark belongs to this
+review. `critic-consolidate` reads the mark without consuming it (`review_dispatch.peek`, one `_judge`
+shared with `consume`), and the ledger still consumes it. The interval runs to the fact's `ts`
+(`review_dispatch.fact_interval_seconds`). `coverage.count_branch_rounds` returns `measured` and
+`estimated` (`{rounds, seconds}`), replacing `seconds`/`timed`, which had no reader outside the formatter
+and tests. The gate's tally prints the clock first and never sums the two. The `review-stats` human line
+leads with the clocked population. Its `--json` keys keep their meaning, so `schema_version` stays 7.
+Contract change: `critic-consolidate` writes the new fact key (`api-contract.md`). Persisted schema:
+`data-model.md`.
+
+The 00–02 review's O-2 is fixed across its class. `gates.covered_frontier` names which clean `None` it
+returned (`FRONTIER_ABSENT_*`), and `critic_consolidate.merge_base_start_reason` is the one renderer. An
+open blocker on the nearest reviewed state is named with its remedy, never called "nothing reviewed".
+
 Budget raises are declared with their price in `test_v5_methodology.py` and
 `test_reviewer_payload_budget.py`.
 ## 2026-09-24: v3.6.1 is cut, and develop reopens on 3.6.2-dev

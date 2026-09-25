@@ -288,11 +288,11 @@ class TestTheIntervalOwner:
 
 class TestTheMergeBaseStartSaysWhy:
     """``covered_frontier`` returns ``None`` for three different states, and the
-    merge-base start used to describe all of them as "nothing on this branch is
-    reviewed yet". Two of them are not that: an open blocker on the nearest
-    reviewed state, and a reviewed state that no longer composes (a base sync).
-    Saying "nothing reviewed" there hides a blocker from the builder, and a
-    ``chunk`` review records no resolutions, so the blocker outlives it."""
+    merge-base start must say which. Only one of them is "nothing reviewed": the
+    others are an open blocker on the nearest reviewed state, and a reviewed
+    state that no longer composes (a base sync). Calling a blocker "nothing
+    reviewed" hides it, and a ``chunk`` review records no resolutions, so the
+    blocker outlives it."""
 
     def _blocked_then_committed(self, tmp_path) -> Path:
         repo = _repo(tmp_path)
@@ -320,6 +320,15 @@ class TestTheMergeBaseStartSaysWhy:
         absent = []
         assert gates.covered_frontier(fresh, absent=absent) is None
         assert absent == [gates.FRONTIER_ABSENT_NONE_COMPOSES]
+
+        # Only free (non-judgeable) commits: covered by free edges, no review on
+        # the path. That is the one state the plain "nothing reviewed" describes.
+        free = _repo(tmp_path / "free")
+        _commit_file(free, "notes.md", "a note\n", "free commit 1")
+        _commit_file(free, "notes.md", "a note, revised\n", "free commit 2")
+        absent = []
+        assert gates.covered_frontier(free, absent=absent) is None
+        assert absent == [gates.FRONTIER_ABSENT_UNREVIEWED]
 
     def test_an_open_blocker_is_named_by_the_router_not_called_unreviewed(self, tmp_path):
         repo = self._blocked_then_committed(tmp_path)

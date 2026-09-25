@@ -2626,10 +2626,10 @@ def merge_base_start_reason(absent: "str | None") -> str:
     """Why a clean-tree interval starts at the merge-base, as one clause.
 
     One renderer for both surfaces that say it (mode inference's rationale and
-    ``critic-begin``'s note), because the two describing the same start
-    differently is how an open blocker came to be reported as "nothing
-    reviewed". An open blocker is named with its only remedy: a ``chunk``
-    review records no resolutions, so it will not clear one.
+    ``critic-begin``'s note), so the two cannot describe the same start
+    differently. The three reasons need different words because they need
+    different actions. An open blocker is named with its only remedy, since a
+    ``chunk`` review records no resolutions and will not clear it.
     """
     from . import gates  # noqa: PLC0415 — lazy; gates is heavy and one-way
 

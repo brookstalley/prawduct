@@ -174,7 +174,16 @@ fixed (every governing norm now has a disposition; record-lint is clean). O-2 is
 `critic_consolidate.merge_base_start_reason` is the one renderer for the router's rationale and
 `critic-begin`'s note. An open blocker is named with its remedy, never called "nothing reviewed". The
 stale base-sync sentence is gone. There are four new tests, red before the change, and a mutation of
-the blocked code turns three of them red. O-3 and O-4 are recorded ACCEPT, O-3 raised with the owner. The numbers and method are in
+the blocked code turns three of them red. O-3 and O-4 are recorded ACCEPT, O-3 raised with the owner.
+**Verify pass rev-20260925T220901Z-ca876f81: 0 blocking, R-1 waived.** 01 and 02 were ticked at e53f220b. Its two
+observations ride 03's review: a test for the third `absent` state (free edges only), and two docstrings reworded to the present tense.
+**03 merged 2026-09-25 (23ef4d04), with one departure from its Deliverables text:** the fact body carries
+`dispatched_at` only, not "the measured seconds" too. The interval ends at the fact's own `ts`, the ledger's
+shape, so a stored seconds value would be a second copy of a number two stamps already fix (`[DECISION]`
+recorded in `data-model.md`). `review-cycle.md`'s ledger-envelope line ("`duration_seconds` … nullable,
+never invented") is left as it was. 03 did not change the envelope, the line is not false, and the fact's
+home is `governance-telemetry.md`, which now says `duration_seconds` is an estimate. A clause there would add tokens
+to every reviewer payload to restate it. The numbers and method are in
 `.prawduct/.handoff-notes.md`, and the scripts are re-derivable from each repo's ledger and the
 transcripts' `stop_hook_summary` records.
 
