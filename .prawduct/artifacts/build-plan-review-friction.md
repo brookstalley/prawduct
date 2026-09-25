@@ -1,0 +1,229 @@
+---
+artifact: build-plan
+version: 1
+scope: review-friction
+branch: fix/review-friction
+depends_on:
+  - artifact: nonfunctional-requirements
+  - artifact: cumulative-latency-discovery
+governed_by:
+  - artifact: nonfunctional-requirements
+    dispositions:
+      - "review rigor is stage-keyed; the inner stage is any review of an uncommitted diff → ruling needed before Chunk 01, recorded beneath the clause: the stage is keyed on WHERE IN THE CYCLE the review sits, not on whether the builder committed first. A mid-plan review of the unreviewed interval (covered frontier → working tree, committed or not) is inner stage; the boundary is merge-base…HEAD at the PR point. The norm's own why (an inner-stage review run at boundary rigor is a defect priced in minutes and rounds) is what 33 mid-plan cumulatives since 09-20 violate"
+      - "review wall-clock is P0 → conforms: Chunks 01 and 02 exist to cut rounds and blocked turns"
+      - "unsure defaults to the inner-stage review of whatever interval exists → conforms: Chunk 01 makes the router follow it on a clean tree too"
+  - artifact: architecture
+    dispositions:
+      - "authority fails closed, advice fails soft → conforms: Chunk 02 defers only on a clearly present DO NOT CLEAR label. A missing, unreadable or ambiguous last message blocks as today"
+      - "every fact has one home → conforms: the label vocabulary is read from the one module that already owns the standing block's labels (Chunk 02 finds it by grep, not by memory)"
+  - artifact: api-contract
+    dispositions:
+      - "exit codes are the contract → conforms: a deferred Stop exits 0 through the existing STH-3W7F path; no new exit code"
+      - "additive-first evolution; persisted data independently schema-versioned → conforms if 03 bumps review-stats --json schema_version when its headline duration changes meaning, and fact-body fields are optional"
+  - artifact: data-model
+    dispositions:
+      - "persisted formats are lock-in decisions → ruling needed (Chunk 03 only): #882 option 1 adds a dispatch interval to the review fact body. Additive and optional; older facts stay estimate-only"
+partition: >-
+  00 serial and first, done by the coordinator (it changes the owner's machine config, and every later
+  chunk would leak to siblings without it). 01 and 02 are delegated to two opus subagents in isolated
+  worktrees. They share no module: 01 is lib/critic_mode.py, critic_consolidate and methodology prose;
+  02 is the Stop path in bin/prawduct-hook and lib/gates.py. 03 is serial after them because it
+  edits bin/prawduct-hook, as 02 does. The coordinator owns every shared file: CHANGELOG, the version bump
+  and the token-budget tests. At integration it re-reads each delegate's prose against the other's code,
+  because disjoint files do not keep one agent's claims true about a mechanism the other changed.
+last_validated: 2026-09-25
+---
+
+# Build plan — reviews and Stop blocks cost what they earn
+
+## Requirements Confidence
+
+**Level:** High for 00 and 03, Medium for 01 and 02. The problem is measured, and the owner ruled on every
+fork on 2026-09-25 (below). What remains open is two mechanics the builders verify first: the chunk
+interval from a committed frontier (01) and what the Stop payload carries (02).
+
+**Problem** (measured 2026-09-25 across all Claude config dirs and the ledgers of puzzles, discodon,
+hallucinote, swordfishing, bankmachine, faidh and prawduct):
+1. **Mid-plan cumulatives.** Since 09-20 there have been 74 `cumulative` reviews against 16
+   `chunk`/`final` reviews. Cumulatives average ~11 findings each against ~0.5, and they feed 101
+   `verify-resolutions` rounds. 33 cumulatives were chosen by rule 2 or rule 4 on a clean tree in the
+   middle of a plan, not at a PR. Swordfishing ran them at 12, 17, 27 and 31 commits ahead on one
+   branch. Cause: three surfaces give three orderings. `building.md:121` says "1. Commit
+   2. Critic", `review-cycle.md:46` says chunk mode runs "before committing", and the consolidate
+   directive (`critic_consolidate._BATCH_FIX_DIRECTIVE`) says "ONE commit, then verify". A builder who
+   commits first leaves a clean tree, so `critic_mode` rule 2 fires. `extension_deferral` does not
+   rescue it because the chunk just committed has not been reviewed.
+2. **Stop blocks on turns that are not session ends.** The block rate on Stop events has gone from
+   ~0.25% (09-01..13) to ~1.5% (09-14..20) to ~3.5% (09-21..25). Since 09-14, 17 of 32 critic/reflection
+   blocks landed on turns whose standing block said DO NOT CLEAR, for example "press the button, then
+   tell me", or "the review is still running" (puzzles 09-25 20:29). The Stop hook fires at every
+   turn end, but the gate's message and its rationale are about session end.
+3. **Siblings run this checkout live.** The user-level `prawduct` marketplace in `~/.claude` and
+   `~/.claude-noun` is a `directory` source at `~/source/prawduct`. That overrides each repo's pinned
+   GitHub source, and `CLAUDE_PLUGIN_ROOT` resolves to the working tree. puzzles sessions ran
+   `feature/learnings-one-line@810dfbf+dirty`, and 3 `learnings-rule-body` blocks came from a gate that
+   exists only on that unmerged branch. The devcontainer (discodon) uses GitHub `develop` and was not
+   affected.
+4. **Durations are presented as estimates.** The `review-stats` headline median uses reviewers'
+   self-estimates (puzzles: 420s headline against 209s measured). The gate's round tally does the
+   same (#882).
+
+**Success:**
+1. With a plan whose chunks remain unticked beyond the current one, `/prawduct:critic` with no
+   arguments never answers `cumulative`, whether the builder committed first or not. It answers an
+   inner-stage `chunk` over the unreviewed interval (covered frontier → working tree, or merge-base
+   when nothing on the branch is covered). At the PR point (plan complete, or its last chunk
+   committed) it still answers `cumulative`. A replay of the 33 mid-plan cases in tests answers `chunk`.
+2. Every surface that states the chunk-close order states one order, and the router gives the same
+   answer under either order. One grep for the claim, run in two vocabularies, returns only
+   consistent sites.
+3. A Stop whose last assistant message carries a DO NOT CLEAR verdict defers the session-end gates
+   (reflection, critic-review), as STH-3W7F does for background work: exit 0, with a one-line note.
+   SAFE TO CLEAR, COMPLETE, no label, or an unreadable transcript all block exactly as today. The
+   gate then checks the agent's own completion claim.
+4. The puzzles 20:29 case is explained: a block while a review was reported in flight. It is either
+   covered by Success 3, or fixed at its own cause.
+5. Sibling sessions' banners show the plugin at `develop@<sha>` (or at the ref the owner picks),
+   never at a feature branch or `+dirty`. The update step is written down where the release process is.
+6. The `review-stats` headline duration and the gate's round tally use clocked time wherever a clock
+   exists, and label estimates as estimates.
+
+**Out of scope:**
+- Bounding the span of repeat cumulatives (#890, blocked on data). This plan cuts how often they run,
+  and #890 cuts what each one reviews.
+- Post-cumulative verify rounds (`feature/post-cumulative-pr-coverage`, its own worktree). It also
+  edits `lib/critic_mode.py` (rule 1b and the NEXT-ACTION), so whichever merges second rebases.
+- Explicit `cumulative` invocations (39 since 09-20). The chunk measures them after 01 lands, before
+  anything is changed about them.
+- The `learnings-rule-body` behaviour on uncompacted corpora. It is by design: the learnings-one-line
+  plan freezes an uncompacted corpus. Once 00 stops the leak, it reaches siblings only when that
+  branch ships.
+- A banner warning when a product runs a dev-branch plugin. The banner already names the branch.
+  00 removes the cause, and a warning line would be permanent tax for a one-person setup.
+
+**Open assumptions:**
+- `[ASSUMPTION: the "mid-plan" test is later_review_owed (2+ unticked chunks) plus a plan resolved for the branch; a branch with no plan keeps rule 2 as today | MED — branches with no plan still escalate | user can correct]`
+- `[ASSUMPTION: the chunk interval can start at a committed covered frontier, or at the merge-base, on a clean tree; the rule-4 comment says so, and 01 opens critic_consolidate.begin_review to confirm it before building on it | HIGH | builder verifies]`
+- `[ASSUMPTION: the Stop payload gives the last assistant message (a field, or transcript_path), and the standing-block label can be parsed from it | HIGH — the whole of 02 | builder verifies (Foreign API)]`
+
+**What would raise confidence:** 01 opening `begin_review`, and 02's verify-api step.
+
+**Owner rulings (2026-09-25, answered in the planning conversation; each picked the recommended option):**
+- `[DECISION: inner stage = a mid-plan review of the unreviewed interval, committed or not; the boundary is merge-base…HEAD at the PR point | reads NFR:96's "uncommitted diff" by its own why (an inner review at boundary rigor is a defect priced in rounds); Chunk 01 records this beneath the clause and leaves the clause alone | owner: "Yes, key on cycle position"]`
+- `[DECISION: a DO NOT CLEAR turn defers BOTH session-end gates (reflection and critic-review); SAFE TO CLEAR, COMPLETE, no label or an unreadable transcript block as today | the label is a required, user-facing claim, so misusing it is visible; a session that exits on DO NOT CLEAR loses that session's reflection | owner: "Defer both"]`
+- `[DECISION: #882 option 1, an additive optional dispatch interval on the review fact body | the evidence store is clone-shared, and a ledger join undercounts parallel worktree work | owner: "On the fact body"]`
+- `[DECISION: siblings follow origin/develop through the pinned worktree; the coordinator sets it up and repoints both user-level marketplaces, backing up the config first | same ref the devcontainer already uses | owner: "develop"]`
+
+## Status
+
+- [x] Chunk 00: Siblings run a pinned plugin, not this checkout
+- [ ] Chunk 01: The router picks the mode from what is unreviewed, not from whether the builder committed
+- [ ] Chunk 02: A DO NOT CLEAR turn defers the session-end gates
+- [ ] Chunk 03: Durations are clocked where a clock exists
+Context: Plan written 2026-09-25 from the sibling survey. **00 done 2026-09-25:** `~/source/prawduct-live`
+is detached at origin/develop a2288858, the marketplace file points at it (backup beside it as
+`known_marketplaces.json.bak-2026-09-25-review-friction`), and a fresh headless session's banner read
+`plugin · detached@a228885`. It is ticked on its Done-when. Its doc paragraph gets its review in the final
+cumulative (doc-only; a per-chunk round for one paragraph is the rigor-for-rounds trade the NFR prices).
+The build runs in `.claude/worktrees/review-friction` on `fix/review-friction`. The numbers and method are in
+`.prawduct/.handoff-notes.md`, and the scripts are re-derivable from each repo's ledger and the
+transcripts' `stop_hook_summary` records.
+
+### Chunk 00: Siblings run a pinned plugin, not this checkout
+
+**Type:** doc-only
+**Why first:** the moment this plan's branch is checked out here, every sibling runs it.
+
+**Deliverables:**
+- A worktree at `~/source/prawduct-live`, detached at `origin/develop` (detached, so it never holds
+  the `develop` branch lock).
+- The `prawduct` entry in `~/.claude/plugins/known_marketplaces.json` and in
+  `~/.claude-noun/plugins/known_marketplaces.json` points at that worktree. Back up both files first,
+  and restart one sibling session to confirm.
+- `documentation/release-process.md` gains a short "Maintainer dogfooding" section. It says never to
+  point a directory marketplace at the checkout you develop in, and gives the update step
+  (`git -C ~/source/prawduct-live fetch && git -C ~/source/prawduct-live checkout --detach origin/develop`)
+  and where it runs (after each merge to develop).
+
+**Done when:** a new puzzles session's banner reads `(plugin · detached@<origin/develop sha>)` with no `+dirty`,
+and a switch of this checkout's branch changes nothing a sibling runs.
+
+### Chunk 01: The router picks the mode from what is unreviewed, not from whether the builder committed
+
+**Type:** code
+**Governed by:** the stage ruling above.
+
+**Deliverables:**
+- `lib/critic_mode.py`: rule 2 and rule 4's clean-tree redirect do not fire mid-plan (branch plan
+  resolved, `later_review_owed`). They answer `chunk` over covered frontier → tree, falling back to
+  the merge-base when nothing is covered. The rationale says which. Explicit `chunk`/`final` on a
+  clean tree mid-plan follows the same route instead of redirecting to `cumulative`.
+- Open `critic_consolidate.begin_review` (the interval `chunk` mode captures) before the change. If it
+  cannot start at a committed frontier on a clean tree, extend it there. It is the one owner of the
+  interval.
+- One chunk-close order stated everywhere: review the chunk, fix, then commit, which
+  `planning.md:180` already calls the contract. Enumerate the claim by grep in two vocabularies
+  ("commit … critic/review", "before/after committing", "ONE commit, then") across `plugin/`
+  (methodology, skills, docs, templates, hooks digest) and `critic_consolidate` directives. Fix
+  `building.md:121`, reconcile `_BATCH_FIX_DIRECTIVE` and `review-cycle.md:320` with `building.md:107`
+  (the post-cumulative case, where commit-then-verify is rule 1b, stays explicit), and grep the
+  module docstring's rule list.
+- The owner's ruling recorded BENEATH NFR:96 as a dated `[DECISION]`, with the owner quoted. The clause's own words are left alone in this commit: editing a norm's statement in the commit whose code it would bless is the amend-to-match tell.
+- `review-cycle.md` mode table and the `planning.md` heuristic list updated to match.
+
+**Tests:** `tests/` for `critic_mode`. A mid-plan committed chunk (tree clean, 2+ unticked, covered
+frontier) → `chunk`. The same with no frontier → `chunk` from the merge-base. Last chunk committed →
+`cumulative`. Plan complete → `cumulative`. No plan → rule 2 unchanged. Explicit `final` mid-plan on
+a clean tree → `chunk` interval, not `cumulative`. Each is red-verified against the pre-change module.
+
+**Done when:** tests are green and seen red, `/prawduct:critic`, then reflect.
+
+### Chunk 02: A DO NOT CLEAR turn defers the session-end gates
+
+**Type:** code
+**Foreign API:** Claude Code Stop-hook payload
+**Governed by:** the Stop ruling above.
+
+**Done when:**
+0. verify-api: capture a real Stop payload from this Claude Code version and record whether it
+   carries the last assistant message, or only `transcript_path`. Build against what it carries.
+1. `lib/gates.py` gains `turn_declares_in_flight(stop_input)`, beside `background_tasks_in_flight`
+   and on the same degradation ladder: permissive only on a clearly present DO NOT CLEAR verdict in
+   the last assistant text, blocking on anything uncertain. The label strings come from the module
+   that owns the standing-block vocabulary.
+2. `cmd_stop` defers reflection and critic-review on that signal through the existing STH-3W7F
+   deferral path. The note names the verdict. Other blockers (learnings, PR, trivial bounds) are
+   unaffected unless the ruling says otherwise.
+3. Explain the puzzles 09-25 20:29 block. Did `background_tasks` arrive empty while a review ran? Fix
+   it at its cause if it is not the DO NOT CLEAR case.
+4. The digest's Enforcement paragraph and `session-hygiene.md` say that the gate enforces on the
+   agent's clear verdict, and what a DO NOT CLEAR turn defers. Count the digest's characters as
+   well as its tokens: SessionStart context spills to a file above 10,000.
+5. Tests: DO NOT CLEAR defers; SAFE TO CLEAR, COMPLETE, no label, an unreadable transcript and a
+   garbage payload block; a label quoted inside earlier text does not count. Each is red-verified.
+   Then `/prawduct:critic` and reflect.
+
+### Chunk 03: Durations are clocked where a clock exists
+
+**Type:** code
+**Governed by:** the #882 ruling above. Closes #882.
+
+**Deliverables:**
+- `review-stats`: the headline duration total and median use the measured population where one
+  exists and label the rest as self-reported. Every consumer of `duration_seconds` is found by grep
+  (`coverage.count_branch_rounds`, `telemetry.round_price`, the ledger readers, `review-stats`), not
+  by this list.
+- Per the ruling: the review fact body carries `dispatched_at` and the measured seconds when known
+  (option 1, additive and optional; `data-model.md` row and change-log contract note), or the tally
+  joins the ledger (option 2).
+- The gate's round tally reads clocked time and labels estimates.
+
+**Tests:** the headline reads measured when the two populations disagree. A mixed branch tally
+labels both. An old fact without the field still counts as an estimate. Each is red-verified. Then
+`/prawduct:critic` (the final chunk's cumulative), and reflect.
+
+## After merge: measure
+
+Re-run the survey one week after siblings pick up the release: the cumulative-to-chunk ratio, the
+verify-resolutions count, and the Stop block rate split by clear verdict. Compare against the
+09-20..25 baseline above. If the mid-plan cumulative count is not near zero, 01 missed a path.
