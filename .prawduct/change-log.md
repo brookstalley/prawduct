@@ -5,6 +5,42 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+
+## 2026-09-25: reviews and Stop blocks cost what they earn
+
+<!-- prawduct: type=feature | scope=review-friction -->
+
+A survey of the sibling repos on 3.6.1-dev found three causes of review and Stop friction. Plan:
+`.prawduct/artifacts/build-plan-review-friction.md`, which records the owner's four rulings of 2026-09-25.
+
+**Mid-plan cumulatives.** `building.md`'s chunk close said "Commit, then Critic", while
+`review-cycle.md` said a chunk review runs before committing and the consolidate directive said
+"ONE commit, then verify". A builder who committed first left a clean tree, and rule 2 escalated to
+a `cumulative`. That happened 33 times from 09-20 to 09-25. The router now answers `chunk`
+mid-plan: 2+ unticked chunks of the plan found through the branch's scope. The interval starts at
+the last reviewed commit, or at the merge-base on a clean tree with nothing reviewed. It answers
+`deferred` when nothing is unreviewed. `critic_consolidate.working_tree_interval_base` is the one
+owner of where the interval starts. The owner's stage ruling ("key on cycle position") is recorded
+beneath the stage-keyed rigor clause in `nonfunctional-requirements.md`, which is otherwise
+unedited. Four real puzzles states reproduce in a scratch clone and ran `cumulative` at the time. Three now answer
+`chunk` and one `deferred`: a 61-file cumulative that had found 0 blocking findings. Four interlock-lab-1 states did not
+reproduce in the clone.
+
+**Stop blocks on mid-work turns.** 17 of 32 critic/reflection blocks since 09-14 landed on turns
+closing DO NOT CLEAR. The Stop payload carries `last_assistant_message` (Claude Code 2.1.282, found
+by a live verify-api probe). `lib/standing_block.py` is now the one code home for the closing-block
+labels, and the digest and session-hygiene prose are pinned to it. A DO NOT CLEAR verdict defers
+reflection and critic-review through the existing STH-3W7F path. Anything ambiguous blocks. A
+replay of every block since 09-14 through the detector: 14/14 DO NOT CLEAR turns defer, and 13/13
+SAFE TO CLEAR turns plus the one unlabelled turn still block. Contract change: `stop` now reads
+`last_assistant_message` (`api-contract.md` § Inputs & Outputs).
+
+**Siblings ran this checkout.** A user-level `directory` marketplace pointed at the development
+checkout, so sibling sessions ran unmerged, uncommitted work. It now points at a detached
+`origin/develop` worktree. `documentation/release-process.md` describes that variant and its refresh step.
+
+Budget raises are declared with their price in `test_v5_methodology.py` and
+`test_reviewer_payload_budget.py`.
 ## 2026-09-24: v3.6.1 is cut, and develop reopens on 3.6.2-dev
 
 <!-- prawduct: type=chore | scope=release-v3.6.1 -->

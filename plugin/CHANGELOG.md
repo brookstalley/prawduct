@@ -14,6 +14,27 @@ release process keeps the two in sync (one headline per shipped release).
 
 **Rolling notes for the next release — nothing has shipped under this number yet.** Entries accumulate here as work lands on `develop`; the cut renames this heading to its release number.
 
+**`review-friction`** — **a chunk you committed before its review gets a chunk review, not a
+full bundle review, and a turn that says `DO NOT CLEAR` no longer trips the end-of-session gates.**
+
+In the middle of a plan (two or more of your branch's own chunks unticked), `/prawduct:critic`
+with no arguments now answers a `chunk` review over whatever has not been reviewed yet, whether or
+not you committed first. It used to escalate a committed chunk to a `cumulative`: the boundary
+review, at boundary rigor, over everything the branch had committed. Across seven governed repos,
+33 of those ran mid-plan in five days, averaging about eleven findings each, and each one fed verify
+rounds after it. On a clean tree with nothing reviewed yet, the chunk review starts at the
+merge-base. When nothing is unreviewed, the answer is `deferred`. At the PR point (the last chunk
+committed, or the plan complete) nothing changes: that is still `cumulative`. The chunk-close order
+now reads the same everywhere: review the chunk, fix, then commit.
+
+The Stop hook now reads your turn's closing verdict. When the last message closes on
+`DO NOT CLEAR`, the reflection and Critic gates wait for the next turn that does not, instead of
+blocking a turn that is handing back mid-work. Roughly half of those blocks landed on such turns.
+Every other gate still blocks. `SAFE TO CLEAR`, `COMPLETE`, no verdict, or both verdicts block
+exactly as before, so the gate now checks your own claim that the work is done. This needs the
+`last_assistant_message` field in Claude Code's Stop payload (present in 2.1.282); without it,
+nothing changes.
+
 ## v3.6.1
 
 **Your full test suite now runs when work lands, not after every chunk; a passing run still counts after you switch branches; and fixing a warning after a clean review now waits for your next review instead of needing a round of its own.** Twenty-six scopes since v3.6.0, counting release housekeeping. Three changes you will notice in an ordinary session. First, a chunk's Verify step now runs only your inner-loop checks, and your repo's declared suite runs at the boundary, before work lands on your integration branch. Second, each suite run is recorded against the exact code it tested, so switching back to a branch that already passed runs nothing again. Third, when you fix a warning after a clean review and your plan still has chunks left, the fix is covered by the next chunk's review instead of a `verify-resolutions` round. And `cost-of-commit` answers `free` when a review already covers what you are about to commit. Blocking findings still need `verify-resolutions`.
