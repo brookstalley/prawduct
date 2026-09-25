@@ -150,7 +150,9 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
 - **Critic data plane** — `critic-begin [--force]` (write dispatch manifest, mutating; `--force`
   overrides both pre-dispatch refusals, exit-3 no-review-needed and exit-4 budget-exhausted — see
   § Error Model), `critic-consolidate`
-  (merge partials → evidence fact, mutating), `critic-end`, `critic-discard` (archive-then-remove a
+  (merge partials → evidence fact, mutating; reads the Critic's dispatch mark WITHOUT consuming it
+  and writes the optional `dispatched_at` review-fact body key when the mark is this review's —
+  the ledger append after it still consumes the mark), `critic-end`, `critic-discard` (archive-then-remove a
   stranded review's partials, mutating), `critic-restore <review-id>` (copy an archived review's
   manifest + partials back so it consolidates under its own id, mutating — `critic-discard`'s
   inverse), `evidence status|list`, `ledger-append`

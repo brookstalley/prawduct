@@ -141,12 +141,13 @@ MAX_PLAUSIBLE_REVIEW_SECONDS = 6 * 60 * 60
 def measured_interval_seconds(dispatched_at, wrote_at) -> "float | None":
     """Seconds a dispatch mark attests, or ``None`` when it attests nothing.
 
-    **The one home for this predicate.** Three readers ask it — ``review-stats``,
-    ``tools/pr-review-yield.py`` and ``tools/measure-consumer-overhead.py`` — and
-    they are grading the same field for the same before/after comparison. Written
-    out at each of them it diverged immediately: one carried the plausibility
-    bound and the others refused only a negative interval, so a stale same-tree
-    mark inflated exactly the medians the comparison is read from.
+    **The one home for this predicate.** Every reader of a dispatch interval asks
+    it, through :func:`event_interval_seconds` (a ledger event) or
+    :func:`fact_interval_seconds` (a review fact), and never computes its own.
+    Written out at each reader it diverged immediately: one carried the
+    plausibility bound and the others refused only a negative interval, so a
+    stale same-tree mark inflated exactly the medians a before/after comparison
+    is read from.
 
     ``None`` is NOT MEASURED and never zero. Four ways to get it, all of which
     leave the caller with the self-reported estimate rather than a bad number:
@@ -197,6 +198,31 @@ def event_interval_seconds(event: dict) -> "float | None":
     if not isinstance(end, str):
         end = event.get("ts")
     return measured_interval_seconds(event.get("dispatched_at"), end)
+
+
+def fact_interval_seconds(fact: dict) -> "float | None":
+    """Seconds a review FACT's dispatch mark attests, or ``None``.
+
+    The fact-level door to :func:`measured_interval_seconds`, beside
+    :func:`event_interval_seconds` and for the same reason: the one place that
+    decides where the interval ends. A review fact carries the mark's stamp as
+    the optional body key ``dispatched_at`` (``critic-consolidate`` reads the
+    mark with :func:`peek` when it mints the fact), and the interval ends at the
+    fact's own envelope ``ts`` — the moment consolidation recorded the review,
+    which is the same end a ``review.critic`` ledger event's ``ts`` marks.
+
+    The fact is the carrier that reaches every worktree: the evidence store is
+    shared by the whole clone, while a ledger is per worktree, so a reader
+    joining to the ledger sees only its own worktree's rounds. ``None`` is NOT
+    MEASURED — a fact minted before the key existed, or from a review that was
+    never marked, has no clock and its duration is the reviewer's estimate.
+    """
+    if not isinstance(fact, dict):
+        return None
+    body = fact.get("body")
+    if not isinstance(body, dict):
+        return None
+    return measured_interval_seconds(body.get("dispatched_at"), fact.get("ts"))
 
 
 def resolve_commit(project_dir: Path, rev) -> str | None:
@@ -265,6 +291,25 @@ def begin(prawduct_dir: Path, event_kind: str, head: str | None) -> dict:
     return record
 
 
+def peek(prawduct_dir: Path, event_kind: str, head: str | None) -> tuple[str | None, str]:
+    """Read the dispatch stamp WITHOUT clearing it. Returns ``(stamp, reason)``.
+
+    The same judgement :func:`consume` makes, over the same marker, with the same
+    tree check — for a reader that must see the mark before its consumer does.
+    ``critic-consolidate`` mints the review fact before it appends the ledger
+    event, and the ledger append is what consumes the mark; the fact body carries
+    the stamp too (so a clone-shared store can answer "how long did this round
+    take" for every worktree, not only the one whose ledger holds the event), so
+    it reads the mark here and leaves it for the append.
+
+    One judgement, two verbs: the reasons, the refusals and the tree check live
+    in :func:`_judge`, so a fact and a ledger event minted from the same mark
+    cannot disagree about whether it was this review's.
+    """
+    stamp, reason, _looked = _judge(prawduct_dir, event_kind, head)
+    return stamp, reason
+
+
 def consume(prawduct_dir: Path, event_kind: str, head: str | None) -> tuple[str | None, str]:
     """Take the dispatch stamp for an append. Returns ``(stamp, reason)``.
 
@@ -280,26 +325,39 @@ def consume(prawduct_dir: Path, event_kind: str, head: str | None) -> tuple[str 
     the newest one, so a mark that did not match this append has no later review
     to match. Leaving it would fail the same way on every future append.
     """
+    stamp, reason, looked = _judge(prawduct_dir, event_kind, head)
+    if looked:
+        marker_path(prawduct_dir, event_kind).unlink(missing_ok=True)
+    return stamp, reason
+
+
+def _judge(
+    prawduct_dir: Path, event_kind: str, head: str | None
+) -> tuple[str | None, str, bool]:
+    """``(stamp, reason, looked)`` for this kind's mark against ``head``.
+
+    ``looked`` is whether a marker file existed to judge — the condition under
+    which :func:`consume` clears it. Reads only; never writes or removes.
+    """
     if event_kind not in CONSUMING_EVENT_KINDS:
-        return None, f"{event_kind} does not consume a dispatch mark"
+        return None, f"{event_kind} does not consume a dispatch mark", False
 
     path = marker_path(prawduct_dir, event_kind)
     if not path.is_file():
-        return None, "no dispatch mark (review was not marked before it was spawned)"
+        return None, "no dispatch mark (review was not marked before it was spawned)", False
 
     try:
         record = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
-        path.unlink(missing_ok=True)
-        return None, f"dispatch mark unreadable ({exc.__class__.__name__}) — recorded as not measured"
-
-    path.unlink(missing_ok=True)
+        return None, (
+            f"dispatch mark unreadable ({exc.__class__.__name__}) — recorded as not measured"
+        ), True
 
     if not isinstance(record, dict):
-        return None, "dispatch mark is not an object — recorded as not measured"
+        return None, "dispatch mark is not an object — recorded as not measured", True
     stamp = record.get("dispatched_at")
     if not isinstance(stamp, str) or not stamp.strip():
-        return None, "dispatch mark carries no timestamp — recorded as not measured"
+        return None, "dispatch mark carries no timestamp — recorded as not measured", True
 
     marked_head = record.get("head")
     if head == UNRESOLVED_TREE:
@@ -307,7 +365,7 @@ def consume(prawduct_dir: Path, event_kind: str, head: str | None) -> tuple[str 
             "dispatch mark cannot be checked against a tree (the review's "
             "commit_reviewed names no commit in this repo), so it is recorded "
             "as not measured"
-        )
+        ), True
     if marked_head is None or head is None:
         # Both sides null compares EQUAL, which would attach the mark with no
         # staleness protection at all — on the one input where we cannot show it
@@ -316,13 +374,13 @@ def consume(prawduct_dir: Path, event_kind: str, head: str | None) -> tuple[str 
             "dispatch mark cannot be checked against a tree (git did not answer "
             f"at {'mark' if marked_head is None else 'append'} time) — recorded "
             "as not measured"
-        )
+        ), True
     if marked_head != head:
         return None, (
             f"dispatch mark is for a different tree ({_short(marked_head)} != "
             f"{_short(head)}) — an abandoned run's mark, recorded as not measured"
-        )
-    return stamp, f"measured from a dispatch mark at {stamp}"
+        ), True
+    return stamp, f"measured from a dispatch mark at {stamp}", True
 
 
 def _short(head: str | None) -> str:
