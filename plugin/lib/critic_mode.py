@@ -434,7 +434,7 @@ def _explicit_mode(
             plan = buildplan_refs.resolve_branch_plan(project_dir, prawduct_dir)
             progress = buildplan_refs.resolve_chunk_progress(project_dir, plan.path)
             verdict = _mid_plan_verdict(project_dir, plan, progress)
-            if verdict is not None:
+            if verdict is not None and verdict[0] != _MID_PLAN_UNREACHABLE:
                 kind, start = verdict
                 if kind == _MID_PLAN_NOTHING_UNREVIEWED:
                     return token, (
@@ -626,17 +626,20 @@ def _interval_note(start: dict) -> str:
 #: The two mid-plan verdicts :func:`_mid_plan_verdict` returns.
 _MID_PLAN_REVIEW = "review"
 _MID_PLAN_NOTHING_UNREVIEWED = "nothing-unreviewed"
+_MID_PLAN_UNREACHABLE = "unreachable"
 
 
 def _mid_plan_verdict(project_dir: Path, plan, progress) -> "tuple[str, dict] | None":
     """The one owner of the mid-plan question, for every caller that asks it.
 
-    ``None`` when the branch is not mid-plan, or when the interval could not
-    reach the committed work (no reviewed state behind HEAD over uncommitted
-    records, or a frontier that could not be looked for). Otherwise
-    ``(verdict, start)``: :data:`_MID_PLAN_NOTHING_UNREVIEWED` when the covered
-    frontier is HEAD, else :data:`_MID_PLAN_REVIEW`, with ``start`` the interval
-    owner's answer. Inference (:func:`_mid_plan_answer`) and an explicit token
+    ``None`` when the branch is not mid-plan. Otherwise ``(verdict, start)``
+    with ``start`` the interval owner's answer, and the verdict one of:
+    :data:`_MID_PLAN_NOTHING_UNREVIEWED` when the covered frontier is HEAD;
+    :data:`_MID_PLAN_REVIEW` when the interval reaches unreviewed commits;
+    :data:`_MID_PLAN_UNREACHABLE` when it cannot reach them (no reviewed state
+    behind HEAD over uncommitted records, or a frontier that could not be looked
+    for). Unreachable is still mid-plan, so a short plan's deferral still
+    applies to it; only the ``chunk`` answer does not. Inference (:func:`_mid_plan_answer`) and an explicit token
     (:func:`_explicit_mode`) both map this verdict. Neither re-derives it,
     because a second derivation is how an explicit `chunk` reached a mid-plan
     `cumulative` in the state inference answers `deferred`.
@@ -650,7 +653,7 @@ def _mid_plan_verdict(project_dir: Path, plan, progress) -> "tuple[str, dict] | 
         return _MID_PLAN_NOTHING_UNREVIEWED, start
     if _reaches_committed_work(start):
         return _MID_PLAN_REVIEW, start
-    return None
+    return _MID_PLAN_UNREACHABLE, start
 
 
 def _mid_plan_answer(
@@ -683,6 +686,8 @@ def _mid_plan_answer(
         return MODE_DEFERRED, _deferral_rationale(deferral, plan)
     kind, start = verdict
     note = _mid_plan_note(plan, progress)
+    if kind == _MID_PLAN_UNREACHABLE:
+        return None
     if kind == _MID_PLAN_NOTHING_UNREVIEWED:
         return MODE_DEFERRED, (
             f"mid-plan deferred (nothing unreviewed): {note}; the last review "

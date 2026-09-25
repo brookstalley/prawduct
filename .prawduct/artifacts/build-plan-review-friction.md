@@ -142,7 +142,7 @@ hallucinote, swordfishing, bankmachine, faidh and prawduct):
 - [x] Chunk 00: Siblings run a pinned plugin, not this checkout
 - [x] Chunk 01: The router picks the mode from what is unreviewed, not from whether the builder committed
 - [x] Chunk 02: A DO NOT CLEAR turn defers the session-end gates
-- [ ] Chunk 03: Durations are clocked where a clock exists
+- [x] Chunk 03: Durations are clocked where a clock exists
 Context: Plan written 2026-09-25 from the sibling survey. **00 done 2026-09-25:** `~/source/prawduct-live`
 is detached at origin/develop a2288858, the marketplace file points at it (backup beside it as
 `known_marketplaces.json.bak-2026-09-25-review-friction`), and a fresh headless session's banner read
@@ -195,7 +195,20 @@ ONE verify pass:
 - R-1: WAIVE. The same inherited failure is still red on a clean develop; the evidence is `--degraded` and the fix is 8cbf38af, tracked in #900.
 - R-4: fixed by construction. `critic_mode._mid_plan_verdict` is the one owner of the mid-plan question. Inference and an explicit token both map it, so an explicit `chunk`/`final` with nothing unreviewed stands (honest empty-interval refusal) instead of becoming a mid-plan `cumulative`. The new test was red before the fix.
 - R-2 and R-5: one class, fixed by construction. `_FIX_ORDER` is the one fix-order sentence, and `_BATCH_FIX_DIRECTIVE`, `_IF_YOU_FIX_SOME` and the blocking arm all compose it. The post-cumulative exception is stated once. `TestOneFixOrderEverywhere` pins the rendered order, with a positive control on the old wording. The Stop gate's committed-work remedy now says to run `/prawduct:critic` with no mode, not `cumulative`; the test for it was red before the fix. Three tests that pinned "ONLY if that commit touched judgeable files" were renegotiated openly to "ONLY if the fixes touch judgeable files": the same conditional property.
-- R-3: the departure is recorded under Success 1. R-9: the `reviews.md` rule now points at the interval owner. R-6: ACCEPT. R-7 and R-8: #882, #878 and #815 are updated through `/prawduct:backlog`; #882 ships at merge. The numbers and method are in
+- R-3: the departure is recorded under Success 1. R-9: the `reviews.md` rule now points at the interval owner. R-6: ACCEPT. R-7 and R-8: #882, #878 and #815 are updated through `/prawduct:backlog`; #882 ships at merge.
+**Verify rev-20260925T223758Z-eaf49419: 0 blocking, committed verbatim as 6e7abc15.** It left R-4 half-closed. The
+router no longer redirects, but the empty-interval refusal in `critic-begin` still named `cumulative`, so the
+whole-branch round happened one step later. The fix, uncommitted, for ONE more verify pass: `begin_review` records the
+interval's origin, and an empty `chunk`/`final` interval whose start is HEAD_COVERED returns `no-review-needed`
+(exit 3, which the skill stops on). The R-4 test now drives the dispatch too and was red before. O-2: the batch
+directive now says the verify pass is owed only when no later review the plan owes will carry the fix, so it
+agrees with the mid-plan NEXT-ACTION. O-3: `_MID_PLAN_UNREACHABLE` is a third verdict, so a short plan whose
+interval cannot reach the commits still defers. The new test was red with the verdict mutated away. O-5 and O-6
+are ACCEPTED. O-4, owner sign-off on Success 1's descope, is asked of the owner.
+**Verify rev-20260925T225130Z-f895e82c: 0 blocking, R-4 fixed.** 03 is ticked. RIDE-ALONG, owed by the next commit the PR
+flow makes (O-1): three strings still say `critic-begin` "refuses" the empty interval it now answers with exit 3. They are the
+`_explicit_mode` docstring and the "will refuse it" rationale string in `critic_mode.py`, and the docstring of
+`test_a_named_mode_with_nothing_unreviewed_stands_rather_than_redirecting`. Its own assertion is exit 3. O-2 to O-5 are ACCEPTED. The numbers and method are in
 `.prawduct/.handoff-notes.md`, and the scripts are re-derivable from each repo's ledger and the
 transcripts' `stop_hook_summary` records.
 

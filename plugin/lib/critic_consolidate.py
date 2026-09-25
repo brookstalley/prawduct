@@ -350,7 +350,8 @@ _BATCH_FIX_DIRECTIVE = (
     " Disposition them ALL in ONE pass — accept or file the rest, and for every"
     " fix you are going to make, " + _FIX_ORDER + ". Only unresolved BLOCKING"
     " findings gate anything, and the verify pass is owed only if the fixes"
-    " touch judgeable files. " + _FIX_ORDER_AFTER_CUMULATIVE + " A fix-commit-verify"
+    " touch judgeable files and no later review the plan owes will carry them"
+    " (NEXT-ACTION says which). " + _FIX_ORDER_AFTER_CUMULATIVE + " A fix-commit-verify"
     " cycle per finding multiplies whole review rounds, and each round reviews the"
     " prose the previous fix wrote. Free to write at any time (they do not move"
     " coverage): everything under `.prawduct/` — change-log, backlog,"
@@ -2858,6 +2859,11 @@ def begin_review(
     pending_actionable = 0
 
     base_extended_from: "str | None" = None
+    # Where a `chunk`/`final` interval started, read at the empty-interval check
+    # below: an empty interval whose start is HEAD_COVERED is "the last review
+    # already covers HEAD", which is not the same answer as "committed work sits
+    # outside this interval".
+    interval_origin: "str | None" = None
     # ONE read of the store for the verify-resolutions anchor lookup and the
     # prior-dispositions block. The store is shared by every worktree of the
     # clone, so two reads are two MOMENTS: a sibling's `critic-consolidate`
@@ -2887,6 +2893,7 @@ def begin_review(
             project_dir, dispatch_commit, capture["head_tree"], capture["clean"], frontier_why
         )
         base_commit, base_tree = start["commit"], start["tree"]
+        interval_origin = start["origin"]
         # A frontier that could not be LOOKED FOR is a different fact from one
         # that does not exist, and the difference is invisible in the interval.
         notes.extend(
@@ -3171,6 +3178,23 @@ def begin_review(
         return {
             "status": "error",
             "reason": f"cannot diff {base_tree[:12]}..{head_tree[:12]}",
+        }
+    if not files_changed and interval_origin == BASE_AT_HEAD_COVERED:
+        # Nothing is unreviewed: the last blocker-free review covers HEAD, so the
+        # coverage gate already composes this state and no review is owed. That
+        # is exit 3's answer, the one the skill stops on. The generic refusal
+        # below names `cumulative`, and following it here would buy a
+        # whole-branch review of work that is already covered.
+        return {
+            "status": "no-review-needed",
+            "reason": (
+                f"nothing unreviewed for mode {mode_token!r}: the last review "
+                "already covers HEAD, so the coverage gate composes this state "
+                "and no review is owed (a `cumulative` would re-review covered work)"
+            ),
+            "free_files": [],
+            "anchor": "HEAD",
+            "notes": notes,
         }
     if not files_changed and mode_token != "verify-resolutions":
         return {

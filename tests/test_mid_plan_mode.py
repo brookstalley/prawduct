@@ -223,6 +223,21 @@ class TestNothingOwedNow:
         assert mode == MODE_DEFERRED, why
         assert "nothing unreviewed" in why
 
+    def test_a_short_plan_defers_even_when_the_interval_cannot_reach_the_commits(
+        self, tmp_path
+    ):
+        """Uncommitted records only (a plan edit) and nothing reviewed: the chunk
+        interval cannot reach the committed chunk, so no `chunk` answer exists. The
+        branch is still mid-plan, so the short plan's trade still holds; the
+        unreachable interval must not turn it into a `cumulative`."""
+        repo = _repo(tmp_path, chunks=3)
+        _commit_first(repo, 2)
+        plan = _plan_path(repo)
+        plan.write_text(plan.read_text() + "\nA note on the plan.\n")
+        mode, why = infer_mode(repo, None)
+        assert mode == MODE_DEFERRED, why
+        assert why.startswith("short-plan deferral:"), why
+
     def test_a_short_plan_mid_plan_defers_on_a_clean_tree_too(self, tmp_path):
         """A short plan traded per-chunk review for the boundary one. Committing
         the chunk first does not buy the review back."""
@@ -260,6 +275,17 @@ class TestExplicitTokensMidPlan:
         mode, why = infer_mode(repo, token)
         assert mode == token, why
         assert why.startswith(f"explicit-args {token} (mid-plan, nothing unreviewed):"), why
+
+        # And the dispatch that token reaches ends there too: the last review
+        # already covers HEAD, so `critic-begin` answers exit 3 ("no review
+        # needed", which the skill treats as success and stops on), never the
+        # empty-diff refusal that names `cumulative` and would send the builder to
+        # a whole-branch review mid-plan one step later.
+        begin = _run_begin(repo, "--mode", token)
+        assert begin.returncode == 3, (begin.returncode, begin.stdout, begin.stderr)
+        out = begin.stdout + begin.stderr
+        assert "already covers HEAD" in out, out
+        assert "cumulative's scope" not in out, out
 
     @pytest.mark.parametrize("token", ["chunk", "final"])
     def test_at_the_boundary_the_redirect_stands(self, tmp_path, token):
