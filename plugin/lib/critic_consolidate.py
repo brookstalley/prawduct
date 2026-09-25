@@ -331,10 +331,13 @@ _CACHE_WARM_DIRECTIVE = (
 #: "5-10 minute rounds" it briefly replaced. Anything this text needs the reader
 #: to have must be inside it.
 _BATCH_FIX_DIRECTIVE = (
-    " Disposition them ALL in ONE pass — land every fix you are going to make in"
-    " ONE commit, and accept or file the rest. Only unresolved BLOCKING findings"
-    " gate anything; if that commit touches judgeable files, ONE"
-    " `/prawduct:critic verify-resolutions` re-covers it. A fix-commit-verify"
+    " Disposition them ALL in ONE pass — make every fix you are going to make in"
+    " the working tree, and accept or file the rest. Only unresolved BLOCKING"
+    " findings gate anything; if the fixes touch judgeable files, ONE"
+    " `/prawduct:critic verify-resolutions` over the uncommitted fixes re-covers"
+    " them — then land them in ONE commit. (A fix committed after a `cumulative`"
+    " still infers that pass, but committing first re-anchors it on committed"
+    " HEAD.) A fix-commit-verify"
     " cycle per finding multiplies whole review rounds, and each round reviews the"
     " prose the previous fix wrote. Free to write at any time (they do not move"
     " coverage): everything under `.prawduct/` — change-log, backlog,"
@@ -923,8 +926,9 @@ def next_action_line(
     if blocking:
         return (
             f"{blocking} BLOCKING finding(s) gate this work — nothing else here does."
-            " Fix them, land EVERY fix you are going to make in ONE commit, then run"
-            " ONE `/prawduct:critic verify-resolutions`. Decide the WARNING/NOTE"
+            " Fix them in the working tree, then run ONE `/prawduct:critic"
+            " verify-resolutions` over the uncommitted fixes, then land EVERY fix you"
+            " are going to make in ONE commit. Decide the WARNING/NOTE"
             " findings in that SAME pass (fix / accept / file) — deferring them to a"
             " later round is what turns one review into several. Accept is the"
             " default for anything nobody will realistically action:"
@@ -2534,6 +2538,80 @@ def _refuse_over_budget(
     }
 
 
+#: Where a ``chunk``/``final`` interval starts — the ``origin`` key of
+#: :func:`working_tree_interval_base`'s answer. The interval always ENDS at the
+#: captured working tree; these name its start.
+#:
+#: - ``BASE_AT_FRONTIER`` — the covered frontier behind HEAD: commits since the
+#:   last reviewed state are unreviewed, so the review covers them too.
+#: - ``BASE_AT_MERGE_BASE`` — no reviewed state sits behind HEAD and the tree is
+#:   clean, so the unreviewed interval is everything the branch committed.
+#: - ``BASE_AT_HEAD_COVERED`` — the frontier IS HEAD's tree: nothing committed
+#:   is unreviewed, and the interval is the uncommitted work alone.
+#: - ``BASE_AT_HEAD`` — no reviewed state to start from and uncommitted work in
+#:   the tree (or the frontier could not be looked for): HEAD-anchored.
+BASE_AT_FRONTIER = "frontier"
+BASE_AT_MERGE_BASE = "merge-base"
+BASE_AT_HEAD_COVERED = "head-covered"
+BASE_AT_HEAD = "head"
+
+
+def working_tree_interval_base(
+    project_dir: Path,
+    head_commit: str,
+    head_tree: str,
+    clean: bool,
+    why: "list[str] | None" = None,
+) -> dict:
+    """Where a ``chunk``/``final`` review's interval starts — the one owner.
+
+    Returns ``{"origin", "commit", "tree"}``; ``origin`` is one of the
+    ``BASE_AT_*`` constants above. :func:`begin_review` derives its interval
+    from this, and mode inference asks it (rather than re-deriving it) so the
+    mode it names and the interval that mode then captures cannot disagree.
+
+    **The merge-base arm is the unreviewed interval on a clean tree.** In the
+    middle of a plan a builder who commits the chunk before reviewing it leaves
+    a clean tree. With a reviewed state behind HEAD, the frontier arm already
+    covers the commit. With none — the branch's first chunk, committed first —
+    the HEAD-anchored interval is empty, and the review of that chunk is a
+    review of what the branch committed. So on a clean tree, and only there,
+    the interval starts at the merge-base.
+
+    It is bounded to the clean tree on purpose. With uncommitted work present
+    the HEAD-anchored interval is not empty, and extending it to the whole
+    branch would turn every first review of in-flight work into the boundary
+    ``cumulative``'s span (``gates.covered_frontier`` says the same about its
+    own ``None``). A frontier that could not be LOOKED for (``why`` non-empty)
+    does not fall back either: "could not look" is not "nothing reviewed", and
+    a whole-branch interval must not be chosen on a failed read.
+
+    ``why`` collects ``gates.covered_frontier``'s could-not-look sentences, so
+    the caller can say why an interval was not extended.
+    """
+    from . import gates  # noqa: PLC0415 — lazy; gates is heavy and one-way
+
+    frontier_why: list[str] = []
+    frontier = gates.covered_frontier(project_dir, frontier_why)
+    if why is not None:
+        why.extend(frontier_why)
+    if frontier is not None:
+        if frontier["tree"] == head_tree:
+            return {"origin": BASE_AT_HEAD_COVERED, "commit": head_commit, "tree": head_tree}
+        return {"origin": BASE_AT_FRONTIER, "commit": frontier["commit"], "tree": frontier["tree"]}
+    if clean and not frontier_why:
+        from . import coverage  # noqa: PLC0415 — lazy; coverage pulls git helpers
+
+        resolved = coverage.resolve_merge_base_tree(project_dir)
+        if resolved["status"] == "ok" and resolved["tree"] != head_tree:
+            return {
+                "origin": BASE_AT_MERGE_BASE,
+                "commit": resolved["merge_base"],
+                "tree": resolved["tree"],
+            }
+    return {"origin": BASE_AT_HEAD, "commit": head_commit, "tree": head_tree}
+
+
 def begin_review(
     project_dir: Path,
     mode_token: str,
@@ -2577,9 +2655,11 @@ def begin_review(
     Per-mode interval (design D8, chunk-03 refinements):
 
     - ``chunk``/``final`` — base = ``HEAD``, or the covered frontier behind it
-      when commits since that are unreviewed (``gates.covered_frontier``; the
-      fact records ``base_extended_from``); head = the captured working tree
-      (D3 temp-index capture; non-mutating).
+      when commits since that are unreviewed (``gates.covered_frontier``), or
+      the merge-base when no reviewed state sits behind HEAD and the tree is
+      clean (:func:`working_tree_interval_base` owns the choice; an extended
+      base is recorded as ``base_extended_from``); head = the captured working
+      tree (D3 temp-index capture; non-mutating).
     - ``cumulative`` — base = merge-base(resolve-base, HEAD), head = ``HEAD``
       (the committed bundle; a dirty working tree is noted, not reviewed).
     - ``verify-resolutions`` — base = the prior review FACT's ``head_tree``;
@@ -2747,32 +2827,41 @@ def begin_review(
         return _store_slot[0]
 
     if mode_token in ("chunk", "final"):
-        base_commit = dispatch_commit
-        base_tree = capture["head_tree"]
         head_tree = capture["tree"]
         head_commit = dispatch_commit if capture["clean"] else None
         # Start at the covered frontier when commits since it are unreviewed —
-        # typically a non-blocking fix committed after the last review. One
-        # review then covers them with the new work, instead of the fix buying
-        # a `verify-resolutions` round of its own; and the edge it records
-        # composes, so no gap is left for a `cumulative` to close later.
-        from . import gates  # noqa: PLC0415 — lazy; gates is heavy and one-way
-
+        # typically a non-blocking fix, or a chunk committed before its review.
+        # One review then covers them with the new work, instead of the commit
+        # buying a `verify-resolutions` or `cumulative` round of its own; and
+        # the edge it records composes, so no gap is left for a `cumulative` to
+        # close later. With no reviewed state behind HEAD and a clean tree, the
+        # start is the merge-base instead (`working_tree_interval_base` owns
+        # both, and says why the second is bounded to a clean tree).
         frontier_why: list[str] = []
-        frontier = gates.covered_frontier(project_dir, frontier_why)
+        start = working_tree_interval_base(
+            project_dir, dispatch_commit, capture["head_tree"], capture["clean"], frontier_why
+        )
+        base_commit, base_tree = start["commit"], start["tree"]
         # A frontier that could not be LOOKED FOR is a different fact from one
         # that does not exist, and the difference is invisible in the interval.
         notes.extend(
             f"the review interval was not extended — {reason}" for reason in frontier_why
         )
-        if frontier is not None and frontier["tree"] != capture["head_tree"]:
-            base_commit, base_tree = frontier["commit"], frontier["tree"]
-            base_extended_from = frontier["tree"]
+        if start["origin"] == BASE_AT_FRONTIER:
+            base_extended_from = start["tree"]
             notes.append(
-                f"this {mode_token} review starts at {frontier['commit'][:12]}, the last "
+                f"this {mode_token} review starts at {start['commit'][:12]}, the last "
                 "reviewed state, not at HEAD: the commits since it have not been "
                 "reviewed, so this one review covers them together with the "
                 "uncommitted work."
+            )
+        elif start["origin"] == BASE_AT_MERGE_BASE:
+            base_extended_from = start["tree"]
+            notes.append(
+                f"this {mode_token} review starts at the merge-base "
+                f"{start['commit'][:12]}, not at HEAD: the working tree is clean and "
+                "nothing on this branch has been reviewed yet, so the committed work "
+                "is the unreviewed interval."
             )
     elif mode_token == "cumulative":
         from . import coverage  # noqa: PLC0415 — lazy; coverage pulls git helpers

@@ -1041,6 +1041,12 @@ class TestNextActionLine:
         assert "2 BLOCKING" in line
         assert "ONE commit" in line
         assert "ONE `/prawduct:critic verify-resolutions`" in line
+        # Verify the uncommitted fixes, THEN commit — the order `building.md`
+        # states. Commit-first leaves a clean tree mid-plan, where inference has
+        # no uncommitted fix to anchor a verify pass on.
+        assert line.index("verify-resolutions` over the uncommitted fixes") < line.index(
+            "in ONE commit"
+        )
         # The non-blocking findings are decided in the SAME pass — deferring
         # them to a later round is the pump this field exists to stop.
         assert "SAME pass" in line
@@ -1220,7 +1226,7 @@ class TestNextActionLine:
 
     def test_the_verify_pass_is_conditioned_on_judgeable_files(self):
         # `_BATCH_FIX_DIRECTIVE` prints immediately above this line and
-        # conditions the pass on "if that commit touches judgeable files". On
+        # conditions the pass on "if the fixes touch judgeable files". On
         # framework work the non-blocking findings concentrate in `.prawduct/`
         # prose — all non-judgeable — so the most common fix batch is exactly
         # the one needing no pass, and an unconditional order buys the round
@@ -1930,7 +1936,14 @@ class TestBatchFixDirective:
         assert "ONE commit" in d
         assert "ONE `/prawduct:critic verify-resolutions`" in d
         # The verify pass is a coverage consequence, not an obligation.
-        assert "if that commit touches judgeable files" in d
+        assert "if the fixes touch judgeable files" in d
+        # The chunk-close order: fix, verify the UNCOMMITTED fixes, then commit.
+        # Commit-first is stated only as the post-`cumulative` case rule 1b
+        # recognizes — mid-plan it leaves inference nothing to anchor a verify on.
+        assert d.index("verify-resolutions` over the uncommitted fixes") < d.index(
+            "land them in ONE commit"
+        )
+        assert "after a `cumulative`" in d
 
     #: Where the directive stops claiming things are free. NOT "Everything else"
     #: — that marks the costly *sentence*, but the free sentence already turns
