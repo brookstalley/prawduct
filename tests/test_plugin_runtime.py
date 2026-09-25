@@ -329,6 +329,19 @@ class TestPluginStopGate:
         assert result.returncode == 2, (result.stdout, result.stderr)
         assert "no composed review coverage" in result.stderr
 
+    def test_the_committed_work_remedy_names_no_mode(self, tmp_path):
+        """The remedy for work committed before its review must not name
+        `cumulative`: an explicit token bypasses mid-plan routing, so it would buy
+        the whole-branch, boundary-rigor round the router no longer infers
+        mid-plan. It sends the builder to the no-mode invocation, which picks the
+        review whose interval reaches the committed work."""
+        self._active_plan_repo(tmp_path)
+        result = run_plugin_hook("stop", tmp_path, git_status=" M src/app.py")
+        assert result.returncode == 2, (result.stdout, result.stderr)
+        assert "committed mid-session" in result.stderr
+        assert "cumulative reviews the whole branch span" not in result.stderr
+        assert "run /prawduct:critic with no mode" in result.stderr
+
     def test_stop_passes_with_no_build_plan(self, tmp_path):
         """No active plan means no CRITIC gate — that is what this pins.
 

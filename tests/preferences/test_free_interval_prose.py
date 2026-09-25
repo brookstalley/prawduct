@@ -94,8 +94,13 @@ def test_the_next_action_text_does_not_prescribe_an_unconditional_round():
     The 0-blocking arms are the ones that must stay conditional. This asserts
     the condition survives, phrased against the two tokens that carry it.
     """
-    text = (PLUGIN / "lib" / "critic_consolidate.py").read_text()
-    assert "ONLY if that commit touched judgeable files" in text, (
+    # Read from the composed constants, not the module's source text: the
+    # clause is built from string pieces (`_FIX_ORDER` and its neighbours), so a
+    # source grep sees it split across literals and cannot find it.
+    from lib import critic_consolidate as cc
+
+    text = cc._IF_YOU_FIX_SOME + (PLUGIN / "lib" / "critic_consolidate.py").read_text()
+    assert "ONLY if the fixes touch judgeable files" in cc._IF_YOU_FIX_SOME, (
         "the 0-blocking arm lost its condition — it now prescribes a "
         "re-cover round regardless of whether the commit moved any coverage"
     )

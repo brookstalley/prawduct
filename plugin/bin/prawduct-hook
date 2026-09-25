@@ -3384,7 +3384,9 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                     "  SELECTIVE commit of only part of the reviewed state), the current tree was\n"
                     "  never reviewed — run /prawduct:critic verify-resolutions to review the\n"
                     "  delta and close the gap. If unreviewed changes were committed mid-session,\n"
-                    "  /prawduct:critic cumulative reviews the whole branch span.\n"
+                    "  run /prawduct:critic with no mode: it picks the review whose interval\n"
+                    "  reaches them (mid-plan, a chunk review from the last reviewed state;\n"
+                    "  at the PR point, cumulative).\n"
                     + _escape_hatch
                 ))
 

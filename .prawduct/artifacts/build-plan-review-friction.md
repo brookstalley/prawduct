@@ -91,6 +91,12 @@ hallucinote, swordfishing, bankmachine, faidh and prawduct):
    inner-stage `chunk` over the unreviewed interval (covered frontier → working tree, or merge-base
    when nothing on the branch is covered). At the PR point (plan complete, or its last chunk
    committed) it still answers `cumulative`. A replay of the 33 mid-plan cases in tests answers `chunk`.
+   *Departure (recorded 2026-09-25, cumulative review R-3):* the 33-case replay is not in tests.
+   Most of those states do not reproduce outside their origin repo, because their plan, evidence
+   store and base-branch refs live there. What stands instead: synthetic tests at 1, 2, 12 and 31
+   commits ahead (`tests/test_mid_plan_mode.py`), plus a scratch-clone replay of 8 real puzzles
+   states. 4 of the 8 reproduced; the old router answered `cumulative` for all 4, and the new one answers `chunk` for 3 and
+   `deferred` for 1 (plan Context, 01 merge note).
 2. Every surface that states the chunk-close order states one order, and the router gives the same
    answer under either order. One grep for the claim, run in two vocabularies, returns only
    consistent sites.
@@ -183,7 +189,13 @@ shape, so a stored seconds value would be a second copy of a number two stamps a
 recorded in `data-model.md`). `review-cycle.md`'s ledger-envelope line ("`duration_seconds` … nullable,
 never invented") is left as it was. 03 did not change the envelope, the line is not false, and the fact's
 home is `governance-telemetry.md`, which now says `duration_seconds` is an estimate. A clause there would add tokens
-to every reviewer payload to restate it. The numbers and method are in
+to every reviewer payload to restate it.
+**Cumulative rev-20260925T221925Z-733f5be1: 1 blocking, 3 warnings, 5 notes.** Resolutions, all uncommitted for
+ONE verify pass:
+- R-1: WAIVE. The same inherited failure is still red on a clean develop; the evidence is `--degraded` and the fix is 8cbf38af, tracked in #900.
+- R-4: fixed by construction. `critic_mode._mid_plan_verdict` is the one owner of the mid-plan question. Inference and an explicit token both map it, so an explicit `chunk`/`final` with nothing unreviewed stands (honest empty-interval refusal) instead of becoming a mid-plan `cumulative`. The new test was red before the fix.
+- R-2 and R-5: one class, fixed by construction. `_FIX_ORDER` is the one fix-order sentence, and `_BATCH_FIX_DIRECTIVE`, `_IF_YOU_FIX_SOME` and the blocking arm all compose it. The post-cumulative exception is stated once. `TestOneFixOrderEverywhere` pins the rendered order, with a positive control on the old wording. The Stop gate's committed-work remedy now says to run `/prawduct:critic` with no mode, not `cumulative`; the test for it was red before the fix. Three tests that pinned "ONLY if that commit touched judgeable files" were renegotiated openly to "ONLY if the fixes touch judgeable files": the same conditional property.
+- R-3: the departure is recorded under Success 1. R-9: the `reviews.md` rule now points at the interval owner. R-6: ACCEPT. R-7 and R-8: #882, #878 and #815 are updated through `/prawduct:backlog`; #882 ships at merge. The numbers and method are in
 `.prawduct/.handoff-notes.md`, and the scripts are re-derivable from each repo's ledger and the
 transcripts' `stop_hook_summary` records.
 

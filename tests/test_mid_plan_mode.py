@@ -245,6 +245,23 @@ class TestExplicitTokensMidPlan:
         assert manifest["base_commit"] == _merge_base(repo)
 
     @pytest.mark.parametrize("token", ["chunk", "final"])
+    def test_a_named_mode_with_nothing_unreviewed_stands_rather_than_redirecting(
+        self, tmp_path, token
+    ):
+        """Mid-plan with the reviewed chunk committed verbatim, inference answers
+        `deferred`. The named token must come from the same verdict. It stands, so
+        `critic-begin` gives the honest empty-interval refusal, and it never becomes
+        a whole-branch `cumulative` mid-plan."""
+        repo = _repo(tmp_path)
+        (repo / "src/app.py").write_text("x = 2  # chunk 1\n")
+        _review_uncommitted(repo, "1")
+        _commit_all(repo, "chunk 1, reviewed")
+        _tick(repo, 1)
+        mode, why = infer_mode(repo, token)
+        assert mode == token, why
+        assert why.startswith(f"explicit-args {token} (mid-plan, nothing unreviewed):"), why
+
+    @pytest.mark.parametrize("token", ["chunk", "final"])
     def test_at_the_boundary_the_redirect_stands(self, tmp_path, token):
         repo = _repo(tmp_path, ticked=5)
         _commit_first(repo, 2)

@@ -330,14 +330,27 @@ _CACHE_WARM_DIRECTIVE = (
 #: and a dangling pointer on the other, which is worse than the hardcoded
 #: "5-10 minute rounds" it briefly replaced. Anything this text needs the reader
 #: to have must be inside it.
+#: The fix order, stated once. Every directive that tells a builder how to land
+#: fixes composes it, so no carrier can state a different order: fix in the
+#: working tree, verify the UNCOMMITTED fixes, then commit. Committing first
+#: leaves a clean tree, and mid-plan inference then has no uncommitted fix to
+#: anchor a verify pass on.
+_FIX_ORDER = (
+    "make the fixes in the working tree, run ONE `/prawduct:critic"
+    " verify-resolutions` over the uncommitted fixes, then land them in ONE commit"
+)
+#: The one exception to :data:`_FIX_ORDER`, kept beside it: after a boundary
+#: `cumulative`, inference's rule 1b recognizes a committed fix.
+_FIX_ORDER_AFTER_CUMULATIVE = (
+    "(A fix committed after a `cumulative` still infers that pass, but committing"
+    " first re-anchors it on committed HEAD.)"
+)
+
 _BATCH_FIX_DIRECTIVE = (
-    " Disposition them ALL in ONE pass — make every fix you are going to make in"
-    " the working tree, and accept or file the rest. Only unresolved BLOCKING"
-    " findings gate anything; if the fixes touch judgeable files, ONE"
-    " `/prawduct:critic verify-resolutions` over the uncommitted fixes re-covers"
-    " them — then land them in ONE commit. (A fix committed after a `cumulative`"
-    " still infers that pass, but committing first re-anchors it on committed"
-    " HEAD.) A fix-commit-verify"
+    " Disposition them ALL in ONE pass — accept or file the rest, and for every"
+    " fix you are going to make, " + _FIX_ORDER + ". Only unresolved BLOCKING"
+    " findings gate anything, and the verify pass is owed only if the fixes"
+    " touch judgeable files. " + _FIX_ORDER_AFTER_CUMULATIVE + " A fix-commit-verify"
     " cycle per finding multiplies whole review rounds, and each round reviews the"
     " prose the previous fix wrote. Free to write at any time (they do not move"
     " coverage): everything under `.prawduct/` — change-log, backlog,"
@@ -589,16 +602,14 @@ _RIDES_NEXT_REVIEW_LEAD = (
 #: its own fix. The re-derivation pointer still ships, once, inside the clause
 #: that makes the claim needing re-deriving.
 _IF_YOU_FIX_SOME = (
-    " If you do choose to fix some, batch them into"
-    " ONE commit — and re-cover with ONE `/prawduct:critic verify-resolutions`"
-    " ONLY if that commit touched judgeable files. AFTER committing,"
-    " you no longer have to judge that either: dispatch asks the same predicate and"
-    " exits 3 (`no review needed`, under a second, no session state written) rather than"
-    " spending a reviewer on a free interval — so asking costs nothing, and a"
-    " refusal is the answer, not a reason to retry in another mode."
-    " Do NOT start another round to 'close coverage' before committing, and do"
-    " not infer that you need one from gate output printed before your fix —"
-    " commit, then re-run the gate and let it answer."
+    " If you do choose to fix some, " + _FIX_ORDER + " — the pass is owed ONLY if"
+    " the fixes touch judgeable files, and you do not have to judge that:"
+    " dispatch asks the same predicate and exits 3 (`no review needed`, under a"
+    " second, no session state written) rather than spending a reviewer on a free"
+    " interval, so asking costs nothing, and a refusal is the answer, not a reason"
+    " to retry in another mode. Do not infer that you need a round from gate"
+    " output printed before your fix; re-run the gate after the commit and let it"
+    " answer."
 )
 
 
@@ -926,9 +937,8 @@ def next_action_line(
     if blocking:
         return (
             f"{blocking} BLOCKING finding(s) gate this work — nothing else here does."
-            " Fix them in the working tree, then run ONE `/prawduct:critic"
-            " verify-resolutions` over the uncommitted fixes, then land EVERY fix you"
-            " are going to make in ONE commit. Decide the WARNING/NOTE"
+            " For these and EVERY other fix you are going to make, " + _FIX_ORDER
+            + ". Decide the WARNING/NOTE"
             " findings in that SAME pass (fix / accept / file) — deferring them to a"
             " later round is what turns one review into several. Accept is the"
             " default for anything nobody will realistically action:"

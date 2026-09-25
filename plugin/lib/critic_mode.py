@@ -422,17 +422,27 @@ def _explicit_mode(
     still holds unreviewed commits when the builder committed the chunk before
     reviewing it, and the ``chunk``/``final`` interval reaches them — from the
     covered frontier, or from the merge-base when no blocker-free reviewed
-    state is behind HEAD (:func:`_mid_plan_start` asks the interval's owner). Sending
-    that review to ``cumulative`` would price an inner-stage review at
-    boundary rigor, so the token stands and the rationale says why.
+    state is behind HEAD. Sending that review to ``cumulative`` would price an
+    inner-stage review at boundary rigor, so the token stands and the rationale
+    says why. When mid-plan nothing is unreviewed, the token stands too, and
+    ``critic-begin`` refuses the empty interval honestly. Both answers come from
+    :func:`_mid_plan_verdict`, the owner inference also asks.
     """
     if token in _WORKING_TREE_MODES and _working_tree_is_empty(project_dir):
         redirect = _clean_tree_redirect(prawduct_dir, project_dir)
         if redirect:
             plan = buildplan_refs.resolve_branch_plan(project_dir, prawduct_dir)
             progress = buildplan_refs.resolve_chunk_progress(project_dir, plan.path)
-            start = _mid_plan_start(project_dir, plan, progress)
-            if start is not None and _reaches_committed_work(start):
+            verdict = _mid_plan_verdict(project_dir, plan, progress)
+            if verdict is not None:
+                kind, start = verdict
+                if kind == _MID_PLAN_NOTHING_UNREVIEWED:
+                    return token, (
+                        f"explicit-args {token} (mid-plan, nothing unreviewed): "
+                        f"{_mid_plan_note(plan, progress)}; the last review already "
+                        "covers HEAD, so this interval is empty and `critic-begin` "
+                        "will refuse it; a whole-branch `cumulative` is not owed mid-plan"
+                    )
                 return token, (
                     f"explicit-args {token} (mid-plan, not redirected): "
                     f"{_mid_plan_note(plan, progress)}; {_interval_note(start)}"
@@ -613,6 +623,36 @@ def _interval_note(start: dict) -> str:
     )
 
 
+#: The two mid-plan verdicts :func:`_mid_plan_verdict` returns.
+_MID_PLAN_REVIEW = "review"
+_MID_PLAN_NOTHING_UNREVIEWED = "nothing-unreviewed"
+
+
+def _mid_plan_verdict(project_dir: Path, plan, progress) -> "tuple[str, dict] | None":
+    """The one owner of the mid-plan question, for every caller that asks it.
+
+    ``None`` when the branch is not mid-plan, or when the interval could not
+    reach the committed work (no reviewed state behind HEAD over uncommitted
+    records, or a frontier that could not be looked for). Otherwise
+    ``(verdict, start)``: :data:`_MID_PLAN_NOTHING_UNREVIEWED` when the covered
+    frontier is HEAD, else :data:`_MID_PLAN_REVIEW`, with ``start`` the interval
+    owner's answer. Inference (:func:`_mid_plan_answer`) and an explicit token
+    (:func:`_explicit_mode`) both map this verdict. Neither re-derives it,
+    because a second derivation is how an explicit `chunk` reached a mid-plan
+    `cumulative` in the state inference answers `deferred`.
+    """
+    start = _mid_plan_start(project_dir, plan, progress)
+    if start is None:
+        return None
+    from . import critic_consolidate  # noqa: PLC0415 — lazy, as above
+
+    if start["origin"] == critic_consolidate.BASE_AT_HEAD_COVERED:
+        return _MID_PLAN_NOTHING_UNREVIEWED, start
+    if _reaches_committed_work(start):
+        return _MID_PLAN_REVIEW, start
+    return None
+
+
 def _mid_plan_answer(
     project_dir: Path, prawduct_dir: Path, plan, progress, rule: str
 ) -> "tuple[str, str] | None":
@@ -635,23 +675,20 @@ def _mid_plan_answer(
       frontier or, when no blocker-free reviewed state is behind HEAD, the
       merge-base (the rationale names which of the three reasons applies).
     """
-    start = _mid_plan_start(project_dir, plan, progress)
-    if start is None:
+    verdict = _mid_plan_verdict(project_dir, plan, progress)
+    if verdict is None:
         return None
     deferral = short_plan_deferral(project_dir, prawduct_dir, plan, progress)
     if deferral.defers:
         return MODE_DEFERRED, _deferral_rationale(deferral, plan)
-    from . import critic_consolidate  # noqa: PLC0415 — lazy, as above
-
+    kind, start = verdict
     note = _mid_plan_note(plan, progress)
-    if start["origin"] == critic_consolidate.BASE_AT_HEAD_COVERED:
+    if kind == _MID_PLAN_NOTHING_UNREVIEWED:
         return MODE_DEFERRED, (
             f"mid-plan deferred (nothing unreviewed): {note}; the last review "
             "already covers HEAD, so no review is owed now — build the next chunk "
             "and review it before committing"
         )
-    if not _reaches_committed_work(start):
-        return None
     return "chunk", f"{rule} mid-plan chunk: {note}; {_interval_note(start)}"
 
 

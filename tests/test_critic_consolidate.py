@@ -1009,7 +1009,7 @@ class TestNextActionLine:
             cost=cc.cost_lead({"paths": [], "judgeable": [], "free": []}),
         )
         assert "prawduct-hook cost-of-commit" in line
-        assert "ONLY if that commit touched judgeable files" in line
+        assert "ONLY if the fixes touch judgeable files" in line
         # The enumeration is what was deleted; its return would reintroduce the
         # drift this delegation removes.
         for carve_out in ("`.prawduct/` prose", "`.claude/settings.json`", "`templates/`"):
@@ -1232,7 +1232,13 @@ class TestNextActionLine:
         # the one needing no pass, and an unconditional order buys the round
         # this whole change exists to prevent.
         line = cc.next_action_line("rev-1", 0, 3, 0)
-        assert "ONLY if that commit touched judgeable files" in line
+        # Renegotiated 2026-09-25 (review-friction): the condition used to be
+        # phrased on the commit ("if that commit touched"), because this arm
+        # prescribed commit-then-verify. The order is now one constant
+        # (`_FIX_ORDER`: verify the uncommitted fixes, then commit), so the same
+        # condition is phrased on the fixes. The property pinned is unchanged:
+        # the pass is conditional, never an unconditional round.
+        assert "ONLY if the fixes touch judgeable files" in line
 
     def test_missing_fact_id_degrades_to_a_placeholder(self):
         # A record with no id must still produce a runnable-shaped instruction
@@ -8378,3 +8384,43 @@ class TestIntervalExtension:
         verdict = gates.session_review_verdict(repo)
         assert verdict["status"] == "blocked", verdict
         assert verdict["base_source"] == "merge-base-fallback"
+
+
+class TestOneFixOrderEverywhere:
+    """Every carrier of the fix order states ONE order: verify the uncommitted
+    fixes, then commit. The exception after a `cumulative` is stated only in
+    `_FIX_ORDER_AFTER_CUMULATIVE`. Built by composition from `_FIX_ORDER`, and
+    pinned here on the OUTPUT, because a carrier paraphrasing the order (the way
+    `_IF_YOU_FIX_SOME` once said "ONE commit — and re-cover") is invisible to a
+    grep for the constant."""
+
+    @staticmethod
+    def _order_violations(text: str) -> list[str]:
+        text = text.replace(cc._FIX_ORDER_AFTER_CUMULATIVE, "")
+        bad = []
+        for sentence in re.split(r"(?<=[.!?])\s+", text):
+            if "ONE commit" in sentence and "verify-resolutions" in sentence:
+                if sentence.index("verify-resolutions") > sentence.index("ONE commit"):
+                    bad.append(sentence.strip())
+            for forbidden in ("AFTER committing", "commit, then re-run", "ONE commit — and re-cover"):
+                if forbidden in sentence:
+                    bad.append(sentence.strip())
+        return bad
+
+    @pytest.mark.parametrize("blocking,warning,note", [(2, 5, 3), (0, 3, 0), (0, 0, 2), (0, 1, 1)])
+    def test_every_rendered_next_action_states_one_order(self, blocking, warning, note):
+        line = cc.next_action_line("rev-1", blocking, warning, note)
+        combined = cc._BATCH_FIX_DIRECTIVE + " " + line
+        assert self._order_violations(combined) == [], combined
+
+    def test_every_carrier_composes_the_one_order(self):
+        for carrier in (cc._BATCH_FIX_DIRECTIVE, cc._IF_YOU_FIX_SOME,
+                        cc.next_action_line("rev-1", 2, 1, 0)):
+            assert cc._FIX_ORDER in carrier, carrier
+
+    def test_the_check_can_fail(self):
+        # Positive control: the old zero-blocking wording must be caught.
+        old = (" If you do choose to fix some, batch them into ONE commit — and"
+               " re-cover with ONE `/prawduct:critic verify-resolutions` ONLY if that"
+               " commit touched judgeable files. AFTER committing, dispatch asks.")
+        assert self._order_violations(old)
