@@ -5,6 +5,57 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-26: develop opens 3.6.2-dev.2
+
+<!-- prawduct: type=chore | scope=dev-track-bump-3.6.2-dev.2 -->
+
+The dev track's version moves from `3.6.2-dev.1` to `3.6.2-dev.2` in the four carriers
+(`plugin/VERSION`, `plugin.json`, `pyproject.toml`, and the open `plugin/CHANGELOG.md` heading), so
+repos on the develop track pick up `drop-risk-surface-ask` and `onboard-ux`. The version string is
+the plugin cache key, so a repo that already resolved `3.6.2-dev.1` would otherwise never see them.
+Owner-directed, 2026-09-26. It rides the `onboard-ux` PR, the second of the two to merge, so one
+review covers the bump instead of a PR of its own.
+
+**The release number is still the cut's.** This bump labels the dev track only.
+
+**No consumer notes were owed.** Both scopes already carry their entries in the open
+`plugin/CHANGELOG.md` section.
+
+## 2026-09-26: onboarding recommends an Issues backlog and ends in discovery
+
+<!-- prawduct: type=feature | scope=onboard-ux -->
+
+Two owner observations from onboarding `../fabulous`, one skill.
+
+**Backlog backend.** `plugin/skills/onboard/SKILL.md` called markdown "the default backlog backend"
+and offered Issues only on explicit request. That contradicted the framework's own direction.
+`backlog-service-migration-required` warns every session once a markdown backlog holds structured
+items, and `--backlog-repo` is honoured only at the first scaffold; after that, adopting Issues is
+the scrub cutover. Onboard now recommends Issues, and the owner names and confirms the `owner/repo`,
+never inferred from a remote. Markdown remains the answer for products with no GitHub home, and
+onboard routes those to `decline-migration`, since without it the warning can never resolve. The
+section now states what each choice costs before the owner picks, as an invariant rather than a
+tally. That closes #158, which asked for exactly this. This conforms to `architecture.md` § Direction
+*Local-first*: the Issues backend stays opt-in, because the owner still chooses it and names the
+repo, and an unconfigured product still gets markdown. Only onboard's recommendation moved. The `init_product.py` comment and two test
+comments that called markdown-first "the normal path" now say otherwise.
+
+**Ending.** Onboard ended on a checklist: commit these, open a new session, run discovery,
+contributors install. The owner's read was "so what, now what". Onboarding now offers to commit
+the scaffold as a pathspec commit of its own paths, so work the owner had already staged stays
+out, and a refused commit is reported as uncommitted. When it runs in the target's own session with the plugin
+active, it goes straight into discovery's reconciliation mode: read, lead with its own take, confirm,
+fill the gaps. Otherwise it ends on one next step. The report keeps only what the owner must act
+on. The owner chose both behaviours (inline discovery only in-target; offer-then-commit) on
+2026-09-26. Discovery is not run cross-directory, because that session's hooks and gates govern the
+launch directory, not the target. The skill gains `git status`/`add`/`commit` grants for the commit
+step. `discovery.md` § Reconciling no longer claims nothing backfills the state after onboarding;
+its token reading grows by 16, declared in the budget table.
+
+**Observed, not changed.** In the fabulous session the reflection gate fired on onboarding alone,
+because the scaffold writes `CLAUDE.md` and `.gitignore`, which `is_judgeable_path` counts. That is
+correct under the path rule, so it is left as it is.
+
 ## 2026-09-26: nothing asks for risk surfaces any more
 
 <!-- prawduct: type=feature | scope=drop-risk-surface-ask -->

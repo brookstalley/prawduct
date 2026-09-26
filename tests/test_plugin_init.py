@@ -307,7 +307,7 @@ def test_backlog_repo_dry_run_reports_without_writing(tmp_path: Path):
 
 
 def test_no_backlog_repo_leaves_scalar_unset(scaffolded: Path):
-    # The normal markdown-first path: no --backlog-repo → no backend recorded.
+    # The markdown path: no --backlog-repo → no backend recorded.
     state = (scaffolded / ".prawduct" / "project-state.yaml").read_text()
     assert "backlog_service_repo" not in state
 
@@ -334,7 +334,7 @@ def test_value_flags_do_not_swallow_the_next_flag():
     assert unknown == [], "every token here is recognized; none should be reported"
 
     # Valueless must stay distinguishable from absent: `--backlog-repo` with no
-    # value is a shape error (loud), while omitting it is the markdown-first
+    # value is a shape error (loud), while omitting it chooses the markdown
     # path (silent, correct). Collapsing both to None forfeits the one-shot
     # day-one Issues window with no diagnostic.
     assert _parse_argv(["/t", "--name", "P", "--apply", "--backlog-repo"])[2] == ""
