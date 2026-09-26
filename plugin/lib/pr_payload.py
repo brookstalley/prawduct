@@ -695,14 +695,10 @@ def _section_learnings_cap(project_dir: Path, prawduct_dir: Path, base: str) -> 
             f"core.md's cap could not be compared — no merge-base with {base}; read "
             "`learnings_budgets.core.md` in project-state.yaml at both ends yourself"
         ))
-    try:
-        before = record_lint.budgets_at(project_dir, prawduct_dir, fork).get(learnings_files.CORE_NAME) or {}
-        after = record_lint.budgets_at(project_dir, prawduct_dir, "HEAD").get(learnings_files.CORE_NAME) or {}
-    except (OSError, ValueError) as exc:
-        return Section("learnings_cap", degraded=(
-            f"core.md's cap could not be compared ({type(exc).__name__}) — read "
-            "`learnings_budgets.core.md` in project-state.yaml at both ends yourself"
-        ))
+    # ``budgets_at`` does not raise: an unreadable tree or state file reads as
+    # "no override", which the comparison below reports as the default.
+    before = record_lint.budgets_at(project_dir, prawduct_dir, fork).get(learnings_files.CORE_NAME) or {}
+    after = record_lint.budgets_at(project_dir, prawduct_dir, "HEAD").get(learnings_files.CORE_NAME) or {}
     def _cap(entry: dict) -> tuple:
         return (entry.get("kb"), entry.get("owner_approved"))
 

@@ -1254,6 +1254,21 @@ class TestLearningsCapSection:
         assert "RISES on this branch" in body and "2026-09-24" in body and "quoted in the PR description" in body
         assert "reason" not in body
 
+    def test_no_merge_base_degrades_and_names_what_to_read(self, tmp_path):
+        """An unrelated base has no merge-base, so the section cannot compare.
+        It must degrade (an unanswered check is not a passed one) and tell the
+        reviewer where to look by hand."""
+        from lib import pr_payload as pp
+        repo = tmp_path / "r"
+        (repo / ".prawduct").mkdir(parents=True)
+        (repo / ".prawduct" / "project-state.yaml").write_text("x: 1\n")
+        g = lambda *a: subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", *a], cwd=repo, check=True, capture_output=True)
+        g("init", "-q", "-b", "main"); g("add", "-A"); g("commit", "-qm", "base")
+        g("checkout", "-q", "--orphan", "unrelated"); g("commit", "-qm", "other root")
+        section = pp._section_learnings_cap(repo, repo / ".prawduct", "main")
+        assert section.degraded and "learnings_budgets.core.md" in section.degraded
+        assert not section.body
+
     def test_a_removed_cap_is_not_called_a_raise(self, tmp_path):
         """Compacting a corpus drops its old override. The cap in force falls to
         the default, so the section must not ask for the owner's approval."""

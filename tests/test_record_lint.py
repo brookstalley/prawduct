@@ -1944,6 +1944,23 @@ class TestLearningsFormat:
 
         assert _checks(self._lint_budget(repo, base), "learnings-rule-too-long") == []
 
+    def test_a_rule_moved_to_an_area_file_is_not_an_added_line(self, tmp_path):
+        """Moving a legacy-shaped rule out of core.md is the over-budget remedy,
+        so the frozen regime must not grade it as written in its new file. A
+        genuinely new long rule in the same file is the control. Red if the
+        already-held lines come from the same file's base rather than the
+        corpus's."""
+        repo = _make_repo(tmp_path)
+        _rules(repo, "core.md", [_LONG, "body text under it", "- b"])
+        base = _commit(repo, "legacy shape")
+        _rules(repo, "core.md", ["- b"])
+        _rules(repo, "tests.md", [_LONG, "body text under it", _LONG + " and a new one"])
+
+        result = self._lint_budget(repo, base)
+        too_long = _checks(result, "learnings-rule-too-long")
+        assert [f["path"].endswith("tests.md") for f in too_long] == [True]
+        assert _checks(result, "learnings-rule-body") == []
+
     def test_the_post_migration_move_into_core_blocks(self, tmp_path):
         """Outside the migration session, core.md is judged per file: moving rules
         into an over-cap core.md from an area file blocks, even though the
