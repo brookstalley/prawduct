@@ -205,15 +205,30 @@ class TestWidenedFallback:
         assert mode == "final", why
         assert "last reviewed state" in why
 
-    def test_cumulative_when_no_reviewed_state_sits_behind_them(self, tmp_path):
+    def _unreviewed_commit(self, tmp_path):
         repo = tmp_path / "r"
         _init_repo(repo)
         _commit_file(repo, "src/app.py", "x = 1\n", "init")
         _git(repo, "checkout", "-b", "feat/work", "--quiet")
         head = _commit_file(repo, "src/app.py", "x = 2\n", "unreviewed")
-        head_tree = _git(repo, "rev-parse", f"{head}^{{tree}}").stdout.strip()
+        return repo, _git(repo, "rev-parse", f"{head}^{{tree}}").stdout.strip()
+
+    def test_cumulative_when_nothing_reviewed_and_code_is_in_flight(self, tmp_path):
+        """No reviewed state behind the commits and judgeable work uncommitted:
+        `final` would start at HEAD and miss them, so `cumulative` covers them."""
+        repo, head_tree = self._unreviewed_commit(tmp_path)
+        (repo / "src" / "wip.py").write_text("w = 1\n")
         mode, why = cc._widened_fallback_mode(repo, head_tree, True)
         assert mode == "cumulative", why
+
+    def test_final_from_the_merge_base_when_nothing_judgeable_is_uncommitted(self, tmp_path):
+        """The same commits with nothing judgeable in flight: the interval owner
+        starts `final` at the merge-base, so it reaches them at inner-stage
+        rigor. Red if the fallback re-derives the start instead of asking."""
+        repo, head_tree = self._unreviewed_commit(tmp_path)
+        mode, why = cc._widened_fallback_mode(repo, head_tree, True)
+        assert mode == "final", why
+        assert "merge-base" in why, why
 
 
 class TestNothingOwedIsSkipped:

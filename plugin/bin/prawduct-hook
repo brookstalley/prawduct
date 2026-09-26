@@ -2421,6 +2421,53 @@ def _worktree_redirect_note(project_dir: Path) -> str | None:
     )
 
 
+def _committed_work_remedy(project_dir: Path) -> str:
+    """The Stop gate's advice for unreviewed committed work, from the interval owner.
+
+    No-mode ``/prawduct:critic`` is the right advice only when a ``chunk``/``final``
+    interval reaches the committed work: from the last reviewed state, or from
+    the merge-base when nothing judgeable is uncommitted. With code in flight
+    and no reviewed state behind HEAD it starts at HEAD and misses the commits,
+    and repeating the advice would buy a round that leaves the gate uncovered.
+    Asked of ``working_tree_interval_base``, the owner of where that interval
+    starts, so the advice and the interval cannot disagree. An unreadable state
+    names both routes rather than guess.
+    """
+    from lib import critic_consolidate  # noqa: PLC0415 — lazy keeps top-level cheap
+    from lib import evidence  # noqa: PLC0415 — lazy keeps top-level cheap
+
+    reaches = None
+    rc_c, head_commit, _ = evidence.run_git(project_dir, "rev-parse", "HEAD")
+    rc_t, head_tree, _ = evidence.run_git(project_dir, "rev-parse", "HEAD^{tree}")
+    if rc_c == 0 and rc_t == 0 and head_commit.strip() and head_tree.strip():
+        why: list = []
+        start = critic_consolidate.working_tree_interval_base(
+            project_dir, head_commit.strip(), head_tree.strip(), why
+        )
+        if not why:
+            reaches = start["origin"] in (
+                critic_consolidate.BASE_AT_FRONTIER,
+                critic_consolidate.BASE_AT_MERGE_BASE,
+                critic_consolidate.BASE_AT_HEAD_COVERED,
+            )
+    if reaches:
+        return (
+            "  run /prawduct:critic with no mode: its interval reaches them (from the\n"
+            "  last reviewed state, or the merge-base), so mid-plan it infers a chunk\n"
+            "  review, and at the PR point cumulative.\n"
+        )
+    if reaches is False:
+        return (
+            "  run /prawduct:critic cumulative: with code uncommitted and no reviewed\n"
+            "  state behind HEAD, a chunk review starts at HEAD and cannot reach them.\n"
+        )
+    return (
+        "  run /prawduct:critic with no mode if nothing judgeable is uncommitted or a\n"
+        "  reviewed state sits behind HEAD; otherwise /prawduct:critic cumulative,\n"
+        "  whose committed range reaches them (the reach could not be read here).\n"
+    )
+
+
 def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     """Check governance gates before session end.
 
@@ -3414,9 +3461,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                     "  SELECTIVE commit of only part of the reviewed state), the current tree was\n"
                     "  never reviewed — run /prawduct:critic verify-resolutions to review the\n"
                     "  delta and close the gap. If unreviewed changes were committed mid-session,\n"
-                    "  run /prawduct:critic with no mode: it picks the review whose interval\n"
-                    "  reaches them (mid-plan, a chunk review from the last reviewed state;\n"
-                    "  at the PR point, cumulative).\n"
+                    + _committed_work_remedy(project_dir)
                     + _escape_hatch
                 ))
 

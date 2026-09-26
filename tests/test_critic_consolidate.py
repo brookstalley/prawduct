@@ -5695,15 +5695,7 @@ class TestVerifyResolutionsDispatch:
         # alone would still pass — leaving the branch this test names untested.
         assert "every change since the prior review is uncommitted" in result.stderr
 
-    def test_a_committed_widening_names_cumulative_not_final(self, tmp_path):
-        """The defect this pins: a widening made of COMMITTED work demoted to
-        `final`, whose HEAD-tree → working-tree interval cannot see a commit.
-        The replacement was narrower than the interval refused for being too
-        wide, so the re-dispatch reviewed whatever the working tree held —
-        untracked strays, in the observed case — and reported it as the chunk's
-        review. `cumulative` spans merge-base…HEAD and actually covers it.
-        """
-        repo = tmp_path / "r"
+    def _committed_widening(self, repo):
         _init_repo(repo)
         self._seed_and_fix(repo)
         # A feature branch, so a merge-base exists to span. The fix and the
@@ -5712,10 +5704,38 @@ class TestVerifyResolutionsDispatch:
         _commit_file(repo, "src/app.py", "x = 2  # fixed\n", "fix")
         for i in range(2 * 1 + 6):
             _commit_file(repo, f"src/new_{i}.py", f"n = {i}\n", f"more {i}")
+
+    def test_a_committed_widening_with_code_in_flight_names_cumulative(self, tmp_path):
+        """The defect this pins: a widening made of COMMITTED work demoted to a
+        `final` whose interval cannot see a commit. The replacement was narrower
+        than the interval refused for being too wide, so the re-dispatch reviewed
+        whatever the working tree held — untracked strays, in the observed case —
+        and reported it as the chunk's review. With judgeable work uncommitted
+        and no blocker-free reviewed state behind HEAD, `final` starts at HEAD,
+        so `cumulative`, which spans merge-base…HEAD, is the mode that covers it.
+        """
+        repo = tmp_path / "r"
+        self._committed_widening(repo)
+        (repo / "src" / "wip.py").write_text("w = 1\n")
         result = _run_begin(repo, "--mode", "verify-resolutions")
         assert result.returncode == 2
         assert "Re-dispatch as `cumulative`" in result.stderr, result.stderr
         assert "Re-dispatch as `final`" not in result.stderr
+
+    def test_a_committed_widening_with_nothing_judgeable_uncommitted_names_final(
+        self, tmp_path
+    ):
+        """The same committed widening with nothing judgeable in flight: `final`'s
+        interval starts at the merge-base (the interval owner's answer), so it
+        reaches the commits at inner-stage rigor, and sending the builder to the
+        boundary `cumulative` would price the same span at boundary rigor. Red
+        if the fallback re-derives the start instead of asking the owner."""
+        repo = tmp_path / "r"
+        self._committed_widening(repo)
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 2
+        assert "Re-dispatch as `final`" in result.stderr, result.stderr
+        assert "starts at the merge-base" in result.stderr
 
     def test_a_committed_widening_with_no_span_falls_back_to_final(self, tmp_path):
         """Recommending a mode that would itself refuse at dispatch is the same
@@ -5761,6 +5781,9 @@ class TestVerifyResolutionsDispatch:
         _commit_file(committed, "src/app.py", "x = 2  # fixed\n", "fix")
         for i in range(2 * 1 + 6):
             _commit_file(committed, f"src/new_{i}.py", f"n = {i}\n", f"more {i}")
+        # Code in flight: with nothing judgeable uncommitted, `final` would start
+        # at the merge-base and reach the commits (the test above pins that).
+        (committed / "src" / "wip.py").write_text("w = 1\n")
         result = cc.begin_review(committed, "verify-resolutions")
         assert result["kind"] == "scope-widened"
         assert result["fallback_mode"] == "cumulative"
@@ -8405,6 +8428,10 @@ class TestOneFixOrderEverywhere:
             for forbidden in ("AFTER committing", "commit, then re-run", "ONE commit — and re-cover"):
                 if forbidden in sentence:
                     bad.append(sentence.strip())
+            # "land" means commit in `_FIX_ORDER`, so a sentence using it for "be
+            # in the tree before the pass" states the second, opposite order.
+            if re.search(r"\bland\b[^.]*\bbefore\b[^.]*\bverify", sentence, re.IGNORECASE):
+                bad.append(sentence.strip())
         return bad
 
     @pytest.mark.parametrize("blocking,warning,note", [(2, 5, 3), (0, 3, 0), (0, 0, 2), (0, 1, 1)])
@@ -8423,4 +8450,11 @@ class TestOneFixOrderEverywhere:
         old = (" If you do choose to fix some, batch them into ONE commit — and"
                " re-cover with ONE `/prawduct:critic verify-resolutions` ONLY if that"
                " commit touched judgeable files. AFTER committing, dispatch asks.")
+        assert self._order_violations(old)
+
+    def test_the_check_catches_land_before_the_verify_pass(self):
+        # Positive control for the second order stated inside one directive:
+        # the tail that said code "must land BEFORE the verify pass".
+        old = (" Everything else moves the tree and must land BEFORE the verify pass:"
+               " code, config, data, tests.")
         assert self._order_violations(old)

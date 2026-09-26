@@ -18,13 +18,27 @@ A survey of the sibling repos on 3.6.1-dev found three causes of review and Stop
 "ONE commit, then verify". A builder who committed first left a clean tree, and rule 2 escalated to
 a `cumulative`. That happened 33 times from 09-20 to 09-25. The router now answers `chunk`
 mid-plan: 2+ unticked chunks of the plan found through the branch's scope. The interval starts at
-the last reviewed commit, or at the merge-base on a clean tree with nothing reviewed. It answers
+the last reviewed commit, or at the merge-base when nothing is reviewed and nothing judgeable is
+uncommitted (a plan tick or change-log line does not count). It answers
 `deferred` when nothing is unreviewed. `critic_consolidate.working_tree_interval_base` is the one
 owner of where the interval starts. The owner's stage ruling ("key on cycle position") is recorded
 beneath the stage-keyed rigor clause in `nonfunctional-requirements.md`, which is otherwise
 unedited. Four real puzzles states reproduce in a scratch clone and ran `cumulative` at the time. Three now answer
-`chunk` and one `deferred`: a 61-file cumulative that had found 0 blocking findings. Four interlock-lab-1 states did not
+`chunk` and one `deferred`: a 61-file cumulative that had found 0 blocking findings. The other four states did not
 reproduce in the clone.
+
+**One fix order everywhere.** The chunk close is now review, fix, then commit, in `building.md`,
+`review-cycle.md` and the consolidate directives. `_FIX_ORDER` in `critic_consolidate.py` is the one
+sentence the batch directive, the if-you-fix-some advice and the blocking arm all compose, and the
+post-`cumulative` exception is stated once beside it (`TestOneFixOrderEverywhere`).
+
+**An explicit mode stands mid-plan.** `/prawduct:critic chunk` or `final` on a clean tree mid-plan
+keeps the named mode over the unreviewed interval instead of redirecting to `cumulative`. With
+nothing unreviewed, dispatch answers exit 3 (no review needed) rather than refusing. Every exit 3
+records a `guard-refusal` fact, this one as `critic-dispatch-head-covered`. The Stop gate's advice
+for unreviewed committed work asks the same interval owner, so it names `cumulative` when a chunk
+review could not reach the commits (code in flight, nothing reviewed behind HEAD). A widened verify
+pass is re-dispatched as `final` when `final`'s interval reaches the commits.
 
 **Stop blocks on mid-work turns.** 17 of 32 critic/reflection blocks since 09-14 landed on turns
 closing DO NOT CLEAR. The Stop payload carries `last_assistant_message` (Claude Code 2.1.282, found
@@ -50,12 +64,13 @@ leads with the clocked population. Its `--json` keys keep their meaning, so `sch
 Contract change: `critic-consolidate` writes the new fact key (`api-contract.md`). Persisted schema:
 `data-model.md`.
 
-The 00–02 review's O-2 is fixed across its class. `gates.covered_frontier` names which clean `None` it
+A clean-tree `chunk` that starts at the merge-base now says why it had no reviewed state to extend from. `gates.covered_frontier` names which clean `None` it
 returned (`FRONTIER_ABSENT_*`), and `critic_consolidate.merge_base_start_reason` is the one renderer. An
 open blocker on the nearest reviewed state is named with its remedy, never called "nothing reviewed".
 
 Budget raises are declared with their price in `test_v5_methodology.py` and
 `test_reviewer_payload_budget.py`.
+
 ## 2026-09-26: the suite-at-boundary release-note pin finds its own version section
 
 <!-- prawduct: type=fix | scope=suite-at-boundary-note-window -->

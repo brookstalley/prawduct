@@ -1485,10 +1485,10 @@ def covered_frontier(
     - the nearest composing tree is covered by free edges alone, i.e. nothing
       on the branch has been reviewed yet. Extending there from a dirty tree would
       turn the first inner-stage review into a review of everything the branch
-      committed. On a clean tree mid-plan the caller does reach that span, at
-      inner rigor: review stage is keyed on the plan's position, not on whether
-      the builder committed first, so the alternative is the same span at
-      boundary rigor;
+      committed. With nothing judgeable uncommitted the caller does reach that
+      span (``critic_consolidate.working_tree_interval_base``), at inner rigor:
+      review stage is keyed on the plan's position, not on whether the builder
+      committed first, so the alternative is the same span at boundary rigor;
     - no tree on the walk composes at all. After a base sync this is the
       ordinary answer: the merge-base is the new base tip, and a pre-sync review
       composes from it only across a free (non-judgeable) advance, never across

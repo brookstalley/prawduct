@@ -864,7 +864,8 @@ LAST_MEASURED_TOKENS = {
     # Small row restated for the covered frontier, in place and shorter.
     # RAISED 11232 -> 11317 (review-friction, 2026-09-25): the chunk-close order (review, fix, then commit), the mid-plan routing rule, and the merge-base start of a clean-tree `chunk` interval, which removes mid-plan boundary reviews (33 `cumulative` rounds since 09-20 across seven repos, ~11 findings each). The new text was compressed in place before declaring. DECLARED.
     # RAISED a further +48 (11317 -> 11365), learnings-one-line (the owner-confirmed design in that plan's Requirements Confidence, 2026-09-24): the severity table gains the three new record-lint checks and the over-budget row its second regime. Rows compressed in place first (65 -> 48); every check name must appear here (`TestEveryCheckCarriesASeverity`). DECLARED.
-    "skills/critic/review-cycle.md": 11365,
+    # RAISED +2 (11365 -> 11367, review-friction, 2026-09-26): the interval's merge-base start is bounded by uncommitted JUDGEABLE work, not by a clean tree (cumulative review rev-20260926T141912Z-875cfe56 R-1): a reviewer told 'clean tree' misreads the interval a records-only close gets. DECLARED.
+    "skills/critic/review-cycle.md": 11367,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -1002,7 +1003,8 @@ LAST_MEASURED_TOKENS = {
     # when it fires); what remains is the row itself, which has no duplicate.
     # RAISED 3680 -> 3684 (#820), same PR, after its cumulative review (W1/W3): the boundary is defined as where work LANDS, so direct-commit repos and work ending on a single `final` still owe the suite, and `final` reports a stale record as an observation. Compressed in place first. DECLARED.
     # RAISED 3684 -> 3719 (review-friction, 2026-09-25): the chunk-close order (review, fix, then commit), the mid-plan routing rule, and the merge-base start of a clean-tree `chunk` interval, which removes mid-plan boundary reviews (33 `cumulative` rounds since 09-20 across seven repos, ~11 findings each). The new text was compressed in place before declaring. DECLARED.
-    "skills/critic/SKILL.md": 3719,
+    # RAISED +1 (3719 -> 3720, review-friction, 2026-09-26): the interval's merge-base start is bounded by uncommitted JUDGEABLE work, not by a clean tree (cumulative review rev-20260926T141912Z-875cfe56 R-1): a reviewer told 'clean tree' misreads the interval a records-only close gets. DECLARED.
+    "skills/critic/SKILL.md": 3720,
     "skills/critic/framework-checks.md": 1116,
     # The on-demand class, first recorded 2026-08-19 (#688) — readings, no
     # ceilings; the block above this dict is the decision and its reasoning.
@@ -5345,7 +5347,8 @@ class TestCriticSkillRoutesByMode:
         # the reason is at the LAST_MEASURED_TOKENS entry.
         # RAISED 3681 -> 3685 (#820, 2026-09-23) — see LAST_MEASURED_TOKENS.
         # RAISED 3685 -> 3720 (review-friction, 2026-09-25) — see LAST_MEASURED_TOKENS.
-        assert tokens < 3720, f"SKILL.md is ~{tokens} tokens, should be <3720"
+        # RAISED 3720 -> 3721 (review-friction, 2026-09-26) — see LAST_MEASURED_TOKENS.
+        assert tokens < 3721, f"SKILL.md is ~{tokens} tokens, should be <3721"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))
@@ -5665,7 +5668,8 @@ class TestReviewCycle:
         # RATCHETED 11236 -> 11233 (review-interval-extension, 2026-09-22) with the reading.
         # RAISED 11233 -> 11318 (review-friction, 2026-09-25) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED a further +48 -> 11366 (learnings-one-line, 2026-09-24) — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 11366, f"review-cycle.md is ~{tokens} tokens, should be <11366"
+        # RAISED 11366 -> 11368 (review-friction, 2026-09-26) — see LAST_MEASURED_TOKENS.
+        assert tokens < 11368, f"review-cycle.md is ~{tokens} tokens, should be <11368"
 
     def test_framework_checks_token_budget(self):
         # Ceiling 1150. This file is `final`/`cumulative` payload: SKILL.md's

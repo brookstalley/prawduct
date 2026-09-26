@@ -22,8 +22,10 @@ with no arguments now answers a `chunk` review over whatever has not been review
 not you committed first. It used to escalate a committed chunk to a `cumulative`: the boundary
 review, at boundary rigor, over everything the branch had committed. Across seven governed repos,
 33 of those ran mid-plan in five days, averaging about eleven findings each, and each one fed verify
-rounds after it. On a clean tree with nothing reviewed yet, the chunk review starts at the
-merge-base. When nothing is unreviewed, the answer is `deferred`. At the PR point (the last chunk
+rounds after it. With nothing reviewed yet and nothing reviewable uncommitted (a plan tick or
+change-log line doesn't count), the chunk review starts at the merge-base. Naming `chunk` or
+`final` yourself mid-plan keeps that mode instead of switching to `cumulative`, and when the last
+review already covers everything it answers "no review needed". When nothing is unreviewed, the answer is `deferred`. At the PR point (the last chunk
 committed, or the plan complete) nothing changes: that is still `cumulative`. The chunk-close order
 now reads the same everywhere: review the chunk, fix, then commit.
 

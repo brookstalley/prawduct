@@ -167,7 +167,9 @@ An absent file is the empty store.
   key every yield query groups on, and the authority even if a caller's body offers its own), the
   `interval` it judged, and whatever that guard needs to answer its own yield question later — for
   `critic-dispatch-free-interval`, the `free_files` it waved through plus `mode`/`scope`/`chunk`/
-  `branch`. **The interval is nested under `interval`, never spread to the body's top level**, which
+  `branch`. The other two `critic-begin` exit-3 answers, `critic-dispatch-nothing-to-verify` (a verify
+  pass over an unchanged tree) and `critic-dispatch-head-covered` (a `chunk`/`final` whose last review
+  covers HEAD), carry `mode`/`scope`/`chunk`/`branch`/`dispatch_commit`: every exit 3 records one. **The interval is nested under `interval`, never spread to the body's top level**, which
   is where a coverage edge carries `base_tree`/`head_tree`: one level down, no reader walking bodies
   for edges can mistake a refusal for one. **This kind is purely observational and CANNOT become
   authoritative** — composition derives edges from `kind == "review"` alone, so a refusal contributes

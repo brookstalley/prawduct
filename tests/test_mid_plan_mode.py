@@ -36,6 +36,7 @@ from test_critic_consolidate import (
     _init_repo,
     _run_begin,
     _run_consolidate,
+    _store_facts,
     _write_partial,
 )
 
@@ -196,17 +197,31 @@ class TestTheBoundaryIsKept:
         assert mode == "cumulative", why
         assert why.startswith("rule-2 cumulative:"), why
 
-    def test_uncommitted_records_over_an_unreviewed_branch_keep_rule_2(self, tmp_path):
-        """The interval's merge-base start is bounded to a clean tree. With only
-        records uncommitted, a `chunk` interval would start at HEAD and reach no
-        committed work, so the router must not name it — it keeps today's
-        answer rather than recommend a review that sees nothing."""
+    def test_uncommitted_records_over_an_unreviewed_branch_infer_chunk(self, tmp_path):
+        """Commit-first with only a record uncommitted (a plan edit) and nothing
+        reviewed: the interval's merge-base start is bounded by uncommitted
+        JUDGEABLE work, not by a clean tree, so the `chunk` interval reaches the
+        committed chunk and mid-plan inference names it. Red if a record decides
+        the start: the ordinary chunk close leaves one, and the router then sent
+        it to a boundary `cumulative`."""
         repo = _repo(tmp_path)
         _commit_first(repo, 2)
         path = _plan_path(repo)
         path.write_text(path.read_text() + "\nContext: edited.\n")
         mode, why = infer_mode(repo, None)
-        assert mode == "cumulative", why
+        assert mode == "chunk", why
+        assert "merge-base" in why, why
+
+    def test_uncommitted_code_over_an_unreviewed_branch_keeps_the_head_start(self, tmp_path):
+        """The control: judgeable work in flight keeps the HEAD-anchored start,
+        so the router does not stretch an in-flight review to the whole branch."""
+        repo = _repo(tmp_path)
+        _commit_first(repo, 2)
+        (repo / "src/app.py").write_text("x = 99  # in flight\n")
+        head = _git(repo, "rev-parse", "HEAD").stdout.strip()
+        tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        start = cc.working_tree_interval_base(repo, head, tree)
+        assert start["origin"] == cc.BASE_AT_HEAD, start
 
 
 class TestNothingOwedNow:
@@ -226,10 +241,9 @@ class TestNothingOwedNow:
     def test_a_short_plan_defers_even_when_the_interval_cannot_reach_the_commits(
         self, tmp_path
     ):
-        """Uncommitted records only (a plan edit) and nothing reviewed: the chunk
-        interval cannot reach the committed chunk, so no `chunk` answer exists. The
-        branch is still mid-plan, so the short plan's trade still holds; the
-        unreachable interval must not turn it into a `cumulative`."""
+        """Uncommitted records only (a plan edit) and nothing reviewed, on a short
+        plan: the branch is mid-plan, so the short plan's trade holds and it
+        defers rather than naming a review now."""
         repo = _repo(tmp_path, chunks=3)
         _commit_first(repo, 2)
         plan = _plan_path(repo)
@@ -286,6 +300,12 @@ class TestExplicitTokensMidPlan:
         out = begin.stdout + begin.stderr
         assert "already covers HEAD" in out, out
         assert "cumulative's scope" not in out, out
+        # Every exit 3 records its firing, this arm included: without the fact,
+        # whether it ever refused a round that was needed has no answer.
+        assert any(
+            (f.get("body") or {}).get("guard") == "critic-dispatch-head-covered"
+            for f in _store_facts(repo, "guard-refusal")
+        ), "the head-covered exit 3 left no guard-refusal fact"
 
     @pytest.mark.parametrize("token", ["chunk", "final"])
     def test_at_the_boundary_the_redirect_stands(self, tmp_path, token):
@@ -398,3 +418,42 @@ class TestTheMergeBaseStartSaysWhy:
         assert mode == "chunk", why
         assert "no reviewed state on this branch composes" in why, why
         assert "base sync" in why, why
+
+
+class TestStopRemedyAsksTheIntervalOwner:
+    """The Stop gate's advice for unreviewed committed work comes from
+    `working_tree_interval_base`, so it cannot recommend a review whose
+    interval misses the commits (the no-mode advice is wrong when code is in
+    flight and nothing reviewed sits behind HEAD)."""
+
+    @staticmethod
+    def _remedy(repo: Path) -> str:
+        import importlib.machinery
+        import importlib.util
+
+        hook_path = Path(__file__).resolve().parent.parent / "plugin" / "bin" / "prawduct-hook"
+        loader = importlib.machinery.SourceFileLoader("prawduct_hook_stop_remedy", str(hook_path))
+        hook = importlib.util.module_from_spec(
+            importlib.util.spec_from_loader("prawduct_hook_stop_remedy", loader)
+        )
+        loader.exec_module(hook)
+        return hook._committed_work_remedy(repo)
+
+    def test_code_in_flight_over_unreviewed_commits_names_cumulative(self, tmp_path):
+        repo = _repo(tmp_path)
+        _commit_first(repo, 2)
+        (repo / "src/app.py").write_text("x = 99  # in flight\n")
+        remedy = self._remedy(repo)
+        assert "/prawduct:critic cumulative" in remedy, remedy
+        assert "with no mode" not in remedy, remedy
+
+    def test_records_only_over_unreviewed_commits_names_no_mode(self, tmp_path):
+        # The control: the same commits with only a record uncommitted are
+        # reachable from the merge-base, so the no-mode review is the advice.
+        repo = _repo(tmp_path)
+        _commit_first(repo, 2)
+        path = _plan_path(repo)
+        path.write_text(path.read_text() + "\nContext: edited.\n")
+        remedy = self._remedy(repo)
+        assert "with no mode" in remedy, remedy
+        assert "/prawduct:critic cumulative" not in remedy, remedy

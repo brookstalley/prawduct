@@ -12,7 +12,7 @@ governed_by:
       - "review rigor is stage-keyed; the inner stage is any review of an uncommitted diff → ruling needed before Chunk 01, recorded beneath the clause: the stage is keyed on WHERE IN THE CYCLE the review sits, not on whether the builder committed first. A mid-plan review of the unreviewed interval (covered frontier → working tree, committed or not) is inner stage; the boundary is merge-base…HEAD at the PR point. The norm's own why (an inner-stage review run at boundary rigor is a defect priced in minutes and rounds) is what 33 mid-plan cumulatives since 09-20 violate"
       - "review wall-clock is P0 → conforms: Chunks 01 and 02 exist to cut rounds and blocked turns"
       - "unsure defaults to the inner-stage review of whatever interval exists → conforms: Chunk 01 makes the router follow it on a clean tree too"
-      - "proportionality ratchets both ways → conforms: no control is added. The verdict deferral narrows an existing gate to the turns where it yields, and the mid-plan chunk removes mid-plan boundary reviews"
+      - "proportionality ratchets both ways → conforms: one control is added, observably. The head-covered exit 3 in `critic-begin` records a `guard-refusal` fact (`critic-dispatch-head-covered`) like its two siblings, so its yield can be measured and it can be retired. The verdict deferral narrows an existing gate to the turns where it yields, and the mid-plan chunk removes mid-plan boundary reviews"
       - "state-file growth is an advisory warning, never a hard block → inapplicable, because no state-file size behaviour changes"
   - artifact: architecture
     dispositions:
@@ -205,12 +205,12 @@ directive now says the verify pass is owed only when no later review the plan ow
 agrees with the mid-plan NEXT-ACTION. O-3: `_MID_PLAN_UNREACHABLE` is a third verdict, so a short plan whose
 interval cannot reach the commits still defers. The new test was red with the verdict mutated away. O-5 and O-6
 are ACCEPTED. O-4, owner sign-off on Success 1's descope, is asked of the owner.
-**Verify rev-20260925T225130Z-f895e82c: 0 blocking, R-4 fixed.** 03 is ticked. RIDE-ALONG, owed by the next commit the PR
-flow makes (O-1): three strings still say `critic-begin` "refuses" the empty interval it now answers with exit 3. They are the
-`_explicit_mode` docstring and the "will refuse it" rationale string in `critic_mode.py`, and the docstring of
-`test_a_named_mode_with_nothing_unreviewed_stands_rather_than_redirecting`. Its own assertion is exit 3. O-2 to O-5 are ACCEPTED. The numbers and method are in
-`.prawduct/.handoff-notes.md`, and the scripts are re-derivable from each repo's ledger and the
-transcripts' `stop_hook_summary` records.
+**Verify rev-20260925T225130Z-f895e82c: 0 blocking, R-4 fixed.** 03 is ticked. Its O-1 ride-along (three strings that still said `critic-begin` "refuses" the empty
+interval it now answers with exit 3) landed in bd26fa50 during the PR flow. O-2 to O-5 are ACCEPTED. The survey numbers were measured 2026-09-25 from two sources, and they are re-derived from the same two. The first is
+the Stop events (`stop_hook_summary` records) in the transcripts under every Claude config dir (`~/.claude`,
+`~/.claude-noun`, `~/.claude-devcontainer`, `~/.claude-noun-devcontainer`). The second is each sibling's
+`.prawduct/.governance-ledger.jsonl` (puzzles, discodon, hallucinote, swordfishing, bankmachine, faidh,
+prawduct). **At PR time (2026-09-26), O-4 is still open with the owner:** sign-off on Success 1's descope.
 
 ### Chunk 00: Siblings run a pinned plugin, not this checkout
 
