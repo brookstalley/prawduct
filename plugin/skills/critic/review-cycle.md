@@ -447,8 +447,10 @@ Severity per check:
 | `chunk-ref-missing` | A deliverable the reviewed chunk *declares* does not exist | **BLOCKING** |
 | `governed-by-gap` | A plan disposes of fewer norms than the cited artifact's `## Direction` carries, cites an artifact that does not exist, or carries a frontmatter no parser can read | **WARNING** (Goal 2 — the paperwork arm below) |
 | `suite-total-claim` | A suite-total test claim on an **added** line of durable prose — the store already records pass/fail per tree | **NOTE** |
-| `learnings-over-budget` | A `.claude/rules/learnings/` file over budget **and grown since the base tree** (sizes, not lines) | **BLOCKING** |
+| `learnings-over-budget` | A `.claude/rules/learnings/` file over budget **and grown since the base tree** (compacted corpus: over at all) | **BLOCKING** |
+| `learnings-rule-too-long` / `learnings-rule-body` | A rule over the line limit, or a body line (uncompacted corpus: added lines only) | **BLOCKING** |
 | `learnings-budget-unreasoned` | A `learnings_budgets:` entry with no `reason:` | **BLOCKING** |
+| `learnings-core-raise-unapproved` | A `core.md` raise without `owner_approved:` (ignored) | **WARNING** |
 | `learnings-area-dead` | An area file whose `paths:` globs match no tracked file | **WARNING** |
 
 **Under the coordinator pattern, whoever holds Goal 2 raises every one of these** — including the

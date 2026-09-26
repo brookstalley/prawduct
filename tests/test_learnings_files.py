@@ -468,7 +468,7 @@ class TestRuleUnits:
         ]
 
     def test_the_scaffold_obligation_header_is_not_a_unit(self):
-        """`CORE_HEADER` is a title plus a bold paragraph. A freshly scaffolded
+        """`CORE_HEADER` is a title plus two plain paragraphs. A freshly scaffolded
         repo must have ZERO rules, or its first Stop records a rule nobody
         wrote and the corpus reads as used from the moment it is created."""
         assert lf.rule_units(lf.CORE_HEADER) == []
@@ -602,12 +602,37 @@ class TestAgainstTheRealCorpus:
             "check pass without reading anything"
         )
 
+    def _all_units(self) -> "list[str]":
+        """Every unit of every real rules file. The floor is corpus-wide, not
+        core.md's: the 2026-09-24 compaction (learnings-one-line) moved most
+        rules into area files, so a count of core.md alone measured a PHASE of
+        this repo, not the parser. What must not move is below: the parser
+        returns exactly the rule lines an independent count finds."""
+        root = Path(__file__).resolve().parent.parent
+        return [
+            u for p in sorted((root / lf.RULES_DIR_REL).glob("*.md"))
+            for u in lf.rule_units(p.read_text(encoding="utf-8"))
+        ]
+
+    def test_the_parser_returns_every_rule_line_an_independent_count_finds(self):
+        """Red if the parser silently drops rules. The independent count is a
+        plain line match, so it shares no code with `rule_units`."""
+        root = Path(__file__).resolve().parent.parent
+        expected = 0
+        for p in (root / lf.RULES_DIR_REL).glob("*.md"):
+            fence = False
+            for line in p.read_text(encoding="utf-8").splitlines():
+                if line.strip().startswith(("```", "~~~")):
+                    fence = not fence
+                    continue
+                if not fence and re.match(r"(- |## |### )\S", line):
+                    expected += 1
+        assert expected > 100, "the independent count found almost nothing to compare"
+        assert len(self._all_units()) == expected
+
     def test_every_unit_of_the_real_corpus_hashes_uniquely(self):
-        units = lf.rule_units(self._core().read_text(encoding="utf-8"))
-        # Well above zero: this repo's corpus is hundreds of rules, and a
-        # parser that silently returned a handful would satisfy any bare
-        # non-empty assertion.
-        assert len(units) > 100, f"only {len(units)} units parsed from the real core.md"
+        units = self._all_units()
+        assert len(units) > 100, f"only {len(units)} units parsed from the real corpus"
         hashes = [lf.unit_hash(u) for u in units]
         collisions = {h for h in hashes if hashes.count(h) > 1}
         assert not collisions, (
@@ -620,7 +645,7 @@ class TestAgainstTheRealCorpus:
         """Uncitable units exist by design (a section banner), so this asserts
         the split rather than a blanket truth: the corpus's rules are citable,
         and the handful that are not are the ones too short to quote."""
-        units = lf.rule_units(self._core().read_text(encoding="utf-8"))
+        units = self._all_units()
         citable = [u for u in units if lf.unit_citation(u)]
         uncitable = [u for u in units if not lf.unit_citation(u)]
         assert len(citable) > 100, f"only {len(citable)} citable units"
@@ -748,3 +773,38 @@ class TestThisReposOwnCorpus:
         silently-passing comparisons."""
         units = self._units()
         assert len(units) > 50, f"only {len(units)} units found; the sweep read nothing real"
+
+
+class TestShapeViolations:
+    """The format is a property of the text alone. Each test names its red."""
+
+    def test_the_header_before_the_first_rule_is_not_a_body(self):
+        # Red if the scaffold's obligation paragraph is flagged.
+        assert lf.shape_violations(lf.CORE_HEADER + "- a rule\n") == []
+
+    def test_frontmatter_is_not_a_body(self):
+        text = "---\npaths:\n  - \"src/**\"\n---\n# Area\n\n- a rule\n"
+        assert lf.shape_violations(text) == []
+
+    def test_prose_indented_bullets_and_fences_under_a_rule_are_bodies(self):
+        text = "- a rule\nprose\n  - nested\n```\ncode\n```\n"
+        kinds = [(v.line, v.kind) for v in lf.shape_violations(text)]
+        assert kinds == [(2, "body"), (3, "body"), (4, "body"), (5, "body"), (6, "body")]
+
+    def test_the_limit_is_on_the_raw_line(self):
+        at = "- " + "x" * (lf.RULE_LINE_MAX - 2)
+        over = at + "x"
+        assert lf.shape_violations(at + "\n") == []
+        assert [v.kind for v in lf.shape_violations(over + "\n")] == ["too-long"]
+
+    def test_headings_are_rules_too(self):
+        # A `###` rule (this repo's legacy form) is measured like a bullet.
+        text = "### " + "y" * lf.RULE_LINE_MAX + "\n"
+        assert [v.kind for v in lf.shape_violations(text)] == ["too-long"]
+
+    def test_rule_units_did_not_move(self):
+        """The walk is shared with rule_units now; the units it yields are the
+        telemetry join key, so they must not change. Red if the refactor
+        altered unit extraction."""
+        text = "# T\n\n## Banner\n- one\n  - nested\n```\n- fenced\n```\n### two\n"
+        assert lf.rule_units(text) == ["Banner", "one", "two"]

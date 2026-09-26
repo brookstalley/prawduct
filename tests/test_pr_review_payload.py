@@ -42,6 +42,7 @@ EXPECTED_SECTIONS = [
     "change_log",
     "backlog",
     "default_branch",
+    "learnings_cap",
 ]
 
 
@@ -1199,3 +1200,55 @@ class TestCli:
         data = json.loads(r.stdout)
         assert data["schema_version"] == 1
         assert len(data["sections"]) == len(EXPECTED_SECTIONS)
+
+
+
+class TestLearningsCapSection:
+    """An owner-approved core.md raise is visible at the PR boundary, because
+    `owner_approved:` is text an agent can write. Red if the section stops
+    naming a changed cap."""
+
+    def test_a_cap_changed_on_the_base_after_the_fork_is_not_this_branchs(self, tmp_path):
+        """Red if the comparison uses the base branch's tip instead of the merge-base."""
+        from lib import pr_payload as pp
+        repo = tmp_path / "r"
+        (repo / ".prawduct").mkdir(parents=True)
+        state = repo / ".prawduct" / "project-state.yaml"
+        state.write_text("x: 1\n")
+        g = lambda *a: subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", *a], cwd=repo, check=True, capture_output=True)
+        g("init", "-q", "-b", "main"); g("add", "-A"); g("commit", "-qm", "base")
+        g("checkout", "-q", "-b", "feature"); g("commit", "-qm", "work", "--allow-empty")
+        g("checkout", "-q", "main")
+        state.write_text('x: 1\nlearnings_budgets:\n  core.md: {kb: 24, reason: "r", owner_approved: 2026-09-24}\n')
+        g("add", "-A"); g("commit", "-qm", "raise on main")
+        g("checkout", "-q", "feature")
+        section = pp._section_learnings_cap(repo, repo / ".prawduct", "main")
+        assert section.body == "this branch does not change core.md's cap"
+
+    def test_an_unchanged_cap_says_so(self, tmp_path):
+        from lib import pr_payload as pp
+        repo = tmp_path / "r"
+        (repo / ".prawduct").mkdir(parents=True)
+        (repo / ".prawduct" / "project-state.yaml").write_text("x: 1\n")
+        subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+        subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "b", "--allow-empty"], cwd=repo, check=True)
+        subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+        subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "s"], cwd=repo, check=True)
+        section = pp._section_learnings_cap(repo, repo / ".prawduct", "HEAD")
+        assert section.body == "this branch does not change core.md's cap"
+
+    def test_a_raised_cap_names_the_change_and_the_ask(self, tmp_path):
+        from lib import pr_payload as pp
+        repo = tmp_path / "r"
+        (repo / ".prawduct").mkdir(parents=True)
+        state = repo / ".prawduct" / "project-state.yaml"
+        state.write_text("x: 1\n")
+        subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+        subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+        subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "base"], cwd=repo, check=True)
+        base = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+        state.write_text('x: 1\nlearnings_budgets:\n  core.md: {kb: 24, reason: "r", owner_approved: 2026-09-24}\n')
+        subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+        subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "raise"], cwd=repo, check=True)
+        body = pp._section_learnings_cap(repo, repo / ".prawduct", base).body
+        assert "CHANGES on this branch" in body and "2026-09-24" in body and "quoted in the PR description" in body

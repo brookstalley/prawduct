@@ -3,128 +3,42 @@ paths:
   - "plugin/skills/critic/**"
   - "plugin/agents/**"
 ---
-
 # Learnings — reviews
 
 Rules that fire while running or acting on a Critic review. **Reading a rule is not applying it.** Name the rule and say what it changes about the decision in front of you, or say that it does not apply.
 
-<!-- Migrated from `.prawduct/learnings.md` in the v2 cutover merge (2026-09-15): these
-     rules reached `develop` after the branch migrated its corpus, so they had no home in
-     `core.md` and `core.md` had no headroom. Scoped here rather than appended there. -->
-
-### When a control narrows what a REVIEWER sees, say which of the two roles it narrows — **subject** (a thing that can be wrong) or **oracle** (the authority the code is judged against) — because a file plays both parts and dropping the oracle looks exactly like the narrowing working. A measurement of what findings were *about* (36% cite only records) was applied to what the reviewer *reads*; every spec here is non-judgeable — the build plan, every artifact, `project-preferences.md` — and `goals-1-3.md` sends the reviewer to exactly those for Goal 2 coverage and norm departures, both BLOCKING. Tell: the chunk's success metric and its failure mode move the same direction, so no planned verification can separate them — the guard must assert the oracle was DELIVERED, never that the finding count fell
-
-### Check WHICH interval the Critic mode takes — they differ and both fail silently. `chunk` ends at the working tree and starts wherever `critic_consolidate.working_tree_interval_base` says (read the manifest's base, not a remembered rule); `cumulative` is a COMMIT RANGE, so NOT committing first reviews everything except your work. Only the Signals interval line says which. Tell: you took the mode from the plan without asking what tree it reads
-
-### Withholding a fix to protect a review round is only correct if `cost-of-commit` PRICES it `costs-a-round` — run it BEFORE deciding (with no arguments when the fix is all that is uncommitted: only that form also sees existing coverage and a later review the plan owes that will carry the fix), because docs, artifacts and `.prawduct/` state price `free` and the round you are protecting was never owed. Tell: you are reasoning about which paths move coverage instead of asking the tool
-
-**What happened.** After a clean `verify-resolutions` closed the cumulative gate on
-`feat/upstream-filing-adapter`, three doc fixes from the round's demoted observations were left
-uncommitted on the reasoning that committing them would reopen the gate and cost another ~5 min
-round. The independent PR reviewer ran `prawduct-hook cost-of-commit` on those exact paths and got
-`free`. The round being protected was never owed, and the same command prices the genuinely
-expensive case correctly — two `.py` paths in the same batch returned `costs-a-round`.
-
-**Why the reasoning felt sound and was not.** The rule being applied came from the *previous*
-session on the same branch, which had committed four non-blocking fixes and only then run
-`cost-of-commit` — the one ordering that makes the answer useless. It recorded the correct lesson
-("separate-commit a non-blocking fix only when the branch needs coverage NOW") and the next session
-read it as a standing reason to WITHHOLD rather than as an instruction to ASK. A rule about a tool
-degraded into a heuristic that replaces the tool. **Both failures are the same failure**: deciding
-what a commit costs by reasoning about the coverage algebra, in a repo that ships a command which
-answers it in under a second, in both directions.
-
-**The second-order damage is the part worth remembering.** Believing the fixes were expensive routed
-three carried obligations into `.prawduct/.handoff-notes.md` — gitignored, consumed by the next
-`/clear` — and the committed build plan already cited that file as a co-record of a Wave B
-obligation. A durable artifact naming a path that exists on no other clone gives an obligation one
-real home while reading as though it has two. So the pricing error did not just cost accuracy; it
-degraded where the work was recorded.
-
-**Why an independent reviewer caught it.** Two Critic rounds and the builder all missed it, and the
-PR reviewer found it not by reading harder but by running a tool the builder had reasoned past. A
-fresh context had no reason to inherit the premise — which is the specific value of review
-independence, distinct from a second opinion on the same evidence.
-
-**Generalizes:** any heuristic derived from a tool's output, carried forward as a rule, drifts into
-a replacement for the tool. When a learnings rule names a command, the rule is to RUN it.
-
-### While a Critic review is LIVE, read the reviewed files and edit only the free surfaces (`.prawduct/`, the plan, the change-log) — `critic-begin` snapshots a tree, so editing a reviewed file leaves reviewers grading code that is gone and the suite covering the pre-edit tree. Tell: `test-status` still exits 0 — it now NAMES the changed paths (#767), so the blindness is gone and the permission is not
-
-Earned on the operator-verification drain fix (2026-09-12). `building.md` said "Don't poll;
-deep-scrub your own changes while it runs, which often pre-resolves findings", and that was read as
-licence to keep editing the files under review. The scrub was genuinely productive — it caught a
-duplicated test class and a message that offered a remedy the code would refuse — but it also
-rewrote `operator_verification.py` and its test file after `critic-begin` had snapshotted the tree
-and after the suite had gone green.
-
-The result was the review's own BLOCKING finding, and two reviewers reached it independently: one
-read the lib twice minutes apart and got different blobs, the other noticed its findings were
-against a state that no longer existed. `.test-evidence.json` recorded the PRE-edit tree, so the
-reviewed code had no green suite behind it and the green suite described code nobody reviewed.
-
-**The tell is the part worth keeping, and #767 changed half of it (2026-09-19).** `prawduct-hook
-test-status` exited 0 throughout, and still does — that half is unchanged, and it is the half that
-matters, because exit 0 is what a reader treats as permission. What is no longer true is the
-blindness: the tree clause is asked on every call, so the printed line reads `current (session-fresh,
-not tree-vouched)` and names the changed paths. The gate now TELLS you and still lets you through,
-which is a deliberate choice — a refusal here would tax every consumer for a rare edge case (owner
-ruling, 2026-09-19) — so the rule stands and its remedy is unchanged: read the label, because
-nothing will stop you. `building.md` carries the boundary explicitly.
-
-### A CLASS fixed at a SUBSET is worse than one left alone — the partial repair removes the symptom that would have made the next reader look, and can leave prose that now argues FOR the defect. Fix every member or accept the finding; never the three you can see. Tell: your fix came from the report's ROW COUNT rather than from re-running its own falsifying query
-
-**Measured 2026-09-19 on `review-cost-decision`, and it cost two of that branch's five review
-rounds (~10 min of a ~45 min total).** A mechanical `stage`→`route` rename over-applied into prose
-that was *about* the stage concept. The first repair fixed three of seven sites — the three the
-review had listed. The result was a heading reading *"Not `stage`, which was the first cut and was
-wrong"* sitting directly above a clause blaming route-keying, on top of a route-keyed dict. The
-next reviewer's words: the inverted-repair risk was **better supported after the fix than before
-it**, because a maintainer chasing the contradiction re-keys back to stage and reinstates the very
-defect the round before had fixed.
-
-**Why the subset is selected, every time.** A review reports the members it happened to see, and
-reading a report for *what to change* rather than for *what it says is in scope* stops at the rows.
-The same branch produced the same shape twice more: a guard bound to the blank-line block instead
-of the bullet, so a neighbouring `**BLOCKING**` satisfied the check for a whole list and two true
-reversions survived green; and a release-note sweep where the report named two stale carriers and
-its own suggested grep found three.
-
-**The discipline is mechanical, and it is the report's own query, not its summary** —
-[[When a fix is driven by a report's SUMMARY LIST]] owns why (a summary dedupes, so its row count
-is a lower bound). Re-run the falsifying search, fix every hit, then re-run it and require zero.
-The part that is this rule's own: where the sweep is a rename, the query must be about the CONCEPT
-rather than the token, because the sites that survive are the ones that say the old word
-correctly.
-
-**And the accept is a real option with no shame in it.** Both partial repairs here would have been
-strictly better left alone: the prose was merely stale, and stale prose does not argue for a
-defect. What made them expensive was choosing FIX and then delivering a prefix of it. Relates to
-[[A fix lands at the instance a review named; the defect lives in the class]] — that rule is about
-the class being wider than the instance; this one is about what happens when you *know* the class
-and ship part of it anyway.
-
-### Before recommending that something be BUILT, check whether it was already built and REMOVED — a removal comment is a decision with measurement behind it, and re-proposing it spends that measurement twice. Absence invites a proposal; a decision demands new evidence to reopen it. Tell: you are proposing a control and have not opened the module that would host it
-
-**The case.** An audit of 141 PR-review records led with "lint pinned figures and citations at the
-source." Both halves were already answered in the tree. `record_lint`'s `suite-total-claim` had
-covered pinned suite totals since it shipped. The citation half — `dangling-ref` — had been built,
-**measured at 3 findings and 0 true positives**, deleted under `nonfunctional-requirements.md`
-§ Direction (*a control that fires and catches nothing is removed by default*), and annotated with
-the exact bar for re-adding it: evidence that the class costs review rounds. The audit did not clear
-that bar; of its two citation-drift findings, one sat in a file every check excludes by design and
-the other was a wrong symbol name that path resolution would not catch.
-
-**The evidence was in hand before the recommendation was made.** One reviewed finding cited
-`record_lint.py` by name. It was read as an *example of citation drift* rather than as proof that a
-record-lint subsystem existed — the file was named in the input and never opened.
-
-**The cheap check** is opening the module that would host the thing you are about to recommend. The
-removal comment exists *specifically* to stop a helpful future reader restoring the check.
-
-**Re-homed 2026-09-19** from the pre-migration `learnings.md`/`learnings-detail.md` pair, where it
-stranded on an unmerged branch for nine days. Filed in `reviews.md` because its trigger is
-recommending a control while auditing — but it generalizes to planning, and the 2026-09-19
-convergence pass is the confirming instance in the other direction: `documentation/issues/167-design.md`
-was a complete design three separate searches had missed, and the mechanical seeder
-(`prawduct-hook jurisdiction`) is what surfaced it, not a more careful read.
+- A fix ships TWO artifacts that can each be false: the change and its evidence (a test blind to the bug, a comment its own assertion disproves). Sweep the NEIGHBOURING PROSE and tests in the same pass
+- A background agent's liveness is answered by ITS OWN completion signal, never by reading files it is mid-write — a death verdict from a listing is how a re-dispatch clobbers a live review
+- A finding "A is pinned, B is not" is discharged by PINNING B, never changing B. Generally, a fix commit carries the cheap check closing the loop it opens (test beside moved behaviour, parser run on a hand-authored record)
+- A review ending is not a filing event: dispose each non-blocking finding FIX or ACCEPT; FILE only if it names a trigger, is chunk-sized, and can't be absorbed. Deep context on a small BLOCKER means fix it (review-cycle.md)
+- Deferring to a live/operator check: SPLIT "can this be true in principle" (static — test now) from "does the harness do it" (live — queue). Bundling defers the testable half, where the bug usually is (CRT-2J8N matcher)
+- A deferral queue whose enforcing gate is disabled is WRITE-ONLY — check the gate is ON when you defer into it; the deferral feels like diligence (operator-verification entries sat pending behind `operator_verification_required: false`)
+- When a decision defers a SET of findings, reconcile the set against the filings before calling it done — nothing matches the lists automatically ("file all ten" produced six items covering eight)
+- If `check-cumulative-critic` reports `uncovered` on reviewed code, suspect a stale base before a fresh review — the gate anchors to `origin/<base>`, so unpushed integration commits drag shipped work into the span
+- Verify a review artifact's cited gaps against HEAD first — its claims aged when written. A `file:line` you didn't resolve is a claim, not a citation; anchor on symbols and headings, since stale digits never visibly break
+- If the session switched branches after SessionStart, pass the Critic mode explicitly — `infer-critic-mode` trusts the stale session-start branch marker
+- A review finding is about a CLAIM, not a file — resolve it by grepping the claim's wording everywhere it appears, and never truncate the recommendation you are acting on. Tell: you fixed the one file the finding cited
+- A latent defect judged 'harmless' or 'inert' is harmless only for now — name the condition keeping it dormant and check whether your changeset (or the next feature touching that path) removes it before deferring or relying on the verdict
+- After a clean cumulative (0 blocking/0 warning), NOTEs are advisory — don't chase cosmetic ones: fixing them reopens the coverage gate on judgeable governance files and forces a no-value review pass
+- When a fresh-eyes reviewer's claim about a project CONVENTION (release timing, bookkeeping) conflicts with a durable learning + the process doc, the documented convention wins — the reviewer read only the current tree; re-verify before acting
+- A reviewer's NOTE/severity is a prior, not a verdict — before calling a change to a gate input harmless, grep the value's READERS; its comment block says what it's for, not who consumes it (nulling `active_build_plan` silently disarmed two gates)
+- An agent's `tools:` binds by TOOL (no `Bash` entry = no Bash, measured); `Bash(pattern)` narrowing is declared, unverified. Make the tool SET the safety boundary; never call a pattern 'structurally enforced' without watching the harness refuse
+- Reactive checks (tests, Critic, reviews) validate what EXISTS and cannot see what is missing — completeness auditing is a separate act: periodically ask 'what should exist here that doesn't?', not only 'is what exists correct?'
+- Expect a cumulative Critic to find >=1 regression chunk reviews missed — a mechanism from chunk N misbehaves against prose from chunk M, visible only across the span. Plan a remediation slot before `/prawduct:pr create`
+- Test-evidence freshness is the `test-status` exit code ONLY — never a commit/SHA field (`git_sha` retired as misleading). What it composes has grown (session timestamp, tree-validity clause, `degraded` flag): read the gate, not a remembered rule
+- Before filing a finding against a mechanism, read that mechanism's own documented degradations — a design that enumerates its deliberate weaknesses has usually already considered yours
+- Reads as evidence, is not: an absence-claim on a path that doesn't RESOLVE; a disposition recorded from intent, not the diff; a commit crediting a backlog item by title while its repro still reproduces; a subagent's count or list (a lead).
+- A self-authored adversarial pass inherits the author's blind spots — the attacks you think of come from the model that wrote the code. Get the adversarial read from a context that didn't write the subject, or from a roster you didn't author.
+- A disposition claiming 'fixed' must restate the FINDING'S OWN predicate and show it false — arguing from what the change found is satisfiable by fixing an adjacent surface. Tell: the fix note says what the fix caught, not what the finding said.
+- Reviewer severity is a SCHEDULING decision — BLOCKING means 'the tree must not move again without this', so a record gap that can ride a commit already owed is an observation; rating it BLOCKING spends a whole round on a one-row edit.
+- A negative repro that seems to CLEAR a finding proves nothing until the mechanism is shown live — fail-open code says 'fine' when inputs break. First run a case that MUST trip it in the same fixture. Tell: repro exits 0; about to overrule review.
+- Scrub the WHOLE diff (tests and comments too) before dispatching a review, and scrub a grep-able ban BY GREP — a rule you just wrote you are still violating elsewhere; a reviewer's list is a sample, not a census. Tell: you scrubbed by re-reading
+- Calling a prior fix "the same family" IS a class finding — recurrence says the first fix was scoped too narrowly; build the construction preventing both, over every site the shared predicate reaches. Tell: you cite a precedent, touch fewer sites
+- When a fix is driven by a report's SUMMARY LIST, re-open the underlying scan — a deduping summary undercounts sites (4 advisory rows hid 5 Direction entries). Tell: your remedy's count equals the report's row count and you never opened the scan
+- A refusal's REPLACEMENT route is judged by properties, not name: its span can be narrower than the one refused, and its cost is the next gate met (#167 saved 5 min, cost 12). Weak evidence stays advice. Tell: "re-dispatch" without saying as what
+- When a control narrows what a REVIEWER sees, say whether it narrows the SUBJECT or the ORACLE (the specs code is judged against) — dropping the oracle looks like the narrowing working. Assert the oracle was DELIVERED, never that finding counts fell
+- Check WHICH interval a Critic mode reviews: `chunk` ends at the working tree and starts at the manifest's base (`working_tree_interval_base`), not HEAD; `cumulative` = a commit range, so NOT committing misses your work. Tell: mode from the plan
+- Before withholding a fix to protect a review round, run `cost-of-commit` (no args when the fix is all that's uncommitted) — docs, artifacts and .prawduct/ price `free`. Tell: you are reasoning about which paths move coverage instead of asking
+- While a Critic review is LIVE, only read reviewed files; edit only free surfaces (.prawduct/, plan, change-log) — critic-begin snapshots the tree. Tell: test-status still exits 0; since #767 it NAMES the changed paths, but exit 0 is not permission
+- A CLASS fixed at a SUBSET is worse than left alone — the partial repair removes the symptom that makes readers look and can leave prose arguing FOR the defect. Re-run the finding's falsifying query; fix every hit or accept. Tell: fix sized by rows
+- Before recommending something be BUILT, check whether it was built and REMOVED — a removal comment is a measured decision (dangling-ref: 3 findings, 0 true); reopen only on new evidence. Tell: you propose a control without opening its host module

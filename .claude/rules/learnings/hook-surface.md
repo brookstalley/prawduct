@@ -3,146 +3,74 @@ paths:
   - "plugin/bin/**"
   - "plugin/lib/**"
 ---
-
 # Learnings — hook-surface
 
 Rules that fire while changing the hook, its ops, or a library reader. **Reading a rule is not applying it.** Name the rule and say what it changes about the decision in front of you, or say that it does not apply.
 
-<!-- Migrated from `.prawduct/learnings.md` in the v2 cutover merge (2026-09-15): these
-     rules reached `develop` after the branch migrated its corpus, so they had no home in
-     `core.md` and `core.md` had no headroom. Scoped here rather than appended there. -->
-
-### Adding an op whose NAME EXTENDS an existing one silently widens every prefix-matching grant and guard naming the shorter one — Bash grants are prefix matches, so `file-upstream` inherited `Bash(... backlog file*)` no-prompt with all three grant tests green. Ask those guards by rule over the dispatcher's own op set, never over today's names. Tell: your new op shares a prefix with a granted one
-
-### A comment reasoning about a CONDITION binds every branch that condition reaches, not the one you were writing — when you justify how a branch handles a degraded input, walk the sibling branches before moving on, because the reasoning is about the input and stopping writing is not evidence you stopped needing it. Tell: the comment names a condition ("a failed sync still answers ok") inside one arm of an `if`
-
-`upstream_probes.py`'s intake count read the backlog cache and split degraded from healthy on
-`status != "ok"`. A store whose last sync FAILED still answers `ok` — it carries its rows plus a
-`sync_error` — so *readable* and *current* are two questions and only the first was being asked.
-
-The comment above the count knew this. It said, in as many words, that a failed sync still answers
-`ok`, and reasoned it through for the counting branch: stale rows can only under-report, a report
-filed since the failure is missing rather than invented, so "at least N are waiting" is the honest
-reading and silence would be the lie. Correct, and it stopped there. The zero branch — `if count ==
-0: return []` — sat four lines below, where the same staleness turns the reading into a false
-all-clear: nothing filed before the failure, nothing counted since, and no session-start signal at
-all while filed reports go unread.
-
-What makes this worth a rule rather than a shrug is that the same chunk's change-log paragraph
-asserted the opposite behaviour ("a triage nudge that vanishes when its data source breaks reads
-exactly like one that found nothing to say") and the plan's `governed_by` disposition cited the
-*advice fails soft is not advice fails silent* norm by name. Three carriers of the right answer, and
-the code did the wrong thing in the branch nobody wrote a sentence about. The defect was not a
-missing case; it was **reasoning scoped to the branch being written rather than to the condition
-being reasoned about**.
-
-The fix separated the two axes at the seam — `_intake_reading` returns `(count, sync_is_stuck)` —
-so a caller that collapses them fails in the helper's own test rather than in whichever branch
-happens to be exercised. Both branches now use the second axis, in opposite directions: a stale
-count is stated as a floor, a stale zero gets its own candidate with its own evidence (and therefore
-its own dismissal key, since evidence is what the advisory id hashes).
-
-**The cheap check that would have caught it:** after writing a comment that names a condition, grep
-the function for every other `if` the condition can reach. It costs one read of a thirty-line
-function.
-
----
-
-### A lint that SKIPS what it cannot statically read needs a companion asserting everything is readable — otherwise it degrades silently into approval the first time someone hoists a string into a constant or behind a helper, which is ordinary refactoring instinct and invisible in review. Write the companion in the same commit as the lint; a "today nothing does this" comment is the version that fails
-
-### Copying a fix into a sibling procedure or reader is a NEW change needing its own analysis — two of them share a paragraph or a regex, not their invariants, so ask what a WRONG value COSTS at each site, because that decides the fix's shape next door. Tell: you fixed one file and grep found the same lines elsewhere
-
-Two documents share a paragraph, not their invariants, so one edit can repair one and break the
-other. The 2026-09-10 instance widened the rule from documents to any parallel implementation, and
-supplied the missing question: **what does a WRONG value cost at each site?**
-
-`**Critic mode:**` and `**Type:**` are the same field grammar read by two modules. The mode reader
-was fixed first: search the whole chunk section, bind the first VALID token, and prose is harmless
-because only one of four words can win. Transcribed to `**Type:**` that is a hole. An unknown mode
-earns a NOTE; an unknown type FAILS the chunk. And three of the six types *buy* something —
-`designer-handoff` makes the stop hook set `designer_handoff_skip` and the Critic skill exit before
-`critic-begin`. So a Description sentence naming `**Type:** designer-handoff`, in a chunk declaring
-no type at all, would have switched review off silently in every governed product. Same regex, same
-widening, opposite blast radius.
-
-The fix was a construction rather than a longer list of shapes: one predicate deciding DECLARATION
-vs mention (the marker opens its line, follows a `·`, or opens a sentence), shared by both readers
-and spent only on BINDING — neither reports from it, because position is a heuristic and a
-heuristic must not be what fails someone's chunk. **The sentence-opening arm is a knowing
-residual**: real plans separate composed fields with a period, so a sentence that BEGINS with the
-marker still binds, and the bound on that is prose in `methodology/planning.md` rather than code.
-Narrowing the predicate would drop the composed forms the readers exist to find. The grammar moved to one factory in
-`buildplan_refs` at the same time; the two hand-copied delimiter classes had already drifted, one
-binding `<br>` and one reading the same line as declaring no field.
-
-**The tell that the analysis was skipped**: the sibling's code open in one window, and a first
-draft that was its loop with the label swapped.
-
----
-
-### When a change redefines a FIELD, enumerate its READERS, not the documents that describe it — a surface list reads like completeness and is blind to the consumers comparing against the field's old meaning. Tell: your plan lists "surfaces this concept touches" and the field is a published key other modules compare against
-
-### Instructions for driving code are sourced from the CODE's surface, with the design as a constraint on it — a design says what must be GUARANTEED and is silent on the states, refusal codes, envelope fields and failure modes no guarantee turns on, which is exactly where a reader meets reality. Tell: your instructions cite design sections and you never opened the handler
-
-**What happened.** `/prawduct:report-bug` was rewritten to drive the `file-upstream` adapter, and
-the rewrite was composed from the approved design: its payload section, its consent section, its
-five-check contract. The design is correct and the instructions matched it. Six of the cumulative
-review's eleven warnings were still the same defect — the skill under-specified against the
-adapter:
-
-- it branched on the `always-file` consent state, and no output carried that state, so the branch
-  could never be taken and a shipped preference did nothing on its only consumer;
-- it explained the `self-file` refusal as "you are in prawduct's own checkout", which is one of the
-  two situations that code covers — and the other one routed the reader into the exact write the
-  same skill forbids two sections later;
-- it summarized the approval guarantee unconditionally, on a surface whose stated purpose is to be
-  honest about what is and is not mechanical, when standing consent waives the byte comparison;
-- it reduced a successful send to "print the URL", when the success envelope can carry a warning
-  saying the idempotency check did not run — so a degraded filing reads as a clean one and the
-  operator makes the retry that creates the duplicate;
-- it treated a transport failure at create as a refusal, and answered it with "file by hand" —
-  the one action that converts an unknowable outcome into a duplicate in a public repo.
-
-**Why the design could not have prevented any of them.** A design states what must be guaranteed.
-It is silent, correctly, about the states a value can hold that no guarantee turns on, the error
-codes that distinguish two causes under one refusal, the fields an envelope carries besides the
-result, and the failure modes that are neither success nor refusal. Those are exactly the places a
-reader driving the code meets reality — and every one of the six lives there.
-
-**The discipline.** Read the handler. Enumerate every state, every returned field, every refusal
-code, every way it can fail, and give the reader a line for each — then check the design to see
-which of those lines it constrains. Design-first produces instructions that are true and
-incomplete; code-first produces instructions that are complete and then get checked for truth.
-
-**Related.** This is the sibling of the rule that a guardrail on an instruction surface must model
-the READER: that one is about testing the instructions, this one is about sourcing them.
-
-### Checking the STATE after a repair does not verify what the repair REPORTED — read the writing run's own output, because the idempotent re-run that follows prints the right answer and covers the wrong one. Tell: you confirmed a fix by running it twice and reading the second
-
-**The instance (2026-08-25, `prawduct-hook reanchor`).** `repair()` built its result by copying
-`check()`'s dict and setting only `applied`. A successful `--apply` therefore returned `status:
-stale` and the detail prose describing an anchor that lies to plugin-less clones — the condition it
-had just removed. The CLI prints status and detail and stops (its confirmation block is gated on
-`not applied`), `--json` published the same false state, and doctor maps every non-`ok` status to
-degraded. A repair that worked reported itself as the problem.
-
-**How it survived a product verification that ran the exact command.** The check was: seed a stale
-repo, run `--apply`, run again, confirm `ok`. The transcript literally read
-
-    reanchor (apply): stale        <- the wrong report, looked straight at
-    reanchor (dry-run): ok         <- the re-run, which is what got believed
-
-The second line answered the question being asked ("did the repair work?") and in doing so supplied
-a plausible reading for the first. Idempotency checks are especially good at this: the follow-up run
-is *designed* to print the healthy state, so it will always be there to explain away whatever the
-writing run said.
-
-**The rule is about which run you read, not about testing more.** A repair has two observable
-outputs — the state afterwards, and the report it made while getting there — and only the second
-reaches an operator in the moment. Verifying the first is not evidence about the second.
-
-**What closes it mechanically:** an assertion on the WRITING run's output that names the pre-fix
-status as forbidden (`assert STATUS_STALE not in result.stdout`), not merely the post state as
-present. `norm_index_scaffold` returns its OK status on success, so copying the precedent's TEST file —
-not just its shape — would also have caught it. (`learnings_obligation` was the other precedent
-and was DELETED in the v2 cutover; it is named here as history, not as a file to open.)
+- A docstring written with its code describes the design you INTEND ("the one reader", "every surface", "always") — before a sentence claims reach, grep the callers; scope claims are checkable in seconds, unfalsifiable once shipped
+- Prose that REPLACES a deleted control is load-bearing logic: pin every rendered branch, and derive a two-state message from the state, never write it for the one in mind. Tell: you changed a user-facing string and no assertion names it
+- When a field's ABSENCE carries meaning, a value NAMING the absence is its opposite (`release=unreleased` hid a branch from its release). Ask the CONSUMER, guard by blast radius; never write "verified" against a reader-check
+- An exception APPENDED to standing advice still leads with the advice: if it can cover the whole set it must REPLACE the lead. Fix: one function owns the message and picks which route leads. Tell: exception predicate counts the advice's set
+- A dry run validating IDENTICALLY to the real run is not a safety device — it reports clean while the checked artifact rots; delete the mode and always write. Tell: check and real command differ only in whether they persist
+- When a feature rests on an invariant ("presence of X proves Y"), audit the DEGRADATION paths first: a helper swallowing failure into "" or False can render the signal's inverse — pick each fallback's direction from the invariant
+- When a docstring claims absolute robustness (never raises / always returns / idempotent), make it literally true and test the claimed-safe path — a claim beside a call that can violate it is a coherence gap
+- When a fail-closed validator guards a model-written field, tolerate the natural encoding variant and hard-fail only on genuine ambiguity — incidental strictness at a model-output seam is a latent fail-close
+- A governance checkpoint verifying a required side-effect must sit OUTSIDE the control flow that produces it — a check inside the fallible flow can't catch that flow's own skip
+- When adding an ingest/IO surface to a platform-agnostic framework, expose the minimal data primitive, not one ecosystem's file format — or you lock out the toolchains the agnosticism promised
+- A fallback lookup INSIDE a per-item loop must be amortized AND a no-op on the common path — a naive fallback firing on every miss is O(N^2), and the fresh case is all misses
+- When you disable a mechanism at its wiring point but keep its implementation, reconcile the retained code's docstrings/comments in the same change, or its self-description reads as false
+- Verifying a lib/ or bin/ change by running the hook: use repo-local `python3 plugin/bin/prawduct-hook` — PATH's is the plugin cache, which harness-dispatched actions always run; "nothing happened" suggests skew first
+- Verifying an inventory against the code cannot catch a wrong CATEGORY — the check re-asks the frame's own question. When a change is driven by a classification, verify with a DIFFERENT question than the one that produced the classes
+- A flag/enum that merges cases forces every downstream rule to hold for the WEAKEST member — enumerate the merged set and check each rule against every member (--brief-only merged resume/compact/fork); else split it or take the weakest's answer
+- When a cheap probe verifies an assumption, record the mechanism's FULL output, not the one field that answers you — unknowns live in the columns you didn't ask for (a SessionStart payload probe surfaced an unplanned `fork` source)
+- A `context:fork` skill (no Bash) cannot import `lib/` — its logic is prose the agent executes. So `lib/` carries only the DATA layer the runtime needs; a `lib/` 'logic helper' for the skill is dead code nothing imports
+- A decision reversed mid-chunk leaves stale rationale in comments/docstrings you just wrote under the old decision — they feel trustworthy because they're minutes old. Before review, re-grep your own new prose for the abandoned rationale
+- Code in `prawduct-hook` `main()` that runs BEFORE command dispatch must fail open on a `lib/` ImportError (fall back to env/cwd) — an eager import pre-empts each command's own graceful import-error handling with a traceback
+- Governance complexity breeds governance complexity — before adding any enforcement mechanism, ask whether an existing one already covers the failure; one fix per failure grew the hooks past the skills they protected
+- Denormalized/derived fields maintained by independent actors drift — compute them on demand from the source of truth, or validate them mechanically after writes; never trust the cache (5 parallel agents produced 12 inconsistencies)
+- An 'unknown/other' bucket in a classification must default to blocked, not allowed — a fail-open escape hatch silently ungoverns whatever falls into it (an unregistered repo built an entire product with no governance)
+- Never name a `lib/` submodule the same as a function `__init__` re-exports — `lib.foo` then resolves to the function and monkeypatching the module breaks. Use the `_cmd.py` suffix convention; it exists to prevent this collision
+- Detect a structural characteristic by what the project's correctness depends on, not by surface markers (imports, hostnames, filenames) — prawduct has no LLM SDK imports yet its deliverable IS prompts, so a marker scan called it non-LLM
+- Keep the shared ANSWER to a question (committed, e.g. project-state) separate from personal 'dealt with this nag' state (gitignored, per-clone) — conflating them either leaks dismissals across clones or stops an answer clearing the nag for all
+- 'The framework owns this file' follows the WRITE STRATEGY, not registry membership — files it overwrites every run are framework-owned; place-once files become the user's after creation and must not be swept into framework commits
+- A leftover marker is not an in-progress signal — check whether the tool REMOVES it when the condition ends (git leaves REBASE_HEAD; use the rebase-merge dir), and test the real-world leftover case, not only the canonical marker
+- A near-verbatim file PORT inherits the source's docstrings, comments and messages, which describe the SOURCE's world — after adapting the logic, grep the copy for source-only terms and repoint them (keep deliberate cross-file anchors verbatim)
+- Excising a subsystem silently kills incidental work it happened to host — audit what IT called, not just what calls it, re-home the orphaned call, and test the positive (sync's removal took the advisory probe roster with it)
+- Leaf-first module extraction: before moving a chunk's symbols, scan moved COMMAND bodies for symbols slated for a later chunk (defer those bodies), and grep for mirror/*Parity*/import-light pins — a pinned mirror stays put even if the plan lists it
+- A bound that ENFORCES a declaration is not a DETECTOR of the declared property — reusing it at a new boundary drops its justification (the `Type: trivial` fileset bounds, reused at PR level, classified feature work as trivial)
+- Re-attempting a mechanism once rejected for a false-positive class: make it ADDITIVE and relax-only (it can only turn stale into current, never the reverse), and separate the framing that failed from the primitive worth keeping
+- Validate a CLI's JSON by feeding jq the raw bytes (pipe or file) — never `echo "$captured" | jq` under zsh, whose echo expands `\n` and turns valid JSON into a false 'malformed output' finding
+- If a discoverability nudge fires against this repo and breaks a zero-fire criterion, first check whether the repo is genuinely OUT of the target state — if not, the fire is signal; satisfy the criterion by complying, never by narrowing the trigger
+- Before defining a module-level constant in a module you're extending, grep it for the name and concept — a second definition shadows the first and works until they drift. Make the richer structure the source of truth and derive the rest
+- Idempotent re-run is crash-safe only if SOME actor is guaranteed to re-run the transition — when recovery depends on the crashed party returning (a dead agent's claim), make the write ATOMIC, not merely re-run-convergent
+- A human-mode formatter dispatching on 'which key is present' shadows a new result type sharing a key with an earlier branch — order checks most-specific-first and TEST the human path; `--json`-only tests never run the formatter
+- A status surface that reports the ABSENCE of expected output must say whether absence is the normal in-flight state — a bare zero invites the reader to invent a death story and take recovery action against healthy work
+- 'Advice fails soft' is not 'advice fails silent' — a degraded advisory path must still name its consequence, or it manufactures the false success it was meant to prevent
+- Promoting an advisory check to blocking changes what its false positives COST — audit them as part of the wiring. Tell: a lint matching 'fix it' inside 'pre-FIX IT-em', harmless for years, became a false refusal on an irreversible migration.
+- Observable beats stored — if a signal derives from what git or the provider already maintains, don't add a field: stored fields get forgotten, lie, and need a write path. Tell: designing a freshness policy for a field you must remember to update.
+- A docstring stating a guarantee is an ASSERTION, not a verification — check the API can express it (a 'same transaction' cursor shipped as two transactions). Tell: a docstring stating a rule you were pleased to remember, that no caller exercises.
+- A number disagreeing with another is a bug report; 'that source is stale' stops you reading — chase it (178 vs 182 was a literal `status = 'open'` filter). Tell: you have a plausible reason the counts differ and haven't checked it.
+- For every value you PERSIST from a provider, verify the exact request that will later REPLAY it, not just the one that produced it — a verify-api step scoped to the plan's own mechanism confirms that mechanism and misses the one the plan got wrong.
+- A VALIDATOR refusing only the malformed can still fail OPEN — when a value is interpolated into a URL path, filesystem path or other resolver, ask what ELSE it could resolve. Tell: every rejection means 'not well-formed', none 'not the thing'.
+- Changing how data ARRIVES (scan→incremental, snapshot→log) silently re-scopes every aggregate, watermark and age over it — ask what each MEANS now; before comparing over time, check when each field BEGAN being written. Tell: an unexamined trend.
+- A pattern narrowed to kill a false positive was validated only on the case that PROVOKED it — re-run it over the whole corpus before installing, counting what it stops matching too. Tell: 'verified against this branch's real subjects'.
+- A new key in a shared namespace needs a collision check against real DATA first — grep the live corpus for the name; a writer stripping 'its own' keys silently deletes a homonym. Tell: you picked the obvious short name for a frontmatter/config key.
+- A parser shared by a READER and a WRITER inverts its safety on malformed input — 'runs to EOF' is tolerant when reading, 'delete to EOF' when writing; a writer claims nothing it can't delimit. Tell: a reporting scanner reused inside a file editor.
+- When defending a design with 'we shouldn't lose the record', check if the real reason is REVERSIBILITY — answered by a preview plus version control, not by refusing to act. Tell: a 'report but don't touch' bucket appeared to protect prose.
+- A list given for operation-level approval must IDENTIFY its items — four indistinguishable `build-plan.md` lines is not informed consent; the repo's display helper usually solves it. Tell: the preview prints bare filenames and fixtures are flat.
+- Export the ANSWER, not the walker — a caller needing 'which chunks are unticked' gets a finished list; exposing traversal lets the next consumer re-derive it with a third answer. Tell: making a private parsing helper public for one caller.
+- When fixing a SILENT SWALLOW, find the frame that actually discards — usually one layer below the symptom, so a report at your call site is empty by construction and its test passes. Tell: your new 'problems found' list is never populated.
+- A guard written against the EXAMPLE IN THE FINDING holds only for that example — restate the threat in your own words before coding (`is_relative_to` is lexical; one `..` walks through). Tell: your fix quotes the report's scenario back at it.
+- A mechanical 'is it finished?' test keyed on a REUSED identifier archives live work — require no LATER unreleased entry for that name and decide by DATE, not document position. Tell: the predicate says 'has a release tag somewhere'.
+- A file's header comment is not the first key's — bound any comment walk-back at start-of-file, where a section banner and the document header look alike; deleting the header loses hand-authored content. Tell: your walk-back is `while start > 0`.
+- Preserve line endings in any writer editing a file it didn't create (`newline=""` on BOTH read and write) — otherwise a CRLF repo gets a whole-file reformat hiding the real change. Tell: you used `read_text`/`write_text` in a repair.
+- Moving a value into a NEW channel silently unwires readers of the old one — grep them before committing; the diff reads as a return-value change but also changes the exit code. Tell: your fix adds a return key and removes items from an old one.
+- 'Its only caller ships in the same commit' doesn't make a deletion safe if the HARNESS invokes that caller — plugin pins are per-project and lazy. Unregister now; keep the subcommand inert until no supported install still registers it.
+- A try/except around a producer that RETURNS its degraded states guards nothing, though its comment reads as if it does — read the callee's bad paths and handle the returned states. Tell: your except names exceptions the producer never raises
+- A new op whose NAME EXTENDS an existing one silently widens every prefix-matching Bash grant (`file-upstream` inherited `backlog file*`, tests green) — test grants by rule over the dispatcher's op set. Tell: the new op shares a granted prefix
+- A comment reasoning about a CONDITION binds every branch that condition reaches — walk the sibling branches (a failed sync still answers ok: honest at count>0, a false all-clear at 0). Tell: the comment names a condition inside one arm of an `if`
+- A lint that SKIPS what it can't statically read needs a companion asserting all IS readable, in the same commit — else it silently approves once someone hoists a string into a constant or helper. "Today nothing does this" is the version that fails
+- Copying a fix into a sibling procedure or reader is a NEW change — they share a regex, not invariants; ask what a WRONG value costs at each site (unknown Critic mode = NOTE; unknown Type fails the chunk). Tell: you fixed one file, grep found twins
+- When a change redefines a FIELD, enumerate its READERS, not the documents describing it — a surface list feels complete and misses consumers comparing against the old meaning. Tell: the plan lists "surfaces this concept touches" for a published key
+- Checking STATE after a repair doesn't verify what the repair REPORTED — read the writing run's own output; the idempotent re-run prints the right answer and hides the wrong one (reanchor --apply said stale). Tell: ran it twice, read the second
+- A guard's TOLERANCES belong to the path it was written for — reusing a `check_*` on a new path, port what it was PAIRED with or re-derive that it holds; what it lets through is invisible at the call site. Tell: reused a check, no transform

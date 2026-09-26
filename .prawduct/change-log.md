@@ -56,6 +56,68 @@ open blocker on the nearest reviewed state is named with its remedy, never calle
 
 Budget raises are declared with their price in `test_v5_methodology.py` and
 `test_reviewer_payload_budget.py`.
+## 2026-09-26: the suite-at-boundary release-note pin finds its own version section
+
+<!-- prawduct: type=fix | scope=suite-at-boundary-note-window -->
+
+v3.6.1's release opened an empty v3.6.2-dev section above the suite-at-boundary entry in
+`plugin/CHANGELOG.md`, so `tests/test_suite_at_boundary.py`, which read the first section, went red
+on `develop` at the cut with nothing else changed. The test now requires the note in exactly one
+version section, with its default-change sentence beside it. The fix was built on
+`fix/suite-at-boundary-note-window` and reaches `develop` inside the learnings-one-line PR, so it
+does not need a review cycle of its own. Test-only: nothing changes for consumers.
+
+## 2026-09-24: learnings are one line each, and core.md stays small
+
+<!-- prawduct: type=feature | scope=learnings-one-line -->
+
+The always-loaded learnings corpus had regrown for the fourth time: 107KB here, 139KB in discodon,
+57KB in hallucinote and bankmachine. That is roughly 15–35k tokens in every session. Each earlier
+pass had paired a one-off sweep with a control that could be walked around: an advisory nudge, a
+per-rule length check that v2 deleted, an agent-raisable budget (six raises here in five days), an
+agent-written waiver, and a migration credit that measured discodon's `core.md` against the 176KB
+legacy file, so its growth never registered. This removes each bypass, owner-directed 2026-09-24. **It ships as a minor (3.7.0):** it adds two blocking gates (`learnings-rule-too-long`, `learnings-rule-body`, registered `since: 3.7.0` in `gates.json`, so the version banner announces them), and it changes the `learnings_budgets.core.md` contract.
+
+**The format is enforced** (`record_lint`, the Stop gate, the Critic's severity table):
+- Every rule is one line of at most 250 characters, with no body, in every rules file.
+- `core.md` is capped at 12KB, and only an `owner_approved:` date on `learnings_budgets.core.md`
+  raises it.
+- A raise never counts in the interval that writes it.
+- A compacted corpus blocks on any violation. One not yet compacted is frozen: no file over budget
+  may grow, and every added line must already be a one-line rule.
+- The migration session is judged on the corpus total, replacing the per-file legacy credit.
+- The Stop hook measures against HEAD when there is no base marker, instead of skipping.
+- The `learnings-budget` waiver key is retired.
+- The session briefing names an over-limit corpus with an agent directive.
+
+**`prawduct-hook learnings-compact`** converts a corpus:
+- `--plan` writes a worksheet (text, body, size, citations, candidate area files and related rows
+  per rule).
+- The agent records a decision per rule, and a drop needs the owner's approval date.
+- `--apply` writes one-line rules as one revertible commit.
+- A `learning.compacted` ledger event per rewritten rule keeps its citation history, and the Stop
+  hook does not count a rewrite as a written rule.
+- `/prawduct:doctor` runs the flow.
+
+**The write-side guidance changed with it:** reflection Step 4, the Stop reflection blocker, the
+janitor skill, the `core.md` scaffold, the budget template and `principles.md` all state the
+one-line form. "Never trim a rule to fit" is gone. `nonfunctional-requirements.md` records the owner
+exception to the state-file advisory norm, beneath the norm.
+
+**Rulings move to the norm they rule on.** `plugin/docs/norms.md` said rulings live in the learnings
+rules, linked from the norm. A ruling is a record a reader consults, not a rule every session
+carries, and it cannot be one line. It now lives in the norm's `Rulings:` field, named `[[like-this]]`
+and stated in full. Names are unchanged, so existing citations still resolve to their norm.
+
+**This repo's own corpus is compacted** (owner-approved drop list, 2026-09-24):
+- 338 units became 314 one-line rules, 17 merges, 5 rulings moved to their norms in `api-contract.md`
+  and `architecture.md`, and 2 approved drops (a section heading, and a rule another rule
+  supersedes).
+- `core.md` went from 104KB to 9.4KB. Its self-raised 105KB budget entry is gone.
+- The rules now live in eight area files, three of them new (`release.md`, `backlog.md`, `pr.md`)
+  plus `gates.md` split from `hook-surface.md`.
+- The tests that read this corpus now floor the whole corpus against an independent line count,
+  instead of pinning a `core.md` size that compaction was always going to change.
 ## 2026-09-24: v3.6.1 is cut, and develop reopens on 3.6.2-dev
 
 <!-- prawduct: type=chore | scope=release-v3.6.1 -->

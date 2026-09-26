@@ -46,6 +46,24 @@ clone is timed. Older reviews stay estimates.
 
 **Your full test suite now runs when work lands, not after every chunk; a passing run still counts after you switch branches; and fixing a warning after a clean review now waits for your next review instead of needing a round of its own.** Twenty-six scopes since v3.6.0, counting release housekeeping. Three changes you will notice in an ordinary session. First, a chunk's Verify step now runs only your inner-loop checks, and your repo's declared suite runs at the boundary, before work lands on your integration branch. Second, each suite run is recorded against the exact code it tested, so switching back to a branch that already passed runs nothing again. Third, when you fix a warning after a clean review and your plan still has chunks left, the fix is covered by the next chunk's review instead of a `verify-resolutions` round. And `cost-of-commit` answers `free` when a review already covers what you are about to commit. Blocking findings still need `verify-resolutions`.
 
+**`learnings-one-line`** — **every learnings rule is one line, and `core.md` has a cap only you
+can raise.** Your `.claude/rules/learnings/` files load into sessions (`core.md` into every one), and
+they grow. From this release:
+- Each rule is one line of at most 250 characters with no body, and `core.md` is capped at 12KB.
+- An agent can no longer raise that cap: `learnings_budgets.core.md` counts only with an
+  `owner_approved: YYYY-MM-DD` date. Area files keep raise-with-reason.
+- **If your corpus is over those limits, nothing breaks.** The session briefing says `OVER LIMIT`,
+  and the corpus is frozen until you compact it: no file over its budget may grow, and every rule
+  a session adds must already be one line.
+- `prawduct-hook learnings-compact --plan` starts the conversion. The agent records a decision for
+  each rule, you approve any drops, and `--apply` writes it as one commit you can revert.
+- A rewritten rule keeps its citation history.
+- The agent-written `learnings-budget` waiver no longer suppresses the gate.
+- **Rulings now live with the norm they rule on.** `docs/norms.md` used to home a ruling in your
+  learnings rules, linked from the norm. It now lives in the norm's own `Rulings:` field, named and
+  stated in full. When compaction reaches a ruling in your `core.md`, it moves it there
+  (`moved-to`, verified at the destination) rather than squeezing it into one line.
+
 **`suite-at-boundary`** — **the declared test suite now runs at the boundary, not at every
 chunk.** This changes a default your repo inherits. A chunk's Verify step runs your
 `Inner-loop verification` row (or, if it is unset, the tests for the files the chunk touched), and

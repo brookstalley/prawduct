@@ -994,6 +994,9 @@ class TestUncheckedReporting:
                 # honestly found nothing.
                 "learnings-over-budget": 0,
                 "learnings-budget-unreasoned": 0,
+                "learnings-core-raise-unapproved": 0,
+                "learnings-rule-too-long": 0,
+                "learnings-rule-body": 0,
                 "learnings-area-dead": 0,
             },
         }
@@ -1479,6 +1482,7 @@ def _rules_file(repo: Path, name: str, size: int) -> Path:
 
 _CORE_REL = f"{learnings_files.RULES_DIR_REL}/{learnings_files.CORE_NAME}"
 _BUDGET = record_lint._LEARNINGS_BUDGET_DEFAULT_KB * 1024
+_CORE_CAP = learnings_files.CORE_CAP_KB * 1024
 
 
 def _state(repo: Path, block: str) -> None:
@@ -1510,15 +1514,19 @@ class TestLearningsBudget:
         assert len(findings) == 1
         assert findings[0]["path"] == _CORE_REL
         detail = findings[0]["detail"]
-        # Both sizes and the budget, so the author can see the trade without
-        # re-deriving any of the three.
+        # Both sizes and the cap, so the author can see the trade without
+        # re-deriving any of the three. core.md is judged against ITS cap, not
+        # an area file's default.
         assert str(_BUDGET + 500) in detail and "1000B" in detail
-        assert f"{_BUDGET}B budget" in detail
-        # The payment rule, verbatim — the finding has to say what paying looks
-        # like, or the cheapest way out is to shorten a rule until it fits.
-        assert "pay from genuine duplication (merge or delete in this commit)" in detail
-        assert "never trim a rule to fit" in detail
-        assert "learnings_budgets.core.md" in detail
+        assert f"{_CORE_CAP}B budget" in detail
+        # The payment rule: what paying looks like, and who raises the cap.
+        assert "merging or retiring a rule" in detail
+        assert "owner_approved" in detail
+        # Renegotiated 2026-09-24 (learnings-one-line): the finding used to say
+        # "never trim a rule to fit" and offer an agent-written raise. The corpus
+        # regrew four times under that advice; the owner ruled core.md's cap is
+        # theirs alone, and a rule is now one line, so trimming is the method.
+        assert "never trim" not in detail
 
     def test_over_budget_but_shrunk_passes(self, tmp_path):
         """An inherited corpus is not asked to stop the world and compact.
@@ -1620,16 +1628,18 @@ class TestLearningsBudget:
         }
         assert paths == {_CORE_REL, f"{learnings_files.RULES_DIR_REL}/critic.md"}
 
-    def test_a_declared_budget_raises_the_ceiling(self, tmp_path):
+    def test_a_declared_budget_raises_an_area_ceiling(self, tmp_path):
+        """Area files keep raise-with-reason (owner, 2026-09-24): they load only
+        on a matching read, so an agent may buy room there."""
         repo = _make_repo(tmp_path)
-        _rules_file(repo, learnings_files.CORE_NAME, 10)
-        base = _commit(repo, "seed rules")
-        _rules_file(repo, learnings_files.CORE_NAME, _BUDGET + 500)
+        _rules_file(repo, "critic.md", 10)
         _state(
             repo,
             'learnings_budgets:\n'
-            '  core.md: {kb: 32, reason: "the fleet-wide rules, sweep is done"}\n',
+            '  critic.md: {kb: 32, reason: "the review rules, sweep is done"}\n',
         )
+        base = _commit(repo, "seed rules")
+        _rules_file(repo, "critic.md", _BUDGET + 500)
 
         result = self._lint_budget(repo, base)
         assert _checks(result, "learnings-over-budget") == []
@@ -1640,20 +1650,91 @@ class TestLearningsBudget:
         silently dropped — a half-read declaration applies the default while the
         operator believes their number is in force."""
         repo = _make_repo(tmp_path)
-        _rules_file(repo, learnings_files.CORE_NAME, 10)
-        base = _commit(repo, "seed rules")
-        _rules_file(repo, learnings_files.CORE_NAME, _BUDGET + 500)
+        _rules_file(repo, "critic.md", 10)
         _state(
             repo,
             "learnings_budgets:\n"
-            "  core.md:\n"
+            "  critic.md:\n"
             "    kb: 32\n"
             '    reason: "reviewers read this file every cycle"\n',
         )
+        base = _commit(repo, "seed rules")
+        _rules_file(repo, "critic.md", _BUDGET + 500)
 
         result = self._lint_budget(repo, base)
         assert _checks(result, "learnings-over-budget") == []
         assert result["unchecked"] == []
+
+    def test_an_agent_raise_of_core_is_ignored_and_named(self, tmp_path):
+        """No `owner_approved:` → the declared number is inert, core.md keeps its
+        cap, and the finding says so. The agent-written raise is the control that
+        never held: six of them in five days on this repo."""
+        repo = _make_repo(tmp_path)
+        _rules_file(repo, learnings_files.CORE_NAME, 10)
+        _state(
+            repo,
+            'learnings_budgets:\n  core.md: {kb: 32, reason: "room for more"}\n',
+        )
+        base = _commit(repo, "seed rules")
+        _rules_file(repo, learnings_files.CORE_NAME, _CORE_CAP + 500)
+
+        result = self._lint_budget(repo, base)
+        over = _checks(result, "learnings-over-budget")
+        assert len(over) == 1 and f"{_CORE_CAP}B budget" in over[0]["detail"]
+        named = _checks(result, "learnings-core-raise-unapproved")
+        assert len(named) == 1
+        assert "IGNORED" in named[0]["detail"] and "owner_approved" in named[0]["detail"]
+
+    def test_an_owner_approved_core_raise_counts_from_the_next_interval(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        _rules_file(repo, learnings_files.CORE_NAME, 10)
+        _state(
+            repo,
+            "learnings_budgets:\n"
+            '  core.md: {kb: 32, reason: "owner raised it", owner_approved: 2026-09-24}\n',
+        )
+        base = _commit(repo, "seed rules")
+        _rules_file(repo, learnings_files.CORE_NAME, _CORE_CAP + 500)
+
+        result = self._lint_budget(repo, base)
+        assert _checks(result, "learnings-over-budget") == []
+        assert _checks(result, "learnings-core-raise-unapproved") == []
+
+    def test_a_raise_written_with_the_growth_does_not_count_yet(self, tmp_path):
+        """Growth and the raise that would excuse it cannot land in one interval,
+        or the raise is just a way to write the growth. Holds for an owner-approved
+        core raise and for an area raise alike."""
+        repo = _make_repo(tmp_path)
+        _rules_file(repo, learnings_files.CORE_NAME, 10)
+        _rules_file(repo, "critic.md", 10)
+        base = _commit(repo, "seed rules")
+        _rules_file(repo, learnings_files.CORE_NAME, _CORE_CAP + 500)
+        _rules_file(repo, "critic.md", _BUDGET + 500)
+        _state(
+            repo,
+            "learnings_budgets:\n"
+            '  core.md: {kb: 32, reason: "owner raised it", owner_approved: 2026-09-24}\n'
+            '  critic.md: {kb: 32, reason: "room"}\n',
+        )
+
+        over = _checks(self._lint_budget(repo, base), "learnings-over-budget")
+        assert {f["path"].rsplit("/", 1)[1] for f in over} == {"core.md", "critic.md"}
+        assert all("does not count until the next one" in f["detail"] for f in over)
+
+    def test_owner_approved_must_be_a_date(self, tmp_path):
+        """`owner_approved: yes` would let an approval be written without saying
+        when anyone gave it; it is unparseable, and unparseable is loud."""
+        repo = _make_repo(tmp_path)
+        base = _tree(repo)
+        _state(
+            repo,
+            'learnings_budgets:\n  core.md: {kb: 32, reason: "r", owner_approved: yes}\n',
+        )
+
+        assert any(
+            "learnings_budgets.core.md" in r and "NOT applied" in r
+            for r in self._lint_budget(repo, base)["unchecked"]
+        )
 
     def test_a_declared_budget_without_a_reason_blocks(self, tmp_path):
         repo = _make_repo(tmp_path)
@@ -1784,6 +1865,168 @@ class TestLearningsBudget:
         )
         assert result["records"] == []
         assert len(_checks(result, "learnings-over-budget")) == 1
+
+
+def _rules(repo: Path, name: str, lines: "list[str]", header: str = "# Learnings\n\n") -> Path:
+    """A rules file built from real rule lines, for the format checks."""
+    path = repo / learnings_files.RULES_DIR_REL / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(header + "".join(line + "\n" for line in lines))
+    return path
+
+
+_LONG = "- " + "a long rule " * 30  # well over the line limit
+
+
+class TestLearningsFormat:
+    """One line per rule, no bodies, and which lines a check may read.
+
+    The regime is decided by the corpus at the BASE tree: a compacted corpus
+    fails on any violation, a not-yet-compacted one is frozen, so only lines this
+    interval added are graded. Each test names the change that turns it red.
+    """
+
+    def _lint_budget(self, repo: Path, base: str) -> dict:
+        return _lint(repo, [], base, _tree(repo))
+
+    def test_a_compacted_corpus_fails_on_a_new_long_rule(self, tmp_path):
+        # Red if the too-long check is removed or the limit is raised past _LONG.
+        repo = _make_repo(tmp_path)
+        _rules(repo, "core.md", ["- short rule"])
+        base = _commit(repo, "compliant")
+        _rules(repo, "core.md", ["- short rule", _LONG])
+
+        found = _checks(self._lint_budget(repo, base), "learnings-rule-too-long")
+        assert len(found) == 1 and found[0]["line"] == 4
+        assert str(learnings_files.RULE_LINE_MAX) in found[0]["detail"]
+
+    def test_a_compacted_corpus_fails_on_a_body(self, tmp_path):
+        # Red if body lines stop being flagged under a rule.
+        repo = _make_repo(tmp_path)
+        _rules(repo, "core.md", ["- short rule"])
+        base = _commit(repo, "compliant")
+        _rules(repo, "core.md", ["- short rule", "", "The story of how we learned it."])
+
+        found = _checks(self._lint_budget(repo, base), "learnings-rule-body")
+        assert len(found) == 1 and ".session-reflected" in found[0]["detail"]
+
+    def test_a_frozen_corpus_passes_what_it_already_held(self, tmp_path):
+        """Not compacted yet: the old long rules and bodies are not this
+        interval's doing, so they are not this interval's finding. Red if the
+        freeze regime grades the whole file."""
+        repo = _make_repo(tmp_path)
+        _rules(repo, "core.md", [_LONG, "body text under it", "- short"])
+        base = _commit(repo, "legacy shape")
+        _rules(repo, "core.md", [_LONG, "body text under it"])  # shrank
+
+        result = self._lint_budget(repo, base)
+        assert _checks(result, "learnings-rule-too-long") == []
+        assert _checks(result, "learnings-rule-body") == []
+
+    def test_a_frozen_corpus_fails_on_an_added_violation(self, tmp_path):
+        # Red if the freeze regime stops grading added lines.
+        repo = _make_repo(tmp_path)
+        _rules(repo, "core.md", [_LONG, "old body"])
+        base = _commit(repo, "legacy shape")
+        _rules(repo, "core.md", [_LONG, "old body", _LONG + " and another", "new body"])
+
+        result = self._lint_budget(repo, base)
+        assert len(_checks(result, "learnings-rule-too-long")) == 1
+        assert len(_checks(result, "learnings-rule-body")) == 1
+
+    def test_a_moved_line_is_not_an_added_line(self, tmp_path):
+        """A rule moved between files, or reordered, is the same text. Red if
+        the added-line diff is positional rather than by content."""
+        repo = _make_repo(tmp_path)
+        _rules(repo, "core.md", [_LONG, "- b"])
+        base = _commit(repo, "legacy shape")
+        _rules(repo, "core.md", ["- b", _LONG])
+
+        assert _checks(self._lint_budget(repo, base), "learnings-rule-too-long") == []
+
+    def test_the_post_migration_move_into_core_blocks(self, tmp_path):
+        """Outside the migration session, core.md is judged per file: moving rules
+        into an over-cap core.md from an area file blocks, even though the
+        corpus total shrank. discodon moved 19 rules area→core right after its
+        migration; its migration session itself is judged on the total (next
+        test), so this pins every session after it. Red if the total-corpus
+        judgement leaks past the session whose base lacks core.md."""
+        repo = _make_repo(tmp_path)
+        legacy = repo / learnings_files.LEGACY_REL
+        legacy.parent.mkdir(parents=True, exist_ok=True)
+        legacy.write_text("# Learnings\n" + ("- a legacy rule\n" * 3000))
+        _rules_file(repo, learnings_files.CORE_NAME, _CORE_CAP + 1000)
+        _rules_file(repo, "eval.md", 4000)
+        base = _commit(repo, "migrated (legacy still in the tree)")
+        _rules_file(repo, learnings_files.CORE_NAME, _CORE_CAP + 4000)
+        _rules_file(repo, "eval.md", 1000)
+
+        over = _checks(self._lint_budget(repo, base), "learnings-over-budget")
+        assert [f["path"] for f in over] == [_CORE_REL]
+
+    def test_the_migration_session_is_judged_on_the_total_not_the_lines(self, tmp_path):
+        """The migration commit writes every line fresh, so its lines are moved,
+        not authored, and the format check does not read them. Red if the
+        migration session grades added lines (it would block the migration the
+        framework directs)."""
+        repo = _make_repo(tmp_path)
+        legacy = repo / learnings_files.LEGACY_REL
+        legacy.parent.mkdir(parents=True, exist_ok=True)
+        legacy.write_text("# Learnings\n" + (_LONG + "\n") * 60)
+        base = _commit(repo, "legacy corpus")
+        legacy.unlink()
+        _rules(repo, "core.md", [_LONG] * 50)
+
+        result = self._lint_budget(repo, base)
+        assert _checks(result, "learnings-rule-too-long") == []
+        assert _checks(result, "learnings-over-budget") == []
+
+
+    def test_the_migration_session_grades_no_area_file_lines_either(self, tmp_path):
+        """learnings-migrate writes area files from the legacy corpus, so their
+        lines are moved too. Red if the migration session reads as compliant at
+        base (no new-layout file existed there), which grades every written
+        area file as authored."""
+        repo = _make_repo(tmp_path)
+        legacy = repo / learnings_files.LEGACY_REL
+        legacy.parent.mkdir(parents=True, exist_ok=True)
+        legacy.write_text("# Learnings\n" + (_LONG + "\nand a body\n") * 10)
+        base = _commit(repo, "legacy corpus")
+        legacy.unlink()
+        _rules(repo, "core.md", ["- short"])
+        _rules(repo, "eval.md", [_LONG, "and a body"] * 10)
+
+        result = self._lint_budget(repo, base)
+        assert _checks(result, "learnings-rule-too-long") == []
+        assert _checks(result, "learnings-rule-body") == []
+
+    def test_an_unresolvable_base_counts_the_format_checks_as_not_run(self, tmp_path):
+        # Red if the format counters read 0 ("ran, found nothing") there.
+        repo = _make_repo(tmp_path)
+        _rules(repo, "core.md", [_LONG])
+        result = _lint(repo, [], "0" * 40, _tree(repo))
+        assert result["counts"]["learnings-rule-too-long"] is None
+        assert result["counts"]["learnings-rule-body"] is None
+
+
+class TestCorpusStatus:
+    """What the session briefing prints. Red if a violation stops counting."""
+
+    def test_counts_and_compliance(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        _rules(repo, "core.md", ["- ok", _LONG, "a body line"])
+        status = record_lint.corpus_status(repo, repo / ".prawduct")
+        assert status["compliant"] is False
+        assert (status["too_long"], status["body"]) == (1, 1)
+        assert status["core_cap_bytes"] == _CORE_CAP
+
+    def test_a_compliant_corpus(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        _rules(repo, "core.md", ["- ok", "- also ok"])
+        assert record_lint.corpus_status(repo, repo / ".prawduct")["compliant"] is True
+
+    def test_no_rules_tree_is_none(self, tmp_path):
+        assert record_lint.corpus_status(_make_repo(tmp_path), tmp_path / ".prawduct") is None
 
 
 class TestLearningsAreaDead:

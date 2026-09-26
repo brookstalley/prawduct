@@ -56,9 +56,10 @@ ALLOWLIST: dict[str, tuple[str, str]] = {
     # --- Wave 2 (`learnings-v2-delete`), R6: whole-feature deletions
     "plugin/lib/record_lint.py": (
         "none",
-        "`_base_size`'s migration-commit exception reads the legacy file's size "
-        "as `core.md`'s base, so a repo crossing that tree is not graded as "
-        "having grown a 0B corpus; it retires with legacy detection, alongside "
+        "`_check_learnings_budget`'s migration session (base holds the legacy "
+        "file and no `core.md`) judges `core.md` against the corpus total, "
+        "legacy file included, so the migration commit is not graded as having "
+        "grown a 0B corpus; it retires with legacy detection, alongside "
         "`learnings_files.LEGACY_REL` and outside this program",
     ),
     "plugin/bin/prawduct-hook": (

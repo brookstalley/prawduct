@@ -45,21 +45,22 @@ kind-named key (`review` for `review.*`):
   `.critic-findings.json`). `build.chunk` / `plan.authored` /
   `discovery.session` are accommodated by the envelope and deliberately not
   yet produced.
-- `learning.written` and `learning.fired` — the learning loop, below.
+- `learning.written`, `learning.fired` and `learning.compacted` — the learning loop, below.
 - **Consumers skip unknown event kinds and unknown fields** — that contract is
   what lets producers grow without migrating the ledger.
 
 ## The learning-loop events
 
-Measure the loop or do not claim it. Two kinds record what the rules corpus
+Measure the loop or do not claim it. Three kinds record what the rules corpus
 actually does, so an audit reads a number instead of sampling transcripts:
 
 | kind | `actor.role` | emitted by | means |
 |---|---|---|---|
 | `learning.written` | `builder` | the Stop hook, after the learnings budget check | a rule unit that is new since this session's base revision, **committed work included** |
 | `learning.fired` | `critic` | `critic-consolidate`, after the `review.critic` anchor | a consolidated finding quoted a rule's opening words |
+| `learning.compacted` | `builder` | `learnings-compact --apply` | a rule was rewritten or merged: `from_hash` is the unit it was, `unit_hash` the unit it became. `review-stats` reads citations and authorship through it, and the Stop hook does not count the new unit as written |
 
-Both nest under a `learning` key, under the same envelope:
+All three nest under a `learning` key, under the same envelope:
 
 ```json
 {"schema_version": 1,

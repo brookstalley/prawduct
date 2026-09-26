@@ -68,7 +68,7 @@ When something goes wrong, understand WHY before fixing it. Not the proximate ca
 After every significant action — completing a feature, fixing a bug, recovering from an error, ending a session — reflect: What happened? Was it expected? What does this teach? This is not optional. It's how the system gets smarter. The depth of reflection scales with the significance of the action, but the habit never skips.
 
 ### 18. Close the Learning Loop
-Every learning should trace from observation through understanding to changed behavior. A lesson that only gets filed is a lesson that will be repeated. Capture learnings in the project's learnings file where they directly influence future decisions. When a pattern recurs enough, it should strengthen a principle or amend the methodology.
+Every learning should trace from observation through understanding to changed behavior. A lesson that only gets filed is a lesson that will be repeated. Capture learnings as one-line rules in the project's learnings files, where they directly influence future decisions. When a pattern recurs enough, it should strengthen a principle or amend the methodology.
 
 ### 19. Evolving Principles
 These principles themselves should evolve based on experience. When a pattern consistently shows that a principle is missing, insufficient, or counterproductive, propose an amendment. When a principle proves its worth repeatedly, note that too — understanding why principles work is as important as the principles themselves. The constitution can be amended.

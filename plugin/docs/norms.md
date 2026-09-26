@@ -60,7 +60,7 @@ characteristic flips alike:
 - **Reasoned** — it engages the norm's why, not just the local convenience.
 - **Timely** — it lands with or before the departing change, never as post-hoc paperwork
   discovered by a later review.
-- **Durably homed** — rulings in the learnings rules (`.claude/rules/learnings/`) linked from the norm; amendments in the norm's
+- **Durably homed** — rulings in the norm's own `Rulings:` field, each named and stated there; amendments in the norm's
   own entry; exceptions and stopgaps on backlog items (below); flips in
   `project-state.yaml` classification.
 
@@ -105,8 +105,9 @@ Norms live where they already live — **no new file class, no norm IDs, no sche
   their own index and take no Enforcement-table row; their machinery is the characteristic-flip
   protocol below plus the doctor's classification-currency check.
 
-Rulings live in the learnings rules (`.claude/rules/learnings/`), cross-linked — norms are statute, learnings are case law, and
-each reads better for pointing at the other.
+Rulings live with the norm they rule on, in its `Rulings:` field: a `[[name]]` plus the ruling's statement. Norms are
+statute and rulings are case law, and case law belongs beside the statute it reads. It used to live in the learnings
+rules, which are one-line rules loaded into sessions; a ruling is a record a reader consults, not a rule every session carries.
 
 ## Anatomy of a Norm
 
@@ -122,7 +123,8 @@ A Direction entry (or preferences row) carries these parts:
   consumer integrate twice and every future async surface reinvent it.
   Status: in-transition — collector export tracked in OBS-4C1K; interim: new work emits spans
   even where export is pending; work the substrate cannot yet serve escalates, never improvises.
-  Rulings: [[otel-payload-store-ruling]]
+  Rulings: [[otel-payload-store-ruling]] — externally-ingested runtime content is exempt, provided
+  it is never persisted into the asset store.
 ```
 
 - **Statement** — one sentence stating the constraint, scoped. Bold.
@@ -140,8 +142,8 @@ A Direction entry (or preferences row) carries these parts:
 - **Retroactivity** — present when the norm was adopted over existing code (see Birth): names
   the outcome and its record (`migrate: <item>` | `contain: <boundary artifact>` |
   `grandfather: <inventory ref>`).
-- **Rulings** — links to learnings entries recording boundary and precedence decisions. Norms
-  accrete case law; the statement stays short.
+- **Rulings** — each boundary or precedence decision, named `[[like-this]]` and stated in full
+  here. Norms accrete case law; the norm's own statement stays short.
 
 ## Lifecycle Rules
 
@@ -184,8 +186,8 @@ Work at a norm's edge — a scenario the norm's author never contemplated, or tw
 demands conflict — resolves by **ruling**, never by silent interpretation in either direction.
 Silently exempting erodes the norm; mechanically applying it blocks legitimate work and teaches
 builders to resent the registry. A ruling is a recorded decision (per the standard above),
-derived from the norms' *whys*, recorded as a learnings entry linked from the norm's Rulings
-list. Rule at the **category** level ("externally-ingested runtime content is exempt, provided
+derived from the norms' *whys*, recorded in the norm's Rulings field (on both norms, for a
+collision). Rule at the **category** level ("externally-ingested runtime content is exempt, provided
 it is never persisted into the asset store"), not the instance, so the next case at the same
 edge is pre-decided. A collision ruling records precedence on **both** norms. **A collision
 involving a whyless norm blocks on backfilling that why first** — the arbiter cannot run on one
