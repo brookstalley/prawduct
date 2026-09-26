@@ -29,8 +29,8 @@ product and start discovery. The closing report is a few lines, with only what y
 **`drop-risk-surface-ask`** — **prawduct stops asking where a missed defect would cost you
 most.** Discovery asked it, a session advisory (`risk-surfaces-undeclared`) repeated it, and
 `/prawduct:doctor` graded a repo "degraded" until you answered. All three are gone.
-`coverage-status` now prints a risk-surfaces line only when it cannot read the key (its `--json`
-output is unchanged). Answering mostly bought more review: a small
+`coverage-status` now prints a risk-surfaces line only when it cannot read the key; its `--json`
+keeps the same keys and status values, but `fix` is now set only for an unreadable key. Answering mostly bought more review: a small
 change to a listed path got three reviewers instead of one, and a short plan touching one owed
 per-chunk reviews. Without it, review still deepens on prawduct's built-in paths, on the contract
 paths in `boundary-patterns.md`, and at 12 or more changed files, and the review before a PR still

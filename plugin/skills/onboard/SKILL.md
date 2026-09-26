@@ -20,7 +20,7 @@ Onboarding under the plugin model is plugin-native — there is no file-sync set
 
 1. Confirm the target directory with the user (it should be a git repo), and note whether it is **this session's own working directory** — that decides how onboarding ends (see Finish).
 2. **Settle the backlog backend** — GitHub Issues unless there's a reason not to (*Choosing the backlog backend*, below). It has to be settled *before* the scaffold, because that is the only time `--backlog-repo` is honored.
-3. **Dry-run** the scaffold and present the plan: `prawduct-hook init-product <target> --name "<Product Name>" [--backlog-repo <owner/repo>] --json` (no `--apply`). Surface that it creates only product-owned state + the install reference, and which backlog backend it records. Note which paths in the result's `edited` list `git -C <target> status --porcelain` already lists in any state (modified, staged or untracked) — they hold the owner's own content, and the commit step needs to know.
+3. **Dry-run** the scaffold and present the plan: `prawduct-hook init-product <target> --name "<Product Name>" [--backlog-repo <owner/repo>] --json` (no `--apply`). Surface that it creates only product-owned state + the install reference, and which backlog backend it records. Note which paths in the result's `edited` list `git -C <target> status --porcelain --ignored -- <those paths>` already lists in any state (modified, staged, untracked or ignored) — they hold the owner's own content, and the commit step needs to know. Name the paths: a bare `status` shows a wholly untracked `.claude/` only as `?? .claude/`, so its `settings.json` reads clean, and without `--ignored` an ignored file is not listed at all.
 4. **Confirm**, then apply with the same flags plus `--apply`. On the Issues backend, provision the labels next (that section's step 2).
 5. **Check that the plugin will load there** (the mandatory step below).
 6. **Offer to commit the scaffold** — one ask, one commit (Finish).
@@ -96,7 +96,10 @@ governance can't calibrate rigor and the build gates can't engage. So onboarding
 scaffold. It ends *in* discovery, or one step from it — never on a checklist that leaves the owner
 asking "so what now?".
 
-**1. Commit the scaffold.** Show the paths `git status` reports and ask once. On yes, commit them
+**1. Commit the scaffold.** On a markdown backlog the owner means to keep, onboarded in the target's own
+session, run `/prawduct:backlog decline-migration <reason>` first — it writes
+`.prawduct/project-state.yaml`, so the record rides this commit. Show the paths the commit will hold
+(below) and ask once. On yes, commit them
 as one commit (`chore: onboard to Prawduct`). The commit holds onboarding's own paths only: the
 result's `created` and `edited` lists (`.gitignore` among them when it changed), and any path in its `unignored` list that exists
 on disk (a stale ignore line was stripped, so the file is now meant to be tracked). `git -C <target>

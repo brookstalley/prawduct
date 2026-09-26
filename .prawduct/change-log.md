@@ -50,11 +50,12 @@ on. The owner chose both behaviours (inline discovery only in-target; offer-then
 2026-09-26. Discovery is not run cross-directory, because that session's hooks and gates govern the
 launch directory, not the target. The skill gains `git status`/`add`/`commit` grants for the commit
 step. `discovery.md` § Reconciling no longer claims nothing backfills the state after onboarding;
-its token reading moves 5116 → 5132, declared in the budget table.
+its token reading grows by 16, declared in the budget table.
 
 **Observed, not changed.** In the fabulous session the reflection gate fired on onboarding alone,
 because the scaffold writes `CLAUDE.md` and `.gitignore`, which `is_judgeable_path` counts. That is
 correct under the path rule, so it is left as it is.
+
 ## 2026-09-26: nothing asks for risk surfaces any more
 
 <!-- prawduct: type=feature | scope=drop-risk-surface-ask -->
