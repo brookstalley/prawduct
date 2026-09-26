@@ -5,6 +5,17 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-26: the suite-at-boundary release-note pin finds its own version section
+
+<!-- prawduct: type=fix | scope=suite-at-boundary-note-window -->
+
+v3.6.1's release opened an empty v3.6.2-dev section above the suite-at-boundary entry in
+`plugin/CHANGELOG.md`, so `tests/test_suite_at_boundary.py`, which read the first section, went red
+on `develop` at the cut with nothing else changed. The test now requires the note in exactly one
+version section, with its default-change sentence beside it. The fix was built on
+`fix/suite-at-boundary-note-window` and reaches `develop` inside the learnings-one-line PR, so it
+does not need a review cycle of its own. Test-only: nothing changes for consumers.
+
 ## 2026-09-24: learnings are one line each, and core.md stays small
 
 <!-- prawduct: type=feature | scope=learnings-one-line -->
