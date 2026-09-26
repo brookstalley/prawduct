@@ -27,6 +27,8 @@ they grow. From this release:
   each rule, you approve any drops, and `--apply` writes it as one commit you can revert.
 - A rewritten rule keeps its citation history.
 - The agent-written `learnings-budget` waiver no longer suppresses the gate.
+- A PR review reports any rise in `core.md`'s cap and asks for your approval to be quoted in the
+  PR description.
 - **Rulings now live with the norm they rule on.** `docs/norms.md` used to home a ruling in your
   learnings rules, linked from the norm. It now lives in the norm's own `Rulings:` field, named and
   stated in full. When compaction reaches a ruling in your `core.md`, it moves it there

@@ -67,6 +67,12 @@ and stated in full. Names are unchanged, so existing citations still resolve to 
   plus `gates.md` split from `hook-surface.md`.
 - The tests that read this corpus now floor the whole corpus against an independent line count,
   instead of pinning a `core.md` size that compaction was always going to change.
+
+**The PR reviewer sees a rise in `core.md`'s cap.** `owner_approved:` is text an agent can write, so
+the PR review payload gains a `learnings_cap` section. It compares the cap in force at the merge-base
+and at HEAD. A rise asks for the owner's approval to be quoted in the PR description, or it is a
+WARNING. A lowered or removed override, which is what compaction does, is reported as not a rise.
+
 ## 2026-09-24: v3.6.1 is cut, and develop reopens on 3.6.2-dev
 
 <!-- prawduct: type=chore | scope=release-v3.6.1 -->
