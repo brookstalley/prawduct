@@ -5,6 +5,47 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-26: nothing asks for risk surfaces any more
+
+<!-- prawduct: type=feature | scope=drop-risk-surface-ask -->
+
+Owner ruling, 2026-09-26, on the question as it reached a product session ("Where would a missed
+defect cost you most? I'd propose this list..."): *"annoying and not helpful — can we expunge?"*
+This reverses #163 (the discovery question, 2026-08-02) and the prompting leg that review-stages
+added on 2026-09-17 (the advisory, doctor Check #20 and the `coverage-status` row).
+
+**Why the ruling holds on the merits.** A declaration trades the derived defaults and the
+`boundary-patterns.md` contract paths for the owner's own list (a present key is exclusive). For
+a product whose tree the framework-shaped defaults don't match, that mostly buys more review: a
+matched path gets the coordinator roster at any size, and a short plan touching one loses its
+per-chunk deferral. Where it doesn't, it silently drops contract-path escalation. Undeclared
+repos still escalate on the derived defaults, on the contract paths and at 12+ judgeable files,
+and the boundary review runs everything. The stage-keyed rigor norm (`nonfunctional-requirements.md`
+§ Direction) already treats over-review as a defect, priced in minutes and in the rounds it
+manufactures. So the question nudged every product into a review-cost trade that is better made
+deliberately. It also had the agent hand the owner work it could have inferred from the code.
+
+**Removed:** `plugin/lib/risk_surface_probes.py` and its tests, the `probe_families` registration,
+`discovery.md` § Surface Risk Surfaces, and `undeclared` as a finding in doctor Check #20 and in
+`coverage-status`. An existing `risk-surfaces-undeclared` advisory resolves on the next sync,
+because `advisory_store.reconcile` resolves any active entry its probes stop producing.
+
+**Kept:** the `risk_surfaces:` key and everything that reads it (`lib/risk.py`,
+`classify-diff-risk`, the roster, short-plan eligibility). `coverage-status` is in
+`api-contract.md`'s stable tier, where `--json` keys are never removed or repurposed within a
+major, so `risk_surfaces: {status, fix}` stays with the same status values. The classification
+moves to `lib/risk.risk_surfaces_status`, and `fix` is now set only for `unparseable`. Check #20
+survives as "risk surfaces readable": only an unparseable key is degraded, because it escalates
+every review, and an absent key is healthy. The discovery section and Check #20 were the only
+places that explained a present key is exclusive, so the project-state template comment now
+carries it, together with the flow-style trap. `TestRiskSurfacesAreNotAsked` pins the absence of
+the ask at the health report and the advisory roster, each with a positive control. It also pins
+every `risk_surfaces.status` value through the real command, and the null status on a raising
+classification. Each was red-verified: a registered risk-surface probe, a fix set for
+`undeclared`, a suppressed unparseable line, and the guard removed. #854 (`[]` buys less
+review than omitting the key) is untouched, and matters less now that nothing invites an owner to
+write `[]`.
+
 ## 2026-09-26: develop opens 3.6.2-dev.1
 
 <!-- prawduct: type=chore | scope=dev-track-bump-3.6.2-dev.1 -->

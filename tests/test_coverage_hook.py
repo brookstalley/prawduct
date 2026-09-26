@@ -311,14 +311,16 @@ class TestReportAgreesWithTheNudge:
 
 
 def _run_with_broken_staging(
-    tmp_path: Path, target: str = "lib.coverage_probes", attr: str = "layer_status"
+    tmp_path: Path,
+    target: str = "lib.coverage_probes",
+    attr: str = "layer_status",
+    extra: tuple[str, ...] = (),
 ) -> subprocess.CompletedProcess:
     """Run `coverage-status` with `<target>.<attr>` raising — by default
     `coverage_probes.layer_status`.
 
     Shared by the two staging-unavailable cases so they exercise the SAME
-    failure, not two hand-rolled approximations of it; the risk-surfaces row
-    reuses it against its own predicate for the same reason.
+    failure, not two hand-rolled approximations of it.
     """
     broken = tmp_path.parent / "_broken_lib"
     broken.mkdir(exist_ok=True)
@@ -354,7 +356,7 @@ def _run_with_broken_staging(
     home = tmp_path.parent / "_home"
     home.mkdir(exist_ok=True)
     return subprocess.run(
-        ["python3", str(HOOK), "coverage-status"],
+        ["python3", str(HOOK), "coverage-status", *extra],
         capture_output=True, text=True, timeout=30,
         env={
             "HOME": str(home),
@@ -368,120 +370,107 @@ def _run_with_broken_staging(
 
 
 # ---------------------------------------------------------------------------
-# The risk-surfaces row — outside the chain, mirroring its own ambient nudge
+# Risk surfaces are self-serve: nothing asks for them
 # ---------------------------------------------------------------------------
 
 
-def _write_state_with_risk(project_dir: Path, risk_block: str) -> None:
-    """A state file with characteristics recorded (so the chain is quiet and the
-    row is what varies) plus the given `risk_surfaces` text, verbatim."""
-    _write_state(project_dir, _GATE_OPEN)
-    path = project_dir / ".prawduct" / "project-state.yaml"
-    path.write_text(path.read_text(encoding="utf-8") + risk_block, encoding="utf-8")
-
-
-class TestRiskSurfacesRow:
-    """The doctor surface for the same condition the `risk-surfaces-undeclared`
-    advisory raises once: judgeable work and no `risk_surfaces:` key. The row
-    is asked of the probe module, so the two cannot disagree — and that
-    agreement is pinned per fixture with its DIRECTION, because "both silent"
-    and "both firing" agree equally well and only one is right each time.
+class TestRiskSurfacesAreNotAsked:
+    """`risk_surfaces:` stays an opt-in knob that review depth honours, but no
+    surface prompts for it or grades its absence: an undeclared repo with code
+    is a healthy repo, not a degraded one (owner ruling, 2026-09-26). These pin
+    the absence of the ask at both surfaces that used to make it — the health
+    report and the ambient advisory roster — each paired with a positive
+    control that the surface actually ran. The `risk_surfaces` `--json` key
+    stays (a published key), reporting how the key reads; only `unparseable`
+    carries a fix.
     """
 
-    def _row(self, project_dir: Path) -> dict:
+    @staticmethod
+    def _state_with_risk(project_dir: Path, risk_block: str) -> None:
+        _write_state(project_dir, _GATE_OPEN)
+        path = project_dir / ".prawduct" / "project-state.yaml"
+        path.write_text(path.read_text(encoding="utf-8") + risk_block, encoding="utf-8")
+
+    def _json_row(self, project_dir: Path) -> dict:
         result = _run("coverage-status", project_dir, "--json")
         assert result.returncode == 0, result.stderr
-        return json.loads(result.stdout)["risk_surfaces"]
+        data = json.loads(result.stdout)
+        assert "active_layer" in data  # the report ran
+        return data["risk_surfaces"]
 
-    def _nudged(self, project_dir: Path) -> bool:
-        from lib import advisory_store, risk_surface_probes  # noqa: PLC0415
-
-        return bool(
-            risk_surface_probes.probe_risk_surfaces_undeclared(
-                advisory_store.load_project_state(project_dir),
-                advisory_store.make_codebase(project_dir),
-            )
-        )
-
-    def test_undeclared_with_code_is_degraded_and_names_the_fix(self, tmp_path):
-        _write_state_with_risk(tmp_path, "")
+    def test_undeclared_is_reported_healthy_with_no_fix_and_no_line(self, tmp_path):
+        self._state_with_risk(tmp_path, "")
         _write_product_work(tmp_path)
-        row = self._row(tmp_path)
-        assert row["status"] == "undeclared"
-        assert "risk_surfaces:" in row["fix"]
-        assert "discovery" in row["fix"]
-        assert "Surface Risk Surfaces" in row["fix"]
-        assert self._nudged(tmp_path) is True
+        row = self._json_row(tmp_path)
+        assert row == {"status": "undeclared", "fix": None}
+
+        out = _run("coverage-status", tmp_path).stdout
+        assert "Structural coverage" in out  # the report ran
+        assert "Risk surfaces" not in out
 
     @pytest.mark.parametrize(
-        "risk_block",
-        ["risk_surfaces:\n  - src/auth/\n", "risk_surfaces: []\n"],
-        ids=["listed", "opt-out"],
+        "risk_block, has_code, status",
+        [
+            ("risk_surfaces:\n  - src/auth/\n", True, "declared"),
+            ("risk_surfaces: []\n", True, "declared"),
+            ("", False, "not-owed"),
+        ],
+        ids=["listed", "opt-out", "no-code"],
     )
-    def test_a_declared_key_is_healthy_including_the_opt_out(self, tmp_path, risk_block):
-        _write_state_with_risk(tmp_path, risk_block)
-        _write_product_work(tmp_path)
-        row = self._row(tmp_path)
-        assert row["status"] == "declared"
-        assert row["fix"] is None
-        assert self._nudged(tmp_path) is False
+    def test_other_healthy_statuses_carry_no_fix(self, tmp_path, risk_block, has_code, status):
+        self._state_with_risk(tmp_path, risk_block)
+        if has_code:
+            _write_product_work(tmp_path)
+        assert self._json_row(tmp_path) == {"status": status, "fix": None}
 
-    def test_an_unparseable_key_is_degraded_with_the_shape_fix_and_the_nudge_is_silent(self, tmp_path):
-        # The one state where the two surfaces deliberately differ in FORM while
-        # agreeing in substance: the question was answered (so the "please
-        # answer" advisory is silent) and answered unreadably (so the row says).
-        _write_state_with_risk(tmp_path, "risk_surfaces: [src/auth/, src/billing/]\n")
+    def test_an_unparseable_key_is_the_one_finding(self, tmp_path):
+        # Flow style is refused by the reader, and a refused key escalates every
+        # review — the one risk-surfaces state worth telling the owner about.
+        self._state_with_risk(tmp_path, "risk_surfaces: [src/auth/, src/billing/]\n")
         _write_product_work(tmp_path)
-        row = self._row(tmp_path)
+        row = self._json_row(tmp_path)
         assert row["status"] == "unparseable"
         assert "block sequence" in row["fix"]
-        assert self._nudged(tmp_path) is False
 
-    def test_no_code_yet_is_not_owed_and_not_a_finding(self, tmp_path):
-        _write_state_with_risk(tmp_path, "")
-        row = self._row(tmp_path)
-        assert row["status"] == "not-owed"
-        assert row["fix"] is None
-        assert self._nudged(tmp_path) is False
-
-    def test_human_output_renders_every_status_distinctly(self, tmp_path):
-        """The `--json` path never exercises the formatter; each status has its
-        own line, and the two non-findings say WHY they are not findings."""
-        _write_state_with_risk(tmp_path, "")
-        _write_product_work(tmp_path)
         out = _run("coverage-status", tmp_path).stdout
         assert "Risk surfaces (review depth)" in out
-        assert "NOT DECLARED" in out
-        assert "fix: " in out
-
-        _write_state_with_risk(tmp_path, "risk_surfaces: []\n")
-        out = _run("coverage-status", tmp_path).stdout
-        assert "declared (`risk_surfaces:`" in out
-        assert "NOT DECLARED" not in out
-
-        _write_state_with_risk(tmp_path, "risk_surfaces: [a, b]\n")
-        out = _run("coverage-status", tmp_path).stdout
         assert "cannot read" in out
 
-        (tmp_path / "src" / "app.py").unlink()
-        _write_state_with_risk(tmp_path, "")
-        out = _run("coverage-status", tmp_path).stdout
-        assert "not owed yet" in out
-        assert "recognises" in out
-
-    def test_a_broken_check_reports_unknown_rather_than_crashing_or_going_quiet(self, tmp_path):
-        """A report degrades, never crashes — and never drops the row, because a
-        missing row reads as a repo with nothing to say."""
-        _write_state_with_risk(tmp_path, "")
+    def test_a_broken_status_check_reports_null_rather_than_crashing(self, tmp_path):
+        """A health report degrades, never crashes: a raising classification
+        yields a null status (doctor Check #20 reads null as ungraded) and a
+        named stderr note, while the rest of the report still runs."""
+        self._state_with_risk(tmp_path, "")
         _write_product_work(tmp_path)
         result = _run_with_broken_staging(
-            tmp_path, target="lib.risk_surface_probes", attr="risk_surfaces_status"
+            tmp_path, target="lib.risk", attr="risk_surfaces_status", extra=("--json",)
         )
         assert result.returncode == 0, result.stderr
         assert "Traceback" not in result.stderr
         assert "risk-surfaces check skipped" in result.stderr
-        assert "Risk surfaces (review depth)  : unknown" in result.stdout
-        assert "NOT DECLARED" not in result.stdout
+        data = json.loads(result.stdout)
+        assert "active_layer" in data  # the report ran
+        assert data["risk_surfaces"] == {"status": None, "fix": None}
+
+    def test_no_probe_in_the_production_roster_asks(self, tmp_path):
+        from lib import advisory_store, probe_families  # noqa: PLC0415
+
+        advisory_store.clear_registry()
+        try:
+            probe_families.register_all()
+            registered = list(advisory_store._REGISTRY)
+            assert registered, "the roster registered nothing, so this proves nothing"
+            assert not [k for k in registered if "risk-surface" in k]
+
+            _write_state(tmp_path, _GATE_OPEN)
+            _write_product_work(tmp_path)
+            produced = advisory_store.run_all_probes(
+                advisory_store.load_project_state(tmp_path),
+                advisory_store.make_codebase(tmp_path),
+            )
+            assert not [c for c in produced if "risk-surface" in c.type]
+        finally:
+            advisory_store.clear_registry()
 
 
 # ---------------------------------------------------------------------------

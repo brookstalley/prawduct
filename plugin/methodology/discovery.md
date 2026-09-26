@@ -177,41 +177,6 @@ When a feature affects user workflow, ask what behavioral variations exist — u
 
 As structural characteristics emerge, note where components will interact — API endpoints, database schemas, IPC channels, frontend/backend type contracts. These become the project's contract surfaces, documented in `.prawduct/artifacts/boundary-patterns.md` during planning. Identifying them during discovery scopes the build: boundary-heavy designs need more integration testing and consumer-impact investigation. For products with `exposes_programmatic_interface`, `has_multiple_party_types`, or `multi_process_distributed`, boundary patterns are a significant architectural concern — surface them.
 
-## Surface Risk Surfaces
-
-Ask it in the product's own terms: **where would a missed defect cost you most?** Auth, payments, a
-migration that rewrites data, a public API contract others build against, the safety interlock —
-whatever this product's answer is. It is one question and it is worth asking directly, because the
-answer is not inferable from the file tree: two repos with identical structure can put their worst
-failure in completely different places.
-
-**Capture to `project-state.yaml`** under `risk_surfaces:` as path patterns (trailing `/` is a
-directory prefix; anything else is an fnmatch glob). Two consumers read it — `prawduct-hook
-classify-diff-risk` for the review tier, and the Critic's roster derivation, which gives a diff
-touching any listed path the deeper three-reviewer review **at any size**.
-
-**Why this question earns its place rather than being left to a template comment.** Silence is
-silent *by design*: a product that declares nothing is reviewed by one reviewer below the volume
-threshold, whatever its diff touches — prawduct's framework-shaped defaults rarely match a product's
-own tree, and there is no file-count fallback beneath them — so nothing ever fails, nothing prompts,
-and the product keeps the generic rule forever. What declaring buys is **size-independence on the
-paths you named**: a diff touching one of them gets the deeper review however small it is, so a
-two-line change to your riskiest code is no longer reviewed cheaply *because* it is small.
-(`skills/critic/review-cycle.md` owns the volume threshold; don't restate it here. The effect needs
-a **non-empty** list: on this axis `[]` and absent behave identically, so an empty declaration buys
-none of it.) An unasked question is an unanswered one, and this one decides review depth for the
-life of the product.
-
-**`risk_surfaces: []` is an opt-OUT, not a way to record "we discussed it."** A *present* key is
-exclusive (`lib/risk.py::resolve_surfaces`), so the empty list retires the derived defaults **and**
-your `boundary-patterns.md` contract paths — a small diff touching a contract path drops from three
-reviewers to one. That is strictly *less* review than leaving the key absent. Write `[]` only when
-the product genuinely has no concentrated risk and you intend the tier check off.
-
-**If the answer is "we have surfaces but haven't named them yet," leave the key absent** and record
-the discussion where discussion belongs — the product brief, a decision note, the commit. Absent is
-the safe state; the key is not a checkbox to tick.
-
 ## What Discovery Produces
 
 A `project-state.yaml` with:

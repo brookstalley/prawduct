@@ -237,9 +237,11 @@ COORDINATOR_ROSTER = ("correctness", "design", "sustainability")
 # missed is not measurable from the store, and the owner's recorded decision
 # accepts that bounded miss as the price of removing three reviewers from the
 # commonest product change size. Recomputable:
-# `python3 tests/spikes/fallback_roster_yield.py`. The remedy for a product that
-# has not said where its risk lives is the question (`methodology/discovery.md`
-# § Surface Risk Surfaces), not an escalator that never asks.
+# `python3 tests/spikes/fallback_roster_yield.py`. A product that wants deeper
+# review on particular paths declares `risk_surfaces:` itself, and nothing
+# prompts for it: a declared list trades the derived defaults for the owner's
+# own paths — for most products, more review spent — and that is a trade to
+# make deliberately, not one to be nudged into by default.
 
 #: Judgeable-file count at which volume alone buys the coordinator, with no
 #: risk surface touched. Below it the replay shows an empty blocking record.
