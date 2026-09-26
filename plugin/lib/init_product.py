@@ -84,9 +84,9 @@ def _record_backlog_service_repo(project_dir: Path, spec: str) -> bool:
         return False
     content = path.read_text(encoding="utf-8") if path.is_file() else ""
     block = (
-        "\n# GitHub Issues backlog backend — recorded at onboard for a product adopting\n"
-        "# the Issues backend from day one (init-product --backlog-repo). The normal\n"
-        "# path is markdown-first and sets this later, at scrub/cutover.\n"
+        "\n# GitHub Issues backlog backend — recorded at onboard (init-product\n"
+        "# --backlog-repo), the recommended path for a new product. A product that\n"
+        "# starts on markdown sets this later, at the scrub/cutover.\n"
         "# `/prawduct:backlog` routes on this scalar.\n"
         f"backlog_service_repo: {spec}\n"
     )

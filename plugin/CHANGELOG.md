@@ -14,6 +14,18 @@ release process keeps the two in sync (one headline per shipped release).
 
 **Rolling notes for the next release — nothing has shipped under this number yet.** Entries accumulate here as work lands on `develop`; the cut renames this heading to its release number.
 
+**`onboard-ux`** — **`/prawduct:onboard` recommends a GitHub Issues backlog, and it ends in
+product discovery instead of a checklist.** Onboarding used to call the markdown backlog the default
+and offer Issues only if you asked. That steered new products onto the backend the framework then
+nudges you to migrate off, and the only cheap moment to choose Issues is the scaffold itself. It now
+recommends Issues, asks which repo holds the backlog, and states what each choice costs before you
+pick: on Issues, a public repo means a public backlog. Markdown stays the right call when the product
+has no GitHub home, and onboarding points you at `decline-migration` so you aren't nagged to migrate.
+Onboarding offers to commit the scaffold (only its own files). When you onboard from inside the
+product's own session, it then goes straight into discovery: it reads your README, docs and code, gives its take on what the
+product is for, and confirms it with you. Onboarding from another repo ends on one step: open the
+product and start discovery. The closing report is a few lines, with only what you must act on.
+
 **`review-friction`** — **a chunk you committed before its review gets a chunk review, not a
 full bundle review, and a turn that says `DO NOT CLEAR` no longer trips the end-of-session gates.**
 

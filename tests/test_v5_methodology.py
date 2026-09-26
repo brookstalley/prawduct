@@ -1044,7 +1044,11 @@ LAST_MEASURED_TOKENS = {
     # before" or that declaring raises a file-count threshold — the fallback
     # both sentences described is retired, so the paragraph states the one
     # effect that remains (size-independence on the named paths). A CUT.
-    "methodology/discovery.md": 5116,
+    # +16 on 2026-09-26 (onboard-ux): § Reconciling states that onboarding in
+    # the product's own session enters discovery at once, not only on the
+    # DISCOVERY NOT CAPTURED nudge — the old sentence said nothing backfills the
+    # state, which onboard now does. Unfunded; declared growth (#688).
+    "methodology/discovery.md": 5132,
     # 4301 -> 4791 on 2026-08-21 (Chunk 02): `### Partition: Serial or
     # Delegated`, the plan-time half of the placement bet. The partition prompt
     # where chunk boundaries are drawn (R6), the `partition:` field the decision

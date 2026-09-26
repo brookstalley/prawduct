@@ -70,7 +70,7 @@ row, not as loose prose a later build has to re-infer (`/prawduct:methodology no
 
 ## Reconciling an Existing or Docs-First Product
 
-A product may arrive with material already in hand — an existing codebase, or requirements/architecture/vision docs written outside a discovery session. Onboarding leaves `project-state.yaml` template-default; nothing backfills it automatically, so the Critic can't calibrate rigor and the build gates won't engage. When the session briefing's **DISCOVERY NOT CAPTURED** nudge fires (template-default state + product-definition work in the repo), discovery's job is to **reconcile**, not re-interview:
+A product may arrive with material already in hand — an existing codebase, or requirements/architecture/vision docs written outside a discovery session. Onboarding leaves `project-state.yaml` template-default, so the Critic can't calibrate rigor and the build gates won't engage until discovery fills it — at once when onboarding ran in the product's own session, else when the session briefing's **DISCOVERY NOT CAPTURED** nudge fires (template-default state + product-definition work in the repo). Discovery's job is to **reconcile**, not re-interview:
 
 1. **Read what exists first.** Requirements docs, architecture, a VISION, codebase conventions. Treat these as the user's already-stated answers — don't ask what the docs already say.
 2. **Backfill the source of truth.** Populate `classification` and `product_definition` from the material; detect the six structural characteristics from the docs exactly as you would from conversation.
