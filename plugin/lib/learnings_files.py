@@ -69,6 +69,22 @@ STATE_LEGACY = "legacy"
 STATE_BOTH = "both"
 STATE_NONE = "none"
 
+#: The longest a rule may be, in characters, counted on the rule's own line
+#: (the ``- `` or ``#`` marker included). A rule is ONE line. The reason and
+#: the instance that earned it fit as a clause, or the rule is two rules, or
+#: what is left over is narrative, and narrative goes in the session
+#: reflection. Four compactions of this corpus regrew because the narrative
+#: moved into whichever channel was not being measured (bodies, then headings),
+#: so this measures both at once: the line and the absence of a body.
+RULE_LINE_MAX = 250
+
+#: ``core.md``'s ceiling, in KB. It is loaded in every session, so this is the
+#: one number that prices every session the repo will ever have. Unlike an area
+#: file's budget, an agent cannot raise it: a ``learnings_budgets.core.md``
+#: override counts only with an ``owner_approved:`` date, because six
+#: agent-authored raises in five days is what "raise with a reason" measured to be.
+CORE_CAP_KB = 12
+
 #: What a scaffolded ``core.md`` opens with. The obligation is here rather than
 #: in a pointer because this file is the one thing every session reads: a rule
 #: that arrives, is agreed with, and changes nothing is the failure mode a
@@ -80,6 +96,9 @@ CORE_HEADER = (
     "**Reading a rule is not applying it.** For any rule below that bears on the "
     "decision in front of you, name the rule and say what it changes about that "
     "decision — or say that it does not apply, which is also an answer.\n"
+    "\n"
+    f"Each rule is one line of at most {RULE_LINE_MAX} characters. This file is capped, "
+    "so a new rule is paid for by merging or retiring one.\n"
 )
 
 
@@ -530,6 +549,39 @@ def rules_dir_is_gitignored(project_dir: str | Path) -> bool:
     return proc.returncode == 0
 
 
+def corpus_texts_at(project_dir: str | Path, tree: str) -> "list[str] | None":
+    """The text of every rules file in ``tree``: the WHOLE corpus at a revision.
+
+    The one answer to "what did the corpus already hold at the base?", for every
+    check that asks whether a line or rule is new since then. It is the whole
+    corpus and never the same file's base text, because a rule moved verbatim
+    between rules files (a compaction's split, or the over-budget remedy's
+    "move it to an area file") is an old rule in a new place, not a written
+    one. Files deleted since ``tree`` are included for the same reason.
+    ``None`` when git cannot list the tree; a file it lists but cannot show is
+    skipped, which reads as "held nothing", the conservative answer.
+    """
+    def _git(*args: str) -> "subprocess.CompletedProcess[str] | None":
+        try:
+            return subprocess.run(  # noqa: S603 — list-form argv, no shell (project preference)
+                ["git", *args], cwd=str(project_dir), capture_output=True, text=True, timeout=30,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+
+    listed = _git("ls-tree", "-r", "--name-only", tree, "--", f"{RULES_DIR_REL}/")
+    if listed is None or listed.returncode != 0:
+        return None
+    texts = []
+    for rel in listed.stdout.splitlines():
+        if not rel.endswith(".md"):
+            continue
+        shown = _git("show", f"{tree}:{rel}")
+        if shown is not None and shown.returncode == 0:
+            texts.append(shown.stdout)
+    return texts
+
+
 # ---------------------------------------------------------------------------
 # Rule units — the addressable thing a telemetry event is about
 # ---------------------------------------------------------------------------
@@ -609,8 +661,8 @@ def rule_units(text: str) -> list[str]:
     * **The ``#`` title.** A file's ``#`` heading names the file, not a rule.
       Exclusion is by LEVEL, not by position: a rules file with no title is
       still all rules, so "the first heading" would silently eat one.
-    * **The scaffold's obligation header** (:data:`CORE_HEADER`'s second
-      paragraph) — a bold paragraph, so it is excluded by the grammar rather
+    * **The scaffold's header** (:data:`CORE_HEADER`'s obligation and format
+      paragraphs) — plain paragraphs, so they are excluded by the grammar rather
       than by a name check; a header that grew a heading would need this
       docstring re-read, not a regex tightened.
     * **Fenced code.** A ``#`` comment or a ``- `` list item inside a fence is
@@ -627,10 +679,36 @@ def rule_units(text: str) -> list[str]:
     Frontmatter is skipped, so an area file's ``paths:`` block cannot contribute
     a unit; the ``---`` fence lines cannot either.
     """
-    _globs, body = parse_frontmatter(text)
-    units: list[str] = []
+    return [unit for _line, unit, _raw in _unit_lines(text)]
+
+
+def _unit_lines(text: str) -> "list[tuple[int, str, str]]":
+    """``(line_number, unit, raw_line)`` for every rule unit, 1-based lines.
+
+    The one walk behind :func:`rule_units` and :func:`shape_violations`, so the
+    two can never disagree about which lines are rules.
+    """
+    return [(n, unit, raw) for n, unit, raw, _kind in _classified_lines(text) if unit]
+
+
+def _classified_lines(text: str) -> "list[tuple[int, str, str, str]]":
+    """Every line after the frontmatter, as ``(line, unit, raw, kind)``.
+
+    ``kind`` is ``unit`` (``unit`` holds its text), ``blank``, ``title`` (a
+    ``#`` heading), or ``other``: fenced code, fence markers, indented bullets
+    and prose paragraphs. ``other`` is exactly what a body is made of.
+    """
+    lines = text.splitlines()
+    start = 0
+    if lines and lines[0].strip() == "---":
+        close = next((i for i in range(1, len(lines)) if lines[i].strip() == "---"), None)
+        if close is not None:
+            start = close + 1
+    out: list[tuple[int, str, str, str]] = []
     fence: str | None = None
-    for line in body.splitlines():
+    for index in range(start, len(lines)):
+        line = lines[index]
+        number = index + 1
         stripped = line.strip()
         # Fences: ``` or ~~~, closed by the same marker (a longer run closes a
         # shorter opener, per CommonMark; the extra length is ignored here
@@ -638,12 +716,114 @@ def rule_units(text: str) -> list[str]:
         if fence is not None:
             if stripped.startswith(fence):
                 fence = None
+            out.append((number, "", line, "other"))
             continue
         if stripped.startswith("```") or stripped.startswith("~~~"):
             fence = stripped[:3]
+            out.append((number, "", line, "other"))
             continue
         if line.startswith("## ") or line.startswith("### "):
-            units.append(line.lstrip("#").strip())
+            unit = line.lstrip("#").strip()
+            out.append((number, unit, line, "unit" if unit else "other"))
         elif line.startswith("- "):
-            units.append(line[2:].strip())
-    return [u for u in units if u]
+            unit = line[2:].strip()
+            out.append((number, unit, line, "unit" if unit else "other"))
+        elif not stripped:
+            out.append((number, "", line, "blank"))
+        elif line.startswith("# "):
+            out.append((number, "", line, "title"))
+        else:
+            out.append((number, "", line, "other"))
+    return out
+
+
+@dataclass(frozen=True)
+class ShapeViolation:
+    """One line of a rules file that is not a one-line rule.
+
+    ``kind`` is ``too-long`` (a rule over :data:`RULE_LINE_MAX`) or ``body`` (a
+    line that is not a rule, below the first rule). ``text`` is the line itself,
+    so a caller can match a violation against the base revision's lines.
+    """
+
+    line: int
+    kind: str
+    text: str
+
+
+def shape_violations(text: str) -> "list[ShapeViolation]":
+    """Every line in a rules file that breaks the one-line-rule format.
+
+    **A body** is any non-blank line after the file's first rule that is not
+    itself a rule or a ``#`` title: a prose paragraph, an indented bullet, fenced
+    code. What sits BEFORE the first rule is the file's header (the scaffold's
+    obligation paragraph, an area file's one-line scope note). It is not
+    flagged, and it still counts toward the file's byte budget, so it cannot
+    grow for free.
+
+    **A too-long rule** is a rule line over :data:`RULE_LINE_MAX` characters. A
+    ``##`` section banner is measured the same way as a rule, because this
+    grammar cannot tell a banner from a rule without parsing prose for intent,
+    and a 250-character banner is no hardship.
+
+    Needs no base revision: the format is a property of the text alone, which
+    is what lets the Stop gate apply it in a session that has no base marker.
+    """
+    out: list[ShapeViolation] = []
+    seen_unit = False
+    for number, _unit, raw, kind in _classified_lines(text):
+        if kind == "unit":
+            seen_unit = True
+            if len(raw.rstrip()) > RULE_LINE_MAX:
+                out.append(ShapeViolation(number, "too-long", raw))
+        elif kind == "other" and seen_unit:
+            out.append(ShapeViolation(number, "body", raw))
+    return out
+
+
+
+@dataclass(frozen=True)
+class RuleBlock:
+    """One rule unit with the body lines under it, as ``learnings-compact``
+    reads a rules file. ``raw`` is the unit's own line; ``body`` the lines
+    after it, up to the next unit, blank lines at either edge dropped."""
+
+    line: int
+    unit: str
+    raw: str
+    body: str
+
+
+def rule_blocks(text: str) -> "tuple[str, str, list[RuleBlock]]":
+    """``(frontmatter, preamble, blocks)`` for one rules file.
+
+    ``frontmatter`` is the verbatim ``---`` block (with its fences, ``""`` when
+    absent), so a rewrite reproduces an area file's scoping byte for byte.
+    ``preamble`` is everything between it and the first rule. Built on the
+    same walk as :func:`rule_units`, so compaction and telemetry can never
+    disagree about which lines are rules.
+    """
+    lines = text.splitlines()
+    frontmatter = ""
+    if lines and lines[0].strip() == "---":
+        close = next((i for i in range(1, len(lines)) if lines[i].strip() == "---"), None)
+        if close is not None:
+            frontmatter = "\n".join(lines[: close + 1]) + "\n"
+    classified = _classified_lines(text)
+    preamble: list[str] = []
+    blocks: list[list] = []
+    for number, unit, raw, kind in classified:
+        if kind == "unit":
+            blocks.append([number, unit, raw, []])
+        elif blocks:
+            blocks[-1][3].append(raw)
+        else:
+            preamble.append(raw)
+    out = []
+    for number, unit, raw, body in blocks:
+        while body and not body[-1].strip():
+            body.pop()
+        while body and not body[0].strip():
+            body.pop(0)
+        out.append(RuleBlock(number, unit, raw, "\n".join(body)))
+    return frontmatter, "\n".join(preamble).strip("\n"), out

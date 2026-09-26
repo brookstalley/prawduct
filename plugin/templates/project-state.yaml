@@ -408,21 +408,23 @@ coverage_required: false
 # Learnings live in `.claude/rules/learnings/`: `core.md` is in every session's
 # context from launch, and each `<area>.md` arrives when a file its `paths:`
 # globs match is read. So a rule is paid for by every session that follows it,
-# and the corpus has no natural ceiling — twice compacted, twice regrown past
-# where it started.
+# and the corpus has no natural ceiling — compacted four times, and regrown
+# past where it started every time.
 #
-# `prawduct-hook verify-records` therefore reports a rules file that is over
-# budget AND larger than it was at the review's base tree. Over alone is quiet:
-# an inherited corpus is not asked to stop the world, only to pay for the next
-# addition, which is the moment the duplicate is in front of the author. The
-# payment is genuine duplication (merge or delete two rules in the same commit)
-# — never trimming a rule until it fits, which keeps the bytes and loses the
-# meaning.
+# Every rule is ONE line of at most 250 characters, with no body. `core.md` is
+# capped at 12 KB and ONLY THE OWNER raises it: a `core.md` entry counts only
+# with an `owner_approved:` date. Each area file defaults to 16 KB and may be
+# raised here with a reason. A raise counts from the next session, never the
+# one that writes it, so growth and its excuse cannot land together.
 #
-# Default: 16 KB per file. Raise one here when a file has earned the room:
+# The Stop hook blocks a file over its budget that grew this session, and any
+# line breaking the one-line format. A corpus not yet compacted is frozen: no
+# file over its budget may grow, and every added line must already be a
+# one-line rule. Pay by
+# merging or retiring a rule, or by moving a path-scoped rule to its area file.
 #
 # learnings_budgets:
-#   core.md: {kb: 24, reason: "the fleet-wide rules; the 2026-09 sweep is done"}
+#   core.md: {kb: 16, reason: "the owner's call", owner_approved: 2026-09-24}
 #   critic.md:
 #     kb: 20
 #     reason: "review protocol rules, and reviewers read this file every cycle"

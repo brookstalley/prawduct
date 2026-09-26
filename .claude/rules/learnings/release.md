@@ -1,0 +1,32 @@
+---
+paths:
+  - ".prawduct/change-log.md"
+  - "plugin/CHANGELOG.md"
+  - "plugin/VERSION"
+  - ".prawduct/artifacts/*release*"
+  - "documentation/release-process.md"
+---
+# Learnings — release
+
+- Syncing a long-lived branch onto a base that moved a lot: diff the TESTS on both sides before resolving any hunk — tests state the rule, so two re-implementations disagree there. Tell: both sides are coherent versions of one named thing
+- Under single-parent promotion, "did this ship?" is about TREE CONTENT, never ancestry — `git tag --contains` is a confident false negative; the content test needs a control that fails and a functional-surface target
+- When a release ships a PRUNED tree, a clean `git apply` is not evidence of soundness — shipped code can use a symbol the withheld work introduced. Run the suite on the candidate tree and diff shipped files' imports vs develop
+- To learn what a PREVIOUS release shipped, test its CODE against that release's tree, never change-log prose or heading presence — a pruned release keeps entries whose code it withheld (REL-7D4X, both directions)
+- Work authored ON TOP OF work you may withhold becomes inseparable by file — pruning is by commit range, so everything between ships or waits together. Sequence a release-gated subsystem BEHIND independently-shippable work
+- Merge instructions written BEFORE the merge (a subagent's advice, your own note) are checked against the merge's actual hunks, never applied literally — the branch can't see conventions the destination adopted since
+- "It is history, leave it" is a per-SECTION test, not per-file: an unreleased section states pending claims, so retiring a vocabulary it announces ships a contradicting banner. Tell: sparing a file by genre ("that's a changelog")
+- A red version/release-hygiene test on a feature branch is often branch STALENESS, not a doc defect — check distance from the integration branch before patching the changelog
+- A plan's frontmatter `scope:` is the scope-NAME, not a version — `check-releasability` and plan-backfill match change-log `scope=` by exact string. A one-plan-many-scopes batch can't comply: one plan per shipped scope
+- Serially merging several stale feature branches into develop for one release: expect additive bookkeeping conflicts each time, and check for a duplicate `active_build_plan:` key the auto-merge creates
+- A change-log entry's BODY must cover every chunk it shipped — the body IS the release note, so an omitted deliverable ships invisibly; no tag checks prose. Tell: a multi-chunk narrative with ONE throughline, the last chunk's mechanism missing
+- Single-repo plugin+marketplace: the marketplace plugin `source` must be a RELATIVE path (`{source:github}` re-clones over SSH and fails without keys) — and it is the curated `./plugin`, not `./`, which would ship internal docs to consumers
+- Release-bound work merged feature->develop: KEEP the build plan and `active_build_plan` pointer until the release — `check-releasability` pairs each pending `scope=` to its plan, so deleting early orphans your own shipped work
+- When salvaging work from a branch you are about to delete, diff the ID SETS of its state files (backlog, change-log) against the base — commit-by-commit triage drops novel items riding inside otherwise-obsolete commits
+- A union merge of an append-heavy file (change-log `merge=union`) is safe only if neither side RELOCATED an entry — a moved item reads as 'absent here, present there', exactly what a union duplicates. Check for moves before trusting it
+- A job that must observe state a LATER step creates is a RACE, not a certainty — read the dispatch/conclusion timestamps before recording either outcome; an intermittent pass is worse than a red. Tell: v3.2.4's 'red by construction' job went green.
+- When one fix must hold for N procedures, cost it against the WORST, not the one that surfaced the bug — the cheap option is cheap only for the case in view. Tell: a tag→publish window narrowing fine for one runbook, impossible for the pruned one.
+- When a release has two documents tracking its state, one is already wrong — designate one live tracker, demote the other to a decision record; author each build chunk from the TREE, never from the upstream plan, which the code may have overtaken.
+- A change-log `scope=` tag comes from the PLAN you're in, never the entry above — `check-releasability` matches plan frontmatter by exact string, so a copied scope misattributes your work silently. Tell: your branch narrows an existing scope.
+- A step is release-PREP only if undoing it costs nothing — one that MAKES the release happen (bumping `version`, the auto-update cache key; stripping `— DRAFT`) belongs to the cut. Tell: a prep step you could not reverse by deleting a file.
+- Re-derive the version TIER from the final scope set, never a release-prep draft's number — `check-releasability` grades the partition but not the version it prints. Tell: your version number came from a document, not the scope set.
+- A "keep both sides" resolution silently drops what the BASE grew where the branch also touched — after a big base sync, diff the merged tree against the incoming side for CONTENT (bodies, not headings). Tell: never compared to the side merged in

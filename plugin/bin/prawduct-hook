@@ -2478,7 +2478,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # are noise — they make every session look like it bypassed governance.
     waivers = _gates()._read_gates_waived(prawduct_dir)
     waiver_notes: list[str] = []
-    KNOWN_WAIVER_KEYS = {"reflection", "critic", "pr", "learnings", "learnings-budget"}
+    KNOWN_WAIVER_KEYS = {"reflection", "critic", "pr", "learnings"}
     unknown_waiver_keys = sorted(k for k in waivers if k not in KNOWN_WAIVER_KEYS)
     if unknown_waiver_keys:
         # Stderr-only warning so the agent learns about typos. Doesn't affect gate
@@ -2532,7 +2532,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # this file knows. The fallback is deliberately path-free: a hardcoded second
     # opinion about the layout is the defect the resolver exists to remove.
     _rule_destination = (
-        f"{_learnings_core} (or the area file under {_learnings_rules_dir}/ whose `paths:` cover it)"
+        f"the area file under {_learnings_rules_dir}/ whose `paths:` cover it (or {_learnings_core} if every session needs it)"
         if _learnings_core
         else "this repo's learnings rules files"
     )
@@ -2605,9 +2605,9 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 "  as you go; the file accumulates across the session. Then /clear is instant.\n"
                 "\n"
                 "  If this session produced a durable lesson (a rule future sessions should follow),\n"
-                f"  also add it to {_rule_destination}.\n"
-                "  Learnings are concise standing rules; the session reflection is the story\n"
-                "  behind them.\n"
+                f"  also add it to {_rule_destination} as ONE line — the rules gate\n"
+                "  names any line over the limit. Learnings are one-line standing rules; the\n"
+                "  session reflection is the story behind them.\n"
                 "\n"
                 "  Escape hatch: if this gate cannot be satisfied this session (rare for reflection —\n"
                 "  it is meant to be cheap), declare a waiver so this gate stops re-firing:\n"
@@ -2758,28 +2758,43 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
         try:
             from lib import record_lint as _record_lint  # noqa: PLC0415 — lazy keeps top-level cheap
 
-            # Called even with no base-tree marker, because only ONE of the two
-            # arms needs one: `learnings-budget-unreasoned` is decided from
-            # project-state.yaml alone and is emitted before the check ever
-            # looks at a file. Skipping the call on a missing marker silenced a
-            # finding whose answer did not depend on it.
+            # Called even with no base-tree marker: `learnings-budget-unreasoned`
+            # is decided from project-state.yaml alone, and the rest measure
+            # against HEAD in that case (below) rather than not at all.
             _budget_base = _gates()._read_session_base_tree(prawduct_dir)
+            # No marker: measure against HEAD rather than not at all. The format
+            # needs no base, and "no marker" is how a continuation in a fresh
+            # checkout or a worktree arrives — discodon's core.md grew through
+            # three such sessions with only a stderr NOTE nobody reads. Work this
+            # session already COMMITTED is invisible from HEAD, and the NOTE
+            # says so rather than implying a full check.
+            _budget_cmp = _budget_base
+            if not _budget_cmp:
+                _head_rc = subprocess.run(
+                    ["git", "rev-parse", "HEAD^{tree}"],
+                    cwd=str(project_dir), capture_output=True, text=True, timeout=10,
+                )
+                _budget_cmp = _head_rc.stdout.strip() if _head_rc.returncode == 0 else ""
             _budget_findings, _budget_unchecked, _ = (
                 _record_lint._check_learnings_budget(
-                    project_dir, prawduct_dir, _budget_base
+                    project_dir, prawduct_dir, _budget_cmp
                 )
             )
-            if not _budget_base:
-                # `record_lint` reports this as "could not resolve the base tree
-                # <empty>"; the cause is one level up and is the actionable form.
+            if not _budget_base and _budget_cmp:
+                _budget_unchecked = _budget_unchecked + [
+                    "learnings-over-budget measured against HEAD — no .session-base-tree "
+                    "marker, so rules this session already committed were not charged, "
+                    "and no `learning.written` telemetry was recorded"
+                ]
+            elif not _budget_base:
+                # Neither a marker nor a readable HEAD: say that, rather than the
+                # generic "could not resolve the base tree <empty>".
                 _budget_unchecked = [
                     _e for _e in _budget_unchecked
                     if "could not resolve the base tree" not in _e
                 ] + [
-                    "learnings-over-budget unchecked — no .session-base-tree marker, so "
-                    "there is no base size to compare this session's growth against, "
-                    "and no `learning.written` telemetry was recorded either (both "
-                    "questions are the same comparison against the same missing base)"
+                    "learnings-over-budget unchecked — no .session-base-tree marker and "
+                    "HEAD did not resolve, so there is nothing to compare against"
                 ]
         except Exception as exc:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
             _budget_findings, _budget_unchecked = [], [
@@ -2790,57 +2805,63 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
         # not be measured must not read as a ceiling that held.
         for _entry in _budget_unchecked:
             print(f"\nNOTE: {_entry}", file=sys.stderr)
+        # Advisory findings print as a NOTE and never block: an unapproved core
+        # raise is already IGNORED by the check (the cap holds), so blocking on
+        # the declaration would charge the session for text that changes nothing.
+        _budget_advisory = {"learnings-core-raise-unapproved"}
+        for _f in _budget_findings:
+            if _f["check"] in _budget_advisory:
+                print(f"\nNOTE: {_f['path']}: {_f['detail']}", file=sys.stderr)
+        _budget_findings = [
+            _f for _f in _budget_findings if _f["check"] not in _budget_advisory
+        ]
         if _budget_findings:
-            if "learnings-budget" in waivers:
-                waiver_notes.append(
-                    f"learnings-budget: waived ({waivers['learnings-budget']})"
+            # No waiver. A waiver the agent writes for itself is how a cap stops
+            # being a cap, and this one is the corpus every session pays for.
+            #
+            # DERIVED from the checks present, never written for the one in
+            # mind: the kinds share nothing but a file, and each gets the
+            # sentence that is true of it.
+            _budget_headlines = {
+                "learnings-over-budget": (
+                    "LEARNINGS BUDGET (over and grown): a rules file is over its ceiling\n"
+                    "  and grew this session, so the next addition pays before it lands:\n"
+                ),
+                "learnings-budget-unreasoned": (
+                    "LEARNINGS BUDGET (ceiling with no reason): a `learnings_budgets:` entry\n"
+                    "  raises a budget without saying what earned the extra room. Nothing here\n"
+                    "  is about a file's size — the fix is one `reason:` line:\n"
+                ),
+                "learnings-rule-too-long": (
+                    "LEARNINGS FORMAT (rule too long): a rule is one line — its reason and\n"
+                    "  instance fit as a clause, or it is two rules:\n"
+                ),
+                "learnings-rule-body": (
+                    "LEARNINGS FORMAT (body under a rule): rules carry no body — the story\n"
+                    "  belongs in the session reflection:\n"
+                ),
+            }
+            _by_check: dict[str, list[dict]] = {}
+            for _f in _budget_findings:
+                _by_check.setdefault(_f["check"], []).append(_f)
+            for _check in sorted(_by_check):
+                _detail = "".join(
+                    f"    - {_f['path']}: {_f['detail']}\n" for _f in _by_check[_check]
                 )
-            else:
-                # DERIVED from the checks present, never written for the one in
-                # mind. `_check_learnings_budget` returns two kinds in one list
-                # and they have nothing in common: `learnings-budget-unreasoned`
-                # is about a `learnings_budgets:` entry in project-state.yaml, it
-                # fires before the check ever looks at a rules file (so it
-                # reaches a `none`-state repo with no corpus at all), and its
-                # remedy is one `reason:` line. Under the over-budget headline an
-                # operator was sent hunting for growth that never happened, and
-                # the blocker id named a control that did not fire.
-                _budget_headlines = {
-                    "learnings-over-budget": (
-                        "LEARNINGS BUDGET (over and grown): a rules file is over its ceiling\n"
-                        "  and grew this session, so the next addition pays before it lands:\n"
-                    ),
-                    "learnings-budget-unreasoned": (
-                        "LEARNINGS BUDGET (ceiling with no reason): a `learnings_budgets:` entry\n"
-                        "  raises a budget without saying what earned the extra room. Nothing here\n"
-                        "  is about a file's size — the fix is one `reason:` line:\n"
-                    ),
-                }
-                _by_check: dict[str, list[dict]] = {}
-                for _f in _budget_findings:
-                    _by_check.setdefault(_f["check"], []).append(_f)
-                for _check in sorted(_by_check):
-                    _detail = "".join(
-                        f"    - {_f['path']}: {_f['detail']}\n" for _f in _by_check[_check]
-                    )
-                    # A check this gate has no sentence for still gets a true
-                    # one: naming it beats heading it with another check's.
-                    _head = _budget_headlines.get(
-                        _check,
-                        f"LEARNINGS BUDGET ({_check}): the budget check reported this and\n"
-                        "  this gate carries its wording unchanged:\n",
-                    )
-                    blockers.append(_attributed(_check,
-                        _head
-                        + _detail
-                        + "\n"
-                        "  Escape hatch: if this cannot be resolved this session, declare a\n"
-                        "  waiver so this gate stops re-firing every turn:\n"
-                        "    echo '{\"learnings-budget\": \"reason — be specific\"}' > .prawduct/.gates-waived\n"
-                        "  Empty reasons are rejected; the file clears at the next session boundary\n"
-                        "  (a fresh start or /clear), so it outlives a resume/compact/fork. See\n"
-                        "  `/prawduct:methodology building` (Gate waivers) for when this is appropriate.\n"
-                    ))
+                # A check this gate has no sentence for still gets a true
+                # one: naming it beats heading it with another check's.
+                _head = _budget_headlines.get(
+                    _check,
+                    f"LEARNINGS ({_check}): the check reported this and\n"
+                    "  this gate carries its wording unchanged:\n",
+                )
+                blockers.append(_attributed(_check,
+                    _head
+                    + _detail
+                    + "\n"
+                    "  There is no waiver for this gate: pay in this session, or ask the\n"
+                    "  owner. core.md's cap moves only with an `owner_approved:` date.\n"
+                ))
 
         # Telemetry, not a gate: one `learning.written` per rule unit that is
         # new since this session's base revision (`docs/governance-telemetry.md`).
@@ -2878,23 +2899,32 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 # since the base" for the rest of the session, so per-unit
                 # probing was a whole-file read per rule per turn.
                 _lt_seen = _lt_ledger.learning_events_seen(prawduct_dir)
-                for _lt_path in _lt_lf.resolve(project_dir).files:
+                # A rule `learnings-compact` rewrote is the old rule in fewer
+                # words, recorded as `learning.compacted`, never as written.
+                _lt_compacted = _lt_ledger.compacted_unit_hashes(prawduct_dir)
+                _lt_files = _lt_lf.resolve(project_dir).files
+                # The base is the WHOLE corpus at the base revision, not the
+                # same file's: a rule moved verbatim between rules files (a
+                # compaction's split, or by hand) is an old rule in a new
+                # place, never a written one. `record_lint`'s format check asks
+                # the same question through the same helper.
+                _lt_base_texts = _lt_lf.corpus_texts_at(project_dir, _budget_base)
+                if _lt_base_texts is None:
+                    raise RuntimeError(
+                        f"git could not list the rules files at the base tree {_budget_base[:12]}"
+                    )
+                _lt_base = {
+                    _lt_lf.unit_hash(_u)
+                    for _lt_base_text in _lt_base_texts
+                    for _u in _lt_lf.rule_units(_lt_base_text)
+                }
+                for _lt_path in _lt_files:
                     _lt_rel = _lt_path.relative_to(project_dir).as_posix()
-                    _lt_rc, _lt_base_text, _ = _lt_evidence.run_git(
-                        project_dir, "show", f"{_budget_base}:{_lt_rel}"
-                    )
-                    # Nonzero here is "not in that tree" — the base tree itself
-                    # already resolved — so every unit of a brand-new rules file
-                    # is new, which is what it is.
-                    _lt_base = (
-                        {_lt_lf.unit_hash(_u) for _u in _lt_lf.rule_units(_lt_base_text)}
-                        if _lt_rc == 0 else set()
-                    )
                     for _lt_unit in _lt_lf.rule_units(
                         _lt_path.read_text(encoding="utf-8")
                     ):
                         _lt_hash = _lt_lf.unit_hash(_lt_unit)
-                        if _lt_hash in _lt_base:
+                        if _lt_hash in _lt_base or _lt_hash in _lt_compacted:
                             continue
                         # Telemetry is PULLED, not pushed: nothing is printed on
                         # success, and the return value (appended vs. already
@@ -7434,6 +7464,163 @@ def cmd_check_learnings_pairing(project_dir: Path, argv: list[str] | None = None
     return 0
 
 
+def cmd_learnings_compact(project_dir: Path, argv: list[str]) -> int:
+    """Compact a learnings corpus into one-line rules under its caps.
+
+    ``--plan`` writes the worksheet (``--force`` replaces one that already
+    carries decisions). With no mode flag it validates the worksheet as it
+    stands and prints what ``--apply`` would do, which is the dry run.
+    ``--apply`` validates, writes, and records the compaction events.
+    ``--local`` replaces the commit as the undo with a verified backup.
+    Exit 0 on success, 1 when refused or unreadable, 2 on a usage error.
+    """
+    flags = {"--plan", "--apply", "--force", "--local", "--json"}
+    rejected = _reject_unknown_args("learnings-compact", argv, flags)
+    if rejected is not None:
+        return rejected
+    do_plan, do_apply = "--plan" in argv, "--apply" in argv
+    if do_plan and do_apply:
+        print(
+            "learnings-compact: --plan writes the worksheet and --apply reads it; "
+            "run them separately. Nothing ran.",
+            file=sys.stderr,
+        )
+        return 2
+    as_json, local, force = "--json" in argv, "--local" in argv, "--force" in argv
+
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import learnings_compact, learnings_files  # noqa: PLC0415 — lazy import
+    except ImportError:
+        print(
+            "error: learnings-compact could not import the plugin lib/ from "
+            "${CLAUDE_PLUGIN_ROOT}; nothing was changed.",
+            file=sys.stderr,
+        )
+        return 1
+
+    layout = learnings_files.resolve(project_dir)
+    if layout.state not in (learnings_files.STATE_NEW, learnings_files.STATE_BOTH):
+        print(
+            "learnings-compact: no rules tree to compact "
+            f"(layout: {layout.state}); a legacy corpus runs learnings-migrate first.",
+            file=sys.stderr,
+        )
+        return 1
+    path = learnings_compact.worksheet_path(project_dir)
+    if path is None:
+        print("learnings-compact: git could not say where the worksheet lives.", file=sys.stderr)
+        return 1
+
+    if do_plan:
+        if path.is_file() and not force:
+            try:
+                existing = learnings_compact.load(path)
+            except (OSError, ValueError):
+                existing = {}
+            if any((r.get("disposition") for r in existing.get("rows") or [])):
+                print(
+                    f"learnings-compact: {path} already carries decisions; --plan "
+                    "--force replaces it and loses them. Nothing was written.",
+                    file=sys.stderr,
+                )
+                return 1
+        try:
+            ws = learnings_compact.build_worksheet(project_dir)
+        except learnings_compact.CompactRefused as exc:
+            print(f"learnings-compact: REFUSED — {exc}", file=sys.stderr)
+            return 1
+        try:
+            learnings_compact.save(path, ws)
+        except OSError as exc:
+            print(f"learnings-compact: could not write {path}: {exc}. Nothing else changed.", file=sys.stderr)
+            return 1
+        if as_json:
+            print(json.dumps({"worksheet": str(path), "rows": len(ws["rows"])}))
+        else:
+            print(f"learnings-compact: wrote {path} — {len(ws['rows'])} rule(s) to decide.")
+            print(
+                "  Fill one `disposition` per row (the module docstring lists the five "
+                "actions), declare any new area file in `new_areas`, show the owner the "
+                "drop list, then run `prawduct-hook learnings-compact` to check it and "
+                "`--apply` to write."
+            )
+        return 0
+
+    try:
+        ws = learnings_compact.load(path)
+    except FileNotFoundError:
+        print("learnings-compact: no worksheet yet; run --plan first.", file=sys.stderr)
+        return 1
+    except (OSError, ValueError) as exc:
+        print(f"learnings-compact: cannot read {path}: {exc}", file=sys.stderr)
+        return 1
+
+    if do_apply:
+        try:
+            result = learnings_compact.apply(project_dir, ws, local=local)
+        except learnings_compact.CompactRefused as exc:
+            print(f"learnings-compact: REFUSED — {exc}", file=sys.stderr)
+            return 1
+        except learnings_compact.CompactInterrupted as exc:
+            reached = ", ".join(exc.written) or "nothing"
+            print(
+                f"learnings-compact: INTERRUPTED — {exc}. Reached disk: {reached}.\n"
+                f"  Restore the rules directory (`git checkout -- {learnings_files.RULES_DIR_REL}` "
+                "and remove any file it created, or copy back the --local backup), then re-run "
+                "--apply: the worksheet and its decisions are kept. Do NOT --plan --force.",
+                file=sys.stderr,
+            )
+            return 1
+        path.unlink(missing_ok=True)
+    else:
+        result = learnings_compact.validate(project_dir, ws)
+        result.refusals.extend(learnings_compact.undo_refusals(project_dir, local))
+
+    report = {
+        "applied": do_apply,
+        "refusals": result.refusals,
+        "writes": {rel: len(c.encode("utf-8")) for rel, c in result.outputs.items()},
+        "deletions": result.deletions,
+        "counts": result.counts,
+        "over_cap": result.over_cap,
+        "event_failures": result.event_failures,
+    }
+    if as_json:
+        print(json.dumps(report))
+    else:
+        verb = "applied" if do_apply else "would apply"
+        if result.refusals:
+            print("learnings-compact: REFUSED —")
+            for reason in result.refusals:
+                print(f"  - {reason}")
+        else:
+            print(f"learnings-compact: {verb} — " + ", ".join(
+                f"{n} {a}" for a, n in sorted(result.counts.items())
+            ))
+            for rel, size in sorted(report["writes"].items()):
+                print(f"  write {rel} ({size}B)")
+            for rel in result.deletions:
+                print(f"  delete {rel} (no rules left)")
+            for line in result.over_cap:
+                print(
+                    f"  NOTE: {line} — the corpus stays frozen until the owner approves "
+                    "drops or raises the cap"
+                )
+            if result.event_failures:
+                print(
+                    f"NOTE: {result.event_failures} learning.compacted event(s) could not be "
+                    "written to the governance ledger; the rules are on disk, and those rules "
+                    "lose their citation history",
+                    file=sys.stderr,
+                )
+            if do_apply:
+                print("  Commit this as one change; `git revert` is the undo.")
+    return 1 if result.refusals else 0
+
+
 def cmd_learnings_migrate(project_dir: Path, argv: list[str]) -> int:
     """Relayout ``.prawduct/learnings.md`` into ``.claude/rules/learnings/``.
 
@@ -7846,6 +8033,7 @@ _USAGE = (
     "update-gitignore [--dry-run]|"
     "audit-learnings [deprecated, inert]|learnings-obligation [deprecated, inert]|"
     "learnings-migrate [--apply] [--map <file>] [--propose-map] [--json] [--local]|"
+    "learnings-compact [--plan [--force]|--apply] [--local] [--json]|"
     "learnings-files [--for-diff] [--json]|"
     "norm-index-scaffold [--apply] [--json]|reanchor [--apply] [--json]|"
     "lifecycle-repair [--apply] [--json]|"
@@ -8548,8 +8736,22 @@ def main() -> int:
     attributes — so the classifier, and the ``cmd_stop`` probe that converted it
     into the harness block code, went with it rather than staying as handling
     for a condition no code can produce.
+
+    **The error-model norm is enforced here, once, for every command**
+    (`api-contract.md` § Direction: errors are attributed, never raised as
+    stack traces across the boundary). An exception no command handled becomes
+    one `error: <command>: <Type>: <message>` line on stderr and exit 1, where
+    it used to become a traceback that names no command and reads as the
+    plugin crashing. Commands still own their specific handling; this is the
+    floor under all of them. `SystemExit` and `KeyboardInterrupt` are not
+    `Exception`s and pass through untouched.
     """
-    return _dispatch()
+    try:
+        return _dispatch()
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- the boundary's floor: every unhandled error is attributed, never a traceback (error-model norm)
+        command = sys.argv[1] if len(sys.argv) > 1 else "(no command)"
+        print(f"error: {command}: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 1
 
 
 # --- Pre-dispatch argument shape --------------------------------------------
@@ -8747,6 +8949,8 @@ def _dispatch() -> int:
         return cmd_check_learnings_pairing(project_dir, sys.argv[2:])
     elif command == "learnings-migrate":
         return cmd_learnings_migrate(project_dir, sys.argv[2:])
+    elif command == "learnings-compact":
+        return cmd_learnings_compact(project_dir, sys.argv[2:])
     elif command == "check-operator-verification":
         return cmd_check_operator_verification(project_dir)
     elif command == "accept-operator-verification":

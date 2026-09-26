@@ -699,7 +699,8 @@ LAST_MEASURED_TOKENS = {
     # A declared raise: correcting a rule that could suppress findings is not
     # fundable by trimming, and the wrong reading cost more than 30 tokens would.
     # RAISED 2652 -> 2665, #820 (owner decision 2026-09-23): the declared suite moves from every chunk's Verify to the boundary — a default every consumer inherits, so the sentence carrying it is owed at each surface its reader meets. Compressed in place first; no duplication to pay from. DECLARED. (stale suite: no finding at the inner stage.)
-    "skills/critic/goals-1-3.md": 2665,
+    # RAISED 2665 -> 2668, learnings-one-line (the owner-confirmed design in that plan's Requirements Confidence, 2026-09-24): three new record-lint checks, and `TestEveryCheckCarriesASeverity` requires every check NAME on this surface, so there is no shorter form to pay from. DECLARED.
+    "skills/critic/goals-1-3.md": 2668,
     # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
     # a computed pass the gate can now print, which a reader who only knows
     # "uncovered means run a cumulative" will otherwise re-review straight
@@ -860,7 +861,8 @@ LAST_MEASURED_TOKENS = {
     # ONE finding for N occurrences, which is worth more than 83 tokens of payload.
     # RATCHETED 11235 -> 11232 (review-interval-extension, 2026-09-22): the chunk/final interval row and the
     # Small row restated for the covered frontier, in place and shorter.
-    "skills/critic/review-cycle.md": 11232,
+    # RAISED 11232 -> 11280, learnings-one-line (the owner-confirmed design in that plan's Requirements Confidence, 2026-09-24): the severity table gains the three new record-lint checks and the over-budget row its second regime. Rows compressed in place first (65 -> 48); every check name must appear here (`TestEveryCheckCarriesASeverity`). DECLARED.
+    "skills/critic/review-cycle.md": 11280,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -1205,7 +1207,15 @@ LAST_MEASURED_TOKENS = {
     # +65 on 2026-09-03 (learnings-v2-docs Chunk 04 resolutions, review R-9): the
     # framework-repo clause — in prawduct's own repo the last two routes turn
     # around, because the curator is the reader. A READING, no ceiling.
-    "methodology/reflection.md": 2845,
+    # +16 on 2026-09-24 (learnings-one-line Chunk 01): the budget paragraph was
+    # FALSIFIED by the chunk's gate (16KB core, agent raises, "never trim"), so
+    # it was corrected in the same commit rather than left for Chunk 03, and the
+    # five-part "good rules have" template that contradicts a one-line rule went
+    # with it. A READING, no ceiling.
+    # -9 on 2026-09-24 (learnings-one-line Chunk 03): Step 4's product-rule
+    # sentence rewritten to the one-line form, shorter than the heading form it
+    # replaced. A READING, no ceiling.
+    "methodology/reflection.md": 2852,
     # First reading, 2026-09-03, taken at birth: the standing block and the
     # forward notes, moved verbatim out of `reflection.md` (D2) so the learning
     # loop's guide is about the learning loop. On-demand class: a reading, no
@@ -4388,8 +4398,19 @@ class TestOtherMethodology:
         assert "`.claude/rules/learnings/`" in content              # the product rule
         assert "`/prawduct:report-bug`" in content                  # framework friction
         assert "is **not written as a product rule**" in content    # portable discipline
-        assert "the instance that earned it, inline" in content
-        assert "never trim a rule to fit" in content
+        # Renegotiated 2026-09-24 (learnings-one-line Chunk 03): the product
+        # rule was "a heading that carries the rule, its brief why, and the
+        # instance that earned it, inline", the form the corpus regrew in. It is
+        # one `- ` line now, with the instance as a clause on that line.
+        assert "one `- ` line" in content
+        assert "the instance that earned it" in content
+        # Renegotiated 2026-09-24 (learnings-one-line): the payment rule used to
+        # end "never trim a rule to fit" and let an agent raise any budget. The
+        # corpus regrew four times under it; a rule is now one line, and
+        # core.md's cap is the owner's.
+        assert "one line of at most 250 characters" in content
+        assert "only the owner raises it" in content
+        assert "never trim" not in content
         # The standing block lives elsewhere now; this guide only points.
         assert "`methodology/session-hygiene.md`" in content
         for label in ("`STATE`", "`RUNNING`", "`SAFE TO CLEAR`"):
@@ -5057,7 +5078,7 @@ class TestCriticGoals13:
         # BLOCKING set, stated in full because this file may point nowhere —
         # see LAST_MEASURED_TOKENS.
         # RAISED 2653 -> 2666 (#820, 2026-09-23) — see LAST_MEASURED_TOKENS.
-        assert tokens < 2666, f"goals-1-3.md is ~{tokens} tokens, should be <2666"
+        assert tokens < 2669, f"goals-1-3.md is ~{tokens} tokens, should be <2669"
 
     def test_is_self_contained(self):
         """No follow-the-pointer reads at review time — the acceptance criterion
@@ -5629,7 +5650,7 @@ class TestReviewCycle:
         # Small row now states what inference answers (`chunk`; `final` by
         # declaration). Declared, not paid — reading + 1.
         # RATCHETED 11236 -> 11233 (review-interval-extension, 2026-09-22) with the reading.
-        assert tokens < 11233, f"review-cycle.md is ~{tokens} tokens, should be <11233"
+        assert tokens < 11281, f"review-cycle.md is ~{tokens} tokens, should be <11281"
 
     def test_framework_checks_token_budget(self):
         # Ceiling 1150. This file is `final`/`cumulative` payload: SKILL.md's

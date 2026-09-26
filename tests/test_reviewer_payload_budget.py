@@ -162,7 +162,8 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # +4 more, same PR after its cumulative review, DECLARED: the stale verdict at `final` becomes an
     # observation that the suite is owed before the work lands, so direct-commit and final-only
     # paths are not left with nothing flagging a missing suite run.
-    "single-pass-inner": 6349,
+    # +3 on 2026-09-24 (learnings-one-line), DECLARED: see the dispatched-reviewer entry below.
+    "single-pass-inner": 6352,
     # RAISED +43 (reviewer-prompt-file-list, 2026-09-22), DECLARED: all of it the
     # `review-protocol.md` template change that sends coordinator reviewers to the
     # manifest for their file sets; see the dispatched-reviewer entry for the price.
@@ -174,7 +175,8 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # +17 more, same PR after its cumulative review, DECLARED: the stale verdict at `final` becomes an
     # observation that the suite is owed before the work lands, so direct-commit and final-only
     # paths are not left with nothing flagging a missing suite run.
-    "single-pass-full": 20444,
+    # +48 on 2026-09-24 (learnings-one-line), DECLARED: see the dispatched-reviewer entry below.
+    "single-pass-full": 20492,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -214,13 +216,21 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # +13 more, same PR after its cumulative review, DECLARED: the stale verdict at `final` becomes an
     # observation that the suite is owed before the work lands, so direct-commit and final-only
     # paths are not left with nothing flagging a missing suite run.
-    "dispatched-reviewer": 19646,
+    # +48 on 2026-09-24 (learnings-one-line), DECLARED, on every route that
+    # loads `review-cycle.md` (+3 on the inner route, via `goals-1-3.md`): the
+    # record-lint severity table gains the two learnings format checks and the
+    # unapproved core-raise warning, and the over-budget row its compacted-corpus
+    # regime. Rows compressed in place first (65 -> 48). Priced against the SUM:
+    # a reviewer meeting a BLOCKING format finding with no stated severity rates
+    # it for itself, and the check exists to stop a corpus that every session
+    # pays for, at 15-35k tokens a session, from regrowing a fifth time.
+    "dispatched-reviewer": 19694,
 }
 
 PAYLOAD_CEILINGS = {
-    "single-pass-inner": 6350,
-    "single-pass-full": 20445,
-    "dispatched-reviewer": 19647,
+    "single-pass-inner": 6353,
+    "single-pass-full": 20493,
+    "dispatched-reviewer": 19695,
 }
 
 

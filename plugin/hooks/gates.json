@@ -35,13 +35,25 @@
       "id": "learnings-over-budget",
       "name": "learnings-over-budget",
       "since": "3.6.0",
-      "summary": "a .claude/rules/learnings/ file over its byte budget and grown this session must pay from duplication or raise the budget with a reason"
+      "summary": "a .claude/rules/learnings/ file over its byte budget and grown this session must pay by merging, retiring or moving a rule; core.md's cap is raised only by the owner"
     },
     {
       "id": "learnings-budget-unreasoned",
       "name": "learnings-budget-unreasoned",
       "since": "3.6.0",
       "summary": "a learnings_budgets: override in project-state.yaml must carry a reason"
+    },
+    {
+      "id": "learnings-rule-too-long",
+      "name": "learnings-rule-too-long",
+      "since": "3.7.0",
+      "summary": "every learnings rule is one line of at most 250 characters (in a not-yet-compacted corpus: every line the session added)"
+    },
+    {
+      "id": "learnings-rule-body",
+      "name": "learnings-rule-body",
+      "since": "3.7.0",
+      "summary": "learnings rules carry no body lines; the story behind a rule belongs in the session reflection"
     }
   ]
 }
