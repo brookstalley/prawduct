@@ -5,6 +5,23 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-26: develop opens 3.6.2-dev.1
+
+<!-- prawduct: type=chore | scope=dev-track-bump-3.6.2-dev.1 -->
+
+The dev track's version moves from `3.6.2-dev` to `3.6.2-dev.1` in the four carriers
+(`plugin/VERSION`, `plugin.json`, `pyproject.toml`, and the open `plugin/CHANGELOG.md` heading). This
+is so repos on the develop track pick up `learnings-one-line` (#902) and `review-friction`, which
+merged after the v3.6.1 cut reopened `develop`. The version string is the plugin cache key, so a repo
+that already resolved `3.6.2-dev` would otherwise never see them. Owner-directed, 2026-09-26.
+
+**The release number is still the cut's.** `learnings-one-line` registers its two gates
+`since: 3.7.0`, and its entry says what a cut under any other number owes. This bump labels the dev
+track only.
+
+**No consumer notes were owed.** Both scopes already carry their entries in the open
+`plugin/CHANGELOG.md` section.
+
 
 ## 2026-09-25: reviews and Stop blocks cost what they earn
 
