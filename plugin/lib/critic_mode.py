@@ -425,7 +425,8 @@ def _explicit_mode(
     state is behind HEAD. Sending that review to ``cumulative`` would price an
     inner-stage review at boundary rigor, so the token stands and the rationale
     says why. When mid-plan nothing is unreviewed, the token stands too, and
-    ``critic-begin`` refuses the empty interval honestly. Both answers come from
+    ``critic-begin`` answers the empty interval with exit 3 (no review needed),
+    because the last review already covers HEAD. Both answers come from
     :func:`_mid_plan_verdict`, the owner inference also asks.
     """
     if token in _WORKING_TREE_MODES and _working_tree_is_empty(project_dir):
@@ -441,7 +442,7 @@ def _explicit_mode(
                         f"explicit-args {token} (mid-plan, nothing unreviewed): "
                         f"{_mid_plan_note(plan, progress)}; the last review already "
                         "covers HEAD, so this interval is empty and `critic-begin` "
-                        "will refuse it; a whole-branch `cumulative` is not owed mid-plan"
+                        "answers no review needed; a whole-branch `cumulative` is not owed mid-plan"
                     )
                 return token, (
                     f"explicit-args {token} (mid-plan, not redirected): "

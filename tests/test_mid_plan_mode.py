@@ -265,8 +265,8 @@ class TestExplicitTokensMidPlan:
     ):
         """Mid-plan with the reviewed chunk committed verbatim, inference answers
         `deferred`. The named token must come from the same verdict. It stands, so
-        `critic-begin` gives the honest empty-interval refusal, and it never becomes
-        a whole-branch `cumulative` mid-plan."""
+        `critic-begin` answers the empty interval with exit 3 (no review needed), and
+        it never becomes a whole-branch `cumulative` mid-plan."""
         repo = _repo(tmp_path)
         (repo / "src/app.py").write_text("x = 2  # chunk 1\n")
         _review_uncommitted(repo, "1")
