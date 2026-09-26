@@ -1251,4 +1251,22 @@ class TestLearningsCapSection:
         subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
         subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "raise"], cwd=repo, check=True)
         body = pp._section_learnings_cap(repo, repo / ".prawduct", base).body
-        assert "CHANGES on this branch" in body and "2026-09-24" in body and "quoted in the PR description" in body
+        assert "RISES on this branch" in body and "2026-09-24" in body and "quoted in the PR description" in body
+        assert "reason" not in body
+
+    def test_a_removed_cap_is_not_called_a_raise(self, tmp_path):
+        """Compacting a corpus drops its old override. The cap in force falls to
+        the default, so the section must not ask for the owner's approval."""
+        from lib import pr_payload as pp
+        repo = tmp_path / "r"
+        (repo / ".prawduct").mkdir(parents=True)
+        state = repo / ".prawduct" / "project-state.yaml"
+        state.write_text('x: 1\nlearnings_budgets:\n  core.md: {kb: 105, reason: "legacy", owner_approved: 2026-09-01}\n')
+        g = lambda *a: subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", *a], cwd=repo, check=True, capture_output=True)
+        g("init", "-q", "-b", "main"); g("add", "-A"); g("commit", "-qm", "base")
+        base = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+        state.write_text("x: 1\n")
+        g("add", "-A"); g("commit", "-qm", "compact")
+        body = pp._section_learnings_cap(repo, repo / ".prawduct", base).body
+        assert "does not rise" in body and "105KB -> 12KB" in body
+        assert "quoted in the PR description" not in body and "legacy" not in body

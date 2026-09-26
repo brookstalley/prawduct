@@ -706,10 +706,29 @@ def _section_learnings_cap(project_dir: Path, prawduct_dir: Path, base: str) -> 
     def _cap(entry: dict) -> tuple:
         return (entry.get("kb"), entry.get("owner_approved"))
 
+    def _show(entry: dict) -> str:
+        # The two fields that decide the cap, never ``reason:`` — a legacy reason
+        # runs to kilobytes and says nothing about whether the cap rose.
+        shown = {k: entry[k] for k in ("kb", "owner_approved") if entry.get(k)}
+        return str(shown) if shown else "the default"
+
     if _cap(before) == _cap(after):
         return Section("learnings_cap", body="this branch does not change core.md's cap")
+    # Judged on the cap IN FORCE, not the entry's text: removing or lowering an
+    # override (what compacting a corpus does) needs no approval, and calling it
+    # a raise would put a false WARNING on every compaction PR.
+    core = learnings_files.CORE_NAME
+    kb_before = record_lint._effective_kb(core, {core: before})
+    kb_after = record_lint._effective_kb(core, {core: after})
+    if kb_after <= kb_before:
+        return Section("learnings_cap", body=(
+            f"core.md's cap entry changes on this branch ({_show(before)} -> {_show(after)}), "
+            f"but the cap in force does not rise: {kb_before}KB -> {kb_after}KB. "
+            "Lowering or removing a cap needs no owner approval."
+        ))
     return Section("learnings_cap", body=(
-        f"core.md's cap CHANGES on this branch: {before or 'the default'} -> {after or 'the default'}. "
+        f"core.md's cap RISES on this branch: {kb_before}KB -> {kb_after}KB "
+        f"({_show(before)} -> {_show(after)}). "
         "`owner_approved:` is text an agent can write: this raise needs the owner's "
         "approval quoted in the PR description, or it is a WARNING."
     ))
