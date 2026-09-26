@@ -1044,7 +1044,10 @@ LAST_MEASURED_TOKENS = {
     # before" or that declaring raises a file-count threshold — the fallback
     # both sentences described is retired, so the paragraph states the one
     # effect that remains (size-independence on the named paths). A CUT.
-    "methodology/discovery.md": 5116,
+    # -529 on 2026-09-26 (drop-risk-surface-ask): § Surface Risk Surfaces is
+    # removed — owner ruling that the question is not asked; the key stays an
+    # unprompted opt-in documented in the project-state template. A CUT.
+    "methodology/discovery.md": 4587,
     # 4301 -> 4791 on 2026-08-21 (Chunk 02): `### Partition: Serial or
     # Delegated`, the plan-time half of the placement bet. The partition prompt
     # where chunk boundaries are drawn (R6), the `partition:` field the decision

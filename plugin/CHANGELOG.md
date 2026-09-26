@@ -14,6 +14,19 @@ release process keeps the two in sync (one headline per shipped release).
 
 **Rolling notes for the next release — nothing has shipped under this number yet.** Entries accumulate here as work lands on `develop`; the cut renames this heading to its release number.
 
+**`drop-risk-surface-ask`** — **prawduct stops asking where a missed defect would cost you
+most.** Discovery asked it, a session advisory (`risk-surfaces-undeclared`) repeated it, and
+`/prawduct:doctor` graded a repo "degraded" until you answered. All three are gone, along with
+`coverage-status`'s "NOT DECLARED" line. Answering mostly bought more review: a small
+change to a listed path got three reviewers instead of one, and a short plan touching one owed
+per-chunk reviews. Without it, review still deepens on prawduct's built-in paths, on the contract
+paths in `boundary-patterns.md`, and at 12 or more changed files, and the review before a PR still
+runs everything. The `risk_surfaces:` key still works if you want it; nothing asks for it. Note
+that a declared list *replaces* the built-in and contract paths rather than adding to them — the
+project-state template now says so. Doctor still flags a `risk_surfaces:` value it cannot read,
+since that sends every review to three reviewers. An advisory you already had clears on your next
+session.
+
 **`review-friction`** — **a chunk you committed before its review gets a chunk review, not a
 full bundle review, and a turn that says `DO NOT CLEAR` no longer trips the end-of-session gates.**
 
