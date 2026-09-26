@@ -23,13 +23,13 @@ The stop hook enforces review for code changes when a build plan exists: it asks
 
 Four modes: `chunk`, `final`, `cumulative`, `verify-resolutions`. The canonical caller is `/prawduct:critic` (no args) — the SKILL forwards any invocation arguments verbatim to `prawduct-hook infer-critic-mode`, which owns the full precedence and records `mode_chosen_by` as its verbatim rationale string. Three precedence layers, highest first, all implemented inside the helper:
 
-1. **Per-invocation override** — an explicit mode argument (`/prawduct:critic chunk` etc.). Rationale: `"explicit-args"` — except a named `chunk`/`final` on a clean tree, whose interval is provably empty: the helper answers `cumulative`, rationale `explicit-args <token> redirected: …` — the operator's word survives into `mode_chosen_by`.
+1. **Per-invocation override** — an explicit mode argument (`/prawduct:critic chunk` etc.). Rationale: `"explicit-args"` — except a named `chunk`/`final` on a clean tree, whose interval is provably empty: the helper answers `cumulative`, rationale `explicit-args <token> redirected: …` — the operator's word survives into `mode_chosen_by`. Not mid-plan (below): there the token stands.
 2. **Plan-level override** — the active build plan's current chunk's `Critic mode:` field (the current chunk is the first unticked `## Status` box). A valid value wins over inference with rationale `plan-override: <mode>`; an absent, blank, or unrecognized value is ignored.
-3. **Inference** — the four rules (`verify-resolutions > cumulative > final > chunk`), with the short-plan deferral between the second and third: an eligible plan with code in flight answers `deferred` (rationale `short-plan deferral: …`), which dispatches nothing; a fix-in-progress or a committed bundle still gets the review rules 1–2 name.
+3. **Inference** — the four rules (`verify-resolutions > cumulative > final > chunk`), with the short-plan deferral between the second and third: an eligible plan with code in flight answers `deferred` (rationale `short-plan deferral: …`), which dispatches nothing; a fix-in-progress still gets rule 1's review, and a committed bundle rule 2's at the boundary. **Mid-plan** (2+ unticked chunks of the branch's own plan), a clean tree answers `chunk` over the unreviewed interval, or `deferred` (nothing unreviewed, or a short plan).
 
 Authoring heuristic (what inference picks per plan shape, when an explicit declaration earns the override): `methodology/planning.md` "Critic Mode Per Chunk".
 
-**Default when unsure (canonical statement):** If the mode is missing, unrecognized, or no inference rule fires, run the inner-stage review of whatever interval exists — `chunk` on a dirty tree, `cumulative` on a clean tree with a committed bundle. `final` is never a default: it is inferred on a signal or declared. The boundary is never inferred away, and neither direction of error is safe ("Severity is stage-keyed", below).
+**Default when unsure (canonical statement):** If the mode is missing, unrecognized, or no inference rule fires, run the inner-stage review of whatever interval exists — `chunk` on a dirty tree, `cumulative` on a clean tree with a committed bundle at the boundary. `final` is never a default: it is inferred on a signal or declared. The boundary is never inferred away, and neither direction of error is safe ("Severity is stage-keyed", below).
 
 ## Per-Mode Behavior
 
@@ -40,7 +40,7 @@ Authoring heuristic (what inference picks per plan shape, when an explicit decla
 | **Goals run** | 1, 2, 3 | All 7 goals | All 7 goals | 1, 2, 3 |
 | **Goals skipped** | 4-7; Learnings Cross-Check; Backlog Reconciliation; Records Pass; Framework-Specific Checks (7-10); README/top-level docs scan | None | None | Same as `chunk` |
 | **New findings rated** | The inner BLOCKING set only — every other rated item is an OBSERVATION (see "Severity is stage-keyed") | Same as `chunk`, Goals 4–7 included | Every severity | **BLOCKING only**, and only from the inner set — anything lesser is an OBSERVATION in the reviewer's report, never a `findings` entry (see "A re-review does not manufacture work") |
-| **Review interval** (derived by `critic-begin`, recorded in the manifest) | Last blocker-free reviewed tree (else HEAD's) → captured working tree | Same as `chunk` | Merge-base tree → HEAD's tree (base branch from `prawduct-hook resolve-base`) — the committed PR bundle | Prior review fact's tree → captured working tree (see "Verify-resolutions anchoring and demotion") |
+| **Review interval** (derived by `critic-begin`, recorded in the manifest) | Last blocker-free reviewed tree (else the merge-base if nothing judgeable is uncommitted, else HEAD's) → captured working tree | Same as `chunk` | Merge-base tree → HEAD's tree (base branch from `prawduct-hook resolve-base`) — the committed PR bundle | Prior review fact's tree → captured working tree (see "Verify-resolutions anchoring and demotion") |
 | **Execution** (roster derived by `critic-begin`) | Always single-pass | Coordinator when a risk surface is touched or 12+ judgeable files change; else single-pass | Coordinator when a risk surface is touched or 12+ judgeable files change; else single-pass | Always single-pass |
 | **Target wall-clock** | 1-2 min | 4-10 min | 4-10 min | 1-2 min |
 | **When invoked** | Between chunks of a multi-chunk plan, before committing | End of work cycle (last chunk), non-chunked medium+ work | Before opening a PR (gated by `/prawduct:pr create`). Catches cross-chunk integration cracks. | After fixing prior BLOCKING/WARNING findings — its resolution facts unblock the same evidence, and its review fact extends coverage over the fix delta. Demotes to `chunk`/`final` when no usable prior fact exists or scope widens past the threshold. |
@@ -317,7 +317,7 @@ prawduct-hook check-cumulative-critic   # PR path
 
 If it passes, you are done — stop; if it does not, the span is not free and the round is real.
 
-**Batch the fixes: ONE commit, then ONE `verify-resolutions`** — and there, don't judge whether the
+**Batch the fixes: fix in the working tree, ONE `verify-resolutions` over them, then ONE commit** (after a `cumulative`, a fix committed first still infers the pass: rule 1b) — and there, don't judge whether the
 pass is warranted: ask. `critic-begin` exits 3 (`no review needed`, no session state written) when
 the post-fix delta is free, applying the same predicate the gate charges by.
 Fix-commit-verify per finding multiplies 5-10 minute rounds and hands each new round the prose the

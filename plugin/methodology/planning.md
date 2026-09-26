@@ -168,7 +168,7 @@ error handling go missing one context at a time.
 
 **Heuristic — what inference will pick, and when to override:**
 - **Single-chunk plan** → inference picks `final` — unless the plan is short (next bullet), where the same plan owes only its boundary `cumulative`. No declaration needed.
-- **Multi-chunk plan** → `chunk` for non-final chunks, `final` for the last — again unless the plan is short. No declaration needed.
+- **Multi-chunk plan** → `chunk` for non-final chunks, `final` for the last — again unless the plan is short. No declaration needed. Committed before its review, a non-final chunk still infers `chunk` (the stage is cycle position, not commit order).
 - **Short plan** (at most 3 chunks, nothing the branch changes is a risk surface) → no per-chunk review is inferred at all: mid-chunk inference answers `deferred`, the Stop gate warns rather than blocks on a non-final chunk, and the last chunk's `cumulative` is every chunk's review (#292). Declaring `Critic mode:` on **any** chunk opts the whole plan back into per-chunk review — do it when an early chunk is a keystone you want seen before the rest is built on it.
 - **Override forward to `final`** on an early chunk that lands an architectural keystone whose coherence matters before later chunks build on it.
 - **Override forward to `cumulative`** on the last chunk of a plan that ships as a single PR — typically by declaring `Type: cumulative-final` (the chunk's review IS the one cumulative pass: commit the chunk, then run `/prawduct:critic cumulative` once — no separate `final` and no explicit `Critic mode:` needed).
@@ -176,7 +176,7 @@ error handling go missing one context at a time.
 
 **Why this layering:** the per-chunk goals catch the high-frequency failures cheaply because they scope to local changes; the final-chunk goals need the full diff — coherence is across files — so they belong at the end of the cycle.
 
-**Per-chunk commit is the contract.** `chunk`-mode reviews assume the previous chunk was committed, so the working-tree diff is just the current chunk. Batch-commit-at-end plans break this — if you need that, override every chunk to `final` (heavy but safe; squash-at-end with `chunk`-mode has unbounded diff scope and is wrong).
+**Per-chunk commit is the contract** — review the chunk, fix, then commit it. `chunk`-mode reviews assume the previous chunk was committed, so the working-tree diff is just the current chunk. Batch-commit-at-end plans break this — if you need that, override every chunk to `final` (heavy but safe; squash-at-end with `chunk`-mode has unbounded diff scope and is wrong).
 
 **Default when unsure.** A missing or unrecognized mode is inferred, and when no rule fires the review is the inner-stage `chunk` — never `final` by default (canonical rule: `skills/critic/review-cycle.md`). Rely on inference rather than declaring a mode to buy depth the chunk has not earned.
 

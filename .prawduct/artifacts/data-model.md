@@ -124,6 +124,24 @@ An absent file is the empty store.
   against, so declining an observation stops costing the reasoning — before it had one, the only
   discharges were to FIX it (moving the tree, buying a round) or to say nothing. The two id
   namespaces are disjoint (`R-1` against `O-1`), which is what lets one join key address both.
+  `duration_seconds` is the reviewers' own **estimate** (the slowest partial's), never a clock.
+  **`dispatched_at` (optional, UTC ISO-8601)** is the clock: the stamp `critic-begin`'s dispatch
+  mark recorded, read by `critic-consolidate` when it mints the fact (`review_dispatch.peek`, the
+  same tree check the ledger append's `consume` makes, clearing nothing — the fact is minted
+  before the ledger append consumes the mark). The interval ends at the fact's own envelope `ts`,
+  and `review_dispatch.fact_interval_seconds` is its one reader, which carries the plausibility
+  bound. **Absent means NOT MEASURED**, never zero or null: a fact minted before the key existed,
+  or from a review that was not marked, is estimate-only, and every consumer
+  (`coverage.count_branch_rounds`, which the `uncovered:` gate's round tally renders) counts the
+  clocked and estimated rounds apart and labels the estimate as one. No envelope `schema` moves:
+  the key is additive, and absent is a valid, meaningful state.
+  `[DECISION: 2026-09-25, #882, owner ruling (option 1): the dispatch clock rides the review FACT
+  body, not only the ledger | the evidence store is shared by every worktree of the clone while a
+  ledger is per worktree, so a tally joining facts to the ledger at read time (option 2) sees only
+  its own worktree's rounds and undercounts delegated or parallel work. Only the start stamp is
+  stored: the end is the envelope `ts`, so a stored "measured seconds" would be a second copy of
+  a number two stored stamps already determine | owner can veto]` Authority sits outside this
+  artifact, in `build-plan-review-friction.md` § Owner rulings.
 - **Resolution fact `body`** — points at the finding it resolves (`{review_id, fid}`), the
   `disposition` (`fixed` | `waived`), the `verified_by` review that attests it, the `at_tree` it was
   verified against, and a `rationale` (required for `waived`). A resolution may only originate from a
@@ -149,7 +167,9 @@ An absent file is the empty store.
   key every yield query groups on, and the authority even if a caller's body offers its own), the
   `interval` it judged, and whatever that guard needs to answer its own yield question later — for
   `critic-dispatch-free-interval`, the `free_files` it waved through plus `mode`/`scope`/`chunk`/
-  `branch`. **The interval is nested under `interval`, never spread to the body's top level**, which
+  `branch`. The other two `critic-begin` exit-3 answers, `critic-dispatch-nothing-to-verify` (a verify
+  pass over an unchanged tree) and `critic-dispatch-head-covered` (a `chunk`/`final` whose last review
+  covers HEAD), carry `mode`/`scope`/`chunk`/`branch`/`dispatch_commit`: every exit 3 records one. **The interval is nested under `interval`, never spread to the body's top level**, which
   is where a coverage edge carries `base_tree`/`head_tree`: one level down, no reader walking bodies
   for edges can mistake a refusal for one. **This kind is purely observational and CANNOT become
   authoritative** — composition derives edges from `kind == "review"` alone, so a refusal contributes

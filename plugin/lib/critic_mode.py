@@ -37,7 +37,15 @@ return the first that fires:
      branch is ≥2 commits ahead of the detected base branch AND no
      ``cumulative``-mode findings file exists for current HEAD. Signal:
      builder has shipped chunks and is at the ``/pr create`` precondition
-     point.
+     point. **Not mid-plan** (the branch's own plan still owes a later
+     review): there a clean tree means the builder committed the chunk
+     before reviewing it, which is inner-stage work, so the answer is
+     ``chunk`` over the unreviewed interval — from the covered frontier, or
+     the merge-base when no blocker-free reviewed state is behind HEAD — or ``deferred``
+     when nothing is unreviewed or a short plan defers
+     (:func:`_mid_plan_answer`). The stage is keyed on cycle position, not
+     commit order (``nonfunctional-requirements.md`` § Direction, the ruling
+     beneath the stage-keyed rigor norm).
   2b. ``deferred`` (#292, the short-plan deferral) — the branch's plan has
      ≤ :data:`SHORT_PLAN_MAX_CHUNKS` chunks, no chunk declares a
      ``Critic mode:``, the branch is not the base itself, nothing it has
@@ -54,7 +62,8 @@ return the first that fires:
      non-chunked work).
   4. ``cumulative`` when the tree is clean and a committed bundle is
      dispatchable, since a ``chunk``/``final`` interval ends at the working
-     tree and, with nothing unreviewed behind HEAD, would be empty and refused; otherwise ``chunk`` —
+     tree and, with nothing unreviewed behind HEAD, would be empty (and
+     ``critic-begin`` answers an empty interval without a review) — except mid-plan, which answers as rule 2 does; otherwise ``chunk`` —
      grounded on the plan when one exists, and the bare default when none
      does. ``final`` is never a default: the stage-keyed rigor norm
      (`nonfunctional-requirements.md` § Direction) says unsure defaults to the
@@ -184,15 +193,14 @@ def _unrecognized_mode_note(token: str, line_num: int | None = None) -> str:
     return note
 
 
-#: The two modes whose interval ENDS at the working tree — it starts at HEAD's
-#: tree, or at the covered frontier behind it when commits since that are
-#: unreviewed (`gates.covered_frontier`) — and therefore the only two an explicit
-#: token can name into an empty review. The clean-tree redirect below treats
-#: them as empty whenever the tree is clean; with a frontier behind HEAD that is
-#: not strictly so, and the redirect then sends the review to `cumulative`, a
-#: wider span than needed. Accepted: it errs toward more review, never less. `cumulative`
-#: reviews the committed bundle and `verify-resolutions` the delta since a prior
-#: review fact; neither goes empty because the working tree is clean.
+#: The two modes whose interval ENDS at the working tree — where it starts is
+#: `critic_consolidate.working_tree_interval_base`'s answer — and therefore the
+#: only two an explicit token can name into an empty review. The clean-tree
+#: redirect below sends them to `cumulative` at the boundary; mid-plan it asks
+#: the interval owner first (:func:`_mid_plan_answer`), because there the
+#: unreviewed commits are inner-stage work and a `chunk` interval can reach them.
+#: `cumulative` reviews the committed bundle and `verify-resolutions` the delta
+#: since a prior review fact; neither goes empty because the working tree is clean.
 _WORKING_TREE_MODES = frozenset({"chunk", "final"})
 
 
@@ -316,6 +324,9 @@ def infer_mode(
         ext = _extension()
         if ext:
             return MODE_DEFERRED, f"extension-deferred (mid-plan, clean tree): {ext}"
+        mid = _mid_plan_answer(project_dir, prawduct_dir, plan, progress, "rule-2")
+        if mid:
+            return mid
         return "cumulative", f"rule-2 cumulative: {cumulative_reason}"
 
     # Short-plan deferral (#292), between rules 2 and 3. Rules 1, 1b and 2 are
@@ -338,14 +349,19 @@ def infer_mode(
 
     # Rule 4: the default when nothing else fired is the INNER-STAGE review of
     # whatever interval exists (the stage-keyed rigor norm). `chunk` and
-    # `final` both end at the captured working tree (from HEAD's tree, or from
-    # the covered frontier behind it), so on a clean tree with nothing
-    # unreviewed behind HEAD their interval is EMPTY and `critic-begin`
-    # refuses — correctly, but only after the round-trip. A mode that cannot
-    # review anything is not the answer to "what should I run", whichever rule
-    # matched. `cumulative` is the mode whose interval is committed, and it is
+    # `final` both end at the captured working tree and start where
+    # `critic_consolidate.working_tree_interval_base` says: HEAD's tree, the
+    # covered frontier behind it, or — with no reviewed state behind HEAD and
+    # nothing judgeable uncommitted — the merge-base. With nothing unreviewed behind HEAD on a
+    # clean tree their interval is EMPTY and `critic-begin` answers it without a review,
+    # but only after the round-trip. A mode that cannot review anything is not
+    # the answer to "what should I run", whichever rule matched. At the
+    # boundary `cumulative` is the mode whose interval is committed, and it is
     # what the refusal message named as the remedy — so a clean tree with a
-    # dispatchable bundle answers `cumulative`, and everything else answers
+    # dispatchable bundle answers `cumulative`. Mid-plan it does not: the stage
+    # is keyed on where in the cycle the review sits, not on whether the builder
+    # committed first, so the redirect asks :func:`_mid_plan_answer` before
+    # sending an inner-stage review to the boundary. Everything else answers
     # `chunk`. A plan grounds the choice when one exists; without one, `chunk`
     # is still the answer, because a planless diff is an uncommitted interval
     # and the cheap review of it is the default. `final` is never the
@@ -355,6 +371,9 @@ def infer_mode(
     if _working_tree_is_empty(project_dir):
         redirect = _clean_tree_redirect(prawduct_dir, project_dir)
         if redirect:
+            mid = _mid_plan_answer(project_dir, prawduct_dir, plan, progress, "rule-4")
+            if mid:
+                return mid
             return "cumulative", f"rule-4 cumulative: {redirect}"
     if total > 0:
         return "chunk", (
@@ -398,10 +417,37 @@ def _explicit_mode(
     committed beyond it, or a fresh cumulative record already covering HEAD).
     Then the token stands and the operator gets the honest empty-interval
     refusal instead of a redirect to a second one — the same rule rule 4 keeps.
+
+    **Nor mid-plan, where the interval is not empty.** A clean tree mid-plan
+    still holds unreviewed commits when the builder committed the chunk before
+    reviewing it, and the ``chunk``/``final`` interval reaches them — from the
+    covered frontier, or from the merge-base when no blocker-free reviewed
+    state is behind HEAD. Sending that review to ``cumulative`` would price an
+    inner-stage review at boundary rigor, so the token stands and the rationale
+    says why. When mid-plan nothing is unreviewed, the token stands too, and
+    ``critic-begin`` answers the empty interval with exit 3 (no review needed),
+    because the last review already covers HEAD. Both answers come from
+    :func:`_mid_plan_verdict`, the owner inference also asks.
     """
     if token in _WORKING_TREE_MODES and _working_tree_is_empty(project_dir):
         redirect = _clean_tree_redirect(prawduct_dir, project_dir)
         if redirect:
+            plan = buildplan_refs.resolve_branch_plan(project_dir, prawduct_dir)
+            progress = buildplan_refs.resolve_chunk_progress(project_dir, plan.path)
+            verdict = _mid_plan_verdict(project_dir, plan, progress)
+            if verdict is not None and verdict[0] != _MID_PLAN_UNREACHABLE:
+                kind, start = verdict
+                if kind == _MID_PLAN_NOTHING_UNREVIEWED:
+                    return token, (
+                        f"explicit-args {token} (mid-plan, nothing unreviewed): "
+                        f"{_mid_plan_note(plan, progress)}; the last review already "
+                        "covers HEAD, so this interval is empty and `critic-begin` "
+                        "answers no review needed; a whole-branch `cumulative` is not owed mid-plan"
+                    )
+                return token, (
+                    f"explicit-args {token} (mid-plan, not redirected): "
+                    f"{_mid_plan_note(plan, progress)}; {_interval_note(start)}"
+                )
             return "cumulative", f"explicit-args {token} redirected: {redirect}"
     return token, "explicit-args"
 
@@ -410,9 +456,12 @@ def _clean_tree_redirect(prawduct_dir: Path, project_dir: Path) -> str:
     """Rationale for answering ``cumulative`` on a clean tree, or ``""``.
 
     ``chunk`` and ``final`` both end at the working tree, so on a clean tree
-    their interval is empty unless a covered frontier sits behind HEAD, and an
-    empty interval ``critic-begin`` refuses. Recommending one anyway costs a
-    round-trip and names no remedy the caller didn't already have.
+    their interval is empty unless unreviewed commits sit behind HEAD, and
+    ``critic-begin`` answers an empty interval without a review. Recommending one
+    anyway costs a round-trip and names no remedy the caller didn't already have.
+    This answers the BOUNDARY half only: both callers ask the mid-plan owner,
+    :func:`_mid_plan_verdict`, before taking the redirect, because mid-plan those
+    commits are inner-stage work the ``chunk`` interval can reach.
 
     The caller gates this on :func:`_working_tree_is_empty`, NOT on
     :func:`_get_uncommitted_code_files` — those answer different questions, and
@@ -500,6 +549,151 @@ def _plan_relation_note(plan) -> str:
         "branch's name matches no plan's declared scope, so the pointer stands "
         "unconfirmed"
     )
+
+
+# ---------------------------------------------------------------------------
+# Mid-plan: the stage is keyed on cycle position, not on commit order
+# ---------------------------------------------------------------------------
+
+
+def _mid_plan_start(project_dir: Path, plan, progress) -> "dict | None":
+    """Where the ``chunk`` interval would start, when the branch is mid-plan.
+
+    ``None`` when it is not mid-plan, which is two conditions, both required:
+
+    - **the plan is this branch's** (``SOURCE_SCOPE_NAMED``). A plan reached
+      only through the ``active_build_plan`` pointer is *assumed* related, and
+      a branch whose plan cannot be shown keeps rule 2's boundary answer — the
+      boundary is never inferred away on an assumption;
+    - **a later review is owed** (:func:`later_review_owed`: two or more
+      unticked chunks). With exactly one unticked chunk and a clean tree, the
+      last chunk is committed and the boundary review is the right answer.
+
+    Mid-plan, the answer is the interval owner's
+    (``critic_consolidate.working_tree_interval_base``), asked with the same
+    inputs ``critic-begin`` will capture, so the mode named here and the
+    interval that mode then reviews cannot disagree. ``None`` too when HEAD
+    cannot be read: an unreadable state keeps today's answer.
+    """
+    if plan.source != buildplan_refs.SOURCE_SCOPE_NAMED or not later_review_owed(progress):
+        return None
+    head_commit = gitstate._git_head_sha(project_dir)
+    head_tree = _head_tree(project_dir)
+    if not head_commit or not head_tree:
+        return None
+    from . import critic_consolidate  # noqa: PLC0415 — lazy; it imports this module lazily too
+
+    return critic_consolidate.working_tree_interval_base(project_dir, head_commit, head_tree)
+
+
+def _reaches_committed_work(start: dict) -> bool:
+    """Whether a ``chunk`` interval starting at ``start`` covers unreviewed commits."""
+    from . import critic_consolidate  # noqa: PLC0415 — lazy, as above
+
+    return start["origin"] in (
+        critic_consolidate.BASE_AT_FRONTIER,
+        critic_consolidate.BASE_AT_MERGE_BASE,
+    )
+
+
+def _mid_plan_note(plan, progress) -> str:
+    """Why this state is inner-stage, in the words ``mode_chosen_by`` records."""
+    left = progress.total - progress.complete
+    return (
+        f"{left} chunk(s) of {plan.rel} are unticked, so this is mid-plan and the "
+        "review is inner-stage (the stage is keyed on where in the cycle the "
+        "review sits, not on whether the builder committed first)"
+    )
+
+
+def _interval_note(start: dict) -> str:
+    """Which interval the ``chunk`` review will capture, named from its start."""
+    from . import critic_consolidate  # noqa: PLC0415 — lazy, as above
+
+    if start["origin"] == critic_consolidate.BASE_AT_MERGE_BASE:
+        return (
+            f"{critic_consolidate.merge_base_start_reason(start.get('absent'))}, so "
+            f"the interval runs from the merge-base ({start['commit'][:12]}) to the "
+            "working tree"
+        )
+    return (
+        f"the interval runs from the last reviewed state ({start['commit'][:12]}) "
+        "to the working tree, so it covers the commits since"
+    )
+
+
+#: The mid-plan verdicts :func:`_mid_plan_verdict` returns.
+_MID_PLAN_REVIEW = "review"
+_MID_PLAN_NOTHING_UNREVIEWED = "nothing-unreviewed"
+_MID_PLAN_UNREACHABLE = "unreachable"
+
+
+def _mid_plan_verdict(project_dir: Path, plan, progress) -> "tuple[str, dict] | None":
+    """The one owner of the mid-plan question, for every caller that asks it.
+
+    ``None`` when the branch is not mid-plan. Otherwise ``(verdict, start)``
+    with ``start`` the interval owner's answer, and the verdict one of:
+    :data:`_MID_PLAN_NOTHING_UNREVIEWED` when the covered frontier is HEAD;
+    :data:`_MID_PLAN_REVIEW` when the interval reaches unreviewed commits;
+    :data:`_MID_PLAN_UNREACHABLE` when it cannot reach them (no reviewed state
+    behind HEAD with judgeable work uncommitted, or a frontier that could not be
+    looked for). Unreachable is still mid-plan, so a short plan's deferral still
+    applies to it; only the ``chunk`` answer does not. Inference (:func:`_mid_plan_answer`) and an explicit token
+    (:func:`_explicit_mode`) both map this verdict. Neither re-derives it,
+    because a second derivation is how an explicit `chunk` reached a mid-plan
+    `cumulative` in the state inference answers `deferred`.
+    """
+    start = _mid_plan_start(project_dir, plan, progress)
+    if start is None:
+        return None
+    from . import critic_consolidate  # noqa: PLC0415 — lazy, as above
+
+    if start["origin"] == critic_consolidate.BASE_AT_HEAD_COVERED:
+        return _MID_PLAN_NOTHING_UNREVIEWED, start
+    if _reaches_committed_work(start):
+        return _MID_PLAN_REVIEW, start
+    return _MID_PLAN_UNREACHABLE, start
+
+
+def _mid_plan_answer(
+    project_dir: Path, prawduct_dir: Path, plan, progress, rule: str
+) -> "tuple[str, str] | None":
+    """The mid-plan answer where a clean tree would otherwise infer ``cumulative``.
+
+    Asked by rule 2 and by rule 4's clean-tree redirect, after
+    :func:`extension_deferral` has declined. ``None`` keeps the caller's
+    ``cumulative``: the branch is not mid-plan, or the interval could not reach
+    the committed work (no reviewed state behind HEAD with judgeable work
+    uncommitted, or a frontier that could not be looked for).
+
+    Mid-plan it answers one of:
+
+    - ``deferred`` when the plan is short and defers per-chunk review
+      (:func:`short_plan_deferral`) — the boundary review covers every chunk,
+      and a clean tree changes nothing about that trade;
+    - ``deferred`` when nothing committed is unreviewed (the covered frontier
+      is HEAD): the last review already covers HEAD, so no review is owed now;
+    - ``chunk`` over the unreviewed interval otherwise, from the covered
+      frontier or, when no blocker-free reviewed state is behind HEAD, the
+      merge-base (the rationale names which of the three reasons applies).
+    """
+    verdict = _mid_plan_verdict(project_dir, plan, progress)
+    if verdict is None:
+        return None
+    deferral = short_plan_deferral(project_dir, prawduct_dir, plan, progress)
+    if deferral.defers:
+        return MODE_DEFERRED, _deferral_rationale(deferral, plan)
+    kind, start = verdict
+    note = _mid_plan_note(plan, progress)
+    if kind == _MID_PLAN_UNREACHABLE:
+        return None
+    if kind == _MID_PLAN_NOTHING_UNREVIEWED:
+        return MODE_DEFERRED, (
+            f"mid-plan deferred (nothing unreviewed): {note}; the last review "
+            "already covers HEAD, so no review is owed now — build the next chunk "
+            "and review it before committing"
+        )
+    return "chunk", f"{rule} mid-plan chunk: {note}; {_interval_note(start)}"
 
 
 # ---------------------------------------------------------------------------
@@ -1159,6 +1353,22 @@ def _working_tree_is_empty(project_dir: Path) -> bool:
     if proc.returncode != 0:
         return False
     return not proc.stdout.strip()
+
+
+def _head_tree(project_dir: Path) -> str | None:
+    """``HEAD^{tree}``, or ``None`` when it cannot be read (fails toward no answer)."""
+    try:
+        proc = subprocess.run(
+            ["git", "rev-parse", "HEAD^{tree}"],
+            cwd=str(project_dir),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    tree = proc.stdout.strip()
+    return tree if proc.returncode == 0 and tree else None
 
 
 def _get_uncommitted_code_files(project_dir: Path) -> set[str]:

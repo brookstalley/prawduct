@@ -78,6 +78,25 @@ never changed, so any other clone of it was always on `main`.
 per-machine, so a collaborator on the same repo silently runs a different governance version than
 you do, and a gate that behaves differently between two people is worse than one that is behind.
 
+**Machine-wide variant: a directory marketplace, pointed at a pinned worktree and never at your
+working checkout.** A maintainer may instead redefine the `prawduct` marketplace itself in
+`~/.claude/plugins/known_marketplaces.json` as a `directory` source. That puts **every** governed
+repo on this machine on it, overriding each repo's committed `ref: "main"`. A directory source runs
+from the path as it is on disk (`CLAUDE_PLUGIN_ROOT` resolves into it, with no cache copy and no
+version key), so whatever that path holds is what every repo runs. Point it at the checkout you
+develop in and every sibling session runs your feature branch, uncommitted edits included. The
+banner shows it (`plugin · feature/x@abc1234+dirty`), and it is easy to miss. Point it at a
+worktree that exists only to be run:
+
+```bash
+git worktree add --detach ~/source/prawduct-live origin/develop        # once
+# then set the prawduct entry's source.path and installLocation to ~/source/prawduct-live
+git -C ~/source/prawduct-live fetch && git -C ~/source/prawduct-live checkout --detach origin/develop   # after each merge to develop
+```
+
+The worktree is detached, so it never holds the `develop` branch lock. A new session's banner reads
+`plugin · detached@<sha>`. The shared-repo warning above applies to every repo this reaches.
+
 ## The version is the release trigger — not cosmetic
 
 Claude Code resolves a plugin's version from `plugin.json` `version` first. With

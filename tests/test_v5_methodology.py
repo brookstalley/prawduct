@@ -454,7 +454,8 @@ LAST_MEASURED_TOKENS = {
     # NEXT-ACTION for the rest. DECLARED: a correction, compressed in place first.
     # RAISED 5055 -> 5072, #820 (owner decision 2026-09-23): the declared suite moves from every chunk's Verify to the boundary — a default every consumer inherits, so the sentence carrying it is owed at each surface its reader meets. Compressed in place first; no duplication to pay from. DECLARED.
     # RAISED 5072 -> 5093, same PR, after its cumulative review (W1/W3): the boundary is defined as where work LANDS, so direct-commit repos and work ending on a single `final` still owe the suite, and `final` reports a stale record as an observation. Compressed in place first. DECLARED.
-    "methodology/building.md": 5093,
+    # RAISED 5093 -> 5116 (review-friction, 2026-09-25): the chunk-close order (review, fix, then commit), the mid-plan routing rule, and the merge-base start of a clean-tree `chunk` interval, which removes mid-plan boundary reviews (33 `cumulative` rounds since 09-20 across seven repos, ~11 findings each). The new text was compressed in place before declaring. DECLARED. +18 of it states that a DO NOT CLEAR turn defers reflection and Critic, the case in which an untrackable wait no longer blocks.
+    "methodology/building.md": 5116,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -861,8 +862,10 @@ LAST_MEASURED_TOKENS = {
     # ONE finding for N occurrences, which is worth more than 83 tokens of payload.
     # RATCHETED 11235 -> 11232 (review-interval-extension, 2026-09-22): the chunk/final interval row and the
     # Small row restated for the covered frontier, in place and shorter.
-    # RAISED 11232 -> 11280, learnings-one-line (the owner-confirmed design in that plan's Requirements Confidence, 2026-09-24): the severity table gains the three new record-lint checks and the over-budget row its second regime. Rows compressed in place first (65 -> 48); every check name must appear here (`TestEveryCheckCarriesASeverity`). DECLARED.
-    "skills/critic/review-cycle.md": 11280,
+    # RAISED 11232 -> 11317 (review-friction, 2026-09-25): the chunk-close order (review, fix, then commit), the mid-plan routing rule, and the merge-base start of a clean-tree `chunk` interval, which removes mid-plan boundary reviews (33 `cumulative` rounds since 09-20 across seven repos, ~11 findings each). The new text was compressed in place before declaring. DECLARED.
+    # RAISED a further +48 (11317 -> 11365), learnings-one-line (the owner-confirmed design in that plan's Requirements Confidence, 2026-09-24): the severity table gains the three new record-lint checks and the over-budget row its second regime. Rows compressed in place first (65 -> 48); every check name must appear here (`TestEveryCheckCarriesASeverity`). DECLARED.
+    # RAISED +2 (11365 -> 11367, review-friction, 2026-09-26): the interval's merge-base start is bounded by uncommitted JUDGEABLE work, not by a clean tree (cumulative review rev-20260926T141912Z-875cfe56 R-1): a reviewer told 'clean tree' misreads the interval a records-only close gets. DECLARED.
+    "skills/critic/review-cycle.md": 11367,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -999,7 +1002,9 @@ LAST_MEASURED_TOKENS = {
     # carried its own remedy, which now rides the refusal's stderr (read only
     # when it fires); what remains is the row itself, which has no duplicate.
     # RAISED 3680 -> 3684 (#820), same PR, after its cumulative review (W1/W3): the boundary is defined as where work LANDS, so direct-commit repos and work ending on a single `final` still owe the suite, and `final` reports a stale record as an observation. Compressed in place first. DECLARED.
-    "skills/critic/SKILL.md": 3684,
+    # RAISED 3684 -> 3719 (review-friction, 2026-09-25): the chunk-close order (review, fix, then commit), the mid-plan routing rule, and the merge-base start of a clean-tree `chunk` interval, which removes mid-plan boundary reviews (33 `cumulative` rounds since 09-20 across seven repos, ~11 findings each). The new text was compressed in place before declaring. DECLARED.
+    # RAISED +1 (3719 -> 3720, review-friction, 2026-09-26): the interval's merge-base start is bounded by uncommitted JUDGEABLE work, not by a clean tree (cumulative review rev-20260926T141912Z-875cfe56 R-1): a reviewer told 'clean tree' misreads the interval a records-only close gets. DECLARED.
+    "skills/critic/SKILL.md": 3720,
     "skills/critic/framework-checks.md": 1116,
     # The on-demand class, first recorded 2026-08-19 (#688) — readings, no
     # ceilings; the block above this dict is the decision and its reasoning.
@@ -1140,7 +1145,10 @@ LAST_MEASURED_TOKENS = {
     # a `## Status` tick means — built, committed, reviewed; never merged or released.
     # Readers (the Critic gate, the briefing, the extension deferral) each assumed a
     # different meaning until then. Declared, not paid: nothing here restated it.
-    "methodology/planning.md": 5770,
+    # +34 on 2026-09-25 (review-friction): "Per-chunk commit is the contract" now spells out
+    # review, fix, then commit, and the multi-chunk heuristic says a chunk committed first still
+    # infers `chunk`. A READING, no ceiling.
+    "methodology/planning.md": 5804,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
@@ -1220,7 +1228,12 @@ LAST_MEASURED_TOKENS = {
     # forward notes, moved verbatim out of `reflection.md` (D2) so the learning
     # loop's guide is about the learning loop. On-demand class: a reading, no
     # ceiling.
-    "methodology/session-hygiene.md": 2811,
+    # +112 on 2026-09-25 (review-friction, the Stop verdict deferral): one
+    # paragraph under the Clear line saying what a DO NOT CLEAR turn defers,
+    # that only the closing line counts, and what misusing the label costs —
+    # the gate now reads the verdict, so its readers are owed the rule. A
+    # READING, no ceiling.
+    "methodology/session-hygiene.md": 2923,
     # First reading, 2026-08-21, taken at birth: a new on-demand guide, so it
     # joins the class above — a READING, no ceiling. `test_every_methodology_guide_is_accounted_for`
     # requires the entry; the decision block above this
@@ -3087,7 +3100,8 @@ class TestBuildingMethodology:
         # other's delta as silent slack.
         # RAISED 5039 -> 5056 (review-interval-extension PR review, 2026-09-22) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 5056 -> 5073 (#820, suite at the boundary, 2026-09-23) — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 5094, f"building.md is ~{tokens} tokens, should be <5094"
+        # RAISED 5094 -> 5117 (review-friction, 2026-09-25) — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 5117, f"building.md is ~{tokens} tokens, should be <5117"
 
 
 # =============================================================================
@@ -5332,7 +5346,9 @@ class TestCriticSkillRoutesByMode:
         # RAISED 3652 -> 3681 (review-scrub-seams, 2026-09-22): the exit-6 row;
         # the reason is at the LAST_MEASURED_TOKENS entry.
         # RAISED 3681 -> 3685 (#820, 2026-09-23) — see LAST_MEASURED_TOKENS.
-        assert tokens < 3685, f"SKILL.md is ~{tokens} tokens, should be <3685"
+        # RAISED 3685 -> 3720 (review-friction, 2026-09-25) — see LAST_MEASURED_TOKENS.
+        # RAISED 3720 -> 3721 (review-friction, 2026-09-26) — see LAST_MEASURED_TOKENS.
+        assert tokens < 3721, f"SKILL.md is ~{tokens} tokens, should be <3721"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))
@@ -5650,7 +5666,10 @@ class TestReviewCycle:
         # Small row now states what inference answers (`chunk`; `final` by
         # declaration). Declared, not paid — reading + 1.
         # RATCHETED 11236 -> 11233 (review-interval-extension, 2026-09-22) with the reading.
-        assert tokens < 11281, f"review-cycle.md is ~{tokens} tokens, should be <11281"
+        # RAISED 11233 -> 11318 (review-friction, 2026-09-25) — see LAST_MEASURED_TOKENS. Declared.
+        # RAISED a further +48 -> 11366 (learnings-one-line, 2026-09-24) — see LAST_MEASURED_TOKENS. Declared.
+        # RAISED 11366 -> 11368 (review-friction, 2026-09-26) — see LAST_MEASURED_TOKENS.
+        assert tokens < 11368, f"review-cycle.md is ~{tokens} tokens, should be <11368"
 
     def test_framework_checks_token_budget(self):
         # Ceiling 1150. This file is `final`/`cumulative` payload: SKILL.md's

@@ -716,12 +716,23 @@ def count_branch_rounds(
     ``/prawduct:pr create`` path against a store holding every review the clone
     has ever recorded.
 
-    Returns ``{"status": "counted", "rounds", "seconds", "timed", "reviews",
-    "span_commits"}`` — with ``seconds`` ``None`` when no attributed round
-    recorded a duration — or ``{"status": "unavailable", "reason"}``. Never raises: this is advice, and
-    advice fails soft. It is deliberately not silent, because a tally that
-    vanishes when it breaks reads as "round one" to the builder it exists to
-    warn (``core.md``: "'advice fails soft' is not 'advice fails silent'").
+    Returns ``{"status": "counted", "rounds", "measured", "estimated",
+    "reviews", "span_commits"}`` or ``{"status": "unavailable", "reason"}``.
+    Never raises: this is advice, and advice fails soft. It is deliberately not
+    silent, because a tally that vanishes when it breaks reads as "round one" to
+    the builder it exists to warn (``core.md``: "'advice fails soft' is not
+    'advice fails silent'").
+
+    ``measured`` and ``estimated`` are the round's duration split by where it
+    came from, each ``{"rounds", "seconds"}`` with ``seconds`` ``None`` when the
+    population is empty. A round is MEASURED when its fact carries a dispatch
+    clock (:func:`lib.review_dispatch.fact_interval_seconds` — the mark's stamp
+    on the body, ending at the fact's own ``ts``), and ESTIMATED when it carries
+    only ``duration_seconds``, which is the reviewing model's own recollection.
+    Each round lands in at most one of the two — the clock where there is one,
+    the estimate otherwise, neither when the fact has neither — so the two never
+    pool and a round is never counted twice. Facts minted before the clock
+    reached the fact body are estimate-only; that is what they are, not a gap.
 
     ``reviews`` is ``[{"id", "mode"}]`` for the attributed rounds, in store
     order, and it exists so a caller can ask a NARROWER question than "how many
@@ -756,8 +767,11 @@ def count_branch_rounds(
         }
     on_branch = {line.strip() for line in out.splitlines() if line.strip()}
 
+    from .review_dispatch import fact_interval_seconds  # noqa: PLC0415 -- lazy, as this function's other import is
+
     rounds = 0
-    durations: list[float] = []
+    measured: list[float] = []
+    estimated: list[float] = []
     reviews: list[dict] = []
     for fact in facts:
         if fact.get("kind") != "review":
@@ -768,16 +782,32 @@ def count_branch_rounds(
             continue
         rounds += 1
         reviews.append({"id": fact.get("id"), "mode": body.get("mode")})
+        clocked = fact_interval_seconds(fact)
+        if clocked is not None:
+            measured.append(clocked)
+            continue
         seconds = body.get("duration_seconds")
         if isinstance(seconds, (int, float)) and not isinstance(seconds, bool):
-            durations.append(float(seconds))
+            estimated.append(float(seconds))
     return {
         "status": "counted",
         "rounds": rounds,
-        "seconds": round(sum(durations), 1) if durations else None,
-        "timed": len(durations),
+        "measured": _duration_population(measured),
+        "estimated": _duration_population(estimated),
         "reviews": reviews,
         "span_commits": len(on_branch),
+    }
+
+
+def _duration_population(values: "list[float]") -> dict:
+    """One population of round durations: how many rounds, and their total.
+
+    ``seconds`` is ``None`` for an empty population — never ``0``, which would
+    read as rounds that cost nothing.
+    """
+    return {
+        "rounds": len(values),
+        "seconds": round(sum(values), 1) if values else None,
     }
 
 
@@ -828,27 +858,7 @@ def format_branch_rounds(tally: "dict | None") -> str:
             "merge-base, so this gap is unreviewed work rather than a repeat — the "
             "next round is this branch's first."
         )
-    spent = ""
-    if tally.get("seconds"):
-        from . import telemetry  # noqa: PLC0415 — lazy keeps this module's import DAG light
-
-        # Only when some round went untimed: "1 of 1 timed" is noise, and a
-        # reader who has to parse it stops reading the sentence that matters.
-        partial = "" if tally["timed"] >= n else f", {tally['timed']} of {n} timed"
-        # Named as THIS BRANCH's spend because the other number a builder meets
-        # in the same session — `telemetry.format_round_price` — is a repo-wide
-        # median. Two unlabelled durations in one workflow read as one number
-        # that disagrees with itself.
-        #
-        # Rendered through the shared formatter, which owns the sub-minute
-        # guard: this function had that guard and the price sentence did not,
-        # which is how the surface that literally states the price could say
-        # "about 0 min".
-        cost = telemetry.format_minutes(tally["seconds"])
-        spent = (
-            f", costing {cost} so far "
-            f"(this branch's own rounds{partial}, not a repo-wide median)"
-        )
+    spent = _format_branch_spend(tally, n)
     plural = "" if n == 1 else "s"
     return (
         f"NOTE: this branch has already recorded {n} review round{plural} since the "
@@ -856,6 +866,58 @@ def format_branch_rounds(tally: "dict | None") -> str:
         f"gate is still uncovered after {'it' if n == 1 else 'them'}: name what "
         f"round {n + 1} will do differently before you spend it — a merge or "
         f"genuinely new work is a good answer, 'one more fix commit' is not."
+    )
+
+
+def _format_branch_spend(tally: dict, n: int) -> str:
+    """The ``, costing … so far (…)`` clause of :func:`format_branch_rounds`,
+    or ``""`` when no attributed round recorded a duration of either kind.
+
+    **Clocked time leads, and an estimate is always named as one.** A round's
+    duration is either read from the dispatch clock or recollected by the
+    reviewing model, and the recollection runs high, worst on short reviews
+    (``documentation/consumer-build-metrics.md`` hazard 2). The repo-wide price
+    sentence beside this one already says which it is, so an unlabelled figure
+    here would put a clock reading and an estimate side by side in one gate
+    message, looking like one number that disagrees with itself. The two are
+    never summed: the clause states each with the rounds it covers.
+    """
+    measured = tally.get("measured") or {}
+    estimated = tally.get("estimated") or {}
+    clocked_n = measured.get("rounds") or 0
+    estimated_n = estimated.get("rounds") or 0
+    if not clocked_n and not estimated_n:
+        return ""
+
+    from . import telemetry  # noqa: PLC0415 — lazy keeps this module's import DAG light
+
+    # Rendered through the shared formatter, which owns the sub-minute guard:
+    # this function had that guard and the price sentence did not, which is how
+    # the surface that literally states the price could say "about 0 min".
+    clocked = telemetry.format_minutes(measured.get("seconds") or 0.0)
+    guessed = telemetry.format_minutes(estimated.get("seconds") or 0.0)
+    if clocked_n and estimated_n:
+        cost = (
+            f"{clocked} so far on the dispatch clock over {clocked_n} round"
+            f"{'' if clocked_n == 1 else 's'}, and {guessed} more by the reviewers' "
+            f"own estimates over {estimated_n}"
+        )
+    elif clocked_n:
+        cost = f"{clocked} so far on the dispatch clock"
+    else:
+        cost = (
+            f"{guessed} so far by the reviewers' own estimates, not a clock "
+            f"reading"
+        )
+    # Only when some round went untimed: "1 of 1 timed" is noise, and a reader
+    # who has to parse it stops reading the sentence that matters.
+    timed = clocked_n + estimated_n
+    partial = "" if timed >= n else f", {timed} of {n} timed"
+    # Named as THIS BRANCH's spend because the other number a builder meets in
+    # the same session — `telemetry.format_round_price` — is a repo-wide median.
+    return (
+        f", costing {cost} "
+        f"(this branch's own rounds{partial}, not a repo-wide median)"
     )
 
 

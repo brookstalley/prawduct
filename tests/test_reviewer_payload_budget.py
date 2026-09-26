@@ -162,8 +162,15 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # +4 more, same PR after its cumulative review, DECLARED: the stale verdict at `final` becomes an
     # observation that the suite is owed before the work lands, so direct-commit and final-only
     # paths are not left with nothing flagging a missing suite run.
+    # RAISED on 2026-09-25 (review-friction), DECLARED: +35 tokens, all from SKILL.md,
+    # saying a `chunk` interval starts at the merge-base on a clean tree with nothing reviewed, and
+    # that mid-plan inference answers `chunk`, not `cumulative`. A reviewer reading its manifest needs
+    # that to know why its span reaches back to the merge-base. Priced against the SUM: +35 tokens per
+    # review against a boundary `cumulative` per committed chunk (5-6 min median, ~11 findings, each
+    # feeding verify rounds). 33 of those ran mid-plan since 09-20. Compressed in place before declaring.
     # +3 on 2026-09-24 (learnings-one-line), DECLARED: see the dispatched-reviewer entry below.
-    "single-pass-inner": 6352,
+    # +1 on 2026-09-26 (review-friction), DECLARED: the interval's merge-base start is bounded by uncommitted JUDGEABLE work, not by a clean tree (cumulative review rev-20260926T141912Z-875cfe56 R-1): a reviewer told 'clean tree' misreads the interval a records-only close gets.
+    "single-pass-inner": 6388,
     # RAISED +43 (reviewer-prompt-file-list, 2026-09-22), DECLARED: all of it the
     # `review-protocol.md` template change that sends coordinator reviewers to the
     # manifest for their file sets; see the dispatched-reviewer entry for the price.
@@ -175,8 +182,15 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # +17 more, same PR after its cumulative review, DECLARED: the stale verdict at `final` becomes an
     # observation that the suite is owed before the work lands, so direct-commit and final-only
     # paths are not left with nothing flagging a missing suite run.
+    # RAISED on 2026-09-25 (review-friction), DECLARED: +120 tokens, all from SKILL.md (+35) and review-cycle.md (+85),
+    # saying a `chunk` interval starts at the merge-base on a clean tree with nothing reviewed, and
+    # that mid-plan inference answers `chunk`, not `cumulative`. A reviewer reading its manifest needs
+    # that to know why its span reaches back to the merge-base. Priced against the SUM: +120 tokens per
+    # review against a boundary `cumulative` per committed chunk (5-6 min median, ~11 findings, each
+    # feeding verify rounds). 33 of those ran mid-plan since 09-20. Compressed in place before declaring.
     # +48 on 2026-09-24 (learnings-one-line), DECLARED: see the dispatched-reviewer entry below.
-    "single-pass-full": 20492,
+    # +3 on 2026-09-26 (review-friction), DECLARED: the interval's merge-base start is bounded by uncommitted JUDGEABLE work, not by a clean tree (cumulative review rev-20260926T141912Z-875cfe56 R-1): a reviewer told 'clean tree' misreads the interval a records-only close gets.
+    "single-pass-full": 20615,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -216,6 +230,12 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # +13 more, same PR after its cumulative review, DECLARED: the stale verdict at `final` becomes an
     # observation that the suite is owed before the work lands, so direct-commit and final-only
     # paths are not left with nothing flagging a missing suite run.
+    # RAISED on 2026-09-25 (review-friction), DECLARED: +85 tokens, all from review-cycle.md,
+    # saying a `chunk` interval starts at the merge-base on a clean tree with nothing reviewed, and
+    # that mid-plan inference answers `chunk`, not `cumulative`. A reviewer reading its manifest needs
+    # that to know why its span reaches back to the merge-base. Priced against the SUM: +85 tokens per
+    # review against a boundary `cumulative` per committed chunk (5-6 min median, ~11 findings, each
+    # feeding verify rounds). 33 of those ran mid-plan since 09-20. Compressed in place before declaring.
     # +48 on 2026-09-24 (learnings-one-line), DECLARED, on every route that
     # loads `review-cycle.md` (+3 on the inner route, via `goals-1-3.md`): the
     # record-lint severity table gains the two learnings format checks and the
@@ -224,13 +244,14 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # a reviewer meeting a BLOCKING format finding with no stated severity rates
     # it for itself, and the check exists to stop a corpus that every session
     # pays for, at 15-35k tokens a session, from regrowing a fifth time.
-    "dispatched-reviewer": 19694,
+    # +2 on 2026-09-26 (review-friction), DECLARED: the interval's merge-base start is bounded by uncommitted JUDGEABLE work, not by a clean tree (cumulative review rev-20260926T141912Z-875cfe56 R-1): a reviewer told 'clean tree' misreads the interval a records-only close gets.
+    "dispatched-reviewer": 19781,
 }
 
 PAYLOAD_CEILINGS = {
-    "single-pass-inner": 6353,
-    "single-pass-full": 20493,
-    "dispatched-reviewer": 19695,
+    "single-pass-inner": 6389,
+    "single-pass-full": 20616,
+    "dispatched-reviewer": 19782,
 }
 
 

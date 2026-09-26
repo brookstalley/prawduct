@@ -523,6 +523,24 @@ def _gate_attribution(gate_id: str, registry: dict[str, dict], version: str | No
     return f"[{ver_part}gate: {name}{new_part}]"
 
 
+class _GateMessage(str):
+    """A gate's message text that remembers WHICH gate raised it.
+
+    The Stop hook decides some deferrals per gate — a turn closing on
+    ``DO NOT CLEAR`` defers the session-end gates and nothing else — so a
+    blocker must carry its gate id rather than have it parsed back out of the
+    rendered attribution line. A plain ``str`` carries no id, and the deferral
+    treats that as "not deferrable", which is the direction authority fails.
+    """
+
+    gate: str = ""
+
+    def __new__(cls, text: str, gate: str) -> "_GateMessage":
+        obj = super().__new__(cls, text)
+        obj.gate = gate
+        return obj
+
+
 # --- Column-0 YAML scalar reading (inline mirror of lib/core.py) ---
 # The hook keeps an inline copy so its top level stays import-light on the
 # session-start hot path. Kept in sync with core.read_str_yaml_key by a parity
@@ -2403,6 +2421,53 @@ def _worktree_redirect_note(project_dir: Path) -> str | None:
     )
 
 
+def _committed_work_remedy(project_dir: Path) -> str:
+    """The Stop gate's advice for unreviewed committed work, from the interval owner.
+
+    No-mode ``/prawduct:critic`` is the right advice only when a ``chunk``/``final``
+    interval reaches the committed work: from the last reviewed state, or from
+    the merge-base when nothing judgeable is uncommitted. With code in flight
+    and no reviewed state behind HEAD it starts at HEAD and misses the commits,
+    and repeating the advice would buy a round that leaves the gate uncovered.
+    Asked of ``working_tree_interval_base``, the owner of where that interval
+    starts, so the advice and the interval cannot disagree. An unreadable state
+    names both routes rather than guess.
+    """
+    from lib import critic_consolidate  # noqa: PLC0415 — lazy keeps top-level cheap
+    from lib import evidence  # noqa: PLC0415 — lazy keeps top-level cheap
+
+    reaches = None
+    rc_c, head_commit, _ = evidence.run_git(project_dir, "rev-parse", "HEAD")
+    rc_t, head_tree, _ = evidence.run_git(project_dir, "rev-parse", "HEAD^{tree}")
+    if rc_c == 0 and rc_t == 0 and head_commit.strip() and head_tree.strip():
+        why: list = []
+        start = critic_consolidate.working_tree_interval_base(
+            project_dir, head_commit.strip(), head_tree.strip(), why
+        )
+        if not why:
+            reaches = start["origin"] in (
+                critic_consolidate.BASE_AT_FRONTIER,
+                critic_consolidate.BASE_AT_MERGE_BASE,
+                critic_consolidate.BASE_AT_HEAD_COVERED,
+            )
+    if reaches:
+        return (
+            "  run /prawduct:critic with no mode: its interval reaches them (from the\n"
+            "  last reviewed state, or the merge-base), so mid-plan it infers a chunk\n"
+            "  review, and at the PR point cumulative.\n"
+        )
+    if reaches is False:
+        return (
+            "  run /prawduct:critic cumulative: with code uncommitted and no reviewed\n"
+            "  state behind HEAD, a chunk review starts at HEAD and cannot reach them.\n"
+        )
+    return (
+        "  run /prawduct:critic with no mode if nothing judgeable is uncommitted or a\n"
+        "  reviewed state sits behind HEAD; otherwise /prawduct:critic cumulative,\n"
+        "  whose committed range reaches them (the reach could not be read here).\n"
+    )
+
+
 def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     """Check governance gates before session end.
 
@@ -2413,6 +2478,10 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     flight, the would-be blockers are DEFERRED to the next Stop rather than
     blocking now (the session can't end anyway — the harness re-wakes it). The
     deferral is stateless, so it re-arms automatically once the array empties.
+    Its ``last_assistant_message`` drives a narrower deferral through the same
+    path: a turn whose standing block closes on ``DO NOT CLEAR`` is not a
+    session end, so the session-end gates (reflection, Critic) defer while
+    every other gate still blocks (``lib/gates.turn_declares_in_flight``).
     """
     prawduct_dir = get_prawduct_dir(project_dir)
     stop_input = stop_input or {}
@@ -2442,6 +2511,11 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # blocking — the gate re-arms on the next Stop once the work lands. Computed
     # once here; used to skip the PR network probe and to convert blockers below.
     defer_active, in_flight_tasks = _gates().background_tasks_in_flight(stop_input)
+    # The turn's own clear verdict: a turn closing on DO NOT CLEAR has told the
+    # user not to end the session, so the SESSION-END gates (reflection, Critic)
+    # defer through the same path below. Unlike the in-flight deferral above it
+    # defers only those gates — every other blocker still blocks on such a turn.
+    verdict_defer, turn_verdict = _gates().turn_declares_in_flight(stop_input)
 
     # New-gate attribution (design §5a): load the plugin version + gate registry
     # once, then prefix every blocker with "[prawduct vX · gate: <name>]" so a
@@ -2452,7 +2526,9 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     _gate_registry = _load_gate_registry()
 
     def _attributed(gate_id: str, body: str) -> str:
-        return f"{_gate_attribution(gate_id, _gate_registry, _plugin_ver)}\n{body}"
+        return _GateMessage(
+            f"{_gate_attribution(gate_id, _gate_registry, _plugin_ver)}\n{body}", gate_id
+        )
 
     # v5: Compliance canary (informational)
     try:
@@ -3385,7 +3461,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                     "  SELECTIVE commit of only part of the reviewed state), the current tree was\n"
                     "  never reviewed — run /prawduct:critic verify-resolutions to review the\n"
                     "  delta and close the gap. If unreviewed changes were committed mid-session,\n"
-                    "  /prawduct:critic cumulative reviews the whole branch span.\n"
+                    + _committed_work_remedy(project_dir)
                     + _escape_hatch
                 ))
 
@@ -3539,6 +3615,33 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
             print(f"  deferred: {blocker.splitlines()[0]}", file=sys.stderr)
         _emit_stop_advisories(stop_advisories)
         return 0
+
+    # The same deferral, on the turn's own verdict rather than on tracked work,
+    # and narrower: only the session-end gates defer. A blocker from any other
+    # gate — or one that carries no gate id at all — keeps blocking, and the
+    # deferred ones are named so the block does not hide them.
+    if blockers and verdict_defer:
+        _deferrable = _gates().VERDICT_DEFERRED_GATES
+        verdict_deferred = [
+            b for b in blockers if getattr(b, "gate", None) in _deferrable
+        ]
+        if verdict_deferred:
+            blockers = [
+                b for b in blockers if getattr(b, "gate", None) not in _deferrable
+            ]
+            print("", file=sys.stderr)
+            print(
+                f"GATES DEFERRED — this turn closed on {turn_verdict}, so it is not a "
+                "session end; the session-end gate(s) below are deferred to the next "
+                f"Stop (NOT skipped — they fire on the first turn that does not close "
+                f"on {turn_verdict}):",
+                file=sys.stderr,
+            )
+            for blocker in verdict_deferred:
+                print(f"  deferred: {blocker.splitlines()[0]}", file=sys.stderr)
+            if not blockers:
+                _emit_stop_advisories(stop_advisories)
+                return 0
 
     # Report blockers or exit clean
     if blockers:
@@ -5894,10 +5997,10 @@ def cmd_infer_critic_mode(project_dir: Path, args: str | None) -> int:
     ``<mode>`` is one of the short tokens (``chunk`` / ``final`` /
     ``cumulative`` / ``verify-resolutions``) — or ``deferred``, the
     output-only answer that NO review is owed now (``critic_mode.MODE_DEFERRED``),
-    for one of two reasons the rationale names: the branch's plan is short and
-    touches no risk surface (#292), or a later review the plan still owes will
+    for one of three reasons the rationale names: the branch's plan is short and
+    touches no risk surface (#292); a later review the plan still owes will
     start from the last reviewed state and cover this work (#167,
-    ``extension-deferred``). The skill dispatches nothing on it and reports the
+    ``extension-deferred``); or, mid-plan, nothing is unreviewed. The skill dispatches nothing on it and reports the
     rationale, which says what to do: commit and carry on, or, on a short plan's
     last chunk, commit and run the ``cumulative`` that is that chunk's review. ``<rationale>`` is the
     human-readable explanation suitable for both stdout reporting and

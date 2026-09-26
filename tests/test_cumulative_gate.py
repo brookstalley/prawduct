@@ -219,6 +219,7 @@ def _fact(
     dispatch_commit: "str | None" = None,
     duration_seconds: "float | None" = None,
     observations: "list[dict] | None" = None,
+    dispatched_at: "str | None" = None,
 ) -> str:
     fact_id = f"rev-test-{next(_ids):04d}"
     body = {
@@ -246,9 +247,22 @@ def _fact(
         body["duration_seconds"] = duration_seconds
     if observations is not None:
         body["observations"] = observations
+    # The dispatch clock's stamp, as `critic-consolidate` writes it. The
+    # interval ends at the envelope `ts` `append_fact` stamps, which is NOW —
+    # so a caller wanting a known interval passes `_clock_started(seconds)`.
+    if dispatched_at is not None:
+        body["dispatched_at"] = dispatched_at
     result = evidence.append_fact(repo, "review", fact_id, body)
     assert result["status"] == "appended", result
     return fact_id
+
+
+def _clock_started(seconds_ago: float) -> str:
+    """A dispatch stamp ``seconds_ago`` before now, in the marker's format."""
+    from datetime import datetime, timedelta, timezone
+
+    started = datetime.now(timezone.utc) - timedelta(seconds=seconds_ago)
+    return started.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _resolution(repo: Path, review_id: str, fid: str, disposition: str = "fixed") -> None:
@@ -1529,6 +1543,44 @@ class TestRoundTally:
         # in the same session is a repo-wide median from the ledger; two
         # unlabelled figures read as one number contradicting itself.
         assert "this branch's own rounds, not a repo-wide median" in err
+        # These facts carry no dispatch clock — every fact minted before the
+        # clock reached the fact body is like this — so the figure is the
+        # reviewers' own estimate, and the sentence has to say so.
+        assert "by the reviewers' own estimates, not a clock reading" in err
+        assert "dispatch clock" not in err
+
+    def test_clocked_rounds_are_priced_from_the_clock_not_the_estimate(
+        self, tmp_path, capsys
+    ):
+        """The headline case of #882. Each round's estimate says 15 min and its
+        clock says 5; the sentence must quote the clock and say it is one. Red
+        against a tally that sums `duration_seconds`, which would say 60 min."""
+        repo = self._uncovered_branch(
+            tmp_path, 4, duration_seconds=900.0, dispatched_at=_clock_started(300)
+        )
+        _rc, _out, err = _run_gate(repo, capsys)
+        assert "costing about 20 min so far on the dispatch clock" in err
+        assert "about 60 min" not in err
+        assert "reviewers' own estimates" not in err
+
+    def test_a_mixed_branch_labels_both_and_never_sums_them(self, tmp_path, capsys):
+        """Two clocked rounds and two with only an estimate. Each figure is
+        stated with the rounds it covers, the estimate named as one — and they
+        are not added into a single total that would be neither."""
+        repo = self._uncovered_branch(
+            tmp_path, 2, duration_seconds=900.0, dispatched_at=_clock_started(300)
+        )
+        f1_commit = _git(repo, "rev-parse", "HEAD~1")
+        for _ in range(2):
+            _fact(repo, _tree(repo, "main"), "deadbeef" * 5, ["feature.py"],
+                  head_commit=f1_commit, duration_seconds=600.0)
+        _rc, _out, err = _run_gate(repo, capsys)
+        assert "4 review rounds" in err
+        assert (
+            "costing about 10 min so far on the dispatch clock over 2 rounds, and "
+            "about 20 min more by the reviewers' own estimates over 2"
+        ) in err
+        assert "about 30 min" not in err
 
     def test_a_partly_timed_history_says_how_much_it_could_price(
         self, tmp_path, capsys
@@ -1559,6 +1611,7 @@ class TestRoundTally:
         _rc, _out, err = _run_gate(repo, capsys)
         assert "3 review rounds" in err
         assert "min between them" not in err
+        assert ", costing " not in err
 
     def test_a_dirty_tree_round_is_placed_by_its_dispatch_commit(self, tmp_path, capsys):
         """A `chunk` review of an uncommitted tree records `head_commit: null`.
@@ -1627,14 +1680,26 @@ class TestRoundTally:
             {"kind": "review", "body": {"head_commit": head}},
             {"kind": "resolution", "body": {"head_commit": head}},
             {"kind": "review", "body": {"head_commit": "deadbeef" * 5}},
+            # Clocked: 5 min from its stamp to its own `ts`. Its estimate says
+            # 900s and is NOT counted — a round lands in one population only.
+            {"kind": "review", "ts": "2026-09-25T12:05:00Z", "body": {
+                "head_commit": head, "duration_seconds": 900,
+                "dispatched_at": "2026-09-25T12:00:00Z"}},
+            # A stale 7h mark is no clock: the bound refuses it, and the round
+            # falls back to its estimate rather than vanishing from the tally.
+            {"kind": "review", "ts": "2026-09-25T12:05:00Z", "body": {
+                "head_commit": head, "duration_seconds": 60,
+                "dispatched_at": "2026-09-25T05:00:00Z"}},
         ]
         tally = coverage.count_branch_rounds(repo, facts, merge_base)
         assert tally == {
-            "status": "counted", "rounds": 2, "seconds": 120.0, "timed": 1,
+            "status": "counted", "rounds": 4,
+            "measured": {"rounds": 1, "seconds": 300.0},
+            "estimated": {"rounds": 2, "seconds": 180.0},
             # Per-round ids and modes, so a caller asking a narrower question
             # than "how many reviews" — the round budget counts only FULL
             # rounds — does not re-walk the lineage to get them.
-            "reviews": [{"id": None, "mode": None}, {"id": None, "mode": None}],
+            "reviews": [{"id": None, "mode": None}] * 4,
             # One commit on this branch above the merge-base. Reported because
             # ZERO here and zero `rounds` are the same number and opposite
             # situations — a branch with commits that has bought no review, and

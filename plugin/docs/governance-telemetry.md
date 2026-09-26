@@ -33,6 +33,11 @@ kind-named key (`review` for `review.*`):
 - `scope` is the build-plan feature key (derived by `critic-begin` from the branch name, or passed explicitly as an override;
   the `active_build_plan` pointer is only the fallback).
 - `duration_seconds` and `actor.model` are nullable — recorded, never invented.
+  `duration_seconds` is the reviewing model's **own estimate**, never a clock. The clock is the
+  optional `dispatched_at` key, written only when the review's dispatch was marked before the
+  reviewer was spawned; its interval ends at `ts` (at `review_written_at` on a `review.pr` that
+  carries it). An absent key means *not measured*, never zero. `lib/review_dispatch.py` owns the
+  interval, and every reader goes through it.
 - `review.critic` (the Critic, after writing its findings file) and
   `review.pr` (the `/prawduct:pr` skill after the PR review, via
   `--findings <evidence-path>` — required for `review.pr`, rejected for
@@ -152,8 +157,9 @@ meaning something other than what was typed moves events between the halves of a
 comparison, and the difference is then attributed to whatever change was under test.
 
 Per grouping — overall, `actor.role` × `actor.model` × review mode,
-per-`scope`, and per review `stage` — it reports: review count, total/median `duration_seconds`,
-findings by severity, **actionable rate** (share of reviews with ≥1
+per-`scope`, and per review `stage` — it reports: review count; duration led by the **clocked**
+population (reviews whose dispatch was marked) and then the **unclocked** reviews' self-reported
+estimate, labelled as one — two disjoint populations, never pooled; findings by severity, **actionable rate** (share of reviews with ≥1
 blocking/warning), and findings-per-review. Plus a findings-by-file rollup
 from per-finding `files` attribution (top paths by actionable findings,
 capped at 10 with the total attributed count alongside).
@@ -191,11 +197,14 @@ by hand. They are **not** in `events_total`, which means reviews and is read as
 such; and they are no longer skips.
 
 Stat block: `reviews`, `duration_total_seconds`, `duration_median_seconds`
-(null when no event carried a duration), `duration_measured` /
+(the reviewing models' **estimates** over every review that carried one, clocked reviews
+included; null when no event carried one — kept because a published key is never dropped or
+repurposed, and not what the human headline shows), `duration_measured` /
 `duration_self_reported` (each `{reviews, total_seconds, median_seconds}` —
-a clock read either side of dispatch and the reviewing model's own
-recollection are two populations, and a median over the mixture measures
-neither; schema 6 added them), `findings`
+a clock read either side of dispatch, and the estimate of the reviews that have NO clock:
+two disjoint populations, because a median over the mixture measures
+neither; schema 6 added them — the human line leads with the first and labels the second an
+estimate), `findings`
 (`{blocking, warning, note, other}`), `remedies` (below), `findings_per_review`,
 `actionable_rate` (0–1), `observations` (items an inner-stage pass demoted —
 never counted in `findings`), `reviews_recording_observations`

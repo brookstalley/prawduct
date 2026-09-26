@@ -1,6 +1,6 @@
 This repo is governed by **Prawduct** (installed as a plugin). Apply its principles with
 judgment, not mechanically. This is a session-start reminder; the full methodology ships with
-the plugin and is read on demand (see "Read on demand" below).
+the plugin and is read on demand.
 
 ## How work is governed here
 
@@ -100,10 +100,10 @@ forbids: `docs/principles.md` § Agent Stance (`/prawduct:methodology principles
 
 ## Enforcement
 
-The **Stop hook** BLOCKS at session end: reflection, when this session changed judgeable code and
-no reflection names expected vs. actual plus a root cause (or "no defect"); Critic, when that code
-was built against an active build plan with no review. Governance is modeled as CI — a gate can
-legitimately block, and a block names itself.
+The **Stop hook** BLOCKS any turn not closing on `DO NOT CLEAR`: reflection, when this session
+changed judgeable code and no reflection names expected vs. actual plus a root cause (or "no
+defect"); Critic, when that code was built against an active build plan with no review. Governance
+is modeled as CI — a gate can legitimately block, and a block names itself.
 
 ## Read on demand
 

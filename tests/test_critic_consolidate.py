@@ -1009,7 +1009,7 @@ class TestNextActionLine:
             cost=cc.cost_lead({"paths": [], "judgeable": [], "free": []}),
         )
         assert "prawduct-hook cost-of-commit" in line
-        assert "ONLY if that commit touched judgeable files" in line
+        assert "ONLY if the fixes touch judgeable files" in line
         # The enumeration is what was deleted; its return would reintroduce the
         # drift this delegation removes.
         for carve_out in ("`.prawduct/` prose", "`.claude/settings.json`", "`templates/`"):
@@ -1041,6 +1041,12 @@ class TestNextActionLine:
         assert "2 BLOCKING" in line
         assert "ONE commit" in line
         assert "ONE `/prawduct:critic verify-resolutions`" in line
+        # Verify the uncommitted fixes, THEN commit — the order `building.md`
+        # states. Commit-first leaves a clean tree mid-plan, where inference has
+        # no uncommitted fix to anchor a verify pass on.
+        assert line.index("verify-resolutions` over the uncommitted fixes") < line.index(
+            "in ONE commit"
+        )
         # The non-blocking findings are decided in the SAME pass — deferring
         # them to a later round is the pump this field exists to stop.
         assert "SAME pass" in line
@@ -1220,13 +1226,19 @@ class TestNextActionLine:
 
     def test_the_verify_pass_is_conditioned_on_judgeable_files(self):
         # `_BATCH_FIX_DIRECTIVE` prints immediately above this line and
-        # conditions the pass on "if that commit touches judgeable files". On
+        # conditions the pass on "if the fixes touch judgeable files". On
         # framework work the non-blocking findings concentrate in `.prawduct/`
         # prose — all non-judgeable — so the most common fix batch is exactly
         # the one needing no pass, and an unconditional order buys the round
         # this whole change exists to prevent.
         line = cc.next_action_line("rev-1", 0, 3, 0)
-        assert "ONLY if that commit touched judgeable files" in line
+        # Renegotiated 2026-09-25 (review-friction): the condition used to be
+        # phrased on the commit ("if that commit touched"), because this arm
+        # prescribed commit-then-verify. The order is now one constant
+        # (`_FIX_ORDER`: verify the uncommitted fixes, then commit), so the same
+        # condition is phrased on the fixes. The property pinned is unchanged:
+        # the pass is conditional, never an unconditional round.
+        assert "ONLY if the fixes touch judgeable files" in line
 
     def test_missing_fact_id_degrades_to_a_placeholder(self):
         # A record with no id must still produce a runnable-shaped instruction
@@ -1930,7 +1942,14 @@ class TestBatchFixDirective:
         assert "ONE commit" in d
         assert "ONE `/prawduct:critic verify-resolutions`" in d
         # The verify pass is a coverage consequence, not an obligation.
-        assert "if that commit touches judgeable files" in d
+        assert "if the fixes touch judgeable files" in d
+        # The chunk-close order: fix, verify the UNCOMMITTED fixes, then commit.
+        # Commit-first is stated only as the post-`cumulative` case rule 1b
+        # recognizes — mid-plan it leaves inference nothing to anchor a verify on.
+        assert d.index("verify-resolutions` over the uncommitted fixes") < d.index(
+            "land them in ONE commit"
+        )
+        assert "after a `cumulative`" in d
 
     #: Where the directive stops claiming things are free. NOT "Everything else"
     #: — that marks the costly *sentence*, but the free sentence already turns
@@ -5676,15 +5695,7 @@ class TestVerifyResolutionsDispatch:
         # alone would still pass — leaving the branch this test names untested.
         assert "every change since the prior review is uncommitted" in result.stderr
 
-    def test_a_committed_widening_names_cumulative_not_final(self, tmp_path):
-        """The defect this pins: a widening made of COMMITTED work demoted to
-        `final`, whose HEAD-tree → working-tree interval cannot see a commit.
-        The replacement was narrower than the interval refused for being too
-        wide, so the re-dispatch reviewed whatever the working tree held —
-        untracked strays, in the observed case — and reported it as the chunk's
-        review. `cumulative` spans merge-base…HEAD and actually covers it.
-        """
-        repo = tmp_path / "r"
+    def _committed_widening(self, repo):
         _init_repo(repo)
         self._seed_and_fix(repo)
         # A feature branch, so a merge-base exists to span. The fix and the
@@ -5693,10 +5704,38 @@ class TestVerifyResolutionsDispatch:
         _commit_file(repo, "src/app.py", "x = 2  # fixed\n", "fix")
         for i in range(2 * 1 + 6):
             _commit_file(repo, f"src/new_{i}.py", f"n = {i}\n", f"more {i}")
+
+    def test_a_committed_widening_with_code_in_flight_names_cumulative(self, tmp_path):
+        """The defect this pins: a widening made of COMMITTED work demoted to a
+        `final` whose interval cannot see a commit. The replacement was narrower
+        than the interval refused for being too wide, so the re-dispatch reviewed
+        whatever the working tree held — untracked strays, in the observed case —
+        and reported it as the chunk's review. With judgeable work uncommitted
+        and no blocker-free reviewed state behind HEAD, `final` starts at HEAD,
+        so `cumulative`, which spans merge-base…HEAD, is the mode that covers it.
+        """
+        repo = tmp_path / "r"
+        self._committed_widening(repo)
+        (repo / "src" / "wip.py").write_text("w = 1\n")
         result = _run_begin(repo, "--mode", "verify-resolutions")
         assert result.returncode == 2
         assert "Re-dispatch as `cumulative`" in result.stderr, result.stderr
         assert "Re-dispatch as `final`" not in result.stderr
+
+    def test_a_committed_widening_with_nothing_judgeable_uncommitted_names_final(
+        self, tmp_path
+    ):
+        """The same committed widening with nothing judgeable in flight: `final`'s
+        interval starts at the merge-base (the interval owner's answer), so it
+        reaches the commits at inner-stage rigor, and sending the builder to the
+        boundary `cumulative` would price the same span at boundary rigor. Red
+        if the fallback re-derives the start instead of asking the owner."""
+        repo = tmp_path / "r"
+        self._committed_widening(repo)
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 2
+        assert "Re-dispatch as `final`" in result.stderr, result.stderr
+        assert "starts at the merge-base" in result.stderr
 
     def test_a_committed_widening_with_no_span_falls_back_to_final(self, tmp_path):
         """Recommending a mode that would itself refuse at dispatch is the same
@@ -5742,6 +5781,9 @@ class TestVerifyResolutionsDispatch:
         _commit_file(committed, "src/app.py", "x = 2  # fixed\n", "fix")
         for i in range(2 * 1 + 6):
             _commit_file(committed, f"src/new_{i}.py", f"n = {i}\n", f"more {i}")
+        # Code in flight: with nothing judgeable uncommitted, `final` would start
+        # at the merge-base and reach the commits (the test above pins that).
+        (committed / "src" / "wip.py").write_text("w = 1\n")
         result = cc.begin_review(committed, "verify-resolutions")
         assert result["kind"] == "scope-widened"
         assert result["fallback_mode"] == "cumulative"
@@ -8365,3 +8407,54 @@ class TestIntervalExtension:
         verdict = gates.session_review_verdict(repo)
         assert verdict["status"] == "blocked", verdict
         assert verdict["base_source"] == "merge-base-fallback"
+
+
+class TestOneFixOrderEverywhere:
+    """Every carrier of the fix order states ONE order: verify the uncommitted
+    fixes, then commit. The exception after a `cumulative` is stated only in
+    `_FIX_ORDER_AFTER_CUMULATIVE`. Built by composition from `_FIX_ORDER`, and
+    pinned here on the OUTPUT, because a carrier paraphrasing the order (the way
+    `_IF_YOU_FIX_SOME` once said "ONE commit — and re-cover") is invisible to a
+    grep for the constant."""
+
+    @staticmethod
+    def _order_violations(text: str) -> list[str]:
+        text = text.replace(cc._FIX_ORDER_AFTER_CUMULATIVE, "")
+        bad = []
+        for sentence in re.split(r"(?<=[.!?])\s+", text):
+            if "ONE commit" in sentence and "verify-resolutions" in sentence:
+                if sentence.index("verify-resolutions") > sentence.index("ONE commit"):
+                    bad.append(sentence.strip())
+            for forbidden in ("AFTER committing", "commit, then re-run", "ONE commit — and re-cover"):
+                if forbidden in sentence:
+                    bad.append(sentence.strip())
+            # "land" means commit in `_FIX_ORDER`, so a sentence using it for "be
+            # in the tree before the pass" states the second, opposite order.
+            if re.search(r"\bland\b[^.]*\bbefore\b[^.]*\bverify", sentence, re.IGNORECASE):
+                bad.append(sentence.strip())
+        return bad
+
+    @pytest.mark.parametrize("blocking,warning,note", [(2, 5, 3), (0, 3, 0), (0, 0, 2), (0, 1, 1)])
+    def test_every_rendered_next_action_states_one_order(self, blocking, warning, note):
+        line = cc.next_action_line("rev-1", blocking, warning, note)
+        combined = cc._BATCH_FIX_DIRECTIVE + " " + line
+        assert self._order_violations(combined) == [], combined
+
+    def test_every_carrier_composes_the_one_order(self):
+        for carrier in (cc._BATCH_FIX_DIRECTIVE, cc._IF_YOU_FIX_SOME,
+                        cc.next_action_line("rev-1", 2, 1, 0)):
+            assert cc._FIX_ORDER in carrier, carrier
+
+    def test_the_check_can_fail(self):
+        # Positive control: the old zero-blocking wording must be caught.
+        old = (" If you do choose to fix some, batch them into ONE commit — and"
+               " re-cover with ONE `/prawduct:critic verify-resolutions` ONLY if that"
+               " commit touched judgeable files. AFTER committing, dispatch asks.")
+        assert self._order_violations(old)
+
+    def test_the_check_catches_land_before_the_verify_pass(self):
+        # Positive control for the second order stated inside one directive:
+        # the tail that said code "must land BEFORE the verify pass".
+        old = (" Everything else moves the tree and must land BEFORE the verify pass:"
+               " code, config, data, tests.")
+        assert self._order_violations(old)

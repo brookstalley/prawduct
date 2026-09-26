@@ -286,6 +286,22 @@ _CACHE_WARM_DIRECTIVE = (
     " expire and re-reads its whole context when the partials land."
 )
 
+#: The fix order, stated once. Every directive that tells a builder how to land
+#: fixes composes it, so no carrier can state a different order: fix in the
+#: working tree, verify the UNCOMMITTED fixes, then commit. Committing first
+#: leaves a clean tree, and mid-plan inference then has no uncommitted fix to
+#: anchor a verify pass on.
+_FIX_ORDER = (
+    "make the fixes in the working tree, run ONE `/prawduct:critic"
+    " verify-resolutions` over the uncommitted fixes, then land them in ONE commit"
+)
+#: The one exception to :data:`_FIX_ORDER`, kept beside it: after a boundary
+#: `cumulative`, inference's rule 1b recognizes a committed fix.
+_FIX_ORDER_AFTER_CUMULATIVE = (
+    "(A fix committed after a `cumulative` still infers that pass, but committing"
+    " first re-anchors it on committed HEAD.)"
+)
+
 #: Appended wherever a caller meets a review that HAS findings — the moment the
 #: fix strategy is chosen, and the only moment at which stating it changes what
 #: happens next.
@@ -331,17 +347,18 @@ _CACHE_WARM_DIRECTIVE = (
 #: "5-10 minute rounds" it briefly replaced. Anything this text needs the reader
 #: to have must be inside it.
 _BATCH_FIX_DIRECTIVE = (
-    " Disposition them ALL in ONE pass — land every fix you are going to make in"
-    " ONE commit, and accept or file the rest. Only unresolved BLOCKING findings"
-    " gate anything; if that commit touches judgeable files, ONE"
-    " `/prawduct:critic verify-resolutions` re-covers it. A fix-commit-verify"
+    " Disposition them ALL in ONE pass — accept or file the rest, and for every"
+    " fix you are going to make, " + _FIX_ORDER + ". Only unresolved BLOCKING"
+    " findings gate anything, and the verify pass is owed only if the fixes"
+    " touch judgeable files and no later review the plan owes will carry them"
+    " (NEXT-ACTION says which). " + _FIX_ORDER_AFTER_CUMULATIVE + " A fix-commit-verify"
     " cycle per finding multiplies whole review rounds, and each round reviews the"
     " prose the previous fix wrote. Free to write at any time (they do not move"
     " coverage): everything under `.prawduct/` — change-log, backlog,"
     " project-state and build plans — plus"
     " `.claude/settings.json` and `.md` files OUTSIDE `skills/`,"
     " `methodology/`, `templates/` and a root `CLAUDE.md`. Everything else"
-    " moves the tree and must land BEFORE the verify pass: code, config, data,"
+    " moves the tree and must be in the working tree before the verify pass: code, config, data,"
     " tests, and those governance-protected `.md` files (a comment-only edit to"
     " a code file counts)."
 )
@@ -586,16 +603,14 @@ _RIDES_NEXT_REVIEW_LEAD = (
 #: its own fix. The re-derivation pointer still ships, once, inside the clause
 #: that makes the claim needing re-deriving.
 _IF_YOU_FIX_SOME = (
-    " If you do choose to fix some, batch them into"
-    " ONE commit — and re-cover with ONE `/prawduct:critic verify-resolutions`"
-    " ONLY if that commit touched judgeable files. AFTER committing,"
-    " you no longer have to judge that either: dispatch asks the same predicate and"
-    " exits 3 (`no review needed`, under a second, no session state written) rather than"
-    " spending a reviewer on a free interval — so asking costs nothing, and a"
-    " refusal is the answer, not a reason to retry in another mode."
-    " Do NOT start another round to 'close coverage' before committing, and do"
-    " not infer that you need one from gate output printed before your fix —"
-    " commit, then re-run the gate and let it answer."
+    " If you do choose to fix some, " + _FIX_ORDER + " — the pass is owed ONLY if"
+    " the fixes touch judgeable files, and you do not have to judge that:"
+    " dispatch asks the same predicate and exits 3 (`no review needed`, under a"
+    " second, no session state written) rather than spending a reviewer on a free"
+    " interval, so asking costs nothing, and a refusal is the answer, not a reason"
+    " to retry in another mode. Do not infer that you need a round from gate"
+    " output printed before your fix; re-run the gate after the commit and let it"
+    " answer."
 )
 
 
@@ -923,8 +938,8 @@ def next_action_line(
     if blocking:
         return (
             f"{blocking} BLOCKING finding(s) gate this work — nothing else here does."
-            " Fix them, land EVERY fix you are going to make in ONE commit, then run"
-            " ONE `/prawduct:critic verify-resolutions`. Decide the WARNING/NOTE"
+            " For these and EVERY other fix you are going to make, " + _FIX_ORDER
+            + ". Decide the WARNING/NOTE"
             " findings in that SAME pass (fix / accept / file) — deferring them to a"
             " later round is what turns one review into several. Accept is the"
             " default for anything nobody will realistically action:"
@@ -1387,20 +1402,30 @@ def _widened_fallback_mode(
             "every change since the prior review is uncommitted, which is "
             "exactly `final`'s HEAD-tree → working-tree interval"
         )
-    # `final` is no longer blind to committed work when a covered frontier
-    # exists behind it: its interval then starts there (#167), so it spans
-    # the committed commits since the last reviewed state as well as the
-    # uncommitted ones — a narrower span than `cumulative`'s whole branch.
-    from . import gates  # noqa: PLC0415 — lazy; gates is heavy and one-way
-
-    frontier = gates.covered_frontier(project_dir)
-    if frontier is not None and frontier["tree"] != committed_head_tree:
-        return "final", (
-            "the delta includes committed work, and `final`'s interval starts at "
-            f"the last reviewed state ({frontier['commit'][:12]}), so it covers "
-            "those commits and the uncommitted work — a narrower span than "
-            "`cumulative`'s merge-base…HEAD"
+    # `final` is not blind to committed work when its interval reaches back:
+    # it starts at the last reviewed state (#167), or at the merge-base when
+    # none is behind HEAD and nothing judgeable is uncommitted. Where it starts
+    # is `working_tree_interval_base`'s answer, asked rather than re-derived, so
+    # this recommendation and the interval `final` then captures cannot differ.
+    rc, head_commit, _err = evidence.run_git(project_dir, "rev-parse", "HEAD")
+    if rc == 0 and head_commit.strip():
+        start = working_tree_interval_base(
+            project_dir, head_commit.strip(), committed_head_tree
         )
+        if start["origin"] == BASE_AT_FRONTIER:
+            return "final", (
+                "the delta includes committed work, and `final`'s interval starts at "
+                f"the last reviewed state ({start['commit'][:12]}), so it covers "
+                "those commits and the uncommitted work — a narrower span than "
+                "`cumulative`'s merge-base…HEAD"
+            )
+        if start["origin"] == BASE_AT_MERGE_BASE:
+            return "final", (
+                "the delta includes committed work, and with no reviewed state "
+                "behind HEAD and nothing judgeable uncommitted, `final`'s interval "
+                f"starts at the merge-base ({start['commit'][:12]}), so it covers "
+                "the committed work at inner-stage rigor"
+            )
     from . import coverage  # noqa: PLC0415 — lazy; coverage pulls git helpers
 
     resolved = coverage.resolve_merge_base_tree(project_dir)
@@ -2534,6 +2559,169 @@ def _refuse_over_budget(
     }
 
 
+#: Where a ``chunk``/``final`` interval starts — the ``origin`` key of
+#: :func:`working_tree_interval_base`'s answer. The interval always ENDS at the
+#: captured working tree; these name its start.
+#:
+#: - ``BASE_AT_FRONTIER`` — the covered frontier behind HEAD: commits since the
+#:   last reviewed state are unreviewed, so the review covers them too.
+#: - ``BASE_AT_MERGE_BASE`` — no reviewed state sits behind HEAD and the tree is
+#:   clean, so the unreviewed interval is everything the branch committed.
+#: - ``BASE_AT_HEAD_COVERED`` — the frontier IS HEAD's tree: nothing committed
+#:   is unreviewed, and the interval is the uncommitted work alone.
+#: - ``BASE_AT_HEAD`` — no reviewed state to start from and uncommitted work in
+#:   the tree (or the frontier could not be looked for): HEAD-anchored.
+BASE_AT_FRONTIER = "frontier"
+BASE_AT_MERGE_BASE = "merge-base"
+BASE_AT_HEAD_COVERED = "head-covered"
+BASE_AT_HEAD = "head"
+
+
+def no_judgeable_wip(project_dir: Path) -> bool:
+    """True when the working tree holds no uncommitted JUDGEABLE change.
+
+    The predicate :func:`working_tree_interval_base` asks before reaching back to
+    the merge-base, owned here so no caller can hand it a different one. Records
+    (a plan tick, a change-log line) are uncommitted in the ordinary chunk close,
+    and a HEAD-anchored interval over them holds nothing a review grades, so
+    they must not decide where the interval starts. Same predicate the coverage
+    gate grades with (``coverage_algebra.judgeable_files``). Fails toward False:
+    a status git could not produce is not evidence of a tree free of work.
+    """
+    from . import coverage_algebra  # noqa: PLC0415 — lazy; keeps the import graph flat
+
+    rc, out, _err = evidence.run_git(
+        project_dir, "status", "--porcelain", "--untracked-files=all"
+    )
+    if rc != 0:
+        return False
+    paths = []
+    for line in out.splitlines():
+        parsed = gitstate.parse_porcelain_line(line)
+        if parsed is None:
+            return False
+        _status, src, path = parsed
+        paths.append(path)
+        if src:
+            paths.append(src)
+    return not coverage_algebra.judgeable_files(paths)
+
+
+def _record_no_review_needed(project_dir: Path, guard: str, body: dict) -> bool:
+    """Record an exit-3 firing; True when the guard-refusal fact landed.
+
+    Every ``no-review-needed`` return goes through here, so no path can answer
+    "no review is owed" without leaving the record that lets the yield question
+    ("did it ever refuse a round that turned out to be needed?") be asked of it.
+    SOFT but never silent: the refusal is correct whether or not the record
+    lands, and a firing that vanishes leaves that question looking answered at
+    zero. Sink ruling and its four reasons: `evidence.append_guard_refusal`.
+    """
+    recorded = evidence.append_guard_refusal(project_dir, guard, body)
+    if recorded.get("status") == "appended":
+        return True
+    print(
+        "critic-begin: the refusal is correct but was NOT recorded "
+        f"({recorded.get('reason', 'unknown')}) — this firing is missing from "
+        "`prawduct-hook evidence list --kind guard-refusal`, so read that query "
+        "as a lower bound.",
+        file=sys.stderr,
+    )
+    return False
+
+
+def working_tree_interval_base(
+    project_dir: Path,
+    head_commit: str,
+    head_tree: str,
+    why: "list[str] | None" = None,
+) -> dict:
+    """Where a ``chunk``/``final`` review's interval starts — the one owner.
+
+    Returns ``{"origin", "commit", "tree", "absent"}``; ``origin`` is one of the
+    ``BASE_AT_*`` constants above, and ``absent`` is the ``gates.FRONTIER_ABSENT_*``
+    code saying why no reviewed state was extended from (``None`` when one was,
+    or when the frontier could not be looked for). :func:`merge_base_start_reason`
+    renders it, so the router's rationale and ``critic-begin``'s note say the
+    same thing. :func:`begin_review` derives its interval
+    from this, and mode inference asks it (rather than re-deriving it) so the
+    mode it names and the interval that mode then captures cannot disagree.
+
+    **The merge-base arm is the unreviewed interval when nothing judgeable is
+    uncommitted** (:func:`no_judgeable_wip`, asked here rather than taken from
+    the caller). In the middle of a plan a builder who commits the chunk before
+    reviewing it leaves nothing judgeable in the working tree, often with a
+    plan tick or change-log line still uncommitted. With a reviewed state behind
+    HEAD, the frontier arm already covers the commit. With none — the branch's
+    first chunk, committed first — the HEAD-anchored interval holds nothing a
+    review grades, and the review of that chunk is a review of what the branch
+    committed. So then, and only then, the interval starts at the merge-base.
+
+    It is bounded that way on purpose. With judgeable work uncommitted the
+    HEAD-anchored interval already holds something to review, and extending it
+    to the whole branch would turn every first review of in-flight work into
+    the boundary ``cumulative``'s span (``gates.covered_frontier`` says the same
+    about its own ``None``). A frontier that could not be LOOKED for (``why`` non-empty)
+    does not fall back either: "could not look" is not "nothing reviewed", and
+    a whole-branch interval must not be chosen on a failed read.
+
+    ``why`` collects ``gates.covered_frontier``'s could-not-look sentences, so
+    the caller can say why an interval was not extended.
+    """
+    from . import gates  # noqa: PLC0415 — lazy; gates is heavy and one-way
+
+    frontier_why: list[str] = []
+    absent: list[str] = []
+    frontier = gates.covered_frontier(project_dir, frontier_why, absent)
+    if why is not None:
+        why.extend(frontier_why)
+    absent_code = absent[0] if absent else None
+    if frontier is not None:
+        if frontier["tree"] == head_tree:
+            return {"origin": BASE_AT_HEAD_COVERED, "commit": head_commit, "tree": head_tree,
+                    "absent": None}
+        return {"origin": BASE_AT_FRONTIER, "commit": frontier["commit"],
+                "tree": frontier["tree"], "absent": None}
+    if not frontier_why and no_judgeable_wip(project_dir):
+        from . import coverage  # noqa: PLC0415 — lazy; coverage pulls git helpers
+
+        resolved = coverage.resolve_merge_base_tree(project_dir)
+        if resolved["status"] == "ok" and resolved["tree"] != head_tree:
+            return {
+                "origin": BASE_AT_MERGE_BASE,
+                "commit": resolved["merge_base"],
+                "tree": resolved["tree"],
+                "absent": absent_code,
+            }
+    return {"origin": BASE_AT_HEAD, "commit": head_commit, "tree": head_tree,
+            "absent": absent_code}
+
+
+def merge_base_start_reason(absent: "str | None") -> str:
+    """Why an interval starts at the merge-base, as one clause.
+
+    One renderer for both surfaces that say it (mode inference's rationale and
+    ``critic-begin``'s note), so the two cannot describe the same start
+    differently. The three reasons need different words because they need
+    different actions. An open blocker is named with its only remedy, since a
+    ``chunk`` review records no resolutions and will not clear it.
+    """
+    from . import gates  # noqa: PLC0415 — lazy; gates is heavy and one-way
+
+    if absent == gates.FRONTIER_ABSENT_BLOCKED:
+        return (
+            "the nearest reviewed state carries an unresolved blocking finding, "
+            "which this review will not clear (only `verify-resolutions` records "
+            "resolutions)"
+        )
+    if absent == gates.FRONTIER_ABSENT_NONE_COMPOSES:
+        return (
+            "no reviewed state on this branch composes from the merge-base "
+            "(nothing is reviewed yet, or the reviews predate a base sync)"
+        )
+    return "nothing on this branch is reviewed yet"
+
+
 def begin_review(
     project_dir: Path,
     mode_token: str,
@@ -2577,9 +2765,11 @@ def begin_review(
     Per-mode interval (design D8, chunk-03 refinements):
 
     - ``chunk``/``final`` — base = ``HEAD``, or the covered frontier behind it
-      when commits since that are unreviewed (``gates.covered_frontier``; the
-      fact records ``base_extended_from``); head = the captured working tree
-      (D3 temp-index capture; non-mutating).
+      when commits since that are unreviewed (``gates.covered_frontier``), or
+      the merge-base when no reviewed state sits behind HEAD and the tree is
+      clean (:func:`working_tree_interval_base` owns the choice; an extended
+      base is recorded as ``base_extended_from``); head = the captured working
+      tree (D3 temp-index capture; non-mutating).
     - ``cumulative`` — base = merge-base(resolve-base, HEAD), head = ``HEAD``
       (the committed bundle; a dirty working tree is noted, not reviewed).
     - ``verify-resolutions`` — base = the prior review FACT's ``head_tree``;
@@ -2733,6 +2923,11 @@ def begin_review(
     pending_actionable = 0
 
     base_extended_from: "str | None" = None
+    # Where a `chunk`/`final` interval started, read at the empty-interval check
+    # below: an empty interval whose start is HEAD_COVERED is "the last review
+    # already covers HEAD", which is not the same answer as "committed work sits
+    # outside this interval".
+    interval_origin: "str | None" = None
     # ONE read of the store for the verify-resolutions anchor lookup and the
     # prior-dispositions block. The store is shared by every worktree of the
     # clone, so two reads are two MOMENTS: a sibling's `critic-consolidate`
@@ -2747,32 +2942,43 @@ def begin_review(
         return _store_slot[0]
 
     if mode_token in ("chunk", "final"):
-        base_commit = dispatch_commit
-        base_tree = capture["head_tree"]
         head_tree = capture["tree"]
         head_commit = dispatch_commit if capture["clean"] else None
         # Start at the covered frontier when commits since it are unreviewed —
-        # typically a non-blocking fix committed after the last review. One
-        # review then covers them with the new work, instead of the fix buying
-        # a `verify-resolutions` round of its own; and the edge it records
-        # composes, so no gap is left for a `cumulative` to close later.
-        from . import gates  # noqa: PLC0415 — lazy; gates is heavy and one-way
-
+        # typically a non-blocking fix, or a chunk committed before its review.
+        # One review then covers them with the new work, instead of the commit
+        # buying a `verify-resolutions` or `cumulative` round of its own; and
+        # the edge it records composes, so no gap is left for a `cumulative` to
+        # close later. With no reviewed state behind HEAD and nothing judgeable
+        # uncommitted, the start is the merge-base instead
+        # (`working_tree_interval_base` owns both, and says why the second is
+        # bounded that way).
         frontier_why: list[str] = []
-        frontier = gates.covered_frontier(project_dir, frontier_why)
+        start = working_tree_interval_base(
+            project_dir, dispatch_commit, capture["head_tree"], frontier_why
+        )
+        base_commit, base_tree = start["commit"], start["tree"]
+        interval_origin = start["origin"]
         # A frontier that could not be LOOKED FOR is a different fact from one
         # that does not exist, and the difference is invisible in the interval.
         notes.extend(
             f"the review interval was not extended — {reason}" for reason in frontier_why
         )
-        if frontier is not None and frontier["tree"] != capture["head_tree"]:
-            base_commit, base_tree = frontier["commit"], frontier["tree"]
-            base_extended_from = frontier["tree"]
+        if start["origin"] == BASE_AT_FRONTIER:
+            base_extended_from = start["tree"]
             notes.append(
-                f"this {mode_token} review starts at {frontier['commit'][:12]}, the last "
+                f"this {mode_token} review starts at {start['commit'][:12]}, the last "
                 "reviewed state, not at HEAD: the commits since it have not been "
                 "reviewed, so this one review covers them together with the "
                 "uncommitted work."
+            )
+        elif start["origin"] == BASE_AT_MERGE_BASE:
+            base_extended_from = start["tree"]
+            notes.append(
+                f"this {mode_token} review starts at the merge-base "
+                f"{start['commit'][:12]}, not at HEAD: nothing judgeable is uncommitted and "
+                f"{merge_base_start_reason(start.get('absent'))}, so the committed "
+                "work is the unreviewed interval."
             )
     elif mode_token == "cumulative":
         from . import coverage  # noqa: PLC0415 — lazy; coverage pulls git helpers
@@ -2981,7 +3187,7 @@ def begin_review(
             # which here means spending a full `cumulative` on a bundle the gate
             # already reports satisfied. That is a review round manufactured by
             # the framework's own routing.
-            recorded = evidence.append_guard_refusal(
+            recorded = _record_no_review_needed(
                 project_dir,
                 "critic-dispatch-nothing-to-verify",
                 {
@@ -2993,18 +3199,6 @@ def begin_review(
                     "dispatch_commit": dispatch_commit,
                 },
             )
-            if recorded.get("status") != "appended":
-                # SOFT but never silent, the posture every guard in this class
-                # shares: the refusal is correct whether or not the record
-                # lands, and a firing that vanishes leaves the yield question
-                # looking answered at zero.
-                print(
-                    "critic-begin: the refusal is correct but was NOT recorded "
-                    f"({recorded.get('reason', 'unknown')}) — this firing is "
-                    "missing from `prawduct-hook evidence list --kind "
-                    "guard-refusal`, so read that query as a lower bound.",
-                    file=sys.stderr,
-                )
             return {
                 "status": "no-review-needed",
                 "reason": (
@@ -3016,7 +3210,7 @@ def begin_review(
                 "anchor": head_anchor,
                 "excluded_wip": None if excluded_wip is None else list(excluded_wip),
                 "notes": notes,
-                "recorded": recorded.get("status") == "appended",
+                "recorded": recorded,
             }
         files_reviewed = list(prior_files)
         for f in delta:
@@ -3037,6 +3231,36 @@ def begin_review(
         return {
             "status": "error",
             "reason": f"cannot diff {base_tree[:12]}..{head_tree[:12]}",
+        }
+    if not files_changed and interval_origin == BASE_AT_HEAD_COVERED:
+        # Nothing is unreviewed: the last blocker-free review covers HEAD, so the
+        # coverage gate already composes this state and no review is owed. That
+        # is exit 3's answer, the one the skill stops on. The generic refusal
+        # below names `cumulative`, and following it here would buy a
+        # whole-branch review of work that is already covered.
+        recorded = _record_no_review_needed(
+            project_dir,
+            "critic-dispatch-head-covered",
+            {
+                "interval": {"base_tree": base_tree, "head_tree": head_tree},
+                "mode": mode_token,
+                "scope": scope,
+                "chunk": chunk,
+                "branch": gitstate.current_branch(project_dir),
+                "dispatch_commit": dispatch_commit,
+            },
+        )
+        return {
+            "status": "no-review-needed",
+            "reason": (
+                f"nothing unreviewed for mode {mode_token!r}: the last review "
+                "already covers HEAD, so the coverage gate composes this state "
+                "and no review is owed (a `cumulative` would re-review covered work)"
+            ),
+            "free_files": [],
+            "anchor": "HEAD",
+            "notes": notes,
+            "recorded": recorded,
         }
     if not files_changed and mode_token != "verify-resolutions":
         return {
@@ -3087,7 +3311,7 @@ def begin_review(
         # store failure must not turn a correct exit-3 into an error. Not
         # silent, though — a degraded record that vanishes leaves the yield
         # question looking answered at zero.
-        recorded = evidence.append_guard_refusal(
+        recorded = _record_no_review_needed(
             project_dir,
             "critic-dispatch-free-interval",
             {
@@ -3113,14 +3337,6 @@ def begin_review(
                 "dispatch_commit": dispatch_commit,
             },
         )
-        if recorded.get("status") != "appended":
-            print(
-                "critic-begin: the refusal is correct but was NOT recorded "
-                f"({recorded.get('reason', 'unknown')}) — this firing is missing "
-                "from `prawduct-hook evidence list --kind guard-refusal`, so read "
-                "that query as a lower bound.",
-                file=sys.stderr,
-            )
         return {
             "status": "no-review-needed",
             "reason": (
@@ -3147,7 +3363,7 @@ def begin_review(
             # on a second channel in the same invocation. Every other note still
             # rides — this path used to drop the lot.
             "notes": notes,
-            "recorded": recorded.get("status") == "appended",
+            "recorded": recorded,
         }
 
     # ROUND BUDGET — the terminating rule. Yield does not decay (13.5 → 15.4 →
@@ -4417,10 +4633,19 @@ def _severity_counts(findings: list[dict]) -> tuple[int, int, int]:
     return blocking, warning, note
 
 
-def build_fact_body(manifest: dict, partials: list[dict]) -> dict:
+def build_fact_body(
+    manifest: dict, partials: list[dict], *, dispatched_at: "str | None" = None
+) -> dict:
     """Assemble the review fact body (design D4) from the manifest interval
     and the merged partials. The derived cache is rendered FROM this body
-    (:func:`fact_to_cache_record`), so it carries everything the cache needs."""
+    (:func:`fact_to_cache_record`), so it carries everything the cache needs.
+
+    ``dispatched_at`` is this review's dispatch-clock stamp, when the mark
+    ``critic-begin`` wrote is still this review's (``review_dispatch.peek``).
+    It is written as a body key ONLY when present: an absent key is "not
+    measured", and a null would be a value naming the absence, which every
+    reader would then have to special-case to keep it out of a real interval.
+    """
     findings = merge_findings(partials)
     blocking, warning, note = _severity_counts(findings)
     # Parallel reviewers → wall-clock is the slowest, not the sum. None when no
@@ -4431,7 +4656,7 @@ def build_fact_body(manifest: dict, partials: list[dict]) -> dict:
         if isinstance(p.get("duration_seconds"), (int, float))
         and not isinstance(p.get("duration_seconds"), bool)
     ]
-    return {
+    body = {
         "base_commit": manifest.get("base_commit"),
         "base_tree": manifest["base_tree"],
         "head_tree": manifest["head_tree"],
@@ -4486,6 +4711,16 @@ def build_fact_body(manifest: dict, partials: list[dict]) -> dict:
         # move a verdict, and no gate reads it.
         "record_lint": manifest.get("record_lint"),
     }
+    # The dispatch clock, on the one record every worktree of the clone can
+    # read. `duration_seconds` above is the reviewers' own estimate; this is
+    # the stamp code read before they were spawned, and the interval ends at
+    # the fact's envelope `ts` (`review_dispatch.fact_interval_seconds`, the
+    # one reader). The ledger carries the same stamp, but a ledger is per
+    # worktree, so a tally over the shared store could not see a delegated or
+    # parallel worktree's clock without it.
+    if dispatched_at is not None:
+        body["dispatched_at"] = dispatched_at
+    return body
 
 
 #: The three readings :func:`finding_fix_cost` can return. Phrases rather than
@@ -5106,7 +5341,19 @@ def consolidate(project_dir: Path) -> int:
         f.get("id") == review_id for f in evidence.facts_of_kind(store, "review")
     )
     if not already:
-        body = build_fact_body(manifest, partials)
+        # The dispatch mark is READ here and CONSUMED by the ledger append
+        # below: the fact is minted first, so the mark `critic-begin` wrote is
+        # still on disk. `peek` makes the same tree judgement `consume` will —
+        # one judgement, so the fact and the ledger event cannot disagree about
+        # whether the mark is this review's — and clears nothing, because the
+        # ledger still needs it. A clock is advice: an unreadable mark or a
+        # failed git read records the fact as not measured, never fails it.
+        from . import review_dispatch  # noqa: PLC0415 — lazy, as this module's other lib imports are
+
+        dispatched_at, _clock_reason = review_dispatch.peek(
+            prawduct_dir, "review.critic", review_dispatch.head_sha(project_dir)
+        )
+        body = build_fact_body(manifest, partials, dispatched_at=dispatched_at)
         result = evidence.append_fact(project_dir, "review", review_id, body)
         if result["status"] != "appended":
             print(

@@ -30,7 +30,8 @@ were reassigned here (they are gate logic, lib-clean) from the briefing region.
 Depends on its lib siblings ``gitstate`` / ``coverage`` / ``buildplan_refs``
 (build-plan Status parsing, including ``_count_build_plan_chunks``),
 ``evidence`` / ``coverage_algebra`` (the v3 data plane), ``learnings_files``
-(the one resolver for the rules layout the cross-check nudge names), and ``core``
+(the one resolver for the rules layout the cross-check nudge names),
+``standing_block`` (the turn-closing verdict the Stop deferral reads), and ``core``
 (``read_bool_yaml_key`` — canonical twin of the hook's parity-pinned inline
 mirror), plus the stdlib.
 """
@@ -51,6 +52,7 @@ from . import (
     evidence,
     gitstate,
     learnings_files,
+    standing_block,
     verdict_cache,
 )
 from .core import read_bool_yaml_key, suite_coupled_prefixes
@@ -856,6 +858,54 @@ def background_tasks_in_flight(stop_input) -> tuple[bool, list[str]]:
     return True, labels
 
 
+#: The gates a turn's ``DO NOT CLEAR`` verdict defers — the SESSION-END gates,
+#: keyed by their ``hooks/gates.json`` ids. Everything else a Stop can raise
+#: (learnings, PR review, trivial bounds) is not about whether the session is
+#: ending, so it keeps blocking on such a turn.
+VERDICT_DEFERRED_GATES = frozenset({"reflection", "critic"})
+
+
+def turn_declares_in_flight(stop_input) -> tuple[bool, str | None]:
+    """Decide whether the turn that just ended told the user NOT to end the
+    session, from the Stop-hook ``last_assistant_message`` field.
+
+    The Stop hook fires at every turn end, while the reflection and Critic
+    gates are about session end. A turn whose standing block closes on
+    ``DO NOT CLEAR`` is the agent's own statement that the session is not
+    ending — a review still running, an ask the user must answer first — so
+    both gates DEFER to the next Stop. Both, by owner ruling: the label is a
+    required, user-facing claim, so misusing it to dodge a gate is visible to
+    the person it misleads. The deferral is stateless: the next
+    turn that closes on anything else is a session end, and the gates fire.
+
+    Reads the payload field only. Claude Code 2.1.282 carries
+    ``last_assistant_message`` beside ``transcript_path``; the transcript is
+    deliberately NOT parsed as a fallback, because an older client that lacks
+    the field then behaves exactly as before this signal existed.
+
+    Degradation ladder — the permissive direction is taken ONLY on a clearly
+    present verdict; every uncertain case keeps blocking (authority fails
+    closed):
+
+      - non-dict input, field absent, non-string or blank → ``(False, None)``;
+      - the message's closing block states no single verdict where the block
+        puts it (``standing_block.clear_verdict`` returns ``None``: a label
+        quoted mid-prose, both labels, trailing text after the verdict) →
+        ``(False, None)``;
+      - the verdict is ``SAFE TO CLEAR`` → ``(False, None)``;
+      - the verdict is ``DO NOT CLEAR`` → ``(True, "DO NOT CLEAR")``.
+    """
+    if not isinstance(stop_input, dict):
+        return False, None
+    message = stop_input.get("last_assistant_message")
+    if not isinstance(message, str) or not message.strip():
+        return False, None
+    verdict = standing_block.clear_verdict(message)
+    if verdict == standing_block.DO_NOT_CLEAR:
+        return True, verdict
+    return False, None
+
+
 _CRITIC_MODE_CHUNK = "chunk (lighter pass, not ready for push)"
 _CRITIC_MODE_FINAL = "final (full review, ready for push)"
 _CRITIC_MODE_CUMULATIVE = "cumulative (bundle review, ready for merge)"
@@ -1393,12 +1443,26 @@ def commit_coverage(project_dir: Path) -> dict:
 
 
 #: How far back from HEAD :func:`covered_frontier` walks before giving up. A
-#: bound, not a tuning knob: past it the frontier reads as absent and the
-#: review keeps today's HEAD-anchored interval, the answer it had before.
+#: bound, not a tuning knob: past it the frontier reads as absent, and where the
+#: review then starts is :func:`critic_consolidate.working_tree_interval_base`'s call.
 FRONTIER_WALK_LIMIT = 200
 
+#: Which clean ``None`` :func:`covered_frontier` returned, for a caller that
+#: passes ``absent``. They differ in what the builder must hear: "unreviewed"
+#: is the ordinary first chunk, "blocked" means a review found a blocker nobody
+#: has resolved (only ``verify-resolutions`` records resolutions), and "none
+#: composes" cannot tell a never-reviewed branch from one whose reviews
+#: predate a base sync.
+FRONTIER_ABSENT_UNREVIEWED = "unreviewed"
+FRONTIER_ABSENT_BLOCKED = "blocked"
+FRONTIER_ABSENT_NONE_COMPOSES = "none-composes"
 
-def covered_frontier(project_dir: Path, why: "list[str] | None" = None) -> "dict | None":
+
+def covered_frontier(
+    project_dir: Path,
+    why: "list[str] | None" = None,
+    absent: "list[str] | None" = None,
+) -> "dict | None":
     """The newest commit on this branch whose tree a REVIEW already covers.
 
     Walks HEAD's first-parent history back toward the merge-base and returns
@@ -1409,22 +1473,28 @@ def covered_frontier(project_dir: Path, why: "list[str] | None" = None) -> "dict
     after it as well as the uncommitted work. When that commit is HEAD, nothing
     after it needs covering and the caller's interval is unchanged.
 
-    ``None`` whenever extension must not happen, so the caller keeps its
-    HEAD-anchored interval:
+    ``None`` whenever extension from a reviewed tree must not happen. Where the
+    review starts instead is the caller's call
+    (:func:`critic_consolidate.working_tree_interval_base`): HEAD, or, on a clean
+    tree with no blocker-free reviewed state behind it, the merge-base. The
+    first three cases below are "nothing to find", and a caller passing
+    ``absent`` gets one ``FRONTIER_ABSENT_*`` code naming which:
 
     - the nearest composing tree carries an unresolved blocker — those clear
       through ``verify-resolutions``, the only mode that records resolutions;
     - the nearest composing tree is covered by free edges alone, i.e. nothing
-      on the branch has been reviewed yet. Extending there would turn the first
-      inner-stage review into a review of everything the branch committed, the
-      span the boundary ``cumulative`` exists for;
+      on the branch has been reviewed yet. Extending there from a dirty tree would
+      turn the first inner-stage review into a review of everything the branch
+      committed. With nothing judgeable uncommitted the caller does reach that
+      span (``critic_consolidate.working_tree_interval_base``), at inner rigor:
+      review stage is keyed on the plan's position, not on whether the builder
+      committed first, so the alternative is the same span at boundary rigor;
     - no tree on the walk composes at all. After a base sync this is the
       ordinary answer: the merge-base is the new base tip, and a pre-sync review
       composes from it only across a free (non-judgeable) advance, never across
       a judgeable one — that needs the base-advance transfer, which
-      :func:`_merge_base_verdict` owns. So a sync leaves today's interval in
-      place until a review spans it, rather than extending to a whole-branch
-      review;
+      :func:`_merge_base_verdict` owns. A never-reviewed branch returns here
+      too, and the two are indistinguishable from the walk;
     - the merge-base, the history or the store cannot be read, or the walk
       passes :data:`FRONTIER_WALK_LIMIT`.
 
@@ -1436,6 +1506,10 @@ def covered_frontier(project_dir: Path, why: "list[str] | None" = None) -> "dict
     def _unreadable(reason: str) -> None:
         if why is not None:
             why.append(reason)
+
+    def _absent(code: str) -> None:
+        if absent is not None:
+            absent.append(code)
 
     read = evidence.read_facts(project_dir)
     precheck = _store_precheck(read)
@@ -1472,9 +1546,14 @@ def covered_frontier(project_dir: Path, why: "list[str] | None" = None) -> "dict
         )
         if verdict["status"] == "covered":
             reviewed = any(step.get("kind") == "review" for step in verdict.get("path", []))
-            return {"commit": commit, "tree": tree} if reviewed else None
-        if verdict["status"] == "blocked":
+            if reviewed:
+                return {"commit": commit, "tree": tree}
+            _absent(FRONTIER_ABSENT_UNREVIEWED)
             return None
+        if verdict["status"] == "blocked":
+            _absent(FRONTIER_ABSENT_BLOCKED)
+            return None
+    _absent(FRONTIER_ABSENT_NONE_COMPOSES)
     return None
 
 

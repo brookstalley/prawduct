@@ -14,6 +14,36 @@ release process keeps the two in sync (one headline per shipped release).
 
 **Rolling notes for the next release — nothing has shipped under this number yet.** Entries accumulate here as work lands on `develop`; the cut renames this heading to its release number.
 
+**`review-friction`** — **a chunk you committed before its review gets a chunk review, not a
+full bundle review, and a turn that says `DO NOT CLEAR` no longer trips the end-of-session gates.**
+
+In the middle of a plan (two or more of your branch's own chunks unticked), `/prawduct:critic`
+with no arguments now answers a `chunk` review over whatever has not been reviewed yet, whether or
+not you committed first. It used to escalate a committed chunk to a `cumulative`: the boundary
+review, at boundary rigor, over everything the branch had committed. Across seven governed repos,
+33 of those ran mid-plan in five days, averaging about eleven findings each, and each one fed verify
+rounds after it. With nothing reviewed yet and nothing reviewable uncommitted (a plan tick or
+change-log line doesn't count), the chunk review starts at the merge-base. Naming `chunk` or
+`final` yourself mid-plan keeps that mode instead of switching to `cumulative`, and when the last
+review already covers everything it answers "no review needed". When nothing is unreviewed, the answer is `deferred`. At the PR point (the last chunk
+committed, or the plan complete) nothing changes: that is still `cumulative`. The chunk-close order
+now reads the same everywhere: review the chunk, fix, then commit.
+
+The Stop hook now reads your turn's closing verdict. When the last message closes on
+`DO NOT CLEAR`, the reflection and Critic gates wait for the next turn that does not, instead of
+blocking a turn that is handing back mid-work. Roughly half of those blocks landed on such turns.
+Every other gate still blocks. `SAFE TO CLEAR`, `COMPLETE`, no verdict, or both verdicts block
+exactly as before, so the gate now checks your own claim that the work is done. This needs the
+`last_assistant_message` field in Claude Code's Stop payload (present in 2.1.282); without it,
+nothing changes.
+
+Review times you see are now clocked where a clock exists. `review-stats` leads with the measured
+dispatch-to-findings time and labels reviewers' own estimates as estimates. It used to headline the
+estimates, which ran 2–5× high in most repos. The branch round tally on the uncovered gate reports
+clocked minutes first and estimated minutes separately, and never adds the two together. New reviews
+record their dispatch time in the shared evidence store, so a round reviewed in any worktree of the
+clone is timed. Older reviews stay estimates.
+
 **`learnings-one-line`** — **every learnings rule is one line, and `core.md` has a cap only you
 can raise.** Your `.claude/rules/learnings/` files load into sessions (`core.md` into every one), and
 they grow. From this release:
