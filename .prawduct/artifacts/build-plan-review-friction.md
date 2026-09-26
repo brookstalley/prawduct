@@ -211,6 +211,7 @@ the Stop events (`stop_hook_summary` records) in the transcripts under every Cla
 `~/.claude-noun`, `~/.claude-devcontainer`, `~/.claude-noun-devcontainer`). The second is each sibling's
 `.prawduct/.governance-ledger.jsonl` (puzzles, discodon, hallucinote, swordfishing, bankmachine, faidh,
 prawduct). **At PR time (2026-09-26), O-4 is still open with the owner:** sign-off on Success 1's descope.
+**PR boundary 2026-09-26, after syncing develop (#902 learnings-one-line):** cumulative rev-20260926T141912Z-875cfe56 found 2 blocking. R-1: the merge-base start was bounded by a clean tree, not by uncommitted judgeable work. R-7: the head-covered exit 3 recorded no guard-refusal. It also raised 4 warnings. All were fixed in efd7eea7, and verify passes rev-20260926T145141Z-e963affd and rev-20260926T145647Z-18ad8392 were clean. The docstring of `test_the_committed_work_remedy_names_no_mode` still says the remedy "must not name `cumulative`". It now does when code is in flight, and a separate test pins that. It is left as prose, since fixing it would buy a round.
 
 ### Chunk 00: Siblings run a pinned plugin, not this checkout
 
