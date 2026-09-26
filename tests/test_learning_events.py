@@ -698,6 +698,24 @@ class TestAMovedRuleIsNotWritten:
         _stop(repo, capsys)
         assert _events(repo, "learning.written") == []
 
+    def test_a_rule_moved_out_of_a_deleted_file_writes_nothing(self, tmp_path, capsys):
+        """The base is the corpus at the base TREE, so a file deleted since then
+        still counts: folding an area file back into core.md writes nothing.
+        Red if the base is read only for files that exist now."""
+        repo = _repo(tmp_path, rules=("a rule that stays",))
+        area = repo / lf.RULES_DIR_REL / "area.md"
+        area.write_text('---\npaths:\n  - "code.py"\n---\n# area\n\n### a rule folded back into core\n')
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "area file")
+        _base_tree(repo)
+        area.unlink()
+        (repo / RULES_REL).write_text(
+            _corpus("a rule that stays", "a rule folded back into core"), encoding="utf-8"
+        )
+        _touch_code(repo)
+        _stop(repo, capsys)
+        assert _events(repo, "learning.written") == []
+
     def test_a_new_rule_in_an_area_file_is_still_written(self, tmp_path, capsys):
         # The control: the union must not swallow genuinely new rules.
         repo = _repo(tmp_path, rules=("a rule that stays",))

@@ -85,6 +85,7 @@ legacy file, so its growth never registered. This removes each bypass, owner-dir
 - A raise never counts in the interval that writes it.
 - A compacted corpus blocks on any violation. One not yet compacted is frozen: no file over budget
   may grow, and every added line must already be a one-line rule.
+  A line moved from one rules file to another is not added: the check reads the whole corpus at the base.
 - The migration session is judged on the corpus total, replacing the per-file legacy credit.
 - The Stop hook measures against HEAD when there is no base marker, instead of skipping.
 - The `learnings-budget` waiver key is retired.

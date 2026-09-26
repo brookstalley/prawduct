@@ -1263,6 +1263,19 @@ def _check_learnings_budget(
         for r in rows
     )
 
+    # The frozen regime's "already held" lines are the WHOLE corpus's at the base,
+    # shared across files and consumed as they are matched: a rule moved from
+    # core.md to an area file is the remedy the over-budget finding names, and
+    # grading it as written in its new file would block the move it prescribes.
+    held: dict[str, int] = {}
+    if not compliant_at_base and not migration:
+        base_texts = learnings_files.corpus_texts_at(project_dir, base_tree)
+        if base_texts is None:
+            base_texts = [r["base_text"] for r in rows if r["base_text"]]
+        for text in base_texts:
+            for line in text.splitlines():
+                held[line] = held.get(line, 0) + 1
+
     for r in rows:
         grew = r["now"] > r["base"]
         over = r["now"] > r["budget"]
@@ -1288,13 +1301,10 @@ def _check_learnings_budget(
             grew = grew or over
             violations = learnings_files.shape_violations(r["now_text"])
         else:
-            before = {}
-            for line in (r["base_text"] or "").splitlines():
-                before[line] = before.get(line, 0) + 1
             violations = []
             for v in learnings_files.shape_violations(r["now_text"]):
-                if before.get(v.text, 0) > 0:
-                    before[v.text] -= 1
+                if held.get(v.text, 0) > 0:
+                    held[v.text] -= 1
                     continue
                 violations.append(v)
         findings.extend(_shape_findings(r["rel"], violations))

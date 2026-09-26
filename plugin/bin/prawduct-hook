@@ -2935,19 +2935,18 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 # The base is the WHOLE corpus at the base revision, not the
                 # same file's: a rule moved verbatim between rules files (a
                 # compaction's split, or by hand) is an old rule in a new
-                # place, never a written one.
-                _lt_base: set = set()
-                for _lt_path in _lt_files:
-                    _lt_rel = _lt_path.relative_to(project_dir).as_posix()
-                    _lt_rc, _lt_base_text, _ = _lt_evidence.run_git(
-                        project_dir, "show", f"{_budget_base}:{_lt_rel}"
+                # place, never a written one. `record_lint`'s format check asks
+                # the same question through the same helper.
+                _lt_base_texts = _lt_lf.corpus_texts_at(project_dir, _budget_base)
+                if _lt_base_texts is None:
+                    raise RuntimeError(
+                        f"git could not list the rules files at the base tree {_budget_base[:12]}"
                     )
-                    # Nonzero here is "not in that tree" — the base tree itself
-                    # already resolved — so a brand-new rules file adds nothing.
-                    if _lt_rc == 0:
-                        _lt_base |= {
-                            _lt_lf.unit_hash(_u) for _u in _lt_lf.rule_units(_lt_base_text)
-                        }
+                _lt_base = {
+                    _lt_lf.unit_hash(_u)
+                    for _lt_base_text in _lt_base_texts
+                    for _u in _lt_lf.rule_units(_lt_base_text)
+                }
                 for _lt_path in _lt_files:
                     _lt_rel = _lt_path.relative_to(project_dir).as_posix()
                     for _lt_unit in _lt_lf.rule_units(

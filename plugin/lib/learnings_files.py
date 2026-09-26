@@ -549,6 +549,39 @@ def rules_dir_is_gitignored(project_dir: str | Path) -> bool:
     return proc.returncode == 0
 
 
+def corpus_texts_at(project_dir: str | Path, tree: str) -> "list[str] | None":
+    """The text of every rules file in ``tree``: the WHOLE corpus at a revision.
+
+    The one answer to "what did the corpus already hold at the base?", for every
+    check that asks whether a line or rule is new since then. It is the whole
+    corpus and never the same file's base text, because a rule moved verbatim
+    between rules files (a compaction's split, or the over-budget remedy's
+    "move it to an area file") is an old rule in a new place, not a written
+    one. Files deleted since ``tree`` are included for the same reason.
+    ``None`` when git cannot list the tree; a file it lists but cannot show is
+    skipped, which reads as "held nothing", the conservative answer.
+    """
+    def _git(*args: str) -> "subprocess.CompletedProcess[str] | None":
+        try:
+            return subprocess.run(  # noqa: S603 — list-form argv, no shell (project preference)
+                ["git", *args], cwd=str(project_dir), capture_output=True, text=True, timeout=30,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+
+    listed = _git("ls-tree", "-r", "--name-only", tree, "--", f"{RULES_DIR_REL}/")
+    if listed is None or listed.returncode != 0:
+        return None
+    texts = []
+    for rel in listed.stdout.splitlines():
+        if not rel.endswith(".md"):
+            continue
+        shown = _git("show", f"{tree}:{rel}")
+        if shown is not None and shown.returncode == 0:
+            texts.append(shown.stdout)
+    return texts
+
+
 # ---------------------------------------------------------------------------
 # Rule units — the addressable thing a telemetry event is about
 # ---------------------------------------------------------------------------
