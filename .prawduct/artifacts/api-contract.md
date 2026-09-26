@@ -417,9 +417,10 @@ files to touch previews first. That framing is descriptive — the binding rule 
     Keys (`structural_recorded`,
     `discovery_expected`, `missing_artifacts[]`, `norms_unratified`, `active_layer`, `fix` /
     `applied`, `created[]`, and `risk_surfaces: {status, fix}` — outside the chain; `status` is
-    `declared` / `undeclared` / `unparseable` / `not-owed`, or null when the check could not run,
-    read from the same classification the ambient risk-surfaces advisory fires on; Health Check
-    #20 consumes it). `discovery_expected` is the layer-0 staging half, and it has **three**
+    `declared` / `undeclared` / `unparseable` / `not-owed`, or null when the check could not run
+    (`lib/risk.risk_surfaces_status`); Health Check #20 consumes it. Since 2026-09-26 nothing asks
+    for the key, so `fix` is set for `unparseable` only — `undeclared` stopped being a finding; the
+    key and its status values are unchanged, per the additive-first norm). `discovery_expected` is the layer-0 staging half, and it has **three**
     states, not two. **False** = no product work *this scan recognises* — it reads source by suffix
     allowlist (`#561`), so a repo in an unlisted language reads the same as an empty one; with
     `active_layer: null` that means "nothing owed yet", never "chain satisfied". **Null** on

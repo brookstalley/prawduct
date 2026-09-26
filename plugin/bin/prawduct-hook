@@ -6135,14 +6135,11 @@ def cmd_coverage_status(project_dir: Path, argv: list[str]) -> int:
     § Enforcement — proportionality, not a hard one-at-a-time invariant). ``--json``
     emits the structured status for the doctor skill; default is human-readable.
 
-    A fourth row sits OUTSIDE the chain — **risk surfaces**: has the product said
-    where a missed defect would cost it most (``risk_surfaces:`` in
-    ``project-state.yaml``)? Asked of ``lib/risk_surface_probes.risk_surfaces_status``,
-    the same classification the ambient advisory fires on, so the row cannot drift
-    from the nudge; ``undeclared`` and ``unparseable`` are the degraded answers and
-    each carries its own fix. Not staged behind the layers: discovery asks it
-    beside them, and an unanswered question here changes review depth for the
-    life of the product rather than what artifacts it owes.
+    Outside the chain, ``--json`` also reports how the ``risk_surfaces:`` key
+    reads (``lib/risk.risk_surfaces_status``). Nothing asks for that key, so
+    ``undeclared`` is healthy; only ``unparseable`` carries a fix, and only it
+    renders a human line, because a key the reader refuses escalates every
+    review until it is rewritten.
 
     Read-only and informational — always exits 0. A broken plugin import or a
     faulty sub-check degrades to a NOTE / "unknown", never a crash (a health
@@ -6196,19 +6193,17 @@ def cmd_coverage_status(project_dir: Path, argv: list[str]) -> int:
         print(f"NOTE: coverage-status layer-2 (norm ratification) check skipped: {exc}", file=sys.stderr)
         norms_unratified = None
 
-    # Risk surfaces — asked of the probe module, never re-derived here, for the
-    # same reason the layers are: the row's whole claim is that it mirrors the
-    # ambient nudge. Guarded like layer 2: a report degrades to "unknown" and
-    # names why on stderr; it does not crash and it does not go quiet.
+    # How the `risk_surfaces:` key reads. Guarded like layer 2: a report
+    # degrades to null and names why on stderr; it does not crash.
     risk_status: str | None
     try:
-        from lib import risk_surface_probes  # noqa: PLC0415
+        from lib import risk as _risk  # noqa: PLC0415
 
-        risk_status = risk_surface_probes.risk_surfaces_status(project_dir)
-    except Exception as exc:  # prawduct:allow prawduct/broad-except -- report must not crash; degrade the risk-surfaces row to unknown + log
+        risk_status = _risk.risk_surfaces_status(project_dir)
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- report must not crash; degrade the risk-surfaces status to null + log
         print(f"NOTE: coverage-status risk-surfaces check skipped: {exc}", file=sys.stderr)
         risk_status = None
-    risk_fix = _RISK_SURFACE_FIXES.get(risk_status)
+    risk_fix = _RISK_SURFACES_UNPARSEABLE_FIX if risk_status == "unparseable" else None
 
     # Which single layer currently owns the nudge (the chain stages). Layers 0 and 1
     # are asked of the probe module, never re-derived here: this report's whole claim
@@ -6237,9 +6232,8 @@ def cmd_coverage_status(project_dir: Path, argv: list[str]) -> int:
             "norms_unratified": norms_unratified,
             "active_layer": active_layer,
             "fix": fix,
-            # Outside the chain; `status` is one of risk_surface_probes.STATUS_*
-            # or null when the check could not run. `fix` is set for the two
-            # degraded statuses only.
+            # Outside the chain; `status` is one of lib/risk.STATUS_* or null
+            # when the check could not run. `fix` is set for `unparseable` only.
             "risk_surfaces": {"status": risk_status, "fix": risk_fix},
         }, indent=2))
         return 0
@@ -6295,44 +6289,19 @@ def cmd_coverage_status(project_dir: Path, argv: list[str]) -> int:
               "once the repo has source code or docs/.")
     else:
         print("  Active nudge → none: the coverage chain is satisfied.")
-
-    # The row outside the chain. Every status renders its own line — the two
-    # non-findings say WHY they are not findings, because "declared" and "not
-    # owed yet" are different answers and a bare "ok" would render them alike.
-    label = "  Risk surfaces (review depth)  : "
-    if risk_status is None:
-        print(f"{label}unknown (check unavailable)")
-    elif risk_status == "undeclared":
-        print(f"{label}NOT DECLARED — this repo has code under review and has never "
-              "said where a missed defect would cost it most, so every change is "
-              "reviewed at the depth its size suggests")
+    if risk_status == "unparseable":
+        print("  Risk surfaces (review depth)  : declared in a shape prawduct cannot read, "
+              "so every review escalates")
         print(f"       fix: {risk_fix}")
-    elif risk_status == "unparseable":
-        print(f"{label}declared in a shape prawduct cannot read, so review escalates "
-              "rather than read a syntax slip as low risk")
-        print(f"       fix: {risk_fix}")
-    elif risk_status == "declared":
-        print(f"{label}declared (`risk_surfaces:` in project-state.yaml; `[]` is the "
-              "opt-out)")
-    else:
-        print(f"{label}not owed yet — no source code that this scan recognises")
     return 0
 
 
-#: The fix each degraded risk-surfaces status names, keyed on
-#: ``risk_surface_probes.STATUS_*``. Declared and not-owed carry none.
-_RISK_SURFACE_FIXES = {
-    "undeclared": (
-        "answer where a missed defect would cost most and record it under "
-        "`risk_surfaces:` in .prawduct/project-state.yaml "
-        "(/prawduct:methodology discovery, \"Surface Risk Surfaces\"); "
-        "`risk_surfaces: []` is the deliberate opt-out"
-    ),
-    "unparseable": (
-        "rewrite `risk_surfaces:` as a block sequence of plain strings "
-        "(one `- path` per line), or `[]` to opt out"
-    ),
-}
+#: The one fix the risk-surfaces status carries: an unparseable key escalates
+#: every review, so it is worth rewriting. An absent key is healthy.
+_RISK_SURFACES_UNPARSEABLE_FIX = (
+    "rewrite `risk_surfaces:` as a block sequence of plain strings "
+    "(one `- path` per line), or delete the key"
+)
 
 
 def cmd_coverage_scaffold(project_dir: Path, argv: list[str]) -> int:

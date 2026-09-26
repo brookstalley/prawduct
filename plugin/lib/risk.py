@@ -201,19 +201,15 @@ def has_product_risk_declaration(prawduct_dir: Path) -> bool:
     are framework-shaped (``skills/``, ``lib/gates*``, ``bin/*hook*``), so in an
     onboarded product they describe the *plugin's* hot spots and typically match
     nothing in the product's own tree. The contract paths are a product
-    documenting its API, which says nothing about whether it has answered the
-    risk question.
+    documenting its API, which says nothing about whether it has declared
+    where its risk concentrates.
 
     The roster no longer reads this (the file-count fallback it gated is
     retired; ``critic_consolidate``'s roster config block has the measurement).
     It answers "is a NON-EMPTY ``risk_surfaces:`` list declared" — and ``[]``
     is deliberately *no* here while being an exclusive opt-out for
-    :func:`resolve_surfaces`. The one-time ask (``lib/risk_surface_probes``)
-    does NOT read this predicate: ``[]`` is the opt-out that silences the ask
-    (``methodology/discovery.md`` § Surface Risk Surfaces), so the ask reads
-    :func:`read_declared_surfaces`'s status instead. This predicate is for a
-    consumer that needs to know whether any surface is actually named. No
-    runtime caller today.
+    :func:`resolve_surfaces`. This predicate is for a consumer that needs to
+    know whether any surface is actually named. No runtime caller today.
 
     **When no key is declared**, both still feed :func:`resolve_surfaces`, so
     both still ESCALATE even though neither can relax anything. **When the key
@@ -225,12 +221,12 @@ def has_product_risk_declaration(prawduct_dir: Path) -> bool:
 
     "No risk surface matched" and "this repo never had a risk signal to give"
     look identical at the match site; this is the predicate that tells them
-    apart, for a consumer that needs to know whether the question was answered
+    apart, for a consumer that needs to know whether a list was declared
     rather than whether a path matched.
 
     An explicit ``risk_surfaces: []`` reads as no signal here, not as an
     answer: the empty list turns the risk predicate off permanently, and a
-    consumer that treated it as a declaration would stop asking.
+    consumer that treated it as a declaration would read an opt-out as a list.
     """
     # Only the explicit key. Absent -> None -> False; declared-empty -> [] ->
     # False (a present key is EXCLUSIVE in :func:`resolve_surfaces`, so it must
@@ -259,6 +255,36 @@ def surface_matches(
         for surface in surfaces
         if _surface_matches(path, surface)
     ]
+
+
+#: ``risk_surfaces_status`` answers — the values of ``coverage-status --json``'s
+#: ``risk_surfaces.status``, a published key (``api-contract.md``).
+STATUS_DECLARED = "declared"
+STATUS_UNDECLARED = "undeclared"
+STATUS_UNPARSEABLE = "unparseable"
+STATUS_NOT_OWED = "not-owed"
+
+
+def risk_surfaces_status(project_dir: Path) -> str:
+    """How this repo's ``risk_surfaces:`` key reads, for the health report.
+
+    ``not-owed`` (no source code or no state file yet), ``declared`` (a key in
+    a supported shape, ``[]`` included), ``undeclared`` (code and no key), or
+    ``unparseable`` (a key in a shape the reader refuses). A report, not an
+    ask: ``undeclared`` is a healthy state — nothing prompts for the key — and
+    only ``unparseable`` is a finding, because that key escalates every review
+    until it is rewritten.
+    """
+    project_dir = Path(project_dir)
+    state_path = project_dir / ".prawduct" / "project-state.yaml"
+    if not (state_path.is_file() and gitstate._has_product_code(project_dir)):
+        return STATUS_NOT_OWED
+    status, _items = read_declared_surfaces(state_path, "risk_surfaces")
+    if status == YAML_ABSENT:
+        return STATUS_UNDECLARED
+    if status == YAML_UNPARSEABLE:
+        return STATUS_UNPARSEABLE
+    return STATUS_DECLARED
 
 
 def paths_touch_risk_surface(prawduct_dir: Path, paths: "list[str]") -> tuple[bool, str]:

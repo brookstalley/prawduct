@@ -1044,11 +1044,15 @@ LAST_MEASURED_TOKENS = {
     # before" or that declaring raises a file-count threshold — the fallback
     # both sentences described is retired, so the paragraph states the one
     # effect that remains (size-independence on the named paths). A CUT.
+    # -529 on 2026-09-26 (drop-risk-surface-ask): § Surface Risk Surfaces is
+    # removed — owner ruling that the question is not asked; the key stays an
+    # unprompted opt-in documented in the project-state template. A CUT.
     # +16 on 2026-09-26 (onboard-ux): § Reconciling states that onboarding in
     # the product's own session enters discovery at once, not only on the
     # DISCOVERY NOT CAPTURED nudge — the old sentence said nothing backfills the
     # state, which onboard now does. Unfunded; declared growth (#688).
-    "methodology/discovery.md": 5132,
+    # Both landed together: 5116 - 529 + 16.
+    "methodology/discovery.md": 4603,
     # 4301 -> 4791 on 2026-08-21 (Chunk 02): `### Partition: Serial or
     # Delegated`, the plan-time half of the placement bet. The partition prompt
     # where chunk boundaries are drawn (R6), the `partition:` field the decision

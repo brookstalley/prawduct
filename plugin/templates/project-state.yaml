@@ -290,18 +290,24 @@ build_state:
 # roster derivation, which gives a diff touching any of them the deeper
 # three-reviewer review at any size.
 #
-# **Declaring this is what buys the deeper review where it matters.** Leave it
-# unset and only two things escalate: prawduct's framework-shaped defaults
-# (`skills/`, `lib/gates*`, `bin/*hook*`, plus any contract paths you list in
+# Nothing asks for this list, and leaving it unset is a healthy state. Unset,
+# two things escalate: prawduct's framework-shaped defaults (`skills/`,
+# `lib/gates*`, `bin/*hook*`, plus any contract paths you list in
 # boundary-patterns.md), which rarely match a product's own tree, and volume —
 # 12 or more judgeable files. There is no file-count fallback below that:
 # prawduct will not review a small change to your riskiest code more deeply
 # unless you have named that code here.
 #
+# **A declared list REPLACES those defaults, it does not add to them** — the
+# contract paths from boundary-patterns.md stop escalating unless you list them
+# here too. So declaring is not free: it trades the defaults for your list.
+#
 # Pattern semantics: a trailing `/` is a directory prefix; anything else is an
-# fnmatch glob (a plain path with no metacharacters is an exact match). An
-# explicit empty list (`risk_surfaces: []`) is a deliberate "this product has
-# no risk surfaces" opt-out and turns the tier check off.
+# fnmatch glob (a plain path with no metacharacters is an exact match). Write it
+# as a block list (one `- path` per line); `[a, b]` flow style is refused and
+# escalates every review until rewritten. An explicit empty list
+# (`risk_surfaces: []`) replaces the defaults with nothing and turns the tier
+# check off — strictly less review than leaving the key out.
 #
 # risk_surfaces:
 #   - src/auth/
