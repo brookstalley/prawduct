@@ -22,7 +22,6 @@ track only.
 **No consumer notes were owed.** Both scopes already carry their entries in the open
 `plugin/CHANGELOG.md` section.
 
-
 ## 2026-09-25: reviews and Stop blocks cost what they earn
 
 <!-- prawduct: type=feature | scope=review-friction -->
