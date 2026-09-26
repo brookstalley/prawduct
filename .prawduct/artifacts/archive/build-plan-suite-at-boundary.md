@@ -23,7 +23,13 @@ governed_by:
       - "C8, the testing burden sits at entry to develop → conforms: this makes the methodology say what C8 already ruled"
 partition: serial — one prose surface set, one agent
 last_validated: 2026-09-23
+lifecycle: completed
+archived: 2026-09-24
+released_in: v3.6.1
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 # Build plan — the declared suite runs at the boundary, not at every chunk (#820)
 

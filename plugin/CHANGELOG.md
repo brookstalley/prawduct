@@ -10,11 +10,13 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
-## v3.6.1-dev.6
+## v3.6.2-dev
 
-**Rolling notes for the next release — nothing has shipped under this number yet.**
-Entries accumulate here as work lands on `develop`; the cut renames this heading to its
-release number.
+**Rolling notes for the next release — nothing has shipped under this number yet.** Entries accumulate here as work lands on `develop`; the cut renames this heading to its release number.
+
+## v3.6.1
+
+**Your full test suite now runs when work lands, not after every chunk; a passing run still counts after you switch branches; and fixing a warning after a clean review now waits for your next review instead of needing a round of its own.** Twenty-six scopes since v3.6.0, counting release housekeeping. Three changes you will notice in an ordinary session. First, a chunk's Verify step now runs only your inner-loop checks, and your repo's declared suite runs at the boundary, before work lands on your integration branch. Second, each suite run is recorded against the exact code it tested, so switching back to a branch that already passed runs nothing again. Third, when you fix a warning after a clean review and your plan still has chunks left, the fix is covered by the next chunk's review instead of a `verify-resolutions` round. And `cost-of-commit` answers `free` when a review already covers what you are about to commit. Blocking findings still need `verify-resolutions`.
 
 **`learnings-one-line`** — **every learnings rule is one line, and `core.md` has a cap only you
 can raise.** Your `.claude/rules/learnings/` files load into sessions (`core.md` into every one), and
@@ -179,6 +181,8 @@ the sync REMOVED *and* ADDED relative to the base — keeping both sides of a hu
 revision, and a `merge=union` record silently resurrects entries the base archived, which show up
 as additions. Content the base moved goes to its new home; content it retired is not re-added; and
 the branch's own claims about the base are re-checked, since they were true only at its last sync.
+
+**`pr-reviewer-path-scoped-rules`** — our documentation said the PR reviewer sees none of your learnings. That was wrong. `omitClaudeMd` keeps your always-loaded rules out of the reviewer's context. But a learnings area file with `paths:` frontmatter still reaches the reviewer when it reads a file that matches, and Claude Code has no per-agent setting to stop that. `/prawduct:pr`, the reviewer agent and its protocol now say so, and they tell the reviewer that such a file is not review criteria.
 
 **`release-v3.6.0`** — the v3.6.0 cut itself: `main` promoted, the tag and GitHub Release
 published in one call, and `develop` reopened here. Nothing in this scope changes plugin

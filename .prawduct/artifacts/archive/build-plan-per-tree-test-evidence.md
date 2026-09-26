@@ -41,7 +41,13 @@ governed_by:
       - "proportionality ratchets both ways → inapplicable, because no control is added or removed"
 partition: serial — both chunks edit `cmd_test_evidence` and `gates.tests_are_current`
 last_validated: 2026-09-23
+lifecycle: completed
+archived: 2026-09-24
+released_in: v3.6.1
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 # Build plan — remember green runs per tree, across branches and worktrees (#653)
 
