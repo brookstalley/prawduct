@@ -55,7 +55,7 @@ The stdout envelope is one of three shapes:
   unreachable backend returns `unavailable` (exit 6) instead** — handle it per the error discipline
   below.
 
-A `file` result may also carry **`"lint":[{"rule","message","severity":"warn"}]`** — surface these
+A `file` result — and an `update` that wrote `--body` — may also carry **`"lint":[{"rule","message","severity":"warn"}]`** — surface these
 as `WARNING:` issue-standard hints. These body/label findings never change `status` or the exit
 code. **The four §1 TITLE checks are different — they BLOCK**: `file` and `update` refuse a
 non-conforming title with a `validation` error (exit 2) before writing, and `import` refuses the

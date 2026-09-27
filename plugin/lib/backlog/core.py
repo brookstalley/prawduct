@@ -1000,9 +1000,21 @@ def update_item(
                 "retitle it deliberately with `update <id> title=...` if it matters"
             )
 
+    # A body this call WROTE is audited exactly as `file` audits one — WARN-only,
+    # against the human text and the labels as they now stand. A body it did not
+    # write is not reported on, for the same containment reason as the stored
+    # title above. When the body was written `lint` is always present, so `[]`
+    # reads as "checked and clean" and an absent `lint` as "not checked" — before
+    # this the two were one output, and a clean update looked like a pass.
+    body_findings: list | None = None
+    if "body" in fields:
+        body_findings = issuefmt.lint_body(
+            encode.strip_block(issue.get("body")), encode.label_names(issue)
+        )
+
     result = ok(item, warnings)
-    if stored_findings:
-        result["lint"] = [f.as_dict() for f in stored_findings]
+    if stored_findings or body_findings is not None:
+        result["lint"] = [f.as_dict() for f in stored_findings + (body_findings or [])]
     return result
 
 

@@ -5,6 +5,25 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-27: backlog `update` lints the body it writes
+
+<!-- prawduct: type=bugfix | scope=update-body-lint -->
+
+Reported upstream (#898): on the Issues backend, `add` ran the §4 body lint and `update` never did.
+A body pushed far past the word budget by an edit returned `lint: None`, the same output as a
+conforming one, so a clean `update` looked like evidence of conformance when nothing had checked.
+
+**Root cause (verified):** `core.file_item` attached `issuefmt.lint(...)`. `core.update_item` only
+ran `lint_title` on the stored title, and the body lint was never wired to that path.
+
+**Fix.** `issuefmt.lint_body` is now public, as `lint_title` already was. When `update` writes
+`--body`, it lints the resulting human body against the labels as they now stand, WARN-only. It
+then always carries `lint`, so `[]` reads as "checked and clean" and an absent `lint` as "not
+checked". An `update` that leaves the body alone does not lint it. That is the same containment
+the 2026-08-06 stored-title ruling keeps, so editing an unrelated field never reports on prose the
+call didn't write. The API contract, the issue standard's implemented-note and the adapter-mode
+skill page now say so.
+
 ## 2026-09-27: only a turn still working may say DO NOT CLEAR
 
 <!-- prawduct: type=bugfix | scope=clear-verdict-coherence -->
