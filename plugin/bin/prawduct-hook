@@ -526,8 +526,9 @@ def _gate_attribution(gate_id: str, registry: dict[str, dict], version: str | No
 class _GateMessage(str):
     """A gate's message text that remembers WHICH gate raised it.
 
-    The Stop hook decides some deferrals per gate — a turn closing on
-    ``DO NOT CLEAR`` defers the session-end gates and nothing else — so a
+    The Stop hook decides some deferrals per gate — a turn that says
+    ``RUNNING`` and closes on ``DO NOT CLEAR`` defers the session-end gates
+    and nothing else — so a
     blocker must carry its gate id rather than have it parsed back out of the
     rendered attribution line. A plain ``str`` carries no id, and the deferral
     treats that as "not deferrable", which is the direction authority fails.
@@ -2479,9 +2480,13 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     blocking now (the session can't end anyway — the harness re-wakes it). The
     deferral is stateless, so it re-arms automatically once the array empties.
     Its ``last_assistant_message`` drives a narrower deferral through the same
-    path: a turn whose standing block closes on ``DO NOT CLEAR`` is not a
-    session end, so the session-end gates (reflection, Critic) defer while
-    every other gate still blocks (``lib/gates.turn_declares_in_flight``).
+    path: a turn whose standing block says ``RUNNING`` and closes on
+    ``DO NOT CLEAR`` is not a session end, so the session-end gates
+    (reflection, Critic) defer while every other gate still blocks
+    (``lib/gates.turn_declares_in_flight``). The same field drives the
+    clear-verdict gate, which neither deferral touches: a turn that hands the
+    session over (``YOUR TURN`` / ``COMPLETE``) while saying ``DO NOT CLEAR``
+    is refused (``lib/gates.turn_contradicts_its_verdict``).
     """
     prawduct_dir = get_prawduct_dir(project_dir)
     stop_input = stop_input or {}
@@ -2511,11 +2516,18 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # blocking — the gate re-arms on the next Stop once the work lands. Computed
     # once here; used to skip the PR network probe and to convert blockers below.
     defer_active, in_flight_tasks = _gates().background_tasks_in_flight(stop_input)
-    # The turn's own clear verdict: a turn closing on DO NOT CLEAR has told the
-    # user not to end the session, so the SESSION-END gates (reflection, Critic)
-    # defer through the same path below. Unlike the in-flight deferral above it
-    # defers only those gates — every other blocker still blocks on such a turn.
+    # The turn's own clear verdict: a turn saying RUNNING and closing on DO NOT
+    # CLEAR has told the user it is still working, so the SESSION-END gates
+    # (reflection, Critic) defer through the same path below. Unlike the
+    # in-flight deferral above it defers only those gates — every other blocker
+    # still blocks on such a turn.
     verdict_defer, turn_verdict = _gates().turn_declares_in_flight(stop_input)
+    # A turn that hands the session over while saying DO NOT CLEAR contradicts
+    # itself, and its reader may not see it for days. Held apart from
+    # `blockers` so neither deferral below can swallow it: it is a fault in the
+    # message the reader is about to act on, not in the work, and rewriting the
+    # close is all it asks.
+    clear_blockers: list[str] = []
 
     # New-gate attribution (design §5a): load the plugin version + gate registry
     # once, then prefix every blocker with "[prawduct vX · gate: <name>]" so a
@@ -2529,6 +2541,23 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
         return _GateMessage(
             f"{_gate_attribution(gate_id, _gate_registry, _plugin_ver)}\n{body}", gate_id
         )
+
+    handed_over = _gates().turn_contradicts_its_verdict(stop_input)
+    if handed_over:
+        clear_blockers.append(_attributed("clear-verdict",
+            f"CLEAR VERDICT: this turn closes on `{handed_over}` and `DO NOT CLEAR`,\n"
+            "  which contradict each other. `DO NOT CLEAR` means you are still working\n"
+            "  (a live review, an unreaped delegate, background work a clear would kill),\n"
+            f"  and that is `RUNNING`. `{handed_over}` hands the session to someone who may\n"
+            "  read it hours or days from now, so it must be `SAFE TO CLEAR`. Rewrite the\n"
+            "  close:\n"
+            "    - Nothing running: write what only this conversation holds (findings,\n"
+            "      the pending decision, where you stopped) to .prawduct/.handoff-notes.md,\n"
+            "      reflect if you have not, then close `SAFE TO CLEAR`.\n"
+            "    - Something a clear would kill is running: close `RUNNING` +\n"
+            "      `DO NOT CLEAR`, and put the question in the RUNNING copy.\n"
+            "  See `/prawduct:methodology session-hygiene`.\n"
+        ))
 
     # v5: Compliance canary (informational)
     try:
@@ -3613,8 +3642,10 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
         for blocker in blockers:
             # First line of each blocker names the gate — enough to show what's pending.
             print(f"  deferred: {blocker.splitlines()[0]}", file=sys.stderr)
-        _emit_stop_advisories(stop_advisories)
-        return 0
+        if not clear_blockers:
+            _emit_stop_advisories(stop_advisories)
+            return 0
+        blockers = []
 
     # The same deferral, on the turn's own verdict rather than on tracked work,
     # and narrower: only the session-end gates defer. A blocker from any other
@@ -3631,17 +3662,22 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
             ]
             print("", file=sys.stderr)
             print(
-                f"GATES DEFERRED — this turn closed on {turn_verdict}, so it is not a "
-                "session end; the session-end gate(s) below are deferred to the next "
-                f"Stop (NOT skipped — they fire on the first turn that does not close "
-                f"on {turn_verdict}):",
+                f"GATES DEFERRED — this turn says RUNNING and closed on {turn_verdict}, "
+                "so it is still working, not a session end; the session-end gate(s) "
+                "below are deferred to the next Stop (NOT skipped — they fire on the "
+                "first turn that does not):",
                 file=sys.stderr,
             )
             for blocker in verdict_deferred:
                 print(f"  deferred: {blocker.splitlines()[0]}", file=sys.stderr)
+            # A contradiction and this deferral cannot both hold (one needs
+            # RUNNING, the other YOUR TURN or COMPLETE), so `clear_blockers` is
+            # empty on this path.
             if not blockers:
                 _emit_stop_advisories(stop_advisories)
                 return 0
+
+    blockers.extend(clear_blockers)
 
     # Report blockers or exit clean
     if blockers:

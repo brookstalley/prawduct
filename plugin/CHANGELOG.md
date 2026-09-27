@@ -14,6 +14,21 @@ release process keeps the two in sync (one headline per shipped release).
 
 **Rolling notes for the next release — nothing has shipped under this number yet.** Entries accumulate here as work lands on `develop`; the cut renames this heading to its release number.
 
+**`clear-verdict-coherence`** — **a turn that hands you the next move no longer tells you not to
+clear.** Agents were closing turns with `YOUR TURN` (decide something) and `DO NOT CLEAR` together.
+You might not read that turn for hours or days, and the two lines contradicted each other: one said
+it was your move, the other said the agent was still working. prawduct's own rules produced the
+pair. The precedence rule sent any needed decision to `YOUR TURN` even with a review running, and a
+live review is `DO NOT CLEAR`. The Stop hook also let a `DO NOT CLEAR` turn skip the reflection and
+Critic gates, so the label worked as a way past them. Now only `RUNNING` may say `DO NOT CLEAR`.
+`YOUR TURN` and `COMPLETE` are always `SAFE TO CLEAR`: whatever exists only in the conversation
+(findings, the decision needed, where the agent stopped) goes into the handoff notes first. When a
+review is running and a decision is also needed, the turn says `RUNNING`, with the question in its
+copy. A new Stop gate, `clear-verdict`, refuses `YOUR TURN` or `COMPLETE` paired with
+`DO NOT CLEAR` and tells the agent to rewrite the close. The reflection and Critic gates now wait
+only on a `RUNNING` + `DO NOT CLEAR` turn. A turn that hands you a question faces them like any
+other session end, so the agent reflects before asking.
+
 **`onboard-ux`** — **`/prawduct:onboard` recommends a GitHub Issues backlog, and it ends in
 product discovery instead of a checklist.** Onboarding used to call the markdown backlog the default
 and offer Issues only if you asked. That steered new products onto the backend the framework then
@@ -41,7 +56,7 @@ since that sends every review to three reviewers. An advisory you already had cl
 session.
 
 **`review-friction`** — **a chunk you committed before its review gets a chunk review, not a
-full bundle review, and a turn that says `DO NOT CLEAR` no longer trips the end-of-session gates.**
+full bundle review, and a turn that is still working no longer trips the end-of-session gates.**
 
 In the middle of a plan (two or more of your branch's own chunks unticked), `/prawduct:critic`
 with no arguments now answers a `chunk` review over whatever has not been reviewed yet, whether or
@@ -55,10 +70,10 @@ review already covers everything it answers "no review needed". When nothing is 
 committed, or the plan complete) nothing changes: that is still `cumulative`. The chunk-close order
 now reads the same everywhere: review the chunk, fix, then commit.
 
-The Stop hook now reads your turn's closing verdict. When the last message closes on
-`DO NOT CLEAR`, the reflection and Critic gates wait for the next turn that does not, instead of
-blocking a turn that is handing back mid-work. Roughly half of those blocks landed on such turns.
-Every other gate still blocks. `SAFE TO CLEAR`, `COMPLETE`, no verdict, or both verdicts block
+The Stop hook now reads your turn's closing verdict. When the last message says `RUNNING` and
+closes on `DO NOT CLEAR`, the reflection and Critic gates wait for the next turn that does not,
+instead of blocking a turn that is still working (see `clear-verdict-coherence` above). Every
+other gate still blocks. `SAFE TO CLEAR`, `COMPLETE`, no verdict, or both verdicts block
 exactly as before, so the gate now checks your own claim that the work is done. This needs the
 `last_assistant_message` field in Claude Code's Stop payload (present in 2.1.282); without it,
 nothing changes.

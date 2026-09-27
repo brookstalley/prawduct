@@ -43,6 +43,25 @@ last_validated: null
   under `artifacts/` until the release moves it to `artifacts/archive/`, and nothing rewrites a
   referring path when it moves (the sibling #13 cite two lines below already carries the
   post-archive form, and had to be edited by hand to get there).
+  Live exception: **the `clear-verdict` Stop gate** (shipped with `clear-verdict-coherence`,
+  2026-09-27; it refuses a turn closing `YOUR TURN` or `COMPLETE` with `DO NOT CLEAR`) is a
+  recorded **bounded exception** to the emission arm, on the `check-branch-pushed` grounds above:
+  the ledger's non-review kinds are the derived `learning.*` pair, and a `gate.*` kind for one
+  Stop gate is a persisted-format lock-in taken for a single control. The right home is one
+  firing event for every Stop gate, and this gate joins it as a first case.
+  **Why a gate and not prose alone:** the pair was reported across every consuming repo, and a
+  standing-block rule is one the agent must RECALL at the turn's last line. The digest has no
+  headroom left to restate it, and a refusal that costs one rewritten paragraph is the cheapest
+  mechanism that does not depend on recall.
+  **Expected yield, named now so the query has something to answer:** firings should fall
+  toward zero, because the corrected precedence rule and the narrowed deferral remove both reasons
+  the pair was written. Firings that persist a quarter after release are evidence the prose alone
+  does not hold, and the gate earns its keep. No firings for a quarter, with no reported
+  recurrence, is evidence for retiring it in favour of the prose.
+  Clock: the same trigger as `check-branch-pushed`: the janitor's Norm Health yield query (`#563`)
+  or a Stop-gate firing event, whichever lands first.
+  `[DECISION: clear-verdict is a bounded exception to the emission arm, not a new ledger kind | a one-gate event kind is the accumulation this norm exists to stop, and the gate's yield is named above so the query has a specification | user can veto/override]`
+  Recorded 2026-09-27 on `fix/clear-verdict-coherence`, after its final Critic review raised it.
   Live exception: **doctor Health Checks #13 and #13a** (the learnings descent-obligation check, shipped 2026-08-02, and the learnings-pairing check, shipped 2026-08-27) are recorded **bounded exceptions** to the emission arm — it names its expected yield and cannot emit it, because doctor has no fact-emitting path at all and building one for a single check is the accumulation this norm exists to stop. Clock: `#563` — the trigger is *when doctor gains that path*, at which point #13 is its worked first case and #13a follows it. `[DECISION: the #13 bounded exception is widened to cover doctor Health Check #13a (learnings pairing), same clock and same reason | doctor still has no fact-emitting path, so #13a can no more emit its yield than #13 can, and building one for a second single check is precisely the accumulation this norm exists to stop; the alternative — amending the emission arm to admit a control that cannot satisfy it — is the laundering tell the norms guide names, since it would edit the rule to bless the code | user can veto/override]` Owner-vetoable, recorded 2026-08-27 on `fix/silent-clear-checks`. **The exception is bounded by naming its expected yield now, so the query has something to answer:** #13a expects to fire on duplicate active headings, which is zero on this repo's 270-entry corpus today — so a firing is evidence, and a year of never firing is evidence for retiring it. **That trigger is prose here and on the item rather than a `revisit:` field** (when written, the Issues backend had no write path for one; #564 shipped it 2026-09-02, so the constraint is historical — the trigger stays prose because it names a CONDITION, not a date, and `probe_revisit_due` fires only on dated values): the adapter's `update` deliberately strips a caller-pasted `prawduct:` block and re-appends the existing one (`lib/backlog/core.py` `_body_update_preserving_block`), and no op takes a `revisit` flag — the field is read only off the frozen markdown model (`lib/backlog/legacy.py`). So the walker is the janitor's Norm Health sweep reading #563, exactly as it is for every event-bound trigger (`probe_revisit_due` fires on *dated* values and is dark post-cutover regardless). The write path was missing when this was written and is filed as `#564`, **shipped 2026-09-02** (`backlog/core.py` `_UPDATE_BLOCK`; `--revisit` at `backlog/cli.py:124`). Decision block: `artifacts/archive/build-plan-drift-burndown.md` § `governed_by` → nonfunctional-requirements.
   Recorded keep: **the `pr-scoped` review mode**. This is NOT a Live exception and is
   deliberately not labelled one — the two above are exceptions to the *emission* arm

@@ -5,6 +5,52 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-27: only a turn still working may say DO NOT CLEAR
+
+<!-- prawduct: type=bugfix | scope=clear-verdict-coherence -->
+
+The owner reported this from this repo and every consuming repo: agents closed turns on `YOUR TURN`
+(decide something) with `DO NOT CLEAR`. The reader may not see that turn for days, and the pair is
+incoherent. `DO NOT CLEAR` means the agent is still working, and `YOUR TURN` hands the session over.
+Owner rule, 2026-09-26: `YOUR TURN` MUST mean safe to clear.
+
+**Root cause: the framework prescribed the pair.** There were three sources:
+1. The precedence rule in `session-hygiene.md` and the digest said "if they must speak it is
+   `YOUR TURN` even when something also runs". A live review is `DO NOT CLEAR`, so a decision
+   needed during a review produced exactly the pair.
+2. `gates.turn_declares_in_flight` deferred reflection and Critic on any `DO NOT CLEAR` turn, and
+   its docstring named "an ask the user must answer first" as a proper use. The digest's Enforcement
+   line said the Stop hook "BLOCKS any turn not closing on `DO NOT CLEAR`". Together they taught the
+   label as the way past the session-end gates. This came from review-friction's verdict deferral
+   (owner ruling "Defer both", built for "press the button, then tell me" turns).
+3. `building.md` said "`SAFE TO CLEAR` only when … nothing is outstanding", which an agent reads as
+   covering a decision it is waiting on. `digest-behavior-inventory.md` A10 also offered "or says
+   DO NOT CLEAR" as the alternative to persisting findings.
+
+**Fix.** Only `RUNNING` may say `DO NOT CLEAR`:
+- `lib/standing_block.py` gains `disposition()` and `contradiction()`, and the one shared
+  label-lead parser that `clear_verdict()` now uses too.
+- The verdict deferral requires `RUNNING` + `DO NOT CLEAR`.
+- A new Stop gate, `clear-verdict` (`gates.json`, `since: 3.7.0`, with the other gates this
+  unreleased track adds), refuses `YOUR TURN`/`COMPLETE` + `DO NOT CLEAR`. It is held apart from
+  both deferrals, so in-flight background work cannot swallow it.
+- Prose: the precedence rule gains its exception (work a clear would kill → `RUNNING`, the ask in
+  the copy) in the hygiene guide and the digest. `building.md` says a recorded decision is not
+  outstanding. The unreleased review-friction release note now describes the narrowed deferral.
+
+**Owner decision (2026-09-26): both gates fire on a `YOUR TURN` turn.** Mid-work question turns
+face reflection and Critic again. The alternatives were deferring Critic, or both gates, on
+`YOUR TURN`. They were rejected because after a `/clear` the session git baseline goes blind to
+files that were already modified, so an unreviewed chunk handed over as clear-safe can slip past the
+next session's gate. Some of the friction review-friction removed comes back, deliberately. The
+owner asked in the same exchange whether reflection pays for its gate; that question is filed as #908,
+separately, and does not touch this fix.
+
+**Budgets.** The digest is held at 9,499 of its 9,500-character working budget. That was paid in
+place: the new rule absorbed the findings-only sentence, which stated the same obligation. The
+injected-token ceilings get a declared +2, and `building.md` a declared +6; the reasons are
+recorded at each pin.
+
 ## 2026-09-26: develop opens 3.6.2-dev.2
 
 <!-- prawduct: type=chore | scope=dev-track-bump-3.6.2-dev.2 -->

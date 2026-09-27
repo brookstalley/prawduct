@@ -455,7 +455,14 @@ LAST_MEASURED_TOKENS = {
     # RAISED 5055 -> 5072, #820 (owner decision 2026-09-23): the declared suite moves from every chunk's Verify to the boundary — a default every consumer inherits, so the sentence carrying it is owed at each surface its reader meets. Compressed in place first; no duplication to pay from. DECLARED.
     # RAISED 5072 -> 5093, same PR, after its cumulative review (W1/W3): the boundary is defined as where work LANDS, so direct-commit repos and work ending on a single `final` still owe the suite, and `final` reports a stale record as an observation. Compressed in place first. DECLARED.
     # RAISED 5093 -> 5116 (review-friction, 2026-09-25): the chunk-close order (review, fix, then commit), the mid-plan routing rule, and the merge-base start of a clean-tree `chunk` interval, which removes mid-plan boundary reviews (33 `cumulative` rounds since 09-20 across seven repos, ~11 findings each). The new text was compressed in place before declaring. DECLARED. +18 of it states that a DO NOT CLEAR turn defers reflection and Critic, the case in which an untrackable wait no longer blocks.
-    "methodology/building.md": 5116,
+    # RAISED 5116 -> 5122 (clear-verdict-coherence, 2026-09-27): "nothing is outstanding" read as
+    # covering a decision awaiting the user, so a turn handing one over said `DO NOT CLEAR` — a
+    # contradiction that strands a reader who returns days later. One sentence now says a recorded
+    # decision is not outstanding, and the untrackable-wait line says the deferral needs a turn that
+    # is still working. Paid in part by dropping the digest sentence's "so they reach you whether or
+    # not you opened this guide", which restated what "injects them into every session" already
+    # says. DECLARED for the remainder: the obligation is new, not a restatement.
+    "methodology/building.md": 5122,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -1241,7 +1248,14 @@ LAST_MEASURED_TOKENS = {
     # that only the closing line counts, and what misusing the label costs —
     # the gate now reads the verdict, so its readers are owed the rule. A
     # READING, no ceiling.
-    "methodology/session-hygiene.md": 2923,
+    # +275 on 2026-09-27 (clear-verdict-coherence): the Clear line gains "only
+    # `RUNNING` may say `DO NOT CLEAR`" with its reason, `YOUR TURN` states it is
+    # always `SAFE TO CLEAR`, the precedence rule gains its exception (work a
+    # clear would kill), and the Stop-hook paragraph names the gate that refuses
+    # the pair; the "outstanding" paragraph scopes `YOUR TURN` to work a clear
+    # leaves alone, and the wrong-label list gains the pair. The guide had
+    # taught the pair it now forbids. A READING, no ceiling.
+    "methodology/session-hygiene.md": 3198,
     # First reading, 2026-08-21, taken at birth: a new on-demand guide, so it
     # joins the class above — a READING, no ceiling. `test_every_methodology_guide_is_accounted_for`
     # requires the entry; the decision block above this
@@ -1704,8 +1718,16 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # word*, and the digest had four sections after it. The heading is paid in
     # place from the rule's own restatements: "last," restates "after every other
     # word", and "on one axis" restates "what produces the next turn".
-    "framework": 3278,
-    "product": 2219,
+    # +2 on both shapes, 2026-09-27 (clear-verdict-coherence): the digest taught
+    # `YOUR TURN` + `DO NOT CLEAR` as a legal pair (its precedence rule plus "a
+    # live review is `DO NOT CLEAR`"), and its Enforcement line read as "close on
+    # `DO NOT CLEAR` to pass the Stop hook". It now states that only `RUNNING`
+    # may say `DO NOT CLEAR`, and gives the precedence rule its exception. Paid
+    # mostly in place: the new rule absorbed the findings-only sentence, which
+    # stated the same obligation (persist, then `SAFE TO CLEAR`) for two of
+    # its cases. The +2 it could not reach is DECLARED on the ceilings below.
+    "framework": 3280,
+    "product": 2221,
 }
 
 #: Ceilings. HARD, like the per-file prose ceilings in this module and
@@ -1847,8 +1869,15 @@ INJECTED_FOOTPRINT_CEILINGS = {
     # framework-wide default still has the room this reserve is held for.
     # RATCHETED 3281 -> 3279, 2222 -> 2220 (2026-09-22) with the readings: the
     # standing-block move landed both below where it started.
-    "framework": 3279,
-    "product": 2220,
+    # RAISED 3279 -> 3281, 2220 -> 2222 on 2026-09-27 (clear-verdict-coherence),
+    # by declaration and with its reason: the digest itself prescribed the
+    # `YOUR TURN` + `DO NOT CLEAR` pair that stranded readers in every governed
+    # repo, and the one surface every session reads is where the correction is
+    # owed. Paid in place first (see the reading's entry); the 500-char emitted
+    # reserve is NOT spent — the digest sits at 9,499 of its 9,500 working
+    # budget. One over each reading, so nothing is banked.
+    "framework": 3281,
+    "product": 2222,
 }
 
 
@@ -2568,6 +2597,37 @@ class TestBuildingMethodology:
                 "the job may answer its own question"
             )
 
+    def test_only_running_may_say_do_not_clear_on_every_carrier(self):
+        """`YOUR TURN` / `DO NOT CLEAR` tells the reader it is their move AND that
+        they must not end the session — and they may sit on both for days.
+
+        Both carriers once PRESCRIBED that pair: the precedence rule sent any
+        needed utterance to `YOUR TURN` even with a review running, and a live
+        review is `DO NOT CLEAR`. So each carrier must state the invariant, and
+        the precedence rule must carry its exception (work a clear would kill
+        goes to `RUNNING`, the ask in its copy) — the invariant stated beside an
+        unqualified precedence rule is two rules that contradict each other.
+        """
+        for surface in ("methodology/session-hygiene.md", "methodology/session-digest.md"):
+            text = " ".join(read_file(surface).split())
+            assert "Only `RUNNING` may say `DO NOT CLEAR`" in text, (
+                f"{surface} no longer states that only `RUNNING` may close on "
+                "`DO NOT CLEAR` — the pair `YOUR TURN` + `DO NOT CLEAR` reads as legal"
+            )
+            precedence = text[text.index("`YOUR TURN` even when"):][:400]
+            assert "clear would kill" in precedence or "clear kills" in precedence, (
+                f"{surface}'s precedence rule lost its exception: with a live "
+                "review and a needed decision it prescribes `YOUR TURN`, and the "
+                "review makes that `DO NOT CLEAR`"
+            )
+        digest = " ".join(read_file("methodology/session-digest.md").split())
+        start = digest.index("## Enforcement")
+        enforcement = digest[start:digest.index("## ", start + 3)]
+        assert "`RUNNING`" in enforcement, (
+            "the digest's Enforcement line says the Stop gates pass any turn "
+            "closing on `DO NOT CLEAR`, which teaches the pair as a way past them"
+        )
+
     def test_reaching_safe_to_clear_is_part_of_finishing_a_long_task(self):
         """The worst outcome in this space is caused by the agent, not the user.
 
@@ -3109,7 +3169,8 @@ class TestBuildingMethodology:
         # RAISED 5039 -> 5056 (review-interval-extension PR review, 2026-09-22) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 5056 -> 5073 (#820, suite at the boundary, 2026-09-23) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 5094 -> 5117 (review-friction, 2026-09-25) — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 5117, f"building.md is ~{tokens} tokens, should be <5117"
+        # RAISED 5117 -> 5123 (clear-verdict-coherence, 2026-09-27) — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 5123, f"building.md is ~{tokens} tokens, should be <5123"
 
 
 # =============================================================================
