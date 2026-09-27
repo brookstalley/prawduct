@@ -1133,18 +1133,12 @@ def probe_dead_why(state: ProjectState, codebase: Codebase):
         return advisory
     if not why_found and not status_found:
         return []
-    summary, action = [], []
+    summary = []
     if why_found:
         summary.append(
             f"Norm rationale references completed/abandoned work (decay): {_pairs(why_found)}. "
             "Re-affirm (a `Re-affirmed:` field naming each id) and schedule cleanup, or retire "
             "the norm."
-        )
-        action.append(
-            "Decide whether each of these standing rules still has a reason to exist, now that "
-            "the work it was written for is finished. Re-affirm it and I will record your answer "
-            "against that item so it is not asked again, and file the cleanup; or retire it and "
-            "I will record the amendment."
         )
     if status_found:
         summary.append(
@@ -1152,17 +1146,23 @@ def probe_dead_why(state: ProjectState, codebase: Codebase):
             "`Status:` line, or re-point it at the item covering the remaining work — "
             "re-affirming the norm does not answer this."
         )
-        action.append(
-            "Some of these rules say a migration is still under way, but the item tracking it "
-            "is finished. Tell me whether the migration is done (I will mark the rule settled) "
-            "or which work is left (I will point the rule at it)."
-        )
     return [
         AdvisoryCandidate(
             type="dead-why",
             evidence=("a norm's Why/Status line cites a backlog id whose item is shipped or archived (decay)",),
             trigger_summary=" ".join(summary),
-            owner_action=" ".join(action),
+            # One literal naming both routes, each by the condition it answers: the
+            # per-arm split lives in `trigger_summary`, and the owner text has to stay
+            # literal at this site so the advisory copy lint can read it.
+            owner_action=(
+                "The work these standing rules were written around is finished. Where a rule's "
+                "reason rested on that work, decide whether the rule still has a reason to "
+                "exist: keep it and I will record your answer against that item so you are not "
+                "asked again, and file the cleanup; or retire it and I will record the "
+                "amendment. Where a rule says a migration is still under way, tell me whether "
+                "it is done (I will mark the rule settled) or which work is left (I will point "
+                "the rule at it)."
+            ),
             # Empty, deliberately: there is no command to run. Either outcome is an edit
             # to the artifact's own Direction section (plus, for the re-affirm route, a
             # filed item), which the agent performs directly under the amendment rules

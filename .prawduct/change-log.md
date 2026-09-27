@@ -29,7 +29,9 @@ answered, and there is no date check. It deliberately does not answer an in-tran
 The advisory therefore now names a separate remedy for each arm: re-affirm or retire for a
 `Why:` citation, and settle or re-point the status for a `Status:` one. Recommending
 `Re-affirmed:` for both would have re-asked the owner about every status citation, which is
-#818's loop one field over. `_scan_direction_citations` gains a `cited_wanted` hook, the
+#818's loop one field over. The per-arm split lives in `trigger_summary`. The owner text is one
+literal naming both routes by the condition each answers, because the advisory copy lint reads
+only literal text at the construction site. `_scan_direction_citations` gains a `cited_wanted` hook, the
 per-citation twin of `entry_wanted`. The `docs/norms.md` Anatomy and Trajectory, the janitor's
 re-affirm-or-retire fork and the advisory's own copy now name the field.
 

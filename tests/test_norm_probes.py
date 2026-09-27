@@ -384,7 +384,6 @@ class TestDeadWhyReaffirmation:
         )
         assert "Settle the `Status:`" in out.trigger_summary
         assert "Re-affirmed" not in out.trigger_summary
-        assert "re-affirm" not in out.owner_action.lower()
 
     def test_each_arm_names_its_own_pairs_when_both_fire(self, tmp_path):
         (out,) = self._fire(
