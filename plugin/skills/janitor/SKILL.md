@@ -273,7 +273,7 @@ Then present the two tiers **asymmetrically**:
 
 **This pattern extends beyond preferences.** Any finding where "drift or evolution?" is genuinely unclear should be reconciled: architectural patterns that don't match stated conventions, test approaches that diverge from declared strategy, documentation that contradicts implementation. When in doubt about intent, infer and confirm — don't interrogate.
 
-**Norm Health erosion/decay findings always reconcile through the explicit fork** (`/prawduct:methodology norms` § Trajectory): **re-affirm and schedule cleanup** (⇒ a backlog item for the violations), or **retire the norm** (⇒ a recorded amendment). The chosen arm is itself recorded — an erosion finding must never evaporate by nobody deciding. Present both arms with a recommendation; the owner chooses.
+**Norm Health erosion/decay findings always reconcile through the explicit fork** (`/prawduct:methodology norms` § Trajectory): **re-affirm and schedule cleanup** (⇒ a backlog item for the violations; for a `dead-why` citation, also a `Re-affirmed:` field naming the finished item, so it is not asked again), or **retire the norm** (⇒ a recorded amendment). The chosen arm is itself recorded — an erosion finding must never evaporate by nobody deciding. Present both arms with a recommendation; the owner chooses.
 
 **Record resolutions immediately.** If the user says preferences are stale, updating `project-preferences.md` becomes part of the janitor's work. If the user says code drifted, the fix enters triage with appropriate severity. Don't leave resolutions in conversation alone — they must reach an artifact or the findings list.
 

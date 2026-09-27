@@ -144,6 +144,11 @@ A Direction entry (or preferences row) carries these parts:
   `grandfather: <inventory ref>`).
 - **Rulings** — each boundary or precedence decision, named `[[like-this]]` and stated in full
   here. Norms accrete case law; the norm's own statement stays short.
+- **Re-affirmed** — the owner's answer to a decay finding (§ Trajectory), one line per answer:
+  `Re-affirmed: <date> (owner) — <id>: <why the norm holds without it>`. It answers the
+  `dead-why` advisory for the ids it names, in this entry, on `Why:` lines — spell each id as the
+  `Why:` does. An id it does not name, or one that finishes later, is still asked. It never
+  answers an in-transition `Status:` whose tracking item finished: that status is stale, so fix it.
 
 ## Lifecycle Rules
 
@@ -279,8 +284,9 @@ time, and they are owned by the **time-domain organs**, not the Critic:
   judgment.
 
 Either finding forces the same explicit fork: **re-affirm and schedule cleanup, or retire the
-norm** — and the chosen arm is itself recorded (re-affirm ⇒ a cleanup backlog item; retire ⇒ an
-amendment), so an erosion finding cannot evaporate by nobody deciding. Norms are standing
+norm** — and the chosen arm is itself recorded (re-affirm ⇒ a cleanup backlog item, and for a
+decayed cited why a `Re-affirmed:` field naming the finished item; retire ⇒ an amendment), so an
+erosion finding cannot evaporate by nobody deciding. Norms are standing
 decisions subject to challenge (Principle 19 extended to products) — enforced, not worshipped.
 
 ### Ambient norms — structural characteristics

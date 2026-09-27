@@ -289,6 +289,118 @@ class TestDeadWhyProbe:
         assert a.trigger_summary != b.trigger_summary
 
 
+class TestDeadWhyReaffirmation:
+    """#818 — a `Re-affirmed:` field answers dead-why for the ids it names.
+
+    The probe asks one question per citation: *this item is finished — does the
+    norm still hold?* An owner who answered it for MIG-4C1K was asked again every
+    session, because nothing read the answer. The field is per-id, so the
+    question stays open for every id it does not name — including one that dies
+    after the re-affirmation was written."""
+
+    @staticmethod
+    def _entry(*fields: str) -> str:
+        return "- **All telemetry rides OpenTelemetry.**\n" + "".join(f"  {f}\n" for f in fields)
+
+    def _fire(self, tmp_path, *entries: str, dead=("MIG-4C1K",)):
+        _write_backlog(
+            tmp_path, "".join(_item(i, section="Archive", status="shipped") for i in dead)
+        )
+        _write_artifact(tmp_path, "observability-strategy.md", _direction_artifact(*entries))
+        return np.probe_dead_why(ProjectState({}), _cb(tmp_path))
+
+    def test_the_reported_case_is_silent(self, tmp_path):
+        """The filer's shape: the rationale rewritten to stand alone, the id kept
+        as a record of where the rule was exercised, and the answer recorded."""
+        out = self._fire(
+            tmp_path,
+            self._entry(
+                "Why: one substrate for causality; MIG-4C1K is where it was first exercised.",
+                "Re-affirmed: 2026-09-27 (owner) — MIG-4C1K: holds without it.",
+            ),
+        )
+        assert out == []
+
+    def test_the_same_entry_without_the_field_still_fires(self, tmp_path):
+        """The control for the case above — without it, silence proves nothing."""
+        out = self._fire(
+            tmp_path,
+            self._entry("Why: one substrate for causality; MIG-4C1K is where it was first exercised."),
+        )
+        assert len(out) == 1 and "MIG-4C1K" in out[0].trigger_summary
+
+    def test_only_the_named_id_is_answered(self, tmp_path):
+        out = self._fire(
+            tmp_path,
+            self._entry(
+                "Why: MIG-4C1K and OBS-7T2Q both made the second system redundant.",
+                "Re-affirmed: 2026-09-27 (owner) — MIG-4C1K: holds without it.",
+            ),
+            dead=("MIG-4C1K", "OBS-7T2Q"),
+        )
+        assert len(out) == 1
+        assert "OBS-7T2Q" in out[0].trigger_summary
+        assert "MIG-4C1K" not in out[0].trigger_summary
+
+    def test_the_answer_belongs_to_its_own_entry(self, tmp_path):
+        """A re-affirmation settles one norm. Another norm resting on the same
+        finished item has not been asked yet."""
+        out = self._fire(
+            tmp_path,
+            self._entry(
+                "Why: MIG-4C1K made the second system redundant.",
+                "Re-affirmed: 2026-09-27 (owner) — MIG-4C1K: holds without it.",
+            ),
+            "- **Spans everywhere.**\n  Why: MIG-4C1K gave every turn a trace id.\n",
+        )
+        assert len(out) == 1 and "MIG-4C1K" in out[0].trigger_summary
+
+    def test_an_in_flight_status_is_not_answered_by_it(self, tmp_path):
+        """A `Status: in-transition` whose tracking item is finished is a stale
+        status, not a question about the rationale — re-affirming the norm does
+        not make the transition still be running. The repair is the status line."""
+        out = self._fire(
+            tmp_path,
+            self._entry(
+                "Why: one substrate for causality.",
+                "Status: in-transition — tracked in MIG-4C1K.",
+                "Re-affirmed: 2026-09-27 (owner) — MIG-4C1K: holds without it.",
+            ),
+        )
+        assert len(out) == 1 and "MIG-4C1K" in out[0].trigger_summary
+
+    def test_a_phrase_in_prose_is_not_the_field(self, tmp_path):
+        """The answer is a FIELD, not a phrase: prose saying "re-affirmed" inside
+        the Why is still rationale citing a finished item."""
+        out = self._fire(
+            tmp_path,
+            self._entry("Why: re-affirmed by the owner after MIG-4C1K shipped; still holds."),
+        )
+        assert len(out) == 1
+
+    @pytest.mark.parametrize("marker", ["**Re-affirmed:**", "_Re-affirmed:_", "Re-affirmed:"])
+    def test_every_emphasis_form_is_the_field(self, tmp_path, marker):
+        out = self._fire(
+            tmp_path,
+            self._entry(
+                "Why: MIG-4C1K made the second system redundant.",
+                f"{marker} 2026-09-27 (owner) — MIG-4C1K: holds without it.",
+            ),
+        )
+        assert out == []
+
+    def test_an_id_after_the_fields_wrap_point_is_still_named(self, tmp_path):
+        out = self._fire(
+            tmp_path,
+            self._entry(
+                "Why: MIG-4C1K made the second system redundant.",
+                "Re-affirmed: 2026-09-27 (owner) — the norm stands on its own; the",
+                "citation of MIG-4C1K records where it was exercised.",
+            ),
+        )
+        assert out == []
+
+
 # =============================================================================
 # stalled-transition
 # =============================================================================

@@ -5,6 +5,30 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-27: a `Re-affirmed:` field answers dead-why for the ids it names
+
+<!-- prawduct: type=bugfix | scope=dead-why-reaffirmed -->
+
+Reported upstream (#818): `dead-why` kept naming a norm the owner had already re-affirmed, with
+its rationale rewritten to stand alone and the finished item's id kept only as a record of where
+the rule was exercised. The same question came back every session, and the only exits were
+dismissing the advisory or deleting the history.
+
+**Root cause (verified):** the probe fired on any backlog-id literal on a `Why:` or in-flight
+`Status:` line that resolved to a finished item. Nothing read an answer, and the scan had no
+per-citation suppression. Its only suppression arm dropped whole entries, and that arm belonged
+to stalled-transition.
+
+**Fix, per the owner ruling of 2026-09-27 (recorded on #818):** a per-id `Re-affirmed:` field in
+the Direction entry, `Re-affirmed: <date> (owner) — <id>: <why it holds>`. Any `Why:` citation
+it names in the same entry is already answered, so it is dropped before resolution. The answer
+is per-id and per-entry. A different id, the same id in another norm, or an item that finishes
+later is still asked, so no single re-affirmation silences a norm for good. It deliberately does
+not answer an in-transition `Status:` whose tracking item finished, because that line is stale
+and the repair is the status. `_scan_direction_citations` gains a `cited_wanted` hook, the
+per-citation twin of `entry_wanted`. The `docs/norms.md` Anatomy and Trajectory, the janitor's
+re-affirm-or-retire fork and the advisory's own copy now name the field.
+
 ## 2026-09-27: backlog `update` lints the body it writes
 
 <!-- prawduct: type=bugfix | scope=update-body-lint -->

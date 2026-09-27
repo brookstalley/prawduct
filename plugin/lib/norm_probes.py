@@ -288,6 +288,14 @@ _IN_TRANSITION_RE = re.compile(rf"Status:{_EMPH}\s*{_EMPH}in-transition")
 _STOPGAP_RE = re.compile(rf"^\s*{_EMPH}Stopgap:")
 _STOPGAP_EXPIRES_RE = re.compile(r"\bexpires\s+(\d{4}-\d{2}-\d{2})\b")
 
+# The ``Re-affirmed:`` field (docs/norms.md § Trajectory): the owner's recorded
+# answer to dead-why for the backlog ids it names. One hyphenated word, so
+# ``_FIELD_OR_ITEM_RE`` reads it as a line start rather than soft-wrapping it
+# into the ``Why:`` above — where its ids would be read as more rationale. Like
+# ``Stopgap``, not a member of :data:`_NORM_FIELDS`: it qualifies an entry, it
+# does not make one.
+_REAFFIRMED_RE = re.compile(rf"^\s*{_EMPH}Re-affirmed:")
+
 # A list item's opening bullet and its indentation — the unit :func:`_direction_entries`
 # groups on. Indentation is captured because a NESTED bullet belongs to the entry
 # above it rather than opening a new one; grouping on "any bullet" would let a
@@ -781,7 +789,13 @@ def _live_scope(state: ProjectState) -> str | None:
 
 
 def _scan_direction_citations(
-    codebase: Codebase, state: ProjectState, line_wanted, collect, *, entry_wanted=None
+    codebase: Codebase,
+    state: ProjectState,
+    line_wanted,
+    collect,
+    *,
+    entry_wanted=None,
+    cited_wanted=None,
 ):
     """Walk the ``## Direction`` lines the caller wants and hand it their citations.
 
@@ -802,7 +816,13 @@ def _scan_direction_citations(
     needs, since the field qualifies its sibling ``Status:`` line and a
     line-at-a-time filter cannot see across the two. Omitted, the walk is
     line-for-line what it was: :func:`_direction_entries` flattens to
-    :func:`_direction_lines`, so dead-why sees an unchanged stream.
+    :func:`_direction_lines`.
+
+    ``cited_wanted(entry_lines, line, cited)``, when given, drops one citation
+    before it is resolved — the granularity a ``Re-affirmed:`` needs, since it
+    answers named ids in one entry and must leave that entry's other citations,
+    and every other entry's, still asked. Dropping before ``collect`` also spares
+    the answered citation its backlog read.
     """
     scope = _live_scope(state)
     index = {} if scope else _backlog_index(codebase)
@@ -821,6 +841,8 @@ def _scan_direction_citations(
                     if not line_wanted(line):
                         continue
                     for cited in _extract_ids(line):
+                        if cited_wanted is not None and not cited_wanted(entry, line, cited):
+                            continue
                         outcome = collect(scope, index, cited)
                         if outcome is not None:
                             found[(path.name, cited)] = outcome
@@ -1038,13 +1060,41 @@ def probe_revisit_due(state: ProjectState, codebase: Codebase):
     ]
 
 
+def _reaffirmed_ids(entry: list[str]) -> set[str]:
+    """Every backlog id named on the entry's ``Re-affirmed:`` field(s)."""
+    return {cited for line in entry if _REAFFIRMED_RE.match(line) for cited in _extract_ids(line)}
+
+
+def _not_reaffirmed(entry: list[str], line: str, cited: str) -> bool:
+    """Is this citation still an open dead-why question?
+
+    A ``Re-affirmed:`` field naming ``cited`` in the same entry is the owner's
+    answer to "this item is finished — does the norm still hold?", so asking it
+    again every session trains dismissal of the next real one. The answer is
+    per-id and per-entry: an id it does not name, or one that dies after it was
+    written, is still asked, which is what keeps it from silencing a norm for
+    good.
+
+    **``Why:`` lines only.** An in-flight ``Status:`` citing a finished tracking
+    item says a transition is running when it is not — that line is stale, and
+    no re-affirmation of the rule makes it true. Its repair is the status.
+
+    Matched by the id's literal spelling, as the ``Why:`` writes it: a norm citing
+    a pre-migration ``PFX`` id is answered by that ``PFX``, not by the issue it
+    became.
+    """
+    return not (_WHY_RE.match(line) and cited in _reaffirmed_ids(entry))
+
+
 def probe_dead_why(state: ProjectState, codebase: Codebase):
     """Fire when a norm's Why/Status line cites a shipped/archived backlog id (decay).
 
     Scans ``## Direction`` entries in ``.prawduct/artifacts/*.md`` for backlog-id
     literals on ``Why:``/``Status:`` lines; a literal resolving to a dead item
     means the rationale rests on completed/abandoned work. One stable advisory;
-    the ``artifact→id`` pairs are listed in the summary.
+    the ``artifact→id`` pairs are listed in the summary. A ``Why:`` citation the
+    entry's ``Re-affirmed:`` field names is already answered and is not asked
+    again (:func:`_not_reaffirmed`).
 
     **Two backends, one question.** Pre-cutover the item's liveness is read from
     the markdown backlog; post-cutover it is resolved through the backlog cache,
@@ -1062,6 +1112,7 @@ def probe_dead_why(state: ProjectState, codebase: Codebase):
         state,
         lambda line: bool(_WHY_RE.match(line)) or _in_flight_status(line),
         lambda scope, index, cited: _cited_is_dead(codebase, scope, index, cited) or None,
+        cited_wanted=_not_reaffirmed,
     )
     if advisory:
         return advisory
@@ -1075,12 +1126,14 @@ def probe_dead_why(state: ProjectState, codebase: Codebase):
             evidence=("a norm's Why/Status line cites a backlog id whose item is shipped or archived (decay)",),
             trigger_summary=(
                 f"Norm rationale references completed/abandoned work (decay): {listed}. "
-                "Re-affirm and schedule cleanup, or retire the norm."
+                "Re-affirm (a `Re-affirmed:` field naming each id) and schedule cleanup, or "
+                "retire the norm."
             ),
             owner_action=(
                 "Decide whether each of these standing rules still has a reason to exist, now "
-                "that the work it was written for is finished. Re-affirm it and I will file the "
-                "cleanup, or retire it and I will record the amendment."
+                "that the work it was written for is finished. Re-affirm it and I will record "
+                "your answer against that item so it is not asked again, and file the cleanup; "
+                "or retire it and I will record the amendment."
             ),
             # Empty, deliberately: there is no command to run. Either outcome is an edit
             # to the artifact's own Direction section (plus, for the re-affirm route, a
