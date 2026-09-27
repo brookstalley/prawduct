@@ -180,7 +180,8 @@ An absent file is the empty store.
   at any time — dropping one loses a data point about the guard's yield, never a governance answer.
   Written by `evidence.append_guard_refusal`, the one sink for the whole class (#596).
 - **Test-run fact `body`** — one recorded suite run (#653): the `tree` it met (as `capture_tree`
-  returned it just before a live run started, or at ingest for `--from-junit`), `passed`/`failed`/`skipped`, `duration_seconds`, `source` (`run` | `from-junit`),
+  returned it just before a live run started — a run whose judgeable tree moved before it
+  ended records no fact — or at ingest for `--from-junit`), `passed`/`failed`/`skipped`, `duration_seconds`, `source` (`run` | `from-junit`),
   `head` (the commit checked out, omitted on an unborn branch) and `degraded` when the run reported
   itself so. Written by `test-evidence record` through `evidence.append_test_run` — never by a
   restamp, which measured nothing, nor by `--from-counts`, which has no tree. The one reader that

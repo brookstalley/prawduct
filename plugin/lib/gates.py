@@ -82,8 +82,8 @@ _EVIDENCE_OPTIONAL_FIELDS: dict[str, tuple[type, ...]] = {
     "changes_unjudged": (list,),
     # ``evidence_tree`` (spike-tree-validated-test-evidence.md): the working-tree
     # SHA the recorded run ran against, captured via ``evidence.capture_tree`` just
-    # before a live run starts (a judgeable change by the time it ends degrades the
-    # record), or at ingest for ``--from-junit`` and a restamp. Consumed ONLY by the additive tree-validity clause in
+    # before a live run starts (omitted when the judgeable tree moved before it
+    # ended), or at ingest for ``--from-junit`` and a restamp. Consumed ONLY by the additive tree-validity clause in
     # ``tests_are_current`` — a str when present, always omitted (never null) when
     # capture failed or the on-ramp is ``--from-counts``, so old and count-only
     # records keep exactly their pre-clause timestamp-only behavior.
@@ -431,8 +431,10 @@ def _test_evidence_tree_valid(
     legitimate. Correct by design (a restamp rewrites ``evidence_tree``, so
     permitting an unverifiable one lets stale counts vouch for a tree they never
     ran against), and survivable because the reason string is printed and the
-    escape is to run the suite. Read this before widening the ``False`` cases:
-    each one is now a refusal somewhere, not only a stale verdict.
+    escape is to run the suite. A live ``record`` also acts on it, asking whether
+    the tree held still while the suite ran, and omits ``evidence_tree`` on a
+    ``False``. Read this before widening the ``False`` cases: each one is now a
+    refusal or a withheld stamp somewhere, not only a stale verdict.
     """
     if target_tree is None:
         capture = evidence.capture_tree(project_dir)

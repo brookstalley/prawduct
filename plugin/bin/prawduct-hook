@@ -4129,7 +4129,8 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     # below. It must be parsed before --from-counts in particular, which
     # consumes every remaining token after its own flag.
     degraded_reason = None
-    pre_run_tree = None  # set only by a live run, just before it starts
+    live_run = False  # set by the run branch below; ingest and restamp never run
+    pre_run_tree = None  # the tree a live run started on, when it could be captured
     if "--degraded" in rest:
         k = rest.index("--degraded")
         reason = rest[k + 1] if k + 1 < len(rest) else ""
@@ -4497,10 +4498,11 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         # command points at. Split BEFORE substituting so a report path
         # containing spaces/quotes lands as one intact token.
         import shlex  # noqa: PLC0415 — only this branch needs it
-        # The tree this run STARTS on is the one it can vouch for. Captured before
-        # the first command, because a file edited while the suite runs may never
-        # be loaded by it — stamped after, that edit would read as tested.
+        # Bracket the run: the tree it STARTS on, checked against the one it ends
+        # on below, because a file edited while the suite runs may never be
+        # loaded by it and must not end up inside the stamp as though tested.
         from lib import evidence as _evidence_mod  # noqa: PLC0415 — lazy keeps top-level cheap
+        live_run = True
         _pre = _evidence_mod.capture_tree(project_dir)
         pre_run_tree = _pre.get("tree") if _pre.get("status") == "ok" else None
         for command in declared_commands or [None]:
@@ -4720,24 +4722,33 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     # stays timestamp-only. Best-effort — a capture failure omits the field and
     # freshness falls back to the timestamp model; the clause is purely additive.
     #
-    # A live run stamps the tree it STARTED on (captured above the run loop), and
-    # a judgeable change since then marks the record degraded: the run may have
-    # loaded some of the edit, all of it or none, and a record feeding a gate
-    # verdict does not guess. Compared through the gates' own judgeable-path test,
-    # not raw tree equality, because every run writes caches and reports of its
-    # own. Ingest and restamp paths have no run to bracket, so they keep the
-    # capture-now stamp.
+    # A live run whose tree cannot be shown to have held still is that same
+    # capture failure: there is no one tree it ran against. The field is omitted
+    # unless `_test_evidence_tree_valid` — the freshness check's own comparison,
+    # by `affects_test_outcome` path rather than raw equality, because every run
+    # writes caches and reports of its own — says the tree captured before the
+    # first command still holds at the end. "Cannot tell" (a failed capture or
+    # diff) omits it too. That never marks the record `degraded` (a coordinator's assertion,
+    # never derived) and never makes it stale this session; it only withholds the
+    # tree clause, so no later session or other worktree reuses the run for a
+    # tree it may not have exercised. Ingest and restamp have no run to bracket.
     evidence_tree = None
-    if pre_run_tree is not None:
-        evidence_tree = pre_run_tree
-        unchanged, why = _gates()._test_evidence_tree_valid(project_dir, pre_run_tree)
-        if not unchanged:
-            moved = (
-                f"the working tree changed while the suite ran ({why}), so the run "
-                "may not have exercised those edits — run it again once edits stop"
+    if live_run:
+        still, why = (
+            _gates()._test_evidence_tree_valid(project_dir, pre_run_tree)
+            if pre_run_tree is not None
+            else (False, "the tree could not be captured before the run")
+        )
+        if still:
+            evidence_tree = pre_run_tree
+        else:
+            print(
+                "warning: could not confirm the working tree held still while the suite "
+                f"ran ({why}), so this record vouches for no tree — it stays current "
+                "this session only. Run it again once edits stop to let a later "
+                "session reuse it.",
+                file=sys.stderr,
             )
-            print(f"warning: {moved}", file=sys.stderr)
-            degraded_reason = f"{degraded_reason}; {moved}" if degraded_reason else moved
     elif from_counts is None:
         from lib import evidence as _evidence_mod  # noqa: PLC0415 — lazy keeps top-level cheap
         _cap = _evidence_mod.capture_tree(project_dir)

@@ -5,27 +5,31 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
-## 2026-09-27: test evidence vouches for the tree the run started on
+## 2026-09-27: test evidence vouches only for a tree its run held still on
 
 <!-- prawduct: type=bugfix | scope=test-evidence-pre-run-tree -->
 
 Found in this repo's own session. A file edited while `test-evidence record` was running the
-suite was recorded as tested: `test-status` read the tree as valid for a run that may never have
-loaded the edit.
+suite was stamped into `evidence_tree`. A later session, or another worktree through the shared
+run index, would then treat the edit as tested by a run that may never have loaded it.
 
 **Root cause (verified):** `cmd_test_evidence` captured `evidence_tree` once, after the suite
 finished, and nothing compared it with the tree the run began on. A mid-run edit therefore
 landed in the stamp and matched the working tree exactly. The shared run index inherited the same
 tree, so other worktrees would trust it too.
 
-**Fix.** A live run captures the tree just before its first command and stamps that. If the
-gates' own judgeable-path comparison (`_test_evidence_tree_valid`) finds a change by the time the
-run ends, the record is marked degraded, with the change named and a warning on stderr. A
-degraded record reads as stale, so the gate asks for a clean run. It uses that comparison and not
-raw tree equality because every run writes caches and reports of its own, and the control test
-pins that a quiet run stays clean. `--from-junit` and a restamp have no run to bracket and keep
-the capture-at-ingest stamp. The `gates.py` schema comment and `data-model.md` now say when the
-tree is captured.
+**Fix.** A live run captures the tree before its first command and asks
+`_test_evidence_tree_valid` at the end whether it held. It uses that check, not raw tree
+equality, because every run writes caches and reports of its own. If the tree held, the run
+stamps it as before. If it moved, or either capture failed, the record carries no
+`evidence_tree` and stderr says why. The record then stays current for this session through the
+unchanged timestamp clause, but no later session, and no other worktree through the shared run
+index, reuses it. That is the existing "a capture failure omits the field" path, so the
+recorder still never marks a record `degraded`, which only a coordinator asserts, and a quiet
+run reads exactly as before. The first cut derived `degraded` from the diff and was reverted in
+review. That broke the field's coordinator-only contract, and a suite writing its own files
+would have gone stale on every run. The `gates.py` schema comment and tree-validity docstring
+and `data-model.md` now say when the tree is captured.
 
 ## 2026-09-27: only a turn still working may say DO NOT CLEAR
 

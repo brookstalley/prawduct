@@ -2665,69 +2665,130 @@ class TestTreeValidatedFreshness:
 
 
 class TestEditDuringTheRun:
-    """A record vouches for the tree the run STARTED on, never one it ended on.
+    """A record vouches only for a tree its run held still on.
 
     The tree used to be captured after the suite finished, so a judgeable file
-    edited while the suite ran landed in `evidence_tree`, matched the working tree
-    exactly, and read `current` — tested, by a run that may never have loaded the
-    edit. The suite here makes that edit itself, mid-run, which is the only way to
-    make the timing deterministic."""
+    edited while the suite ran landed in `evidence_tree` and matched the working
+    tree exactly — later sessions, and other worktrees through the shared run
+    index, would reuse the run for an edit it may never have loaded. Now a run
+    whose judgeable tree moved before it ended records no tree: it stays current
+    for this session (the timestamp clause, unchanged) and vouches for nothing
+    after it. It is never marked `degraded` — that field is a coordinator's
+    assertion and is never derived. The suites below make their writes
+    themselves, mid-run, which is the only way to make the timing deterministic."""
 
-    def _repo(self, tmp_path, test_body: str) -> Path:
+    def _repo(self, tmp_path, test_body: str, *, git: bool = True) -> Path:
         repo = tmp_path / "r"
         repo.mkdir()
         (repo / ".prawduct").mkdir()
         (repo / "src").mkdir()
         (repo / "src" / "app.py").write_text("def add(a, b):\n    return a + b\n")
         (repo / "test_app.py").write_text(test_body)
-        _git(repo, "init", "-b", "main")
-        _git(repo, "add", "-A")
-        _git(repo, "commit", "-m", "c1")
+        if git:
+            _git(repo, "init", "-b", "main")
+            _git(repo, "add", "-A")
+            _git(repo, "commit", "-m", "c1")
         _make_session_start(repo / ".prawduct", offset_seconds=-60)
         return repo
 
-    _EDITS_MID_RUN = (
-        "from pathlib import Path\n\n"
-        "def test_edits_a_source_file_mid_run():\n"
-        "    app = Path(__file__).parent / 'src' / 'app.py'\n"
-        "    app.write_text(app.read_text() + '\\n# edited while the suite ran\\n')\n"
-    )
+    @staticmethod
+    def _suite_writing(relpath: str, text: str) -> str:
+        return (
+            "from pathlib import Path\n\n"
+            "def test_writes_mid_run():\n"
+            f"    target = Path(__file__).parent / {relpath!r}\n"
+            f"    target.write_text((target.read_text() if target.exists() else '') + {text!r})\n"
+        )
 
-    def test_an_edit_made_during_the_run_is_not_vouched_for(self, tmp_path):
-        repo = self._repo(tmp_path, self._EDITS_MID_RUN)
+    @staticmethod
+    def _evidence(repo) -> dict:
+        return json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+
+    @staticmethod
+    def _as_if_a_later_session(repo) -> None:
+        path = repo / ".prawduct" / ".test-evidence.json"
+        ev = json.loads(path.read_text())
+        ev["timestamp"] = "2000-01-01T00:00:00Z"
+        path.write_text(json.dumps(ev))
+
+    def test_an_edit_made_during_the_run_is_vouched_for_by_no_tree(self, tmp_path):
+        repo = self._repo(tmp_path, self._suite_writing("src/app.py", "\n# edited mid-run\n"))
 
         res = _run_in(repo, "test-evidence", "record")
 
-        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
-        assert ev["passed"] == 1 and ev["failed"] == 0, "precondition: the run itself passed"
-        assert "changed while the suite ran" in ev.get("degraded", "")
-        assert "changed while the suite ran" in res.stderr, "the operator is told, not just the file"
+        ev = self._evidence(repo)
+        assert res.returncode == 0 and ev["passed"] == 1, "precondition: the run passed"
+        assert "evidence_tree" not in ev
+        assert "degraded" not in ev, "degraded is asserted by a coordinator, never derived"
+        assert "held still" in res.stderr, "the operator is told why the stamp is missing"
+        assert _run_in(repo, "test-status").returncode == 0, "still current this session"
+        self._as_if_a_later_session(repo)
         assert _run_in(repo, "test-status").returncode == 1, (
-            "an edit the run may never have loaded must not read as tested"
+            "a later session must not reuse the run for an edit it may never have loaded"
         )
 
-    def test_the_stamp_is_the_tree_the_run_started_on(self, tmp_path):
-        repo = self._repo(tmp_path, self._EDITS_MID_RUN)
-        from lib import evidence as evidence_mod
-
-        before = evidence_mod.capture_tree(repo)["tree"]
-        _run_in(repo, "test-evidence", "record")
-
-        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
-        assert ev["evidence_tree"] == before
-        assert evidence_mod.capture_tree(repo)["tree"] != before, "precondition: the edit landed"
-
-    def test_a_run_that_changes_nothing_judgeable_is_clean(self, tmp_path):
-        """The control: a run writes caches and reports of its own, and none of
-        that may read as an edit — or every record would come out degraded."""
+    def test_a_quiet_run_keeps_its_tree(self, tmp_path):
+        """The control, and the relax-only direction held: nothing about a run
+        that changed nothing judgeable reads differently than before."""
         repo = self._repo(tmp_path, "def test_ok():\n    assert True\n")
 
         res = _run_in(repo, "test-evidence", "record")
 
-        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
         assert res.returncode == 0, res.stderr
-        assert "degraded" not in ev
+        assert self._evidence(repo).get("evidence_tree")
+        self._as_if_a_later_session(repo)
         assert _run_in(repo, "test-status").returncode == 0
+
+    def test_a_suite_writing_a_non_judgeable_file_keeps_its_tree(self, tmp_path):
+        """The run's own untracked output reaches the comparison here (neither the
+        fixture's environment nor a .gitignore hides it) and, being a path no
+        review judges, does not cost the stamp."""
+        repo = self._repo(tmp_path, self._suite_writing("run-notes.md", "a report\n"))
+
+        _run_in(repo, "test-evidence", "record")
+
+        assert (repo / "run-notes.md").exists(), "precondition: the write reached the tree"
+        assert self._evidence(repo).get("evidence_tree")
+
+    def test_a_suite_writing_a_judgeable_file_withholds_the_tree(self, tmp_path):
+        """A new judgeable file mid-run (a first snapshot, say) is a tree the run
+        did not start on. The cost is one run that vouches only for its session;
+        the next run starts with the file present and stamps normally."""
+        repo = self._repo(
+            tmp_path,
+            "from pathlib import Path\n\n"
+            "def test_writes_a_snapshot():\n"
+            "    (Path(__file__).parent / 'snapshot.json').write_text('{}')\n",
+        )
+
+        _run_in(repo, "test-evidence", "record")
+        assert "evidence_tree" not in self._evidence(repo)
+
+        _run_in(repo, "test-evidence", "record")
+        assert self._evidence(repo).get("evidence_tree"), "same bytes rewritten: the tree held"
+
+    def test_no_tree_when_the_tree_cannot_be_captured(self, tmp_path):
+        """A failed capture before the run must not fall back to stamping whatever
+        the end of the run looked like — that is the original defect by another
+        door. The suite makes the repo itself, so only the pre-run capture fails
+        and an end-of-run capture WOULD succeed: the one input where the two
+        behaviours differ."""
+        repo = self._repo(
+            tmp_path,
+            "import subprocess\nfrom pathlib import Path\n\n"
+            "def test_makes_the_repo_mid_run():\n"
+            "    here = str(Path(__file__).parent)\n"
+            "    for argv in (['init', '-q', '-b', 'main'], ['add', '-A'],\n"
+            "                 ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'c']):\n"
+            "        subprocess.run(['git', *argv], cwd=here, check=True)\n",
+            git=False,
+        )
+
+        res = _run_in(repo, "test-evidence", "record")
+
+        assert self._evidence(repo)["passed"] == 1, res.stderr
+        assert (repo / ".git").is_dir(), "precondition: an end-of-run capture could succeed"
+        assert "evidence_tree" not in self._evidence(repo)
 
 
 class TestTestStatusNamesWhichClauseAnswered:
