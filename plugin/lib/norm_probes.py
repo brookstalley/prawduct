@@ -1071,9 +1071,11 @@ def _not_reaffirmed(entry: list[str], line: str, cited: str) -> bool:
     A ``Re-affirmed:`` field naming ``cited`` in the same entry is the owner's
     answer to "this item is finished — does the norm still hold?", so asking it
     again every session trains dismissal of the next real one. The answer is
-    per-id and per-entry: an id it does not name, or one that dies after it was
-    written, is still asked, which is what keeps it from silencing a norm for
-    good.
+    per-id and per-entry: an id it does not name, and the same id in another
+    entry, are still asked, which is what keeps it from silencing a norm for good.
+    There is no date check — every id written anywhere on the field counts as
+    answered, the ``<id>:`` slot and the reason alike, so the field should name
+    only the ids the owner actually answered.
 
     **``Why:`` lines only.** An in-flight ``Status:`` citing a finished tracking
     item says a transition is running when it is not — that line is stale, and
@@ -1084,6 +1086,11 @@ def _not_reaffirmed(entry: list[str], line: str, cited: str) -> bool:
     became.
     """
     return not (_WHY_RE.match(line) and cited in _reaffirmed_ids(entry))
+
+
+def _pairs(found: dict) -> str:
+    """``artifact→id`` pairs from a citation scan, sorted for a stable summary."""
+    return "; ".join(f"{name}→{cid}" for name, cid in sorted(found))
 
 
 def probe_dead_why(state: ProjectState, codebase: Codebase):
@@ -1107,34 +1114,55 @@ def probe_dead_why(state: ProjectState, codebase: Codebase):
     quarter. If it fires on nothing over a year of real use it should be retired,
     not defended.
     """
-    found, advisory = _scan_direction_citations(
+    # Two scans, because the two arms have different repairs and the advisory must
+    # name the right one for each pair. A `Re-affirmed:` field answers a `Why:`
+    # citation; it never answers a stale in-transition `Status:`, so telling the
+    # owner to re-affirm one would send them round the same loop #818 closed.
+    dead = lambda scope, index, cited: _cited_is_dead(codebase, scope, index, cited) or None  # noqa: E731
+    why_found, advisory = _scan_direction_citations(
         codebase,
         state,
-        lambda line: bool(_WHY_RE.match(line)) or _in_flight_status(line),
-        lambda scope, index, cited: _cited_is_dead(codebase, scope, index, cited) or None,
+        lambda line: bool(_WHY_RE.match(line)),
+        dead,
         cited_wanted=_not_reaffirmed,
     )
     if advisory:
         return advisory
-    pairs = set(found)
-    if not pairs:
+    status_found, advisory = _scan_direction_citations(codebase, state, _in_flight_status, dead)
+    if advisory:
+        return advisory
+    if not why_found and not status_found:
         return []
-    listed = "; ".join(f"{name}→{cid}" for name, cid in sorted(pairs))
+    summary, action = [], []
+    if why_found:
+        summary.append(
+            f"Norm rationale references completed/abandoned work (decay): {_pairs(why_found)}. "
+            "Re-affirm (a `Re-affirmed:` field naming each id) and schedule cleanup, or retire "
+            "the norm."
+        )
+        action.append(
+            "Decide whether each of these standing rules still has a reason to exist, now that "
+            "the work it was written for is finished. Re-affirm it and I will record your answer "
+            "against that item so it is not asked again, and file the cleanup; or retire it and "
+            "I will record the amendment."
+        )
+    if status_found:
+        summary.append(
+            f"An in-transition Status tracks finished work: {_pairs(status_found)}. Settle the "
+            "`Status:` line, or re-point it at the item covering the remaining work — "
+            "re-affirming the norm does not answer this."
+        )
+        action.append(
+            "Some of these rules say a migration is still under way, but the item tracking it "
+            "is finished. Tell me whether the migration is done (I will mark the rule settled) "
+            "or which work is left (I will point the rule at it)."
+        )
     return [
         AdvisoryCandidate(
             type="dead-why",
             evidence=("a norm's Why/Status line cites a backlog id whose item is shipped or archived (decay)",),
-            trigger_summary=(
-                f"Norm rationale references completed/abandoned work (decay): {listed}. "
-                "Re-affirm (a `Re-affirmed:` field naming each id) and schedule cleanup, or "
-                "retire the norm."
-            ),
-            owner_action=(
-                "Decide whether each of these standing rules still has a reason to exist, now "
-                "that the work it was written for is finished. Re-affirm it and I will record "
-                "your answer against that item so it is not asked again, and file the cleanup; "
-                "or retire it and I will record the amendment."
-            ),
+            trigger_summary=" ".join(summary),
+            owner_action=" ".join(action),
             # Empty, deliberately: there is no command to run. Either outcome is an edit
             # to the artifact's own Direction section (plus, for the re-affirm route, a
             # filed item), which the agent performs directly under the amendment rules

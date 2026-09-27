@@ -369,6 +369,43 @@ class TestDeadWhyReaffirmation:
         )
         assert len(out) == 1 and "MIG-4C1K" in out[0].trigger_summary
 
+    def test_a_why_citation_is_told_to_re_affirm(self, tmp_path):
+        (out,) = self._fire(tmp_path, self._entry("Why: MIG-4C1K made it redundant."))
+        assert "`Re-affirmed:`" in out.trigger_summary
+        assert "Settle the `Status:`" not in out.trigger_summary
+
+    def test_a_status_citation_is_not_told_to_re_affirm(self, tmp_path):
+        """The remedy has to be one that works: re-affirming never answers this
+        arm, so recommending it would re-ask the owner every session — #818's
+        own loop, one field over."""
+        (out,) = self._fire(
+            tmp_path,
+            self._entry("Why: one substrate for causality.", "Status: in-transition — tracked in MIG-4C1K."),
+        )
+        assert "Settle the `Status:`" in out.trigger_summary
+        assert "Re-affirmed" not in out.trigger_summary
+        assert "re-affirm" not in out.owner_action.lower()
+
+    def test_each_arm_names_its_own_pairs_when_both_fire(self, tmp_path):
+        (out,) = self._fire(
+            tmp_path,
+            self._entry("Why: MIG-4C1K made it redundant.", "Status: in-transition — tracked in OBS-7T2Q."),
+            dead=("MIG-4C1K", "OBS-7T2Q"),
+        )
+        why_part, status_part = out.trigger_summary.split("An in-transition Status")
+        assert "MIG-4C1K" in why_part and "OBS-7T2Q" not in why_part
+        assert "OBS-7T2Q" in status_part and "MIG-4C1K" not in status_part
+
+    def test_following_the_status_remedy_clears_it(self, tmp_path):
+        """The advisory's printed repair, applied: a settled status is silent."""
+        assert self._fire(
+            tmp_path,
+            self._entry(
+                "Why: one substrate for causality.",
+                "Status: steady-state as of 2026-09-27 — transitioned when MIG-4C1K closed.",
+            ),
+        ) == []
+
     def test_a_phrase_in_prose_is_not_the_field(self, tmp_path):
         """The answer is a FIELD, not a phrase: prose saying "re-affirmed" inside
         the Why is still rationale citing a finished item."""

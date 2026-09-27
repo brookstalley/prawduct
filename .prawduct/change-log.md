@@ -22,10 +22,14 @@ to stalled-transition.
 **Fix, per the owner ruling of 2026-09-27 (recorded on #818):** a per-id `Re-affirmed:` field in
 the Direction entry, `Re-affirmed: <date> (owner) — <id>: <why it holds>`. Any `Why:` citation
 it names in the same entry is already answered, so it is dropped before resolution. The answer
-is per-id and per-entry. A different id, the same id in another norm, or an item that finishes
-later is still asked, so no single re-affirmation silences a norm for good. It deliberately does
-not answer an in-transition `Status:` whose tracking item finished, because that line is stale
-and the repair is the status. `_scan_direction_citations` gains a `cited_wanted` hook, the
+is per-id and per-entry. A different id, or the same id named in another norm, is still asked,
+so no single re-affirmation silences a norm for good. Every id written on the field counts as
+answered, and there is no date check. It deliberately does not answer an in-transition
+`Status:` whose tracking item finished, because that line is stale and the repair is the status.
+The advisory therefore now names a separate remedy for each arm: re-affirm or retire for a
+`Why:` citation, and settle or re-point the status for a `Status:` one. Recommending
+`Re-affirmed:` for both would have re-asked the owner about every status citation, which is
+#818's loop one field over. `_scan_direction_citations` gains a `cited_wanted` hook, the
 per-citation twin of `entry_wanted`. The `docs/norms.md` Anatomy and Trajectory, the janitor's
 re-affirm-or-retire fork and the advisory's own copy now name the field.
 

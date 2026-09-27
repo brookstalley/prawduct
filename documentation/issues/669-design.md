@@ -41,7 +41,7 @@ Re-verified against the current tree (2026-09-10):
   `file_item` needs no new validation path, only the same call `_prepare_new_fields` already makes.
 - **The lint architecture forbids a blocking body/field check.** `issuefmt.py:15`: "The four §1
   TITLE checks BLOCK; every body and label lint stays WARN-only." `affected` is a block field, not a
-  body section — it is not even routed through `_lint_body` today — but the invariant is general:
+  body section — it is not even routed through `lint_body` today — but the invariant is general:
   only title shape may refuse a write. Candidate 1 from the issue body ("a lint... flagging **or
   refusing**") is therefore only available in its WARN form; the refusing form would need a
   documented exception to an invariant three other rules currently rely on, which is out of
@@ -156,7 +156,7 @@ from an active branch) self-filling and therefore nothing to nudge about.
 The residual worth nudging: a same-repo filing where Decision 1's default resolved to **empty**
 (clean branch, or the diff was empty for a reason other than "no code change yet" — e.g. filed from
 `develop` itself, mid-triage, describing a defect rather than fixing one). Add one `LintFinding`
-next to the existing `bug-missing-env` precedent (`issuefmt.py`, `_lint_body`'s bug-only branch,
+next to the existing `bug-missing-env` precedent (`issuefmt.py`, `lint_body`'s bug-only branch,
 same WARN-only shape):
 
 ```
@@ -164,7 +164,7 @@ LintFinding("affected-missing", "no affected: paths and none could be inferred f
             "current branch — set --affected if this item is scoped to specific files")
 ```
 
-emitted from `file_item` itself (not `_lint_body`, since `affected` is a block field `lint()` never
+emitted from `file_item` itself (not `lint_body`, since `affected` is a block field `lint()` never
 sees) into the same `warnings` list the facet-enum loop already appends to (`core.py`, the `_FILE_FACETS`
 loop a few lines below the title refusal) — one more entry in a list callers already read, not a new
 channel. Fires only when Decision 1's default was attempted and came back empty; a cross-repo filing

@@ -146,9 +146,10 @@ A Direction entry (or preferences row) carries these parts:
   here. Norms accrete case law; the norm's own statement stays short.
 - **Re-affirmed** — the owner's answer to a decay finding (§ Trajectory), one line per answer:
   `Re-affirmed: <date> (owner) — <id>: <why the norm holds without it>`. It answers the
-  `dead-why` advisory for the ids it names, in this entry, on `Why:` lines — spell each id as the
-  `Why:` does. An id it does not name, or one that finishes later, is still asked. It never
-  answers an in-transition `Status:` whose tracking item finished: that status is stale, so fix it.
+  `dead-why` advisory for every id written on it, in this entry, on `Why:` lines — spell each id
+  as the `Why:` does, and name only ids you answered. An id it does not name, or the same id in
+  another entry, is still asked. It never answers an in-transition `Status:` whose tracking item
+  finished: that status is stale, so fix it.
 
 ## Lifecycle Rules
 
