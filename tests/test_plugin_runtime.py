@@ -2664,6 +2664,72 @@ class TestTreeValidatedFreshness:
             "backdated --from-counts is stale (timestamp-only; no tree clause)"
 
 
+class TestEditDuringTheRun:
+    """A record vouches for the tree the run STARTED on, never one it ended on.
+
+    The tree used to be captured after the suite finished, so a judgeable file
+    edited while the suite ran landed in `evidence_tree`, matched the working tree
+    exactly, and read `current` — tested, by a run that may never have loaded the
+    edit. The suite here makes that edit itself, mid-run, which is the only way to
+    make the timing deterministic."""
+
+    def _repo(self, tmp_path, test_body: str) -> Path:
+        repo = tmp_path / "r"
+        repo.mkdir()
+        (repo / ".prawduct").mkdir()
+        (repo / "src").mkdir()
+        (repo / "src" / "app.py").write_text("def add(a, b):\n    return a + b\n")
+        (repo / "test_app.py").write_text(test_body)
+        _git(repo, "init", "-b", "main")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "c1")
+        _make_session_start(repo / ".prawduct", offset_seconds=-60)
+        return repo
+
+    _EDITS_MID_RUN = (
+        "from pathlib import Path\n\n"
+        "def test_edits_a_source_file_mid_run():\n"
+        "    app = Path(__file__).parent / 'src' / 'app.py'\n"
+        "    app.write_text(app.read_text() + '\\n# edited while the suite ran\\n')\n"
+    )
+
+    def test_an_edit_made_during_the_run_is_not_vouched_for(self, tmp_path):
+        repo = self._repo(tmp_path, self._EDITS_MID_RUN)
+
+        res = _run_in(repo, "test-evidence", "record")
+
+        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert ev["passed"] == 1 and ev["failed"] == 0, "precondition: the run itself passed"
+        assert "changed while the suite ran" in ev.get("degraded", "")
+        assert "changed while the suite ran" in res.stderr, "the operator is told, not just the file"
+        assert _run_in(repo, "test-status").returncode == 1, (
+            "an edit the run may never have loaded must not read as tested"
+        )
+
+    def test_the_stamp_is_the_tree_the_run_started_on(self, tmp_path):
+        repo = self._repo(tmp_path, self._EDITS_MID_RUN)
+        from lib import evidence as evidence_mod
+
+        before = evidence_mod.capture_tree(repo)["tree"]
+        _run_in(repo, "test-evidence", "record")
+
+        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert ev["evidence_tree"] == before
+        assert evidence_mod.capture_tree(repo)["tree"] != before, "precondition: the edit landed"
+
+    def test_a_run_that_changes_nothing_judgeable_is_clean(self, tmp_path):
+        """The control: a run writes caches and reports of its own, and none of
+        that may read as an edit — or every record would come out degraded."""
+        repo = self._repo(tmp_path, "def test_ok():\n    assert True\n")
+
+        res = _run_in(repo, "test-evidence", "record")
+
+        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert res.returncode == 0, res.stderr
+        assert "degraded" not in ev
+        assert _run_in(repo, "test-status").returncode == 0
+
+
 class TestTestStatusNamesWhichClauseAnswered:
     """`test-status` says which disjunct bought the exit 0, and they differ.
 

@@ -81,8 +81,9 @@ _EVIDENCE_COVERAGE_LEVELS = frozenset({"referenced", "executed"})
 _EVIDENCE_OPTIONAL_FIELDS: dict[str, tuple[type, ...]] = {
     "changes_unjudged": (list,),
     # ``evidence_tree`` (spike-tree-validated-test-evidence.md): the working-tree
-    # SHA the recorded run ran against, captured via ``evidence.capture_tree`` at
-    # ``record`` time. Consumed ONLY by the additive tree-validity clause in
+    # SHA the recorded run ran against, captured via ``evidence.capture_tree`` just
+    # before a live run starts (a judgeable change by the time it ends degrades the
+    # record), or at ingest for ``--from-junit`` and a restamp. Consumed ONLY by the additive tree-validity clause in
     # ``tests_are_current`` — a str when present, always omitted (never null) when
     # capture failed or the on-ramp is ``--from-counts``, so old and count-only
     # records keep exactly their pre-clause timestamp-only behavior.

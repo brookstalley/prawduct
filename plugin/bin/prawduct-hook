@@ -4129,6 +4129,7 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     # below. It must be parsed before --from-counts in particular, which
     # consumes every remaining token after its own flag.
     degraded_reason = None
+    pre_run_tree = None  # set only by a live run, just before it starts
     if "--degraded" in rest:
         k = rest.index("--degraded")
         reason = rest[k + 1] if k + 1 < len(rest) else ""
@@ -4496,6 +4497,12 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         # command points at. Split BEFORE substituting so a report path
         # containing spaces/quotes lands as one intact token.
         import shlex  # noqa: PLC0415 — only this branch needs it
+        # The tree this run STARTS on is the one it can vouch for. Captured before
+        # the first command, because a file edited while the suite runs may never
+        # be loaded by it — stamped after, that edit would read as tested.
+        from lib import evidence as _evidence_mod  # noqa: PLC0415 — lazy keeps top-level cheap
+        _pre = _evidence_mod.capture_tree(project_dir)
+        pre_run_tree = _pre.get("tree") if _pre.get("status") == "ok" else None
         for command in declared_commands or [None]:
             fd, junit_name = tempfile.mkstemp(suffix=".xml", prefix="prawduct-junit-")
             os.close(fd)
@@ -4712,8 +4719,26 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     # working tree (an embedded/HIL run may not even test it), so that on-ramp
     # stays timestamp-only. Best-effort — a capture failure omits the field and
     # freshness falls back to the timestamp model; the clause is purely additive.
+    #
+    # A live run stamps the tree it STARTED on (captured above the run loop), and
+    # a judgeable change since then marks the record degraded: the run may have
+    # loaded some of the edit, all of it or none, and a record feeding a gate
+    # verdict does not guess. Compared through the gates' own judgeable-path test,
+    # not raw tree equality, because every run writes caches and reports of its
+    # own. Ingest and restamp paths have no run to bracket, so they keep the
+    # capture-now stamp.
     evidence_tree = None
-    if from_counts is None:
+    if pre_run_tree is not None:
+        evidence_tree = pre_run_tree
+        unchanged, why = _gates()._test_evidence_tree_valid(project_dir, pre_run_tree)
+        if not unchanged:
+            moved = (
+                f"the working tree changed while the suite ran ({why}), so the run "
+                "may not have exercised those edits — run it again once edits stop"
+            )
+            print(f"warning: {moved}", file=sys.stderr)
+            degraded_reason = f"{degraded_reason}; {moved}" if degraded_reason else moved
+    elif from_counts is None:
         from lib import evidence as _evidence_mod  # noqa: PLC0415 — lazy keeps top-level cheap
         _cap = _evidence_mod.capture_tree(project_dir)
         if _cap.get("status") == "ok":
