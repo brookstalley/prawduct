@@ -100,8 +100,8 @@ forbids: `docs/principles.md` § Agent Stance (`/prawduct:methodology principles
 
 ## Enforcement
 
-The **Stop hook** BLOCKS any turn not closing on `DO NOT CLEAR`: reflection, when this session
-changed judgeable code and no reflection names expected vs. actual plus a root cause (or "no
+The **Stop hook** BLOCKS turns not closing `RUNNING`+`DO NOT CLEAR`: reflection, when this
+session changed judgeable code and no reflection names expected vs. actual plus a root cause (or "no
 defect"); Critic, when that code was built against an active build plan with no review. Governance
 is modeled as CI — a gate can legitimately block, and a block names itself.
 
@@ -123,12 +123,12 @@ all they read; on any turn ending a chunk or work cycle *or* left with work outs
 `STATE` (what changed; committed?; suite green?) · one of `RUNNING` / `YOUR TURN` / `COMPLETE`,
 what produces the next turn: a machine event (name it, and what you do if it never
 lands) / only they can (lead the copy with the ask) / nothing needs to, with no next action to
-propose · `SAFE TO CLEAR` or `DO NOT CLEAR` (the label is the verdict, the copy the reason). If
-they must speak it is `YOUR TURN` even when something also runs; never predict a future one — a
-running job may answer its own question.
+propose · `SAFE TO CLEAR` or `DO NOT CLEAR` (the label is the verdict, the copy the reason).
+If they must speak it is `YOUR TURN` even when something also runs, unless a clear kills it
+(then `RUNNING`, ask in copy); never predict one — a running job may answer its own question.
 **Outstanding includes work in flight**: a dispatched review or any unread background agent is
-`RUNNING`, never `COMPLETE` — and a live review is also `DO NOT CLEAR`, its copy carrying a
-computed deadline (elapsed, roster, expected when priceable).
-**No findings-only turn or ad-hoc delegate is `SAFE TO CLEAR` until what it produced is on
-disk** — findings, or a delegate's integration debt; a reason citing the message itself is the
-defect said aloud. Full rule: `methodology/session-hygiene.md`.
+`RUNNING`, never `COMPLETE`. **Only `RUNNING` may say `DO NOT CLEAR`**: a live review is
+`DO NOT CLEAR`, its copy carrying a computed deadline (elapsed, roster, expected when
+priceable). A handed-over turn may sit for days: first persist a findings-only turn's or
+delegate's output — a reason citing the message itself is the defect said aloud.
+Full rule: `methodology/session-hygiene.md`.

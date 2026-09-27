@@ -31,7 +31,7 @@ Depends on its lib siblings ``gitstate`` / ``coverage`` / ``buildplan_refs``
 (build-plan Status parsing, including ``_count_build_plan_chunks``),
 ``evidence`` / ``coverage_algebra`` (the v3 data plane), ``learnings_files``
 (the one resolver for the rules layout the cross-check nudge names),
-``standing_block`` (the turn-closing verdict the Stop deferral reads), and ``core``
+``standing_block`` (the closing block the Stop deferral and clear-verdict gate read), and ``core``
 (``read_bool_yaml_key`` — canonical twin of the hook's parity-pinned inline
 mirror), plus the stdlib.
 """
@@ -858,11 +858,22 @@ def background_tasks_in_flight(stop_input) -> tuple[bool, list[str]]:
     return True, labels
 
 
-#: The gates a turn's ``DO NOT CLEAR`` verdict defers — the SESSION-END gates,
+#: The gates a ``RUNNING`` + ``DO NOT CLEAR`` turn defers — the SESSION-END gates,
 #: keyed by their ``hooks/gates.json`` ids. Everything else a Stop can raise
 #: (learnings, PR review, trivial bounds) is not about whether the session is
 #: ending, so it keeps blocking on such a turn.
 VERDICT_DEFERRED_GATES = frozenset({"reflection", "critic"})
+
+
+def _last_message(stop_input) -> str | None:
+    """The Stop payload's ``last_assistant_message``, or ``None`` when the
+    payload is not a dict or the field is absent, non-string or blank."""
+    if not isinstance(stop_input, dict):
+        return None
+    message = stop_input.get("last_assistant_message")
+    if not isinstance(message, str) or not message.strip():
+        return None
+    return message
 
 
 def turn_declares_in_flight(stop_input) -> tuple[bool, str | None]:
@@ -870,13 +881,20 @@ def turn_declares_in_flight(stop_input) -> tuple[bool, str | None]:
     session, from the Stop-hook ``last_assistant_message`` field.
 
     The Stop hook fires at every turn end, while the reflection and Critic
-    gates are about session end. A turn whose standing block closes on
-    ``DO NOT CLEAR`` is the agent's own statement that the session is not
-    ending — a review still running, an ask the user must answer first — so
-    both gates DEFER to the next Stop. Both, by owner ruling: the label is a
+    gates are about session end. A turn whose standing block says ``RUNNING``
+    and closes on ``DO NOT CLEAR`` is the agent's own statement that it is
+    still working — a review in flight, a delegate not yet reaped — so both
+    gates DEFER to the next Stop. Both, by owner ruling: the label is a
     required, user-facing claim, so misusing it to dodge a gate is visible to
     the person it misleads. The deferral is stateless: the next
     turn that closes on anything else is a session end, and the gates fire.
+
+    ``DO NOT CLEAR`` under ``YOUR TURN`` or ``COMPLETE`` does NOT defer. A turn
+    that hands the session over is one the reader may clear, hours or days
+    later, so it owes ``SAFE TO CLEAR`` and faces the session-end gates like
+    any other; the Stop hook refuses that pairing outright
+    (:func:`turn_contradicts_its_verdict`). A pending question is never a
+    reason not to clear — what it needs is written down.
 
     Reads the payload field only. Claude Code 2.1.282 carries
     ``last_assistant_message`` beside ``transcript_path``; the transcript is
@@ -884,8 +902,8 @@ def turn_declares_in_flight(stop_input) -> tuple[bool, str | None]:
     the field then behaves exactly as before this signal existed.
 
     Degradation ladder — the permissive direction is taken ONLY on a clearly
-    present verdict; every uncertain case keeps blocking (authority fails
-    closed):
+    present verdict and disposition; every uncertain case keeps blocking
+    (authority fails closed):
 
       - non-dict input, field absent, non-string or blank → ``(False, None)``;
       - the message's closing block states no single verdict where the block
@@ -893,17 +911,39 @@ def turn_declares_in_flight(stop_input) -> tuple[bool, str | None]:
         quoted mid-prose, both labels, trailing text after the verdict) →
         ``(False, None)``;
       - the verdict is ``SAFE TO CLEAR`` → ``(False, None)``;
-      - the verdict is ``DO NOT CLEAR`` → ``(True, "DO NOT CLEAR")``.
+      - the verdict is ``DO NOT CLEAR`` but the block states no single
+        disposition, or one other than ``RUNNING`` → ``(False, None)``;
+      - ``RUNNING`` with ``DO NOT CLEAR`` → ``(True, "DO NOT CLEAR")``.
     """
-    if not isinstance(stop_input, dict):
-        return False, None
-    message = stop_input.get("last_assistant_message")
-    if not isinstance(message, str) or not message.strip():
+    message = _last_message(stop_input)
+    if message is None:
         return False, None
     verdict = standing_block.clear_verdict(message)
-    if verdict == standing_block.DO_NOT_CLEAR:
+    if (
+        verdict == standing_block.DO_NOT_CLEAR
+        and standing_block.disposition(message) == standing_block.RUNNING
+    ):
         return True, verdict
     return False, None
+
+
+def turn_contradicts_its_verdict(stop_input) -> str | None:
+    """The disposition a turn hands the session over with while also saying
+    ``DO NOT CLEAR`` — ``YOUR TURN`` or ``COMPLETE`` — or ``None``.
+
+    The reader of ``YOUR TURN`` / ``DO NOT CLEAR`` is told it is their move
+    and that they must not end the session, and may sit on both for days. The
+    pairing is never true: if something a clear would kill is running, the
+    disposition is ``RUNNING`` (the ask rides in its copy); if nothing is, what
+    only the conversation holds can be written down and the verdict is
+    ``SAFE TO CLEAR``. Only a clearly stated pair returns a label
+    (``standing_block.contradiction``); a missing field or an ambiguous block
+    returns ``None``, because the caller blocks on it.
+    """
+    message = _last_message(stop_input)
+    if message is None:
+        return None
+    return standing_block.contradiction(message)
 
 
 _CRITIC_MODE_CHUNK = "chunk (lighter pass, not ready for push)"

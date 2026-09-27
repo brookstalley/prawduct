@@ -103,7 +103,9 @@ hallucinote, swordfishing, bankmachine, faidh and prawduct):
 3. A Stop whose last assistant message carries a DO NOT CLEAR verdict defers the session-end gates
    (reflection, critic-review), as STH-3W7F does for background work: exit 0, with a one-line note.
    SAFE TO CLEAR, COMPLETE, no label, or an unreadable transcript all block exactly as today. The
-   gate then checks the agent's own completion claim.
+   gate then checks the agent's own completion claim. **Narrowed 2026-09-27 (owner,
+   `clear-verdict-coherence`):** only a `RUNNING` + DO NOT CLEAR turn defers. `YOUR TURN` or
+   `COMPLETE` with DO NOT CLEAR defers nothing, and the `clear-verdict` gate refuses it.
 4. The puzzles 20:29 case is explained: a block while a review was reported in flight. It is either
    covered by Success 3, or fixed at its own cause.
 5. Sibling sessions' banners show the plugin at `develop@<sha>` (or at the ref the owner picks),
@@ -133,7 +135,7 @@ hallucinote, swordfishing, bankmachine, faidh and prawduct):
 
 **Owner rulings (2026-09-25, answered in the planning conversation; each picked the recommended option):**
 - `[DECISION: inner stage = a mid-plan review of the unreviewed interval, committed or not; the boundary is merge-base…HEAD at the PR point | reads NFR:96's "uncommitted diff" by its own why (an inner review at boundary rigor is a defect priced in rounds); Chunk 01 records this beneath the clause and leaves the clause alone | owner: "Yes, key on cycle position"]`
-- `[DECISION: a DO NOT CLEAR turn defers BOTH session-end gates (reflection and critic-review); SAFE TO CLEAR, COMPLETE, no label or an unreadable transcript block as today | the label is a required, user-facing claim, so misusing it is visible; a session that exits on DO NOT CLEAR loses that session's reflection | owner: "Defer both"]`
+- `[DECISION: a DO NOT CLEAR turn defers BOTH session-end gates (reflection and critic-review); SAFE TO CLEAR, COMPLETE, no label or an unreadable transcript block as today | the label is a required, user-facing claim, so misusing it is visible; a session that exits on DO NOT CLEAR loses that session's reflection | owner: "Defer both"]` **Superseded in part 2026-09-27:** both gates still defer, but only when the block also says `RUNNING`. A `YOUR TURN` turn owes `SAFE TO CLEAR` and faces both gates (owner: "YOUR TURN MUST mean that it's safe to clear"; see the change-log entry for `clear-verdict-coherence`).
 - `[DECISION: #882 option 1, an additive optional dispatch interval on the review fact body | the evidence store is clone-shared, and a ledger join undercounts parallel worktree work | owner: "On the fact body"]`
 - `[DECISION: siblings follow origin/develop through the pinned worktree; the coordinator sets it up and repoints both user-level marketplaces, backing up the config first | same ref the devcontainer already uses | owner: "develop"]`
 

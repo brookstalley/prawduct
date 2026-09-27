@@ -54,6 +54,12 @@
       "name": "learnings-rule-body",
       "since": "3.7.0",
       "summary": "learnings rules carry no body lines; the story behind a rule belongs in the session reflection"
+    },
+    {
+      "id": "clear-verdict",
+      "name": "clear-verdict",
+      "since": "3.7.0",
+      "summary": "a turn that hands the session over (`YOUR TURN` or `COMPLETE`) must close `SAFE TO CLEAR`; `DO NOT CLEAR` belongs only to a `RUNNING` turn"
     }
   ]
 }
