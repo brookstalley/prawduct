@@ -46,6 +46,12 @@ next session's gate. Some of the friction review-friction removed comes back, de
 owner asked in the same exchange whether reflection pays for its gate; that question is filed as #908,
 separately, and does not touch this fix.
 
+**Decision the owner can still veto.** `nonfunctional-requirements.md` records `clear-verdict` as a bounded
+exception to the proportionality norm's emission arm. It states its expected yield and has no ledger kind,
+because a `gate.*` kind for one gate is lock-in. Its clock is `#563`. The final Critic review raised it.
+`digest-behavior-inventory.md` gains row A14 for the invariant, and A10 drops its "or says DO NOT CLEAR"
+alternative.
+
 **Budgets.** The digest is held at 9,499 of its 9,500-character working budget. That was paid in
 place: the new rule absorbed the findings-only sentence, which stated the same obligation. The
 injected-token ceilings get a declared +2, and `building.md` a declared +6; the reasons are
