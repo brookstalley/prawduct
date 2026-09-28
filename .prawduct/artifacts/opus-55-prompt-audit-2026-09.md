@@ -111,6 +111,35 @@ as written. Two rulings carry notes that change how the waves apply:
     VRF-008 is already `accepted`. Archiving the plan leaves that queue as the one place they are
     owed.
 
+## Found while applying (W1, 2026-09-28)
+
+These came up while applying W1 and were not enumerated by the audit. None is filed, because #181
+forbids new items. They are recorded here, where the owner reads.
+
+- **A-16 reaches new scaffolds only (owner decision).** `core.md` is scaffold-once. Product repos
+  onboarded before W1 keep the old "name the rule and say what it changes… or that it does not
+  apply" header, which is the narration A-16 set out to stop. They still lint clean, because the
+  header is excluded by grammar and a test pins that. There are three options:
+  - **Leave it.** The cost is narration in older repos, and the owner can re-scaffold any repo by
+    hand.
+  - **Put one line in the digest** telling the model not to narrate rules that don't apply. The
+    digest reaches every repo, but the line would contradict what an old header says.
+  - **Add a repair** that replaces a byte-identical old header. This is a new write into product
+    files, which architecture's "the plugin writes nothing into a governed repo except…" norm
+    would need to admit.
+
+  **Recommendation: leave it.** The harm is verbosity, not a wrong action.
+- **A-18's shout survives on two carriers.** `plugin/skills/methodology/SKILL.md:11` belongs to W5,
+  which should apply A-18's wording there. The thin product anchor (`anchor_repair.ANCHOR_V4`,
+  `migrate_plugin`) would need a new anchor version pushed to every product repo. It is recorded,
+  not proposed.
+- **A-1 and `session-hygiene.md`'s chunk-boundary stop disagree until W4 lands.** Slice-B:443
+  owns the fix, so W4 should follow W1 closely.
+- **Short-plan review inference cannot reach `cumulative`** while the tick rule holds every box
+  until review. `critic_mode._mid_plan_start` counts 2 or more unticked boxes as mid-plan, and on
+  a short plan that answers `deferred`. W1 dispatched `cumulative` explicitly. This is a framework
+  defect, being fixed on its own branch after W1.
+
 ## Decisions for the owner
 
 These are the real decisions, the ones that change a policy, a principle or something the owner

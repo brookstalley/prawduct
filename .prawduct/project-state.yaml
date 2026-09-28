@@ -793,6 +793,3 @@ deprecated_terms:
 # Per-file byte ceilings for the learnings rules (default 16 KB; see
 # plugin/templates/project-state.yaml). Raised with a reason, never silently.
 learnings_budgets:
-  authoring.md:
-    kb: 18
-    reason: "the 2026-09-24 compaction (learnings-one-line) scoped 74 one-line rules about writing durable prose here, about 17.6KB; splitting them further would scope by size rather than by what they govern"

@@ -14,6 +14,12 @@ governed_by:
     dispositions:
       - "every fact has one home → conforms: this wave deletes second homes (A-2, A-3, A-4, A-12, A-26, A-37); none is added. A-22's stance bar keeps its home in principles.md and the digest keeps only the trigger"
       - "prawduct guides and reviews, it never implements → inapplicable, because only framework prose and one header constant change"
+      - "goals and verification bind; prescribed method is advice → conforms: the ruled decisions and Success bind; where a slice's replacement text dropped content a test pins (the standing-block distinctions), the content was restored in plain words rather than the text applied verbatim"
+      - "the plugin writes nothing into a governed repo except its own state, the evidence store and the files it must reconcile → conforms, and it is why A-16 stops at new scaffolds: rewriting an onboarded repo's `core.md` header would be a new write into product files, so it is recorded for the owner rather than built"
+      - "an independent reviewer never mutates the session it reviews → inapplicable, because no reviewer path changes"
+      - "authority fails closed; advice fails soft → inapplicable, because no verdict or advisory path changes"
+      - "local-first governance coordination → inapplicable, because no coordination mechanism changes"
+      - "written in Python, never specific to Python → conforms: the header exclusion is by markdown grammar, which is language-neutral"
   - artifact: program-purpose-and-cession
     dispositions:
       - "prose-test taxonomy: a doc test pins budgets, refs, interface tokens and render consistency, never a sentence → conforms: a test pinning a sentence this wave rewrites is retired as a descoped requirement or re-pointed at the interface token it protects; no new sentence pin is added"
@@ -62,9 +68,9 @@ Every change has replacement text, and the owner has ruled on it.
 
 ## Status
 
-- [ ] Chunk 01: digest, root CLAUDE.md, principles.md
-- [ ] Chunk 02: core.md consolidation, area-file dedup, CORE_HEADER
-- [ ] Chunk 03: A-38 specimen strip across the learnings corpus
+- [x] Chunk 01: digest, root CLAUDE.md, principles.md
+- [x] Chunk 02: core.md consolidation, area-file dedup, CORE_HEADER
+- [x] Chunk 03: A-38 specimen strip across the learnings corpus
 
 ## Chunk 01: digest, root CLAUDE.md, principles.md
 
@@ -82,8 +88,9 @@ passes. The probe has run.
 
 ## Chunk 02: core.md consolidation, area-file dedup, CORE_HEADER
 
-**Type:** code (A-16 changes `plugin/lib/learnings_files.py`'s `CORE_HEADER`, which ships to every
-migrated product repo)
+**Type:** code (A-16 changes `plugin/lib/learnings_files.py`'s `CORE_HEADER`. It reaches new scaffolds
+and relayouts only: `core.md` is scaffold-once, so already-onboarded repos keep the old header, which
+still lints clean because the header is excluded by grammar, not text)
 **Decisions:** A-2, A-3, A-4, A-8 to A-16, A-31 to A-37.
 **Files:** `.claude/rules/learnings/*.md`, `plugin/lib/learnings_files.py`,
 `tests/test_learnings_files.py`, `tests/test_plugin_init.py`, and any learnings budget or lint pin
