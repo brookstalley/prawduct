@@ -218,8 +218,8 @@ def init_product(
                 core.write_template(core.TEMPLATES_DIR / tmpl, dst, subs)
 
     # Learnings starter — a `.claude/rules/` file, so the harness loads it and no
-    # prawduct code sits on the read path. `scaffold_core` owns the header (the
-    # descent obligation) and the never-overwrite rule; this reports the write.
+    # prawduct code sits on the read path. `scaffold_core` owns the header
+    # (`CORE_HEADER`) and the never-overwrite rule; this reports the write.
     core_rel = f"{learnings_files.RULES_DIR_REL}/{learnings_files.CORE_NAME}"
     if not (project_dir / core_rel).is_file():
         created.append(core_rel)
