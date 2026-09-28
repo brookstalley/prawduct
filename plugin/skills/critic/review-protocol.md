@@ -9,7 +9,7 @@ The Critic reviews changes against principles and specifications as a **separate
 2. Assess change scope/nature (git diff or read changed files).
 3. Read relevant `.prawduct/artifacts/`.
 4. Read `${CLAUDE_SKILL_DIR}/../../docs/principles.md` and the product's learnings — `.claude/rules/learnings/core.md` plus the area files `prawduct-hook learnings-files --for-diff` lists — `final` mode only.
-5. Mode decides *which* goals (see **Modes**); the signals below tune depth.
+5. Mode decides *which* goals (see **Modes**); the manifest's stage decides what is a finding (**Scope and Stage**).
 6. Follow the dispatch manifest's roster (see Review Execution).
 
 ## Modes
@@ -21,11 +21,7 @@ The Critic reviews changes against principles and specifications as a **separate
 
 **Chunk type axis.** Chunks declare `Type:` (orthogonal to mode); it adjusts per-goal protocol (`review-cycle.md` "Per-Chunk Type Protocol Selector"). Missing/unrecognized → `code`.
 
-## Signals That Guide Your Review
-
-**Work size**: Trivial (1-2 files) → quick coherence check. Small (bug fix) → root cause + regression. Medium (feature, refactor) → full review. Large (subsystem) → deep architectural review. Layers spanned and boundaries crossed move a change up this scale.
-
-**Work type**: Feature → spec compliance + coverage. Bugfix → root cause + regression test. Refactor → behavior preservation. Optimization → baseline measured? Debt → scope discipline.
+## Scope and Stage
 
 **Subject and oracle — records govern SCOPE, not READING.** The manifest's `files_reviewed` is the **subject** set: everything but the records *about* the work. Eligibility is its own predicate, never "is it judgeable" — a deliverable, and prose that governs behaviour, are subjects however the gate prices them. `files_oracle` is what the code is judged *against* — read every one; a finding you DERIVE is never about one. *"The code violates this spec"* has the **code** as its subject and stays fully in scope at full severity. Three passes own oracle findings and are not narrowed — the record-lint relay, the Learnings Cross-Check, and the Records Pass, which rates the excluded set against its bars (`review-cycle.md` is the one home for this rule, BLOCKING included).
 
@@ -40,15 +36,15 @@ preferences rows, project-state classification, **and unmarked prose recording a
 bind; descriptions track (test: would syncing it to code silently unmake a decision?).
 Departure, unruled edge-work, normative change (even doc-only), or norm birth without a
 recorded vetoable decision → Goal 3 **BLOCKING** naming the `project-preferences.md` row or
-Direction statement it departs from, where ratified norms exist; with none, **NOTE** naming
-the capture path. Tell: amending a norm to match your own code; never fix a divergence by
+Direction statement it departs from, where the product has adopted norms (`norms.md`'s
+"Severity, stated once" paragraph says what counts); with none, **NOTE** naming the capture path. Tell: amending a norm to match your own code; never fix a divergence by
 editing the artifact.
 Correctness shapes the recommendation, never the need. Judge jurisdiction yourself;
 applicability is recorded, never assumed. Stale registry → NOTE: `/prawduct:doctor`; never a
 downgrade.
 
 ### 1. Nothing Is Broken
-- **Do not run tests.** Run `prawduct-hook test-status`: exit 0 = current; stale/missing → **WARNING** at `cumulative`; at `final` an observation that the suite is owed before the work lands — that exit code is the *only* freshness signal; never infer staleness from a commit/SHA field in the evidence (it carries none). Test failures in evidence → **BLOCKING**. Review test *quality and coverage* through code analysis only.
+- **Do not run tests.** Run `prawduct-hook test-status`: exit 0 = current; stale/missing → **WARNING** at `cumulative`; at `final` an observation that the suite is owed before the work lands — that exit code is the *only* freshness signal. Test failures in evidence → **BLOCKING**. Review test *quality and coverage* through code analysis only.
 - No "pre-existing" exception — every finding is yours regardless of when introduced. RATE it regardless; the bound is on the BUILDER, whose obligation to FIX is limited to BLOCKING (below that a recorded accept discharges it). Never omit or downgrade a finding on this ground.
 - Tests verify behavior, not implementation.
 - Tests deleted or assertions weakened without documented reason → **BLOCKING**. Legitimate consolidation needs a change-log entry.

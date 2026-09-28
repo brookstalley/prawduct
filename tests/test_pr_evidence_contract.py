@@ -338,7 +338,11 @@ class TestIssuesBackendCloseIsDeferred:
         merge_flow = skill[skill.index("## Merge Flow"):]
         close_at = merge_flow.index("Close the backlog items this PR resolves")
         delete_at = merge_flow.index("Delete remote branch")
-        evidence_at = merge_flow.index("Clean up evidence file")
+        # The evidence-deletion step is the one Merge Flow step naming the
+        # `review.pr` ledger event (the durable record that survives it), so the
+        # event name anchors it rather than the step's wording.
+        assert merge_flow.count("`review.pr`") == 1, "re-anchor: `review.pr` is no longer unique to one step"
+        evidence_at = merge_flow.index("`review.pr`")
         assert close_at < delete_at < evidence_at, (
             "The close must come before the branch and evidence deletions. Those destroy "
             "the local artifacts that record the close was owed, and this step is its own "

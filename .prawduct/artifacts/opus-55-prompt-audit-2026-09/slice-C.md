@@ -172,7 +172,7 @@ Most of this prose is pinned by tests. Every decision marked `machine_read: yes`
 - machine_read: yes, partly. `tests/test_v5_methodology.py:5824-5828` pins "no natural fixed point", "13.5" and "18.4" (`:345`, untouched). `:6424` pins "23%" in the Records Pass (untouched). `VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE` and `fix-by-fudging` are named by tests, and (c) and (j) keep "fix-by-fudging". `test_the_builder_facing_severity_rule_points_at_the_pass` needs "Records Pass** below" in the builder half, which is kept (`:343`).
 
 ### C-8: Split `review-cycle.md`: every `final`/`cumulative` reviewer loads ~6k words of builder and maintainer lifecycle
-- location: `plugin/skills/critic/review-cycle.md:1-60`, `:91-358`, `:537-568` (builder/maintainer material) against `:76-89` and `:359-513` (reviewer material); routed by `plugin/skills/critic/SKILL.md:24`
+- location (line numbers are pre-W3; W3 shortened this file, so W3b locates each span by its heading): `plugin/skills/critic/review-cycle.md:1-60`, `:91-358`, `:537-568` (builder/maintainer material) against `:76-89` and `:359-513` (reviewer material); routed by `plugin/skills/critic/SKILL.md:24`
 - evidence: "**Once a pass returns zero BLOCKING, the review is over.** That is the exit condition, not a judgment"
 - pattern: prawduct Size and pattern #342; Group 2 "Verbose SKILL.md … a tax paid on every trigger"; brief's "how much protocol the coordinator and builder are asked to carry"
 - why: `tests/test_reviewer_payload_budget.py` prices this file into both `single-pass-full` and `dispatched-reviewer`, and a coordinator roster pays it three times. `tests/test_v5_methodology.py:6162` already describes it as "the 10k-token maintainer file" that a reviewer should not need.

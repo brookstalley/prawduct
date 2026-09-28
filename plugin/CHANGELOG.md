@@ -10,7 +10,7 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
-## v3.6.2-dev.5
+## v3.6.2-dev.6
 
 **Rolling notes for the next release — nothing has shipped under this number yet.** Entries accumulate here as work lands on `develop`; the cut renames this heading to its release number.
 
@@ -30,6 +30,16 @@ blockers. It writes one `.gates-waived` object holding the blocking gates' keys 
 already in the file; drop the key of any gate you can satisfy. Previously each blocker printed its
 own `echo … >` line, and running two kept only the last. The session briefing's advisory relay
 now says to carry on with what you asked after relaying.
+
+**`opus-55-w3-review-machinery`**: **the Critic and PR reviewer prompts are retuned for Opus 5.5.**
+The PR reviewer now reports every release-readiness defect at its severity. It no longer
+withholds one because acting on it would cost a review round. Accepting stays the default, and it
+costs nothing. The Critic reviewer no longer gets depth coaching by work size, or a warning
+against inventing findings. Reviewers no longer read copies of rules their protocol already
+states, issue numbers and dates, or harness-version notes. Critic review routes load
+570 to 1,330 fewer tokens, depending on the route. The builder's `/prawduct:pr` skill is about 1,400 words shorter, with a
+plainer register. The Critic now applies a norm departure as BLOCKING wherever a product has
+*adopted* norms, as `norms.md` § Severity defines them. It used to say "ratified".
 
 **`short-plan-tick`**: **a short plan reaches its boundary review without an override.** On a plan
 of at most 3 chunks that touches no risk surface, tick each earlier chunk's box when you commit it:

@@ -158,6 +158,12 @@ class TestClaudeMdIsOmitted:
         Each assertion is bound to the sentence carrying the correction, not
         to the file: `pr-reviewer.md` said "path-scoped" (of `Write`) before
         this change, so a whole-file search could not fail.
+
+        Two surfaces now, not three: `/prawduct:pr` Step 3 carried a copy of
+        the omission's scope for the caller, which opus-55 slice-C C-16(a) cut
+        because the caller dispatches the named agent without acting on what
+        it excludes. The agent definition is that fact's home, and it is the
+        surface the reviewer actually reads.
         """
         def flat(text: str) -> str:
             return " ".join(text.split())
@@ -169,10 +175,6 @@ class TestClaudeMdIsOmitted:
         assert "its always-loaded `.claude/rules/` project rules" in section
         assert "One kind of rules file still reaches you: a **path-scoped** one" in section
         assert "it is not a checklist to scan the diff against" in section
-
-        step3 = flat(_step3_of(SKILL.read_text()))
-        assert "its always-loaded `.claude/rules/` files" in step3
-        assert "does not stop a **path-scoped** rules file" in step3
 
         protocol = flat(PROTOCOL.read_text())
         assert "not given the learnings at dispatch" in protocol
@@ -358,10 +360,6 @@ class TestReviewerAnchorsToTheDispatchedTree:
         cannot fire, and its failure mode is a silent pass.
         """
         body = AGENT_DEF.read_text()
-        assert "If either disagrees" in body, (
-            "the agent must be told to surface a payload/prompt disagreement "
-            "rather than pick one"
-        )
         reconciles = "project dir" in body and "HEAD" in body
         step3 = _step3_of(SKILL.read_text())
         prompt_carries_the_directory = "(absolute)" in step3
@@ -434,8 +432,14 @@ class TestTheSkillDispatchesThisAgent:
         assert "If the file does not exist, the review did not complete" in step3
 
     def test_the_skill_states_why_the_agent_is_named(self):
-        step3 = self._step3()
-        assert "omitClaudeMd" in step3, (
-            "the reason the dispatch changed shape has to be where the dispatch "
-            "is, or the next editor 'simplifies' it back to a generic agent"
+        """Re-pointed from Step 3 to the skill's Important list (opus-55
+        slice-C C-16(a) cut Step 3's defence of the named agent as maintainer
+        prose). The dispatch itself stays pinned by `subagent_type:
+        pr-reviewer` above; what is pinned here is that the skill still names
+        the property a generic agent would lose."""
+        skill = SKILL.read_text()
+        important = skill[skill.index("## Important"):]
+        assert "omitClaudeMd" in important, (
+            "the reason the dispatch is a named agent has to stay in the skill, "
+            "or the next editor 'simplifies' it back to a generic agent"
         )

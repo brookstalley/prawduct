@@ -34,11 +34,11 @@ These checks apply only when reviewing skill files, template files, or framework
 - Instructions should be imperative ("do X") not descriptive ("the system does X").
 - Instructions should be unambiguous — if two reasonable LLMs might interpret differently with meaningfully different outputs, it's unclear.
 - Instructions should not contradict each other within or across skills.
-- Check for S1 violations (multi-level conditionals in prose), S2 violations (subjective thresholds without concrete definitions), and S6 violations (unresolved contradictions).
+- Check for multi-level conditionals in prose, subjective thresholds without concrete definitions, and unresolved contradictions.
 
 **Severity guide:**
 - Ambiguous instruction that could produce wrong behavior → **warning**
-- Structural standard violation (S1, S2, S6) → **warning**
+- One of those three structural defects → **warning**
 - Slightly unclear wording, unlikely to cause problems → **note**
 
 ### Check 9: Cumulative Health

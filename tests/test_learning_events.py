@@ -26,6 +26,7 @@ from __future__ import annotations
 import importlib.machinery
 import importlib.util
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -649,10 +650,13 @@ class TestTheCitationInstructionReachesReviewers:
         one. Bounded to the smallest region that must carry it, so a mutation
         in a neighbouring paragraph does not pass."""
         text = (_ROOT / "agents" / "critic-reviewer.md").read_text(encoding="utf-8")
-        marker = "Assess your goals and gather findings"
-        assert marker in text, "the findings-writing step was renamed — re-anchor this pin"
-        step = text[text.index(marker):]
-        step = step[: step.index("\n## ")] if "\n## " in step else step
+        # Anchored on structure, not wording: the findings-writing step is the
+        # last numbered step of "## What to do", the section just before the
+        # one that says what to write.
+        section = text[text.index("## What to do"):text.index("## What to write")]
+        steps = list(re.finditer(r"^\d+\. ", section, flags=re.M))
+        assert steps, "## What to do lost its numbered steps — re-anchor this pin"
+        step = section[steps[-1].start():]
         assert "opening words" in " ".join(step.split())
 
     def test_the_registry_says_the_join_under_counts_without_it(self):
