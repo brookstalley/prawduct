@@ -20,7 +20,9 @@
      Recognized keys:
        scope    - rollup identifier (e.g., v1.4), matching the `scope:`
                   frontmatter of the build plan that governs the work.
-       release  - the version that carried this entry. Its ABSENCE is what
+       release  - the version that carried this entry: three or four numeric
+                  parts, optionally with a -suffix (release=v1.3.18,
+                  release=v1.3.18.2, release=v1.4.0-rc.1). Its ABSENCE is what
                   marks the entry release-pending, so write NO release= on
                   the feature branch and add it at release. Any value at all
                   — including a placeholder naming the absence, e.g.
