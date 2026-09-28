@@ -255,19 +255,19 @@ def _resolve(path: str | Path) -> Path:
 
 def _scan_worktree(record: dict, *, current: Path, roots: list[Path], now: float) -> WorktreeRow:
     path = _resolve(record["worktree"])
-    branch_ref = record.get("branch")
-    branch = branch_ref.removeprefix("refs/heads/") if branch_ref else None
+    branch = gitstate.record_branch(record)
     row = WorktreeRow(
         path=str(path),
         branch=branch,
         is_current=path == current,
         ephemeral=gitstate.ephemeral_kind_of(path, branch),
     )
-    try:
-        present = path.is_dir()
-    except OSError:  # a permission error is not a missing tree; say nothing about it
+    gone = gitstate.record_is_gone(record)
+    # None: unreadable, or locked with its storage absent — neither is a missing
+    # tree, so say nothing about its liveness.
+    if gone is None:
         return row
-    if "prunable" in record or not present:
+    if gone:
         row.state = MISSING
         return row
     git_dir = _git(path, "rev-parse", "--absolute-git-dir")
@@ -303,17 +303,14 @@ def stranded_branches(
         records = gitstate.worktree_records(project_dir)
         if records is None:
             return [], True, "could not list worktrees, so could not tell which branches are checked out"
+    if not records:  # not a git repository: nothing to compare, and nothing went wrong
+        return [], True, None
     held: set[str] = set()
     for record in records:
-        ref = record.get("branch")
-        if not ref:
-            continue
-        try:
-            if not Path(record.get("worktree", "")).is_dir():
-                continue
-        except OSError:
-            pass  # unreadable is not gone; treat the branch as held
-        held.add(ref.removeprefix("refs/heads/"))
+        branch = gitstate.record_branch(record)
+        # Unreadable (None) is not gone: the branch stays held.
+        if branch and gitstate.record_is_gone(record) is not True:
+            held.add(branch)
 
     remotes = _git(project_dir, "for-each-ref", "--format=%(refname)", "refs/remotes/")
     if remotes is None:
@@ -322,7 +319,9 @@ def stranded_branches(
         return [], False, None
     heads = _git(
         project_dir, "for-each-ref",
-        "--format=%(refname:short)%09%(objectname)%09%(committerdate:unix)", "refs/heads/",
+        # `lstrip=2`, not `short`: git lengthens `short` to `heads/<name>` when a tag
+        # shares the name, and the branch would then match no worktree's branch.
+        "--format=%(refname:lstrip=2)%09%(objectname)%09%(committerdate:unix)", "refs/heads/",
     )
     # One walk for every branch at once: a tip reachable from no remote IS a
     # commit no remote carries, and a tip any remote reaches means every commit
@@ -383,7 +382,7 @@ def scan(
             path = _resolve(record["worktree"])
             report.worktrees.append(WorktreeRow(
                 path=str(path),
-                branch=(record.get("branch") or "").removeprefix("refs/heads/") or None,
+                branch=gitstate.record_branch(record),
                 is_current=path == current,
                 ephemeral=None,
             ))

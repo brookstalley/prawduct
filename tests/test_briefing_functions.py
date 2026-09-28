@@ -921,6 +921,11 @@ class TestAssembleSessionBriefingSections:
         out = briefing.assemble_session_briefing(tmp_path, [])
         assert "operating on 'main'" in out
         assert "scoped to THIS worktree only" in out
+        # The orientation line and the worktree-count line give ONE rule: the
+        # delegate-worktree advisory legitimately directs cleanup elsewhere, so a
+        # flat prohibition here would contradict it one line down.
+        assert "do not read or modify them unless the user or an advisory asks you to" in out
+        assert "do not read or modify them." not in out
         # Regression guard: the old "- <branch> @ <path>" sibling enumeration must not
         # return. Guard the enumeration format and the sibling path — not the bare word
         # "side", which collides with "conSIDEr" elsewhere in the briefing vocabulary.

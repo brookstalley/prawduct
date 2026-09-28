@@ -42,6 +42,8 @@ registered there cannot be reached by one call site and missed by the other.
 
 from __future__ import annotations
 
+import shlex
+
 from . import coverage
 from .advisory_store import AdvisoryCandidate, Codebase, ProjectState, register_probe
 
@@ -90,7 +92,7 @@ def probe_unpromoted_release_prep(state: ProjectState, codebase: Codebase):
                 f"up to {diag['remote']}. It is work that was already reviewed here; pushing it "
                 "just stops the coverage gates from re-flagging it as unreviewed."
             ),
-            recommended_action=f"git push origin {local}",
+            recommended_action=f"git push origin {shlex.quote(local)}",
             priority="warn",
         )
     ]

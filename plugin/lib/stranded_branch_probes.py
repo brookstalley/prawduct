@@ -31,6 +31,7 @@ Registered at the composition root (``lib/probe_families.register_all``).
 
 from __future__ import annotations
 
+import shlex
 import sys
 
 from . import stranded_work
@@ -71,7 +72,9 @@ def probe_stranded_branch(state: ProjectState, codebase: Codebase):
                     "a pull request, push it so it is visible while it waits, or drop it and "
                     "say why so nobody builds it again."
                 ),
-                recommended_action=f"git log --oneline refs/heads/{row.name} --not --remotes",
+                # Quoted: git allows `$(`, backticks and spaces in a branch name,
+                # and this line is a command the runtime executes as given.
+                recommended_action=f"git log --oneline {shlex.quote('refs/heads/' + row.name)} --not --remotes",
                 priority="warn",
             )
         )

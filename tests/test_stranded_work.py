@@ -230,6 +230,19 @@ class TestStrandedBranches:
         commit(tmp_path / "wt", "b.txt")
         assert _scan(clone).branches == []
 
+    def test_a_tag_named_like_a_checked_out_branch_does_not_strand_it(self, clone, tmp_path):
+        # `%(refname:short)` becomes `heads/v1` when a tag `v1` exists, and would
+        # then match no worktree's branch: a live branch reported as stranded.
+        wt = tmp_path / "wt"
+        git(clone, "worktree", "add", "-q", "-b", "v1", str(wt))
+        commit(wt, "b.txt")
+        git(clone, "tag", "v1", "main")
+        assert _scan(clone).branches == []
+        subprocess.run(["rm", "-rf", str(wt)], check=True)
+        assert [b.name for b in _scan(clone).branches] == ["v1"], (
+            "positive control: once nobody holds it, the same branch is stranded, by its plain name"
+        )
+
     def test_a_repo_with_no_remotes_reports_none(self, tmp_path):
         repo = tmp_path / "solo"
         git(tmp_path, "init", "-q", str(repo))
@@ -358,18 +371,19 @@ class TestDegradation:
     raises. Faked at the shared runner, the one door every call goes through."""
 
     @staticmethod
-    def _fail(monkeypatch, first_arg, rc=1, err="fatal: timed out"):
+    def _fail(monkeypatch, *match, rc=1, err="fatal: timed out"):
+        """Fail every call whose args START with ``match``; the rest run."""
         from lib import evidence
         real = evidence.run_git
 
         def run_git(root, *args, **kwargs):
-            if args[:1] == (first_arg,):
+            if args[:len(match)] == match:
                 return rc, "", err
             return real(root, *args, **kwargs)
         monkeypatch.setattr(evidence, "run_git", run_git)
 
     def test_a_failed_worktree_listing_is_not_checked_not_nothing_found(self, clone, monkeypatch):
-        self._fail(monkeypatch, "worktree")
+        monkeypatch.setattr(sw.gitstate, "worktree_records", lambda d: None)
         report = _scan(clone)
         assert report.worktrees_checked is False
         assert "could not list worktrees" in report.problems
@@ -383,6 +397,47 @@ class TestDegradation:
     def test_a_failed_branch_walk_is_named(self, clone, monkeypatch):
         self._fail(monkeypatch, "rev-list")
         assert "could not compare local branches with the remotes" in _scan(clone).problems
+
+    def test_a_failed_branch_listing_is_named(self, clone, monkeypatch):
+        # The SECOND for-each-ref (refs/heads), after the remotes one succeeded.
+        from lib import evidence
+        real = evidence.run_git
+
+        def run_git(root, *args, **kwargs):
+            if args[:1] == ("for-each-ref",) and args[-1] == "refs/heads/":
+                return 1, "", "fatal"
+            return real(root, *args, **kwargs)
+        monkeypatch.setattr(evidence, "run_git", run_git)
+        assert "could not compare local branches with the remotes" in _scan(clone).problems
+
+    def test_a_failed_count_leaves_the_count_unknown_not_the_branch(self, clone, monkeypatch):
+        git(clone, "switch", "-q", "-c", "fix/orphan")
+        commit(clone, "b.txt")
+        git(clone, "switch", "-q", "main")
+        self._fail(monkeypatch, "rev-list", "--count")
+        rows = _scan(clone, count_commits=True).branches
+        assert [(b.name, b.unique_commits) for b in rows] == [("fix/orphan", None)]
+
+    def test_no_git_dir_still_classifies_from_the_other_signals(self, clone, tmp_path, monkeypatch):
+        wt = tmp_path / "wt"
+        git(clone, "worktree", "add", "-q", "-b", "side", str(wt))
+        (wt / "wip.txt").write_text("x")
+        self._fail(monkeypatch, "rev-parse", "--absolute-git-dir")
+        row = next(w for w in _scan(clone).worktrees if Path(w.path) == wt.resolve())
+        assert (row.state, row.last_activity.source) == (ACTIVE, "file-edit")
+
+    def test_no_toplevel_falls_back_to_the_directory_asked_about(self, clone, monkeypatch):
+        self._fail(monkeypatch, "rev-parse", "--show-toplevel")
+        rows = _scan(clone).worktrees
+        assert [w.is_current for w in rows] == [True]
+
+    def test_a_folder_that_is_not_a_repo_is_silent_not_a_problem(self, tmp_path):
+        plain = tmp_path / "plain"
+        plain.mkdir()
+        report = _scan(plain)
+        assert report.problems == [] and report.worktrees == [] and report.branches == []
+        assert sw.briefing_line(report) is None
+        assert sw.stranded_branches(plain) == ([], True, None)
 
     def test_a_failed_status_leaves_the_dirty_count_unknown(self, clone, tmp_path, monkeypatch):
         git(clone, "worktree", "add", "-q", "-b", "side", str(tmp_path / "wt"))
@@ -498,3 +553,75 @@ class TestCommand:
     def test_unknown_argument_is_a_usage_error(self, clone, capsys):
         assert sw.worktrees_cmd(clone, ["--all"]) == 2
         assert "usage" in capsys.readouterr().err
+
+
+class TestRecordHelpers:
+    """gitstate's two readers of a worktree record — one answer per question,
+    so the scan and the branch check cannot disagree about the same tree."""
+
+    def test_branch_strips_exactly_refs_heads(self):
+        from lib import gitstate
+        assert gitstate.record_branch({"branch": "refs/heads/heads/x"}) == "heads/x"
+        assert gitstate.record_branch({"detached": ""}) is None
+
+    def test_gone_means_prunable_or_no_directory(self, tmp_path):
+        from lib import gitstate
+        assert gitstate.record_is_gone({"worktree": str(tmp_path), "prunable": "gitdir missing"}) is True
+        assert gitstate.record_is_gone({"worktree": str(tmp_path / "nope")}) is True
+        assert gitstate.record_is_gone({"worktree": str(tmp_path)}) is False
+
+    def test_a_locked_tree_on_absent_storage_is_unknown_not_gone(self, tmp_path):
+        from lib import gitstate
+        away = {"worktree": str(tmp_path / "on-unmounted-drive"), "locked": "usb stick"}
+        assert gitstate.record_is_gone(away) is None
+        assert gitstate.record_is_gone({**away, "prunable": "x"}) is True, "git's own verdict wins"
+
+    def test_a_locked_absent_worktree_still_holds_its_branch(self, clone, tmp_path):
+        wt = tmp_path / "wt"
+        git(clone, "worktree", "add", "-q", "-b", "fix/on-usb", str(wt))
+        commit(wt, "b.txt")
+        git(clone, "worktree", "lock", "--reason", "usb", str(wt))
+        subprocess.run(["rm", "-rf", str(wt)], check=True)
+        assert _scan(clone).branches == []
+
+
+class TestWorktreeRecords:
+    """gitstate.worktree_records at its own door — every other test stubs it,
+    so these are the only ones that reach its three answers."""
+
+    def test_a_real_repo_lists_its_worktrees(self, clone, tmp_path):
+        from lib import gitstate
+        git(clone, "worktree", "add", "-q", "-b", "side", str(tmp_path / "wt"))
+        records = gitstate.worktree_records(clone)
+        assert [gitstate.record_branch(r) for r in records] == ["main", "side"]
+        assert all("HEAD" in r for r in records)
+
+    def test_a_plain_directory_is_empty_not_failed(self, tmp_path):
+        from lib import gitstate
+        plain = tmp_path / "plain"
+        plain.mkdir()
+        assert gitstate.worktree_records(plain) == []
+
+    def test_git_failing_inside_a_real_repo_is_none(self, clone, monkeypatch):
+        """The answer every "could not check" message depends on. Only the
+        listing fails; the repo-ness check runs for real and says yes."""
+        from lib import gitstate
+        real = gitstate._run_git_text
+
+        def run(project_dir, *args):
+            if args[:1] == ("worktree",):
+                return 128, ""
+            return real(project_dir, *args)
+        monkeypatch.setattr(gitstate, "_run_git_text", run)
+
+        assert gitstate.worktree_records(clone) is None
+
+    def test_git_missing_entirely_reads_as_no_repo(self, clone, monkeypatch):
+        # With no git at all, repo-ness cannot be asked; the fail-soft answer is
+        # the quiet one, and the runner must not raise on the way there.
+        from lib import gitstate
+
+        def no_git(*a, **k):
+            raise FileNotFoundError("git")
+        monkeypatch.setattr(gitstate.subprocess, "run", no_git)
+        assert gitstate.worktree_records(clone) == []

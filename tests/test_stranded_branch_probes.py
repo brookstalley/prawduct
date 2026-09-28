@@ -8,6 +8,7 @@ what reaches the advisory roster.
 
 from __future__ import annotations
 
+import shlex
 import subprocess
 from pathlib import Path
 
@@ -37,6 +38,16 @@ def git(cwd: Path, *args: str) -> str:
          "-c", "commit.gpgsign=false", "-c", "init.defaultBranch=main", *args],
         cwd=str(cwd), capture_output=True, text=True, check=True,
     ).stdout
+
+
+def shell_words(command: str) -> list[str]:
+    """How a POSIX shell splits ``command`` into words and operators — without
+    running one (the suite bans shell=True). An operator (`;`, `(`, `)`, `|`,
+    `&`) comes back as its own token, so a name that escaped its quoting shows
+    up as a split."""
+    lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
+    lexer.whitespace_split = True
+    return list(lexer)
 
 
 def commit(repo: Path, name: str) -> None:
@@ -87,6 +98,22 @@ class TestFires:
         out = git(clone, *c.recommended_action.split()[1:])
         assert "fix-x.txt" in out
 
+    def test_a_hostile_branch_name_is_quoted_in_the_command(self, clone):
+        # git forbids spaces in ref names but allows `$(`, `;` and backticks, and
+        # the recommended command runs as given, so the name must stay one word.
+        name = "fix/$(touch${IFS}pwned)"
+        strand(clone, name)
+        (c,) = probe(clone)
+        argv = ["git", "log", "--oneline", f"refs/heads/{name}", "--not", "--remotes"]
+        assert shell_words(c.recommended_action) == argv
+        # Exactly shlex's single-quoting: the tokenizer above treats double quotes
+        # alike, but a shell still expands `$(` inside them.
+        assert c.recommended_action == shlex.join(argv)
+        # And the command runs as that one argv, showing the stranded commit.
+        assert "fix-" in git(clone, *argv[1:])
+        unquoted = f"git log --oneline refs/heads/{name} --not --remotes"
+        assert "(" in shell_words(unquoted), "positive control: unquoted, the shell sees an operator"
+
     def test_the_id_depends_on_the_branch_alone(self, clone):
         # Two branches are two decisions, so dismissing one must not silence the
         # other; and one branch's id must survive new commits on it.
@@ -123,6 +150,12 @@ class TestSilentOrResolved:
         git(clone, "worktree", "add", "-q", "-b", "fix/in-use", str(tmp_path / "wt"))
         commit(tmp_path / "wt", "b.txt")
         assert probe(clone) == []
+
+    def test_a_folder_that_is_not_a_repo_stays_quiet(self, tmp_path, capsys):
+        plain = tmp_path / "plain"
+        plain.mkdir()
+        assert probe(plain) == []
+        assert capsys.readouterr().err == ""
 
     def test_inert_with_no_remote(self, tmp_path):
         repo = tmp_path / "solo"

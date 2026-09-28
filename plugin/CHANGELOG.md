@@ -28,7 +28,9 @@ directory (`~/.claude`, `~/.claude-*`, `$CLAUDE_CONFIG_DIR`, so several accounts
 worktree's git history, a governed session starting there, and its newest uncommitted edit. It is
 inferred from timestamps, so a session paused over a weekend reads as idle. In a repo that squash-
 or rebase-merges, a merged branch you never deleted locally will fire once; dismiss it or delete
-the branch.
+the branch. The suggested commands in this advisory, the unintegrated-delegate advisory and the
+unpushed-release-prep advisory now quote branch names and paths, which git allows to contain `$(`
+and `;`.
 
 **`test-evidence-root-testcases`** (#912, #913) — **a failing top-level node:test case is no
 longer recorded as passing.** node:test writes a `test()` outside any `describe()` as a

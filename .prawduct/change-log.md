@@ -34,7 +34,8 @@ advisory roster and keep worktree counts in the briefing. The same pass gave `gi
 parsing one home — `gitstate.worktree_records`, moved from `adhoc_delegate_probes` as #843's
 Decision 4 specifies — where `briefing._detect_worktrees`, the delegate probe and this scan had
 three copies that disagreed about prunable and detached entries. `worktree_records` returns
-`None` when git fails in a real repo, and each caller names what it lost. The two blocking
+`None` when git fails in a real repo: the delegate probe and this scan name what they lost, and
+`briefing._detect_worktrees` drops its orientation line, which the worktree line covers. The two blocking
 findings: the scan's private git runner raised on non-UTF-8 output, which the briefing did not
 guard, so one odd filename could replace the whole briefing with a failure line; and a
 per-branch `rev-list` ran on every session start for a count nothing there used. The scan now
@@ -42,6 +43,15 @@ goes through the shared `evidence.run_git`, which already converts a decode fail
 failed call and gains a `strip=False` opt-out because stripping shifts a porcelain parse. It
 counts commits only for the table, has a 4-second total budget, and the briefing guards its one
 line. A scan that could not list worktrees now says so rather than printing nothing.
+A second boundary review (0 blocking, 6 warnings) led to: `%(refname:lstrip=2)` rather than
+`short`, which git lengthens when a tag shares a branch's name; silence in a folder that is not a
+repository; `gitstate` reading git itself instead of importing `evidence` upward, with
+`record_branch` / `record_is_gone` as the one reading of a worktree record; the orientation line
+reconciled with the worktree line; and quoted branch names and paths in the three probes that
+interpolate them into commands (`stranded-branch`, `unintegrated-delegate-worktree`,
+`unpromoted-release-prep`). Their tests check the quoting without a shell — the suite bans
+`shell=True` — by tokenizing as a shell does (`shlex.shlex(punctuation_chars=True)`) and pinning
+`shlex.join`'s single quotes, since a shell still expands `$(` inside double ones.
 
 **Liveness is the newest of four signals**, and the report names the winner: transcripts over
 every Claude config root (owner, 2026-09-28: several accounts keep transcripts of different ages

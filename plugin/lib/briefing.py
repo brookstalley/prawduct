@@ -570,8 +570,9 @@ def _detect_worktrees(project_dir: Path) -> list[dict[str, str]]:
         if "worktree" not in record:
             continue
         entry = {"path": record["worktree"]}
-        if "branch" in record:
-            entry["branch"] = record["branch"].removeprefix("refs/heads/")
+        branch = gitstate.record_branch(record)
+        if branch:
+            entry["branch"] = branch
         elif "detached" in record:
             entry["branch"] = "(detached)"
         worktrees.append(entry)
@@ -918,7 +919,7 @@ def assemble_session_briefing(
         lines.append(
             f"Worktree: operating on '{active_branch}' at {active_path} — work and gates "
             f"are scoped to THIS worktree only. Other worktrees belong to their own "
-            f"sessions; do not read or modify them."
+            f"sessions; do not read or modify them unless the user or an advisory asks you to."
         )
 
     # Sibling worktrees as COUNTS only — idle, and active in another session.

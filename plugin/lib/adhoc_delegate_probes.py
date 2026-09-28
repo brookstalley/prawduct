@@ -44,6 +44,7 @@ at import time — the same pattern as the sibling probe modules.
 
 from __future__ import annotations
 
+import shlex
 import sys
 from pathlib import Path
 
@@ -162,8 +163,7 @@ def probe_unintegrated_delegate_worktree(state: ProjectState, codebase: Codebase
         if _is_integrated(root, sha, refs):
             continue
 
-        branch_ref = record.get("branch") or ""
-        label = branch_ref.rpartition("refs/heads/")[2] or branch_ref
+        label = gitstate.record_branch(record) or ""
         subject = f"branch {label}" if label else f"detached HEAD {sha[:12]}"
         shown = _display_path(root_abs, worktree)
         candidates.append(
@@ -195,8 +195,10 @@ def probe_unintegrated_delegate_worktree(state: ProjectState, codebase: Codebase
                 # sites statically, and a conditional expression is a value it
                 # declines to guess at — which would exempt this field's copy from
                 # every rule the lint applies.
-                recommended_action=f"git log --oneline HEAD..{label or sha[:12]}",
-                alternative_actions=(f"git worktree remove {shown}",),
+                # Quoted: a branch name may carry `$(`, backticks or spaces, and a
+                # path may carry spaces; both lines run as given.
+                recommended_action=f"git log --oneline {shlex.quote('HEAD..' + (label or sha[:12]))}",
+                alternative_actions=(f"git worktree remove {shlex.quote(shown)}",),
                 priority="warn",
             )
         )

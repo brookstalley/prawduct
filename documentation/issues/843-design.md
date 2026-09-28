@@ -6,8 +6,9 @@ backlog session · issue: https://github.com/brookstalley/prawduct/issues/843`
 > **Partly built, 2026-09-28 (`feature/stranded-work`).** Two pieces of this design shipped there,
 > one of them changed. **Shipped:** Decision 4's parser move — `gitstate.worktree_records`, now read
 > by `adhoc_delegate_probes`, `briefing._detect_worktrees` and `stranded_work`, with one departure:
-> on a git failure it returns `None` silently and each caller prints what IT lost, since a shared
-> parser cannot know — and Decision 5's surface, the advisory roster. **Shipped differently:** the
+> on a git failure it returns `None` silently; the delegate probe and the stranded-work scan each
+> name what THEY lost, since a shared parser cannot know, and the briefing's orientation line drops
+> out because its worktree line already reports the failure — and Decision 5's surface, the advisory roster. **Shipped differently:** the
 > candidate test. `branch-landing:stranded-branch` fires for a local branch checked out in no
 > live worktree whose tip no remote-tracking ref reaches, with no plan required and no age floor.
 > It is the LOCAL arm: it caught the case that motivated building it (#898/#818, reviewed, no
