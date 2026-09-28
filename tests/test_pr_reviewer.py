@@ -1237,10 +1237,10 @@ class TestPrReviewerScoping:
         breaks on arithmetic tests the sentence rather than the division it
         exists to protect.
         """
-        content = (FRAMEWORK_DIR / "skills" / "critic" / "review-cycle.md").read_text()
+        content = (FRAMEWORK_DIR / "skills" / "critic" / "cross-checks.md").read_text()
         header = content.split("## Final-Mode Cross-Checks", 1)[1].split("\n### ", 1)[0]
         assert "`final`/`cumulative` owns" in header, (
-            "review-cycle.md no longer names the cross-checks' owner"
+            "cross-checks.md no longer names the cross-checks' owner"
         )
         assert "the PR reviewer does not re-run them" in header
 

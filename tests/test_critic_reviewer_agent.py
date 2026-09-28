@@ -23,6 +23,9 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1] / "plugin"
 AGENT_DEF = REPO_ROOT / "agents" / "critic-reviewer.md"
 REVIEW_PROTOCOL = REPO_ROOT / "skills" / "critic" / "review-protocol.md"
+# The Coordinator Pattern moved out of review-protocol.md (opus-55 W3b, C-20),
+# so a dispatched reviewer no longer loads the instructions for dispatching itself.
+COORDINATOR = REPO_ROOT / "skills" / "critic" / "coordinator.md"
 SKILL = REPO_ROOT / "skills" / "critic" / "SKILL.md"
 HOOKS = REPO_ROOT / "hooks" / "hooks.json"
 PLUGIN_MANIFEST = REPO_ROOT / ".claude-plugin" / "plugin.json"
@@ -242,22 +245,22 @@ class TestAgentWritesOnlyItsPartial:
 
 class TestCoordinatorProseRewritten:
     def test_protocol_declares_manifest_and_partials(self):
-        text = REVIEW_PROTOCOL.read_text()
+        text = COORDINATOR.read_text()
         assert "manifest.json" in text
         assert ".critic-partials" in text
         assert "critic-reviewer" in text
         assert "critic-consolidate" in text
 
     def test_protocol_says_stop_no_resume(self):
-        text = REVIEW_PROTOCOL.read_text()
+        text = COORDINATOR.read_text()
         # The load-bearing behavior change: the coordinator does not resume to write.
         assert "do not resume" in text.lower() or "no resume-to-aggregate" in text.lower()
 
     def test_protocol_coordinator_does_not_write_findings_inline(self):
         """The old step 3 ('persist .critic-findings.json') must be gone from the
         Coordinator Pattern — the coordinator writes the manifest, not the findings."""
-        text = REVIEW_PROTOCOL.read_text()
-        coord = text.split("### Coordinator Pattern", 1)[1].split("## Output Format", 1)[0]
+        text = COORDINATOR.read_text()
+        coord = text.split("## Coordinator Pattern", 1)[1]
         assert "persist `.prawduct/.critic-findings.json`" not in coord
 
     def test_skill_coordinator_path_present(self):
@@ -367,8 +370,8 @@ class TestReviewerAnchorsToTheDispatchedTree:
         )
 
     def test_protocol_binds_the_dispatched_directory(self):
-        text = REVIEW_PROTOCOL.read_text()
-        coord = text.split("### Coordinator Pattern", 1)[1].split("## Output Format", 1)[0]
+        text = COORDINATOR.read_text()
+        coord = text.split("## Coordinator Pattern", 1)[1]
         assert "Project (absolute)" in coord, (
             "the dispatch template must mark the project directory absolute"
         )

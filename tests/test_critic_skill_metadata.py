@@ -212,7 +212,8 @@ class TestCoordinatorDispatchIsConcurrent:
     """
 
     def test_review_protocol_step_2_demands_one_message(self):
-        content = _PLUGIN_REVIEW_PROTOCOL.read_text()
+        # Step 2 moved to coordinator.md (opus-55 W3b, C-20).
+        content = (_PLUGIN_REVIEW_PROTOCOL.parent / "coordinator.md").read_text()
         assert "ONE message" in content
         assert "concurrently" in content
 
@@ -262,10 +263,10 @@ _MANDATE_NOT_GRANTED: dict[tuple[str, str, str], str] = {
     ("skills/critic/review-protocol.md", "critic-reviewer", "critic-consolidate"): (
         "single-pass only; a dispatched reviewer must never consolidate"
     ),
-    # `review-cycle.md` prints this inside the NOTE text the Critic hands the
+    # `cross-checks.md` prints this inside the NOTE text the Critic hands the
     # BUILDER when backlog reconciliation is unavailable. It is remedy prose the
     # operator runs, and granting it would give a read-only review a network write.
-    ("skills/critic/review-cycle.md", "critic", "backlog sync"): (
+    ("skills/critic/cross-checks.md", "critic", "backlog sync"): (
         "remedy text reported to the builder, never run by the review"
     ),
 }

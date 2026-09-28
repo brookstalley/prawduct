@@ -266,7 +266,7 @@ class TestRuleUnenforcedToken:
 
     def test_the_single_pass_route_survives(self) -> None:
         # The narrowest carrier, and the one the ceiling punishes. A single-pass
-        # `final`/`cumulative` fork reads review-cycle.md, NOT the agent
+        # `final`/`cumulative` fork reads cross-checks.md, NOT the agent
         # definition — SKILL.md routes it to four protocol files and that is not
         # one of them. So this pointer is the ONLY way the rule reaches that
         # fork. Its file sits AT its ceiling under a standing "the next addition
@@ -275,9 +275,9 @@ class TestRuleUnenforcedToken:
         # deleting this sentence and lowering LAST_MEASURED_TOKENS is a green
         # suite. That is precisely why presence is asserted here rather than
         # left to the token record.
-        cycle = (PLUGIN / "skills/critic/review-cycle.md").read_text()
+        cycle = (PLUGIN / "skills/critic/cross-checks.md").read_text()
         assert self.HEADLINE in cycle, (
-            "review-cycle.md lost the rule-over-instance pointer — a single-pass "
+            "cross-checks.md lost the rule-over-instance pointer — a single-pass "
             "final/cumulative reviewer now has no route to the rule at all, "
             "because SKILL.md never sends it to agents/critic-reviewer.md."
         )

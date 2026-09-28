@@ -58,7 +58,7 @@ The role → goal mapping
   instruction files or templates.
 - **sustainability** — Goals 5 (Decisions Were Deliberate), 6 (The System Can Be Understood);
   ALSO run the Learnings Cross-Check, Backlog Reconciliation and **Records Pass**
-  (`review-cycle.md` "Final-Mode Cross-Checks") and emit their results in your partial —
+  (`cross-checks.md` "Final-Mode Cross-Checks") and emit their results in your partial —
   the first two as NOTE findings, the Records Pass at whichever of its bars applies. The
   cross-check's read list is `.claude/rules/learnings/core.md` plus each area file whose
   `paths:` intersect the diff — `prawduct-hook learnings-files --for-diff` prints it, and

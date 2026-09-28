@@ -1,7 +1,7 @@
 # Reading the backlog cache — the contract shared by the review-time readers
 
 Three surfaces query the local backlog cache: the Critic's Backlog Reconciliation
-(`skills/critic/review-cycle.md`), the PR reviewer's R-1/R-2 (`skills/pr/review-protocol.md`), and
+(`skills/critic/cross-checks.md`), the PR reviewer's R-1/R-2 (`skills/pr/review-protocol.md`), and
 the janitor's Backlog Health (`skills/janitor/SKILL.md`). Each decides *what to ask and what to do
 with the answer*. **How to ask, and how to read a failure, is here** — one home, because when these
 three stated the same mechanics separately the copies drifted, and every defect this contract exists

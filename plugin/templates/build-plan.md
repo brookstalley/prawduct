@@ -181,7 +181,8 @@ Routes never touch SQLite directly — persistence goes through `store.py`. Temp
      Optional fields are declared only when they apply — missing is always the safe
      default. Field reference:
        `Critic mode:` / `Type:` — methodology/planning.md "Critic Mode Per Chunk" /
-         "Choosing a Chunk Type"; behavior tables in skills/critic/review-cycle.md.
+         "Choosing a Chunk Type"; the mode table is in skills/critic/review-cycle.md,
+         the Type table in skills/critic/cross-checks.md.
          Mode missing or unrecognized → inferred; no rule firing → `chunk`, the inner-stage review.
          Each chunk's "Done when" runs `/prawduct:critic`; a SHORT plan owes fewer runs
          than one per chunk, and which and when is stated by review-cycle.md's

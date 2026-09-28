@@ -641,7 +641,7 @@ class TestTheCitationInstructionReachesReviewers:
         )
 
     def test_the_cross_check_carries_it_too(self):
-        cycle = self._prose("skills/critic/review-cycle.md")
+        cycle = self._prose("skills/critic/cross-checks.md")
         assert "quote that rule's opening words" in cycle
 
     def test_the_instruction_sits_where_findings_are_written(self):

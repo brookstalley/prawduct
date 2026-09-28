@@ -25,14 +25,16 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent / "plugin"
 
 _CRITIC_SKILL = REPO_ROOT / "skills" / "critic" / "SKILL.md"
-_CRITIC_PROTOCOL = REPO_ROOT / "skills" / "critic" / "review-protocol.md"
+# The Critic's dispatch surface is coordinator.md since opus-55 W3b (C-20) moved the
+# Coordinator Pattern out of review-protocol.md.
+_CRITIC_PROTOCOL = REPO_ROOT / "skills" / "critic" / "coordinator.md"
 _PR_SKILL = REPO_ROOT / "skills" / "pr" / "SKILL.md"
 
 
 @pytest.mark.parametrize(
     "path",
     [_CRITIC_PROTOCOL, _PR_SKILL],
-    ids=["critic_protocol", "pr_skill"],
+    ids=["critic_coordinator", "pr_skill"],
 )
 def test_reviewer_dispatch_uses_the_session_model(path: Path) -> None:
     # The reviewer-dispatch surface must direct the reviewer onto the session
@@ -49,7 +51,7 @@ def test_reviewer_dispatch_uses_the_session_model(path: Path) -> None:
 @pytest.mark.parametrize(
     "path",
     [_CRITIC_PROTOCOL, _PR_SKILL],
-    ids=["critic_protocol", "pr_skill"],
+    ids=["critic_coordinator", "pr_skill"],
 )
 def test_no_reviewer_model_tiering(path: Path) -> None:
     # Any pinned reviewer model — `fable` (the escalation pin that caused the
