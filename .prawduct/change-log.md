@@ -5,6 +5,22 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-28: develop opens 3.6.2-dev.3
+
+<!-- prawduct: type=chore | scope=dev-track-bump-3.6.2-dev.3 -->
+
+The dev track's version moves from `3.6.2-dev.2` to `3.6.2-dev.3` in the four carriers
+(`plugin/VERSION`, `plugin.json`, `pyproject.toml`, and the open `plugin/CHANGELOG.md` heading), so
+repos on the develop track pick up `test-evidence-pre-run-tree` and `test-evidence-root-testcases`.
+The version string is the plugin cache key, so a repo that already resolved `3.6.2-dev.2` would
+otherwise never see them. Owner-directed, 2026-09-28. It rides this branch's PR, so one review
+covers the bump instead of a PR of its own.
+
+**The release number is still the cut's.** This bump labels the dev track only.
+
+**No consumer notes were owed.** Both scopes already carry their entries in the open
+`plugin/CHANGELOG.md` section.
+
 ## 2026-09-28: test evidence counts a failing top-level node:test case
 
 <!-- prawduct: type=bugfix | scope=test-evidence-root-testcases -->
