@@ -522,23 +522,21 @@ class TestPrReviewSkillContent:
         # over-pricing, which is what made a reviewer file fewer.
         assert "a full Critic round" not in content
 
-    def test_findings_are_reported_and_disposition_is_left_downstream(self):
-        """Contract INVERTED, in the open (opus-55 slice-C C-1, owner-ruled).
+    def test_the_value_filters_stay_out_of_the_review_protocol(self):
+        """C-1 (opus-55 slice C, owner-ruled): the PR reviewer reports every
+        release-readiness defect at its severity, and disposition belongs to
+        the builder, downstream.
 
-        This used to pin a "ride along with the next chunk" route and the
-        instruction to file only what a maintainer "would genuinely want". Both
-        were value filters placed ahead of reporting: a reviewer that follows
-        "only file what's worth it" literally reports less, and disposition
-        already has a downstream owner (the builder's ACCEPT default and
-        `prawduct-hook disposition`). The route and the filters are asserted
-        GONE; the report-everything instruction is asserted present and above
-        the goals, where the reviewer forms findings.
+        What is pinned is the ABSENCE of the four value filters the ruling
+        removed. A reviewer that follows "only file what's worth it" literally
+        reports less, and no interface token can carry that absence, so this
+        is a recorded exception to the prose-test taxonomy (see the W3 build
+        plan). The report-everything sentence itself is prose and is not
+        pinned.
         """
         raw = (FRAMEWORK_DIR / "skills" / "pr" / "review-protocol.md").read_text()
         content = re.sub(r"\s+", " ", raw.replace("*", ""))
-        rule = "Never drop one because acting on it costs the builder a review round"
-        assert rule in content
-        assert content.index(rule) < content.index("## Review Goals")
+        assert "## Review Goals" in content, "read the wrong file, or it lost its goals"
         for filt in ("would genuinely want changed",
                      "Only flag if splitting is cheap",
                      "cheap to act on",
@@ -800,15 +798,13 @@ class TestPrReviewSkillContent:
         assert "git branch --show-current" in guard, (
             "the guard must compare the CURRENT branch against what it resolved"
         )
-        # It must also be honest about what it inherits: a repo whose
-        # `origin/HEAD` is `main` but which integrates on `develop` cannot be
-        # inferred, so the guard names that gap and its remedy (record
-        # `base_branch:`). Re-pointed from the `#254` issue id, which the
-        # owner-ruled rewrite (opus-55 slice-C C-15) removed as history; the
-        # disclosure it stood for is what stays pinned.
-        assert "cannot be inferred" in guard and "record `base_branch:`" in guard, (
-            "the guard must state the case it cannot detect and how to close it, "
-            "rather than silently moving the wrong-answer case"
+        # The gap the guard cannot infer (origin/HEAD on `main`, integration on
+        # `develop`) is closed by recording `base_branch:`, so the guard must
+        # name that field. The field is the interface token; the sentence
+        # around it is prose and is not pinned.
+        assert "`base_branch:`" in guard, (
+            "the guard must name the project-state field that closes the case "
+            "it cannot infer"
         )
 
     def test_release_process_documents_benign_cumulative_exit(self):

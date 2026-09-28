@@ -192,7 +192,8 @@ fixing had created. `chunk`, `final` and `cumulative` review work the builder *c
 
 *What it does not cost.* Unresolved BLOCKING findings are the only severity any gate reads, so nothing
 that gated stops gating. The narrowing binds on **membership in the inner BLOCKING set** ("Severity
-is stage-keyed"), which the directive states in the norm's own sentence, so a class the set names
+is stage-keyed"), which the dispatch directive (`critic_consolidate.VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE`)
+states in the norm's own sentence, so a class the set names
 cannot be swept up by a table that rates it lower.
 
 *The set is exact, and two of its members are escalations.* The directive names the shapes a fix

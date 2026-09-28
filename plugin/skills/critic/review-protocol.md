@@ -9,7 +9,7 @@ The Critic reviews changes against principles and specifications as a **separate
 2. Assess change scope/nature (git diff or read changed files).
 3. Read relevant `.prawduct/artifacts/`.
 4. Read `${CLAUDE_SKILL_DIR}/../../docs/principles.md` and the product's learnings — `.claude/rules/learnings/core.md` plus the area files `prawduct-hook learnings-files --for-diff` lists — `final` mode only.
-5. Mode decides *which* goals (see **Modes**); the signals below tune depth.
+5. Mode decides *which* goals (see **Modes**); the manifest's stage decides what is a finding (**Scope and Stage**).
 6. Follow the dispatch manifest's roster (see Review Execution).
 
 ## Modes
@@ -36,8 +36,8 @@ preferences rows, project-state classification, **and unmarked prose recording a
 bind; descriptions track (test: would syncing it to code silently unmake a decision?).
 Departure, unruled edge-work, normative change (even doc-only), or norm birth without a
 recorded vetoable decision → Goal 3 **BLOCKING** naming the `project-preferences.md` row or
-Direction statement it departs from, where the product has adopted norms (`norms.md` §
-Severity says what counts); with none, **NOTE** naming the capture path. Tell: amending a norm to match your own code; never fix a divergence by
+Direction statement it departs from, where the product has adopted norms (`norms.md`'s
+"Severity, stated once" paragraph says what counts); with none, **NOTE** naming the capture path. Tell: amending a norm to match your own code; never fix a divergence by
 editing the artifact.
 Correctness shapes the recommendation, never the need. Judge jurisdiction yourself;
 applicability is recorded, never assumed. Stale registry → NOTE: `/prawduct:doctor`; never a

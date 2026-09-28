@@ -97,6 +97,10 @@ as written. Two rulings carry notes that change how the waves apply:
   proxy for wall-clock gain.
 - **F5: take the recommendation.** Apply B-23, B-25 and B-26. **B-21 and B-22 stay held** until a
   Sonnet 5.5 discovery probe, which W4's plan carries.
+- **The Sonnet 5.5 probe is not yet reachable from the Agent tool (found in W3, 2026-09-28).** Its
+  `sonnet` alias ran `claude-sonnet-5` in all four W3 probe runs. W3's probe therefore ran on Sonnet
+  5, and F1's Sonnet 5.5 floor probe is still owed. W4's probe, which releases B-21 and B-22, must
+  confirm the model id it actually ran on before it counts.
 - **F2, F3, F6 and F7: take.** F6 carries its measurement: compare `review-stats` rounds per PR
   before and after W3.
 - **W1–W6: take.** They run in order, W1 first, one plan and one feature branch each.
@@ -247,8 +251,9 @@ That measurement is the one that answers the wall-clock question.
 
 **Baseline, recorded 2026-09-28 before W3 (ledger through PR #921).** `review-stats` has no
 rounds-per-PR view, so the numbers come from
-`opus-55-prompt-audit-2026-09/rounds_per_pr.py <since>`. Rerun it with the same `since` after W3
-and compare. It groups `review.pr` events by branch, and counts the `review.critic` events that
+`opus-55-prompt-audit-2026-09/rounds_per_pr.py <since> [<until>]`. The baseline windows end at
+W3's plan commit (`7cec305a`, 2026-09-28T21:41Z). For the after window, pass W3's merge date to `develop` as `since` and
+leave `until` off. A rerun with the baseline's own `since` would mix the before and after data. It groups `review.pr` events by branch, and counts the `review.critic` events that
 share the branch's scope. A scope reused across branches inflates the Critic count, and the "after"
 run inherits that.
 

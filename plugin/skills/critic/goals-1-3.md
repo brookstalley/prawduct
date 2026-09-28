@@ -39,8 +39,8 @@ test-evidence skipped. `designer-handoff` never reaches you.
 classification, **and unmarked prose recording a decision** bind; descriptions track (test: would
 syncing it to code silently unmake a decision?). Departure, unruled edge-work, normative change (even
 doc-only), or norm birth without a recorded vetoable decision → Goal 3 **BLOCKING** where the
-product has adopted norms (`norms.md` § Severity says what counts); with none, **NOTE** naming the
-capture path. Tell: amending a norm to match your own code. Correctness shapes the recommendation, never the need. Stale registry → NOTE:
+product has adopted norms (any `## Direction` section, preferences norm row, or recorded
+classification); with none, **NOTE** naming the capture path. Tell: amending a norm to match your own code. Correctness shapes the recommendation, never the need. Stale registry → NOTE:
 `/prawduct:doctor`; never a downgrade.
 
 **The manifest's `prior_dispositions` lists findings already accepted or filed in these files, with

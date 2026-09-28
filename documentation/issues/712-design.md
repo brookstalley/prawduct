@@ -27,8 +27,7 @@ Re-verified against the current tree (2026-09-08):
 - **`/prawduct:pr` already states the missing backstop.** Merge Flow's "Close the backlog items this
   PR resolves" step (`plugin/skills/pr/SKILL.md`, Merge Flow) says the step is its own only
   detector: "if you merge through the GitHub UI or the session ends at the merge, nothing notices
-  that the close never fired." It no longer cites this issue by number, so this doc is the only
-  place the gap and #712 are joined.
+  that the close never fired." It no longer cites this issue by number.
 - **`closed_by` is not a cache column.** `cachequery.py`'s `_FULL_COLUMNS`
   (`plugin/lib/backlog/cachequery.py:51-65`) has no `closed_by` field, so no existing `cache-query`
   answer can serve this sweep — confirming the sibling docs' own framing that GV3 is a **live** read,

@@ -617,7 +617,9 @@ LAST_MEASURED_TOKENS = {
     # RAISED 4399 -> 4412, same PR, after its cumulative review (W1/W3): the boundary is defined as where work LANDS, so direct-commit repos and work ending on a single `final` still owe the suite, and `final` reports a stale record as an observation. Compressed in place first. DECLARED.
     # -96 on 2026-09-28 (opus-55-w3), C-21, C-23 and the adopted-norms pointer cut per the Opus 5.5
     # prompt audit's slice C; the ceiling lowered with it.
-    "skills/critic/review-protocol.md": 4316,
+    # +10 in the same wave, DECLARED: fixes from the wave's own review: pointers into
+    # deleted text repaired, and the adopted-norm scope inlined so goals-1-3.md stays self-contained.
+    "skills/critic/review-protocol.md": 4326,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -712,7 +714,9 @@ LAST_MEASURED_TOKENS = {
     # RAISED 2665 -> 2668, learnings-one-line (the owner-confirmed design in that plan's Requirements Confidence, 2026-09-24): three new record-lint checks, and `TestEveryCheckCarriesASeverity` requires every check NAME on this surface, so there is no shorter form to pay from. DECLARED.
     # -6 on 2026-09-28 (opus-55-w3), C-21 and the adopted-norms pointer cut per the Opus 5.5
     # prompt audit's slice C; the ceiling lowered with it.
-    "skills/critic/goals-1-3.md": 2662,
+    # +5 in the same wave, DECLARED: fixes from the wave's own review: pointers into
+    # deleted text repaired, and the adopted-norm scope inlined so goals-1-3.md stays self-contained.
+    "skills/critic/goals-1-3.md": 2667,
     # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
     # a computed pass the gate can now print, which a reader who only knows
     # "uncovered means run a cumulative" will otherwise re-review straight
@@ -878,7 +882,9 @@ LAST_MEASURED_TOKENS = {
     # RAISED +2 (11365 -> 11367, review-friction, 2026-09-26): the interval's merge-base start is bounded by uncommitted JUDGEABLE work, not by a clean tree (cumulative review rev-20260926T141912Z-875cfe56 R-1): a reviewer told 'clean tree' misreads the interval a records-only close gets. DECLARED.
     # -670 on 2026-09-28 (opus-55-w3), C-2, C-3 and C-7's history sweep cut per the Opus 5.5
     # prompt audit's slice C; the ceiling lowered with it.
-    "skills/critic/review-cycle.md": 10697,
+    # +3 in the same wave, DECLARED: fixes from the wave's own review: pointers into
+    # deleted text repaired, and the adopted-norm scope inlined so goals-1-3.md stays self-contained.
+    "skills/critic/review-cycle.md": 10700,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -1019,7 +1025,9 @@ LAST_MEASURED_TOKENS = {
     # RAISED +1 (3719 -> 3720, review-friction, 2026-09-26): the interval's merge-base start is bounded by uncommitted JUDGEABLE work, not by a clean tree (cumulative review rev-20260926T141912Z-875cfe56 R-1): a reviewer told 'clean tree' misreads the interval a records-only close gets. DECLARED.
     # -560 on 2026-09-28 (opus-55-w3), C-19: harness mechanics, the restated precedence and incident ids cut per the Opus 5.5
     # prompt audit's slice C; the ceiling lowered with it.
-    "skills/critic/SKILL.md": 3160,
+    # -9 in the same wave, DECLARED: fixes from the wave's own review: pointers into
+    # deleted text repaired, and the adopted-norm scope inlined so goals-1-3.md stays self-contained.
+    "skills/critic/SKILL.md": 3151,
     # -8 on 2026-09-28 (opus-55-w3), C-24: the dangling S1/S2/S6 ids cut per the Opus 5.5
     # prompt audit's slice C; the ceiling lowered with it.
     "skills/critic/framework-checks.md": 1108,
@@ -4901,7 +4909,7 @@ class TestCriticSkill:
         # RATCHETED 4356 -> 4350 (review-interval-extension, 2026-09-22) with the reading.
         # RAISED 4350 -> 4393 (reviewer-prompt-file-list, 2026-09-22) — see LAST_MEASURED_TOKENS.
         # RAISED 4393 -> 4400 (#820, 2026-09-23) — see LAST_MEASURED_TOKENS.
-        assert tokens < 4317, f"review-protocol.md is ~{tokens} tokens, should be <4317"
+        assert tokens < 4327, f"review-protocol.md is ~{tokens} tokens, should be <4327"
 
 
 # =============================================================================
@@ -5182,7 +5190,7 @@ class TestCriticGoals13:
         # BLOCKING set, stated in full because this file may point nowhere —
         # see LAST_MEASURED_TOKENS.
         # RAISED 2653 -> 2666 (#820, 2026-09-23) — see LAST_MEASURED_TOKENS.
-        assert tokens < 2663, f"goals-1-3.md is ~{tokens} tokens, should be <2663"
+        assert tokens < 2668, f"goals-1-3.md is ~{tokens} tokens, should be <2668"
 
     def test_is_self_contained(self):
         """No follow-the-pointer reads at review time — the acceptance criterion
@@ -5438,7 +5446,7 @@ class TestCriticSkillRoutesByMode:
         # RAISED 3681 -> 3685 (#820, 2026-09-23) — see LAST_MEASURED_TOKENS.
         # RAISED 3685 -> 3720 (review-friction, 2026-09-25) — see LAST_MEASURED_TOKENS.
         # RAISED 3720 -> 3721 (review-friction, 2026-09-26) — see LAST_MEASURED_TOKENS.
-        assert tokens < 3161, f"SKILL.md is ~{tokens} tokens, should be <3161"
+        assert tokens < 3152, f"SKILL.md is ~{tokens} tokens, should be <3152"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))
@@ -5759,7 +5767,7 @@ class TestReviewCycle:
         # RAISED 11233 -> 11318 (review-friction, 2026-09-25) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED a further +48 -> 11366 (learnings-one-line, 2026-09-24) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 11366 -> 11368 (review-friction, 2026-09-26) — see LAST_MEASURED_TOKENS.
-        assert tokens < 10698, f"review-cycle.md is ~{tokens} tokens, should be <10698"
+        assert tokens < 10701, f"review-cycle.md is ~{tokens} tokens, should be <10701"
 
     def test_framework_checks_token_budget(self):
         # Ceiling 1150. This file is `final`/`cumulative` payload: SKILL.md's

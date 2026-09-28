@@ -13,6 +13,7 @@ governed_by:
       - "every fact has one home → conforms, and it is the point of C-4, C-9 and C-11: the reviewer's copy of a protocol fact becomes a pointer to the protocol, which is the home"
       - "goals and verification bind; prescribed method is advice → conforms: C-23 removes review-strategy coaching and keeps the goals and severities. Where a slice's replacement would drop content a reader acts on, the content stays in plain words and the departure is recorded"
       - "prawduct guides and reviews, it never implements → inapplicable, because only framework prose changes"
+      - "authority fails closed; advice fails soft → inapplicable, because no gate verdict, exit code or advisory changes; only prose and its test pins move"
       - "the plugin writes nothing into a governed repo except… → inapplicable, because nothing new is written"
       - "local-first governance coordination → inapplicable, because no coordination mechanism changes"
       - "written in Python, never specific to Python → inapplicable, because no gate's language dispatch changes"
@@ -24,7 +25,7 @@ governed_by:
       - "state-file growth is an advisory, never a block → inapplicable"
   - artifact: program-purpose-and-cession
     dispositions:
-      - "prose-test taxonomy: a doc test pins budgets, refs, interface tokens and render consistency, never a sentence → conforms: a test pinning a sentence this wave rewrites is retired as a descoped requirement or re-pointed at the interface token it protects. C-23 deletes `test_signals_and_work_scaling` with its text"
+      - "prose-test taxonomy: a doc test pins budgets, refs, interface tokens and render consistency, never a sentence → conforms with one recorded exception class: a test pinning a sentence this wave rewrites is retired as a descoped requirement, or re-anchored on structure or the interface token it protects (C-23 deletes `test_signals_and_work_scaling` with its text). The exception class is absence guards on deleted text, named in the [DECISION] under Requirements Confidence"
       - "model plan (Fable coherence before the cycle lands) → conforms: owed once, before W6 lands"
 ---
 
@@ -65,7 +66,8 @@ on 2026-09-28 (the artifact's § Rulings).
   `used to`, `now do`). Each hit is either cut or kept with a one-line reason in the chunk's
   Found-while-applying, and the pinned measurements ("23%", "13.5", "18.4") are kept.
 - `review-protocol.md` and `goals-1-3.md` say BLOCKING applies where the product has *adopted*
-  norms, and point at `norms.md` § Severity instead of restating its threshold.
+  norms. `review-protocol.md` names `norms.md`'s "Severity, stated once" paragraph. `goals-1-3.md`
+  states the scope inline, so its reader never has to open another file.
 - Every token ceiling a trimmed file sits under is lowered in the same commit. Those are the
   per-file ceilings in `test_v5_methodology.py` and the route sums in
   `test_reviewer_payload_budget.py`.
@@ -107,6 +109,24 @@ split below.
 - [DECISION: one chunk, with the PR-side half delegated inside it | `plugin/skills/` is a
   `risk_surface`, so a multi-chunk plan infers a per-chunk review for each chunk. One chunk gives
   one boundary review, and the review run count is the P0 lever | owner can veto]
+- [DECISION: two tests pin the ABSENCE of deleted text, which the prose-test taxonomy's "never a
+  sentence" does not allow:
+  - `test_pr_reviewer.py::test_the_value_filters_stay_out_of_the_review_protocol` pins C-1's four
+    value-filter phrases.
+  - `test_critic_consolidate.py::test_review_cycle_prose_states_no_cadence_of_its_own` pins the
+    pattern `every N minutes`.
+  
+  Each guards a ruled removal whose regrowth no interface token can show. C-1's filters depress
+  recall, and the probes can't catch a regression. A restated cadence would drift from its one home
+  in code. Every other sentence pin the wave touched is retired, or re-anchored on structure or an
+  interface token (`base_branch:`, `review.pr`, the numbered steps of "## What to do") | owner can
+  veto and retire either test]
+- [DECISION: C-10's replacement text said "Your tools are read-only" and dropped the clause asking
+  the reviewer to stay inside its `tools:` list. `Bash(...)` patterns are declared, not enforced,
+  and the W3 cumulative's own reviewer ran commands outside the list. So the clause is restored:
+  "its `Bash(...)` patterns are a contract you keep, not a fence the harness enforces" | the ruling
+  applies replacement text unless that makes a sentence false, and this one did (R-6) | owner can
+  veto]
 - [ASSUMPTION: the Agent tool's `sonnet` alias resolves to Sonnet 5.5, which the owner reports
   shipped 2026-09-28. The probe records the model id that actually ran | LOW impact | owner can
   correct]
@@ -121,7 +141,7 @@ split below.
   That left their `_NOT_GRANTED` exemption rows stale. The rows are removed, as that test
   instructs.
 - **The delegate found four slice notes that were wrong.** C-4's wording does not keep "If either
-  disagrees", so that pin was re-pointed. C-16(a) had no new home for the Step 3 assertions,
+  disagrees". That pin was re-pointed, and later deleted as a sentence pin by the review. C-16(a) had no new home for the Step 3 assertions,
   because the agent definition was already pinned. Two pins were missed entirely: `#254` and "Clean
   up evidence file".
 - **`documentation/issues/712-design.md` quoted a sentence C-16(d) rewrote.** It is corrected.
@@ -141,7 +161,7 @@ split below.
 
 ## Status
 
-- [ ] Chunk 01: review machinery prose (C-1 to C-7, C-9 to C-19, C-21 to C-24, E-4 alignment)
+- [x] Chunk 01: review machinery prose (C-1 to C-7, C-9 to C-19, C-21 to C-24, E-4 alignment)
 
 ## Chunk 01: review machinery prose
 
@@ -151,14 +171,13 @@ split below.
   C-21 (both Critic files), C-22, C-23, C-24, and the E-4 alignment in `review-protocol.md` and
   `goals-1-3.md`.
 - **PR side (delegate):** C-1, C-4, C-5, C-6, C-10 (the `pr-reviewer.md` half), C-11, C-12, C-13,
-  C-14, C-15, C-16, C-17, C-18, and C-21's `pr/review-protocol.md` half.
+  C-14, C-15, C-16, C-17, C-18, and C-21's `plugin/skills/pr/review-protocol.md` half.
 
 **Files:**
 - Critic side: `plugin/skills/critic/SKILL.md`, `plugin/skills/critic/review-cycle.md`,
   `plugin/skills/critic/review-protocol.md`, `plugin/skills/critic/goals-1-3.md`,
   `plugin/skills/critic/framework-checks.md`, `plugin/agents/critic-reviewer.md`.
-- PR side: `plugin/skills/pr/SKILL.md`, `plugin/skills/pr/review-protocol.md`,
-  `plugin/agents/pr-reviewer.md`.
+- PR side: `plugin/skills/pr/SKILL.md`, `plugin/skills/pr/review-protocol.md`, `plugin/agents/pr-reviewer.md`.
 
 **Tests:** find them by grepping `tests/` for each edited file's path and for each rewritten
 phrase. Don't trust a slice's `machine_read: no`. So far the grep finds these:
@@ -166,7 +185,7 @@ phrase. Don't trust a slice's `machine_read: no`. So far the grep finds these:
   `test_pr_evidence_contract.py`.
 - Integrator-owned: `test_v5_methodology.py`, `test_reviewer_payload_budget.py`,
   `test_critic_reviewer_agent.py`, `test_critic_skill_metadata.py`,
-  `preferences/test_critic_skill_structure.py`, `preferences/test_free_interval_prose.py`,
+  `tests/preferences/test_critic_skill_structure.py`, `tests/preferences/test_free_interval_prose.py`,
   `test_cutover_prose_coherence.py`, `test_control_yield_tokens.py`,
   `test_prose_severity_ceiling.py`, `test_finding_scope_rule.py`.
 

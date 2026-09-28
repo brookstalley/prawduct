@@ -360,14 +360,6 @@ class TestReviewerAnchorsToTheDispatchedTree:
         cannot fire, and its failure mode is a silent pass.
         """
         body = AGENT_DEF.read_text()
-        flat_body = " ".join(body.split())
-        # Re-pointed from the literal "If either disagrees", which the
-        # owner-ruled dedup (opus-55 slice-C C-4) reworded; the property is the
-        # same — surface the disagreement, never pick a side.
-        assert "disagrees with your prompt" in flat_body and "rather than picking one" in flat_body, (
-            "the agent must be told to surface a payload/prompt disagreement "
-            "rather than pick one"
-        )
         reconciles = "project dir" in body and "HEAD" in body
         step3 = _step3_of(SKILL.read_text())
         prompt_carries_the_directory = "(absolute)" in step3
