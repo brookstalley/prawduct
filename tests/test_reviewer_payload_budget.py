@@ -170,7 +170,8 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # feeding verify rounds). 33 of those ran mid-plan since 09-20. Compressed in place before declaring.
     # +3 on 2026-09-24 (learnings-one-line), DECLARED: see the dispatched-reviewer entry below.
     # +1 on 2026-09-26 (review-friction), DECLARED: the interval's merge-base start is bounded by uncommitted JUDGEABLE work, not by a clean tree (cumulative review rev-20260926T141912Z-875cfe56 R-1): a reviewer told 'clean tree' misreads the interval a records-only close gets.
-    "single-pass-inner": 6388,
+    # -566 on 2026-09-28 (opus-55-w3): slice C's in-place trims to the Critic files this route loads.
+    "single-pass-inner": 5822,
     # RAISED +43 (reviewer-prompt-file-list, 2026-09-22), DECLARED: all of it the
     # `review-protocol.md` template change that sends coordinator reviewers to the
     # manifest for their file sets; see the dispatched-reviewer entry for the price.
@@ -190,7 +191,8 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # feeding verify rounds). 33 of those ran mid-plan since 09-20. Compressed in place before declaring.
     # +48 on 2026-09-24 (learnings-one-line), DECLARED: see the dispatched-reviewer entry below.
     # +3 on 2026-09-26 (review-friction), DECLARED: the interval's merge-base start is bounded by uncommitted JUDGEABLE work, not by a clean tree (cumulative review rev-20260926T141912Z-875cfe56 R-1): a reviewer told 'clean tree' misreads the interval a records-only close gets.
-    "single-pass-full": 20615,
+    # -1334 on 2026-09-28 (opus-55-w3): slice C's in-place trims to the Critic files this route loads.
+    "single-pass-full": 19281,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -245,13 +247,14 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # it for itself, and the check exists to stop a corpus that every session
     # pays for, at 15-35k tokens a session, from regrowing a fifth time.
     # +2 on 2026-09-26 (review-friction), DECLARED: the interval's merge-base start is bounded by uncommitted JUDGEABLE work, not by a clean tree (cumulative review rev-20260926T141912Z-875cfe56 R-1): a reviewer told 'clean tree' misreads the interval a records-only close gets.
-    "dispatched-reviewer": 19781,
+    # -1123 on 2026-09-28 (opus-55-w3): slice C's in-place trims to the Critic files this route loads.
+    "dispatched-reviewer": 18658,
 }
 
 PAYLOAD_CEILINGS = {
-    "single-pass-inner": 6389,
-    "single-pass-full": 20616,
-    "dispatched-reviewer": 19782,
+    "single-pass-inner": 5823,
+    "single-pass-full": 19282,
+    "dispatched-reviewer": 18659,
 }
 
 

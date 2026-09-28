@@ -5,6 +5,27 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-28: the review machinery is retuned for Opus 5.5 (audit wave W3)
+
+<!-- prawduct: type=feature | scope=opus-55-w3-review-machinery -->
+
+Wave W3 of `opus-55-prompt-audit-2026-09.md`, ruled in full on 2026-09-28. It applies slice C's
+in-place decisions to `skills/critic/*`, `skills/pr/*` and both reviewer agent definitions:
+C-1 to C-7, C-9 to C-19 and C-21 to C-24, plus the Critic goal files' threshold for norm
+departures, which moves from "ratified" to "adopted" and points at `norms.md` § Severity. The PR
+reviewer reports every release-readiness defect at its severity. Its value filters are gone, and
+disposition is left to the builder (C-1, F6). The Critic reviewer loses its work-size coaching and
+its "do not invent findings" line (C-22, C-23). Copies of protocol rules in both agent
+definitions become pointers, and issue ids, dates, harness-version provenance and
+migration-relative phrasing come out of the instructions. Token readings drop on every Critic file
+and route, and the ceilings drop with them. `review-cycle.md` no longer states a wait cadence. The
+one home for the cadence stays `critic_consolidate._CACHE_WARM_INTERVAL_MINUTES`, and the test
+that bound the two now pins that the prose names no interval. `test_signals_and_work_scaling` is
+retired with the text it pinned. Two `_NOT_GRANTED` exemption rows are removed, because the skill
+no longer names those commands. The two structural moves, C-8 and C-20, go to their own plan, W3b.
+F6's rounds-per-PR baseline is recorded in the audit artifact. The PR-side half was built by one
+isolated-worktree delegate and merged here. Plan: `build-plan-opus-55-w3-review-machinery.md`.
+
 ## 2026-09-28: develop opens 3.6.2-dev.5
 
 <!-- prawduct: type=chore | scope=dev-track-bump-3.6.2-dev.5 -->

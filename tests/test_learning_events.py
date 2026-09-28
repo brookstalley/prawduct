@@ -649,7 +649,7 @@ class TestTheCitationInstructionReachesReviewers:
         one. Bounded to the smallest region that must carry it, so a mutation
         in a neighbouring paragraph does not pass."""
         text = (_ROOT / "agents" / "critic-reviewer.md").read_text(encoding="utf-8")
-        marker = "Assess your goals and gather findings"
+        marker = "Assess your goals and report every finding"
         assert marker in text, "the findings-writing step was renamed — re-anchor this pin"
         step = text[text.index(marker):]
         step = step[: step.index("\n## ")] if "\n## " in step else step

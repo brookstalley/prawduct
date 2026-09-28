@@ -265,12 +265,6 @@ _NOT_GRANTED: dict[tuple[str, str], str] = {
     # Granting it would hand a maintenance survey a network write it has no
     # business making, which is the opposite of what the grant is for.
     ("janitor", "backlog sync"): "remedy text printed for the operator, never run by the janitor",
-    # Deliberate exclusion, stated in the Critic's own protocol: "what happens
-    # to a completed review's findings — discarded, or brought back — is an
-    # operator decision and belongs to the main session, which is why both are
-    # absent from your `allowed-tools`."
-    ("critic", "critic-discard"): "operator decision, not the reviewer's",
-    ("critic", "critic-restore"): "operator decision, not the reviewer's",
     # Deliberate exclusion, and load-bearing: an independent reviewer must never
     # mutate the session it is reviewing. `clear` appears only as the thing the
     # critic-active marker REFUSES.

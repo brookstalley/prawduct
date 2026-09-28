@@ -11,7 +11,7 @@ Work-scaled review lifecycle. Review depth matches the size of the work.
 | **Trivial** (typo, config) | None — waive via `.gates-waived` if the stop hook prompts. |
 | **Small** (bug fix, minor feature) | One inner-stage review, optional — inference answers `chunk`; `final` only by declaration. |
 | **Medium** (new feature, refactor) — non-chunked | One `final` review, mandatory after completion. |
-| **Medium / Large** (chunked build plan) | `chunk` review per non-final chunk + `final` review on the last chunk — except when the last chunk is `Type: cumulative-final`: then ONE `cumulative` IS the last chunk's review (no separate `final`). **A short plan** — at most 3 chunks, no `Critic mode:` declared on any chunk, nothing the branch changed a risk surface — owes no per-chunk review at all: the one `cumulative` at its last chunk is every chunk's review (#292). Inference answers `deferred` mid-chunk (dispatch nothing), and the Stop gate WARNS instead of blocking on a non-final chunk, naming that boundary review; on the last chunk it blocks as ever. |
+| **Medium / Large** (chunked build plan) | `chunk` review per non-final chunk + `final` review on the last chunk — except when the last chunk is `Type: cumulative-final`: then ONE `cumulative` IS the last chunk's review (no separate `final`). **A short plan** — at most 3 chunks, no `Critic mode:` declared on any chunk, nothing the branch changed a risk surface — owes no per-chunk review at all: the one `cumulative` at its last chunk is every chunk's review. Inference answers `deferred` mid-chunk (dispatch nothing), and the Stop gate WARNS instead of blocking on a non-final chunk, naming that boundary review; on the last chunk it blocks as ever. |
 | **Any work merging a multi-cycle branch** | `cumulative` review before opening the PR (on a `cumulative-final` plan it doubles as the last chunk's review, not a second pass). |
 | **Re-review after fixing prior BLOCKING/WARNING findings** | `verify-resolutions` — delta review against the prior pass's scope. Falls through to `chunk`/`final` when the anchor is missing or scope widens past the demotion threshold. |
 
@@ -105,7 +105,7 @@ Every consolidated review appends a **fact** to the shared evidence store (`<git
 
 `uncovered` caused only by the **base advancing** transfers instead of buying a round, at BOTH gates: `coverage.diagnose_base_advance_transfer` grants it when the branch's own diff is byte-identical across both spans and a suite run has met the tree that gate vouches for. A denial on that condition alone says so: the remedy is a run, not a review.
 
-**Prep work before invoking cumulative.** A cumulative review takes ~4-10 minutes. Before invoking it, complete prep that doesn't depend on its findings — `.claude/rules/learnings/` for next topics, draft the PR description, audit the backlog, capture deferred reflections — so you integrate findings the moment it returns. This prep is also what keeps the wait cheap: a session that idles silently while reviewers run lets its prompt cache expire and re-reads its whole context when they land. If the prep runs out before the review does, emit a one-line progress note at least every 4 minutes rather than going quiet.
+**Prep work before invoking cumulative.** A cumulative review takes ~4-10 minutes. Before invoking it, complete prep that doesn't depend on its findings — `.claude/rules/learnings/` for next topics, draft the PR description, audit the backlog, capture deferred reflections — so you integrate findings the moment it returns. This prep is also what keeps the wait cheap: a session that idles silently while reviewers run lets its prompt cache expire and re-reads its whole context when they land. If the prep runs out before the review lands, tell the user what you are waiting on.
 
 ### Verify-resolutions anchoring and demotion
 
@@ -138,7 +138,7 @@ re-dispatching one spends a full round on a bundle the gate already passes.
 
 1. Builder completes a chunk's implementation and tests.
 2. Critic reviews using the goal-based approach (see SKILL.md).
-3. **If BLOCKING findings exist:** builder fixes; Critic re-reviews (`verify-resolutions`), specifically watching for **fix-by-fudging** — weakening a test to make it pass, changing a spec to match wrong implementation, a workaround where the finding named the root cause. Each is a **BLOCKING** finding in its own right *and* grounds to withhold the resolution: the finding was not fixed, so leaving it out of `resolutions` keeps it blocking, which is the answer that fails closed. (The workaround case was rated **WARNING** here until the narrowing below; a WARNING was both the wrong severity — it gates nothing — and the wrong instrument, since the honest verdict is that the finding is unresolved.) Repeat until no blocking findings remain. Only the resolution facts a verify pass records unblock a blocking finding — the gate keeps blocking until then.
+3. **If BLOCKING findings exist:** builder fixes; Critic re-reviews (`verify-resolutions`), specifically watching for **fix-by-fudging** — weakening a test to make it pass, changing a spec to match wrong implementation, a workaround where the finding named the root cause. Each is a **BLOCKING** finding in its own right *and* grounds to withhold the resolution: the finding was not fixed, so leaving it out of `resolutions` keeps it blocking, which is the answer that fails closed. Repeat until no blocking findings remain. Only the resolution facts a verify pass records unblock a blocking finding — the gate keeps blocking until then.
 4. Every review persists through `critic-consolidate` — a review fact in the store plus the regenerated `.prawduct/.critic-findings.json`. A clean pass records an empty findings array; there is no review without a record.
 5. **If no BLOCKING findings:** chunk complete; proceed.
 
@@ -168,9 +168,8 @@ one of three dispositions, and **FILE is the narrowest, never the default**:
   now* is the worst option available: you pay the filing cost, the reader pays the triage cost, the next
   agent pays the re-derivation cost, and the item then sits unactioned because whoever picks it up has
   none of what you currently have in your head. **Deep context on a small problem is a FIX signal, not
-  a filing signal — for a BLOCKER.** (Owner-requested rule, 2026-07-29; bounded to blocking
-  severity 2026-09-19 at the owner's direction, #833. Below BLOCKING the same deep context argues
-  for a recorded ACCEPT, which costs no round, rather than a fix that buys one.)
+  a filing signal — for a BLOCKER.** Below BLOCKING, the same deep context argues for a recorded
+  ACCEPT, which costs no round, rather than a fix that buys one.
 
 ### A re-review does not manufacture work
 
@@ -181,10 +180,7 @@ framework itself creates.
 **In `verify-resolutions`, a new finding is BLOCKING or it is not a finding.** Anything lesser the
 reviewer notices is reported as an **OBSERVATION** in prose and never enters `findings`. (The stage
 norm above generalizes the demotion to every inner-stage mode; this section keeps the reasoning that
-first earned it.) The rule is
-delivered where the reviewer meets it — `goals-1-3.md`'s preamble, before any severity is assigned,
-and again at dispatch as `critic_consolidate.VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE`, which carries the
-worked instances.
+first earned it.)
 
 *Why this mode and not the others.* A verify pass exists to answer one question — were the named
 findings resolved? Walking the fix delta at full severity on top of that turns round N's fix into
@@ -199,15 +195,11 @@ that gated stops gating. The narrowing binds on **membership in the inner BLOCKI
 is stage-keyed"), which the directive states in the norm's own sentence, so a class the set names
 cannot be swept up by a table that rates it lower.
 
-*The set is exact, and two of its members are escalations.* The directive names the five shapes a
-fix delta actually gets wrong — a weakened or deleted test, a dropped requirement, changed behavior
-with no test, exploitable security in changed code, and fix-by-fudging — and says which two escalate
-the protocol's printed ratings rather than pretending otherwise: `goals-1-3.md` rates *auth/authz on
-new endpoints* and *known-vulnerable dependencies* WARNING (the set's "exploitable security in
-changed code" covers them), and it does not rate fix-by-fudging at all (its workaround leg was rated
-only here, in a file this mode's reviewer is forbidden to open). An earlier draft claimed all five
-were "already BLOCKING-rated"; that was false for two, and a safety argument that rests on a false
-claim is not a safety argument.
+*The set is exact, and two of its members are escalations.* The directive names the shapes a fix
+delta gets wrong (a weakened or deleted test, a dropped requirement, changed behavior with no test,
+exploitable security in changed code including missing auth/authz and known-vulnerable
+dependencies, and fix-by-fudging) and rates each BLOCKING, including the two `goals-1-3.md` prints
+lower.
 
 *What it does cost, stated plainly.* The fix delta's own content is rated at BLOCKING only. The
 bound is narrower than it first reads, and the weaker reading is the honest one: `verify-resolutions`
@@ -226,7 +218,7 @@ event rather than a number the reviewer asserted about its own output.
 
 **A disposition is a fact, not a sentence you write.** A FIX that bought a round already left a
 machine-readable trace — the resolution fact a `verify-resolutions` pass records. ACCEPT, FILE, and
-the FIX that bought *no* round now do too:
+a FIX that bought no round record theirs with:
 
 ```
 prawduct-hook disposition <review-id> <fid|oid> --accept "<reason>"      # won't fix, reason recorded
@@ -254,26 +246,14 @@ prawduct-hook render-dispositions [--review <id>|--scope <s>] [--json]
 ```
 
 Paste the rendered table into the change-log entry or PR body. It reports each finding's state
-(`fixed`, `waived`, `accepted`, `filed`, `fixed-unreviewed`) and — the number nothing measured before
-— how many findings are still **undispositioned**. `fixed-unreviewed` is not `fixed`: both say the defect is gone, only one says a reviewer looked.
+(`fixed`, `waived`, `accepted`, `filed`, `fixed-unreviewed`) and how many findings are still
+**undispositioned**. `fixed-unreviewed` is not `fixed`: both say the defect is gone, only one says a reviewer looked.
 
-**Why this stopped being prose.** Hand-written censuses drift, and their corrections re-enter review.
-Measured on this framework's own repo in a single day: one census asserted a count of accepted notes
-and then contradicted itself in its own closing sentence, another asserted every blocking and warning
-finding was *fixed* when the store recorded one of them as *waived*, and a third was corrected three
-times — each correction a commit, and commits extend HEAD, which is how a record defect buys a review
-round. Arithmetic over facts the store already holds does not need a reviewer to check it. Counting
-is the machine's job; deciding is yours.
+Hand-written censuses drift, and correcting one is a commit that buys a review round, so counting is
+the machine's job and deciding is yours.
 
-**Why the default moved.** The old rule said file the rest, full stop. It bounded the review loop —
-which was the real problem it solved — but it made the backlog the disposal route for every finding a
-thorough reviewer produces, and thorough reviewers produce many. Measured on this framework's own
-repo: **open items went 50 → 180 in 26 days; 67 were Critic-sourced and 53 of those had never been
-touched since filing** — faster than anyone could action them, which turns the backlog from a work
-queue into a guilt pile and buries the items that mattered. The sharpest tell was compounding: one
-gate accumulated **six** open items, each a facet found by a later review of the same still-unfixed
-mechanism. A framework that does this to itself does it to every
-repo that adopts it, once per build plan.
+FILE is the narrowest disposition because a backlog that receives every non-blocking finding stops
+being a work queue.
 
 **"Pre-existing" is not a disposition, and neither is "already filed."** Both are the reflex wearing
 a respectable coat: the finding leaves the review dispositioned by nobody. A defect the diff did not
@@ -290,22 +270,19 @@ go back and sort them into ACCEPT and FIX.
 
 **Severity does not exempt.** BLOCKING, WARNING and NOTE all take a disposition; only the bar for
 ACCEPT differs (a NOTE is often a one-clause accept; a BLOCKING cannot be accepted at all without an
-explicit owner decision, since gates compose on it). Exempting NOTE just moves the pump — NOTE was
-the majority of findings in the review that prompted this rule.
+explicit owner decision, since gates compose on it). Exempting NOTE just moves the pump, because
+NOTE is the most common severity.
 
-**Reviewers: never name the backlog as a finding's destination, at any severity.** The severity
-contract (`review-protocol.md`) no longer says "recommend backlog" anywhere, and reviewers must not
-reintroduce it in prose. Disposition is the builder's call, made once with the whole diff in view;
-a reviewer-suggested destination pre-empts it and reads as a licence to file without deciding. State
+**Reviewers: never name the backlog as a finding's destination, at any severity.** Disposition is
+the builder's call, made once with the whole diff in view; a reviewer-suggested destination
+pre-empts it and reads as a licence to file without deciding. State
 the defect and its consequence, say what a fix would take when that isn't obvious, and stop.
 
 Why it has to be a rule. WARNING and NOTE **gate nothing** — the PR gate and the Stop gate both
 require only *coverage* plus *zero unresolved BLOCKING*. But `methodology/building.md` says warnings
 "should be addressed," which reads as must-fix, so an agent fixes them. Each fix is a commit; the
 commit extends HEAD; coverage no longer reaches HEAD; another pass runs; that pass reviews the records
-just written and finds something true about them. Observed live: **four rounds and ~40 minutes of
-review on a ~40-line code change** — every finding correct, none blocking, and the last round required
-by no gate at all.
+just written and finds something true about them.
 
 **Before running another pass to "close coverage," re-run the gate and let it answer.** Never infer
 that coverage is needed from gate output printed *before* your fix commits — that stale line is the
@@ -379,8 +356,7 @@ Scan your findings against the rules the session actually had in context: `.clau
 reconciliation unavailable — [the command's reason]; run `prawduct-hook backlog sync --repo <scope>`."
 
 For each open item, check whether this session's changes resolve it — directly or incidentally.
-`affecting` is the cheap first pass: the items whose `affected:` paths cover the changed files — the
-intersection this walk used to infer by reading every body. For each resolved item, emit a **NOTE**: "Backlog item appears resolved: [item text]. Verify it, then call `/prawduct:backlog update <id> status=shipped closed-by=<scope>` **when** the backlog skill's "When to mark shipped" rule says." Do not change status yourself — the framework never infers status; the builder makes the explicit call.
+`affecting` is the cheap first pass: the items whose `affected:` paths cover the changed files. For each resolved item, emit a **NOTE**: "Backlog item appears resolved: [item text]. Verify it, then call `/prawduct:backlog update <id> status=shipped closed-by=<scope>` **when** the backlog skill's "When to mark shipped" rule says." Do not change status yourself — the framework never infers status; the builder makes the explicit call.
 
 **Backlog hygiene checks (C-B1–C-B4 — all NOTE-level, never BLOCKING)** — four soft signals (`/prawduct:backlog` is the fix path for each), each with the yield it is kept for:
 - **C-B1 — missing metadata:** an item `created-since` the interval's base with no metadata bar → NOTE the structured format. Post-cutover a new item is an Issue, never in the diff. *Yield: items unfindable by `list`/`pick`.*
@@ -468,7 +444,7 @@ in place of one; the prefixes below are the exceptions.
 **A severity with no remedy is a false blocker**, and code, not the builder, decides a line's shape:
 
 - **`chunk-ref-missing unchecked — …` → BLOCKING.** A deliverable check that could not run is
-  indistinguishable from one that passed, and habituation to that silence is what BLD-5J8N cost.
+  indistinguishable from one that passed.
   **The whole-pass crash carries this prefix deliberately** (`record_lint.py`, the comment above the
   crash return) — a crash takes the deliverable check down with it, so it must arrive at the
   deliverable check's severity, not as a generic NOTE.
@@ -494,7 +470,7 @@ checked at all.
 when it produced no answer. Read alike, they are opposite facts: zeros are a clean check, nulls are
 a check that never happened — and a tally is quoted far more often than the caveat beside it, so the
 number has to carry the distinction itself. `chunk-ref-missing` is `null` exactly when `chunk_graded`
-is, so a subject and its tally can no longer disagree.
+is, so a subject and its tally cannot disagree.
 
 Record-lint is **advice**: it reports to the builder and gates nothing. Its findings are yours to
 raise at the severities above, and its per-check counts ride into the review fact so the control's
@@ -511,28 +487,6 @@ departure, amendment, or `## Direction` edit without a recorded decision is the 
 territory and stays **BLOCKING** via Goal 3 — never downgraded to this WARNING. A plan with no
 `governed_by:` field in a product that already carries `## Direction` sections is itself the gap →
 **NOTE** recommending the `prawduct-hook jurisdiction` seed.
-
-## Per-Chunk Output Format
-
-```
-## Critic Review — Chunk [ID]: [Name]
-
-### Signals
-[Work size, work type, files changed, boundaries crossed]
-
-### Changes Reviewed
-[List of files and what changed]
-
-### Findings
-
-#### [Finding Name]
-**Goal:** [Goal Name]
-**Severity:** blocking | warning | note
-**Recommendation:** [What the Builder should do]
-
-### Summary
-[Total findings by severity. Whether the chunk passes review.]
-```
 
 ## Recording Reviews
 

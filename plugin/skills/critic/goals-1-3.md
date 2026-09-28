@@ -38,9 +38,9 @@ test-evidence skipped. `designer-handoff` never reaches you.
 **Normative authority** (`docs/norms.md`). Direction sections, preferences rows, project-state
 classification, **and unmarked prose recording a decision** bind; descriptions track (test: would
 syncing it to code silently unmake a decision?). Departure, unruled edge-work, normative change (even
-doc-only), or norm birth without a recorded vetoable decision → Goal 3 **BLOCKING** where ratified
-norms exist; with none, **NOTE** naming the capture path. Tell: amending a norm to match your own
-code. Correctness shapes the recommendation, never the need. Stale registry → NOTE:
+doc-only), or norm birth without a recorded vetoable decision → Goal 3 **BLOCKING** where the
+product has adopted norms (`norms.md` § Severity says what counts); with none, **NOTE** naming the
+capture path. Tell: amending a norm to match your own code. Correctness shapes the recommendation, never the need. Stale registry → NOTE:
 `/prawduct:doctor`; never a downgrade.
 
 **The manifest's `prior_dispositions` lists findings already accepted or filed in these files, with
@@ -68,7 +68,7 @@ State every entry. `chunk_graded`/`plan_graded` name the subject.
 
 ## 1. Nothing Is Broken
 
-- `prawduct-hook test-status`: exit 0 = current; stale/missing → no finding (**WARNING** only at the boundary, where the suite runs) — that exit code is the *only* freshness signal; never infer staleness from a commit/SHA field in the evidence (it carries none). Test failures in evidence → **BLOCKING**.
+- `prawduct-hook test-status`: exit 0 = current; stale/missing → no finding (**WARNING** only at the boundary, where the suite runs) — that exit code is the *only* freshness signal. Test failures in evidence → **BLOCKING**.
 - No "pre-existing" exception — every finding is yours regardless of when introduced. RATE it regardless; the bound is on the BUILDER, whose obligation to FIX is limited to BLOCKING (below that a recorded accept discharges it). Never omit or downgrade a finding on this ground.
 - Tests verify behavior, not implementation.
 - Tests deleted or assertions weakened without documented reason → **BLOCKING**. Legitimate consolidation needs a change-log entry.

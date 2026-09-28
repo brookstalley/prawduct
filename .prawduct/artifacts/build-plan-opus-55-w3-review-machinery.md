@@ -111,6 +111,34 @@ split below.
   shipped 2026-09-28. The probe records the model id that actually ran | LOW impact | owner can
   correct]
 
+## Found while applying
+
+- **C-2's `machine_read: no` was wrong.** `test_critic_consolidate` bound the prose's "every 4
+  minutes" to `critic_consolidate._CACHE_WARM_INTERVAL_MINUTES`, which the wait message
+  interpolates. The cadence stays in code: its reason (prompt-cache warmth) holds, #368 is dropped,
+  and C-2 ruled on the prose only. The binding test now pins that the prose states no interval.
+- **C-19's rewrite dropped the `prawduct-hook` prefix** from `critic-discard` and `critic-restore`.
+  That left their `_NOT_GRANTED` exemption rows stale. The rows are removed, as that test
+  instructs.
+- **The delegate found four slice notes that were wrong.** C-4's wording does not keep "If either
+  disagrees", so that pin was re-pointed. C-16(a) had no new home for the Step 3 assertions,
+  because the agent definition was already pinned. Two pins were missed entirely: `#254` and "Clean
+  up evidence file".
+- **`documentation/issues/712-design.md` quoted a sentence C-16(d) rewrote.** It is corrected.
+- **The sibling sweep also cut four history phrases C-7 didn't list:** "the number nothing measured
+  before", "the review that prompted this rule", "used to infer", and "can no longer disagree". It
+  kept the pinned measurements and "Measured at ten rounds", which is the reason for the
+  verify-mode rule.
+- **The negative-pin scan came back clean.** No `"<lit>" not in` pin reads a literal this wave
+  deleted from these files.
+- **The delegate's recorded departures,** all vetoable:
+  - [DECISION: C-5 also drops "(table at the end)", because the table is deleted]
+  - [DECISION: C-5 deletes `SKILL.md`'s `:190` whole, because the dispatch prompt already says to
+    use the path as given]
+  - [DECISION: C-12 cuts "rather than from the shares below", because the shares are deleted]
+  - [DECISION: C-18 keeps bold on bullet lead labels as structure, plus at most one command or
+    stop condition, and keeps every bold span a test quotes. Bold spans went from 144 to 82]
+
 ## Status
 
 - [ ] Chunk 01: review machinery prose (C-1 to C-7, C-9 to C-19, C-21 to C-24, E-4 alignment)
@@ -148,6 +176,23 @@ phrase. Don't trust a slice's `machine_read: no`. So far the grep finds these:
 - C-21's freshness signal appears wherever `test-status` exit codes are explained.
 
 A sentence another wave owns is fixed now only if this wave made it false.
+
+**Probe outcome (2026-09-28):** four fresh agents, each answering from the prompt files alone,
+with the old text as control.
+- **The `sonnet` alias resolved to `claude-sonnet-5`, not Sonnet 5.5,** in all four runs, so the
+  plan's assumption was false. F1's floor probe on Sonnet 5.5 is still owed. The Agent tool's alias
+  offers no way to pick 5.5 from here.
+- **C-1 (PR reviewer).** Both texts reported both defects at WARNING: the change-log entry that
+  narrates branch history, and the oversized bundle. The control did not suppress the oversize
+  finding: it judged the split cheap and flagged it. So this probe shows no regression, not that
+  C-1 helps. The new-text run left the split to the builder, as C-1 intends.
+- **C-22/C-23 (Critic reviewer).** Neither text gave a clean pass, so the control did not show the
+  targeted failure either. The new text rated the untested "unset keeps 3" requirement BLOCKING,
+  which is the protocol's rating for untested required behaviour. The old text folded it into a
+  WARNING. That is one sample, not evidence of a shift.
+- W1, W2 and W3 have now all probed without a control that fails. A small single-diff scenario
+  does not make a Sonnet reviewer under-report here. The recall question F6 raises is answered by
+  the rounds-per-PR comparison, not by these probes.
 
 **Done when:** each Success bullet holds, the suite passes, and the probe has run. The review is
 one `/prawduct:critic cumulative` over the branch. Commit first, then run it once.

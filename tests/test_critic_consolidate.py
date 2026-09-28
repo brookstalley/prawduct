@@ -1720,15 +1720,17 @@ class TestIncompleteNoopLiveness:
         age = cc.dispatch_age_minutes(rid)
         assert age is not None and age < 1.0
 
-    def test_review_cycle_prose_matches_the_code_cadence(self):
-        # The cadence is interpolated into the CLI message but written as a bare
-        # literal in the skill prose. CRT-8Q6R expects that number to change, so
-        # bind them: a bump that updates only the constant would leave the
-        # operator-facing guide quietly contradicting the tool.
+    def test_review_cycle_prose_states_no_cadence_of_its_own(self):
+        # The cadence has one home: the constant the CLI message interpolates.
+        # The skill prose once restated it as a bare literal, which then had to
+        # be bound to the constant so a bump could not leave the guide
+        # contradicting the tool. The prose now says to tell the user what the
+        # session is waiting on and names no interval, so there is nothing to
+        # drift; this pins that, because a restated number reopens the hole.
         prose = (ROOT / "skills" / "critic" / "review-cycle.md").read_text()
-        assert f"every {cc._CACHE_WARM_INTERVAL_MINUTES} minutes" in prose, (
-            "review-cycle.md's cadence no longer matches "
-            f"_CACHE_WARM_INTERVAL_MINUTES ({cc._CACHE_WARM_INTERVAL_MINUTES})"
+        assert not re.search(r"every \d+ minutes", prose), (
+            "review-cycle.md restates a wait cadence; the one home is "
+            "_CACHE_WARM_INTERVAL_MINUTES, which the wait message interpolates"
         )
 
     def test_stale_dispatch_omits_the_readout_directive(self):

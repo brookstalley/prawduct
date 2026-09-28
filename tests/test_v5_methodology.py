@@ -615,7 +615,9 @@ LAST_MEASURED_TOKENS = {
     # on a large review is thousands of output tokens on the dispatch critical path.
     # RAISED 4392 -> 4399, #820 (owner decision 2026-09-23): the declared suite moves from every chunk's Verify to the boundary — a default every consumer inherits, so the sentence carrying it is owed at each surface its reader meets. Compressed in place first; no duplication to pay from. DECLARED. (stale suite: WARNING at `cumulative`, none at `final`.)
     # RAISED 4399 -> 4412, same PR, after its cumulative review (W1/W3): the boundary is defined as where work LANDS, so direct-commit repos and work ending on a single `final` still owe the suite, and `final` reports a stale record as an observation. Compressed in place first. DECLARED.
-    "skills/critic/review-protocol.md": 4412,
+    # -96 on 2026-09-28 (opus-55-w3), C-21, C-23 and the adopted-norms pointer cut per the Opus 5.5
+    # prompt audit's slice C; the ceiling lowered with it.
+    "skills/critic/review-protocol.md": 4316,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -708,7 +710,9 @@ LAST_MEASURED_TOKENS = {
     # fundable by trimming, and the wrong reading cost more than 30 tokens would.
     # RAISED 2652 -> 2665, #820 (owner decision 2026-09-23): the declared suite moves from every chunk's Verify to the boundary — a default every consumer inherits, so the sentence carrying it is owed at each surface its reader meets. Compressed in place first; no duplication to pay from. DECLARED. (stale suite: no finding at the inner stage.)
     # RAISED 2665 -> 2668, learnings-one-line (the owner-confirmed design in that plan's Requirements Confidence, 2026-09-24): three new record-lint checks, and `TestEveryCheckCarriesASeverity` requires every check NAME on this surface, so there is no shorter form to pay from. DECLARED.
-    "skills/critic/goals-1-3.md": 2668,
+    # -6 on 2026-09-28 (opus-55-w3), C-21 and the adopted-norms pointer cut per the Opus 5.5
+    # prompt audit's slice C; the ceiling lowered with it.
+    "skills/critic/goals-1-3.md": 2662,
     # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
     # a computed pass the gate can now print, which a reader who only knows
     # "uncovered means run a cumulative" will otherwise re-review straight
@@ -872,7 +876,9 @@ LAST_MEASURED_TOKENS = {
     # RAISED 11232 -> 11317 (review-friction, 2026-09-25): the chunk-close order (review, fix, then commit), the mid-plan routing rule, and the merge-base start of a clean-tree `chunk` interval, which removes mid-plan boundary reviews (33 `cumulative` rounds since 09-20 across seven repos, ~11 findings each). The new text was compressed in place before declaring. DECLARED.
     # RAISED a further +48 (11317 -> 11365), learnings-one-line (the owner-confirmed design in that plan's Requirements Confidence, 2026-09-24): the severity table gains the three new record-lint checks and the over-budget row its second regime. Rows compressed in place first (65 -> 48); every check name must appear here (`TestEveryCheckCarriesASeverity`). DECLARED.
     # RAISED +2 (11365 -> 11367, review-friction, 2026-09-26): the interval's merge-base start is bounded by uncommitted JUDGEABLE work, not by a clean tree (cumulative review rev-20260926T141912Z-875cfe56 R-1): a reviewer told 'clean tree' misreads the interval a records-only close gets. DECLARED.
-    "skills/critic/review-cycle.md": 11367,
+    # -670 on 2026-09-28 (opus-55-w3), C-2, C-3 and C-7's history sweep cut per the Opus 5.5
+    # prompt audit's slice C; the ceiling lowered with it.
+    "skills/critic/review-cycle.md": 10697,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -1011,8 +1017,12 @@ LAST_MEASURED_TOKENS = {
     # RAISED 3680 -> 3684 (#820), same PR, after its cumulative review (W1/W3): the boundary is defined as where work LANDS, so direct-commit repos and work ending on a single `final` still owe the suite, and `final` reports a stale record as an observation. Compressed in place first. DECLARED.
     # RAISED 3684 -> 3719 (review-friction, 2026-09-25): the chunk-close order (review, fix, then commit), the mid-plan routing rule, and the merge-base start of a clean-tree `chunk` interval, which removes mid-plan boundary reviews (33 `cumulative` rounds since 09-20 across seven repos, ~11 findings each). The new text was compressed in place before declaring. DECLARED.
     # RAISED +1 (3719 -> 3720, review-friction, 2026-09-26): the interval's merge-base start is bounded by uncommitted JUDGEABLE work, not by a clean tree (cumulative review rev-20260926T141912Z-875cfe56 R-1): a reviewer told 'clean tree' misreads the interval a records-only close gets. DECLARED.
-    "skills/critic/SKILL.md": 3720,
-    "skills/critic/framework-checks.md": 1116,
+    # -560 on 2026-09-28 (opus-55-w3), C-19: harness mechanics, the restated precedence and incident ids cut per the Opus 5.5
+    # prompt audit's slice C; the ceiling lowered with it.
+    "skills/critic/SKILL.md": 3160,
+    # -8 on 2026-09-28 (opus-55-w3), C-24: the dangling S1/S2/S6 ids cut per the Opus 5.5
+    # prompt audit's slice C; the ceiling lowered with it.
+    "skills/critic/framework-checks.md": 1108,
     # The on-demand class, first recorded 2026-08-19 (#688) — readings, no
     # ceilings; the block above this dict is the decision and its reasoning.
     # These three are baselines, not achievements: they record where the class
@@ -4663,14 +4673,6 @@ class TestCriticSkill:
             "prose and collects a restatement of the finding title"
         )
 
-    def test_signals_and_work_scaling(self):
-        """Has signals section and work size/type guidance."""
-        assert "Signals That Guide Your Review" in self.content
-        for level in ["Trivial", "Small", "Medium", "Large"]:
-            assert level in self.content
-        assert "Feature" in self.content
-        assert "Bugfix" in self.content
-
     def test_goal_based_structure(self):
         """All seven goals present."""
         for goal in [
@@ -4899,7 +4901,7 @@ class TestCriticSkill:
         # RATCHETED 4356 -> 4350 (review-interval-extension, 2026-09-22) with the reading.
         # RAISED 4350 -> 4393 (reviewer-prompt-file-list, 2026-09-22) — see LAST_MEASURED_TOKENS.
         # RAISED 4393 -> 4400 (#820, 2026-09-23) — see LAST_MEASURED_TOKENS.
-        assert tokens < 4413, f"review-protocol.md is ~{tokens} tokens, should be <4413"
+        assert tokens < 4317, f"review-protocol.md is ~{tokens} tokens, should be <4317"
 
 
 # =============================================================================
@@ -5180,7 +5182,7 @@ class TestCriticGoals13:
         # BLOCKING set, stated in full because this file may point nowhere —
         # see LAST_MEASURED_TOKENS.
         # RAISED 2653 -> 2666 (#820, 2026-09-23) — see LAST_MEASURED_TOKENS.
-        assert tokens < 2669, f"goals-1-3.md is ~{tokens} tokens, should be <2669"
+        assert tokens < 2663, f"goals-1-3.md is ~{tokens} tokens, should be <2663"
 
     def test_is_self_contained(self):
         """No follow-the-pointer reads at review time — the acceptance criterion
@@ -5436,7 +5438,7 @@ class TestCriticSkillRoutesByMode:
         # RAISED 3681 -> 3685 (#820, 2026-09-23) — see LAST_MEASURED_TOKENS.
         # RAISED 3685 -> 3720 (review-friction, 2026-09-25) — see LAST_MEASURED_TOKENS.
         # RAISED 3720 -> 3721 (review-friction, 2026-09-26) — see LAST_MEASURED_TOKENS.
-        assert tokens < 3721, f"SKILL.md is ~{tokens} tokens, should be <3721"
+        assert tokens < 3161, f"SKILL.md is ~{tokens} tokens, should be <3161"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))
@@ -5757,7 +5759,7 @@ class TestReviewCycle:
         # RAISED 11233 -> 11318 (review-friction, 2026-09-25) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED a further +48 -> 11366 (learnings-one-line, 2026-09-24) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 11366 -> 11368 (review-friction, 2026-09-26) — see LAST_MEASURED_TOKENS.
-        assert tokens < 11368, f"review-cycle.md is ~{tokens} tokens, should be <11368"
+        assert tokens < 10698, f"review-cycle.md is ~{tokens} tokens, should be <10698"
 
     def test_framework_checks_token_budget(self):
         # Ceiling 1150. This file is `final`/`cumulative` payload: SKILL.md's
@@ -5775,7 +5777,7 @@ class TestReviewCycle:
         # standing rule: THE NEXT ADDITION TRIMS OR RELOCATES, IT DOES NOT BUMP.
         content = read_file("skills/critic/framework-checks.md")
         tokens = estimate_tokens(content)
-        assert tokens < 1150, f"framework-checks.md is ~{tokens} tokens, should be <1150"
+        assert tokens < 1109, f"framework-checks.md is ~{tokens} tokens, should be <1109"
 
     def test_structure(self):
         content = read_file("skills/critic/review-cycle.md")
