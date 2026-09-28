@@ -245,6 +245,22 @@ This fork touches the owner's "review wall clock is P0" and "never skip the PR r
 **Recommendation: take them all, and compare `review-stats` rounds-per-PR before and after.**
 That measurement is the one that answers the wall-clock question.
 
+**Baseline, recorded 2026-09-28 before W3 (ledger through PR #921).** `review-stats` has no
+rounds-per-PR view, so the numbers come from
+`opus-55-prompt-audit-2026-09/rounds_per_pr.py <since>`. Rerun it with the same `since` after W3
+and compare. It groups `review.pr` events by branch, and counts the `review.critic` events that
+share the branch's scope. A scope reused across branches inflates the Critic count, and the "after"
+run inherits that.
+
+| Window (`since`) | PR branches | PR rounds (mean / max) | Critic rounds (mean / median) | All rounds (mean / median) | Branches with 2+ PR rounds |
+|---|---|---|---|---|---|
+| all | 157 | 1.06 / 2 | 5.47 / 3 | 6.53 / 4 | 9 |
+| 2026-08-01 | 113 | 1.05 / 2 | 5.06 / 4 | 6.12 / 5 | 6 |
+| 2026-09-01 | 63 | 1.05 / 2 | 2.76 / 1 | 3.81 / 2 | 3 |
+
+C-1's risk is more PR-review rounds. The comparison to watch is the PR-rounds column, against the
+2026-09-01 row.
+
 ### F7 — Scope bookkeeping for #181, #341 and #342
 
 - **#341 closes with wave 4.** B-17, B-18 and B-19 complete its enumeration. Its acceptance
