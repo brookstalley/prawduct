@@ -53,6 +53,7 @@ checked". An `update` that leaves the body alone does not lint it. That is the s
 the 2026-08-06 stored-title ruling keeps, so editing an unrelated field never reports on prose the
 call didn't write. The API contract, the issue standard's implemented-note and the adapter-mode
 skill page now say so.
+
 ## 2026-09-28: develop opens 3.6.2-dev.3
 
 <!-- prawduct: type=chore | scope=dev-track-bump-3.6.2-dev.3 -->
