@@ -285,6 +285,23 @@ class TestWorktrees:
         states = {w.state for w in _scan(clone).worktrees if not w.is_current}
         assert states == {MISSING}
 
+    def test_an_unreadable_worktree_is_unknown_not_missing(self, clone, tmp_path, monkeypatch):
+        # A permission error says nothing about whether the tree exists, and
+        # "missing" would tell the reader to prune it.
+        wt = tmp_path / "wt"
+        git(clone, "worktree", "add", "-q", "-b", "side", str(wt))
+        real_is_dir = Path.is_dir
+
+        def is_dir(self):
+            if self == wt.resolve():
+                raise PermissionError("denied")
+            return real_is_dir(self)
+        monkeypatch.setattr(Path, "is_dir", is_dir)
+
+        row = next(w for w in _scan(clone).worktrees if Path(w.path) == wt.resolve())
+
+        assert row.state == UNKNOWN
+
     def test_observing_a_sibling_never_rewrites_its_index(self, clone, tmp_path):
         """The index mtime would report the probe itself as activity, so the
         scan must not refresh it. Made stat-stale first, so a plain `git

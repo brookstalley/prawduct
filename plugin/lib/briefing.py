@@ -41,7 +41,7 @@ import time
 from pathlib import Path
 from typing import NamedTuple
 
-from . import buildplan_refs, gates, gitstate, learnings_files, plan_index
+from . import buildplan_refs, gates, gitstate, learnings_files, plan_index, stranded_work
 from .backlog import legacy as backlog
 from .coverage import _resolve_base_branch
 from .core import (
@@ -937,6 +937,13 @@ def assemble_session_briefing(
             f"are scoped to THIS worktree only. Other worktrees belong to their own "
             f"sessions; do not read or modify them."
         )
+
+    # Stranded work — local branches no remote has, idle and active sibling
+    # worktrees — as COUNTS only. Naming a sibling is what the block above
+    # refuses to do, for the reason it gives; the names are one command away.
+    stranded = stranded_work.briefing_line(stranded_work.scan(project_dir))
+    if stranded:
+        lines.append(stranded)
 
     # Handoff from previous session — source-aware (SCN-5B8Q Chunk 02).
     handoff_path = prawduct_dir / ".session-handoff.md"

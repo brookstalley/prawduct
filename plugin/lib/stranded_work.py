@@ -274,7 +274,12 @@ def _scan_worktree(raw: dict, *, current: Path, roots: list[Path], now: float) -
         is_current=path == current,
         ephemeral=gitstate.ephemeral_kind_of(path, branch),
     )
-    if raw.get("prunable") or not path.is_dir():
+    try:
+        present = path.is_dir()
+    except OSError:  # a permission error is not a missing tree; say nothing about it
+        row.state = UNKNOWN
+        return row
+    if raw.get("prunable") or not present:
         row.state = MISSING
         return row
     git_dir_out = _git(path, "rev-parse", "--absolute-git-dir")

@@ -920,6 +920,44 @@ class TestAssembleSessionBriefingSections:
         assert "- side @ /b" not in out
         assert "/b" not in out
 
+    def test_stranded_work_is_counted_never_named(self, tmp_path):
+        """A real local-only branch reaches the briefing as a count. Its name,
+        like a sibling worktree's path above, must not (owner ruling on #410)."""
+        def git(cwd, *args):
+            subprocess.run(
+                ["git", "-c", "user.name=t", "-c", "user.email=t@e.com", "-c", "commit.gpgsign=false",
+                 "-c", "init.defaultBranch=main", *args],
+                cwd=str(cwd), check=True, capture_output=True,
+            )
+        repo = tmp_path / "repo"
+        git(tmp_path, "init", "-q", "--bare", str(tmp_path / "origin.git"))
+        git(tmp_path, "init", "-q", str(repo))
+        self._state(repo, "")
+        (repo / "a.txt").write_text("a")
+        git(repo, "add", "a.txt")
+        git(repo, "commit", "-q", "-m", "a")
+        git(repo, "remote", "add", "origin", str(tmp_path / "origin.git"))
+        git(repo, "push", "-q", "origin", "main")
+        git(repo, "switch", "-q", "-c", "fix/reviewed-never-pushed")
+        (repo / "b.txt").write_text("b")
+        git(repo, "add", "b.txt")
+        git(repo, "commit", "-q", "-m", "b")
+        git(repo, "switch", "-q", "main")
+
+        out = briefing.assemble_session_briefing(repo, [])
+
+        line = next((ln for ln in out.splitlines() if ln.startswith("Stranded work:")), None)
+        assert line is not None, "positive control: the stranded branch is reported"
+        assert "1 local branch" in line and "prawduct-hook worktrees" in line
+        assert "reviewed-never-pushed" not in out
+
+    def test_no_stranded_line_when_there_is_nothing_to_say(self, tmp_path, monkeypatch):
+        from lib import stranded_work
+        self._state(tmp_path, "")
+        monkeypatch.setattr(stranded_work, "scan", lambda d: stranded_work.Report())
+        out = briefing.assemble_session_briefing(tmp_path, [])
+        assert "Stranded work" not in out
+
     def test_staleness_lines_rendered(self, tmp_path):
         self._state(tmp_path, "")
         out = briefing.assemble_session_briefing(tmp_path, ["thing A", "thing B"])

@@ -5,6 +5,41 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-28: the briefing counts stranded branches and idle worktrees
+
+<!-- prawduct: type=feature | scope=stranded-work -->
+
+Finished work was getting stranded where no reader looks. #898 and #818 sat reviewed on a
+never-pushed local branch while the next triage session planned to build #898 again; #640's fix
+sat on a local branch 281 commits behind develop until #853 re-applied it. Nothing surfaced a
+branch that exists only locally when no build plan names it. A clone also collects worktrees
+with no signal of which still have an agent in them.
+
+**What changed.** New `lib/stranded_work.py` scans, read-only, and two renderers share it: a
+counts-only briefing line and `prawduct-hook worktrees [--json]`. A branch is stranded when it is
+checked out in no worktree and its tip is reachable from no remote-tracking ref (one
+`rev-list --branches --not --remotes` walk answers every branch at once). A repo with no remote
+reports none, since every branch would qualify. There is no age floor: a 3-day floor was drafted
+and dropped when the scan, run on this repo, showed it excluded the 18-hour-old #898 branch that
+motivated the feature.
+
+**Liveness is the newest of four signals**, and the report names the winner: transcripts over
+every Claude config root (owner, 2026-09-28: several accounts keep transcripts of different ages
+for one worktree), the HEAD reflog, `.prawduct/.session-start`, and the newest dirty file. The
+git index mtime is excluded because any observer's `git status` rewrites it — the plan's own
+first probe did — and every probe passes `--no-optional-locks`. A process cwd check was tried
+and dropped: a desktop-app session runs with cwd `/`, so it failed its positive control.
+verify-api for the transcript layout, observed on this machine's six roots: every
+non-alphanumeric character maps to `-`, paths appear resolved (`/tmp` as `-private-tmp`),
+subagent transcripts live under the parent session's directory, and the longest name seen was
+173 characters with no truncation. No path containing `_` existed to confirm that character.
+
+**The briefing names nothing** — owner ruling on #410, reaffirmed 2026-09-28 when the owner chose
+counts plus a command over a named list. The #410 guard's sibling test pins that a real stranded
+branch reaches the briefing as a count and not by name. The `[DECISION]` in the plan records why
+the line emits no yield fact; that is an owner-vetoable exception to the proportionality norm's
+emission arm.
+
 ## 2026-09-28: develop opens 3.6.2-dev.3
 
 <!-- prawduct: type=chore | scope=dev-track-bump-3.6.2-dev.3 -->
