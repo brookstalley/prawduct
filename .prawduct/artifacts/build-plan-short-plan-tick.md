@@ -11,10 +11,18 @@ governed_by:
     dispositions:
       - "review rigor is stage-keyed → conforms: the fix restores the boundary review a short plan owes; it adds no review and removes none"
       - "review wall-clock is P0 → conforms: inference reaches `cumulative` without an explicit override, saving a wasted dispatch that answers `deferred`"
+      - "proportionality ratchets both ways → inapplicable, because no control is added or removed; an existing inference answer becomes reachable"
+      - "state-file growth is an advisory, never a hard block → inapplicable, because no state file's size behaviour changes"
   - artifact: architecture
     dispositions:
       - "every fact has one home → conforms: the tick-at-commit rule is stated once, in planning.md (the tick definition and the short-plan bullet beside it); the digest and the deferral rationale restate only the trigger. It stays out of review-cycle.md because every reviewer loads that file and this is builder guidance"
       - "goals and verification bind; prescribed method is advice → conforms: the tick rule is a definition the gates read, not method"
+      - "an independent reviewer never mutates the session it reviews → inapplicable, because no reviewer path changes"
+      - "authority fails closed; advice fails soft → conforms: the Stop gate still blocks an unreviewed last chunk; only the advisory rationale text changes"
+      - "local-first governance coordination → inapplicable, because no coordination mechanism changes"
+      - "the plugin writes nothing into a governed repo except its own state… → inapplicable, because nothing new is written"
+      - "written in Python, never specific to Python → inapplicable, because no language-dispatched check changes"
+      - "prawduct guides and reviews, it never implements → inapplicable, because only prawduct's own inference text and methodology change"
 ---
 
 # Build Plan: short-plan tick deadlock
@@ -60,12 +68,13 @@ would only warn at session end, so a short plan could close without its boundary
 
 ## Status
 
-- [ ] Chunk 01: the tick rule, the rationale, and their tests
+- [x] Chunk 01: the tick rule, the rationale, and their tests
 
 ## Chunk 01: the tick rule, the rationale, and their tests
 
 **Type:** code
 **Files:** `plugin/lib/critic_mode.py` (`_deferral_rationale`), `tests/test_short_plan_deferral.py`,
+`tests/test_mid_plan_mode.py` (the deadlock test),
 `plugin/methodology/planning.md`,
 `plugin/methodology/session-digest.md`, `plugin/lib/buildplan_refs.py` (docstring), and the token
 readings the suite reports.

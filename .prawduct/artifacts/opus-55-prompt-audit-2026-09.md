@@ -113,10 +113,11 @@ as written. Two rulings carry notes that change how the waves apply:
 
 ## Found while applying (W1, 2026-09-28)
 
-These came up while applying W1 and were not enumerated by the audit. None is filed, because #181
-forbids new items. They are recorded here, where the owner reads.
+These came up while applying W1 and were not enumerated by the audit. None is filed:
+Cycle 2 of #181 adds no new backlog items (§ How this honors #181's constraints), and the
+fix-don't-file preference covers the rest. They are recorded here, where the owner reads.
 
-- **A-16 reaches new scaffolds only (owner decision).** `core.md` is scaffold-once. Product repos
+- **A-16 reaches new scaffolds only (awaiting the owner's ruling).** `core.md` is scaffold-once. Product repos
   onboarded before W1 keep the old "name the rule and say what it changes… or that it does not
   apply" header, which is the narration A-16 set out to stop. They still lint clean, because the
   header is excluded by grammar and a test pins that. There are three options:
@@ -137,8 +138,8 @@ forbids new items. They are recorded here, where the owner reads.
   owns the fix, so W4 should follow W1 closely.
 - **Short-plan review inference cannot reach `cumulative`** while the tick rule holds every box
   until review. `critic_mode._mid_plan_start` counts 2 or more unticked boxes as mid-plan, and on
-  a short plan that answers `deferred`. W1 dispatched `cumulative` explicitly. This is a framework
-  defect, being fixed on its own branch after W1.
+  a short plan that answers `deferred`. W1 dispatched `cumulative` explicitly. Fixed on `fix/short-plan-tick-deadlock`, stacked on W1, with the owner-confirmed
+  direction: a short plan's earlier chunks are ticked at commit.
 
 ## Decisions for the owner
 
