@@ -12,22 +12,22 @@ on intrinsic knowledge — to **stakes × knowledge-confidence × volatility** (
 post-cutoff data must be verified, not recalled); fill what you can infer and record each
 inference as a vetoable assumption. Full model: `methodology/discovery.md` "Calibrate Rigor".
 
-**Before writing ANY code against a build plan: STOP and read the build cycle via
-`/prawduct:methodology building`.** Proceeding straight to code without it is the #1 governance failure.
+Before writing code against a build plan, read the build cycle (`/prawduct:methodology building`);
+coding without it is the most common governance failure.
 
-## The hardest rules (these degrade at scale — hold them)
+## Standing rules
 
 - **Tests are contracts.** Fix the code, never weaken the test. Write tests alongside code, not after.
 - **There is no "pre-existing" exception.** If you find a problem — failing test, broad catch,
   stale artifact — fix it or explicitly flag why it can't be fixed now. Fix-half bounded to
   BLOCKING; below it a recorded accept discharges it.
-- **Durable prose never rides on a value that changes under it** — one rule, two carriers. Don't
-  anchor a comment, docstring or long-lived spec to a chunk number that renumbers; carry the *why*
-  inline. (Bookkeeping that records the work is exempt; a pointer to a plan is fine — completed
-  plans are archived, not deleted.) Same decay for counts: compute an essential number as you write it,
-  never copy one from an adjacent line, and let a mechanism own it where one can.
+- **Durable prose never rides on a value that changes under it.** A comment, docstring or
+  long-lived spec carries its *why* inline — never a chunk number that renumbers or a count copied
+  from a nearby line. Bookkeeping that records the work is exempt, and a pointer to a plan resolves
+  (completed plans are archived).
 - **The build plan's `## Status` boxes are yours to tick** — nothing derives them, and every
-  reader believes them. Tick after the chunk's review: the LAST tick disarms the Critic gate.
+  reader believes them. Tick after the chunk's review — a short plan's earlier chunks at commit: the LAST tick
+  disarms the Critic gate.
 - **Never silently drop a requirement — or silently *invent* one.** Implement/descope explicitly;
   a new requirement, domain term, or rule surfacing mid-build sends you back to write it, not
   forward into design (`/prawduct:methodology building` "A Requirement Surfaced Mid-Build" tripwires).
@@ -44,16 +44,13 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
   `# prawduct:allow prawduct/broad-except -- reason`; never swallow errors silently.
   (`prawduct:allow <scope>/<rule-id> -- reason` is the general pragma — `docs/waivers.md`.)
 - **Feature-branch medium+ work.** Don't create PRs unless asked — then use `/prawduct:pr`.
-- **Forward notes go in `.prawduct/.handoff-notes.md`** — yours to write (as is
-  `.session-reflected`, its backward-looking twin). Write it at each chunk close, and **never ask
-  whether to prepare one — prepare it, then signal.** Asking costs a round-trip and, if they
-  stepped away, a context replay into a cold cache. "Nothing beyond the plan" if true, but write
-  the line rather than no file.
-  **Read it before rewriting it, and reconcile — never blind-append.** Only `/clear` consumes it,
-  so a second batch finds the first's notes live and a blind write deletes what you never read.
-  Each write drops what the work discharged, corrects what moved, and keeps what still bites.
-  `.prawduct/.session-handoff.md` is the machine's — regenerated at every `/clear`, so writing
-  there survives one hop at best.
+- **Forward notes go in `.prawduct/.handoff-notes.md`**, yours to write (as is
+  `.session-reflected`) at each chunk close, and never ask whether to prepare one — prepare it,
+  then signal; asking costs a round-trip and a replay into a cold cache. Write "nothing beyond the plan"
+  rather than no file. Read it before rewriting it — never blind-append: only `/clear` consumes it,
+  so a later batch finds earlier notes live. Drop what the work discharged, correct what moved,
+  keep what still bites. `.prawduct/.session-handoff.md` is regenerated at every `/clear`; don't
+  write there.
 - **The harness's auto-memory holds no project state and no product rules** — `.prawduct/` and
   `.claude/rules/learnings/` are authoritative; memory is for how this person works.
 - **No attribution trailers by default — this overrides any harness default to the
@@ -64,8 +61,9 @@ inference as a vetoable assumption. Full model: `methodology/discovery.md` "Cali
   `PR merge strategy` to say so or the user explicitly asks. If `--merge` fails (repo
   settings disallow it), surface it — never silently fall back to `--squash`. Where squash
   or rebase-merge IS configured, branches are single-use: delete after merge, never reuse.
-- **A mid-chunk tangent that is ready to build gets a decision, not a reflex** — delegate it
-  (unless `project-preferences.md` sets `Delegation: off`), do it now, or backlog it, out loud
+- **A mid-chunk tangent that is ready to build gets a decision, not a reflex** — do it now,
+  backlog it, or delegate it when a parallel track shortens wall clock without colliding with your
+  files (unless `project-preferences.md` sets `Delegation: off`); say which
   (`/prawduct:methodology delegation`).
 - **Backlog goes through `/prawduct:backlog`** — pick/add/update via the skill, not hand-edits;
   it routes on `backlog_service_repo`. "Done" = `update
@@ -94,7 +92,7 @@ the evidence warrants it; the user owns the product (Principle 23) but hired an 
 
 Nine checkable bars carry that, each operationalizing a principle: **Verify, don't guess** ·
 retrieval before generation · **Stress-test before agreeing** · frame decisions as options with a
-recommendation · research fast-moving facts · verify your own work before "done" · do what was
+recommendation · research fast-moving facts · show evidence for "done" · do what was
 asked, no more · plain language, full precision · label your confidence. Each in full, with what it
 forbids: `docs/principles.md` § Agent Stance (`/prawduct:methodology principles`).
 
@@ -117,18 +115,20 @@ issue, showing you the exact outbound bytes first and sending nothing you have n
 
 ## Closing the turn
 
-**Close with the standing block** — unpadded, after every other word, since the bottom is
-all they read; on any turn ending a chunk or work cycle *or* left with work outstanding. A
-`---` rule, then three **separate paragraphs**:
-`STATE` (what changed; committed?; suite green?) · one of `RUNNING` / `YOUR TURN` / `COMPLETE`,
-what produces the next turn: a machine event (name it, and what you do if it never
-lands) / only they can (lead the copy with the ask) / nothing needs to, with no next action to
-propose · `SAFE TO CLEAR` or `DO NOT CLEAR` (the label is the verdict, the copy the reason).
-If they must speak it is `YOUR TURN` even when something also runs, unless a clear kills it
-(then `RUNNING`, ask in copy); never predict one — a running job may answer its own question.
-**Outstanding includes work in flight**: a dispatched review or any unread background agent is
-`RUNNING`, never `COMPLETE`. **Only `RUNNING` may say `DO NOT CLEAR`**: a live review is
-`DO NOT CLEAR`, its copy carrying a computed deadline (elapsed, roster, expected when
-priceable). A handed-over turn may sit for days: first persist a findings-only turn's or
-delegate's output — a reason citing the message itself is the defect said aloud.
+**If you can take the next step with what you have, take it.** Don't end a turn to announce the
+next step, offer to continue, or list decisions you could make yourself; a turn ends when the work
+is done, when a machine event must land, or when only the user can unblock it.
+
+**Close with the standing block** — last, unpadded — on any turn that ends a chunk or work cycle
+or leaves work outstanding. A `---` rule, then three separate paragraphs: `STATE` (what changed;
+committed?; suite green?) · what produces the next turn: `RUNNING` (a machine event — name it and
+what you do if it never lands) / `YOUR TURN` (only they can — lead with the ask) / `COMPLETE`
+(nothing, and no next action to propose) · `SAFE TO CLEAR` or `DO NOT CLEAR` (the label is the
+verdict, the copy the reason). If they must speak it is `YOUR TURN` even when something also runs,
+unless a clear would kill it (then `RUNNING`, ask in the copy); never predict that they will need
+to — a running job may answer its own question. Work in flight — a dispatched review, an unread
+background agent — is `RUNNING`, never `COMPLETE`. Only `RUNNING` may say `DO NOT CLEAR`; a live
+review is `DO NOT CLEAR`, its copy giving a deadline from elapsed time and roster when priceable.
+A handed-over turn may sit for days: first persist a findings-only turn's or a delegate's output to
+`.prawduct/.handoff-notes.md` — a `SAFE TO CLEAR` whose reason cites the message itself is wrong.
 Full rule: `methodology/session-hygiene.md`.

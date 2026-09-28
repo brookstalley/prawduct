@@ -123,6 +123,15 @@ def _critic_mode():
     return critic_mode
 
 
+def _wrap_gate_prose(text: str) -> str:
+    """``text`` as the gate's two-space-indented block, wrapped at 76 columns."""
+    import textwrap  # noqa: PLC0415 — only the short-plan messages need it
+
+    return "".join(
+        f"  {line}\n" for line in textwrap.wrap(text, width=76, break_on_hyphens=False)
+    )
+
+
 def _short_plan_deferral(project_dir: Path, prawduct_dir: Path, plan):
     """The Stop gate's read of the short-plan deferral (#292), or ``None``.
 
@@ -3464,19 +3473,17 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 stop_advisories.append(_attributed("critic",
                     f"WARNING ({DEFERRED_REVIEW_TOKEN}): no review covers this session's\n"
                     f"  changes{span}, and none is owed yet — {deferral.reason}.\n"
-                    "  This chunk's review is deferred to the boundary: commit it and carry\n"
-                    "  on; the `cumulative` review at the last chunk (inferred by\n"
-                    "  `/prawduct:critic` once that chunk is committed) covers every chunk\n"
-                    "  and is the PR gate's evidence. To review this chunk anyway, run\n"
+                    "  This chunk's review is deferred to the boundary. Next:\n"
+                    + _wrap_gate_prose(_critic_mode().short_plan_next_step(deferral) + ".")
+                    + "  The boundary review is the PR gate's evidence. To review this chunk anyway, run\n"
                     "  `/prawduct:critic chunk`, or declare `Critic mode:` on any chunk of\n"
                     "  the plan to restore per-chunk review for the whole plan.\n"
                 ))
             else:
                 last_chunk_note = (
                     "  This plan is short and its per-chunk reviews were deferred to this\n"
-                    f"  boundary review ({deferral.reason}): commit the chunk, then run\n"
-                    "  `/prawduct:critic` — it infers `cumulative`, which is this chunk's\n"
-                    "  review and the PR gate's evidence; no separate `final` is owed.\n"
+                    f"  boundary review ({deferral.reason}):\n"
+                    + _wrap_gate_prose(_critic_mode().short_plan_next_step(deferral) + ".")
                     if deferral is not None and deferral.defers and deferral.last_chunk
                     else ""
                 )
@@ -6149,8 +6156,9 @@ def cmd_infer_critic_mode(project_dir: Path, args: str | None) -> int:
     touches no risk surface (#292); a later review the plan still owes will
     start from the last reviewed state and cover this work (#167,
     ``extension-deferred``); or, mid-plan, nothing is unreviewed. The skill dispatches nothing on it and reports the
-    rationale, which says what to do: commit and carry on, or, on a short plan's
-    last chunk, commit and run the ``cumulative`` that is that chunk's review. ``<rationale>`` is the
+    rationale, which says what to do (``critic_mode.short_plan_next_step`` on a
+    short plan: tick each earlier chunk at commit, or, on the last chunk, commit
+    and run the ``cumulative`` that is that chunk's review). ``<rationale>`` is the
     human-readable explanation suitable for both stdout reporting and
     the ``mode_chosen_by`` field in ``.critic-findings.json``.
 

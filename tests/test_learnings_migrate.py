@@ -364,8 +364,8 @@ class TestMapFile:
 class TestPlan:
     @pytest.mark.parametrize("shape", SHAPES)
     def test_core_is_always_written_and_always_first(self, tmp_path: Path, shape: str):
-        """Core carries the descent obligation, so a corpus that mapped every
-        topic to an area file must still get one."""
+        """Core carries the scaffold header every session reads, so a corpus
+        that mapped every topic to an area file must still get one."""
         root = repo(tmp_path, shape)
         migration = lm.plan(root, full_map(root))
         core_rel = f"{lf.RULES_DIR_REL}/{lf.CORE_NAME}"

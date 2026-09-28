@@ -10,9 +10,24 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
-## v3.6.2-dev.3
+## v3.6.2-dev.4
 
 **Rolling notes for the next release — nothing has shipped under this number yet.** Entries accumulate here as work lands on `develop`; the cut renames this heading to its release number.
+
+**`opus-55-w1-always-on`**: **the always-loaded guidance is retuned for Opus 5.5.** The session
+digest now tells the model to take the next step when it can, instead of ending a turn to announce
+it, offer to continue, or list decisions it could make itself. Its closing-the-turn rules and four
+other bullets are shorter and plainer. A mid-chunk tangent lists delegation last, for when a
+parallel track shortens wall clock without colliding with your files. The stance bar "verify your
+own work before done" is now "show evidence for done". Newly scaffolded
+`.claude/rules/learnings/core.md` files open with "apply a rule where it bears; cite it where it
+changed what you did". Existing repos keep their current header, and it still lints clean.
+
+**`short-plan-tick`**: **a short plan reaches its boundary review without an override.** On a plan
+of at most 3 chunks that touches no risk surface, tick each earlier chunk's box when you commit it:
+its review is the boundary `cumulative`. Only the last box waits for that review. Previously the
+rules said to tick only after review. That left every box unticked, and `/prawduct:critic` kept
+answering `deferred`.
 
 **`stranded-work`** (#843, local-only arm) — **work stranded on a local branch now says its own
 name.** A reviewed fix could sit on a branch nobody had pushed, and the next session had no way to

@@ -5,6 +5,46 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-28: develop opens 3.6.2-dev.4
+
+<!-- prawduct: type=chore | scope=dev-track-bump-3.6.2-dev.4 -->
+
+The dev track's version moves from `3.6.2-dev.3` to `3.6.2-dev.4` in the four carriers, so repos
+on the develop track pick up `opus-55-w1-always-on` and `short-plan-tick`. Owner-directed,
+2026-09-28. It rides this PR.
+
+## 2026-09-28: a short plan's earlier chunks are ticked at commit
+
+<!-- prawduct: type=bugfix | scope=short-plan-tick -->
+
+On a short plan, inference counts two or more unticked boxes as mid-plan and answers `deferred`,
+while the tick rule said to tick only after a chunk's review. A deferred chunk's review is the
+boundary `cumulative`, so a builder following the rule never reached it. W1 of the Opus 5.5 audit
+hit this. `planning.md` now defines a deferred chunk's tick as due at commit, and the digest's tick
+bullet carries the trigger (a declared raise of 11 tokens). The deferral rationale says so, and no
+longer claims to key on commits. The next step now has one owner, `critic_mode.short_plan_next_step`. The
+rationale and both Stop-gate short-plan messages (the non-final warning and the last-chunk
+block) are built from it, so the gate names the open boxes and no longer says "commit it and
+carry on". The owner confirmed the direction. Plan:
+`build-plan-short-plan-tick.md`.
+
+## 2026-09-28: the always-on surface is retuned for Opus 5.5 (audit wave W1)
+
+<!-- prawduct: type=feature | scope=opus-55-w1-always-on -->
+
+Wave W1 of `opus-55-prompt-audit-2026-09.md`, which the owner ruled in full on 2026-09-28. The
+digest gains a take-the-next-step rule and plainer standing-block and bullet text. The
+stance bar "verify your own work before done" is now "show evidence for done". `CLAUDE.md` and
+`principles.md` drop text that duplicates the digest. `core.md` goes from 38 rules to 17, the area
+files drop their copies of core, and every rule sheds issue ids, dates and incident specimens.
+`CORE_HEADER` asks for a citation only where a rule changed the work. The injected footprint went
+from 3280 to 3134 tokens (framework) and from 2221 to 2191 (product); the tick fix above then adds
+11. Things the audit missed are recorded in the artifact's "Found while applying" section. Two
+bookkeeping changes ride along: the research artifact itself (the `opus-55-prompt-audit` scope,
+with no code) and, by the same ruling, the archived `release-plan-backlog-service-golive.md`.
+`authoring.md`'s 18KB budget raise is removed, because the trim left the file under the default. Plan:
+`build-plan-opus-55-w1-always-on.md`.
+
 ## 2026-09-28: release= accepts four-part versions
 
 <!-- prawduct: type=bugfix | scope=four-part-release-versions -->

@@ -469,7 +469,7 @@ benign**, not a gate to satisfy:
 ## The checkboxes are ticked during development, not at release
 
 A chunk's box is ticked by the session that finished the chunk, right after its Critic review
-passes. The release does not touch them and no command regenerates them — the boxes, the Context
+passes, or at commit for a short plan's earlier chunks (`plugin/methodology/planning.md`). The release does not touch them and no command regenerates them — the boxes, the Context
 line, and git history are one progress record, not a derived view and its source.
 
 This is the reverse of the rule that stood here until 2026-08-08, when Status was regenerated from
