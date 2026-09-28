@@ -1891,14 +1891,15 @@ class TestBlockingRemedyLines:
     def test_standard_remedy_prescribes_the_batch_golden_path(self):
         """Naming the command alone leaves the batching to the operator, and the
         loop that costs rounds is fix-commit-verify per finding: every commit
-        extends HEAD, so every one buys a fresh round. All four moves have to be
-        in the text an operator acts on — batch the fixes, hold the commit, run
-        exactly one verify, commit the tree that passed."""
+        extends HEAD, so every one buys a fresh round. The order (batch the
+        fixes, hold the commit, run exactly one verify) is composed from its one
+        home rather than worded here, and the remedy adds the half the order
+        does not state: commit the tree that passed, verbatim."""
+        from lib import critic_consolidate
+
         text = self._text([{"fid": "R-1"}])
-        assert "Fix ALL of them in the working tree" in text
-        assert "do not commit between fixes" in text
-        assert "run ONE /prawduct:critic verify-resolutions" in text
-        assert "commit that verified tree verbatim" in text
+        assert critic_consolidate._FIX_ORDER in text
+        assert "Commit the tree it verified verbatim" in text
 
     def test_mixed_set_keeps_the_standard_remedy_and_adds_the_exception(self):
         lines = gates.blocking_remedy_lines(
@@ -1906,8 +1907,8 @@ class TestBlockingRemedyLines:
         )
         text = " ".join(lines)
         # The standard route still leads — one of the three IS reachable by it.
-        assert lines[0].startswith("Fix ALL of them in the working tree")
-        assert "run ONE /prawduct:critic verify-resolutions" in text
+        assert lines[0].startswith("Fix them: make the fixes in the working tree")
+        assert "/prawduct:critic verify-resolutions" in text
         assert "Superseded: 2 findings" in text
         assert "/prawduct:critic cumulative" in text
 

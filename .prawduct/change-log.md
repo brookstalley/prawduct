@@ -5,6 +5,23 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-28: hook and gate text is retuned for Opus 5.5 (audit wave W2)
+
+<!-- prawduct: type=feature | scope=opus-55-w2-hook-gate-text -->
+
+Wave W2 of `opus-55-prompt-audit-2026-09.md` (A-5, A-6, A-7, A-27 to A-30), which the owner ruled
+in full on 2026-09-28. NEXT-ACTION states the decision, the command and the cost, and stops
+re-arguing them: the common warnings close drops from about 347 to 232 words, with no capitals
+except the `BLOCKING` severity token. The batch-fix directive loses its dangling pointer to
+NEXT-ACTION. `gates.blocking_remedy_lines` composes `critic_consolidate._FIX_ORDER` instead of
+restating it. The Stop gate prints one escape-hatch footer after the `BLOCKED` list in place of a
+recipe per blocker. The footer writes every blocking gate's key as one JSON object, because two
+`echo … >` recipes overwrote each other's file. `KNOWN_WAIVER_KEYS` is now derived from the
+footer's map. The reflection blocker's cadence paragraph is one line. Three reviewer dispatch
+directives lose their "spend this on…" closers (F6: compare `review-stats` rounds per PR before
+and after W3). The briefing's advisory relay ends by saying the user's own request goes ahead.
+What applying it found is in the plan. Plan: `build-plan-opus-55-w2-hook-gate-text.md`.
+
 ## 2026-09-28: develop opens 3.6.2-dev.4
 
 <!-- prawduct: type=chore | scope=dev-track-bump-3.6.2-dev.4 -->

@@ -435,6 +435,69 @@ class TestTheBlockerText:
         for shape in _ID_SHAPES:
             assert not shape.search(block), f"id-shaped token in blocker: {block}"
 
+    def test_the_waiver_recipe_follows_the_blockers_once(self, tmp_path, capsys):
+        """The recipe is one footer after the `BLOCKED` list, not a paragraph
+        inside each blocker — a copy per blocker made the waiver the loudest
+        thing in a two-gate block."""
+        err = self._err(tmp_path, capsys)
+        assert err.count("Escape hatch") == 1, err
+        assert err.index(BLOCKER) < err.index("Escape hatch")
+
+
+# ---------------------------------------------------------------------------
+# The waiver footer, every branch
+# ---------------------------------------------------------------------------
+
+
+def _echoed_waiver(footer: str) -> dict:
+    """The JSON object the footer's `echo` line would write."""
+    (line,) = [ln for ln in footer.splitlines() if ln.strip().startswith("echo '")]
+    return json.loads(line.split("'")[1])
+
+
+class TestTheWaiverFooter:
+    def test_every_blocking_waivable_gate_lands_in_one_object(self):
+        """Two `echo … >` lines, one per blocker, overwrite each other's file;
+        one object carries both keys and survives being run."""
+        footer = _hook._waiver_footer(["reflection", "critic", "critic"], False)
+        assert footer.count("echo '") == 1
+        assert set(_echoed_waiver(footer)) == {"reflection", "critic"}
+
+    def test_a_gate_is_named_by_its_waiver_key_not_its_id(self):
+        footer = _hook._waiver_footer(["learnings-unmigrated"], False)
+        assert set(_echoed_waiver(footer)) == {"learnings"}
+
+    def test_the_printed_recipe_clears_the_block_it_was_printed_for(
+        self, tmp_path, capsys
+    ):
+        """The recipe is only a remedy if running it reaches the gate: write
+        the object the block printed, with a real reason, and stop again."""
+        repo = _repo(tmp_path)
+        _mark_base(repo)
+        _commit_code(repo)
+        rc, err = _stop(repo, capsys)
+        assert rc == 2
+        footer = err[err.index("  Escape hatch"):]
+        waiver = {k: "probe: recipe round-trip" for k in _echoed_waiver(footer)}
+        (repo / ".prawduct" / ".gates-waived").write_text(json.dumps(waiver))
+        rc, err = _stop(repo, capsys)
+        assert rc == 0, err
+
+    def test_nothing_waivable_prints_no_footer(self):
+        """The budget floor, the clear verdict and `trivial` have no waiver, so
+        a block made only of them offers none."""
+        for gate_ids in ([], ["clear-verdict"], ["learnings-budget", "trivial", None]):
+            assert _hook._waiver_footer(gate_ids, True) == "", gate_ids
+
+    def test_a_pending_review_is_discarded_never_deleted(self):
+        footer = _hook._waiver_footer(["critic"], True)
+        assert "prawduct-hook critic-discard" in footer
+        assert "critic-restore <id>" in footer
+
+    def test_the_discard_step_needs_both_a_pending_review_and_a_critic_block(self):
+        assert "critic-discard" not in _hook._waiver_footer(["critic"], False)
+        assert "critic-discard" not in _hook._waiver_footer(["reflection"], True)
+
 
 # ---------------------------------------------------------------------------
 # The decision's other half

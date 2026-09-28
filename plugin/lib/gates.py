@@ -2274,8 +2274,9 @@ def blocking_remedy_lines(unresolved: "list[dict] | None") -> list[str]:
     each commit extends HEAD, so each one buys a fresh round whose demoted
     observations tempt the next fix. Fixing everything in the working tree and
     verifying once is sound — a verify pass reads the dirty tree so long as no
-    commit has moved its anchor, which is what the no-commit-between-fixes line
-    below buys — and the verified tree is what gets committed.
+    commit has moved its anchor, which is what the fix order buys — and the
+    verified tree is what gets committed. The order is composed from
+    ``critic_consolidate._FIX_ORDER``, its one home, not restated here.
 
     Three cases, because the standard remedy is *wrong* for a superseded
     blocker: one carried by a review fact no verify-resolutions pass will
@@ -2293,15 +2294,19 @@ def blocking_remedy_lines(unresolved: "list[dict] | None") -> list[str]:
     Advice, not verdict: a superseded blocker blocks exactly as hard as any
     other, and no exit code moves.
     """
+    # Lazy: critic_consolidate imports this module lazily too, and the fix
+    # order must be the one it composes, not a second wording of it.
+    from . import critic_consolidate  # noqa: PLC0415
+
     entries = [e for e in (unresolved or []) if isinstance(e, dict)]
+    # One line per sentence, never wrapped mid-sentence: the fix order carries a
+    # backticked command, and a wrap inside it hands the reader half a command.
     standard = [
-        "Fix ALL of them in the working tree first — do not commit between fixes.",
-        "Then run ONE /prawduct:critic verify-resolutions (it reads the dirty tree",
-        "BECAUSE nothing was committed first), and commit that verified tree",
-        "verbatim: it records the resolution facts, so this same evidence passes",
-        "with no full re-review. Commit CONTENT the review has not seen and the",
-        "pass anchors HEAD instead, leaving any uncommitted fix outside it",
-        "(review-cycle.md § Verify-resolutions anchoring and demotion).",
+        f"Fix them: {critic_consolidate._FIX_ORDER}.",
+        "The pass records the resolution facts, so this same evidence then passes",
+        "with no full re-review. Commit the tree it verified verbatim: content it",
+        "has not seen leaves the fix outside what it anchored (review-cycle.md",
+        "§ Verify-resolutions anchoring and demotion).",
     ]
     n = sum(1 for e in entries if e.get("superseded"))
     if not n:
