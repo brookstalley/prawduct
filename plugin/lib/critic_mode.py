@@ -1309,8 +1309,10 @@ def _deferral_rationale(deferral: ShortPlanDeferral, plan) -> str:
         )
     else:
         what_next = (
-            "commit this chunk and carry on; the boundary review (`cumulative`, "
-            "inferred once the last chunk is committed) covers every chunk"
+            "commit this chunk, tick its box, and carry on — its review is the "
+            "boundary's, so the box does not wait for one; the boundary review "
+            "(`cumulative`) is inferred once only the last box is unticked and "
+            "its chunk is committed, and it covers every chunk"
         )
     return (
         f"short-plan deferral: no per-chunk review is owed — {deferral.reason}; "

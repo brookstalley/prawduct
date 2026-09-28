@@ -254,7 +254,7 @@ class TestEligiblePlanDefers:
         mode, rationale = infer_mode(tmp_path, None)
         assert mode == critic_mode.MODE_DEFERRED
         assert rationale.startswith("short-plan deferral:")
-        assert "commit this chunk and carry on" in rationale
+        assert "commit this chunk, tick its box, and carry on" in rationale
         assert "`cumulative`" in rationale
         # The way back is named, because a deferral nobody can decline is a gate.
         assert "/prawduct:critic chunk" in rationale

@@ -26,7 +26,8 @@ coding without it is the most common governance failure.
   from a nearby line. Bookkeeping that records the work is exempt, and a pointer to a plan resolves
   (completed plans are archived).
 - **The build plan's `## Status` boxes are yours to tick** — nothing derives them, and every
-  reader believes them. Tick after the chunk's review: the LAST tick disarms the Critic gate.
+  reader believes them. Tick after the chunk's review — a short plan's earlier chunks at commit: the LAST tick
+  disarms the Critic gate.
 - **Never silently drop a requirement — or silently *invent* one.** Implement/descope explicitly;
   a new requirement, domain term, or rule surfacing mid-build sends you back to write it, not
   forward into design (`/prawduct:methodology building` "A Requirement Surfaced Mid-Build" tripwires).

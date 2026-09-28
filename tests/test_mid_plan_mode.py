@@ -262,6 +262,25 @@ class TestNothingOwedNow:
         assert why.startswith("short-plan deferral:"), why
 
 
+    def test_boxes_held_for_a_review_never_given_name_their_remedy(self, tmp_path):
+        """Every chunk of a short plan committed, no box ticked, a clean tree:
+        the builder held each box for a per-chunk review a short plan never
+        gives. Ticks are the only signal inference has -- git cannot tell
+        "committed, not ticked" from "not built" -- so the answer stays
+        `deferred`, and the rationale must say the box does not wait, or the
+        builder waits for a `cumulative` that is never inferred. What turns
+        this red: dropping the tick instruction from the non-final rationale.
+        Control: ticking the two earlier boxes reaches the boundary review."""
+        repo = _repo(tmp_path, chunks=3)
+        for name in ("one", "two", "three"):
+            _commit_first(repo, 1, name=name)
+        mode, why = infer_mode(repo, None)
+        assert mode == MODE_DEFERRED, why
+        assert "tick its box" in why and "does not wait" in why, why
+        _tick(repo, 2, chunks=3)
+        mode, why = infer_mode(repo, None)
+        assert mode == "cumulative", why
+
 class TestExplicitTokensMidPlan:
     @pytest.mark.parametrize("token", ["chunk", "final"])
     def test_a_named_working_tree_mode_is_not_redirected_mid_plan(self, tmp_path, token):

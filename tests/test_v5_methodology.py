@@ -1163,7 +1163,10 @@ LAST_MEASURED_TOKENS = {
     # +34 on 2026-09-25 (review-friction): "Per-chunk commit is the contract" now spells out
     # review, fix, then commit, and the multi-chunk heuristic says a chunk committed first still
     # infers `chunk`. A READING, no ceiling.
-    "methodology/planning.md": 5804,
+    # +57 on 2026-09-28 (short-plan-tick): the tick definition admits a short
+    # plan's deferred chunks, and the short-plan bullet says to tick them at
+    # commit and why. A READING, no ceiling.
+    "methodology/planning.md": 5861,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
@@ -1734,8 +1737,12 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # take-the-next-step paragraph inside the saving; CLAUDE.md dropped the
     # requirements check the digest's stance lead already states and the
     # compact-preserve list the compact-time digest re-injects.
-    "framework": 3134,
-    "product": 2191,
+    # +11 on both, 2026-09-28 (short-plan-tick). A DECLARED RAISE: the digest's
+    # tick bullet gains "a short plan's earlier chunks at commit". Without it the
+    # bullet contradicts the inference, which reads unticked boxes, and a short
+    # plan never infers its boundary review. Owner-confirmed in session.
+    "framework": 3145,
+    "product": 2202,
 }
 
 #: Ceilings. HARD, like the per-file prose ceilings in this module and
@@ -1886,8 +1893,10 @@ INJECTED_FOOTPRINT_CEILINGS = {
     # budget. One over each reading, so nothing is banked.
     # 3281 -> 3135, 2222 -> 2192 on 2026-09-28 (opus-55-w1): ratcheted with the
     # cut in the reading table, one over each reading, nothing banked.
-    "framework": 3135,
-    "product": 2192,
+    # 3135 -> 3146, 2192 -> 2203 on 2026-09-28 (short-plan-tick): the declared
+    # raise in the reading table, one over each reading.
+    "framework": 3146,
+    "product": 2203,
 }
 
 

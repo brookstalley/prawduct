@@ -729,8 +729,9 @@ def infer_scope_from_branch(
     - A matched plan must be **live on this branch**: archived plans are never
       in the map, and a plan whose Status is entirely ticked matches only if
       this branch changed the plan file since it left the base branch. Boxes
-      are ticked per chunk, after each review, so every box is ticked by the
-      plan's own end-of-plan ``cumulative`` — rejecting on ticks alone turned
+      are ticked per chunk, after each review (a short plan's deferred chunks
+      at commit), so every box is ticked by the plan's own end-of-plan
+      ``cumulative`` — rejecting on ticks alone turned
       the scope off for exactly that review. But on gitflow a merged plan stays
       live until the release, and a follow-up branch reusing its exact name
       must not be graded against it: *this* answer feeds every
