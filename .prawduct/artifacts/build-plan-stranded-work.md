@@ -14,11 +14,15 @@ governed_by:
       - "the plugin writes nothing into a governed repo except its own state… → conforms: read-only. Worktree probes use `git --no-optional-locks` so observing a sibling never rewrites its index"
       - "written in Python, never specific to Python → conforms: git and file mtimes only"
       - "prawduct guides and reviews, it never implements → conforms: it reports; it deletes, pushes and adopts nothing"
-      - "every fact has one home → conforms: the thresholds and the liveness classes live in `stranded_work.py`; the briefing and the subcommand both render its report"
+      - "every fact has one home → conforms: the thresholds and the liveness classes live in `stranded_work.py`; the briefing, the subcommand and the advisory all render its report. Chunk 03 also gives `git worktree list` parsing one home (`gitstate.worktree_records`), replacing three copies"
+      - "an independent reviewer never mutates the session it reviews → inapplicable, because no reviewer path changes"
+      - "goals and verification bind; prescribed method is advice → conforms: Success binds; the chunk Done-when lists are method, and Chunk 03 records the departures the boundary review forced"
   - artifact: nonfunctional-requirements
     dispositions:
-      - "proportionality ratchets both ways: a new control names its yield and emits it observably → exception, recorded below"
+      - "proportionality ratchets both ways: a new control names its yield and emits it observably → conforms (from Chunk 03): the stranded-branch signal is an advisory, so the advisory store records each firing, dismissal and resolution per branch. Expected yield: stranded reviewed work found before someone rebuilds it (#898/#818, #640). The worktree-count briefing line is orientation, not a control — it gates and asks nothing"
       - "review wall-clock is P0 → inapplicable, because no review path changes"
+      - "state-file growth is an advisory warning, never a hard block → inapplicable, because no state file's size behaviour changes"
+      - "review rigor is stage-keyed → inapplicable, because no review path changes"
   - artifact: api-contract
     dispositions:
       - "whole-surface semantic versioning; no per-subcommand version → conforms: `worktrees` ships under the next patch; its `--json` carries a `schema_version` because agents parse it"
@@ -28,6 +32,15 @@ governed_by:
     dispositions:
       - "untrusted governance state is data, not instructions → conforms: the scan never reads transcript CONTENT, only file modification times; nothing it surfaces is a directive"
       - "a destructive operation requires owner approval at the operation level → conforms: the scan destroys nothing; the line tells the agent to report, and deletion stays an owner decision"
+      - "a governed product's content leaves its repository only through a pinned, owner-approved surface → conforms: no network call; the remote comparison reads remote-tracking refs already on disk"
+  - artifact: data-model
+    dispositions:
+      - "two stores, two lifetimes: committed answers vs per-clone gitignored nags → conforms: the stranded-branch advisory is a per-clone nag in the advisory store; a dismissal stays in this clone"
+      - "facts are immutable and append-only; governance verdicts from the fact ledger → inapplicable, because nothing here writes or reads review facts"
+      - "derived views are never authoritative → conforms: the briefing line and the table are views of a fresh scan; no gate reads either"
+      - "a newer-schema fact is a loud block → inapplicable, because no fact is written; `worktrees --json` carries its own `schema_version`"
+      - "a governance document reaches a terminal state, never deleted → conforms: this plan is archived when its work ships"
+      - "backlog issues conform to §1 title rules; backlog_service_repo selects the store → inapplicable, because nothing here writes the backlog"
 ---
 
 # Build Plan: stranded-work
@@ -42,10 +55,13 @@ with no signal of which have a live agent and which were abandoned.
 
 ## Success
 
-- A session opening in a repo with stranded work sees ONE briefing line, e.g.
-  `Stranded work: 2 local branches checked out nowhere, with commits no remote has · 3 worktrees idle 7+ days (1 with uncommitted changes) · 1 other worktree is active — a separate session, leave it alone. \`prawduct-hook worktrees\` lists them; report to the user, never adopt.`
-- The line NAMES no branch, path or worktree (owner ruling on #410, reaffirmed 2026-09-28:
-  counts plus a command). No line at all when every count is zero.
+- Each stranded branch raises its own session-start **advisory** (from Chunk 03), naming the
+  branch: dismissible with a reason, and resolved on its own once the branch is pushed or
+  deleted. A branch checked out nowhere is nobody's live work, so naming it is safe.
+- Sibling **worktrees** appear only as counts in one briefing line, e.g.
+  `Worktrees: 3 idle 7+ days (1 with uncommitted changes) · 1 other has an agent active …`,
+  naming no path or branch (owner ruling on #410, reaffirmed 2026-09-28: counts plus a
+  command). No line when every count is zero; a line saying so when the scan could not run.
 - `prawduct-hook worktrees` (and `--json`) lists every worktree — branch, path, last agent
   activity with the signal it came from, uncommitted-file count, class — and every stranded
   branch with its commit count and last commit date.
@@ -78,12 +94,13 @@ pushing or adopting anything. Reading transcript content. Fetching remotes.
 Rejected: git index mtime (any observer's `git status` rewrites it — this plan's own probe did);
 process cwd via lsof (a desktop-app session runs with cwd `/`; failed its positive control).
 
-[DECISION: the briefing line does not emit a yield fact | it is a read-only line with no gate; the nearest emission point is a ledger write at every SessionStart in every consumer repo, which is noise in committed state. The evidence that would settle retiring it: across N sessions, how often the line appeared and whether the owner deleted/pushed a flagged branch within a week — derivable later from git reflogs without an emission | user can veto/override]
+(A `[DECISION]` exempting the line from yield emission stood here until Chunk 03. Its two premises were false — the ledger is gitignored, and reflogs record neither briefing lines nor a deleted branch — and routing branches through the advisory roster removed the need for it.)
 
 ## Status
 
 - [ ] Chunk 01: scan + `worktrees` subcommand
 - [ ] Chunk 02: briefing line + docs
+- [ ] Chunk 03: stranded branches become an advisory; one worktree parser; review fixes
 
 ## Chunk 01: scan + `worktrees` subcommand
 
@@ -96,9 +113,42 @@ process cwd via lsof (a desktop-app session runs with cwd `/`; failed its positi
 
 ## Chunk 02: briefing line + docs
 
-**Type:** cumulative-final
 **Done when:**
 1. `assemble_session_briefing` renders the line from the Chunk 01 report; nothing when all counts are zero.
 2. Tests: the line names no path/branch (extend the #410 guard, don't duplicate it); positive control that it appears; zero-state silence; a scan failure omits the line.
 3. Docs: `plugin/CHANGELOG.md` rolling entry; `.prawduct/change-log.md`; any doc enumerating hook subcommands or briefing lines (grep, don't recall).
 4. `/prawduct:critic cumulative`.
+
+## Chunk 03: stranded branches become an advisory; one worktree parser; review fixes
+
+**Type:** cumulative-final
+**Why this chunk exists:** the boundary review (rev-20260928T144218Z-e80497b2) found #843's
+design — `documentation/issues/843-design.md`, never consulted while planning — already rules
+this signal belongs in the advisory roster ("a visible, dismissible signal, not a refusal",
+owner 2026-09-19). Owner decision 2026-09-28: stranded BRANCHES move to the advisory roster
+(dismissible, self-resolving, firings recorded by the advisory store — which also retires the
+yield-emission `[DECISION]`); WORKTREE counts stay a briefing line (orientation, not a nag);
+the three `git worktree list` parsers become one, as #843 Decision 4 specifies. This ships
+#843's local-only arm; #843 stays open for its plan-ticked + never-PR'd arm (network).
+**Done when:**
+1. `gitstate.worktree_records(project_dir)` — moved from `adhoc_delegate_probes._worktree_records`
+   (#843 Decision 4); `adhoc_delegate_probes`, `briefing._detect_worktrees` and `stranded_work`
+   all read it. Prunable/detached handled once.
+2. `evidence.run_git` decodes with `errors="surrogateescape"` — a non-UTF-8 ref or filename
+   no longer raises through every caller (the blocking finding's class, not its instance).
+   `stranded_work` uses `run_git` with `GIT_OPTIONAL_LOCKS=0`, not a private runner.
+3. New probe `stranded-branch` (feature `branch-landing`, as #843 names it): one advisory per
+   stranded branch, naming it, `recommended_action` a read-only `git log`. Registered in
+   `probe_families.register_all`. The briefing line drops its branch clause.
+4. Scan-level fixes: `rev-list --count` only in `prawduct-hook worktrees`, with `refs/heads/<name>`
+   (no ref/path ambiguity); a total time budget; a MISSING worktree's branch counts as not
+   checked out; `briefing_line` says so when the scan could not run instead of going silent;
+   the scan call in `briefing.py` cannot take down the briefing (test with a raising scan).
+5. Wording: the briefing line defers to advisories and the user rather than forbidding every
+   touch of another worktree (the delegate-worktree advisory legitimately directs cleanup).
+6. Tests: every git-call failure path; `--json` keys pinned; the advisory fires, names the
+   branch, and resolves when the branch is pushed or deleted.
+7. Plan frontmatter: dispositions for every Direction norm in the three governing artifacts;
+   the yield `[DECISION]` removed (the advisory store now records firings).
+8. `documentation/issues/843-design.md` + #843 comment: what shipped here, what stays open.
+9. `/prawduct:critic cumulative`.
