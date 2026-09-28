@@ -5,6 +5,14 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-28: develop opens 3.6.2-dev.5
+
+<!-- prawduct: type=chore | scope=dev-track-bump-3.6.2-dev.5 -->
+
+The dev track's version moves from `3.6.2-dev.4` to `3.6.2-dev.5` in the four carriers, so repos
+on the develop track pick up `opus-55-w2-hook-gate-text`. Owner-directed, 2026-09-28. It rides this
+PR.
+
 ## 2026-09-28: hook and gate text is retuned for Opus 5.5 (audit wave W2)
 
 <!-- prawduct: type=feature | scope=opus-55-w2-hook-gate-text -->
