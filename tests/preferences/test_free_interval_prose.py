@@ -95,7 +95,7 @@ def test_the_next_action_text_does_not_prescribe_an_unconditional_round():
     the condition survives, phrased against the two tokens that carry it.
     """
     # Read from the composed constants, not the module's source text: the
-    # clause is built from string pieces (`_FIX_ORDER` and its neighbours), so a
+    # clause is built from string pieces (`gates.FIX_ORDER` and its neighbours), so a
     # source grep sees it split across literals and cannot find it.
     from lib import critic_consolidate as cc
 

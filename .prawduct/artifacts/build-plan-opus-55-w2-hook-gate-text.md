@@ -9,12 +9,14 @@ depends_on:
 governed_by:
   - artifact: architecture
     dispositions:
-      - "every fact has one home → conforms, and it is A-7's point: `gates.blocking_remedy_lines` composes `critic_consolidate._FIX_ORDER` instead of holding a second wording of the fix order"
+      - "every fact has one home → conforms, and it is A-7's point: `gates.blocking_remedy_lines` composes `gates.FIX_ORDER` instead of holding a second wording of the fix order; the constant moved to `gates` so the import runs in the documented direction"
       - "authority fails closed; advice fails soft → conforms: only text changes; no verdict, exit code or gate predicate moves. The Stop gate's waiver footer is rendered from the blockers already raised, so it cannot waive what did not block"
       - "an independent reviewer never mutates the session it reviews → inapplicable, because only the text of three dispatch directives changes"
       - "goals and verification bind; prescribed method is advice → conforms: the ruled decisions bind; where a slice's replacement text would drop content a builder or reviewer needs (A-7's 'commit the verified tree verbatim', A-28's gate-specific waiver conditions), the content is kept in plain words and the departure is recorded in the chunk"
       - "the plugin writes nothing into a governed repo except… → inapplicable, because nothing new is written"
-      - "local-first governance coordination; written in Python, never specific to Python; guides and never implements → inapplicable, because no mechanism changes"
+      - "local-first governance coordination → inapplicable, because no coordination mechanism changes"
+      - "written in Python, never specific to Python → inapplicable, because no gate's language dispatch changes"
+      - "prawduct guides and reviews, it never implements → inapplicable, because only framework text and the framework's own waiver footer change"
   - artifact: observability-strategy
     dispositions:
       - "stable severity-prefix vocabulary → conforms: `NEXT-ACTION:`, `PRAWDUCT:`, `BLOCKED —` and the gate attributions are kept; only the prose after them changes, and `BLOCKING` stays as the severity token"
@@ -24,6 +26,7 @@ governed_by:
     dispositions:
       - "review wall clock is P0 → conforms: one chunk, one boundary review; A-29 (F6) is measured by `review-stats` rounds-per-PR before and after W3, per the ruling"
       - "proportionality ratchets both ways → conforms: this wave deletes text and adds no control"
+      - "state-file growth is an advisory, never a block → inapplicable, because no state file or its threshold changes"
       - "review rigor is stage-keyed → inapplicable, because no severity rule changes; A-29 removes only the closing 'spend this on…' sentence of each directive"
   - artifact: program-purpose-and-cession
     dispositions:
@@ -42,7 +45,7 @@ at the moment it acts. It is also the most shouted and the most repeated:
   The batch-fix directive above it states the same fix order again, and it carries a cross-reference
   that dangles on one of its two emission paths (A-6).
 - `gates.blocking_remedy_lines` holds its own wording of the fix order instead of composing
-  `_FIX_ORDER`, which is the fix order's one home (A-7).
+  the fix order's one home (A-7).
 - The Stop gate coaches reflection cadence each time it blocks (A-27). It also prints a waiver
   recipe per blocker, so two blocking gates print it twice (A-28).
 - Three reviewer dispatch directives end with a "spend this on…" nudge (A-29, F6).
@@ -59,11 +62,13 @@ ruled on 2026-09-28 (the artifact's § Rulings).
   its old length.
 - `_BATCH_FIX_DIRECTIVE` carries A-6's wording and no positional cross-reference. The parsed
   free-write list (`TestBatchFixDirective`) still matches `is_judgeable_path`.
-- `blocking_remedy_lines`' standard remedy contains `_FIX_ORDER` verbatim, and the superseded
-  branches are unchanged.
+- `blocking_remedy_lines`' standard remedy contains the fix order verbatim, and the superseded
+  branches are unchanged. The fix order's one home is `gates.FIX_ORDER`, which
+  `critic_consolidate` imports in its documented direction.
 - The reflection blocker carries A-27's one line. The Stop gate prints one escape-hatch footer after
-  the `BLOCKED` list. The footer names only the keys of the gates that blocked, as one JSON object,
-  so two waivers no longer overwrite each other. The learnings-budget "no waiver" line is kept.
+  the `BLOCKED` list. Its one JSON object holds the blocking gates' keys plus the waivers already
+  in the file, so running it erases nothing. The reader is told to drop any gate they can satisfy.
+  The learnings-budget "no waiver" line is kept.
 - The three dispatch directives lose their closers, and the docstrings that argued for the closers
   are corrected.
 - `ADVISORY_RELAY_TEXT` ends with A-30's sentence.
@@ -101,8 +106,9 @@ Every change has replacement text, and the owner has ruled on it.
 - Each per-blocker waiver recipe was an `echo … >` line. When two gates blocked together, running
   both recipes left only the second key in the file. The footer writes every key as one object, and
   a test runs the printed recipe and expects the block to clear.
-- `KNOWN_WAIVER_KEYS` was a second list of the waiver keys, kept by hand. It is now derived from
-  the footer's gate-to-key map, so adding a waivable gate is one entry.
+- `KNOWN_WAIVER_KEYS` was a second list of the waiver keys, kept by hand, and each gate typed its
+  key again at its check site. Both now read the footer's gate-to-key map, so adding a waivable
+  gate is one entry. A test fails if a check site types a key.
 - `documentation/issues/855-design.md` (open, unbuilt) told its future gate to add its own
   escape-hatch paragraph and a key to the old set. It now points at the map and the footer.
 - The banner's "tell the user what changed" relay was checked against A-30 and left alone. It
@@ -110,7 +116,7 @@ Every change has replacement text, and the owner has ruled on it.
 
 ## Status
 
-- [ ] Chunk 01: hook and gate text (A-5, A-6, A-7, A-27, A-28, A-29, A-30)
+- [x] Chunk 01: hook and gate text (A-5, A-6, A-7, A-27, A-28, A-29, A-30)
 
 ## Chunk 01: hook and gate text
 
@@ -126,5 +132,17 @@ Every change has replacement text, and the owner has ruled on it.
 **Also check:** every other site that emits a message for the same state. That means
 `building.md`'s "NEXT-ACTION says when" and `review-cycle.md`'s "exits 3". Search by the state, not
 by the words. A sentence another wave owns is fixed now only if this wave made it false.
+**Probe outcome (2026-09-28):** two probes, each run on the old text as a control and on the new
+text, with fresh agents answering from the prompt alone.
+- **A-5, on Opus 5.5.** The agent saw a 0-blocking, 3-warning, 2-note close. Under both texts it
+  fixed the three warnings in one batch, accepted both notes by disposition, ran one verify pass
+  and treated exit 3 as the answer. There is no regression, but the control didn't over-fix, so
+  this can't show that A-5 helps.
+- **A-29, on Sonnet.** The scenario was a class finding fixed at the named site only, plus a claimed
+  test that doesn't exist. Under both texts the reviewer left both findings out of `resolutions`,
+  named the unfixed class member, and raised the untested fallback as BLOCKING. There is no
+  regression without the closers. The new-text run also kept its `resolutions` list empty, where
+  the control wrote "unresolved" entries into it.
+
 **Done when:** each Success bullet holds, the suite passes, and the probe has run. Critic: this is
 the plan's only chunk, so its review is the branch's `cumulative`.

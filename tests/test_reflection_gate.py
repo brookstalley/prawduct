@@ -36,6 +36,7 @@ import importlib.machinery
 import importlib.util
 import json
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -452,7 +453,7 @@ class TestTheBlockerText:
 def _echoed_waiver(footer: str) -> dict:
     """The JSON object the footer's `echo` line would write."""
     (line,) = [ln for ln in footer.splitlines() if ln.strip().startswith("echo '")]
-    return json.loads(line.split("'")[1])
+    return json.loads(shlex.split(line)[1])
 
 
 class TestTheWaiverFooter:
@@ -486,8 +487,37 @@ class TestTheWaiverFooter:
     def test_nothing_waivable_prints_no_footer(self):
         """The budget floor, the clear verdict and `trivial` have no waiver, so
         a block made only of them offers none."""
-        for gate_ids in ([], ["clear-verdict"], ["learnings-budget", "trivial", None]):
+        for gate_ids in ([], ["clear-verdict"], ["learnings-over-budget", "trivial", None]):
             assert _hook._waiver_footer(gate_ids, True) == "", gate_ids
+
+    def test_a_waiver_already_in_the_file_survives_the_printed_recipe(
+        self, tmp_path, capsys
+    ):
+        """The recipe replaces the file, so it must carry what is already
+        there: a waiver declared at an earlier Stop, dropped by the next
+        recipe, re-blocks its gate and sends the reader round a loop."""
+        repo = _repo(tmp_path)
+        _mark_base(repo)
+        _commit_code(repo)
+        waived = repo / ".prawduct" / ".gates-waived"
+        waived.write_text(json.dumps({"pr": "merge is not happening today"}))
+        rc, err = _stop(repo, capsys)
+        assert rc == 2
+        recipe = _echoed_waiver(err[err.index("  Escape hatch"):])
+        assert recipe["pr"] == "merge is not happening today"
+        assert "reflection" in recipe
+
+    def test_every_gate_reads_its_waiver_key_from_the_map(self):
+        """The footer prints keys from `_WAIVER_KEY_BY_GATE`; a gate that
+        tested a typed literal instead could drift from it, and the printed
+        recipe would then stop clearing that gate with the suite green."""
+        source = (_ROOT / "bin" / "prawduct-hook").read_text()
+        typed = [
+            key for key in set(_hook._WAIVER_KEY_BY_GATE.values())
+            if f'"{key}" in waivers' in source or f"waivers['{key}']" in source
+        ]
+        assert not typed, f"waiver keys typed at a check site: {sorted(typed)}"
+        assert "_WAIVER_KEY_BY_GATE[\"reflection\"] in waivers" in source
 
     def test_a_pending_review_is_discarded_never_deleted(self):
         footer = _hook._waiver_footer(["critic"], True)

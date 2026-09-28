@@ -1895,10 +1895,8 @@ class TestBlockingRemedyLines:
         fixes, hold the commit, run exactly one verify) is composed from its one
         home rather than worded here, and the remedy adds the half the order
         does not state: commit the tree that passed, verbatim."""
-        from lib import critic_consolidate
-
         text = self._text([{"fid": "R-1"}])
-        assert critic_consolidate._FIX_ORDER in text
+        assert gates.FIX_ORDER in text
         assert "Commit the tree it verified verbatim" in text
 
     def test_mixed_set_keeps_the_standard_remedy_and_adds_the_exception(self):

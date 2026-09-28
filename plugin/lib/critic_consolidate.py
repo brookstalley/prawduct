@@ -74,7 +74,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import coverage_algebra, critic_marker, evidence, gitstate, ledger
+from . import coverage_algebra, critic_marker, evidence, gates, gitstate, ledger
 from .core import atomic_write_text
 
 PARTIALS_DIRNAME = ".critic-partials"
@@ -288,22 +288,6 @@ _CACHE_WARM_DIRECTIVE = (
     " expire and re-reads its whole context when the partials land."
 )
 
-#: The fix order, stated once. Every directive that tells a builder how to land
-#: fixes composes it, so no carrier can state a different order: fix in the
-#: working tree, verify the UNCOMMITTED fixes, then commit. Committing first
-#: leaves a clean tree, and mid-plan inference then has no uncommitted fix to
-#: anchor a verify pass on.
-_FIX_ORDER = (
-    "make the fixes in the working tree, run one `/prawduct:critic"
-    " verify-resolutions` over the uncommitted fixes, then land them in one commit"
-)
-#: The one exception to :data:`_FIX_ORDER`, kept beside it: after a boundary
-#: `cumulative`, inference's rule 1b recognizes a committed fix.
-_FIX_ORDER_AFTER_CUMULATIVE = (
-    "(A fix committed after a `cumulative` still infers that pass, but committing"
-    " first re-anchors it on committed HEAD.)"
-)
-
 #: Appended wherever a caller meets a review that HAS findings — the moment the
 #: fix strategy is chosen, and the only moment at which stating it changes what
 #: happens next.
@@ -349,10 +333,10 @@ _FIX_ORDER_AFTER_CUMULATIVE = (
 #: the other. Anything this text needs the reader to have must be inside it.
 _BATCH_FIX_DIRECTIVE = (
     " Decide every finding in one pass: accept or file what you won't fix, and"
-    " for what you will, " + _FIX_ORDER + ". Only unresolved BLOCKING findings"
+    " for what you will, " + gates.FIX_ORDER + ". Only unresolved BLOCKING findings"
     " gate anything; the verify pass is owed only if the fixes touch judgeable"
     " files and no later review the plan owes will carry them. "
-    + _FIX_ORDER_AFTER_CUMULATIVE +
+    + gates.FIX_ORDER_AFTER_CUMULATIVE +
     " Free to write at any time: everything under `.prawduct/` (change-log,"
     " backlog, project-state, build plans), `.claude/settings.json`, and `.md`"
     " files outside `skills/`, `methodology/`, `templates/` and a root"
@@ -589,7 +573,7 @@ _RIDES_NEXT_REVIEW_LEAD = (
 #: its own fix. The re-derivation pointer still ships, once, inside the clause
 #: that makes the claim needing re-deriving.
 _IF_YOU_FIX_SOME = (
-    " If you fix some, " + _FIX_ORDER + ". Dispatch exits 3 (`no review"
+    " If you fix some, " + gates.FIX_ORDER + ". Dispatch exits 3 (`no review"
     " needed`) when the fixes touch nothing judgeable, so dispatching is how you"
     " find out, and exit 3 is the answer, not a cue to retry in another mode."
     " Judge by the gate after the commit, not by output printed before it."
@@ -920,7 +904,7 @@ def next_action_line(
             f"{blocking} BLOCKING finding(s) gate this work. Fix them, and decide"
             " every warning and note in the same pass (fix, or accept with"
             f' `prawduct-hook disposition {ref} <fid|oid> --accept "<reason>"`,'
-            " which needs no review and moves no tree): " + _FIX_ORDER + "."
+            " which needs no review and moves no tree): " + gates.FIX_ORDER + "."
             + _RIDE_ALONG_ROUTE
             + price
         )
@@ -1010,10 +994,9 @@ def next_action_line(
 #: and writes the same unchecked ``fixed`` it was going to write, because
 #: nothing made it recognize THIS disposition as an instance. So the general
 #: sentence is followed by the act to perform ("name the evidence you read")
-#: and instances concrete enough to pattern-match against. It no longer ends by
-#: telling the reviewer where to spend its attention: the act and the instances
-#: carry the rule, and a closing nudge aimed at the reader's surest finding is
-#: coaching an Opus-5-class reviewer does not need.
+#: and instances concrete enough to pattern-match against. The act and the
+#: instances carry the rule; where the reviewer spends its attention is left to
+#: the reviewer.
 RESOLUTION_IS_A_CLAIM_DIRECTIVE = (
     "PRAWDUCT: a resolution is a claim about the tree, and it WEAKENS a gate —"
     " `fixed` and `waived` BOTH lift a blocking finding out of"
@@ -2631,7 +2614,6 @@ def working_tree_interval_base(
     ``why`` collects ``gates.covered_frontier``'s could-not-look sentences, so
     the caller can say why an interval was not extended.
     """
-    from . import gates  # noqa: PLC0415 — lazy; gates is heavy and one-way
 
     frontier_why: list[str] = []
     absent: list[str] = []
@@ -2669,7 +2651,6 @@ def merge_base_start_reason(absent: "str | None") -> str:
     different actions. An open blocker is named with its only remedy, since a
     ``chunk`` review records no resolutions and will not clear it.
     """
-    from . import gates  # noqa: PLC0415 — lazy; gates is heavy and one-way
 
     if absent == gates.FRONTIER_ABSENT_BLOCKED:
         return (
@@ -3742,7 +3723,6 @@ def validate_manifest(data) -> tuple[bool, str]:
     manifest can no longer produce something consolidation trusts (CRT-W2NV
     regression pin).
     """
-    from . import gates  # noqa: PLC0415 — lazy; gates is heavy and one-way
 
     if not isinstance(data, dict):
         return False, "manifest is not a JSON object"
@@ -5134,7 +5114,6 @@ def consolidate(project_dir: Path) -> int:
         complete; the manifest is left in place so the fix can retry (fact
         appends already made are healed by the id-idempotency probe).
     """
-    from . import gates  # noqa: PLC0415 — lazy; gates is heavy
 
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     mpath = manifest_path(prawduct_dir)

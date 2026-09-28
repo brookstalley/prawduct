@@ -209,16 +209,20 @@ def test_every_carried_finding_is_named_not_just_counted():
 def test_blocking_arm_alone_would_lie_when_a_blocker_was_inherited():
     """The finding that ordering `if blocking:` first produced.
 
-    That arm says "nothing else here does". With an inherited blocker it is
-    false, and a builder who believes it fixes only this round's findings,
-    re-verifies, and anchors the next pass on THIS review — orphaning the
-    inherited id onto a superseded round.
+    That arm names only this review's blockers. With an inherited blocker, a
+    builder who believes it fixes only this round's findings, re-verifies, and
+    anchors the next pass on THIS review — orphaning the inherited id onto a
+    superseded round. So the carried arm must win, and the plain arm's text
+    must not appear at all.
     """
     carried = [{"review_id": "rev-A", "fid": "R-12"}]
 
     line = cc.next_action_line("rev-B", 2, 0, 0, None, carried=carried)
+    plain = cc.next_action_line("rev-B", 2, 0, 0, None)
+    plain_lead = plain.split(".")[0]
 
-    assert "nothing else here does" not in line
+    assert plain_lead in plain and plain_lead.startswith("2 BLOCKING")
+    assert plain_lead not in line
     assert "R-12" in line
     assert "2 BLOCKING finding(s) of its own" in line
 

@@ -13,11 +13,12 @@ Wave W2 of `opus-55-prompt-audit-2026-09.md` (A-5, A-6, A-7, A-27 to A-30), whic
 in full on 2026-09-28. NEXT-ACTION states the decision, the command and the cost, and stops
 re-arguing them: the common warnings close drops from about 347 to 232 words, with no capitals
 except the `BLOCKING` severity token. The batch-fix directive loses its dangling pointer to
-NEXT-ACTION. `gates.blocking_remedy_lines` composes `critic_consolidate._FIX_ORDER` instead of
-restating it. The Stop gate prints one escape-hatch footer after the `BLOCKED` list in place of a
-recipe per blocker. The footer writes every blocking gate's key as one JSON object, because two
-`echo … >` recipes overwrote each other's file. `KNOWN_WAIVER_KEYS` is now derived from the
-footer's map. The reflection blocker's cadence paragraph is one line. Three reviewer dispatch
+NEXT-ACTION. `gates.blocking_remedy_lines` composes the fix order instead of restating it. The
+Stop gate prints one escape-hatch footer after the `BLOCKED` list in place of a recipe per
+blocker. The footer writes one JSON object: the blocking gates' keys plus the waivers
+already in the file, because each `echo … >` recipe replaced the file and erased the others. Every
+gate's waiver check, `KNOWN_WAIVER_KEYS` and the footer read one gate-to-key map. The fix order's
+one home moves to `gates.FIX_ORDER`, so `gates` no longer reaches into `critic_consolidate`. The reflection blocker's cadence paragraph is one line. Three reviewer dispatch
 directives lose their "spend this on…" closers (F6: compare `review-stats` rounds per PR before
 and after W3). The briefing's advisory relay ends by saying the user's own request goes ahead.
 What applying it found is in the plan. Plan: `build-plan-opus-55-w2-hook-gate-text.md`.

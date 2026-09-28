@@ -2261,6 +2261,24 @@ def transfer_remedy(transfer: dict, tests_reason: "str | None") -> str:
     )
 
 
+#: The fix order, stated once. Every directive that tells a builder how to land
+#: fixes composes it — :func:`blocking_remedy_lines` here and the review-close
+#: directives in ``critic_consolidate`` — so no carrier can state a different
+#: order: fix in the working tree, verify the UNCOMMITTED fixes, then commit. Committing first
+#: leaves a clean tree, and mid-plan inference then has no uncommitted fix to
+#: anchor a verify pass on.
+FIX_ORDER = (
+    "make the fixes in the working tree, run one `/prawduct:critic"
+    " verify-resolutions` over the uncommitted fixes, then land them in one commit"
+)
+#: The one exception to :data:`FIX_ORDER`, kept beside it: after a boundary
+#: `cumulative`, inference's rule 1b recognizes a committed fix.
+FIX_ORDER_AFTER_CUMULATIVE = (
+    "(A fix committed after a `cumulative` still infers that pass, but committing"
+    " first re-anchors it on committed HEAD.)"
+)
+
+
 def blocking_remedy_lines(unresolved: "list[dict] | None") -> list[str]:
     """The whole remedy a blocking verdict prescribes, as unindented lines.
 
@@ -2276,7 +2294,7 @@ def blocking_remedy_lines(unresolved: "list[dict] | None") -> list[str]:
     verifying once is sound — a verify pass reads the dirty tree so long as no
     commit has moved its anchor, which is what the fix order buys — and the
     verified tree is what gets committed. The order is composed from
-    ``critic_consolidate._FIX_ORDER``, its one home, not restated here.
+    :data:`FIX_ORDER`, its one home, not restated here.
 
     Three cases, because the standard remedy is *wrong* for a superseded
     blocker: one carried by a review fact no verify-resolutions pass will
@@ -2294,15 +2312,11 @@ def blocking_remedy_lines(unresolved: "list[dict] | None") -> list[str]:
     Advice, not verdict: a superseded blocker blocks exactly as hard as any
     other, and no exit code moves.
     """
-    # Lazy: critic_consolidate imports this module lazily too, and the fix
-    # order must be the one it composes, not a second wording of it.
-    from . import critic_consolidate  # noqa: PLC0415
-
     entries = [e for e in (unresolved or []) if isinstance(e, dict)]
-    # One line per sentence, never wrapped mid-sentence: the fix order carries a
-    # backticked command, and a wrap inside it hands the reader half a command.
+    # The fix-order line is never wrapped: it carries a backticked command, and
+    # a wrap inside it hands the reader half a command.
     standard = [
-        f"Fix them: {critic_consolidate._FIX_ORDER}.",
+        f"Fix them: {FIX_ORDER}.",
         "The pass records the resolution facts, so this same evidence then passes",
         "with no full re-review. Commit the tree it verified verbatim: content it",
         "has not seen leaves the fix outside what it anchored (review-cycle.md",

@@ -542,21 +542,31 @@ _WAIVER_KEY_BY_GATE = {
 }
 
 
-def _waiver_footer(gate_ids: "list[str | None]", review_pending: bool) -> str:
+def _waiver_footer(
+    gate_ids: "list[str | None]", review_pending: bool, existing: "dict | None" = None
+) -> str:
     """The one escape-hatch paragraph printed after the ``BLOCKED`` list.
 
-    One footer rather than a copy per blocker: two blocking gates used to print
-    the recipe twice, which made the waiver the loudest thing in the message,
-    and each copy's `echo … >` overwrote the other's file. So the keys of every
-    waivable gate that blocked go into ONE object. Empty when nothing that
-    blocked can be waived.
+    One footer for the whole block, because the recipe is the same for every
+    gate and only the key differs. Its `echo … >` replaces `.gates-waived`, so
+    the object it prints carries every waiver already in the file as well as
+    the keys of the gates blocking now; anything less would erase a waiver a
+    reader declared at an earlier Stop. The reader keeps only the keys whose
+    gate genuinely cannot be satisfied. Empty when nothing that blocked can be
+    waived.
     """
     keys = list(dict.fromkeys(
         _WAIVER_KEY_BY_GATE[g] for g in gate_ids if g in _WAIVER_KEY_BY_GATE
     ))
     if not keys:
         return ""
-    body = ", ".join(f'"{k}": "reason — be specific"' for k in keys)
+    carried = {
+        k: v for k, v in (existing or {}).items()
+        if isinstance(k, str) and isinstance(v, str) and k not in keys
+    }
+    body = json.dumps(
+        {**carried, **{k: "reason — be specific" for k in keys}}, ensure_ascii=False
+    ).replace("'", "'\\''")
     discard = (
         "  For an unfinished review, run `prawduct-hook critic-discard` first: it archives\n"
         "  reviewer output and names the `critic-restore <id>` that brings the review\n"
@@ -565,10 +575,16 @@ def _waiver_footer(gate_ids: "list[str | None]", review_pending: bool) -> str:
         if review_pending and "critic" in keys
         else ""
     )
+    kept = (
+        "  The object carries over the waivers already in the file.\n"
+        if carried
+        else ""
+    )
     return (
-        "  Escape hatch: if a gate above genuinely cannot be satisfied this session,\n"
-        "  waive it with a specific reason:\n"
-        f"    echo '{{{body}}}' > .prawduct/.gates-waived\n"
+        "  Escape hatch: a gate above that genuinely cannot be satisfied this session\n"
+        "  can be waived with a specific reason. Drop the key of any gate you can satisfy:\n"
+        f"    echo '{body}' > .prawduct/.gates-waived\n"
+        + kept
         + discard
         + "  Empty reasons are rejected; the file clears at the next session boundary\n"
         "  (a fresh start or /clear), so it outlives a resume/compact/fork. When waiving\n"
@@ -2740,8 +2756,8 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
 
     reflection_would_block = reflection_span["judgeable"] and not reflection_shape_ok
     if reflection_would_block:
-        if "reflection" in waivers:
-            waiver_notes.append(f"reflection: waived ({waivers['reflection']})")
+        if _WAIVER_KEY_BY_GATE["reflection"] in waivers:
+            waiver_notes.append(f"reflection: waived ({waivers[_WAIVER_KEY_BY_GATE['reflection']]})")
         else:
             _missing_lines = "".join(f"    - {m}\n" for m in reflection_missing)
             blockers.append(_attributed("reflection",
@@ -2819,8 +2835,10 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     _work_span = reflection_span
     _rules_changed = any(_touches_rules(f) for f in _work_span["changed"])
     if _judgeable_work and _learnings_state in _unmigrated_states:
-        if "learnings" in waivers:
-            waiver_notes.append(f"learnings: waived ({waivers['learnings']})")
+        if _WAIVER_KEY_BY_GATE["learnings-unmigrated"] in waivers:
+            waiver_notes.append(
+                f"learnings: waived ({waivers[_WAIVER_KEY_BY_GATE['learnings-unmigrated']]})"
+            )
         else:
             # TWO states reach this gate and they are not the same failure, so
             # they do not get the same sentence. In `both` the rules tree exists
@@ -3175,7 +3193,6 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # separates an in-flight review from an abandoned one, so the self-heal only
     # runs once the background reviewers have landed.
     abandoned_critic = False
-    critic_review_pending = False
     marker_present = False
     if has_changes and has_build_plan and not doc_only and not designer_handoff_skip:
         try:
@@ -3183,9 +3200,9 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
         except Exception:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
             marker_present = False
     if marker_present:
-        if "critic" in waivers:
+        if _WAIVER_KEY_BY_GATE["critic"] in waivers:
             waiver_notes.append(
-                f"critic: waived ({waivers['critic']}) — .critic-active marker still present"
+                f"critic: waived ({waivers[_WAIVER_KEY_BY_GATE['critic']]}) — .critic-active marker still present"
             )
         elif defer_active:
             # Reviewers still running (background_tasks non-empty): don't self-heal
@@ -3198,10 +3215,9 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
             ))
         else:
             # A pending review holds reviewer output on disk, so the waiver
-            # footer (`_waiver_footer`) must name `critic-discard`, never a bare
+            # footer (`_waiver_footer`) names `critic-discard`, never a bare
             # `rm`: it archives what is there and prints the `critic-restore <id>`
             # that brings it back (lib/critic_marker, "Explicit override").
-            critic_review_pending = True
             try:
                 state, missing = _critic_consolidate().pending_state(prawduct_dir)
             except Exception:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
@@ -3387,8 +3403,8 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
 
     if critic_would_block:
         verdict_status = critic_verdict.get("status", "")
-        if "critic" in waivers:
-            waiver_notes.append(f"critic: waived ({waivers['critic']})")
+        if _WAIVER_KEY_BY_GATE["critic"] in waivers:
+            waiver_notes.append(f"critic: waived ({waivers[_WAIVER_KEY_BY_GATE['critic']]})")
         elif verdict_status == "schema-ahead":
             blockers.append(_attributed("critic",
                 "CRITIC REVIEW (evidence from a newer plugin): "
@@ -3589,8 +3605,8 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
             pass
 
     if pr_would_block:
-        if "pr" in waivers:
-            waiver_notes.append(f"pr: waived ({waivers['pr']})")
+        if _WAIVER_KEY_BY_GATE["pr"] in waivers:
+            waiver_notes.append(f"pr: waived ({waivers[_WAIVER_KEY_BY_GATE['pr']]})")
         else:
             blockers.append(_attributed("pr",
                 f"PR REVIEW: PR exists for branch '{pr_block_branch}' but no valid review evidence found.\n"
@@ -3676,7 +3692,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
         for blocker in blockers:
             print(blocker, file=sys.stderr)
         _footer = _waiver_footer(
-            [getattr(b, "gate", None) for b in blockers], critic_review_pending
+            [getattr(b, "gate", None) for b in blockers], abandoned_critic, waivers
         )
         if _footer:
             print(_footer, file=sys.stderr)

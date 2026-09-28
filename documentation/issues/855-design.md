@@ -297,9 +297,9 @@ anything, and enough for a human reviewing the block to independently confirm or
 - `plugin/bin/prawduct-hook:22-24` (module docstring, the `.prawduct/`-only governing invariant),
   `:2304-2305` (`transcript_path` documented, confirmed unread elsewhere by `git grep`) — the
   citation for ruling out transcript-based detection (Grounding facts, Decision 1, Scope-out).
-- `plugin/bin/prawduct-hook:2439-2450` (`KNOWN_WAIVER_KEYS`, the unknown-waiver-key stderr note),
-  `:2574` / `:3005` (also `:3208`) / `:3419` (the `reflection` / `critic` / `pr` blocker escape-
-  hatch paragraphs) — the waiver convention Decision 3 extends by one key.
+- `plugin/bin/prawduct-hook`: `_WAIVER_KEY_BY_GATE` (the gate-to-key map that `KNOWN_WAIVER_KEYS`,
+  every gate's waiver check and the `_waiver_footer` escape-hatch paragraph all read) — the waiver
+  convention Decision 3 extends by one key.
 - `plugin/hooks/gates.json` — the gate registry this design adds one entry to, and its own stated
   purpose (new-gate attribution for the version-delta banner and Stop-hook blocking messages).
 - Issue #843's design document (`documentation/issues/843-design.md`) — the structural precedent

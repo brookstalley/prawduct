@@ -26,9 +26,9 @@ changed what you did". Existing repos keep their current header, and it still li
 **`opus-55-w2-hook-gate-text`**: **gate and review output is shorter and plainer.** The
 NEXT-ACTION line after a review states the decision, the command and the cost, without capitals
 or re-argued rules. When the Stop hook blocks, the waiver recipe appears once, after the list of
-blockers. It names every blocking gate's key in one `.gates-waived` object, so running it waives
-all of them. Previously each blocker printed its own `echo … >` line, and running two kept only
-the last. The session briefing's advisory relay now says to carry on with what you asked after
+blockers. It writes one `.gates-waived` object holding the blocking gates' keys plus any waivers
+already in the file; drop the key of any gate you can satisfy. Previously each blocker printed its
+own `echo … >` line, and running two kept only the last. The session briefing's advisory relay now says to carry on with what you asked after
 relaying.
 
 **`short-plan-tick`**: **a short plan reaches its boundary review without an override.** On a plan

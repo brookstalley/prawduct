@@ -1229,7 +1229,7 @@ class TestNextActionLine:
         # Renegotiated 2026-09-25 (review-friction): the condition used to be
         # phrased on the commit ("if that commit touched"), because this arm
         # prescribed commit-then-verify. The order is now one constant
-        # (`_FIX_ORDER`: verify the uncommitted fixes, then commit), so the same
+        # (`gates.FIX_ORDER`: verify the uncommitted fixes, then commit), so the same
         # condition is phrased on the fixes. The property pinned is unchanged:
         # the pass is conditional, never an unconditional round.
         assert "when the fixes touch nothing judgeable" in line
@@ -2286,8 +2286,8 @@ class TestResolutionIsAClaimDirective:
         how much drift is allowed before a clause has to move out.
 
         280 -> 243 on 2026-09-28: the closing "spend this on the finding you feel
-        surest about" sentence was removed as coaching an Opus-5-class reviewer
-        does not need; the ceiling came down by the same amount.
+        surest about" sentence was removed as coaching the reviewer does not need;
+        the ceiling came down by the same amount.
         """
         tokens = int(len(cc.RESOLUTION_IS_A_CLAIM_DIRECTIVE.split()) * 1.3)
 
@@ -4283,7 +4283,19 @@ class TestTheSpanVerdictRidesTheCleanVerifyClose:
         result = _run_consolidate(repo)
         assert result.returncode == 0, f"stderr={result.stderr!r}"
         assert "separate questions about coverage" in result.stdout
-        assert "BRANCH is" not in result.stdout
+        # Derived from the renderer rather than typed: a `not in` on a phrase
+        # nothing prints any more passes forever, so a typed literal goes
+        # vacuous the moment the clause is reworded. Each arm's opening
+        # sentence is what a widening would print.
+        answer = {
+            "resolved": {"base_branch": "main"},
+            "verdict": {"path": ["t"], "unresolved": [{"fid": "R-1"}]},
+        }
+        for status in ("covered", "transferred", "blocked", "uncovered"):
+            clause = cc.span_clause({**answer, "status": status}, 1)
+            opening = clause.strip().split(":")[0]
+            assert opening and opening in clause, status
+            assert opening not in result.stdout, status
 
 
 # ---------------------------------------------------------------------------
@@ -8415,14 +8427,14 @@ class TestIntervalExtension:
 class TestOneFixOrderEverywhere:
     """Every carrier of the fix order states ONE order: verify the uncommitted
     fixes, then commit. The exception after a `cumulative` is stated only in
-    `_FIX_ORDER_AFTER_CUMULATIVE`. Built by composition from `_FIX_ORDER`, and
+    `gates.FIX_ORDER_AFTER_CUMULATIVE`. Built by composition from `gates.FIX_ORDER`, and
     pinned here on the OUTPUT, because a carrier paraphrasing the order (the way
     `_IF_YOU_FIX_SOME` once said "ONE commit — and re-cover") is invisible to a
     grep for the constant."""
 
     @staticmethod
     def _order_violations(text: str) -> list[str]:
-        text = text.replace(cc._FIX_ORDER_AFTER_CUMULATIVE, "")
+        text = text.replace(gates.FIX_ORDER_AFTER_CUMULATIVE, "")
         bad = []
         for sentence in re.split(r"(?<=[.!?])\s+", text):
             if "one commit" in sentence and "verify-resolutions" in sentence:
@@ -8431,7 +8443,7 @@ class TestOneFixOrderEverywhere:
             for forbidden in ("AFTER committing", "commit, then re-run", "ONE commit — and re-cover"):
                 if forbidden in sentence:
                     bad.append(sentence.strip())
-            # "land" means commit in `_FIX_ORDER`, so a sentence using it for "be
+            # "land" means commit in `gates.FIX_ORDER`, so a sentence using it for "be
             # in the tree before the pass" states the second, opposite order.
             if re.search(r"\bland\b[^.]*\bbefore\b[^.]*\bverify", sentence, re.IGNORECASE):
                 bad.append(sentence.strip())
@@ -8446,7 +8458,7 @@ class TestOneFixOrderEverywhere:
     def test_every_carrier_composes_the_one_order(self):
         for carrier in (cc._BATCH_FIX_DIRECTIVE, cc._IF_YOU_FIX_SOME,
                         cc.next_action_line("rev-1", 2, 1, 0)):
-            assert cc._FIX_ORDER in carrier, carrier
+            assert gates.FIX_ORDER in carrier, carrier
 
     def test_the_check_can_fail(self):
         # Positive control: the old zero-blocking wording must be caught.
