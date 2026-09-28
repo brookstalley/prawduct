@@ -489,8 +489,11 @@ class TestGuardRefusesWrites:
 
         stderr = _run(wt, *argv).stderr
 
+        # "BLOCKED" alone, never the bare word "refusing": a writer's own logic
+        # may refuse for its own reasons (`test-evidence record` refuses a run
+        # whose exit status its report cannot explain), and that is the
+        # command reaching its logic, which is what this test asks for.
         assert "BLOCKED" not in stderr
-        assert "refusing" not in stderr
 
     def test_a_durable_agent_worktree_still_gets_the_snapshot_notice(self, tmp_path):
         """The refusal and the notice answer DIFFERENT questions — "may I write
