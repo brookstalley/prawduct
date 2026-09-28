@@ -5846,6 +5846,27 @@ def cmd_handoff(project_dir: Path, argv: list[str]) -> int:
     return briefing.handoff_cmd(project_dir, argv)
 
 
+def cmd_worktrees(project_dir: Path, argv: list[str]) -> int:
+    """List every worktree with its inferred liveness, and the local branches
+    no remote carries. Read-only. Thin wrapper — body lives in
+    ``lib.stranded_work``; the session briefing renders the same report as
+    counts only."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import stranded_work  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+    except ImportError:
+        print(
+            "worktrees unavailable (could not import the plugin lib/ from "
+            "${CLAUDE_PLUGIN_ROOT})",
+            file=sys.stderr,
+        )
+        return 1
+
+    return stranded_work.worktrees_cmd(project_dir, argv)
+
+
 def cmd_review_stats(project_dir: Path, argv: list[str]) -> int:
     """Aggregate the governance ledger into review cost / yield numbers.
     Thin wrapper — body lives in ``lib.telemetry.review_stats``
@@ -8209,6 +8230,7 @@ _USAGE = (
     "handoff preview|"
     "pr-review-dispatch --begin|pr-review-payload [--json] [<project dir>]|"
     "review-stats [--json] [--since <stamp>] [--until <stamp>]|classify-diff-risk [<base>]|"
+    "worktrees [--json]|"
     "cost-of-commit [--json] [<paths>...]|"
     "check-operator-verification|accept-operator-verification <rationale>|"
     "verify-operator-verification <vrf-id>|"
@@ -8608,6 +8630,8 @@ _EPHEMERAL_SAFE_COMMANDS = frozenset({
     "verify-coverage",
     "verify-records",
     "version",
+    # Read-only: git reads with --no-optional-locks and file mtimes.
+    "worktrees",
 })
 
 # Read-only reports that mutate only under `--apply` — a third shape, neither
@@ -9138,6 +9162,8 @@ def _dispatch() -> int:
         return cmd_pr_review_payload(project_dir, sys.argv[2:])
     elif command == "review-stats":
         return cmd_review_stats(project_dir, sys.argv[2:])
+    elif command == "worktrees":
+        return cmd_worktrees(project_dir, sys.argv[2:])
     elif command == "classify-diff-risk":
         return cmd_classify_diff_risk(project_dir, sys.argv[2:])
     elif command == "cost-of-commit":

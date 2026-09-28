@@ -43,7 +43,7 @@ with no signal of which have a live agent and which were abandoned.
 ## Success
 
 - A session opening in a repo with stranded work sees ONE briefing line, e.g.
-  `Stranded work: 2 local branches exist on no remote (last commit 3+ days ago) · 3 worktrees idle 7+ days (1 with uncommitted changes) · 1 other worktree is active — a separate session, leave it alone. \`prawduct-hook worktrees\` lists them; report to the user, never adopt.`
+  `Stranded work: 2 local branches checked out nowhere, with commits no remote has · 3 worktrees idle 7+ days (1 with uncommitted changes) · 1 other worktree is active — a separate session, leave it alone. \`prawduct-hook worktrees\` lists them; report to the user, never adopt.`
 - The line NAMES no branch, path or worktree (owner ruling on #410, reaffirmed 2026-09-28:
   counts plus a command). No line at all when every count is zero.
 - `prawduct-hook worktrees` (and `--json`) lists every worktree — branch, path, last agent
@@ -59,7 +59,7 @@ pushing or adopting anything. Reading transcript content. Fetching remotes.
 ## Requirements Confidence: Medium
 
 - [ASSUMPTION: "active" = any liveness signal within 30 min; "idle" = none within 7 days; between is "recent" and not counted in the briefing | MED impact | user can correct thresholds]
-- [ASSUMPTION: a stranded branch = local, checked out in no worktree, tip carries commits reachable from NO remote-tracking ref, last commit 3+ days old. A repo with no remote-tracking refs at all reports no branches (every branch would qualify) | MED impact | user can correct]
+- [ASSUMPTION: a stranded branch = local, checked out in no worktree, tip carries commits reachable from NO remote-tracking ref — at ANY age. (Drafted with a 3-day floor; dropped 2026-09-28 because the motivating #898 branch was 18h old when it was missed, so the floor excluded its own positive control.) A repo with no remote-tracking refs at all reports no branches (every branch would qualify) | MED impact | user can correct]
 - [ASSUMPTION: the current session's own worktree is never counted, and harness-ephemeral agent worktrees (`gitstate.ephemeral_kind_of`) are counted with the rest but labelled | LOW impact | user can correct]
 - What would raise it: the owner confirming the thresholds after seeing the first real table.
 
