@@ -117,7 +117,8 @@ These came up while applying W1 and were not enumerated by the audit. None is fi
 Cycle 2 of #181 adds no new backlog items (§ How this honors #181's constraints), and the
 fix-don't-file preference covers the rest. They are recorded here, where the owner reads.
 
-- **A-16 reaches new scaffolds only (awaiting the owner's ruling).** `core.md` is scaffold-once. Product repos
+- **A-16 reaches new scaffolds only. Owner ruling, 2026-09-28: keep the old header in onboarded
+  repos ("leave it").** `core.md` is scaffold-once. Product repos
   onboarded before W1 keep the old "name the rule and say what it changes… or that it does not
   apply" header, which is the narration A-16 set out to stop. They still lint clean, because the
   header is excluded by grammar and a test pins that. There are three options:
