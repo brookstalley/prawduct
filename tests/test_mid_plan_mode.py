@@ -261,7 +261,6 @@ class TestNothingOwedNow:
         assert mode == MODE_DEFERRED, why
         assert why.startswith("short-plan deferral:"), why
 
-
     def test_boxes_held_for_a_review_never_given_name_their_remedy(self, tmp_path):
         """Every chunk of a short plan committed, no box ticked, a clean tree:
         the builder held each box for a per-chunk review a short plan never
@@ -280,6 +279,7 @@ class TestNothingOwedNow:
         _tick(repo, 2, chunks=3)
         mode, why = infer_mode(repo, None)
         assert mode == "cumulative", why
+
 
 class TestExplicitTokensMidPlan:
     @pytest.mark.parametrize("token", ["chunk", "final"])

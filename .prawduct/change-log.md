@@ -35,7 +35,10 @@ digest gains a take-the-next-step rule and plainer standing-block and bullet tex
 files drop their copies of core, and every rule sheds issue ids, dates and incident specimens.
 `CORE_HEADER` asks for a citation only where a rule changed the work. The injected footprint went
 from 3280 to 3134 tokens (framework) and from 2221 to 2191 (product); the tick fix above then adds
-11. Things the audit missed are recorded in the artifact's "Found while applying" section. Plan:
+11. Things the audit missed are recorded in the artifact's "Found while applying" section. Two
+bookkeeping changes ride along: the research artifact itself (the `opus-55-prompt-audit` scope,
+with no code) and, by the same ruling, the archived `release-plan-backlog-service-golive.md`.
+`authoring.md`'s 18KB budget raise is removed, because the trim left the file under the default. Plan:
 `build-plan-opus-55-w1-always-on.md`.
 ## 2026-09-28: release= accepts four-part versions
 

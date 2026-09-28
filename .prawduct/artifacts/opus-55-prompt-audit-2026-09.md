@@ -1,7 +1,7 @@
 ---
 artifact: research
 scope: opus-55-prompt-audit
-status: ruled 2026-09-28 — every fork, wave and bookkeeping item taken; waves not yet applied
+status: ruled 2026-09-28 — every fork, wave and bookkeeping item taken; W1 applied 2026-09-28, W2–W6 pending
 created: 2026-09-28
 depends_on: [framework-efficiency-review-2026-07-02.md, program-purpose-and-cession.md]
 absorbs: ["#181 (prose half)", "#341", "#342 (prose half)"]
@@ -14,7 +14,7 @@ absorbs: ["#181 (prose half)", "#341", "#342 (prose half)"]
 This is a disposition list for prawduct's **prompt surface**, meaning every piece of text that
 reaches a model as instructions. Each decision is re-priced against Anthropic's guidance for
 Claude Opus 5.5. The owner picks decisions in one sitting. Each apply wave then gets its own plan
-and a Critic review. Nothing here has been applied.
+and a Critic review. W1 applied on 2026-09-28; W2–W6 are pending (§ Rulings, § Found while applying).
 
 **Why now.** `program-purpose-and-cession.md` sorts what prawduct hedges into three piles, and
 says the *runtime judgment* pile "depreciates via model releases". Opus 5.5 is such a release.
@@ -131,6 +131,9 @@ fix-don't-file preference covers the rest. They are recorded here, where the own
     would need to admit.
 
   **Recommendation: leave it.** The harm is verbosity, not a wrong action.
+- **W1's probe could not show A-1 helps.** The old- and new-digest sessions both finished the scratch
+  task without stopping early, so the control never showed the failure. The result is "no
+  regression". Proving that A-1 helps needs a longer multi-step task, which W4's probe can carry.
 - **A-18's shout survives on two carriers.** `plugin/skills/methodology/SKILL.md:11` belongs to W5,
   which should apply A-18's wording there. The thin product anchor (`anchor_repair.ANCHOR_V4`,
   `migrate_plugin`) would need a new anchor version pushed to every product repo. It is recorded,

@@ -51,9 +51,9 @@ return the first that fires:
      ``Critic mode:``, the branch is not the base itself, nothing it has
      changed is a risk surface, and code is in flight. No review is
      dispatched: the boundary review at the last chunk is every chunk's
-     review, and the rationale says whether to commit and carry on or (on
-     the last chunk) commit and run the ``cumulative`` that is that chunk's
-     review. Sits below rules 1–2 so a fix-in-progress or a committed bundle
+     review, and the rationale gives :func:`short_plan_next_step` — tick each
+     earlier chunk at commit, or (on the last chunk) commit and run the
+     ``cumulative`` that is that chunk's review. Sits below rules 1–2 so a fix-in-progress or a committed bundle
      still gets the review it is owed; pre-empts only the inner-stage
      answers of rules 3–4. Predicate: :func:`short_plan_deferral`.
   3. ``final`` — active build plan with exactly one unchecked chunk left
@@ -566,8 +566,10 @@ def _mid_plan_start(project_dir: Path, plan, progress) -> "dict | None":
       a branch whose plan cannot be shown keeps rule 2's boundary answer — the
       boundary is never inferred away on an assumption;
     - **a later review is owed** (:func:`later_review_owed`: two or more
-      unticked chunks). With exactly one unticked chunk and a clean tree, the
-      last chunk is committed and the boundary review is the right answer.
+      unticked chunks). With exactly one unticked chunk and a clean tree the
+      boundary review is the answer. Ticks cannot show whether the last chunk
+      is BUILT, only that one box is open, so :func:`short_plan_next_step`
+      tells the builder to build it before asking for review.
 
     Mid-plan, the answer is the interval owner's
     (``critic_consolidate.working_tree_interval_base``), asked with the same
@@ -980,6 +982,9 @@ class ShortPlanDeferral(NamedTuple):
     reason: str
     last_chunk: bool
     total: int
+    #: The unticked Status items' chunk labels (``"Chunk 01"``), filled only
+    #: when the plan defers — the one case whose next step names them.
+    unticked: tuple = ()
 
 
 def short_plan_deferral(
@@ -1098,6 +1103,7 @@ def short_plan_deferral(
         f"{base_branch} is a risk surface ({why})",
         last_chunk,
         total,
+        _unticked_labels(plan.path),
     )
 
 
@@ -1291,32 +1297,62 @@ def _declared_chunk_modes(
     return found
 
 
-def _deferral_rationale(deferral: ShortPlanDeferral, plan) -> str:
-    """The ``mode_chosen_by``-shaped sentence for a :data:`MODE_DEFERRED` answer.
+def _unticked_labels(plan_path) -> tuple:
+    """The unticked Status items as ``"Chunk NN"`` labels, or ``()`` if unreadable."""
+    try:
+        content = Path(plan_path).read_text(encoding="utf-8")
+    except (OSError, TypeError, UnicodeDecodeError):
+        return ()
+    return tuple(
+        item.split(":", 1)[0].strip()
+        for item in buildplan_refs.unticked_chunk_items(content)
+    )
 
-    Two shapes, derived from ``last_chunk`` rather than written for the one in
-    mind: on a non-final chunk the reader is told to commit and carry on; on
-    the last chunk the reader is told that the boundary review IS this chunk's
-    review — the ``Type: cumulative-final`` sequencing without the declaration.
-    Both name the way back to a per-chunk review, because a deferral the reader
-    cannot decline is a gate, and this is advice.
+
+def short_plan_next_step(deferral: ShortPlanDeferral) -> str:
+    """What a builder on a deferring short plan does next — the ONE statement.
+
+    The inference rationale and both Stop-gate messages (the non-final warning
+    and the last-chunk block) compose this, so the tick rule cannot be stated
+    two ways. The rule: an earlier chunk's review is the boundary
+    ``cumulative``, so its box is ticked at commit rather than held for a
+    review that never comes; only the last box waits. The inference counts
+    unticked boxes (git cannot tell "committed, not ticked" from "not built"),
+    so a held box reads as a chunk still to build and the boundary review is
+    never inferred. The same count means the boundary review is inferred as
+    soon as one box remains on a clean tree, whether or not the last chunk is
+    built — so the text says to build it first.
     """
     if deferral.last_chunk:
-        what_next = (
+        return (
             "this is the last chunk and the boundary review is its review: "
             "commit it, then `/prawduct:critic` infers `cumulative`, which is "
             "this chunk's review and the PR gate's evidence — no separate `final`"
         )
-    else:
-        what_next = (
-            "commit this chunk, tick its box, and carry on — its review is the "
-            "boundary's, so the box does not wait for one; the boundary review "
-            "(`cumulative`) is inferred once only the last box is unticked and "
-            "its chunk is committed, and it covers every chunk"
-        )
+    named = (
+        f" (unticked now: {', '.join(deferral.unticked)})" if deferral.unticked else ""
+    )
+    return (
+        "commit this chunk and tick its box, and tick every earlier committed "
+        f"chunk's box still open{named} — a deferred chunk's review is the "
+        "boundary's, so its box does not wait for one. Leave only the last "
+        "chunk's box open and build that chunk before asking for review: "
+        "`/prawduct:critic` infers the boundary `cumulative` once one box "
+        "remains unticked and the tree is clean, and it covers every chunk"
+    )
+
+
+def _deferral_rationale(deferral: ShortPlanDeferral, plan) -> str:
+    """The ``mode_chosen_by``-shaped sentence for a :data:`MODE_DEFERRED` answer.
+
+    The next step is :func:`short_plan_next_step`'s, the one statement the
+    Stop gate composes too. The rationale adds the way back to a per-chunk
+    review, because a deferral the reader cannot decline is a gate, and this
+    is advice.
+    """
     return (
         f"short-plan deferral: no per-chunk review is owed — {deferral.reason}; "
-        f"{what_next}. An explicit mode (`/prawduct:critic chunk`) or a "
+        f"{short_plan_next_step(deferral)}. An explicit mode (`/prawduct:critic chunk`) or a "
         "`Critic mode:` field on any chunk restores per-chunk review. "
         f"Grounded on {_plan_relation_note(plan)}"
     )

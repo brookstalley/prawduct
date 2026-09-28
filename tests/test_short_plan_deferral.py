@@ -254,7 +254,7 @@ class TestEligiblePlanDefers:
         mode, rationale = infer_mode(tmp_path, None)
         assert mode == critic_mode.MODE_DEFERRED
         assert rationale.startswith("short-plan deferral:")
-        assert "commit this chunk, tick its box, and carry on" in rationale
+        assert "commit this chunk and tick its box" in rationale
         assert "`cumulative`" in rationale
         # The way back is named, because a deferral nobody can decline is a gate.
         assert "/prawduct:critic chunk" in rationale
@@ -463,6 +463,14 @@ class TestStopGateOnShortPlans:
         assert "deferred-boundary-review" in text
         assert "`cumulative`" in text and "/prawduct:critic chunk" in text
         assert "gate: critic-review" in text  # attributed like a block would be
+        # The next step is the ONE statement `short_plan_next_step` owns: tick at
+        # commit, naming the open boxes. What turns this red: the gate stating
+        # its own "commit it and carry on", which a builder follows by holding
+        # every box and never reaching the boundary review.
+        flat = " ".join(text.split())
+        assert "tick its box" in flat and "does not wait" in flat, flat
+        assert "unticked now: Chunk 01, Chunk 02, Chunk 03" in flat, flat
+        assert "carry on" not in flat
 
     def test_four_chunk_plan_still_blocks(self, tmp_path: Path):
         prawduct = _short_plan_branch(tmp_path, chunks=4)
@@ -509,7 +517,7 @@ class TestStopGateOnShortPlans:
         _arm_stop(prawduct)
         result = _run_stop(tmp_path)
         assert result.returncode == 2, result.stderr
-        assert "it infers `cumulative`, which is this chunk's" in result.stderr
+        assert "infers `cumulative`, which is this chunk's review" in " ".join(result.stderr.split())
 
     def test_last_chunk_blocks_and_says_the_boundary_review_is_its_review(self, tmp_path: Path):
         prawduct = _short_plan_branch(tmp_path, committed=("01", "02"))
@@ -517,9 +525,10 @@ class TestStopGateOnShortPlans:
         result = _run_stop(tmp_path)
         assert result.returncode == 2, result.stderr
         assert _GENERIC_BLOCK in result.stderr
-        assert "deferred to this" in result.stderr
-        assert "it infers `cumulative`, which is this chunk's" in result.stderr
-        assert "no separate `final`" in result.stderr
+        flat = " ".join(result.stderr.split())
+        assert "deferred to this" in flat
+        assert "infers `cumulative`, which is this chunk's review" in flat
+        assert "no separate `final`" in flat
 
     def test_an_unresolved_blocking_finding_still_blocks(self, tmp_path: Path):
         """`blocked` is authority: a recorded blocker on an eligible plan's

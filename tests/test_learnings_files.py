@@ -812,7 +812,7 @@ class TestShapeViolations:
     """The format is a property of the text alone. Each test names its red."""
 
     def test_the_header_before_the_first_rule_is_not_a_body(self):
-        # Red if the scaffold's obligation paragraph is flagged.
+        # Red if the scaffold's instruction paragraph is flagged.
         assert lf.shape_violations(lf.CORE_HEADER + "- a rule\n") == []
 
     def test_frontmatter_is_not_a_body(self):

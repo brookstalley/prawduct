@@ -82,6 +82,11 @@ A-25, A-26, A-39.
 `tests/test_plugin_methodology_digest.py` (the ceilings, the `DIGEST_SECTION_PLACEMENT` key rename
 for A-39, and `DIGEST_HEADROOM_RESERVE`), and any other test the suite shows pinning a rewritten
 sentence.
+**Probe outcome (2026-09-28):** two headless `claude -p` sessions on Opus 5.5 ran one scratch task,
+one with the old digest and one with the new. Both finished the task and closed with a correct
+standing block, so there is no regression. The control never stopped early, so this task cannot
+show that A-1 helps. That needs a longer multi-step task, and the probe is recorded as run on that
+limited basis.
 **Done when:** the digest-behavior-inventory rows listed under `governed_by` are each found in the
 written digest. The character wall and the token ceilings are re-measured and lowered. The suite
 passes. The probe has run.
