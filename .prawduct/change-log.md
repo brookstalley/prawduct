@@ -26,9 +26,10 @@ Stop gate prints one escape-hatch footer after the `BLOCKED` list in place of a 
 blocker. The footer writes one JSON object: the blocking gates' keys plus the waivers
 already in the file, because each `echo … >` recipe replaced the file and erased the others. Every
 gate's waiver check, `KNOWN_WAIVER_KEYS` and the footer read one gate-to-key map. The fix order's
-one home moves to `gates.FIX_ORDER`, so `gates` no longer reaches into `critic_consolidate`. The reflection blocker's cadence paragraph is one line. Three reviewer dispatch
-directives lose their "spend this on…" closers (F6: compare `review-stats` rounds per PR before
-and after W3). The briefing's advisory relay ends by saying the user's own request goes ahead.
+one home moves to `gates.FIX_ORDER`, and `critic_consolidate` imports it with one top-level import
+of `gates` in place of four lazy ones. The reflection blocker's cadence paragraph is one line.
+Three reviewer dispatch directives lose their "spend this on…" closers (F6: compare
+`review-stats` rounds per PR before and after W3). The briefing's advisory relay ends by saying the user's own request goes ahead.
 What applying it found is in the plan. Plan: `build-plan-opus-55-w2-hook-gate-text.md`.
 
 ## 2026-09-28: develop opens 3.6.2-dev.4
