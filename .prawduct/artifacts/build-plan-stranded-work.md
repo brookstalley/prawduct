@@ -100,9 +100,9 @@ process cwd via lsof (a desktop-app session runs with cwd `/`; failed its positi
 
 ## Status
 
-- [ ] Chunk 01: scan + `worktrees` subcommand
-- [ ] Chunk 02: briefing line + docs
-- [ ] Chunk 03: stranded branches become an advisory; one worktree parser; review fixes
+- [x] Chunk 01: scan + `worktrees` subcommand
+- [x] Chunk 02: briefing line + docs
+- [x] Chunk 03: stranded branches become an advisory; one worktree parser; review fixes
 
 ## Chunk 01: scan + `worktrees` subcommand
 
