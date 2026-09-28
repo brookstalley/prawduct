@@ -12,6 +12,11 @@ last_validated: 2026-07-24
 
 # Release Plan — v3.2.0, Backlog Service Go-Live
 
+> **Archived 2026-09-28 by owner ruling** (`opus-55-prompt-audit-2026-09.md` § Rulings). v3.2.0
+> shipped, and the plan's live tracker was archived before it. The VRF rows below are not owed
+> here: VRF-005 and VRF-007 are owed in `.prawduct/operator-verification.md`, which holds #183's
+> drain disposition awaiting the owner's signature. VRF-008 is already accepted there.
+
 **Owner decisions (2026-07-20):** wide release — *"We can't ship a partial product. And if prawduct's
 own backlog migrates to gh issues, we have to bring in all that implies."* Version: **v3.2.0**
 (A2 decided).
