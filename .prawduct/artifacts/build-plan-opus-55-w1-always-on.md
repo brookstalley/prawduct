@@ -72,6 +72,7 @@ Every change has replacement text, and the owner has ruled on it.
 **Decisions:** A-1, A-17, A-18, A-19, A-20, A-21 (with the F4 owner amendment), A-22, A-23, A-24,
 A-25, A-26, A-39.
 **Files:** `plugin/methodology/session-digest.md`, `plugin/docs/principles.md`, `CLAUDE.md`,
+`plugin/methodology/reflection.md` (one sentence that A-16 made false; the delegate found it),
 `tests/test_plugin_methodology_digest.py` (the ceilings, the `DIGEST_SECTION_PLACEMENT` key rename
 for A-39, and `DIGEST_HEADROOM_RESERVE`), and any other test the suite shows pinning a rewritten
 sentence.

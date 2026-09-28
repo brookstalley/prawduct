@@ -76,7 +76,7 @@ DIGEST_SECTION_PLACEMENT = {
         "inline -- the size/rigor scaling and the read-building-first trigger; "
         "nothing routes to the guides without it"
     ),
-    "The hardest rules (these degrade at scale — hold them)": (
+    "Standing rules": (
         "inline -- each fires unprompted, mid-work, on a surface with no "
         "opt-out. Individual bullets already point out for their detail "
         "(reflection.md, docs/waivers.md, review-cycle.md); what stays here is "

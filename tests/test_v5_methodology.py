@@ -1238,7 +1238,9 @@ LAST_MEASURED_TOKENS = {
     # -9 on 2026-09-24 (learnings-one-line Chunk 03): Step 4's product-rule
     # sentence rewritten to the one-line form, shorter than the heading form it
     # replaced. A READING, no ceiling.
-    "methodology/reflection.md": 2852,
+    # -9 on 2026-09-28 (opus-55-w1): the learnings-header sentence stopped
+    # describing an obligation A-16 removed. A READING, no ceiling.
+    "methodology/reflection.md": 2843,
     # First reading, 2026-09-03, taken at birth: the standing block and the
     # forward notes, moved verbatim out of `reflection.md` (D2) so the learning
     # loop's guide is about the learning loop. On-demand class: a reading, no
@@ -1726,8 +1728,14 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # mostly in place: the new rule absorbed the findings-only sentence, which
     # stated the same obligation (persist, then `SAFE TO CLEAR`) for two of
     # its cases. The +2 it could not reach is DECLARED on the ceilings below.
-    "framework": 3280,
-    "product": 2221,
+    # framework 3280 -> 3134, product 2221 -> 2191 on 2026-09-28 (opus-55-w1,
+    # the Opus 5.5 prompt audit's always-on wave). A CUT: the digest's closing
+    # section and four bullets were rewritten plainly and carry A-1's
+    # take-the-next-step paragraph inside the saving; CLAUDE.md dropped the
+    # requirements check the digest's stance lead already states and the
+    # compact-preserve list the compact-time digest re-injects.
+    "framework": 3134,
+    "product": 2191,
 }
 
 #: Ceilings. HARD, like the per-file prose ceilings in this module and
@@ -1876,8 +1884,10 @@ INJECTED_FOOTPRINT_CEILINGS = {
     # owed. Paid in place first (see the reading's entry); the 500-char emitted
     # reserve is NOT spent — the digest sits at 9,499 of its 9,500 working
     # budget. One over each reading, so nothing is banked.
-    "framework": 3281,
-    "product": 2222,
+    # 3281 -> 3135, 2222 -> 2192 on 2026-09-28 (opus-55-w1): ratcheted with the
+    # cut in the reading table, one over each reading, nothing banked.
+    "framework": 3135,
+    "product": 2192,
 }
 
 
