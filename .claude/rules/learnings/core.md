@@ -12,7 +12,7 @@ Each rule is one line of at most 250 characters. This file is capped, so a new r
 - Before implementing against a mechanism, search the backlog for its name — an open item may already redefine or retire it.
 - A fix for a review finding is a CODE commit: test it, red-verify it, and dispatch a delta review of the fix — correction work feels low-risk, so the verification reflex relaxes exactly where the last round proved it shouldn't
 - A governance change cannot supply its own authority: when an agent amends a binding norm mid-build, land the owner's confirmation somewhere the amendment isn't — a change that is its own only witness reads as laundering
-- When defense-in-depth is the reason a risk needn't be verified, check the defense is REACHABLE from the failure — a guard downstream of the thing that fails never runs (`endswith` check behind a matcher that never fired)
+- When defense-in-depth is the reason a risk needn't be verified, check the defense is REACHABLE from the failure — a guard downstream of the thing that fails never runs
 - Uncommitted work in a worktree this session did NOT launch in is another session's territory — leave it alone; adopting sibling WIP collides with a possibly-live session and writes into clone-shared governance state
 - When surfacing model-proposed candidates for owner confirm-or-correct, triage by decision-worthiness first: surface real forks individually, bulk-confirm the rest — a flat dump buries decisions and trains rubber-stamping
 - A mechanism change is done when every artifact DESCRIBING it agrees: search for the claim, not the tokens you edited, across prose, tests, templates and registries, and delete superseded sentences and removed names rather than adding beside them.
