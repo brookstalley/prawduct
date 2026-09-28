@@ -47,6 +47,13 @@ the branch. The suggested commands in this advisory, the unintegrated-delegate a
 unpushed-release-prep advisory now quote branch names and paths, which git allows to contain `$(`
 and `;`.
 
+**`four-part-release-versions`** (#901) — **`release=` accepts four-part versions.** A product
+whose tags have four numeric parts can now stamp them (`release=v1.2.3.4`, with or without a
+`-suffix`). Before this, every such tag was refused as "not a version", which blocked both
+`archive-change-log` and `check-releasability`. Placeholders such as `release=unreleased`, and
+two- or five-part values, are still refused. The refusal now tells you what to do in each case:
+if the entry shipped, correct the value; if it has not, delete the tag.
+
 **`test-evidence-root-testcases`** (#912, #913) — **a failing top-level node:test case is no
 longer recorded as passing.** node:test writes a `test()` outside any `describe()` as a
 `<testcase>` directly under `<testsuites>`, and `test-evidence record` never counted those. A

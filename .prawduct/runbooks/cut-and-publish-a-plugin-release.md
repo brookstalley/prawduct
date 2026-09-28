@@ -206,7 +206,8 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
      `release=TBD`): *any* `release=` value marks the entry already-released, so its whole scope
      drops out of the pending set and the gate would otherwise answer "nothing to cut" while the
      work never ships. That is not hypothetical — it hid an entire branch from v3.2.8.
-     **Release-pending is statusless with NO `release=` tag: delete the tag.** The other case is one
+     **Release-pending is statusless with NO `release=` tag: delete the tag** — unless the entry did
+     ship, in which case set `release=` to the version it shipped in. The other case is one
      entry carrying several `prawduct:` tag lines that disagree — merge them and resolve the
      conflict. The message names the entry and its line number.
 
