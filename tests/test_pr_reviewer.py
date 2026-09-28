@@ -515,33 +515,38 @@ class TestPrReviewSkillContent:
         # governance-protected `.md` under skills/, methodology/ and templates/
         # — which is exactly what the first draft of this paragraph claimed.
         assert "prawduct-hook cost-of-commit" in content
-        # And it prices the round the gate actually accepts. Every sibling
-        # carrier in the same runtime — the batch-fix directive, the gate's
-        # churn NOTE, `telemetry.PRICED_MODE` — quotes the delta pass; a
-        # reviewer told each NOTE costs a full cumulative over-prices its own
-        # findings and files fewer, which is the opposite of what this
-        # paragraph is for.
-        assert "verify-resolutions" in content
+        # The round's price is no longer argued here at all: the paragraph now
+        # says never to drop a finding because of its cost, so the delta-pass
+        # pricing (`verify-resolutions`) that stood in for that argument was
+        # retired with it (opus-55 slice-C C-1). What must not come back is the
+        # over-pricing, which is what made a reviewer file fewer.
         assert "a full Critic round" not in content
 
-    def test_the_ride_along_route_is_offered_with_its_condition(self):
-        """Fix-now buys a round; accept and file buy none. The option that costs
-        *nothing extra* was missing from every surface: a small fix carried into
-        the next chunk's commit rides a round that was going to be bought
-        anyway.
+    def test_findings_are_reported_and_disposition_is_left_downstream(self):
+        """Contract INVERTED, in the open (opus-55 slice-C C-1, owner-ruled).
 
-        It is offered, never defaulted — a fix that changes what the PR claims
-        to ship belongs in this bundle — and it names where the deferral gets
-        written down, because an unrecorded deferral is a drop.
+        This used to pin a "ride along with the next chunk" route and the
+        instruction to file only what a maintainer "would genuinely want". Both
+        were value filters placed ahead of reporting: a reviewer that follows
+        "only file what's worth it" literally reports less, and disposition
+        already has a downstream owner (the builder's ACCEPT default and
+        `prawduct-hook disposition`). The route and the filters are asserted
+        GONE; the report-everything instruction is asserted present and above
+        the goals, where the reviewer forms findings.
         """
         raw = (FRAMEWORK_DIR / "skills" / "pr" / "review-protocol.md").read_text()
-        # Wrap- and emphasis-insensitive: this file is hard-wrapped, so a literal
-        # pin fails on a re-wrap that changed nothing — the kind of false failure
-        # that gets a pin deleted rather than fixed.
         content = re.sub(r"\s+", " ", raw.replace("*", ""))
-        assert "ride along with the next chunk or the next build plan" in content
-        assert "not always right" in content
-        assert "quietly become a drop" in content
+        rule = "Never drop one because acting on it costs the builder a review round"
+        assert rule in content
+        assert content.index(rule) < content.index("## Review Goals")
+        for filt in ("would genuinely want changed",
+                     "Only flag if splitting is cheap",
+                     "cheap to act on",
+                     "ride along with the next chunk or the next build plan"):
+            assert filt not in content, (
+                f"{filt!r} is back — a value filter ahead of reporting depresses "
+                "recall; disposition belongs to the builder, downstream"
+            )
 
     def test_review_protocol_dropped_critic_overlap_goals(self):
         """The Critic-overlapping PR-reviewer goals must stay removed (PRR-4M9T).
@@ -795,12 +800,15 @@ class TestPrReviewSkillContent:
         assert "git branch --show-current" in guard, (
             "the guard must compare the CURRENT branch against what it resolved"
         )
-        # It must also be honest about what it inherits: resolve-base does not
-        # consult origin/HEAD and defaults to main when `base_branch:` is unset,
-        # so an unconfigured gitflow repo still slips half the guard.
-        assert "#254" in guard, (
-            "the guard must state that it inherits resolve-base's behaviour "
-            "(#254) rather than silently moving the wrong-answer case"
+        # It must also be honest about what it inherits: a repo whose
+        # `origin/HEAD` is `main` but which integrates on `develop` cannot be
+        # inferred, so the guard names that gap and its remedy (record
+        # `base_branch:`). Re-pointed from the `#254` issue id, which the
+        # owner-ruled rewrite (opus-55 slice-C C-15) removed as history; the
+        # disclosure it stood for is what stays pinned.
+        assert "cannot be inferred" in guard and "record `base_branch:`" in guard, (
+            "the guard must state the case it cannot detect and how to close it, "
+            "rather than silently moving the wrong-answer case"
         )
 
     def test_release_process_documents_benign_cumulative_exit(self):
@@ -1049,7 +1057,9 @@ class TestPrReviewerScoping:
             "the dispatch must say WHICH — they are different facts and the "
             "reviewer should not have to guess"
         )
-        assert "release readiness" in content
+        # "release readiness" was pinned in the caller's restatement of the
+        # scoping, which opus-55 slice-C C-5 cut as a copy of what the dispatch
+        # prompt already says; the prompt sentence above is the pin.
         assert "ledger-fallback" not in content
         assert "cumulative-Critic gate has passed" not in content, (
             "under concurrent dispatch that sentence is false at the moment it "
@@ -1099,20 +1109,18 @@ class TestPrReviewerScoping:
     def test_merge_flow_verifies_the_prs_head_before_merging(self):
         """The merge-side check, pinned separately from the create-side one.
 
-        These are not duplicates and the file says so: the Create-flow check
-        sits INSIDE the step whose skip causes the defect, so only this one is
-        outside the control flow that produces the side effect. A future
-        editor trimming it as redundant is the failure this asserts against.
+        These are not duplicates: the Create-flow check sits INSIDE the step
+        whose skip causes the defect, so only this one is outside the control
+        flow that produces the side effect. The skill no longer argues that to
+        its editor (the defence was cut as maintainer prose, opus-55 slice-C
+        C-16(c)); this test is where the argument now lives, and it pins the
+        check itself.
         """
         content = self.skill
         merge_flow = content.split("## Merge Flow", 1)[1].split("## Status Flow", 1)[0]
         assert "headRefOid" in merge_flow, (
             "Merge Flow no longer verifies the PR head against local HEAD — "
             "an unpushed commit then merges silently."
-        )
-        assert "OUTSIDE the step whose skip causes the defect" in merge_flow, (
-            "the reason this check is not redundant with Create Step 5 is gone, "
-            "which is what makes it look trimmable"
         )
 
     def test_merge_flow_runs_the_push_gate_alongside_the_pr_head_check(self):

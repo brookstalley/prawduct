@@ -338,7 +338,7 @@ class TestIssuesBackendCloseIsDeferred:
         merge_flow = skill[skill.index("## Merge Flow"):]
         close_at = merge_flow.index("Close the backlog items this PR resolves")
         delete_at = merge_flow.index("Delete remote branch")
-        evidence_at = merge_flow.index("Clean up evidence file")
+        evidence_at = merge_flow.index("Delete the evidence file")
         assert close_at < delete_at < evidence_at, (
             "The close must come before the branch and evidence deletions. Those destroy "
             "the local artifacts that record the close was owed, and this step is its own "
