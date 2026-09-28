@@ -22,7 +22,10 @@ while the tick rule said to tick only after a chunk's review. A deferred chunk's
 boundary `cumulative`, so a builder following the rule never reached it. W1 of the Opus 5.5 audit
 hit this. `planning.md` now defines a deferred chunk's tick as due at commit, and the digest's tick
 bullet carries the trigger (a declared raise of 11 tokens). The deferral rationale says so, and no
-longer claims to key on commits. The owner confirmed the direction. Plan:
+longer claims to key on commits. The next step now has one owner, `critic_mode.short_plan_next_step`. The
+rationale and both Stop-gate short-plan messages (the non-final warning and the last-chunk
+block) are built from it, so the gate names the open boxes and no longer says "commit it and
+carry on". The owner confirmed the direction. Plan:
 `build-plan-short-plan-tick.md`.
 
 ## 2026-09-28: the always-on surface is retuned for Opus 5.5 (audit wave W1)
@@ -30,7 +33,8 @@ longer claims to key on commits. The owner confirmed the direction. Plan:
 <!-- prawduct: type=feature | scope=opus-55-w1-always-on -->
 
 Wave W1 of `opus-55-prompt-audit-2026-09.md`, which the owner ruled in full on 2026-09-28. The
-digest gains a take-the-next-step rule and plainer standing-block and bullet text. `CLAUDE.md` and
+digest gains a take-the-next-step rule and plainer standing-block and bullet text. The
+stance bar "verify your own work before done" is now "show evidence for done". `CLAUDE.md` and
 `principles.md` drop text that duplicates the digest. `core.md` goes from 38 rules to 17, the area
 files drop their copies of core, and every rule sheds issue ids, dates and incident specimens.
 `CORE_HEADER` asks for a citation only where a rule changed the work. The injected footprint went
@@ -40,6 +44,7 @@ bookkeeping changes ride along: the research artifact itself (the `opus-55-promp
 with no code) and, by the same ruling, the archived `release-plan-backlog-service-golive.md`.
 `authoring.md`'s 18KB budget raise is removed, because the trim left the file under the default. Plan:
 `build-plan-opus-55-w1-always-on.md`.
+
 ## 2026-09-28: release= accepts four-part versions
 
 <!-- prawduct: type=bugfix | scope=four-part-release-versions -->

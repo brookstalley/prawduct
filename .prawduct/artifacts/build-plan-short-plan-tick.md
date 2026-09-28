@@ -76,7 +76,9 @@ would only warn at session end, so a short plan could close without its boundary
 **Files:** `plugin/lib/critic_mode.py` (`_deferral_rationale`), `tests/test_short_plan_deferral.py`,
 `tests/test_mid_plan_mode.py` (the deadlock test),
 `plugin/methodology/planning.md`,
-`plugin/methodology/session-digest.md`, `plugin/lib/buildplan_refs.py` (docstring), and the token
+`plugin/methodology/session-digest.md`, `plugin/bin/prawduct-hook` (both Stop-gate short-plan messages
+compose `short_plan_next_step`), `plugin/templates/build-plan.md`, `plugin/skills/pr/SKILL.md`,
+`documentation/release-process.md`, `plugin/lib/buildplan_refs.py` (docstring), and the token
 readings the suite reports.
 **Done when:** the deadlock test's rationale names the tick. The suite passes. The cumulative
 Critic review has run.
