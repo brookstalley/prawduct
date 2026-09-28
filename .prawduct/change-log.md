@@ -53,6 +53,81 @@ checked". An `update` that leaves the body alone does not lint it. That is the s
 the 2026-08-06 stored-title ruling keeps, so editing an unrelated field never reports on prose the
 call didn't write. The API contract, the issue standard's implemented-note and the adapter-mode
 skill page now say so.
+## 2026-09-28: develop opens 3.6.2-dev.3
+
+<!-- prawduct: type=chore | scope=dev-track-bump-3.6.2-dev.3 -->
+
+The dev track's version moves from `3.6.2-dev.2` to `3.6.2-dev.3` in the four carriers
+(`plugin/VERSION`, `plugin.json`, `pyproject.toml`, and the open `plugin/CHANGELOG.md` heading), so
+repos on the develop track pick up `test-evidence-pre-run-tree` and `test-evidence-root-testcases`.
+The version string is the plugin cache key, so a repo that already resolved `3.6.2-dev.2` would
+otherwise never see them. Owner-directed, 2026-09-28. It rides this branch's PR, so one review
+covers the bump instead of a PR of its own.
+
+**The release number is still the cut's.** This bump labels the dev track only.
+
+**No consumer notes were owed.** Both scopes already carry their entries in the open
+`plugin/CHANGELOG.md` section.
+
+## 2026-09-28: test evidence counts a failing top-level node:test case
+
+<!-- prawduct: type=bugfix | scope=test-evidence-root-testcases -->
+
+Reported upstream twice, independently: #912 (@Jason-Vaughan) and #913 (@L13w, merged into
+#912). node:test's JUnit reporter writes a top-level `test()` as a `<testcase>` directly under
+`<testsuites>`, and `test-evidence record` never counted it. A failing one recorded `failed: 0`.
+A live run still exited 1, but `--from-junit` exited 0, and the Stop gate, the Critic and
+`/prawduct:pr` all read that record as green. A report whose tests were all top-level was
+refused as `no <testsuite>`.
+
+**Root cause (verified):** the aggregation built its unit list from `root.findall("testsuite")`
+and counted only the leaves inside those suites. Separately, a command's exit status set the
+hook's exit code but was never checked against the counts it recorded.
+
+**Fix.** A `<testsuites>` root's direct `<testcase>` children are now units of their own, read
+in document order, so `failed_tests` keeps report order. A report with no suite but with cases
+records normally. One with neither is still refused. As defense in depth, a live command that
+exits nonzero while its own report shows no failing test is refused (exit 2, nothing written).
+The check is per command, so another command's real failure can't cover for it. It refuses
+rather than marking the record `degraded`, which only a coordinator asserts. A report known to be
+complete, say from a run failed only by a coverage threshold, can still be ingested with
+`--from-junit`. The refusal also stops a pytest run that collected nothing (exit 5) from
+recording a green `0 passed, 0 failed`. Tests pin both reported shapes, the all-top-level
+report, the empty report, the `--from-junit` exit status, and the refusal, including the case
+where another command's failure would cover for it, and the undeclared pytest fallback that
+collected nothing. A durable-worktree guard test forbade the
+bare word "refusing" in stderr, which only passed because of that exit-5 green. It now asserts
+only that `BLOCKED` is absent. That already covers the guard's `BLOCKED: refusing`, and a
+positive control confirmed the guard still emits that phrase.
+
+## 2026-09-27: test evidence vouches only for a tree its run held still on
+
+<!-- prawduct: type=bugfix | scope=test-evidence-pre-run-tree -->
+
+Found in this repo's own session. A file edited while `test-evidence record` was running the
+suite was stamped into `evidence_tree`. A later session, or another worktree through the shared
+run index, would then treat the edit as tested by a run that may never have loaded it.
+
+**Root cause (verified):** `cmd_test_evidence` captured `evidence_tree` once, after the suite
+finished, and nothing compared it with the tree the run began on. A mid-run edit therefore
+landed in the stamp and matched the working tree exactly. The shared run index inherited the same
+tree, so other worktrees would trust it too.
+
+**Fix.** A live run captures the tree before its first command and asks
+`_test_evidence_tree_valid` at the end whether it held. It uses that check, not raw tree
+equality, because every run writes caches and reports of its own. If the tree held, the run
+stamps it as before. If it moved, or either capture failed, the record carries no
+`evidence_tree` and stderr says why. When the capture before the run failed, the warning carries
+that capture's reason and gives no re-run advice, since it would fail the same way next time. The
+end-of-run check does not tell a moved tree from a failed comparison, so both still get the
+re-run advice. The record then stays current for
+this session through the unchanged timestamp clause, but no later session, and no other worktree
+through the shared run index, reuses it. That is the existing "a capture failure omits the field" path, so the
+recorder still never marks a record `degraded`, which only a coordinator asserts, and a quiet
+run reads exactly as before. The first cut derived `degraded` from the diff and was reverted in
+review. That broke the field's coordinator-only contract, and a suite writing its own files
+would have gone stale on every run. The `gates.py` schema comment and tree-validity docstring
+and `data-model.md` now say when the tree is captured.
 
 ## 2026-09-27: only a turn still working may say DO NOT CLEAR
 

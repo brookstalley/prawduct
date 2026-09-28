@@ -1905,6 +1905,60 @@ class TestJunitLeafCounting:
 """)
         assert (ev["passed"], ev["failed"], ev["skipped"]) == (1, 0, 0)
 
+    # node:test's JUnit reporter writes a `describe` as a <testsuite> and a
+    # top-level `test()` as a <testcase> directly under the <testsuites> root.
+    # The failing root-level case comes FIRST, so the order of `failed_tests`
+    # shows whether the report is read in document order.
+    NODE_ROOT_LEVEL = """
+<testsuites>
+  <testcase name="fails first"><failure message="7 !== 8"/></testcase>
+  <testsuite name="group" tests="2" failures="1" errors="0" skipped="0" time="0.5">
+    <testcase name="passes"/>
+    <testcase name="fails in group"><failure message="boom"/></testcase>
+  </testsuite>
+  <testcase name="passes at root"/>
+</testsuites>
+"""
+
+    def test_root_level_testcases_are_counted_beside_suites(self, tmp_path):
+        # #912/#913: the root-level cases were never visited, so this report
+        # recorded 1 passed, 1 failed and a failing top-level test vanished.
+        repo = self._repo(tmp_path)
+        junit = self._write(repo, self.NODE_ROOT_LEVEL)
+        res = _run_in(repo, "test-evidence", "record", "--from-junit", str(junit))
+        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert (ev["passed"], ev["failed"], ev["skipped"]) == (2, 2, 0)
+        assert ev["failed_tests"] == ["fails first", "fails in group"]
+        # Ingest has no process exit to mirror; the status derives from the
+        # count, so an uncounted failure exited 0 here.
+        assert res.returncode == 1, res.stderr
+
+    def test_report_with_only_root_level_testcases_records(self, tmp_path):
+        # Every test top-level: no <testsuite> at all. That is a complete
+        # report, not an empty run, so it records rather than being refused.
+        repo = self._repo(tmp_path)
+        junit = self._write(repo, """
+<testsuites>
+  <testcase name="a"/>
+  <testcase name="b"><failure message="boom"/></testcase>
+  <testcase name="c"><skipped/></testcase>
+</testsuites>
+""")
+        res = _run_in(repo, "test-evidence", "record", "--from-junit", str(junit))
+        assert res.returncode == 1, res.stderr
+        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert (ev["passed"], ev["failed"], ev["skipped"]) == (1, 1, 1)
+        assert ev["failed_tests"] == ["b"]
+
+    def test_report_with_no_tests_at_all_is_still_refused(self, tmp_path):
+        # The refusal the fix narrowed must still fire when there is nothing
+        # to count, or an empty report would record as a clean zero.
+        repo = self._repo(tmp_path)
+        junit = self._write(repo, "<testsuites></testsuites>\n")
+        res = _run_in(repo, "test-evidence", "record", "--from-junit", str(junit))
+        assert res.returncode == 2, res.stderr
+        assert not (repo / ".prawduct" / ".test-evidence.json").exists()
+
 
 class TestFromCountsIngest:
     """`record --from-counts passed=N failed=M skipped=K [duration=S]` records
@@ -2662,6 +2716,141 @@ class TestTreeValidatedFreshness:
         ev_path.write_text(json.dumps(ev))
         assert _run_in(repo, "test-status").returncode == 1, \
             "backdated --from-counts is stale (timestamp-only; no tree clause)"
+
+
+class TestEditDuringTheRun:
+    """A record vouches only for a tree its run held still on.
+
+    The tree used to be captured after the suite finished, so a judgeable file
+    edited while the suite ran landed in `evidence_tree` and matched the working
+    tree exactly — later sessions, and other worktrees through the shared run
+    index, would reuse the run for an edit it may never have loaded. Now a run
+    whose judgeable tree moved before it ended records no tree: it stays current
+    for this session (the timestamp clause, unchanged) and vouches for nothing
+    after it. It is never marked `degraded` — that field is a coordinator's
+    assertion and is never derived. The suites below make their writes
+    themselves, mid-run, which is the only way to make the timing deterministic."""
+
+    def _repo(self, tmp_path, test_body: str, *, git: bool = True) -> Path:
+        repo = tmp_path / "r"
+        repo.mkdir()
+        (repo / ".prawduct").mkdir()
+        (repo / "src").mkdir()
+        (repo / "src" / "app.py").write_text("def add(a, b):\n    return a + b\n")
+        (repo / "test_app.py").write_text(test_body)
+        if git:
+            _git(repo, "init", "-b", "main")
+            _git(repo, "add", "-A")
+            _git(repo, "commit", "-m", "c1")
+        _make_session_start(repo / ".prawduct", offset_seconds=-60)
+        return repo
+
+    @staticmethod
+    def _suite_writing(relpath: str, text: str) -> str:
+        return (
+            "from pathlib import Path\n\n"
+            "def test_writes_mid_run():\n"
+            f"    target = Path(__file__).parent / {relpath!r}\n"
+            f"    target.write_text((target.read_text() if target.exists() else '') + {text!r})\n"
+        )
+
+    @staticmethod
+    def _evidence(repo) -> dict:
+        return json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+
+    @staticmethod
+    def _as_if_a_later_session(repo) -> None:
+        path = repo / ".prawduct" / ".test-evidence.json"
+        ev = json.loads(path.read_text())
+        ev["timestamp"] = "2000-01-01T00:00:00Z"
+        path.write_text(json.dumps(ev))
+
+    def test_an_edit_made_during_the_run_is_vouched_for_by_no_tree(self, tmp_path):
+        repo = self._repo(tmp_path, self._suite_writing("src/app.py", "\n# edited mid-run\n"))
+
+        res = _run_in(repo, "test-evidence", "record")
+
+        ev = self._evidence(repo)
+        assert res.returncode == 0 and ev["passed"] == 1, "precondition: the run passed"
+        assert "evidence_tree" not in ev
+        assert "degraded" not in ev, "degraded is asserted by a coordinator, never derived"
+        assert "held still" in res.stderr, "the operator is told why the stamp is missing"
+        assert "Run it again once edits stop" in res.stderr, (
+            "the tree moved, so a re-run is the remedy that works"
+        )
+        assert _run_in(repo, "test-status").returncode == 0, "still current this session"
+        self._as_if_a_later_session(repo)
+        assert _run_in(repo, "test-status").returncode == 1, (
+            "a later session must not reuse the run for an edit it may never have loaded"
+        )
+
+    def test_a_quiet_run_keeps_its_tree(self, tmp_path):
+        """The control, and the relax-only direction held: nothing about a run
+        that changed nothing judgeable reads differently than before."""
+        repo = self._repo(tmp_path, "def test_ok():\n    assert True\n")
+
+        res = _run_in(repo, "test-evidence", "record")
+
+        assert res.returncode == 0, res.stderr
+        assert self._evidence(repo).get("evidence_tree")
+        self._as_if_a_later_session(repo)
+        assert _run_in(repo, "test-status").returncode == 0
+
+    def test_a_suite_writing_a_non_judgeable_file_keeps_its_tree(self, tmp_path):
+        """The run's own untracked output reaches the comparison here (neither the
+        fixture's environment nor a .gitignore hides it) and, being a path no
+        review judges, does not cost the stamp."""
+        repo = self._repo(tmp_path, self._suite_writing("run-notes.md", "a report\n"))
+
+        _run_in(repo, "test-evidence", "record")
+
+        assert (repo / "run-notes.md").exists(), "precondition: the write reached the tree"
+        assert self._evidence(repo).get("evidence_tree")
+
+    def test_a_suite_writing_a_judgeable_file_withholds_the_tree(self, tmp_path):
+        """A new judgeable file mid-run (a first snapshot, say) is a tree the run
+        did not start on. The cost is one run that vouches only for its session;
+        the next run starts with the file present and stamps normally."""
+        repo = self._repo(
+            tmp_path,
+            "from pathlib import Path\n\n"
+            "def test_writes_a_snapshot():\n"
+            "    (Path(__file__).parent / 'snapshot.json').write_text('{}')\n",
+        )
+
+        _run_in(repo, "test-evidence", "record")
+        assert "evidence_tree" not in self._evidence(repo)
+
+        _run_in(repo, "test-evidence", "record")
+        assert self._evidence(repo).get("evidence_tree"), "same bytes rewritten: the tree held"
+
+    def test_no_tree_when_the_tree_cannot_be_captured(self, tmp_path):
+        """A failed capture before the run must not fall back to stamping whatever
+        the end of the run looked like — that is the original defect by another
+        door. The suite makes the repo itself, so only the pre-run capture fails
+        and an end-of-run capture WOULD succeed: the one input where the two
+        behaviours differ."""
+        repo = self._repo(
+            tmp_path,
+            "import subprocess\nfrom pathlib import Path\n\n"
+            "def test_makes_the_repo_mid_run():\n"
+            "    here = str(Path(__file__).parent)\n"
+            "    for argv in (['init', '-q', '-b', 'main'], ['add', '-A'],\n"
+            "                 ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'c']):\n"
+            "        subprocess.run(['git', *argv], cwd=here, check=True)\n",
+            git=False,
+        )
+
+        res = _run_in(repo, "test-evidence", "record")
+
+        assert self._evidence(repo)["passed"] == 1, res.stderr
+        assert (repo / ".git").is_dir(), "precondition: an end-of-run capture could succeed"
+        assert "evidence_tree" not in self._evidence(repo)
+        # The capture's own reason is carried, and no re-run is advised: a
+        # capture that failed fails the same way next time.
+        assert "could not be captured before the run: " in res.stderr
+        assert "unknown reason" not in res.stderr
+        assert "Run it again" not in res.stderr
 
 
 class TestTestStatusNamesWhichClauseAnswered:
@@ -3791,6 +3980,80 @@ class TestDeclaredCommandEnvironments:
         assert r.returncode == 1, r.stderr
         ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
         assert ev["passed"] == 4 and ev["failed"] == 1
+
+    @staticmethod
+    def _script_writing(repo: Path, name: str, xml: str, exit_code: int) -> str:
+        """A runner that writes ``xml`` verbatim and exits ``exit_code`` — the
+        report and the exit status are set independently, so they can disagree."""
+        script = repo / f"run_{name}.py"
+        script.write_text(
+            "import sys, pathlib\n"
+            f"pathlib.Path(sys.argv[1]).write_text({xml!r})\n"
+            f"sys.exit({exit_code})\n"
+        )
+        return f"python3 {script} {{junit_xml}}"
+
+    PASSING_REPORT = (
+        '<?xml version="1.0"?><testsuite name="s" tests="1" failures="0" '
+        'errors="0" skipped="0" time="1.0"><testcase name="ok"/></testsuite>'
+    )
+
+    def test_failed_command_whose_report_shows_no_failure_is_refused(self, tmp_path):
+        # #912's defense in depth: the command failed, so a report showing no
+        # failure has missed why — a case it never wrote, a crash after writing,
+        # an interrupted run. Recording it would put a green on a red run.
+        repo = self._repo(tmp_path, "rcdisagrees")
+        cmd = self._script_writing(repo, "s", self.PASSING_REPORT, exit_code=1)
+        (repo / ".prawduct" / "project-state.yaml").write_text(f"test_command: {cmd}\n")
+        r = _run_in(repo, "test-evidence", "record")
+        assert r.returncode == 2, r.stderr
+        assert "refusing to record" in r.stderr
+        assert "--from-junit" in r.stderr  # the escape for a report known complete
+        assert not (repo / ".prawduct" / ".test-evidence.json").exists()
+
+    def test_the_disagreement_is_judged_per_command(self, tmp_path):
+        # Another command's real failure must not cover for this one: summed,
+        # `failed` is 1 and a whole-run check would see nothing wrong.
+        repo = self._repo(tmp_path, "rcpercmd")
+        silent = self._script_writing(repo, "silent", self.PASSING_REPORT, exit_code=1)
+        honest = self._junit_script(repo, "honest", passed=1, failed=1)
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            f"test_commands:\n  - {silent}\n  - {honest}\n"
+        )
+        r = _run_in(repo, "test-evidence", "record")
+        assert r.returncode == 2, r.stderr
+        assert "refusing to record" in r.stderr
+        assert not (repo / ".prawduct" / ".test-evidence.json").exists()
+
+    def test_fallback_run_that_collected_nothing_is_refused(self, tmp_path):
+        # No declared command, so the hook runs pytest itself, and the repo has
+        # no tests: pytest exits 5 with an empty report. That used to record a
+        # green 0/0. The refusal covers the fallback too, not only declared
+        # commands.
+        repo = self._repo(tmp_path, "nothingcollected")
+        r = _run_in(repo, "test-evidence", "record")
+        assert r.returncode == 2, r.stderr
+        assert "the pytest fallback exited 5" in r.stderr
+        assert not (repo / ".prawduct" / ".test-evidence.json").exists()
+
+    def test_node_root_level_failure_records_from_a_live_run(self, tmp_path):
+        # The #912 reproduction end to end: one describe plus a failing
+        # top-level test(), exit 1. It records the failure rather than being
+        # refused, because the report now accounts for the exit status.
+        repo = self._repo(tmp_path, "noderoot")
+        xml = (
+            '<?xml version="1.0"?><testsuites>'
+            '<testsuite name="group"><testcase name="passes"/></testsuite>'
+            '<testcase name="fails"><failure message="7 !== 8"/></testcase>'
+            "</testsuites>"
+        )
+        cmd = self._script_writing(repo, "node", xml, exit_code=1)
+        (repo / ".prawduct" / "project-state.yaml").write_text(f"test_command: {cmd}\n")
+        r = _run_in(repo, "test-evidence", "record")
+        assert r.returncode == 1, r.stderr
+        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert (ev["passed"], ev["failed"]) == (1, 1)
+        assert ev["failed_tests"] == ["fails"]
 
     def test_both_keys_rejected(self, tmp_path):
         repo = self._repo(

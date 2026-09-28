@@ -10,9 +10,27 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
-## v3.6.2-dev.2
+## v3.6.2-dev.3
 
 **Rolling notes for the next release — nothing has shipped under this number yet.** Entries accumulate here as work lands on `develop`; the cut renames this heading to its release number.
+
+**`test-evidence-root-testcases`** (#912, #913) — **a failing top-level node:test case is no
+longer recorded as passing.** node:test writes a `test()` outside any `describe()` as a
+`<testcase>` directly under `<testsuites>`, and `test-evidence record` never counted those. A
+failing one recorded `failed: 0`, and `--from-junit` exited 0, so the Stop gate, the Critic and
+`/prawduct:pr` saw green. They are counted now, and a report whose tests are all top-level records
+instead of being refused. **One new refusal to expect:** when a declared test command exits
+nonzero but its own report shows no failing test, `record` refuses (exit 2) and writes nothing,
+because the report doesn't account for the failure. That includes a pytest run that collected
+nothing. If your command fails for a reason outside the tests, such as a coverage threshold, fix
+that, or run the command yourself and ingest a complete report with `--from-junit`.
+
+**`test-evidence-pre-run-tree`** — **evidence only vouches for a tree the run held still on.** A
+file edited while `test-evidence record` was running the suite used to be stamped into the
+record, so a later session, or another worktree, could treat the edit as tested. Now the record
+carries no tree when the working tree changed during the run. It still counts for the current
+session, and a later session re-runs. Run `record` again once edits stop if you want a later
+session to reuse it.
 
 **`clear-verdict-coherence`** — **a turn that hands you the next move no longer tells you not to
 clear.** Agents were closing turns with `YOUR TURN` (decide something) and `DO NOT CLEAR` together.
