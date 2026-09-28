@@ -5,6 +5,31 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-28: release= accepts four-part versions
+
+<!-- prawduct: type=bugfix | scope=four-part-release-versions -->
+
+Reported upstream as #901. A product whose git tags have four numeric parts (`v1.2.3.4`) could
+not stamp them. Every `release=` was refused as "not a version", so `archive-change-log` moved
+nothing, `check-releasability` failed, and the oversized-change-log advisory could not be
+resolved. The refusal also told the author to delete the tag, and on an entry that had shipped,
+that would have marked shipped work as pending.
+
+**Root cause (verified):** `RELEASE_VALUE_RE` in `lib/change_log.py` allowed exactly three
+numeric parts. It is the only parser of the value. `validate_change_log_tags`, which both
+commands call, is its one caller. Every other reader compares the value by presence or equality.
+
+**Fix.** The pattern takes an optional fourth numeric part, before the existing optional
+`-suffix`. It is explicit rather than open-ended, so `v1.2`, `v1.2.3.4.5`, a missing `v` and
+`release=unreleased` all still fail closed. The diagnostic names both shapes with examples and
+now gives the remedy for each case: correct the value if the entry shipped, delete the tag if it
+did not. The docstring, the template's `release` key description and
+`documentation/release-process.md` say the same thing, as does the plugin-release runbook's
+`bad-change-log-tag:` remedy. The template's tag-line example is left
+alone, because #765 rewrites it. Tests cover acceptance and rejection at the validator, through
+archive selection and the `archive-change-log` CLI, and through `check-releasability`,
+including a four-part product version being cut.
+
 ## 2026-09-28: stranded branches raise an advisory; the briefing counts idle worktrees
 
 <!-- prawduct: type=feature | scope=stranded-work -->

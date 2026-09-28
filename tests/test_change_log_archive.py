@@ -133,6 +133,23 @@ class TestSelection:
         with pytest.raises(cla.ArchiveRefused):
             cla.select(log, threshold=500, versions=True)
 
+    def test_a_five_part_release_tag_refuses(self) -> None:
+        log = VERSIONED + _entry("2026-06-01", "five", "scope=x | release=v1.2.3.4.5")
+        with pytest.raises(cla.ArchiveRefused):
+            cla.select(log, threshold=500, versions=True)
+
+    def test_four_part_releases_archive_as_released_history(self) -> None:
+        log = (
+            HEADER
+            + _entry("2026-09-10", "pending newest", "scope=gamma")
+            + _entry("2026-09-01", "released recent", "scope=beta | release=v1.2.0.7")
+            + _entry("2026-08-20", "released august", "scope=beta | release=v1.1.0.3")
+            + _entry("2026-07-15", "released july", "scope=alpha | release=v1.0.0.1-rc.1")
+        )
+        selection = cla.select(log, threshold=500, versions=True)
+        assert [b.entry.title for b in selection.kept][0] == "2026-09-10: pending newest"
+        assert "2026-07-15: released july" in [b.entry.title for b in selection.moved]
+
 
 class TestApply:
     def test_the_move_is_lossless_and_bucketed_by_month(self, tmp_path: Path) -> None:
@@ -339,6 +356,23 @@ class TestCommand:
         assert proc.stderr.startswith("refused:")
         assert _archive(prawduct) == {}
         assert (prawduct / "change-log.md").read_text(encoding="utf-8") == log
+
+    def test_a_four_part_versioned_log_archives_through_the_cli(self, tmp_path: Path) -> None:
+        log = VERSIONED.replace("release=v1.0.0", "release=v1.0.0.4")
+        prawduct = _repo(tmp_path, log)
+        proc = _cli(prawduct, "--apply")
+        assert proc.returncode == 0, proc.stderr
+        archived = "".join(_archive(prawduct).values())
+        assert "release=v1.0.0.4" in archived
+
+    def test_the_cli_refusal_names_the_accepted_shapes(self, tmp_path: Path) -> None:
+        log = VERSIONED + _entry("2026-06-01", "bad", "scope=x | release=v1.2.3.4.5")
+        prawduct = _repo(tmp_path, log)
+        proc = _cli(prawduct, "--apply")
+        assert proc.returncode == 1
+        assert "v1.2.3.4.5" in proc.stderr
+        assert "vMAJOR.MINOR.PATCH" in proc.stderr
+        assert _archive(prawduct) == {}
 
     def test_an_archive_git_would_ignore_refuses(self, tmp_path: Path) -> None:
         """Committing the live log's removals without the month files they moved

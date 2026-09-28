@@ -266,7 +266,10 @@ def _is_standalone_tag_line(line: str) -> bool:
     return bool(tags)
 
 
-RELEASE_VALUE_RE = re.compile(r"^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?$")
+# Three or four numeric parts: some products tag four (`v1.2.3.4`), and refusing
+# them left their change-log archive and release gate unusable. The fourth part
+# is explicit rather than open-ended, so a mistyped version still fails closed.
+RELEASE_VALUE_RE = re.compile(r"^v\d+\.\d+\.\d+(?:\.\d+)?(?:-[0-9A-Za-z.]+)?$")
 
 
 def validate_change_log_tags(
@@ -293,7 +296,8 @@ def validate_change_log_tags(
       ``release=unreleased`` on six entries hid an entire branch from the
       v3.2.8 release, and it read as deliberate, which is exactly why nothing
       questioned it. Release-pending is *statusless with no* ``release=`` *tag*.
-      Accepts ``vMAJOR.MINOR.PATCH`` with an optional ``-suffix``.
+      Accepts ``vMAJOR.MINOR.PATCH`` or a four-part ``vMAJOR.MINOR.PATCH.N``,
+      either with an optional ``-suffix``.
     * Tag lines that CONFLICT. When several tag lines set one scalar key to
       different values, :func:`_merge_tag_line` keeps the first — a repair that
       may have picked the wrong one (two ``release=`` lines disagreeing about
@@ -319,10 +323,13 @@ def validate_change_log_tags(
         ):
             errors.append(
                 f"{where} has release={release!r}, which is not a version — "
-                f"expected vMAJOR.MINOR.PATCH. Any release= tag marks this entry "
-                f"as already released, so its whole scope drops out of the "
-                f"release-pending set and the work never ships. Release-pending "
-                f"is statusless with NO release= tag; delete the tag."
+                f"expected vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH.N (e.g. v1.2.3 "
+                f"or v1.2.3.4), optionally with a -suffix. Any release= tag marks "
+                f"this entry as already released, so its whole scope drops out of "
+                f"the release-pending set and the work never ships. If the entry "
+                f"has shipped, set release= to the version it shipped in; if it "
+                f"has not, delete the tag — release-pending is statusless with NO "
+                f"release= tag."
             )
 
         if entry.tag_conflicts:

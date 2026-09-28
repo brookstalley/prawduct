@@ -715,6 +715,32 @@ class TestChangeLogTagsAreRefusedHere:
         )
         assert release_readiness.check_releasability(project) == 0
 
+    def test_a_four_part_product_releases(self, tmp_path):
+        """History stamped with four-part versions, and a four-part release
+        being cut: both the tag guard and the already-shipped match accept it."""
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha")
+            + _entry("B", "beta", release="v1.2.3.4")
+            + _entry("C", "gamma", release="v1.2.3.3-rc.1"),
+            classification="| alpha | ships | |\n| beta | ships | |\n",
+            version="1.2.3.4",
+        )
+        assert release_readiness.check_releasability(project) == 0
+
+    def test_a_five_part_release_is_refused_and_named(self, tmp_path, capsys):
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha").replace(
+                "| scope=alpha", "| scope=alpha | release=v1.2.3.4.5"
+            ),
+            classification="| alpha | ships | |\n",
+        )
+        assert release_readiness.check_releasability(project) == 1
+        err = capsys.readouterr().err
+        assert "bad-change-log-tag" in err
+        assert "v1.2.3.4.5" in err
+
     def test_this_repos_own_change_log_passes_the_guard(self):
         """Sixty-plus entries of real history, so the guard cannot fail closed."""
         from lib import change_log, change_log_archive
