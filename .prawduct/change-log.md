@@ -46,7 +46,8 @@ complete, say from a run failed only by a coverage threshold, can still be inges
 `--from-junit`. The refusal also stops a pytest run that collected nothing (exit 5) from
 recording a green `0 passed, 0 failed`. Tests pin both reported shapes, the all-top-level
 report, the empty report, the `--from-junit` exit status, and the refusal, including the case
-where another command's failure would cover for it. A durable-worktree guard test forbade the
+where another command's failure would cover for it, and the undeclared pytest fallback that
+collected nothing. A durable-worktree guard test forbade the
 bare word "refusing" in stderr, which only passed because of that exit-5 green. It now asserts
 only that `BLOCKED` is absent. That already covers the guard's `BLOCKED: refusing`, and a
 positive control confirmed the guard still emits that phrase.
@@ -68,9 +69,12 @@ tree, so other worktrees would trust it too.
 `_test_evidence_tree_valid` at the end whether it held. It uses that check, not raw tree
 equality, because every run writes caches and reports of its own. If the tree held, the run
 stamps it as before. If it moved, or either capture failed, the record carries no
-`evidence_tree` and stderr says why. The record then stays current for this session through the
-unchanged timestamp clause, but no later session, and no other worktree through the shared run
-index, reuses it. That is the existing "a capture failure omits the field" path, so the
+`evidence_tree` and stderr says why. When the capture before the run failed, the warning carries
+that capture's reason and gives no re-run advice, since it would fail the same way next time. The
+end-of-run check does not tell a moved tree from a failed comparison, so both still get the
+re-run advice. The record then stays current for
+this session through the unchanged timestamp clause, but no later session, and no other worktree
+through the shared run index, reuses it. That is the existing "a capture failure omits the field" path, so the
 recorder still never marks a record `degraded`, which only a coordinator asserts, and a quiet
 run reads exactly as before. The first cut derived `degraded` from the diff and was reverted in
 review. That broke the field's coordinator-only contract, and a suite writing its own files

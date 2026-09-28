@@ -4508,6 +4508,7 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         live_run = True
         _pre = _evidence_mod.capture_tree(project_dir)
         pre_run_tree = _pre.get("tree") if _pre.get("status") == "ok" else None
+        pre_run_why = _pre.get("reason") or "unknown reason"
         for command in declared_commands or [None]:
             fd, junit_name = tempfile.mkstemp(suffix=".xml", prefix="prawduct-junit-")
             os.close(fd)
@@ -4784,16 +4785,23 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         still, why = (
             _gates()._test_evidence_tree_valid(project_dir, pre_run_tree)
             if pre_run_tree is not None
-            else (False, "the tree could not be captured before the run")
+            else (False, f"the tree could not be captured before the run: {pre_run_why}")
         )
         if still:
             evidence_tree = pre_run_tree
         else:
+            # Re-running helps only when the tree MOVED. A capture that failed
+            # (no git, an unreadable index) will fail the same way next time,
+            # so advising a re-run there sends the operator in a circle.
+            remedy = (
+                " Run it again once edits stop to let a later session reuse it."
+                if pre_run_tree is not None
+                else ""
+            )
             print(
                 "warning: could not confirm the working tree held still while the suite "
                 f"ran ({why}), so this record vouches for no tree — it stays current "
-                "this session only. Run it again once edits stop to let a later "
-                "session reuse it.",
+                f"this session only.{remedy}",
                 file=sys.stderr,
             )
     elif from_counts is None:

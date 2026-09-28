@@ -82,11 +82,14 @@ _EVIDENCE_OPTIONAL_FIELDS: dict[str, tuple[type, ...]] = {
     "changes_unjudged": (list,),
     # ``evidence_tree`` (spike-tree-validated-test-evidence.md): the working-tree
     # SHA the recorded run ran against, captured via ``evidence.capture_tree`` just
-    # before a live run starts (omitted when the judgeable tree moved before it
-    # ended), or at ingest for ``--from-junit`` and a restamp. Consumed ONLY by the additive tree-validity clause in
-    # ``tests_are_current`` — a str when present, always omitted (never null) when
-    # capture failed or the on-ramp is ``--from-counts``, so old and count-only
-    # records keep exactly their pre-clause timestamp-only behavior.
+    # before a live run starts (omitted when a path that affects the test outcome
+    # changed before it ended — ``_test_evidence_tree_valid``'s test, a superset of
+    # judgeable), or at ingest for ``--from-junit`` and a restamp. Read by the
+    # tree-validity clause of ``tests_are_current`` and ``suite_vouches_for_tree``
+    # (each directly and through ``_store_run_vouching``), and by the restamp guard
+    # in ``test-evidence record``. A str when present, always omitted (never null)
+    # when capture failed or the on-ramp is ``--from-counts``, so old and
+    # count-only records keep exactly their pre-clause timestamp-only behavior.
     "evidence_tree": (str,),
     # ``degraded``: WHY this run did not cover what its counts imply — a worker
     # that died under contention, a shard that never reported, a suite cut short.

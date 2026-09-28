@@ -2775,6 +2775,9 @@ class TestEditDuringTheRun:
         assert "evidence_tree" not in ev
         assert "degraded" not in ev, "degraded is asserted by a coordinator, never derived"
         assert "held still" in res.stderr, "the operator is told why the stamp is missing"
+        assert "Run it again once edits stop" in res.stderr, (
+            "the tree moved, so a re-run is the remedy that works"
+        )
         assert _run_in(repo, "test-status").returncode == 0, "still current this session"
         self._as_if_a_later_session(repo)
         assert _run_in(repo, "test-status").returncode == 1, (
@@ -2843,6 +2846,11 @@ class TestEditDuringTheRun:
         assert self._evidence(repo)["passed"] == 1, res.stderr
         assert (repo / ".git").is_dir(), "precondition: an end-of-run capture could succeed"
         assert "evidence_tree" not in self._evidence(repo)
+        # The capture's own reason is carried, and no re-run is advised: a
+        # capture that failed fails the same way next time.
+        assert "could not be captured before the run: " in res.stderr
+        assert "unknown reason" not in res.stderr
+        assert "Run it again" not in res.stderr
 
 
 class TestTestStatusNamesWhichClauseAnswered:
@@ -4015,6 +4023,17 @@ class TestDeclaredCommandEnvironments:
         r = _run_in(repo, "test-evidence", "record")
         assert r.returncode == 2, r.stderr
         assert "refusing to record" in r.stderr
+        assert not (repo / ".prawduct" / ".test-evidence.json").exists()
+
+    def test_fallback_run_that_collected_nothing_is_refused(self, tmp_path):
+        # No declared command, so the hook runs pytest itself, and the repo has
+        # no tests: pytest exits 5 with an empty report. That used to record a
+        # green 0/0. The refusal covers the fallback too, not only declared
+        # commands.
+        repo = self._repo(tmp_path, "nothingcollected")
+        r = _run_in(repo, "test-evidence", "record")
+        assert r.returncode == 2, r.stderr
+        assert "the pytest fallback exited 5" in r.stderr
         assert not (repo / ".prawduct" / ".test-evidence.json").exists()
 
     def test_node_root_level_failure_records_from_a_live_run(self, tmp_path):
