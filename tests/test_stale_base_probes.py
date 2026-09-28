@@ -15,6 +15,7 @@ Two surfaces share one detector, so both are tested here:
 
 from __future__ import annotations
 
+import shlex
 import subprocess
 from pathlib import Path
 
@@ -52,6 +53,16 @@ def _git(repo: Path, *args: str) -> str:
     )
     assert proc.returncode == 0, f"git {args} failed: {proc.stderr}"
     return proc.stdout.strip()
+
+
+def shell_words(command: str) -> list[str]:
+    """How a POSIX shell splits ``command`` into words and operators — without
+    running one (the suite bans shell=True). An operator (`;`, `(`, `)`, `|`,
+    `&`) comes back as its own token, so a name that escaped its quoting shows
+    up as a split."""
+    lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
+    lexer.whitespace_split = True
+    return list(lexer)
 
 
 def _commit(repo: Path, rel: str, content: str, msg: str) -> None:
@@ -171,6 +182,25 @@ class TestProbe:
         assert cand.priority == "warn"
         assert "release-prep(v1.0.1" in cand.trigger_summary
         assert "1 commit ahead" in cand.trigger_summary
+
+    def test_a_hostile_base_name_is_quoted_in_the_command(self, tmp_path, monkeypatch):
+        # A branch name may carry `$(` or `;` (git forbids only spaces and a few
+        # others); the recommended command runs as given, so it stays one word.
+        repo = _repo(tmp_path)
+        hostile = "main;touch${IFS}pwned"
+        real = coverage.diagnose_stale_remote_base
+        monkeypatch.setattr(
+            coverage, "diagnose_stale_remote_base",
+            lambda root, ref: {**real(root, ref), "local": hostile},
+        )
+        cand = sbp.probe_unpromoted_release_prep(ProjectState({}), make_codebase(repo))[0]
+        assert shell_words(cand.recommended_action) == ["git", "push", "origin", hostile]
+        # Exactly shlex's single-quoting: the tokenizer treats double quotes alike,
+        # but a shell still expands `$(` inside them.
+        assert cand.recommended_action == shlex.join(["git", "push", "origin", hostile])
+        assert ";" in shell_words(f"git push origin {hostile}"), (
+            "positive control: unquoted, the shell sees an operator"
+        )
 
     def test_inert_after_push_self_resolves(self, tmp_path):
         # The push that fixes the base also clears the trigger: probe returns []

@@ -14,6 +14,24 @@ release process keeps the two in sync (one headline per shipped release).
 
 **Rolling notes for the next release — nothing has shipped under this number yet.** Entries accumulate here as work lands on `develop`; the cut renames this heading to its release number.
 
+**`stranded-work`** (#843, local-only arm) — **work stranded on a local branch now says its own
+name.** A reviewed fix could sit on a branch nobody had pushed, and the next session had no way to
+know it existed. Each local branch that no worktree has checked out and that holds commits no
+remote has now raises a `stranded-branch` advisory at session start, naming the branch. Like other
+advisories it is dismissible with a reason, and it resolves itself once you push, merge or delete
+the branch. Sibling **worktrees** get one briefing line of counts: how many have had no agent
+activity for 7+ days (and how many of those hold uncommitted changes), and how many have an agent
+active in the last 30 minutes. That line names no path or branch, so an agent is never pointed into
+another session's work. `prawduct-hook worktrees` (or `--json`) lists everything, with the signal
+behind each worktree's state. Activity is the newest of: Claude Code transcripts in every config
+directory (`~/.claude`, `~/.claude-*`, `$CLAUDE_CONFIG_DIR`, so several accounts are all seen), the
+worktree's git history, a governed session starting there, and its newest uncommitted edit. It is
+inferred from timestamps, so a session paused over a weekend reads as idle. In a repo that squash-
+or rebase-merges, a merged branch you never deleted locally will fire once; dismiss it or delete
+the branch. The suggested commands in this advisory, the unintegrated-delegate advisory and the
+unpushed-release-prep advisory now quote branch names and paths, which git allows to contain `$(`
+and `;`.
+
 **`test-evidence-root-testcases`** (#912, #913) — **a failing top-level node:test case is no
 longer recorded as passing.** node:test writes a `test()` outside any `describe()` as a
 `<testcase>` directly under `<testsuites>`, and `test-evidence record` never counted those. A

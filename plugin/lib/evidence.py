@@ -763,13 +763,19 @@ def has_fact(project_dir: Path, kind: str, fact_id: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def run_git(project_dir: Path, *args: str, env: dict | None = None) -> tuple[int, str, str]:
+def run_git(
+    project_dir: Path, *args: str, env: dict | None = None, strip: bool = True
+) -> tuple[int, str, str]:
     """One git call; (returncode, stdout, stderr). Never raises — converts
     subprocess failures to a nonzero returncode with the message in stderr.
     Public: the dispatch side of the review data plane (critic_consolidate)
     shares it — per the module-boundary rule, only this module and git
     helpers touch disk/git, so callers borrow the runner rather than
-    growing their own (promoted at first external use, chunk 03)."""
+    growing their own (promoted at first external use, chunk 03).
+
+    ``strip=False`` returns stdout verbatim. Porcelain formats need it: the
+    first entry of ``git status --porcelain`` can open with a space that is
+    part of its status code, and stripping it shifts the whole parse."""
     timeout, unusable = _git_timeout()
     if unusable is not None:
         return 1, "", unusable
@@ -803,7 +809,8 @@ def run_git(project_dir: Path, *args: str, env: dict | None = None) -> tuple[int
         # and the fail-soft one; letting the exception escape instead takes down
         # whichever gate happened to ask. Reported, never silent.
         return 1, "", f"output is not valid UTF-8: {exc}"
-    return proc.returncode, proc.stdout.strip(), proc.stderr.strip()
+    stdout = proc.stdout.strip() if strip else proc.stdout
+    return proc.returncode, stdout, proc.stderr.strip()
 
 
 def _attribute_bad_tree(value: object) -> None:
