@@ -5,6 +5,36 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-28: test evidence counts a failing top-level node:test case
+
+<!-- prawduct: type=bugfix | scope=test-evidence-root-testcases -->
+
+Reported upstream twice, independently: #912 (@Jason-Vaughan) and #913 (@L13w, merged into
+#912). node:test's JUnit reporter writes a top-level `test()` as a `<testcase>` directly under
+`<testsuites>`, and `test-evidence record` never counted it. A failing one recorded `failed: 0`.
+A live run still exited 1, but `--from-junit` exited 0, and the Stop gate, the Critic and
+`/prawduct:pr` all read that record as green. A report whose tests were all top-level was
+refused as `no <testsuite>`.
+
+**Root cause (verified):** the aggregation built its unit list from `root.findall("testsuite")`
+and counted only the leaves inside those suites. Separately, a command's exit status set the
+hook's exit code but was never checked against the counts it recorded.
+
+**Fix.** A `<testsuites>` root's direct `<testcase>` children are now units of their own, read
+in document order, so `failed_tests` keeps report order. A report with no suite but with cases
+records normally. One with neither is still refused. As defense in depth, a live command that
+exits nonzero while its own report shows no failing test is refused (exit 2, nothing written).
+The check is per command, so another command's real failure can't cover for it. It refuses
+rather than marking the record `degraded`, which only a coordinator asserts. A report known to be
+complete, say from a run failed only by a coverage threshold, can still be ingested with
+`--from-junit`. The refusal also stops a pytest run that collected nothing (exit 5) from
+recording a green `0 passed, 0 failed`. Tests pin both reported shapes, the all-top-level
+report, the empty report, the `--from-junit` exit status, and the refusal, including the case
+where another command's failure would cover for it. A durable-worktree guard test forbade the
+bare word "refusing" in stderr, which only passed because of that exit-5 green. It now asserts
+only that `BLOCKED` is absent. That already covers the guard's `BLOCKED: refusing`, and a
+positive control confirmed the guard still emits that phrase.
+
 ## 2026-09-27: test evidence vouches only for a tree its run held still on
 
 <!-- prawduct: type=bugfix | scope=test-evidence-pre-run-tree -->

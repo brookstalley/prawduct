@@ -4059,10 +4059,13 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     makes the evidence sound in the first place.
 
     Exit code mirrors the suite (0 iff every test passed); the evidence file is
-    written either way (a failing run records ``failed > 0``) — with ONE
-    carve-out: an interpreter-fallback run with zero passes and nonzero
-    failures/errors (skips may accompany — the incident that taught this had
-    35) is refused as a launch-environment error (see below).
+    written either way (a failing run records ``failed > 0``) — with two
+    carve-outs, both refused with exit 2 and nothing written. An
+    interpreter-fallback run with zero passes and nonzero failures/errors
+    (skips may accompany — the incident that taught this had 35) is a
+    launch-environment error (see below). And a command that exited nonzero
+    while its own report shows no failing test is a run the report does not
+    account for, so its counts would record a failed run as green.
 
     Gate-soundness ch.2 — two optional ``project-state.yaml`` knobs remove the
     one-repo-shape assumption that forced products (scriob) into wrapper
@@ -4581,8 +4584,9 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
                     except OSError:
                         pass
 
-    # Aggregate across ALL top-level <testsuite> elements (skipped entirely when
-    # counts come from --from-counts or --no-rerun — there is no XML root).
+    # Aggregate across ALL top-level <testsuite> elements and root-level
+    # <testcase> elements (skipped entirely when counts come from --from-counts
+    # or --no-rerun — there is no XML root).
     if from_counts is None and not no_rerun:
         # pytest emits one <testsuite>, but `test_command` invites arbitrary
         # runners (jest-junit, go-junit-report, merged CI reports) whose
@@ -4610,12 +4614,25 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         # nest, so counting leaves is correct under both conventions and needs
         # no reporter detection. `failed`/`skipped` are classified per leaf for
         # the same reason; `passed` stays the remainder.
-        suites = []
-        for root in roots:
-            suites += [root] if root.tag == "testsuite" else root.findall("testsuite")
+        #
+        # A leaf can also sit directly under a <testsuites> root with no suite
+        # around it: node:test writes a top-level `test()` that way. Such a case
+        # is its own unit, since `iter("testcase")` on a <testcase> yields the
+        # case itself. Units are read in document order, so `failed_tests` keeps
+        # report order. Each carries the index of the root it came from, so a
+        # command's failures can be checked against that command's exit status.
+        suites = []  # (root index, <testsuite> or root-level <testcase>)
+        for root_index, root in enumerate(roots):
+            if root.tag == "testsuite":
+                suites.append((root_index, root))
+            else:
+                suites += [
+                    (root_index, el) for el in root if el.tag in ("testsuite", "testcase")
+                ]
         if not suites:
             print(
-                "error: the test run produced no <testsuite> (no tests collected?)",
+                "error: the test run produced no <testsuite> or <testcase> "
+                "(no tests collected?)",
                 file=sys.stderr,
             )
             return 2
@@ -4638,8 +4655,10 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         # a populated suite with a <testsuite errors="1"> that died before emitting
         # any <testcase>.
         total = failures = errors = skipped = 0
+        failed_by_root = [0] * len(roots)
         try:
-            for s in suites:
+            for root_index, s in suites:
+                before = failures + errors
                 leaves = list(s.iter("testcase"))
                 if leaves:
                     total += len(leaves)
@@ -4669,6 +4688,7 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
                     failures += _attr_int(s, "failures")
                     errors += _attr_int(s, "errors")
                     skipped += _attr_int(s, "skipped")
+                failed_by_root[root_index] += failures + errors - before
         except ValueError as exc:
             print(
                 "error: malformed count attribute on a <testsuite> in the test "
@@ -4680,7 +4700,9 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         # field has always reported. Summing <testcase time=> would change the
         # field's meaning — per-case times are elapsed-per-test and, under any
         # parallel runner, add up to more than the wall clock actually spent.
-        duration = sum(float(s.get("time", "0") or "0") for s in suites)
+        # A root-level case is the exception: it is a sibling of the top-level
+        # suites, so its time adds to theirs exactly as a sibling suite's does.
+        duration = sum(float(s.get("time", "0") or "0") for _, s in suites)
         passed = total - failures - errors - skipped
         failed = failures + errors
         # False-red guard (upstream discodon report): an interpreter-fallback
@@ -4713,6 +4735,31 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
                 file=sys.stderr,
             )
             return 2
+        # A command that exited nonzero while its own report shows no failure
+        # has not been accounted for: the report missed a case, the runner died
+        # after writing it, or something outside the tests failed the command.
+        # Recording those counts would put a green on a red run, and `failed`
+        # is what `tests_are_current` and every gate after it read. Refused
+        # rather than marked `degraded`, which only a coordinator asserts.
+        # Judged per command, because another command's real failure says
+        # nothing about why this one exited nonzero. Live runs only: one root
+        # per command, in order. Ingest has no exit status to disagree with.
+        for command, rc, root_failed in zip(
+            declared_commands or [None], run_returncodes, failed_by_root
+        ):
+            if rc != 0 and root_failed == 0:
+                label = repr(command) if command is not None else "the pytest fallback"
+                print(
+                    f"error: refusing to record — {label} exited {rc}, but its "
+                    "report shows no failing test, so the report does not account "
+                    "for the run. Find and fix what failed it. Only if every test "
+                    "ran, the report records them all, and the failure is outside "
+                    "the tests (a coverage threshold, say), run the command "
+                    "yourself and ingest the report:\n"
+                    "  prawduct-hook test-evidence record --from-junit <report.xml>",
+                    file=sys.stderr,
+                )
+                return 2
 
     # Capture the working-tree SHA this run covers, so a later session with a
     # byte-identical judgeable tree can trust the record without re-running (the

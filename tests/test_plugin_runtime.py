@@ -1905,6 +1905,60 @@ class TestJunitLeafCounting:
 """)
         assert (ev["passed"], ev["failed"], ev["skipped"]) == (1, 0, 0)
 
+    # node:test's JUnit reporter writes a `describe` as a <testsuite> and a
+    # top-level `test()` as a <testcase> directly under the <testsuites> root.
+    # The failing root-level case comes FIRST, so the order of `failed_tests`
+    # shows whether the report is read in document order.
+    NODE_ROOT_LEVEL = """
+<testsuites>
+  <testcase name="fails first"><failure message="7 !== 8"/></testcase>
+  <testsuite name="group" tests="2" failures="1" errors="0" skipped="0" time="0.5">
+    <testcase name="passes"/>
+    <testcase name="fails in group"><failure message="boom"/></testcase>
+  </testsuite>
+  <testcase name="passes at root"/>
+</testsuites>
+"""
+
+    def test_root_level_testcases_are_counted_beside_suites(self, tmp_path):
+        # #912/#913: the root-level cases were never visited, so this report
+        # recorded 1 passed, 1 failed and a failing top-level test vanished.
+        repo = self._repo(tmp_path)
+        junit = self._write(repo, self.NODE_ROOT_LEVEL)
+        res = _run_in(repo, "test-evidence", "record", "--from-junit", str(junit))
+        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert (ev["passed"], ev["failed"], ev["skipped"]) == (2, 2, 0)
+        assert ev["failed_tests"] == ["fails first", "fails in group"]
+        # Ingest has no process exit to mirror; the status derives from the
+        # count, so an uncounted failure exited 0 here.
+        assert res.returncode == 1, res.stderr
+
+    def test_report_with_only_root_level_testcases_records(self, tmp_path):
+        # Every test top-level: no <testsuite> at all. That is a complete
+        # report, not an empty run, so it records rather than being refused.
+        repo = self._repo(tmp_path)
+        junit = self._write(repo, """
+<testsuites>
+  <testcase name="a"/>
+  <testcase name="b"><failure message="boom"/></testcase>
+  <testcase name="c"><skipped/></testcase>
+</testsuites>
+""")
+        res = _run_in(repo, "test-evidence", "record", "--from-junit", str(junit))
+        assert res.returncode == 1, res.stderr
+        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert (ev["passed"], ev["failed"], ev["skipped"]) == (1, 1, 1)
+        assert ev["failed_tests"] == ["b"]
+
+    def test_report_with_no_tests_at_all_is_still_refused(self, tmp_path):
+        # The refusal the fix narrowed must still fire when there is nothing
+        # to count, or an empty report would record as a clean zero.
+        repo = self._repo(tmp_path)
+        junit = self._write(repo, "<testsuites></testsuites>\n")
+        res = _run_in(repo, "test-evidence", "record", "--from-junit", str(junit))
+        assert res.returncode == 2, res.stderr
+        assert not (repo / ".prawduct" / ".test-evidence.json").exists()
+
 
 class TestFromCountsIngest:
     """`record --from-counts passed=N failed=M skipped=K [duration=S]` records
@@ -3918,6 +3972,69 @@ class TestDeclaredCommandEnvironments:
         assert r.returncode == 1, r.stderr
         ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
         assert ev["passed"] == 4 and ev["failed"] == 1
+
+    @staticmethod
+    def _script_writing(repo: Path, name: str, xml: str, exit_code: int) -> str:
+        """A runner that writes ``xml`` verbatim and exits ``exit_code`` — the
+        report and the exit status are set independently, so they can disagree."""
+        script = repo / f"run_{name}.py"
+        script.write_text(
+            "import sys, pathlib\n"
+            f"pathlib.Path(sys.argv[1]).write_text({xml!r})\n"
+            f"sys.exit({exit_code})\n"
+        )
+        return f"python3 {script} {{junit_xml}}"
+
+    PASSING_REPORT = (
+        '<?xml version="1.0"?><testsuite name="s" tests="1" failures="0" '
+        'errors="0" skipped="0" time="1.0"><testcase name="ok"/></testsuite>'
+    )
+
+    def test_failed_command_whose_report_shows_no_failure_is_refused(self, tmp_path):
+        # #912's defense in depth: the command failed, so a report showing no
+        # failure has missed why — a case it never wrote, a crash after writing,
+        # an interrupted run. Recording it would put a green on a red run.
+        repo = self._repo(tmp_path, "rcdisagrees")
+        cmd = self._script_writing(repo, "s", self.PASSING_REPORT, exit_code=1)
+        (repo / ".prawduct" / "project-state.yaml").write_text(f"test_command: {cmd}\n")
+        r = _run_in(repo, "test-evidence", "record")
+        assert r.returncode == 2, r.stderr
+        assert "refusing to record" in r.stderr
+        assert "--from-junit" in r.stderr  # the escape for a report known complete
+        assert not (repo / ".prawduct" / ".test-evidence.json").exists()
+
+    def test_the_disagreement_is_judged_per_command(self, tmp_path):
+        # Another command's real failure must not cover for this one: summed,
+        # `failed` is 1 and a whole-run check would see nothing wrong.
+        repo = self._repo(tmp_path, "rcpercmd")
+        silent = self._script_writing(repo, "silent", self.PASSING_REPORT, exit_code=1)
+        honest = self._junit_script(repo, "honest", passed=1, failed=1)
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            f"test_commands:\n  - {silent}\n  - {honest}\n"
+        )
+        r = _run_in(repo, "test-evidence", "record")
+        assert r.returncode == 2, r.stderr
+        assert "refusing to record" in r.stderr
+        assert not (repo / ".prawduct" / ".test-evidence.json").exists()
+
+    def test_node_root_level_failure_records_from_a_live_run(self, tmp_path):
+        # The #912 reproduction end to end: one describe plus a failing
+        # top-level test(), exit 1. It records the failure rather than being
+        # refused, because the report now accounts for the exit status.
+        repo = self._repo(tmp_path, "noderoot")
+        xml = (
+            '<?xml version="1.0"?><testsuites>'
+            '<testsuite name="group"><testcase name="passes"/></testsuite>'
+            '<testcase name="fails"><failure message="7 !== 8"/></testcase>'
+            "</testsuites>"
+        )
+        cmd = self._script_writing(repo, "node", xml, exit_code=1)
+        (repo / ".prawduct" / "project-state.yaml").write_text(f"test_command: {cmd}\n")
+        r = _run_in(repo, "test-evidence", "record")
+        assert r.returncode == 1, r.stderr
+        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert (ev["passed"], ev["failed"]) == (1, 1)
+        assert ev["failed_tests"] == ["fails"]
 
     def test_both_keys_rejected(self, tmp_path):
         repo = self._repo(
