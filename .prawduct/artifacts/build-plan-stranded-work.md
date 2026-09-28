@@ -36,11 +36,13 @@ governed_by:
   - artifact: data-model
     dispositions:
       - "two stores, two lifetimes: committed answers vs per-clone gitignored nags → conforms: the stranded-branch advisory is a per-clone nag in the advisory store; a dismissal stays in this clone"
-      - "facts are immutable and append-only; governance verdicts from the fact ledger → inapplicable, because nothing here writes or reads review facts"
+      - "governance verdicts come from the append-only fact ledger → inapplicable, because nothing here reaches a governance verdict"
+      - "facts are immutable and append-only → inapplicable, because nothing here writes or reads review facts"
       - "derived views are never authoritative → conforms: the briefing line and the table are views of a fresh scan; no gate reads either"
       - "a newer-schema fact is a loud block → inapplicable, because no fact is written; `worktrees --json` carries its own `schema_version`"
       - "a governance document reaches a terminal state, never deleted → conforms: this plan is archived when its work ships"
-      - "backlog issues conform to §1 title rules; backlog_service_repo selects the store → inapplicable, because nothing here writes the backlog"
+      - "every backlog issue conforms to the §1 title rules → inapplicable, because nothing here writes the backlog"
+      - "backlog_service_repo selects the authoritative store → inapplicable, because nothing here reads or writes the backlog"
 ---
 
 # Build Plan: stranded-work
@@ -134,9 +136,10 @@ the three `git worktree list` parsers become one, as #843 Decision 4 specifies. 
 1. `gitstate.worktree_records(project_dir)` — moved from `adhoc_delegate_probes._worktree_records`
    (#843 Decision 4); `adhoc_delegate_probes`, `briefing._detect_worktrees` and `stranded_work`
    all read it. Prunable/detached handled once.
-2. `evidence.run_git` decodes with `errors="surrogateescape"` — a non-UTF-8 ref or filename
-   no longer raises through every caller (the blocking finding's class, not its instance).
-   `stranded_work` uses `run_git` with `GIT_OPTIONAL_LOCKS=0`, not a private runner.
+2. `stranded_work` uses the shared `evidence.run_git` (with `GIT_OPTIONAL_LOCKS=0`), not a
+   private runner. The shared runner already turns a non-UTF-8 decode into a failed call, so
+   the blocking finding's class was confined to the private copy; `run_git` gains only a
+   `strip=False` opt-out, because stripping shifts a porcelain parse.
 3. New probe `stranded-branch` (feature `branch-landing`, as #843 names it): one advisory per
    stranded branch, naming it, `recommended_action` a read-only `git log`. Registered in
    `probe_families.register_all`. The briefing line drops its branch clause.

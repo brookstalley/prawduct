@@ -173,7 +173,32 @@ class TestStrandedBranches:
         report = _scan(clone)
 
         assert [b.name for b in report.branches] == ["fix/orphan"]
-        assert report.branches[0].unique_commits == 1
+        assert report.branches[0].unique_commits is None, "counted only on request"
+        assert _scan(clone, count_commits=True).branches[0].unique_commits == 1
+
+    def test_a_branch_named_like_a_directory_still_counts(self, clone):
+        # Without `refs/heads/`, `git rev-list docs` is ambiguous when a `docs/`
+        # directory exists, and the count silently becomes "?".
+        (clone / "docs").mkdir()
+        (clone / "docs" / "x.md").write_text("x")
+        git(clone, "add", "docs")
+        git(clone, "commit", "-q", "-m", "docs dir")
+        git(clone, "push", "-q", "origin", "main")
+        git(clone, "switch", "-q", "-c", "docs")
+        commit(clone, "b.txt")
+        git(clone, "switch", "-q", "main")
+        rows = _scan(clone, count_commits=True).branches
+        assert [(b.name, b.unique_commits) for b in rows] == [("docs", 1)]
+
+    def test_a_deleted_worktree_does_not_hide_its_branch(self, clone, tmp_path):
+        # git still lists a deleted worktree (prunable) and its branch, but nobody
+        # can be working there; counting it as checked out would hide exactly the
+        # unpushed work a deleted tree leaves behind.
+        wt = tmp_path / "wt"
+        git(clone, "worktree", "add", "-q", "-b", "fix/abandoned", str(wt))
+        commit(wt, "b.txt")
+        subprocess.run(["rm", "-rf", str(wt)], check=True)
+        assert [b.name for b in _scan(clone).branches] == ["fix/abandoned"]
 
     def test_a_fresh_branch_is_stranded_too(self, clone):
         # The motivating branch was 18 hours old when it was missed; an age
@@ -329,24 +354,56 @@ class TestWorktrees:
 
 
 class TestDegradation:
-    def test_no_git_is_a_named_problem_not_an_exception(self, clone, monkeypatch):
-        def boom(*a, **k):
-            raise FileNotFoundError("git")
-        monkeypatch.setattr(sw.subprocess, "run", boom)
+    """Every git call that can fail, failing: the report names it and nothing
+    raises. Faked at the shared runner, the one door every call goes through."""
 
+    @staticmethod
+    def _fail(monkeypatch, first_arg, rc=1, err="fatal: timed out"):
+        from lib import evidence
+        real = evidence.run_git
+
+        def run_git(root, *args, **kwargs):
+            if args[:1] == (first_arg,):
+                return rc, "", err
+            return real(root, *args, **kwargs)
+        monkeypatch.setattr(evidence, "run_git", run_git)
+
+    def test_a_failed_worktree_listing_is_not_checked_not_nothing_found(self, clone, monkeypatch):
+        self._fail(monkeypatch, "worktree")
         report = _scan(clone)
+        assert report.worktrees_checked is False
+        assert "could not list worktrees" in report.problems
+        line = sw.briefing_line(report)
+        assert line is not None and "could not check" in line, "silence would read as all-clear"
 
-        assert report.problems == ["could not list worktrees"]
-        assert sw.briefing_line(report) is None
+    def test_a_failed_remote_listing_is_named(self, clone, monkeypatch):
+        self._fail(monkeypatch, "for-each-ref")
+        assert "could not list remote-tracking refs" in _scan(clone).problems
 
-    def test_a_timeout_degrades_the_same_way(self, clone, monkeypatch):
-        def slow(*a, **k):
-            raise subprocess.TimeoutExpired(cmd="git", timeout=5)
-        monkeypatch.setattr(sw.subprocess, "run", slow)
-        assert _scan(clone).problems == ["could not list worktrees"]
+    def test_a_failed_branch_walk_is_named(self, clone, monkeypatch):
+        self._fail(monkeypatch, "rev-list")
+        assert "could not compare local branches with the remotes" in _scan(clone).problems
 
+    def test_a_failed_status_leaves_the_dirty_count_unknown(self, clone, tmp_path, monkeypatch):
+        git(clone, "worktree", "add", "-q", "-b", "side", str(tmp_path / "wt"))
+        self._fail(monkeypatch, "status", err="output is not valid UTF-8: ...")
+        rows = [w for w in _scan(clone).worktrees if not w.is_current]
+        assert rows and all(w.dirty is None for w in rows)
 
-# --- briefing line ------------------------------------------------------------
+    def test_a_blown_budget_reports_the_rest_unchecked(self, clone, tmp_path):
+        for name in ("a", "b"):
+            git(clone, "worktree", "add", "-q", "-b", name, str(tmp_path / name))
+        report = _scan(clone, budget_seconds=-1)
+        assert all(w.state == UNKNOWN for w in report.worktrees)
+        assert any("scan budget" in p for p in report.problems)
+        line = sw.briefing_line(report)
+        assert line is not None and "not checked within" in line
+
+    def test_an_unresolvable_home_yields_no_roots(self, monkeypatch):
+        def no_home():
+            raise RuntimeError("Could not determine home directory.")
+        monkeypatch.setattr(sw.Path, "home", staticmethod(no_home))
+        assert sw.config_roots(env={}) == []
 
 
 def _row(path, state, *, current=False, dirty=0, branch="b"):
@@ -362,7 +419,7 @@ class TestBriefingLine:
         report = sw.Report(worktrees=[_row("/here", ACTIVE, current=True), _row("/x", RECENT)])
         assert sw.briefing_line(report) is None
 
-    def test_counts_everything_and_names_nothing(self):
+    def test_counts_worktrees_and_names_nothing(self):
         report = sw.Report(
             worktrees=[
                 _row("/here", ACTIVE, current=True),
@@ -370,18 +427,25 @@ class TestBriefingLine:
                 _row("/src/other", IDLE),
                 _row("/src/live", ACTIVE),
             ],
-            branches=[sw.BranchRow(self.SECRET_BRANCH, 0.0, 2), sw.BranchRow("fix/b", 0.0, 1)],
+            branches=[sw.BranchRow(self.SECRET_BRANCH, 0.0, 2)],
         )
 
         line = sw.briefing_line(report)
 
         assert line is not None, "positive control: there is something to say"
-        assert "2 local branches" in line
-        assert "2 worktrees idle 7+ days (1 with uncommitted changes)" in line
-        assert "1 other worktree has an agent active" in line
+        assert line.startswith("Worktrees: 2 idle 7+ days (1 with uncommitted changes)")
+        assert "1 other with an agent active" in line
         assert "prawduct-hook worktrees" in line
-        for name in (self.SECRET_PATH, self.SECRET_BRANCH, "/src/other", "/src/live", "fix/b", "secret"):
+        assert "branch" not in line, "stranded branches travel as advisories now"
+        for name in (self.SECRET_PATH, self.SECRET_BRANCH, "/src/other", "/src/live", "secret"):
             assert name not in line, f"the briefing named {name!r} (#410)"
+
+    def test_it_defers_to_the_user_and_to_advisories(self):
+        # The delegate-worktree advisory legitimately directs cleaning up another
+        # worktree; a flat "never touch" here contradicted it.
+        line = sw.briefing_line(sw.Report(worktrees=[_row("/x", IDLE)]))
+        assert "only when the user or an advisory asks" in line
+        assert "never" not in line
 
     def test_the_current_worktree_is_never_counted(self):
         report = sw.Report(worktrees=[_row("/here", IDLE, current=True, dirty=5)])
@@ -389,7 +453,7 @@ class TestBriefingLine:
 
     def test_an_active_sibling_alone_is_worth_a_line(self):
         line = sw.briefing_line(sw.Report(worktrees=[_row("/here", ACTIVE, current=True), _row("/x", ACTIVE)]))
-        assert line is not None and "leave it alone" in line
+        assert line is not None and "1 other with an agent active" in line
 
     def test_unknown_and_missing_are_not_called_idle(self):
         report = sw.Report(worktrees=[_row("/a", UNKNOWN), _row("/b", MISSING)])
@@ -406,11 +470,30 @@ class TestCommand:
         assert payload["schema_version"] == sw.SCHEMA_VERSION
         assert payload["worktrees"][0]["is_current"] is True
 
+    def test_json_keys_are_the_documented_contract(self, clone, capsys):
+        """api-contract.md lists these keys. They come from dataclass field
+        names, so a rename would change the published payload silently."""
+        git(clone, "switch", "-q", "-c", "fix/orphan")
+        commit(clone, "b.txt")
+        git(clone, "switch", "-q", "main")
+        assert sw.worktrees_cmd(clone, ["--json"]) == 0
+        payload = json.loads(capsys.readouterr().out)
+        assert set(payload) == {"schema_version", "worktrees", "branches", "worktrees_checked",
+                                "has_remotes", "problems"}
+        assert set(payload["worktrees"][0]) == {"path", "branch", "is_current", "ephemeral",
+                                                "state", "last_activity", "dirty"}
+        assert set(payload["worktrees"][0]["last_activity"]) == {"source", "at"}
+        assert set(payload["branches"][0]) == {"name", "last_commit", "unique_commits"}
+        assert payload["branches"][0]["unique_commits"] == 1, "the table asks for counts"
+
     def test_table_warns_that_liveness_is_inferred(self, clone, capsys):
         assert sw.worktrees_cmd(clone, []) == 0
         out = capsys.readouterr().out
         assert "this session" in out
-        assert "never adopt" in out
+        assert "looks idle" in out, "the reader is told liveness is inferred"
+        # Deferring to advisories, not a flat "never adopt": the delegate-worktree
+        # advisory legitimately directs cleanup of another worktree.
+        assert "only when the user or an advisory asks" in out
 
     def test_unknown_argument_is_a_usage_error(self, clone, capsys):
         assert sw.worktrees_cmd(clone, ["--all"]) == 2

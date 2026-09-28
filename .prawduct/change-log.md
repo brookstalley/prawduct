@@ -5,7 +5,7 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
-## 2026-09-28: the briefing counts stranded branches and idle worktrees
+## 2026-09-28: stranded branches raise an advisory; the briefing counts idle worktrees
 
 <!-- prawduct: type=feature | scope=stranded-work -->
 
@@ -15,30 +15,44 @@ sat on a local branch 281 commits behind develop until #853 re-applied it. Nothi
 branch that exists only locally when no build plan names it. A clone also collects worktrees
 with no signal of which still have an agent in them.
 
-**What changed.** New `lib/stranded_work.py` scans, read-only, and two renderers share it: a
-counts-only briefing line and `prawduct-hook worktrees [--json]`. A branch is stranded when it is
-checked out in no worktree and its tip is reachable from no remote-tracking ref (one
-`rev-list --branches --not --remotes` walk answers every branch at once). A repo with no remote
-reports none, since every branch would qualify. There is no age floor: a 3-day floor was drafted
-and dropped when the scan, run on this repo, showed it excluded the 18-hour-old #898 branch that
-motivated the feature.
+**What changed.** New `lib/stranded_work.py` scans, read-only, for three readers. Each stranded
+branch — checked out in no worktree whose directory still exists, tip reachable from no
+remote-tracking ref (one `rev-list --branches --not --remotes` walk answers every branch) —
+raises its own `branch-landing:stranded-branch` advisory (`lib/stranded_branch_probes.py`):
+named, dismissible, self-resolving. That is #843's local-only arm; its plan-ticked, never-PR'd
+arm needs a network call and stays open on #843. Sibling worktrees reach the briefing as one
+line of counts that names nothing (owner ruling on #410, reaffirmed 2026-09-28).
+`prawduct-hook worktrees [--json]` lists both. There is no age floor on branches: a 3-day floor
+was drafted and dropped when the scan, run on this repo, showed it excluded the 18-hour-old #898
+branch that motivated the feature. A repo with no remote reports no branches, since every branch
+would qualify.
+
+**How it got here.** The first boundary review (2 blocking, 11 warnings) found the design had
+never consulted `documentation/issues/843-design.md`, which already ruled this signal a
+dismissible advisory (owner, 2026-09-19). The owner chose, 2026-09-28, to move branches to the
+advisory roster and keep worktree counts in the briefing. The same pass gave `git worktree list`
+parsing one home — `gitstate.worktree_records`, moved from `adhoc_delegate_probes` as #843's
+Decision 4 specifies — where `briefing._detect_worktrees`, the delegate probe and this scan had
+three copies that disagreed about prunable and detached entries. `worktree_records` returns
+`None` when git fails in a real repo, and each caller names what it lost. The two blocking
+findings: the scan's private git runner raised on non-UTF-8 output, which the briefing did not
+guard, so one odd filename could replace the whole briefing with a failure line; and a
+per-branch `rev-list` ran on every session start for a count nothing there used. The scan now
+goes through the shared `evidence.run_git`, which already converts a decode failure into a
+failed call and gains a `strip=False` opt-out because stripping shifts a porcelain parse. It
+counts commits only for the table, has a 4-second total budget, and the briefing guards its one
+line. A scan that could not list worktrees now says so rather than printing nothing.
 
 **Liveness is the newest of four signals**, and the report names the winner: transcripts over
 every Claude config root (owner, 2026-09-28: several accounts keep transcripts of different ages
 for one worktree), the HEAD reflog, `.prawduct/.session-start`, and the newest dirty file. The
 git index mtime is excluded because any observer's `git status` rewrites it — the plan's own
-first probe did — and every probe passes `--no-optional-locks`. A process cwd check was tried
+first probe did — and every call runs with `GIT_OPTIONAL_LOCKS=0`. A process cwd check was tried
 and dropped: a desktop-app session runs with cwd `/`, so it failed its positive control.
 verify-api for the transcript layout, observed on this machine's six roots: every
 non-alphanumeric character maps to `-`, paths appear resolved (`/tmp` as `-private-tmp`),
 subagent transcripts live under the parent session's directory, and the longest name seen was
 173 characters with no truncation. No path containing `_` existed to confirm that character.
-
-**The briefing names nothing** — owner ruling on #410, reaffirmed 2026-09-28 when the owner chose
-counts plus a command over a named list. The #410 guard's sibling test pins that a real stranded
-branch reaches the briefing as a count and not by name. The `[DECISION]` in the plan records why
-the line emits no yield fact; that is an owner-vetoable exception to the proportionality norm's
-emission arm.
 
 ## 2026-09-28: develop opens 3.6.2-dev.3
 

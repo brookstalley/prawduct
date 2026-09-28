@@ -3,15 +3,21 @@
 Finished work gets stranded where no reader looks. A reviewed fix can sit on a
 local-only branch while the next session plans to build it again, and a clone
 collects worktrees with no sign of which still have an agent in them. This
-module answers both questions from git and file timestamps, read-only, for two
-renderers: the session briefing (counts only) and ``prawduct-hook worktrees``
-(the full table).
+module answers both questions from git and file timestamps, read-only, for
+three readers:
 
-The briefing names NO branch, path or worktree. A list of sibling worktrees
+* ``prawduct-hook worktrees`` — the full table, on demand.
+* The session briefing — sibling WORKTREES as counts only.
+* The ``stranded-branch`` advisory (``stranded_branch_probes``) — one per
+  stranded BRANCH, by name, dismissible, resolving itself once the branch is
+  pushed or deleted.
+
+The briefing names no worktree, path or branch. A list of sibling worktrees
 reads to an agent as a menu of work to pick up, and agents have followed it
 into a directory where another live session was working (owner ruling on #410,
-reaffirmed 2026-09-28). Counts plus a command keep the signal and leave nothing
-to wander toward.
+reaffirmed 2026-09-28). A stranded branch is different: it is checked out
+nowhere, so it is nobody's live work, and an advisory naming it points at
+nothing another session holds.
 
 **Liveness is the newest of several signals, and the report names which one
 won.** No single signal is trustworthy on its own:
@@ -29,13 +35,14 @@ won.** No single signal is trustworthy on its own:
 
 Two tempting signals are deliberately absent. The git index's mtime moves
 whenever anyone runs ``git status`` there, observers included, so it would
-report the probe itself as activity; every status call here passes
-``--no-optional-locks`` so that observing a sibling never rewrites its index.
+report the probe itself as activity; every git call here runs with
+``GIT_OPTIONAL_LOCKS=0`` so that observing a sibling never rewrites its index.
 A process whose cwd is the worktree misses desktop-app sessions, which run with
 cwd ``/``.
 
-Advice fails soft: every probe failure degrades to a missing signal or a named
-problem in the report, never an exception into SessionStart.
+Advice fails soft, but not silent: a probe failure degrades to a missing signal
+or a named problem in the report, never an exception into SessionStart, and a
+reader told "nothing found" is told whether anything was checked.
 """
 
 from __future__ import annotations
@@ -43,22 +50,24 @@ from __future__ import annotations
 import json
 import os
 import re
-import subprocess
 import sys
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from . import gitstate
+from . import evidence, gitstate
 
 #: Any signal this recent means an agent is plausibly working there now.
 ACTIVE_WITHIN_SECONDS = 30 * 60
 #: No signal for this long: nobody has touched the worktree in a week.
 IDLE_AFTER_SECONDS = 7 * 24 * 3600
 
-#: Per git call. The briefing runs at SessionStart, so a wedged repo must cost
-#: a bounded wait and a named problem, not a hung session.
-_GIT_TIMEOUT_SECONDS = 5
+#: The whole worktree scan, not each call. The briefing runs at SessionStart
+#: in every governed repo, and a clone can hold dozens of worktrees; past this,
+#: the rest are reported unchecked rather than making the session wait. One
+#: wedged call is bounded separately, by the framework-wide git budget
+#: (``PRAWDUCT_GIT_TIMEOUT``, read by ``evidence.run_git``).
+SCAN_BUDGET_SECONDS = 4.0
 #: Dirty files stat'd per worktree when looking for the newest edit. A tree
 #: with thousands of untracked files still answers "dirty", just from a sample.
 _DIRTY_STAT_CAP = 500
@@ -89,13 +98,18 @@ class WorktreeRow:
 class BranchRow:
     name: str
     last_commit: float
-    unique_commits: int | None  # commits reachable from no remote; None = count failed
+    #: Commits reachable from no remote. Counted only on request (the table);
+    #: None when not requested or when the count failed.
+    unique_commits: int | None = None
 
 
 @dataclass
 class Report:
     worktrees: list[WorktreeRow] = field(default_factory=list)
     branches: list[BranchRow] = field(default_factory=list)
+    #: False when git could not list the worktrees at all — every count below
+    #: is then "not checked", never "none found".
+    worktrees_checked: bool = True
     #: False when the repo has no remote-tracking refs: then every branch is
     #: "on no remote" and flagging them would say nothing, so none are.
     has_remotes: bool = True
@@ -140,9 +154,13 @@ def encode_project_dir(path: str | Path) -> str:
 def config_roots(env: dict | None = None, home: Path | None = None) -> list[Path]:
     """Every Claude config root that holds transcripts: ``$CLAUDE_CONFIG_DIR``,
     ``~/.claude`` and each ``~/.claude-*``. Deduplicated by resolved path,
-    because ``$CLAUDE_CONFIG_DIR`` usually points at one of the others."""
+    because ``$CLAUDE_CONFIG_DIR`` usually points at one of the others. A home
+    that cannot be resolved yields no roots, not an exception."""
     env = os.environ if env is None else env
-    home = Path.home() if home is None else home
+    try:
+        home = Path.home() if home is None else home
+    except (RuntimeError, KeyError, OSError):
+        return []
     candidates: list[Path] = []
     if env.get("CLAUDE_CONFIG_DIR"):
         candidates.append(Path(env["CLAUDE_CONFIG_DIR"]).expanduser())
@@ -158,7 +176,7 @@ def config_roots(env: dict | None = None, home: Path | None = None) -> list[Path
             if not (root / "projects").is_dir():
                 continue
             key = str(root.resolve())
-        except OSError:
+        except (OSError, RuntimeError):
             continue
         if key not in seen:
             seen.add(key)
@@ -190,40 +208,30 @@ def _mtime_signal(path: Path, source: str) -> Signal | None:
         return None
 
 
-def _git(cwd: Path, *args: str) -> str | None:
-    """stdout of one git call, or None if git could not answer. Always passes
-    ``--no-optional-locks`` so a read never refreshes another tree's index."""
-    try:
-        result = subprocess.run(
-            ["git", "--no-optional-locks", *args],
-            capture_output=True,
-            text=True,
-            cwd=str(cwd),
-            timeout=_GIT_TIMEOUT_SECONDS,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
-    return result.stdout if result.returncode == 0 else None
+def _git(cwd: Path, *args: str, strip: bool = True) -> str | None:
+    """stdout of one git call through the shared runner, or None if git could
+    not answer (including output that is not valid UTF-8, which the runner
+    reports as a failed call). ``GIT_OPTIONAL_LOCKS=0`` so a read never
+    refreshes another tree's index."""
+    env = {**os.environ, "GIT_OPTIONAL_LOCKS": "0"}
+    rc, out, _err = evidence.run_git(cwd, *args, env=env, strip=strip)
+    return out if rc == 0 else None
 
 
 def dirty_signal(worktree: Path) -> tuple[int | None, Signal | None]:
     """``(dirty file count, newest edit)``. The count is None when git could not
     be asked; the signal is None when nothing is dirty or nothing could be
     stat'd (a deleted file has no mtime)."""
-    out = _git(worktree, "status", "--porcelain", "-z")
+    out = _git(worktree, "status", "--porcelain", "-z", strip=False)
     if out is None:
         return None, None
-    entries = [e for e in out.split("\0") if e]
     paths: list[str] = []
-    skip_next = False
+    entries = iter(e for e in out.split("\0") if e)
     for entry in entries:
-        if skip_next:  # a rename's second field is its source path
-            skip_next = False
-            continue
         code, rel = entry[:2], entry[3:]
-        if code[0] in "RC":
-            skip_next = True
         paths.append(rel)
+        if code[0] in "RC":  # a rename or copy carries its source as the next field
+            next(entries, None)
     best: float | None = None
     for rel in paths[:_DIRTY_STAT_CAP]:
         try:
@@ -238,36 +246,17 @@ def dirty_signal(worktree: Path) -> tuple[int | None, Signal | None]:
 # --- the scan -----------------------------------------------------------------
 
 
-def _list_worktrees(project_dir: Path) -> list[dict] | None:
-    out = _git(project_dir, "worktree", "list", "--porcelain")
-    if out is None:
-        return None
-    rows: list[dict] = []
-    current: dict = {}
-    for line in out.splitlines() + [""]:
-        if not line:
-            if current:
-                rows.append(current)
-            current = {}
-        elif line.startswith("worktree "):
-            current["path"] = line[len("worktree "):]
-        elif line.startswith("branch "):
-            current["branch"] = line[len("branch "):].removeprefix("refs/heads/")
-        elif line.startswith("prunable"):
-            current["prunable"] = True
-    return rows
-
-
 def _resolve(path: str | Path) -> Path:
     try:
         return Path(path).resolve()
-    except OSError:
+    except (OSError, RuntimeError):
         return Path(path)
 
 
-def _scan_worktree(raw: dict, *, current: Path, roots: list[Path], now: float) -> WorktreeRow:
-    path = _resolve(raw["path"])
-    branch = raw.get("branch")
+def _scan_worktree(record: dict, *, current: Path, roots: list[Path], now: float) -> WorktreeRow:
+    path = _resolve(record["worktree"])
+    branch_ref = record.get("branch")
+    branch = branch_ref.removeprefix("refs/heads/") if branch_ref else None
     row = WorktreeRow(
         path=str(path),
         branch=branch,
@@ -277,13 +266,12 @@ def _scan_worktree(raw: dict, *, current: Path, roots: list[Path], now: float) -
     try:
         present = path.is_dir()
     except OSError:  # a permission error is not a missing tree; say nothing about it
-        row.state = UNKNOWN
         return row
-    if raw.get("prunable") or not present:
+    if "prunable" in record or not present:
         row.state = MISSING
         return row
-    git_dir_out = _git(path, "rev-parse", "--absolute-git-dir")
-    reflog = _mtime_signal(Path(git_dir_out.strip()) / "logs" / "HEAD", "reflog") if git_dir_out else None
+    git_dir = _git(path, "rev-parse", "--absolute-git-dir")
+    reflog = _mtime_signal(Path(git_dir) / "logs" / "HEAD", "reflog") if git_dir else None
     row.dirty, edit = dirty_signal(path)
     row.last_activity = newest([
         transcript_signal(path, roots),
@@ -295,61 +283,124 @@ def _scan_worktree(raw: dict, *, current: Path, roots: list[Path], now: float) -
     return row
 
 
-def _stranded_branches(project_dir: Path, checked_out: set[str], report: Report) -> None:
+def stranded_branches(
+    project_dir: Path, *, records: list[dict] | None = None, count_commits: bool = False
+) -> tuple[list[BranchRow], bool, str | None]:
+    """``(branches, has_remotes, problem)`` — local branches checked out in no
+    live worktree whose tip no remote-tracking ref reaches, at any age.
+
+    No age floor: a branch checked out nowhere already has nobody on it, and
+    the incident this exists for was 18 hours old — a reviewed fix built one
+    afternoon and planned again the next morning.
+
+    A worktree whose directory is gone does not hold its branch: git still lists it, but nobody can be working there, and
+    counting it as "checked out" would hide exactly the work a deleted tree
+    leaves behind.
+
+    ``count_commits`` adds one ``rev-list --count`` per stranded branch — the
+    table wants it, the advisory and the briefing do not."""
+    if records is None:
+        records = gitstate.worktree_records(project_dir)
+        if records is None:
+            return [], True, "could not list worktrees, so could not tell which branches are checked out"
+    held: set[str] = set()
+    for record in records:
+        ref = record.get("branch")
+        if not ref:
+            continue
+        try:
+            if not Path(record.get("worktree", "")).is_dir():
+                continue
+        except OSError:
+            pass  # unreadable is not gone; treat the branch as held
+        held.add(ref.removeprefix("refs/heads/"))
+
     remotes = _git(project_dir, "for-each-ref", "--format=%(refname)", "refs/remotes/")
     if remotes is None:
-        report.problems.append("could not list remote-tracking refs")
-        return
+        return [], True, "could not list remote-tracking refs"
     if not remotes.strip():
-        report.has_remotes = False
-        return
+        return [], False, None
     heads = _git(
-        project_dir, "for-each-ref", "--format=%(refname:short)%09%(objectname)%09%(committerdate:unix)",
-        "refs/heads/",
+        project_dir, "for-each-ref",
+        "--format=%(refname:short)%09%(objectname)%09%(committerdate:unix)", "refs/heads/",
     )
     # One walk for every branch at once: a tip reachable from no remote IS a
     # commit no remote carries, and a tip any remote reaches means every commit
     # under it is carried too. So membership of the tip answers the question
-    # without a rev-list per branch, which a repo with hundreds of branches
-    # could not afford at SessionStart.
-    unique = _git(project_dir, "rev-list", "--branches", "--not", "--remotes")
-    if heads is None or unique is None:
-        report.problems.append("could not compare local branches with the remotes")
-        return
-    uncarried = set(unique.split())
+    # without a rev-list per branch.
+    uncarried = _git(project_dir, "rev-list", "--branches", "--not", "--remotes")
+    if heads is None or uncarried is None:
+        return [], True, "could not compare local branches with the remotes"
+    tips = set(uncarried.split())
+    rows: list[BranchRow] = []
     for line in heads.splitlines():
         try:
             name, sha, stamp = line.split("\t")
             last = float(stamp)
         except ValueError:
             continue
-        # No age gate. A branch checked out in no worktree has nobody on it
-        # already, and the incident this exists for was 18 hours old: a
-        # reviewed fix built one afternoon and planned again the next morning.
-        if name in checked_out or sha not in uncarried:
+        if name in held or sha not in tips:
             continue
-        count = _git(project_dir, "rev-list", "--count", name, "--not", "--remotes")
-        report.branches.append(
-            BranchRow(name=name, last_commit=last, unique_commits=int(count) if count and count.strip().isdigit() else None)
-        )
+        row = BranchRow(name=name, last_commit=last)
+        if count_commits:
+            # `refs/heads/` makes the argument a ref, never a path: a branch named
+            # like a directory (`docs`, `tests`) is otherwise ambiguous to git.
+            count = _git(project_dir, "rev-list", "--count", f"refs/heads/{name}", "--not", "--remotes")
+            row.unique_commits = int(count) if count and count.isdigit() else None
+        rows.append(row)
+    return rows, True, None
 
 
-def scan(project_dir: Path, *, now: float | None = None, roots: list[Path] | None = None) -> Report:
-    """The whole report. Never raises: a failed probe is a named problem."""
+def scan(
+    project_dir: Path,
+    *,
+    now: float | None = None,
+    roots: list[Path] | None = None,
+    branches: bool = True,
+    count_commits: bool = False,
+    budget_seconds: float = SCAN_BUDGET_SECONDS,
+) -> Report:
+    """The report. Never raises: a failed probe is a named problem.
+
+    ``branches=False`` skips the branch comparison — the briefing's case, since
+    stranded branches reach the session through their advisory instead."""
     now = time.time() if now is None else now
     roots = config_roots() if roots is None else roots
     report = Report()
-    raws = _list_worktrees(project_dir)
-    if raws is None:
+    records = gitstate.worktree_records(project_dir)
+    if records is None:
+        report.worktrees_checked = False
         report.problems.append("could not list worktrees")
         return report
     toplevel = _git(project_dir, "rev-parse", "--show-toplevel")
-    current = _resolve(toplevel.strip()) if toplevel else _resolve(project_dir)
-    for raw in raws:
-        if "path" in raw:
-            report.worktrees.append(_scan_worktree(raw, current=current, roots=roots, now=now))
-    checked_out = {w.branch for w in report.worktrees if w.branch}
-    _stranded_branches(project_dir, checked_out, report)
+    current = _resolve(toplevel) if toplevel else _resolve(project_dir)
+    deadline = time.monotonic() + budget_seconds
+    skipped = 0
+    for record in records:
+        if "worktree" not in record:
+            continue
+        if time.monotonic() > deadline:
+            path = _resolve(record["worktree"])
+            report.worktrees.append(WorktreeRow(
+                path=str(path),
+                branch=(record.get("branch") or "").removeprefix("refs/heads/") or None,
+                is_current=path == current,
+                ephemeral=None,
+            ))
+            skipped += 1
+            continue
+        report.worktrees.append(_scan_worktree(record, current=current, roots=roots, now=now))
+    if skipped:
+        report.problems.append(
+            f"{skipped} worktree(s) not checked within the {budget_seconds:g}s scan budget"
+        )
+    if branches:
+        rows, report.has_remotes, problem = stranded_branches(
+            project_dir, records=records, count_commits=count_commits
+        )
+        report.branches = rows
+        if problem:
+            report.problems.append(problem)
     return report
 
 
@@ -357,36 +408,37 @@ def scan(project_dir: Path, *, now: float | None = None, roots: list[Path] | Non
 
 
 def briefing_line(report: Report) -> str | None:
-    """One line of COUNTS for the session briefing, or None when there is
-    nothing to say. Names no branch, path or worktree — see the module doc."""
+    """One line of WORKTREE counts for the session briefing, or None when there
+    is nothing to say. Names no worktree, path or branch — see the module doc.
+    When the scan could not run, the line says so: silence would read as
+    "nothing to report" when nothing was checked."""
+    if not report.worktrees_checked:
+        return (
+            "Worktrees: could not check sibling worktrees this session — "
+            "`prawduct-hook worktrees` says why."
+        )
     others = [w for w in report.worktrees if not w.is_current]
     idle = [w for w in others if w.state == IDLE]
     idle_dirty = sum(1 for w in idle if w.dirty)
     active = sum(1 for w in others if w.state == ACTIVE)
+    unchecked = [p for p in report.problems if "scan budget" in p]
     parts: list[str] = []
-    if report.branches:
-        n = len(report.branches)
-        parts.append(
-            f"{n} local branch{'es' if n != 1 else ''} checked out nowhere, "
-            "with commits no remote has"
-        )
     if idle:
         n = len(idle)
         dirty_note = f" ({idle_dirty} with uncommitted changes)" if idle_dirty else ""
-        parts.append(
-            f"{n} worktree{'s' if n != 1 else ''} idle {IDLE_AFTER_SECONDS // 86400}+ days{dirty_note}"
-        )
-    if not parts and not active:
-        return None
+        parts.append(f"{n} idle {IDLE_AFTER_SECONDS // 86400}+ days{dirty_note}")
     if active:
         parts.append(
-            f"{active} other worktree{'s' if active != 1 else ''} "
-            f"{'has' if active == 1 else 'have'} an agent active in the last "
-            f"{ACTIVE_WITHIN_SECONDS // 60} min — a separate session, leave it alone"
+            f"{active} other{'s' if active != 1 else ''} with an agent active in the last "
+            f"{ACTIVE_WITHIN_SECONDS // 60} min"
         )
+    if unchecked:
+        parts.append(unchecked[0])
+    if not parts:
+        return None
     return (
-        "Stranded work: " + " · ".join(parts) + ". `prawduct-hook worktrees` lists them — "
-        "report to the user; never adopt, delete or modify another worktree's work."
+        "Worktrees: " + " · ".join(parts) + ". `prawduct-hook worktrees` lists them. Tell the "
+        "user; act on another worktree only when the user or an advisory asks you to."
     )
 
 
@@ -400,6 +452,8 @@ def _age(seconds: float) -> str:
 
 def render_table(report: Report, now: float) -> str:
     lines = ["WORKTREES (state · last agent activity · uncommitted files · branch · path)"]
+    if not report.worktrees_checked:
+        lines.append("  could not list worktrees (git failed here)")
     for w in report.worktrees:
         where = "this session" if w.is_current else w.path
         seen = f"{_age(now - w.last_activity.at)} via {w.last_activity.source}" if w.last_activity else "no signal"
@@ -415,13 +469,14 @@ def render_table(report: Report, now: float) -> str:
         for b in report.branches:
             count = "?" if b.unique_commits is None else str(b.unique_commits)
             lines.append(f"  {b.name}  {count} commit(s)  last {_age(now - b.last_commit)}")
-    else:
+    elif report.worktrees_checked:
         lines.append("BRANCHES: none stranded.")
     for problem in report.problems:
         lines.append(f"note: {problem}")
     lines.append(
         "Liveness is inferred from timestamps: a session paused for a weekend looks idle. "
-        "Report what you see to the user; never adopt, delete or modify another worktree's work."
+        "Tell the user what you see; act on another worktree only when the user or an "
+        "advisory asks you to."
     )
     return "\n".join(lines)
 
@@ -440,6 +495,6 @@ def worktrees_cmd(project_dir: Path, argv: list[str]) -> int:
               file=sys.stderr)
         return 2
     now = time.time()
-    report = scan(project_dir, now=now)
+    report = scan(project_dir, now=now, count_commits=True)
     print(to_json(report) if "--json" in argv else render_table(report, now))
     return 0

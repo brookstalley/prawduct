@@ -411,6 +411,47 @@ def current_branch(project_dir: Path) -> str | None:
         return None
 
 
+def worktree_records(project_dir: Path) -> list[dict] | None:
+    """Parse ``git worktree list --porcelain`` into one dict per worktree — the
+    one parser every worktree-aware surface reads (#843 Decision 4). Three
+    copies had drifted apart on prunable and detached entries, so two lines of
+    one briefing could disagree about the same tree.
+
+    Keys are the porcelain's own line labels — ``worktree`` (path), ``HEAD``
+    (sha), ``branch`` (full ref) — plus valueless markers (``bare``,
+    ``detached``, ``locked``, ``prunable``) mapped to ``""``.
+
+    ``[]`` when ``project_dir`` is not a git repository, the ordinary case for a
+    reader that can be pointed anywhere. ``None`` when it IS one and git still
+    failed (a timeout, a broken repo). Nothing is printed here, because only
+    the caller knows what it just lost: each caller that gets ``None`` names its
+    own consequence, and a caller that reports state says "could not check"
+    rather than "nothing found". ``err`` is not surfaced, so a caller wanting
+    the reason re-asks git. The repo-ness check is paid only on the failure
+    path."""
+    from . import evidence  # noqa: PLC0415 — evidence imports this module at top level
+
+    rc, out, _err = evidence.run_git(project_dir, "worktree", "list", "--porcelain")
+    if rc != 0:
+        in_repo, _out, _err = evidence.run_git(project_dir, "rev-parse", "--git-dir")
+        if in_repo != 0:
+            return []
+        return None
+    records: list[dict] = []
+    current: dict = {}
+    for line in out.splitlines():
+        if not line.strip():
+            if current:
+                records.append(current)
+                current = {}
+            continue
+        key, _sep, value = line.partition(" ")
+        current[key] = value
+    if current:
+        records.append(current)
+    return records
+
+
 def local_branches(project_dir: Path) -> set[str] | None:
     """Every local branch name, or ``None`` when git could not be asked.
 

@@ -476,22 +476,29 @@ class TestGetWorkInProgress:
 # _detect_worktrees  (porcelain parsing)
 # --------------------------------------------------------------------------- #
 class TestDetectWorktrees:
+    """Faked at `gitstate.worktree_records`, the one porcelain parser (#843
+    Decision 4); the parser's own cases live in test_stranded_work.py."""
+
     def test_non_git_returns_empty(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(briefing.subprocess, "run", lambda *a, **k: _FakeProc(returncode=128))
+        monkeypatch.setattr(briefing.gitstate, "worktree_records", lambda d: [])
+        assert briefing._detect_worktrees(tmp_path) == []
+
+    def test_a_failed_listing_returns_empty(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(briefing.gitstate, "worktree_records", lambda d: None)
         assert briefing._detect_worktrees(tmp_path) == []
 
     def test_single_worktree_returns_empty(self, tmp_path, monkeypatch):
-        out = f"worktree {tmp_path}\nHEAD abc\nbranch refs/heads/main\n"
-        monkeypatch.setattr(briefing.subprocess, "run", lambda *a, **k: _FakeProc(stdout=out))
+        records = [{"worktree": str(tmp_path), "HEAD": "abc", "branch": "refs/heads/main"}]
+        monkeypatch.setattr(briefing.gitstate, "worktree_records", lambda d: records)
         assert briefing._detect_worktrees(tmp_path) == []
 
     def test_multiple_worktrees_marks_active_and_parses_detached(self, tmp_path, monkeypatch):
         other = tmp_path.parent / "other-wt"
-        out = (
-            f"worktree {tmp_path}\nHEAD a\nbranch refs/heads/main\n\n"
-            f"worktree {other}\nHEAD b\ndetached\n"
-        )
-        monkeypatch.setattr(briefing.subprocess, "run", lambda *a, **k: _FakeProc(stdout=out))
+        records = [
+            {"worktree": str(tmp_path), "HEAD": "a", "branch": "refs/heads/main"},
+            {"worktree": str(other), "HEAD": "b", "detached": ""},
+        ]
+        monkeypatch.setattr(briefing.gitstate, "worktree_records", lambda d: records)
         wts = briefing._detect_worktrees(tmp_path)
         assert len(wts) == 2
         active = [w for w in wts if w["is_active"] == "true"]
@@ -920,9 +927,13 @@ class TestAssembleSessionBriefingSections:
         assert "- side @ /b" not in out
         assert "/b" not in out
 
-    def test_stranded_work_is_counted_never_named(self, tmp_path):
-        """A real local-only branch reaches the briefing as a count. Its name,
-        like a sibling worktree's path above, must not (owner ruling on #410)."""
+    def test_sibling_worktrees_are_counted_never_named(self, tmp_path):
+        """A real idle sibling worktree reaches the briefing as a count; its path
+        and branch, like the sibling in the test above, must not (#410). A
+        stranded branch does not reach the briefing at all: it travels as its
+        own advisory."""
+        from lib import stranded_work
+
         def git(cwd, *args):
             subprocess.run(
                 ["git", "-c", "user.name=t", "-c", "user.email=t@e.com", "-c", "commit.gpgsign=false",
@@ -938,25 +949,59 @@ class TestAssembleSessionBriefingSections:
         git(repo, "commit", "-q", "-m", "a")
         git(repo, "remote", "add", "origin", str(tmp_path / "origin.git"))
         git(repo, "push", "-q", "origin", "main")
-        git(repo, "switch", "-q", "-c", "fix/reviewed-never-pushed")
+        wt = tmp_path / "sibling-secret-path"
+        git(repo, "worktree", "add", "-q", "-b", "fix/secret-sibling-branch", str(wt))
+        git(repo, "switch", "-q", "-c", "fix/stranded-elsewhere")
         (repo / "b.txt").write_text("b")
         git(repo, "add", "b.txt")
         git(repo, "commit", "-q", "-m", "b")
         git(repo, "switch", "-q", "main")
-
+        old = time.time() - 30 * 86400
+        for p in wt.rglob("*"):
+            os.utime(p, (old, old), follow_symlinks=False)
+        gitdir = subprocess.run(["git", "rev-parse", "--absolute-git-dir"], cwd=str(wt),
+                                capture_output=True, text=True, check=True).stdout.strip()
+        os.utime(Path(gitdir) / "logs" / "HEAD", (old, old))
         out = briefing.assemble_session_briefing(repo, [])
 
-        line = next((ln for ln in out.splitlines() if ln.startswith("Stranded work:")), None)
-        assert line is not None, "positive control: the stranded branch is reported"
-        assert "1 local branch" in line and "prawduct-hook worktrees" in line
-        assert "reviewed-never-pushed" not in out
+        line = next((ln for ln in out.splitlines() if ln.startswith("Worktrees:")), None)
+        assert line is not None, "positive control: the idle sibling is reported"
+        assert "1 idle 7+ days" in line
+        for name in ("sibling-secret-path", "secret-sibling-branch", "stranded-elsewhere"):
+            assert name not in out
 
-    def test_no_stranded_line_when_there_is_nothing_to_say(self, tmp_path, monkeypatch):
+    def test_no_worktree_line_when_there_is_nothing_to_say(self, tmp_path, monkeypatch):
         from lib import stranded_work
         self._state(tmp_path, "")
-        monkeypatch.setattr(stranded_work, "scan", lambda d: stranded_work.Report())
+        monkeypatch.setattr(stranded_work, "scan", lambda d, **k: stranded_work.Report())
         out = briefing.assemble_session_briefing(tmp_path, [])
-        assert "Stranded work" not in out
+        assert "Worktrees:" not in out
+
+    def test_the_briefing_never_pays_for_the_branch_scan(self, tmp_path, monkeypatch):
+        """Stranded branches reach the session through their advisory, which
+        runs its own scan; the briefing asking too would walk every branch twice
+        at every session start."""
+        from lib import stranded_work
+        self._state(tmp_path, "")
+        calls = []
+        monkeypatch.setattr(stranded_work, "scan", lambda d, **k: calls.append(k) or stranded_work.Report())
+        briefing.assemble_session_briefing(tmp_path, [])
+        assert calls == [{"branches": False}]
+
+    def test_a_raising_scan_costs_its_own_line_only(self, tmp_path, monkeypatch):
+        """The scan fails soft by contract; if the contract is ever wrong, one
+        line — not the whole briefing — is what is lost."""
+        from lib import stranded_work
+        self._state(tmp_path, "")
+
+        def boom(d, **k):
+            raise UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")
+        monkeypatch.setattr(stranded_work, "scan", boom)
+
+        out = briefing.assemble_session_briefing(tmp_path, [])
+
+        assert "== SESSION BRIEFING ==" in out and "Project: P" in out
+        assert "Worktrees: could not check sibling worktrees (UnicodeDecodeError)" in out
 
     def test_staleness_lines_rendered(self, tmp_path):
         self._state(tmp_path, "")

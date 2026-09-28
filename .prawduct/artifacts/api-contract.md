@@ -180,9 +180,10 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   through the same function `clear` uses, without writing it or consuming the forward notes.
 - **Stranded work** — `worktrees [--json]` (read-only): every worktree with its inferred liveness
   (active / recent / idle / unknown / missing, and which signal decided it) and uncommitted-file
-  count, plus the local branches checked out nowhere whose tip no remote-tracking ref reaches. The
-  session briefing renders the same report as counts that name nothing. Exit 0 whenever a report
-  was produced — a partial one names its failed probes in it — and 2 on an unknown argument.
+  count, plus the local branches checked out nowhere whose tip no remote-tracking ref reaches, with
+  their commit counts. The session briefing renders the worktree half as counts that name nothing;
+  each stranded branch is a `branch-landing:stranded-branch` advisory. Exit 0 whenever a report was
+  produced — a partial one names its failed probes in it — and 2 on an unknown argument.
 - **PR / release gates & views** — `check-pr-doc-only`, `check-change-log-entry`,
   `check-branch-pushed` (0/1/**3**),
   `check-releasability [--release vX.Y.Z]`, `check-released vX.Y.Z [--json] [--allow-unverifiable]`,
@@ -485,8 +486,10 @@ files to touch previews first. That framing is descriptive — the binding rule 
   - `worktrees --json` → **no skill consumer today**: top-level `schema_version`, `worktrees[]`
     (`path`, `branch` — null when detached — `is_current`, `ephemeral`, `state`, `last_activity`
     as `{source, at}` or null, `dirty` — null when git could not be asked), `branches[]` (`name`,
-    `last_commit`, `unique_commits`), `has_remotes`, `problems[]`. The briefing reads the report
-    in-process, not this payload. Named as unconsumed on purpose, like `cost-of-commit`.
+    `last_commit`, `unique_commits` — null when the count failed), `worktrees_checked` (false when
+    git could not list worktrees: every count is then "not checked", never "none"), `has_remotes`,
+    `problems[]`. The briefing and the advisory read the report in-process, not this payload.
+    Named as unconsumed on purpose, like `cost-of-commit`; the key set is pinned by a test.
   - `review-stats --json` → the cross-project telemetry aggregator, carrying a top-level
     `schema_version` (see Versioning).
   - `render-dispositions --json` → the disposition census, for a change-log entry, a PR body, or any
